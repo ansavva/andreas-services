@@ -196,13 +196,35 @@ def plan_digest(plan: dict | None, sends: list[dict]) -> str:
     whose stored digest disagrees with its own plan reports as stale on its own
     page.
     """
+    import decimal
     import hashlib
 
-    payload = {
+    def plain(value):
+        """`Decimal` back to the number it was. **Load-bearing, not tidiness.**
+
+        Every number read out of DynamoDB is a `Decimal`, and `json.dumps` with
+        `default=str` renders one as the STRING `"0.8"` where the float renders
+        as the number `0.8`. So a digest computed before the write and the same
+        digest recomputed after reading the row back disagreed — which is how
+        `catalog verify` came to report `stale_plan_digest` over a run whose
+        plan was perfectly intact, and it would have said so about all 131
+        upscales. `services/catalog.py::plan_digest` normalises for exactly this
+        reason and this copy did not.
+        """
+        if isinstance(value, decimal.Decimal):
+            return (int(value) if value == value.to_integral_value()
+                    else float(value))
+        if isinstance(value, dict):
+            return {k: plain(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [plain(v) for v in value]
+        return value
+
+    payload = plain({
         "plan": plan or {},
         "sends": [{"field": s.get("field"), "role": s.get("role"),
                    "node": s.get("node")} for s in sends or []],
-    }
+    })
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"),
                          ensure_ascii=False, default=str)
     return "sha256:" + hashlib.sha256(encoded.encode()).hexdigest()
@@ -246,7 +268,11 @@ def write(ddb, run: dict, built: dict) -> None:
         ExpressionAttributeNames={"#p": "plan", "#d": "plan_digest",
                                   "#a": "approval"},
         ExpressionAttributeValues={
-            ":p": {"M": ddbc.to_item(built["plan"])},
+            # `to_map`, not `to_item`: a plan is a VALUE map and its `None`s are
+            # real answers. Dropping `prompt: None` for a promptless model made
+            # the stored plan a different document from the one that was hashed,
+            # so every upscale run reported its own payload as changed.
+            ":p": {"M": ddbc.to_map(built["plan"])},
             ":d": {"S": built["plan_digest"]},
             ":a": {"M": ddbc.to_item(built["approval"])},
         },

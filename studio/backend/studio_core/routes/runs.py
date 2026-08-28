@@ -256,6 +256,18 @@ def bindings_of(send_entries: list[dict], record: dict | None = None) -> dict:
     return out
 
 
+def _source_for(node_id: str, record: dict | None) -> dict:
+    """Where one image came from, for a send row that did not record it.
+
+    A node the catalog cannot find still gets an answer rather than an error:
+    the send genuinely points at it, and a run whose reference was deleted has
+    to stay openable.
+    """
+    if record is None:
+        return {"kind": "object"}
+    return catalog.source_of(record)
+
+
 def digest_of(record: dict, send_entries: list[dict] | None = None) -> str:
     """The digest of what this run would send, as it stands right now.
 
@@ -567,7 +579,17 @@ def get_run(run_id: str):
             # an image was sent, and a send says it was the start frame, or the
             # third face reference of a named character.
             "sends": [
-                {**entry, **support.asset(entry["node"], nodes.get(entry["node"]))}
+                {**entry,
+                 # **Derived on read when the row has none**, which is every
+                 # send `catalog backfill-plans` wrote: it runs outside this
+                 # service and cannot call `source_of`, and a second
+                 # implementation of provenance in the pipeline would be a
+                 # second dialect — the exact thing deriving it was for. So the
+                 # rows carry what only the pipeline knew (field, role, order)
+                 # and this fills in what only the catalog knows.
+                 "source": entry.get("source")
+                 or _source_for(entry["node"], nodes.get(entry["node"])),
+                 **support.asset(entry["node"], nodes.get(entry["node"]))}
                 for entry in send_entries
             ],
             # Derived from the sends rather than stored, so the two cannot

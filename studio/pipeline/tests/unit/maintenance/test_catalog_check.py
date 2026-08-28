@@ -856,7 +856,7 @@ def test_a_run_with_no_plan_is_coverage_rather_than_corruption():
     """
     rows = _run_rows({"id": "run-1", "status": "succeeded"})
 
-    problems, planless = cm.run_plan_checks(rows, _alive)
+    problems, planless, _dead = cm.run_plan_checks(rows, _alive)
 
     assert planless == ["run run-1"]
     assert problems == {}, "a missing plan is not a problem, it is a gap"
@@ -873,7 +873,7 @@ def test_a_digest_that_disagrees_with_its_own_plan_is_a_problem():
     rows = _run_rows({"id": "run-1", "status": "succeeded",
                       "plan": {"prompt": "a porch"}, "plan_digest": "sha256:wrong"})
 
-    problems, _ = cm.run_plan_checks(rows, _alive)
+    problems, _, _dead = cm.run_plan_checks(rows, _alive)
 
     assert problems["stale_plan_digest"] == ["run run-1"]
 
@@ -887,7 +887,7 @@ def test_a_digest_that_matches_is_not_reported():
         sends,
     )
 
-    problems, planless = cm.run_plan_checks(rows, _alive)
+    problems, planless, _dead = cm.run_plan_checks(rows, _alive)
 
     assert problems == {} and planless == []
 
@@ -904,7 +904,7 @@ def test_an_approval_naming_a_payload_the_run_no_longer_has_is_a_problem():
                       "approval": {"by": "someone", "at": "…",
                                    "digest": "sha256:something-else"}})
 
-    problems, _ = cm.run_plan_checks(rows, _alive)
+    problems, _, _dead = cm.run_plan_checks(rows, _alive)
 
     assert problems["approval_does_not_match_plan"] == ["run run-1"]
 
@@ -918,16 +918,22 @@ def test_a_send_naming_a_node_that_is_gone_is_reported():
         sends,
     )
 
-    problems, _ = cm.run_plan_checks(rows, lambda node: False)
+    problems, _, dead = cm.run_plan_checks(rows, lambda node: False)
 
-    assert problems["dead_send"] == ["run run-1: node-gone"]
+    # **Counted, not failed.** A send records what was sent, and deleting that
+    # file afterwards is an ordinary thing to do to a media library — prod has
+    # five runs naming one image somebody deleted. Failing the verify over that
+    # would block `reseat` for ever. `dead_output` stays a problem: an output is
+    # what a run PRODUCED and its record asserts exists.
+    assert dead == ["run run-1: node-gone"]
+    assert problems == {}
 
 
 def test_a_draft_is_not_checked_at_all():
     """It has no approval yet by definition, and nothing was submitted."""
     rows = _run_rows({"id": "run-1", "status": "draft"})
 
-    problems, planless = cm.run_plan_checks(rows, _alive)
+    problems, planless, _dead = cm.run_plan_checks(rows, _alive)
 
     assert problems == {} and planless == []
 
@@ -937,6 +943,6 @@ def test_an_adopted_run_is_not_checked_either():
     there is no payload anybody was supposed to consent to."""
     rows = _run_rows({"id": "run-1", "status": "adopted"})
 
-    problems, planless = cm.run_plan_checks(rows, _alive)
+    problems, planless, _dead = cm.run_plan_checks(rows, _alive)
 
     assert problems == {} and planless == []

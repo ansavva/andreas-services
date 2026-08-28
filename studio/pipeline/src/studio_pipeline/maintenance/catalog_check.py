@@ -1245,8 +1245,10 @@ def run_plan_checks(rows: dict, node_exists) -> tuple[dict[str, list[str]], list
     what can be checked is internal consistency, and each of these has a failure
     that is otherwise silent.
 
-    Returns `(problems, planless)` — two things rather than one, because a run
-    with no plan is **coverage rather than corruption**. `problems` is what makes
+    Returns `(problems, planless, dead_sends)` — three things rather than one,
+    because two of them are **facts about history rather than corruption**. A run
+    with no plan is coverage; a send naming a deleted file is what a library does
+    to itself over time. `problems` is what makes
     `verify` exit 1, and `reseat` refuses to run without a passing verify; a
     not-yet-run backfill blocking an unrelated destructive command on a library
     where nothing is actually wrong would be the wrong trade entirely.
@@ -1256,6 +1258,7 @@ def run_plan_checks(rows: dict, node_exists) -> tuple[dict[str, list[str]], list
     """
     problems: dict[str, list[str]] = collections.defaultdict(list)
     planless: list[str] = []
+    dead_sends: list[str] = []
 
     for (pk, sk), run in rows.items():
         if sk != "META" or not pk.startswith("RUN#"):
@@ -1298,9 +1301,19 @@ def run_plan_checks(rows: dict, node_exists) -> tuple[dict[str, list[str]], list
 
         for send in sends:
             if not node_exists(send.get("node")):
-                problems["dead_send"].append(f"{where}: {send.get('node')}")
+                # **History, not corruption — so it is counted, not failed.**
+                # A send records what was sent; deleting that file afterwards is
+                # an ordinary thing to do to a media library, and the run page
+                # already draws a node the catalog cannot find as its id alone
+                # rather than 404ing. Production has five runs naming one
+                # reference image somebody deleted in August, and failing the
+                # verify over that would block `reseat` for ever.
+                #
+                # `dead_output` stays a problem, and the difference is real: an
+                # output is what a run PRODUCED and its record asserts exists.
+                dead_sends.append(f"{where}: {send.get('node')}")
 
-    return dict(problems), planless
+    return dict(problems), planless, dead_sends
 
 
 def phase_verify(s3, ddb, plan: dict) -> dict:
@@ -1420,7 +1433,7 @@ def phase_verify(s3, ddb, plan: dict) -> dict:
                             f"lacks {', '.join(thin)}")
 
     # ── the plan, and the approval that names it ──────────────────────────
-    plan_problems, planless = run_plan_checks(rows, node_exists)
+    plan_problems, planless, dead_sends = run_plan_checks(rows, node_exists)
     for label, entries in plan_problems.items():
         problems[label].extend(entries)
 
@@ -1456,7 +1469,7 @@ def phase_verify(s3, ddb, plan: dict) -> dict:
             "edges": {"wanted": len(edges["wanted"]), "missing": len(edges["missing"])},
             # Advisory, deliberately outside `problems`: see the note where it
             # is collected. `studio catalog backfill-plans` is what clears it.
-            "planless": planless,
+            "planless": planless, "dead_sends": dead_sends,
             "drift": drift}
 
 
@@ -1720,6 +1733,9 @@ def do_verify(library, journal):
         if res["planless"]:
             print(f"{'runs with no plan':<22} {len(res['planless'])}   "
                   "(coverage, not corruption — `backfill-plans` reconstructs them)")
+        if res["dead_sends"]:
+            print(f"{'sends naming a gone file':<22} {len(res['dead_sends'])}   "
+                  "(history — the image was deleted after the run used it)")
         for label, entries in sorted(res["problems"].items()):
             print(f"\n{label.upper()}  {len(entries)}")
             for entry in entries[:SHOWN]:
@@ -1731,6 +1747,7 @@ def do_verify(library, journal):
             "ok": res["ok"], "entities": res["entities"],
             "objects": res["objects"], "drift": len(res["drift"]),
             "planless": len(res["planless"]),
+            "dead_sends": len(res["dead_sends"]),
             "problems": {k: v[:50] for k, v in res["problems"].items()},
         }
     if not res["ok"]:

@@ -1091,3 +1091,36 @@ def test_deleting_a_run_takes_its_send_rows_with_it(empty_api, catalog_table):
 
     assert _item(catalog_table, f"RUN#{run['id']}", "SEND#0001") is None
     assert _item(catalog_table, f"RUN#{run['id']}", "META") is None
+
+
+def test_a_send_with_no_recorded_source_gets_one_derived_on_read(empty_api, catalog_table):
+    """**Every send the backfill wrote is this case.**
+
+    `catalog backfill-plans` runs outside this service and cannot call
+    `source_of`; reimplementing provenance pipeline-side would be a second
+    dialect, which is the exact thing deriving it was meant to avoid. So the row
+    carries what only the pipeline knew — field, role, order — and the read fills
+    in what only the catalog knows.
+    """
+    character = _character(empty_api)
+    project = _project(empty_api)
+    picture = _uploaded(empty_api, _child(character["root"], "reference")["node_id"], "a.webp")
+    empty_api.post(
+        f"/api/characters/{character['id']}/references",
+        json={"node": picture["node_id"], "group": "body"},
+    )
+    run = _create(empty_api, project, bindings={"image_input": [picture["node_id"]]})
+
+    # Strip the source the create path derived, leaving the row as a backfill
+    # writes one.
+    catalog_table.update_item(
+        TableName=config.catalog_table(),
+        Key={"pk": {"S": f"RUN#{run['id']}"}, "sk": {"S": "SEND#0001"}},
+        UpdateExpression="REMOVE #s",
+        ExpressionAttributeNames={"#s": "source"},
+    )
+
+    (send,) = empty_api.get(f"/api/runs/{run['id']}").get_json()["sends"]
+
+    assert send["source"]["kind"] == "character"
+    assert send["source"]["group"] == "body"

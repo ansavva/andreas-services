@@ -248,3 +248,79 @@ def test_a_run_that_bound_nothing_is_counted_rather_than_diagnosed(bucket, catal
     result = _invoke()
 
     assert "bound no images at all" in result.output
+
+
+def test_a_float_parameter_round_trips_rather_than_raising(bucket, catalog_table):
+    """**Caught by trialling the backfill on one production run, not by a test.**
+
+    `TypeSerializer` refuses a float outright, and nothing that had ever gone
+    through `to_item` held one — until a plan's params, which are whatever the
+    model was given. `topazlabs/image-upscale` takes
+    `face_enhancement_strength: 0.8`, and 131 of production's 254 runs are
+    upscales, so this would have failed on the second run of a full apply.
+
+    The failure was three frames inside boto3 and named nothing about which
+    attribute was at fault, which is the other half of why it is worth a test.
+    """
+    _run_row(catalog_table, bucket, model="topazlabs/image-upscale",
+             bindings={"image": ["node-a"]},
+             body={"model": "topazlabs/image-upscale",
+                   "input": {"prompt": None, "face_enhancement_strength": 0.8,
+                             "upscale_factor": 2}})
+
+    result = _invoke("--apply")
+
+    assert result.exit_code == 0, result.output
+    params = _record(catalog_table, "run-1")["plan"]["params"]
+    assert params["face_enhancement_strength"] == 0.8, "stored as 0.8, not as 17 digits"
+    assert params["upscale_factor"] == 2, "an int stays an int"
+
+
+def test_a_promptless_run_stores_a_plan_its_own_digest_agrees_with(bucket, catalog_table):
+    """**The bug the one-run trial against production caught.**
+
+    `to_item` drops a top-level `None`, so `prompt: None` never landed — while
+    the digest had been computed over a dict that still had it. The stored plan
+    and the stored digest therefore disagreed, which `get_run` reports as
+    `stale: true`: every one of production's 131 upscale runs would have told a
+    person on its own page that the payload changed after it was approved, about
+    work nobody had touched.
+    """
+    _run_row(catalog_table, bucket, model="topazlabs/image-upscale",
+             bindings={"image": ["node-a"]},
+             body={"model": "topazlabs/image-upscale",
+                   "input": {"upscale_factor": "2x"}})
+
+    _invoke("--apply")
+
+    record = _record(catalog_table, "run-1")
+    assert "prompt" in record["plan"], "a null prompt is a real answer, not an absence"
+    assert record["plan"]["prompt"] is None
+    assert record["plan_digest"] == BF.plan_digest(
+        record["plan"], _sends(catalog_table, "run-1")
+    ), "the stored digest must agree with the stored plan, or every read says stale"
+
+
+def test_the_digest_survives_a_round_trip_through_dynamodb(bucket, catalog_table):
+    """**The third time this exact `Decimal` trap has bitten in this change.**
+
+    Every number read out of DynamoDB is a `Decimal`, and `json.dumps` with
+    `default=str` renders one as the string `"0.8"` where the float renders as
+    the number `0.8`. So the digest written before the row and the digest
+    recomputed from the row disagreed — and `catalog verify` uses this function,
+    so it would have reported `stale_plan_digest` over 131 perfectly intact runs.
+
+    `services/catalog.py::plan_digest` normalises for exactly this reason; the
+    backend has a test named the same thing. This is the pipeline's copy of both.
+    """
+    _run_row(catalog_table, bucket, model="topazlabs/image-upscale",
+             bindings={"image": ["node-a"]},
+             body={"model": "topazlabs/image-upscale",
+                   "input": {"face_enhancement_strength": 0.8, "steps": 30}})
+
+    _invoke("--apply")
+
+    record = _record(catalog_table, "run-1")
+    assert record["plan_digest"] == BF.plan_digest(
+        record["plan"], _sends(catalog_table, "run-1")
+    )
