@@ -1,6 +1,7 @@
 import type {
   DataExport,
   GroupDetail,
+  GroupReadiness,
   GroupSummary,
   InvitationPreview,
   ExchangeTemplate,
@@ -90,6 +91,8 @@ export const api = {
   applyTemplate: (token: string, id: string, target_group_id: string, event_date: string, prior_member_ids: string[]) => request<GroupDetail>(`/templates/${id}/apply`, token, json('POST', { target_group_id, event_date, prior_member_ids })),
   createGroup: (token: string, data: Record<string, unknown>) => request<GroupDetail>('/groups', token, json('POST', data)),
   getGroup: (token: string, id: string) => request<GroupDetail>(`/groups/${id}`, token),
+  // Organizer-only. Every state in the response is computed server-side; see types.ts.
+  getReadiness: (token: string, id: string) => request<GroupReadiness>(`/groups/${id}/readiness`, token),
   getPlusPurchaseStatus: (token: string, id: string) =>
     request<PlusPurchaseStatus>(`/groups/${id}/billing/plus`, token),
   updateGroup: (token: string, id: string, data: Record<string, unknown>) => request<GroupDetail>(`/groups/${id}`, token, json('PATCH', data)),

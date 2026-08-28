@@ -318,7 +318,8 @@ internal sealed class GroupRepository(IAmazonDynamoDB db, HumbuggSettings settin
         ["updated_at"] = DynamoValues.S(group.UpdatedAt),
         ["spending_limit_cents"] = group.SpendingLimitCents is null ? new AttributeValue { NULL = true } : DynamoValues.N(group.SpendingLimitCents.Value)
         ,
-        ["customization"] = CustomizationValue(group.Customization)
+        ["customization"] = CustomizationValue(group.Customization),
+        ["requires_address"] = DynamoValues.B(group.RequiresAddress)
     };
 
     private static GroupRecord Read(IReadOnlyDictionary<string, AttributeValue> item) => new(
@@ -326,7 +327,8 @@ internal sealed class GroupRepository(IAmazonDynamoDB db, HumbuggSettings settin
         EmptyToNull(item.String("event_date")), EmptyToNull(item.String("signup_deadline")), item.Long("spending_limit_cents"),
         item.String("currency", "USD"), ReadPlan(item.String("plan")), EmptyToNull(item.String("entitlement_id")),
         ReadStatus(item.String("status")), item.String("invite_hash"), item.Exclusions(),
-        item.String("created_at"), item.String("updated_at"), ReadCustomization(item));
+        item.String("created_at"), item.String("updated_at"), ReadCustomization(item),
+        item.Bool("requires_address"));
     private static AttributeValue CustomizationValue(ExchangeCustomization? value) => value is null
         ? new AttributeValue { NULL = true }
         : new AttributeValue

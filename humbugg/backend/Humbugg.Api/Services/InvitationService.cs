@@ -19,6 +19,27 @@ public interface IInvitationService
     Task<InvitationPreview> PreviewAsync(string groupId, string invitationId, string? token, CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// The one rule that turns a stored invitation row plus its delivery feedback into the status a
+/// human is shown. Extracted because the readiness dashboard (#133) reads the same invitations from
+/// a different service: the invitation list and the nudge list must not be able to disagree about
+/// what "bounced" or "expired" means, and two copies of this expression eventually would.
+/// </summary>
+internal static class InvitationStatusRule
+{
+    public static InvitationStatus Of(InvitationRecord row, string? deliveryStatus) =>
+        row.Status == "revoked" ? InvitationStatus.Revoked
+        : row.Status == "accepted" ? InvitationStatus.Accepted
+        : DateTimeOffset.Parse(row.ExpiresAt) <= DateTimeOffset.UtcNow ? InvitationStatus.Expired
+        : deliveryStatus == "delivery" ? InvitationStatus.Delivered
+        : deliveryStatus is "bounce" or "reject" or "complaint" or "suppressed" ? InvitationStatus.Bounced
+        : InvitationStatus.Sent;
+
+    /// <summary>Sent and unanswered — the invitations an organizer can still do something about.</summary>
+    public static bool IsPending(InvitationStatus status) =>
+        status is InvitationStatus.Sent or InvitationStatus.Delivered or InvitationStatus.Bounced;
+}
+
 internal sealed class InvitationService(ICurrentUser user, IProfileRepository profiles, IGroupRepository groups, IMembershipRepository members,
     IInvitationRepository invitations, IPlanCatalog plans, ITransactionalEmailTemplates templates, ITransactionalEmailService email,
     IAuditTrail audit, HumbuggSettings settings) : IInvitationService
@@ -78,7 +99,9 @@ internal sealed class InvitationService(ICurrentUser user, IProfileRepository pr
     private async Task<ManagedInvitation> CreateOne(GroupRecord g, string address, CancellationToken ct) { var id = Guid.NewGuid().ToString("N"); var secret = Secret(); var now = DateTimeOffset.UtcNow.ToString("O"); var expires = DateTimeOffset.UtcNow.AddDays(14).ToString("O"); var message = templates.Invitation(new(id, address, "there", "Your organizer", g.Name, new Uri(Link(g.GroupId, id, secret)), g.Customization)); var row = new InvitationRecord(id, g.GroupId, address, Hash(secret), "sent", expires, now, now, LastSentAt: now, MessageId: message.MessageId); await invitations.CreateAsync(row, ct); await email.SendAsync(message, ct); await audit.RecordAsync(AuditAction.InvitationCreated, g.GroupId, new("invitation", id), cancellationToken: ct); return await Public(row, ct); }
     private async Task<GroupRecord> RequireManager(string id, CancellationToken ct) { var g = await groups.GetAsync(id, ct) ?? throw ApiException.NotFound("Exchange not found."); var membership = await members.GetByUserAndGroupAsync(user.UserId, id, ct); if (membership?.IsOrganizer != true) throw ApiException.Forbidden("Only an organizer can manage invitations."); plans.EnsureCapability(g.Plan, g.EntitlementId, PlanCapability.ManagedInvitations); return g; }
     private async Task<InvitationRecord> Get(string gid, string id, CancellationToken ct) { var x = await invitations.GetAsync(id, ct); return x is null || x.GroupId != gid ? throw ApiException.NotFound("Invitation not found.") : x; }
-    private async Task<ManagedInvitation> Public(InvitationRecord x, CancellationToken ct) { var delivery = await invitations.GetDeliveryStatusAsync(x.MessageId, ct); var status = x.Status == "revoked" ? InvitationStatus.Revoked : x.Status == "accepted" ? InvitationStatus.Accepted : DateTimeOffset.Parse(x.ExpiresAt) <= DateTimeOffset.UtcNow ? InvitationStatus.Expired : delivery == "delivery" ? InvitationStatus.Delivered : delivery is "bounce" or "reject" or "complaint" or "suppressed" ? InvitationStatus.Bounced : InvitationStatus.Sent; return new(x.InvitationId, x.Email, status, x.ExpiresAt, x.AcceptedAt, x.LastSentAt); }
+    private async Task<ManagedInvitation> Public(InvitationRecord x, CancellationToken ct) => new(
+        x.InvitationId, x.Email, InvitationStatusRule.Of(x, await invitations.GetDeliveryStatusAsync(x.MessageId, ct)),
+        x.ExpiresAt, x.AcceptedAt, x.LastSentAt);
     private static string Normalize(string raw) { try { var a = new MailAddress(raw.Trim()); if (a.Address != raw.Trim()) throw new Exception(); return a.Address.ToLowerInvariant(); } catch { throw ApiException.BadRequest($"'{raw}' is not a valid single email address."); } }
     private static string Secret() => WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32)); private static string Hash(string x) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(x)));
     private string Link(string gid, string id, string secret) => $"{settings.AppBaseUrl}/join/{gid}#managed={id}.{secret}";

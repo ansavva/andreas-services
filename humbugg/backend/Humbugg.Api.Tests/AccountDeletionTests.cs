@@ -207,7 +207,7 @@ public sealed class AccountDeletionTests
         public World()
         {
             Deletion = new AccountDeletionService(User, Profiles, Groups, Members, Wishes, Audit, Anonymizer);
-            GroupService = new GroupService(User, Profiles, Groups, Members, Wishes, new MatchingService(), new PlanCatalog(new()), Audit, new NoopAnalytics(),
+            GroupService = new GroupService(User, Profiles, Groups, Members, Wishes, new FakeInvitations(), new MatchingService(), new PlanCatalog(new()), Audit, new NoopAnalytics(),
                 new HumbuggSettings("us-east-1", "us-east-1", "pool", "client", ["http://localhost:5173"], "http://localhost:5173", null,
                     "profiles", "groups", "members", "draws", "audit", "analytics"));
         }
@@ -253,6 +253,14 @@ public sealed class AccountDeletionTests
     private sealed class InMemoryMembers : IMembershipRepository
     {
         public List<MembershipRecord> Items { get; } = [];
+        // Real behaviour, not a counter: the readiness dashboard reads this field back, so a fake
+        // that swallowed the write would let a test pass on a value production never stores.
+        public Task MarkAssignmentViewedAsync(string memberId, string drawId, CancellationToken cancellationToken = default)
+        {
+            var index = Items.FindIndex(item => item.MemberId == memberId);
+            if (index >= 0) Items[index] = Items[index] with { AssignmentViewedDrawId = drawId };
+            return Task.CompletedTask;
+        }
         public Task<MembershipRecord?> GetAsync(string memberId, CancellationToken cancellationToken = default) =>
             Task.FromResult(Items.FirstOrDefault(item => item.MemberId == memberId));
         public Task<IReadOnlyList<MembershipRecord>> GetByUserAsync(string userId, CancellationToken cancellationToken = default) =>

@@ -12,6 +12,7 @@ public interface IGroupService
     Task<IReadOnlyList<GroupSummary>> ListAsync(CancellationToken cancellationToken = default);
     Task<GroupDetail> CreateAsync(CreateGroupRequest request, CancellationToken cancellationToken = default);
     Task<GroupDetail> GetAsync(string groupId, CancellationToken cancellationToken = default);
+    Task<GroupReadiness> GetReadinessAsync(string groupId, CancellationToken cancellationToken = default);
     Task<GroupDetail> UpdateAsync(string groupId, UpdateGroupRequest request, CancellationToken cancellationToken = default);
     Task<GroupDetail> UpdateCustomizationAsync(string groupId, UpdateCustomizationRequest request, CancellationToken cancellationToken = default);
     Task<InvitationPreview> GetInvitationAsync(string groupId, string? inviteToken, CancellationToken cancellationToken = default);
@@ -38,6 +39,7 @@ internal sealed class GroupService(
     IGroupRepository groups,
     IMembershipRepository memberships,
     IWishRepository wishes,
+    IInvitationRepository invitations,
     IMatchingService matching,
     IPlanCatalog plans,
     IAuditTrail audit,
@@ -92,6 +94,128 @@ internal sealed class GroupService(
         return Detail(group, membership, members);
     }
 
+    /// <summary>
+    /// The organizer readiness dashboard (#133): who has joined, who has done what, and who needs a
+    /// nudge. Organizer-only, and never gated on a plan — a Free exchange needs to know its roster is
+    /// ready as much as a Plus one does, and the tiers differ only in what the answer contains.
+    ///
+    /// Nothing a participant wrote is in this response. Readiness is a state and a count, never a
+    /// wish, an address or an assignment: the organizer learns that someone's list is empty, not
+    /// what is on it, and learns that someone has opened their assignment, not whose name was in it.
+    /// </summary>
+    public async Task<GroupReadiness> GetReadinessAsync(string groupId, CancellationToken cancellationToken = default)
+    {
+        var (group, actor) = await RequireMembershipAsync(groupId, cancellationToken);
+        RequireOrganizer(actor);
+        var members = await memberships.GetByGroupAsync(groupId, cancellationToken);
+        var draw = group.Status == GroupStatus.Drawn
+            ? await groups.GetDrawAsync(groupId, cancellationToken)
+            : null;
+        var wishCounts = await WishCountsAsync(members.Where(item => item.IsParticipating), cancellationToken);
+
+        var participants = members
+            .Select(member => Readiness(member, group, draw, wishCounts.GetValueOrDefault(member.MemberId)))
+            .OrderBy(item => item.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(item => item.MemberId, StringComparer.Ordinal)
+            .ToList();
+        var pending = await PendingInvitationsAsync(groupId, cancellationToken);
+        var participating = participants.Where(item => item.IsParticipating).ToList();
+
+        var counts = new ReadinessCounts(
+            Members: participants.Count,
+            Participating: participating.Count,
+            NotParticipating: participants.Count - participating.Count,
+            PendingInvitations: pending.Count,
+            WishlistReady: participating.Count(item => item.Wishlist == ReadinessState.Ready),
+            AddressReady: participating.Count(item => item.Address == ReadinessState.Ready),
+            AssignmentsViewed: participating.Count(item => item.Assignment == ReadinessState.Ready),
+            NeedsNudge: participating.Count(item => item.Nudges.Count > 0) + pending.Count);
+
+        return new GroupReadiness(
+            group.GroupId, group.Status, group.Plan, group.RequiresAddress, counts, participants, pending,
+            // #132 owns purchased / sent / received. Until it lands there is nothing to aggregate, and
+            // null says exactly that — see GiftProgress on why this is not three zeroes.
+            GiftProgress: null);
+    }
+
+    private static ParticipantReadiness Readiness(MembershipRecord member, GroupRecord group, DrawRecord? draw, int wishCount)
+    {
+        var hasPreferences = !string.IsNullOrWhiteSpace(member.Wishlist);
+        // Ready on either the structured list (#127) or the free-text preferences, because both are a
+        // real answer to "what would you like". The free-text field was never replaced by wishes, so
+        // counting only wishes would report a list written before wishes existed as missing.
+        var wishlist = !member.IsParticipating ? ReadinessState.NotApplicable
+            : wishCount > 0 || hasPreferences ? ReadinessState.Ready
+            : ReadinessState.Missing;
+        var address = !member.IsParticipating ? ReadinessState.NotApplicable
+            : !group.RequiresAddress ? ReadinessState.NotRequired
+            : HasAddress(member.Address) ? ReadinessState.Ready
+            : ReadinessState.Missing;
+        var assignment = !member.IsParticipating || draw is null ? ReadinessState.NotApplicable
+            : member.AssignmentViewedDrawId == draw.DrawId ? ReadinessState.Ready
+            : ReadinessState.Missing;
+
+        var nudges = new List<NudgeReason>();
+        if (wishlist == ReadinessState.Missing) nudges.Add(NudgeReason.NoWishlist);
+        if (address == ReadinessState.Missing) nudges.Add(NudgeReason.NoAddress);
+        if (assignment == ReadinessState.Missing) nudges.Add(NudgeReason.AssignmentNotViewed);
+
+        return new ParticipantReadiness(
+            member.MemberId,
+            member.DisplayName,
+            member.UserId == group.OwnerUserId ? ParticipantRole.Owner
+                : member.IsOrganizer ? ParticipantRole.CoOrganizer
+                : ParticipantRole.Participant,
+            member.IsParticipating,
+            wishlist,
+            wishCount,
+            hasPreferences,
+            address,
+            assignment,
+            nudges);
+    }
+
+    private async Task<IReadOnlyList<PendingInvitation>> PendingInvitationsAsync(string groupId, CancellationToken cancellationToken)
+    {
+        var result = new List<PendingInvitation>();
+        foreach (var row in await invitations.GetByGroupAsync(groupId, cancellationToken))
+        {
+            // Only rows that could still be pending pay for a delivery-status lookup; an accepted or
+            // revoked invitation is settled by its own column and never reaches the dashboard.
+            if (row.Status is "accepted" or "revoked") continue;
+            var status = InvitationStatusRule.Of(row, await invitations.GetDeliveryStatusAsync(row.MessageId, cancellationToken));
+            if (InvitationStatusRule.IsPending(status))
+                result.Add(new PendingInvitation(row.InvitationId, row.Email, status, row.ExpiresAt, row.LastSentAt));
+        }
+        return result.OrderBy(item => item.Email, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    // One Query per participant. The wishes table has no group index on purpose — member_id is the
+    // partition key precisely so no wish can be addressed without naming its owner (see
+    // infra/modules/storage) — so a group roll-up is N queries, run ten at a time. That is nothing at
+    // the Free limit of 6 or the Plus limit of 50. It would be far too much at Work's 10,000, which
+    // is a reason Work needs a stored aggregate before it ships, not a reason to index wish content.
+    private async Task<IReadOnlyDictionary<string, int>> WishCountsAsync(
+        IEnumerable<MembershipRecord> members,
+        CancellationToken cancellationToken)
+    {
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var batch in members.Chunk(10))
+        {
+            foreach (var result in await Task.WhenAll(batch.Select(async member =>
+                (member.MemberId, Count: (await wishes.GetByMemberAsync(member.MemberId, cancellationToken)).Count))))
+                counts[result.MemberId] = result.Count;
+        }
+        return counts;
+    }
+
+    /// <summary>A stored address is all-or-nothing: Validation.Address rejects a partial one, so
+    /// line1 alone is enough to know the rest is there. Checked in full anyway — this reads a row,
+    /// and a readiness answer should not depend on a rule enforced somewhere else.</summary>
+    private static bool HasAddress(Address address) =>
+        !string.IsNullOrWhiteSpace(address.Line1) && !string.IsNullOrWhiteSpace(address.City) &&
+        !string.IsNullOrWhiteSpace(address.PostalCode) && !string.IsNullOrWhiteSpace(address.Country);
+
     public async Task<GroupDetail> UpdateAsync(string groupId, UpdateGroupRequest request, CancellationToken cancellationToken = default)
     {
         var (group, membership) = await RequireMembershipAsync(groupId, cancellationToken);
@@ -106,6 +230,9 @@ internal sealed class GroupService(
             if (request.SignupDeadline is not null) fields["signup_deadline"] = DynamoValues.S(dates.SignupDeadline ?? "");
         }
         if (request.SpendingLimit is not null) fields["spending_limit_cents"] = DynamoValues.N(Validation.SpendingLimit(request.SpendingLimit)!.Value);
+        // Allowed after the draw as well as before it. Turning it on late is exactly what an
+        // organizer does when the plan changes from "we'll swap at the party" to "post them".
+        if (request.RequiresAddress is not null) fields["requires_address"] = DynamoValues.B(request.RequiresAddress.Value);
         if (fields.Count > 0)
         {
             await groups.UpdateAsync(groupId, fields, cancellationToken: cancellationToken);
@@ -367,6 +494,12 @@ internal sealed class GroupService(
         // Assignment view milestone — recorded once per member; the assignment itself is never recorded.
         await analytics.TrackAsync(AnalyticsEventType.AssignmentViewed, group.Plan, groupId,
             $"assignment_viewed:{membership.MemberId}", cancellationToken: cancellationToken);
+        // And durably, on the membership row, because the organizer dashboard reads it back (#133).
+        // The analytics sink cannot answer this: it is deduplicated, it can be switched off by
+        // configuration, and a product surface must not change meaning when telemetry is disabled.
+        // Written only on the first view of this draw, so re-reading an assignment is a pure read.
+        if (membership.AssignmentViewedDrawId != draw.DrawId)
+            await memberships.MarkAssignmentViewedAsync(membership.MemberId, draw.DrawId, cancellationToken);
         return Assignment(recipient, await wishes.GetByMemberAsync(recipient.MemberId, cancellationToken));
     }
 
@@ -417,10 +550,12 @@ internal sealed class GroupService(
     private GroupDetail Detail(GroupRecord group, MembershipRecord member, IReadOnlyList<MembershipRecord> all) => new(
         group.GroupId, group.Name, group.Status, group.EventDate, Amount(group.SpendingLimitCents), group.Currency,
         group.Plan, plans.Get(group.Plan).ParticipantLimit, member.IsOrganizer, member.UserId == group.OwnerUserId, group.CreatedAt, group.UpdatedAt, group.Description, group.SignupDeadline,
-        member.IsOrganizer ? group.Exclusions : [], all.Select(item => Public(item, group)).ToList(), Customization: group.Customization);
+        member.IsOrganizer ? group.Exclusions : [], all.Select(item => Public(item, group)).ToList(),
+        Customization: group.Customization, RequiresAddress: group.RequiresAddress);
     private GroupSummary Summary(GroupRecord group, MembershipRecord member) => new(
         group.GroupId, group.Name, group.Status, group.EventDate, Amount(group.SpendingLimitCents), group.Currency,
-        group.Plan, plans.Get(group.Plan).ParticipantLimit, member.IsOrganizer, member.UserId == group.OwnerUserId, group.CreatedAt, group.UpdatedAt);
+        group.Plan, plans.Get(group.Plan).ParticipantLimit, member.IsOrganizer, member.UserId == group.OwnerUserId,
+        group.CreatedAt, group.UpdatedAt, group.RequiresAddress);
     private static Membership Public(MembershipRecord member, GroupRecord? group = null) => new(
         member.MemberId,
         member.DisplayName,

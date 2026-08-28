@@ -89,6 +89,9 @@ public sealed class ReminderAuthorizationTests
         public Task<MembershipRecord?> GetByUserAndGroupAsync(string userId, string groupId, CancellationToken cancellationToken = default) =>
             Task.FromResult<MembershipRecord?>(MembershipRepository.NewRecord(groupId, userId, "User", organizer));
         public Task<MembershipRecord?> GetAsync(string memberId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        // Not exercised here: this fake's service never reads an assignment.
+        public Task MarkAssignmentViewedAsync(string memberId, string drawId, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
         public Task<IReadOnlyList<MembershipRecord>> GetByUserAsync(string userId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<IReadOnlyList<MembershipRecord>> GetByGroupAsync(string groupId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<MembershipRecord> CreateAsync(string groupId, string userId, string displayName, bool organizer, CancellationToken cancellationToken = default) => throw new NotImplementedException();

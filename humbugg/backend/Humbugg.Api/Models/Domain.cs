@@ -96,7 +96,11 @@ public sealed record GroupSummary(
     bool IsOrganizer,
     bool IsOwner,
     string CreatedAt,
-    string UpdatedAt);
+    string UpdatedAt,
+    // Whether this exchange posts its gifts. Off means the readiness dashboard does not count a
+    // missing mailing address against anyone — an exchange handed over in person never needs one,
+    // and nagging every participant for a field they should leave blank is worse than not asking.
+    bool RequiresAddress = false);
 
 public sealed record GroupDetail(
     string GroupId,
@@ -116,7 +120,80 @@ public sealed record GroupDetail(
     IReadOnlyList<string[]> Exclusions,
     IReadOnlyList<Membership> Members,
     string? InviteUrl = null,
-    ExchangeCustomization? Customization = null);
+    ExchangeCustomization? Customization = null,
+    bool RequiresAddress = false);
+
+// ─── Organizer readiness (#133) ─────────────────────────────────────────────────────────────────
+//
+// The dashboard's whole state, computed on the server. The app renders these states and never
+// re-derives one: "ready" has to mean the same thing in the roll-up, the participant row and the
+// nudge list, and the only way to guarantee that is for exactly one place to decide it.
+public enum ReadinessState
+{
+    // The participant has done it.
+    Ready,
+    // They have not, and this is what the organizer would nudge them about.
+    Missing,
+    // This exchange does not ask for it — a mailing address when gifts change hands in person.
+    NotRequired,
+    // The question does not apply: assignment views before the draw, anything for a non-participant.
+    NotApplicable,
+}
+
+public enum ParticipantRole { Owner, CoOrganizer, Participant }
+
+public enum NudgeReason { NoWishlist, NoAddress, AssignmentNotViewed, InvitationNotAccepted }
+
+public sealed record ParticipantReadiness(
+    string MemberId,
+    string DisplayName,
+    ParticipantRole Role,
+    bool IsParticipating,
+    ReadinessState Wishlist,
+    // Counted so the organizer can tell an empty list from a full one without opening it. The wishes
+    // themselves are never in this response: what someone asked for is between them and their giver.
+    int WishCount,
+    bool HasGeneralPreferences,
+    ReadinessState Address,
+    ReadinessState Assignment,
+    IReadOnlyList<NudgeReason> Nudges);
+
+/// <summary>An invitation that has been sent and not yet accepted. Plus-only in practice — a Free
+/// exchange invites by link and has no invitation rows — but never gated here: an empty list is the
+/// honest answer for Free, and a plan check would make the dashboard lie on the tier that has them.</summary>
+public sealed record PendingInvitation(
+    string InvitationId,
+    string Email,
+    InvitationStatus Status,
+    string ExpiresAt,
+    string? LastSentAt);
+
+/// <summary>Aggregate gift progress — counts only, so it can never say who is giving to whom.
+/// Null until gift tracking exists (#132). Null rather than three zeroes on purpose: zeroes read as
+/// "nobody has bought anything yet", which is a different and false statement.</summary>
+public sealed record GiftProgress(int Purchased, int Sent, int Received, int Total);
+
+public sealed record ReadinessCounts(
+    int Members,
+    int Participating,
+    int NotParticipating,
+    int PendingInvitations,
+    // Each of these three is out of Participating.
+    int WishlistReady,
+    int AddressReady,
+    int AssignmentsViewed,
+    // Participants with at least one outstanding item, plus every unaccepted invitation.
+    int NeedsNudge);
+
+public sealed record GroupReadiness(
+    string GroupId,
+    GroupStatus Status,
+    PlanCode Plan,
+    bool RequiresAddress,
+    ReadinessCounts Counts,
+    IReadOnlyList<ParticipantReadiness> Participants,
+    IReadOnlyList<PendingInvitation> PendingInvitations,
+    GiftProgress? GiftProgress);
 
 // ─── Wishes ─────────────────────────────────────────────────────────────────────────────────────
 //
@@ -282,7 +359,8 @@ public sealed record UpdateGroupRequest(
     string? Description,
     string? EventDate,
     string? SignupDeadline,
-    decimal? SpendingLimit);
+    decimal? SpendingLimit,
+    bool? RequiresAddress = null);
 public sealed record UpdateCustomizationRequest(
     string? Greeting, string? Instructions, string? PrimaryColor, string? AccentColor, string? Image);
 public sealed record JoinGroupRequest(string? InviteToken);
@@ -343,7 +421,8 @@ internal sealed record GroupRecord(
     IReadOnlyList<string[]> Exclusions,
     string CreatedAt,
     string UpdatedAt,
-    ExchangeCustomization? Customization = null);
+    ExchangeCustomization? Customization = null,
+    bool RequiresAddress = false);
 internal sealed record MembershipRecord(
     string MemberId,
     string GroupId,
@@ -355,7 +434,12 @@ internal sealed record MembershipRecord(
     string Avoidances,
     Address Address,
     string CreatedAt,
-    string UpdatedAt);
+    string UpdatedAt,
+    // The draw this member has actually opened their assignment for, or null if they never have.
+    // Stored as the draw id rather than a flag so it self-invalidates: a reset and a late-participant
+    // reassignment both mint a new draw id, and everyone reverts to "has not looked" — which is the
+    // truth, because the link they followed is the one the API now refuses as obsolete.
+    string? AssignmentViewedDrawId = null);
 // Stored row. `MemberId` is the partition key and `WishId` the sort key, so listing one member's
 // wishes is a Query and never a Scan, and every single-item operation must name the owning member —
 // ownership is enforced by the key itself rather than by a check someone can forget.
