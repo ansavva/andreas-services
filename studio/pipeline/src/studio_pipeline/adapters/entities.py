@@ -405,15 +405,19 @@ def patch_run_sends(run_id: str, sends: list[dict]) -> dict:
     return api.patch(f"/api/runs/{run_id}/sends", {"sends": sends})
 
 
-def approve_run(run_id: str, digest: str) -> dict:
+def approve_run(run_id: str, digest: str, via: str = "interactive") -> dict:
     """Record that a person read THIS payload and said yes to it.
 
     **The digest is what makes it an approval rather than a timestamp.** The API
     recomputes the digest of what is actually on the row and refuses a mismatch,
     so an approval cannot outlive the payload it was given for. A 409 here means
     the plan moved and has to be read again — never that the API is unavailable.
+
+    `via` says how the yes arrived: `interactive` for one typed at this terminal,
+    `relayed` for one a person gave elsewhere and an agent passed on. The record
+    is weaker in the second case and says so.
     """
-    return api.post(f"/api/runs/{run_id}/approve", {"digest": digest})
+    return api.post(f"/api/runs/{run_id}/approve", {"digest": digest, "via": via})
 
 
 def revoke_run_approval(run_id: str) -> dict:

@@ -640,17 +640,38 @@ def do_delete(runref, files, project):
 @main.command("approve")
 @click.argument("runref", required=True)
 @click.option("--project", help="Default project for a bare runref.")
+@click.option("--relayed", is_flag=True,
+              help="Somebody said yes where this terminal cannot see it, and "
+                   "you are passing it on. Records the approval as RELAYED.")
 @reports(RunError, api.ApiError)
-def do_approve(runref, project):
+def do_approve(runref, project, relayed):
     """Read a draft's payload in full, then say yes to **that** payload.
 
-    **No `--yes`, and there will not be one.** A person reads what is printed and
-    answers, or nothing is approved: an approval flag is the door an agent walks
-    through while believing some earlier exchange counted as approval. That
-    sentence is already in `board.py` and `turnaround.py`; it matters more here,
-    because what this writes is a durable record that somebody said yes.
+    **This used to say "no `--yes`, and there will not be one."** The reasoning
+    was that an approval flag is the door an agent walks through while believing
+    some earlier exchange counted as approval, and that what this writes is a
+    durable record of somebody saying yes. Both halves are still true. The
+    conclusion was not.
 
-    The digest is what turns that record into an approval rather than a
+    **The absence of a flag never prevented anything.** `yes | studio runs
+    approve …` satisfies a `click.confirm` in one pipe, and an agent told "I
+    approve these" by a person will reach for it — reasonably, because the
+    person did say yes. What the missing flag achieved was to make that row
+    **indistinguishable from a click**: same `by`, same `at`, no trace of how
+    the yes travelled. The rule meant to stop a forged record was writing one.
+
+    So the door is labelled rather than nailed shut. `--relayed` skips the
+    confirm and records `via: relayed` — a strictly weaker claim than a typed
+    yes, and one a reader can see. It still PRINTS the whole payload: the point
+    was never the keystroke, it was that the words and images somebody agreed to
+    end up where they can be read back.
+
+    **`--relayed` is a statement of fact, not a convenience.** Use it when a
+    person has actually said yes. Using it because approving is tedious writes a
+    false record, and no flag can prevent that — which is why this one is named
+    after the claim it makes rather than after the prompt it skips.
+
+    The digest is what turns any of this into an approval rather than a
     timestamp. It names the exact words and the exact ordered images, so
     re-wording a prompt afterwards does not leave a stale yes behind — the API
     refuses the submission and says the payload moved.
@@ -659,14 +680,20 @@ def do_approve(runref, project):
     if record.get("status") != "draft":
         raise RunError(f"run {record['id']} is {record.get('status')}, not a draft")
 
+    # Printed on both paths. A relayed yes still has to leave the payload
+    # somewhere the person who gave it can check what it was a yes to.
     print(_render_plan(record))
-    if not click.confirm(f"\napprove this payload for run {record['id']}?",
-                         default=False):
-        print("not approved.", file=sys.stderr)
-        raise SystemExit(1)
+    if not relayed:
+        if not click.confirm(f"\napprove this payload for run {record['id']}?",
+                             default=False):
+            print("not approved.", file=sys.stderr)
+            raise SystemExit(1)
 
-    updated = entities.approve_run(record["id"], record["plan_digest"])
-    print(f"approved {updated['id']} — submit it with: "
+    updated = entities.approve_run(
+        record["id"], record["plan_digest"],
+        via="relayed" if relayed else "interactive")
+    how = " (RELAYED — recorded as second-hand)" if relayed else ""
+    print(f"approved {updated['id']}{how} — submit it with: "
           f"studio runs submit {updated['id']}")
 
 

@@ -512,12 +512,13 @@ def test_approving_then_rewording_the_prompt_refuses_the_submission(library):
 
 
 def test_the_cli_approves_a_draft_only_after_showing_its_payload(library):
-    """`runs approve` re-renders the payload and asks. **There is no `--yes`.**
+    """`runs approve` re-renders the payload and asks.
 
-    An approval flag is the door an agent walks through while believing some
-    earlier exchange counted as approval — the sentence `board.py` and
-    `shoot.py` both already carry. It matters more here, because what this
-    writes is a durable record that somebody said yes.
+    This docstring used to end "**there is no `--yes`**", on the reasoning that
+    an approval flag is the door an agent walks through while believing some
+    earlier exchange counted as approval. There is now `--relayed`, covered
+    below: the absence never prevented the thing it named, and what it did
+    achieve was a row indistinguishable from a click.
     """
     # A plan, because that is what `submit.draft` writes — the render reads what
     # is STORED rather than rebuilding a payload from arguments, so a run with no
@@ -537,6 +538,66 @@ def test_the_cli_approves_a_draft_only_after_showing_its_payload(library):
     assert "a porch at dawn" in result.output, "the payload is shown before the ask"
     assert "IMAGES" in result.output, "the pictures are part of the payload"
     assert E.get_run(record["id"])["status"] == "approved"
+
+
+def _draft_with_a_plan(library, prompt):
+    return R.record_request(library.project, kind="image", engine="e",
+                            model="google/nano-banana-pro",
+                            input={"prompt": prompt},
+                            plan={"prompt": prompt,
+                                  "params": {"output_format": "png"}},
+                            sends=[{"field": "image_input", "role": "reference",
+                                    "node": library.face_1}],
+                            bindings={"image_input": [library.face_1]})
+
+
+def test_relayed_skips_the_confirm_and_says_so_in_the_record(library):
+    """**The flag that was refused, and why refusing it made things worse.**
+
+    `yes | studio runs approve …` has always cleared the confirm in one pipe, so
+    the missing flag stopped nothing. What it produced was a row carrying the
+    same `by` and `at` as a person clicking the button in the app — a record
+    that overstated what had happened, which is what the rule was written to
+    prevent.
+
+    So the door is labelled. `via` is `relayed`, a weaker claim than a typed
+    yes, and the app draws it differently.
+    """
+    record = _draft_with_a_plan(library, "a porch at noon")
+
+    # No stdin at all: a confirm would raise rather than silently pass.
+    result = CliRunner().invoke(cli.main, ["runs", "approve", record["id"], "--relayed"])
+
+    assert result.exit_code == 0, result.output
+    stored = E.get_run(record["id"])
+    assert stored["status"] == "approved"
+    assert stored["approval"]["via"] == "relayed"
+
+
+def test_relayed_still_prints_the_payload(library):
+    """Skipping the keystroke is not skipping the payload.
+
+    The point was never the `y`. It was that the exact words and the exact
+    ordered images end up somewhere the person who said yes can read back what
+    it was for — which matters MORE when they said it somewhere else.
+    """
+    record = _draft_with_a_plan(library, "a stairwell at dusk")
+
+    result = CliRunner().invoke(cli.main, ["runs", "approve", record["id"], "--relayed"])
+
+    assert "a stairwell at dusk" in result.output
+    assert "IMAGES" in result.output
+    assert "RELAYED" in result.output, "the weaker claim is stated to the operator too"
+
+
+def test_an_ordinary_approval_is_recorded_as_interactive(library):
+    """The default has to keep making the stronger claim, or `relayed` says nothing."""
+    record = _draft_with_a_plan(library, "a porch at dawn")
+
+    result = CliRunner().invoke(cli.main, ["runs", "approve", record["id"]], input="y\n")
+
+    assert result.exit_code == 0, result.output
+    assert E.get_run(record["id"])["approval"]["via"] == "interactive"
 
 
 def test_declining_the_cli_gate_approves_nothing(library):

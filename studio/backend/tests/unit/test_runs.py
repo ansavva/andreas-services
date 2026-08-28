@@ -863,6 +863,51 @@ def test_drafts_are_hidden_from_a_listing_and_askable_for(empty_api):
     assert {run["id"] for run in both["runs"]} == {submitted["id"], draft["id"]}
 
 
+def test_an_approval_records_whether_the_yes_was_relayed(empty_api):
+    """`via` is what tells a clicked yes from one an agent passed on.
+
+    The CLI had no non-interactive path, on the reasoning that an approval flag
+    is a door an agent walks through. It never was one — `yes |` clears a
+    confirm — so the only thing the absence achieved was a row identical to a
+    person clicking the button. Recording HOW the yes arrived makes the two
+    legible, and `relayed` is the weaker claim.
+    """
+    project = _project(empty_api)
+
+    typed = _create(empty_api, project, plan={"prompt": "a rooftop"})
+    resp = empty_api.post(f"/api/runs/{typed['id']}/approve",
+                          json={"digest": typed["plan_digest"]})
+    assert resp.status_code == 200
+    assert resp.get_json()["approval"]["via"] == "interactive"
+
+    passed_on = _create(empty_api, project, plan={"prompt": "a stairwell"})
+    resp = empty_api.post(f"/api/runs/{passed_on['id']}/approve",
+                          json={"digest": passed_on["plan_digest"], "via": "relayed"})
+    assert resp.status_code == 200
+    assert resp.get_json()["approval"]["via"] == "relayed"
+
+    # It survives the read, because the app draws it.
+    stored = empty_api.get(f"/api/runs/{passed_on['id']}").get_json()
+    assert stored["approval"]["via"] == "relayed"
+
+
+def test_via_refuses_a_value_it_does_not_understand(empty_api):
+    """An unrecognised `via` is refused rather than stored.
+
+    The field's whole job is to be trustworthy when read back, so a caller
+    inventing a third word — or misspelling one of the two — must fail loudly
+    instead of writing a claim nothing else can interpret.
+    """
+    project = _project(empty_api)
+    run = _create(empty_api, project, plan={"prompt": "a rooftop"})
+
+    resp = empty_api.post(f"/api/runs/{run['id']}/approve",
+                          json={"digest": run["plan_digest"], "via": "clicked"})
+
+    assert resp.status_code == 400
+    assert empty_api.get(f"/api/runs/{run['id']}").get_json()["status"] == "draft"
+
+
 def test_a_run_reports_whether_its_approval_has_gone_stale(empty_api):
     """`stale` is computed, never stored — a cached answer is the one thing a
     gate must not trust."""

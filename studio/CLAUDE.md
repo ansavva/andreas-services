@@ -104,8 +104,15 @@ without billing.
 
 **Approval is of a payload, not of a plan.** A yes to "shall I shoot?", a
 multiple-choice answer, or a payload shown several messages ago is not approval
-of the request about to be sent. Show it again and wait. No flag exists to
-answer this for a person, and if one appears, that is a bug.
+of the request about to be sent. Show it again and wait. **No flag on a command
+that spends answers this for a person, and if one appears, that is a bug.**
+
+`runs approve --relayed` is the one adjacent thing that exists, and it is not an
+exception: it records a yes given elsewhere, spends nothing, prints the payload
+anyway, and stamps the row `via: relayed` so it reads as the weaker claim it is.
+It was added because forbidding it never worked — `yes |` cleared the confirm —
+and the row it produced was indistinguishable from a person clicking the
+button.
 
 **Half of this is now enforced rather than remembered.** A run is created as a
 draft, an approval records the digest of the payload it was given for, and the

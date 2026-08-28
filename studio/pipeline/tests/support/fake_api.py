@@ -1207,7 +1207,14 @@ class FakeApi:
         if body.get("digest") != current:
             raise FakeError(409, "the plan changed after the payload you approved "
                                  "was rendered; review it again")
-        record["approval"] = {"by": "sub-fake", "at": _now(), "digest": current}
+        # `via` mirrors the real route, INCLUDING its refusal of a third word.
+        # The fake validating nothing is what let `studio runs adopt` write a
+        # status the real route rejects and pass its tests for months.
+        via = body.get("via", "interactive")
+        if via not in ("interactive", "relayed"):
+            raise FakeError(400, "via must be 'interactive' or 'relayed'")
+        record["approval"] = {"by": "sub-fake", "at": _now(), "digest": current,
+                              "via": via}
         record["status"] = "approved"
         return self._run_view(record)
 

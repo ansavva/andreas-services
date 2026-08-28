@@ -697,6 +697,17 @@ def approve_run(run_id: str):
     is.** Both halves of studio hold tokens from the same pool, so an agent can
     call this on a run it wrote. What it cannot do is approve one payload and
     send another.
+
+    **`via` records HOW the yes arrived, and exists because the alternative was
+    worse.** The CLI had no way to approve without a terminal confirm, on the
+    reasoning that an approval flag is the door an agent walks through while
+    believing some earlier exchange counted as approval. The absence stopped
+    nothing — `yes | studio runs approve …` clears a `click.confirm` — and what
+    it produced was a row indistinguishable from a person clicking the button,
+    which is the failure the reasoning was trying to prevent. So the door is
+    labelled: `relayed` means somebody said yes where this service cannot see it
+    and an agent passed it on. It is a WEAKER claim than `interactive`, and a
+    reader can finally tell the two apart.
     """
     body = support.body()
     held = support.memberships()
@@ -722,7 +733,11 @@ def approve_run(run_id: str):
             digest=current,
         )
 
-    approval = {"by": g.caller_sub, "at": catalog.now(), "digest": current}
+    via = body.get("via", "interactive")
+    if via not in ("interactive", "relayed"):
+        raise ValidationError("via must be 'interactive' or 'relayed'")
+
+    approval = {"by": g.caller_sub, "at": catalog.now(), "digest": current, "via": via}
     updated = catalog.update_project_entity(
         KIND, record, {"approval": approval, "status": "approved"},
         {"status": "approved"},
