@@ -46,7 +46,7 @@ export function Sends({
   const demoted = handoff && startPanel ? [startPanel] : [];
   const references = [...demoted, ...withRole("reference")];
   const samples = withRole("sample");
-  const plates = shot.motion?.reference_assets ?? [];
+  const assets = shot.motion?.reference_assets ?? [];
 
   return (
     <section className="flex flex-col gap-3 rounded-md border border-line p-2">
@@ -93,10 +93,10 @@ export function Sends({
             onOpen={onView}
           />
         ))}
-        {plates.map((a) => (
-          <Frame key={a.node} hint="plate" title={a.name} asset={a} onOpen={onView} />
+        {assets.map((a) => (
+          <Frame key={a.node} hint="reference" title={a.name} asset={a} onOpen={onView} />
         ))}
-        {references.length === 0 && plates.length === 0 && <Slot note="scene frames" />}
+        {references.length === 0 && assets.length === 0 && <Slot note="scene frames" />}
       </SendRow>
 
       {samples.length > 0 && (

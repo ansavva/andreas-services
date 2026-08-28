@@ -780,7 +780,7 @@ export interface Panel {
   stale?: boolean;
   /** Expanded by the API from `node`, so a board can be drawn without a second call. */
   image?: RunAsset;
-  /** The plates this panel renders FROM, resolved to images by the API. */
+  /** The references this panel renders FROM, resolved to images by the API. */
   reference_assets?: RunAsset[];
 }
 

@@ -349,7 +349,7 @@ better than prose can, and a long identity paragraph fights it — see
    `create` refuses a bible missing any of them.
 2. `studio character create <name> --from-profile <your-bible.yaml>`.
 3. `studio character add-to <source photos…> <name> seed` — the founding images.
-4. **`studio character shoot <name> --project <project>`** — the standard face and
+4. **`studio character turnaround <name> --project <project>`** — the standard face and
    body set, described and indexed in one pass. See below.
 5. `studio character add-refs <stills…> <name> --to wardrobe` for anything the
    standard set does not cover, then **describe them**: `describe-refs
@@ -392,8 +392,8 @@ nobody can pick. `shoot` renders the fourteen every character should have —
 eight `face` and six `body`. Face is a full turn: front, three-quarter and
 profile to each side, both three-quarter-backs, and back. Body is the same turn
 **without the two front three-quarters**, whose pose plate is refused as
-sensitive content by every model that has tried it. Face slots are cropped at
-mid-chest; body slots are the whole figure, head to feet.
+sensitive content by every model that has tried it. Face angles are cropped at
+mid-chest; body angles are the whole figure, head to feet.
 
 **Direction is always the edge of frame the face points toward**, never the
 subject's own left or right. `three_quarter_left` means the nose points at the
@@ -407,10 +407,10 @@ photographs** (who it is), and a prompt filled from the character's own bible �
 its usual top, and every cue in `consistency.must`.
 
 ```bash
-studio character shoot <name> --project <project> --dry-run   # fourteen payloads, no spend
-studio character shoot <name> --project <project>             # shows them, then asks
-studio character shoot <name> --project <project> --group face
-studio character shoot <name> --project <project> --slot body_back   # re-shoot one
+studio character turnaround <name> --project <project> --dry-run   # fourteen payloads, no spend
+studio character turnaround <name> --project <project>             # shows them, then asks
+studio character turnaround <name> --project <project> --group face
+studio character turnaround <name> --project <project> --angle body_back   # re-shoot one
 ```
 
 - **Nothing bills without approval.** Every payload is shown in full and the
@@ -422,11 +422,11 @@ studio character shoot <name> --project <project> --slot body_back   # re-shoot 
 - **Identity comes from `seed/`** when it has any, because driving a shoot off
   already-generated references feeds model output back in as identity and
   compounds drift. `--identity refs` / `--pick` / `--pick-tag` override that.
-- **The medium comes from the character**, not from the spec — a slot renders in
+- **The medium comes from the character**, not from the spec — an angle renders in
   whatever `rendering.default_style` says, and is told to match the medium of
   the reference images it is given. A character drawn in ink is not turned into a
   photograph.
-- **`--model` overrides the engine** for every slot; the spec's defaults are
+- **`--model` overrides the engine** for every angle; the spec's defaults are
   chosen so any registered image model accepts them. A dry run preflights the
   override, so a model that would refuse it costs nothing to find out.
 - **`--review-sheet DIR` shows the images each payload sends**, captioned
@@ -445,7 +445,7 @@ studio character set-ref-desc face/<file> <name> --description "…" --tags face
 studio character default-set <name> --set …             # under the Kling cap of 7
 ```
 
-`studio character create <name> --from-profile <bible> --shoot --project <p>`
+`studio character create <name> --from-profile <bible> --turnaround --project <p>`
 creates and shoots in one command, through the same two gates.
 
 No new skill directory — ever. The character is now usable by the whole pipeline.
@@ -484,7 +484,7 @@ Four failure shapes worth knowing, because none is obvious from reading the text
 
 ### Making a matched pair without a second render
 
-Opposite slots — the two three-quarters, the two profiles — are meant to be the
+Opposite angles — the two three-quarters, the two profiles — are meant to be the
 same person turned. Two renders of one prompt will differ in build, scale and
 hair however tight the wording, because they are two rolls of a die.
 

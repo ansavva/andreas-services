@@ -7,7 +7,7 @@ the command exists to be safe about:
 * a **legacy `characters/…` / `projects/…` key that a row names** is live, and
   is the case a prefix test would destroy — prod holds thousands of them;
 * a **`config/`** object, which no row will ever name because the pose plates a
-  reference shoot binds sit outside the catalog by design;
+  turnaround binds sit outside the catalog by design;
 * a **`phrasebook/`** object, unreferenced for the same reason.
 
 The fourth is the one that keeps the other two true tomorrow: an object under a
@@ -123,7 +123,7 @@ def test_a_legacy_blob_key_target_is_never_listed(bucket, catalog_table):
 
 
 def test_a_config_object_is_never_listed(shared_bucket, catalog_table):
-    """`config/pose/` plates are the framing guides a reference shoot binds.
+    """`config/pose/` plates are the framing guides a turnaround binds.
 
     Nothing records them — `catalog_seed` gives them no node — so the only thing
     keeping them is that they are outside the allowlist.

@@ -146,7 +146,7 @@ is a decision that belongs to the user and is **separate** from having agreed to
 spend money on a render.
 
 So a successful generation does not become identity by itself.
-`studio character shoot` leaves every result in its run and prints the promotion
+`studio character turnaround` leaves every result in its run and prints the promotion
 line; a person looks, and then:
 
 ```bash
@@ -213,13 +213,13 @@ studio/pipeline/
         │   ├── characters/       base.py profile.py refs.py pools.py rename.py cli.py
         │   ├── curate.py  contact_sheet.py
         │   ├── phrasebook.py  prompt.py
-        │   └── templates/profile.yaml  reference_shots.yaml
+        │   └── templates/profile.yaml  reference_angles.yaml
         │
         ├── engine/                MODEL INVOCATION
         │   ├── models.json        the REGISTRY — models are data, not code
         │   ├── resubmit.py        send a draft somebody already approved
         │   ├── runner.py          `studio run` / `studio models`
-        │   ├── shoot.py           `studio character shoot` — the standard set
+        │   ├── turnaround.py           `studio character turnaround` — the standard set
         │   ├── board.py           `studio scenes board` / `render` / `check`
         │   ├── registry.py  schema.py  submit.py  refs.py  add_model.py
         │
@@ -377,7 +377,7 @@ querying the table, not by listing a folder.
     input/          the project working pool
 
 config/             the pose plates, shared by the library and owned by no entity
-    pose/body/*.png     how to stand, for a reference shoot
+    pose/body/*.png     how to stand, for a turnaround
     pose/face/*.png     head-angle plates
 ```
 
@@ -456,7 +456,7 @@ membership of a set of named generic sheets — and that set had already been
 emptied. A generic anatomy sheet used to be listed in it, which sent it to
 `reference/`, where it was indexed as identity and tagged `body`; `--pick-tag
 body` could then hand a model a stranger's sculpt as one of the character's own
-reference slots. Generic pose material is **config**: it lives in the repo and
+reference angles. Generic pose material is **config**: it lives in the repo and
 is copied to `config/pose/`, and never into a character. So by the end only the
 regex ever fired, and the "or a named sheet" half of the rule matched nothing.
 
@@ -808,7 +808,7 @@ failure this directory has had once already.
 | `submit.py` | The one submit lifecycle, image and video alike. |
 | `schema.py` | Live schema fetch; validates fields, enums, ranges, `denied`. |
 | `refs.py` | Character reference selection and project input pool → S3 keys. |
-| `shoot.py` | `studio character shoot` — the STANDARD reference set, one run per slot in `domain/templates/reference_shots.yaml`. Reads the character's bible for the prompt, binds a pose plate from `config/`, then files, describes and indexes each result. Lives here rather than in `domain/` because it invokes models; it drives the same lifecycle as `runner.py` rather than repeating it. |
+| `turnaround.py` | `studio character turnaround` — the STANDARD reference set, one run per angle in `domain/templates/reference_angles.yaml`. Reads the character's bible for the prompt, binds a pose plate from `config/`, then files, describes and indexes each result. Lives here rather than in `domain/` because it invokes models; it drives the same lifecycle as `runner.py` rather than repeating it. |
 | `board.py` | `studio scenes board` / `render` / `check` — the two commands that spend money in a scene's life, plus the free one that says whether they would work. Turns the plan's roles into bindings and hands them to the same lifecycle `runner.py` drives. Every cap, exclusion and format rule stays in `submit.py`; a copy here is the one that drifts. |
 | `add_model.py` | Onboarding: fetch schema + README, infer an entry, append it to the registry. It writes no documentation — see `studio-media-add-model`. |
 

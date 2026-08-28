@@ -70,7 +70,7 @@ const SUMMARISED = ["identity", "face", "body", "wardrobe", "consistency"] as co
  * What each section is for, in one line — **and nothing below section level**.
  *
  * The form renders every field the same way, which made a nine-character
- * `rendering.default_style` that every reference shoot depends on look exactly
+ * `rendering.default_style` that every turnaround depends on look exactly
  * as important as three thousand characters of `face` prose that no code reads
  * at all. Both are worth having; they are not the same kind of thing, and the
  * screen said nothing about which was which.
@@ -79,7 +79,7 @@ const SUMMARISED = ["identity", "face", "body", "wardrobe", "consistency"] as co
  * argues for elsewhere.** Naming individual fields here would make the frontend
  * a second copy of a schema the pipeline owns — a field somebody adds would need
  * a deploy to appear, and a list of "fields a shoot reads" would drift silently
- * the first time `engine/shoot.py` changed. A sentence about what a section is
+ * the first time `engine/turnaround.py` changed. A sentence about what a section is
  * for changes about as often as the section does.
  *
  * A key that is not here still renders, in the order the record gave it, marked
@@ -90,7 +90,7 @@ const SUMMARISED = ["identity", "face", "body", "wardrobe", "consistency"] as co
 const SECTIONS: ReadonlyArray<{ key: string; hint: string }> = [
   {
     key: "identity",
-    hint: "The card: age, build, height read, signature features. A reference shoot states apparent age and height read in the prompt, because a reference set spanning years will not agree on either.",
+    hint: "The card: age, build, height read, signature features. A turnaround states apparent age and height read in the prompt, because a reference set spanning years will not agree on either.",
   },
   {
     key: "face",

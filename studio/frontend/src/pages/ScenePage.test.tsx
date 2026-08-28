@@ -405,7 +405,7 @@ it("shows an End row only when the scene brackets its shots", async () => {
   expect(screen.getByText("End")).toBeTruthy();
 });
 
-it("draws a plate the plan names as a thumbnail, not as a filename", async () => {
+it("draws a reference the plan names as a thumbnail, not as a filename", async () => {
   // "plus peter" said nothing about which pictures are going, and which pictures
   // are going is the whole question. The API resolves the block to images.
   draw(
@@ -416,7 +416,7 @@ it("draws a plate the plan names as a thumbnail, not as a filename", async () =>
             prompt: "x",
             references: { characters: ["subject-a"], pick: "front.png" },
             reference_assets: [
-              { node: "node-plate", name: "front.png", url: "https://example/front.png" },
+              { node: "node-ref", name: "front.png", url: "https://example/front.png" },
             ],
           },
         }),
@@ -425,7 +425,7 @@ it("draws a plate the plan names as a thumbnail, not as a filename", async () =>
   );
 
   await screen.findByText("The whistle comes off");
-  expect(screen.getByText("plate")).toBeTruthy();
+  expect(screen.getByText("reference")).toBeTruthy();
   expect(screen.getByRole("button", { name: /front\.png/i })).toBeTruthy();
 });
 

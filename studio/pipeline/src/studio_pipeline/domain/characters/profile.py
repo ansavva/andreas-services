@@ -18,7 +18,7 @@ nothing in the bible names a file any more, and a rename cannot strand a
 description.
 
 **`load_profile` merges the three promoted fields back in**, and that is a
-compatibility seam with a reason rather than a courtesy: `engine/shoot.py` and
+compatibility seam with a reason rather than a courtesy: `engine/turnaround.py` and
 `domain/prompt.py` read a bible as one map and index it by key —
 `profile["wardrobe"]`, `profile["consistency"]`, and `name` / `display_name`
 where a prompt has to write the character into prose. Handing them a map with
@@ -283,7 +283,7 @@ def cmd_show(name, json_, profile_):
     index = entities.references(record["id"])
     counts = index.get("counts") or {}
     # **Drift, named rather than left to be counted.** A `default_set` member
-    # with no `REF#` row is an image a shoot will not send, and the only symptom
+    # with no `REF#` row is an image a turnaround will not send, and the only symptom
     # used to be a generation that saw fewer references than somebody chose.
     attached = {entry["node"]
                 for entries in (index.get("groups") or {}).values()
@@ -299,7 +299,7 @@ def cmd_show(name, json_, profile_):
           f"{f' ({len(stale)} STALE)' if stale else ''}")
     if stale:
         print(f"  {len(stale)} of the default set are not references any more — a default "
-              f"shoot is refused until they are re-pointed:", file=sys.stderr)
+              f"turnaround is refused until they are re-pointed:", file=sys.stderr)
         for node in stale:
             print(f"    {node}", file=sys.stderr)
         print(f"  fix with: studio character default-set {record['slug']} <node> …",
@@ -310,13 +310,13 @@ def cmd_show(name, json_, profile_):
 @click.command("create")
 @click.argument("name", required=True)
 @click.option("--display-name", "display_name", help="How the character is written in prose.")
-@click.option("--dry-run", is_flag=True, help="With --shoot: render the payloads, submit nothing.")
+@click.option("--dry-run", is_flag=True, help="With --turnaround: render the payloads, submit nothing.")
 @click.option("--from-profile", help="Local profile.yaml to seed with (default: blank template).")
-@click.option("--model", help="With --shoot: override the shot spec's model.")
-@click.option("--project", help="With --shoot: REQUIRED. The project the shoot's runs belong to.")
-@click.option("--shoot", is_flag=True,
-              help="Go straight into the standard reference shoot (asks before it bills).")
-def cmd_create(name, display_name, dry_run, from_profile, model, project, shoot):
+@click.option("--model", help="With --turnaround: override the angle spec's model.")
+@click.option("--project", help="With --turnaround: REQUIRED. The project the runs belong to.")
+@click.option("--turnaround", is_flag=True,
+              help="Go straight into the standard reference set (asks before it bills).")
+def cmd_create(name, display_name, dry_run, from_profile, model, project, turnaround):
     """Create a character: the record, its slug claim, its root and four pools.
 
     **One transaction.** The pools used to appear lazily, on whatever write
@@ -331,8 +331,8 @@ def cmd_create(name, display_name, dry_run, from_profile, model, project, shoot)
     data = parse_profile(read_text(src), src)
     if src != TEMPLATE:  # the template is deliberately unfilled; anything else must be real
         check_profile(data, src, name)
-    if shoot and src == TEMPLATE:
-        die("--shoot needs a real bible: the blank template has no wardrobe or consistency "
+    if turnaround and src == TEMPLATE:
+        die("--turnaround needs a real bible: the blank template has no wardrobe or consistency "
             "block to build a prompt from. Pass --from-profile.")
 
     profile, from_file, fictional = split_document(data)
@@ -349,29 +349,29 @@ def cmd_create(name, display_name, dry_run, from_profile, model, project, shoot)
         print("  (blank template — fill it in with `edit`, then `set-profile`.)",
               file=sys.stderr)
 
-    if not shoot:
+    if not turnaround:
         print(f"  next: seed photos with `studio character add-to {name} seed <img>...`, then\n"
-              f"        the standard set with `studio character shoot {name} --project <p>`",
+              f"        the standard set with `studio character turnaround {name} --project <p>`",
               file=sys.stderr)
         return 0
 
-    # Deferred deliberately. The shoot invokes models and lives in `engine/`,
+    # Deferred deliberately. The turnaround invokes models and lives in `engine/`,
     # which imports this package — so importing it at module scope would point
     # the dependency arrow both ways. The character record stays ignorant of the
     # engine; only this one call knows about it.
     from types import SimpleNamespace
 
-    from studio_pipeline.engine import shoot as SHOOT
+    from studio_pipeline.engine import turnaround as TURN
     opts = SimpleNamespace(
         project=project, model=model, dry_run=dry_run,
-        group="all", slot=(), identity="auto", identity_max=SHOOT.IDENTITY_MAX,
+        group="all", angle=(), identity="auto", identity_max=TURN.IDENTITY_MAX,
         pick=None, pick_tag=None, seed_pick=None, aspect_ratio=None, extra=None,
         review_sheet=None,
         dest=None,
     )
     try:
-        return SHOOT.run_shoot(name, opts)
-    except SHOOT.ShootError as exc:
+        return TURN.run_turnaround(name, opts)
+    except TURN.TurnaroundError as exc:
         die(str(exc))
 
 

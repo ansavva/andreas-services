@@ -271,7 +271,7 @@ EOF
   #     The plates are a SYNC: studio/config/ is the source of truth and the
   #     library holds a copy, because a model may only be handed a presigned URL
   #     of a stored object, never bytes from disk. So they have to exist in the
-  #     bucket before `studio character shoot` can use them. They are ordinary
+  #     bucket before `studio character turnaround` can use them. They are ordinary
   #     nodes, so the push goes through `studio config sync` rather than writing
   #     objects directly.
   #
@@ -287,7 +287,7 @@ EOF
     if push_pose_plates "$STUDIO_DIR" "$MEDIA_BUCKET"; then
       log "pose plates are in the library (or you are not signed in yet)"
     else
-      warn "could not push studio/config/ into the library — a reference shoot"
+      warn "could not push studio/config/ into the library — a turnaround"
       warn "  will report missing plates. Try: studio login && studio config sync --apply"
     fi
   fi

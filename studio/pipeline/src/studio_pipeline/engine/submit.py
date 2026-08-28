@@ -343,7 +343,7 @@ def _warn_total_bytes(entry: dict, bindings: dict) -> None:
     Video only, because that is where the evidence is. The image models have
     taken five 2.4 MiB plates — around 12 MiB — repeatedly and without
     complaint, so warning about them would be a false alarm on every reference
-    shoot, and a warning that cries wolf is worse than none.
+    turnaround, and a warning that cries wolf is worse than none.
 
     The sizes come off the node rows the format check already fetched, where
     this used to be a `HEAD`-shaped call per key. A reference of unknown size —
@@ -419,7 +419,7 @@ def _check_image_budget(entry: dict, bindings: dict) -> None:
 
     Cheap to hit and easy to miss, because the two halves of the rule sit in
     different fields. It bites hardest with a character whose `default_set`
-    holds exactly seven — the shape `shoot` produces — since binding that plus a
+    holds exactly seven — the shape `turnaround` produces — since binding that plus a
     start frame is over by one.
 
     Registry-driven rather than named per model: `start_counts_toward_max_refs`.
@@ -552,7 +552,7 @@ def draft(entry: dict, payload: dict, bindings: dict, args) -> dict:
     project = args.project          # the project record, resolved by the caller
     prompt_source = json.load(open(args.prompt_json)) if getattr(args, "prompt_json", None) else None
     # `--character` doubles as "resolve refs from" and "this run is of", which is
-    # the same thing for `studio run`. A reference shoot resolves its own images
+    # the same thing for `studio run`. A turnaround resolves its own images
     # (seed photos, a pose plate) and so passes no `--character`, but the run is
     # still OF that character — and `runs find --character` is how that
     # association is read back. Hence the explicit override.

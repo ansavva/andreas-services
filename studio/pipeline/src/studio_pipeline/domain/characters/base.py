@@ -49,7 +49,7 @@ from studio_pipeline.errors import die
 # `TEMPLATES_DIR`, not `__file__` arithmetic. This module used to be
 # `domain/characters.py`, one level up, so `dirname(__file__) + "templates"`
 # happened to be right; as a package it is one segment too deep. The same
-# expression in `engine/shoot.py` broke for exactly that reason. See
+# expression in `engine/turnaround.py` broke for exactly that reason. See
 # `STUDIO_DIR` in the root `CLAUDE.md`: counting path segments is right for one
 # file's depth only.
 TEMPLATE = str(TEMPLATES_DIR / "profile.yaml")

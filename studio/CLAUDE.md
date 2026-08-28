@@ -128,7 +128,7 @@ wait for a yes, then promote it:
 studio character add-refs <name> --to <group> --from-run <runref>
 ```
 
-`studio character shoot` therefore leaves its results in their runs and files
+`studio character turnaround` therefore leaves its results in their runs and files
 nothing on its own. Both of these rules were broken in one session — a shoot
 submitted off a menu answer, its output then written into a character's face
 group unasked — which is why they are stated separately here.

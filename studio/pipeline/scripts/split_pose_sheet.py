@@ -3,7 +3,7 @@
 
 A pose sheet — several figures laid out in a grid on a flat background — is
 useless as a model input whole: passing it asks the model to match ten poses at
-once. This cuts it into one plate per figure, which is what a reference shoot
+once. This cuts it into one plate per figure, which is what a turnaround
 binds per slot.
 
 The cut is measured, not hand-tuned. Figures are found by projecting "pixels

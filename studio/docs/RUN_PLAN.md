@@ -303,7 +303,7 @@ studio runs discard run-<uuid>              # a draft that will not be submitted
 - **`runs discard` deletes the folder by default**, the opposite of `runs delete`.
   A submitted run's folder holds media somebody paid for; a draft's holds two
   payload documents and an empty `output/`.
-- `scenes board` and `character shoot` needed no change: their single confirm
+- `scenes board` and `character turnaround` needed no change: their single confirm
   still gates the batch, and each submission now leaves an approval behind it.
 
 ---

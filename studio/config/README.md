@@ -2,7 +2,7 @@
 
 Material that belongs to no character and no project. Here that means **pose
 plates**: one image per body or head orientation, used as a framing guide when a
-reference shoot renders a character's standard set.
+turnaround renders a character's standard set.
 
 **The plates are the only shared material left.** `phrasebook/wording.yaml` was
 the other, seeded here under the opposite rule — copied in only when the bucket
@@ -40,10 +40,10 @@ Two rules follow:
   in the bucket survives until someone changes the file of the same name here.
 - **A model only ever sees the S3 copy.** Assets reach Replicate as a
   short-lived presigned URL of an S3 object and never as bytes from disk, so a
-  plate that has not been synced cannot be used. `studio character shoot` checks
+  plate that has not been synced cannot be used. `studio character turnaround` checks
   for them first and tells you to re-run `dev-setup.sh` if any are missing.
 
-The shot spec (`pipeline/src/studio_pipeline/domain/templates/reference_shots.yaml`)
+The angle spec (`pipeline/src/studio_pipeline/domain/templates/reference_angles.yaml`)
 names each plate by its S3 key, so the prompt lives in source control and the
 image it refers to lives in the bucket.
 

@@ -40,7 +40,7 @@ HARD RULE #2b IS UNCHANGED AND IS WHY `add-refs` EXISTS
 -------------------------------------------------------
 What is a reference is who the character IS, and every later render is held
 against it. So a generated image never arrives here on its own: `studio character
-shoot` leaves its results in their runs and files nothing, and promoting one is a
+turnaround` leaves its results in their runs and files nothing, and promoting one is a
 separate human act. `--from-run` copies the node and then attaches the copy, so
 the run keeps its own output and nothing that cited it is disturbed.
 """
@@ -258,39 +258,48 @@ def cmd_selection(name, dest, json_, limit, pick, presign, slots, tags):
 
 # --- writing into the index ------------------------------------------------
 
-#: The shot spec, read for one reason: a run made by `shoot` records the slot it
-#: rendered, and the slot already carries the description and tags that image
-#: should be filed under. Read as DATA from `domain/templates/`, not through
-#: `engine.shoot`, because `domain` must not import `engine` — the arrow points
-#: `cli -> domain -> adapters` and a cycle here is what split the character
-#: modules apart in the first place.
-_SPEC_PATH = TEMPLATES_DIR / "reference_shots.yaml"
+#: The angle spec, read for one reason: a run made by `turnaround` records the
+#: angle it rendered, and the angle already carries the description and tags that
+#: image should be filed under. Read as DATA from `domain/templates/`, not
+#: through `engine.turnaround`, because `domain` must not import `engine` — the
+#: arrow points `cli -> domain -> adapters` and a cycle here is what split the
+#: character modules apart in the first place.
+_SPEC_PATH = TEMPLATES_DIR / "reference_angles.yaml"
+
+#: What a run calls the angle it rendered, newest spelling first. `turnaround`
+#: writes `reference_angle`; every run made before the rename wrote
+#: `reference_slot`, and those records are in production. Reading both is what
+#: keeps an old run promotable — the alternative is a silent loss of the
+#: description and tags for every image rendered before the rename, which is the
+#: exact failure this function exists to prevent.
+_ANGLE_FIELDS = ("reference_angle", "reference_slot")
 
 
-def _slot_description(run_record: dict) -> tuple[str | None, list[str] | None]:
-    """The description and tags a promoted run inherits from the slot it shot.
+def _angle_description(run_record: dict) -> tuple[str | None, list[str] | None]:
+    """The description and tags a promoted run inherits from the angle it rendered.
 
-    **Provenance is a bonus, never a requirement.** A run with no
-    `reference_slot` — anything not made by `shoot` — promotes undescribed
-    rather than borrowing some other slot's words, and a slot id the spec no
-    longer holds is treated the same way.
+    **Provenance is a bonus, never a requirement.** A run naming no angle —
+    anything not made by `turnaround` — promotes undescribed rather than
+    borrowing some other angle's words, and an angle id the spec no longer holds
+    is treated the same way.
 
     This existed before the entity model, was lost in the move, and is restored
     because losing it is expensive in a quiet way: the fields sat in the repo
     unread and every promotion retyped them by hand. Fourteen descriptions were
     copied out of the spec twice before anyone noticed.
     """
-    slot_id = (run_record.get("extra") or {}).get("reference_slot")
-    if not slot_id:
+    extra = run_record.get("extra") or {}
+    angle_id = next((extra[f] for f in _ANGLE_FIELDS if extra.get(f)), None)
+    if not angle_id:
         return None, None
     try:
         spec = yaml.safe_load(_SPEC_PATH.read_text()) or {}
     except OSError:
         return None, None
-    for slot in spec.get("slots") or []:
-        if slot.get("id") == slot_id:
-            described = " ".join((slot.get("description") or "").split())
-            return (described or None), (list(slot.get("tags") or []) or None)
+    for angle in spec.get("angles") or []:
+        if angle.get("id") == angle_id:
+            described = " ".join((angle.get("description") or "").split())
+            return (described or None), (list(angle.get("tags") or []) or None)
     return None, None
 
 
@@ -313,7 +322,7 @@ def cmd_add_refs(name, files, after, description, from_run, project, tags, group
 
     THIS IS THE GATE ON A CHARACTER'S IDENTITY (hard rule #2b). Everything else
     about a generation is reversible bookkeeping; what is a reference is who the
-    character IS. So a generated image never arrives here on its own — `shoot`
+    character IS. So a generated image never arrives here on its own — `turnaround`
     leaves its results in their runs and prints the `--from-run` line to promote
     the ones a person chose to keep.
 
@@ -346,7 +355,7 @@ def cmd_add_refs(name, files, after, description, from_run, project, tags, group
     for ref in from_run:
         try:
             nodes = R.resolve_output_nodes(ref, project, kinds=IMG_EXTS)
-            described = _slot_description(R.resolve_run(ref, project))
+            described = _angle_description(R.resolve_run(ref, project))
         except R.RunError as exc:
             die(str(exc))
         # A real copy — two blobs, two independent lifetimes. The run keeps its

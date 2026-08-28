@@ -1,13 +1,14 @@
-# The reference shoot — the STANDARD set of face and body plates every
-# character's `reference/` library should hold, as data.
+# The turnaround — the STANDARD set of face and body ANGLES every character's
+# `reference/` library should hold, as data. Fourteen: eight of the face, six
+# of the body.
 #
-# One slot = one recorded run. `studio character shoot` reads this file, fills
-# each prompt from the character's own bible, binds the slot's pose plate from
+# One angle = one recorded run. `studio character turnaround` reads this file, fills
+# each prompt from the character's own bible, binds the angle's pose plate from
 # `config/pose/`, and stops — the result stays in its run. Putting an image into
 # `reference/` changes who a character IS, so it is a separate human decision.
 #
 # The `description` and `tags` below are still this file's job, and they are used
-# at PROMOTION rather than at render: a shoot records its slot id in the run, and
+# at PROMOTION rather than at render: a run records its angle id, and
 # `add-refs --from-run` reads it back and writes these two fields onto the image.
 # So no promoted image lands undescribed, and nobody retypes prose that is
 # already here. Neither field reaches the model — only `prompt` does.
@@ -43,7 +44,7 @@ defaults:
   # Kling-legal — which is the whole reason these images exist.
   extra:
     output_format: png
-  # Shared wording, referenced by the slot prompts below.
+  # Shared wording, referenced by the angle prompts below.
   backdrop_face: >-
     Flat mid-grey seamless studio backdrop, no floor line, no props, no text.
   backdrop_body: >-
@@ -84,7 +85,7 @@ defaults:
   # Body plates deliberately strip wardrobe back so the silhouette reads. This
   # is the one place a plate overrides the bible's wardrobe, which is why the
   # body `must_intro` below says so out loud.
-  # No trailing full stop: the slot prompts punctuate after it, as they do for
+  # No trailing full stop: the angle prompts punctuate after it, as they do for
   # `{top}`.
   minimal: >-
     Wearing plain, close-fitting, unbranded dark shorts and nothing else, so the
@@ -165,11 +166,11 @@ per_model:
   nano-banana-pro: {}
   nano-banana-2: {}
 
-# ── the slots ───────────────────────────────────────────────────────────────
+# ── the angles ───────────────────────────────────────────────────────────────
 #
 # EIGHT orientations, the same eight for face and for body, one per pose plate:
 # front, three-quarter and profile to each side, both three-quarter-backs, and
-# back. A `-left` slot and its `-right` twin must face OPPOSITE ways — a live
+# back. A `-left` angle and its `-right` twin must face OPPOSITE ways — a live
 # set once had two "three-quarter" frames turned the same way, which looks like
 # coverage and is not.
 #
@@ -180,14 +181,14 @@ per_model:
 # facing the same way.
 #
 # face: head and shoulders, cropped at mid-chest. The crop is spelled out on
-# every slot because "head-and-shoulders studio portrait" did not hold: one slot
-# returned a full-body figure and the framing drifted wider slot by slot.
+# every angle because "head-and-shoulders studio portrait" did not hold: one angle
+# returned a full-body figure and the framing drifted wider angle by angle.
 #
 # body: the whole figure head to feet, minimal clothing so the silhouette reads.
 # "HEAD TO FEET IN FRAME including both feet" is likewise explicit, because a
 # mid-thigh crop is the failure that actually happens.
 
-slots:
+angles:
   # ── face ──────────────────────────────────────────────────────────────
   - id: face_front
     group: face
@@ -452,7 +453,7 @@ slots:
       {age_intro} {age}.
       {minimal}. {backdrop_body} {light} {style} {quality} {must}
 
-# What `--character <name>` sends when nobody picks. Fourteen slots does not mean
+# What `--character <name>` sends when nobody picks. Fourteen angles does not mean
 # fourteen images sent: this stays face-led and under the smallest cap in play
 # (Kling takes 7).
 default_set:

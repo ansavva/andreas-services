@@ -501,7 +501,7 @@
             "flags": [
               "--dry-run"
             ],
-            "help": "With --shoot: render the payloads, submit nothing.",
+            "help": "With --turnaround: render the payloads, submit nothing.",
             "hidden": false,
             "multiple": false,
             "nargs": 0,
@@ -531,7 +531,7 @@
             "flags": [
               "--model"
             ],
-            "help": "With --shoot: override the shot spec's model.",
+            "help": "With --turnaround: override the angle spec's model.",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -546,22 +546,22 @@
             "flags": [
               "--project"
             ],
-            "help": "With --shoot: REQUIRED. The project the shoot's runs belong to.",
+            "help": "With --turnaround: REQUIRED. The project the runs belong to.",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
             "required": false,
             "type": "str"
           },
-          "shoot": {
+          "turnaround": {
             "choices": null,
             "default": false,
-            "dest": "shoot",
+            "dest": "turnaround",
             "flag": true,
             "flags": [
-              "--shoot"
+              "--turnaround"
             ],
-            "help": "Go straight into the standard reference shoot (asks before it bills).",
+            "help": "Go straight into the standard reference set (asks before it bills).",
             "hidden": false,
             "multiple": false,
             "nargs": 0,
@@ -1340,243 +1340,6 @@
           }
         }
       },
-      "shoot": {
-        "arguments": {
-          "name": {
-            "choices": null,
-            "default": null,
-            "dest": "name",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {
-          "aspect_ratio": {
-            "choices": null,
-            "default": null,
-            "dest": "aspect_ratio",
-            "flag": false,
-            "flags": [
-              "--aspect-ratio"
-            ],
-            "help": "Override the spec's aspect ratio for every slot.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "dest": {
-            "choices": null,
-            "default": null,
-            "dest": "dest",
-            "flag": false,
-            "flags": [
-              "--dest"
-            ],
-            "help": "Also keep a local copy of each plate in this directory.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "dry_run": {
-            "choices": null,
-            "default": false,
-            "dest": "dry_run",
-            "flag": true,
-            "flags": [
-              "--dry-run"
-            ],
-            "help": "Render every payload for approval; submit nothing, bill nothing.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 0,
-            "required": false,
-            "type": "bool"
-          },
-          "extra": {
-            "choices": null,
-            "default": null,
-            "dest": "extra",
-            "flag": false,
-            "flags": [
-              "--extra"
-            ],
-            "help": "JSON object merged into every slot's model inputs.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "group": {
-            "choices": [
-              "all",
-              "body",
-              "face"
-            ],
-            "default": "all",
-            "dest": "group",
-            "flag": false,
-            "flags": [
-              "--group"
-            ],
-            "help": "Shoot only this group of slots (default: all).",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "identity": {
-            "choices": [
-              "auto",
-              "refs",
-              "seed"
-            ],
-            "default": "auto",
-            "dest": "identity",
-            "flag": false,
-            "flags": [
-              "--identity"
-            ],
-            "help": "Where identity comes from: seed photos, the reference index, or auto (seed when it has any).",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "identity_max": {
-            "choices": null,
-            "default": 4,
-            "dest": "identity_max",
-            "flag": false,
-            "flags": [
-              "--identity-max"
-            ],
-            "help": "How many identity images to send per slot (default 4).",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "int"
-          },
-          "model": {
-            "choices": null,
-            "default": null,
-            "dest": "model",
-            "flag": false,
-            "flags": [
-              "--model"
-            ],
-            "help": "Override the spec's model for every slot. See `models`.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "pick": {
-            "choices": null,
-            "default": null,
-            "dest": "pick",
-            "flag": false,
-            "flags": [
-              "--pick"
-            ],
-            "help": "Comma-separated reference files to carry identity, instead of seed/.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "pick_tag": {
-            "choices": null,
-            "default": null,
-            "dest": "pick_tag",
-            "flag": false,
-            "flags": [
-              "--pick-tag"
-            ],
-            "help": "Identity from references carrying ALL these tags.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "project": {
-            "choices": null,
-            "default": null,
-            "dest": "project",
-            "flag": false,
-            "flags": [
-              "--project"
-            ],
-            "help": "REQUIRED. The project these runs belong to.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "review_sheet": {
-            "choices": null,
-            "default": null,
-            "dest": "review_sheet",
-            "flag": false,
-            "flags": [
-              "--review-sheet"
-            ],
-            "help": "Write a labelled contact sheet per slot showing the images that payload sends, captioned [ImageN] in the order the model gets them.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "seed_pick": {
-            "choices": null,
-            "default": null,
-            "dest": "seed_pick",
-            "flag": false,
-            "flags": [
-              "--seed-pick"
-            ],
-            "help": "Comma-separated seed files to carry identity, when seed/ holds more than one slot sends.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "slot": {
-            "choices": null,
-            "default": null,
-            "dest": "slot",
-            "flag": false,
-            "flags": [
-              "--slot"
-            ],
-            "help": "Shoot only this slot id. Repeatable — see the spec for the ids.",
-            "hidden": false,
-            "multiple": true,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          }
-        }
-      },
       "show": {
         "arguments": {
           "name": {
@@ -1643,6 +1406,243 @@
         },
         "commands": {},
         "options": {}
+      },
+      "turnaround": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "angle": {
+            "choices": null,
+            "default": null,
+            "dest": "angle",
+            "flag": false,
+            "flags": [
+              "--angle"
+            ],
+            "help": "Render only this angle id. Repeatable — see the spec for the ids.",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "aspect_ratio": {
+            "choices": null,
+            "default": null,
+            "dest": "aspect_ratio",
+            "flag": false,
+            "flags": [
+              "--aspect-ratio"
+            ],
+            "help": "Override the spec's aspect ratio for every angle.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "dest": {
+            "choices": null,
+            "default": null,
+            "dest": "dest",
+            "flag": false,
+            "flags": [
+              "--dest"
+            ],
+            "help": "Also keep a local copy of each rendered image in this directory.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "dry_run": {
+            "choices": null,
+            "default": false,
+            "dest": "dry_run",
+            "flag": true,
+            "flags": [
+              "--dry-run"
+            ],
+            "help": "Render every payload for approval; submit nothing, bill nothing.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "extra": {
+            "choices": null,
+            "default": null,
+            "dest": "extra",
+            "flag": false,
+            "flags": [
+              "--extra"
+            ],
+            "help": "JSON object merged into every angle's model inputs.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "group": {
+            "choices": [
+              "all",
+              "body",
+              "face"
+            ],
+            "default": "all",
+            "dest": "group",
+            "flag": false,
+            "flags": [
+              "--group"
+            ],
+            "help": "Render only this group of angles (default: all).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "identity": {
+            "choices": [
+              "auto",
+              "refs",
+              "seed"
+            ],
+            "default": "auto",
+            "dest": "identity",
+            "flag": false,
+            "flags": [
+              "--identity"
+            ],
+            "help": "Where identity comes from: seed photos, the reference index, or auto (seed when it has any).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "identity_max": {
+            "choices": null,
+            "default": 4,
+            "dest": "identity_max",
+            "flag": false,
+            "flags": [
+              "--identity-max"
+            ],
+            "help": "How many identity images to send per angle (default 4).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          },
+          "model": {
+            "choices": null,
+            "default": null,
+            "dest": "model",
+            "flag": false,
+            "flags": [
+              "--model"
+            ],
+            "help": "Override the spec's model for every angle. See `models`.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "pick": {
+            "choices": null,
+            "default": null,
+            "dest": "pick",
+            "flag": false,
+            "flags": [
+              "--pick"
+            ],
+            "help": "Comma-separated reference files to carry identity, instead of seed/.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "pick_tag": {
+            "choices": null,
+            "default": null,
+            "dest": "pick_tag",
+            "flag": false,
+            "flags": [
+              "--pick-tag"
+            ],
+            "help": "Identity from references carrying ALL these tags.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "REQUIRED. The project these runs belong to.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "review_sheet": {
+            "choices": null,
+            "default": null,
+            "dest": "review_sheet",
+            "flag": false,
+            "flags": [
+              "--review-sheet"
+            ],
+            "help": "Write a labelled contact sheet per angle showing the images that payload sends, captioned [ImageN] in the order the model gets them.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "seed_pick": {
+            "choices": null,
+            "default": null,
+            "dest": "seed_pick",
+            "flag": false,
+            "flags": [
+              "--seed-pick"
+            ],
+            "help": "Comma-separated seed files to carry identity, when seed/ holds more than one angle sends.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
       }
     },
     "options": {}

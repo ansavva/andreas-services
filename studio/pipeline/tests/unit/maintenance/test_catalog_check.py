@@ -134,7 +134,7 @@ def test_a_key_that_is_a_blob_key_resolves_exactly(catalog_table):
 def test_a_legacy_key_resolves_by_name_path_and_is_reported(catalog_table):
     """**The 28 bindings the first real migration lost, one per run.**
 
-    Every historical reference shoot bound a pose plate, recorded as
+    Every historical turnaround bound a pose plate, recorded as
     `config/pose/face/<file>.png` — which was the S3 key and the name path at
     once, because before the catalog they were the same string. The seed
     deliberately recorded no node for `config/`, so the exact lookup answered

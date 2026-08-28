@@ -41,7 +41,7 @@ main() {
   # same plates at session start and is the other way they arrive.
   push_pose_plates "$SCRIPT_DIR/.." "" &&
     ok "Pose plates are in the library." ||
-    warn "Could not push studio/config/; a reference shoot will report missing plates."
+    warn "Could not push studio/config/; a turnaround will report missing plates."
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then

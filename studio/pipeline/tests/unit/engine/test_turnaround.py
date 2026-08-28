@@ -1,10 +1,10 @@
-"""The reference shoot: the spec, the prompts, and what reaches the model.
+"""The turnaround: the spec, the prompts, and what reaches the model.
 
 Three classes of thing are worth pinning here, and they are the three that would
 fail silently rather than loudly:
 
   * `config/` being a legal binding root. `check_bindings` refuses a key outside
-    the known roots, so without that entry every shoot fails at record time and
+    the known roots, so without that entry every turnaround fails at record time and
     the feature simply does not exist.
   * The CITATION positions. A prompt says "[Image1] is a pose guide, take only
     the stance from it"; if that number does not match where the plate actually
@@ -31,7 +31,7 @@ from studio_pipeline import STUDIO_DIR, cli
 from studio_pipeline.domain import paths as P
 from studio_pipeline.domain import runs as R
 from studio_pipeline.engine import registry as REG
-from studio_pipeline.engine import shoot as SHOOT
+from studio_pipeline.engine import turnaround as TURN
 from studio_pipeline.engine import submit as SUB
 
 REPO_CONFIG = os.path.join(
@@ -41,22 +41,22 @@ REPO_CONFIG = os.path.join(
 
 @pytest.fixture
 def spec():
-    return SHOOT.load_spec()
+    return TURN.load_spec()
 
 
 # --- the spec ---------------------------------------------------------------
 
 def test_spec_loads_and_every_slot_is_complete(spec):
-    assert spec["slots"], "the spec defines no slots"
-    for slot in spec["slots"]:
-        assert slot["group"] in P.POSE_GROUPS
-        assert slot["pose_image"].startswith(P.CONFIG + "/")
-        assert slot["description"].strip()
-        assert slot["tags"]
+    assert spec["angles"], "the spec defines no angles"
+    for angle in spec["angles"]:
+        assert angle["group"] in P.POSE_GROUPS
+        assert angle["pose_image"].startswith(P.CONFIG + "/")
+        assert angle["description"].strip()
+        assert angle["tags"]
 
 
 def test_default_set_is_slots_and_fits_the_smallest_cap(spec):
-    ids = {s["id"] for s in spec["slots"]}
+    ids = {s["id"] for s in spec["angles"]}
     assert set(spec["default_set"]) <= ids
     # Kling takes 7 reference images and is the tightest cap a character's
     # default selection meets.
@@ -64,14 +64,14 @@ def test_default_set_is_slots_and_fits_the_smallest_cap(spec):
 
 
 def test_every_pose_image_exists_in_the_repo(spec):
-    """The plates are committed, so a slot naming a missing one is a broken spec.
+    """The plates are committed, so a angle naming a missing one is a broken spec.
 
     They reach the bucket from this directory via dev-setup.sh, which cannot copy
     out a file that was never committed.
     """
     missing = [
-        slot["pose_image"] for slot in spec["slots"]
-        if not os.path.isfile(os.path.join(REPO_CONFIG, slot["pose_image"].split("/", 1)[1]))
+        angle["pose_image"] for angle in spec["angles"]
+        if not os.path.isfile(os.path.join(REPO_CONFIG, angle["pose_image"].split("/", 1)[1]))
     ]
     assert not missing, f"pose plate(s) not in studio/config/: {missing}"
 
@@ -80,12 +80,12 @@ def test_opposite_slots_carry_opposite_frame_directions(spec):
     """The defect this standard exists to prevent, asserted.
 
     A live set had two "three-quarter" face frames turned the same way, and the
-    first shoot reproduced it — because the prompt said "turned to THEIR LEFT so
+    first turnaround reproduced it — because the prompt said "turned to THEIR LEFT so
     the viewer sees the LEFT side of the face", which instructs two opposite
     rotations at once. Direction is now stated only as the edge of frame the
-    face points toward, so a slot and its twin must name opposite edges.
+    face points toward, so a angle and its twin must name opposite edges.
     """
-    by_id = {s["id"]: s for s in spec["slots"]}
+    by_id = {s["id"]: s for s in spec["angles"]}
     for group in P.POSE_GROUPS:
         for pair in ("three_quarter", "profile", "three_quarter_back"):
             left, right = f"{group}_{pair}_left", f"{group}_{pair}_right"
@@ -107,23 +107,23 @@ def test_back_three_quarter_slots_turn_the_shoulders_and_forbid_a_profile(spec):
 
     "Turned about 135 degrees away" named no subject, so the model rotated the
     head to 90 degrees and left the shoulders square to the lens — which is the
-    profile slot with a back body, not a three-quarter back. Two things fix it,
+    profile angle with a back body, not a three-quarter back. Two things fix it,
     and both are asserted here because either alone was already true of the
     wording that failed:
 
       * the rotation clause says what turns — the head AND the shoulders;
       * a prohibition rules out the profile reading. On this model the negative
         clauses are what bind: "no waist, no hips and no legs" held on all
-        eight slots of a live shoot while the positive "CROPPED AT MID-CHEST"
+        eight angles of a live turnaround while the positive "CROPPED AT MID-CHEST"
         drifted wider on nearly every one.
     """
-    backs = [s for s in spec["slots"] if "three_quarter_back" in s["id"]]
+    backs = [s for s in spec["angles"] if "three_quarter_back" in s["id"]]
     assert len(backs) == 2 * len(P.POSE_GROUPS), "expected a back pair per group"
-    for slot in backs:
-        text = slot["prompt"]
-        assert "SHOULDERS TOGETHER" in text, f"{slot['id']} does not turn the torso"
-        assert "NOT A PROFILE" in text, f"{slot['id']} permits a profile"
-        assert "not square" in text.lower(), slot["id"]
+    for angle in backs:
+        text = angle["prompt"]
+        assert "SHOULDERS TOGETHER" in text, f"{angle['id']} does not turn the torso"
+        assert "NOT A PROFILE" in text, f"{angle['id']} permits a profile"
+        assert "not square" in text.lower(), angle["id"]
 
 
 def test_face_back_three_quarters_bind_a_torso_guide(spec):
@@ -133,20 +133,20 @@ def test_face_back_three_quarters_bind_a_torso_guide(spec):
     no shoulder line — and a symmetric stump reads as square to the camera.
     Both back three-quarters came back with a correctly turned head on a flat
     back even after the prompt was rewritten to insist the shoulders turn. The
-    fix is a second plate that actually depicts the angle, so these slots are
-    the one place two guides are bound. The other six face slots need no such
+    fix is a second plate that actually depicts the angle, so these angles are
+    the one place two guides are bound. The other six face angles need no such
     thing: their orientation is legible from the head alone.
     """
-    face_backs = [s for s in spec["slots"]
+    face_backs = [s for s in spec["angles"]
                   if s["group"] == "face" and "three_quarter_back" in s["id"]]
     assert len(face_backs) == 2
-    for slot in face_backs:
-        torso = slot.get("torso_image")
-        assert torso, f"{slot['id']} binds no torso guide"
+    for angle in face_backs:
+        torso = angle.get("torso_image")
+        assert torso, f"{angle['id']} binds no torso guide"
         # Same orientation as the head plate, from the body set.
-        assert torso == slot["pose_image"].replace("/face/", "/body/"), slot["id"]
-        assert "{torso_slot}" in slot["prompt"], slot["id"]
-    others = [s for s in spec["slots"] if s not in face_backs]
+        assert torso == angle["pose_image"].replace("/face/", "/body/"), angle["id"]
+        assert "{torso_slot}" in angle["prompt"], angle["id"]
+    others = [s for s in spec["angles"] if s not in face_backs]
     assert not [s["id"] for s in others if s.get("torso_image")], \
         "only the face back three-quarters should need a second guide"
 
@@ -160,16 +160,16 @@ def test_every_slot_states_the_build_and_disowns_the_guides(spec):
     against a whole reference image. `{build}` puts the bible's own silhouette
     and arms in the foreground; the intro disowns the guide explicitly.
 
-    Face slots carry it too. They were exempted at first — "cropped at
+    Face angles carry it too. They were exempted at first — "cropped at
     mid-chest, so there is no build in frame to get wrong" — and a live front
     plate came back narrow-shouldered on a character whose bible calls broad
     shoulders on a medium frame his single most reliable cue. A mid-chest crop
     shows the neck, the traps, the shoulder line and the upper arm, which is
     most of what reads as build.
     """
-    for slot in spec["slots"]:
-        assert "{build}" in slot["prompt"], slot["id"]
-        assert "{build_intro}" in slot["prompt"], slot["id"]
+    for angle in spec["angles"]:
+        assert "{build}" in angle["prompt"], angle["id"]
+        assert "{build_intro}" in angle["prompt"], angle["id"]
     intro = (spec["defaults"] or {}).get("build_intro", "")
     assert "NOT THE GUIDE" in intro, "the intro must disown the pose guide by name"
 
@@ -190,8 +190,8 @@ def test_the_face_and_the_build_name_different_authorities(spec):
     assert "the images win" in face, "the face clause must give the images priority"
     assert "WIDTH of the jaw and chin" in face, "face width is the drift this catches"
     assert "THIS DESCRIPTION first" in build, "the build clause must give the text priority"
-    for slot in spec["slots"]:
-        assert "{face_intro}" in slot["prompt"], slot["id"]
+    for angle in spec["angles"]:
+        assert "{face_intro}" in angle["prompt"], angle["id"]
 
 
 def test_a_plate_wears_the_bibles_stated_colour_when_it_has_one():
@@ -203,13 +203,13 @@ def test_a_plate_wears_the_bibles_stated_colour_when_it_has_one():
     too, and a live plate came back in a colour nobody picked. `colour:` is the
     one word a plate may take, kept apart from the prose around it.
     """
-    worn = SHOOT._first_top(
+    worn = TURN._first_top(
         {"wardrobe": {"tops": [{"item": "Short-sleeve polo shirt", "colour": "White",
                                 "detail": "with a navy chest crest and embroidery"}]}})
     assert "plain white short-sleeve polo shirt" in worn
     assert "crest" not in worn, "detail must not leak into the plate"
     # Optional: a bible naming the colour inside `item` already read correctly.
-    plain = SHOOT._first_top({"wardrobe": {"tops": [{"item": "White ribbed tank top"}]}})
+    plain = TURN._first_top({"wardrobe": {"tops": [{"item": "White ribbed tank top"}]}})
     assert "plain white ribbed tank top" in plain
 
 
@@ -228,8 +228,8 @@ def test_a_body_plate_gets_the_whole_body_block_and_a_face_plate_does_not():
     profile = {"identity": {"height_read": "HEIGHT."}, "body": {
         "silhouette": "SIL.", "chest_and_shoulders": "CHEST.", "neck": "NECK.",
         "arms": "ARMS.", "lower_body_and_hands": "LEGS.", "body_hair": "HAIR."}}
-    body = SHOOT._build_text(profile, "body")
-    face = SHOOT._build_text(profile, "face")
+    body = TURN._build_text(profile, "body")
+    face = TURN._build_text(profile, "face")
     for part in ("SIL.", "CHEST.", "NECK.", "ARMS."):
         assert part in body and part in face, part
     # Height is the one proportion stated as a NUMBER, and it lives in
@@ -240,7 +240,7 @@ def test_a_body_plate_gets_the_whole_body_block_and_a_face_plate_does_not():
         assert part in body, f"a body plate must carry {part}"
         assert part not in face, f"a face plate must not carry {part}"
     # A bible missing any of them still renders.
-    assert SHOOT._build_text({"body": {"arms": "ARMS."}}, "body") == "ARMS."
+    assert TURN._build_text({"body": {"arms": "ARMS."}}, "body") == "ARMS."
 
 
 def test_a_body_field_the_tuple_never_heard_of_still_reaches_the_prompt():
@@ -255,13 +255,13 @@ def test_a_body_field_the_tuple_never_heard_of_still_reaches_the_prompt():
     profile = {"body": {"silhouette": "SIL.", "back": "BACK.", "hands": "HANDS.",
                         "midsection": "MID.", "lower_body": "LEGS.",
                         "shoulder_freckles": "NOVEL."}}
-    body = SHOOT._build_text(profile, "body")
+    body = TURN._build_text(profile, "body")
     for part in ("SIL.", "BACK.", "HANDS.", "MID.", "LEGS.", "NOVEL."):
         assert part in body, part
 
     # The face/body split survives the sweep: a face plate crops at mid-chest,
     # so what sits below the crop stays out of it even when unnamed.
-    face = SHOOT._build_text(profile, "face")
+    face = TURN._build_text(profile, "face")
     assert "BACK." in face and "HANDS." in face
     for part in ("MID.", "LEGS."):
         assert part not in face, f"a face plate must not carry {part}"
@@ -269,23 +269,23 @@ def test_a_body_field_the_tuple_never_heard_of_still_reaches_the_prompt():
 
 def test_the_legacy_spelling_is_still_read():
     """A bible written before the split is still a valid bible."""
-    body = SHOOT._build_text({"body": {"lower_body_and_hands": "LEGS."}}, "body")
+    body = TURN._build_text({"body": {"lower_body_and_hands": "LEGS."}}, "body")
     assert "LEGS." in body
 
 
 def test_posture_is_not_swept_into_the_build_text():
     """It is a rendering direction with its own clause, not a description of
     the build; sweeping it in would put it in the prompt twice."""
-    body = SHOOT._build_text({"body": {"arms": "ARMS.", "posture": "POSTURE."}}, "body")
+    body = TURN._build_text({"body": {"arms": "ARMS.", "posture": "POSTURE."}}, "body")
     assert "ARMS." in body and "POSTURE." not in body
 
 
 def test_the_build_text_comes_from_the_bible_not_the_spec(spec):
     """Hard rule 1: proportions are character specifics, so the spec may only
     name the placeholder. A bible with no `body:` block must still render."""
-    filled = SHOOT._build_text({"body": {"silhouette": "Sil.", "arms": "Arms."}})
+    filled = TURN._build_text({"body": {"silhouette": "Sil.", "arms": "Arms."}})
     assert filled == "Sil. Arms."
-    assert SHOOT._build_text({}) == ""
+    assert TURN._build_text({}) == ""
     text = yaml.safe_dump(spec)
     for leak in ("head-width", "V-taper", "biceps"):
         assert leak not in text, f"the spec hardcodes {leak!r}"
@@ -300,8 +300,8 @@ def test_every_slot_states_the_age_and_says_it_beats_the_references(spec):
     references are precisely what disagree. `identity.apparent_age` has been in
     the bible all along; the prompt now reads it and says it outranks them.
     """
-    for slot in spec["slots"]:
-        assert "{age_intro} {age}" in slot["prompt"], slot["id"]
+    for angle in spec["angles"]:
+        assert "{age_intro} {age}" in angle["prompt"], angle["id"]
     intro = (spec["defaults"] or {}).get("age_intro", "")
     assert "do not all agree" in intro, "the intro must say the references conflict"
     assert "take the AGE from here" in intro
@@ -309,8 +309,8 @@ def test_every_slot_states_the_age_and_says_it_beats_the_references(spec):
 
 def test_the_age_text_comes_from_the_bible_not_the_spec(spec):
     """Hard rule 1 again: an age is a character specific."""
-    assert SHOOT._age_text({"identity": {"apparent_age": "Mid-30s"}}) == "Mid-30s"
-    assert SHOOT._age_text({}) == ""
+    assert TURN._age_text({"identity": {"apparent_age": "Mid-30s"}}) == "Mid-30s"
+    assert TURN._age_text({}) == ""
     text = yaml.safe_dump(spec)
     for leak in ("30s", "40s", "50s", "years old"):
         assert leak not in text, f"the spec hardcodes {leak!r}"
@@ -319,19 +319,19 @@ def test_the_age_text_comes_from_the_bible_not_the_spec(spec):
 def test_no_prompt_describes_direction_from_the_subjects_own_side(spec):
     """"Their left" is unresolvable without also knowing what the viewer sees,
     and pairing the two is how the contradiction got in. Frame edges only."""
-    for slot in spec["slots"]:
-        text = slot["prompt"].lower()
+    for angle in spec["angles"]:
+        text = angle["prompt"].lower()
         for banned in ("their left", "their right", "his left", "his right"):
-            assert banned not in text, f"{slot['id']} says {banned!r}"
+            assert banned not in text, f"{angle['id']} says {banned!r}"
 
 
 def test_every_face_slot_states_the_crop(spec):
-    """"Head-and-shoulders studio portrait" did not bind — one slot came back as
-    a full-body figure and framing drifted wider slot by slot."""
-    for slot in spec["slots"]:
-        if slot["group"] == "face":
-            assert "CROPPED AT MID-CHEST" in slot["prompt"], slot["id"]
-            assert "no legs" in slot["prompt"], slot["id"]
+    """"Head-and-shoulders studio portrait" did not bind — one angle came back as
+    a full-body figure and framing drifted wider angle by angle."""
+    for angle in spec["angles"]:
+        if angle["group"] == "face":
+            assert "CROPPED AT MID-CHEST" in angle["prompt"], angle["id"]
+            assert "no legs" in angle["prompt"], angle["id"]
 
 
 def test_face_slots_hold_the_head_at_one_scale(spec):
@@ -341,9 +341,9 @@ def test_face_slots_hold_the_head_at_one_scale(spec):
     the head is. A live set came back with some heads half again the size of
     others, which reads as several sessions rather than one turn.
     """
-    for slot in spec["slots"]:
-        if slot["group"] == "face":
-            assert "{scale_face}" in slot["prompt"], slot["id"]
+    for angle in spec["angles"]:
+        if angle["group"] == "face":
+            assert "{scale_face}" in angle["prompt"], angle["id"]
     scale = (spec["defaults"] or {}).get("scale_face", "")
     assert "SCALE" in scale and "upper third" in scale, "scale must be stated checkably"
 
@@ -356,12 +356,12 @@ def test_three_quarter_slots_say_what_forty_five_degrees_looks_like(spec):
     picture: the far ear out of view, the far cheek behind the nose, both eyes
     on the lens.
     """
-    tqs = [s for s in spec["slots"]
+    tqs = [s for s in spec["angles"]
            if s["id"].endswith(("three_quarter_left", "three_quarter_right"))
            and "back" not in s["id"]]
-    assert tqs, "expected front three-quarter slots"
-    for slot in tqs:
-        assert "{turn_check}" in slot["prompt"], slot["id"]
+    assert tqs, "expected front three-quarter angles"
+    for angle in tqs:
+        assert "{turn_check}" in angle["prompt"], angle["id"]
     check = (spec["defaults"] or {}).get("turn_check", "")
     assert "far ear is out of view" in check
     assert "BOTH eyes look directly into the lens" in check
@@ -372,22 +372,22 @@ def test_the_set_covers_the_orientations_each_group_can_render(spec):
 
     The body front three-quarters are gone, and deliberately: their pose plate
     is a figure gpt-image-2 refuses (four refusals across two models, both as an
-    upscale subject and as a guide), so the slots could not be rendered at all.
-    A slot nobody can shoot is worse than an absent one — it reads as coverage
+    upscale subject and as a guide), so the angles could not be rendered at all.
+    An angle nobody can render is worse than an absent one — it reads as coverage
     and fails at spend time, and one refusal aborts the whole batch around it.
     """
-    counts = {g: len([s for s in spec["slots"] if s["group"] == g]) for g in P.POSE_GROUPS}
+    counts = {g: len([s for s in spec["angles"] if s["group"] == g]) for g in P.POSE_GROUPS}
     assert counts == {"face": 8, "body": 6}, counts
     gone = {"body_three_quarter_left", "body_three_quarter_right"}
-    assert not gone & {s["id"] for s in spec["slots"]}
+    assert not gone & {s["id"] for s in spec["angles"]}
 
 
 def test_every_body_slot_demands_the_whole_figure(spec):
     """Four images in a live set claimed "full body" and cropped at mid-thigh."""
-    for slot in spec["slots"]:
-        if slot["group"] == "body":
-            assert "HEAD TO FEET" in slot["prompt"], slot["id"]
-            assert "full-body" in slot["tags"], slot["id"]
+    for angle in spec["angles"]:
+        if angle["group"] == "body":
+            assert "HEAD TO FEET" in angle["prompt"], angle["id"]
+            assert "full-body" in angle["tags"], angle["id"]
 
 
 def test_no_character_name_leaks_into_the_spec(spec):
@@ -407,33 +407,33 @@ PROFILE = {
 
 
 def test_prompts_fill_completely_and_carry_the_bible(spec):
-    for slot in spec["slots"]:
-        # A slot binding a second guide gets a position for it; one that does
+    for angle in spec["angles"]:
+        # A angle binding a second guide gets a position for it; one that does
         # not must render without ever being handed a `torso_slot` to fill.
-        torso = 2 if slot.get("torso_image") else None
-        text = SHOOT.build_prompt(slot, spec, PROFILE, 1, [3, 4], torso)
-        assert not re.search(r"\{[a-z_]+\}", text), f"{slot['id']} has an unfilled placeholder"
-        assert "A long straight nose" in text, slot["id"]
+        torso = 2 if angle.get("torso_image") else None
+        text = TURN.build_prompt(angle, spec, PROFILE, 1, [3, 4], torso)
+        assert not re.search(r"\{[a-z_]+\}", text), f"{angle['id']} has an unfilled placeholder"
+        assert "A long straight nose" in text, angle["id"]
         # A face plate wears the bible's usual top; a body plate strips back to
         # shorts so the silhouette reads. Each group names only its own.
-        if slot["group"] == "face":
-            assert "polo shirt" in text.lower(), slot["id"]
+        if angle["group"] == "face":
+            assert "polo shirt" in text.lower(), angle["id"]
         else:
-            assert "shorts" in text.lower(), slot["id"]
+            assert "shorts" in text.lower(), angle["id"]
 
 
 def test_a_body_prompt_says_its_wardrobe_overrides_the_bible(spec):
     """The bible's `must` can say "Dressed — polo"; a body plate strips back to
     shorts. Both appear in the prompt, so the prompt has to say which wins."""
-    slot = next(s for s in spec["slots"] if s["group"] == "body")
-    text = SHOOT.build_prompt(slot, spec, PROFILE, 1, [2])
+    angle = next(s for s in spec["angles"] if s["group"] == "body")
+    text = TURN.build_prompt(angle, spec, PROFILE, 1, [2])
     assert "wardrobe named above governs" in text
 
 
 def test_an_unknown_placeholder_is_refused_by_name(spec):
-    slot = dict(spec["slots"][0], prompt="see {nonesuch}")
-    with pytest.raises(SHOOT.ShootError, match="nonesuch"):
-        SHOOT.build_prompt(slot, spec, PROFILE, 1, [2])
+    angle = dict(spec["angles"][0], prompt="see {nonesuch}")
+    with pytest.raises(TURN.TurnaroundError, match="nonesuch"):
+        TURN.build_prompt(angle, spec, PROFILE, 1, [2])
 
 
 @pytest.mark.parametrize("positions,expected", [
@@ -442,7 +442,7 @@ def test_an_unknown_placeholder_is_refused_by_name(spec):
     ([2, 3, 4], "[Image2], [Image3] and [Image4]"),
 ])
 def test_identity_citations_read_as_a_list(positions, expected):
-    assert SHOOT._slots_phrase(positions) == expected
+    assert TURN._slots_phrase(positions) == expected
 
 
 # --- the invariant the feature rests on ------------------------------------
@@ -457,7 +457,7 @@ def test_a_plate_binds_as_a_node_like_every_other_image(library, spec):
     else.
     """
     _seed_plates(library.fake, spec)
-    plate = library.fake._resolve(SHOOT.plate_key(spec["slots"][0]))["id"]
+    plate = library.fake._resolve(TURN.plate_key(spec["angles"][0]))["id"]
     assert R.check_bindings({"input_images": [plate]}) == {"input_images": [plate]}
 
 
@@ -471,7 +471,7 @@ def test_a_plates_path_is_refused_like_any_other_path(library, spec):
     """
     _seed_plates(library.fake, spec)
     with pytest.raises(R.RunError, match="not a node id"):
-        R.check_bindings({"input_images": [SHOOT.plate_key(spec["slots"][0])]})
+        R.check_bindings({"input_images": [TURN.plate_key(spec["angles"][0])]})
     with pytest.raises(R.RunError, match="not a node id"):
         R.check_bindings({"input_images": ["elsewhere/front.png"]})
 
@@ -487,7 +487,7 @@ def test_spec_defaults_are_portable_across_every_image_model(spec):
     """`--model` is only usable if the defaults are vocabulary all of them share.
 
     Asserted against the registry snapshots so that a `studio models refresh`
-    which drops a value fails here, not at submit time on someone's shoot.
+    which drops a value fails here, not at submit time on someone's turnaround.
     """
     aspect = spec["defaults"]["aspect_ratio"]
     fmt = spec["defaults"]["extra"]["output_format"]
@@ -509,44 +509,44 @@ def test_per_model_blocks_name_registered_models(spec):
 def test_only_the_resolved_models_extras_are_sent(spec):
     """A gpt-only knob must not travel with a Nano Banana override."""
     from types import SimpleNamespace
-    slot = next(s for s in spec["slots"] if s["id"] == "face_front")
+    angle = next(s for s in spec["angles"] if s["id"] == "face_front")
     opts = SimpleNamespace(model="nano-banana-pro", project="p", extra=None,
                            aspect_ratio=None, dry_run=True, yes=False, dest=None,
                            expires=3600)
-    args = SHOOT.slot_args(slot, spec, REG.get("nano-banana-pro"), "subject-a", opts)
+    args = TURN.angle_args(angle, spec, REG.get("nano-banana-pro"), "subject-a", opts)
     extra = json.loads(args.extra)
     assert "quality" not in extra and "moderation" not in extra
     assert extra["output_format"] == "png"
 
 
-def test_model_precedence_is_cli_then_slot_then_default(spec):
+def test_model_precedence_is_cli_then_angle_then_default(spec):
     from types import SimpleNamespace
-    slot = dict(next(s for s in spec["slots"]), model="nano-banana-2")
+    angle = dict(next(s for s in spec["angles"]), model="nano-banana-2")
     base = dict(project="p", extra=None, aspect_ratio=None, dry_run=True, yes=False,
                 dest=None, expires=3600)
-    cli_wins = SHOOT.slot_args(slot, spec, REG.get("gpt-image-1.5"), "subject-a",
+    cli_wins = TURN.angle_args(angle, spec, REG.get("gpt-image-1.5"), "subject-a",
                                SimpleNamespace(model="gpt-image-1.5", **base))
     assert cli_wins.model == "gpt-image-1.5"
-    slot_wins = SHOOT.slot_args(slot, spec, REG.get("nano-banana-2"), "subject-a",
+    angle_wins = TURN.angle_args(angle, spec, REG.get("nano-banana-2"), "subject-a",
                                 SimpleNamespace(model=None, **base))
-    assert slot_wins.model == "nano-banana-2"
-    default_wins = SHOOT.slot_args(dict(slot, model=None), spec,
+    assert angle_wins.model == "nano-banana-2"
+    default_wins = TURN.angle_args(dict(angle, model=None), spec,
                                    REG.get(spec["defaults"]["model"]), "subject-a",
                                    SimpleNamespace(model=None, **base))
     assert default_wins.model == spec["defaults"]["model"]
 
 
-# --- slot selection --------------------------------------------------------
+# --- angle selection --------------------------------------------------------
 
 def test_group_and_slot_filters(spec):
-    assert {s["group"] for s in SHOOT.select_slots(spec, "face", ())} == {"face"}
-    assert [s["id"] for s in SHOOT.select_slots(spec, "all", ("body_back",))] == ["body_back"]
-    assert len(SHOOT.select_slots(spec, "all", ())) == len(spec["slots"])
+    assert {s["group"] for s in TURN.select_angles(spec, "face", ())} == {"face"}
+    assert [s["id"] for s in TURN.select_angles(spec, "all", ("body_back",))] == ["body_back"]
+    assert len(TURN.select_angles(spec, "all", ())) == len(spec["angles"])
 
 
 def test_an_unknown_slot_lists_the_real_ones(spec):
-    with pytest.raises(SHOOT.ShootError, match="face_front"):
-        SHOOT.select_slots(spec, "all", ("no_such_slot",))
+    with pytest.raises(TURN.TurnaroundError, match="face_front"):
+        TURN.select_angles(spec, "all", ("no_such_slot",))
 
 
 # --- against the bucket ----------------------------------------------------
@@ -559,9 +559,9 @@ def _seed_plates(fake, spec):
     the catalog like everything else. `put_shared` still carries the name
     because they belong to the library rather than to any entity.
     """
-    # Deduped: a torso guide is shared by several face slots, and `put_shared`
+    # Deduped: a torso guide is shared by several face angles, and `put_shared`
     # would otherwise make a second node with the same name in the same folder.
-    for key in dict.fromkeys(k for slot in spec["slots"] for k in SHOOT.plate_keys(slot)):
+    for key in dict.fromkeys(k for angle in spec["angles"] for k in TURN.plate_keys(angle)):
         fake.put_shared(key, b"png-bytes")
 
 
@@ -579,8 +579,8 @@ def _seed_pool(fake, library, *names: str):
 
 
 def test_missing_plates_point_at_dev_setup(library, spec):
-    with pytest.raises(SHOOT.ShootError, match="dev-setup"):
-        SHOOT.check_plates(spec["slots"])
+    with pytest.raises(TURN.TurnaroundError, match="dev-setup"):
+        TURN.check_plates(spec["angles"])
 
 
 def test_plates_present_pass_the_check(library, spec):
@@ -592,25 +592,25 @@ def test_plates_present_pass_the_check(library, spec):
     objects.
     """
     _seed_plates(library.fake, spec)
-    SHOOT.check_plates(spec["slots"])  # no raise
+    TURN.check_plates(spec["angles"])  # no raise
 
 
 def test_identity_prefers_seed_over_generated_references(library):
     seeded = _seed_pool(library.fake, library, "subject-a_1.webp")
-    nodes, source = SHOOT.identity_nodes("subject-a", "auto", None, None)
+    nodes, source = TURN.identity_nodes("subject-a", "auto", None, None)
     assert source == "seed"
     assert nodes == seeded
 
 
 def test_identity_falls_back_to_references_when_seed_is_empty(library):
-    nodes, source = SHOOT.identity_nodes("subject-b", "auto", None, None)
+    nodes, source = TURN.identity_nodes("subject-b", "auto", None, None)
     assert source == "reference"
     assert nodes == [library.b_face_1]
 
 
 def test_identity_seed_explicitly_refuses_to_substitute(library):
-    with pytest.raises(SHOOT.ShootError, match="seed/"):
-        SHOOT.identity_nodes("subject-b", "seed", None, None)
+    with pytest.raises(TURN.TurnaroundError, match="seed/"):
+        TURN.identity_nodes("subject-b", "seed", None, None)
 
 
 def test_an_oversized_identity_pool_is_refused_not_truncated(library):
@@ -622,8 +622,8 @@ def test_an_oversized_identity_pool_is_refused_not_truncated(library):
     `reference/` already refuses an over-cap selection for this reason; seed now
     does too.
     """
-    with pytest.raises(SHOOT.ShootError) as exc:
-        SHOOT.identity_nodes("subject-a", "refs", None, None, limit=1)
+    with pytest.raises(TURN.TurnaroundError) as exc:
+        TURN.identity_nodes("subject-a", "refs", None, None, limit=1)
     assert "holds" in str(exc.value)          # says how many it found
     # And lists them BY FILENAME. A refusal that printed node ids would be
     # asking a person to choose between images they cannot tell apart, which is
@@ -635,7 +635,7 @@ def test_an_oversized_identity_pool_is_refused_not_truncated(library):
 def test_seed_pick_names_the_identity_images(library):
     first, _second = _seed_pool(library.fake, library,
                                 "subject-a_1.webp", "subject-a_2.webp")
-    nodes, source = SHOOT.identity_nodes("subject-a", "seed", None, None,
+    nodes, source = TURN.identity_nodes("subject-a", "seed", None, None,
                                          limit=4, seed_pick="subject-a_1.webp")
     assert source == "seed"
     assert nodes == [first]
@@ -643,8 +643,8 @@ def test_seed_pick_names_the_identity_images(library):
 
 def test_seed_pick_rejects_a_file_that_is_not_there(library):
     _seed_pool(library.fake, library, "subject-a_1.webp")
-    with pytest.raises(SHOOT.ShootError, match="not in"):
-        SHOOT.identity_nodes("subject-a", "seed", None, None,
+    with pytest.raises(TURN.TurnaroundError, match="not in"):
+        TURN.identity_nodes("subject-a", "seed", None, None,
                              seed_pick="nope.webp")
 
 
@@ -658,16 +658,16 @@ def test_citations_match_where_the_plate_actually_lands(library, spec):
     from types import SimpleNamespace
     _seed_plates(library.fake, spec)
     seed, = _seed_pool(library.fake, library, "subject-a_1.webp")
-    slot = next(s for s in spec["slots"] if s["id"] == "face_front")
+    angle = next(s for s in spec["angles"] if s["id"] == "face_front")
     entry = REG.get(spec["defaults"]["model"])
     opts = SimpleNamespace(model=None, project=library.project, extra=None,
                            aspect_ratio=None, dry_run=True, yes=False, dest=None,
                            expires=3600, identity=[seed])
-    args = SHOOT.slot_args(slot, spec, entry, "subject-a", opts)
-    args.key = [SHOOT.plate_key(slot), *opts.identity]
+    args = TURN.angle_args(angle, spec, entry, "subject-a", opts)
+    args.key = [TURN.plate_key(angle), *opts.identity]
     bindings = SUB.gather(entry, args)
     ordered = bindings[entry["images"]["refs"]]
-    plate = library.fake._resolve(SHOOT.plate_key(slot))["id"]
+    plate = library.fake._resolve(TURN.plate_key(angle))["id"]
 
     assert len(ordered) == 2, ordered
     plate_position = ordered.index(plate) + 1
@@ -676,7 +676,7 @@ def test_citations_match_where_the_plate_actually_lands(library, spec):
     # citation is read back from `ordered` rather than written into the prompt.
     assert plate_position == 1
     identity_positions = [i + 1 for i, k in enumerate(ordered) if k != plate]
-    text = SHOOT.build_prompt(slot, spec, PROFILE, plate_position, identity_positions)
+    text = TURN.build_prompt(angle, spec, PROFILE, plate_position, identity_positions)
     assert f"[Image{plate_position}] is a POSE GUIDE" in text
     for n in identity_positions:
         assert f"[Image{n}]" in text.split("show the person")[0]
@@ -689,16 +689,16 @@ def test_the_run_records_the_character_it_is_of(library, spec):
     a shoot's runs would be associated with nobody.
     """
     from types import SimpleNamespace
-    slot = spec["slots"][0]
+    angle = spec["angles"][0]
     opts = SimpleNamespace(model=None, project=library.project, extra=None,
                            aspect_ratio=None, dry_run=True, yes=False, dest=None,
                            expires=3600)
-    args = SHOOT.slot_args(slot, spec, REG.get(spec["defaults"]["model"]), "subject-a", opts)
+    args = TURN.angle_args(angle, spec, REG.get(spec["defaults"]["model"]), "subject-a", opts)
     assert args.character == ()
     assert args.record_characters == ("subject-a",)
 
 
-def test_shoot_dry_run_renders_every_slot_and_submits_nothing(library, spec, monkeypatch):
+def test_turnaround_dry_run_renders_every_angle_and_submits_nothing(library, spec, monkeypatch):
     """The approval gate: nine payloads on screen, no prediction created."""
     _seed_plates(library.fake, spec)
     entry = REG.get(spec["defaults"]["model"])
@@ -712,39 +712,39 @@ def test_shoot_dry_run_renders_every_slot_and_submits_nothing(library, spec, mon
     monkeypatch.setattr("studio_pipeline.adapters.replicate.create_prediction", refuse)
 
     result = CliRunner().invoke(cli.main, [
-        "character", "shoot", "subject-a", "--project", "porch-teaser", "--dry-run"])
+        "character", "turnaround", "subject-a", "--project", "porch-teaser", "--dry-run"])
     assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
-    for slot in spec["slots"]:
-        assert f"slot {slot['id']}" in result.output
+    for angle in spec["angles"]:
+        assert f"angle {angle['id']}" in result.output
     assert "nothing billed" in result.output
 
 
-def test_shoot_needs_a_project(library, spec):
-    result = CliRunner().invoke(cli.main, ["character", "shoot", "subject-a", "--dry-run"])
+def test_turnaround_needs_a_project(library, spec):
+    result = CliRunner().invoke(cli.main, ["character", "turnaround", "subject-a", "--dry-run"])
     assert result.exit_code != 0
     assert "project" in result.output.lower()
 
 
-def test_shoot_refuses_an_unregistered_model(library, spec):
+def test_turnaround_refuses_an_unregistered_model(library, spec):
     _seed_plates(library.fake, spec)
     result = CliRunner().invoke(cli.main, [
-        "character", "shoot", "subject-a", "--project", "porch-teaser",
+        "character", "turnaround", "subject-a", "--project", "porch-teaser",
         "--model", "not-a-model", "--dry-run"])
     assert result.exit_code != 0
 
 
-def test_shoot_refuses_a_video_model(library, spec):
+def test_turnaround_refuses_a_video_model(library, spec):
     _seed_plates(library.fake, spec)
     result = CliRunner().invoke(cli.main, [
-        "character", "shoot", "subject-a", "--project", "porch-teaser",
+        "character", "turnaround", "subject-a", "--project", "porch-teaser",
         "--model", "kling", "--dry-run"])
     assert result.exit_code != 0
     assert "still" in result.output
 
 
-def test_create_shoot_refuses_the_blank_template(library):
+def test_create_turnaround_refuses_the_blank_template(library):
     result = CliRunner().invoke(cli.main, [
-        "character", "create", "subject-c", "--shoot", "--project", "porch-teaser"])
+        "character", "create", "subject-c", "--turnaround", "--project", "porch-teaser"])
     assert result.exit_code != 0
     assert "--from-profile" in result.output
 
@@ -775,7 +775,7 @@ def test_the_pose_sheet_split_is_deterministic(tmp_path):
 # agreeing to that. The rules now live in the code, and here.
 
 def test_there_is_no_flag_that_approves_spending():
-    """`--yes` is gone, from `shoot` and from `create --shoot`.
+    """`--yes` is gone, from `turnaround` and from `create --turnaround`.
 
     An approval flag is the door an agent walks through while believing some
     earlier exchange counted as consent. Approval has to come from the person
@@ -786,17 +786,17 @@ def test_there_is_no_flag_that_approves_spending():
     from studio_pipeline import cli
 
     character = cli.main.get_command(None, "character")
-    for name in ("shoot", "create"):
+    for name in ("turnaround", "create"):
         command = character.get_command(None, name)
         flags = {flag for p in command.params for flag in getattr(p, "opts", [])}
         assert "--yes" not in flags, f"studio character {name} can self-approve"
         assert not any(isinstance(p, click.Option) and "approve" in p.name for p in command.params)
 
 
-def test_a_shoot_never_writes_into_the_character(library, spec, monkeypatch):
+def test_a_turnaround_never_writes_into_the_character(library, spec, monkeypatch):
     """Rendering is not the same decision as changing who a character IS.
 
-    The shoot leaves results in their runs. Whatever it does, the character's
+    The turnaround leaves results in their runs. Whatever it does, the character's
     reference folder and its index must look exactly as they did before.
     """
     _seed_plates(library.fake, spec)
@@ -810,14 +810,14 @@ def test_a_shoot_never_writes_into_the_character(library, spec, monkeypatch):
     before_profile = E.get_character(library.character)["profile"]
 
     CliRunner().invoke(cli.main, [
-        "character", "shoot", "subject-a", "--project", "porch-teaser", "--dry-run"])
+        "character", "turnaround", "subject-a", "--project", "porch-teaser", "--dry-run"])
 
     assert E.reference_entries(library.character) == before_entries
     assert E.get_character(library.character)["profile"] == before_profile
     # And the module must not be able to: the filing helpers were removed
     # outright rather than left behind a flag.
-    assert not hasattr(SHOOT, "file_output")
-    assert not hasattr(SHOOT, "set_default_set")
+    assert not hasattr(TURN, "file_output")
+    assert not hasattr(TURN, "set_default_set")
 
 
 def test_promoting_a_run_output_is_a_separate_command(library):
@@ -847,7 +847,7 @@ def test_pick_and_seed_pick_combine_into_one_identity_set(library):
     The two pools now concatenate, references first, in the order named.
     """
     seed, = _seed_pool(library.fake, library, "subject-a_1.webp")
-    nodes, source = SHOOT.identity_nodes(
+    nodes, source = TURN.identity_nodes(
         "subject-a", "auto",
         "front-neutral.webp", None, limit=4, seed_pick="subject-a_1")
     assert source == "reference+seed"
@@ -859,8 +859,8 @@ def test_pick_and_seed_pick_combine_into_one_identity_set(library):
 def test_combining_pools_still_respects_the_cap(library):
     """The combined set is what is checked, not each pool separately."""
     _seed_pool(library.fake, library, "subject-a_1.webp")
-    with pytest.raises(SHOOT.ShootError) as exc:
-        SHOOT.identity_nodes(
+    with pytest.raises(TURN.TurnaroundError) as exc:
+        TURN.identity_nodes(
             "subject-a", "auto",
             "front-neutral.webp", None, limit=1, seed_pick="subject-a_1")
     assert "--identity-max" in str(exc.value)
@@ -869,17 +869,17 @@ def test_combining_pools_still_respects_the_cap(library):
 def test_promoting_a_shot_run_carries_the_specs_description_and_tags(library, spec):
     """The spec's `description`/`tags` were dead data for a while.
 
-    `shoot` stopped filing its own output once promotion became a separate human
-    gate, and `add-refs` had no idea which slot a run came from — so both fields
-    sat in the repo unread and every promotion retyped them by hand. Fourteen
-    descriptions were copied out of this file twice before it was noticed. The
-    slot id now rides in the run record and is read back here.
+    `turnaround` stopped filing its own output once promotion became a separate
+    human gate, and `add-refs` had no idea which angle a run came from — so both
+    fields sat in the repo unread and every promotion retyped them by hand.
+    Fourteen descriptions were copied out of this file twice before it was
+    noticed. The angle id now rides in the run record and is read back here.
     """
     from studio_pipeline.adapters import entities as E
 
-    slot = next(s for s in spec["slots"] if s["id"] == "face_front")
-    # The slot rides on the run record, which is where `shoot` puts it.
-    library.fake.runs[library.run].setdefault("extra", {})["reference_slot"] = "face_front"
+    angle = next(s for s in spec["angles"] if s["id"] == "face_front")
+    # The angle rides on the run record, which is where `turnaround` puts it.
+    library.fake.runs[library.run].setdefault("extra", {})["reference_angle"] = "face_front"
 
     before = {e["node"] for e in E.reference_entries(library.character)}
     result = CliRunner().invoke(cli.main, [
@@ -890,13 +890,39 @@ def test_promoting_a_shot_run_carries_the_specs_description_and_tags(library, sp
     entries = E.reference_entries(library.character)
     added = [e for e in entries if e["node"] not in before]
     assert added, entries
-    assert added[-1]["description"] == " ".join(slot["description"].split())
-    assert added[-1]["tags"] == list(slot["tags"])
+    assert added[-1]["description"] == " ".join(angle["description"].split())
+    assert added[-1]["tags"] == list(angle["tags"])
+
+
+def test_a_run_recorded_before_the_rename_still_promotes_described(library, spec):
+    """Runs made before the rename wrote `reference_slot`, and they are in prod.
+
+    The field was renamed with the concept; the records were not, and cannot be
+    without rewriting production run rows. So the read accepts both spellings.
+    Dropping the old one would silently un-describe every image rendered before
+    the rename — the exact failure the lookup exists to prevent, reintroduced by
+    the fix for it.
+    """
+    from studio_pipeline.adapters import entities as E
+
+    angle = next(s for s in spec["angles"] if s["id"] == "face_front")
+    library.fake.runs[library.run].setdefault("extra", {})["reference_slot"] = "face_front"
+
+    before = {e["node"] for e in E.reference_entries(library.character)}
+    result = CliRunner().invoke(cli.main, [
+        "character", "add-refs", "subject-a", "--to", "face",
+        "--from-run", "porch-teaser/latest#1"])
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+
+    added = [e for e in E.reference_entries(library.character) if e["node"] not in before]
+    assert added, "the run did not promote at all"
+    assert added[-1]["description"] == " ".join(angle["description"].split())
+    assert added[-1]["tags"] == list(angle["tags"])
 
 
 def test_promoting_a_run_that_was_not_shot_leaves_it_undescribed(library):
-    """Provenance is a bonus, never a requirement: a run with no slot recorded
-    must still promote, and must not borrow some other slot's description."""
+    """Provenance is a bonus, never a requirement: a run with no angle recorded
+    must still promote, and must not borrow some other angle's description."""
     from studio_pipeline.adapters import entities as E
 
     before = {e["node"] for e in E.reference_entries(library.character)}
@@ -908,13 +934,13 @@ def test_promoting_a_run_that_was_not_shot_leaves_it_undescribed(library):
     assert added and not (added[-1].get("description") or "").strip()
 
 
-def test_a_shoot_records_the_slot_each_run_came_from(spec):
+def test_a_turnaround_records_the_slot_each_run_came_from(spec):
     """The seam the promotion above depends on, asserted at the source."""
-    args = SHOOT.slot_args(spec["slots"][0], spec, REG.get(spec["defaults"]["model"]),
+    args = TURN.angle_args(spec["angles"][0], spec, REG.get(spec["defaults"]["model"]),
                            "subject-a", SimpleNamespace(
                                model=None, project="p", extra=None, aspect_ratio=None,
                                dry_run=True, dest=None, expires=3600))
-    assert args.record_extra == {"reference_slot": spec["slots"][0]["id"]}
+    assert args.record_extra == {"reference_angle": spec["angles"][0]["id"]}
 
 
 def test_add_refs_with_nothing_to_add_says_so(library):
@@ -928,26 +954,26 @@ def test_add_refs_with_nothing_to_add_says_so(library):
 def test_style_is_taken_from_the_bible_not_hardcoded(spec):
     """A character drawn in ink must not be rendered as a photograph.
 
-    The spec used to assert "photographic, no stylisation" for every slot, which
+    The spec used to assert "photographic, no stylisation" for every angle, which
     silently converted a pen-and-ink character into a medium he has never
     existed in — and fought the reference images passed alongside.
     """
-    slot = spec["slots"][0]
+    angle = spec["angles"][0]
     ink = dict(PROFILE, rendering={"default_style": "Vintage ink comic — pen-and-ink"})
     photo = dict(PROFILE, rendering={"default_style": "Realistic"})
-    assert "pen-and-ink" in SHOOT.build_prompt(slot, spec, ink, 1, [2])
-    assert "Realistic" in SHOOT.build_prompt(slot, spec, photo, 1, [2])
-    assert "photographic" not in SHOOT.build_prompt(slot, spec, ink, 1, [2]).lower()
+    assert "pen-and-ink" in TURN.build_prompt(angle, spec, ink, 1, [2])
+    assert "Realistic" in TURN.build_prompt(angle, spec, photo, 1, [2])
+    assert "photographic" not in TURN.build_prompt(angle, spec, ink, 1, [2]).lower()
 
 
 def test_no_slot_prompt_hardcodes_a_medium(spec):
-    for slot in spec["slots"]:
-        assert "photograph" not in slot["prompt"].lower(), slot["id"]
+    for angle in spec["angles"]:
+        assert "photograph" not in angle["prompt"].lower(), angle["id"]
 
 
 def test_style_falls_back_when_a_bible_names_none(spec):
-    slot = spec["slots"][0]
-    text = SHOOT.build_prompt(slot, spec, dict(PROFILE, rendering={}), 1, [2])
+    angle = spec["angles"][0]
+    text = TURN.build_prompt(angle, spec, dict(PROFILE, rendering={}), 1, [2])
     assert "same medium" in text.lower()
 
 
@@ -968,13 +994,13 @@ def test_review_sheet_labels_images_in_the_order_the_model_gets_them(library, sp
     seed = library.fake._child(library.character_root, "seed")
     photo = library.fake.put_file(seed["id"], "subject-a_1.png", png)["id"]
 
-    out = SHOOT.review_sheet("face_front", [plate, photo], str(tmp_path / "sheet"), {})
+    out = TURN.review_sheet("face_front", [plate, photo], str(tmp_path / "sheet"), {})
     assert os.path.isfile(out)
     assert out.endswith("face_front.png")
 
 
 def test_review_sheet_downloads_each_image_once(library, spec, tmp_path):
-    """Identity images repeat across slots; the cache is what stops re-fetching."""
+    """Identity images repeat across angles; the cache is what stops re-fetching."""
     from PIL import Image
     Image.new("RGB", (40, 60), "grey").save(tmp_path / "src.png")
     seed = library.fake._child(library.character_root, "seed")
@@ -982,10 +1008,10 @@ def test_review_sheet_downloads_each_image_once(library, spec, tmp_path):
                                  (tmp_path / "src.png").read_bytes())["id"]
 
     cache: dict = {}
-    SHOOT.review_sheet("a", [node], str(tmp_path / "s"), cache)
+    TURN.review_sheet("a", [node], str(tmp_path / "s"), cache)
     first = dict(cache)
-    SHOOT.review_sheet("b", [node], str(tmp_path / "s"), cache)
-    assert cache == first, "the second slot re-downloaded an image it already had"
+    TURN.review_sheet("b", [node], str(tmp_path / "s"), cache)
+    assert cache == first, "the second angle re-downloaded an image it already had"
 
 
 def test_contact_sheet_still_sorts_and_labels_by_name_without_captions(tmp_path):
@@ -1072,7 +1098,7 @@ def test_a_start_frame_is_format_checked_like_every_other_image(library, monkeyp
 
 # --- the plates, as provisioning actually creates them ----------------------
 
-def test_a_shoot_finds_the_plates_that_config_sync_pushed(library, spec, monkeypatch):
+def test_a_turnaround_finds_the_plates_that_config_sync_pushed(library, spec, monkeypatch):
     """**The gap between the check and the thing that fills the library.**
 
     `check_plates` resolves each plate as a name path, so a plate needs a node.
@@ -1090,8 +1116,8 @@ def test_a_shoot_finds_the_plates_that_config_sync_pushed(library, spec, monkeyp
     from studio_pipeline.objects import config_sync
 
     monkeypatch.setattr(config_sync, "local_plates",
-                        lambda: [(SHOOT.plate_key(slot), "/dev/null")
-                                 for slot in spec["slots"]])
+                        lambda: [(TURN.plate_key(angle), "/dev/null")
+                                 for angle in spec["angles"]])
     monkeypatch.setattr(config_sync.store, "upload",
                         lambda path, _src, **kw: library.fake.put_shared(path, b"png-bytes"))
 
@@ -1099,7 +1125,7 @@ def test_a_shoot_finds_the_plates_that_config_sync_pushed(library, spec, monkeyp
     result = CliRunner().invoke(cli.main, ["config", "sync", "--apply"])
     assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
 
-    SHOOT.check_plates(spec["slots"])          # the refusal this existed to stop
+    TURN.check_plates(spec["angles"])          # the refusal this existed to stop
     assert not config_sync.missing(config_sync.local_plates())
 
 
@@ -1107,9 +1133,9 @@ def test_config_sync_is_a_dry_run_without_apply(library, spec, monkeypatch):
     from studio_pipeline.objects import config_sync
 
     monkeypatch.setattr(config_sync, "local_plates",
-                        lambda: [(SHOOT.plate_key(spec["slots"][0]), "/dev/null")])
+                        lambda: [(TURN.plate_key(spec["angles"][0]), "/dev/null")])
     result = CliRunner().invoke(cli.main, ["config", "sync"])
     assert result.exit_code == 0
     assert "--apply" in result.output
-    with pytest.raises(SHOOT.ShootError, match="dev-setup"):
-        SHOOT.check_plates(spec["slots"])
+    with pytest.raises(TURN.TurnaroundError, match="dev-setup"):
+        TURN.check_plates(spec["angles"])

@@ -4,9 +4,9 @@
     studio config sync --apply
 
 **This exists because a plate that is not a node is invisible.** `check_plates`
-resolves each plate as a name path before a shoot spends anything, and a name
+resolves each plate as a name path before a turnaround spends anything, and a name
 path is resolved against the catalog. So a plate sitting in the bucket with no
-row is a plate the shoot cannot see — and the refusal it produces names
+row is a plate the turnaround cannot see — and the refusal it produces names
 `dev-setup.sh`, which is exactly the script a person has already run.
 
 That was the state this command was written to end. The plates were shared

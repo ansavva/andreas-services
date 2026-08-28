@@ -323,7 +323,7 @@ def resolve_key(cat: dict, value: str, by_path_hits: list[str]) -> str | None:
     answer — often the only one, because a blob written since is keyed on ids
     and can never match the string a document recorded years ago.
 
-    This is what the pose plates need. Every historical reference shoot bound a
+    This is what the pose plates need. Every historical turnaround bound a
     plate, the seed deliberately recorded no node for `config/`, and so every one
     of those bindings resolved to nothing — 28 of them across 29 runs in the
     first real migration, naming 16 distinct plates.

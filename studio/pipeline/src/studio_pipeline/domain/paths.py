@@ -52,7 +52,7 @@ created with a `config/` folder, and `studio config sync` uploads them through
 the API like anything else. `shared_read`, `shared_presign` and the
 `shared:<key>` submit marker are all gone with the key-addressed route they
 used, and a plate is recorded in a run's bindings like every other image. The
-names stay here because the shot spec addresses plates by path.
+names stay here because the angle spec addresses plates by path.
 
 The phrasebook used to be listed beside them and is not: it is `TERM#` rows now,
 so there is no `phrasebook/wording.yaml` to address.
