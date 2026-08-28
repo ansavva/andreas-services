@@ -671,6 +671,13 @@ export function getRuns(
     character?: string;
     model?: string;
     status?: string;
+    /**
+     * `"drafts"` un-hides drafts, which the route otherwise keeps out of a
+     * listing that names no status. Pass it whenever the caller means EVERY
+     * run — a screen offering "Any status" and then quietly dropping one is
+     * worse than a screen that never offered the choice.
+     */
+    include?: string;
     since?: string;
     limit?: string;
     cursor?: string;
