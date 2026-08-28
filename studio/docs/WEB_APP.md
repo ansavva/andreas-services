@@ -458,6 +458,12 @@ that breaks every time the pipeline ships.
   recomputes and answers 409 if the payload moved. It is not a permission
   boundary — the CLI holds the same kind of token — so the page states the
   digest in words rather than implying an authority it does not have.
+- **Editing a plan is two writes, and each one withdraws the approval.** `PATCH
+  /api/runs/<id>/plan` and `PATCH /api/runs/<id>/sends` each replace their half
+  whole, recompute the digest and return the run to `draft` — so the editor sends
+  only the half that actually moved, and the approve bar is hidden while it is
+  open. Both routes refuse a submitted run, which is why the button appears on an
+  unsubmitted one rather than being answered with a 409.
 - **The API takes the ID token, never the access token.** A REST
   `COGNITO_USER_POOLS` authorizer only reads the incoming token as an *access*
   token when the method declares `authorization_scopes`. This one declares none

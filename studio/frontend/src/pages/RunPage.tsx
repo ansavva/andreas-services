@@ -8,10 +8,11 @@ import { PageBar } from "../components/layout/PageBar";
 import { Backlinks } from "../components/common/Backlinks";
 import { MediaThumb } from "../components/media/MediaThumb";
 import { ApproveBar, RunPlan } from "../components/run/RunPlan";
+import { RunPlanEditor } from "../components/run/RunPlanEditor";
 import { useResource } from "../hooks/useResource";
 import { useProjectCrumb } from "../hooks/useProjectCrumb";
 import { formatBytes, formatDate, formatTextContent } from "../utils/format";
-import { isTerminal, type RunAsset, type RunRecord } from "../types";
+import { isTerminal, isUnsubmitted, type RunAsset, type RunRecord } from "../types";
 import { objectPath, runPath, scenePath } from "../utils/location";
 
 /**
@@ -56,6 +57,15 @@ export function RunPage() {
 
   const [approving, setApproving] = useState(false);
   const [approveError, setApproveError] = useState<string | null>(null);
+  /**
+   * Whether the plan is being edited rather than read.
+   *
+   * A mode rather than an always-editable form, because this page is read far
+   * more often than it is written and a run's plan is the thing an approval
+   * names — a page whose prompt sits in a text box invites a keystroke into the
+   * document somebody is about to say yes to.
+   */
+  const [editing, setEditing] = useState(false);
 
   /**
    * Approve or revoke, then swap the record in rather than refetching.
@@ -148,12 +158,41 @@ export function RunPage() {
           page used to open on the result of a submission with no account of the
           intent behind it, which is the wrong way round for the one screen a
           person opens to ask "what was this?" */}
-      <RunPlan run={data} onView={(asset) => navigate(objectPath(asset.node, RUN))} />
+      {editing ? (
+        <RunPlanEditor
+          run={data}
+          onSaved={(updated) => {
+            setData(updated);
+            setEditing(false);
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      ) : (
+        <>
+          <RunPlan run={data} onView={(asset) => navigate(objectPath(asset.node, RUN))} />
+          {/* **Only while nothing has been sent.** `PATCH /plan` refuses a
+              submitted run — its plan is what went out, and a plan edited
+              afterwards would sit beside `request.json` describing something
+              that was never sent — so the button is absent rather than present
+              and answered with a 409. */}
+          {isUnsubmitted(data.status) && (
+            <div>
+              <Button intent="ghost" size="sm" onClick={() => setEditing(true)}>
+                Edit the plan
+              </Button>
+            </div>
+          )}
+        </>
+      )}
 
       {/* **Under the plan, not over it.** Its own sentence says "reads the
           payload above", and it sat above the payload — so the control that
           spends money was the first thing on the screen and the thing it asks
           you to read was the second. */}
+      {/* Hidden while the plan is being edited: an approve button beside a form
+          holding unsaved words is a yes to whichever of the two you were not
+          looking at. */}
+      {!editing && (
       <ApproveBar
         run={data}
         busy={approving}
@@ -163,6 +202,7 @@ export function RunPage() {
         }
         onRevoke={() => void decide(() => revokeRunApproval(data.id))}
       />
+      )}
 
       <section className="flex flex-col gap-2">
         <Text variant="title">Outputs</Text>

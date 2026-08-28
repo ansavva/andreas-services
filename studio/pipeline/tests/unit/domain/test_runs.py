@@ -637,6 +637,159 @@ def test_a_submitted_run_cannot_be_discarded(library):
     assert "delete" in result.output
 
 
+# ── editing a draft ─────────────────────────────────────────────────────────
+#
+# The routes have existed since a run gained a plan and nothing called them, so
+# a typo in a prompt meant discarding the draft and drafting it again. What each
+# of these holds up is that an edit WITHDRAWS THE APPROVAL — the mechanical half
+# of hard rule #2, and the reason a yes cannot outlive the payload it was for.
+
+
+def _draft(library, **over):
+    """A draft with a plan and one bound image — what `--dry-run` leaves."""
+    fields = {"kind": "image", "engine": "e", "model": "google/nano-banana-pro",
+              "input": {"prompt": "a porch at dawn"},
+              "plan": {"prompt": "a porch at dawn",
+                       "params": {"output_format": "png"}},
+              "sends": [{"field": "image_input", "role": "reference",
+                         "node": library.face_1},
+                        {"field": "image_input", "role": "reference",
+                         "node": library.face_2}],
+              "bindings": {"image_input": [library.face_1, library.face_2]}}
+    return R.record_request(library.project, **{**fields, **over})
+
+
+def _edit(run_id: str, document: dict):
+    return CliRunner().invoke(
+        cli.main, ["runs", "edit", run_id, "--file", "-"],
+        input=json.dumps(document))
+
+
+def test_editing_a_prompt_rewrites_the_plan_and_leaves_the_images(library):
+    """Two routes, so only what moved is written."""
+    record = _draft(library)
+    document = R.editable(E.get_run(record["id"]))
+    document["prompt"] = "a porch at dusk"
+
+    result = _edit(record["id"], document)
+
+    assert result.exit_code == 0, result.output
+    updated = E.get_run(record["id"])
+    assert updated["plan"]["prompt"] == "a porch at dusk"
+    assert updated["plan"]["params"] == {"output_format": "png"}, "untouched"
+    assert [s["node"] for s in updated["sends"]] == [library.face_1, library.face_2]
+
+
+def test_reordering_the_images_is_a_real_edit(library):
+    """**The order is the payload.** A prompt citing "the first image" cites this
+    list, so swapping two sends changes what the model is told as surely as
+    rewording the sentence does."""
+    record = _draft(library)
+    document = R.editable(E.get_run(record["id"]))
+    document["sends"] = list(reversed(document["sends"]))
+
+    result = _edit(record["id"], document)
+
+    assert result.exit_code == 0, result.output
+    updated = E.get_run(record["id"])
+    assert [s["node"] for s in updated["sends"]] == [library.face_2, library.face_1]
+    assert updated["plan"]["prompt"] == "a porch at dawn", "untouched"
+
+
+def test_an_edit_withdraws_the_approval(library):
+    """Hard rule #2's "re-approve after **any** edit", as a state change.
+
+    The API does it; this asserts the CLI leaves the run in it rather than
+    reporting a success that hides a run nobody can submit.
+    """
+    record = _draft(library)
+    E.approve_run(record["id"], E.get_run(record["id"])["plan_digest"])
+
+    document = R.editable(E.get_run(record["id"]))
+    document["params"] = {"output_format": "webp"}
+    result = _edit(record["id"], document)
+
+    assert result.exit_code == 0, result.output
+    updated = E.get_run(record["id"])
+    assert updated["status"] == "draft"
+    assert updated["approval"] is None
+    assert "approve" in result.output, "it says how to get the yes back"
+
+
+def test_a_document_naming_only_one_field_leaves_the_rest_alone(library):
+    """What makes `echo '{"prompt": "…"}' | studio runs edit … --file -` legal."""
+    record = _draft(library)
+
+    result = _edit(record["id"], {"prompt": "a porch at noon"})
+
+    assert result.exit_code == 0, result.output
+    updated = E.get_run(record["id"])
+    assert updated["plan"]["prompt"] == "a porch at noon"
+    assert updated["plan"]["params"] == {"output_format": "png"}
+    assert len(updated["sends"]) == 2
+
+
+def test_an_unchanged_document_writes_nothing(library):
+    """Saving an editor without touching it is not an edit, and must not clear
+    an approval as though it were."""
+    record = _draft(library)
+    E.approve_run(record["id"], E.get_run(record["id"])["plan_digest"])
+
+    result = _edit(record["id"], R.editable(E.get_run(record["id"])))
+
+    assert result.exit_code == 0, result.output
+    assert "no changes" in result.output
+    assert E.get_run(record["id"])["status"] == "approved"
+
+
+def test_a_submitted_run_cannot_be_edited(library):
+    """Its plan is what was sent. Refused here as well as by the API — the point
+    is not to reach the route, it is not to open an editor over a document that
+    cannot be written back."""
+    result = CliRunner().invoke(
+        cli.main, ["runs", "edit", library.run, "--file", "-"], input="{}")
+
+    assert result.exit_code != 0
+    assert "cannot be rewritten" in result.output
+
+
+def test_an_unknown_role_is_named_rather_than_round_tripped(library):
+    record = _draft(library)
+    document = R.editable(E.get_run(record["id"]))
+    document["sends"][0]["role"] = "backdrop"
+
+    result = _edit(record["id"], document)
+
+    assert result.exit_code != 0
+    assert "reference" in result.output, "the legal roles are listed"
+
+
+def test_invalid_json_changes_nothing_and_says_how_to_retry(library):
+    """The editor buffer is gone by the time this is discovered, so the message
+    has to be enough to act on."""
+    record = _draft(library)
+
+    result = CliRunner().invoke(
+        cli.main, ["runs", "edit", record["id"], "--file", "-"], input="{not json")
+
+    assert result.exit_code != 0
+    assert "valid JSON" in result.output
+    assert E.get_run(record["id"])["plan"]["prompt"] == "a porch at dawn"
+
+
+def test_dump_prints_the_document_and_changes_nothing(library):
+    """The non-interactive half: dump, edit, pipe back."""
+    record = _draft(library)
+
+    result = CliRunner().invoke(cli.main, ["runs", "edit", record["id"], "--dump"])
+
+    assert result.exit_code == 0, result.output
+    document = json.loads(result.output)
+    assert document["prompt"] == "a porch at dawn"
+    assert [s["node"] for s in document["sends"]] == [library.face_1, library.face_2]
+    assert "source" not in document["sends"][0], "derived, and not the digest's"
+
+
 def test_the_sends_carry_the_role_the_registry_gives_them(library):
     """The half `bindings` threw away.
 

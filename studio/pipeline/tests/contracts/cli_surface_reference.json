@@ -4774,6 +4774,70 @@
           }
         }
       },
+      "edit": {
+        "arguments": {
+          "runref": {
+            "choices": null,
+            "default": null,
+            "dest": "runref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "dump": {
+            "choices": null,
+            "default": false,
+            "dest": "dump",
+            "flag": true,
+            "flags": [
+              "--dump"
+            ],
+            "help": "Print the editable document and change nothing.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "file": {
+            "choices": null,
+            "default": null,
+            "dest": "source",
+            "flag": false,
+            "flags": [
+              "--file"
+            ],
+            "help": "Read the edited document from here ('-' for stdin) instead of opening an editor.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "filename"
+          },
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "Default project for a bare runref.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
       "find": {
         "arguments": {},
         "commands": {},

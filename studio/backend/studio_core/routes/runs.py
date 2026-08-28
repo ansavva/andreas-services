@@ -550,8 +550,24 @@ def get_run(run_id: str):
     """
     held = support.memberships()
     record = _run(run_id, held)
+    return jsonify(view(record)), 200
 
-    send_entries = catalog.sends(record["id"])
+
+def view(record: dict, send_entries: list[dict] | None = None) -> dict:
+    """**One shape for a run, answered by every route that returns one.**
+
+    It was inline in `get_run`, and the four write routes each hand-rolled a
+    smaller version — `{**updated, "sends": send_entries}` — carrying the RAW
+    send rows and the raw record. The SPA swaps a write's response straight into
+    the page rather than re-reading (the whole point: a re-GET would re-sign
+    every URL to show one badge change), so a save left the filmstrip drawing
+    four "not rendered" placeholders over images that were right there. Seen on
+    a dev stack, not reasoned about.
+
+    `sends` may be passed in when the caller has just written them and holds the
+    authoritative list; otherwise it is read.
+    """
+    send_entries = catalog.sends(record["id"]) if send_entries is None else send_entries
     bindings = bindings_of(send_entries, record)
     node_ids = [entry["node"] for entry in send_entries]
     node_ids += [node for entries in bindings.values() for node in entries]
@@ -561,7 +577,7 @@ def get_run(run_id: str):
     def expand(ids):
         return [support.asset(node_id, nodes.get(node_id)) for node_id in ids]
 
-    return jsonify(
+    return (
         {
             # The three authored fields are always present, `None` included. An
             # attribute cleared to `None` is REMOVEd from the row, so a record
@@ -602,7 +618,7 @@ def get_run(run_id: str):
             and record["approval"].get("digest") != digest_of(record, send_entries),
             "outputs": expand(record.get("outputs") or []),
         }
-    ), 200
+    )
 
 
 # ─────────────────────── the plan, and the gate on it ───────────────────────
@@ -657,7 +673,7 @@ def update_plan(run_id: str):
 
     send_entries = catalog.sends(record["id"])
     updated = _revised(record, {"plan": plan}, send_entries)
-    return jsonify({**updated, "sends": send_entries}), 200
+    return jsonify(view(updated, send_entries)), 200
 
 
 @bp.patch("/runs/<run_id>/sends")
@@ -680,7 +696,7 @@ def update_sends(run_id: str):
 
     written = catalog.put_sends(record["id"], entries)
     updated = _revised(record, {}, written)
-    return jsonify({**updated, "sends": written}), 200
+    return jsonify(view(updated, written)), 200
 
 
 @bp.post("/runs/<run_id>/approve")
@@ -742,7 +758,7 @@ def approve_run(run_id: str):
         KIND, record, {"approval": approval, "status": "approved"},
         {"status": "approved"},
     )
-    return jsonify({**updated, "sends": send_entries}), 200
+    return jsonify(view(updated, send_entries)), 200
 
 
 @bp.delete("/runs/<run_id>/approve")
@@ -756,7 +772,7 @@ def revoke_approval(run_id: str):
     updated = catalog.update_project_entity(
         KIND, record, {"approval": None, "status": "draft"}, {"status": "draft"}
     )
-    return jsonify(updated), 200
+    return jsonify(view(updated)), 200
 
 
 @bp.patch("/runs/<run_id>")
