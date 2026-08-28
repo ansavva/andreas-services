@@ -175,7 +175,7 @@ def _entity(kind: str, **over) -> dict:
               "created": "2026-01-01T00:00:00+00:00",
               "updated": "2026-01-02T00:00:00+00:00"}
     shapes = {
-        "character": {**common, "display_name": "Subject A", "fictional": True,
+        "character": {**common, "display_name": "Subject A",
                       "schema_version": 3, "root": "node-root-a", "hero": None,
                       "default_set": [], "profile": {}, "refs": []},
         "project": {**common, "title": "Subject A", "description": "",
@@ -940,7 +940,7 @@ def test_a_draft_is_not_checked_at_all():
 
 def test_an_adopted_run_is_not_checked_either():
     """It wraps an artifact that already existed. Nothing was ever submitted, so
-    there is no payload anybody was supposed to consent to."""
+    there is no payload anybody was supposed to approve."""
     rows = _run_rows({"id": "run-1", "status": "adopted"})
 
     problems, planless, _dead = cm.run_plan_checks(rows, _alive)

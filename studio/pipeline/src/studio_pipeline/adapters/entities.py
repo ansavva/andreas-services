@@ -92,7 +92,7 @@ def list_characters(query: str | None = None) -> list[dict]:
     return found if isinstance(found, list) else []
 
 
-def create_character(slug: str, display_name: str = "", fictional: bool = True,
+def create_character(slug: str, display_name: str = "",
                      profile: dict | None = None) -> dict:
     """Create a character and its starting folder layout in one transaction.
 
@@ -100,7 +100,7 @@ def create_character(slug: str, display_name: str = "", fictional: bool = True,
     not something the first write lazily discovers. `api.Conflict` means the
     slug is taken.
     """
-    body = {"slug": slug, "display_name": display_name, "fictional": fictional}
+    body = {"slug": slug, "display_name": display_name}
     if profile is not None:
         body["profile"] = profile
     return api.post("/api/characters", body)
@@ -117,7 +117,7 @@ def resolve_character(slug: str) -> dict:
 
 
 def patch_character(char_id: str, rev: int, *, slug: str | None = None,
-                    display_name: str | None = None, fictional: bool | None = None,
+                    display_name: str | None = None,
                     hero: str | None = None) -> dict:
     """Change the record. **This is what a rename is** — one conditional write.
 
@@ -126,7 +126,7 @@ def patch_character(char_id: str, rev: int, *, slug: str | None = None,
     `api.Conflict` is both "someone else wrote" and "that slug is taken", and
     the message distinguishes them.
     """
-    body = _clean(slug=slug, display_name=display_name, fictional=fictional, hero=hero)
+    body = _clean(slug=slug, display_name=display_name, hero=hero)
     body["rev"] = rev
     return api.patch(f"/api/characters/{char_id}", body)
 

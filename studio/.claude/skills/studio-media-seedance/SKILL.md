@@ -35,11 +35,6 @@ The family:
 - **`studio-media-s3`** — where references and outputs live, and how they are
   addressed.
 
-## A likeness is a likeness
-
-A character built from photographs of a real person is a real person's likeness.
-Settle consent before anything is published.
-
 ## The model: `bytedance/seedance-2.0`
 
 Multimodal video generation with **native audio**, multimodal reference inputs

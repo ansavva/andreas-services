@@ -38,7 +38,6 @@ function record(over: Partial<CharacterRecord> = {}): CharacterRecord {
     lib: "lib-0001",
     slug: "<slug>",
     display_name: "<name>",
-    fictional: true,
     rev: 7,
     created: "2026-08-01T00:00:00Z",
     updated: "2026-08-01T00:00:00Z",

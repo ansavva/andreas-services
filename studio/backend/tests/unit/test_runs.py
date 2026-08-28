@@ -38,7 +38,7 @@ def _project(api, slug="rooftop-teaser", **body):
 
 
 def _character(api, slug="subject-a"):
-    return api.post("/api/characters", json={"slug": slug, "fictional": True}).get_json()
+    return api.post("/api/characters", json={"slug": slug}).get_json()
 
 
 def _uploaded(api, parent_id, name, body=b"webp-bytes"):
@@ -779,7 +779,7 @@ def test_approving_a_digest_that_has_moved_on_is_refused(empty_api):
     """Compare-and-swap, not a write.
 
     The client sends the digest of what it just showed somebody. If the row has
-    moved since, approving would record consent to a payload nobody saw — so it
+    moved since, approving would record a yes to a payload nobody saw — so it
     is a 409 carrying the current digest, and the client re-renders.
     """
     project = _project(empty_api)
@@ -795,7 +795,7 @@ def test_approving_a_digest_that_has_moved_on_is_refused(empty_api):
 def test_approving_without_a_digest_is_refused(empty_api):
     """**You approve a payload, not a run.** A bare approve is the flag hard rule
     #2 refuses to have — a door an agent walks through believing some earlier
-    exchange counted as consent."""
+    exchange counted as approval."""
     project = _project(empty_api)
     run = _create(empty_api, project)
 
@@ -952,7 +952,7 @@ def test_a_submitted_run_moves_on_without_re_approval(empty_api):
     """Once it has gone out, the statuses are the machine reporting facts.
 
     Asking for an approval to record that a prediction failed would be asking a
-    person to consent to something that already happened.
+    person to say yes to something that already happened.
     """
     project = _project(empty_api)
     run = _submitted(empty_api, project)

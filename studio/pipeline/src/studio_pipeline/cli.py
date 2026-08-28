@@ -37,6 +37,7 @@ from studio_pipeline.maintenance import catalog_gc as _catalog_gc
 from studio_pipeline.maintenance import ref_descriptions as _ref_descriptions
 from studio_pipeline.maintenance import catalog_check as _catalog
 from studio_pipeline.maintenance import backfill_plans as _backfill_plans
+from studio_pipeline.maintenance import drop_fictional as _drop_fictional
 from studio_pipeline.maintenance import confirm_outputs as _confirm_outputs
 from studio_pipeline.maintenance import dev_seed as _dev_seed
 from studio_pipeline.objects import config_sync as _config_sync
@@ -187,6 +188,11 @@ _catalog.main.add_command(_confirm_outputs.cmd_confirm_outputs, "confirm-outputs
 # describing something that was never sent — and a backfill route able to do it
 # anyway would be a permanent hole cut for a one-shot.
 _catalog.main.add_command(_backfill_plans.cmd_backfill_plans, "backfill-plans")
+# `drop-fictional` removes the retired likeness attribute from rows that predate
+# its removal. A maintenance command for the mirror-image reason to the one
+# above: there is no route to write through any more, and adding one to unset a
+# dead key would be a permanent hole cut for a one-shot.
+_catalog.main.add_command(_drop_fictional.cmd_drop_fictional, "drop-fictional")
 
 
 for _name, _cmd in [

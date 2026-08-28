@@ -13,11 +13,6 @@ schema_version: 1
 name: <name>                    # the S3 folder / slug, lowercase [a-z0-9_-]
 display_name: <Name>            # how the character is written in prose
 
-# Is this an invented character, or a real person's likeness? Not provenance —
-# a consent question that governs whether generated media can be published at
-# all, and the one thing about a bible worth stating before anything renders.
-fictional: true
-
 # --- the card: short phrases, one line each -----------------------------------
 identity:
   apparent_age: <e.g. late 30s to mid 40s>

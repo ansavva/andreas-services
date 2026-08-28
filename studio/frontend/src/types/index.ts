@@ -346,7 +346,6 @@ export type CharacterProfile = Record<string, ProfileValue>;
 export interface CharacterIdentity {
   slug: string;
   display_name: string;
-  fictional: boolean;
 }
 
 export interface CharacterRecord {
@@ -354,7 +353,6 @@ export interface CharacterRecord {
   lib: string;
   slug: string;
   display_name: string;
-  fictional: boolean;
   rev: number;
   created: string;
   updated: string;
@@ -720,8 +718,8 @@ export interface RunApproval {
   /**
    * The Cognito sub of whoever approved it — or the literal `backfill`, for a
    * run approved before approvals were recorded. Naming the mechanism rather
-   * than a person is deliberate: nobody consented in a browser to a run made
-   * last August, and a row implying they had would be undetectable later.
+   * than a person is deliberate: nobody approved a run made last August in a
+   * browser, and a row implying they had would be undetectable later.
    */
   by: string;
   at: string;

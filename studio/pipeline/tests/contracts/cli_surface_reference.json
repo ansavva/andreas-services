@@ -144,6 +144,42 @@
           }
         }
       },
+      "drop-fictional": {
+        "arguments": {},
+        "commands": {},
+        "options": {
+          "apply": {
+            "choices": null,
+            "default": false,
+            "dest": "apply_",
+            "flag": true,
+            "flags": [
+              "--apply"
+            ],
+            "help": "Write. Without it this reports and changes nothing.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "limit": {
+            "choices": null,
+            "default": null,
+            "dest": "limit",
+            "flag": false,
+            "flags": [
+              "--limit"
+            ],
+            "help": "Stop after this many characters (for a trial).",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "int"
+          }
+        }
+      },
       "edges": {
         "arguments": {},
         "commands": {},

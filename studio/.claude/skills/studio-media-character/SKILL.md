@@ -168,7 +168,6 @@ headings out of prose:
 | Key | Holds |
 |---|---|
 | `schema_version` `name` `display_name` | the record's identity |
-| `fictional` | invented character, or a real person's likeness — a consent question, answered before anything renders |
 | `identity` | the card — age, build, height read, `signature_features[]`, home turf, register, speech |
 | `face` | structure, skin, eyes, eyebrows, nose, mouth/jaw, facial hair, hair, ears |
 | `body` | silhouette, arms, chest/shoulders, neck, lower body/hands, body hair, posture |
@@ -382,7 +381,7 @@ Both of these have been broken in practice, in the same session:
 The tools now enforce what they can. `shoot` has no approval flag and asks
 interactively, and it **never files its own output** — results stay in their run
 until someone promotes them with `add-refs --from-run`. What the tools cannot
-enforce is an agent deciding a previous message counted as consent. It does not.
+enforce is an agent deciding a previous message counted as approval. It does not.
 When in doubt, render the payload into the conversation and stop.
 
 ## The standard set (`shoot`)
@@ -506,9 +505,6 @@ A character record is medium-agnostic on purpose:
 - **Wardrobe wording belongs to the ENGINE, not to identity.** Each engine has a
   per-model wording list (`studio phrasebook`) giving preferred phrasing;
   it is data, and it changes. Keep it in the engine skill, never in a bible.
-- **A bible built from photographs of a real person is a real person's likeness.**
-  Generated video of an identifiable person is a consent question before it is a
-  technical one — settle it before anything is published.
 
 
 ## Seeing what is in a pool, as opposed to what is in the index

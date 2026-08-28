@@ -6,7 +6,7 @@ Two classes of thing are pinned here.
 `--dry-run` must render every payload and create no prediction; the confirm must
 be the only way through; and no `--yes` flag may exist on either — an approval
 flag is the door an agent walks through while believing some earlier exchange
-counted as consent. The dry-run assertion in particular exists because that
+counted as approval. The dry-run assertion in particular exists because that
 exact gate was once broken by a `json` vs `json_` attribute and `--help` still
 passed.
 

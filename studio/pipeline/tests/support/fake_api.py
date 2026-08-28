@@ -98,8 +98,8 @@ def _plan_digest(plan, sends) -> str:
 
     What it hashes is the reason it exists: the sends by `(field, role, node)` in
     order, so reordering two references is a real edit, and `source` excluded, so
-    describing an image's provenance more accurately later does not void a
-    consent nobody's payload changed.
+    describing an image's provenance more accurately later does not void an
+    approval nobody's payload changed.
     """
     payload = {
         "plan": plan or {},
@@ -573,7 +573,6 @@ class FakeApi:
         self._layout(root["id"], ("reference", "corpus", "seed", "archive"))
         record = {"id": char_id, "lib": self.lib, "slug": slug,
                   "display_name": body.get("display_name") or slug,
-                  "fictional": bool(body.get("fictional", True)),
                   "schema_version": 2, "rev": 1,
                   "created": _now(), "updated": _now(),
                   "root": root["id"], "hero": None, "default_set": [],
@@ -591,7 +590,7 @@ class FakeApi:
                 self._claim(self.characters, body["slug"], "character")
                 self.nodes[record["root"]]["name"] = body["slug"]
             self._bump(record, body.get("rev"))
-            for field in ("slug", "display_name", "fictional", "hero"):
+            for field in ("slug", "display_name", "hero"):
                 if field in body:
                     record[field] = body[field]
             return self._char_view(record)

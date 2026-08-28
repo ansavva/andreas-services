@@ -2203,7 +2203,6 @@ def create_character(
     *,
     slug: str,
     display_name: str | None,
-    fictional: bool,
     profile: dict,
     layout: tuple,
 ) -> dict:
@@ -2240,7 +2239,6 @@ def create_character(
         "lib": lib,
         "slug": slug,
         "display_name": display_name or slug,
-        "fictional": fictional,
         "schema_version": PROFILE_SCHEMA_VERSION,
         "rev": 1,
         "created": now,

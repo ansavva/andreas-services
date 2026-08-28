@@ -12,7 +12,7 @@ The bible is a validated `profile` map on the record; the described index is one
 bucket listing carried every character's name, production ones included, which
 was hard rule #1 broken in the one place nobody looked.
 
-    the record   id, slug, display_name, fictional, rev, root, hero,
+    the record   id, slug, display_name, rev, root, hero,
                  default_set, profile          — one row, queryable
     the rows     one REF# per reference: group, order, description, tags,
                  naming a NODE ID

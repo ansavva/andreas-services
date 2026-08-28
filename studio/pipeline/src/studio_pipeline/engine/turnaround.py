@@ -771,7 +771,7 @@ def run_turnaround(name: str, opts) -> int:
 
     # No `--yes`. A person reads the payloads above and answers this, or nothing
     # is submitted: an approval flag is the door an agent walks through while
-    # believing some earlier exchange counted as consent.
+    # believing some earlier exchange counted as approval.
     if not click.confirm(f"\nsubmit {len(prepared)} generation(s) for {name}?", default=False):
         print("nothing submitted.", file=sys.stderr)
         return 1

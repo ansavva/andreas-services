@@ -7,8 +7,6 @@ import {
   Dialog,
   Field,
   Input,
-  Switch,
-  Text,
   buttonClass,
 } from "@ansavva/design-system";
 
@@ -63,7 +61,6 @@ export function CreateEntityDialog({ kind }: Props) {
   const [slug, setSlug] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [fictional, setFictional] = useState(true);
   const [busy, setBusy] = useState(false);
   const [taken, setTaken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +72,6 @@ export function CreateEntityDialog({ kind }: Props) {
     setSlug("");
     setName("");
     setDescription("");
-    setFictional(true);
     setTaken(null);
     setError(null);
   }
@@ -90,7 +86,6 @@ export function CreateEntityDialog({ kind }: Props) {
         const record = await createCharacter({
           slug: clean,
           display_name: name.trim() || clean,
-          fictional,
         });
         navigate(characterPath(record.id));
       } else {
@@ -158,30 +153,7 @@ export function CreateEntityDialog({ kind }: Props) {
           <Field.Description>Optional — the slug is used when this is empty.</Field.Description>
         </Field.Root>
 
-        {isCharacter ? (
-          <Field.Root name="fictional">
-            <div className="flex items-center gap-3">
-              {/* Not a `<label>` around it — `Switch.Root` is a `<button>`,
-                  which is not labelable. Same note as `ProfileForm`. */}
-              <Switch.Root
-                checked={fictional}
-                aria-label="Fictional"
-                onCheckedChange={setFictional}
-              >
-                <Switch.Thumb />
-              </Switch.Root>
-              <div className="min-w-0">
-                <Text variant="body">Fictional</Text>
-                {/* The consent question, asked at the point the record is made
-                    rather than found later in a form. A likeness of a real
-                    person is a decision before it is a field. */}
-                <Text variant="caption" tone="muted">
-                  Turn this off only for a real person&apos;s likeness.
-                </Text>
-              </div>
-            </div>
-          </Field.Root>
-        ) : (
+        {!isCharacter && (
           <Field.Root name="description">
             <Field.Label>Description</Field.Label>
             <Input value={description} onValueChange={setDescription} placeholder="Optional" />

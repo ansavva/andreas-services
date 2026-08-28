@@ -503,7 +503,6 @@ def entities(library: dict, paths: dict[str, str],
             named = {ref["node"] for ref in references}
             entity.update(
                 display_name=row.get("display_name") or row["slug"],
-                fictional=bool(row.get("fictional", True)),
                 schema_version=row.get("schema_version"),
                 hero=path_of(row.get("hero")),
                 default_set=[p for p in (path_of(n)
@@ -912,7 +911,6 @@ def rows(catalog: dict, manifest: dict, bucket: str, lib: str,
         if kind == "character":
             record.update(
                 display_name=entity.get("display_name") or slug,
-                fictional=bool(entity.get("fictional", True)),
                 schema_version=entity.get("schema_version") or 2,
                 hero=node_id(bucket, entity["hero"]) if entity.get("hero") else None,
                 default_set=[node_id(bucket, p) for p in entity.get("default_set") or []],

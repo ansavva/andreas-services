@@ -369,7 +369,6 @@ in either.
   "lib": "lib-<uuid>",
   "slug": "<slug>",                 // library-unique, mutable, [a-z0-9_-]
   "display_name": "<Name>",
-  "fictional": true,                // the consent question; unchanged in meaning
   "rev": 7,                         // optimistic concurrency; see below
   "created": "…", "updated": "…",
   "root": "node-…",                 // the ONE pointer into the tree
@@ -379,8 +378,8 @@ in either.
 }
 ```
 
-`profile` is the whole of today's `profile.yaml` minus `name`, `display_name`
-and `fictional`, which are promoted to real fields, and minus `references:` and
+`profile` is the whole of today's `profile.yaml` minus `name` and
+`display_name`, which are promoted to real fields, and minus `references:` and
 `default_set:`, which become rows. The remaining sections — `identity`, `face`,
 `body`, `wardrobe`, `voice`, `rendering`, `consistency`, `text_identity_block` —
 are stored as nested maps and validated against a schema the API owns.
@@ -580,9 +579,9 @@ moves with it.
 | Route | Body / params → result |
 |---|---|
 | `GET /api/characters` | `?q=` → `[{id, slug, display_name, hero, counts, updated}]` |
-| `POST /api/characters` | `{slug, display_name, fictional, profile?}` → **201** the record. Creates entity + slug claim + root + four pool folders in one transaction. **409** on slug |
+| `POST /api/characters` | `{slug, display_name, profile?}` → **201** the record. Creates entity + slug claim + root + four pool folders in one transaction. **409** on slug |
 | `GET /api/characters/<id>` | the full record, `profile` included. `<id>` may be `slug:<slug>` |
-| `PATCH /api/characters/<id>` | `{slug?, display_name?, fictional?, hero?, rev}` → **409** on a stale `rev`, **409** on a taken slug |
+| `PATCH /api/characters/<id>` | `{slug?, display_name?, hero?, rev}` → **409** on a stale `rev`, **409** on a taken slug |
 | `PATCH /api/characters/<id>/profile` | `{profile, rev}` → whole-bible replace, validated. The `edit` round trip |
 | `PATCH /api/characters/<id>/profile` | `{patch, rev}` → merge one section |
 | `DELETE /api/characters/<id>` | `?files=keep\|delete` — refuses while a project or run still links it, unless `?force=1` |

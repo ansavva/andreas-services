@@ -646,9 +646,9 @@ def do_approve(runref, project):
 
     **No `--yes`, and there will not be one.** A person reads what is printed and
     answers, or nothing is approved: an approval flag is the door an agent walks
-    through while believing some earlier exchange counted as consent. That
+    through while believing some earlier exchange counted as approval. That
     sentence is already in `board.py` and `turnaround.py`; it matters more here,
-    because what this writes is a durable record that somebody consented.
+    because what this writes is a durable record that somebody said yes.
 
     The digest is what turns that record into an approval rather than a
     timestamp. It names the exact words and the exact ordered images, so

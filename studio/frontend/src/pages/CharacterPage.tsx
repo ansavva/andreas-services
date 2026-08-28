@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { Alert, Badge, Button, Spinner, Tabs, Text } from "@ansavva/design-system";
+import { Alert, Button, Spinner, Tabs, Text } from "@ansavva/design-system";
 
 import { ApiError } from "../apis/client";
 import { deleteCharacter, getCharacter, patchCharacter, setCharacterProfile } from "../apis/studio";
@@ -182,11 +182,6 @@ export function CharacterPage() {
         <Text variant="caption" tone="muted">
           {record.slug}
         </Text>
-        {/* The consent question, unchanged in meaning and now a real field
-            rather than a key in a document nobody could query. */}
-        <Badge intent={record.fictional ? "neutral" : "warning"}>
-          {record.fictional ? "fictional" : "real person"}
-        </Badge>
       </PageBar>
 
       {/* `defaultValue` as well as `value`, which the package requires even
@@ -217,7 +212,6 @@ export function CharacterPage() {
             identity={{
               slug: record.slug,
               display_name: record.display_name,
-              fictional: record.fictional,
             }}
             profile={record.profile}
             rev={record.rev}
@@ -234,8 +228,8 @@ export function CharacterPage() {
             defaultSet={record.default_set}
             // The set is written against the revision, and the route answers
             // with `{id, default_set, rev}` — an acknowledgement, not a record.
-            // So it is MERGED. Swapping it in wholesale is what briefly turned
-            // this character into a nameless "real person" on screen.
+            // So it is MERGED. Swapping it in wholesale is what briefly left
+            // this character nameless on screen.
             rev={record.rev}
             onSaved={(ack) =>
               character.setData((current) =>

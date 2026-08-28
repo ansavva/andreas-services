@@ -33,7 +33,7 @@ Studio is one service with two halves that share one library.
 deep.** The library is a DynamoDB table with an S3 bucket behind it — nothing
 lists the bucket to find out what exists; the pipeline half runs against this
 machine's `studio-dev-<short12>-*` stack, not against prod; and it reaches it
-through the API rather than through an AWS login of its own. Only the four
+through the API rather than through an AWS login of its own. Only the six
 `maintenance/` one-shots and `adapters/ddb.py` still open AWS clients of
 their own.
 

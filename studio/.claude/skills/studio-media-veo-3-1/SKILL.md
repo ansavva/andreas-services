@@ -28,11 +28,6 @@ Kling still wins for multi-shot and for a large reference set at any ratio.
 Seedance still wins on reference count. Veo wins when you need to render the
 same thing twice.
 
-## A likeness is a likeness
-
-A character built from photographs of a real person is a real person's likeness.
-Settle consent before anything is published.
-
 ## The model
 
 `google/veo-3.1` — <https://replicate.com/google/veo-3.1>

@@ -323,7 +323,6 @@ export function getCharacter(id: string) {
 export function createCharacter(body: {
   slug: string;
   display_name: string;
-  fictional: boolean;
   profile?: CharacterProfile;
 }) {
   return apiSend<CharacterRecord>("POST", "/api/characters", body);
@@ -341,7 +340,7 @@ export function createCharacter(body: {
  */
 export function patchCharacter(
   id: string,
-  body: { rev: number; slug?: string; display_name?: string; fictional?: boolean; hero?: string },
+  body: { rev: number; slug?: string; display_name?: string; hero?: string },
 ) {
   return apiSend<EntityPatch<CharacterRecord>>(
     "PATCH",
@@ -480,8 +479,7 @@ export function deleteReference(id: string, node: string) {
  * returns `{id, default_set, rev}` and nothing else. Nothing read the result
  * until the grid learned to write the set, and the first caller to trust the
  * type fed three fields into the page's record — so the character lost its
- * name, its slug, its root folder, and rendered as a real person because
- * `fictional` was suddenly undefined. The data was never touched; only the
+ * name, its slug and its root folder. The data was never touched; only the
  * screen was wrong, which is the worst way for a type to be a lie.
  */
 /**
@@ -494,9 +492,9 @@ export function deleteReference(id: string, node: string) {
  * the full type.
  *
  * It bit twice before being named. Feeding a default-set acknowledgement into
- * the page's record left a character with no name, no slug and no `fictional`,
- * so it rendered as a "real person"; feeding a `PATCH /characters` reply in
- * crashed the project page on `record.counts.runs`.
+ * the page's record left a character with no name, no slug and no root folder;
+ * feeding a `PATCH /characters` reply in crashed the project page on
+ * `record.counts.runs`.
  *
  * So a write is typed as what it is — a patch — and every caller MERGES it into
  * what it already holds. Merging is correct whatever a route omits, which is

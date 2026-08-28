@@ -27,11 +27,6 @@ The family:
   gives a pasteable identity anchor when driving from a start frame instead.
 - **`studio-media-seedance`** — the other model family, with its own schema.
 
-## A likeness is a likeness
-
-A character built from photographs of a real person is a real person's likeness.
-Settle consent before anything is published.
-
 ## The model
 
 `kwaivgi/kling-v3-omni-video` — <https://replicate.com/kwaivgi/kling-v3-omni-video>

@@ -144,7 +144,7 @@ def _rows(tree=TREE, lib=LIB):
         {"pk": f"LIB#{lib}", "sk": "CHARSLUG#subject-b",
          "entity": CHAR_ID, "created": stamp.format(90)},
         {"pk": f"CHAR#{CHAR_ID}", "sk": "META", "id": CHAR_ID, "lib": lib,
-         "slug": "subject-b", "display_name": "<Name>", "fictional": True,
+         "slug": "subject-b", "display_name": "<Name>",
          "schema_version": 2, "rev": 1,
          "created": stamp.format(90), "updated": stamp.format(90),
          "root": _node_id("subject-b"), "hero": None,
@@ -623,7 +623,6 @@ def test_a_character_is_promoted_with_its_references(dev_stack):
     assert character["kind"] == "character"
     assert character["root"] == "subject-b"
     assert character["display_name"] == "<Name>"
-    assert character["fictional"] is True
     assert character["references"] == [
         {"node": FACE, "group": "face", "order": 1000,
          "description": "front, neutral", "tags": ["face"],
@@ -752,7 +751,7 @@ GOOD_CATALOG = {
     "library_name": "Studio",
     "entities": [
         {"kind": "character", "slug": "subject-a", "root": "subject-a",
-         "display_name": "<Name>", "fictional": True,
+         "display_name": "<Name>",
          "default_set": ["subject-a/reference/a.PNG"],
          "references": [{"node": "subject-a/reference/a.PNG", "group": "face",
                          "description": "front, neutral", "tags": ["face"]}]},
