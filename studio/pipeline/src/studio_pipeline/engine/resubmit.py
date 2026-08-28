@@ -38,15 +38,31 @@ def payload_of(record: dict) -> dict:
     return payload
 
 
-def bindings_of(record: dict) -> dict:
-    """The run's sends, back in the `{field: [node, …]}` shape the engine binds.
+def bindings_of(record: dict, entry: dict | None = None) -> dict:
+    """The run's sends, back in the shape `gather` produces and `submit` binds.
 
     Order within a field is the order of the send rows, which is the order the
     model is handed — and which a prompt citing "the first image" depends on.
+
+    **A start or end frame is a SCALAR, not a one-item list**, and that asymmetry
+    is the provider's rather than ours: `reference_images` is an array while
+    `start_image` is a string, so `submit` presigns a list into a list and a
+    scalar into a scalar. Rebuilding every field as a list sent
+    `{"start_image": ["https://…"]}` and Replicate answered
+    `422 Invalid type. Expected: string, given: array` — after the run had been
+    patched to `pending`, so a draft that `studio run` would have submitted
+    happily wedged instead. Which fields are scalar is registry data
+    (`images.start` / `images.end`), the same source `sends_for` reads to give
+    each send its role, so this asks the entry rather than guessing from a name.
     """
-    bindings: dict[str, list[str]] = {}
+    bindings: dict[str, list[str] | str] = {}
     for send in record.get("sends") or []:
         bindings.setdefault(send["field"], []).append(send["node"])
+    images = (entry or {}).get("images") or {}
+    for name in ("start", "end"):
+        field = images.get(name)
+        if field and field in bindings:
+            bindings[field] = bindings[field][0]
     return bindings
 
 
@@ -73,7 +89,7 @@ def submit_draft(record: dict, token: str | None = None) -> dict:
     """
     entry = entry_for(record)
     payload = payload_of(record)
-    bindings = bindings_of(record)
+    bindings = bindings_of(record, entry)
     project = entities.get_project(record["project"])
 
     # `submit` reads a handful of attributes off `args`, and a draft has already
