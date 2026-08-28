@@ -224,7 +224,11 @@ export function ApproveBar({
       <Text variant="caption" tone="muted">
         {run.approval.by === "backfill"
           ? "Approved before approvals were recorded — stamped by the backfill at the moment this run was created."
-          : `Approved by ${run.approval.by} on ${formatDate(run.approval.at)}.`}
+          : `Approved by ${run.approval.by} on ${formatDate(run.approval.at)}.${
+              run.approval.via === "relayed"
+                ? " Relayed — the yes was given elsewhere and passed on by an agent, not entered here."
+                : ""
+            }`}
       </Text>
     );
   }
@@ -294,6 +298,9 @@ function sentence(run: RunRecord): string {
     return "This payload changed after it was approved. Nothing can be submitted until it is read and approved again.";
   }
   if (run.status === "approved") {
+    if (run.approval?.via === "relayed") {
+      return `Approved by ${run.approval.by}, relayed — this exact payload is cleared to submit, on a yes given elsewhere and passed on rather than entered here.`;
+    }
     return `Approved${run.approval ? ` by ${run.approval.by}` : ""} — this exact payload is cleared to submit.`;
   }
   return "Nothing has been approved. This run cannot be submitted until somebody reads the payload above and says yes to it.";

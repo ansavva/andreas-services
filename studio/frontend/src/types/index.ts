@@ -724,6 +724,16 @@ export interface RunApproval {
   by: string;
   at: string;
   digest: string;
+  /**
+   * How the yes arrived. `interactive` is a person at the control — the app's
+   * approve button, or a terminal confirm. `relayed` is somebody saying yes
+   * where studio cannot see it, passed on by an agent with `--relayed`.
+   *
+   * It is a WEAKER claim and the app says so rather than drawing both the same.
+   * Absent on rows recorded before the field existed, which is why it is
+   * optional and why a missing value is not read as `interactive`.
+   */
+  via?: "interactive" | "relayed";
 }
 
 /** A page of runs. `cursor` is `null` when there is nothing after this page. */

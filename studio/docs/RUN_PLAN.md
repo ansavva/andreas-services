@@ -296,10 +296,24 @@ studio runs discard run-<uuid>              # a draft that will not be submitted
   nothing, so the thing hard rule #2 asks a person to read had no address. A
   draft costs a row and no bytes, is hidden from every listing, and is what
   `runs approve` acts on.
-- **No `--yes`, and there will not be one.** `runs approve` re-renders the full
-  payload and asks. An approval flag is the door an agent walks through while
-  believing some earlier exchange counted as approval — and it would now produce a
-  *signed-looking* artifact, which is worse.
+- **`--relayed`, and this bullet used to say there would never be one.** It said
+  an approval flag is the door an agent walks through while believing some
+  earlier exchange counted as approval, and that it would produce a
+  *signed-looking* artifact. The second half was right, and was an argument
+  against the *absence*: `yes | studio runs approve …` clears a `click.confirm`
+  in one pipe, so the missing flag prevented nothing and made every relayed
+  approval **identical to a click** — same `by`, same `at`, no trace of how the
+  yes travelled. The rule wrote the artifact it was trying to prevent.
+
+  So `via` is recorded: `interactive` for a yes given at the control — the app's
+  button or a terminal confirm — and `relayed` for one an agent passed on with
+  `--relayed`. `relayed` is the weaker claim, the app states it in words on the
+  run page, and `runs approve --relayed` still prints the entire payload,
+  because the gate was never the keystroke.
+
+  What no flag can enforce is that a person really said yes. That was equally
+  true of the confirm — a `y` proves a keypress, not a reading — which is why
+  the option is named after the claim it makes rather than the prompt it skips.
 - **`runs discard` deletes the folder by default**, the opposite of `runs delete`.
   A submitted run's folder holds media somebody paid for; a draft's holds two
   payload documents and an empty `output/`.

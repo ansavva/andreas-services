@@ -132,9 +132,18 @@ is the "re-approve after any edit" sentence below, made mechanical. See
 **Approval is of a payload, not of a plan.** A yes to "shall I render this?", an
 answer to a multiple-choice question, or a payload shown earlier in the
 conversation is not approval of the request about to be sent. Show it again and
-wait. There is deliberately no `--yes`-style flag on any generating command: an
-approval flag is precisely the door an agent walks through while believing some
-earlier exchange counted as approval. If one reappears, it is a bug.
+wait. **There is deliberately no `--yes`-style flag on any generating command** —
+`run`, `character turnaround` and `scenes board` all ask, and an approval flag
+there is precisely the door an agent walks through while believing some earlier
+exchange counted as approval. If one appears on a command that spends, it is a
+bug.
+
+`studio runs approve --relayed` is not that, and the distinction is the point:
+it writes a *record*, it bills nothing, it still prints the whole payload, and
+it marks the row `via: relayed` so a second-hand yes can be told from a typed
+one. It exists because its absence was not a barrier — a pipe cleared the
+confirm — and produced a row that overstated what had happened. See
+[RUN_PLAN.md](RUN_PLAN.md).
 
 ### 2b. NEVER put an image into a character without approval
 
