@@ -878,3 +878,71 @@ def test_rendering_never_assembles_on_its_own(
     assert SC.scene_output_node(SC.resolve_scene(ref)) is None
     # And the report says so in as many words.
     assert '"assembled": null' in capsys.readouterr().out
+
+
+# ── the prose-prompt note ────────────────────────────────────────────────────
+#
+# `motion.prompt` is a string whether it holds a compiled document or a
+# paragraph, so nothing about the plan's SHAPE distinguishes them. The app tells
+# them apart by parsing, which means a hand-written scene renders and then looks
+# wrong on the page. `scenes check` says so on the cheap pass instead.
+
+
+def _prose_shot(prompt: str, model: str = "kling") -> dict:
+    return {"id": "shot-01", "motion": {"prompt": prompt, "model": model}}
+
+
+def test_a_prose_motion_prompt_is_noted():
+    from studio_pipeline.engine.board import _unstructured_prompt_note
+
+    note = _unstructured_prompt_note(_prose_shot(
+        "The two men from the source image, unchanged. He takes his shirt off.\n\n"
+        "Avoid: changing face, cuts, camera movement."))
+
+    assert note is not None
+    assert "prose motion prompt" in note
+    assert "studio prompt" in note
+    assert "--engine kling-replicate" in note
+
+
+def test_a_compiled_document_is_not_noted():
+    import json
+
+    from studio_pipeline.engine.board import _unstructured_prompt_note
+
+    compiled = json.dumps({
+        "subject": "The two men from the source image, unchanged.",
+        "action": "He takes his shirt off.",
+        "camera": {"shot": "medium", "movement": "static/hold"},
+        "style": "Photorealistic live-action.",
+        "avoid": "changing face, cuts",
+    })
+
+    assert _unstructured_prompt_note(_prose_shot(compiled)) is None
+
+
+def test_the_note_names_the_engine_the_shot_actually_targets():
+    """The fix is only useful if the command it prints is the one to run."""
+    from studio_pipeline.engine.board import _unstructured_prompt_note
+
+    assert "--engine seedance" in _unstructured_prompt_note(
+        _prose_shot("prose", model="seedance"))
+
+
+def test_a_json_scalar_is_still_prose():
+    """`json.loads` accepts a bare string or number; neither is a document.
+
+    A prompt that happens to be a single number would otherwise parse and be
+    waved through as structured, which is the failure this note exists to catch.
+    """
+    from studio_pipeline.engine.board import _unstructured_prompt_note
+
+    assert _unstructured_prompt_note(_prose_shot('"just a quoted string"')) is not None
+    assert _unstructured_prompt_note(_prose_shot("12")) is not None
+
+
+def test_an_empty_prompt_is_left_to_the_error_that_already_covers_it():
+    """`prepare_shot` raises on an empty motion prompt; a note would be noise."""
+    from studio_pipeline.engine.board import _unstructured_prompt_note
+
+    assert _unstructured_prompt_note(_prose_shot("   ")) is None
