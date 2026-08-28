@@ -287,6 +287,7 @@ changed is that the yes leaves a row naming the payload it was for.
 ```
 studio run … --dry-run                      # → a DRAFT, and prints its id
 studio runs list <project> --status draft   # what is waiting
+studio runs edit run-<uuid>                 # $EDITOR over the payload; withdraws the yes
 studio runs approve run-<uuid>              # re-renders the payload, asks, approves
 studio runs submit run-<uuid>               # refuses an unapproved or stale run
 studio runs discard run-<uuid>              # a draft that will not be submitted
@@ -314,6 +315,20 @@ studio runs discard run-<uuid>              # a draft that will not be submitted
   What no flag can enforce is that a person really said yes. That was equally
   true of the confirm — a `y` proves a keypress, not a reading — which is why
   the option is named after the claim it makes rather than the prompt it skips.
+- **`runs edit` is what a typo used to cost a re-draft.** The routes below have
+  existed since a run gained a plan and nothing called them: a wrong word in a
+  prompt meant discarding the draft and building it again, images and all. It
+  opens `{prompt, params, note, sends}` in `$EDITOR` and patches only the half
+  that moved — so a reword leaves the send rows alone and a reorder leaves the
+  plan alone. `--dump` and `--file -` are the same thing without a terminal
+  editor, which is how an agent edits one.
+  - **A send is `field`, `role` and `node`, and the names are printed above the
+    editor rather than carried in the document.** The order is the payload — a
+    prompt citing "the first image" cites this list — and a caption inside a
+    document that cannot be written to would read as though it could.
+  - It refuses a submitted run for the same reason `PATCH /plan` does. A plan
+    edited afterwards would sit beside `request.json` describing something that
+    was never sent.
 - **`runs discard` deletes the folder by default**, the opposite of `runs delete`.
   A submitted run's folder holds media somebody paid for; a draft's holds two
   payload documents and an empty `output/`.
@@ -341,6 +356,35 @@ them differently is what would need justifying.
   twice, the second time with less information.
 - `RunsTable` offers `draft` in its filter. A hidden draft is the one thing a
   person has to be able to find — an invisible queue is one nobody works through.
+
+**A draft can be edited in the app too — `RunPlanEditor`, behind an `Edit the
+plan` button that appears only on an unsubmitted run.** It was the last thing the
+plan made possible and the last thing built: the routes shipped with the plan and
+the app could read a payload it could not change, so every correction went back
+through a terminal.
+
+- **A mode, not an always-editable form.** This page is read far more often than
+  it is written, and the plan is the thing an approval names — a prompt sitting
+  in a text box invites a keystroke into the document somebody is about to say
+  yes to. The approve bar is hidden while the editor is open for the same reason:
+  an approve button beside unsaved words is a yes to whichever of the two you
+  were not looking at.
+- **Two writes, and only the half that moved.** Each `PATCH` replaces its half
+  whole, and each clears the approval — so sending both every time would withdraw
+  a yes over an edit that touched one of them.
+- **The images edit as a list, not as the filmstrip that draws them.** What is
+  being edited is a sequence: a row per image, with the position, up and down,
+  remove, and the model input it binds to. `MediaPicker` — the file-shaped twin
+  of `DestinationPicker` — adds one by browsing the library, numbering each tile
+  as it is picked because the order is what is being built.
+- **A structured prompt stays JSON and a written one stays prose**, decided once
+  from the run as it arrived rather than from what is in the box. `origin`
+  survives a save: a reconstructed plan that quietly became an authored one would
+  claim somebody wrote words that were read off a request document.
+- **The field a new image binds is offered from what the run already binds**, as
+  a suggestion rather than a menu. There is no registry in this app and there
+  must not become one — `models.json` is the pipeline's — and a wrong field is
+  refused at submit by the live schema check.
 
 ---
 

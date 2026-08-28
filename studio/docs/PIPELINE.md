@@ -123,8 +123,9 @@ polling, downloads, uploads, recording the run — do not need approval.
 
 **`--dry-run` leaves a DRAFT now, and the approval is a row.** The run is created
 when it is planned rather than when it is submitted, so the payload printed above
-has an address: it can be opened in the app, edited, and approved later with
-`studio runs approve`. The approval records a hash of the plan and the ordered
+has an address: it can be opened in the app, edited — `studio runs edit`, or the
+run page's own editor — and approved later with `studio runs approve`. Every edit
+withdraws the approval and returns the run to `draft`. The approval records a hash of the plan and the ordered
 images, and **the API refuses the submission if either has moved since** — which
 is the "re-approve after any edit" sentence below, made mechanical. See
 [RUN_PLAN.md](RUN_PLAN.md).

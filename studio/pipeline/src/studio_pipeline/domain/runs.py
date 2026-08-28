@@ -66,6 +66,7 @@ CLI
     studio runs find --character <name>
     studio runs show <project>/latest [--payload]
     studio runs outputs <project>/latest --presign
+    studio runs edit <project>/latest [--dump|--file -]
     studio runs delete <project>/latest [--files delete]
 """
 from __future__ import annotations
@@ -89,6 +90,11 @@ VID_EXTS = {".mp4", ".mov", ".webm", ".m4v"}
 #: What an id looks like. Not parsed for meaning — the prefix is for a human
 #: reading a log, and nothing recovers anything from it.
 ID_RE = re.compile(r"^(run|scene|movie|char|proj|node)-[0-9a-f-]{36}$")
+#: What a send may be FOR. The API is the enforcer and refuses anything else;
+#: this is here so `runs edit` can name the four in an error message rather than
+#: spending a round trip to be told. `submit.py` assigns them from the registry —
+#: `images.start`, `.end`, `.refs`, and `input` for a field the entry does not name.
+SEND_ROLES = ("start", "end", "reference", "input")
 
 
 class RunError(Exception):
@@ -635,6 +641,174 @@ def do_delete(runref, files, project):
     record = resolve_run(runref, project)
     entities.delete_run(record["id"], files=files)
     print(f"deleted run {record['id']} (files: {files})")
+
+
+#: The editable half of a draft, and the whole of it. `source` is absent because
+#: it is DERIVED — the API recomputes it from where each node sits and excludes it
+#: from the digest, so offering it for editing would offer a field that neither
+#: changes the payload nor survives the write.
+EDITABLE = ("prompt", "params", "note", "sends")
+
+
+def editable(record: dict) -> dict:
+    """A draft as the document `runs edit` hands to an editor.
+
+    Flat rather than nested under `plan`, because the two halves are patched
+    through two different routes and a person editing one should not have to know
+    that. What comes back is split again by `_apply_edit`.
+
+    **A send is `field`, `role` and `node` — the three fields the digest hashes.**
+    The names of the pictures are printed above the editor instead of being
+    carried in here: a name is a caption, editing one would mean nothing, and a
+    document whose keys are not all writable is a document that lies.
+    """
+    plan = record.get("plan") or {}
+    return {
+        "prompt": plan.get("prompt"),
+        "params": plan.get("params") or {},
+        "note": plan.get("note"),
+        "sends": [{"field": send.get("field"), "role": send.get("role"),
+                   "node": send.get("node")}
+                  for send in record.get("sends") or []],
+    }
+
+
+def _validate_edit(doc) -> dict:
+    """The shape checks worth making here — the rest are the API's.
+
+    Deliberately shallow. `params` is a map and no further, because which knobs a
+    model has is registry data and the field names a send may use are checked
+    against the model's live schema by `submit`'s preflight — checking them twice
+    means two answers that can disagree, and the one here would be the stale one.
+    """
+    if not isinstance(doc, dict):
+        raise RunError("the document must be a JSON object")
+    unknown = [key for key in doc if key not in EDITABLE]
+    if unknown:
+        raise RunError(f"unknown field(s): {', '.join(sorted(unknown))} "
+                       f"(editable: {', '.join(EDITABLE)})")
+    params = doc.get("params", {})
+    if not isinstance(params, dict):
+        raise RunError("params must be an object")
+    sends = doc.get("sends", [])
+    if not isinstance(sends, list):
+        raise RunError("sends must be a list")
+    for index, send in enumerate(sends):
+        if not isinstance(send, dict):
+            raise RunError(f"sends[{index}] must be an object")
+        if not isinstance(send.get("node"), str) or not send["node"]:
+            raise RunError(f"sends[{index}].node must be a node id")
+        if not isinstance(send.get("field"), str) or not send["field"]:
+            raise RunError(f"sends[{index}].field must name a model input")
+        role = send.get("role")
+        if role is not None and role not in SEND_ROLES:
+            raise RunError(f"sends[{index}].role must be one of "
+                           f"{', '.join(sorted(SEND_ROLES))}, or null")
+    return doc
+
+
+@main.command("edit")
+@click.argument("runref", required=True)
+@click.option("--file", "source", type=click.File("r"),
+              help="Read the edited document from here ('-' for stdin) "
+                   "instead of opening an editor.")
+@click.option("--dump", is_flag=True,
+              help="Print the editable document and change nothing.")
+@click.option("--project", help="Default project for a bare runref.")
+@reports(RunError, api.ApiError)
+def do_edit(runref, source, dump, project):
+    """Rewrite a draft's prompt, parameters and images. **Withdraws any approval.**
+
+    A draft was the one thing in studio that could be read and not changed. The
+    routes to change it have existed since the run gained a plan and nothing
+    called them, so a prompt with a typo in it meant discarding the draft and
+    drafting it again — which is why this exists.
+
+    **It withdraws the approval every time, and that is the API's doing rather
+    than this command's.** Hard rule #2 says re-approve after *any* edit; the
+    route returns the run to `draft` and clears the record of who said yes, so a
+    yes cannot outlive the payload it was given for. Stated here because finding
+    it out at submit time is finding it out too late.
+
+    The document is the payload and nothing else — `prompt`, `params`, `note`
+    and the ordered `sends`. The pictures' names are printed above the editor
+    rather than carried inside it: **the order is the meaning** (a prompt citing
+    "the first image" is citing this list), and a caption in a document that
+    cannot be written to would read as though it could.
+
+    Two routes, so only what moved is written: a prompt edit leaves the send rows
+    untouched, and a reorder leaves the plan untouched. A key left out of the
+    document is left alone rather than cleared — which is what makes
+    `{"prompt": "…"}` a legal thing to pipe in.
+
+        studio runs edit run-<uuid>              # $EDITOR, then patch what changed
+        studio runs edit run-<uuid> --dump       # the document, to stdout
+        studio runs edit run-<uuid> --file -     # the document back, from stdin
+    """
+    record = resolve_run(runref, project)
+    if record.get("status") not in ("draft", "approved"):
+        raise RunError(
+            f"run {record['id']} is {record.get('status')} and has been "
+            f"submitted; its plan is what was sent and cannot be rewritten")
+
+    before = editable(record)
+    if dump:
+        print(json.dumps(before, indent=2, ensure_ascii=False))
+        return
+
+    text = json.dumps(before, indent=2, ensure_ascii=False)
+    if source is not None:
+        edited = source.read()
+    else:
+        # Printed before the editor opens, so the pictures the numbers refer to
+        # have names while the list is being reordered.
+        print(_render_plan(record), file=sys.stderr)
+        edited = click.edit(text, extension=".json")
+        if edited is None:
+            print("nothing saved; unchanged.", file=sys.stderr)
+            return
+
+    try:
+        after = _validate_edit(json.loads(edited))
+    except json.JSONDecodeError as exc:
+        # The editor's buffer is gone by now, so the message has to be enough to
+        # retype from — and `--file` is the way back in without one.
+        raise RunError(f"that is not valid JSON ({exc}); nothing was changed. "
+                       f"Retry with: studio runs edit {record['id']}") from exc
+
+    _apply_edit(record, before, after)
+
+
+def _apply_edit(record: dict, before: dict, after: dict) -> None:
+    """Write the halves that moved, and say what that cost.
+
+    Plan first, then sends, because both clear the approval and the second write
+    is the one whose response is current.
+    """
+    plan_changed = any(before[key] != after.get(key, before[key])
+                       for key in ("prompt", "params", "note"))
+    sends_changed = before["sends"] != after.get("sends", before["sends"])
+
+    if not plan_changed and not sends_changed:
+        print("no changes.")
+        return
+
+    if plan_changed:
+        plan = {**(record.get("plan") or {}),
+                "prompt": after.get("prompt", before["prompt"]),
+                "params": after.get("params", before["params"]),
+                "note": after.get("note", before["note"])}
+        entities.patch_run_plan(record["id"], plan)
+    if sends_changed:
+        entities.patch_run_sends(record["id"], after.get("sends", before["sends"]))
+
+    what = " and ".join(w for w in ("the plan" if plan_changed else "",
+                                    "the images" if sends_changed else "") if w)
+    print(f"edited {what} of {record['id']}")
+    if record.get("approval"):
+        print("the approval was withdrawn — this payload is not the one that "
+              "was read.", file=sys.stderr)
+    print(f"read it and approve it again with: studio runs approve {record['id']}")
 
 
 @main.command("approve")

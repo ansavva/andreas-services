@@ -943,6 +943,63 @@ def test_a_send_records_why_the_image_was_sent(empty_api):
     assert send["name"] == "front.webp", "a send expands into something drawable"
 
 
+def test_a_write_answers_the_same_shape_a_read_does(empty_api):
+    """**One shape for a run, whichever route returned it.**
+
+    The four write routes each answered `{**record, "sends": <raw rows>}` — the
+    stored row rather than the document `GET` builds — and the SPA swaps a
+    write's response straight into the page rather than re-reading, deliberately:
+    a re-GET would re-sign every URL to show one badge change. So saving an edit
+    replaced four drawable images with four placeholders, and approving a
+    finished run would have done the same to its outputs. Found by saving an edit
+    on a dev stack and looking at it.
+    """
+    project = _project(empty_api)
+    character = _character(empty_api)
+    reference = _child(character["root"], "reference")
+    picture = _uploaded(empty_api, reference["node_id"], "front.webp")
+
+    run = _create(
+        empty_api, project,
+        plan={"prompt": "a porch at dawn", "params": {}},
+        sends=[{"field": "image_input", "role": "reference", "node": picture["node_id"]}],
+    )
+
+    read = empty_api.get(f"/api/runs/{run['id']}").get_json()
+    written = empty_api.patch(
+        f"/api/runs/{run['id']}/plan",
+        json={"plan": {"prompt": "a porch at dusk", "params": {}}},
+    ).get_json()
+
+    assert written["sends"][0]["name"] == read["sends"][0]["name"]
+    assert written["sends"][0]["url"], "a send comes back drawable"
+    assert written["sends"][0]["source"] == read["sends"][0]["source"]
+    assert set(written) == set(read), "the same keys, so a page can swap one in"
+
+
+def test_approving_answers_the_drawable_shape_too(empty_api):
+    """The same rule on the route the page has been calling since approvals
+    existed — its sends were raw there as well, and a draft has no outputs, which
+    is why nobody had seen it."""
+    project = _project(empty_api)
+    character = _character(empty_api)
+    picture = _uploaded(
+        empty_api, _child(character["root"], "reference")["node_id"], "front.webp")
+
+    run = _create(
+        empty_api, project,
+        plan={"prompt": "a porch", "params": {}},
+        sends=[{"field": "image_input", "role": "reference", "node": picture["node_id"]}],
+    )
+    digest = empty_api.get(f"/api/runs/{run['id']}").get_json()["plan_digest"]
+
+    approved = empty_api.post(
+        f"/api/runs/{run['id']}/approve", json={"digest": digest}).get_json()
+
+    assert approved["sends"][0]["url"]
+    assert approved["approval"]["digest"] == digest
+
+
 def test_a_send_naming_a_url_is_refused(empty_api):
     """Hard rule #3, on the new path. S3 is the only origin."""
     project = _project(empty_api)
