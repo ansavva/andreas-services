@@ -323,3 +323,66 @@ def test_upload_creates_the_destination_folder(fake_store, tmp_path):
     assert result.exit_code == 0, result.output
     assert "characters/<name>/seed/current/shot.webp" in result.output
     assert fake_store["ensured"] == ["characters/<name>/seed/current"]
+
+
+def _png_node(library, folder: str, name: str) -> str:
+    """A real PNG at `<character root>/<folder>/<name>`, returned as a node id."""
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (4, 4), "white").save(buffer, "PNG")
+    parent = library.fake._child(library.character_root, folder)
+    if parent is None:
+        parent = library.fake.make_folder(library.character_root, folder)
+    return library.fake.put_file(parent["id"], name, buffer.getvalue())["id"]
+
+
+def test_convert_gives_each_source_its_own_node_in_the_pool(library):
+    """Two conversions in a row must not be one node.
+
+    **The regression this pins is silent, which is why it is worth a test of its
+    own.** `add_inputs` renumbered every file to `<project>_in_<n>` once, so
+    `convert` staged its bytes under a constant `converted<ext>` and let the
+    numbering separate them. `add_inputs` keeps the basename it is handed now
+    and a same-named key overwrites, so every conversion wrote `converted.jpg`
+    and each one replaced the one before. Nothing failed: the command printed a
+    node id every time and they were all the SAME id, so a caller that converted
+    seven images and bound all seven sent one image seven times.
+
+    Both sources here are called `image.png`, in different folders, because that
+    is the case the source stem alone does not separate — a character's face and
+    body angle images really are both called that.
+    """
+    from studio_pipeline.domain import projects as PROJECTS
+
+    first = _png_node(library, "corpus", "image.png")
+    second = _png_node(library, "seed", "image.png")
+
+    nodes = []
+    for source in (first, second):
+        result = _run("convert", "--key", source, "--to", "jpg",
+                      "--add-input", "porch-teaser")
+        assert result.exit_code == 0, result.output
+        nodes.append(result.output.splitlines()[0])
+
+    assert nodes[0] != nodes[1], "both conversions landed on one node"
+    pool = {e["id"] for e in PROJECTS.input_pool(PROJECTS.resolve("porch-teaser"))}
+    assert set(nodes) <= pool
+
+
+def test_convert_of_the_same_source_twice_overwrites_itself(source_png, library):
+    """Idempotence, which the uniqueness fix must not cost.
+
+    The pool name carries a digest of the SOURCE key rather than a counter, so
+    running the same conversion again lands on the same name instead of growing
+    the pool a copy at a time. `--for` is documented as safe to run
+    unconditionally in a chain, and that is only true if repeating it is free.
+    """
+    from studio_pipeline.domain import projects as PROJECTS
+
+    runs = [_run("convert", "--key", source_png, "--to", "jpg",
+                 "--add-input", "porch-teaser") for _ in range(2)]
+    assert [r.exit_code for r in runs] == [0, 0], runs[-1].output
+    assert runs[0].output.splitlines()[0] == runs[1].output.splitlines()[0]
+    pool = PROJECTS.input_pool(PROJECTS.resolve("porch-teaser"))
+    assert len([e for e in pool if e["content_type"] == "image/jpeg"]) == 1

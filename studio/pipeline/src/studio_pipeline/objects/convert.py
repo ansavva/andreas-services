@@ -39,6 +39,7 @@ unconditionally.
 """
 from __future__ import annotations
 
+import hashlib
 import io
 import os
 import sys
@@ -60,20 +61,41 @@ CONTENT_TYPE = {".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp"
 
 
 
-def _into_input_pool(project: str, data: bytes, ext: str) -> str:
-    """Write converted bytes into a project's input pool, and return the key.
+def _pool_name(source: str, key: str, ext: str) -> str:
+    """What a converted image is called inside the pool.
 
-    **`projects.add_inputs` owns the numbering**, and this module used to carry
-    a second copy of it. That function takes local paths — the pool is normally
-    fed from disk — so the bytes are staged to a temp file rather than
-    reimplementing `<project>_in_<n>`. It also ensures the pool folder, which a
-    project that has never had an input does not have.
+    **The staged basename is the pool's name, so it has to be unique per
+    source.** It did not used to be: `projects.add_inputs` renumbered every file
+    to `<project>_in_<n>`, so this staged the bytes as a constant
+    `converted<ext>` and let the numbering do the work. `add_inputs` now keeps
+    the basename it is handed, and a same-named key overwrites — so seven
+    conversions in a row all wrote `converted.jpg`, and six of them silently
+    replaced the one before. The pool listed one file and the caller held seven
+    node ids that were all the same node.
 
-    The staged basename is thrown away; only its extension survives, because
-    that is what the pool's own name is built from.
+    The source's own stem is not enough on its own: a node id resolves to a name
+    like `image.png`, and a character's face and body angle images are BOTH
+    called that, so two different sources would still collide. So the stem
+    carries the readability and a short digest of the source key carries the
+    uniqueness. Being a digest of the key rather than a counter, converting the
+    SAME source twice lands on the same name and overwrites itself, which is the
+    idempotence a chained `--for` call wants.
+    """
+    stem = os.path.splitext(os.path.basename(source))[0] or "converted"
+    return f"{stem}-{hashlib.sha256(key.encode()).hexdigest()[:8]}{ext}"
+
+
+def _into_input_pool(project: str, data: bytes, ext: str, name: str) -> str:
+    """Write converted bytes into a project's input pool, and return the node.
+
+    **`projects.add_inputs` owns the pool**, and this module used to carry a
+    second copy of its naming rule. That function takes local paths — the pool is
+    normally fed from disk — so the bytes are staged to a temp file under the
+    name the pool should hold. It also ensures the pool folder, which a project
+    that has never had an input does not have.
     """
     with tempfile.TemporaryDirectory(prefix="convert-") as tmp:
-        staged = os.path.join(tmp, f"converted{ext}")
+        staged = os.path.join(tmp, name)
         with open(staged, "wb") as fh:
             fh.write(data)
         return PROJECTS.add_inputs(PROJECTS.require_project(project),
@@ -177,7 +199,8 @@ def convert(add_input, dest_key, for_, key, project, quality, run, to):
             store.folder(dst.rsplit("/", 1)[0])
         store.write(dst, data, content_type=CONTENT_TYPE[target_ext])
     else:
-        dst = _into_input_pool(add_input, data, target_ext)
+        dst = _into_input_pool(add_input, data, target_ext,
+                               _pool_name(_source_name(key), key, target_ext))
 
     print(dst)
     # `_source_name`, not the raw `key`: with a runref the key is a node id, and
