@@ -1070,3 +1070,24 @@ def test_a_run_from_before_send_rows_still_reports_its_bindings(empty_api, catal
     assert fetched["bindings"]["image_input"][0]["name"] == "a.webp", (
         "the fallback expands into something drawable, like the derived path does"
     )
+
+
+def test_deleting_a_run_takes_its_send_rows_with_it(empty_api, catalog_table):
+    """**A new child of the run partition, so the sweep has to cover it.**
+
+    `_entity_rows` queries the whole partition with no sort-key filter, which is
+    what makes this true without anything being taught about sends — but the
+    property is worth a test rather than an inspection, because the failure is
+    invisible: orphan `SEND#` rows pointing at a run that no longer exists, found
+    later by a scan and by nothing else.
+    """
+    project = _project(empty_api)
+    character = _character(empty_api)
+    picture = _uploaded(empty_api, _child(character["root"], "reference")["node_id"], "a.webp")
+    run = _create(empty_api, project, bindings={"image_input": [picture["node_id"]]})
+    assert _item(catalog_table, f"RUN#{run['id']}", "SEND#0001") is not None
+
+    empty_api.delete(f"/api/runs/{run['id']}")
+
+    assert _item(catalog_table, f"RUN#{run['id']}", "SEND#0001") is None
+    assert _item(catalog_table, f"RUN#{run['id']}", "META") is None
