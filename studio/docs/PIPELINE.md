@@ -146,7 +146,7 @@ is a decision that belongs to the user and is **separate** from having agreed to
 spend money on a render.
 
 So a successful generation does not become identity by itself.
-`studio character shoot` leaves every result in its run and prints the promotion
+`studio character turnaround` leaves every result in its run and prints the promotion
 line; a person looks, and then:
 
 ```bash
@@ -213,13 +213,13 @@ studio/pipeline/
         │   ├── characters/       base.py profile.py refs.py pools.py rename.py cli.py
         │   ├── curate.py  contact_sheet.py
         │   ├── phrasebook.py  prompt.py
-        │   └── templates/profile.yaml  reference_shots.yaml
+        │   └── templates/profile.yaml  reference_angles.yaml
         │
         ├── engine/                MODEL INVOCATION
         │   ├── models.json        the REGISTRY — models are data, not code
         │   ├── resubmit.py        send a draft somebody already approved
         │   ├── runner.py          `studio run` / `studio models`
-        │   ├── shoot.py           `studio character shoot` — the standard set
+        │   ├── turnaround.py           `studio character turnaround` — the standard set
         │   ├── board.py           `studio scenes board` / `render` / `check`
         │   ├── registry.py  schema.py  submit.py  refs.py  add_model.py
         │
@@ -376,9 +376,9 @@ querying the table, not by listing a folder.
     movies/         scenes cut into one piece
     input/          the project working pool
 
-config/             the pose plates, shared by the library and owned by no entity
-    pose/body/*.png     how to stand, for a reference shoot
-    pose/face/*.png     head-angle plates
+config/             the angle images, shared by the library and owned by no entity
+    angle/body/*.png    how to stand, for a turnaround
+    angle/face/*.png     head-angle images
 ```
 
 **`profile.yaml` and `project.json` are gone.** The bible is a validated map on
@@ -456,8 +456,8 @@ membership of a set of named generic sheets — and that set had already been
 emptied. A generic anatomy sheet used to be listed in it, which sent it to
 `reference/`, where it was indexed as identity and tagged `body`; `--pick-tag
 body` could then hand a model a stranger's sculpt as one of the character's own
-reference slots. Generic pose material is **config**: it lives in the repo and
-is copied to `config/pose/`, and never into a character. So by the end only the
+reference angles. Generic guide material is **config**: it lives in the repo and
+is copied to `config/angle/`, and never into a character. So by the end only the
 regex ever fired, and the "or a named sheet" half of the rule matched nothing.
 
 **Five phases, each its own invocation, and the ordering was the safety
@@ -502,8 +502,8 @@ why it went.
 **`config/` is the one tree whose source of truth is the repo.** It lives at
 `studio/config/`, and `dev-setup.sh` syncs it out (`--size-only`, never
 `--delete`). The bucket holds a copy because a model may only be handed a
-presigned URL of an S3 object — a plate that was never synced cannot be used, so
-`shoot` checks for them and says to re-run the script. Editing a plate in the
+presigned URL of an S3 object — an angle image that was never synced cannot be used, so
+`turnaround` checks for them and says to re-run the script. Editing an angle image in the
 bucket rather than the repo is how they diverge.
 
 **`phrasebook/wording.yaml` is seeded from the repo and then owned by the
@@ -808,7 +808,7 @@ failure this directory has had once already.
 | `submit.py` | The one submit lifecycle, image and video alike. |
 | `schema.py` | Live schema fetch; validates fields, enums, ranges, `denied`. |
 | `refs.py` | Character reference selection and project input pool → S3 keys. |
-| `shoot.py` | `studio character shoot` — the STANDARD reference set, one run per slot in `domain/templates/reference_shots.yaml`. Reads the character's bible for the prompt, binds a pose plate from `config/`, then files, describes and indexes each result. Lives here rather than in `domain/` because it invokes models; it drives the same lifecycle as `runner.py` rather than repeating it. |
+| `turnaround.py` | `studio character turnaround` — the STANDARD reference set, one run per angle in `domain/templates/reference_angles.yaml`. Reads the character's bible for the prompt, binds an angle image from `config/`, then files, describes and indexes each result. Lives here rather than in `domain/` because it invokes models; it drives the same lifecycle as `runner.py` rather than repeating it. |
 | `board.py` | `studio scenes board` / `render` / `check` — the two commands that spend money in a scene's life, plus the free one that says whether they would work. Turns the plan's roles into bindings and hands them to the same lifecycle `runner.py` drives. Every cap, exclusion and format rule stays in `submit.py`; a copy here is the one that drifts. |
 | `add_model.py` | Onboarding: fetch schema + README, infer an entry, append it to the registry. It writes no documentation — see `studio-media-add-model`. |
 

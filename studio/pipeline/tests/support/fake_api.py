@@ -145,7 +145,7 @@ class FakeApi:
         #: scene_id -> [shot]. The `SHOT#` rows.
         self.shots: dict[str, list[dict]] = {}
         self.terms: list[dict] = []
-        #: Raw keys with no node, reached by `GET /api/asset` — the pose plates.
+        #: Raw keys with no node, reached by `GET /api/asset` — the angle images.
         self.root = self._node(None, "", "folder")
         self.root["path"] = "/"
 
@@ -1492,7 +1492,7 @@ class FakeApi:
         return node
 
     def put_shared(self, key: str, body: bytes) -> dict:
-        """A pose plate, as the ordinary node it now is.
+        """An angle image, as the ordinary node it now is.
 
         Named `put_shared` still because "shared" is what these are — they
         belong to the library rather than to any character or project — but

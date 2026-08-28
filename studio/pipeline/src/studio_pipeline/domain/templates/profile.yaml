@@ -44,7 +44,7 @@ face:
 body:
   silhouette: <proportion — usually the single most reliable on-model cue>
   chest_and_shoulders: <>
-  back: <taper, lats, blades, spinal furrow — the body plate shot from behind
+  back: <taper, lats, blades, spinal furrow — the body angle image shot from behind
          has nothing else to check itself against>
   arms: <>
   hands: <palm and finger shape, nails, veins, hair; which wrist wears what>
@@ -59,8 +59,8 @@ wardrobe:
   always_dressed: true          # every character; prompts name a garment
   tops:                         # ordered by how often the character wears it
     - item: <garment>
-      colour: <one plain colour, optional>   # what a reference plate wears; the
-                                             # plate ignores `detail` entirely
+      colour: <one plain colour, optional>   # what a reference angle image wears; the
+                                             # angle image ignores `detail` entirely
       detail: <colour, cut, any embroidery or graphic>
   lower_body: <>
   footwear: <>

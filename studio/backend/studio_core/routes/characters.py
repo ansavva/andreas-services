@@ -744,13 +744,13 @@ def reference_nodes(refs: dict, held: dict) -> list[str]:
     """The node ids a plan's `references` block resolves to, for DISPLAY.
 
     A storyboard names its images the way a person writes them — a character and
-    a picked list of plates — and a board has to draw them. Resolution lives here
+    a picked list of references — and a board has to draw them. Resolution lives here
     because this module owns what a character's references are; `scenes.py` may
     not grow a second copy of the pick rules.
 
     **Tolerant, unlike the selection route.** That one refuses a filter matching
     nothing, because a generation must never go out with silently fewer images
-    than were asked for. This one is a picture on a page: a plate that has been
+    than were asked for. This one is a picture on a page: a reference that has been
     renamed since the plan was written should leave a gap on the board, not 500
     the scene it is part of.
     """
@@ -759,7 +759,7 @@ def reference_nodes(refs: dict, held: dict) -> list[str]:
         # **A plan names a character by SLUG, and `entity_at` reads a bare string
         # as an ID.** Without the prefix every lookup raised `NotFoundError`,
         # which the tolerance below then swallowed — so the board asked for its
-        # plates, was told nothing, and drew nothing, silently.
+        # references, was told nothing, and drew nothing, silently.
         addressed = named if str(named).startswith(f"{KIND}-") else f"slug:{named}"
         try:
             record = _character(addressed, held)

@@ -349,7 +349,7 @@ better than prose can, and a long identity paragraph fights it — see
    `create` refuses a bible missing any of them.
 2. `studio character create <name> --from-profile <your-bible.yaml>`.
 3. `studio character add-to <source photos…> <name> seed` — the founding images.
-4. **`studio character shoot <name> --project <project>`** — the standard face and
+4. **`studio character turnaround <name> --project <project>`** — the standard face and
    body set, described and indexed in one pass. See below.
 5. `studio character add-refs <stills…> <name> --to wardrobe` for anything the
    standard set does not cover, then **describe them**: `describe-refs
@@ -391,9 +391,9 @@ A reference library is chosen from **by tag**, so an angle nobody shot is an ang
 nobody can pick. `shoot` renders the fourteen every character should have —
 eight `face` and six `body`. Face is a full turn: front, three-quarter and
 profile to each side, both three-quarter-backs, and back. Body is the same turn
-**without the two front three-quarters**, whose pose plate is refused as
-sensitive content by every model that has tried it. Face slots are cropped at
-mid-chest; body slots are the whole figure, head to feet.
+**without the two front three-quarters**, whose angle image is refused as
+sensitive content by every model that has tried it. Face angles are cropped at
+mid-chest; body angles are the whole figure, head to feet.
 
 **Direction is always the edge of frame the face points toward**, never the
 subject's own left or right. `three_quarter_left` means the nose points at the
@@ -401,16 +401,16 @@ left edge. This is not pedantry: the wording it replaced said "turned to THEIR
 LEFT so the viewer sees the LEFT side of the face", which instructs two opposite
 rotations at once, and both three-quarters duly came back facing the same way.
 
-Each is one recorded run built from three things: a **pose plate** (a generic,
+Each is one recorded run built from three things: a **angle image** (a generic,
 anonymous, untextured figure that says only how to stand), the character's **seed
 photographs** (who it is), and a prompt filled from the character's own bible —
 its usual top, and every cue in `consistency.must`.
 
 ```bash
-studio character shoot <name> --project <project> --dry-run   # fourteen payloads, no spend
-studio character shoot <name> --project <project>             # shows them, then asks
-studio character shoot <name> --project <project> --group face
-studio character shoot <name> --project <project> --slot body_back   # re-shoot one
+studio character turnaround <name> --project <project> --dry-run   # fourteen payloads, no spend
+studio character turnaround <name> --project <project>             # shows them, then asks
+studio character turnaround <name> --project <project> --group face
+studio character turnaround <name> --project <project> --angle body_back   # re-shoot one
 ```
 
 - **Nothing bills without approval.** Every payload is shown in full and the
@@ -422,17 +422,17 @@ studio character shoot <name> --project <project> --slot body_back   # re-shoot 
 - **Identity comes from `seed/`** when it has any, because driving a shoot off
   already-generated references feeds model output back in as identity and
   compounds drift. `--identity refs` / `--pick` / `--pick-tag` override that.
-- **The medium comes from the character**, not from the spec — a slot renders in
+- **The medium comes from the character**, not from the spec — an angle renders in
   whatever `rendering.default_style` says, and is told to match the medium of
   the reference images it is given. A character drawn in ink is not turned into a
   photograph.
-- **`--model` overrides the engine** for every slot; the spec's defaults are
+- **`--model` overrides the engine** for every angle; the spec's defaults are
   chosen so any registered image model accepts them. A dry run preflights the
   override, so a model that would refuse it costs nothing to find out.
 - **`--review-sheet DIR` shows the images each payload sends**, captioned
   `[ImageN]` in the order the model receives them. A key is a name; a name is not
   a look, and the mistakes that matter here are visual.
-- The pose plates live in the repo under `studio/config/` and are copied to the
+- The angle images live in the repo under `studio/config/` and are copied to the
   bucket by `studio/scripts/dev-setup.sh`. If a shoot says one is missing, re-run
   that script.
 
@@ -445,16 +445,16 @@ studio character set-ref-desc face/<file> <name> --description "…" --tags face
 studio character default-set <name> --set …             # under the Kling cap of 7
 ```
 
-`studio character create <name> --from-profile <bible> --shoot --project <p>`
+`studio character create <name> --from-profile <bible> --turnaround --project <p>`
 creates and shoots in one command, through the same two gates.
 
 No new skill directory — ever. The character is now usable by the whole pipeline.
 Names are lowercase `[a-z0-9_-]`. There is no reserved-name list: characters live
 under `characters/`, so a project named `misc` simply is not one.
 
-### When a plate comes back wrong, read the bible before rewriting the prompt
+### When an angle image comes back wrong, read the bible before rewriting the prompt
 
-A shoot fills its prompts from the bible, so a plate that is confidently and
+A turnaround fills its prompts from the bible, so an angle image that is confidently and
 repeatably wrong is usually the record being followed correctly. Rewording the
 prompt against it just argues with the source. In one session the same character
 came back short and stocky, then narrow-chinned, then long-haired at the nape —
@@ -480,11 +480,11 @@ Four failure shapes worth knowing, because none is obvious from reading the text
   cannot be checked from the side.
 - **State the numbers you have.** `identity.height_read` is usually the only
   proportion given as a figure, and a figure on a plain backdrop has no scale of
-  its own. Adjectives lose to a pose plate; a stated height does not.
+  its own. Adjectives lose to an angle image; a stated height does not.
 
 ### Making a matched pair without a second render
 
-Opposite slots — the two three-quarters, the two profiles — are meant to be the
+Opposite angles — the two three-quarters, the two profiles — are meant to be the
 same person turned. Two renders of one prompt will differ in build, scale and
 hair however tight the wording, because they are two rolls of a die.
 
@@ -492,7 +492,7 @@ hair however tight the wording, because they are two rolls of a die.
 left three-quarter, and being literally the same pixels it matches on every axis
 a second render could drift on. Record the provenance in the description and tag
 it `mirrored`, so nobody later reads it as independent evidence of the face. It
-costs nothing, and it is what `config/pose/` already does for its own plates.
+costs nothing, and it is what `config/angle/` already does for its own angle images.
 
 ## A bible describes identity, not a fixed look
 

@@ -6,8 +6,8 @@ the command exists to be safe about:
 
 * a **legacy `characters/…` / `projects/…` key that a row names** is live, and
   is the case a prefix test would destroy — prod holds thousands of them;
-* a **`config/`** object, which no row will ever name because the pose plates a
-  reference shoot binds sit outside the catalog by design;
+* a **`config/`** object, which no row will ever name because the angle images a
+  turnaround binds sit outside the catalog by design;
 * a **`phrasebook/`** object, unreferenced for the same reason.
 
 The fourth is the one that keeps the other two true tomorrow: an object under a
@@ -123,13 +123,13 @@ def test_a_legacy_blob_key_target_is_never_listed(bucket, catalog_table):
 
 
 def test_a_config_object_is_never_listed(shared_bucket, catalog_table):
-    """`config/pose/` plates are the framing guides a reference shoot binds.
+    """`config/angle/` images are the framing guides a turnaround binds.
 
     Nothing records them — `catalog_seed` gives them no node — so the only thing
     keeping them is that they are outside the allowlist.
     """
     _seeded(shared_bucket, catalog_table)
-    plate = "config/pose/body/standing.png"
+    plate = "config/angle/body/standing.png"
     found = _survey(shared_bucket, catalog_table)
 
     assert plate not in cg.referenced_keys(catalog_table)   # no row names it
@@ -209,7 +209,7 @@ def test_a_healthy_bucket_reports_zero(shared_bucket, catalog_table):
 
     assert found["orphans"] == []
     assert cg.orphan_bytes(found) == 0
-    assert len(found["shared"]) == 2            # the two pose plates
+    assert len(found["shared"]) == 2            # the two angle images
     # The fixture's leftover `phrasebook/wording.yaml` is unrecognised now that
     # `phrasebook/` has left `SHARED_PREFIXES`. Uncollected either way — the
     # allowlist decides that — but reported as something to look at.

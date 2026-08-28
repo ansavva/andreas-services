@@ -128,7 +128,7 @@ def _drawable(entries: list[dict], held: dict) -> list[dict]:
     A stored shot holds node ids and nothing else — the boarded panel, the
     handoff frame it opens on, the clip it rendered — plus `references` blocks
     that NAME images rather than pointing at them ("this character, these
-    plates"). That is the right thing to store and the wrong thing to answer
+    references"). That is the right thing to store and the wrong thing to answer
     with: a board cannot draw an id, and it certainly cannot draw a filename.
 
     **One batched read for the whole scene.** The pointers and the resolved

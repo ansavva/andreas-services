@@ -2,7 +2,7 @@
 
 **THIS MODULE IS THE ENTIRE BILLING SURFACE OF STUDIO.** Every paid call in the
 repo is one of the six functions below, and the only importers are six modules
-under `engine/`: `shoot`, `runner`, `submit`, `board`, `schema`, `add_model`.
+under `engine/`: `turnaround`, `runner`, `submit`, `board`, `schema`, `add_model`.
 The backend and the frontend import nothing of the sort — the deployed app has
 no HTTP client in its dependencies at all — so "can this bill?" has exactly one
 answer and it is here.
@@ -25,7 +25,7 @@ nothing is billed.
 
 **It is one switch because it used to be none.** Each test that reached the
 engine monkeypatched this module by hand — `test_board.py` had a fixture
-patching three functions, `test_shoot.py` patched a fourth to refuse — and a new
+patching three functions, `test_turnaround.py` patched a fourth to refuse — and a new
 test file that forgot simply called `api.replicate.com` for real. Stubbing
 spread across the suite is not a policy; a mode the suite sets once is.
 

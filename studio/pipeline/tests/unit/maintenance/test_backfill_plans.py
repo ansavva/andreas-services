@@ -239,7 +239,7 @@ def test_unparseable_json_is_reported_rather_than_guessed_at(bucket, catalog_tab
 def test_a_run_that_bound_nothing_is_counted_rather_than_diagnosed(bucket, catalog_table):
     """The one gap nothing can close.
 
-    Before pose plates had catalog nodes they were stripped before the record was
+    Before angle images had catalog nodes they were stripped before the record was
     written, so those runs under-report their images — and a text-only generation
     looks identical from here. Counted, never invented.
     """

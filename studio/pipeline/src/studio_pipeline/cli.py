@@ -32,7 +32,7 @@ from studio_pipeline.domain import scenes as _scenes
 from studio_pipeline.engine import add_model as _add_model
 from studio_pipeline.engine import board as _board
 from studio_pipeline.engine import runner as _runner
-from studio_pipeline.engine import shoot as _shoot
+from studio_pipeline.engine import turnaround as _turnaround
 from studio_pipeline.maintenance import catalog_gc as _catalog_gc
 from studio_pipeline.maintenance import ref_descriptions as _ref_descriptions
 from studio_pipeline.maintenance import catalog_check as _catalog
@@ -157,11 +157,11 @@ main.add_command(_session.cmd_whoami, "whoami")
 main.add_command(_runner.main.commands["run"], "run")
 main.add_command(_runner.main.commands["models"], "models")
 
-# `shoot` reads as a character command and is defined in `engine/` because it
+# `turnaround` reads as a character command and is defined in `engine/` because it
 # invokes models. Attaching it here rather than in `characters.py` keeps the
 # dependency arrow pointing one way: the character store knows nothing about the
 # engine, and only this wiring module knows about both.
-_character.main.add_command(_shoot.cmd_shoot, "shoot")
+_character.main.add_command(_turnaround.cmd_turnaround, "turnaround")
 
 # Same arrangement for the three scene commands that invoke models: the scene
 # store stays a store, and `board`/`render`/`check` read as scene commands

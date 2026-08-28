@@ -20,8 +20,8 @@ under. Everything else is left alone, referenced or not, and the list has to fai
 in that direction: `config/` and `phrasebook/` are shared material that sits
 outside the catalog deliberately (`catalog_seed.py` records no node for either),
 so no row will ever name one and a denylist would hold only until someone adds a
-fourth kind of shared material. `config/pose/` holds the framing plates a
-reference shoot binds — collecting those is the most expensive mistake available
+fourth kind of shared material. `config/angle/` holds the angle images a
+turnaround binds — collecting those is the most expensive mistake available
 here.
 
 Empty-folder markers are never collected either. They carry no bytes, no row
@@ -58,7 +58,7 @@ from studio_pipeline.maintenance.journal import (
 
 #: Prefixes that belong to nobody and must never be proposed for deletion.
 #:
-#: `config/` comes from `paths.py`, which still names it — the pose plates.
+#: `config/` comes from `paths.py`, which still names it — the angle images.
 #:
 #: **`phrasebook/` was here and is gone**, and dropping it changes a LABEL and
 #: not a safety property. Collection is the `COLLECTABLE_PREFIXES` allowlist

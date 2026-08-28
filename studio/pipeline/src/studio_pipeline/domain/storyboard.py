@@ -14,7 +14,7 @@ renders from.
 
 WHY THE PLAN IS DATA AND NOT A TEMPLATE
 ---------------------------------------
-`reference_shots.yaml` is a spec that ships in the package, because every
+`reference_angles.yaml` is a spec that ships in the package, because every
 character's reference set is the same fourteen angles. A storyboard is the
 opposite: it is prose about one particular scene, and prose about a scene names
 what happens in it. That cannot live in this repository (see `studio/CLAUDE.md`,
@@ -224,7 +224,7 @@ def normalise(plan: dict, slug: str) -> dict:
         # Prepended byte-identical to every panel prompt. Panels also inherit
         # each other so they converge on one look, but that is an image
         # argument and this is a wording one — location, wardrobe, light, grade
-        # stated once and repeated exactly, the trick the reference shot spec
+        # stated once and repeated exactly, the trick the reference angle spec
         # uses with its shared prose fragments. Cheap, and it survives a panel
         # being re-rendered on its own.
         "setting": plan.get("setting") or "",

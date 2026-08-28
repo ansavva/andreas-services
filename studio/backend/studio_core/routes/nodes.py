@@ -294,7 +294,7 @@ def update_node(node_id: str):
     if describing:
         # **A folder may be described too.** Nothing needs it today and nothing
         # refuses it either: a rule that only files carry prose would be one more
-        # thing to state, and "the reference shoot plates" is a reasonable
+        # thing to state, and "the turnaround angle images" is a reasonable
         # sentence to write on a folder.
         return jsonify(
             support.view(

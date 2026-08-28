@@ -78,14 +78,14 @@ OUTPUT_FOLDER = "output"
 # There is deliberately no `CONFIG_FOLDER` constant here, and it is worth saying
 # why rather than leaving the absence to be read as an oversight.
 #
-# The pose plates are shared material that belongs to the library rather than to
+# The angle images are shared material that belongs to the library rather than to
 # any entity, and they are ordinary nodes now — which is what retired
 # `GET /api/asset?key=`. But nothing in this service creates or resolves that
-# folder: the plates come from the repo, so the push is `studio config sync`,
+# folder: the angle images come from the repo, so the push is `studio config sync`,
 # and the folder is made by the same `POST /api/nodes` calls any other client
 # would use. A constant here would be a name the API knows and never applies,
 # which is what the first version of this was — it sat unused while a shoot
-# refused every plate for want of a row.
+# refused every angle image for want of a row.
 
 
 def folder_under(parent_id: str, name: str) -> dict:

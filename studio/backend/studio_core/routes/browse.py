@@ -9,9 +9,9 @@ four.
 **Every route here takes `?node=<id>` and nothing else.** `?prefix=` is gone,
 and so is the raw S3 key `/api/asset` used to accept. The name path survived
 this long because share links were made of names and because the pipeline's
-shared material — the phrasebook, the pose plates — had no node to be addressed
+shared material — the phrasebook, the angle images — had no node to be addressed
 by. Ids in URLs everywhere answered the first; making the phrasebook rows and
-the plates nodes answered the second. One addressing scheme, no exceptions.
+the angle images nodes answered the second. One addressing scheme, no exceptions.
 
 `GET /api/text` is not here any more either: reading a text file is
 `GET /api/nodes/<id>/text`, paired with the `PATCH` beside it, so the two

@@ -109,16 +109,16 @@ def _folder(ddb, node_id: str, parent: str, name: str) -> None:
 
 
 def _tree(ddb):
-    """Root, `config/pose/face/`, and one plate whose blob key is NOT its path.
+    """Root, `config/angle/face/`, and one image whose blob key is NOT its path.
 
-    That mismatch is the whole point. `studio config sync` uploads a plate
+    That mismatch is the whole point. `studio config sync` uploads an image
     through the API, so its bytes land under the id scheme — the name path and
     the blob key have not been the same string since.
     """
     _library(ddb, REAL, "Studio", "node-root")
     _folder(ddb, "node-config", "node-root", "config")
-    _folder(ddb, "node-pose", "node-config", "pose")
-    _folder(ddb, "node-face", "node-pose", "face")
+    _folder(ddb, "node-angle", "node-config", "angle")
+    _folder(ddb, "node-face", "node-angle", "face")
     _file(ddb, "node-plate", "node-face", "three-quarter.png",
           f"libraries/{REAL}/node-plate.png")
 
@@ -134,8 +134,8 @@ def test_a_key_that_is_a_blob_key_resolves_exactly(catalog_table):
 def test_a_legacy_key_resolves_by_name_path_and_is_reported(catalog_table):
     """**The 28 bindings the first real migration lost, one per run.**
 
-    Every historical reference shoot bound a pose plate, recorded as
-    `config/pose/face/<file>.png` — which was the S3 key and the name path at
+    Every historical turnaround bound an angle image, recorded as
+    `config/angle/face/<file>.png` — which was the S3 key and the name path at
     once, because before the catalog they were the same string. The seed
     deliberately recorded no node for `config/`, so the exact lookup answered
     nothing and every one of those bindings was dropped from its envelope.
@@ -144,8 +144,8 @@ def test_a_legacy_key_resolves_by_name_path_and_is_reported(catalog_table):
     cat = cm.read_catalog(catalog_table, REAL)
     hits: list[str] = []
 
-    assert cm.resolve_key(cat, "config/pose/face/three-quarter.png", hits) == "node-plate"
-    assert hits == ["config/pose/face/three-quarter.png"], \
+    assert cm.resolve_key(cat, "config/angle/face/three-quarter.png", hits) == "node-plate"
+    assert hits == ["config/angle/face/three-quarter.png"], \
         "a path hit is an assumption and must be counted for reporting"
 
 
@@ -154,7 +154,7 @@ def test_a_key_that_is_neither_still_resolves_to_nothing(catalog_table):
     _tree(catalog_table)
     cat = cm.read_catalog(catalog_table, REAL)
     hits: list[str] = []
-    assert cm.resolve_key(cat, "config/pose/face/deleted.png", hits) is None
+    assert cm.resolve_key(cat, "config/angle/face/deleted.png", hits) is None
     assert hits == []
 
 
@@ -484,20 +484,20 @@ def test_the_two_key_builders_agree():
 
 
 def test_material_outside_any_entity_is_filed_under_the_library(catalog_table):
-    """The pose plates. Owned by no character and no project, so the library's.
+    """The angle images. Owned by no character and no project, so the library's.
 
-    `config/pose/` is the tree's, not the key's — the plates are reached by
+    `config/angle/` is the tree's, not the key's — the plates are reached by
     walking nodes like everything else. The one thing the key still has to get
     right is which of the three prefixes it lands under.
     """
     _library(catalog_table, REAL, "Studio", "node-root")
     _folder(catalog_table, "node-config", "node-root", "config")
-    _folder(catalog_table, "node-pose", "node-config", "pose")
+    _folder(catalog_table, "node-angle", "node-config", "angle")
     catalog_table.put_item(TableName=ddbc.table(), Item=ddbc.to_item(
         {"pk": "NODE#node-plate", "sk": "META", "node_id": "node-plate",
-         "parent_id": "node-pose", "lib": REAL, "kind": "file",
+         "parent_id": "node-angle", "lib": REAL, "kind": "file",
          "name": "front.png", "blob_key": f"libraries/{REAL}/node-plate.png",
-         "path": "node-root/node-config/node-pose"}))
+         "path": "node-root/node-config/node-angle"}))
     cat = cm.read_catalog(catalog_table, REAL)
     plan = {"lib": REAL, "catalog": cat, "characters": [], "projects": []}
 

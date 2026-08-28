@@ -417,7 +417,7 @@ def bucket():
 def shared_bucket(bucket):
     """The bucket plus material no row will ever name.
 
-    The pose plates, which sit outside the catalog by design, and a
+    The angle images, which sit outside the catalog by design, and a
     `phrasebook/wording.yaml` — which is now HISTORY rather than live data. The
     phrasebook became `TERM#` rows, so nothing writes that key any more, and
     prod's own copy has since been deleted.
@@ -428,8 +428,8 @@ def shared_bucket(bucket):
     lands in `outside` — unrecognised, worth a look — rather than being labelled
     material held outside the catalog on purpose.
     """
-    for key in ("config/pose/body/standing.png",
-                "config/pose/face/three-quarter.png",
+    for key in ("config/angle/body/standing.png",
+                "config/angle/face/three-quarter.png",
                 "phrasebook/wording.yaml"):
         bucket.put_object(Bucket=s3c.bucket(), Key=key, Body=b"png-bytes")
     return bucket

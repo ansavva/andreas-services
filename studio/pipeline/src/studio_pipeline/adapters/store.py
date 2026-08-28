@@ -39,16 +39,16 @@ Everything in the bucket is now addressed the same way: a node id, or a name
 path the API resolves to one. There is no second scheme and no exception.
 
 **There was, and it is worth knowing what closed it.** `phrasebook/wording.yaml`
-and the `config/pose/` plates belonged to no character and no project, had no
+and the `config/angle/` angle images belonged to no character and no project, had no
 catalog node, and were reached by raw key through `GET /api/asset?key=` by a
 pair of `shared_*` functions here. That parameter was the last raw S3 key in the
 service and the sole reason `keys.clean_key` survived on the API side.
 
 Both halves went with the entity model rather than one of them: the phrasebook
-is `TERM#` rows, so there is no document to address, and the plates are ordinary
+is `TERM#` rows, so there is no document to address, and the angle images are ordinary
 nodes in a `config/` folder the library is created with. So `shared_read`,
 `shared_presign` and the `shared:<key>` marker `submit` carried them under are
-all deleted, and a plate is now *recorded* in a run's bindings like every other
+all deleted, and an angle image is now *recorded* in a run's bindings like every other
 image — which the marker could not do, and said so.
 
 ## What is deliberately not here

@@ -128,7 +128,7 @@ wait for a yes, then promote it:
 studio character add-refs <name> --to <group> --from-run <runref>
 ```
 
-`studio character shoot` therefore leaves its results in their runs and files
+`studio character turnaround` therefore leaves its results in their runs and files
 nothing on its own. Both of these rules were broken in one session — a shoot
 submitted off a menu answer, its output then written into a character's face
 group unasked — which is why they are stated separately here.
@@ -277,7 +277,7 @@ promotes nodes that already exist, calls no model and costs nothing.
 The gate is hard rule #1 — `catalog.json` lands in git, so the publisher refuses
 a stack holding any name outside `DEV_SUBJECTS` and requires
 `--dev-subjects-only` before `--apply`. What a fresh stack actually holds is the
-shared material `dev-setup.sh` pushes: the pose plates, and nothing else. It
+shared material `dev-setup.sh` pushes: the angle images, and nothing else. It
 used to seed a starting `phrasebook/wording.yaml` too (#425); the phrasebook is
 `TERM#` rows now, so there is no document to seed.
 

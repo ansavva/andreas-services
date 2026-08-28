@@ -1,36 +1,36 @@
-"""`studio character shoot` — render a character's STANDARD reference set.
+"""`studio character turnaround` — render a character's STANDARD reference set.
 
-One command over the shot spec (`domain/templates/reference_shots.yaml`). Each
-slot in that spec becomes one recorded run: the slot's prompt, filled from the
-character's own bible, plus two kinds of image — a generic POSE PLATE from
-`config/pose/` saying how to stand, and the character's own SEED photos (or a
+One command over the angle spec (`domain/templates/reference_angles.yaml`). Each
+angle in that spec becomes one recorded run: the angle's prompt, filled from the
+character's own bible, plus two kinds of image — a generic ANGLE IMAGE from
+`config/angle/` saying how to stand, and the character's own SEED photos (or a
 named reference selection) saying who it is.
 
 Why it lives in `engine/` and not `domain/`: this is model invocation. It runs
 the same nine-step submit lifecycle `runner.py` drives, and reuses it rather than
-repeating it — `gather` → `preflight` → `render` → `execute`, once per slot. The
+repeating it — `gather` → `preflight` → `render` → `execute`, once per angle. The
 dependency arrow `cli → domain → adapters` stays intact, and importing
 `domain.characters` from here is what `refs.py` already does.
 
-    studio character shoot <name> --project <p> --dry-run     # nine payloads, no spend
-    studio character shoot <name> --project <p> --group face
-    studio character shoot <name> --project <p> --slot body_back --model nano-banana-pro
+    studio character turnaround <name> --project <p> --dry-run   # nine payloads, no spend
+    studio character turnaround <name> --project <p> --group face
+    studio character turnaround <name> --project <p> --angle body_back --model nano-banana-pro
 
 NOTHING SUBMITS WITHOUT APPROVAL. Every payload is rendered as the two-document
 PROMPT / INPUT review first, and the batch then needs one explicit confirmation
 from a person. `--dry-run` stops after the render.
 
-WHAT THE PLATE IS FOR, AND WHY CITATIONS ARE COMPUTED
+WHAT THE ANGLE IMAGE IS FOR, AND WHY CITATIONS ARE COMPUTED
 -----------------------------------------------------
 A prompt says "[ImageN] is a pose guide — take only the stance from it". If N is
-not where the plate actually landed, that instruction is aimed at the character's
+not where the angle image actually landed, that instruction is aimed at the character's
 own face, and nothing errors: the render is just quietly wrong.
 
 The position is therefore never assumed. `gather()` assembles the list — it
 de-dupes, filters by what the model accepts, and orders by category — so the
-resolved list is the only authority on where the plate is. This module reads the
-position out of it and fills the spec's `{pose_slot}` / `{identity_slots}` with
-real numbers. That the plate currently comes out first (this module passes it as
+resolved list is the only authority on where the angle image is. This module reads the
+position out of it and fills the spec's `{angle_slot}` / `{identity_slots}` with
+real numbers. That the angle image currently comes out first (this module passes it as
 the first explicit key) is an outcome, not something a prompt may rely on.
 
 TWO HUMAN GATES, AND WHY THEY ARE SEPARATE
@@ -40,7 +40,7 @@ TWO HUMAN GATES, AND WHY THEY ARE SEPARATE
    version had `--yes`, which is exactly the door an agent walks through while
    believing it had approval from something else.
 2. **Identity.** A generated image does NOT enter `characters/<name>/reference/`
-   on its own. The shoot leaves every result in its run and stops. Promoting one
+   on its own. The turnaround leaves every result in its run and stops. Promoting one
    into a character's identity is a second, deliberate act:
 
        studio character add-refs <name> --to <group> --from-run <runref>
@@ -80,23 +80,23 @@ from studio_pipeline.engine import submit as SUB
 # `errors.die`'s docstring for the nine that used to exist.
 from studio_pipeline.errors import die  # noqa: E402
 
-SPEC_FILE = "reference_shots.yaml"
+SPEC_FILE = "reference_angles.yaml"
 # `TEMPLATES_DIR`, not `dirname(CHARACTER.__file__)`. That expression resolved
 # the spec only while `characters` was a single module one level above
 # `templates/`; the moment it became a package (#305) it pointed a segment too
-# deep and the shoot lost its spec. The directory names itself now — the same
+# deep and the turnaround lost its spec. The directory names itself now — the same
 # correction `STUDIO_DIR` exists for.
 SPEC_PATH = str(TEMPLATES_DIR / SPEC_FILE)
 
-# One plate plus a handful of identity images is what a slot needs. Seed pools
+# One angle image plus a handful of identity images is what an angle needs. Seed pools
 # run to twenty-odd photographs, and sending all of them would breach the
 # smaller engine caps and buy nothing — more angles of the same face do not
 # sharpen it.
 IDENTITY_MAX = 4
 
 
-class ShootError(Exception):
-    """Anything that should stop the shoot before it bills."""
+class TurnaroundError(Exception):
+    """Anything that should stop the turnaround before it bills."""
 
 
 # --------------------------------------------------------------------------
@@ -104,60 +104,60 @@ class ShootError(Exception):
 # --------------------------------------------------------------------------
 
 def load_spec(path: str = SPEC_PATH) -> dict:
-    """Read the shot spec, or fail saying which file is wrong."""
+    """Read the angle spec, or fail saying which file is wrong."""
     try:
         with open(path) as fh:
             spec = yaml.safe_load(fh)
     except FileNotFoundError:
-        raise ShootError(f"the shot spec is missing from the package: {path}")
+        raise TurnaroundError(f"the angle spec is missing from the package: {path}")
     except yaml.YAMLError as exc:
-        raise ShootError(f"{path} is not valid YAML:\n  {exc}")
-    if not isinstance(spec, dict) or not spec.get("slots"):
-        raise ShootError(f"{path} must be a mapping with a non-empty `slots:` list.")
+        raise TurnaroundError(f"{path} is not valid YAML:\n  {exc}")
+    if not isinstance(spec, dict) or not spec.get("angles"):
+        raise TurnaroundError(f"{path} must be a mapping with a non-empty `angles:` list.")
 
-    ids = [s.get("id") for s in spec["slots"]]
+    ids = [s.get("id") for s in spec["angles"]]
     if len(set(ids)) != len(ids):
-        raise ShootError(f"{path} has duplicate slot id(s).")
-    for slot in spec["slots"]:
-        missing = [k for k in ("id", "group", "pose_image", "prompt", "description", "tags")
-                   if not slot.get(k)]
+        raise TurnaroundError(f"{path} has duplicate angle id(s).")
+    for angle in spec["angles"]:
+        missing = [k for k in ("id", "group", "angle_image", "prompt", "description", "tags")
+                   if not angle.get(k)]
         if missing:
-            raise ShootError(f"{path}: slot {slot.get('id')!r} is missing {missing}.")
-        if slot["group"] not in P.POSE_GROUPS:
-            raise ShootError(
-                f"{path}: slot {slot['id']!r} has group {slot['group']!r}; "
-                f"expected one of {list(P.POSE_GROUPS)}."
+            raise TurnaroundError(f"{path}: angle {angle.get('id')!r} is missing {missing}.")
+        if angle["group"] not in P.ANGLE_GROUPS:
+            raise TurnaroundError(
+                f"{path}: angle {angle['id']!r} has group {angle['group']!r}; "
+                f"expected one of {list(P.ANGLE_GROUPS)}."
             )
         # An image nobody cites is an image the model is free to blend, which is
         # the whole reason citations are computed rather than hard-coded.
-        if slot.get("torso_image") and "{torso_slot}" not in slot["prompt"]:
-            raise ShootError(
-                f"{path}: slot {slot['id']!r} binds a torso_image but its prompt "
+        if angle.get("torso_image") and "{torso_slot}" not in angle["prompt"]:
+            raise TurnaroundError(
+                f"{path}: angle {angle['id']!r} binds a torso_image but its prompt "
                 f"never cites {{torso_slot}}, so nothing tells the model what "
                 f"that image is for."
             )
     unknown = [f for f in spec.get("default_set") or [] if f not in ids]
     if unknown:
-        raise ShootError(f"{path}: default_set names slot(s) that do not exist: {unknown}")
+        raise TurnaroundError(f"{path}: default_set names angle(s) that do not exist: {unknown}")
     return spec
 
 
-def select_slots(spec: dict, group: str | None, only: tuple[str, ...]) -> list[dict]:
-    slots = spec["slots"]
+def select_angles(spec: dict, group: str | None, only: tuple[str, ...]) -> list[dict]:
+    angles = spec["angles"]
     if only:
-        by_id = {s["id"]: s for s in slots}
+        by_id = {s["id"]: s for s in angles}
         unknown = [s for s in only if s not in by_id]
         if unknown:
-            raise ShootError(
-                f"no such slot(s): {', '.join(unknown)}\n"
+            raise TurnaroundError(
+                f"no such angle(s): {', '.join(unknown)}\n"
                 f"       the spec defines: {', '.join(by_id)}"
             )
         return [by_id[s] for s in only]
     if group and group != "all":
-        slots = [s for s in slots if s["group"] == group]
-        if not slots:
-            raise ShootError(f"the spec has no slot in group {group!r}.")
-    return slots
+        angles = [s for s in angles if s["group"] == group]
+        if not angles:
+            raise TurnaroundError(f"the spec has no angle in group {group!r}.")
+    return angles
 
 
 # --------------------------------------------------------------------------
@@ -165,7 +165,7 @@ def select_slots(spec: dict, group: str | None, only: tuple[str, ...]) -> list[d
 # --------------------------------------------------------------------------
 
 def _first_top(profile: dict) -> str:
-    """The garment a face plate should wear: the most frequent top, plainly.
+    """The garment a face angle image should wear: the most frequent top, plainly.
 
     The bible's first `tops[]` entry is the character's usual one, and its
     `detail` often names embroidery or a graphic — which a model renders
@@ -174,8 +174,8 @@ def _first_top(profile: dict) -> str:
 
     But the schema puts the COLOUR in that same field ("<colour, cut, any
     embroidery or graphic>"), so dropping it whole threw the colour away too,
-    and a plate came back in a colour nobody chose. `colour:` is the narrow way
-    back in: one word the plate can state, kept apart from the prose it would
+    and an angle image came back in a colour nobody chose. `colour:` is the narrow way
+    back in: one word the angle image can state, kept apart from the prose it would
     otherwise have to be parsed out of. Optional — a bible that names the colour
     inside `item` ("white ribbed tank") already reads correctly without it.
     """
@@ -200,11 +200,11 @@ def _age_text(profile: dict) -> str:
 
 
 def _build_text(profile: dict, group: str = "body") -> str:
-    """The person's PROPORTIONS, for a body plate — from the bible, never here.
+    """The person's PROPORTIONS, for a body angle image — from the bible, never here.
 
-    A body plate exists to record a build, and the first one rendered lost it:
+    A body angle image exists to record a build, and the first one rendered lost it:
     the figure came back lean and narrow-shouldered, with none of the bible's
-    shoulder-to-waist taper or arm mass. The cause is the pose plate. It is an
+    shoulder-to-waist taper or arm mass. The cause is the angle image. It is an
     untextured mannequin with its own proportions, and `{guide}`'s "take nothing
     else from it — not its build, proportions" was the only thing arguing
     otherwise, buried against a whole reference image.
@@ -219,10 +219,10 @@ def _build_text(profile: dict, group: str = "body") -> str:
     It began as `silhouette` + `arms`, which left four of the bible's six body
     fields unread — including `body_hair`, written expressly to defeat the
     smooth fitness-model default a model renders when nobody says otherwise.
-    Unused, on the one plate that strips the wardrobe back to shorts.
+    Unused, on the one angle image that strips the wardrobe back to shorts.
 
-    A face plate crops at mid-chest, so legs and body hair are not in frame and
-    would be noise; it takes what shows above the crop. A body plate is the
+    A face angle image crops at mid-chest, so legs and body hair are not in frame and
+    would be noise; it takes what shows above the crop. A body angle image is the
     whole figure and takes everything. Same split as `must_intro_face` /
     `must_intro_body`, for the same reason.
 
@@ -232,7 +232,7 @@ def _build_text(profile: dict, group: str = "body") -> str:
     heard of. It has: `back`, `hands` and `midsection` were added to one
     character's bible and read by nothing, and in the same edit
     `lower_body_and_hands` was split into `lower_body` + `hands`, which dropped
-    the legs clause out of every body plate without a word. A missing field is
+    the legs clause out of every body angle image without a word. A missing field is
     the one failure mode that leaves no trace in the payload, so:
 
     - the tuples below name the fields whose ORDER matters, and
@@ -260,7 +260,7 @@ def _build_text(profile: dict, group: str = "body") -> str:
     return " ".join(" ".join(p.split()) for p in parts if p)
 
 
-#: Read by the shoot only on a body plate, never on a face plate that crops at
+#: Read by the turnaround only on a body angle image, never on a face angle image that crops at
 #: mid-chest. Anything below the crop belongs here.
 _BELOW_THE_CROP = frozenset({"midsection", "lower_body", "lower_body_and_hands",
                              "body_hair", "feet"})
@@ -287,7 +287,7 @@ def _extra_body_fields(body: dict, already: tuple[str, ...]) -> tuple[str, ...]:
 def _style_text(profile: dict, defaults: dict) -> str:
     """What MEDIUM to render in — the character's, never this code's.
 
-    The spec used to assert "photographic, no stylisation" for every slot, which
+    The spec used to assert "photographic, no stylisation" for every angle, which
     is right only for a character whose material is photographs. For one who
     exists as pen-and-ink panels it would have converted him into a medium he has
     never appeared in, and the reference images passed alongside would have been
@@ -313,32 +313,32 @@ def _slots_phrase(positions: list[int]) -> str:
     return ", ".join(names[:-1]) + " and " + names[-1]
 
 
-def build_prompt(slot: dict, spec: dict, profile: dict,
-                 pose_position: int, identity_positions: list[int],
+def build_prompt(angle: dict, spec: dict, profile: dict,
+                 angle_position: int, identity_positions: list[int],
                  torso_position: int | None = None) -> str:
-    """Fill one slot's prompt template. Raises if the spec names a value we lack."""
+    """Fill one angle's prompt template. Raises if the spec names a value we lack."""
     defaults = spec.get("defaults") or {}
-    intro = defaults.get(f"must_intro_{slot['group']}") or defaults.get("must_intro_face") or ""
+    intro = defaults.get(f"must_intro_{angle['group']}") or defaults.get("must_intro_face") or ""
     values = {
         **{k: v for k, v in defaults.items() if isinstance(v, str)},
         "top": _first_top(profile),
         "style": _style_text(profile, defaults),
         "must": _must_text(profile, intro),
-        "build": _build_text(profile, slot["group"]),
+        "build": _build_text(profile, angle["group"]),
         "age": _age_text(profile),
         "identity_block": (profile.get("text_identity_block") or "").strip(),
-        "pose_slot": f"[Image{pose_position}]",
+        "angle_slot": f"[Image{angle_position}]",
         "identity_slots": _slots_phrase(identity_positions),
     }
-    # Absent rather than empty when the slot binds no torso plate, so a prompt
+    # Absent rather than empty when the angle binds no torso angle image, so a prompt
     # that cites one it never declared fails loudly instead of rendering "".
     if torso_position is not None:
         values["torso_slot"] = f"[Image{torso_position}]"
     try:
-        text = string.Formatter().vformat(slot["prompt"], (), values)
+        text = string.Formatter().vformat(angle["prompt"], (), values)
     except KeyError as exc:
-        raise ShootError(
-            f"slot {slot['id']!r} uses {{{exc.args[0]}}}, which nothing provides.\n"
+        raise TurnaroundError(
+            f"angle {angle['id']!r} uses {{{exc.args[0]}}}, which nothing provides.\n"
             f"       available: {', '.join(sorted(values))}"
         )
     return " ".join(text.split())
@@ -348,72 +348,72 @@ def build_prompt(slot: dict, spec: dict, profile: dict,
 # the images
 # --------------------------------------------------------------------------
 
-def plate_key(slot: dict) -> str:
-    """The slot's pose plate, as a full key, checked for shape.
+def angle_key(angle: dict) -> str:
+    """The angle's angle image, as a full key, checked for shape.
 
-    The spec stores a bucket-relative key (`config/pose/body/front.png`) so the
+    The spec stores a bucket-relative key (`config/angle/body/front.png`) so the
     prose in source control names the object in S3 that `dev-setup.sh` copies out.
     """
-    return _plate_key(slot, "pose_image")
+    return _angle_key(angle, "angle_image")
 
 
-def torso_plate_key(slot: dict) -> str | None:
-    """The slot's SECOND guide, or None — see `plate_keys` for why it exists."""
-    return _plate_key(slot, "torso_image") if slot.get("torso_image") else None
+def torso_angle_key(angle: dict) -> str | None:
+    """The angle's SECOND guide, or None — see `angle_keys` for why it exists."""
+    return _angle_key(angle, "torso_image") if angle.get("torso_image") else None
 
 
-def plate_keys(slot: dict) -> list[str]:
-    """Every guide plate this slot binds, in citation order.
+def angle_keys(angle: dict) -> list[str]:
+    """Every guide angle image this angle binds, in citation order.
 
-    Most slots bind one. The back three-quarters bind two, because the face
-    plates are cut from a head sheet and END AT A NECK STUMP: they carry no
+    Most angles bind one. The back three-quarters bind two, because the face
+    angle images are cut from a head sheet and END AT A NECK STUMP: they carry no
     shoulder line at all, so `{guide}`'s "match the direction the body and head
     face" has no body in it to match, and a symmetric stump reads as square.
     Rendered that way, both back three-quarters came back with a correctly
     turned head on a torso flat to the camera — the prompt said to angle the
     shoulders and the reference image said not to, and the image won. The body
-    plate for the same orientation is a whole figure at 135 degrees, so binding
+    angle image for the same orientation is a whole figure at 135 degrees, so binding
     it as a second guide gives the torso a direction to copy.
     """
-    return [k for k in (plate_key(slot), torso_plate_key(slot)) if k]
+    return [k for k in (angle_key(angle), torso_angle_key(angle)) if k]
 
 
-def _plate_key(slot: dict, field: str) -> str:
-    rel = slot[field]
+def _angle_key(angle: dict, field: str) -> str:
+    rel = angle[field]
     if not rel.startswith(P.CONFIG + "/"):
-        raise ShootError(
-            f"slot {slot['id']!r}: {field} {rel!r} must be a key under "
-            f"{P.CONFIG}/ — plates are config, not character material."
+        raise TurnaroundError(
+            f"angle {angle['id']!r}: {field} {rel!r} must be a key under "
+            f"{P.CONFIG}/ — angle images are config, not character material."
         )
     # No prefixing on the way out. `store` addresses by tree-relative path, so
-    # the slot's value already IS the key — this went through `s3.key`, which
+    # the angle's value already IS the key — this went through `s3.key`, which
     # had become the identity function once the global prefix went.
     return rel
 
 
-def check_plates(slots: list[dict]) -> None:
-    """Every plate must already be there. Fail once, listing all of them.
+def check_angles(angles: list[dict]) -> None:
+    """Every angle image must already be there. Fail once, listing all of them.
 
-    An ordinary `exists` on an ordinary name path, because a plate is an
+    An ordinary `exists` on an ordinary name path, because an angle image is an
     ordinary node under the library's `config/` folder. It was shared material
     with no node until the entity model, which is why this used to be the one
     check that could not ask the catalog.
     """
     missing = []
-    for slot in slots:
-        for key in plate_keys(slot):
+    for angle in angles:
+        for key in angle_keys(angle):
             if not store.exists(key):
                 missing.append(key)
     if missing:
-        raise ShootError(
-            "pose plate(s) missing from the bucket:\n"
+        raise TurnaroundError(
+            "angle image(s) missing from the bucket:\n"
             + "".join(f"       {k}\n" for k in missing)
             + "       These live in the repo under studio/config/ and are copied out by\n"
             "       studio/scripts/dev-setup.sh — run it, then try again."
         )
 
 
-def _too_many(name: str, pool: str, entries: list[dict], limit: int, how: str) -> ShootError:
+def _too_many(name: str, pool: str, entries: list[dict], limit: int, how: str) -> TurnaroundError:
     """Refuse an oversized pool rather than taking the first few.
 
     `reference/` already refuses an over-cap selection rather than truncating,
@@ -426,8 +426,8 @@ def _too_many(name: str, pool: str, entries: list[dict], limit: int, how: str) -
     """
     listing = "".join(f"       {_label(e)}\n" for e in entries[:20])
     more = f"       … and {len(entries) - 20} more\n" if len(entries) > 20 else ""
-    return ShootError(
-        f"{name}'s {pool}/ holds {len(entries)} images and a slot sends {limit}.\n"
+    return TurnaroundError(
+        f"{name}'s {pool}/ holds {len(entries)} images and an angle sends {limit}.\n"
         f"       Name the ones that carry identity best — a clear, unobstructed "
         f"view of the face and build:\n{listing}{more}"
         f"       {how}"
@@ -455,7 +455,7 @@ def _seed_picked(name: str, seed_pick: str) -> list[dict]:
     by_stem = {os.path.splitext(b)[0]: n for b, n in by_base.items()}
     missing = [w for w in want if w not in by_base and w not in by_stem]
     if missing:
-        raise ShootError(
+        raise TurnaroundError(
             f"not in {name}'s seed/: {', '.join(missing)}\n"
             f"       see: studio character pool {name} seed")
     return [by_base.get(w) or by_stem[w] for w in want]
@@ -487,16 +487,16 @@ def identity_nodes(name: str, source: str, pick: str | None, tags: str | None,
     """The NODE IDS of the images that say WHO this is, and where they came from.
 
     Node ids, where this returned S3 keys. A binding names a node now, so a
-    shoot that resolved a path would be stranded the first time one of these
+    turnaround that resolved a path would be stranded the first time one of these
     images was renamed — which is the whole of what the entity model fixes and
     is exactly the case that matters here, because a seed photograph is renamed
     by hand more often than anything else in a character.
 
-    Seed material is preferred: it is the founding source, and driving a shoot
+    Seed material is preferred: it is the founding source, and driving a turnaround
     off already-generated references feeds model output back in as identity,
     which compounds drift with every pass.
 
-    Nothing here silently truncates. If a pool holds more than one slot sends,
+    Nothing here silently truncates. If a pool holds more than one angle sends,
     the caller is asked which — see `_too_many`.
     """
     if pick or tags:
@@ -506,7 +506,7 @@ def identity_nodes(name: str, source: str, pick: str | None, tags: str | None,
         # The two pools MIX. Naming references used to silence --seed-pick
         # entirely, which is backwards for the case that wants both: curated
         # reference frames give clean, consistent angles, and a couple of seed
-        # photographs anchor them to the real source so a shoot is not driven
+        # photographs anchor them to the real source so a turnaround is not driven
         # purely by earlier model output. Refusing the combination made the
         # safer choice the one you could not express.
         if seed_pick:
@@ -538,14 +538,14 @@ def identity_nodes(name: str, source: str, pick: str | None, tags: str | None,
                     f"/tmp/{name}-seed.png   # look first")
             return _ids(seed), "seed"
         if source == "seed":
-            raise ShootError(
+            raise TurnaroundError(
                 f"{name} has no images in seed/, and --identity seed was asked for.\n"
                 f"       Add the founding material: studio character add-to {name} seed <files…>"
             )
 
     chosen = REFS.character_selection(name, None, None, None)
     if not chosen:
-        raise ShootError(
+        raise TurnaroundError(
             f"{name} has nothing to carry identity — seed/ is empty and reference/ has "
             f"no selection.\n"
             f"       Add source material first: studio character add-to {name} seed <files…>"
@@ -561,13 +561,13 @@ def identity_nodes(name: str, source: str, pick: str | None, tags: str | None,
 # seeing what is actually being sent
 # --------------------------------------------------------------------------
 
-def review_sheet(slot_id: str, nodes: list[str], out_dir: str, cache: dict) -> str:
-    """A labelled contact sheet of the images one payload binds, in slot order.
+def review_sheet(angle_id: str, nodes: list[str], out_dir: str, cache: dict) -> str:
+    """A labelled contact sheet of the images one payload binds, in angle order.
 
     The payload review names its images (`<presigned: characters/…>`) but a name
     is not a look. Approving a generation you cannot see is approving a
     description of it — and the mistakes that matter here are visual: a pose
-    plate that is the wrong way round, an identity image that is mostly a poster,
+    angle image that is the wrong way round, an identity image that is mostly a poster,
     a panel whose speech balloon the model will happily reproduce.
 
     Tiles are captioned `[ImageN]` in the order the model receives them, so the
@@ -591,58 +591,58 @@ def review_sheet(slot_id: str, nodes: list[str], out_dir: str, cache: dict) -> s
             cache[node] = local
         paths.append(local)
         captions.append(f"[Image{i}] {name}")
-    out = os.path.join(out_dir, f"{slot_id}.png")
+    out = os.path.join(out_dir, f"{angle_id}.png")
     return SHEET.build(paths, out, cols=min(len(paths), 5), cell=320,
                        captions=captions, quiet=True)
 
 
 # --------------------------------------------------------------------------
-# one slot
+# one angle
 # --------------------------------------------------------------------------
 
-def slot_args(slot: dict, spec: dict, entry: dict, name: str, opts) -> SimpleNamespace:
-    """The namespace `runner`/`submit` expect, for one slot.
+def angle_args(angle: dict, spec: dict, entry: dict, name: str, opts) -> SimpleNamespace:
+    """The namespace `runner`/`submit` expect, for one angle.
 
     Every image is passed as an explicit `--key`, in the order the model should
-    see them: the plate first, identity after. `--character` is deliberately NOT
+    see them: the angle image first, identity after. `--character` is deliberately NOT
     set — this module has already chosen the keys, and letting `gather()` resolve
     a second set from the bible's `default_set` would silently add images nobody
     picked. `record_characters` keeps the run associated with the character all
     the same.
     """
     defaults = spec.get("defaults") or {}
-    model = opts.model or slot.get("model") or defaults.get("model")
+    model = opts.model or angle.get("model") or defaults.get("model")
     if model != entry["key"]:
-        raise ShootError(f"internal: slot resolved model {model!r} but entry is {entry['key']!r}")
+        raise TurnaroundError(f"internal: angle resolved model {model!r} but entry is {entry['key']!r}")
 
     extra: dict = {}
     extra.update(defaults.get("extra") or {})
     extra.update((spec.get("per_model") or {}).get(model) or {})
-    extra.update(slot.get("extra") or {})
+    extra.update(angle.get("extra") or {})
     if opts.extra:
         try:
             override = json.loads(opts.extra)
         except json.JSONDecodeError as exc:
-            raise ShootError(f"--extra is not valid JSON: {exc}")
+            raise TurnaroundError(f"--extra is not valid JSON: {exc}")
         if not isinstance(override, dict):
-            raise ShootError("--extra must be a JSON object.")
+            raise TurnaroundError("--extra must be a JSON object.")
         extra.update(override)
 
     d = SUB.defaults(entry["kind"])
     return SimpleNamespace(
         model=model,
         project=opts.project,
-        slug=f"ref-{slot['id'].replace('_', '-')}",
-        prompt=None,                      # filled once the citation slots are known
+        slug=f"ref-{angle['id'].replace('_', '-')}",
+        prompt=None,                      # filled once the citation angles are known
         prompt_file=None, prompt_json=None, input_file=None,
         extra=json.dumps(extra) if extra else None,
-        aspect_ratio=opts.aspect_ratio or slot.get("aspect_ratio") or defaults.get("aspect_ratio"),
+        aspect_ratio=opts.aspect_ratio or angle.get("aspect_ratio") or defaults.get("aspect_ratio"),
         key=[], character=(), record_characters=(name,),
-        # The slot this run came from, carried into request.json. `add-refs
+        # The angle this run came from, carried into request.json. `add-refs
         # --from-run` reads it back to write the description and tags the spec
-        # already holds for that slot — without it those fields are dead data
+        # already holds for that angle — without it those fields are dead data
         # and every promotion is a hand-retype of prose that is right there.
-        record_extra={"reference_slot": slot["id"]},
+        record_extra={"reference_angle": angle["id"]},
         pick=None, pick_tag=None, slots=None,
         image_run=None, ref_run=(), input_=(), input=(),
         start_run=None, start_key=None, end_run=None, end_key=None,
@@ -652,49 +652,49 @@ def slot_args(slot: dict, spec: dict, entry: dict, name: str, opts) -> SimpleNam
     )
 
 
-def prepare(slot: dict, spec: dict, profile: dict, name: str, opts):
+def prepare(angle: dict, spec: dict, profile: dict, name: str, opts):
     """Everything up to (not including) the submit: bindings, prompt, payload."""
     from studio_pipeline.engine import runner as RUN  # local: runner imports this module's peers
 
-    model = opts.model or slot.get("model") or (spec.get("defaults") or {}).get("model")
+    model = opts.model or angle.get("model") or (spec.get("defaults") or {}).get("model")
     try:
         entry = REG.get(model)
     except REG.RegistryError as exc:
-        raise ShootError(str(exc))
+        raise TurnaroundError(str(exc))
     if entry["kind"] != "image":
-        raise ShootError(
-            f"a reference plate is a still, but {entry['key']} is a {entry['kind']} model."
+        raise TurnaroundError(
+            f"a reference angle image is a still, but {entry['key']} is a {entry['kind']} model."
         )
 
-    args = slot_args(slot, spec, entry, name, opts)
-    args.key = [*plate_keys(slot), *opts.identity]
+    args = angle_args(angle, spec, entry, name, opts)
+    args.key = [*angle_keys(angle), *opts.identity]
 
     # Resolve bindings BEFORE the prompt: the citation numbers are positions in
     # the resolved list, and only `gather` knows what that list is.
     try:
         bindings = SUB.gather(entry, args)
     except (SUB.SubmitError, REFS.RefError, R.RunError) as exc:
-        raise ShootError(str(exc))
+        raise TurnaroundError(str(exc))
     field = (entry.get("images") or {}).get("refs")
     ordered = bindings.get(field) or []
     if not ordered:
-        raise ShootError(f"slot {slot['id']!r} resolved no image inputs.")
+        raise TurnaroundError(f"angle {angle['id']!r} resolved no image inputs.")
     # `ordered` holds NODE IDS — `gather` resolved every one of them — so the
-    # plates have to be resolved to ids before their positions can be found in
+    # angle images have to be resolved to ids before their positions can be found in
     # it. Looking up the name path returned a `ValueError` from `list.index`
-    # for every slot with a plate, which is all of them.
-    plates = [SUB.as_node(key) for key in plate_keys(slot)]
-    torso = SUB.as_node(torso_plate_key(slot)) if torso_plate_key(slot) else None
-    pose_pos = ordered.index(plates[0]) + 1
+    # for every angle with an angle image, which is all of them.
+    angle_images = [SUB.as_node(key) for key in angle_keys(angle)]
+    torso = SUB.as_node(torso_angle_key(angle)) if torso_angle_key(angle) else None
+    angle_pos = ordered.index(angle_images[0]) + 1
     torso_pos = ordered.index(torso) + 1 if torso else None
-    identity_pos = [i + 1 for i, k in enumerate(ordered) if k not in plates]
+    identity_pos = [i + 1 for i, k in enumerate(ordered) if k not in angle_images]
 
-    args.prompt = build_prompt(slot, spec, profile, pose_pos, identity_pos, torso_pos)
+    args.prompt = build_prompt(angle, spec, profile, angle_pos, identity_pos, torso_pos)
     payload = RUN.build_payload(entry, args)
     try:
         SUB.check_payload_rules(entry, payload)
     except SUB.SubmitError as exc:
-        raise ShootError(str(exc))
+        raise TurnaroundError(str(exc))
     return entry, args, payload, bindings
 
 
@@ -706,8 +706,8 @@ def prepare(slot: dict, spec: dict, profile: dict, name: str, opts):
 # the command
 # --------------------------------------------------------------------------
 
-def run_shoot(name: str, opts) -> int:
-    """The whole shoot. Shared with `character create --shoot`."""
+def run_turnaround(name: str, opts) -> int:
+    """The whole turnaround. Shared with `character create --turnaround`."""
     CHARACTER.check_name(name)
     # `require_project` returns the RECORD now, not the slug it was handed. Both
     # are needed and they are kept apart deliberately: the record is what a run
@@ -717,18 +717,18 @@ def run_shoot(name: str, opts) -> int:
     opts.project = project["slug"]
 
     spec = load_spec()
-    slots = select_slots(spec, opts.group, tuple(opts.slot or ()))
+    angles = select_angles(spec, opts.group, tuple(opts.angle or ()))
     profile = CHARACTER.load_profile(name)
     # Deliberately NOT the full write-time schema check. `create`/`set-profile`
     # enforce that on the way in; refusing to render because `voice:` is absent
-    # would be a reading command policing a writing rule. What a shoot actually
+    # would be a reading command policing a writing rule. What a turnaround actually
     # needs is the two keys its prompts draw on, and a thin bible costs prompt
     # quality rather than correctness — so it warns.
     thin = [k for k in ("wardrobe", "consistency") if not profile.get(k)]
     if thin:
         print(f"warning: {name}'s bible has no {', '.join(thin)} — the prompts will carry "
               f"less to hold the render on-model.", file=sys.stderr)
-    check_plates(slots)
+    check_angles(angles)
 
     ident, source = identity_nodes(name, opts.identity, opts.pick, opts.pick_tag,
                                    opts.identity_max, getattr(opts, "seed_pick", None))
@@ -741,31 +741,31 @@ def run_shoot(name: str, opts) -> int:
 
     token = RA.load_token()
     prepared = []
-    for slot in slots:
-        entry, args, payload, bindings = prepare(slot, spec, profile, name, opts)
+    for angle in angles:
+        entry, args, payload, bindings = prepare(angle, spec, profile, name, opts)
         try:
             SUB.preflight(entry, payload, bindings, token)
         except MS.SchemaError as exc:
-            raise ShootError(f"slot {slot['id']!r} would be refused by {entry['key']}:\n{exc}")
-        prepared.append((slot, entry, args, payload, bindings))
+            raise TurnaroundError(f"angle {angle['id']!r} would be refused by {entry['key']}:\n{exc}")
+        prepared.append((angle, entry, args, payload, bindings))
 
     # GATE 1 — every payload, in full, before anything bills.
     sheet_cache: dict[str, str] = {}
-    for slot, entry, args, payload, bindings in prepared:
+    for angle, entry, args, payload, bindings in prepared:
         # A LABEL for the approval block, not an id. A run id is minted by the
         # API when the run is recorded, which has not happened yet and must not:
         # hard rule #2 says the payload is approved before anything exists.
         run = f"{opts.project}/{R.slugify(args.slug)}"
-        print(f"\n===== slot {slot['id']}  ->  run output (NOT yet a reference) =====")
+        print(f"\n===== angle {angle['id']}  ->  run output (NOT yet a reference) =====")
         print(SUB.render(entry, run, payload, bindings, False))
         if opts.review_sheet:
             field = (entry.get("images") or {}).get("refs")
-            sheet = review_sheet(slot["id"], bindings.get(field) or [],
+            sheet = review_sheet(angle["id"], bindings.get(field) or [],
                                  opts.review_sheet, sheet_cache)
-            print(f"===== IMAGES — what {slot['id']} actually sends =====\n{sheet}")
+            print(f"===== IMAGES — what {angle['id']} actually sends =====\n{sheet}")
 
     if opts.dry_run:
-        print(f"\n(dry run — {len(prepared)} slot(s) rendered, nothing submitted, "
+        print(f"\n(dry run — {len(prepared)} angle(s) rendered, nothing submitted, "
               f"nothing billed)", file=sys.stderr)
         return 0
 
@@ -777,29 +777,29 @@ def run_shoot(name: str, opts) -> int:
         return 1
 
     # ONE BAD SLOT DOES NOT CANCEL THE REST. A failure here is almost always a
-    # property of that slot alone — a plate the model refuses as sensitive, most
+    # property of that angle alone — an angle image the model refuses as sensitive, most
     # often — and says nothing about the others. Aborting on the first one cost a
-    # live shoot six healthy slots because the refusing slot happened to sort
-    # first: seven asked for, `0 slot(s) completed`. So every slot is attempted
+    # live turnaround six healthy angles because the refusing angle happened to sort
+    # first: seven asked for, `0 angle(s) completed`. So every angle is attempted
     # and the failures are reported together at the end.
     runrefs: dict[str, str] = {}
     failed: list[tuple[str, str]] = []
-    for slot, entry, args, payload, bindings in prepared:
-        print(f"\n----- {slot['id']} -----", file=sys.stderr)
+    for angle, entry, args, payload, bindings in prepared:
+        print(f"\n----- {angle['id']} -----", file=sys.stderr)
         try:
             code = SUB.execute(entry, payload, bindings, token, args)
             if code != 0:
                 raise SUB.SubmitError(f"exited {code}")
         except (SUB.SubmitError, RA.ReplicateError) as exc:
             print(f"  FAILED — {exc}", file=sys.stderr)
-            failed.append((slot["id"], str(exc)))
+            failed.append((angle["id"], str(exc)))
             continue
         # The run the submit just recorded, by id. `latest` is resolved once and
         # immediately reduced to an id, because the follow-up `add-refs` line
         # printed below may be pasted an hour later — by which time `latest`
         # means a different run.
         record = R.resolve_run(f"{opts.project}/latest", opts.project)
-        runrefs[slot["id"]] = f"{record['id']}#1"
+        runrefs[angle["id"]] = f"{record['id']}#1"
 
     # GATE 2 — the results stay in their runs. Putting a generated image into
     # `characters/<name>/reference/` changes who that character IS, and that is a
@@ -812,40 +812,40 @@ def run_shoot(name: str, opts) -> int:
         "filed_into_reference": None,
     }, indent=2))
     if failed:
-        print(f"\n{len(failed)} slot(s) FAILED and were skipped:", file=sys.stderr)
-        for slot_id, why in failed:
-            print(f"  {slot_id}: {why}", file=sys.stderr)
-        print("  a slot the model refuses will refuse again — fix or drop its plate "
+        print(f"\n{len(failed)} angle(s) FAILED and were skipped:", file=sys.stderr)
+        for angle_id, why in failed:
+            print(f"  {angle_id}: {why}", file=sys.stderr)
+        print("  an angle the model refuses will refuse again — fix or drop its angle image "
               "rather than re-running it.", file=sys.stderr)
     if not runrefs:
         return 1
     print("\nNOT added to the character. Review each one, then promote the keepers:",
           file=sys.stderr)
-    for slot_id, ref in runrefs.items():
-        group = next(s["group"] for s in slots if s["id"] == slot_id)
+    for angle_id, ref in runrefs.items():
+        group = next(s["group"] for s in angles if s["id"] == angle_id)
         print(f"  studio character add-refs {name} --to {group} --from-run {ref}",
               file=sys.stderr)
     print(f"  studio runs outputs {opts.project}/latest --presign   # to look first",
           file=sys.stderr)
     # Non-zero on a partial run: images exist and are listed above, but the set
-    # is incomplete and a caller should not read exit 0 as "the shoot is done".
+    # is incomplete and a caller should not read exit 0 as "the turnaround is done".
     return 1 if failed else 0
 
 
-SHOOT_OPTIONS = [
-    click.option("--aspect-ratio", help="Override the spec's aspect ratio for every slot."),
-    click.option("--dest", help="Also keep a local copy of each plate in this directory."),
+TURNAROUND_OPTIONS = [
+    click.option("--aspect-ratio", help="Override the spec's aspect ratio for every angle."),
+    click.option("--dest", help="Also keep a local copy of each rendered image in this directory."),
     click.option("--dry-run", is_flag=True,
                  help="Render every payload for approval; submit nothing, bill nothing."),
-    click.option("--extra", help="JSON object merged into every slot's model inputs."),
-    click.option("--group", type=click.Choice(["all", *P.POSE_GROUPS]), default="all",
-                 help="Shoot only this group of slots (default: all)."),
+    click.option("--extra", help="JSON object merged into every angle's model inputs."),
+    click.option("--group", type=click.Choice(["all", *P.ANGLE_GROUPS]), default="all",
+                 help="Render only this group of angles (default: all)."),
     click.option("--identity", type=click.Choice(["auto", "seed", "refs"]), default="auto",
                  help=("Where identity comes from: seed photos, the reference index, or "
                        "auto (seed when it has any).")),
     click.option("--identity-max", type=int, default=IDENTITY_MAX,
-                 help=f"How many identity images to send per slot (default {IDENTITY_MAX})."),
-    click.option("--model", help="Override the spec's model for every slot. See `models`."),
+                 help=f"How many identity images to send per angle (default {IDENTITY_MAX})."),
+    click.option("--model", help="Override the spec's model for every angle. See `models`."),
     # Comma-separated, not repeatable — same shape as `refs --pick`. Saying so
     # matters: repeating the flag is not an error, it just keeps the last one,
     # so four --pick flags quietly send one identity image.
@@ -853,36 +853,36 @@ SHOOT_OPTIONS = [
                                 "instead of seed/."),
     click.option("--seed-pick", "seed_pick",
                  help="Comma-separated seed files to carry identity, when seed/ holds more "
-                      "than one slot sends."),
+                      "than one angle sends."),
     click.option("--pick-tag", help="Identity from references carrying ALL these tags."),
     click.option("--project", help="REQUIRED. The project these runs belong to."),
     click.option("--review-sheet", "review_sheet", metavar="DIR",
-                 help="Write a labelled contact sheet per slot showing the images that "
+                 help="Write a labelled contact sheet per angle showing the images that "
                       "payload sends, captioned [ImageN] in the order the model gets them."),
-    click.option("--slot", multiple=True,
-                 help="Shoot only this slot id. Repeatable — see the spec for the ids."),
+    click.option("--angle", multiple=True,
+                 help="Render only this angle id. Repeatable — see the spec for the ids."),
 ]
 
 
-def with_shoot_options(fn):
-    for option in reversed(SHOOT_OPTIONS):
+def with_turnaround_options(fn):
+    for option in reversed(TURNAROUND_OPTIONS):
         fn = option(fn)
     return fn
 
 
-@click.command("shoot", epilog="\n\nArguments:\n  NAME  The character to shoot.")
+@click.command("turnaround", epilog="\n\nArguments:\n  NAME  The character to render.")
 @click.argument("name", required=True)
-@with_shoot_options
-def cmd_shoot(name, **options):
+@with_turnaround_options
+def cmd_turnaround(name, **options):
     """Render the standard face and body reference set for a character.
 
-    One run per slot in the shot spec: a generic pose plate from config/ says how
+    One run per angle in the angle spec: a generic angle image from config/ says how
     to stand, the character's seed photos say who it is, and the prompt comes
     from the spec filled with the character's own bible. Every payload is shown
     for approval before anything is submitted.
     """
     opts = SimpleNamespace(**options)
     try:
-        return run_shoot(name, opts)
-    except ShootError as exc:
+        return run_turnaround(name, opts)
+    except TurnaroundError as exc:
         die(str(exc))

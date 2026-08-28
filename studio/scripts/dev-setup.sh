@@ -265,13 +265,13 @@ EOF
   # 3b. Push the shared material out to the bucket.
   #
   #     Shared material is what belongs to no character and no project: the pose
-  #     plates under `config/`. They go in through `dev-shared-material.sh` —
+  #     angle images under `config/`. They go in through `dev-shared-material.sh` —
   #     which `dev-aws-seed.sh` also sources, so the rules live in one place.
   #
-  #     The plates are a SYNC: studio/config/ is the source of truth and the
+  #     The angle images are a SYNC: studio/config/ is the source of truth and the
   #     library holds a copy, because a model may only be handed a presigned URL
   #     of a stored object, never bytes from disk. So they have to exist in the
-  #     bucket before `studio character shoot` can use them. They are ordinary
+  #     bucket before `studio character turnaround` can use them. They are ordinary
   #     nodes, so the push goes through `studio config sync` rather than writing
   #     objects directly.
   #
@@ -285,10 +285,10 @@ EOF
   source "$STUDIO_DIR/scripts/dev-shared-material.sh"
   if [ -n "$MEDIA_BUCKET" ]; then
     if push_pose_plates "$STUDIO_DIR" "$MEDIA_BUCKET"; then
-      log "pose plates are in the library (or you are not signed in yet)"
+      log "angle images are in the library (or you are not signed in yet)"
     else
-      warn "could not push studio/config/ into the library — a reference shoot"
-      warn "  will report missing plates. Try: studio login && studio config sync --apply"
+      warn "could not push studio/config/ into the library — a turnaround"
+      warn "  will report missing angle images. Try: studio login && studio config sync --apply"
     fi
   fi
 else

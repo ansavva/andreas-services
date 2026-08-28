@@ -7,7 +7,7 @@ once the writes moved onto the catalog. The entity model took the last three:
 `clean_key`, `_normalise` and `_reject_traversal`.
 
 What kept `clean_key` alive through #312 was *shared* material —
-`phrasebook/wording.yaml` and the `config/pose/` plates belonged to no character
+`phrasebook/wording.yaml` and the `config/angle/` plates belonged to no character
 and no project, had no catalog node, and so had no id to be addressed by, which
 is why `GET /api/asset?key=` took a raw S3 key. The entity model closed that: the
 phrasebook is `TERM#` rows and the plates are ordinary nodes in a `config/`

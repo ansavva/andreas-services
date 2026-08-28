@@ -999,7 +999,7 @@ def test_every_row_survives_the_dynamodb_marshaller():
 def test_the_repos_own_shared_folders_are_not_name_positions():
     """**The regression a working loader created.**
 
-    The pose plates are ordinary nodes under `config/`. `dev-aws-seed.sh` pushed
+    The angle images are ordinary nodes under `config/`. `dev-aws-seed.sh` pushed
     them BEFORE it wrote the library, so on a fresh stack the push always failed
     and `config/` never existed — which is the only reason the name check had
     never met it. Fixing that ordering made the plates land, and the next
@@ -1008,8 +1008,8 @@ def test_the_repos_own_shared_folders_are_not_name_positions():
 
     `config/` is nobody's slug and no entity's root. It is not a name position.
     """
-    assert ds.name_problems({"n1": "config", "n2": "config/pose/face/front.png"}) == []
-    assert ds.name_problems({"n1": "jason", "n2": "config/pose"}) == []
+    assert ds.name_problems({"n1": "config", "n2": "config/angle/face/front.png"}) == []
+    assert ds.name_problems({"n1": "jason", "n2": "config/angle"}) == []
     # And the check still bites on an actual top-level folder.
     assert ds.name_problems({"n1": "config", "n2": "rosalind"})
 

@@ -167,7 +167,7 @@ def _push_plates(has_studio: bool) -> tuple[int, list[str]]:
 def test_the_plates_are_pushed_through_the_cli_not_the_bucket():
     """**The push writes rows, so it cannot be an `aws s3 sync`.**
 
-    `check_plates` resolves each plate as a name path, so a plate needs a node,
+    `check_angles` resolves each plate as a name path, so a plate needs a node,
     and only the API writes one. This script pushed objects with `aws s3 sync`
     for as long as the plates were addressed by raw key; a stack provisioned
     that way after the entity model refused every shoot for want of a row, and
@@ -215,7 +215,7 @@ def test_the_seed_script_delegates_rather_than_reimplementing():
     pushed it straight back, one `aws` process per object, and took 71 seconds
     to do about 0.6 seconds of work.
 
-    What stays here is the part that cannot move — the pose plates go in through
+    What stays here is the part that cannot move — the angle images go in through
     the API, so they need a signed-in CLI and a library that already exists.
     """
     code = _code_lines(SEED)

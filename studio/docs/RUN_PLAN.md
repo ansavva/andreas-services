@@ -60,7 +60,7 @@ consequences:
    then curated identity, then chained run outputs, then the working pool — and
    then discarded that reasoning. `bindings` was the residue: field name to node
    ids. **Position in that list is cited by the prompt** (a real production
-   prompt reads "the FIRST image is an existing plate of him"), so the ordering
+   prompt reads "the FIRST image is an existing angle image of him"), so the ordering
    was load-bearing and its meaning was nowhere.
 3. **Approval left no artifact.** Hard rule #2 says show the full payload, get an
    explicit yes, and re-approve after **any** edit. It was enforced by a
@@ -303,7 +303,7 @@ studio runs discard run-<uuid>              # a draft that will not be submitted
 - **`runs discard` deletes the folder by default**, the opposite of `runs delete`.
   A submitted run's folder holds media somebody paid for; a draft's holds two
   payload documents and an empty `output/`.
-- `scenes board` and `character shoot` needed no change: their single confirm
+- `scenes board` and `character turnaround` needed no change: their single confirm
   still gates the batch, and each submission now leaves an approval behind it.
 
 ---
@@ -389,7 +389,7 @@ This adds attributes and rows, touches no object in S3, and skips any run that
 already has a plan, so a second run reports zero. `--apply` exists so a person
 reads the report first.
 
-**One gap nothing can close.** Before pose plates became catalog nodes they
+**One gap nothing can close.** Before angle images became catalog nodes they
 travelled through `gather` marked `shared:<key>` and were **stripped before the
 record was written**. Runs from that era under-report their images, and a
 text-only generation is indistinguishable from one. Counted in the report, never

@@ -453,7 +453,7 @@ def _output_node(entry: dict) -> str:
     A run record read back from the API keys it `id`; documents written before
     #420 key it `node`. Reading only `node` made every runref binding
     (`--ref-run`, `--image-run`, `--start-run`, `--end-run`, and `add-refs
-    --from-run`) die on `KeyError` against a live record. `engine/shoot.py`
+    --from-run`) die on `KeyError` against a live record. `engine/turnaround.py`
     already carries the same two-spelling read for the same reason.
     """
     node = entry.get("node") or entry.get("id")
@@ -647,7 +647,7 @@ def do_approve(runref, project):
     **No `--yes`, and there will not be one.** A person reads what is printed and
     answers, or nothing is approved: an approval flag is the door an agent walks
     through while believing some earlier exchange counted as consent. That
-    sentence is already in `board.py` and `shoot.py`; it matters more here,
+    sentence is already in `board.py` and `turnaround.py`; it matters more here,
     because what this writes is a durable record that somebody consented.
 
     The digest is what turns that record into an approval rather than a

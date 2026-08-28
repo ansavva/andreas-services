@@ -57,7 +57,7 @@ export function MediaTile({
           dimmed={selected}
           showName
           // The checkerboard is for the images this library is full of that
-          // carry alpha — a pose plate on a dark theme is otherwise a black
+          // carry alpha — an angle image on a dark theme is otherwise a black
           // square. The zoom is this grid's own hover, not every tile's.
           mediaClassName="alpha-checker transition-transform duration-200 group-hover:scale-[1.03]"
         />

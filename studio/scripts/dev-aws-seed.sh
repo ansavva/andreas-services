@@ -20,7 +20,7 @@
 # "never need Python". The derivations are pinned against the values this script
 # produced, so a stack seeded by either is the same stack, id for id.
 #
-# What is left here is the part that cannot move: the pose plates go in through
+# What is left here is the part that cannot move: the angle images go in through
 # the API rather than through boto3, so they need a signed-in CLI and a library
 # that already exists — which is why this runs after the load and not before it.
 # That ordering is itself a bug this script once had.
@@ -38,10 +38,10 @@ main() {
 
   # Tolerant of failure on purpose: a developer who has not signed in gets a
   # warning and a seeded stack, not a dead script. `dev-setup.sh` pushes the
-  # same plates at session start and is the other way they arrive.
+  # same angle images at session start and is the other way they arrive.
   push_pose_plates "$SCRIPT_DIR/.." "" &&
-    ok "Pose plates are in the library." ||
-    warn "Could not push studio/config/; a reference shoot will report missing plates."
+    ok "Angle images are in the library." ||
+    warn "Could not push studio/config/; a turnaround will report missing angle images."
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then

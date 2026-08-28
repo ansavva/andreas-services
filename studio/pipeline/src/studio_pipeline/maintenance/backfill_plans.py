@@ -59,7 +59,7 @@ under (`UNPARSEABLE must be 0`). A plausible plan over a run nobody can check is
 worse than a run with no plan.
 
 **One gap cannot be closed by anything, and it is stated rather than papered
-over.** Before pose plates became catalog nodes they travelled through `gather`
+over.** Before angle images became catalog nodes they travelled through `gather`
 marked `shared:<key>` and were stripped before the record was written
 (`engine/submit.py`). Runs from that era under-report their images, and no
 reconstruction can recover what was never recorded. They are counted in the
@@ -337,7 +337,7 @@ def cmd_backfill_plans(apply_, limit):
         except BackfillError as exc:
             problems.append(f"{run['id']}: {exc}")
             continue
-        # A run that bound nothing at all predates plates having nodes, or was a
+        # A run that bound nothing at all predates angle images having nodes, or was a
         # deliberate text-only generation. The two are indistinguishable from
         # here, so it is counted rather than diagnosed.
         if not built["sends"]:
@@ -355,7 +355,7 @@ def cmd_backfill_plans(apply_, limit):
         print(f"  … and {len(problems) - 20} more")
     if plates_unknowable:
         print(f"note: {plates_unknowable} run(s) bound no images at all — either a "
-              f"text-only generation, or from before pose plates had nodes and "
+              f"text-only generation, or from before angle images had nodes and "
               f"were stripped before the record was written. Not recoverable.")
 
     if not apply_:

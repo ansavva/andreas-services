@@ -83,7 +83,7 @@ JOURNAL_DIR = str(STUDIO_DIR / "local" / "migrations")
 # Owned by nobody: no character, no project, no library. Read directly, recorded
 # by no node, and therefore never an orphan and never collectable.
 #
-# `config/` comes from `paths.py`, which still names it — the pose plates.
+# `config/` comes from `paths.py`, which still names it — the angle images.
 #
 # **`phrasebook/` was here and is gone.** It was carried as a literal after the
 # phrasebook became `TERM#` rows, while buckets written before that change still
@@ -318,28 +318,28 @@ def resolve_key(cat: dict, value: str, by_path_hits: list[str]) -> str | None:
 
     `by_path` is the fallback, and it is correct for the same reason the exact
     lookup usually works: before the catalog a name path and an S3 key were the
-    same string. So a document naming `config/pose/face/<file>.png` is naming a
+    same string. So a document naming `config/angle/face/<file>.png` is naming a
     *place in the tree*, and the node at that place today is the best available
     answer — often the only one, because a blob written since is keyed on ids
     and can never match the string a document recorded years ago.
 
-    This is what the pose plates need. Every historical reference shoot bound a
-    plate, the seed deliberately recorded no node for `config/`, and so every one
+    This is what the angle images need. Every historical turnaround bound a
+    angle image, the seed deliberately recorded no node for `config/`, and so every one
     of those bindings resolved to nothing — 28 of them across 29 runs in the
-    first real migration, naming 16 distinct plates.
+    first real migration, naming 16 distinct angle images.
 
     **`studio config sync` recovers 26 of the 28, and 2 are unrecoverable.**
     That floor is worth stating, because the obvious reading of the sentence
     above is that the fallback fixes all of them and it does not. `config sync`
-    uploads what is in `studio/config/` today, so a plate deleted from the repo
+    uploads what is in `studio/config/` today, so an angle image deleted from the repo
     can never get a node: `face/profile.png` and `body/three-quarter-right.png`
-    went in the August 2026 plate rebuild, after the two runs that bound them,
+    went in the August 2026 angle image rebuild, after the two runs that bound them,
     and neither survives in the bucket in any version — the rename that month
     was a copy, and a copy does not carry version history.
 
     Those two stay UNRESOLVED and their bindings are dropped, which is the right
     outcome rather than a gap to close. Re-pointing them at the plausible
-    successor plate would put an unverifiable assertion into an envelope, where
+    successor angle image would put an unverifiable assertion into an envelope, where
     it would be indistinguishable from a binding that was really made. The run's
     `request.json` keeps the true key verbatim — `apply` rewrites no payload —
     so the answer to "what was this run shown" survives exactly where studio
@@ -1559,7 +1559,7 @@ def key_drift(plan: dict, nodes: dict) -> list[dict]:
     so:
 
     - a key written before this catalog existed — `characters/<slug>/…`,
-      `blobs/<node id>`, `config/pose/…` — which has always been here;
+      `blobs/<node id>`, `config/angle/…` — which has always been here;
     - a node MOVED between owners: out of one character and into another, or
       between a character and a project. Its bytes are still filed under the old
       owner's prefix;

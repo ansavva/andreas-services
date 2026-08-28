@@ -4,7 +4,7 @@ The two commands in a scene's life that spend money, plus the one that tells you
 whether they would work before they do.
 
 They live in `engine/` and not beside the rest of `scenes` for the reason
-`shoot.py` does: this is model invocation. It drives the same submit lifecycle
+`turnaround.py` does: this is model invocation. It drives the same submit lifecycle
 `runner.py` drives and reuses it rather than repeating it — `gather` →
 `preflight` → `render` → `execute`, once per panel or per shot. The dependency
 arrow `cli → domain → adapters` stays intact, and the commands are attached onto
@@ -179,7 +179,7 @@ def panel_format(panel_entry: dict, video_model: str) -> str | None:
     `.webp` and GPT Image writes `.webp` by default, so a whole board can be
     rendered in a format the shots it exists for cannot open.
 
-    And among the formats that *are* accepted, the smallest wins. A PNG plate off
+    And among the formats that *are* accepted, the smallest wins. A PNG panel off
     these models runs ~2 MiB against ~0.3 MiB for the same picture as JPEG, and a
     panel is sent to a video model many times over its life. Kling's failure at
     around 14 MiB of images was a two-minute silence and a retryable-looking
@@ -463,7 +463,7 @@ def review_sheet(manifest: dict, label: str, items: list[tuple[str, str]],
                  out_dir: str | None, cache: dict) -> str:
     """A labelled contact sheet of the images one payload binds.
 
-    Separate from the shoot's version because the caption carries the image's
+    Separate from the turnaround's version because the caption carries the image's
     ROLE, not just its position: for a shot, whether a picture is the start
     frame, the end frame or a reference is the thing most worth checking before
     paying, and `[Image3]` does not say.
@@ -613,7 +613,7 @@ def run_board(ref: str, opts) -> int:
 
     # Prepared one at a time rather than all up front, because a panel's inputs
     # include the panels before it — which for a fresh board do not exist yet.
-    # The whole-batch preflight `shoot` can do is not available here; each panel
+    # The whole-batch preflight `turnaround` can do is not available here; each panel
     # is checked immediately before its own submit instead.
     print(f"{manifest['label']}: {len(wanted)} panel(s) to render", file=sys.stderr)
     sheet_cache: dict[str, str] = {}

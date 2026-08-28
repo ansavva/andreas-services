@@ -71,7 +71,7 @@ Subcommands:
   default-set <name> NODE…      What gets sent when nobody picks.
   add-to <name> POOL FILES…     Add to corpus/, seed/ or archive/.
   pool   <name> POOL            List one of those.
-  shoot  <name> --project <p>   The standard reference shoot (wired in cli.py).
+  turnaround <name> --project <p>  The standard reference set (wired in cli.py).
 
 Examples:
   studio character create <name> --from-profile /tmp/<name>.yaml
