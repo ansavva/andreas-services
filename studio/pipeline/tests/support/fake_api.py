@@ -47,6 +47,7 @@ the reseat tests assert against nothing.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import itertools
 import json
 import mimetypes
@@ -72,6 +73,42 @@ class FakeError(Exception):
     def __init__(self, status: int, message: str) -> None:
         super().__init__(message)
         self.status = status
+
+
+#: The statuses that come before a submission. **Mirrors
+#: `catalog.UNSUBMITTED_RUN_STATUSES`**, and a copy rather than an import because
+#: the pipeline does not depend on the backend package and never has.
+UNSUBMITTED = frozenset({"draft", "approved", "discarded"})
+
+#: Every word a run's status may be. **The fake validated none of them**, which
+#: is how `studio runs adopt` came to write `adopted` — a status the real route
+#: rejects with a 400 — and pass its tests for as long as it has existed.
+RUN_STATUSES = frozenset({"draft", "approved", "pending", "running", "succeeded",
+                          "failed", "cancelled", "discarded", "adopted"})
+
+
+def _plan_digest(plan, sends) -> str:
+    """A hash over what a person approves: the plan AND the ordered images.
+
+    **A second implementation of `catalog.plan_digest`, and it has to agree with
+    it.** Nothing can hold the two together automatically — the pipeline does not
+    import the backend, which is the same reason `derive.extension` is a copy of
+    `keys.extension` — so the shape is stated in both places and the integration
+    suite is what actually exercises the real one.
+
+    What it hashes is the reason it exists: the sends by `(field, role, node)` in
+    order, so reordering two references is a real edit, and `source` excluded, so
+    describing an image's provenance more accurately later does not void a
+    consent nobody's payload changed.
+    """
+    payload = {
+        "plan": plan or {},
+        "sends": [{"field": s.get("field"), "role": s.get("role"),
+                   "node": s.get("node")} for s in sends or []],
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"),
+                         ensure_ascii=False, default=str)
+    return "sha256:" + hashlib.sha256(encoded.encode()).hexdigest()
 
 
 def _now(counter=itertools.count()) -> str:
@@ -329,6 +366,9 @@ class FakeApi:
             (r"/api/runs", self._r_runs),
             (r"/api/runs/([^/]+)/outputs", self._r_run_outputs),
             (r"/api/runs/([^/]+)/response", self._r_run_response),
+            (r"/api/runs/([^/]+)/plan", self._r_run_plan),
+            (r"/api/runs/([^/]+)/sends", self._r_run_sends),
+            (r"/api/runs/([^/]+)/approve", self._r_run_approve),
             (r"/api/runs/([^/]+)", self._r_run),
             (r"/api/scenes", self._r_scenes),
             (r"/api/scenes/([^/]+)/shots", self._r_shots),
@@ -1003,7 +1043,21 @@ class FakeApi:
                              "size": self.nodes.get(n, {}).get("size"),
                              "url": f"memory://{self.nodes.get(n, {}).get('blob_key')}"}
                             for n in record.get("outputs") or []],
+                # **Derived from the sends, exactly as the real route derives
+                # them.** The map was an attribute once; keeping both would be
+                # two spellings of one relationship.
+                "bindings": self._bindings_of(record),
+                "sends": [{**send,
+                           "name": self.nodes.get(send["node"], {}).get("name")}
+                          for send in record.get("sends") or []],
                 "output_nodes": list(record.get("outputs") or [])}
+
+    @staticmethod
+    def _bindings_of(record: dict) -> dict:
+        bindings: dict[str, list[str]] = {}
+        for send in record.get("sends") or []:
+            bindings.setdefault(send["field"], []).append(send["node"])
+        return bindings
 
     def _r_runs(self, method, body, params):
         if method == "GET":
@@ -1048,16 +1102,36 @@ class FakeApi:
         if body.get("prompt") is not None:
             payload["prompt"] = self._document(folder["id"], "prompt.json",
                                                json.dumps(body["prompt"]))
+        sends = body.get("sends")
+        if sends is None:
+            sends = [{"field": field, "role": None, "node": node}
+                     for field, value in bindings.items()
+                     for node in (value if isinstance(value, list) else [value])]
+        for index, send in enumerate(sends):
+            if "://" in send["node"]:
+                raise FakeError(400, f"sends[{index}].node is a URL; a send names "
+                                     "a node. S3 is the only origin.")
+            if send["node"] not in self.nodes:
+                raise FakeError(404, f"sends[{index}].node names no node")
+            send.setdefault("source", {"kind": "object"})
+
         record = {"id": run_id, "lib": self.lib, "project": project["id"],
-                  "status": "pending", "kind": body["kind"],
+                  # **A draft, exactly as the real route creates one.** The
+                  # record is written when the run is PLANNED, not when it is
+                  # submitted, which is what gives an approval something to
+                  # attach to.
+                  "status": "draft", "kind": body["kind"],
                   "engine": body["engine"], "model": body["model"],
+                  "plan": body.get("plan"), "approval": None, "counted": False,
+                  "sends": sends,
                   "prediction_id": None, "created": _now(), "submitted": None,
-                  "completed": None, "bindings": bindings,
+                  "completed": None,
                   "characters": list(body.get("characters") or []),
                   "folder": folder["id"], "outputs": [],
                   "lineage": {"from_run": None, "from_output": None},
                   "cost": None, "error": None, "payload": payload,
                   "input": body.get("input") or {}}
+        record["plan_digest"] = _plan_digest(record["plan"], sends)
         self.runs[run_id] = record
         return self._run_view(record)
 
@@ -1076,6 +1150,27 @@ class FakeApi:
         if method == "GET":
             return self._run_view(record)
         if method == "PATCH":
+            # **The gate, and it is on LEAVING the unsubmitted states.** Not on
+            # reaching `pending`: `engine/submit.py` writes `running` when it
+            # does not poll and `succeeded` when it does, so a check naming one
+            # status would be enforced here and bypassed in practice.
+            if "status" in body:
+                if body["status"] not in RUN_STATUSES:
+                    raise FakeError(400, f"status must be one of "
+                                         f"{', '.join(sorted(RUN_STATUSES))}")
+                leaving = (record["status"] in UNSUBMITTED
+                           and body["status"] not in UNSUBMITTED
+                           # An adoption files an artifact that already existed.
+                           # Nothing was submitted, so nothing was approved.
+                           and body["status"] != "adopted")
+                if leaving:
+                    if record["status"] != "approved":
+                        raise FakeError(409, f"run {run_id} is {record['status']} "
+                                             "and has not been approved")
+                    current = _plan_digest(record.get("plan"), record["sends"])
+                    if (record.get("approval") or {}).get("digest") != current:
+                        raise FakeError(409, "the payload changed after it was "
+                                             "approved; approve it again")
             for field in ("status", "prediction_id", "error", "cost", "completed",
                           "submitted", "lineage", "outputs"):
                 if field in body:
@@ -1087,6 +1182,49 @@ class FakeApi:
                 self._delete_node(record["folder"])
             return {"deleted": run_id}
         raise FakeError(405, method)
+
+    def _r_run_plan(self, method, body, params, run_id):
+        record = self._draft(run_id)
+        record["plan"] = body["plan"]
+        return self._revised(record)
+
+    def _r_run_sends(self, method, body, params, run_id):
+        record = self._draft(run_id)
+        for send in body["sends"]:
+            send.setdefault("source", {"kind": "object"})
+        record["sends"] = body["sends"]
+        return self._revised(record)
+
+    def _r_run_approve(self, method, body, params, run_id):
+        record = self.runs[run_id]
+        if method == "DELETE":
+            record["approval"] = None
+            record["status"] = "draft"
+            return self._run_view(record)
+        if record["status"] not in ("draft", "approved"):
+            raise FakeError(409, f"run {run_id} is {record['status']}; only a "
+                                 "draft is approved")
+        current = _plan_digest(record.get("plan"), record["sends"])
+        if body.get("digest") != current:
+            raise FakeError(409, "the plan changed after the payload you approved "
+                                 "was rendered; review it again")
+        record["approval"] = {"by": "sub-fake", "at": _now(), "digest": current}
+        record["status"] = "approved"
+        return self._run_view(record)
+
+    def _draft(self, run_id: str) -> dict:
+        record = self.runs[run_id]
+        if record["status"] not in UNSUBMITTED:
+            raise FakeError(409, f"run {run_id} has been submitted; its plan is "
+                                 "what was sent and cannot be rewritten")
+        return record
+
+    def _revised(self, record: dict) -> dict:
+        """Any plan or sends edit clears the approval. Hard rule #2, mechanically."""
+        record["plan_digest"] = _plan_digest(record.get("plan"), record["sends"])
+        record["approval"] = None
+        record["status"] = "draft"
+        return self._run_view(record)
 
     def _r_run_outputs(self, method, body, params, run_id):
         record = self.runs[run_id]

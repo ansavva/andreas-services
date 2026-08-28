@@ -11,6 +11,14 @@ projects, runs, scenes and movies are rows with UUIDs; the folder tree hangs off
 them; S3 keys carry ids and never names. Read it before assuming a slug is a
 path or that a document defines anything.
 
+**A run now has an authored half too — [docs/RUN_PLAN.md](docs/RUN_PLAN.md).** It
+is created as a `draft` when it is PLANNED rather than when it is submitted, so
+the row no longer asserts that anything happened; it carries a `plan`, one
+`SEND#` row per bound image, and an `approval` bound to a hash of both. **The API
+refuses to move a run out of the unsubmitted states unless it is approved and
+that hash still matches**, which is hard rule #2 made mechanical rather than
+remembered. Read it before touching anything that creates or submits a run.
+
 ## What studio is
 
 Studio is one service with two halves that share one library.
@@ -98,6 +106,15 @@ without billing.
 multiple-choice answer, or a payload shown several messages ago is not approval
 of the request about to be sent. Show it again and wait. No flag exists to
 answer this for a person, and if one appears, that is a bug.
+
+**Half of this is now enforced rather than remembered.** A run is created as a
+draft, an approval records the digest of the payload it was given for, and the
+API refuses the submission if the plan or the images have moved since — so
+approve-then-edit is a 409 rather than something nobody notices. It is **not** a
+permission boundary: the CLI and the SPA hold tokens from the same pool, so an
+agent can approve a run it wrote. The rule above is what stops that being a
+formality; the mechanism only stops the yes drifting from what it was for. See
+[docs/RUN_PLAN.md](docs/RUN_PLAN.md).
 
 ### 2b. NEVER put an image into a character without approval
 

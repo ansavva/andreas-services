@@ -19,6 +19,7 @@ import type {
   ReferenceIndex,
   ReelResponse,
   RunPage,
+  RunPlan,
   RunRecord,
   SavedText,
   SceneRecord,
@@ -690,6 +691,50 @@ export function getRuns(
  */
 export function getRun(id: string) {
   return apiGet<RunRecord>(`/api/runs/${encodeURIComponent(id)}`);
+}
+
+/**
+ * Approve a draft — record that somebody read THIS payload and said yes to it.
+ *
+ * **The digest is the whole of it.** It is sent, not stored: the API recomputes
+ * the digest of what is actually on the row and answers 409 `stale_digest` if
+ * the two disagree, so an approval cannot outlive the payload it was given for.
+ * Approve-then-edit is the failure hard rule #2 names and that nothing checked
+ * until this existed.
+ */
+export function approveRun(id: string, digest: string) {
+  return apiSend<RunRecord>("POST", `/api/runs/${encodeURIComponent(id)}/approve`, {
+    digest,
+  });
+}
+
+/** Take an approval back. The run returns to `draft` and cannot be submitted. */
+export function revokeRunApproval(id: string) {
+  return apiSend<RunRecord>("DELETE", `/api/runs/${encodeURIComponent(id)}/approve`);
+}
+
+/**
+ * Rewrite a draft's authored half. **Clears the approval, every time.**
+ *
+ * That is not this function's doing — the route does it — but a caller needs to
+ * know, because finding out at submit time is finding out too late. Refused
+ * outright once the run has been submitted: a plan edited afterwards would sit
+ * beside `request.json` describing something that was never sent.
+ */
+export function patchRunPlan(id: string, plan: RunPlan) {
+  return apiSend<RunRecord>("PATCH", `/api/runs/${encodeURIComponent(id)}/plan`, {
+    plan,
+  });
+}
+
+/** Replace the ordered images a draft binds. Clears the approval, every time. */
+export function patchRunSends(
+  id: string,
+  sends: { field: string; role: string | null; node: string }[],
+) {
+  return apiSend<RunRecord>("PATCH", `/api/runs/${encodeURIComponent(id)}/sends`, {
+    sends,
+  });
 }
 
 export function getScene(id: string) {

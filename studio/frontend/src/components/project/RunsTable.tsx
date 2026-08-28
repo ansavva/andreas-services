@@ -25,14 +25,41 @@ interface Props {
   onOpen: (run: RunSummary) => void;
 }
 
-const STATUSES: RunStatus[] = ["pending", "running", "succeeded", "failed", "cancelled"];
+/**
+ * What the filter offers, and `draft` is on it deliberately.
+ *
+ * A draft is hidden from the default listing — a grid mixing intentions with
+ * submissions is a grid nobody can read, and this screen is opened to see what
+ * was actually made. But drafts are the one thing a person has to be able to
+ * FIND, because an unapproved payload waiting to be looked at is invisible
+ * otherwise, and an invisible queue is one nobody works through.
+ *
+ * `discarded` is absent: it is gone, and offering a filter for it would suggest
+ * otherwise.
+ */
+const STATUSES: RunStatus[] = [
+  "draft",
+  "approved",
+  "pending",
+  "running",
+  "succeeded",
+  "failed",
+  "cancelled",
+];
 
 const STATUS_INTENT: Record<RunStatus, "neutral" | "success" | "danger" | "warning"> = {
+  // Unsubmitted. `approved` is a warning rather than a success on purpose: it
+  // means money is about to be spent and has not been yet, which is a state
+  // worth noticing rather than a job well done.
+  draft: "neutral",
+  approved: "warning",
+  discarded: "neutral",
   pending: "neutral",
   running: "warning",
   succeeded: "success",
   failed: "danger",
   cancelled: "neutral",
+  adopted: "neutral",
 };
 
 /**

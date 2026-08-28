@@ -108,6 +108,8 @@ blob is now unreferenced is not a question a single delete can answer.
 """
 
 import collections
+import hashlib
+import json
 import logging
 import time
 import uuid
@@ -218,9 +220,37 @@ PROFILE_SCHEMA_VERSION = 2
 # What a run's `status` may be. Studio owns this word — it is the one thing about
 # a submission this service is willing to have an opinion on — while the
 # provider's own response stays an undecoded blob beside it.
-RUN_STATUSES = frozenset({"pending", "running", "succeeded", "failed", "cancelled"})
+RUN_STATUSES = frozenset({
+    "draft", "approved", "pending", "running", "succeeded", "failed",
+    "cancelled", "discarded", "adopted",
+})
 
-# The three a run does not come back from. Studio owns this word, so it owns
+#: A synthetic run wrapping an artifact that already existed — `studio runs
+#: adopt`, which files a pre-scheme file so history is uniform. **Nothing was
+#: submitted and nothing billed**, so it is the one way out of the unsubmitted
+#: states that the approval gate does not stand in front of.
+#:
+#: It was missing from `RUN_STATUSES` entirely, which made `runs adopt` a 400
+#: against this service for as long as the route has validated the word. Nothing
+#: caught it because the pipeline's fake never validated a status at all.
+ADOPTED = "adopted"
+
+#: The three that come BEFORE a submission, and adding them changed what a run
+#: row means. A run used to be written only once a person had said yes at a
+#: terminal, so the existence of the row *was* the record of a submission. A run
+#: is created when it is PLANNED now — which is what makes a plan editable,
+#: viewable and approvable — so the row no longer says anything happened.
+#:
+#: `draft` and `discarded` are kept out of every default listing and out of the
+#: project's run count for exactly that reason: a grid mixing intentions with
+#: submissions is a grid nobody can read. `approved` is shown, because it is
+#: about to happen and somebody should be able to see it waiting.
+UNSUBMITTED_RUN_STATUSES = frozenset({"draft", "approved", "discarded"})
+
+#: What a default listing hides. Narrower than the set above on purpose.
+HIDDEN_RUN_STATUSES = frozenset({"draft", "discarded"})
+
+# The states a run does not come back from. Studio owns this word, so it owns
 # which of its values are endings — the alternative is every caller writing its
 # own set and one of them forgetting `cancelled`.
 #
@@ -228,7 +258,7 @@ RUN_STATUSES = frozenset({"pending", "running", "succeeded", "failed", "cancelle
 # was showing could still change, so it showed whatever was true when the page
 # opened and waited for a human to press reload; a client that knows which
 # states are terminal can stop asking on its own.
-TERMINAL_RUN_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
+TERMINAL_RUN_STATUSES = frozenset({"succeeded", "failed", "cancelled", "discarded"})
 
 # The sort key of the record half of a node, of a library, and of every entity.
 META = "META"
@@ -291,6 +321,12 @@ def _now() -> str:
     retires the workaround.
     """
     return datetime.now(timezone.utc).isoformat(timespec="microseconds")
+
+
+#: The same clock every row is stamped with, for the one caller outside this
+#: module that needs one: an approval records WHEN, and a timestamp minted
+#: anywhere else would be a second clock to reconcile.
+now = _now
 
 
 def _node_pk(node_id: str) -> str:
@@ -2440,7 +2476,15 @@ def delete_entity(kind: str, record: dict, *, delete_files: bool) -> dict:
                 )
             )
     if kind in COUNT_FIELD and record.get("project"):
-        steps.append((_bump_counts(record["project"], COUNT_FIELD[kind], -1), None))
+        # **Decrement only what was counted.** A run is created as a draft and
+        # deliberately not counted until it is submitted, so a draft that is
+        # discarded and deleted would otherwise take the project's run count
+        # below zero and keep it there — a number no later submission can
+        # correct, on a card a person reads. `counted` is written by the
+        # transition into `pending`; a scene and a movie carry no such flag and
+        # are always counted, which is why the default is True.
+        if record.get("counted", True):
+            steps.append((_bump_counts(record["project"], COUNT_FIELD[kind], -1), None))
         steps.append(
             (
                 _delete(
@@ -2794,6 +2838,7 @@ def create_project_entity(
     attributes: dict,
     listing: dict,
     subfolders: tuple = (),
+    count: bool = True,
 ) -> dict:
     """A run, a scene or a movie: envelope, listing row, folder — one write.
 
@@ -2811,6 +2856,14 @@ def create_project_entity(
     and `--since` read — while the hint alone collided across runs. Nothing keyed
     on it, no claim row enforced it, and resolving one needed an exact match, a
     substring fallback and an ambiguity error to prop it up.
+
+    **`count=False` creates the entity without counting it, and a RUN uses it.**
+    A run is created as a `draft` now — when it is planned, not when it is
+    submitted — so counting at creation would make a project's run count include
+    intentions nobody bought. The count is bumped instead by the transition into
+    `pending`, through `update_project_entity(bump_count=True)`, which is the
+    moment the run stops being a plan. A scene and a movie still count at
+    creation: both exist the moment they are planned and neither costs anything.
 
     **Every edge this entity carries goes in the same transaction**, because
     "which runs used this character" has to be true the moment the run exists —
@@ -2851,7 +2904,8 @@ def create_project_entity(
                  {"lib": lib, "id": entity_id, "created": now, **listing}),
             None,
         ),
-        (_bump_counts(project_id, COUNT_FIELD[kind], 1), NotFoundError(project_id)),
+        *([(_bump_counts(project_id, COUNT_FIELD[kind], 1), NotFoundError(project_id))]
+          if count else []),
         *steps,
         *edge_steps(kind, entity_id, lib, _edge_targets(attributes), [], now),
     ]
@@ -2882,7 +2936,7 @@ def project_entities(project_id: str, kind: str) -> list[dict]:
 
 def update_project_entity(
     kind: str, record: dict, assignments: dict, listing: dict | None = None,
-    edges: dict[str, list[str]] | None = None,
+    edges: dict[str, list[str]] | None = None, bump_count: bool = False,
 ) -> dict:
     """Move a run, scene or movie forward. **No `rev`, and that is deliberate.**
 
@@ -2896,6 +2950,14 @@ def update_project_entity(
     The listing row is updated in the same transaction when its projection
     changes, so a grid never shows `pending` for a run whose envelope says
     `succeeded`.
+
+    `bump_count` adds one to the project's count for this kind, in the same
+    transaction. It exists for the run that has just been submitted: a run is
+    created as a draft and deliberately not counted, so something has to count it
+    when it stops being one. The caller decides, because only the caller knows
+    whether this particular transition is the first one out of `draft` — see
+    `routes/runs.py`, which also writes `counted` so a re-submitted run cannot be
+    counted twice.
 
     `edges` replaces the edge rows of one or more target kinds, in that same
     transaction — `{ENTITY_SCENE: [...]}`. Scoped per kind because a replace has
@@ -2927,9 +2989,22 @@ def update_project_entity(
     for target_kind, targets in (edges or {}).items():
         steps += edge_steps(kind, record["id"], record["lib"], targets,
                             links(record["id"], target_kind), now)
+    if bump_count:
+        steps.append((_bump_counts(record["project"], COUNT_FIELD[kind], 1),
+                      NotFoundError(record["project"])))
 
     _write(steps)
-    return {**record, **{k: v for k, v in assignments.items() if v is not None}}
+    # **A `None` assignment is reported as a `None`, because that is what was
+    # written.** `_update` turns one into a REMOVE, so the row genuinely loses
+    # the attribute; filtering it out of the reply handed the caller back the
+    # value it had just cleared. Nothing noticed while the only `None`s here were
+    # `error` and `cost` on a run nobody read twice — it surfaced the moment a
+    # plan edit cleared an `approval` and the response still showed one.
+    #
+    # `update_entity` above still filters. It is left alone deliberately: it
+    # serves characters and projects, whose `PATCH` bodies omit what they do not
+    # mean to change, so a `None` there has never been a caller asking to clear.
+    return {**record, **assignments}
 
 
 def runs_for_character(char_id: str) -> list[dict]:
@@ -3104,6 +3179,231 @@ def update_shot(scene_id: str, lib: str, shot_id: str, changes: dict) -> dict:
     _write([(_shot_item(scene_id, shot_id, merged), None),
             *_shot_run_edges(scene_id, lib, [*others, merged], _now())])
     return merged
+
+
+# ──────────────────────── where an image came from ────────────────────────
+
+
+def source_of(record: dict) -> dict:
+    """WHY a node is being sent to a model, derived from where it sits.
+
+    **Derived rather than reported, and that is what makes it one answer.** The
+    pipeline knows perfectly well that an image is a character's third face
+    reference, because `engine/submit.py::gather` just chose it that way — but
+    the pipeline is not the only thing that creates runs, and a run backfilled
+    from history has no `gather` behind it at all. Deriving provenance here means
+    a run submitted today and a run reconstructed from 2026 describe their images
+    in the same words, computed by the same code.
+
+    The deepest entity wins, exactly as `owner_of` decides it: a frame under a
+    run's `output/` reports the run, not the project the run sits in.
+
+        {"kind": "character", "character": …, "group": "face", "order": 3000}
+        {"kind": "run",       "run": …,       "output": 2}
+        {"kind": "input-pool", "project": …,  "position": 4}
+        {"kind": "object"}
+
+    `object` is the honest fallback and not a failure: a file somebody made a
+    folder for and dropped an image into belongs to nobody in particular, which
+    is a real answer.
+    """
+    chain = entity_chain(record)
+    owner = chain[0] if chain else None
+    if owner is None:
+        return {"kind": "object"}
+
+    kind = entity_kind(owner)
+    if kind == ENTITY_CHARACTER:
+        source = {"kind": "character", "character": owner}
+        # The `REF#` row is what makes an image identity rather than merely a
+        # file in a character's folder, so the group belongs here — it is the
+        # difference between "a picture of them" and "the face reference".
+        entry = next(
+            (ref for ref in references(owner) if ref["node"] == record["node_id"]),
+            None,
+        )
+        if entry:
+            source["group"] = entry.get("group")
+            source["order"] = entry.get("order")
+        return source
+
+    if kind == ENTITY_RUN:
+        source = {"kind": "run", "run": owner}
+        try:
+            outputs = entity(ENTITY_RUN, owner).get("outputs") or []
+        except NotFoundError:
+            return source
+        if record["node_id"] in outputs:
+            # 1-based, because that is what a runref's `#2` means.
+            source["output"] = outputs.index(record["node_id"]) + 1
+        return source
+
+    if kind == ENTITY_PROJECT:
+        # **Position, because `--input N` IS a position** — the working pool is
+        # addressed by where a file sorts in it, so a send that recorded only
+        # "from the input pool" would lose the part a person actually typed.
+        # Imported here rather than at the top: `layout` imports this module, so
+        # the dependency only runs one way at import time. The constant is not
+        # copied, because a second spelling of "input" is a second answer to
+        # which folder `--input N` counts.
+        from studio_core.services import layout
+
+        parent = (records([record["parent_id"]]).get(record["parent_id"])
+                  if record.get("parent_id") else None)
+        if parent and parent.get("name") == layout.INPUT_FOLDER:
+            siblings = sorted(
+                (child for child in records(
+                    [entry["node_id"] for entry in children(parent["node_id"])]
+                ).values() if child.get("kind") == KIND_FILE),
+                key=lambda node: node["name"],
+            )
+            for position, node in enumerate(siblings, 1):
+                if node["node_id"] == record["node_id"]:
+                    return {"kind": "input-pool", "project": owner, "position": position}
+        return {"kind": "project", "project": owner}
+
+    return {"kind": "object"}
+
+
+# ───────────────────────────── sends ─────────────────────────────
+#
+# One row per image a run binds, and it is to a run what `SHOT#` is to a scene:
+# an ORDERED CHILD, not an edge. It exists in a plan before anything has been
+# submitted, its identity is its position, and the node it names is a field.
+#
+# **The order is the meaning, not a presentation detail.** A model is handed a
+# list of images and the prompt cites positions in it — a production prompt in
+# this library reads "the FIRST image is an existing plate of him" — so a send
+# that came back in a different order would make plate *n* the wrong plate. That
+# is why the sort key is a zero-padded number: a range query returns bind order
+# without anything having to sort it afterwards.
+#
+# What this replaces is `bindings`, a `{field: [node, …]}` map on the record.
+# The map recorded WHAT was sent and lost WHY: `engine/submit.py::gather` decides
+# that an image is a start frame or a reference, and which character group it
+# came from, and then discards all of it. `role` and `source` are that reasoning,
+# kept.
+
+
+SEND_PREFIX = "SEND#"
+
+#: What an image is FOR. The same four words a storyboard panel uses, minus
+#: `sample` — a sample binds to nothing, so it never becomes a send.
+SEND_ROLES = frozenset({"start", "end", "reference", "input"})
+
+#: Everything a send row holds. All four are AUTHORED; a send has no recorded
+#: half, which is the one way it differs from a shot. That is also why
+#: `put_sends` replaces rather than merging: there is nothing underneath a
+#: revision that a render could have put there.
+SEND_FIELDS = ("field", "role", "node", "source")
+
+
+def _send_sk(order: int) -> str:
+    """`SEND#0007`. Zero-padded so the key sorts numerically as a string.
+
+    Four digits, because a model that took more than 9,999 reference images
+    would have other problems. `%d` would sort `SEND#10` before `SEND#2`, which
+    is the same `-10`-before-`-2` bug the run outputs used to have when their
+    order came from a filename rather than from the row.
+    """
+    return f"{SEND_PREFIX}{order:04d}"
+
+
+def sends(run_id: str) -> list[dict]:
+    """One run's bound images, in bind order.
+
+    No sort afterwards: the key IS the order, so the query returns them right.
+    """
+    items = _query(
+        TableName=config.catalog_table(),
+        KeyConditionExpression="pk = :pk AND begins_with(sk, :send)",
+        ExpressionAttributeValues={
+            ":pk": {"S": _entity_pk(ENTITY_RUN, run_id)},
+            ":send": {"S": SEND_PREFIX},
+        },
+    )
+    entries = []
+    for index, item in enumerate(items, 1):
+        entry = _entity(item)
+        entry["order"] = index
+        entries.append(entry)
+    return entries
+
+
+def _send_item(run_id: str, order: int, entry: dict) -> dict:
+    return _put(
+        _entity_pk(ENTITY_RUN, run_id),
+        _send_sk(order),
+        {
+            **{field: entry.get(field) for field in SEND_FIELDS},
+            "created": entry.get("created") or _now(),
+        },
+    )
+
+
+def put_sends(run_id: str, entries: list[dict]) -> list[dict]:
+    """Replace a run's sends wholesale, renumbered from 1.
+
+    **A replace, where `put_shots` merges, and the difference is not an
+    oversight.** A shot carries recorded work — the run that rendered it, the
+    clip, the panel — so a plan revision has to land *onto* it. Every field of a
+    send is authored, so there is nothing to preserve and merging would only
+    make position ambiguous: the whole point of the row is that send 3 is the
+    third image, and a merge that kept a dropped send at position 3 would leave
+    the list describing an order the model was never given.
+
+    Rows beyond the new length are deleted in the same write, so the tail of a
+    shortened list cannot survive as a send nothing sent.
+    """
+    existing = sends(run_id)
+    steps = [(_send_item(run_id, index, entry), None)
+             for index, entry in enumerate(entries, 1)]
+    steps += [
+        (_delete(_entity_pk(ENTITY_RUN, run_id), _send_sk(order)), None)
+        for order in range(len(entries) + 1, len(existing) + 1)
+    ]
+
+    for start in range(0, len(steps), TRANSACTION_ITEMS):
+        _write(steps[start : start + TRANSACTION_ITEMS])
+    return [{**{field: entry.get(field) for field in SEND_FIELDS}, "order": index}
+            for index, entry in enumerate(entries, 1)]
+
+
+# ──────────────────────── the plan digest ────────────────────────
+
+
+def plan_digest(plan: dict | None, send_entries: list[dict]) -> str:
+    """A hash over everything a person approves: the plan AND the images.
+
+    **This is what makes an approval mean something after the fact.** Hard rule
+    #2 says re-approve after *any* edit, and until now nothing checked it: the
+    approval was a `y` at a terminal and the payload could be edited afterwards
+    with no trace. An approval records the digest it was given, `POST
+    /api/runs/<id>/approve` refuses one that no longer matches, and the submit
+    transition refuses a run whose recorded digest has gone stale.
+
+    The sends are hashed by `(field, role, node)` and their ORDER — swapping two
+    reference images changes what the model is shown, and a prompt citing "the
+    first image" makes that change material rather than cosmetic. `source` is
+    excluded: it is provenance for a reader, and re-deriving it more accurately
+    later must not invalidate an approval nobody's payload changed.
+
+    `_numbers` runs first so a value that has been round-tripped through
+    DynamoDB hashes the same as the one that was sent — the deserialiser hands
+    back `Decimal` for every number, and `Decimal("0.5")` and `0.5` do not
+    serialise alike.
+    """
+    payload = _numbers({
+        "plan": plan or {},
+        "sends": [
+            {"field": entry.get("field"), "role": entry.get("role"),
+             "node": entry.get("node")}
+            for entry in send_entries or []
+        ],
+    })
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"),
+                         ensure_ascii=False, default=str)
+    return "sha256:" + hashlib.sha256(encoded.encode()).hexdigest()
 
 
 # ─────────────────────────── the phrasebook ───────────────────────────

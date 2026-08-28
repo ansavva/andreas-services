@@ -53,6 +53,18 @@ def _run(api, project, slug="rooftop-portrait"):
     return resp.get_json()
 
 
+def _approve(api, run):
+    """Approve a draft by the digest the creation reply handed back.
+
+    A run is born a draft, so anything that wants a *submitted* run has to go
+    through the gate — which is the point of the gate, and the reason this helper
+    exists rather than each test flipping a status.
+    """
+    resp = api.post(f"/api/runs/{run['id']}/approve", json={"digest": run["plan_digest"]})
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    return resp.get_json()
+
+
 def _child(parent_id, name):
     return catalog.node(catalog.child_by_name(parent_id, name)["node_id"])
 
@@ -244,9 +256,33 @@ def test_counts_move_with_the_transaction_that_creates_and_deletes(empty_api):
         "/api/scenes", json={"project": project["id"], "slug": "stadium", "title": "S"}
     )
 
+    # **A run is created as a DRAFT and a draft is not counted.** The count says
+    # how much work this project has actually made, and a run row no longer
+    # asserts that anything happened — it is written when the run is planned.
+    # A scene is counted at creation because planning one costs nothing and it
+    # exists the moment it is planned.
     counts = empty_api.get(f"/api/projects/{project['id']}").get_json()["counts"]
-    assert (counts["runs"], counts["scenes"], counts["movies"]) == (1, 1, 0)
+    assert (counts["runs"], counts["scenes"], counts["movies"]) == (0, 1, 0)
 
+    _approve(empty_api, run)
+    empty_api.patch(f"/api/runs/{run['id']}", json={"status": "pending"})
+    counts = empty_api.get(f"/api/projects/{project['id']}").get_json()["counts"]
+    assert counts["runs"] == 1, "submitting is what counts a run"
+
+    empty_api.delete(f"/api/runs/{run['id']}")
+
+    assert empty_api.get(f"/api/projects/{project['id']}").get_json()["counts"]["runs"] == 0
+
+
+def test_discarding_a_draft_does_not_take_the_count_negative(empty_api):
+    """The other half of counting on submission, and the one that would have hurt.
+
+    A draft was never counted, so decrementing on its deletion would leave the
+    project reporting -1 runs — a number no later submission can correct, on a
+    card a person reads.
+    """
+    project = _project(empty_api)
+    run = _run(empty_api, project)
     empty_api.delete(f"/api/runs/{run['id']}")
 
     assert empty_api.get(f"/api/projects/{project['id']}").get_json()["counts"]["runs"] == 0
@@ -266,8 +302,13 @@ def test_deleting_a_project_refuses_while_it_holds_runs(empty_api):
 
     resp = empty_api.delete(f"/api/projects/{project['id']}")
 
+    # **An unsubmitted draft still holds the project**, and it is reported as a
+    # draft rather than as a run: `counts` is what the project has made, and a
+    # draft has made nothing. Deleting on the strength of `counts.runs == 0`
+    # would have thrown away every plan in the project without a word.
     assert resp.status_code == 409
-    assert resp.get_json()["counts"]["runs"] == 1
+    assert resp.get_json()["counts"]["runs"] == 0
+    assert resp.get_json()["counts"]["drafts"] == 1
     assert empty_api.delete(f"/api/projects/{project['id']}?force=1").status_code == 200
 
 

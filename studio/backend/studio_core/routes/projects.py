@@ -202,13 +202,29 @@ def delete_project(addressed: str):
     cascade = request.args.get("cascade") in ("1", "true")
     counts = record.get("counts") or {}
     held_entities = sum(int(counts.get(field) or 0) for field in ("runs", "scenes", "movies"))
+    # **Drafts are held by the project and are not in its counts**, so the guard
+    # has to ask for them separately or a project holding nothing but unsubmitted
+    # work would delete without a word. A run is counted when it is submitted —
+    # that is what keeps a project's run count meaning "runs made" — and this is
+    # the one place where the distinction would have cost data rather than
+    # tidiness. One query, on a path that runs once per project deletion.
+    drafts = sum(
+        1
+        for row in catalog.project_entities(record["id"], catalog.ENTITY_RUN)
+        if row.get("status") in catalog.HIDDEN_RUN_STATUSES
+    )
+    held_entities += drafts
     if held_entities and not cascade and request.args.get("force") not in ("1", "true"):
         return support.structured(
             "conflict",
             f"this project holds {held_entities} run(s), scene(s) and movie(s) — "
             "pass ?cascade=1 to delete them with it",
             409,
-            counts=counts,
+            # Both numbers, because they answer different questions and a client
+            # showing one as the other would be wrong. `counts` is what the
+            # project has MADE; `drafts` is unsubmitted work that would be
+            # deleted alongside it and that no count mentions.
+            counts={**counts, "drafts": drafts},
         )
 
     if cascade:

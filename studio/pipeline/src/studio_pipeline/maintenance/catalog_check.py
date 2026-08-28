@@ -71,6 +71,10 @@ import yaml
 from studio_pipeline import STUDIO_DIR
 from studio_pipeline.adapters import ddb as ddbc
 from studio_pipeline.adapters import s3 as s3c
+# The digest, from the one module that defines how this side of the wire spells
+# it. `verify` recomputing it its own way would be a fourth opinion about one
+# hash, and the whole point of the check is that there is exactly one.
+from studio_pipeline.maintenance import backfill_plans as BF
 from studio_pipeline.domain import paths as P
 from studio_pipeline.errors import die
 
@@ -1232,6 +1236,73 @@ def movie_groups(movie: dict) -> list[list[dict]]:
 GROUPS = {"character": character_groups, "project": project_groups,
           "run": run_groups, "scene": scene_groups, "movie": movie_groups}
 
+def run_plan_checks(rows: dict, node_exists) -> tuple[dict[str, list[str]], list[str]]:
+    """A submitted run's plan, its digest, its approval and its sends.
+
+    **Read off the ROWS rather than rebuilt from the tree**, unlike the rest of
+    `verify`. A plan is not derivable from anything: it is what a person decided,
+    or what `catalog backfill-plans` reconstructed from the recorded request. So
+    what can be checked is internal consistency, and each of these has a failure
+    that is otherwise silent.
+
+    Returns `(problems, planless)` — two things rather than one, because a run
+    with no plan is **coverage rather than corruption**. `problems` is what makes
+    `verify` exit 1, and `reseat` refuses to run without a passing verify; a
+    not-yet-run backfill blocking an unrelated destructive command on a library
+    where nothing is actually wrong would be the wrong trade entirely.
+
+    Its own function, the way `edge_plan_from_rows` is, so it can be tested
+    without standing up a bucket and a whole session.
+    """
+    problems: dict[str, list[str]] = collections.defaultdict(list)
+    planless: list[str] = []
+
+    for (pk, sk), run in rows.items():
+        if sk != "META" or not pk.startswith("RUN#"):
+            continue
+        where = f"run {run.get('id') or pk}"
+        # A draft has no approval yet by definition, and an adopted run wraps an
+        # artifact that was never submitted — neither has a payload anybody was
+        # supposed to consent to.
+        if run.get("status") in ("draft", "approved", "discarded", "adopted"):
+            continue
+
+        sends = [item for (spk, ssk), item in rows.items()
+                 if spk == pk and ssk.startswith("SEND#")]
+        # By the sort key, which IS the order — `SEND#0001`, zero-padded so a
+        # string sort is a numeric one. The digest hashes the sends in order,
+        # so getting this wrong here would report every run as drifted.
+        sends.sort(key=lambda entry: entry.get("sk", ""))
+
+        if not run.get("plan"):
+            planless.append(where)
+            continue
+
+        # **A stored digest that disagrees with the plan beside it refuses every
+        # submission.** `plan_digest` is a cache for a client to compare against
+        # and the gate recomputes — so if a write path ever changed a plan and
+        # forgot the digest, nothing would fail until somebody tried to submit,
+        # and the message would say the payload had changed, which would be true
+        # of nothing anybody did.
+        recomputed = BF.plan_digest(run.get("plan"), sends)
+        if run.get("plan_digest") != recomputed:
+            problems["stale_plan_digest"].append(where)
+
+        # An approval naming a payload the run no longer has. Legitimate
+        # mid-life — an edit clears the approval and returns the run to draft —
+        # so it is only wrong on a run that was submitted, which is what the
+        # status filter above leaves.
+        approval = run.get("approval") or {}
+        if approval and approval.get("digest") != recomputed:
+            problems["approval_does_not_match_plan"].append(where)
+
+        for send in sends:
+            if not node_exists(send.get("node")):
+                problems["dead_send"].append(f"{where}: {send.get('node')}")
+
+    return dict(problems), planless
+
+
 def phase_verify(s3, ddb, plan: dict) -> dict:
     """Re-read the table and re-list the bucket; check the two against each other.
 
@@ -1348,6 +1419,11 @@ def phase_verify(s3, ddb, plan: dict) -> dict:
                             f"{entity['where']}: {doc['pk']}/{doc['sk']} "
                             f"lacks {', '.join(thin)}")
 
+    # ── the plan, and the approval that names it ──────────────────────────
+    plan_problems, planless = run_plan_checks(rows, node_exists)
+    for label, entries in plan_problems.items():
+        problems[label].extend(entries)
+
     # D5, both directions. A qualifying file with no key is invisible in the
     # reel; a folder, a document or an entity row WITH one is the pollution the
     # sparse key exists to remove, and would be back the moment something wrote
@@ -1378,6 +1454,9 @@ def phase_verify(s3, ddb, plan: dict) -> dict:
     return {"ok": not problems, "problems": dict(problems),
             "entities": dict(counted), "objects": len(sizes),
             "edges": {"wanted": len(edges["wanted"]), "missing": len(edges["missing"])},
+            # Advisory, deliberately outside `problems`: see the note where it
+            # is collected. `studio catalog backfill-plans` is what clears it.
+            "planless": planless,
             "drift": drift}
 
 
@@ -1638,6 +1717,9 @@ def do_verify(library, journal):
         print(f"{'keys that have drifted':<22} {len(res['drift'])}   "
               "(cosmetic — the key describes where a file was created; "
               "`reseat` re-tidies)")
+        if res["planless"]:
+            print(f"{'runs with no plan':<22} {len(res['planless'])}   "
+                  "(coverage, not corruption — `backfill-plans` reconstructs them)")
         for label, entries in sorted(res["problems"].items()):
             print(f"\n{label.upper()}  {len(entries)}")
             for entry in entries[:SHOWN]:
@@ -1648,6 +1730,7 @@ def do_verify(library, journal):
         jrn["migrate_verify"] = {
             "ok": res["ok"], "entities": res["entities"],
             "objects": res["objects"], "drift": len(res["drift"]),
+            "planless": len(res["planless"]),
             "problems": {k: v[:50] for k, v in res["problems"].items()},
         }
     if not res["ok"]:

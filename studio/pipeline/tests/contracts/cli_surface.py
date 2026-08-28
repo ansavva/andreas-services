@@ -13,6 +13,40 @@ about behaviour.
 from __future__ import annotations
 
 import argparse
+import json
+import pathlib
+
+#: The reference file, named once so the helper and the test cannot disagree
+#: about which file they are talking about.
+REFERENCE = pathlib.Path(__file__).parent / "cli_surface_reference.json"
+
+
+def dumps(reference: dict) -> str:
+    """Serialise the reference the ONE way it is ever written.
+
+    **This function exists because the answer was previously a sentence in a
+    docstring, and a sentence is not enforcement.** How the file is encoded has
+    now been got wrong twice, in opposite directions: once by passing
+    `ensure_ascii=False` while the file held escapes, and once by taking the
+    default while the file held literal characters. Each time, a helper asked to
+    add one command rewrote ten help strings belonging to commands nobody had
+    touched, and buried the reviewable diff that is the only thing making it safe
+    to update a contract at all.
+
+    So there is one serializer, both writers use it, and
+    `test_the_reference_is_canonically_serialised` fails the moment the file on
+    disk stops matching it — which turns a silent rewrite into a red test.
+
+    `ensure_ascii=False` because the text is prose written by people: help
+    strings are full of em dashes and ellipses, and `\u2014` in a diff is
+    unreadable where `—` is not.
+    """
+    return json.dumps(reference, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+
+
+def load() -> dict:
+    return json.loads(REFERENCE.read_text())
+
 
 
 def _norm_default(value):

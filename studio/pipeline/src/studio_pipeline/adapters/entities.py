@@ -362,8 +362,9 @@ def project_movies(proj_id: str) -> list[dict]:
 def create_run(*, project: str, kind: str, engine: str, model: str,
                input: dict, bindings: dict | None = None,
                characters: list[str] | None = None,
-               prompt: dict | None = None) -> dict:
-    """Record a run BEFORE the submission, and get back its folder and payload.
+               prompt: dict | None = None, plan: dict | None = None,
+               sends: list[dict] | None = None) -> dict:
+    """Create the run as a DRAFT, before the approval and before the submission.
 
     The ordering is the whole point and predates this route: `request.json` was
     written before the submit and `result.json` only after it came back, which
@@ -374,11 +375,49 @@ def create_run(*, project: str, kind: str, engine: str, model: str,
     **`bindings` are node ids.** A URL-shaped one is refused by the API with a
     400 — hard rule #3, enforced for the SPA as well as for the CLI rather than
     in `runs.py` where only one caller went through it.
+
+    **It comes back `draft`, and nothing may be submitted until it is approved.**
+    The ordering moved one step earlier than the paragraph above describes: the
+    record is written before the *approval* too, which is what gives an approval
+    something to attach to. `sends` supersedes `bindings` and carries what the
+    map could not — each image's role and where it came from — and either is
+    accepted so that a caller can be moved over one at a time.
     """
     body = {"project": project, "kind": kind, "engine": engine, "model": model,
             "input": input, "bindings": bindings or {}}
-    body.update(_clean(characters=characters, prompt=prompt))
+    body.update(_clean(characters=characters, prompt=prompt, plan=plan, sends=sends))
     return api.post("/api/runs", body)
+
+
+def patch_run_plan(run_id: str, plan: dict) -> dict:
+    """Rewrite a draft's authored half. **Clears any approval, every time.**
+
+    That is hard rule #2's "re-approve after **any** edit", and it is the API's
+    doing rather than this function's — stated here because a caller that edits
+    a plan needs to know its approval is gone, and finding out at submit time is
+    finding out too late.
+    """
+    return api.patch(f"/api/runs/{run_id}/plan", {"plan": plan})
+
+
+def patch_run_sends(run_id: str, sends: list[dict]) -> dict:
+    """Replace the ordered images a draft binds. Clears any approval, every time."""
+    return api.patch(f"/api/runs/{run_id}/sends", {"sends": sends})
+
+
+def approve_run(run_id: str, digest: str) -> dict:
+    """Record that a person read THIS payload and said yes to it.
+
+    **The digest is what makes it an approval rather than a timestamp.** The API
+    recomputes the digest of what is actually on the row and refuses a mismatch,
+    so an approval cannot outlive the payload it was given for. A 409 here means
+    the plan moved and has to be read again — never that the API is unavailable.
+    """
+    return api.post(f"/api/runs/{run_id}/approve", {"digest": digest})
+
+
+def revoke_run_approval(run_id: str) -> dict:
+    return api.delete(f"/api/runs/{run_id}/approve")
 
 
 def query_runs(*, project: str | None = None, character: str | None = None,

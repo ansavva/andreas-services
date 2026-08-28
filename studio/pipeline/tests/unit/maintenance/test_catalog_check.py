@@ -827,3 +827,116 @@ def test_a_panel_with_no_run_yet_is_not_an_edge(catalog_table):
                          "opens_on": {"node": None, "from_run": None}})
 
     assert cm.edge_plan(catalog_table)["missing"] == {}
+
+
+# ── the plan, and the approval that names it ────────────────────────────────
+
+
+def _run_rows(run: dict, sends: list[dict] | None = None) -> dict:
+    """The `(pk, sk) -> item` map `phase_verify` builds from a scan."""
+    rows = {("RUN#" + run["id"], "META"): {**run, "pk": "RUN#" + run["id"], "sk": "META"}}
+    for order, send in enumerate(sends or [], 1):
+        sk = f"SEND#{order:04d}"
+        rows[("RUN#" + run["id"], sk)] = {**send, "pk": "RUN#" + run["id"], "sk": sk}
+    return rows
+
+
+def _alive(_node: str | None) -> bool:
+    return True
+
+
+def test_a_run_with_no_plan_is_coverage_rather_than_corruption():
+    """**It must not fail the verify**, and that is the whole point of it being
+    returned separately.
+
+    `reseat` refuses to run until the journal records a passing verify, and it is
+    the one command here that deletes an object. A backfill nobody has run yet
+    reported as a failure would block an unrelated destructive command on a
+    library where nothing is wrong.
+    """
+    rows = _run_rows({"id": "run-1", "status": "succeeded"})
+
+    problems, planless = cm.run_plan_checks(rows, _alive)
+
+    assert planless == ["run run-1"]
+    assert problems == {}, "a missing plan is not a problem, it is a gap"
+
+
+def test_a_digest_that_disagrees_with_its_own_plan_is_a_problem():
+    """The failure this check exists for is **silent until somebody submits.**
+
+    `plan_digest` is a cache for a client to compare against; the gate
+    recomputes. A write path that changed a plan and forgot the digest would
+    refuse every later submission with "the payload changed" — true of nothing
+    anybody did.
+    """
+    rows = _run_rows({"id": "run-1", "status": "succeeded",
+                      "plan": {"prompt": "a porch"}, "plan_digest": "sha256:wrong"})
+
+    problems, _ = cm.run_plan_checks(rows, _alive)
+
+    assert problems["stale_plan_digest"] == ["run run-1"]
+
+
+def test_a_digest_that_matches_is_not_reported():
+    plan = {"prompt": "a porch", "params": {}}
+    sends = [{"field": "image_input", "role": "reference", "node": "node-a"}]
+    rows = _run_rows(
+        {"id": "run-1", "status": "succeeded", "plan": plan,
+         "plan_digest": cm.BF.plan_digest(plan, sends)},
+        sends,
+    )
+
+    problems, planless = cm.run_plan_checks(rows, _alive)
+
+    assert problems == {} and planless == []
+
+
+def test_an_approval_naming_a_payload_the_run_no_longer_has_is_a_problem():
+    """A submitted run whose approval does not match what went out.
+
+    Mid-life this is legitimate — an edit clears the approval and returns the run
+    to draft — which is why only submitted runs are checked.
+    """
+    plan = {"prompt": "a porch"}
+    rows = _run_rows({"id": "run-1", "status": "succeeded", "plan": plan,
+                      "plan_digest": cm.BF.plan_digest(plan, []),
+                      "approval": {"by": "someone", "at": "…",
+                                   "digest": "sha256:something-else"}})
+
+    problems, _ = cm.run_plan_checks(rows, _alive)
+
+    assert problems["approval_does_not_match_plan"] == ["run run-1"]
+
+
+def test_a_send_naming_a_node_that_is_gone_is_reported():
+    plan = {"prompt": "x"}
+    sends = [{"field": "image_input", "role": "reference", "node": "node-gone"}]
+    rows = _run_rows(
+        {"id": "run-1", "status": "succeeded", "plan": plan,
+         "plan_digest": cm.BF.plan_digest(plan, sends)},
+        sends,
+    )
+
+    problems, _ = cm.run_plan_checks(rows, lambda node: False)
+
+    assert problems["dead_send"] == ["run run-1: node-gone"]
+
+
+def test_a_draft_is_not_checked_at_all():
+    """It has no approval yet by definition, and nothing was submitted."""
+    rows = _run_rows({"id": "run-1", "status": "draft"})
+
+    problems, planless = cm.run_plan_checks(rows, _alive)
+
+    assert problems == {} and planless == []
+
+
+def test_an_adopted_run_is_not_checked_either():
+    """It wraps an artifact that already existed. Nothing was ever submitted, so
+    there is no payload anybody was supposed to consent to."""
+    rows = _run_rows({"id": "run-1", "status": "adopted"})
+
+    problems, planless = cm.run_plan_checks(rows, _alive)
+
+    assert problems == {} and planless == []

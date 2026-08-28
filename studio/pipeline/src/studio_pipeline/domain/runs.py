@@ -75,6 +75,7 @@ import json
 import mimetypes
 import os
 import re
+import sys
 from pathlib import Path
 
 import click
@@ -209,9 +210,11 @@ def render_payload(run: str, model: str, endpoint: str, payload: dict,
 def record_request(
     project: str, *, kind: str, engine: str, model: str,
     input: dict, bindings: dict | None = None, prompt_source: dict | None = None,
-    characters: list[str] | None = None,
+    characters: list[str] | None = None, plan: dict | None = None,
+    sends: list[dict] | None = None,
 ) -> dict:
-    """Create the run and return its record. **Called BEFORE the submission.**
+    """Create the run as a DRAFT. **Called before the submission AND before the
+    approval.**
 
     The ordering is the reason `request.json` and `result.json` were two writes
     and is preserved as two calls: a prediction that times out still leaves a
@@ -231,7 +234,7 @@ def record_request(
     try:
         return entities.create_run(
             project=project, kind=kind, engine=engine, model=model,
-            input=input, bindings=clean,
+            input=input, bindings=clean, plan=plan, sends=sends,
             characters=characters or [], prompt=prompt_source)
     except api.ApiError as exc:
         raise RunError(str(exc)) from exc
@@ -632,6 +635,123 @@ def do_delete(runref, files, project):
     record = resolve_run(runref, project)
     entities.delete_run(record["id"], files=files)
     print(f"deleted run {record['id']} (files: {files})")
+
+
+@main.command("approve")
+@click.argument("runref", required=True)
+@click.option("--project", help="Default project for a bare runref.")
+@reports(RunError, api.ApiError)
+def do_approve(runref, project):
+    """Read a draft's payload in full, then say yes to **that** payload.
+
+    **No `--yes`, and there will not be one.** A person reads what is printed and
+    answers, or nothing is approved: an approval flag is the door an agent walks
+    through while believing some earlier exchange counted as consent. That
+    sentence is already in `board.py` and `shoot.py`; it matters more here,
+    because what this writes is a durable record that somebody consented.
+
+    The digest is what turns that record into an approval rather than a
+    timestamp. It names the exact words and the exact ordered images, so
+    re-wording a prompt afterwards does not leave a stale yes behind — the API
+    refuses the submission and says the payload moved.
+    """
+    record = resolve_run(runref, project)
+    if record.get("status") != "draft":
+        raise RunError(f"run {record['id']} is {record.get('status')}, not a draft")
+
+    print(_render_plan(record))
+    if not click.confirm(f"\napprove this payload for run {record['id']}?",
+                         default=False):
+        print("not approved.", file=sys.stderr)
+        raise SystemExit(1)
+
+    updated = entities.approve_run(record["id"], record["plan_digest"])
+    print(f"approved {updated['id']} — submit it with: "
+          f"studio runs submit {updated['id']}")
+
+
+@main.command("submit")
+@click.argument("runref", required=True)
+@click.option("--project", help="Default project for a bare runref.")
+@reports(RunError, api.ApiError)
+def do_submit(runref, project):
+    """Send an approved draft to the model. **This is what bills.**
+
+    Deliberately not the same command as `approve`: the two exist apart so that
+    the payload can be read in one place — a terminal, or the app — and sent from
+    another, which is the whole point of the approval being a record rather than
+    a keystroke.
+    """
+    record = resolve_run(runref, project)
+    if record.get("status") != "approved":
+        raise RunError(
+            f"run {record['id']} is {record.get('status')}, not approved.\n"
+            f"       studio runs approve {record['id']}")
+    print(f"submitting {record['id']} …", file=sys.stderr)
+    # The engine owns the submit lifecycle; importing it here rather than at the
+    # top keeps `domain` free of `engine` at import time, which is the direction
+    # the dependency arrow points everywhere else in this package.
+    from studio_pipeline.engine import resubmit
+    print(json.dumps(resubmit.submit_draft(record), indent=2))
+
+
+@main.command("discard")
+@click.argument("runref", required=True)
+@click.option("--files", type=click.Choice(["keep", "delete"]), default="delete",
+              help="What to do with the run's folder (default: delete it).")
+@click.option("--project", help="Default project for a bare runref.")
+@reports(RunError, api.ApiError)
+def do_discard(runref, files, project):
+    """Throw away a draft that will not be submitted.
+
+    **`--files delete` by default, which is the opposite of `runs delete`**, and
+    the difference is what the folder holds. A submitted run's folder holds
+    generated media somebody paid for, so the default there keeps it. A draft's
+    folder holds two payload documents and an empty `output/` — nothing was ever
+    made — so keeping it by default would leave an orphan per abandoned idea.
+    """
+    record = resolve_run(runref, project)
+    if record.get("status") not in ("draft", "approved"):
+        raise RunError(
+            f"run {record['id']} is {record.get('status')} and has been "
+            f"submitted; use `studio runs delete` if you mean to remove it")
+    entities.delete_run(record["id"], files=files)
+    print(f"discarded draft {record['id']} (files: {files})")
+
+
+def _render_plan(record: dict) -> str:
+    """A draft's payload, as the two documents hard rule #2 asks for.
+
+    Rebuilt from the record rather than re-rendered from a live payload, because
+    what a person is approving is what is STORED — a render assembled again from
+    arguments would be a second opinion about the payload, and approving the
+    second opinion while the first is what submits is precisely the gap the
+    digest exists to close.
+    """
+    plan = record.get("plan") or {}
+    sends = record.get("sends") or []
+    lines = [
+        "===== 1/2  PROMPT — serialized into the `prompt` string at submit time =====",
+        json.dumps(plan.get("prompt"), indent=2, ensure_ascii=False),
+        "",
+        "===== 2/2  INPUT — the parameters this model receives =====",
+        json.dumps({"run": record["id"], "model": record.get("model"),
+                    "input": plan.get("params") or {}}, indent=2, ensure_ascii=False),
+    ]
+    if sends:
+        lines += ["", "===== IMAGES — what this run sends, in order ====="]
+        for n, send in enumerate(sends, 1):
+            source = send.get("source") or {}
+            where = source.get("kind", "?")
+            if source.get("group"):
+                where += f" · {source['group']}"
+            if source.get("position"):
+                where += f" · input {source['position']}"
+            if source.get("output"):
+                where += f" · output {source['output']}"
+            lines.append(f"  {n}. [{send.get('role') or '?'}] "
+                         f"{send.get('name') or send['node']}  ({where})")
+    return "\n".join(lines)
 
 
 @main.command("adopt")

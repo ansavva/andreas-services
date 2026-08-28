@@ -23,7 +23,7 @@ import pytest
 
 from studio_core import config
 from studio_core.services import catalog, layout
-from tests.conftest import CATALOG_LIBRARY
+from tests.conftest import CATALOG_LIBRARY, CATALOG_OWNER
 
 
 def _item(client, pk, sk):
@@ -72,6 +72,27 @@ def _child(parent_id, name):
     return catalog.node(catalog.child_by_name(parent_id, name)["node_id"])
 
 
+def _approve(api, run):
+    """Approve a draft with the digest its creation handed back."""
+    resp = api.post(f"/api/runs/{run['id']}/approve", json={"digest": run["plan_digest"]})
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    return resp.get_json()
+
+
+def _submitted(api, project, **body):
+    """A run that has actually been submitted — draft, approved, then pending.
+
+    Every test that wants a run in a post-submission state goes through the gate
+    rather than around it, because going around it is the thing the gate exists
+    to make impossible.
+    """
+    run = _create(api, project, **body)
+    _approve(api, run)
+    resp = api.patch(f"/api/runs/{run['id']}", json={"status": "pending"})
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    return run
+
+
 # ──────────────────────── the envelope, in one write ────────────────────────
 
 
@@ -81,20 +102,24 @@ def test_creating_a_run_writes_envelope_listing_row_folder_and_output(empty_api,
     A run is recorded *before* it is submitted, which is the reason
     `request.json` and `result.json` were two writes and are two calls here: a
     prediction that times out, or a process that is killed, leaves an envelope
-    saying `pending` with the exact input beside it rather than nothing at all.
+    with the exact input beside it rather than nothing at all.
+
+    **It is now recorded before the APPROVAL too, which is why it starts at
+    `draft`.** That is what gives an approval something to attach to: a payload
+    with an address, that can be read, edited and hashed before it bills.
     """
     project = _project(empty_api)
 
     run = _create(empty_api, project, input={"prompt": "a rooftop", "aspect_ratio": "9:16"})
 
     envelope = _item(catalog_table, f"RUN#{run['id']}", "META")
-    assert envelope["status"]["S"] == "pending"
+    assert envelope["status"]["S"] == "draft"
     assert envelope["project"]["S"] == project["id"]
     assert envelope["model"]["S"] == "google/nano-banana-pro"
 
     listing = catalog.project_entities(project["id"], catalog.ENTITY_RUN)
     assert [row["id"] for row in listing] == [run["id"]]
-    assert listing[0]["status"] == "pending"
+    assert listing[0]["status"] == "draft"
 
     # **A run has no slug, so its folder is named for its id.** The record names
     # the folder's node id either way, which is what stops a rename above it
@@ -144,7 +169,7 @@ def test_the_listing_row_carries_every_field_the_spa_declares(empty_api):
     real transitions, and it is the check that was missing.
     """
     project = _project(empty_api)
-    run = _create(empty_api, project)
+    run = _submitted(empty_api, project)
     empty_api.patch(f"/api/runs/{run['id']}", json={"status": "succeeded",
                                                     "cost": {"currency": "USD",
                                                              "amount": 0.032}})
@@ -296,12 +321,17 @@ def test_bindings_are_stored_as_node_ids(empty_api, catalog_table):
     run = _create(empty_api, project, bindings={"image_input": [picture["node_id"]]})
     empty_api.patch(f"/api/nodes/{picture['node_id']}", json={"name": "renamed.webp"})
 
-    envelope = _item(catalog_table, f"RUN#{run['id']}", "META")
-    assert [entry["S"] for entry in envelope["bindings"]["M"]["image_input"]["L"]] == [
-        picture["node_id"]
-    ]
+    # **The node id lives on a `SEND#` row now, not in a map on the envelope.**
+    # `bindings` was a `{field: [node, …]}` attribute; it is derived from these
+    # rows on the way out, so the response shape is unchanged and there is one
+    # truth rather than two spellings of it.
+    send = _item(catalog_table, f"RUN#{run['id']}", "SEND#0001")
+    assert send["node"]["S"] == picture["node_id"]
+    assert send["field"]["S"] == "image_input"
+
     fetched = empty_api.get(f"/api/runs/{run['id']}").get_json()
     assert fetched["bindings"]["image_input"][0]["name"] == "renamed.webp"
+    assert fetched["sends"][0]["node"] == picture["node_id"]
 
 
 def test_an_expanded_binding_and_output_name_their_node_as_node(empty_api):
@@ -360,7 +390,7 @@ def test_the_provider_response_is_stored_as_its_own_blob(empty_api):
     It is the half of a run this service is forbidden to have an opinion about.
     """
     project = _project(empty_api)
-    run = _create(empty_api, project)
+    run = _submitted(empty_api, project)
 
     resp = empty_api.post(
         f"/api/runs/{run['id']}/response", json={"body": {"output": ["https://x/y.png"]}}
@@ -382,7 +412,7 @@ def test_patching_a_run_updates_the_listing_row_in_the_same_transaction(empty_ap
     on the screen a person looks at most.
     """
     project = _project(empty_api)
-    run = _create(empty_api, project)
+    run = _submitted(empty_api, project)
 
     resp = empty_api.patch(
         f"/api/runs/{run['id']}",
@@ -404,7 +434,7 @@ def test_a_run_takes_no_rev_and_that_is_deliberate(empty_api):
     prediction finished.
     """
     project = _project(empty_api)
-    run = _create(empty_api, project)
+    run = _submitted(empty_api, project)
 
     assert empty_api.patch(
         f"/api/runs/{run['id']}", json={"status": "running"}
@@ -434,7 +464,7 @@ def test_a_float_cost_round_trips_exactly(empty_api):
     what a prediction cost.
     """
     project = _project(empty_api)
-    run = _create(empty_api, project)
+    run = _submitted(empty_api, project)
 
     resp = empty_api.patch(
         f"/api/runs/{run['id']}",
@@ -557,8 +587,8 @@ def test_runs_by_character_is_one_reverse_query(empty_api):
     character = _character(empty_api)
     other = _character(empty_api, "subject-b")
     project = _project(empty_api)
-    mine = _create(empty_api, project, characters=[character["id"]])
-    _create(empty_api, project, slug="other-portrait", characters=[other["id"]])
+    mine = _submitted(empty_api, project, characters=[character["id"]])
+    _submitted(empty_api, project, slug="other-portrait", characters=[other["id"]])
 
     body = empty_api.get(f"/api/runs?character={character['id']}").get_json()
 
@@ -572,9 +602,9 @@ def test_runs_filter_on_status_model_and_since(empty_api):
     is a second copy of a mutable attribute to keep in step.
     """
     project = _project(empty_api)
-    succeeded = _create(empty_api, project)
+    succeeded = _submitted(empty_api, project)
     empty_api.patch(f"/api/runs/{succeeded['id']}", json={"status": "succeeded"})
-    _create(empty_api, project, slug="pending-portrait")
+    _submitted(empty_api, project, slug="pending-portrait")
 
     body = empty_api.get(
         f"/api/runs?project={project['id']}&status=succeeded"
@@ -643,3 +673,400 @@ def test_a_run_in_another_library_is_403(empty_api, catalog_table):
 
     assert empty_api.get("/api/runs/run-elsewhere").status_code == 403
     assert CATALOG_LIBRARY != "lib-0002"
+
+
+# ─────────────────── the approval gate, and what makes it real ───────────────────
+#
+# Hard rule #2 says: never submit without approval of the FULL payload, and
+# re-approve after ANY edit. It was a sentence in a document, enforced by a
+# `click.confirm` in a terminal that left no trace — so nothing could check that
+# the payload somebody said yes to was the payload that went out. These are the
+# tests that make it checkable.
+
+
+def test_a_run_cannot_be_submitted_without_an_approval(empty_api):
+    """The gate, in one assertion.
+
+    It lives at the API rather than in the CLI because the API is the only thing
+    *both* halves of studio pass through — the same argument that moved hard rule
+    #3 here. A check the CLI made alone would be a rule the SPA did not have.
+    """
+    project = _project(empty_api)
+    run = _create(empty_api, project)
+
+    resp = empty_api.patch(f"/api/runs/{run['id']}", json={"status": "pending"})
+
+    assert resp.status_code == 409
+    assert resp.get_json()["error"] == "not_approved"
+    assert catalog.entity(catalog.ENTITY_RUN, run["id"])["status"] == "draft"
+
+
+def test_approving_then_editing_the_plan_refuses_the_submission(empty_api):
+    """**Approve-then-edit is the failure this whole mechanism exists to catch.**
+
+    A payload is approved, a prompt is reworded, and the run goes out carrying
+    words nobody read. Hard rule #2's "re-approve after **any** edit" said not to
+    do that and nothing checked it; the digest is what checks it.
+    """
+    project = _project(empty_api)
+    run = _create(empty_api, project, plan={"prompt": "a rooftop at dawn"})
+    _approve(empty_api, run)
+
+    empty_api.patch(f"/api/runs/{run['id']}/plan", json={"plan": {"prompt": "a rooftop at dusk"}})
+
+    resp = empty_api.patch(f"/api/runs/{run['id']}", json={"status": "pending"})
+    assert resp.status_code == 409
+    assert resp.get_json()["error"] == "not_approved", "an edit returns the run to draft"
+
+
+def test_editing_the_images_also_drops_the_approval(empty_api):
+    """A payload is its prompt **and** its pictures.
+
+    Swapping a reference image changes what the model is shown as surely as
+    rewording the prompt does, and an approval that survived it would be an
+    approval of something else.
+    """
+    project = _project(empty_api)
+    character = _character(empty_api)
+    reference = _child(character["root"], "reference")
+    first = _uploaded(empty_api, reference["node_id"], "a.webp")
+    second = _uploaded(empty_api, reference["node_id"], "b.webp")
+
+    run = _create(empty_api, project, bindings={"image_input": [first["node_id"]]})
+    _approve(empty_api, run)
+
+    resp = empty_api.patch(
+        f"/api/runs/{run['id']}/sends",
+        json={"sends": [{"field": "image_input", "role": "reference",
+                         "node": second["node_id"]}]},
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["approval"] is None
+    assert resp.get_json()["status"] == "draft"
+
+
+def test_reordering_the_images_drops_the_approval(empty_api):
+    """**A reorder is a real edit**, because position is cited by the prompt.
+
+    A production prompt in this library reads "the FIRST image is an existing
+    plate of him". Swapping two references changes which picture that sentence
+    is about, so an approval taken before the swap cannot survive it.
+    """
+    project = _project(empty_api)
+    character = _character(empty_api)
+    reference = _child(character["root"], "reference")
+    one = _uploaded(empty_api, reference["node_id"], "a.webp")
+    two = _uploaded(empty_api, reference["node_id"], "b.webp")
+
+    run = _create(
+        empty_api, project,
+        bindings={"image_input": [one["node_id"], two["node_id"]]},
+    )
+    approved = _approve(empty_api, run)
+
+    resp = empty_api.patch(
+        f"/api/runs/{run['id']}/sends",
+        json={"sends": [
+            {"field": "image_input", "role": "reference", "node": two["node_id"]},
+            {"field": "image_input", "role": "reference", "node": one["node_id"]},
+        ]},
+    )
+    assert resp.get_json()["plan_digest"] != approved["plan_digest"]
+    assert resp.get_json()["approval"] is None
+
+
+def test_approving_a_digest_that_has_moved_on_is_refused(empty_api):
+    """Compare-and-swap, not a write.
+
+    The client sends the digest of what it just showed somebody. If the row has
+    moved since, approving would record consent to a payload nobody saw — so it
+    is a 409 carrying the current digest, and the client re-renders.
+    """
+    project = _project(empty_api)
+    run = _create(empty_api, project, plan={"prompt": "a rooftop"})
+
+    resp = empty_api.post(f"/api/runs/{run['id']}/approve", json={"digest": "sha256:nonsense"})
+
+    assert resp.status_code == 409
+    assert resp.get_json()["error"] == "stale_digest"
+    assert resp.get_json()["digest"] == run["plan_digest"]
+
+
+def test_approving_without_a_digest_is_refused(empty_api):
+    """**You approve a payload, not a run.** A bare approve is the flag hard rule
+    #2 refuses to have — a door an agent walks through believing some earlier
+    exchange counted as consent."""
+    project = _project(empty_api)
+    run = _create(empty_api, project)
+
+    assert empty_api.post(f"/api/runs/{run['id']}/approve", json={}).status_code == 400
+
+
+def test_an_approval_records_who_and_when(empty_api):
+    project = _project(empty_api)
+    run = _create(empty_api, project)
+
+    approval = _approve(empty_api, run)["approval"]
+
+    assert approval["by"] == CATALOG_OWNER
+    assert approval["digest"] == run["plan_digest"]
+    assert approval["at"]
+
+
+def test_an_approval_can_be_revoked(empty_api):
+    project = _project(empty_api)
+    run = _create(empty_api, project)
+    _approve(empty_api, run)
+
+    resp = empty_api.delete(f"/api/runs/{run['id']}/approve")
+
+    assert resp.status_code == 200
+    assert resp.get_json()["status"] == "draft"
+    assert empty_api.patch(
+        f"/api/runs/{run['id']}", json={"status": "pending"}
+    ).status_code == 409
+
+
+def test_a_submitted_runs_plan_cannot_be_rewritten(empty_api):
+    """**What was sent is what the record says was sent.**
+
+    `request.json` holds exactly what the provider was given. A plan edited after
+    the submission would sit beside it describing something that never happened,
+    and the run page would draw the two as though they agreed.
+    """
+    project = _project(empty_api)
+    run = _submitted(empty_api, project, plan={"prompt": "a rooftop"})
+
+    resp = empty_api.patch(f"/api/runs/{run['id']}/plan", json={"plan": {"prompt": "edited"}})
+
+    assert resp.status_code == 409
+
+
+def test_drafts_are_hidden_from_a_listing_and_askable_for(empty_api):
+    """A grid mixing intentions with submissions is a grid nobody can read.
+
+    Hiding them is what keeps the runs screen answering the question it is opened
+    to answer — what was actually made — while `?status=draft` is how the screen
+    that wants the other answer gets it.
+    """
+    project = _project(empty_api)
+    submitted = _submitted(empty_api, project)
+    draft = _create(empty_api, project, slug="unsubmitted")
+
+    listed = empty_api.get(f"/api/runs?project={project['id']}").get_json()["runs"]
+    assert [run["id"] for run in listed] == [submitted["id"]]
+
+    drafts = empty_api.get(f"/api/runs?project={project['id']}&status=draft").get_json()
+    assert [run["id"] for run in drafts["runs"]] == [draft["id"]]
+
+    both = empty_api.get(f"/api/runs?project={project['id']}&include=drafts").get_json()
+    assert {run["id"] for run in both["runs"]} == {submitted["id"], draft["id"]}
+
+
+def test_a_run_reports_whether_its_approval_has_gone_stale(empty_api):
+    """`stale` is computed, never stored — a cached answer is the one thing a
+    gate must not trust."""
+    project = _project(empty_api)
+    run = _create(empty_api, project, plan={"prompt": "a rooftop"})
+    _approve(empty_api, run)
+
+    assert empty_api.get(f"/api/runs/{run['id']}").get_json()["stale"] is False
+
+
+def test_a_send_records_why_the_image_was_sent(empty_api):
+    """The half `bindings` never held.
+
+    `engine/submit.py::gather` decides an image is a start frame, or the third
+    face reference of a named character, and then throws that away. A run page
+    that can only say "six images were sent" is the consequence.
+    """
+    project = _project(empty_api)
+    character = _character(empty_api)
+    reference = _child(character["root"], "reference")
+    picture = _uploaded(empty_api, reference["node_id"], "front.webp")
+
+    run = _create(
+        empty_api, project,
+        sends=[{"field": "image_input", "role": "reference", "node": picture["node_id"],
+                "source": {"kind": "character", "character": character["id"],
+                           "group": "face"}}],
+    )
+
+    (send,) = empty_api.get(f"/api/runs/{run['id']}").get_json()["sends"]
+    assert send["role"] == "reference"
+    assert send["source"]["group"] == "face"
+    assert send["name"] == "front.webp", "a send expands into something drawable"
+
+
+def test_a_send_naming_a_url_is_refused(empty_api):
+    """Hard rule #3, on the new path. S3 is the only origin."""
+    project = _project(empty_api)
+
+    resp = empty_api.post(
+        "/api/runs",
+        json={"project": project["id"], "kind": "image", "model": "google/nano-banana-pro",
+              "sends": [{"field": "image_input", "role": "reference",
+                         "node": "https://example.com/a.png"}]},
+    )
+
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "invalid_binding"
+
+
+def test_a_send_with_an_unknown_role_is_refused(empty_api):
+    project = _project(empty_api)
+    character = _character(empty_api)
+    picture = _uploaded(empty_api, _child(character["root"], "reference")["node_id"], "a.webp")
+
+    resp = empty_api.post(
+        "/api/runs",
+        json={"project": project["id"], "kind": "image", "model": "google/nano-banana-pro",
+              "sends": [{"field": "image_input", "role": "sample", "node": picture["node_id"]}]},
+    )
+
+    # `sample` is a storyboard PANEL role — a picture for a person to look at,
+    # which binds to nothing. It cannot be a send, because a send is by
+    # definition something the model was handed.
+    assert resp.status_code == 400
+
+
+def test_the_gate_is_on_leaving_the_draft_states_not_on_reaching_pending(empty_api):
+    """**The near-miss this test exists to hold shut.**
+
+    `engine/submit.py` writes `running` when it does not poll and `succeeded`
+    when it does. It never writes `pending`. A gate that checked for `pending`
+    would therefore have been enforced by the test suite and bypassed by the only
+    caller in existence — the worst possible outcome, because it reads as
+    working.
+    """
+    project = _project(empty_api)
+
+    for status in ("running", "succeeded", "failed"):
+        run = _create(empty_api, project, slug=f"unapproved-{status}")
+        resp = empty_api.patch(f"/api/runs/{run['id']}", json={"status": status})
+        assert resp.status_code == 409, f"{status} slipped past the gate"
+        assert resp.get_json()["error"] == "not_approved"
+
+
+def test_a_submitted_run_moves_on_without_re_approval(empty_api):
+    """Once it has gone out, the statuses are the machine reporting facts.
+
+    Asking for an approval to record that a prediction failed would be asking a
+    person to consent to something that already happened.
+    """
+    project = _project(empty_api)
+    run = _submitted(empty_api, project)
+
+    assert empty_api.patch(
+        f"/api/runs/{run['id']}", json={"status": "running"}
+    ).status_code == 200
+    assert empty_api.patch(
+        f"/api/runs/{run['id']}", json={"status": "succeeded"}
+    ).status_code == 200
+
+
+def test_a_run_is_counted_once_however_many_statuses_it_moves_through(empty_api):
+    project = _project(empty_api)
+    run = _create(empty_api, project)
+    _approve(empty_api, run)
+
+    for status in ("running", "succeeded"):
+        empty_api.patch(f"/api/runs/{run['id']}", json={"status": status})
+
+    counts = empty_api.get(f"/api/projects/{project['id']}").get_json()["counts"]
+    assert counts["runs"] == 1
+
+
+def test_a_send_learns_where_its_image_came_from_without_being_told(empty_api):
+    """**Provenance is derived, so a backfilled run says the same words.**
+
+    The pipeline knows it picked a face reference, but the pipeline is not the
+    only thing that creates runs — and a run reconstructed from history has no
+    `gather` behind it at all. Deriving it from where the node sits means one
+    implementation and one vocabulary.
+    """
+    character = _character(empty_api)
+    project = _project(empty_api)
+    picture = _uploaded(empty_api, _child(character["root"], "reference")["node_id"], "a.webp")
+    empty_api.post(
+        f"/api/characters/{character['id']}/references",
+        json={"node": picture["node_id"], "group": "face"},
+    )
+
+    run = _create(empty_api, project, bindings={"image_input": [picture["node_id"]]})
+
+    (send,) = empty_api.get(f"/api/runs/{run['id']}").get_json()["sends"]
+    assert send["source"]["kind"] == "character"
+    assert send["source"]["character"] == character["id"]
+    assert send["source"]["group"] == "face", "the REF# row is what makes it identity"
+
+
+def test_a_send_from_the_input_pool_records_its_position(empty_api):
+    """**`--input N` IS a position**, so a send that lost it would lose the part
+    a person actually typed."""
+    project = _project(empty_api)
+    pool = _child(project["root"], layout.INPUT_FOLDER)
+    _uploaded(empty_api, pool["node_id"], "a-first.webp")
+    second = _uploaded(empty_api, pool["node_id"], "b-second.webp")
+
+    run = _create(empty_api, project, bindings={"image_input": [second["node_id"]]})
+
+    (send,) = empty_api.get(f"/api/runs/{run['id']}").get_json()["sends"]
+    assert send["source"] == {"kind": "input-pool", "project": project["id"], "position": 2}
+
+
+def test_a_send_chained_off_an_earlier_run_names_that_run(empty_api):
+    """The deepest entity wins, so a frame under a run's `output/` reports the
+    run rather than the project it sits in — which is what makes a chain
+    readable backwards from the images alone."""
+    project = _project(empty_api)
+    earlier = _submitted(empty_api, project)
+    frame = empty_api.post(
+        f"/api/runs/{earlier['id']}/outputs",
+        json={"name": "frame.webp", "size": 4, "content_type": "image/webp"},
+    ).get_json()
+
+    run = _create(empty_api, project, slug="chained",
+                  bindings={"image_input": [frame["node"]]})
+
+    (send,) = empty_api.get(f"/api/runs/{run['id']}").get_json()["sends"]
+    assert send["source"]["kind"] == "run"
+    assert send["source"]["run"] == earlier["id"]
+    assert send["source"]["output"] == 1
+
+
+def test_a_run_from_before_send_rows_still_reports_its_bindings(empty_api, catalog_table):
+    """**Every run that existed before this change is this case.**
+
+    They carry `bindings` as an attribute and no `SEND#` row. Deriving the map
+    unconditionally answered `{}` for all of them — a run page reading "Nothing
+    was bound" over a generation that plainly bound six images. Written here as
+    the raw row a legacy run actually has, not through the create route, because
+    the create route cannot produce this state any more.
+    """
+    project = _project(empty_api)
+    character = _character(empty_api)
+    picture = _uploaded(empty_api, _child(character["root"], "reference")["node_id"], "a.webp")
+    run = _create(empty_api, project)
+
+    # Strip the send rows and put the old-shaped attribute back.
+    catalog_table.delete_item(
+        TableName=config.catalog_table(),
+        Key={"pk": {"S": f"RUN#{run['id']}"}, "sk": {"S": "SEND#0001"}},
+    )
+    catalog_table.update_item(
+        TableName=config.catalog_table(),
+        Key={"pk": {"S": f"RUN#{run['id']}"}, "sk": {"S": "META"}},
+        UpdateExpression="SET #b = :b",
+        ExpressionAttributeNames={"#b": "bindings"},
+        ExpressionAttributeValues={
+            ":b": {"M": {"image_input": {"L": [{"S": picture["node_id"]}]}}}
+        },
+    )
+
+    fetched = empty_api.get(f"/api/runs/{run['id']}").get_json()
+
+    assert fetched["bindings"]["image_input"][0]["node"] == picture["node_id"]
+    assert fetched["bindings"]["image_input"][0]["name"] == "a.webp", (
+        "the fallback expands into something drawable, like the derived path does"
+    )
