@@ -80,11 +80,44 @@ under the scene it plans — never in the repository.
          "references": {"characters": ["<name>"], "pick_tag": "face"}},
         {"role": "sample", "prompt": "what the peak of this beat looks like"}
       ],
-      "motion": {"prompt": "the motion prompt", "duration": 10}
+      "motion": {"prompt": "<the COMPILED prompt document — see below>", "duration": 10}
     }
   ]
 }
 ```
+
+### `motion.prompt` is a COMPILED document, not a paragraph
+
+**Author it with `studio prompt`, and paste what it returns.** The field is a
+string either way, and that is the trap — prose is accepted, renders, and looks
+fine right up until the scene page draws it:
+
+```bash
+studio prompt shot.json --engine kling-replicate --emit prompt
+# -> {"prompt": "{\n  \"subject\": …}", …}   ← the `prompt` STRING goes in motion.prompt
+```
+
+The app decides how to draw a motion prompt by trying to parse it. A compiled
+document draws as **subject / action / camera / style / avoid**; a paragraph
+draws as one undifferentiated block. So a hand-written scene looks unlike every
+scene planned properly, and you find out after the plan is in.
+
+The model's own preference is genuinely unsettled — Kuaishou's material uses
+prose — so prose is **noted, not rejected** (`scenes check` says so before
+anything bills). What it costs is everything around the model:
+
+- **None of the authoring checks run** — one camera move, no bare `fast`, no
+  camera verbs in the action, the beat budget, the phrasebook's per-model wording.
+- **`camera` never becomes a field**, so "locked off" ends up buried in a sentence.
+- **The negative is folded in by hand** rather than routed to wherever the target
+  engine takes it — and Kling has no `negative_prompt` at all.
+- **The locked template stops being enforceable.** Holding `style` and `camera`
+  byte-identical across shots is the only reproducibility lever Kling has, since
+  it has no seed, and nobody maintains byte-identical prose paragraphs.
+
+Note that `negative` on the way in is called `avoid` on the way out; the
+compiler renames it. `prompt_json` is a separate, mostly-unused field — it is
+**not** where the document goes.
 
 `id` is the merge key. Revising means re-ingesting with `--force`, which carries
 every run, panel and cut across — so rewording a beat cannot orphan a clip you

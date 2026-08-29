@@ -423,6 +423,45 @@ def shot_args(manifest: dict, shot: dict, entry: dict, opts) -> SimpleNamespace:
     )
 
 
+def _unstructured_prompt_note(shot: dict) -> str | None:
+    """A video prompt written as prose rather than as a compiled document.
+
+    **Both shapes render and only one is reviewable.** `motion.prompt` is a
+    string either way, and the app decides how to draw it by trying to parse it:
+    a document drawn as `subject` / `action` / `camera` / `style` / `avoid`, and
+    prose drawn as one undifferentiated block. So a scene planned by hand looks
+    unlike every scene planned through `studio prompt`, and the difference only
+    shows up on the scene page after the plan is in.
+
+    Prose is not rejected, because whether Kling reads a serialized document
+    better than prose is genuinely unsettled — Kuaishou's own material uses
+    prose. What prose costs is not the model's opinion but everything around it:
+    none of the authoring checks run (one camera move, no bare `fast`, no camera
+    verbs in the action, the beat budget), `camera` never becomes a field, and
+    the negative is folded in by hand rather than routed to wherever the target
+    engine takes it. It also makes the locked template unenforceable — holding
+    `style` and `camera` byte-identical across shots is the only reproducibility
+    lever Kling has, since it has no seed, and byte-identical prose paragraphs
+    are not a thing anyone maintains.
+
+    So: a note, on the cheap pass, before anything bills.
+    """
+    text = ((shot.get("motion") or {}).get("prompt") or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = json.loads(text)
+    except (ValueError, TypeError):
+        parsed = None
+    if isinstance(parsed, dict):
+        return None
+    engine = "kling-replicate" if (shot.get("motion") or {}).get("model") == "kling" else "seedance"
+    return (f"{shot['id']} has a prose motion prompt, not a compiled one — the scene page will "
+            f"draw it as one block rather than as subject / action / camera / style / avoid, and "
+            f"none of the authoring checks ran. Author it with: studio prompt <file> --engine "
+            f"{engine} --emit prompt, and put the `prompt` string it returns in motion.prompt.")
+
+
 def prepare_shot(manifest: dict, shot: dict, opts):
     """Everything up to (not including) the submit, for one shot's video."""
     from studio_pipeline.engine import runner as RUN
@@ -441,6 +480,9 @@ def prepare_shot(manifest: dict, shot: dict, opts):
 
     args = shot_args(manifest, shot, entry, opts)
     start, end, refs, notes = shot_bindings(manifest, shot, entry)
+    unstructured = _unstructured_prompt_note(shot)
+    if unstructured:
+        notes.append(unstructured)
     args.start_key, args.end_key, args.key = start, end, refs
 
     try:
