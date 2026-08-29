@@ -261,10 +261,52 @@ def test_listing_accepts_a_slug_a_person_typed(library):
 
 # ── runrefs ─────────────────────────────────────────────────────────────────
 
+def _submit(record: dict) -> None:
+    """Move a draft to `succeeded` the way the API insists it be moved.
+
+    A status transition out of `draft` is refused until the run is approved —
+    that is hard rule #2 made mechanical — so a test that wants a submitted run
+    approves it rather than writing the status straight onto the row.
+    """
+    E.approve_run(record["id"], record["plan_digest"])
+    E.patch_run(record["id"], status="succeeded")
+
+
 def test_latest_resolves_to_the_newest_run(library):
     newest = R.record_request(library.project, kind="image", engine="e",
                               model="m", input={}, bindings={})
+    _submit(newest)
     assert R.resolve_run("porch-teaser/latest")["id"] == newest["id"]
+
+
+def test_latest_skips_a_draft(library):
+    """**A fake/API divergence this move exposed.**
+
+    `record_request` creates a DRAFT, and this file used to assert that `latest`
+    found one — which passed only because the fake's run listing never hid them
+    and the real `GET /api/runs` always has. So the assertion described the
+    fake's behaviour rather than the service's, and the same call against
+    production would have raised "no runs in project".
+
+    Skipping is the right answer on its merits too: `latest` is overwhelmingly
+    asked in order to chain off something, and a draft has no output to chain
+    from.
+    """
+    submitted = R.record_request(library.project, kind="image", engine="e",
+                                 model="m", input={}, bindings={})
+    _submit(submitted)
+    R.record_request(library.project, kind="image", engine="e",
+                     model="m", input={}, bindings={})
+
+    assert R.resolve_run("porch-teaser/latest")["id"] == submitted["id"]
+
+
+def test_a_draft_can_be_asked_for_explicitly(library):
+    """`include=drafts`, the same opt-in `GET /api/runs` already takes."""
+    draft = R.record_request(library.project, kind="image", engine="e",
+                             model="m", input={}, bindings={})
+    found = E.resolve_run("porch-teaser/latest", include="drafts")
+    assert found["id"] == draft["id"]
 
 
 def test_a_run_id_resolves_with_no_project_at_all(library):

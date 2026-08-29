@@ -228,3 +228,18 @@ def get_body(key: str, max_bytes: int) -> bytes:
         raise UpstreamError("Could not read the object") from exc
 
     return response["Body"].read(max_bytes)
+
+
+def content_hash(metadata: dict) -> str | None:
+    """The MD5 of an object's bytes, off whatever S3 just told us about it.
+
+    **An ETag is the content MD5 only for a single-part upload**, and every
+    upload this API signs is one: `max_upload_bytes` is S3's own single-PUT
+    ceiling and there is no multipart grant. A multipart ETag is a hash of the
+    part hashes with a `-N` suffix, which would compare unequal for two identical
+    files uploaded with different part sizes — so the suffix is treated as "no
+    usable hash" rather than stored as a lie.
+    """
+    raw = (metadata or {}).get("ETag") or ""
+    cleaned = raw.strip('"')
+    return None if not cleaned or "-" in cleaned else cleaned

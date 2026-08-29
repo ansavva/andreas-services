@@ -82,6 +82,10 @@ WIRE_SURFACE = {
     "/api/projects/<id>/movies",
     # runs
     "/api/runs",
+    # A runref — `<project>/latest#2` — to the run it names. The sibling of
+    # `/api/resolve`, which does the same for a name path: both turn what a
+    # person types into the thing it names.
+    "/api/runs/resolve",
     "/api/runs/<id>",
     "/api/runs/<id>/outputs",
     "/api/runs/<id>/response",

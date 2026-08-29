@@ -265,6 +265,9 @@ than a render job. The flag survives because the CLI surface is a contract.
 - **Writing to a path that already holds a file replaces it and keeps the
   record**, so everything naming it stays true. Production keeps prior revisions;
   a local dev stack is not the place to rely on that.
+- **Every file carries a `checksum`** — the MD5 of its bytes, recorded when the
+  upload is confirmed. Two files with the same one are byte-identical, which is
+  what `studio curate dedupe` compares instead of downloading anything.
 - **Listings are natural-sorted** (`<name>_2` before `<name>_10`). Load-bearing,
   not cosmetic: presigned URLs become `[Image1]…[ImageN]` positionally, so a
   lexical order hands a model the wrong image under the right name.

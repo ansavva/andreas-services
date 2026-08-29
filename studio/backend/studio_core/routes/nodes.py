@@ -602,6 +602,7 @@ def confirm_upload(node_id: str):
         blob_key,
         size=metadata.get("ContentLength", 0),
         content_type=metadata.get("ContentType"),
+        checksum=s3.content_hash(metadata),
     )
     return jsonify(support.view(updated)), 200
 

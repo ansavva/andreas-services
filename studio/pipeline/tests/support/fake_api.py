@@ -273,7 +273,11 @@ class FakeApi:
         """What a node route returns. **No `blob_key`, no `path`** — as today."""
         view = {"id": node["id"], "name": node["name"], "kind": node["kind"],
                 "created_at": node["created_at"], "updated_at": node["updated_at"]}
-        for field in ("size", "content_type", "description", "tags"):
+        # `checksum` is the MD5 of the bytes — the ETag of the single PUT that
+        # wrote them. It is in the view rather than fetched per node because
+        # `curate dedupe` compares whole pools, and the alternative was a
+        # download each. Mirrors `routes/support.VIEW_FIELDS`.
+        for field in ("size", "content_type", "checksum", "description", "tags"):
             if node.get(field) is not None:
                 view[field] = node[field]
         owner = self._owner(node["id"])
@@ -442,6 +446,7 @@ class FakeApi:
             (r"/api/projects/([^/]+)/movies", self._r_project_movies),
             (r"/api/projects/([^/]+)", self._r_project),
             (r"/api/runs", self._r_runs),
+            (r"/api/runs/resolve", self._r_resolve_run),
             (r"/api/runs/([^/]+)/outputs", self._r_run_outputs),
             (r"/api/runs/([^/]+)/response", self._r_run_response),
             (r"/api/runs/([^/]+)/plan", self._r_run_plan),
@@ -611,6 +616,9 @@ class FakeApi:
             if source.get("blob_key"):
                 copy["size"] = source.get("size")
                 copy["content_type"] = source.get("content_type")
+                # A copy IS byte-identical, so it carries the source's hash —
+                # which is what a server-side `CopyObject` does to the ETag too.
+                copy["checksum"] = source.get("checksum")
                 copy["reel"] = source.get("reel")
                 self.s3.put_object(
                     Bucket=BUCKET, Key=copy["blob_key"],
@@ -644,10 +652,16 @@ class FakeApi:
         """
         node = self.nodes[node_id]
         try:
-            self.s3.head_object(Bucket=BUCKET, Key=node["blob_key"])
+            head = self.s3.head_object(Bucket=BUCKET, Key=node["blob_key"])
         except Exception:
             raise FakeError(404, f"no object at {node['blob_key']}") from None
         pending = node.pop("pending", None) or {}
+        # The MD5 of the bytes, exactly as the API records it: an ETag is the
+        # content hash for a single PUT, and every upload here is one. Served so
+        # `curate dedupe` compares two values instead of downloading two files.
+        etag = (head.get("ETag") or "").strip('"')
+        if etag and "-" not in etag:
+            node["checksum"] = etag
         node["size"] = pending.get("size")
         node["content_type"] = pending.get("content_type")
         # The sparse reel key (D5): images and videos only, so folders, entity
@@ -664,9 +678,10 @@ class FakeApi:
         if method == "GET":
             return {"content": self.s3.get_object(
                 Bucket=BUCKET, Key=node["blob_key"])["Body"].read().decode()}
-        self.s3.put_object(Bucket=BUCKET, Key=node["blob_key"],
-                           Body=body["content"].encode())
-        node["size"] = len(body["content"].encode())
+        encoded = body["content"].encode()
+        self.s3.put_object(Bucket=BUCKET, Key=node["blob_key"], Body=encoded)
+        node["size"] = len(encoded)
+        node["checksum"] = hashlib.md5(encoded).hexdigest()
         node["updated_at"] = _now()
         return self._view(node)
 
@@ -1182,6 +1197,54 @@ class FakeApi:
             bindings.setdefault(send["field"], []).append(send["node"])
         return bindings
 
+    def _r_resolve_run(self, method, body, params):
+        """`GET /api/runs/resolve` — a runref to the run it names.
+
+        `index` is reported and never applied: the caller filters by extension
+        first and then takes the Nth of what is left, so narrowing here would
+        change which file `#2` means.
+        """
+        if method != "GET":
+            raise FakeError(405, f"{method} /api/runs/resolve")
+        ref = (params.get("ref") or "").strip()
+        if not ref:
+            raise FakeError(400, "ref is required")
+
+        head, _, raw_index = ref.partition("#")
+        index = None
+        if raw_index:
+            if not raw_index.isdigit() or int(raw_index) < 1:
+                raise FakeError(400, f"runref index must be a positive integer: {ref!r}")
+            index = int(raw_index)
+
+        if "/" in head:
+            project_ref, _, run_ref = head.partition("/")
+        else:
+            project_ref, run_ref = params.get("project"), head
+
+        if run_ref.startswith("run-"):
+            record = self.runs.get(run_ref)
+            if record is None:
+                raise FakeError(404, f"no run {run_ref}")
+        else:
+            if not project_ref:
+                raise FakeError(400, f"runref {ref!r} has no project and none was supplied")
+            if run_ref not in ("latest", "last"):
+                raise FakeError(400, f"{run_ref!r} is not a runref")
+            addressed = (project_ref if project_ref.startswith("proj-")
+                         else f"slug:{project_ref}")
+            project = self._entity(self.projects, addressed, "project")
+            # `HIDDEN_RUN_STATUSES`, not `UNSUBMITTED`: an APPROVED run is
+            # visible in a listing and only `draft` and `discarded` are not.
+            hidden = (frozenset() if params.get("include") == "drafts"
+                      else frozenset({"draft", "discarded"}))
+            live = [r for r in self._sorted_runs()
+                    if r["project"] == project["id"] and r["status"] not in hidden]
+            if not live:
+                raise FakeError(404, f"no runs in project {project_ref}")
+            record = self.runs[live[0]["id"]]
+        return {**self._run_view(record), "ref": ref, "index": index}
+
     def _r_runs(self, method, body, params):
         if method == "GET":
             found = self._sorted_runs()
@@ -1647,9 +1710,16 @@ class FakeApi:
 
     def put_file(self, parent_id: str, name: str, body: bytes,
                  content_type: str | None = None) -> dict:
-        """Create a confirmed file node with bytes. For fixtures only."""
+        """Create a confirmed file node with bytes. For fixtures only.
+
+        **Confirmed means the checksum too.** A fixture that set `size` and not
+        the hash would look confirmed to a listing and unconfirmed to
+        `curate dedupe`, which would quietly fall back to downloading — and the
+        test asserting it does not download would be the one that broke.
+        """
         node = self._create_node(parent_id, name, "file")
         node["size"] = len(body)
+        node["checksum"] = hashlib.md5(body).hexdigest()
         node["content_type"] = (content_type
                                 or mimetypes.guess_type(name)[0]
                                 or "application/octet-stream")

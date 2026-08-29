@@ -1067,6 +1067,7 @@ def _new_node(
     blob_key: str | None = None,
     size: int | None = None,
     content_type: str | None = None,
+    checksum: str | None = None,
     description: str | None = None,
     tags: list | None = None,
 ) -> dict:
@@ -1870,6 +1871,7 @@ def set_blob(
     *,
     size: int | None = None,
     content_type: str | None = None,
+    checksum: str | None = None,
 ) -> dict:
     """Point a file node at its bytes.
 
@@ -1898,6 +1900,14 @@ def set_blob(
         assignments["size"] = size
     if content_type is not None:
         assignments["content_type"] = content_type
+    # The MD5 of the bytes, off the ETag of the single PUT that wrote them.
+    # Optional because a caller that did not learn one — a legacy path, or a
+    # multipart ETag `s3.content_hash` refused — must leave the row alone rather
+    # than blank a hash somebody else recorded.
+    if checksum is not None:
+        assignments["checksum"] = checksum
+    if checksum is not None:
+        assignments["checksum"] = checksum
 
     _write([(_update_meta(node_id, assignments), NotFoundError(node_id))])
 

@@ -364,58 +364,29 @@ def payload_documents(record: dict) -> dict[str, str]:
 
 # --- runrefs: addressing a previous run's output --------------------------
 
-def parse_runref(ref: str, default_project: str | None = None) -> tuple[str, str, int | None]:
-    """'<project>/latest#2' -> ('<project>', 'latest', 2). Index 1-based, None = all."""
-    if not ref:
-        raise RunError("empty runref")
-    body, _, idx = ref.partition("#")
-    index = None
-    if idx:
-        if not idx.isdigit() or int(idx) < 1:
-            raise RunError(f"runref index must be a positive integer: {ref!r}")
-        index = int(idx)
-    if "/" in body:
-        project, _, run_ref = body.partition("/")
-    else:
-        project, run_ref = default_project, body
-    if not project and not run_ref.startswith("run-"):
-        raise RunError(
-            f"runref {ref!r} has no project and none was supplied "
-            "(use <project>/latest, a run id, or pass --project)"
-        )
-    return project, run_ref, index
-
-
 def resolve_run(ref: str, default_project: str | None = None) -> dict:
-    """A runref -> the run record.
+    """A runref -> the run record. **The grammar is the API's now.**
+
+    `<project>/latest`, `latest#2` and `run-<uuid>` are read by
+    `GET /api/runs/resolve`, beside `GET /api/resolve?path=` and for the same
+    reason: both turn a person's spelling into the thing it names. While the
+    parsing lived here only the CLI could read one, and resolving `latest` meant
+    listing every run in the project to take the first — a page of rows to answer
+    a question about one of them.
 
     Returns the **record**, not a `(project, id)` pair. Every caller went
     straight on to read the run, and returning a pair meant a second round trip
     plus two more strings to keep in step.
-
-    An id resolves directly and needs no project, which is what makes a record
-    that stored a run id self-sufficient — the property the whole entity model
-    is for.
     """
-    project, run_ref, _index = parse_runref(ref, default_project)
-    if run_ref.startswith("run-"):
-        try:
-            return entities.get_run(run_ref)
-        except api.NotFound as exc:
-            raise RunError(f"no run {run_ref}") from exc
-
-    found = list_runs(_address(project))
-    if not found:
-        raise RunError(f"no runs in project {project!r}")
-    if run_ref in ("latest", "last"):
-        return entities.get_run(found[0]["id"])
-    raise RunError(
-        f"{run_ref!r} is not a runref. A run has no name to address it by — "
-        f"use 'latest', or its id.\n"
-        + "".join(f"       {r['id']}  {r['created'][:19]}  {r.get('model','')}\n"
-                  for r in found[:5])
-        + (f"       … and {len(found) - 5} more\n" if len(found) > 5 else "")
-        + "       studio runs list <project> for the rest.")
+    try:
+        return entities.resolve_run(ref, default_project)
+    except api.NotFound as exc:
+        raise RunError(str(exc)) from exc
+    except api.ApiError as exc:
+        # A 400 from the resolver is a malformed runref, which is a person's
+        # typo rather than a fault — reported in this module's own vocabulary so
+        # `@errors.reports(RunError)` prints it without a traceback.
+        raise RunError(str(exc)) from exc
 
 
 def _address(project: str) -> str:
@@ -431,8 +402,11 @@ def resolve_output_nodes(ref: str, default_project: str | None = None,
     binds these, and a binding that named a path would be stranded by any
     rename of the file it named.
     """
-    _project, _run_ref, index = parse_runref(ref, default_project)
+    # **The index is applied AFTER the kind filter**, which is why it comes back
+    # from the resolver rather than being acted on there: `#2` means the second
+    # mp4 this run made, not the second output that happens to be one.
     record = resolve_run(ref, default_project)
+    index = record.get("index")
     outputs = record.get("outputs") or []
     if kinds:
         chosen = [o for o in outputs

@@ -50,6 +50,7 @@ name them are deleted, `release` closes that row once the bytes are gone, and
 addressed instead of searched for, and nothing has to scan anything.
 """
 
+import hashlib
 import logging
 
 from studio_core import config
@@ -249,6 +250,10 @@ def copy_nodes(records: list[dict], destination: dict) -> dict:
                 created["blob_key"],
                 size=metadata.get("ContentLength", 0),
                 content_type=metadata.get("ContentType"),
+                # The source's, because a server-side copy of a single-part
+                # object keeps its ETag — and because the copy IS byte-identical,
+                # which is exactly what the hash is for.
+                checksum=s3.content_hash(metadata),
             )
         )
 
@@ -346,7 +351,9 @@ def update_text(record: dict, raw_content: str | None) -> dict:
 
     content_type = keys.content_type(name)
     s3.put_text(blob_key, body, content_type)
-    catalog.set_blob(record["node_id"], blob_key, size=len(body), content_type=content_type)
+    catalog.set_blob(record["node_id"], blob_key, size=len(body),
+                     content_type=content_type,
+                     checksum=hashlib.md5(body).hexdigest())
 
     logger.info("Saved %d bytes to %s", len(body), record["node_id"])
     return {
