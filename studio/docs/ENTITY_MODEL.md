@@ -246,9 +246,11 @@ down nowhere, which is how the two written last came to miss it.
 
 Both kept their original shape and gained an edge beside it, because both carry
 something an edge cannot express: a movie may legally cut one scene twice as a
-reprise, and an edge is set membership. `studio catalog edges` backfills the
-rows for records that predate them, and `studio catalog verify` reports a
-missing or stale one.
+reprise, and an edge is set membership. `studio catalog edges` backfilled the
+rows for records that predate them and `catalog verify` reported a missing or
+stale one; both went with the `maintenance/` layer. Every writer maintains its
+own edges — `catalog.put_shots` and its siblings — so the backfill has nothing
+left to do.
 
 **Two items per entity, for the same reason a node is two items.** The `META`
 row is the record; the claim / membership row is what makes the entity listable
@@ -549,8 +551,10 @@ addressing scheme, no exceptions.**
 
 The angle images were pushed straight into the bucket as `config/angle/…` for as long
 as nothing owned them, and those nodeless objects outlived the change. They were
-deleted in August 2026 once `config sync` had written the node-backed copies;
-`catalog gc` does not collect them, deliberately, so it was a targeted removal.
+deleted in August 2026 once `config sync` had written the node-backed copies. It
+was a targeted removal — `catalog gc` allowlisted the prefixes it would collect
+and `config/` was never one of them — and it is the last thing that command was
+used for before it was deleted.
 
 ---
 
@@ -716,8 +720,7 @@ maintenance catalog (plan · migrate · verify · gc · reseat) · dev-seed
 | `rewrite check` | **deleted** — the class of bug is gone |
 | `phrasebook add` | `POST /api/phrasebook`; no document to be missing |
 | `upload` / `download` / `presign` | take a node id or a `<entity>/<path>` address that the API resolves |
-| `catalog verify` | every entity resolves, every row carries every attribute. Was `catalog migrate verify`; the migrator around it is retired |
-| `catalog reseat` | rewrite blob keys that no longer describe where their file sits |
+| `catalog verify` / `reseat` | **deleted** with the rest of `maintenance/`. Their subject was the migration below, which is over |
 
 **Addressing on the command line.** A slug is still what a person types.
 `<slug>/reference/face/<file>` resolves through
@@ -843,7 +846,8 @@ unaffected, because nodes do not change.
 **`studio config sync` is not optional in prod.** The angle images have been objects
 with no node since before the catalog, and `catalog_seed` deliberately recorded
 none for them. Every shoot refuses until they have rows. The old objects are
-left where they are and become collectable by `catalog gc`.
+left where they are; `catalog gc` was what collected them, before it too was
+deleted.
 
 **How the CLI is pointed at prod is `--profile prod`.** This paragraph recorded
 it as an open question to decide before migration day; it was decided in August

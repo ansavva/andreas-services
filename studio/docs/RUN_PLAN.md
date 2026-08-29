@@ -1,9 +1,13 @@
 # studio — the run plan
 
-> **STATUS: BUILT, except for the backfill against production.** Every phase has
-> landed; `studio --profile prod catalog backfill-plans --apply` has not been
-> run, so prod's 254 runs still carry no plan. `catalog verify` reports that as
-> coverage rather than as a failure — see [The backfill](#the-backfill).
+> **STATUS: BUILT. The backfill against production was never run, and the tool
+> for it is deleted.** Prod's 254 pre-plan runs carry no plan and now never will:
+> `catalog backfill-plans` went with the rest of the AWS-direct `maintenance/`
+> layer, along with the `catalog verify` that reported the gap. Those runs are
+> history — they render, they list, and their payload documents are intact; what
+> they lack is the authored half, which was always going to be reconstructed
+> rather than real. See [The backfill](#the-backfill) for what it would have
+> done and why it is not worth resurrecting.
 
 It extends [ENTITY_MODEL.md](ENTITY_MODEL.md) rather than replacing anything in
 it. A run was already a row; this gives it the half a scene has and it did not —
@@ -435,17 +439,20 @@ mechanism rather than a person, because nobody approved these in a browser and a
 row implying they had would be undetectable later. The run page says so:
 *approved before approvals were recorded.*
 
-**Where it runs, and why not through the API.** `studio catalog backfill-plans`
-is a maintenance command holding its own AWS clients, like `catalog gc` and
-`catalog verify`. `PATCH /api/runs/<id>/plan` refuses a submitted run — a plan
-edited after the fact would sit beside `request.json` describing something never
-sent — and that refusal is load-bearing. A backfill route able to bypass it would
-be a permanent hole cut for a one-shot.
+**Where it ran, and why it is gone.** `studio catalog backfill-plans` was a
+maintenance command holding its own AWS clients. It could not be a route:
+`PATCH /api/runs/<id>/plan` refuses a submitted run — a plan edited after the
+fact would sit beside `request.json` describing something never sent — and a
+backfill endpoint able to bypass that refusal would be a permanent hole cut for
+a one-shot.
 
-**No journal**, unlike `gc` and `reseat`. Those journal because they *delete*.
-This adds attributes and rows, touches no object in S3, and skips any run that
-already has a plan, so a second run reports zero. `--apply` exists so a person
-reads the report first.
+That reasoning is still right, and it is the reasoning that removed the command
+rather than the API route. The whole `maintenance/` layer is deleted; the
+backfill was never run against prod, so this section describes work that did not
+happen. Reconstructing it would mean re-adding a tool with its own DynamoDB
+client to write a plan nobody authored, for runs that already carry the exact
+payload they were sent. The gap is legible — the run page says *approved before
+approvals were recorded* — and legible is enough.
 
 **One gap nothing can close.** Before angle images became catalog nodes they
 travelled through `gather` marked `shared:<key>` and were **stripped before the
@@ -453,16 +460,15 @@ record was written**. Runs from that era under-report their images, and a
 text-only generation is indistinguishable from one. Counted in the report, never
 invented.
 
-```bash
-studio --profile prod catalog backfill-plans          # dry run, the default
-studio --profile prod catalog backfill-plans --apply
-studio --profile prod catalog verify --library <lib>  # "runs with no plan" → 0
-```
+There is no longer a command to run. What `catalog verify` would have told you —
+that a planless run is **coverage rather than corruption**, and that a *stale*
+digest is the real fault — has no reporter either. If a stale digest starts
+happening, the check belongs inside the API beside `plan_digest`, not in a CLI
+command carrying a table scan.
 
-`catalog verify` reports a planless run as **coverage rather than corruption** and
-does not fail on it: `reseat` refuses to run without a passing verify, and a
-not-yet-run backfill blocking an unrelated destructive command would be the wrong
-trade. What it *does* fail on is a plan whose stored digest disagrees with it —
+The rest of this section is kept as the record of what the backfill would have
+reconstructed and from what. Historically, `catalog verify` failed on a plan
+whose stored digest disagreed with it —
 silent until somebody submits, and then reported as "the payload changed", which
 would be true of nothing anybody did.
 

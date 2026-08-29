@@ -272,8 +272,10 @@ than a render job. The flag survives because the CLI surface is a contract.
   commands that own the thing — `studio runs delete`, `studio projects delete`;
   `studio curate` preserves into the destination rather than removing. Both keep
   the folder unless asked with `--files delete`, because the reverse default
-  loses generated media to a typo. `studio catalog gc` collects blobs no record names, and
-  is a dry run without `--apply`.
+  loses generated media to a typo. **Bytes a delete strands are the API's
+  problem, not yours** — it records what it is about to free before it frees it,
+  and the next delete finishes anything an interrupted one left. There used to be
+  a command for sweeping those up by hand; there is nothing to run.
 - Provisioning and teardown live in [`infra/README.md`](../../../infra/README.md).
   Which stack your commands reach — per-machine dev, not production — is in
   [studio/CLAUDE.md](../../../CLAUDE.md).

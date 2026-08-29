@@ -60,14 +60,12 @@ os.environ["STUDIO_CATALOG_TABLE"] = "studio-prod-catalog"
 os.environ["STUDIO_REPLICATE_MODE"] = "fake"
 os.environ["REPLICATE_API_TOKEN"] = "r8_test_token"
 
-from moto import mock_dynamodb, mock_s3  # noqa: E402
+from moto import mock_s3  # noqa: E402
 
 import studio_pipeline as _pipeline  # noqa: E402
 from studio_pipeline import profiles as _profiles  # noqa: E402
 from studio_pipeline.adapters import api as _api  # noqa: E402
 from studio_pipeline.adapters import auth as _auth  # noqa: E402
-from studio_pipeline.adapters import ddb as ddbc  # noqa: E402
-from studio_pipeline.adapters import s3 as s3c  # noqa: E402
 from studio_pipeline.adapters import store as _store  # noqa: E402
 from studio_pipeline.engine import registry as _registry  # noqa: E402
 
@@ -188,21 +186,6 @@ def _no_outbound_sockets(monkeypatch):
         return real_connect(self, address, *args, **kwargs)
 
     monkeypatch.setattr(socket.socket, "connect", guarded)
-
-
-@pytest.fixture(autouse=True)
-def _no_live_dynamodb():
-    """No test may reach a real catalog table — including by accident.
-
-    Autouse rather than opt-in because of `test_every_subcommand_dispatches`,
-    which invokes every leaf command in the tree. `studio catalog verify` gets
-    far enough to ask whether the table exists, and without this that question
-    goes to AWS over the network with the fake credentials above. The table
-    itself is NOT created here: a command meeting a table that does not exist
-    is a case worth exercising, and the tests that want one build it.
-    """
-    with mock_dynamodb():
-        yield
 
 
 @pytest.fixture
@@ -396,86 +379,6 @@ def _confirm(fake, signed: dict, body: bytes) -> None:
     node["content_type"] = pending.get("content_type")
     if str(node["content_type"] or "").startswith(("image/", "video/")):
         node["reel"] = fake.lib
-
-
-@pytest.fixture
-def bucket():
-    """An empty moto bucket, with no API in front of it.
-
-    For the two maintenance commands that reconcile the bucket against the
-    table and therefore have to see both — `catalog gc` and `catalog verify`.
-    Everything else in the suite goes through `fake_api`, because everything
-    else in the pipeline goes through the API.
-    """
-    with mock_s3() as _:
-        client = boto3.client("s3", region_name="us-east-1")
-        client.create_bucket(Bucket=s3c.bucket())
-        yield client
-
-
-@pytest.fixture
-def shared_bucket(bucket):
-    """The bucket plus material no row will ever name.
-
-    The angle images, which sit outside the catalog by design, and a
-    `phrasebook/wording.yaml` — which is now HISTORY rather than live data. The
-    phrasebook became `TERM#` rows, so nothing writes that key any more, and
-    prod's own copy has since been deleted.
-
-    It is kept here because a bucket somewhere may still hold one, and the point
-    to pin is that `catalog gc` goes on refusing to collect it. What changed is
-    only how it is REPORTED: `phrasebook/` left `SHARED_PREFIXES`, so a leftover
-    lands in `outside` — unrecognised, worth a look — rather than being labelled
-    material held outside the catalog on purpose.
-    """
-    for key in ("config/angle/body/standing.png",
-                "config/angle/face/three-quarter.png",
-                "phrasebook/wording.yaml"):
-        bucket.put_object(Bucket=s3c.bucket(), Key=key, Body=b"png-bytes")
-    return bucket
-
-
-# ── the catalog table, shared by every suite that needs one ──────────────────
-#
-# These lived in `test_catalog_seed.py` and `test_catalog_gc.py` imported them,
-# which is what `gc`'s own comment wanted — the two must not drift into testing
-# different schemas, because an index that drops a row is exactly the corruption
-# `gc` must not read as "unreferenced". Importing a fixture across test modules
-# makes ruff read every use as a redefinition (F811), so they live here instead:
-# same guarantee, and pytest resolves them without an import at all.
-
-_KEY_SCHEMA = [{"AttributeName": "pk", "KeyType": "HASH"},
-               {"AttributeName": "sk", "KeyType": "RANGE"}]
-
-
-def _index(name, hash_key, range_key):
-    return {"IndexName": name,
-            "KeySchema": [{"AttributeName": hash_key, "KeyType": "HASH"},
-                          {"AttributeName": range_key, "KeyType": "RANGE"}],
-            "Projection": {"ProjectionType": "ALL"}}
-
-
-@pytest.fixture
-def catalog_table():
-    """`studio-<env>-catalog` as the schema describes it.
-
-    `by-recent` is hashed on `reel` rather than on `lib` — the sparse index of
-    D5. An entity row and a folder node carry no `reel`, so neither lands in the
-    reel's enumeration, which is the folder pollution the re-key fixed on the
-    way past.
-    """
-    ddb = boto3.client("dynamodb", region_name="us-east-1")
-    ddb.create_table(
-        TableName=ddbc.table(),
-        BillingMode="PAY_PER_REQUEST",
-        KeySchema=_KEY_SCHEMA,
-        AttributeDefinitions=[{"AttributeName": n, "AttributeType": "S"}
-                              for n in ("pk", "sk", "lib", "path", "reel", "created_at")],
-        GlobalSecondaryIndexes=[_index("by-sk", "sk", "pk"),
-                                _index("by-path", "lib", "path"),
-                                _index("by-recent", "reel", "created_at")],
-    )
-    return ddb
 
 
 @pytest.fixture

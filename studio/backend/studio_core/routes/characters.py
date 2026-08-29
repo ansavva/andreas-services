@@ -50,7 +50,7 @@ from studio_core.errors import ConflictError, ForbiddenError, NotFoundError, Val
 from studio_core.routes import projects as project_routes
 from studio_core.routes import support
 from studio_core import config
-from studio_core.services import catalog, keys, layout
+from studio_core.services import catalog, keys, layout, manage
 
 logger = logging.getLogger(__name__)
 
@@ -409,9 +409,9 @@ def delete_character(addressed: str):
                 runs=runs,
             )
 
+    manage.drain(g.library)
     result = catalog.delete_entity(KIND, record, delete_files=files == "delete")
-    if result["blob_keys"]:
-        s3.delete(result["blob_keys"])
+    manage.release(g.library, result["blob_keys"], result["sweeps"])
     return jsonify({"id": record["id"], "files": files}), 200
 
 

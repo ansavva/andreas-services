@@ -66,11 +66,12 @@ selected. What a profile changes is that the target is now stated rather than
 inferred — `studio whoami` names it, and `studio profile show` says where each
 value came from.
 
-**A profile is not a permission boundary and must not be mistaken for one.** The
-maintenance commands reach S3 and DynamoDB under your own IAM key, which is the
-`ansavva` user and holds `s3:DeleteObjectVersion` — a grant the deployed API's
-role deliberately lacks. Selecting `prod` does not narrow that. Least-privilege
-credentials for prod maintenance are a separate piece of work.
+**A profile is not a permission boundary and must not be mistaken for one** —
+though there is far less behind it than there was. This used to warn that the
+maintenance commands reached S3 and DynamoDB under your own IAM key. Those
+commands are deleted; the only AWS call left in this package is `aws_session()`
+below, which `profile sync` uses to read a stack's Terraform outputs and prod's
+SSM parameters. Selecting `prod` still does not narrow what that key can do.
 """
 
 from __future__ import annotations
@@ -113,9 +114,9 @@ ENV_VAR = {
 }
 
 #: Set by the root group's `--profile`, which also reads `STUDIO_PROFILE`.
-#: Module state rather than a Click context object because `adapters/s3.py` and
-#: `adapters/ddb.py` are imported and called from places that have no context —
-#: `maintenance/` one-shots, and the tests.
+#: Module state rather than a Click context object because `value()` is called
+#: from places that have no context — `adapters/auth.py` on every request, and
+#: the tests.
 _selected: str | None = None
 
 #: Stderr warnings already emitted, so a command making forty API calls does not
@@ -372,8 +373,6 @@ def sync_dev(*, api_url: str = DEV_API_URL) -> dict:
     """
     import json
 
-    from studio_pipeline.adapters import s3 as s3c
-
     if not MACHINE_ID_FILE.is_file():
         raise ProfileError(
             f"No machine id at {MACHINE_ID_FILE} — this machine has no dev stack.\n"
@@ -381,7 +380,7 @@ def sync_dev(*, api_url: str = DEV_API_URL) -> dict:
         )
     machine_id = MACHINE_ID_FILE.read_text().strip().lower()
 
-    session = s3c.session()
+    session = aws_session()
     account = session.client("sts").get_caller_identity()["Account"]
     key = f"studio/dev/{account}/{machine_id}/terraform.tfstate"
     try:
@@ -418,9 +417,7 @@ def sync_prod() -> dict:
     Terraform instead — nothing deploys a dev stack, and nothing but the deploy
     writes these.
     """
-    from studio_pipeline.adapters import s3 as s3c
-
-    ssm = s3c.session().client("ssm")
+    ssm = aws_session().client("ssm")
     found: dict[str, str] = {}
     token = None
     while True:
@@ -456,3 +453,39 @@ def _require_complete(name: str, values: dict) -> None:
 
 
 SYNCERS = {"dev": sync_dev, "prod": sync_prod}
+
+
+# ── the one boto3 call site left in the CLI ─────────────────────────────────
+
+
+def aws_session():
+    """A boto3 session, for `profile sync` and for nothing else.
+
+    **This is the whole of the CLI's remaining AWS surface, and it is here
+    rather than in `adapters/` on purpose.** `adapters/s3.py` and
+    `adapters/ddb.py` held the clients that `catalog verify | gc | reseat`,
+    `backfill-plans`, `drop-fictional` and `dev-seed` reached the library
+    through; all of those are gone — the API records a sweep row instead of
+    leaving orphans to be found by a bucket scan, the migrations are over, and
+    seeding is its own project under `scripts/dev_seed/`. Nothing in `adapters/`
+    opens an AWS client now, which is what #308 was actually asking for.
+
+    `sync` cannot go through the API for the reason nothing else here needs an
+    exception: it is how the CLI *finds* the API. Reading a dev stack's
+    Terraform outputs and prod's SSM parameters is the step that produces the
+    URL every other command then talks to.
+
+    boto3's own chain resolves the credentials. The `aws configure
+    export-credentials` bridge that used to wrap this is deleted with the module
+    that held it: it was mandatory under the `aws login` sessions neither boto3
+    nor the Terraform provider could see, and since August 2026 the credential
+    is a long-lived access key that boto3 reads natively.
+    """
+    try:
+        import boto3
+    except ImportError:  # pragma: no cover — declared in pyproject
+        die("boto3 is not installed — run `uv sync` in studio/pipeline.")
+    region = (os.environ.get("AWS_REGION")
+              or os.environ.get("AWS_DEFAULT_REGION")
+              or "us-east-1")
+    return boto3.session.Session(region_name=region)

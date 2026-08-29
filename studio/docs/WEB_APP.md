@@ -212,7 +212,7 @@ The parts of the old rule that still hold, and should keep holding:
   of the reel, keyed on `size` being **absent** — `"size" in record`, not
   truthiness, because a confirmed empty file has `size` 0 and a placeholder has
   no `size` at all.
-  **`studio catalog gc` (#318) does not collect it.** That command deletes blobs
+  **`studio catalog gc` (#318) did not collect it.** That command deleted blobs
   no row names; a placeholder is a row no blob answers, the opposite direction,
   and nothing collects it. So the SPA's uploader deletes the node itself when a
   PUT fails, and the hidden row is what is left when that cleanup fails too.
@@ -224,7 +224,7 @@ The parts of the old rule that still hold, and should keep holding:
   `store.upload_to_url` to PUT an entity's output and skip the confirm, which
   left all 170 run outputs in prod in exactly this state — in S3, named by their
   run, drawn on the run page, and absent from the `output/` folder they lived in.
-  It confirms now, and `studio catalog confirm-outputs` repairs what shipped
+  It confirms now, and `studio catalog confirm-outputs` repaired what shipped
   before it did.
 - **`copy_objects` is the only `CopyObject` left.** It used to be one of four:
   a rename, a folder rename and a move were each a copy per key followed by a
@@ -341,8 +341,10 @@ move does not touch it, and nothing outside `services/catalog.py` may split it
 on `/`. The prefix is an operational convenience — per-entity cost in Storage
 Lens, a lifecycle rule, a bulk delete that is one prefix — not an address. Move
 a file between entities and the prefix goes stale while the key stays correct;
-`studio catalog verify` reports that drift and `reseat` fixes it, out of band and
-never automatically.
+`studio catalog verify` reported that drift and `reseat` fixed it. Both are
+deleted: a stale prefix is cosmetic — the key is a pointer, and nothing outside
+`services/catalog.py` reads one — which never justified a command that had to
+copy, update and delete to correct it.
 
 Four older shapes survive in prod and all of them are correct forever:
 `characters/<slug>/…` and `projects/<slug>/…` from before the catalog,
@@ -360,9 +362,17 @@ refusal permanent the moment the URL is handed out. That exact narrowing already
 took the whole production library out of write once.
 
 Because a row and a blob are deleted separately, a blob can outlive every row
-that pointed at it. That is what `studio catalog gc` is for (#318) — it is the
-only sanctioned way to find an orphan, precisely because "unreferenced" is a
-question only the table can answer.
+that pointed at it. `studio catalog gc` (#318) was the sanctioned way to find
+one, by listing the whole bucket against the whole table — "unreferenced" being
+a question only the table could answer.
+
+**It is deleted, because the delete stopped throwing the answer away.**
+`catalog.open_sweep` writes the keys a delete is about to free onto a `SWEEP#`
+row *before* the rows naming them go; `manage.release` closes that row once the
+bytes are gone; `manage.drain` finishes any sweep an earlier request abandoned,
+rechecking each node id so a crash between open and delete cannot collect bytes
+a live row still names. The orphan is addressed rather than searched for, so
+there is no scan and nothing to run. `backend/tests/unit/test_sweeps.py`.
 
 **There is no `media/` wrapper.** There was until August 2026, and studio's
 browsable root was hard-coded to it in five places — the Flask config default,

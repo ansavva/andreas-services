@@ -41,6 +41,7 @@ One node type. A folder is a node with no blob; a file is a node with one.
 | Scene / Movie in project | `PROJ#<proj_id>` | `SCENE#<created>#<id>` | |
 | Shot | `SCENE#<scene_id>` | `SHOT#<shot_id>` | one row per planned shot |
 | Phrasebook term | `LIB#<lib>` | `TERM#<model>#<avoid>` | the wording lists |
+| Sweep | `LIB#<lib>` | `SWEEP#<opened>#<id>#<n>` | blobs a delete is about to strand |
 
 **An id is the identity; a slug is a label.** Every entity has a `v4` UUID that
 never changes, and the slug is a mutable, library-unique attribute. A rename is
@@ -1668,6 +1669,15 @@ def delete_node(node_id: str, *, allow_entities: bool = False) -> dict:
     decide what to do about the bytes — two nodes may point at one key, since a
     copy in this model copies a row, so "is this blob now unreferenced" is not a
     question one delete can answer.
+
+    **A sweep is opened before the first row goes, and that is what retired
+    `studio catalog gc`.** The bytes are deleted by the caller after this
+    returns, so an interruption in between used to leave objects nothing named —
+    findable only by listing the whole bucket against the whole table, which is
+    exactly what the collector did. The sweep records the same keys on a row
+    first, so an interruption leaves a *pointer* to the orphans rather than
+    orphans nobody can find. `sweep_id` comes back for the caller to close once
+    the bytes are gone; see `open_sweep`.
     """
     record = node(node_id)
     if not record.get("parent_id"):
@@ -1678,6 +1688,10 @@ def delete_node(node_id: str, *, allow_entities: bool = False) -> dict:
         _assert_no_entities([record, *descendants])
     descendants.sort(key=lambda entry: len(entry["path"]), reverse=True)
     doomed = descendants + [record]
+
+    freed = [(victim["node_id"], victim["blob_key"])
+             for victim in doomed if victim.get("blob_key")]
+    sweep = open_sweep(record["lib"], freed)
 
     steps: list[tuple[dict, Exception | None]] = []
     for victim in doomed:
@@ -1690,9 +1704,164 @@ def delete_node(node_id: str, *, allow_entities: bool = False) -> dict:
     logger.info("Deleted %s (%d nodes)", node_id, len(doomed))
     return {
         "node_id": node_id,
+        "lib": record["lib"],
         "deleted": len(doomed),
-        "blob_keys": [victim["blob_key"] for victim in doomed if victim.get("blob_key")],
+        "blob_keys": [key for _, key in freed],
+        "sweep": sweep,
     }
+
+
+# ───────────────────────────── sweeps ──────────────────────────────────────
+#
+# A sweep is the row that makes a delete recoverable without a bucket scan.
+#
+# THE FAILURE IT REPLACES
+# -----------------------
+# Rows are deleted first and bytes second, because the other order leaves a row
+# pointing at a blob that is gone — a broken tile the user sees — while the
+# reverse leaves an object no reader can reach. That asymmetry is right and is
+# not what changed. What changed is how the leftover is found: it used to be
+# found by listing every object in the bucket, scanning every row in the table
+# and subtracting, which is a whole command (`studio catalog gc`), a boto3
+# client in the CLI, a journal, a two-phase dry run, and a guard against the one
+# input that turned it into a bucket wipe. All of that existed because the API
+# threw away the only thing that knew which keys were in flight.
+#
+# It does not throw it away now. The keys are written to a row *before* the
+# rows that name them are deleted, so the leftover is addressed rather than
+# searched for.
+#
+# WHY THE DRAIN RE-CHECKS EVERY NODE
+# ----------------------------------
+# A sweep is opened before the deletes, so a crash *between* the two leaves a
+# sweep naming keys whose rows are still live. Deleting those would be the worse
+# bug the row-first order exists to avoid — so `drain` looks each node id up and
+# keeps any key whose row is still there. That is a point read per key, batched,
+# and it needs no index on `blob_key`: the sweep carries the node id precisely so
+# this question can be asked backwards.
+#
+# It follows that draining is always safe, at any age, from any request, and
+# twice concurrently: every step is idempotent and the recheck is the guard.
+
+SWEEP_PREFIX = "SWEEP#"
+
+#: One `DeleteObjects` call takes a thousand keys, so a sweep holds no more —
+#: a sweep that could not be discharged in one call would need its own paging.
+SWEEP_KEYS = 1000
+
+
+def open_sweep(lib: str, freed: list[tuple[str, str]]) -> list[str]:
+    """Record the blobs a delete is about to strand; answer with the rows written.
+
+    `freed` is `(node_id, blob_key)` pairs. Both halves are stored: the key is
+    what gets deleted, and the node id is what `drain` asks about to find out
+    whether deleting it is still the right thing to do.
+
+    **The sort keys come back, and closing takes them.** Returning an opaque
+    sweep id instead meant `close_sweep` had to *find* its own rows, which is a
+    query of the whole library partition per close — and a bulk delete closes one
+    sweep per node, so the suite went from 33 seconds to 16 minutes on the day
+    that landed. A caller that just wrote a row knows where it is; making it say
+    so turns the close into point deletes.
+
+    Empty when there is nothing to record, so a folder-only delete writes no row.
+    Most deletes in this library are folders.
+    """
+    if not freed:
+        return []
+
+    sweep_id = str(uuid.uuid4())
+    now = _now()
+    written: list[str] = []
+    steps = []
+    for start in range(0, len(freed), SWEEP_KEYS):
+        chunk = freed[start : start + SWEEP_KEYS]
+        # The timestamp leads so `pending_sweeps` comes back oldest first, and
+        # the id follows so two sweeps opened in the same microsecond cannot
+        # collide on one key.
+        sk = f"{SWEEP_PREFIX}{now}#{sweep_id}#{start // SWEEP_KEYS}"
+        written.append(sk)
+        steps.append((
+            _put(
+                _lib_pk(lib), sk,
+                {"sweep": sweep_id, "opened": now,
+                 "blobs": [{"node": node_id, "key": key} for node_id, key in chunk]},
+            ),
+            None,
+        ))
+
+    for start in range(0, len(steps), TRANSACTION_ITEMS):
+        _write(steps[start : start + TRANSACTION_ITEMS])
+    return written
+
+
+def close_sweep(lib: str, sort_keys: list[str]) -> None:
+    """Drop a sweep's rows once its bytes are gone. Point deletes, no query.
+
+    Unconditional and tolerant of a row that is already gone: `drain` may have
+    discharged the sweep first, and a delete racing its own recovery is a state
+    both sides should treat as finished rather than as a conflict.
+    """
+    if not sort_keys:
+        return
+    steps = [(_delete(_lib_pk(lib), sk), None) for sk in sort_keys]
+    for start in range(0, len(steps), TRANSACTION_ITEMS):
+        _write(steps[start : start + TRANSACTION_ITEMS])
+
+
+def pending_sweeps(lib: str) -> list[dict]:
+    """Every open sweep in a library, oldest first.
+
+    Oldest first because the sort key leads with the timestamp, and because a
+    sweep that has been open longest is the one least likely to belong to a
+    request still running.
+    """
+    return [_attributes(item) for item in _query(
+        TableName=config.catalog_table(),
+        KeyConditionExpression="pk = :pk AND begins_with(sk, :sk)",
+        ExpressionAttributeValues={":pk": {"S": _lib_pk(lib)},
+                                   ":sk": {"S": SWEEP_PREFIX}},
+    )]
+
+
+def live_nodes(node_ids: list[str]) -> set[str]:
+    """Which of these node ids still have a `META` row.
+
+    `records` answers the same question but reads the whole record and raises on
+    a partial batch; this only needs existence, over ids that are *expected* to
+    be absent. Absence is the answer here, not a failure.
+    """
+    if not node_ids:
+        return set()
+
+    found: set[str] = set()
+    unique = sorted(set(node_ids))
+    for start in range(0, len(unique), BATCH_GET_KEYS):
+        chunk = unique[start : start + BATCH_GET_KEYS]
+        try:
+            response = dynamodb.client().batch_get_item(
+                RequestItems={
+                    config.catalog_table(): {
+                        "Keys": [{"pk": {"S": _node_pk(node_id)}, "sk": {"S": META}}
+                                 for node_id in chunk],
+                        "ProjectionExpression": "pk",
+                    }
+                }
+            )
+        except ClientError as exc:
+            logger.warning("BatchGetItem failed while draining sweeps: %s", exc)
+            raise UpstreamError("Could not read the catalog") from exc
+
+        for item in response.get("Responses", {}).get(config.catalog_table(), []):
+            found.add(item["pk"]["S"].removeprefix("NODE#"))
+        # Unprocessed keys are treated as LIVE — not retried, not assumed gone.
+        # The whole point of this read is to decide whether deleting bytes is
+        # safe, and "I did not manage to look" must fall on the side of keeping
+        # them. The sweep stays open and the next delete asks again.
+        for key in (response.get("UnprocessedKeys", {})
+                    .get(config.catalog_table(), {}).get("Keys", [])):
+            found.add(key["pk"]["S"].removeprefix("NODE#"))
+    return found
 
 
 def set_blob(
@@ -2424,17 +2593,21 @@ def delete_project_cascade(record: dict, *, delete_files: bool) -> dict:
     offer for "delete this project and its work".
     """
     blob_keys: list[str] = []
+    sweeps: list[str] = []
     removed = collections.Counter()
     for kind in (ENTITY_MOVIE, ENTITY_SCENE, ENTITY_RUN):
         for row in project_entities(record["id"], kind):
             child = entity(kind, row["id"])
             result = delete_entity(kind, child, delete_files=delete_files)
             blob_keys.extend(result["blob_keys"])
+            sweeps.extend(result["sweeps"])
             removed[kind] += 1
     result = delete_entity(ENTITY_PROJECT, record, delete_files=delete_files)
     blob_keys.extend(result["blob_keys"])
+    sweeps.extend(result["sweeps"])
     logger.info("Cascade-deleted project %s (%s)", record["id"], dict(removed))
-    return {"id": record["id"], "blob_keys": blob_keys, "removed": dict(removed)}
+    return {"id": record["id"], "lib": record["lib"], "blob_keys": blob_keys,
+            "sweeps": sweeps, "removed": dict(removed)}
 
 
 def delete_entity(kind: str, record: dict, *, delete_files: bool) -> dict:
@@ -2498,15 +2671,19 @@ def delete_entity(kind: str, record: dict, *, delete_files: bool) -> dict:
 
     root_id = record.get("root") or record.get("folder")
     blob_keys: list[str] = []
+    sweeps: list[str] = []
     if root_id:
         if delete_files:
-            blob_keys = delete_node(root_id, allow_entities=True)["blob_keys"]
+            freed = delete_node(root_id, allow_entities=True)
+            blob_keys = freed["blob_keys"]
+            sweeps = list(freed["sweep"])
         else:
             _orphan(root_id, record["lib"])
 
     logger.info("Deleted %s %s (files %s)", kind, record["id"],
                 "deleted" if delete_files else "kept")
-    return {"id": record["id"], "blob_keys": blob_keys}
+    return {"id": record["id"], "lib": record["lib"],
+            "blob_keys": blob_keys, "sweeps": sweeps}
 
 
 def _orphan(node_id: str, lib: str) -> None:

@@ -23,7 +23,7 @@ from flask import Blueprint, g, jsonify, request
 from studio_core.clients.aws import s3
 from studio_core.errors import ConflictError, NotFoundError, ValidationError
 from studio_core.routes import support
-from studio_core.services import catalog, keys, layout
+from studio_core.services import catalog, keys, layout, manage
 
 logger = logging.getLogger(__name__)
 
@@ -227,12 +227,12 @@ def delete_project(addressed: str):
             counts={**counts, "drafts": drafts},
         )
 
+    manage.drain(g.library)
     if cascade:
         result = catalog.delete_project_cascade(record, delete_files=files == "delete")
     else:
         result = catalog.delete_entity(KIND, record, delete_files=files == "delete")
-    if result["blob_keys"]:
-        s3.delete(result["blob_keys"])
+    manage.release(g.library, result["blob_keys"], result["sweeps"])
     return jsonify({"id": record["id"], "files": files,
                     "removed": result.get("removed") or {}}), 200
 

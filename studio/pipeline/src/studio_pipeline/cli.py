@@ -33,13 +33,6 @@ from studio_pipeline.engine import add_model as _add_model
 from studio_pipeline.engine import board as _board
 from studio_pipeline.engine import runner as _runner
 from studio_pipeline.engine import turnaround as _turnaround
-from studio_pipeline.maintenance import catalog_gc as _catalog_gc
-from studio_pipeline.maintenance import ref_descriptions as _ref_descriptions
-from studio_pipeline.maintenance import catalog_check as _catalog
-from studio_pipeline.maintenance import backfill_plans as _backfill_plans
-from studio_pipeline.maintenance import drop_fictional as _drop_fictional
-from studio_pipeline.maintenance import confirm_outputs as _confirm_outputs
-from studio_pipeline.maintenance import dev_seed as _dev_seed
 from studio_pipeline.objects import config_sync as _config_sync
 from studio_pipeline.objects import convert as _convert
 from studio_pipeline.objects import crop as _crop
@@ -69,7 +62,6 @@ class _Grouped(click.Group):
         ("authoring",   ["prompt", "phrasebook"]),
         ("objects",     ["upload", "download", "describe", "presign", "convert", "crop",
                          "config"]),
-        ("maintenance", ["catalog", "dev-seed"]),
     ]
 
     def format_commands(self, ctx, formatter):
@@ -97,8 +89,6 @@ SHORT_HELP = {
     "runs": "query the run store: list, find, show, outputs, adopt",
     # Its docstring's first line wraps mid-sentence, which truncates badly.
     "character": "manage on-model characters: profile, references, pools",
-    # Its first line reads as prose about the fixture, not as what it does.
-    "dev-seed": "promote a dev fixture into the shared seed bucket",
     # Its docstring's first line is the group's, which reads as a definition.
     "profile": "named environments: list, show, use, sync",
 }
@@ -132,8 +122,8 @@ the ones already recorded.
 @click.version_option(package_name="studio-pipeline", prog_name="studio")
 def main(profile_name: str | None) -> None:
     # **Before any subcommand runs, and before any adapter reads a value.** This
-    # is why `adapters/s3.py` and `adapters/ddb.py` no longer bind their bucket
-    # and table at import time: a module constant is bound when Python imports
+    # is why `adapters/s3.py` no longer binds its bucket at import time: a
+    # module constant is bound when Python imports
     # the module, which is before Click has parsed a single argument, so it
     # could never reflect what was typed here.
     #
@@ -171,30 +161,6 @@ _scenes.main.add_command(_board.cmd_board, "board")
 _scenes.main.add_command(_board.cmd_render, "render")
 _scenes.main.add_command(_board.cmd_check, "check")
 
-# `gc` reads as a fifth catalog phase and is its own module because it is the
-# only one that deletes. Attaching it here rather than defining it inside
-# `catalog_check.py` keeps that separation visible: the migrator copies no
-# bytes, moves no objects and deletes nothing, and nothing in it should have to
-# say so twice.
-_catalog.main.add_command(_catalog_gc.cmd_gc, "gc")
-_catalog.main.add_command(_ref_descriptions.cmd_reseat_descriptions, "descriptions")
-# `confirm-outputs` is the only catalog command that needs no AWS client: the
-# rows it repairs are the ones a listing hides, and it finds them by asking the
-# entities that name their outputs rather than by scanning the table.
-_catalog.main.add_command(_confirm_outputs.cmd_confirm_outputs, "confirm-outputs")
-# `backfill-plans` gives every run that predates the plan one. A maintenance
-# command rather than an API route because `PATCH /api/runs/<id>/plan` refuses a
-# submitted run — a plan edited after the fact would sit beside `request.json`
-# describing something that was never sent — and a backfill route able to do it
-# anyway would be a permanent hole cut for a one-shot.
-_catalog.main.add_command(_backfill_plans.cmd_backfill_plans, "backfill-plans")
-# `drop-fictional` removes the retired likeness attribute from rows that predate
-# its removal. A maintenance command for the mirror-image reason to the one
-# above: there is no route to write through any more, and adding one to unset a
-# dead key would be a permanent hole cut for a one-shot.
-_catalog.main.add_command(_drop_fictional.cmd_drop_fictional, "drop-fictional")
-
-
 for _name, _cmd in [
     ("add-model", _add_model.add_model),
     ("runs", _runs.main),
@@ -214,8 +180,6 @@ for _name, _cmd in [
     ("convert", _convert.convert),
     ("crop", _crop.crop),
     ("config", _config_sync.main),
-    ("catalog", _catalog.main),
-    ("dev-seed", _dev_seed.main),
 ]:
     main.add_command(_cmd, _name)
 

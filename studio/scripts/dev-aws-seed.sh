@@ -2,10 +2,10 @@
 #
 # Load the published dev fixture into this machine's stack.
 #
-# **This was a thousand lines and is now a wrapper.** The work moved to `studio
-# dev-seed load` (`pipeline/…/maintenance/dev_seed.py`), which sits beside
-# `publish` so the two halves of a fixture share one set of derivations and one
-# validator. What forced the move was arithmetic rather than taste:
+# **This was a thousand lines and is now a wrapper.** The work moved to
+# `dev-seed load` (`scripts/dev_seed/`), which sits beside `publish` so the two
+# halves of a fixture share one set of derivations and one validator. What
+# forced the move was arithmetic rather than taste:
 #
 #     download + upload, one `aws` process per object   71s
 #     server-side copy, one `aws` process per object    23s
@@ -34,7 +34,10 @@ source "$SCRIPT_DIR/dev-shared-material.sh"
 
 main() {
   load_dev_user_email
-  studio dev-seed load "$@"
+  # Its own project rather than `studio dev-seed`: seeding needs AWS clients
+  # and every other `studio` command deliberately has none. See
+  # `dev_seed/pyproject.toml`.
+  uv run --project "$SCRIPT_DIR/dev_seed" dev-seed load "$@"
 
   # Tolerant of failure on purpose: a developer who has not signed in gets a
   # warning and a seeded stack, not a dead script. `dev-setup.sh` pushes the

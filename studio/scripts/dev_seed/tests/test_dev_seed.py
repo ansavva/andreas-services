@@ -1,4 +1,4 @@
-"""`studio dev-seed publish` — the writer, against the loader that reads it.
+"""`dev-seed publish` — the writer, against the loader that reads it.
 
 `scripts/dev-aws-seed.sh` shipped first (#285) and defined `catalog.json` and
 `manifest.json` field by field, because #284 only sketched them. That made the
@@ -24,10 +24,10 @@ import pytest
 from click.testing import CliRunner
 from moto import mock_s3
 
-from studio_pipeline import cli
-from studio_pipeline.adapters import ddb as ddbc
-from studio_pipeline.maintenance import catalog_check as CM
-from studio_pipeline.maintenance import dev_seed as ds
+from dev_seed import aws as ddbc
+from dev_seed import derive as CM
+from dev_seed import seed as ds
+from dev_seed.seed import main as cli_main
 # The loader's own validator, not a second copy of it. `test_dev_scripts`
 # already sources `dev-aws-seed.sh` and exposes `fixture_problems`; reaching for
 # it here is the whole point — a reimplementation would agree with itself.
@@ -169,8 +169,8 @@ def _rows(tree=TREE, lib=LIB):
 def dev_stack(monkeypatch, tmp_path):
     """A moto bucket + table named as a real dev stack is, with the CLI aimed at it.
 
-    `_no_live_dynamodb` in conftest already has a mock running, so the table is
-    created into that one. The bucket needs its own mock.
+    `_no_live_dynamodb` in this project's conftest already has a mock running, so
+    the table is created into that one. The bucket needs its own mock.
 
     `FIXTURE_DIR` is redirected into tmp_path so an `--apply` in the suite cannot
     write into the repo — the git copy is the fixture, and a test that produced
@@ -206,7 +206,7 @@ def dev_stack(monkeypatch, tmp_path):
 
 
 def _publish(*argv):
-    return CliRunner().invoke(cli.main, ["dev-seed", "publish", *argv])
+    return CliRunner().invoke(cli_main, ["publish", *argv])
 
 
 RUN = "subject-a/runs/2026-08-19_09-12-44_wave-porch"
@@ -592,7 +592,7 @@ def test_the_path_is_the_chain_of_names_not_the_materialised_path(dev_stack):
 
 
 def test_tree_lists_the_stack_by_path(dev_stack):
-    result = CliRunner().invoke(cli.main, ["dev-seed", "tree"])
+    result = CliRunner().invoke(cli_main, ["tree"])
     assert result.exit_code == 0, result.output
     assert RUN in result.output
     assert "folder" in result.output and "file" in result.output
@@ -730,7 +730,7 @@ def test_a_default_set_entry_with_no_reference_row_is_dropped(dev_stack):
 #
 # These moved out of `contracts/test_dev_scripts.py` with the code they cover.
 # `dev-aws-seed.sh` was a thousand lines of bash and is now a wrapper around
-# `studio dev-seed load`; the tests came across one for one, minus two that
+# `dev-seed load`; the tests came across one for one, minus two that
 # stopped meaning anything:
 #
 #   * `test_bash_uuid5_matches_python` — there is one implementation now, so

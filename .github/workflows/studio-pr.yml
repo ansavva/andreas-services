@@ -214,6 +214,18 @@ jobs:
       - name: Lint
         run: uv run --project studio/pipeline ruff check studio/pipeline
 
+      # `dev-seed` is its own project — it holds AWS clients and the CLI
+      # deliberately does not — so the pipeline's lint step and suite do not
+      # reach it. It is the only Python in the repo that writes DynamoDB
+      # directly, which is a reason to check it rather than a reason to skip it.
+      - name: Lint dev-seed
+        run: uv run --project studio/pipeline ruff check studio/scripts/dev_seed
+
+      # Moto-backed, writes to no real table, and pins the publisher against the
+      # loader's own validator — so the two halves of a fixture cannot drift.
+      - name: Test dev-seed
+        run: uv run --project studio/scripts/dev_seed pytest studio/scripts/dev_seed/tests -q
+
       # The skills describe this CLI and nothing else checks that they still do.
       # Kept out of the pytest suite deliberately: it is a linter, and 60-odd
       # parametrised markdown cases drowned the wiring tests that suite is for.
