@@ -70,6 +70,32 @@ ORDER_GAP = 1000
 
 
 @functools.lru_cache(maxsize=1)
+def _storyboard():
+    """The BACKEND's plan module, loaded by path. **Not a copy of it.**
+
+    Normalising a plan, validating it and deriving a shot's status are the API's
+    now, so a fake that did not do them would let the CLI's tests pass against
+    shapes the real service refuses — which is the failure this fake exists to
+    prevent. `_plan_digest` above is the cautionary case: a second implementation
+    with a comment admitting nothing holds the two together.
+
+    Loaded from the file rather than imported as a package because the pipeline
+    does not depend on the backend and must not start to. `services/storyboard.py`
+    has no imports of its own beyond `__future__`, so this pulls in no Flask, no
+    boto3, and nothing that would make a unit test need either. If that ever
+    stops being true this will fail loudly at import, which is the right way for
+    it to stop working.
+    """
+    import importlib.util
+
+    path = STUDIO_DIR / "backend" / "studio_core" / "services" / "storyboard.py"
+    spec = importlib.util.spec_from_file_location("_fake_storyboard", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@functools.lru_cache(maxsize=1)
 def _committed_registry() -> dict:
     """`backend/studio_core/models.json`, each entry carrying its own key.
 
@@ -1342,21 +1368,52 @@ class FakeApi:
         self.scenes[scene_id] = record
         self.shots[scene_id] = []
         if body.get("shots"):
-            self._merge_shots(scene_id, body["shots"])
+            self._merge_shots(scene_id, body["shots"], body)
+        self._restate(scene_id)
         return self._scene_view(record)
 
-    def _merge_shots(self, scene_id: str, shots: list[dict]) -> None:
-        """Merge by shot id, so a revision never orphans rendered work."""
+    def _merge_shots(self, scene_id: str, shots: list[dict], plan: dict | None = None) -> None:
+        """Normalise, validate, merge by shot id, and derive each shot's status.
+
+        **All four are the API's**, and this mirrors it rather than approximating
+        it: `_storyboard()` is the backend's own module, loaded by path. A fake
+        that merged without normalising would accept a raw plan the real service
+        turns into something else, and every test would agree with the fake.
+        """
+        SB = _storyboard()
+        scene = self.scenes[scene_id]
+        envelope = plan or {}
+        doc = SB.normalise(
+            {**{k: envelope.get(k, scene.get(k)) for k in ("setting", "defaults")},
+             "shots": shots},
+            scene.get("slug") or scene_id,
+        )
+        SB.validate(doc)
+
         existing = {s["id"]: s for s in self.shots.setdefault(scene_id, [])}
         merged = []
-        for order, spec in enumerate(shots, 1):
-            shot_id = spec.get("id") or f"shot-{order:02d}"
-            row = {**existing.get(shot_id, {}), **spec,
+        for order, spec in enumerate(doc["shots"], 1):
+            shot_id = spec["id"]
+            previous = existing.get(shot_id, {})
+            row = {**previous, **spec,
                    "id": shot_id, "order": spec.get("order") or order * ORDER_GAP}
+            deeper = SB.merge_panels(previous, spec)
+            if deeper is not None:
+                row["panels"] = deeper
             row.setdefault("run", None)
             row.setdefault("panel", None)
+            if not row.get("opens_on"):
+                row["opens_on"] = {"node": None, "from_run": None}
+            row["status"] = SB.shot_status(row)
             merged.append(row)
         self.shots[scene_id] = merged
+
+    def _restate(self, scene_id: str) -> None:
+        """Re-derive the scene's status from its shots, as every write route does."""
+        SB = _storyboard()
+        record = self.scenes[scene_id]
+        record["status"] = SB.scene_status(
+            {**record, "shots": self.shots.get(scene_id, [])})
 
     def _r_scene(self, method, body, params, scene_id):
         record = self.scenes.get(scene_id)
@@ -1385,6 +1442,7 @@ class FakeApi:
         if method != "PATCH":
             raise FakeError(405, method)
         self._merge_shots(scene_id, body["shots"])
+        self._restate(scene_id)
         return self._scene_view(self.scenes[scene_id])
 
     def _r_shot(self, method, body, params, scene_id, shot_id):
@@ -1392,6 +1450,8 @@ class FakeApi:
         if shot is None:
             raise FakeError(404, f"no shot {shot_id} in {scene_id}")
         shot.update(body)
+        shot["status"] = _storyboard().shot_status(shot)
+        self._restate(scene_id)
         return shot
 
     def _r_scene_output(self, method, body, params, scene_id):

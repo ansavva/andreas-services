@@ -34,7 +34,7 @@ from studio_core.errors import ValidationError
 from studio_core.routes import characters as character_routes
 from studio_core.routes import projects as project_routes
 from studio_core.routes import support
-from studio_core.services import catalog, keys, layout, manage
+from studio_core.services import catalog, keys, layout, manage, storyboard
 
 logger = logging.getLogger(__name__)
 
@@ -57,15 +57,42 @@ def _scene(scene_id: str, held: dict) -> dict:
     return support.entity_at(KIND, g.library, scene_id, held)
 
 
-def _shots(raw) -> list[dict]:
-    if raw is None:
-        return []
+def _planned(body: dict, slug: str) -> tuple[dict, list[dict]]:
+    """Normalise and validate an authored plan. **The write gate.**
+
+    This route used to take whatever `shots` it was handed — a list of objects,
+    and nothing further asked. Every plan reaching it happened to be well formed
+    because `domain/storyboard.py` normalised it first, on one client, and the
+    SPA had no way to author one at all. So the checks existed and the service
+    did not have them: a duplicate shot id, a panel with neither prompt nor
+    image, two panels both claiming to be the start frame — all storable.
+
+    `storyboard.normalise` also fills in what the author left implicit (ids,
+    numbering, inherited defaults, derived status), which is why it runs here
+    rather than being asserted after the fact: a plan that arrives half-specified
+    is the ordinary case, not an error.
+    """
+    raw = body.get("shots")
+    # **An empty list is "no plan yet", not an empty plan.** `storyboard.validate`
+    # refuses a scene with no shots, and it is right to for an authored plan —
+    # but `scenes new` with no `--from-json` creates the scene first and ingests
+    # the plan afterwards, and the SPA has no plan editor at all. Refusing here
+    # would break the create that every scene starts from.
+    if not raw:
+        return {}, []
     if not isinstance(raw, list):
         raise ValidationError("shots must be a list")
     for shot in raw:
         if not isinstance(shot, dict):
             raise ValidationError("every shot must be an object")
-    return raw
+
+    plan = {field: body[field] for field in SCENE_PLAN if field in body}
+    try:
+        doc = storyboard.normalise({**plan, "shots": raw}, slug)
+        storyboard.validate(doc)
+    except storyboard.PlanError as refusal:
+        raise ValidationError(str(refusal)) from None
+    return doc, doc["shots"]
 
 
 @bp.post("/scenes")
@@ -76,7 +103,7 @@ def create_scene():
 
     project = project_routes.project_at(body.get("project") or "", held)
     slug = keys.clean_slug(body.get("slug"))
-    shots = _shots(body.get("shots"))
+    doc, shots = _planned(body, slug)
 
     parent = project_routes.folder_for(project, layout.SCENE_PARENT)
     record = catalog.create_project_entity(
@@ -87,7 +114,7 @@ def create_scene():
         slug=slug,
         attributes={
             "title": body.get("title") or slug,
-            "status": "planned",
+            "status": doc.get("status") or "planned",
             "output": None,
             "error": None,
             **{field: body[field] for field in SCENE_PLAN if field in body},
@@ -96,7 +123,8 @@ def create_scene():
         # addressed by name. `GET /api/scenes` omitted it, so every caller that
         # resolved `<project>/<slug>` — which is every scene command in the CLI —
         # raised `KeyError: 'slug'` against a row it had just been handed.
-        listing={"status": "planned", "title": body.get("title") or slug, "slug": slug},
+        listing={"status": doc.get("status") or "planned",
+                 "title": body.get("title") or slug, "slug": slug},
     )
 
     written = catalog.put_shots(record["id"], record["lib"], shots) if shots else []
@@ -187,6 +215,14 @@ def _drawable(entries: list[dict], held: dict) -> list[dict]:
             }
             for panel in shot.get("panels") or []
         ]
+        # **Derived on read, never trusted off the row.** `status` says whether
+        # this shot is planned, boarded, rendered or cut, and `roles` says which
+        # panel the model is handed as the start frame — including the demotion
+        # a handoff causes, which is positional and cannot be read off a panel.
+        # Both were computed on one client and stored, so anything that wrote a
+        # shot without recomputing them left the SPA drawing a stale answer.
+        shot["status"] = storyboard.shot_status(shot)
+        shot["roles"] = storyboard.resolve_roles(shot)
         drawn.append(shot)
     return drawn
 
@@ -200,8 +236,17 @@ def get_scene(scene_id: str):
     """
     held = support.memberships()
     record = _scene(scene_id, held)
+    shots = _drawable(catalog.shots(record["id"]), held)
     return jsonify({**support.with_output(record),
-                    "shots": _drawable(catalog.shots(record["id"]), held),
+                    # Derived from the shots just read, so the envelope and its
+                    # plan cannot disagree even if a writer forgot to restate.
+                    "status": storyboard.scene_status({**record, "shots": shots}),
+                    # The frames this scene has produced, in order — shot 1's
+                    # opening panel and every later shot's handoff. It used to
+                    # be a `chains/<slug>.json` kept in step by hand, which is
+                    # the shape of every bug this repo has written a migrator for.
+                    "frames": storyboard.scene_frames({**record, "shots": shots}),
+                    "shots": shots,
                     "movies": support.holders(record["id"], catalog.ENTITY_MOVIE)}), 200
 
 
@@ -261,11 +306,44 @@ def update_scene(scene_id: str):
 
 @bp.patch("/scenes/<scene_id>/shots")
 def replace_shots(scene_id: str):
-    """The plan revision — **merged onto rendered work, not over it**."""
+    """The plan revision — **merged onto rendered work, not over it**.
+
+    Validated exactly as the create route validates, because a revision can
+    introduce every fault an original can: this is where a duplicate shot id
+    matters most, since ids are what the merge matches on and two shots sharing
+    one would collapse a revision onto a single row.
+
+    The scene's status is re-derived afterwards. `put_shots` merges recorded work
+    onto the revision, so what a shot *is* changes here — and a scene left
+    claiming `planned` over three rendered shots is exactly the stale-status
+    failure this move exists to end.
+    """
     body = support.body()
     held = support.memberships()
     record = _scene(scene_id, held)
-    return jsonify({"shots": catalog.put_shots(record["id"], record["lib"], _shots(body.get("shots")))}), 200
+
+    _, shots = _planned({**body, **{f: record.get(f) for f in SCENE_PLAN}},
+                        record.get("slug") or record["id"])
+    written = catalog.put_shots(record["id"], record["lib"], shots)
+    _restate(record, written)
+    return jsonify({"shots": written}), 200
+
+
+def _restate(record: dict, shots: list[dict]) -> dict:
+    """Recompute the scene's status from its shots, and store it if it moved.
+
+    **Derived, not asserted.** `scene_status` reads the shots and the output; a
+    caller that wrote a shot and forgot to restate the scene used to leave the
+    two disagreeing, and the SPA drew whatever the row said. Writing only on a
+    change keeps this off the hot path for the common revision that moves
+    nothing.
+    """
+    want = storyboard.scene_status({**record, "shots": shots})
+    if want == record.get("status"):
+        return record
+    return catalog.update_project_entity(
+        KIND, record, {"status": want}, {"status": want}
+    )
 
 
 @bp.patch("/scenes/<scene_id>/shots/<shot_id>")
@@ -283,7 +361,12 @@ def update_shot(scene_id: str, shot_id: str):
     changes = {field: body[field] for field in catalog.SHOT_FIELDS if field in body}
     if not changes:
         raise ValidationError("nothing to change")
-    return jsonify(catalog.update_shot(record["id"], record["lib"], shot_id, changes)), 200
+    written = catalog.update_shot(record["id"], record["lib"], shot_id, changes)
+    # This is the write that actually moves a scene along — `scenes board`
+    # recording a boarded panel, `scenes render` recording a run — so it is the
+    # one that most needed the scene restated and never did it.
+    _restate(record, catalog.shots(record["id"]))
+    return jsonify(written), 200
 
 
 @bp.post("/scenes/<scene_id>/output")
