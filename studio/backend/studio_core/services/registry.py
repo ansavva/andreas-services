@@ -146,6 +146,19 @@ def accepts_ext(entry: dict) -> set[str]:
     return set(field(entry, "images.accepts_ext", []) or [])
 
 
+def of_kind(kind: str) -> dict[str, dict]:
+    """Every entry of one kind, keyed by registry name."""
+    return {key: entry for key, entry in all().items() if entry.get("kind") == kind}
+
+
+def images() -> dict[str, dict]:
+    return of_kind("image")
+
+
+def videos() -> dict[str, dict]:
+    return of_kind("video")
+
+
 def reference_cap(name: str) -> int | None:
     """How many reference images `name` may be shown, or `None` for no cap.
 

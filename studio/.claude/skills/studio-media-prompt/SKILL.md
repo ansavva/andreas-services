@@ -157,6 +157,11 @@ Everything above is shared. These differ, and `--engine` switches them:
 | Image formats | wide | **jpg/jpeg/png only** |
 | Technical fields → | Replicate `input` | Replicate `input` |
 
+**The checking happens in the API.** `studio prompt` reads the object, sends it
+to `POST /api/prompt`, and prints what comes back — so the same rules apply
+wherever a prompt is authored rather than only at a terminal. Nothing is stored
+and nothing bills; it is safe to run as often as you like.
+
 `studio prompt` also checks a draft against the per-model **wording list** and
 flags the preferred alternative where one is recorded — see
 `studio phrasebook show <model>`. The list is data in

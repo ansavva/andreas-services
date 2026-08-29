@@ -24,6 +24,7 @@ from studio_core.routes.movies import bp as movies_bp
 from studio_core.routes.nodes import bp as nodes_bp
 from studio_core.routes.phrasebook import bp as phrasebook_bp
 from studio_core.routes.projects import bp as projects_bp
+from studio_core.routes.prompt import bp as prompt_bp
 from studio_core.routes.runs import bp as runs_bp
 from studio_core.routes.scenes import bp as scenes_bp
 from studio_core.services import catalog, identity
@@ -253,6 +254,7 @@ def create_app() -> Flask:
     app.register_blueprint(movies_bp)
     app.register_blueprint(phrasebook_bp)
     app.register_blueprint(models_bp)
+    app.register_blueprint(prompt_bp)
 
     @app.before_request
     def handle_preflight():

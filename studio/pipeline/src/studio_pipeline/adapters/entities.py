@@ -655,3 +655,17 @@ def models() -> dict:
     """Every registry entry, keyed by registry name."""
     found = api.get("/api/models")
     return (found or {}).get("models") or {} if isinstance(found, dict) else {}
+
+
+def build_prompt(obj: dict, engine: str, *, emit: str = "both",
+                 compact: bool = False, overrides: dict | None = None) -> dict:
+    """Assemble and validate a structured video prompt. Writes nothing.
+
+    The rules live in `services/prompt.py` because they need the registry and the
+    phrasebook, both of which are the API's — and because nothing but `studio
+    prompt` could reach them while they lived in the pipeline.
+    """
+    return api.post("/api/prompt", {
+        "object": obj, "engine": engine, "emit": emit,
+        "compact": compact, "overrides": overrides or {},
+    })
