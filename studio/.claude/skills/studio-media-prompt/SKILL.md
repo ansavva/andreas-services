@@ -126,7 +126,11 @@ Treat warnings as author feedback; fix them before spending a render.
 - **One camera move.** `"dolly in and orbit"` → chaos. One shot type + one move.
 - **No bare `"fast"`.** Qualify it: `"fast whip-pan"`, `"quick 1s push-in"`.
 - **No camera verbs in `subject`/`action`.** Those blocks describe the subject;
-  camera direction lives in `camera`.
+  camera direction lives in `camera`. The verb form counts: `"she zooms toward
+  the water"` warns as surely as `"a slow zoom"` does. Words with an innocent
+  subject sense — `pans`, `tracks`, `tilts`, `cranes`, `drones` — are left alone
+  unless the line names the camera as the one doing it (`"the camera pans across
+  the bay"`), so `"she tilts her head"` is fine.
 - **No vague adjectives** (`amazing`, `epic`, `stunning`, `beautiful`…). Models
   ignore mood words — describe what's observable instead.
 - **Beat budget.** Too many beats for the duration means the model drops or

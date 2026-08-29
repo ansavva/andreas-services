@@ -124,6 +124,55 @@ CAMERA_MOVES = [
     "tracking", "track", "orbit", "aerial", "drone", "crane", "handheld",
     "zoom", "rack focus", "whip",
 ]
+
+# Inflected forms of a move, for the `subject`/`action` leak scan only. The list
+# above matches whole words, so it saw "a slow dolly toward the water" and not
+# "she dollies toward the water" — and the verb form is the more natural way to
+# write the line, which made the miss the common case rather than the edge one.
+#
+# They are split in two because a suffix rule is not uniformly safe. These are
+# the forms whose only ordinary sense is a lens doing something: a person does
+# not zoom, dolly or orbit, so the word is a leak wherever it appears.
+UNAMBIGUOUS_MOVE_FORMS = {
+    "zoom": ("zooms", "zooming"),
+    "dolly": ("dollies", "dollying"),
+    "orbit": ("orbits", "orbiting"),
+}
+# These are ordinary prose on their own — `pans` is cookware, `tracks` is a
+# railway, `cranes` is a bird, `drones` is a sound, `tilts` is a head turning,
+# and "pulls out" is someone leaving. Warning on those would fire on correct
+# writing, which teaches people to stop reading warnings and, under
+# `studio prompt --strict`, fails a build. So they count only when the sentence
+# names the camera as the thing doing them, which is unambiguous and is also the
+# phrasing people actually write.
+CAMERA_LED_MOVE_FORMS = {
+    "pan": ("pans", "panning"),
+    "tilt": ("tilts", "tilting"),
+    "track": ("tracks", "tracking"),
+    "crane": ("cranes", "craning"),
+    "drone": ("drones", "droning"),
+    "push in": ("pushes in", "pushing in"),
+    "pull out": ("pulls out", "pulling out"),
+    "whip": ("whips", "whipping"),
+}
+# "the camera pans", "the camera slowly tilts down" — the actor, then up to two
+# words of adverb or article before the verb.
+CAMERA_LED = r"camera\s+(?:\w+\s+){0,2}"
+
+
+def camera_move_leaks(text: str) -> list[str]:
+    """Camera-move words in a `subject` or `action` line. -> the forms found.
+
+    Reports the form as written rather than the move it belongs to, so the
+    warning quotes something the author can find in their own text.
+    """
+    hits = {m for m in CAMERA_MOVES if re.search(rf"\b{re.escape(m)}\b", text)}
+    for forms in UNAMBIGUOUS_MOVE_FORMS.values():
+        hits |= {f for f in forms if re.search(rf"\b{re.escape(f)}\b", text)}
+    for forms in CAMERA_LED_MOVE_FORMS.values():
+        hits |= {f for f in forms
+                 if re.search(rf"\b{CAMERA_LED}{re.escape(f)}\b", text)}
+    return sorted(hits)
 VAGUE_ADJECTIVES = [
     "amazing", "beautiful", "epic", "stunning", "gorgeous", "breathtaking",
     "awesome", "incredible", "majestic", "magical",
@@ -268,7 +317,7 @@ def validate(obj: dict, engine: str, terms_lookup=None) -> tuple[list[str], list
     # --- camera verbs leaking into subject/action -------------------------
     for field in ("subject", "action"):
         text = fields.get(field, "").lower()
-        leaked = sorted({m for m in CAMERA_MOVES if re.search(rf"\b{re.escape(m)}\b", text)})
+        leaked = camera_move_leaks(text)
         if leaked:
             warnings.append(
                 f"{field} contains camera-move words {leaked}; move camera "
