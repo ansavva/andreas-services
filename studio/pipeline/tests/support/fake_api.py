@@ -70,6 +70,36 @@ ORDER_GAP = 1000
 
 
 @functools.lru_cache(maxsize=1)
+def _backend_service(name: str):
+    """A backend `services/<name>.py`, loaded by path. **Not a copy of it.**
+
+    Two modules are shared this way — `storyboard` and `prompt` — and both are
+    written to import neither Flask nor boto3 so that a unit test needs neither.
+    What they hold is judgement the API now owns: whether a plan is coherent,
+    whether a prompt will render well. A fake that approximated either would let
+    the CLI's tests pass against answers the real service does not give, which is
+    the failure this fake exists to prevent. `_plan_digest` above is the
+    cautionary case — a second implementation with a comment admitting nothing
+    holds the two together.
+
+    Imported through `backend/` on `sys.path` rather than by file path, because
+    `prompt` reads the registry and a path-loaded module cannot resolve
+    `studio_core.services.registry` for itself. `studio_core/__init__.py`,
+    `services/__init__.py` and `errors.py` are all empty or import-free, so this
+    reaches nothing heavier than `json` and `pathlib`.
+
+    If either module ever grows a dependency this fails loudly at import, which
+    is the right way for it to stop working.
+    """
+    import importlib
+    import sys
+
+    root = str(STUDIO_DIR / "backend")
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    return importlib.import_module(f"studio_core.services.{name}")
+
+
 def _storyboard():
     """The BACKEND's plan module, loaded by path. **Not a copy of it.**
 
@@ -86,13 +116,7 @@ def _storyboard():
     stops being true this will fail loudly at import, which is the right way for
     it to stop working.
     """
-    import importlib.util
-
-    path = STUDIO_DIR / "backend" / "studio_core" / "services" / "storyboard.py"
-    spec = importlib.util.spec_from_file_location("_fake_storyboard", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return _backend_service("storyboard")
 
 
 @functools.lru_cache(maxsize=1)
@@ -387,6 +411,7 @@ class FakeApi:
         return [
             (r"/api/libraries", self._r_libraries),
             (r"/api/models", self._r_models),
+            (r"/api/prompt", self._r_prompt),
             (r"/api/models/(.+)", self._r_model),
             (r"/api/resolve", self._r_resolve),
             (r"/api/asset", self._r_asset),
@@ -437,6 +462,27 @@ class FakeApi:
         ]
 
     # ── node routes ─────────────────────────────────────────────────────────
+
+    def _r_prompt(self, method, body, params):
+        """`POST /api/prompt` — the backend's own assembler, over this library."""
+        if method != "POST":
+            raise FakeError(405, f"{method} /api/prompt")
+        service = _backend_service("prompt")
+        engine = body.get("engine") or "seedance"
+        if engine not in service.engines():
+            raise FakeError(400, f"unknown engine {engine!r}")
+        if not isinstance(body.get("object"), dict):
+            raise FakeError(400, "object must be an object")
+        return service.assemble(
+            body["object"], engine,
+            emit=body.get("emit") or "both",
+            compact=bool(body.get("compact")),
+            overrides=body.get("overrides") or {},
+            terms_lookup=lambda model: [
+                {"avoid": term["avoid"], "use": term["use"]}
+                for term in self.terms if term["model"] == model
+            ],
+        )
 
     def _r_models(self, method, body, params):
         """`GET /api/models` — served from the committed file the API ships.

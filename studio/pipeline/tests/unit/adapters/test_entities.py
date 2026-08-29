@@ -34,6 +34,9 @@ ADAPTERS = pathlib.Path(E.__file__).parent
 WIRE_SURFACE = {
     # session / library
     "/api/libraries",
+    # Authoring a prompt: the rules need the registry and the phrasebook, both
+    # of which are the API's. Writes nothing — safe to call per keystroke.
+    "/api/prompt",
     # the model registry, which is the backend's now — `engine/registry.py`
     # reads it from here rather than off a file this package ships, so the API
     # and the SPA measure a reference selection against the same entries the
