@@ -1,4 +1,11 @@
-"""`studio dev-seed` — promote a fixture out of this machine's dev stack.
+"""`dev-seed` — promote a fixture out of this machine's dev stack.
+
+**A tool of its own, not a `studio` subcommand, and `pyproject.toml` beside this
+file says why.** In short: everything else the CLI does goes through the API on
+a bearer token and holds no cloud credential; this writes the rows and copies the
+blobs a library is *made of*, so it needs AWS clients. One command wanting the
+opposite of the rule does not belong in the same binary as the ninety that keep
+it.
 
 The dev fixture is **promoted, not generated**. A human drives the CLI against
 their own dev stack as ordinary work; a handful of the nodes that produces
@@ -6,9 +13,9 @@ become the fixture every other machine downloads. `publish` reads that stack's
 catalog, copies the chosen blobs into the seed bucket, and writes the two
 documents `scripts/dev-aws-seed.sh` loads.
 
-    studio dev-seed tree                       what is in this stack, by path
-    studio dev-seed publish --path A --path B  a dry run: what would be promoted
-    studio dev-seed publish --path A --apply --dev-subjects-only
+    dev-seed tree                              what is in this stack, by path
+    dev-seed publish --path A --path B  a dry run: what would be promoted
+    dev-seed publish --path A --apply --dev-subjects-only
 
 IT GENERATES NOTHING, SO IT COSTS NOTHING
 -----------------------------------------
@@ -89,18 +96,22 @@ import concurrent.futures
 import hashlib
 import json
 import os
+import pathlib
 import re
 import uuid
 
 import click
 
-from studio_pipeline import STUDIO_DIR
-from studio_pipeline.adapters import ddb as ddbc
-from studio_pipeline.adapters import s3 as s3c
-from studio_pipeline import profiles
-from studio_pipeline.errors import die
-from studio_pipeline.domain import paths as P
-from studio_pipeline.maintenance import derive as CM
+from dev_seed import aws
+from dev_seed import derive as CM
+from dev_seed.aws import die
+
+# `studio/` from here: scripts/dev_seed/dev_seed/seed.py -> up three.
+# `studio_pipeline.STUDIO_DIR` searched upward for the directory holding both
+# `backend/` and `pipeline/`, which is the right rule for a package that can be
+# installed anywhere. This file is *in* the repo and only ever runs from it, so
+# a count is honest here where it was not there.
+STUDIO_DIR = pathlib.Path(__file__).resolve().parents[3]
 
 #: The one "tree" `name_positions` reports under. An entity root is a child of
 #: the library root now, so there is no `characters/` or `projects/` folder to
@@ -147,7 +158,7 @@ def source() -> tuple[str, str]:
     `STUDIO_CATALOG_TABLE`), pinned by `dev-setup.sh` from the dev stack's
     Terraform outputs.
     """
-    bucket, table = s3c.bucket(), ddbc.table()
+    bucket, table = aws.bucket(), aws.table()
     for name in (bucket, table):
         if "prod" in name:
             die(f"refusing to read '{name}' — a fixture is promoted from a dev "
@@ -182,7 +193,7 @@ def read_library(ddb, library: str | None = None) -> dict:
     """
     libraries, metas = {}, {}
     records, refs, involves = {}, collections.defaultdict(list), collections.defaultdict(list)
-    for item in ddbc.scan(ddb):
+    for item in aws.scan(ddb):
         pk, sk = item.get("pk", ""), item.get("sk", "")
         if sk == "META" and pk.startswith("LIB#"):
             libraries[pk.removeprefix("LIB#")] = item
@@ -197,7 +208,7 @@ def read_library(ddb, library: str | None = None) -> dict:
             involves[pk].append(sk)
 
     if not libraries:
-        die(f"no library in '{ddbc.table()}'. Sign in to the local app and put "
+        die(f"no library in '{aws.table()}'. Sign in to the local app and put "
             "something in it first — a fixture is promoted from work, not built.")
     if library is None and len(libraries) > 1:
         die("this table holds more than one library; name one with --library:\n"
@@ -205,7 +216,7 @@ def read_library(ddb, library: str | None = None) -> dict:
                         for lib, row in sorted(libraries.items())))
     lib = library or next(iter(libraries))
     if lib not in libraries:
-        die(f"no library '{lib}' in '{ddbc.table()}'")
+        die(f"no library '{lib}' in '{aws.table()}'")
 
     root = libraries[lib].get("root_node")
     nodes = {nid: row for nid, row in metas.items() if row.get("lib") == lib}
@@ -323,7 +334,7 @@ def expand(paths: dict[str, str], wanted: list[str]) -> dict:
 #:
 #: `catalog_gc.SHARED_PREFIXES` is the same idea for the same two names, on the
 #: delete side.
-SHARED_ROOTS = frozenset({P.CONFIG, "phrasebook"})
+SHARED_ROOTS = frozenset({"config", "phrasebook"})
 
 DEV_SUBJECTS = frozenset({
     "jason",                                  # the seed fixture's subject
@@ -704,7 +715,7 @@ def fixture_documents(s3, seed_bucket: str, version: str) -> tuple[dict, dict]:
     if catalog is None:
         die(f"no fixture at s3://{seed_bucket}/{version}/catalog.json.\n"
             "       Nothing is wrong with your stack — there is nothing to load. "
-            "Publish one with `studio dev-seed publish`.")
+            "Publish one with `dev-seed publish`.")
     manifest = read("manifest.json")
     if manifest is None:
         die(f"s3://{seed_bucket}/{version}/catalog.json exists and manifest.json "
@@ -982,7 +993,7 @@ def write_rows(ddb, table: str, items: list[dict]) -> int:
     written = 0
     for start in range(0, len(items), BATCH):
         chunk = items[start:start + BATCH]
-        request = {table: [{"PutRequest": {"Item": ddbc.to_item(item)}} for item in chunk]}
+        request = {table: [{"PutRequest": {"Item": aws.to_item(item)}} for item in chunk]}
         for _attempt in range(5):
             answer = ddb.batch_write_item(RequestItems=request)
             unprocessed = answer.get("UnprocessedItems") or {}
@@ -1007,10 +1018,10 @@ def adopt_roots(ddb, table: str, catalog: dict, bucket: str) -> None:
         root = node_id(bucket, entity["root"])
         ddb.update_item(
             TableName=table,
-            Key=ddbc.to_item({"pk": f"NODE#{root}", "sk": "META"}),
+            Key=aws.to_item({"pk": f"NODE#{root}", "sk": "META"}),
             UpdateExpression="SET #entity = :entity",
             ExpressionAttributeNames={"#entity": "entity"},
-            ExpressionAttributeValues=ddbc.to_item(
+            ExpressionAttributeValues=aws.to_item(
                 {":entity": CM.entity_id(entity["kind"], root)}),
         )
 
@@ -1042,11 +1053,11 @@ def owner_sub(pool_id: str, email: str) -> str:
 def _clients():
     """S3 and DynamoDB for the dev stack, after the `prod` refusal."""
     bucket, table = source()
-    ddb = ddbc.client()
-    if not ddbc.table_exists(ddb):
+    ddb = aws.ddb_client()
+    if not aws.table_exists(ddb):
         die(f"no table '{table}'. Run scripts/dev-aws-setup.sh, or export "
             "STUDIO_CATALOG_TABLE for the dev stack you mean.")
-    return s3c.client(), ddb, bucket, table
+    return aws.client(), ddb, bucket, table
 
 
 @click.group(help=__doc__)
@@ -1120,7 +1131,7 @@ def cmd_publish(wanted, paths_from, fixture_version, seed_bucket, library,
     if picked["missing"]:
         die("no such path in this stack: "
             + ", ".join(repr(p) for p in picked["missing"])
-            + "\n       `studio dev-seed tree` lists them.")
+            + "\n       `dev-seed tree` lists them.")
 
     files = sorted((nid for nid in picked["all"]
                     if lib["nodes"][nid]["kind"] == "file"),
@@ -1229,16 +1240,16 @@ def cmd_load(fixture_version, seed_bucket, email):
     describes it, over whatever was there. Refilling a stack is what this is for.
     """
     bucket, table = source()
-    ddb = ddbc.client()
-    if not ddbc.table_exists(ddb):
+    ddb = aws.ddb_client()
+    if not aws.table_exists(ddb):
         die(f"no table '{table}'. Run scripts/dev-aws-setup.sh first.")
-    s3 = s3c.client()
+    s3 = aws.client()
 
     address = email or os.environ.get("STUDIO_DEV_USER_EMAIL", "").strip()
     if not address:
         die("no --email and no STUDIO_DEV_USER_EMAIL, so the library would have "
             "no member. Run ./studio/scripts/dev-user.sh first.")
-    pool = profiles.value("cognito_user_pool_id")
+    pool = aws.value("cognito_user_pool_id")
 
     catalog, manifest = fixture_documents(s3, seed_bucket, fixture_version)
     broken = problems(catalog, manifest)

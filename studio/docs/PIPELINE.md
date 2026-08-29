@@ -208,7 +208,6 @@ studio/pipeline/
         │   ├── api.py             one transport: token, refresh, library header
         │   ├── auth.py            Cognito sign-in + the token cache
         │   ├── s3.py              the AWS-login bridge — almost gone, see below
-        │   ├── ddb.py             the catalog table's client + item marshalling
         │   ├── replicate.py       the HTTP client
         │   └── ffmpeg.py          probe / stitch / grab
         │
@@ -233,13 +232,19 @@ studio/pipeline/
         │   ├── board.py           `studio scenes board` / `render` / `check`
         │   ├── registry.py  schema.py  submit.py  refs.py  add_model.py
         │
-        ├── objects/               raw object access
-        │   └── upload.py  download.py  presign.py  convert.py
-        │
-        └── maintenance/           one-shots, quarantined
-            └── catalog_check.py  catalog_gc.py  dev_seed.py
-                backfill_plans.py  — give every pre-plan run one
+        └── objects/               raw object access
+            └── upload.py  download.py  presign.py  convert.py
 ```
+
+**`maintenance/` was a seventh subpackage and is gone.** It held the AWS-direct
+one-shots — `catalog_check.py`, `catalog_gc.py`, `backfill_plans.py`,
+`drop_fictional.py`, `confirm_outputs.py`, `ref_descriptions.py` — plus the
+journal and derivations they shared, and `adapters/ddb.py` and `adapters/s3.py`
+existed to give them clients. All of it is deleted. The migrations finished; the
+orphan class `gc` swept is recorded by the API as a sweep row instead of being
+searched for; and seeding moved to `studio/scripts/dev_seed/`, its own project,
+because it is the one job that genuinely needs AWS clients. Nothing under
+`adapters/` opens one now.
 
 **Why the directories are named after what things ARE.** They used to be one
 `store/` holding six unrelated kinds of thing — an S3 adapter, the key layout,
@@ -296,17 +301,16 @@ every call, and `adapters/store.py` addresses the library by path. No bucket
 name and no AWS credentials anywhere in that path.
 
 External tools:
-- **AWS CLI** (`aws`) — `brew install awscli` — **required only for the
-  maintenance commands.** `adapters/s3.py` still falls back to bridging
-  `aws configure export-credentials` into boto3; since the move to a long-lived
-  access key in August 2026 boto3's own chain resolves the same credentials, so
-  the bridge is a leftover that costs a subprocess rather than a necessity. It
-  has four importers left: `adapters/ddb.py` for the catalog table, and the
-  three `maintenance/` modules that enumerate the raw bucket — `catalog_gc.py`,
-  `catalog_check.py` and `dev_seed.py`. Those need credentials that resolve
-  (`aws sts get-caller-identity`); everything else does not.
-  Everything else needs **no AWS account at all** — that is the point of #308,
-  and this bullet said "required" flatly until it landed.
+- **An AWS account** — **needed by `studio profile sync` and by nothing else.**
+  `sync` reads a dev stack's Terraform outputs and prod's SSM parameters, which
+  is how the CLI learns the API URL every other command then talks to; it cannot
+  go through the API because it is what finds the API. That one call site is
+  `profiles.aws_session()`, and boto3's own chain resolves the credentials.
+  Everything else needs **no AWS account at all** — the point of #308, finally
+  true of the whole package now that `maintenance/` and both AWS adapters are
+  deleted. This bullet said "required" flatly, then "required only for the
+  maintenance commands"; the `aws configure export-credentials` bridge it
+  described went with `adapters/s3.py`.
 - **ffmpeg** — `brew install ffmpeg` — optional. The scene and movie code
   vendors `imageio-ffmpeg`; this is for checking a render by hand.
 
@@ -759,8 +763,8 @@ or projects.
 | `store.py` | **The media store, addressed by path and reached through the API.** Resolve a name path to a node, list its files in natural order, read, write, upload, copy, presign, and ensure a folder exists. No bucket name, no credentials — bytes travel to S3 directly on presigned URLs the API signs, which is what keeps a video out of the Lambda's request limit. `s3.py` is being retired into this. |
 | `api.py` | One transport for every call the CLI makes: bearer token, refresh-on-401, library header, error mapping. Decided once so no caller re-decides it. |
 | `auth.py` | The Cognito sign-in behind `studio login`, and the token cache it writes — **keyed by profile**, so a prod session and a dev session coexist instead of one overwriting the other for every shell on the machine. Its `DEFAULT_API_URL` is deleted: unset is a refusal, not a silent connection to production. |
-| `s3.py` | The AWS-login-bridged boto3 client, plus get/put/copy/list helpers. Its `BUCKET` constant is gone — a module constant binds at import, which is before Click has parsed `--profile`, so `bucket()` asks `profiles` on every call. One auth path for the whole package — `session()` is what everything else asks for. **Almost gone**: nothing in `domain/`, `engine/` or `objects/` imports it any more. The four that still do are `adapters/ddb.py`, which needs `session()` for the catalog table, and all three one-shots in `maintenance/` — `catalog_gc.py`, `catalog_check.py` and `dev_seed.py` — which reconcile the bucket against the table and so have to see both. Its listing helpers and its bucket-prefix knob went with `migrate-layout`, the only caller of either. |
-| `ddb.py` | The catalog table's client and the typed-attribute marshalling every write needs. `TABLE` is gone for the same reason `s3.BUCKET` is. Takes its credentials from `s3.py`, because the bridge resolves a session and not an S3 session. Knows nothing about libraries or nodes. |
+| `s3.py` | **Deleted.** It was the boto3 session every AWS-direct caller asked for, and its callers — `adapters/ddb.py` and the three `maintenance/` modules that reconciled the bucket against the table — are deleted too. The one thing that outlived it is a plain boto3 session for `profile sync`, which lives in `profiles.py` as `aws_session()` because that is its only caller. |
+| `ddb.py` | **Deleted**, with the six `maintenance/` commands that were its only callers. The marshalling it held — floats to `Decimal` on the way in, `Decimal` to int recursively on the way out, each paid for by a real failure — travelled to `scripts/dev_seed/dev_seed/aws.py`, which is the one tool left that writes DynamoDB directly. |
 | `replicate.py` | Token, HTTP, download, poll. |
 | `ffmpeg.py` | Probe, stitch, frame grab, contact grid. A scene and a movie join their inputs by identical rules because they call the same function. ffmpeg ships in the wheel; no system install. |
 
@@ -838,53 +842,47 @@ the box was wrong — `LEFT,TOP,WIDTH,HEIGHT` instead of `LEFT,TOP,RIGHT,BOTTOM`
 being the commonest. It deliberately contains no subject detection: that is
 platform work, and a wrong box is worse than no command.
 
-**`maintenance/` — one-offs.** Two of these have finished and are deleted:
-`backfill_replicate.py` (a one-shot import of historical Replicate predictions,
-which nothing records ever running, and whose target population only shrank as
-Replicate purged old prediction inputs and outputs) and `migrate_layout.py`
-(the move off the pre-restructure `media/<owner>/` tree — see the historical
-section under [The two trees](#the-two-trees--characters-and-projects)).
-`catalog_seed.py` is deleted with the model it seeded — it inventoried a bucket
-whose keys carried the tree, into a catalog that had just been introduced.
-`catalog_check.py` (`studio catalog verify`, plus `reseat`) replaced it, and has
-since outlived its own migration: it was `catalog_migrate.py`, and `plan` /
-`apply` / `backfill` were retired in August 2026 once prod carried its 39
-character records and a new library was born with entities. What is left is the
-half that CHECKS — it re-derives characters, projects, runs, scenes and movies
-from the tree as it stands and compares that against the rows, so the
-independent side is the bucket. It copies no bytes, moves no objects and deletes
-nothing; `reseat` is the separate, later phase that rewrites blob keys onto the
-id scheme, and the only command here that can lose data.
+**`maintenance/` — deleted, all of it.** This section used to describe eleven
+commands in various states of finishing. They are gone, and what replaced each is
+worth recording because the replacements are not all the same kind of thing.
 
-Two things came out of it rather than going with it. `maintenance/derive.py`
-holds `entity_id`, `content_type` and `in_the_reel` — the derivations
-`dev_seed`'s loader runs on every object — and `maintenance/journal.py` holds
-the run journal `gc` and `reseat` share. Both were being imported out of a
-module named for a migration, which is why nobody knew they were live and why
-the loader nearly reimplemented all three.
+*The migrations finished.* `backfill_replicate.py`, `migrate_layout.py` and
+`catalog_seed.py` were already deleted. `catalog_check.py` (`catalog verify` /
+`reseat` / `edges`), `backfill_plans.py`, `drop_fictional.py`,
+`ref_descriptions.py` and `confirm_outputs.py` join them: prod carries its 39
+character records, every run has a plan, the dead attribute is swept, captions
+live on nodes, and the outputs are confirmed. A one-shot that has run is not a
+tool; keeping it is keeping a permanent hole cut for a job that is over.
 
-`catalog_gc.py` (`studio catalog gc`) is still the only one that **deletes** —
-blobs no row names, decided by the table and never by the shape of a key.
-`dev_seed.py` (`studio dev-seed tree | publish`) **promotes** a handful of nodes
-out of a dev stack into the shared seed fixture — it calls no model and costs
-nothing, and its gate is hard rule #1 rather than money.
+*The orphan class was fixed at the source.* `catalog_gc.py` listed every object
+in the bucket and scanned every row in the table to find blobs nothing named. It
+existed because `delete_node` removed rows, handed the caller the keys, and threw
+away the only list of what was in flight. The API keeps that list now —
+`catalog.open_sweep` writes it to a `SWEEP#` row *before* the rows go,
+`manage.release` closes it once the bytes are gone, and `manage.drain` finishes
+any sweep an earlier request abandoned, rechecking each node so a crash between
+open and delete cannot collect bytes a live row still names. The leftover is
+addressed instead of searched for, so there is nothing to sweep and no command to
+run. See `backend/studio_core/services/manage.py` and
+`backend/tests/unit/test_sweeps.py`.
 
-`drop_fictional.py` (`studio catalog drop-fictional`) removes the retired
-`fictional` attribute from character rows that predate its removal. It is the
-one command here whose subject is a *dead* field: the service, the pipeline and
-the app all stopped reading `fictional` in August 2026, and a row still carrying
-it reads as an answer to a question nothing asks any more. It removes one
-attribute per character, touches no object and deletes nothing else, so it
-journals nothing — but the removal is not recoverable from the table, and
-point-in-time recovery is the only other copy. Prod and this machine's dev stack
-were swept on 2026-08-28: four rows, and a re-run reports zero.
+*Verification went with it.* `catalog verify` caught eighteen classes of
+disagreement, and most of them were damage from the migration it was checking.
+Two were live — `stale_plan_digest` and `incomplete_row` — and nothing replaces
+them; that is a deliberate trade rather than an oversight, and if either starts
+happening the answer is a check inside the API rather than a CLI command holding
+a table scan.
 
-`catalog_check.py` has the shape `migrate_layout.py` had — phases as separate
-invocations, `--dry-run` unless `--apply`, a journal under `local/migrations/` —
-because the ordering between phases is the safety property. Unlike that command
-it needs no rewrite phase, and for a better reason than "nothing moves": a
-record names a node id, so there is no key recorded inside a document for a move
-to invalidate.
+*Seeding became its own project.* `dev_seed.py` and `derive.py` moved to
+`studio/scripts/dev_seed/`, invoked as `dev-seed` and wired into
+`scripts/dev-aws-seed.sh`. It is the one job that genuinely needs AWS clients —
+it writes the rows and copies the blobs a library is *made of*, before there is a
+session or often a library — and keeping it in the CLI is what kept
+`adapters/ddb.py` and `adapters/s3.py` alive for everything else to shelter
+under. Its `pyproject.toml` carries that argument.
+
+`maintenance/journal.py` went with the two commands that journalled, and nothing
+in the package writes `local/migrations/` any more.
 
 ---
 

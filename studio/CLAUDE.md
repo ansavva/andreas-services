@@ -29,13 +29,18 @@ Studio is one service with two halves that share one library.
 | **The app** — browses the media | `backend/`, `frontend/` | `studio.andreas.services` + `studio-api.andreas.services`, deployed by CI | [docs/WEB_APP.md](docs/WEB_APP.md) |
 | The library both read | `infra/modules/catalog` + `infra/modules/media` | prod: `studio-prod-catalog` + `s3://studio-prod-media-us-east-1/`. Locally: this machine's dev stack. | [infra/README.md](infra/README.md) |
 
-**That row used to name the prod bucket flatly, and it is now three corrections
+**That row used to name the prod bucket flatly, and it is now four corrections
 deep.** The library is a DynamoDB table with an S3 bucket behind it — nothing
 lists the bucket to find out what exists; the pipeline half runs against this
 machine's `studio-dev-<short12>-*` stack, not against prod; and it reaches it
-through the API rather than through an AWS login of its own. Only the six
-`maintenance/` one-shots and `adapters/ddb.py` still open AWS clients of
-their own.
+through the API rather than through an AWS login of its own. **The exceptions
+are gone.** `maintenance/` held six AWS-direct one-shots and `adapters/` held
+the DynamoDB and S3 clients they used; all of it is deleted. The migrations are
+over, `catalog verify` and `catalog gc` went with the orphan class they swept
+(the API records a sweep row now — see `backend/studio_core/services/manage.py`),
+and seeding is its own project under `scripts/dev_seed/`. The one boto3 call left
+in the package is `profiles.aws_session()`, which `profile sync` uses to find the
+API in the first place.
 
 That split is unusual for this monorepo, where a service directory is normally a
 deployable unit and nothing else. It is deliberate: the tools that produce the
@@ -86,7 +91,7 @@ different kinds:
 - **Mechanical** — `dev_seed.source()` refuses a bucket or table whose name
   contains `prod` before reading anything, so a fixture is dev-origin by
   construction.
-- **Deliberate** — `DEV_SUBJECTS` in `maintenance/dev_seed.py` is a committed
+- **Deliberate** — `DEV_SUBJECTS` in `scripts/dev_seed/` is a committed
   frozenset of the dev subjects this repo publishes. Adding one is a reviewed
   diff, which is where "should this likeness be in a fixture every machine
   downloads" gets asked.
@@ -249,13 +254,19 @@ Four things worth knowing before using it:
   step.** Hard rule #2 is untouched and still applies: a generation shows its
   full payload and waits for a yes wherever it runs.
 
-**A profile is not a permission boundary.** `catalog gc`, `catalog verify` and
-`dev-seed` reach S3 and DynamoDB under your own IAM key, which holds
-`s3:DeleteObjectVersion` — a grant the deployed API's role deliberately lacks, and
-the thing that makes every delete through the app a recoverable tombstone.
-`--profile prod` does not narrow that, so `catalog gc --apply` against prod is
-the one path with no safety net. Least-privilege credentials for prod
-maintenance are a separate, unstarted piece of work.
+**A profile is not a permission boundary, and there is much less behind it than
+there was.** This used to warn that `catalog gc`, `catalog verify` and `dev-seed`
+reached S3 and DynamoDB under your own IAM key, and that `catalog gc --apply`
+against prod was the one path with no safety net. The first two are deleted, so
+the only tool left holding an AWS client is `dev-seed` — and it lives in
+`scripts/dev_seed/` and defaults to the `dev` profile precisely so it is not
+reached by accident.
+
+Two things that warning got wrong are worth recording. Your key does hold
+`s3:DeleteObjectVersion`, but **nothing in the pipeline ever passed a
+`VersionId`** — both delete paths said so in a comment — so every delete either
+tool made was already the same recoverable tombstone the API's role produces.
+The grant was the hazard; the code was not exercising it.
 
 Reading prod without any of this still works, and is still the lightest option:
 the deployed app at `studio.andreas.services` shows the same library.
@@ -268,18 +279,18 @@ the deployed app at `studio.andreas.services` shows the same library.
 studio profile sync dev                              # point the CLI at it (dev-setup.sh does this)
 ./studio/scripts/dev-token.sh                        # prove sign-in works; prints a token
 ./studio/scripts/dev-aws-seed.sh                     # load the fixture — see below
-studio dev-seed tree                                 # what this stack holds, by path
-studio dev-seed publish --path <p>                   # promote a fixture (dry run)
+uv run --project studio/scripts/dev_seed dev-seed tree     # what this stack holds
+uv run --project studio/scripts/dev_seed dev-seed publish --path <p>   # dry run
 ./studio/scripts/dev-aws-reset.sh --dry-run          # what a reset would remove
 ./studio/scripts/dev-aws-destroy.sh                  # tear it down; the machine id is kept
 ```
 
 **A fixture exists, and `dev-aws-seed.sh` loads it.** `v1` was published on
 2026-08-27 — the first publish since #284 landed — and holds one character and
-its seed pool: 54 stills, 12.4 MB, loaded in about two seconds by `studio
-dev-seed load` — the bytes are copied server-side and never come through this
+its seed pool: 54 stills, 12.4 MB, loaded in about two seconds by `dev-seed
+load` — the bytes are copied server-side and never come through this
 machine. Everything above this paragraph used to say the opposite. Publishing is
-human-gated, but **not because it generates media**: `studio dev-seed publish`
+human-gated, but **not because it generates media**: `dev-seed publish`
 promotes nodes that already exist, calls no model and costs nothing.
 The gate is hard rule #1 — `catalog.json` lands in git, so the publisher refuses
 a stack holding any name outside `DEV_SUBJECTS` and requires
@@ -409,8 +420,10 @@ again. `--project` takes a slug or a project id and is never inferred.
   the hazard and the tool are gone: a record names a **node id**, so a move
   changes a node's parent and every record pointing at it stays correct. What
   can still drift is a blob's `<owner_kind>/<owner_id>/` key prefix, which is a
-  pointer rather than a name — `verify` reports it and `studio catalog reseat`
-  rewrites it, out of band and never automatically.
+  pointer rather than a name. `catalog verify` reported it and `catalog reseat`
+  rewrote it; both are deleted, and nothing replaces them. A drifted prefix is
+  cosmetic — the key is a pointer, and `services/catalog.py` keeps it opaque —
+  so it was never worth a command that could lose data to correct.
 - The app's API takes the **ID token**, not the access token; the run JSON is
   deliberately served as text and never parsed. More in
   [docs/WEB_APP.md](docs/WEB_APP.md#conventions--gotchas).

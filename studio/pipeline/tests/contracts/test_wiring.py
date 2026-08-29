@@ -133,23 +133,25 @@ def test_packaged_data_files_exist():
 
 
 def test_local_working_dirs_resolve_under_studio():
-    """`character edit` and the catalog journal write here; both are git-ignored.
+    """`character edit` writes here, and it is git-ignored.
 
-    The journal half of this has now moved twice. It read
-    `migrate_layout.JOURNAL_DIR`, then `catalog_seed.JOURNAL_DIR`; the seed is
-    replaced by the entity migrator and `catalog_check` holds the same
-    constant, which is what `catalog verify | reseat | gc`
-    journal through. The assertion follows the constant rather than going away,
-    because what it protects is unchanged: both directories are git-ignored and
-    both must sit under `studio/`.
+    **This used to assert a second directory and no longer does.** The journal
+    half moved twice — `migrate_layout.JOURNAL_DIR`, then
+    `catalog_seed.JOURNAL_DIR`, then `catalog_check.JOURNAL_DIR` — following
+    each rename of the AWS-direct maintenance commands that wrote it. Those
+    commands are deleted: `verify` and `gc` are gone with the orphan class they
+    swept, which the API now records a sweep row for instead of leaving to be
+    found by a bucket scan. Nothing writes a journal, so there is no second
+    constant to follow.
+
+    What is left is unchanged in what it protects: `local/` is git-ignored and
+    must sit under `studio/`.
     """
     from studio_pipeline.domain import characters
-    from studio_pipeline.maintenance import catalog_check
 
     root = str(studio_pipeline.STUDIO_DIR)
     assert characters.LOCAL_DIR.startswith(root)
     assert characters.LOCAL_DIR.endswith("local/characters")
-    assert catalog_check.JOURNAL_DIR.startswith(root)
 
 
 def test_every_callback_accepts_the_parameters_click_will_pass():

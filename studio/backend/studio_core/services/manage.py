@@ -35,9 +35,19 @@ Only bytes. `copy_nodes` issues one `CopyObject` per blob, the delete removes
 blobs **after** their rows, and `update_text` overwrites one object.
 
 The delete order is the recoverable one and is worth stating where it is
-implemented: an orphan blob is invisible to every reader and collectable later,
-while a row pointing at a blob that is gone is a broken tile in the grid. If the
-second half fails, what is left is the harmless kind of inconsistent.
+implemented: a row pointing at a blob that is gone is a broken tile in the grid,
+while an orphan blob is invisible to every reader. If the second half fails, what
+is left is the harmless kind of inconsistent.
+
+**"Collectable later" used to be the end of that sentence, and the collector is
+gone.** It was `studio catalog gc` — a CLI command holding its own boto3 clients,
+listing every object in the bucket and scanning every row in the table to
+reconstruct a list this module had already had in its hand and thrown away. All
+of that existed because the delete told nobody which keys were in flight. It
+tells them now: `catalog.open_sweep` writes them to a row *before* the rows that
+name them are deleted, `release` closes that row once the bytes are gone, and
+`drain` finishes any sweep an earlier request abandoned. The leftover is
+addressed instead of searched for, and nothing has to scan anything.
 """
 
 import logging
@@ -360,11 +370,15 @@ def delete_nodes(records: list[dict]) -> dict:
     between the two used to be a `CopyObject` per key and is now nothing.
 
     **Every row goes before any blob does**, and the blobs go in one call at the
-    end rather than one per file. The order is the recoverable one: an orphan
-    blob is invisible to every reader and collectable later, while a row pointing
-    at a blob that is gone is a broken tile the user sees. `studio catalog gc`
-    (#318) collects the orphans, and it exists because this order produces them
-    on purpose.
+    end rather than one per file. The order is the recoverable one: a row
+    pointing at a blob that is gone is a broken tile the user sees, while the
+    reverse leaves an object no reader can reach.
+
+    **That leftover used to be found by scanning, and is now addressed.**
+    `catalog.delete_node` opens a sweep naming the keys before the rows go, so
+    `release` below has a list to work from and the next delete finishes any
+    sweep this one abandons. `studio catalog gc` listed the whole bucket against
+    the whole table to reconstruct the same list; it is deleted.
 
     **An entity's root folder is refused**, naming the entity to delete instead —
     and refused for *every* record before any of them is touched. That pre-pass
@@ -376,9 +390,88 @@ def delete_nodes(records: list[dict]) -> dict:
         catalog.assert_deletable(record)
 
     blob_keys: list[str] = []
+    sweeps: list[str] = []
     for record in records:
-        blob_keys.extend(catalog.delete_node(record["node_id"])["blob_keys"])
-    s3.delete(blob_keys)
+        freed = catalog.delete_node(record["node_id"])
+        blob_keys.extend(freed["blob_keys"])
+        sweeps.extend(freed["sweep"])
+
+    lib = records[0]["lib"] if records else None
+    release(lib, blob_keys, sweeps)
 
     logger.info("Deleted %d nodes and %d blobs", len(records), len(blob_keys))
     return {"deleted": len(records), "ids": [record["node_id"] for record in records]}
+
+
+def release(lib: str | None, blob_keys: list[str], sweeps: list[str]) -> None:
+    """Delete the bytes a row-delete freed, then close the sweeps that named them.
+
+    **The one place blobs are deleted, and the reason no route handles a
+    `blob_key` any more.** Seven call sites each did `if result["blob_keys"]:
+    s3.delete(...)`, which is the line an interruption lands between — and the
+    line whose leftovers `studio catalog gc` existed to find. Doing it here means
+    the sweep is closed by whatever deleted the bytes, so the two can never
+    disagree about whether the job finished.
+
+    Ordered bytes-then-sweep on purpose. A sweep outliving its objects costs one
+    wasted recheck on the next delete; a sweep closed before its objects go is an
+    orphan nothing will ever look for again.
+    """
+    if blob_keys:
+        s3.delete(blob_keys)
+    catalog.close_sweep(lib, sweeps)
+
+
+def drain(lib: str) -> int:
+    """Finish any sweep an earlier delete left open. Answers how many blobs went.
+
+    **Called at the top of every delete route**, which is the only moment a
+    sweep can exist and the only moment anybody is owed one being gone. That is
+    the whole of the replacement for a scheduled collector: the thing that
+    creates the debt is the thing that pays it, one request later.
+
+    **A key whose node is still live is kept and its sweep left open.** That is
+    the crash-between-open-and-delete case: the sweep was written, the rows were
+    not deleted, and the bytes are still referenced. Deleting them would be the
+    exact failure the row-first order exists to prevent, so the recheck decides
+    and the sweep waits for the delete to be retried.
+
+    A sweep may be part-live, and then the dead half still goes: those bytes are
+    genuinely unreachable and holding them hostage to their siblings buys
+    nothing. The sweep stays open and names them again next time, which costs a
+    second `DeleteObjects` on keys that are already gone — a no-op in S3, and
+    cheaper than rewriting the row to remove them.
+
+    Failures are swallowed and logged. A delete must not 500 because a *previous*
+    delete's cleanup could not finish — the sweep survives either way and the
+    next request tries again, which is the property that makes this safe to do
+    opportunistically at all.
+    """
+    try:
+        pending = catalog.pending_sweeps(lib)
+    except Exception:
+        logger.exception("Could not read pending sweeps for %s", lib)
+        return 0
+    if not pending:
+        return 0
+
+    collected = 0
+    for row in pending:
+        try:
+            blobs = row.get("blobs") or []
+            live = catalog.live_nodes([entry["node"] for entry in blobs])
+            doomed = [entry["key"] for entry in blobs if entry["node"] not in live]
+            if doomed:
+                s3.delete(doomed)
+                collected += len(doomed)
+            if len(doomed) < len(blobs):
+                logger.info("Sweep %s: %d of %d keys still referenced — left open",
+                            row.get("sweep"), len(blobs) - len(doomed), len(blobs))
+                continue
+            catalog.close_sweep(lib, [row["sk"]])
+        except Exception:
+            logger.exception("Could not drain sweep %s", row.get("sweep"))
+
+    if collected:
+        logger.info("Drained %d abandoned blob(s) in %s", collected, lib)
+    return collected

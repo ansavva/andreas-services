@@ -70,7 +70,7 @@ from studio_core.clients.aws import s3
 from studio_core.errors import ConflictError, ValidationError
 from studio_core.routes import projects as project_routes
 from studio_core.routes import support
-from studio_core.services import catalog, layout
+from studio_core.services import catalog, layout, manage
 
 logger = logging.getLogger(__name__)
 
@@ -978,7 +978,7 @@ def delete_run(run_id: str):
     if files not in ("keep", "delete"):
         raise ValidationError("files must be 'keep' or 'delete'")
 
+    manage.drain(g.library)
     result = catalog.delete_entity(KIND, record, delete_files=files == "delete")
-    if result["blob_keys"]:
-        s3.delete(result["blob_keys"])
+    manage.release(g.library, result["blob_keys"], result["sweeps"])
     return jsonify({"id": record["id"], "files": files}), 200

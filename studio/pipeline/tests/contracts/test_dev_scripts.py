@@ -219,7 +219,7 @@ def test_the_seed_script_delegates_rather_than_reimplementing():
     the API, so they need a signed-in CLI and a library that already exists.
     """
     code = _code_lines(SEED)
-    assert "studio dev-seed load" in code
+    assert "dev-seed load" in code
     assert "push_pose_plates" in code
     assert len(SEED.read_text().splitlines()) < 100
 
@@ -228,7 +228,7 @@ def test_the_seed_script_delegates_rather_than_reimplementing():
     # marshaller that turned a nested bible into a string.
     for gone in ("uuid5_url", "derive_node_id", "blob_key_for", "fixture_problems",
                  "DDB_JQ_DEFS", "node_row_fixup", "IFS=$'\\t'"):
-        assert gone not in code, f"{gone} should have moved to dev_seed.py"
+        assert gone not in code, f"{gone} should have moved to scripts/dev_seed/"
 
 
 def test_the_seed_script_still_runs_before_the_library_exists_is_not_a_thing():
@@ -240,4 +240,4 @@ def test_the_seed_script_still_runs_before_the_library_exists_is_not_a_thing():
     the fresh stacks it was there to furnish.
     """
     code = _code_lines(SEED)
-    assert code.index("studio dev-seed load") < code.index("push_pose_plates")
+    assert code.index("dev-seed load") < code.index("push_pose_plates")

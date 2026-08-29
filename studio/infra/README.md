@@ -107,8 +107,10 @@ behind. So:
   errors at plan time, so a `terraform destroy` over this state fails. It says
   nothing about a `-target`ed destroy of this table alone, a console click, or a
   stray CLI call — and there is a human in this account whose access key runs
-  Terraform, the `maintenance/` one-shots and the `dev-aws-*`
-  scripts, so those are the paths that matter here. (This used to say the
+  Terraform, `dev-seed` and the `dev-aws-*` scripts, so those are the paths that
+  matter here. (This list was longer: the `maintenance/` one-shots ran under the
+  same key and are deleted, which narrows the surface without changing the
+  argument.) (This used to say the
   *pipeline* ran under that login. Since #308 it does not; the risk is unchanged,
   because the human still does.) It is also the
   half PITR does not cover: PITR pays to recover, out of band, into a *new*
@@ -308,10 +310,13 @@ to be normalised; the migrator did it, and a listing today has none of what it
 was filed about. What is left to normalise is the descriptive 181, which is the
 same command.
 
-Because rows and blobs are deleted separately, a blob can outlive every row that
-named it. `studio catalog gc` (#318) is the only sanctioned way to find one —
-"unreferenced" is a question only the table can answer, so a listing-based sweep
-would be guessing.
+Rows and blobs are still deleted separately, but a blob can no longer outlive
+every row that named it unnoticed. `studio catalog gc` (#318) used to be the only
+way to find one, by listing the bucket against the table. The API records the
+keys a delete is about to free on a `SWEEP#` row before it frees them, and the
+next delete finishes anything an interrupted one left — so the orphan is
+addressed rather than searched for, and the command is deleted. See
+`backend/studio_core/services/manage.py`.
 
 **Shared material has rows now, and that is what emptied the raw `config/`
 prefix.** The angle images are ordinary nodes in a `config/` folder the
@@ -321,16 +326,17 @@ truth and the library holds a copy, because a model may only be handed a
 presigned URL of a stored object; `scripts/dev-shared-material.sh` pushes them
 through `studio config sync` and no longer writes to the bucket itself. Nothing
 in Terraform creates or owns them. The nodeless `config/angle/…` objects that
-predated this were deleted in August 2026, deliberately and by hand — `catalog
-gc` does not collect them.
+predated this were deleted in August 2026, deliberately and by hand. `catalog
+gc` would not have collected them — `config/` was never in its allowlist — which
+is why it had to be by hand.
 
 `phrasebook/wording.yaml` is the one object left with no row, and nothing writes
 it any more: the phrasebook is `TERM#<model>#<avoid>` rows, so there is no
 document to seed and `studio phrasebook add` works against a library that has
-never held one. It survives because deleting it buys nothing, and `catalog gc`
-will never propose it: `phrasebook/` is a literal in that command's shared-prefix
-list, so the object is reported as shared and cannot reach a delete list by any
-path through the code.
+never held one. It survives because deleting it buys nothing, and nothing sweeps
+it: the collector that would once have had to be told to leave it alone no longer
+exists, and the sweep rows that replaced it name only keys a delete actually
+freed.
 
 A project's material may involve several characters, so a character name is never
 part of a production key — and since the key carries ids only, that now holds by
@@ -491,7 +497,7 @@ Cognito pool 500s on every call, so failing early is the faster way to find out.
 > **What you get today is a seeded stack.** The bucket, the table and the pool
 > are provisioned, `v1` is published, and `dev-aws-seed.sh` loads it in about
 > two seconds — one character and its seed pool. This block used to say the
-> opposite, in the same words, for as long as nobody had run `studio dev-seed
+> opposite, in the same words, for as long as nobody had run `dev-seed
 > publish --apply`. `dev-aws-reset.sh` empties a stack and does not re-seed; run
 > the loader again afterwards.
 >
@@ -575,19 +581,19 @@ Its posture, and what each decision is actually protecting:
 - **Write is a deliberate promotion, read is ordinary** — but *today that is
   procedure, not IAM.* There is one human principal in this account and it both
   publishes and seeds, so there is no bucket policy and no read-only role: what
-  makes a write deliberate is that `studio dev-seed publish` is a dry run unless
+  makes a write deliberate is that `dev-seed publish` is a dry run unless
   `--apply` and refuses without an explicit attestation. The day a second
   developer gets an identity of their own is the day the read-only bucket policy
   goes into `modules/dev_seed`.
 
 ### Putting a fixture in
 
-`studio dev-seed publish` (`pipeline/…/maintenance/dev_seed.py`). It **promotes**
+`dev-seed publish` (`scripts/dev_seed/`). It **promotes**
 a fixture out of a dev stack rather than building one: a human drives the CLI
 against their own stack as ordinary work, and a handful of the nodes that
 produces become the fixture. So it calls no model, needs no provider token, and
 carries no approval gate of its own — the approval happened when the generations
-were run. `pipeline/tests/unit/maintenance/test_dev_seed.py` pins that, and says what the pin
+were run. `scripts/dev_seed/`'s own test pins that, and says what the pin
 cannot see.
 
 It reads the source stack's **catalog table**, not a bucket listing, and walks

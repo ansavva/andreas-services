@@ -12,8 +12,6 @@ import pytest
 from click.testing import CliRunner
 
 from studio_pipeline import cli, profiles
-from studio_pipeline.adapters import ddb as ddbc
-from studio_pipeline.adapters import s3 as s3c
 
 
 @pytest.fixture
@@ -54,8 +52,8 @@ def test_an_explicit_profile_beats_an_exported_variable(two_profiles, monkeypatc
     profiles.select("prod")
 
     assert profiles.value("api_url") == "https://studio-api.andreas.services"
-    assert s3c.bucket() == "studio-prod-media-us-east-1"
-    assert ddbc.table() == "studio-prod-catalog"
+    assert profiles.value("s3_bucket") == "studio-prod-media-us-east-1"
+    assert profiles.value("catalog_table") == "studio-prod-catalog"
 
 
 def test_an_override_is_announced_on_stderr(two_profiles, monkeypatch, capsys):
@@ -198,7 +196,7 @@ def test_sync_prod_reads_the_deploy_workflows_ssm_parameters(monkeypatch):
         def get_parameters_by_path(self, **kwargs):  # noqa: ARG002
             return page
 
-    monkeypatch.setattr(s3c, "session", _Session)
+    monkeypatch.setattr(profiles, "aws_session", _Session)
 
     values = profiles.sync_prod()
 
@@ -222,7 +220,7 @@ def test_the_root_option_selects_before_any_subcommand_runs(two_profiles):
 
     @cli.main.command("probe-target", hidden=True)
     def _probe():
-        seen["bucket"] = s3c.bucket()
+        seen["bucket"] = profiles.value("s3_bucket")
 
     try:
         result = CliRunner().invoke(cli.main, ["--profile", "prod", "probe-target"])
@@ -243,7 +241,7 @@ def test_studio_profile_reads_as_an_environment_selection(two_profiles, monkeypa
 
     @cli.main.command("probe-env", hidden=True)
     def _probe():
-        seen["table"] = ddbc.table()
+        seen["table"] = profiles.value("catalog_table")
 
     try:
         result = CliRunner().invoke(cli.main, ["probe-env"])

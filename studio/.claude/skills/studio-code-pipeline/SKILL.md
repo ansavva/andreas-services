@@ -92,7 +92,7 @@ uv run --project studio/pipeline pytest studio/pipeline/tests -q \
 | Suite | Branch coverage | |
 |---|---|---|
 | `backend/` | **88%** | |
-| `pipeline/` | **70%** | `catalog_check.py` is 29% of 681 statements — far and away the largest hole, and not one anybody had guessed at |
+| `pipeline/` | **70%** | measured before the AWS-direct `maintenance/` layer was deleted; its largest hole was in code that no longer exists, so re-measure before aiming at anything |
 | `frontend/` | **36%** | by design; `vite.config.ts` argues for it |
 
 There is no `--cov-fail-under`. A threshold picked before anyone has read a real

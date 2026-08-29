@@ -376,6 +376,7 @@ def delete_nodes():
     held = support.memberships()
     ids = manage.bulk(support.body().get("ids"), "delete")
     records = [support.node_at(node_id, held) for node_id in ids]
+    manage.drain(g.library)
     return jsonify(manage.delete_nodes(records)), 200
 
 
@@ -388,18 +389,20 @@ def delete_node(node_id: str):
     make, and because the two report different things — this one reports how many
     *nodes* went, which for a folder is the subtree.
 
-    **That order is the recoverable one.** An orphan blob is invisible to every
-    reader and collectable later; a row pointing at a blob that is gone is a
-    broken tile in the grid, which is the failure a user sees.
+    **That order is the recoverable one.** A row pointing at a blob that is gone
+    is a broken tile in the grid, which is the failure a user sees; the reverse
+    leaves an object no reader can reach, and `catalog.delete_node` opens a sweep
+    naming it before the rows go so it stays addressable rather than having to be
+    found by scanning.
     """
     held = support.memberships()
     # The authorisation, and the 404 for an id naming nothing. `delete_node` reads
     # the record it is about, so nothing is kept from this call.
     support.node_at(node_id, held)
 
+    manage.drain(g.library)
     result = catalog.delete_node(node_id)
-    if result["blob_keys"]:
-        s3.delete(result["blob_keys"])
+    manage.release(result["lib"], result["blob_keys"], result["sweep"])
     # `blob_keys` is not returned. It is the internal half of a record for the
     # reason `support.view` exists, and a client that received one would
     # eventually parse it.

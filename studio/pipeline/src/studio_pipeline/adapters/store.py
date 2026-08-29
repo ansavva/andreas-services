@@ -14,11 +14,13 @@ nobody could review, so this kept the vocabulary the pipeline already had — a
 path — and changed only what sits underneath it, and the call sites migrated one
 area at a time.
 
-**They have.** What still opens an S3 client is `adapters/s3.py`, `adapters/ddb`
-borrowing its session, and the four `maintenance/` commands, which reconcile the
-bucket against the table and so have to see both. Everything else is here. The
-census above is the history of why this module exists, not a count of what is
-left to do.
+**They have, and now so has everything else.** This used to end by naming what
+still opened an S3 client — `adapters/s3.py`, `adapters/ddb.py` borrowing its
+session, and the `maintenance/` commands that reconciled the bucket against the
+table. All of them are deleted: the migrations finished, the orphan sweep moved
+into the API, and seeding moved to `scripts/dev_seed/`, its own project. Nothing
+under `adapters/` opens an AWS client. The census above is the history of why
+this module exists, not a count of what is left to do.
 
 **The path is not a key.** It is the name path the API resolves: the same string
 a person types and the same one `paths.py` builds. That it currently equals the
