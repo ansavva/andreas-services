@@ -100,6 +100,7 @@ import json
 import mimetypes
 import os
 import pathlib
+import sys
 import tempfile
 
 import click
@@ -266,27 +267,20 @@ def save_shots(record: dict, shots: list[dict]) -> dict:
     That merge used to be this module's job, done against a document it had just
     read — a check-then-write with a gap in it.
 
-    `status` is recomputed on every write and never read back as authority, the
-    same discipline the character index follows. It is on the record so a person
-    (or `scenes show`) can see where a scene is without replaying the rules.
+    **`status` is the API's now, on both halves.** This used to stamp
+    `shot_status` onto every shot before sending and then PATCH the scene with
+    `scene_status` afterwards — two derivations run on one client and stored, so
+    anything else that wrote a shot left them stale and the SPA drew whatever the
+    row said. `PATCH /api/scenes/<id>/shots` derives both, and the response
+    carries them.
     """
-    for shot in shots:
-        shot["status"] = SB.shot_status(shot)
     updated = entities.put_shots(record["id"], shots)
     # `with_project` re-derives the display fields the API does not return.
     # Without it a record that came back from a write has no `label`, and the
     # next thing to print one — a handoff hint, a refusal naming the scene —
     # raises `KeyError` on a path nothing exercised until a shot was saved and
     # then read in the same breath.
-    return refresh_status(with_project({**record, **updated}))
-
-
-def refresh_status(record: dict) -> dict:
-    """Recompute `status` from the shots and record it if it moved."""
-    want = SB.scene_status(record)
-    if record.get("status") == want:
-        return record
-    return with_project({**record, **entities.patch_scene(record["id"], status=want)})
+    return with_project({**record, **updated})
 
 
 # ── starting a scene ────────────────────────────────────────────────────────
@@ -297,18 +291,31 @@ def new_scene(project: dict, slug: str, plan_path: str | None,
 
     Re-ingesting is how a plan is revised, and it must not orphan work already
     paid for — so `--force` sends the revision to `PUT /api/scenes/<id>/shots`,
-    which merges by shot id server-side. `storyboard.merge` runs first for the
-    half that merge cannot do: a shot's `panels` list is replaced wholesale by
-    the API, so the recorded panel images have to be carried across here.
+    which merges by shot id server-side — panels included, since the panel-level
+    merge moved there too. Nothing is carried across by hand here any more.
     """
     SB.check_scene_slug(slug)
     plan = SB.load_plan(plan_path) if plan_path else {"shots": []}
     if title:
         plan["title"] = title
 
-    doc = SB.normalise(plan, slug)
+    # **The plan is sent as authored.** Normalising, validating and deriving
+    # status are the API's, so a plan editor in the SPA gets the same treatment
+    # a JSON file does. What stays here is the ingest-only warning below: the API
+    # deliberately does not refuse a shot with no words in it — sketching beats
+    # before writing prompts is authoring — but somebody who just handed over a
+    # file they called finished wants to hear about it.
+    shots = list(plan.get("shots") or [])
+    envelope = {
+        "title": plan.get("title") or slug,
+        "setting": plan.get("setting") or "",
+        "defaults": plan.get("defaults") or {},
+        "logline": plan.get("logline") or "",
+        "characters": sorted(plan.get("characters") or []),
+        "version": SB.VERSION,
+    }
     if plan_path:
-        SB.validate(doc)
+        _warn_unrenderable(shots)
 
     existing = next((s for s in list_scenes(project) if s.get("slug") == slug), None)
     if existing:
@@ -318,21 +325,36 @@ def new_scene(project: dict, slug: str, plan_path: str | None,
                 f"       Revising a scene means re-ingesting it: pass --force, and "
                 f"every run, panel and cut it already has is carried across.")
         record = entities.get_scene(existing["id"])
-        doc["shots"] = SB.merge(scene_shots(record), doc["shots"])
-        entities.patch_scene(record["id"], title=doc["title"], setting=doc["setting"],
-                             defaults=doc["defaults"], logline=doc["logline"],
-                             characters=doc["characters"], version=doc["version"])
-        return save_shots(record, doc["shots"])
+        entities.patch_scene(record["id"], **envelope)
+        return save_shots(record, shots)
 
     try:
         record = entities.create_scene(
-            project=project["id"], slug=slug, title=doc["title"],
-            shots=doc["shots"], setting=doc["setting"], defaults=doc["defaults"])
+            project=project["id"], slug=slug, title=envelope["title"],
+            shots=shots, setting=envelope["setting"], defaults=envelope["defaults"])
     except api.Conflict as exc:
         die(str(exc))
-    entities.patch_scene(record["id"], logline=doc["logline"],
-                         characters=doc["characters"], version=doc["version"])
-    return refresh_status(entities.get_scene(record["id"]))
+    entities.patch_scene(record["id"], logline=envelope["logline"],
+                         characters=envelope["characters"], version=envelope["version"])
+    return with_project(entities.get_scene(record["id"]))
+
+
+def _warn_unrenderable(shots: list[dict]) -> None:
+    """Say which shots have no words in them. **A warning, never a refusal.**
+
+    `storyboard.validate` used to refuse these, and the API deliberately does
+    not: a shot with a beat and no prompt is a plan in progress, and refusing it
+    would reject a plan editor's first save. At ingest it is nearly always a
+    typo, so it is worth saying — and worth saying without stopping, because
+    ingesting a plan you intend to finish is also normal.
+    """
+    for i, shot in enumerate(shots, 1):
+        where = shot.get("id") or f"shot-{i:02d}"
+        if (shot.get("panels") or (shot.get("motion") or {}).get("prompt")
+                or (shot.get("prompt") or "").strip()):
+            continue
+        print(f"warning: {where} has nothing to render from — no panel, no "
+              f"motion prompt, and no prompt.", file=sys.stderr)
 
 
 def shot_video_node(shot: dict, project: str) -> str | None:
@@ -478,13 +500,18 @@ def handoff(record: dict, n: int, from_run: str | None = None) -> dict:
 
     entities.patch_shot(record["id"], shot["id"], continues=True,
                         opens_on={"node": node, "from_run": run["id"]})
-    record = refresh_status(entities.get_scene(record["id"]))
+    # Re-read rather than restated: `PATCH /api/scenes/<id>/shots/<id>` derives
+    # the scene's status from the shot it just wrote, so the record that comes
+    # back is already current.
+    record = with_project(entities.get_scene(record["id"]))
 
     print(node)
     print(f"shot {n} ({shot.get('id')}) now opens on the last frame of "
           f"{previous.get('id')}")
+    # Served on the scene now — derived from the plan rather than from a
+    # `chains/<slug>.json` kept in step by hand.
     print(f"the scene's own frames are now: "
-          f"{len(SB.scene_frames(record))}", flush=True)
+          f"{len(record.get('frames') or [])}", flush=True)
     return record
 
 

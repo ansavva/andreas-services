@@ -123,7 +123,7 @@ from botocore.exceptions import ClientError
 from studio_core import config
 from studio_core.clients.aws import dynamodb
 from studio_core.errors import ConflictError, NotFoundError, UpstreamError, ValidationError
-from studio_core.services import keys
+from studio_core.services import keys, storyboard
 
 logger = logging.getLogger(__name__)
 
@@ -3318,6 +3318,22 @@ def put_shots(scene_id: str, lib: str, entries: list[dict]) -> list[dict]:
         shot_id = entry.get("id") or f"shot-{uuid.uuid4()}"
         previous = existing.pop(shot_id, {})
         merged = {field: entry.get(field, previous.get(field)) for field in SHOT_FIELDS}
+        # **One level deeper, for panels only.** The rule above protects a shot's
+        # fields; a `panels` list that IS named replaces the stored one whole, so
+        # the images and boarded flags inside it need carrying across too. That
+        # ran in the pipeline, which made the CLI the only client able to revise
+        # a plan without orphaning a board.
+        deeper = storyboard.merge_panels(previous, entry)
+        if deeper is not None:
+            merged["panels"] = deeper
+        # **The STORE guarantees the shape; the write does not overwrite it.**
+        # `opens_on` is recorded by `scenes handoff` and must survive a revision
+        # that does not mention it — so it is never sent — but a shot that has
+        # never had one still answers with the pair rather than with `null`, so
+        # no reader has to tell "no handoff yet" from "this field does not exist".
+        if not merged.get("opens_on"):
+            merged["opens_on"] = {"node": None, "from_run": None}
+        merged["status"] = storyboard.shot_status(merged)
         merged["order"] = (
             merged["order"] if merged.get("order") is not None else (index + 1) * 10
         )
