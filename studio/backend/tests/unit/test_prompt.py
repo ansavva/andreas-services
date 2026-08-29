@@ -114,20 +114,71 @@ def test_a_camera_verb_in_the_action_warns():
     assert any("camera-move words" in w for w in found)
 
 
-def test_the_scan_matches_whole_words_only_and_so_misses_plurals():
-    """**A known gap, pinned rather than fixed.** `\bzoom\b` does not match
-    "zooms", and "the camera pans across the bay" is a very ordinary thing to
-    write in an action line.
+def leaks(text, field="action"):
+    """Did the camera-move scan fire on this line?"""
+    return any("camera-move words" in w for w in warnings_for(base(**{field: text})))
 
-    Left alone on this pass because the move was meant to relocate the rules, not
-    change what they decide — a behaviour change smuggled into a port is the kind
-    nobody reviews. Widening to `zooms?|zooming` would also start catching
-    "tracks" and "pans" in their innocent senses, and this is a warning, so a
-    false positive is cheap but not free. Worth doing deliberately, with the
-    plural forms chosen one at a time.
+
+# ── the verb forms, chosen one at a time ────────────────────────────────────
+#
+# `\bzoom\b` does not match "zooms", so the scan missed the verb form — which is
+# the more natural way to write the line, making the miss the common case rather
+# than the edge one. It was pinned as a known gap through the move of these rules
+# out of the pipeline, on the grounds that a behaviour change smuggled into a
+# port is the kind nobody reviews.
+#
+# Widening is not uniformly safe, so the forms are split by whether the word has
+# an innocent sense in a line about a subject. Each test below says which sense
+# it means to catch and which it means to leave alone.
+
+
+def test_a_camera_verb_in_its_inflected_form_warns():
+    """`zoom`, `dolly` and `orbit` describe a lens, not a person.
+
+    Nobody writing about a subject means anything else by them, so the inflected
+    form is a leak wherever it appears.
     """
-    assert not any("camera-move words" in w
-                   for w in warnings_for(base(action="she zooms toward the water")))
+    assert leaks("she zooms toward the water")
+    assert leaks("she dollies toward the water")
+    assert leaks("the pair orbits the fire")
+
+
+def test_an_ambiguous_verb_alone_is_left_alone():
+    """`pans` is cookware, `tracks` is a railway, `cranes` is a bird, `drones` is
+    a sound, and `tilts` is a head turning — all ordinary subject prose.
+
+    A warning is cheap but not free: one that fires on correct writing teaches
+    people to stop reading warnings, and `studio prompt --strict` turns it into a
+    non-zero exit.
+    """
+    assert not leaks("she tilts her head toward him")
+    assert not leaks("he sets the pans down on the stove")
+    assert not leaks("she runs along the tracks")
+    assert not leaks("cranes wade in the shallows")
+    assert not leaks("the machine drones in the next room")
+    assert not leaks("he pulls out a letter")
+
+
+def test_the_same_verb_warns_when_the_camera_is_doing_it():
+    """"the camera pans across the bay" is the phrasing people actually write,
+    and naming the camera removes the ambiguity entirely."""
+    assert leaks("the camera pans across the bay")
+    assert leaks("the camera tracks her along the pier")
+    assert leaks("the camera pulls out to a wide")
+
+
+def test_an_adverb_between_the_camera_and_the_verb_does_not_hide_it():
+    assert leaks("the camera slowly tilts down")
+
+
+def test_the_warning_quotes_the_form_as_written():
+    """Not the dictionary form — the author has to find it in their own text."""
+    found = warnings_for(base(action="she zooms toward the water"))
+    assert any("'zooms'" in w for w in found)
+
+
+def test_the_subject_block_is_scanned_too():
+    assert leaks("a woman the camera pans past", field="subject")
 
 
 def test_a_vague_adjective_warns():
