@@ -10,7 +10,7 @@ import pathlib
 import pytest
 
 from studio_pipeline.adapters import replicate as RA
-from studio_pipeline.engine import registry as REG
+from studio_pipeline.engine import registry_file as REG
 
 
 # ── the switch ──────────────────────────────────────────────────────────────
@@ -131,4 +131,6 @@ def test_the_committed_registry_is_never_the_one_a_test_writes():
     every model and deleted 391 lines of hand-verified schema.
     """
     assert pathlib.Path(REG.PATH).name == "models.json"
-    assert "studio_pipeline/engine" not in REG.PATH.replace("\\", "/")
+    # The committed file is under `backend/`; a test writing there would be
+    # editing the repository. The redirect points at tmp_path instead.
+    assert "backend/studio_core" not in REG.PATH.replace("\\", "/")

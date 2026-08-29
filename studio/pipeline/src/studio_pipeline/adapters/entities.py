@@ -427,14 +427,22 @@ def revoke_run_approval(run_id: str) -> dict:
 def query_runs(*, project: str | None = None, character: str | None = None,
                model: str | None = None, status: str | None = None,
                since: str | None = None, limit: int | None = None,
-               cursor: str | None = None) -> dict:
+               cursor: str | None = None, fingerprint: str | None = None,
+               include: str | None = None) -> dict:
     """`{"runs": [...], "cursor": …}` — the query that replaces `runs find`.
 
     `runs find --character` used to list every project, list every run in each,
     read three documents per run and grep. It is one query against a row.
+
+    `fingerprint` is the duplicate-submission guard: it asks whether this exact
+    payload has been submitted to this project before, which used to be a
+    per-machine file because the listing rows did not carry enough to answer it.
+    `include="drafts"` goes with it — an unsubmitted draft bills nothing and must
+    not read as a duplicate, but the caller decides that, not this wrapper.
     """
     return api.get("/api/runs", project=project, character=character, model=model,
-                   status=status, since=since, limit=limit, cursor=cursor)
+                   status=status, since=since, limit=limit, cursor=cursor,
+                   fingerprint=fingerprint, include=include)
 
 
 def get_run(run_id: str) -> dict:
@@ -632,3 +640,18 @@ def _as_list(found) -> list[dict]:
     doing it once is cheaper than each caller guessing.
     """
     return found if isinstance(found, list) else []
+
+
+# ── the model registry ──────────────────────────────────────────────────────
+#
+# Not an entity, and here anyway, because this module is where a route string is
+# allowed to live — `test_no_route_string_lives_outside_the_adapters` enforces
+# that and is right to. The registry moved to the backend so that one copy could
+# answer the CLI, the SPA and `GET /api/characters/<id>/selection` at once;
+# `engine/registry.py` is the reader that gives it a query surface.
+
+
+def models() -> dict:
+    """Every registry entry, keyed by registry name."""
+    found = api.get("/api/models")
+    return (found or {}).get("models") or {} if isinstance(found, dict) else {}

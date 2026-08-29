@@ -540,6 +540,48 @@ def sends_for(entry: dict, bindings: dict) -> list[dict]:
     ]
 
 
+#: The states a run reaches without ever having been sent. A draft that was
+#: written and abandoned billed nothing, so it must not make the next identical
+#: payload read as a duplicate — which is the one thing the local ledger got
+#: right for free, by only ever being written after a successful submit.
+NEVER_BILLED = ("draft", "discarded")
+
+
+def already_submitted(record: dict) -> dict | None:
+    """An EARLIER run that sent this exact payload to this project, or `None`.
+
+    **The fingerprint is read off the draft, never computed here.** That is the
+    whole point: the API derives it from `plan_digest`, which is derived from the
+    plan and the sends, and a second implementation this side of the wire would
+    be a fourth hash of one thing in a repository that has already been bitten by
+    the third. `plan_digest` had three implementations and one of them silently
+    disagreed over `Decimal`, reporting 131 healthy runs as stale.
+
+    So the order is: draft first — a row, no bytes, nothing billed — then ask
+    whether anything else here carries the same fingerprint.
+
+    Never-billed states are excluded, which is the property the local ledger got
+    for free by only ever being written after a successful submit. An abandoned
+    draft must not make the next identical payload look like a duplicate.
+
+    Failures are swallowed. This is a guard rail, and one that cannot reach the
+    API must not be the thing that blocks a legitimate submission: a false
+    negative costs money once, a false refusal costs somebody their afternoon.
+    """
+    fingerprint = record.get("fingerprint")
+    if not fingerprint:
+        return None
+    try:
+        found = entities.query_runs(project=record["project"],
+                                    fingerprint=fingerprint, include="drafts")
+    except api.ApiError:
+        return None
+    for run in (found or {}).get("runs") or []:
+        if run.get("id") != record["id"] and run.get("status") not in NEVER_BILLED:
+            return run
+    return None
+
+
 def draft(entry: dict, payload: dict, bindings: dict, args) -> dict:
     """Create the run as a DRAFT. **Nothing has billed and nothing is approved.**
 
@@ -594,7 +636,8 @@ def approve(record: dict) -> dict:
         ) from exc
 
 
-def execute(entry: dict, payload: dict, bindings: dict, token: str, args) -> dict:
+def execute(entry: dict, payload: dict, bindings: dict, token: str, args,
+            on_drafted=None) -> dict:
     """Draft, approve, submit — and return the RUN RECORD.
 
     **Unchanged from the outside, and that is deliberate.** Invoking `studio run`
@@ -609,8 +652,15 @@ def execute(entry: dict, payload: dict, bindings: dict, token: str, args) -> dic
     `<project>/latest` to find out which run it had just made — a lookup that is
     wrong the moment two runs land in one project close together, and that could
     not be right at all: a run has no name to be looked up by.
+
+    **`on_drafted` runs between the draft and the approval**, which is the only
+    window where a duplicate can be refused for free: the draft exists, so its
+    fingerprint does, and nothing has billed. `runner.py` passes the refusal;
+    a caller that does not care passes nothing and the flow is what it was.
     """
     record = draft(entry, payload, bindings, args)
+    if on_drafted is not None:
+        on_drafted(record)
     approve(record)
     return submit(entry, record, payload, bindings, token, args)
 

@@ -94,7 +94,7 @@ was shown, not the next revision of it.
 `last_frame_image` / `seed` / `resolution`; Kling takes `start_image` /
 `end_image` / `mode` / `multi_prompt` and has no seed at all. Never assume a
 field carries over between them. Every model's inputs, caps and caveats live in
-the **registry** (`engine/models.json`), and the runner fetches the
+the **registry** (`backend/studio_core/models.json`, read over `GET /api/models`), and the runner fetches the
 target model's **live input schema** to reject unknown fields, bad enums and
 out-of-range numbers — plus documented constraints the schema does not enforce —
 before anything bills. Review the payload, then let the validator confirm the
@@ -225,7 +225,6 @@ studio/pipeline/
         │   └── templates/profile.yaml  reference_angles.yaml
         │
         ├── engine/                MODEL INVOCATION
-        │   ├── models.json        the REGISTRY — models are data, not code
         │   ├── resubmit.py        send a draft somebody already approved
         │   ├── runner.py          `studio run` / `studio models`
         │   ├── turnaround.py           `studio character turnaround` — the standard set
@@ -255,7 +254,7 @@ way: `cli` → `domain` → `adapters`.
 
 **Why `src/`.** Without it, Python puts the working directory first on the
 import path, so tests can pass against files that were never packaged. Both
-`models.json` and `profile.yaml` are package data reached at runtime; a wheel
+`profile.yaml` and the angle spec are package data reached at runtime; a wheel
 missing either fails only when someone runs the command. `src/` forces the
 tests to exercise the installed package.
 
@@ -320,7 +319,7 @@ API keys:
   `bytedance/seedance-2.0`, `kwaivgi/kling-v3-omni-video`, `google/veo-3.1`,
   `xai/grok-imagine-video`; image: `google/nano-banana-pro`,
   `google/nano-banana-2`, `openai/gpt-image-2`, `openai/gpt-image-1.5`.
-  `engine/models.json` is the list that is actually true.
+  the registry served at `GET /api/models` is the list that is actually true.
 
   **Put it in `~/.config/andreas-services/studio/dev.env`**, the file that
   already holds this machine's dev pool password:
@@ -670,7 +669,7 @@ about before.
 | `studio-media-scene`     | **A piece longer than one generation.** Chains video runs — each starting from the previous clip's last frame — then stitches them into one cut. Owns the chain loop, the continuity rules that keep shots cutting together, the per-shot verification gate, and the `multi_prompt`-cuts-vs-timing trade. Use when a shot outruns the model's duration ceiling or must read as one continuous take |
 | `studio-media-movie`     | **The tier above a scene.** Cuts a project's finished scenes into one piece. Owns the cut order and the movie-vs-longer-scene decision: cut a movie where a hard cut belongs (a change of place, time or subject); extend a scene where it must read as one take |
 | `studio-media-shot`      | **Orchestrates a whole shot**: reads a brief, shows the multi-step plan as JSON for approval, then renders a still and animates it — frame-first, one approval gate per billing step. Use when a brief describes motion or spans more than one studio-* call |
-| `studio-media-core`      | **The shared machinery.** The model **registry** (`models.json`), the one submit lifecycle, live-schema validation, and `studio run` — the runner that invokes *any* registered model. Models are DATA, not code |
+| `studio-media-core`      | **The shared machinery.** The model **registry** (the backend's `models.json`, served at `GET /api/models`), the one submit lifecycle, live-schema validation, and `studio run` — the runner that invokes *any* registered model. Models are DATA, not code |
 | `studio-media-add-model` | **Onboard a new Replicate model**: reads its live schema *and* its README, proposes a registry entry for review, then writes it to the registry. Also owns writing the new model's skill page — nothing generates it. The only way a model should be added |
 | `studio-media-image`     | The **frame-first workflow** for stills — why to render a frame before a video, run chaining, the approval gate, choosing between the image models. Model-agnostic; each model has its own skill |
 | `studio-media-nano-banana-pro` | `google/nano-banana-pro` — strongest all-round image model. Legible text, 4K, ≤14 refs, tunable safety filter. **Never set `allow_fallback_model`** — it reroutes to a different model than the one approved |
@@ -800,23 +799,34 @@ into a config file by a person.
 | `phrasebook.py` | Per-model wording lists, as `LIB#`/`TERM#` rows. It was a YAML document in the bucket with no catalog node, which is why it was read by raw key and written by an overwrite that could not invent the file — so `phrasebook add` failed outright on a library that had never held one. A row has no such state: the first `add` writes the first term. |
 | `contact_sheet.py` | Labeled thumbnail grids over arbitrary keys. The character-pool half walks the pool **recursively**, like `characters/refs`: `reference` is the default and holds group folders rather than images, so a one-level listing would report the commonest invocation as an empty pool. Each tile's local name carries its group, because `face/<name>_1` and `body/<name>_1` share a basename and collided in one directory. |
 
-**`engine/ledger.py` — what has already been submitted.** A fingerprint of
-model, inputs and bound images, kept per profile beside the credentials file, so
-`run` can refuse a payload it has already paid for. Local rather than a query
-because the run listing rows are a deliberately small projection and do not
-carry the payload: comparing server-side would be one `GET /api/runs/<id>` per
-candidate, ~1800 requests before the first submit of a 72-image batch. The
-server-side answer is to project the fingerprint onto the listing row and filter
-on it, which changes a deployed service and is its own change. It reads
-`auth.CONFIG_DIR` through the module rather than importing the constant, so one
-fixture redirects both files — the suite reaching a developer's real config is a
-failure this directory has had once already.
+**The duplicate-submission guard is a query, and `engine/ledger.py` is deleted.**
+It kept a fingerprint of model, inputs and bound images per profile beside the
+credentials file, so `run` could refuse a payload it had already paid for — local
+rather than a query because the listing rows are a deliberately small projection
+and did not carry the payload, making a server-side comparison one
+`GET /api/runs/<id>` per candidate, ~1800 requests before the first submit of a
+72-image batch.
+
+Its own docstring named the fix: project the fingerprint onto the listing row and
+filter on it. `catalog.submission_fingerprint` derives one from `plan_digest` —
+which already hashes the plan and the ordered sends — plus the model, so there is
+no second hash to keep in step. `GET /api/runs?fingerprint=` is one query.
+
+Two consequences worth knowing. It now catches what a per-machine file never
+could: a second machine, and a colleague. And the check moved to *after* the
+draft is created, because the draft is what carries the fingerprint — the CLI
+reads the value rather than computing it, which is the whole point in a
+repository where `plan_digest` once had three implementations and one of them
+silently disagreed. A draft costs a row and no bytes, so the check is still free,
+and the never-billed states are excluded so an abandoned draft cannot make the
+next identical payload look like a duplicate.
 
 **`engine/` — invoking a model.**
 
 | Module | Purpose |
 |---|---|
-| `models.json` | **The registry.** Data, not code: single source of truth for every model. |
+| `registry.py` | **Reads the registry, over the wire.** `GET /api/models` via `adapters/entities.models`, memoised once per process. The file itself is `backend/studio_core/models.json` — it moved so the API and the SPA could measure a reference selection against the same entries the CLI does, which `ENGINE_CAPS` (three families of nine) had been standing in for. |
+| `registry_file.py` | **Writes it.** The repo file, for the only two commands that edit it — `add-model` and `models refresh`, both of which are really asking Replicate what a model accepts. Separate from the reader on purpose: reading works against any environment, writing is a reviewed repo change that reaches production on deploy. |
 | `registry.py` | Load / look up / list; snapshot saving for refreshes. |
 | `runner.py` | `studio run` — builds the payload and invokes *any* registered model. |
 | `submit.py` | The one submit lifecycle, image and video alike. |

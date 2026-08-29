@@ -50,7 +50,7 @@ from studio_core.errors import ConflictError, ForbiddenError, NotFoundError, Val
 from studio_core.routes import projects as project_routes
 from studio_core.routes import support
 from studio_core import config
-from studio_core.services import catalog, keys, layout, manage
+from studio_core.services import catalog, keys, layout, manage, registry
 
 logger = logging.getLogger(__name__)
 
@@ -90,14 +90,23 @@ TEXT_BLOCK = "text_identity_block"
 # something the paragraph is not for.
 IDENTITY_BEARING = ("identity", "face", "body", "wardrobe", "consistency")
 
-# The reference caps the engines impose, by engine name. Consulted only when a
-# request names one; `?limit=` is the explicit form and wins.
+# **`ENGINE_CAPS` lived here and is deleted.** It was
+# `{"kling": 7, "seedance": 9, "nano-banana": 14}` — three of nine model
+# families — so `gpt-image-2`, which studio's docs name as the DEFAULT for
+# character frames, had no cap on this side at all, and neither did `veo-3.1`,
+# `grok-imagine-video` or `image-upscale`. A selection aimed at any of them came
+# back unrefused however large it was, while the CLI refused the same selection
+# correctly off the real registry.
 #
-# **A cap is refused rather than applied**, which is the behaviour being moved
-# here rather than invented: silently handing a model the first seven of
-# eighteen references is a shoot whose result nobody can explain, so the request
-# fails and the whole index comes back in the body so the caller can choose.
-ENGINE_CAPS = {"kling": 7, "seedance": 9, "nano-banana": 14}
+# `services/registry.py` is that registry, now owned by this service and served
+# at `GET /api/models`. `routes/runs.py` already argued the principle in a
+# comment — a second copy here is a second answer to what a model accepts — and
+# the copy existed anyway, one file over.
+#
+# **A cap is refused rather than applied**, and that behaviour is unchanged:
+# silently handing a model the first seven of eighteen references is a shoot
+# whose result nobody can explain, so the request fails and the whole index comes
+# back in the body so the caller can choose.
 
 
 def clean_profile(raw) -> dict:
@@ -910,11 +919,12 @@ def selection(addressed: str):
 def _cap(args) -> int | None:
     """The ceiling this selection is measured against, or none at all.
 
-    `?limit=` is explicit and wins. `?engine=` looks the engine up, matching on a
-    prefix because the registry spells a family several ways (`nano-banana-pro`,
-    `nano-banana-2`) and the cap is a property of the family. Neither given means
-    no cap, and no refusal — a caller that did not say what it was feeding cannot
-    be told it fed too much.
+    `?limit=` is explicit and wins. `?engine=` is resolved against the registry,
+    which is a real lookup rather than the prefix match it replaces: two members
+    of one family may legitimately differ, and an alias resolves properly instead
+    of by accident. Neither given means no cap, and no refusal — a caller that did
+    not say what it was feeding cannot be told it fed too much, and an unknown
+    engine name is the same case.
     """
     raw = args.get("limit")
     if raw not in (None, ""):
@@ -927,10 +937,7 @@ def _cap(args) -> int | None:
         return limit
 
     engine = args.get("engine") or ""
-    for family, cap in ENGINE_CAPS.items():
-        if engine.startswith(family):
-            return cap
-    return None
+    return registry.reference_cap(engine) if engine else None
 
 
 @bp.get("/characters/<addressed>/textblock")

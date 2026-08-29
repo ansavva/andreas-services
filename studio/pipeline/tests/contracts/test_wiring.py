@@ -118,18 +118,25 @@ def test_root_help_renders():
 
 
 def test_packaged_data_files_exist():
-    """models.json and the profile template ship inside the package.
+    """The profile template ships inside the package, and the registry no longer does.
 
-    Both were reached by relative path before the move, and a wheel that omits
-    them fails only at runtime.
+    **`models.json` used to be asserted here and is deliberately not.** It moved
+    to `backend/studio_core/`, because the API needed to measure a reference
+    selection against the same entries the CLI does and could not read a file
+    inside a Python package. What this package ships is the reader; the file is
+    the backend's, and `registry_file.PATH` below is the repo path the two
+    write commands edit, not a packaged resource.
     """
     import os
 
     from studio_pipeline.domain import characters
-    from studio_pipeline.engine import registry
+    from studio_pipeline.engine import registry_file
 
-    assert os.path.isfile(registry.PATH), f"registry missing at {registry.PATH}"
     assert os.path.isfile(characters.TEMPLATE), f"template missing at {characters.TEMPLATE}"
+    assert os.path.isfile(registry_file.PATH), (
+        f"the committed registry is missing at {registry_file.PATH} — "
+        "`add-model` and `models refresh` write it"
+    )
 
 
 def test_local_working_dirs_resolve_under_studio():

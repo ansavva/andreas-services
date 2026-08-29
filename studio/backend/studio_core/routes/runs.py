@@ -401,19 +401,36 @@ def create_run():
 
     written = catalog.put_sends(record["id"], send_entries)
     assignments = {"plan_digest": catalog.plan_digest(plan, written)}
+    # Projected onto the listing row, which is the whole point of it: comparing
+    # payloads used to mean one `GET /api/runs/<id>` per candidate run, so the
+    # duplicate-submission guard lived in a per-machine file instead. See
+    # `catalog.submission_fingerprint`.
+    fingerprint = catalog.submission_fingerprint(model, plan, written)
 
     payload = _write_payload(record, body)
     if payload:
         assignments["payload"] = payload
-    record = catalog.update_project_entity(KIND, record, assignments)
+    record = catalog.update_project_entity(
+        KIND, record, {**assignments, "fingerprint": fingerprint},
+        {"fingerprint": fingerprint},
+    )
 
     return jsonify(
         {
             "id": record["id"],
+            # Echoed because the caller's next question is about this project —
+            # "has anything else here already sent this payload" — and going
+            # back for the record to find out which project it just wrote to
+            # would be a round trip for something it supplied.
+            "project": record["project"],
             "status": record["status"],
             "folder": record["folder"],
             "payload": record["payload"],
             "plan_digest": record["plan_digest"],
+            # The duplicate-submission guard's handle. Derived here so the CLI
+            # never computes it: `plan_digest` has had three implementations in
+            # this repository and one of them silently disagreed.
+            "fingerprint": record["fingerprint"],
             "sends": written,
             "created": record["created"],
         }
@@ -462,8 +479,14 @@ def list_runs():
     each — which is what `runs find` did for *every* query, reading three JSON
     documents per run on the way.
 
-    `status`, `model`, `kind` and `since` filter in memory over one query's worth
-    of rows. A GSI per filter would be four indexes for one screen.
+    `status`, `model`, `kind`, `fingerprint` and `since` filter in memory over one
+    query's worth of rows. A GSI per filter would be five indexes for one screen.
+
+    **`?fingerprint=` is the one that is not for a screen.** It answers "has this
+    exact payload already been submitted here", which `engine/ledger.py` kept a
+    per-machine file to answer because the alternative was a `GET
+    /api/runs/<id>` per candidate. Projected onto the listing row it is one
+    query — and unlike the file it sees a second machine, and a colleague.
     """
     held = support.memberships()
     support.member_of(g.library, held)
@@ -483,7 +506,7 @@ def list_runs():
             runs.extend(catalog.project_entities(project["id"], KIND))
         runs.sort(key=lambda run: run.get("created") or "", reverse=True)
 
-    for field in ("status", "model", "kind"):
+    for field in ("status", "model", "kind", "fingerprint"):
         if args.get(field):
             runs = [run for run in runs if run.get(field) == args[field]]
     if args.get("since"):
@@ -650,12 +673,16 @@ def _revised(record: dict, assignments: dict, send_entries: list[dict]) -> dict:
     Returning the run to `draft` rather than merely clearing `approval` keeps one
     answer to "can this be submitted" instead of two that have to agree.
     """
-    digest = catalog.plan_digest(assignments.get("plan", record.get("plan")),
-                                 send_entries)
-    assignments = {**assignments, "plan_digest": digest, "approval": None,
-                   "status": "draft"}
+    plan = assignments.get("plan", record.get("plan"))
+    digest = catalog.plan_digest(plan, send_entries)
+    # The fingerprint moves with the payload, for the same reason the digest
+    # does: an edited draft is a different submission, and a stale fingerprint
+    # would make the next identical payload look like a duplicate of it.
+    fingerprint = catalog.submission_fingerprint(record.get("model"), plan, send_entries)
+    assignments = {**assignments, "plan_digest": digest, "fingerprint": fingerprint,
+                   "approval": None, "status": "draft"}
     return catalog.update_project_entity(
-        KIND, record, assignments, {"status": "draft"}
+        KIND, record, assignments, {"status": "draft", "fingerprint": fingerprint}
     )
 
 

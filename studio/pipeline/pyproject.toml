@@ -38,8 +38,12 @@ build-backend = "hatchling.build"
 # only show up at runtime.
 packages = ["src/studio_pipeline"]
 
+# `models.json` was here and is not any more: the registry moved to
+# `backend/studio_core/` so one copy could answer the CLI, the SPA and
+# `GET /api/characters/<id>/selection` at once. This package reads it over the
+# wire, so a wheel does not carry it — `engine/registry_file.py` names the repo
+# path the two write commands edit, which is not a packaged resource.
 [tool.hatch.build.targets.wheel.force-include]
-"src/studio_pipeline/engine/models.json" = "studio_pipeline/engine/models.json"
 "src/studio_pipeline/domain/templates/profile.yaml" = "studio_pipeline/domain/templates/profile.yaml"
 # The angle spec is read at runtime by `character turnaround`, so a wheel without
 # it fails only when someone runs the command. The angle images it names are NOT

@@ -70,6 +70,7 @@ For a multi-shot piece, use timeline mode by supplying `shots`:
 """
 from __future__ import annotations
 
+import functools
 import json
 import re
 import sys
@@ -87,8 +88,16 @@ from studio_pipeline.domain import phrasebook as PHRASEBOOK
 from studio_pipeline.engine import registry as REG
 
 
-def _engines_from_registry() -> dict[str, dict]:
+@functools.lru_cache(maxsize=1)
+def engines() -> dict[str, dict]:
     """Build the engine table from the model registry.
+
+    **A function, memoised, where this was a module constant.** The registry is
+    `GET /api/models` now, and a constant is evaluated at import — which is
+    before Click has parsed an argument, before a profile is selected, and before
+    anyone has signed in. Importing `cli.py` would have opened an HTTP
+    connection, so `studio --help` would have needed a session and an unreachable
+    API would have been an ImportError rather than a message.
 
     The enums and ranges used to be hardcoded here, a third copy of facts the
     live schema already publishes — and one that could drift silently from what
@@ -132,8 +141,6 @@ def _engines_from_registry() -> dict[str, dict]:
             out[alias] = spec
     return out
 
-
-ENGINES: dict[str, dict] = _engines_from_registry()
 
 # Fields that map to REAL engine settings (not prompt text).
 TECHNICAL_KEYS = {"aspect_ratio", "duration", "resolution", "seed", "generate_audio"}
@@ -289,7 +296,7 @@ def _beat_budget(duration: int | None, spec: dict) -> int:
 
 
 def validate(obj: dict, engine: str) -> tuple[list[str], list[str]]:
-    spec = ENGINES[engine]
+    spec = engines()[engine]
     warnings: list[str] = []
     errors: list[str] = []
     fields = _text_fields(obj)
@@ -523,7 +530,7 @@ def build_prompt_object(obj: dict, engine: str) -> tuple[dict, bool]:
     On engines with a real negative-prompt field the negative is deliberately
     NOT serialized into the prompt — it goes out alongside it instead.
     """
-    spec = ENGINES[engine]
+    spec = engines()[engine]
     timeline = bool(obj.get("shots"))
     neg = resolve_negative(obj) if spec["negative"] == "prompt" else None
     out: dict = {}
@@ -567,7 +574,7 @@ def build_settings(obj: dict, prompt_str: str, engine: str) -> tuple[str, dict]:
     Returns (key, payload) — ("input", replicate_input) for API engines, or
     ("settings", ui_checklist) for engines driven by hand through a web UI.
     """
-    spec = ENGINES[engine]
+    spec = engines()[engine]
     tech = obj.get("technical") if isinstance(obj.get("technical"), dict) else {}
     picked = {k: tech[k] for k in TECHNICAL_KEYS if k in tech and tech[k] is not None}
 
@@ -625,7 +632,7 @@ def build_settings(obj: dict, prompt_str: str, engine: str) -> tuple[str, dict]:
 @click.option("--style")
 @click.option("--subject")
 def prompt(source, action, aspect_ratio, audio, camera_movement, camera_shot, compact, duration, emit, engine, json_, lens_mm, lighting, negative, no_audio, resolution, scene, seed, start_image, strict, style, subject):
-    spec = ENGINES[engine]
+    spec = engines()[engine]
 
     obj = load_object(source, json_text=json_)
     apply_overrides(

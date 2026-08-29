@@ -462,7 +462,7 @@ than remembered. If a guard is in the way, the test belongs in a different tier.
   suites, and blocks the provider hosts in the integration suites. The unit
   suite once made live calls to `api.replicate.com` and depended on them 401-ing.
 - **Do not write to the repo.** `registry.PATH` is redirected at a per-test copy:
-  `studio models refresh` rewrites the committed `models.json`, and the dispatch
+  `studio models refresh` rewrites the committed `models.json` (the backend's, since the registry moved there), and the dispatch
   test invokes every leaf command. It deleted 391 lines of schema.
 - **Do not edit `cli_surface_reference.json` to make a test pass.** Regenerate it
   with `tests.contracts.update_cli_reference <command>`.

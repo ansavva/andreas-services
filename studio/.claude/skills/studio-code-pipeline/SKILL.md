@@ -154,7 +154,7 @@ Two things about it are load-bearing:
   pass. Caught only because an error message had been reworded here.
 
 **A test may not write to the repo either.** `conftest.py` redirects
-`registry.PATH` at a per-test copy of `models.json`, because `studio models
+`registry_file.PATH` at a per-test copy of `models.json`, because `studio models
 refresh` rewrites it in place and the dispatch test invokes every leaf command
 there is. That went unnoticed for as long as the schema fetch reached the
 network and got a 401 — the suite depended on a live provider call *failing*.
