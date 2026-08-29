@@ -445,6 +445,18 @@ def query_runs(*, project: str | None = None, character: str | None = None,
                    fingerprint=fingerprint, include=include)
 
 
+def resolve_run(ref: str, project: str | None = None,
+                include: str | None = None) -> dict:
+    """A runref — `<project>/latest#2`, `latest`, `run-<uuid>` — to the run.
+
+    The sibling of `GET /api/resolve?path=`: both turn what a person types into
+    the thing it names, so a spelling keeps working as an address without being
+    an identity. `#N` narrows `outputs` to the one asked for and leaves the rest
+    of the record whole.
+    """
+    return api.get("/api/runs/resolve", ref=ref, project=project, include=include)
+
+
 def get_run(run_id: str) -> dict:
     """The envelope, with outputs and bindings expanded and `payload` as node ids."""
     return api.get(f"/api/runs/{run_id}")

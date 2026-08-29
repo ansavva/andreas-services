@@ -344,3 +344,54 @@ def test_drop_destroys_what_it_named(library):
     assert "APPLIED" in result.output
     assert stray["id"] not in library.fake.nodes
     assert library.face_1 in library.fake.nodes, "took only what it was given"
+
+
+# ── the hash comes from the API, not from a download ────────────────────────
+
+
+def test_dedupe_compares_served_hashes_rather_than_downloading(library, monkeypatch):
+    """**The whole of the change, asserted by breaking the old path.**
+
+    `digest` used to be `hashlib.md5(store.read_node(node_id))` — an HTTPS round
+    trip out of the bucket per candidate, on a command whose job is to compare
+    images that are usually *not* duplicates. Hashing a forty-image pool to find
+    nothing was forty downloads.
+
+    The API records the MD5 when it confirms an upload (S3 hands it back as the
+    ETag of a single PUT, and every upload it signs is one), so this is a
+    dictionary read. Making `read_node` explode proves it is never reached.
+    """
+    def explode(*_a, **_k):
+        raise AssertionError("dedupe downloaded a file it had the hash for")
+
+    library.fake.put_file(library.face_folder, "zz-copy.webp", b"webp-1")
+    monkeypatch.setattr(store, "read_node", explode)
+
+    record = E.resolve_character("subject-a")
+    pairs = curate.duplicate_pairs(curate.images(record, "reference", "face"))
+    assert len(pairs) == 1
+
+
+def test_a_node_written_before_the_checksum_is_still_compared(library, monkeypatch):
+    """Legacy rows have no hash, and are read the old way rather than skipped.
+
+    Silently declining to compare two files is how a dedupe reports "no
+    duplicates" over a pool that is full of them.
+    """
+    library.fake.put_file(library.face_folder, "zz-copy.webp", b"webp-1")
+    record = E.resolve_character("subject-a")
+    entries = curate.images(record, "reference", "face")
+    for entry in entries:
+        entry.pop("checksum", None)
+
+    reads = {"n": 0}
+    real = store.read_node
+
+    def counted(node_id):
+        reads["n"] += 1
+        return real(node_id)
+
+    monkeypatch.setattr(store, "read_node", counted)
+
+    assert len(curate.duplicate_pairs(entries)) == 1
+    assert reads["n"] > 0, "a checksum-less node has to be read to be compared"

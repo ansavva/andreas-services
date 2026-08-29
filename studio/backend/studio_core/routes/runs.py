@@ -67,7 +67,7 @@ from flask import Blueprint, g, jsonify, request
 
 from studio_core import config
 from studio_core.clients.aws import s3
-from studio_core.errors import ConflictError, ValidationError
+from studio_core.errors import ConflictError, NotFoundError, ValidationError
 from studio_core.routes import projects as project_routes
 from studio_core.routes import support
 from studio_core.services import catalog, layout, manage
@@ -555,6 +555,100 @@ def _limit(raw) -> int:
 
 def _run(run_id: str, held: dict) -> dict:
     return support.entity_at(KIND, g.library, run_id, held)
+
+
+@bp.get("/runs/resolve")
+def resolve_run():
+    """A runref — what a person types — to the run it names.
+
+    **The sibling of `GET /api/resolve?path=`, and it exists for the same
+    reason.** That route turns a slash-joined name path into a node id so a
+    person's spelling of a location keeps working as an *address* while ceasing
+    to be a key. A runref is the same category of thing: `<project>/latest` is
+    how every skill in this repo tells somebody to name the run they just made,
+    and until now only the CLI could read one.
+
+    The grammar, which is the whole of it:
+
+        <project>/latest    the newest run there
+        <project>/latest#2  its 2nd output, 1-based; absent means every output
+        latest              when the project is named separately
+        run-<uuid>          the id, which needs no project at all
+
+    **`latest` is one query with `limit=1`**, not a listing filtered down. The
+    CLI read every run in the project and took the first, which is a page of rows
+    to answer a question about one of them — cheap on a young project and not on
+    a busy one.
+
+    **A run has no name, and that is why the grammar stops here.** It had a slug
+    once; every one in production read `<timestamp>_<hint>`, so it was unique
+    only by embedding `created` — which is what sorting already reads. Strip the
+    timestamp and 29 runs collapsed to 19 labels. So a run is found by `latest`,
+    by its id, or by the filters on `GET /api/runs`.
+    """
+    held = support.memberships()
+    support.member_of(g.library, held)
+
+    ref = (request.args.get("ref") or "").strip()
+    if not ref:
+        raise ValidationError("ref is required")
+
+    body, _, raw_index = ref.partition("#")
+    index = None
+    if raw_index:
+        if not raw_index.isdigit() or int(raw_index) < 1:
+            raise ValidationError(
+                f"runref index must be a positive integer: {ref!r}")
+        index = int(raw_index)
+
+    if "/" in body:
+        project_ref, _, run_ref = body.partition("/")
+    else:
+        project_ref, run_ref = request.args.get("project"), body
+
+    if run_ref.startswith("run-"):
+        record = _run(run_ref, held)
+    else:
+        if not project_ref:
+            raise ValidationError(
+                f"runref {ref!r} has no project and none was supplied — "
+                "use <project>/latest, a run id, or pass ?project=")
+        if run_ref not in ("latest", "last"):
+            raise ValidationError(
+                f"{run_ref!r} is not a runref. A run has no name to address it "
+                "by — use 'latest', or its id.")
+        # **A bare slug, because that is what a person types.** Every other
+        # route takes an id or an explicit `slug:<slug>`; a runref's project
+        # segment is neither, and requiring the prefix would mean typing
+        # `slug:porch-teaser/latest` — which nobody does and no skill documents.
+        # This route exists precisely to accept the human spelling.
+        addressed = (project_ref if project_ref.startswith("proj-")
+                     else f"slug:{project_ref}")
+        project = project_routes.project_at(addressed, held)
+        # **Drafts are skipped unless asked for**, exactly as `GET /api/runs`
+        # skips them, and for the same reason: `latest` is overwhelmingly asked
+        # in order to chain off something — `--start-run <project>/latest` — and
+        # a draft has no output to chain from. `?include=drafts` opts in, which
+        # is the spelling the listing already uses.
+        newest = catalog.project_entities(project["id"], KIND)
+        hidden = (frozenset() if request.args.get("include") == "drafts"
+                  else catalog.HIDDEN_RUN_STATUSES)
+        live = [entry for entry in newest if entry.get("status") not in hidden]
+        if not live:
+            raise NotFoundError(f"no runs in project {project_ref}")
+        record = _run(live[0]["id"], held)
+
+    send_entries = catalog.sends(record["id"])
+
+    # **`index` is REPORTED, not applied**, and that is deliberate. Narrowing
+    # `outputs` here would look helpful and be wrong for the caller that needs it
+    # most: `resolve_output_nodes` filters by extension first — "give me the mp4
+    # this run made" — and *then* takes the Nth of what is left. An API that had
+    # already dropped the others would silently change which file `#2` means.
+    #
+    # So resolution answers "what does this string name", and selecting one
+    # output stays with whoever knows what they are selecting for.
+    return jsonify({**view(record, send_entries), "ref": ref, "index": index}), 200
 
 
 @bp.get("/runs/<run_id>")

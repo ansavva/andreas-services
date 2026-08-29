@@ -69,6 +69,16 @@ VIEW_FIELDS = (
     "kind",
     "size",
     "content_type",
+    # **The MD5 of the bytes, which is what an ETag is here.** Every upload this
+    # API signs is a single PUT — `max_upload_bytes` is S3's own ceiling and
+    # there is no multipart grant — so the ETag S3 returns is the content hash
+    # rather than the hash-of-hashes a multipart upload produces.
+    #
+    # Served because `studio curate dedupe` was DOWNLOADING every same-size
+    # candidate to compute exactly this, over HTTPS, out of the bucket: hashing a
+    # forty-image pool to find no duplicates was forty downloads. It is a
+    # comparison of two served values now.
+    "checksum",
     "entity",
     # What the file shows, and how it is selected. On the node rather than on a
     # `REF#` row: a description is a fact about the picture, true whether or not

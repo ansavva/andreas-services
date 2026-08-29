@@ -1226,3 +1226,94 @@ def test_a_send_with_no_recorded_source_gets_one_derived_on_read(empty_api, cata
 
     assert send["source"]["kind"] == "character"
     assert send["source"]["group"] == "body"
+
+
+# ── the runref resolver ─────────────────────────────────────────────────────
+
+
+def test_a_run_id_resolves_with_no_project(empty_api):
+    """The property the entity model is for: an id is self-sufficient."""
+    project = _project(empty_api)
+    run = _create(empty_api, project)
+    found = empty_api.get(f"/api/runs/resolve?ref={run['id']}").get_json()
+    assert found["id"] == run["id"]
+
+
+def test_latest_resolves_to_the_newest_submitted_run(empty_api):
+    project = _project(empty_api)
+    first = _create(empty_api, project, plan={"params": {}, "prompt": "one"})
+    _approve(empty_api, first)
+    empty_api.patch(f"/api/runs/{first['id']}", json={"status": "succeeded"})
+
+    found = empty_api.get(
+        f"/api/runs/resolve?ref={project['slug']}/latest").get_json()
+    assert found["id"] == first["id"]
+
+
+def test_latest_skips_a_draft_unless_it_is_asked_for(empty_api):
+    """`GET /api/runs` hides drafts by default and so does this.
+
+    `latest` is overwhelmingly asked in order to chain off something —
+    `--start-run <project>/latest` — and a draft has no output to chain from.
+    """
+    project = _project(empty_api)
+    submitted = _create(empty_api, project, plan={"params": {}, "prompt": "one"})
+    _approve(empty_api, submitted)
+    empty_api.patch(f"/api/runs/{submitted['id']}", json={"status": "succeeded"})
+    draft = _create(empty_api, project, plan={"params": {}, "prompt": "two"})
+
+    ref = f"{project['slug']}/latest"
+    assert empty_api.get(f"/api/runs/resolve?ref={ref}").get_json()["id"] == submitted["id"]
+    assert empty_api.get(
+        f"/api/runs/resolve?ref={ref}&include=drafts").get_json()["id"] == draft["id"]
+
+
+def test_the_project_segment_is_a_bare_slug(empty_api):
+    """What a person types. Every other route wants `slug:<slug>` or an id.
+
+    Requiring the prefix would mean typing `slug:porch-teaser/latest`, which
+    nobody does and no skill documents — and this route exists precisely to take
+    the human spelling.
+    """
+    project = _project(empty_api, slug="porch-teaser")
+    run = _create(empty_api, project)
+    _approve(empty_api, run)
+    empty_api.patch(f"/api/runs/{run['id']}", json={"status": "succeeded"})
+    assert empty_api.get(
+        "/api/runs/resolve?ref=porch-teaser/latest").status_code == 200
+
+
+def test_an_index_is_reported_and_not_applied(empty_api):
+    """**`#2` narrows nothing server-side, deliberately.**
+
+    `resolve_output_nodes` filters by extension first — "the mp4 this run made" —
+    and then takes the Nth of what is left. An API that had already dropped the
+    others would silently change which file `#2` means.
+    """
+    project = _project(empty_api)
+    run = _create(empty_api, project)
+    # `%23`, because a bare `#` in a URL is a fragment and never reaches the
+    # server. The CLI sends the ref as a query value and urllib encodes it.
+    found = empty_api.get(f"/api/runs/resolve?ref={run['id']}%232").get_json()
+    assert found["index"] == 2
+    assert "outputs" in found
+
+
+@pytest.mark.parametrize("ref,reason", [
+    ("", "ref is required"),
+    ("proj/latest%230", "positive integer"),
+    ("proj/latest%23x", "positive integer"),
+    ("latest", "no project"),
+])
+def test_a_malformed_runref_is_refused_saying_why(empty_api, ref, reason):
+    resp = empty_api.get(f"/api/runs/resolve?ref={ref}")
+    assert resp.status_code == 400
+    assert reason in resp.get_json()["error"]
+
+
+def test_a_name_is_not_a_runref(empty_api):
+    """A run has no name. Its slug read `<timestamp>_<hint>` and 29 collapsed to 19."""
+    project = _project(empty_api)
+    resp = empty_api.get(f"/api/runs/resolve?ref={project['slug']}/my-nice-run")
+    assert resp.status_code == 400
+    assert "not a runref" in resp.get_json()["error"]

@@ -85,20 +85,35 @@ def images(record: dict, pool: str, group: str | None = None) -> list[dict]:
             if os.path.splitext(entry["name"])[1].lower() in IMG_EXTS]
 
 
-def digest(node_id: str) -> str:
-    """Content hash of one image. Only ever called on same-size candidates."""
-    return hashlib.md5(store.read_node(node_id)).hexdigest()
+def digest(entry: dict) -> str:
+    """Content hash of one image — **served, not computed.**
+
+    The API records the MD5 of every object's bytes when it confirms the upload:
+    S3 returns it as the ETag of a single PUT, and every upload this service
+    signs is one. So the hash arrives with the listing and this is a dictionary
+    read.
+
+    **It used to download the file.** `hashlib.md5(store.read_node(node_id))` —
+    an HTTPS round trip out of the bucket per candidate, on a command whose whole
+    job is to compare images that are probably not duplicates.
+
+    A node written before the checksum was recorded has none, and those are read
+    the old way rather than skipped: silently declining to compare two files is
+    how a dedupe reports "no duplicates" over a pool full of them.
+    """
+    if entry.get("checksum"):
+        return entry["checksum"]
+    return hashlib.md5(store.read_node(entry["id"])).hexdigest()
 
 
 def duplicate_pairs(entries: list[dict]) -> list[tuple[dict, dict]]:
     """(duplicate, keeper) for every byte-identical pair, cheapest test first.
 
-    **Size is checked before bytes are read**, which the S3 version did not do —
-    it hashed every object in the pool. Two files of different sizes cannot be
-    identical, so this is exact rather than a heuristic, and it matters more now
-    than it did: a read is an HTTPS round trip out of the bucket rather than a
-    `GetObject` inside it, so hashing a forty-image pool to find no duplicates
-    was about to become forty downloads.
+    **Size is checked before the hash is looked at**, which the S3 version did
+    not do — it hashed every object in the pool. Two files of different sizes
+    cannot be identical, so this is exact rather than a heuristic. It mattered
+    enormously when a hash meant a download; it is now merely tidy, and it stays
+    because a library predating the checksum still pays the old price.
     """
     by_size: dict[int, list[dict]] = {}
     for entry in entries:
@@ -110,7 +125,7 @@ def duplicate_pairs(entries: list[dict]) -> list[tuple[dict, dict]]:
             continue
         seen: dict[str, dict] = {}
         for entry in candidates:
-            found = digest(entry["id"])
+            found = digest(entry)
             if found in seen:
                 dupes.append((entry, seen[found]))
             else:
@@ -309,7 +324,7 @@ def cmd_move(name, file, apply, src_pool, dst_pool, dst_group):
     size = int(entry.get("size") or 0)
     candidates = [e for e in images(record, dst_pool, dst_group)
                   if int(e.get("size") or 0) == size]
-    duplicate = bool(candidates) and digest(entry["id"]) in {digest(e["id"]) for e in candidates}
+    duplicate = bool(candidates) and digest(entry) in {digest(e) for e in candidates}
     if duplicate:
         print(f"    a byte-identical copy is already in {where}/ — only removing the source")
 

@@ -22,11 +22,13 @@ token. It is `before_request` that calls it now rather than the routes — see t
 test hands the header back to the real parsing.
 """
 
+import hashlib
 from urllib.parse import parse_qs, urlparse
 
 import pytest
 
 from studio_core import config
+from studio_core.clients.aws import s3
 from studio_core.app_factory import create_app
 from studio_core.errors import NotFoundError
 from studio_core.services import catalog, identity
@@ -2004,3 +2006,72 @@ def test_a_description_survives_a_rename_and_a_move(catalog_table, media_bucket,
     _patch(f"/api/nodes/{created['node_id']}", {"parent": folder["node_id"]})
 
     assert catalog.node(created["node_id"])["description"] == "the pool at dusk"
+
+
+# ── the content hash ────────────────────────────────────────────────────────
+
+
+def test_confirming_an_upload_records_the_content_hash(catalog_table, media_bucket, signed_in):
+    """**The MD5, taken off the ETag S3 already returns.**
+
+    Every upload this API signs is a single PUT — `max_upload_bytes` is S3's own
+    ceiling and there is no multipart grant — so the ETag *is* the content hash
+    rather than the hash-of-hashes a multipart upload produces.
+
+    Recorded because `studio curate dedupe` was downloading every same-size
+    candidate to compute exactly this, over HTTPS, out of the bucket: hashing a
+    forty-image pool to find no duplicates was forty downloads.
+    """
+    created = _placeholder()
+    _post(f"/api/nodes/{created['node_id']}/upload-url",
+          {"size": 4, "content_type": "video/mp4"})
+    media_bucket.put_object(Bucket=config.media_bucket(), Key=_api_key(created),
+                            Body=b"four", ContentType="video/mp4")
+
+    body = _post(f"/api/nodes/{created['node_id']}/confirm-upload", {}).get_json()
+
+    assert body["checksum"] == hashlib.md5(b"four").hexdigest()
+    assert catalog.node(created["node_id"])["checksum"] == body["checksum"]
+
+
+def test_two_identical_uploads_share_a_hash(catalog_table, media_bucket, signed_in):
+    """Which is the whole point: equality of the served value means equal bytes."""
+    hashes = []
+    for name in ("one.mp4", "two.mp4"):
+        created = _placeholder(name=name)
+        _post(f"/api/nodes/{created['node_id']}/upload-url",
+              {"size": 4, "content_type": "video/mp4"})
+        media_bucket.put_object(Bucket=config.media_bucket(), Key=_api_key(created),
+                                Body=b"same", ContentType="video/mp4")
+        hashes.append(
+            _post(f"/api/nodes/{created['node_id']}/confirm-upload", {}).get_json()["checksum"]
+        )
+    assert hashes[0] == hashes[1]
+
+
+def test_a_copy_carries_the_sources_hash(catalog_table, media_bucket, signed_in):
+    """A copy IS byte-identical, and a server-side `CopyObject` keeps the ETag."""
+    source = _placeholder(name="original.mp4")
+    _post(f"/api/nodes/{source['node_id']}/upload-url",
+          {"size": 4, "content_type": "video/mp4"})
+    media_bucket.put_object(Bucket=config.media_bucket(), Key=_api_key(source),
+                            Body=b"same", ContentType="video/mp4")
+    confirmed = _post(f"/api/nodes/{source['node_id']}/confirm-upload", {}).get_json()
+
+    folder = catalog.create_node(CATALOG_ROOT, "copies", catalog.KIND_FOLDER)
+    copied = _post("/api/nodes/copy", {"ids": [source["node_id"]],
+                                       "destination": folder["node_id"]}).get_json()
+    assert copied["nodes"][0]["checksum"] == confirmed["checksum"]
+
+
+def test_a_multipart_etag_is_not_recorded_as_a_hash():
+    """`-N` means a hash of part hashes, which differs by part size for one file.
+
+    Storing it would be storing a value that compares unequal for two identical
+    uploads — worse than storing nothing, because nothing falls back to reading
+    the bytes and a wrong hash silently reports "not duplicates".
+    """
+    assert s3.content_hash({"ETag": '"d41d8cd98f00b204e9800998ecf8427e-3"'}) is None
+    assert s3.content_hash({"ETag": '"d41d8cd98f00b204e9800998ecf8427e"'}) == \
+        "d41d8cd98f00b204e9800998ecf8427e"
+    assert s3.content_hash({}) is None
