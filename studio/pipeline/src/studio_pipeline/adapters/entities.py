@@ -427,14 +427,22 @@ def revoke_run_approval(run_id: str) -> dict:
 def query_runs(*, project: str | None = None, character: str | None = None,
                model: str | None = None, status: str | None = None,
                since: str | None = None, limit: int | None = None,
-               cursor: str | None = None) -> dict:
+               cursor: str | None = None, fingerprint: str | None = None,
+               include: str | None = None) -> dict:
     """`{"runs": [...], "cursor": …}` — the query that replaces `runs find`.
 
     `runs find --character` used to list every project, list every run in each,
     read three documents per run and grep. It is one query against a row.
+
+    `fingerprint` is the duplicate-submission guard: it asks whether this exact
+    payload has been submitted to this project before, which used to be a
+    per-machine file because the listing rows did not carry enough to answer it.
+    `include="drafts"` goes with it — an unsubmitted draft bills nothing and must
+    not read as a duplicate, but the caller decides that, not this wrapper.
     """
     return api.get("/api/runs", project=project, character=character, model=model,
-                   status=status, since=since, limit=limit, cursor=cursor)
+                   status=status, since=since, limit=limit, cursor=cursor,
+                   fingerprint=fingerprint, include=include)
 
 
 def get_run(run_id: str) -> dict:

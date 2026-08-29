@@ -799,17 +799,27 @@ into a config file by a person.
 | `phrasebook.py` | Per-model wording lists, as `LIB#`/`TERM#` rows. It was a YAML document in the bucket with no catalog node, which is why it was read by raw key and written by an overwrite that could not invent the file — so `phrasebook add` failed outright on a library that had never held one. A row has no such state: the first `add` writes the first term. |
 | `contact_sheet.py` | Labeled thumbnail grids over arbitrary keys. The character-pool half walks the pool **recursively**, like `characters/refs`: `reference` is the default and holds group folders rather than images, so a one-level listing would report the commonest invocation as an empty pool. Each tile's local name carries its group, because `face/<name>_1` and `body/<name>_1` share a basename and collided in one directory. |
 
-**`engine/ledger.py` — what has already been submitted.** A fingerprint of
-model, inputs and bound images, kept per profile beside the credentials file, so
-`run` can refuse a payload it has already paid for. Local rather than a query
-because the run listing rows are a deliberately small projection and do not
-carry the payload: comparing server-side would be one `GET /api/runs/<id>` per
-candidate, ~1800 requests before the first submit of a 72-image batch. The
-server-side answer is to project the fingerprint onto the listing row and filter
-on it, which changes a deployed service and is its own change. It reads
-`auth.CONFIG_DIR` through the module rather than importing the constant, so one
-fixture redirects both files — the suite reaching a developer's real config is a
-failure this directory has had once already.
+**The duplicate-submission guard is a query, and `engine/ledger.py` is deleted.**
+It kept a fingerprint of model, inputs and bound images per profile beside the
+credentials file, so `run` could refuse a payload it had already paid for — local
+rather than a query because the listing rows are a deliberately small projection
+and did not carry the payload, making a server-side comparison one
+`GET /api/runs/<id>` per candidate, ~1800 requests before the first submit of a
+72-image batch.
+
+Its own docstring named the fix: project the fingerprint onto the listing row and
+filter on it. `catalog.submission_fingerprint` derives one from `plan_digest` —
+which already hashes the plan and the ordered sends — plus the model, so there is
+no second hash to keep in step. `GET /api/runs?fingerprint=` is one query.
+
+Two consequences worth knowing. It now catches what a per-machine file never
+could: a second machine, and a colleague. And the check moved to *after* the
+draft is created, because the draft is what carries the fingerprint — the CLI
+reads the value rather than computing it, which is the whole point in a
+repository where `plan_digest` once had three implementations and one of them
+silently disagreed. A draft costs a row and no bytes, so the check is still free,
+and the never-billed states are excluded so an abandoned draft cannot make the
+next identical payload look like a duplicate.
 
 **`engine/` — invoking a model.**
 

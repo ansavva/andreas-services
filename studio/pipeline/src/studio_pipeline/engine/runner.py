@@ -37,7 +37,6 @@ from studio_pipeline.adapters import replicate as RA
 from studio_pipeline.domain import projects as PROJ
 from studio_pipeline.domain import runs as R
 from studio_pipeline.engine import add_model as AM
-from studio_pipeline.engine import ledger as LEDGER
 from studio_pipeline.engine import refs as REFS
 from studio_pipeline.engine import registry as REG
 from studio_pipeline.engine import registry_file as RF
@@ -230,6 +229,41 @@ def _ephemeral_entry(model: str) -> dict:
     return entry
 
 
+def _refuse_a_duplicate(record: dict, args) -> None:
+    """Stop if this exact payload was already sent to this project. `--again` walks past.
+
+    **A batch of 72 upscales was driven twice.** The harness reported the job
+    finished when it had not, a second pass ran over the same list, ~46 images
+    were generated again for about $2.30 and the results overwrote each other.
+    Nothing anywhere noticed, because every send is the first one as far as a
+    payload builder is concerned.
+
+    This used to be `engine/ledger.py`, a per-machine file, because answering it
+    from the run store meant one `GET /api/runs/<id>` per candidate — around 1800
+    requests before the first submit of that batch. The API projects a
+    fingerprint onto the listing row now, so it is one query, and it sees the two
+    things a local file never could: a second machine, and a colleague.
+
+    Checked after the draft exists rather than before, because the draft is what
+    carries the fingerprint — see `submit.already_submitted` for why it is not
+    recomputed here. A draft costs a row and no bytes, so the check is still
+    free, and `--dry-run` gets the same refusal: that is the command people use
+    to look over a batch before starting it.
+
+    `--again` is a decision somebody makes rather than something a script does in
+    silence. That was true of the ledger and it is true here.
+    """
+    if getattr(args, "again", False):
+        return
+    earlier = SUB.already_submitted(record)
+    if not earlier:
+        return
+    die(f"this exact payload was already submitted to {args.project['slug']} as "
+        f"{earlier['id']} ({earlier.get('status')}, {earlier.get('created')}).\n"
+        f"       Nothing has been sent. This attempt is draft {record['id']}.\n"
+        "       To generate it again anyway: --again")
+
+
 @main.command("run")
 @click.option("--aspect-ratio", help="Model-dependent; validated against the live schema.")
 @click.option("--character", multiple=True, help=("A character supplying identity. Repeatable — one piece of work "
@@ -321,24 +355,6 @@ def cmd_run(**options):
     except MS.SchemaError as e:
         die(str(e))
 
-    # A LABEL for the approval render, not an id. A dry run replaces it with the
-    # real one below, once the draft exists; a live submission renders under the
-    # label because `execute` mints the record and submits in one act.
-    run = f"{args.project['slug']}/{R.slugify(args.name)}"
-
-    # **Has this exact submission already been paid for?** See `engine/ledger`
-    # for what happened. Checked after preflight so a payload the model would
-    # reject is reported as a schema fault rather than as a duplicate, and
-    # before the dry run returns so `--dry-run` says it too — a dry run is the
-    # thing people use to check a batch before starting it, and it is the
-    # cheapest possible moment to find out.
-    digest = LEDGER.fingerprint(entry["model"], payload, bindings)
-    earlier = LEDGER.seen(args.project["id"], digest)
-    if earlier and not args.again:
-        die(f"this exact payload was already submitted to {args.project['slug']} "
-            f"as {earlier['name']} ({earlier['run']}).\n"
-            "       Nothing has been sent. To generate it again anyway: --again")
-
     if args.dry_run:
         # **A dry run now leaves a DRAFT, and that is the whole of its upgrade.**
         # It rendered a payload to a terminal and kept nothing, so the thing hard
@@ -355,6 +371,7 @@ def cmd_run(**options):
             record = SUB.draft(entry, payload, bindings, args)
         except SUB.SubmitError as e:
             die(str(e))
+        _refuse_a_duplicate(record, args)
         print(SUB.render(entry, record["id"], payload, bindings, args.json_))
         print(f"\ndraft {record['id']} — nothing submitted, nothing billed.\n"
               f"       approve it:  studio runs approve {record['id']}\n"
@@ -365,13 +382,15 @@ def cmd_run(**options):
     try:
         # `execute` returns the run record; a single generation has nothing left
         # to do with it, and the exit code a caller reads is success or `die`.
-        SUB.execute(entry, payload, bindings, token, args)
+        SUB.execute(entry, payload, bindings, token, args,
+                    on_drafted=lambda record: _refuse_a_duplicate(record, args))
     except (SUB.SubmitError, RA.ReplicateError) as e:
         die(str(e))
-    # AFTER the submit, never before: a payload the provider refused was not
-    # paid for, and a ledger entry written ahead of the call would make the
-    # retry look like the duplicate.
-    LEDGER.record(args.project["id"], digest, run=run, name=args.name)
+    # **Nothing to record afterwards any more.** The ledger had to be written
+    # after the submit — a payload the provider refused was not paid for, and an
+    # entry written ahead of the call would make the retry look like the
+    # duplicate. The row IS the record now, and `already_submitted` ignores the
+    # states that never billed, so the ordering problem does not exist.
     return 0
 
 

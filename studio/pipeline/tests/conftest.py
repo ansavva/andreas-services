@@ -121,11 +121,13 @@ def _isolated_profiles(tmp_path, monkeypatch):
     # reach the real file by walking into a command that writes it.
     monkeypatch.setattr(_auth, "CONFIG_DIR", tmp_path / "auth")
     monkeypatch.setattr(_auth, "CREDENTIALS_FILE", tmp_path / "auth" / "credentials")
-    # `engine/ledger` writes a second file into that directory — the record of
-    # what has already been submitted, so a batch is not paid for twice. It
-    # reads `auth.CONFIG_DIR` through the module for this reason, so the line
-    # above already redirects it; this asserts that rather than trusting it,
-    # because the failure mode is silent and lands in a real developer's config.
+    # `engine/ledger` used to write a second file into that directory — the
+    # record of what had already been submitted, so a batch was not paid for
+    # twice. It is deleted: the fingerprint is projected onto the run listing
+    # row, so the question is one query against the store rather than a
+    # per-machine file that could not see a second machine. Nothing else writes
+    # here, and the assertion stays because the failure mode it guards is silent
+    # and lands in a real developer's config.
     assert (tmp_path / "auth") == _auth.CONFIG_DIR
     # Module state, so it survives a test that selected a profile and did not
     # put it back. `select` also clears the warned-once set.

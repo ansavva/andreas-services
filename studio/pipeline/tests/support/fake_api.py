@@ -125,6 +125,17 @@ def _plan_digest(plan, sends) -> str:
     return "sha256:" + hashlib.sha256(encoded.encode()).hexdigest()
 
 
+def _fingerprint(model, plan, sends) -> str:
+    """`catalog.submission_fingerprint`, restated for the same reason as above.
+
+    Derived from `_plan_digest` rather than hashed independently, which is what
+    the service does — so if the two digests agree, these agree too, and there
+    is one thing to keep in step rather than two.
+    """
+    material = f"{model or ''}\n{_plan_digest(plan, sends)}"
+    return "sha256:" + hashlib.sha256(material.encode()).hexdigest()[:32]
+
+
 def _now(counter=itertools.count()) -> str:
     """A monotonic ISO timestamp with microsecond resolution.
 
@@ -1109,7 +1120,7 @@ class FakeApi:
                 char = self._entity(self.characters, params["character"], "character")
                 found = [r for r in found
                          if char["id"] in (r.get("characters") or [])]
-            for field in ("model", "status"):
+            for field in ("model", "status", "fingerprint"):
                 if params.get(field):
                     found = [r for r in found if r.get(field) == params[field]]
             if params.get("since"):
@@ -1172,6 +1183,7 @@ class FakeApi:
                   "cost": None, "error": None, "payload": payload,
                   "input": body.get("input") or {}}
         record["plan_digest"] = _plan_digest(record["plan"], sends)
+        record["fingerprint"] = _fingerprint(record.get("model"), record["plan"], sends)
         self.runs[run_id] = record
         return self._run_view(record)
 
@@ -1269,6 +1281,8 @@ class FakeApi:
     def _revised(self, record: dict) -> dict:
         """Any plan or sends edit clears the approval. Hard rule #2, mechanically."""
         record["plan_digest"] = _plan_digest(record.get("plan"), record["sends"])
+        record["fingerprint"] = _fingerprint(record.get("model"), record.get("plan"),
+                                             record["sends"])
         record["approval"] = None
         record["status"] = "draft"
         return self._run_view(record)

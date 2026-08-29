@@ -3547,6 +3547,40 @@ def put_sends(run_id: str, entries: list[dict]) -> list[dict]:
 # ──────────────────────── the plan digest ────────────────────────
 
 
+def submission_fingerprint(model: str | None, plan: dict | None,
+                           send_entries: list[dict]) -> str:
+    """What makes two submissions the same one, projected so a query can find it.
+
+    **This retires a local file.** `engine/ledger.py` kept a per-machine list of
+    recently submitted payload hashes because a batch of 72 upscales was driven
+    twice — the harness reported the job finished when it had not, both passes
+    ran, ~46 images were generated twice and about $2.30 bought results that
+    overwrote each other. Nothing noticed, because `run` builds a payload and
+    sends it and every send is the first one as far as the pipeline knows.
+
+    Its own docstring named the right fix and declined to build it: the run store
+    could answer this, but the listing rows are a small projection and do not
+    carry the payload, so comparing meant one `GET /api/runs/<id>` per candidate
+    — on the order of 1800 requests before the first submit of that batch. So it
+    projects a fingerprint onto the listing row, and `GET /api/runs?fingerprint=`
+    is one query.
+
+    **Derived from `plan_digest` rather than hashed independently.** The plan IS
+    the payload and the sends ARE the bindings, so a second hash over the same
+    material would be a second answer to "is this the same submission" — and the
+    two would drift the first time either changed what it included. Only the
+    model is added, because two identical plans on different engines are
+    different submissions.
+
+    What this catches that the local file could not: a second machine, and a
+    colleague. What it still does not catch is a payload assembled differently
+    for the same intent — a fingerprint is a guard rail, not a lock.
+    """
+    return "sha256:" + hashlib.sha256(
+        f"{model or ''}\n{plan_digest(plan, send_entries)}".encode()
+    ).hexdigest()[:32]
+
+
 def plan_digest(plan: dict | None, send_entries: list[dict]) -> str:
     """A hash over everything a person approves: the plan AND the images.
 

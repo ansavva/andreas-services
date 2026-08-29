@@ -159,8 +159,11 @@ generative model with the same prompt is a normal thing to want, and the point
 is that it is a decision somebody makes rather than something a script does in
 silence.
 
-The ledger is local and per profile. It catches the same machine submitting
-twice, which is what happens; it does not catch a second machine.
+**It is a query against the run store, not a local file.** It used to be a
+per-machine list beside the credentials, which caught the same machine
+submitting twice — what actually happened — and nothing else. The fingerprint is
+recorded on the run now, so a second machine and a colleague are caught too. An
+unsubmitted draft never counts: repeating a `--dry-run` is ordinary.
 
 **An `owner/name` that is not a registry key runs off the live schema.** Trying
 a model before onboarding it had no supported path, so a four-way upscaler
