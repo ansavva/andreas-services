@@ -47,6 +47,7 @@ the reseat tests assert against nothing.
 from __future__ import annotations
 
 import datetime as dt
+import functools
 import hashlib
 import itertools
 import json
@@ -55,6 +56,7 @@ import re
 import urllib.parse
 import uuid
 
+from studio_pipeline import STUDIO_DIR
 from studio_pipeline.adapters import api
 
 BUCKET = "studio-prod-media-us-east-1"
@@ -65,6 +67,18 @@ BUCKET = "studio-prod-media-us-east-1"
 REEL_TYPES = ("image/", "video/")
 
 ORDER_GAP = 1000
+
+
+@functools.lru_cache(maxsize=1)
+def _committed_registry() -> dict:
+    """`backend/studio_core/models.json`, each entry carrying its own key.
+
+    Reached through `STUDIO_DIR` rather than a count of `".."` segments, for the
+    reason that constant exists: a count is right for exactly one file's depth.
+    """
+    path = STUDIO_DIR / "backend" / "studio_core" / "models.json"
+    models = json.loads(path.read_text())["models"]
+    return {key: {**entry, "key": key} for key, entry in models.items()}
 
 
 class FakeError(Exception):
@@ -335,6 +349,8 @@ class FakeApi:
     def _routes(self):
         return [
             (r"/api/libraries", self._r_libraries),
+            (r"/api/models", self._r_models),
+            (r"/api/models/(.+)", self._r_model),
             (r"/api/resolve", self._r_resolve),
             (r"/api/asset", self._r_asset),
             (r"/api/nodes", self._r_nodes),
@@ -384,6 +400,31 @@ class FakeApi:
         ]
 
     # ── node routes ─────────────────────────────────────────────────────────
+
+    def _r_models(self, method, body, params):
+        """`GET /api/models` — served from the committed file the API ships.
+
+        **Read off disk rather than hand-written here**, which is the opposite
+        of what the rest of this fake does and is deliberate. Every other route
+        answers from the in-memory library because the SHAPE is the thing under
+        test. The registry is different: it is real data that the pipeline's
+        `field` reads pick apart by dotted path, and a stub of it would let a
+        test pass against a model whose caps and field names nobody had checked
+        against the ones that ship. It is also the file the API itself loads, so
+        reading it here is the same source rather than a copy of it.
+        """
+        if method != "GET":
+            raise FakeError(405, f"{method} /api/models")
+        return {"models": _committed_registry()}
+
+    def _r_model(self, method, body, params, name):
+        if method != "GET":
+            raise FakeError(405, f"{method} /api/models/{name}")
+        models = _committed_registry()
+        for key, entry in models.items():
+            if name in (key, entry.get("model"), *(entry.get("aliases") or [])):
+                return {**entry, "key": key}
+        raise FakeError(404, f"no model {name}")
 
     def _r_libraries(self, method, body, params):
         return [{"id": self.lib, "name": "Studio", "root": self.root["id"]}]

@@ -69,7 +69,9 @@ README for limiting sentences and flags any that name a live schema value as a
 3. **Add `denied`** for anything the README says is unsupported but the schema
    still offers.
 4. **Write.** `--write` appends the entry to the registry. It writes nothing
-   else.
+   else. **The registry is the deployed service's file**, so the entry is a repo
+   change reviewed in the PR and it reaches production when the backend deploys.
+   A local dev API serves it immediately, which is where step 6 verifies.
 5. **Write the skill page** — see below. Nothing generates it for you.
 6. **Verify** before spending anything real:
    ```bash

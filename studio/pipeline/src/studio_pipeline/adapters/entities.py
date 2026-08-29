@@ -632,3 +632,18 @@ def _as_list(found) -> list[dict]:
     doing it once is cheaper than each caller guessing.
     """
     return found if isinstance(found, list) else []
+
+
+# ── the model registry ──────────────────────────────────────────────────────
+#
+# Not an entity, and here anyway, because this module is where a route string is
+# allowed to live — `test_no_route_string_lives_outside_the_adapters` enforces
+# that and is right to. The registry moved to the backend so that one copy could
+# answer the CLI, the SPA and `GET /api/characters/<id>/selection` at once;
+# `engine/registry.py` is the reader that gives it a query surface.
+
+
+def models() -> dict:
+    """Every registry entry, keyed by registry name."""
+    found = api.get("/api/models")
+    return (found or {}).get("models") or {} if isinstance(found, dict) else {}

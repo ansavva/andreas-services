@@ -34,6 +34,11 @@ ADAPTERS = pathlib.Path(E.__file__).parent
 WIRE_SURFACE = {
     # session / library
     "/api/libraries",
+    # the model registry, which is the backend's now — `engine/registry.py`
+    # reads it from here rather than off a file this package ships, so the API
+    # and the SPA measure a reference selection against the same entries the
+    # CLI does. `routes/characters.py` used to hold a three-family copy.
+    "/api/models",
     # the file layer, addressed by id
     "/api/resolve",
     # `/api/asset` is deliberately absent. It was the pipeline's one

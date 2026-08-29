@@ -19,6 +19,7 @@ from studio_core.errors import (
 from studio_core.routes.browse import bp as browse_bp
 from studio_core.routes.characters import bp as characters_bp
 from studio_core.routes.libraries import bp as libraries_bp
+from studio_core.routes.models import bp as models_bp
 from studio_core.routes.movies import bp as movies_bp
 from studio_core.routes.nodes import bp as nodes_bp
 from studio_core.routes.phrasebook import bp as phrasebook_bp
@@ -251,6 +252,7 @@ def create_app() -> Flask:
     app.register_blueprint(scenes_bp)
     app.register_blueprint(movies_bp)
     app.register_blueprint(phrasebook_bp)
+    app.register_blueprint(models_bp)
 
     @app.before_request
     def handle_preflight():

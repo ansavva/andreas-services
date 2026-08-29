@@ -40,6 +40,7 @@ from studio_pipeline.engine import add_model as AM
 from studio_pipeline.engine import ledger as LEDGER
 from studio_pipeline.engine import refs as REFS
 from studio_pipeline.engine import registry as REG
+from studio_pipeline.engine import registry_file as RF
 from studio_pipeline.engine import schema as MS
 from studio_pipeline.engine import submit as SUB
 
@@ -147,7 +148,7 @@ def cmd_models_refresh(model, json_):
             continue
         snap = MS.snapshot(props, schemas)
         snap["refreshed"] = dt.date.today().isoformat()
-        REG.save_snapshot(entry["key"], snap)
+        RF.save_snapshot(entry["key"], snap)
         print(f"  {entry['key']:<16} {len(snap) - 1} fields snapshotted")
     return 0
 

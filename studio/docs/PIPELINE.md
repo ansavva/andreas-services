@@ -94,7 +94,7 @@ was shown, not the next revision of it.
 `last_frame_image` / `seed` / `resolution`; Kling takes `start_image` /
 `end_image` / `mode` / `multi_prompt` and has no seed at all. Never assume a
 field carries over between them. Every model's inputs, caps and caveats live in
-the **registry** (`engine/models.json`), and the runner fetches the
+the **registry** (`backend/studio_core/models.json`, read over `GET /api/models`), and the runner fetches the
 target model's **live input schema** to reject unknown fields, bad enums and
 out-of-range numbers — plus documented constraints the schema does not enforce —
 before anything bills. Review the payload, then let the validator confirm the
@@ -225,7 +225,6 @@ studio/pipeline/
         │   └── templates/profile.yaml  reference_angles.yaml
         │
         ├── engine/                MODEL INVOCATION
-        │   ├── models.json        the REGISTRY — models are data, not code
         │   ├── resubmit.py        send a draft somebody already approved
         │   ├── runner.py          `studio run` / `studio models`
         │   ├── turnaround.py           `studio character turnaround` — the standard set
@@ -255,7 +254,7 @@ way: `cli` → `domain` → `adapters`.
 
 **Why `src/`.** Without it, Python puts the working directory first on the
 import path, so tests can pass against files that were never packaged. Both
-`models.json` and `profile.yaml` are package data reached at runtime; a wheel
+`profile.yaml` and the angle spec are package data reached at runtime; a wheel
 missing either fails only when someone runs the command. `src/` forces the
 tests to exercise the installed package.
 
@@ -320,7 +319,7 @@ API keys:
   `bytedance/seedance-2.0`, `kwaivgi/kling-v3-omni-video`, `google/veo-3.1`,
   `xai/grok-imagine-video`; image: `google/nano-banana-pro`,
   `google/nano-banana-2`, `openai/gpt-image-2`, `openai/gpt-image-1.5`.
-  `engine/models.json` is the list that is actually true.
+  the registry served at `GET /api/models` is the list that is actually true.
 
   **Put it in `~/.config/andreas-services/studio/dev.env`**, the file that
   already holds this machine's dev pool password:
@@ -670,7 +669,7 @@ about before.
 | `studio-media-scene`     | **A piece longer than one generation.** Chains video runs — each starting from the previous clip's last frame — then stitches them into one cut. Owns the chain loop, the continuity rules that keep shots cutting together, the per-shot verification gate, and the `multi_prompt`-cuts-vs-timing trade. Use when a shot outruns the model's duration ceiling or must read as one continuous take |
 | `studio-media-movie`     | **The tier above a scene.** Cuts a project's finished scenes into one piece. Owns the cut order and the movie-vs-longer-scene decision: cut a movie where a hard cut belongs (a change of place, time or subject); extend a scene where it must read as one take |
 | `studio-media-shot`      | **Orchestrates a whole shot**: reads a brief, shows the multi-step plan as JSON for approval, then renders a still and animates it — frame-first, one approval gate per billing step. Use when a brief describes motion or spans more than one studio-* call |
-| `studio-media-core`      | **The shared machinery.** The model **registry** (`models.json`), the one submit lifecycle, live-schema validation, and `studio run` — the runner that invokes *any* registered model. Models are DATA, not code |
+| `studio-media-core`      | **The shared machinery.** The model **registry** (the backend's `models.json`, served at `GET /api/models`), the one submit lifecycle, live-schema validation, and `studio run` — the runner that invokes *any* registered model. Models are DATA, not code |
 | `studio-media-add-model` | **Onboard a new Replicate model**: reads its live schema *and* its README, proposes a registry entry for review, then writes it to the registry. Also owns writing the new model's skill page — nothing generates it. The only way a model should be added |
 | `studio-media-image`     | The **frame-first workflow** for stills — why to render a frame before a video, run chaining, the approval gate, choosing between the image models. Model-agnostic; each model has its own skill |
 | `studio-media-nano-banana-pro` | `google/nano-banana-pro` — strongest all-round image model. Legible text, 4K, ≤14 refs, tunable safety filter. **Never set `allow_fallback_model`** — it reroutes to a different model than the one approved |
@@ -816,7 +815,8 @@ failure this directory has had once already.
 
 | Module | Purpose |
 |---|---|
-| `models.json` | **The registry.** Data, not code: single source of truth for every model. |
+| `registry.py` | **Reads the registry, over the wire.** `GET /api/models` via `adapters/entities.models`, memoised once per process. The file itself is `backend/studio_core/models.json` — it moved so the API and the SPA could measure a reference selection against the same entries the CLI does, which `ENGINE_CAPS` (three families of nine) had been standing in for. |
+| `registry_file.py` | **Writes it.** The repo file, for the only two commands that edit it — `add-model` and `models refresh`, both of which are really asking Replicate what a model accepts. Separate from the reader on purpose: reading works against any environment, writing is a reviewed repo change that reaches production on deploy. |
 | `registry.py` | Load / look up / list; snapshot saving for refreshes. |
 | `runner.py` | `studio run` — builds the payload and invokes *any* registered model. |
 | `submit.py` | The one submit lifecycle, image and video alike. |

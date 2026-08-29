@@ -28,6 +28,7 @@ be a name collision in the tree; the old fixture had `characters/subject-a` and
 """
 
 import copy
+import json
 import os
 import pathlib
 
@@ -67,7 +68,21 @@ from studio_pipeline import profiles as _profiles  # noqa: E402
 from studio_pipeline.adapters import api as _api  # noqa: E402
 from studio_pipeline.adapters import auth as _auth  # noqa: E402
 from studio_pipeline.adapters import store as _store  # noqa: E402
+from studio_pipeline.adapters import entities as _entities  # noqa: E402
 from studio_pipeline.engine import registry as _registry  # noqa: E402
+from studio_pipeline.engine import registry_file as _registry_file  # noqa: E402
+
+
+def _committed_models() -> dict:
+    """`backend/studio_core/models.json` — what `GET /api/models` answers with.
+
+    Read from `STUDIO_DIR` rather than from `_registry_file.PATH`, which the
+    fixture below redirects at a disposable copy: the point is the committed
+    bytes, and reading the copy would make this agree with whatever a test had
+    just written into it.
+    """
+    path = _pipeline.STUDIO_DIR / "backend" / "studio_core" / "models.json"
+    return json.loads(path.read_text())["models"]
 
 from tests.support.fake_api import BUCKET, FakeApi  # noqa: E402
 
@@ -128,12 +143,12 @@ _LOOPBACK = {"127.0.0.1", "::1", "localhost"}
 
 @pytest.fixture(autouse=True)
 def _registry_is_a_copy(monkeypatch, tmp_path):
-    """No test may write into `engine/models.json`. It is SOURCE.
+    """No test may write into `backend/studio_core/models.json`. It is SOURCE.
 
-    **This is a real incident, not a precaution.** `studio models refresh`
-    calls `REG.save_snapshot`, which rewrites the committed registry in place,
-    and `test_every_subcommand_dispatches` invokes every leaf command in the
-    tree — `models refresh` included. It survived only because the fetch it
+    **This is a real incident, not a precaution.** `studio models refresh` calls
+    `registry_file.save_snapshot`, which rewrites the committed registry in
+    place, and `test_every_subcommand_dispatches` invokes every leaf command in
+    the tree — `models refresh` included. It survived only because the fetch it
     makes first went to `api.replicate.com` over the network with the dud token
     above, got a 401, raised `SchemaError` and hit the `continue`. In other
     words the suite was making live calls to a model provider and depending on
@@ -151,8 +166,24 @@ def _registry_is_a_copy(monkeypatch, tmp_path):
     fail every test for an unrelated reason.
     """
     copy = tmp_path / "models.json"
-    copy.write_bytes(pathlib.Path(_registry.PATH).read_bytes())
-    monkeypatch.setattr(_registry, "PATH", str(copy))
+    copy.write_bytes(pathlib.Path(_registry_file.PATH).read_bytes())
+    monkeypatch.setattr(_registry_file, "PATH", str(copy))
+
+    # ── the READ path is separate now, and is faked at the WIRE ──
+    #
+    # Reading the registry is `GET /api/models`, memoised per process. Left
+    # alone that would make every test that asks a model a question need a
+    # signed-in fake — including a pile of pure-logic ones in `test_board.py`
+    # and `test_turnaround.py` that want nothing but a cap and a field name.
+    #
+    # So `entities.models` answers from the committed file, and NOT
+    # `registry._load`. Patching the loader would have stubbed out the memo, the
+    # alias map and the error handling along with the HTTP call — the whole
+    # module, in a suite whose job is to test it. Patching one function down,
+    # at the wire, leaves all of that real; `test_registry.py` undoes even this
+    # and lets the call reach `fake_api`.
+    monkeypatch.setattr(_entities, "models", _committed_models)
+    _registry._load.cache_clear()
 
 
 @pytest.fixture(autouse=True)

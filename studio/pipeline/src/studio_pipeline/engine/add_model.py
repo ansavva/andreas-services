@@ -42,6 +42,7 @@ import click
 
 from studio_pipeline.adapters import replicate as RA
 from studio_pipeline.engine import registry as REG
+from studio_pipeline.engine import registry_file as RF
 from studio_pipeline.engine import schema as MS
 
 # `errors.die`, not a copy re-exported from the HTTP adapter — see
@@ -241,14 +242,13 @@ def add_model(model, json_, key, write):
         print("\nnothing written. Re-run with --write to add it.", file=sys.stderr)
         return 0
 
-    data = json.load(open(REG.PATH))
-    if key in data["models"]:
-        die(f"registry key {key!r} is taken; pass --key to choose another.")
-    data["models"][key] = entry
-    with open(REG.PATH, "w") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-        f.write("\n")
-    print(f"\nwrote {key} to {REG.PATH}", file=sys.stderr)
+    try:
+        RF.add(key, entry)
+    except RF.RegistryFileError as exc:
+        die(str(exc))
+    print(f"\nwrote {key} to {RF.PATH}", file=sys.stderr)
+    print("      it reaches production when the backend deploys — the API serves "
+          "the registry now, so this is a repo change like any other.", file=sys.stderr)
     print(f"\nnext: studio models show {key}", file=sys.stderr)
     print(f"      then write {entry['skill']}'s SKILL.md — the `studio-media-add-model` "
           "skill covers what belongs on the page.", file=sys.stderr)

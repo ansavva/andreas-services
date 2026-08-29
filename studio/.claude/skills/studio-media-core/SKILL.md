@@ -39,6 +39,7 @@ the shared prose lives in one place rather than six:
 studio models                    # every registered model
 studio models show gpt-image-2   # entry + LIVE input schema + caveats
 studio models refresh            # re-snapshot schema enums into models.json
+                                 # (the backend's copy — it reaches prod on deploy)
 
 studio run --model <key> --project <project> --prompt "..." --character <name> \
   --name <file> --dry-run
@@ -92,6 +93,13 @@ error: openai/gpt-image-2 does not accept: ['input_fidelity']
 The registry is data — one JSON document that every studio-* tool reads, and the
 only thing you edit to add a model. `studio models show <key>` prints an entry
 alongside the live schema; `studio-media-add-model` is how a new one gets written.
+
+**It is the deployed service's document, and the CLI reads it from there.** It
+used to ship inside the pipeline, and the app kept a three-engine copy of the
+reference caps that disagreed with it — so a selection the CLI refused, the app
+allowed. One copy now, served to both. Two things follow: reading the registry
+needs a session like every other command, and a model added here reaches
+production when the backend deploys. Against a local dev API it is live at once.
 
 The code behind these commands is mapped in
 [docs/PIPELINE.md](../../../docs/PIPELINE.md#the-modules). The run store is
