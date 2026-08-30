@@ -75,7 +75,12 @@ export function useReelPlayback(currentKey: string | undefined): ReelPlayback {
   );
 
   /**
-   * Ref callbacks, memoised per key.
+   * Ref callbacks, memoised per id.
+   *
+   * **The caller must pass something unique per pane.** This map is a pane's
+   * identity for playback, so two panes sharing one string means one of them
+   * silently loses its element. `ReelView` passes the node id for that reason;
+   * it used to pass the file name, which collides constantly in an entity feed.
    *
    * An arrow function built inline in the render loop is a new identity every
    * render, which makes React detach and re-attach every mounted pane's ref on

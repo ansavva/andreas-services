@@ -90,7 +90,14 @@ export function ReelView({
 
   const { isFullscreen, supported, toggle } = useFullscreen(containerRef);
   const currentItem = items[current];
-  const playback = useReelPlayback(currentItem?.key);
+  // **The NODE ID, not the key.** `key` is a display name, and in an entity
+  // feed — a scene's board, a run's outputs — it is a bare filename that is
+  // routinely not unique: every Kling run writes `video.mp4`, so a scene with
+  // five shots registered five different <video> elements under one key. The
+  // map held whichever mounted last, so the element `play()` was called on was
+  // not the pane on screen and the clip simply never started. An id is unique
+  // by construction — `dedupe` is on it.
+  const playback = useReelPlayback(currentItem?.id);
 
   // Open on the item that was clicked rather than at the top. Runs once, and
   // only after the pane exists — `startIndex` may be past the first page.
@@ -245,7 +252,7 @@ export function ReelView({
                   file={item}
                   active={index === current}
                   muted={playback.muted}
-                  onVideoRef={playback.register(item.key)}
+                  onVideoRef={playback.register(item.id)}
                 />
               ) : (
                 // Outside the window the pane keeps its height (so scroll
