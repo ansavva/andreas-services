@@ -923,7 +923,9 @@ nothing accepts one back.
 | `POST /api/runs/<id>/outputs` · `/response` | An upload URL per output; the provider's response stored as a payload blob |
 | `GET \| POST /api/scenes` · `GET \| PATCH \| DELETE /api/scenes/<id>` | The scene record |
 | `PATCH /api/scenes/<id>/shots` · `/shots/<shot_id>` | The plan: revise it, or change one shot |
-| `POST /api/scenes/<id>/output` · `POST /api/movies/<id>/output` | Upload URL for the stitched file. **ffmpeg is not here** — the CLI stitches and uploads |
+| `POST /api/scenes/<id>/output` · `POST /api/movies/<id>/output` | Upload URL for a cut made elsewhere. The render path does not use it |
+| `POST /api/renders` · `GET /api/renders/<id>` | **Enqueue an encode, and poll the row.** A stitch, a frame grab, a contact grid or a contact sheet, done by a second container image with `ffmpeg` in it |
+| `POST /api/images/convert` · `/api/images/crop` | The two image operations that are **not** on that queue — sub-second, so synchronous, with Pillow and no ffmpeg |
 | `GET \| POST /api/movies` · `GET \| PATCH \| DELETE /api/movies/<id>` · `PATCH /api/movies/<id>/scenes` | The tier above |
 | `GET \| POST /api/phrasebook` · `DELETE /api/phrasebook/<model>/<avoid>` | The wording lists, as `TERM#` rows |
 

@@ -511,6 +511,12 @@ def _output_node(record: dict) -> str | None:
     return (output or {}).get("node")
 
 
+#: The same normaliser, under a name a module outside this one may say. Both
+#: shapes are live — a bare id is what prod was written in — and `services/render`
+#: has to read the displaced cut off a raw record before it writes the new one.
+output_node = _output_node
+
+
 # --------------------------------------------------------------------------
 # revising — a re-ingest must not orphan work already paid for
 # --------------------------------------------------------------------------
@@ -650,3 +656,32 @@ def merge_panels(previous: dict, revised: dict) -> list[dict]:
                     _text(panel.get("prompt")) != _text(was.get("prompt")))
         merged.append(panel)
     return merged
+
+
+def keep_cut(record: dict, node_id: str | None) -> list[dict]:
+    """The cuts this scene or movie has been assembled into before the current one.
+
+    **Re-cutting overwrote the only pointer to the previous take.** A scene holds
+    one `output` — deliberately, because a scene *is* one take — but assembling
+    is not a one-shot act: a shot gets re-rendered and the scene is cut again,
+    and the stitched file that was there is then reachable by nobody.
+
+    Same shape and same rules as `keep_take` above: only a node actually being
+    displaced is pushed, and a node already in the list is not pushed twice, so
+    the repeated writes that a single assemble makes cannot grow the history.
+
+    **It lives here rather than in `routes/support.py`, where it was written.**
+    The assemble that displaces a cut runs in the render worker now, which has no
+    Flask request and must not import a route module to reach a pure function.
+    `support.keep_cut` delegates, so there is one implementation and the route
+    keeps its name.
+    """
+    was = _output_node(record)
+    cuts = [dict(cut) for cut in (record.get("cuts") or [])]
+    if not was or was == node_id:
+        return cuts
+    if any(cut.get("node") == was for cut in cuts):
+        return cuts
+    stored = record.get("output")
+    stored = {} if isinstance(stored, str) else dict(stored or {})
+    return [{**stored, "node": was}, *cuts]

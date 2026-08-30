@@ -76,20 +76,30 @@ still there to restore. A per-machine dev stack has no versioning, deliberately
 via `dev-aws-reset.sh`, and version history would only slow the teardown and
 bill for bytes nobody restores. Against dev, a re-cut destroys the previous one.
 
-STITCHING STAYS LOCAL, AND THAT IS DELIBERATE
----------------------------------------------
-`ffmpeg` ships in this wheel (`imageio-ffmpeg`) and the Lambda behind the API
-has none, so `assemble` downloads each rendered shot, stitches here, uploads the
-result through the URL `POST /api/scenes/<id>/output` signs, and then `PATCH`es
-the record with the cut. **The API owns the record; it does not own the encode.**
-Moving the encode server-side would mean putting a video toolchain in a function
-whose request limit is 6 MB, to save a hop that has to happen anyway because the
-shots are being copied in regardless.
+STITCHING MOVED INTO THE SERVICE, AND THIS SECTION USED TO ARGUE THE OPPOSITE
+-----------------------------------------------------------------------------
+It said: `ffmpeg` ships in this wheel and the Lambda behind the API has none, so
+`assemble` downloads each rendered shot, stitches here and uploads the result —
+"the API owns the record; it does not own the encode". That was sound reasoning
+about a fact, and the fact was an image.
 
-`adapters/ffmpeg.py` is the same layer `movies.py` uses, so a scene and a movie
-join their inputs by identical rules: stream-copy when everything already
-agrees, re-encode to the first input's geometry (and say so on the record) when
-it does not.
+`assemble` now resolves each shot to a video node, enqueues **one render job**
+and waits for it. The worker downloads, copies each shot into `shots/`, stitches,
+uploads the cut and records it on the scene — and it does the last of those
+because a cut that reached the bucket and never reached the record is the exact
+failure `SCENE_FIELDS` was widened to fix.
+
+Two things the old argument got right, kept:
+
+* **The joining rules are shared with a movie.** `backend/studio_core/media/ffmpeg.py`
+  is the same layer `movies` goes through, so a scene and a movie join their
+  inputs identically: stream-copy when everything already agrees, re-encode to
+  the first input's geometry when it does not — **and say so on the record**.
+  That last clause is the one thing that must never be lost in a port: a worker
+  that re-encoded silently would be a quality regression nobody could see.
+* **Resolution stays here.** `latest`, `#N`, "this run has three clips", "this
+  shot has not been rendered" are refusals with an action in them, and a person
+  should read them before a job is queued rather than after one fails.
 
 CLI
 ---
@@ -108,25 +118,16 @@ beside the submit lifecycle they drive, not here.
 from __future__ import annotations
 
 import json
-import mimetypes
-import os
-import pathlib
 import sys
-import tempfile
 
 import click
 
-from studio_pipeline.adapters.ffmpeg import (  # noqa: E402  — shared with movies.py and frames.py
-    grab,
-    probe,
-    stitch,
-)
 from studio_pipeline.adapters import api, entities, store  # noqa: E402
 from studio_pipeline.errors import die  # noqa: E402
 from studio_pipeline import errors  # noqa: E402
-from studio_pipeline.domain import contact_sheet  # noqa: E402  — a board is read by looking
 from studio_pipeline.domain import frames as FRAMES  # noqa: E402  — the pool and the grab
 from studio_pipeline.domain import paths as P  # noqa: E402  — the slug rule
+from studio_pipeline.domain import renders as RENDER  # noqa: E402  — the encode lives there now
 from studio_pipeline.domain import projects as PROJECTS  # noqa: E402
 from studio_pipeline.domain import (
     runs as R,  # noqa: E402  — the run store; scenes are built from its records
@@ -386,19 +387,24 @@ def shot_video_node(shot: dict, project: str) -> str | None:
 
 def assemble(record: dict, refs: tuple[str, ...] = (),
              dest_dir: str | None = None) -> dict:
-    """Copy each rendered shot in, stitch them LOCALLY, and record the cut.
+    """Resolve every shot to a clip, ask the service to cut them, record the cut.
 
     Two ways in, and they are the same code path. Normally the shots come from
     the scene's own plan, each one already rendered. `--shot <runref>` appends
     runs directly instead, which is what makes the pre-storyboard one-liner —
-    "just stitch these three runs" — still a one-liner: a scene with no plan
-    plus a list of runrefs is exactly the old behaviour.
+    "just stitch these three runs" — still a one-liner: a scene with no plan plus
+    a list of runrefs is exactly the old behaviour.
 
-    **The encode is here and not in the API.** `ffmpeg` ships in this wheel and
-    the Lambda has none, so the bytes come down, `adapters/ffmpeg` joins them,
-    and the result goes up through the URL `POST /api/scenes/<id>/output` signs.
-    The API then owns the record — `PATCH` writes the output node, the stitch
-    report and the assembly time — and owns nothing about how the file was made.
+    **The encode is a render job now.** This resolves, enqueues one job and waits;
+    the worker downloads each clip, copies it into `shots/`, stitches, uploads the
+    cut and writes `output`, `stitch`, `cuts` and `assembled` onto the scene. What
+    stays here is every refusal a person can act on — an unrendered shot, an
+    ambiguous runref — because those belong in front of the person and not at the
+    far end of a queue.
+
+    The bytes no longer pass through this machine at all, which is the whole
+    saving: a four-shot 1080p scene used to move roughly a gigabyte through a
+    terminal to produce a file that then went back up.
     """
     project = record["project"]
     shots = list(scene_shots(record))
@@ -407,12 +413,10 @@ def assemble(record: dict, refs: tuple[str, ...] = (),
     for ref in refs:
         run = R.resolve_run(ref, default_project=project)
         nodes = R.resolve_output_nodes(ref, default_project=project, kinds=VIDEO_EXT)
-        if len(nodes) > 1:
-            die(f"{ref}: {len(nodes)} videos; append #N to pick one")
         characters.update(run.get("characters") or [])
         n = len(shots) + 1
         shots.append({"n": n, "id": f"shot-{n:02d}", "runref": ref,
-                      "run": run["id"], "node": nodes[0]})
+                      "run": run["id"], "node": RENDER.one_video(nodes, ref)})
 
     if not shots:
         die(f"{record['slug']} has no shots — plan some, or pass --shot <runref>")
@@ -422,63 +426,38 @@ def assemble(record: dict, refs: tuple[str, ...] = (),
         die(f"{len(unrendered)} shot(s) have not been rendered: {', '.join(unrendered)}\n"
             f"       studio scenes render {record['slug']} --shot <n>")
 
-    slug = record.get("slug")
     print(f"scene {record['slug']}  ({record['id']})")
-
-    tmp = tempfile.mkdtemp(prefix="scene-")
-    shots_folder = scene_folder(record, SHOTS_FOLDER)
-    local: list[str] = []
+    parts = []
     for n, shot in enumerate(shots, 1):
-        src = shot_video_node(shot, project)
-        name = store.node(src).get("name") or f"{src}.mp4"
-        ext = os.path.splitext(name)[1] or ".mp4"
-        lp = os.path.join(tmp, f"shot-{n:02d}{ext}")
-        store.download_node(src, pathlib.Path(lp))
-        local.append(lp)
-        shot["n"] = n
-        shot["node"] = src
-        # A read plus a write, where this was a server-side `CopyObject`. The
-        # bytes travel through this process and for a scene they are video —
-        # accepted because the alternative is worse: a second node pointing at
-        # one blob is copy-on-write (#334), and the API's delete route destroys
-        # the shared bytes when either row goes. The file is already local from
-        # the download above, so the extra cost is one PUT per shot.
-        copied = store.upload_into(
-            shots_folder, f"shot-{n:02d}{ext}", pathlib.Path(lp),
-            content_type=mimetypes.guess_type(lp)[0] or "application/octet-stream")
-        shot["shot_node"] = copied["id"]
+        # Resolved HERE, not in the worker. A shot that recorded no node has to
+        # be looked up through its run, and a run with three clips is a question
+        # for a person — `one_video` is where that refusal lives.
+        parts.append(RENDER.part(shot_video_node(shot, project),
+                                 run=shot.get("run"), shot=shot.get("id")))
         print(f"  shot {n}: {shot['run']}")
 
-    out_local = os.path.join(tmp, f"{R.slugify(slug)}.mp4")
-    info = stitch(local, out_local, label="shots")
-    for shot, pr in zip(shots, info.pop("probes")):
-        shot["duration"] = pr["duration"]
+    result = RENDER.submit("assemble", {"target": record["id"], "parts": parts,
+                                        "characters": sorted(characters)},
+                           what="the cut")
 
     superseded = scene_output_node(record)
-    # A NEW node per cut, so the one before it stays reachable. Numbered from
-    # what the record already holds rather than from the folder, because the
-    # record is what `cuts` is read off and a stray file in the folder must not
-    # be able to renumber a history that does not include it.
-    take = len(record.get("cuts") or []) + (1 if superseded else 0) + 1
-    name = f"{R.slugify(slug)}.mp4" if take == 1 else f"{R.slugify(slug)}-{take}.mp4"
-    signed = entities.scene_output(record["id"], name,
-                                   os.path.getsize(out_local), "video/mp4")
-    store.upload_to_url(signed, pathlib.Path(out_local))
+    # Re-read rather than restated: the worker wrote the output, the stitch report
+    # and the shot rows, so the record it produced is the current one and anything
+    # this process asserted would be a second opinion.
+    record = with_project(entities.get_scene(record["id"]))
 
-    entities.patch_scene(record["id"], characters=sorted(characters), stitch=info,
-                         output={"node": signed["node"], **probe(out_local)},
-                         assembled=R._now())
-    record = save_shots(entities.get_scene(record["id"]), shots)
-
+    if result.get("re_encoded"):
+        # **Said out loud, because it is a quality fact about the file.** The
+        # stitcher normalises to the first input's geometry when the shots
+        # disagree, and the report on the record says so — but a person watching
+        # a terminal should not have to go and read the record to find out.
+        print(f"  ({result['stitch']['method']})")
     if superseded:
         print(f"  (the previous cut is kept — {superseded} — and listed under "
               f"`cuts` on the scene)")
 
     if dest_dir:
-        os.makedirs(dest_dir, exist_ok=True)
-        keep = os.path.join(dest_dir, os.path.basename(out_local))
-        os.replace(out_local, keep)
-        record = {**record, "local": keep}
+        record = {**record, "local": RENDER.fetch(result["output"], dest_dir)}
     return record
 
 
@@ -492,9 +471,14 @@ def handoff(record: dict, n: int, from_run: str | None = None) -> dict:
     third record — `storyboard.scene_frames` reads the sequence back off the
     shot rows, so the scene's own frames cannot drift from the scene.
 
-    It is one `PATCH /api/scenes/<id>/shots/<shot_id>`, not a rewrite of the
-    plan. A whole-document write was the only option while the plan was one
-    JSON file, and it meant two handoffs recorded at once fought over it.
+    **The grab is a render job and the patch is not.** Pulling a frame needs
+    ffmpeg and a clip; writing `opens_on` onto a shot is one `PATCH` on a node id.
+    Keeping the second here means the worker's contract stays "one node out" and
+    nothing about the plan is decided inside an encoder.
+
+    It is one `PATCH /api/scenes/<id>/shots/<shot_id>`, not a rewrite of the plan.
+    A whole-document write was the only option while the plan was one JSON file,
+    and it meant two handoffs recorded at once fought over it.
     """
     shots = scene_shots(record)
     by_n = {shot.get("n") or i: shot for i, shot in enumerate(shots, 1)}
@@ -508,11 +492,15 @@ def handoff(record: dict, n: int, from_run: str | None = None) -> dict:
         die(f"shot {previous.get('id')} has not been rendered, so it has no last frame\n"
             f"       studio scenes render {record['slug']} --shot {n - 1}")
 
-    tmp = tempfile.mkdtemp(prefix="handoff-")
-    run, src = FRAMES.fetch_video(ref, record["project"], tmp)
-    local = grab(src, None, os.path.join(tmp, f"{run['id']}_last.png"), from_end=0.2)
+    run, video = FRAMES.resolve_video(ref, record["project"])
     project = PROJECTS.resolve(record["project"])
-    node = FRAMES.add_to_input_pool(project, local)
+    result = RENDER.submit("frame", {
+        "node": video,
+        "from_end": 0.2,
+        "dest": store.ensure_child_folder(project["root"], P.INPUT_FOLDER)["id"],
+        "name": f"{run['id']}_last.png",
+    }, what="the handoff frame")
+    node = result["frame"]["node"]
 
     entities.patch_shot(record["id"], shot["id"], continues=True,
                         opens_on={"node": node, "from_run": run["id"]})
@@ -625,7 +613,7 @@ def do_new(project, force, from_json, part, shot, slug, title):
 @click.option("--shot", multiple=True,
               help=("a run output to append, in cut order. Repeatable. Accepts "
                     "<project>/<slug>, a run id, a unique slug fragment, or #N."))
-@errors.reports(R.RunError, api.ApiError)
+@errors.reports(R.RunError, api.ApiError, RENDER.RenderError)
 def do_assemble(ref, dest, project, shot):
     """Cut a scene's rendered shots into one continuous take."""
     record = assemble(resolve_scene(ref, project), shot, dest)
@@ -641,7 +629,7 @@ def do_assemble(ref, dest, project, shot):
 @click.option("--project")
 @click.option("--shot", type=int, required=True,
               help="the shot that should OPEN on this frame")
-@errors.reports(R.RunError, api.ApiError)
+@errors.reports(R.RunError, api.ApiError, RENDER.RenderError)
 def do_handoff(ref, from_run, project, shot):
     """Carry the previous shot's last frame into the next one."""
     handoff(resolve_scene(ref, project), shot, from_run)
@@ -667,7 +655,7 @@ def do_plan(ref, project, prompts):
 @click.option("--cols", type=int, default=4)
 @click.option("--out", help="where to write the sheet (default: a temp directory)")
 @click.option("--project")
-@errors.reports(api.ApiError)
+@errors.reports(api.ApiError, RENDER.RenderError)
 def do_sheet(ref, cols, cell, out, project):
     """The whole board as one captioned contact sheet.
 
@@ -680,23 +668,21 @@ def do_sheet(ref, cols, cell, out, project):
         die(f"{record['slug']} has no panels yet — studio scenes board "
             f"{record['id']}")
 
-    tmp = tempfile.mkdtemp(prefix="board-")
-    paths, labels = [], []
-    for node, caption in captions:
-        name = store.node(node).get("name") or f"{node}.png"
-        lp = os.path.join(tmp, name)
-        store.download_node(node, pathlib.Path(lp))
-        paths.append(lp)
-        labels.append(caption)
-    dest = os.path.join(out or tmp, f"{record['slug']}-board.png")
-    local = contact_sheet.build(paths, dest, cols=cols, cell=cell, captions=labels)
-    # The board is the thing someone looks at to judge the scene. Leaving it on
-    # local disk means only whoever ran the command can see it.
-    node = store.upload_into(scene_folder(record, REVIEW_FOLDER), "board.png",
-                             pathlib.Path(local), content_type="image/png")
-    print(node["id"])
+    # **Captions are given, so the order is authoritative.** A board's tiles read
+    # in shot order and say which panel each one is; natural-sorting them by
+    # filename would renumber the thing the sheet exists to communicate.
+    result = RENDER.submit("sheet", {
+        "parts": [RENDER.part(node, caption=caption) for node, caption in captions],
+        "cols": cols, "cell": cell,
+        "dest": scene_folder(record, REVIEW_FOLDER),
+        "name": "board.png",
+    }, what="the board")
+    # The board is the thing someone looks at to judge the scene, and it is in
+    # `review/` whether or not `--out` was given — leaving it only on local disk
+    # would mean only whoever ran the command could see it.
+    print(result["sheet"]["node"])
     if out:
-        print(f"  (local copy: {local})")
+        print(f"  (local copy: {RENDER.fetch(result['sheet'], out)})")
 
 
 @main.command("list")

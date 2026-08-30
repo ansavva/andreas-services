@@ -20,6 +20,7 @@ local development pointed at production. It does not any longer — see the root
 | `compute` | ECR repo, the API Lambda, and its IAM — the bucket, the table, *and* the provider token |
 | `api_gateway` | REST API, Cognito authorizer, CORS gateway responses, stage |
 | `callbacks` | **Where a finished generation is reported.** Its own HTTP API, a receiver Lambda, SQS + a DLQ, and — in prod only — the worker that closes the run. **Both environments.** |
+| `render` | **Where a scene is cut.** SQS + a DLQ, a **second** ECR repo, and — in prod only — a worker Lambda running an image that carries `ffmpeg`. Its own execution role, unlike the callback worker's. **Both environments** (dev gets the queue and drains it from a laptop). |
 | `api_domain` | `studio-api.andreas.services` custom domain + Route53 record |
 | `hosting` | The SPA's S3 bucket, CloudFront, OAC, SPA-fallback function |
 | `dev_storage` | **dev only.** `media` + `catalog` with every guard removed |
@@ -372,6 +373,7 @@ studio-dev-<short12>-media-us-east-1             the dev media bucket
 studio-dev-<short12>-catalog                     the dev catalog table
 studio-dev-<short12>-callbacks                   the callback queue (+ -dlq)
 studio-dev-<short12>-callback-receiver           the Lambda Replicate calls
+studio-dev-<short12>-render                      the render queue (+ -dlq)
 ```
 
 **The last two are the exception to "this environment declares no Lambda and no
@@ -392,6 +394,15 @@ tree. An apply is still seconds.
 A stack applied before this landed has neither, and everything else about it
 works: `dev-up.sh` says so once and a finished generation waits for `studio runs
 reconcile <run>`.
+
+**The render queue is the same arrangement, one queue over, and it declares no
+Lambda at all.** `envs/dev` passes `create_ecr = false` and `create_worker =
+false`: a per-machine image build would cost minutes per apply, and the render
+image is the larger of the two because it carries `ffmpeg`. So the queue exists
+and `dev-up.sh` drains it with `handlers/local/consumer/render_consumer.py` — the
+working tree, against `imageio-ffmpeg`'s bundled binary, which is the same
+encoder prod runs. A stack with no render queue can browse and generate and
+cannot stitch; `dev-up.sh` says so once and names the re-apply.
 
 `<short12>` is the first twelve hex characters of the UUID. `dev-aws-common.sh`
 computes it as `RESOURCE_PREFIX` and passes it in; `envs/dev` never generates

@@ -398,9 +398,10 @@ fi
 if command -v ffmpeg >/dev/null 2>&1; then
   log "optional tool found: ffmpeg"
 else
-  warn "optional tool missing: ffmpeg — used to verify rendered frames and to"
-  warn "  stitch scenes and movies (brew install ffmpeg). The scene/movie"
-  warn "  scripts vendor imageio-ffmpeg, so this is only needed for hand checks."
+  warn "optional tool missing: ffmpeg — for hand checks only (brew install ffmpeg)."
+  warn "  studio does not need it: stitching a scene, pulling a frame and building"
+  warn "  a contact sheet are render jobs done by the service, and the local"
+  warn "  consumer dev-up.sh runs uses the backend's own imageio-ffmpeg."
 fi
 
 log "done."

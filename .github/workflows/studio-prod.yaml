@@ -63,6 +63,13 @@ env:
   AWS_REGION: us-east-1
   API_ECR_REPO: studio-prod-api
   API_LAMBDA_NAME: studio-prod-api
+  # THE SECOND IMAGE. `Dockerfile.render` is `Dockerfile` plus one Poetry group
+  # (`imageio-ffmpeg`) and a different CMD, so the two cannot drift in
+  # application code — but ffmpeg is ~80 MB, and the API image is pulled on
+  # every cold start of a function that answers folder listings. See
+  # `studio/infra/modules/render/main.tf`.
+  RENDER_ECR_REPO: studio-prod-render
+  RENDER_LAMBDA_NAME: studio-prod-render
 
 jobs:
   detect-changes:
@@ -160,18 +167,30 @@ jobs:
           # on a fresh account (no repository, and no prior state for a `moved`
           # block to collide with), and refactors stop being able to break the
           # pipeline through a step that had no work to do.
-          if aws ecr describe-repositories \
-               --repository-names "${{ env.API_ECR_REPO }}" >/dev/null 2>&1; then
-            echo "${{ env.API_ECR_REPO }} already exists — nothing to bootstrap."
+          # TWO REPOSITORIES SINCE THE RENDER WORKER LANDED, AND BOTH ARE
+          # CHECKED. A deploy that bootstrapped only the API's would push the
+          # render image into nothing on a fresh account — and on an existing
+          # account the render repository is the one that does not exist yet,
+          # which is the case this run is.
+          missing=()
+          for repo in "${{ env.API_ECR_REPO }}" "${{ env.RENDER_ECR_REPO }}"; do
+            aws ecr describe-repositories --repository-names "$repo" >/dev/null 2>&1 \
+              || missing+=("$repo")
+          done
+
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "both image repositories already exist — nothing to bootstrap."
             exit 0
           fi
 
-          echo "${{ env.API_ECR_REPO }} not found — bootstrapping it."
+          echo "missing: ${missing[*]} — bootstrapping."
           terraform -chdir=studio/infra/envs/prod init -input=false
           terraform -chdir=studio/infra/envs/prod apply \
             -auto-approve -input=false \
             -target=module.compute.aws_ecr_repository.api \
-            -target=module.compute.aws_ecr_lifecycle_policy.api
+            -target=module.compute.aws_ecr_lifecycle_policy.api \
+            -target=module.render.aws_ecr_repository.render \
+            -target=module.render.aws_ecr_lifecycle_policy.render
 
   # ---------------------------------------------------------------------------
   # Build and push the API image.
@@ -209,6 +228,26 @@ jobs:
           set -euo pipefail
           IMAGE="${ECR_REGISTRY}/${{ env.API_ECR_REPO }}"
           docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" studio/backend
+          docker push "${IMAGE}:${{ github.sha }}"
+          docker push "${IMAGE}:latest"
+
+      # THE RENDER IMAGE. SAME CONTEXT, DIFFERENT DOCKERFILE.
+      #
+      # `studio/backend` for both, deliberately: the two images share
+      # `pyproject.toml`, `poetry.lock` and the whole of `studio_core`, and
+      # building them from one context is what makes that structural rather than
+      # a convention somebody maintains. The delta is `--only main,render`
+      # instead of `--only main`, and a different `CMD`.
+      #
+      # It is tagged with the same sha as the API's, so `update-lambda` can pin
+      # all three functions to one commit and a reader can tell at a glance that
+      # they are the same tree.
+      - name: Build & push render worker (studio-prod-render)
+        run: |
+          set -euo pipefail
+          IMAGE="${ECR_REGISTRY}/${{ env.RENDER_ECR_REPO }}"
+          docker build -f studio/backend/Dockerfile.render \
+            -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" studio/backend
           docker push "${IMAGE}:${{ github.sha }}"
           docker push "${IMAGE}:latest"
 
@@ -281,6 +320,13 @@ jobs:
           # The consumer's function name, so the step below can pin its image
           # alongside the API's. Both run the SAME image at different handlers.
           put /studio/prod/callback-worker       "$(tf callback_worker_function_name)"
+          # The render worker, which runs a DIFFERENT image — and the queue the
+          # API enqueues onto. The queue URL travels through SSM for the same
+          # reason the callback base URL does: `modules/compute`'s `environment`
+          # block carries `ignore_changes` and applies once at creation, and this
+          # workflow is what sets every variable on a running function.
+          put /studio/prod/render-worker         "$(tf render_worker_function_name)"
+          put /studio/prod/render-queue-url      "$(tf render_queue_url)"
 
   # ---------------------------------------------------------------------------
   # Set the Lambda's env vars and pin its code to :sha.
@@ -368,6 +414,8 @@ jobs:
           CLIENT_ID=$(get cognito-client-id)
           CALLBACK_URL=$(get callback-base-url)
           WORKER=$(get callback-worker)
+          RENDER_QUEUE=$(get render-queue-url)
+          RENDER_WORKER=$(get render-worker)
 
           # THIS BLOCK, NOT TERRAFORM, IS WHAT SETS THE LAMBDA'S ENVIRONMENT.
           # The function carries `ignore_changes = [environment]`, so the
@@ -403,6 +451,7 @@ jobs:
                 --arg pool "${POOL_ID}" \
                 --arg client "${CLIENT_ID}" \
                 --arg callback "${CALLBACK_URL}" \
+                --arg renderq "${RENDER_QUEUE}" \
             '{Variables: {
               STUDIO_MEDIA_BUCKET:              $bucket,
               STUDIO_MEDIA_ROOT_PREFIX:         $prefix,
@@ -411,6 +460,7 @@ jobs:
               STUDIO_COGNITO_USER_POOL_ID:      $pool,
               STUDIO_COGNITO_CLIENT_ID:         $client,
               STUDIO_WEBHOOK_BASE_URL:          $callback,
+              STUDIO_RENDER_QUEUE_URL:          $renderq,
               STUDIO_REPLICATE_TOKEN_PARAMETER: "/studio/prod/replicate-api-token"
             }}' > /tmp/env-api.json
 
@@ -445,23 +495,55 @@ jobs:
             --function-name "${WORKER}" --region "${{ env.AWS_REGION }}"
           echo "WORKER=${WORKER}" >> "$GITHUB_ENV"
 
+          # THE RENDER WORKER, WHICH RUNS A DIFFERENT IMAGE.
+          #
+          # The bucket and the table, and deliberately nothing else. **No
+          # provider-token parameter**: this function never calls Replicate — it
+          # joins files that are already in the library — and it runs under a role
+          # of its own that is not granted the token. A variable it cannot use is
+          # a variable somebody later assumes it can. No queue URL either: it is
+          # driven by an event source mapping and never reads one.
+          jq -n --arg bucket "${MEDIA_BUCKET}" \
+                --arg prefix "" \
+                --arg table "${CATALOG_TABLE}" \
+            '{Variables: {
+              STUDIO_MEDIA_BUCKET:      $bucket,
+              STUDIO_MEDIA_ROOT_PREFIX: $prefix,
+              STUDIO_CATALOG_TABLE:     $table
+            }}' > /tmp/env-render.json
+
+          aws lambda update-function-configuration \
+            --function-name "${RENDER_WORKER}" \
+            --region "${{ env.AWS_REGION }}" --environment file:///tmp/env-render.json
+          aws lambda wait function-updated \
+            --function-name "${RENDER_WORKER}" --region "${{ env.AWS_REGION }}"
+          echo "RENDER_WORKER=${RENDER_WORKER}" >> "$GITHUB_ENV"
+
       - name: Update Lambda function code
         run: |
           set -euo pipefail
-          # **Both functions, pinned to the same sha.** They are one image
-          # entered at two handlers, so a partial update leaves the thing that
-          # CLOSES a run on different code from the thing that SUBMITS one —
-          # which fails in the least visible way there is, at the end of a
-          # generation somebody has already paid for.
-          for fn in "${{ env.API_LAMBDA_NAME }}" "${WORKER}"; do
+          pin() {
             aws lambda update-function-code \
-              --function-name "$fn" \
-              --image-uri "${ECR_REGISTRY}/${{ env.API_ECR_REPO }}:${{ github.sha }}" \
+              --function-name "$1" --image-uri "$2" \
               --region "${{ env.AWS_REGION }}" \
               --output table --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
             aws lambda wait function-updated \
-              --function-name "$fn" --region "${{ env.AWS_REGION }}"
+              --function-name "$1" --region "${{ env.AWS_REGION }}"
+          }
+
+          # **Three functions, two images, one sha.** The API and the callback
+          # worker are one image entered at two handlers; the render worker is a
+          # second image built from the same context and the same commit.
+          #
+          # A partial update is the failure worth naming: it leaves the thing that
+          # CLOSES a run on different code from the thing that SUBMITS one, or the
+          # thing that CUTS a scene on different code from the thing that records
+          # the cut — both of which fail in the least visible way there is, at the
+          # end of work somebody has already waited for.
+          for fn in "${{ env.API_LAMBDA_NAME }}" "${WORKER}"; do
+            pin "$fn" "${ECR_REGISTRY}/${{ env.API_ECR_REPO }}:${{ github.sha }}"
           done
+          pin "${RENDER_WORKER}" "${ECR_REGISTRY}/${{ env.RENDER_ECR_REPO }}:${{ github.sha }}"
 
       - name: Smoke-check the API
         run: |

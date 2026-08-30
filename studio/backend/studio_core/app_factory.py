@@ -18,6 +18,7 @@ from studio_core.errors import (
 )
 from studio_core.routes.browse import bp as browse_bp
 from studio_core.routes.characters import bp as characters_bp
+from studio_core.routes.images import bp as images_bp
 from studio_core.routes.libraries import bp as libraries_bp
 from studio_core.routes.models import bp as models_bp
 from studio_core.routes.movies import bp as movies_bp
@@ -25,6 +26,7 @@ from studio_core.routes.nodes import bp as nodes_bp
 from studio_core.routes.phrasebook import bp as phrasebook_bp
 from studio_core.routes.projects import bp as projects_bp
 from studio_core.routes.prompt import bp as prompt_bp
+from studio_core.routes.renders import bp as renders_bp
 from studio_core.routes.runs import bp as runs_bp
 from studio_core.routes.scenes import bp as scenes_bp
 from studio_core.services import catalog, identity
@@ -254,6 +256,12 @@ def create_app() -> Flask:
     app.register_blueprint(movies_bp)
     app.register_blueprint(phrasebook_bp)
     app.register_blueprint(models_bp)
+    # The two halves of what used to be local media processing. `renders`
+    # enqueues onto the render queue and reports on a job row; `images` does
+    # the two Pillow-only operations in this process, because a queue round
+    # trip costs more than the work — see `routes/images.py`.
+    app.register_blueprint(renders_bp)
+    app.register_blueprint(images_bp)
     app.register_blueprint(prompt_bp)
 
     @app.before_request

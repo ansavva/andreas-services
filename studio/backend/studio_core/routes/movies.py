@@ -8,8 +8,11 @@ what is in it lives on the scenes it names.
 `PUT /api/projects/<id>/characters`' reason: the client edits an ordered set and
 an add-only endpoint would need a remove beside it, plus an ordering verb.
 
-Stitching stays in the CLI. `ffmpeg` ships in the pipeline wheel and the Lambda
-has none — the API owns the record, not the encode.
+Stitching is a render job. It used to stay in the CLI, because `ffmpeg` shipped
+in the pipeline wheel and the Lambda had none; a second container image has it
+now, and `services/render.py` enqueues the cut. This module still owns the
+record, and now shares it: the worker writes `output`, `stitch`, `cuts` and
+`assembled` when a cut lands.
 """
 
 import logging

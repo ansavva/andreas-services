@@ -35,12 +35,20 @@ sits beside the scene id, so copying does not lose lineage. That copy was a
 server-side `CopyObject` and is a download plus an upload now — `create` says why
 the bytes have to travel.
 
-STITCHING STAYS LOCAL — SAME ARRANGEMENT AS A SCENE
-----------------------------------------------------
-`ffmpeg` ships in this wheel and the Lambda behind the API has none, so `create`
-downloads each scene's cut, stitches here, uploads through the URL
-`POST /api/movies/<id>/output` signs, and `PATCH`es the record. **The API owns
-the record, not the encode.**
+STITCHING IS A RENDER JOB — SAME ARRANGEMENT AS A SCENE
+--------------------------------------------------------
+This section used to say the opposite: `ffmpeg` ships in this wheel and the
+Lambda has none, so `create` downloads each scene's cut, stitches here and
+uploads the result. That was a statement about an image, and the image changed.
+
+`create` resolves every sceneref to a cut, creates the movie row, and enqueues
+**one render job**. The worker copies each scene's cut into `scenes/`, stitches
+by the same rules a scene is stitched by, uploads the movie and records
+`output`, `stitch`, `cuts` and `assembled` on the row.
+
+What stays here is resolution and refusal — `latest`, a unique fragment, "these
+three scenes are planned but not assembled" — because those are sentences with an
+action in them and belong in front of the person.
 
 A SCENE OR A LONGER SCENE?
 --------------------------
@@ -59,22 +67,15 @@ CLI
 from __future__ import annotations
 
 import json
-import mimetypes
-import os
-import pathlib
 import sys
-import tempfile
 
 import click
 
-from studio_pipeline.adapters.ffmpeg import (  # noqa: E402  — the same joiner scenes use
-    probe,
-    stitch,
-)
 from studio_pipeline.adapters import api, entities, store  # noqa: E402
 from studio_pipeline.errors import die  # noqa: E402
 from studio_pipeline import errors  # noqa: E402
 from studio_pipeline.domain import projects as PROJECTS  # noqa: E402
+from studio_pipeline.domain import renders as RENDER  # noqa: E402  — the encode lives there now
 from studio_pipeline.domain import runs as R  # noqa: E402
 from studio_pipeline.domain import (
     scenes as SC,  # noqa: E402  — for sceneref resolution, not for ffmpeg
@@ -162,15 +163,22 @@ def scene_characters(record: dict) -> list[str]:
 
 def create(project: dict, slug: str, refs: list[str],
            dest_dir: str | None = None) -> dict:
-    """Resolve scenerefs -> create the movie -> copy scenes in -> stitch -> record.
+    """Resolve scenerefs -> create the movie -> ask the service to cut it.
 
     The record is created **before** any bytes move, so a failure halfway leaves
     a movie with no output — visible, re-runnable, and holding the order that is
     the only thing a movie contributes. The other way round would leave copied
     scene files parented to a folder nothing names.
+
+    **The copy into `scenes/` is the worker's now**, along with the stitch and the
+    record. It is still a download plus an upload rather than a server-side
+    `CopyObject`, and for the reason it always was: a second node on one blob is
+    copy-on-write (#334), and the API's delete route destroys the shared bytes
+    when either row goes. What changed is where the two hops happen — inside one
+    Lambda with the file already on its disk, instead of through a terminal.
     """
-    # Resolve every scene before copying anything, and report ALL the ones that
-    # are not cut yet. A scene can exist as a plan, so "not assembled" is an
+    # Resolve every scene before anything is created, and report ALL the ones
+    # that are not cut yet. A scene can exist as a plan, so "not assembled" is an
     # ordinary state rather than a broken record — being told about them one per
     # attempt would mean one round trip per missing scene.
     resolved = []
@@ -194,59 +202,28 @@ def create(project: dict, slug: str, refs: list[str],
     record = entities.create_movie(project=project["id"], slug=R.slugify(slug),
                                    scenes=[s["scene"] for s in resolved])
     print(f"movie {record['slug']}  ({record['id']})")
-
-    tmp = tempfile.mkdtemp(prefix="movie-")
-    scenes_folder = movie_folder(record, SCENES_FOLDER)
-    local: list[str] = []
     for n, scene in enumerate(resolved, 1):
-        name = store.node(scene["source_node"]).get("name") or "scene.mp4"
-        ext = os.path.splitext(name)[1] or ".mp4"
-        lp = os.path.join(tmp, f"scene-{n:02d}{ext}")
-        store.download_node(scene["source_node"], pathlib.Path(lp))
-        local.append(lp)
-        scene["n"] = n
-        # A read plus a write where this was a server-side `CopyObject`. Same
-        # trade `scenes.assemble` makes and for the same reason — a second node
-        # on one blob is copy-on-write (#334), and the API's delete route
-        # destroys the shared bytes when either row goes. The file is already
-        # local from the download above, so the cost is one PUT per scene.
-        copied = store.upload_into(
-            scenes_folder, f"scene-{n:02d}{ext}", pathlib.Path(lp),
-            content_type=mimetypes.guess_type(lp)[0] or "application/octet-stream")
-        scene["node"] = copied["id"]
         print(f"  scene {n}: {scene['slug']}  ({scene['scene']})")
 
-    out_local = os.path.join(tmp, f"{R.slugify(slug)}.mp4")
-    info = stitch(local, out_local, label="scenes")
-    for scene, pr in zip(resolved, info.pop("probes")):
-        scene["duration"] = pr["duration"]
-
-    signed = entities.movie_output(record["id"], f"{R.slugify(slug)}.mp4",
-                                   os.path.getsize(out_local), "video/mp4")
-    store.upload_to_url(signed, pathlib.Path(out_local))
-
-    # **Scene IDS.** This sent `resolved` — a list of dicts carrying the copied
-    # node, the duration and the position — and the route validates every entry
-    # as an id, so it answered 500 and `movies new` died here: after every scene
-    # had been downloaded, stitched and the finished cut uploaded. Nothing
-    # caught it because the fake API stored whatever it was handed.
-    #
-    # The per-cut detail those dicts carried is real and keeps its home in the
-    # stitch report, beside the rest of what the encoder recorded — which is
-    # where `scenes assemble` already puts the same kind of thing.
-    info["cuts"] = [{"n": scene["n"], "scene": scene["scene"], "slug": scene["slug"],
-                     "node": scene["node"], "duration": scene["duration"]}
-                    for scene in resolved]
+    # **Scene IDS on the edge rows, the per-cut detail in the stitch report.**
+    # `put_movie_scenes` validates every entry as an id, and sending the resolved
+    # dicts here once answered 500 after every scene had been copied and the
+    # finished cut uploaded. The worker records the copied node, the duration and
+    # the position under `stitch.cuts`, which is where `scenes assemble` already
+    # puts the same kind of thing.
     entities.put_movie_scenes(record["id"], [scene["scene"] for scene in resolved])
-    record = entities.patch_movie(
-        record["id"], characters=sorted(characters), stitch=info, status="assembled",
-        output={"node": signed["node"], **probe(out_local)}, assembled=R._now())
+    result = RENDER.submit("assemble", {
+        "target": record["id"],
+        "parts": [RENDER.part(scene["source_node"], scene=scene["scene"],
+                              slug=scene["slug"]) for scene in resolved],
+        "characters": sorted(characters),
+    }, what="the cut")
 
+    record = entities.get_movie(record["id"])
+    if result.get("re_encoded"):
+        print(f"  ({result['stitch']['method']})")
     if dest_dir:
-        os.makedirs(dest_dir, exist_ok=True)
-        keep = os.path.join(dest_dir, os.path.basename(out_local))
-        os.replace(out_local, keep)
-        record = {**record, "local": keep}
+        record = {**record, "local": RENDER.fetch(result["output"], dest_dir)}
     return record
 
 
@@ -264,7 +241,7 @@ def main():
               help=("a scene, in cut order. Repeatable. Accepts "
                     "<project>/<slug>, a scene id, latest, or a unique fragment."))
 @click.option("--slug", required=True)
-@errors.reports(R.RunError, api.ApiError)
+@errors.reports(R.RunError, api.ApiError, RENDER.RenderError)
 def do_new(project, dest, scene, slug):
     """Cut a project's scenes into one movie."""
     if len(scene) < 2:

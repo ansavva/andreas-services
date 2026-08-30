@@ -48,17 +48,15 @@ from __future__ import annotations
 
 import json
 import os
-import pathlib
 import sys
-import tempfile
 from types import SimpleNamespace
 
 import click
 
 from studio_pipeline.adapters import store
-from studio_pipeline.domain import contact_sheet as SHEET
 from studio_pipeline.domain import paths as P
 from studio_pipeline.domain import runs as R
+from studio_pipeline.domain import renders as RENDER
 from studio_pipeline.domain import scenes as SC
 from studio_pipeline.domain import projects as PROJECTS
 from studio_pipeline.domain import storyboard as SB
@@ -516,30 +514,26 @@ def review_sheet(manifest: dict, label: str, items: list[tuple[str, str]],
     `review/` folder it is browsable in the app, it outlives the working
     directory, and it sits beside the panels it was built from. `--review-sheet
     DIR` still keeps a local copy for whoever IS at that machine.
-    """
-    tmp = out_dir or tempfile.mkdtemp(prefix="review-")
-    os.makedirs(tmp, exist_ok=True)
-    paths, captions = [], []
-    for node, caption in items:
-        local = cache.get(node)
-        if local is None:
-            # The node's own name in the local filename, because a uuid tells
-            # nobody which image failed if the download does. The cache is keyed
-            # on the id, which is the thing that is actually unique.
-            name = store.node(node).get("name") or node
-            local = os.path.join(tmp, f"src-{len(cache)}-{name}")
-            store.download_node(node, pathlib.Path(local))
-            cache[node] = local
-        paths.append(local)
-        captions.append(caption)
-    out = SHEET.build(paths, os.path.join(tmp, f"{label}.png"),
-                      cols=min(len(paths), 5), cell=320, captions=captions, quiet=True)
 
-    review = SC.scene_folder(manifest, "review")
-    node = store.upload_into(review, f"{label}.png", pathlib.Path(out),
-                             content_type="image/png")
-    return node["id"] if out_dir is None else \
-        f"{node['id']}\n       (local copy: {out})"
+    `cache` is accepted and no longer read. It memoised a download per node,
+    because every tile used to come down to this machine to be laid out; the
+    worker reads them out of S3 instead, so there is nothing left to memoise. The
+    parameter stays because both callers pass one and it costs nothing — see
+    `turnaround.review_sheet`, which is in the same position.
+    """
+    # **A render job, because Pillow is not in this wheel any more.** The tiles
+    # are already nodes, so nothing is uploaded to build this — the worker reads
+    # the same images the payload will bind and lays them out.
+    result = RENDER.submit("sheet", {
+        "parts": [RENDER.part(node, caption=caption) for node, caption in items],
+        "cols": min(len(items), 5), "cell": 320,
+        "dest": SC.scene_folder(manifest, "review"),
+        "name": f"{label}.png",
+    }, what="the review sheet")
+    node = result["sheet"]
+    if out_dir is None:
+        return node["node"]
+    return f"{node['node']}\n       (local copy: {RENDER.fetch(node, out_dir)})"
 
 
 def _sheet_items(entry: dict, bindings: dict) -> list[tuple[str, str]]:

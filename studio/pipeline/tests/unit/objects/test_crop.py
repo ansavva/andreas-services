@@ -46,16 +46,40 @@ def test_width_and_height_instead_of_right_and_bottom_is_named_as_such(capsys):
     assert "not LEFT,TOP,WIDTH,HEIGHT" in capsys.readouterr().err
 
 
-def test_a_box_over_the_edge_is_clamped_not_refused():
+def test_a_box_over_the_edge_is_clamped_not_refused(library):
     """Padding a detection puts the box past the edge routinely; refusing would
-    make every caller implement the clamp."""
-    assert CROP.clamp((-20, -20, 500, 5000), 400, 600) == (0, 0, 400, 600)
+    make every caller implement the clamp.
+
+    **Asserted through the command, because the clamp moved.** It was
+    `CROP.clamp`, a pure function next to the Pillow that used it; the image is
+    read and cut by the API now, so the only side that knows the image's
+    dimensions is the one that decides the clamp. What this package is still
+    responsible for is reporting it — see `media/imaging.clamp` and
+    `backend/tests/unit/test_images.py` for the arithmetic itself.
+    """
+    record = CHARACTER.resolve("subject-a")
+    source = library.fake.put_file(
+        CHARACTER.pool_folder(record, "seed")["id"], "wide.png", _image(400, 600))
+
+    result = _run("crop", "--key", source["id"], "--box", "-20,-20,500,5000",
+                  "--dest-key", "characters/subject-a/seed/current/cut.png")
+
+    assert result.exit_code == 0, result.output
+    assert "400x600 -> 400x600" in result.output
+    assert "at 0,0,400,600" in result.output
 
 
-def test_a_box_that_misses_the_image_entirely_is_refused(capsys):
-    with pytest.raises(SystemExit):
-        CROP.clamp((900, 900, 1000, 1000), 400, 600)
-    assert "entirely outside" in capsys.readouterr().err
+def test_a_box_that_misses_the_image_entirely_is_refused(library):
+    """A mistake, not a rounding — so it is the one box that is not clamped."""
+    record = CHARACTER.resolve("subject-a")
+    source = library.fake.put_file(
+        CHARACTER.pool_folder(record, "seed")["id"], "wide.png", _image(400, 600))
+
+    result = _run("crop", "--key", source["id"], "--box", "900,900,1000,1000",
+                  "--dest-key", "characters/subject-a/seed/current/cut.png")
+
+    assert result.exit_code != 0
+    assert "entirely outside" in result.output
 
 
 # ── the command ────────────────────────────────────────────────────────────

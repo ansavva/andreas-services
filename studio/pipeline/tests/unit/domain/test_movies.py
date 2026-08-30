@@ -179,7 +179,6 @@ def test_a_movie_records_the_order_it_was_given(library, cut_scene, tmp_path,
     """
     second = cut_scene("second")
     first = cut_scene("first")
-    _local_stitch(monkeypatch)
 
     record = MV.create(PROJECTS.resolve("porch-teaser"), "the-cut",
                        ["porch-teaser/second", "porch-teaser/first"])
@@ -200,32 +199,34 @@ def test_a_movie_records_the_order_it_was_given(library, cut_scene, tmp_path,
     assert [cut["scene"] for cut in record["stitch"]["cuts"]] == [second["id"], first["id"]]
 
 
-def test_the_cut_is_made_locally_and_only_the_record_goes_to_the_api(
+def test_the_cut_is_a_render_job_naming_node_ids_in_order(
         library, cut_scene, tmp_path, monkeypatch):
-    """ffmpeg ships in this wheel and the Lambda behind the API has none.
+    """**This asserted the opposite and the reversal is the whole change.**
 
-    So `create` downloads each scene, stitches HERE, uploads through a signed
-    URL and only then patches the record. The API owns the record, not the
-    encode — and this is the assertion that says so.
+    It said ffmpeg ships in this wheel and the Lambda has none, so `create`
+    downloads each scene, stitches HERE and uploads the result — and it checked
+    that the stitcher was handed LOCAL paths. It is handed node ids now, in one
+    `POST /api/renders`, and the worker does the download, the copy, the stitch
+    and the record.
+
+    What is still this package's responsibility, and what this therefore asserts:
+    the right kind, the parts in CUT ORDER, resolved to nodes, and the record
+    read back from the service rather than asserted here.
     """
     cut_scene("one")
-    stitched = {}
-
-    def fake_stitch(inputs, output, label=None):
-        stitched["inputs"] = list(inputs)
-        pathlib_write(output)
-        return {"probes": [{"duration": 5.0} for _ in inputs], "label": label}
-
-    monkeypatch.setattr(MV, "stitch", fake_stitch)
-    monkeypatch.setattr(MV, "probe", lambda _p: {"duration": 5.0})
 
     record = MV.create(PROJECTS.resolve("porch-teaser"), "the-cut",
                        ["porch-teaser/one"])
 
-    # The stitcher was handed LOCAL paths, not node ids or URLs.
-    assert stitched["inputs"] and all("/" in path for path in stitched["inputs"])
+    job = list(library.fake.renders.values())[-1]
+    assert job["kind"] == "assemble"
+    assert job["params"]["target"] == record["id"]
+    # The scene's own cut, by node id — not the scene id, and not a URL.
+    scene = library.fake.scenes[record["scenes"][0]["id"]]
+    assert [part["node"] for part in job["params"]["parts"]] == [scene["output"]["node"]]
+    assert [part["scene"] for part in job["params"]["parts"]] == [scene["id"]]
     assert record["output"]["node"]
-    assert record["stitch"]["label"] == "scenes"
+    assert record["stitch"]["uniform_scenes"] is True
 
 
 def test_each_scene_is_copied_in_rather_than_referenced(library, cut_scene, monkeypatch):
@@ -236,7 +237,6 @@ def test_each_scene_is_copied_in_rather_than_referenced(library, cut_scene, monk
     write where it was once a server-side copy.
     """
     scene = cut_scene("one")
-    _local_stitch(monkeypatch)
 
     record = MV.create(PROJECTS.resolve("porch-teaser"), "the-cut", ["porch-teaser/one"])
 
@@ -250,7 +250,6 @@ def test_the_characters_are_the_union_of_the_scenes(library, cut_scene, monkeypa
     """Read off each scene's row, deduplicated and sorted."""
     cut_scene("one", characters=["char-b", "char-a"])
     cut_scene("two", characters=["char-a"])
-    _local_stitch(monkeypatch)
 
     record = MV.create(PROJECTS.resolve("porch-teaser"), "the-cut",
                        ["porch-teaser/one", "porch-teaser/two"])
@@ -258,21 +257,11 @@ def test_the_characters_are_the_union_of_the_scenes(library, cut_scene, monkeypa
     assert record["characters"] == ["char-a", "char-b"]
 
 
-def _local_stitch(monkeypatch):
-    """Stand in for ffmpeg. What these tests assert is the RECORD and the copies;
-    a real encode per case buys none of it and costs seconds."""
-    def fake_stitch(inputs, output, label=None):
-        pathlib_write(output)
-        return {"probes": [{"duration": 5.0} for _ in inputs], "label": label}
-
-    monkeypatch.setattr(MV, "stitch", fake_stitch)
-    monkeypatch.setattr(MV, "probe", lambda _p: {"duration": 5.0})
-
-
-def pathlib_write(path):
-    """A stitched file on disk, so `getsize` and the upload have something."""
-    import pathlib as _p
-    _p.Path(path).write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"0" * 128)
+# `_local_stitch` used to live here — a `monkeypatch.setattr(MV, "stitch", …)`
+# standing in for ffmpeg, because a real encode per case cost seconds and proved
+# nothing about the record. There is nothing left to stand in for: `MV.stitch`
+# does not exist, the encode is a render job, and `tests/support/fake_api.py`
+# answers `POST /api/renders` by doing the record-keeping half synchronously.
 
 
 # ── the CLI half ────────────────────────────────────────────────────────────

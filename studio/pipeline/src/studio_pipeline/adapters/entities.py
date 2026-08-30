@@ -754,3 +754,50 @@ def build_prompt(obj: dict, engine: str, *, emit: str = "both",
         "object": obj, "engine": engine, "emit": emit,
         "compact": compact, "overrides": overrides or {},
     })
+
+
+# ── renders ─────────────────────────────────────────────────────────────────
+#
+# **What used to be `adapters/ffmpeg.py` and Pillow in this wheel.** Stitching, a
+# frame grab, a contact grid and a contact sheet are done by a worker Lambda with
+# ffmpeg in its image; this enqueues one and reads the row back. See
+# `domain/renders.py` for the wait, and `backend/studio_core/services/render.py`
+# for what the worker does with it.
+
+def create_render(kind: str, params: dict) -> dict:
+    """`POST /api/renders` — 202, and the row is what to poll.
+
+    Not 201: nothing the caller asked for exists yet. The response carries the
+    `id`, which is the whole handle on the job.
+    """
+    return api.post("/api/renders", {"kind": kind, "params": params})
+
+
+def get_render(render_id: str) -> dict:
+    """One render job row: `queued` / `running` / `succeeded` / `failed`."""
+    return api.get(f"/api/renders/{render_id}")
+
+
+# ── images ──────────────────────────────────────────────────────────────────
+#
+# The two operations that are NOT on the queue. Both are sub-second on a single
+# image, so a queue round trip would cost more than the work — and the API image
+# carries Pillow (3 MB) where the render image carries ffmpeg (80 MB).
+
+def convert_image(node: str, *, to: str | None = None, dest: str | None = None,
+                  name: str | None = None, quality: int = 95) -> dict:
+    """Re-encode one image into a new node. The source is never modified."""
+    return api.post("/api/images/convert", _clean(
+        node=node, to=to, dest=dest, name=name, quality=quality))
+
+
+def crop_image(node: str, box: str, *, to: str | None = None,
+               dest: str | None = None, name: str | None = None,
+               quality: int = 95) -> dict:
+    """Cut `LEFT,TOP,RIGHT,BOTTOM` out of one image into a new node.
+
+    The reply carries the box that was actually cut and whether it was clamped,
+    because a silent clamp is a box that is not the box anybody stated.
+    """
+    return api.post("/api/images/crop", _clean(
+        node=node, box=box, to=to, dest=dest, name=name, quality=quality))

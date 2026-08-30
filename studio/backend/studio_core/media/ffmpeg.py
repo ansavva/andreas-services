@@ -1,22 +1,35 @@
 """The ffmpeg layer shared by scenes, movies and frame extraction.
 
-`probe`/`stitch` lived in `scenes.py` and `duration`/`grab` lived in
-`frames.py`, each with its own copy of the duration regex. A **movie** stitches
-scenes exactly the way a scene stitches shots, so the joining rules belong in
-one place rather than being reimplemented one tier up.
+Moved verbatim in behaviour from `pipeline/src/studio_pipeline/adapters/ffmpeg.py`,
+which said this about itself and still applies:
 
-ffmpeg comes from the `imageio-ffmpeg` wheel, so no system install is required.
-Any entry script importing this must declare `imageio-ffmpeg` in its PEP 723
-block.
+    `probe`/`stitch` lived in `scenes.py` and `duration`/`grab` lived in
+    `frames.py`, each with its own copy of the duration regex. A **movie**
+    stitches scenes exactly the way a scene stitches shots, so the joining rules
+    belong in one place rather than being reimplemented one tier up.
 
-STITCHING RULE
---------------
+ffmpeg comes from the `imageio-ffmpeg` wheel, so no system install is required —
+which is what makes the render image a `pip install` rather than a build of
+ffmpeg from source. It is in the `render` dependency group, so **the API image
+does not have it**: importing this module there raises, and that is the intended
+shape rather than an accident. `services/render.py` imports it lazily for the
+same reason.
+
+STITCHING RULE — THE ONE THING THAT MUST NOT BE LOST IN THE MOVE
+----------------------------------------------------------------
 When every input already agrees on codec, dimensions, frame rate and audio
 layout, the concat demuxer runs with `-c copy`: no re-encode, so the cut is
 bit-for-bit the sources joined end to end. When they differ, inputs are
-normalised to the FIRST input's video geometry and a common audio layout — and
-the caller records that it happened, rather than doing it silently.
+normalised to the FIRST input's video geometry and a common audio layout — **and
+the caller records that it happened**, rather than doing it silently.
+
+That last clause is the reason `stitch` returns a report instead of a path.
+`services/render.py` writes it onto the scene or movie record as `stitch`, so a
+person looking at a cut can see whether it was joined or re-encoded and to what.
+A worker that re-encoded silently would be a quality regression nobody could
+see, and nobody would think to look for it because the file plays.
 """
+
 from __future__ import annotations
 
 import math
@@ -25,13 +38,27 @@ import re
 import subprocess
 import tempfile
 
-from studio_pipeline.errors import die
-
+#: What a scene or a movie may be cut from. Shared with `services/render.py`
+#: rather than restated, so a new container format is legal in both at once.
 VIDEO_EXT = (".mp4", ".mov", ".m4v", ".webm")
 
 
+class MediaError(RuntimeError):
+    """This file cannot be processed, and trying again will not change that.
+
+    Distinct from a transient failure on purpose: `services/render.py` closes a
+    job `failed` on one of these and lets everything else raise, so SQS redrives
+    a throttled DynamoDB write and does **not** redrive a clip with no video
+    stream in it. The CLI's `die()` occupied this position and could only exit a
+    process, which is exactly the thing that does not translate to a worker.
+    """
+
+
 def ffmpeg_exe() -> str:
+    """Path to the bundled binary. Imported here so the API image can import this
+    module's *name* without holding the wheel — see the note above."""
     import imageio_ffmpeg
+
     return imageio_ffmpeg.get_ffmpeg_exe()
 
 
@@ -41,8 +68,9 @@ _AUD = re.compile(r"Audio: (\w+).*?, (\d+) Hz, (\w+)")
 
 
 def _report(path: str) -> str:
-    return subprocess.run([ffmpeg_exe(), "-hide_banner", "-i", path],
-                          capture_output=True, text=True).stderr
+    return subprocess.run(
+        [ffmpeg_exe(), "-hide_banner", "-i", path], capture_output=True, text=True
+    ).stderr
 
 
 def probe(path: str) -> dict:
@@ -59,7 +87,7 @@ def probe(path: str) -> dict:
         c, rate, layout = m.groups()
         out["audio"] = {"codec": c, "sample_rate": int(rate), "layout": layout}
     if not out["video"]:
-        die(f"{path}: no video stream found")
+        raise MediaError(f"{os.path.basename(path)}: no video stream found")
     return out
 
 
@@ -67,15 +95,32 @@ def duration(path: str) -> float:
     txt = _report(path)
     m = _DUR.search(txt)
     if not m:
-        die(f"{path}: could not read duration")
+        raise MediaError(f"{os.path.basename(path)}: could not read duration")
     h, mi, s = m.groups()
     return int(h) * 3600 + int(mi) * 60 + float(s)
 
 
 def _shape(p: dict) -> tuple:
     v, a = p["video"], p["audio"]
-    return (v["codec"], v["width"], v["height"], round(v["fps"], 3),
-            (a or {}).get("codec"), (a or {}).get("sample_rate"), (a or {}).get("layout"))
+    return (
+        v["codec"], v["width"], v["height"], round(v["fps"], 3),
+        (a or {}).get("codec"), (a or {}).get("sample_rate"), (a or {}).get("layout"),
+    )
+
+
+def _run(cmd: list[str], what: str) -> None:
+    """One ffmpeg invocation, with its stderr carried into the failure.
+
+    **`check=True` alone loses the only useful thing.** In the CLI a failed
+    encode printed ffmpeg's own diagnosis to the terminal the person was already
+    looking at; in a worker it goes to a subprocess nobody sees, and
+    `CalledProcessError: returned non-zero exit status 1` is what lands on the
+    render row. So stderr is captured and its tail becomes the message.
+    """
+    done = subprocess.run(cmd, capture_output=True, text=True)
+    if done.returncode != 0:
+        tail = (done.stderr or "").strip().splitlines()[-6:]
+        raise MediaError(f"{what} failed: " + " / ".join(tail) if tail else f"{what} failed")
 
 
 def stitch(paths: list[str], dest: str, *, label: str = "parts") -> dict:
@@ -113,7 +158,7 @@ def stitch(paths: list[str], dest: str, *, label: str = "parts") -> dict:
         method = (f"re-encoded to {v['width']}x{v['height']} @ {v['fps']}fps "
                   f"({label} differed)")
 
-    subprocess.run(cmd, check=True)
+    _run(cmd, "stitch")
     os.remove(listfile)
     return {"method": method, f"uniform_{label}": uniform, "probes": probes}
 
@@ -126,7 +171,13 @@ def grab(src: str, when: float | None, dest: str, from_end: float | None = None)
     elif when is not None:
         cmd += ["-ss", f"{when}"]
     cmd += ["-i", src, "-frames:v", "1", "-update", "1", "-q:v", "2", dest, "-y"]
-    subprocess.run(cmd, check=True)
+    _run(cmd, "frame grab")
+    if not os.path.exists(dest) or not os.path.getsize(dest):
+        # ffmpeg exits 0 having written nothing when the seek lands past the end
+        # of the clip, which is what `--time` beyond the duration does. In the
+        # CLI the empty file was visible in the directory the person named; here
+        # it would be uploaded as a zero-byte node.
+        raise MediaError("no frame at that position — the clip is shorter than the seek")
     return dest
 
 
@@ -136,13 +187,13 @@ def contact_grid(src: str, count: int, dest: str, width: int = 900) -> list[floa
     # Inset from both ends: the very first and last frames are the least
     # informative part of a clip.
     times = [dur * (i + 0.5) / count for i in range(count)]
-    tmp = tempfile.mkdtemp(prefix="grid-")
+    tmp = tempfile.mkdtemp(prefix="grid-", dir=os.path.dirname(dest))
     for i, t in enumerate(times, 1):
         grab(src, t, os.path.join(tmp, f"f{i:02d}.png"))
     cols = math.ceil(math.sqrt(count))
     rows = math.ceil(count / cols)
-    subprocess.run([ffmpeg_exe(), "-hide_banner", "-loglevel", "error",
-                    "-i", os.path.join(tmp, "f%02d.png"),
-                    "-vf", f"tile={cols}x{rows},scale={width}:-1",
-                    "-frames:v", "1", "-q:v", "3", dest, "-y"], check=True)
+    _run([ffmpeg_exe(), "-hide_banner", "-loglevel", "error",
+          "-i", os.path.join(tmp, "f%02d.png"),
+          "-vf", f"tile={cols}x{rows},scale={width}:-1",
+          "-frames:v", "1", "-q:v", "3", dest, "-y"], "contact grid")
     return times

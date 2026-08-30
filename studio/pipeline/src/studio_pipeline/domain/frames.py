@@ -76,24 +76,30 @@ whole scene inherits.
 For anything planned with `studio scenes`, use `studio scenes handoff` instead:
 it records the frame on the shot row itself, so there is no second list.
 
-ffmpeg comes from the `imageio-ffmpeg` wheel, so there is no system install.
+THE FRAMES ARE PULLED BY THE SERVICE, NOT BY THIS PROCESS
+---------------------------------------------------------
+`ffmpeg` used to ship in this wheel. It ships in the render worker's image now,
+so `last`, `at` and `grid` resolve a runref to one video node, enqueue a render
+job and wait for it — `domain/renders.py`. The clip is never downloaded here.
+
+**Every frame therefore lands in the library**, which is a change. `--add-input`
+still means "into the project's input pool", and without it the frame goes to the
+project's `renders/` folder instead of nowhere: a worker has no way to hand bytes
+back except through S3. `--dest` copies it to a local directory afterwards, which
+is what it always did.
 """
 from __future__ import annotations
 
 import json
-import os
-import pathlib
-import tempfile
 
 import click
 
-from studio_pipeline.adapters.ffmpeg import (  # noqa: E402  — shared ffmpeg layer
-    contact_grid,
-    grab,
-)
 from studio_pipeline.adapters import api, store  # noqa: E402
+from studio_pipeline import errors  # noqa: E402
 from studio_pipeline.errors import die  # noqa: E402
+from studio_pipeline.domain import paths as P  # noqa: E402  — the pool's name
 from studio_pipeline.domain import projects as PROJECTS  # noqa: E402
+from studio_pipeline.domain import renders as RENDER  # noqa: E402
 from studio_pipeline.domain import runs as R  # noqa: E402
 
 #: The project subfolder a chain lives in. One of `paths.PROJECT_DIRS`, named
@@ -102,27 +108,38 @@ from studio_pipeline.domain import runs as R  # noqa: E402
 #: it, never a path this module builds.
 CHAINS_FOLDER = "chains"
 
+#: Where a frame goes when `--add-input` was not asked for. Resolved by name
+#: under the project's root and created if absent, exactly like `chains/` — a
+#: convention, not schema, and deletable by anyone who wants the space back.
+#:
+#: It exists because these commands used to produce a file and nothing else. The
+#: bytes are made in a worker now and S3 is the only way they reach this machine,
+#: so there has to be somewhere for them to be. Naming that folder for what it
+#: holds beats scattering renders through the input pool, which is material a
+#: person curated.
+RENDERS_FOLDER = "renders"
 
-def fetch_video(ref: str, project: str | None, tmp: str) -> tuple[dict, str]:
-    """Resolve a runref to exactly one video and download it. -> (run record, path).
+
+def resolve_video(ref: str, project: str | None) -> tuple[dict, str]:
+    """Resolve a runref to exactly one video. -> (run record, video NODE id).
+
+    **A node id, where this used to be a local path.** It downloaded the clip and
+    handed back a filename, because the ffmpeg that read it ran here. The render
+    worker reads it out of S3 instead, so what a caller needs is the id — and the
+    hundreds of megabytes that used to come through this process for every frame
+    grab do not move at all.
 
     Returns the **record**, not a `(project, id)` pair, for the reason
-    `runs.resolve_run` gives: every caller went straight on to read the run, and
-    a pair meant a second round trip plus two more strings to keep in step.
+    `runs.resolve_run` gives: every caller went straight on to read the run.
 
     `resolve_output_nodes` does the extension filter and raises when a run holds
-    no video at all, so the only case left here is the ambiguous one — a run
-    with several clips, where picking silently would put the wrong frame at the
-    front of the next shot.
+    no video at all, so the only case left here is the ambiguous one — a run with
+    several clips, where picking silently would put the wrong frame at the front
+    of the next shot.
     """
     record = R.resolve_run(ref, default_project=project)
     nodes = R.resolve_output_nodes(ref, default_project=project, kinds=R.VID_EXTS)
-    if len(nodes) > 1:
-        die(f"{ref}: {len(nodes)} videos — append #N to pick one")
-    node = store.node(nodes[0])
-    local = os.path.join(tmp, node.get("name") or f"{nodes[0]}.mp4")
-    store.download_node(nodes[0], pathlib.Path(local))
-    return record, local
+    return record, RENDER.one_video(nodes, ref)
 
 
 def chain_slug(slug: str) -> str:
@@ -219,32 +236,6 @@ def chain_nodes(doc: dict, max_n: int | None) -> list[str]:
     return nodes[-max_n:]
 
 
-def add_to_input_pool(record: dict, path: str) -> str:
-    """Hand off to `projects.py` so the pool has one writer. -> the NODE ID.
-
-    It answers with the node it created, so the caller reads the id rather than
-    reconstructing it. This used to scrape a log line with a regex and rebuild a
-    key by re-appending the extension — which yielded None whenever the message
-    shape changed, and only failed AFTER the upload had already happened.
-    """
-    try:
-        added = PROJECTS.add_inputs(record, [path])
-    except SystemExit as exc:
-        die(f"could not add to project {record['slug']}'s input pool: {exc}")
-    if not added:
-        die(f"the project store added nothing for {path}")
-    return added[0]["node"]
-
-
-def _fetch(ref, project, dest):
-    """Pull the run's video down and decide where frames will be written."""
-    tmp = tempfile.mkdtemp(prefix="frames-")
-    record, src = fetch_video(ref, project, tmp)
-    dest_dir = dest or tmp
-    os.makedirs(dest_dir, exist_ok=True)
-    return record, src, dest_dir
-
-
 def _project_of(run: dict) -> dict:
     """The project record a run belongs to. Its `root` is what the pool hangs off."""
     try:
@@ -253,19 +244,72 @@ def _project_of(run: dict) -> dict:
         die(f"run {run['id']} names project {run['project']}, which no longer exists")
 
 
-def _emit(run: dict, out: str, add_input: bool, chain: str | None) -> None:
-    """Print the frame, and optionally put it in the pool and the chain."""
-    print(out)
+def _where(project: dict, add_input: bool) -> str:
+    """The folder node a pulled frame lands in.
+
+    Two destinations and the rule is the one this module always had: `--add-input`
+    means the project's **input pool**, because that is where working material
+    belongs and where the next shot's `start_image` is read from. Without it the
+    frame goes to `renders/` — somewhere, rather than nowhere, because the bytes
+    are produced in a worker and S3 is the only way they reach this machine.
+
+    Never a character's `reference/`, under either flag. An extracted frame is
+    model output, and promoting it into the identity set feeds generated pixels
+    back in as identity (hard rule #2b).
+    """
+    return store.ensure_child_folder(
+        project["root"], P.INPUT_FOLDER if add_input else RENDERS_FOLDER)["id"]
+
+
+def _pull(ref, project, dest, add_input, *, name: str, at=None, from_end=None,
+          count=None) -> tuple[dict, dict, str | None]:
+    """Resolve, enqueue, wait. -> (run record, the produced asset, local path).
+
+    One helper for all three commands because they differ only in which render
+    kind they ask for and what the file is called — the resolution, the
+    destination and the local copy are identical, and were three copies before
+    the encode moved.
+    """
+    run, video = resolve_video(ref, project)
+    record = _project_of(run)
+    params = {"node": video, "dest": _where(record, add_input), "name": name}
+    if count is None:
+        params.update({"at": at, "from_end": from_end})
+        result = RENDER.submit("frame", params, what="the frame")
+        asset = result["frame"]
+    else:
+        params["count"] = count
+        result = RENDER.submit("grid", {**params, "count": count}, what="the grid")
+        asset = result["grid"]
+    local = RENDER.fetch(asset, dest) if dest else None
+    return run, {**asset, **result}, local
+
+
+def _emit(run: dict, asset: dict, local: str | None, add_input: bool,
+          chain: str | None) -> None:
+    """Print what was made, and record it in the chain if one was named.
+
+    **The chain append stays here and is not part of the render job.** It is a
+    catalog write on a node id — no ffmpeg, no bytes — so putting it in the
+    worker would move a decision about a document into a process whose job is
+    encoding. The worker's contract is one node out; what that node then means is
+    this side's.
+
+    `--chain` still requires `--add-input`, and the reason is unchanged even
+    though every frame now has a node: a chain is what the next shot's
+    `reference_images` are read from, and a frame nobody pooled is not working
+    material — it is a render somebody looked at.
+    """
+    print(local or asset["node"])
+    if local:
+        print(asset["node"])
     if not add_input:
         if chain:
-            die("--chain needs --add-input: a chain records node ids, and the frame "
-                "has to be in the library before it has one")
+            die("--chain needs --add-input: a chain names the frames a sequence "
+                "is built from, and a render nobody pooled is not one of them")
         return
-    project = _project_of(run)
-    node = add_to_input_pool(project, out)
-    print(node)
     if chain:
-        doc = chain_add(project, chain, node, run["id"])
+        doc = chain_add(_project_of(run), chain, asset["node"], run["id"])
         print(f"chain {doc['chain']}: {len(doc['frames'])} frame(s)")
 
 
@@ -282,11 +326,13 @@ def main():
               "reference_images can be derived rather than recalled"))
 @click.option("--dest", help="directory to write the image into")
 @click.option("--project", help="project, when the runref does not carry one")
+@errors.reports(RENDER.RenderError, api.ApiError, R.RunError)
 def do_last(ref, add_input, chain, dest, project):
     """The final frame — the chaining handoff."""
-    run, src, dest_dir = _fetch(ref, project, dest)
-    out = grab(src, None, os.path.join(dest_dir, f"{run['id']}_last.png"), from_end=0.2)
-    _emit(run, out, add_input, chain)
+    run, _ = resolve_video(ref, project)
+    run, asset, local = _pull(ref, project, dest, add_input,
+                              name=f"{run['id']}_last.png", from_end=0.2)
+    _emit(run, asset, local, add_input, chain)
 
 
 @main.command("at", epilog="\n\nArguments:\n  REF  runref: <project>/latest, a run id, #N")
@@ -298,11 +344,13 @@ def do_last(ref, add_input, chain, dest, project):
 @click.option("--dest", help="directory to write the image into")
 @click.option("--project", help="project, when the runref does not carry one")
 @click.option("--time", type=float, required=True, help="seconds")
+@errors.reports(RENDER.RenderError, api.ApiError, R.RunError)
 def do_at(ref, add_input, chain, dest, project, time):
     """One frame at a given time."""
-    run, src, dest_dir = _fetch(ref, project, dest)
-    out = grab(src, time, os.path.join(dest_dir, f"{run['id']}_t{time:g}.png"))
-    _emit(run, out, add_input, chain)
+    run, _ = resolve_video(ref, project)
+    run, asset, local = _pull(ref, project, dest, add_input,
+                              name=f"{run['id']}_t{time:g}.png", at=time)
+    _emit(run, asset, local, add_input, chain)
 
 
 @main.command("grid", epilog="\n\nArguments:\n  REF  runref: <project>/latest, a run id, #N")
@@ -310,13 +358,21 @@ def do_at(ref, add_input, chain, dest, project, time):
 @click.option("--count", type=int, default=4, help="frames to sample (default 4)")
 @click.option("--dest", help="directory to write the image into")
 @click.option("--project", help="project, when the runref does not carry one")
+@errors.reports(RENDER.RenderError, api.ApiError, R.RunError)
 def do_grid(ref, count, dest, project):
-    """A contact sheet, for looking at the clip."""
-    run, src, dest_dir = _fetch(ref, project, dest)
-    out = os.path.join(dest_dir, f"{run['id']}_grid.jpg")
-    times = contact_grid(src, count, out)
-    print(out)
-    print("sampled at: " + ", ".join(f"{t:.1f}s" for t in times))
+    """A contact sheet, for looking at the clip.
+
+    Never `--add-input`: a grid is something to look at, not material to render
+    from, so it lands in the project's `renders/` folder and stays out of the
+    pool the next shot reads.
+    """
+    run, _ = resolve_video(ref, project)
+    run, asset, local = _pull(ref, project, dest, False,
+                              name=f"{run['id']}_grid.jpg", count=count)
+    print(local or asset["node"])
+    if local:
+        print(asset["node"])
+    print("sampled at: " + ", ".join(f"{t:.1f}s" for t in asset.get("sampled_at") or []))
 
 
 @main.command("chain", epilog="\n\nArguments:\n  REF  <project>/<slug>")

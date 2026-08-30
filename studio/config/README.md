@@ -115,7 +115,7 @@ want a set with no third-party lineage, regenerate and keep the filenames:
 # one sheet, then split it into angle images with the same script
 studio run --model gpt-image-2 --project <project> --name angle-sheet --no-refs \
   --prompt-file config/angle/prompts/body-sheet.md --dry-run
-uv run python pipeline/scripts/split_angle_sheet.py <the sheet> --out config/angle/body
+uv run --script pipeline/scripts/split_angle_sheet.py <the sheet> --out config/angle/body
 ```
 
 `config/angle/prompts/face-sheet.md` holds a prompt for generating a head sheet

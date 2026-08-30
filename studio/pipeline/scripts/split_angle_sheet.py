@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["pillow>=10.0"]
+# ///
 """Split a contact-sheet of poses into one image per pose.
+
+**Its own PEP 723 block, because Pillow left the pipeline's runtime.** The
+package used to depend on it for `convert`, `crop` and contact sheets; all three
+are the service's now, so Pillow is a *test* dependency of `pipeline/` and a
+script that leaned on it would work only from a synced dev environment. This is
+a standalone one-shot run by hand, so it declares what it needs.
 
 A pose sheet — several figures laid out in a grid on a flat background — is
 useless as a model input whole: passing it asks the model to match ten poses at
@@ -15,8 +25,8 @@ of the subject and the background is the darker. Captioned sheets work too: a
 label forms its own row band and is discarded for being far too short to be a
 figure.
 
-    uv run python scripts/split_angle_sheet.py sheet.jpg --out /tmp/angles
-    uv run python scripts/split_angle_sheet.py sheet.jpg --out /tmp/angles --report
+    uv run --script scripts/split_angle_sheet.py sheet.jpg --out /tmp/angles
+    uv run --script scripts/split_angle_sheet.py sheet.jpg --out /tmp/angles --report
 
 Output is `<row>-<n>.png`, numbered left to right, top row first. Naming them for
 what they SHOW is a judgement call made by eye afterwards — the point of this

@@ -7,8 +7,14 @@ away the only record of what was cut. Seventy-five images were framed that way
 in one session and none of it was repeatable — the boxes lived in a scratch
 directory and the library held a file whose provenance was "someone cropped it".
 
-This does the same cut through `adapters/store`, so the box is stated, printed,
-and the source is left alone.
+This does the same cut through the **API**, so the box is stated, printed,
+recorded, and the source is left alone.
+
+**Pillow used to be in this wheel and is in the API image now.** A crop is one
+`POST /api/images/crop`: sub-second on a single image, so it is answered
+synchronously rather than going on the render queue that stitching uses — an
+enqueue plus two polls would cost more wall clock than the work, and Pillow is
+3 MB where ffmpeg is 80. `backend/studio_core/routes/images.py` states the split.
 
   # explicit box, into the project's input pool
   studio crop --key <node> --box 120,40,880,1400 --add-input <project>
@@ -34,21 +40,14 @@ place.
 """
 from __future__ import annotations
 
-import io
 import os
 import sys
 
 import click
 
-from studio_pipeline.adapters import api, store
+from studio_pipeline.adapters import api, entities, store
 from studio_pipeline.errors import die, reports
-from studio_pipeline.objects.convert import (
-    CONTENT_TYPE,
-    EXT_FOR,
-    PIL_FORMAT,
-    _into_input_pool,
-    _source_name,
-)
+from studio_pipeline.objects.convert import _source_name, destination
 from studio_pipeline.domain import runs as R
 
 
@@ -72,18 +71,6 @@ def parse_box(text: str) -> tuple[int, int, int, int]:
     return left, top, right, bottom
 
 
-def clamp(box: tuple[int, int, int, int], width: int, height: int
-          ) -> tuple[int, int, int, int]:
-    """Pull a box inside the image. Refuses one that misses it entirely."""
-    left, top, right, bottom = box
-    inside = (max(0, min(left, width)), max(0, min(top, height)),
-              max(0, min(right, width)), max(0, min(bottom, height)))
-    if inside[2] <= inside[0] or inside[3] <= inside[1]:
-        die(f"--box {left},{top},{right},{bottom} is entirely outside the "
-            f"{width}x{height} image.")
-    return inside
-
-
 @click.command(help=__doc__)
 @click.option("--add-input", help="Write into PROJECT's input pool as <project>_in_<n>.")
 @click.option("--box", required=True, help="LEFT,TOP,RIGHT,BOTTOM in source pixels.")
@@ -94,7 +81,10 @@ def clamp(box: tuple[int, int, int, int], width: int, height: int
 @click.option("--run", help="Source runref, e.g. <name>/latest#1.")
 @click.option("--to", type=click.Choice(["jpeg", "jpg", "png", "webp"]),
               help="Output format (default: the source's).")
-@reports(api.NotFound, api.Forbidden, R.RunError)
+# `api.ApiError` joins the list because the box is decided by the route now:
+# a box entirely outside the image is a 400, and without this the refusal
+# reaches a person as a traceback instead of the sentence it names.
+@reports(api.NotFound, api.Forbidden, api.ApiError, R.RunError)
 def crop(add_input, box, dest_key, key, project, quality, run, to):
     if not add_input and not dest_key:
         die("choose a destination: --add-input PROJECT (usual) or --dest-key KEY.")
@@ -107,38 +97,27 @@ def crop(add_input, box, dest_key, key, project, quality, run, to):
             die(f"runref matched {len(nodes)} images; add #N to pick one: {nodes}")
         key = nodes[0]
 
+    # **The box is parsed on both sides, and that is not duplication worth
+    # removing.** Four numbers typed by a person is the commonest thing to get
+    # wrong here, and a refusal that arrives before a request beats one that
+    # arrives as a 400 — while the route has to check anyway, because the SPA
+    # and anything else that posts are not this command.
     wanted = parse_box(box)
-    source_ext = os.path.splitext(_source_name(key))[1].lower()
-    target_ext = EXT_FOR[to] if to else (source_ext if source_ext in PIL_FORMAT else ".png")
 
-    from PIL import Image
+    node = key if key.startswith("node-") else store.resolve(key)["id"]
+    folder, name = destination(add_input, dest_key)
+    reply = entities.crop_image(node, ",".join(str(v) for v in wanted),
+                                to=to, dest=folder, name=name, quality=quality)
 
-    try:
-        body = store.read_node(key) if key.startswith("node-") else store.read(key)
-    except api.NotFound:
-        die(f"no such object: {key}")
-    im = Image.open(io.BytesIO(body))
-    inside = clamp(wanted, im.width, im.height)
-    cut = im.crop(inside)
-    if target_ext == ".jpg" and cut.mode in ("RGBA", "P", "LA"):
-        cut = cut.convert("RGB")          # JPEG has no alpha channel
-    buf = io.BytesIO()
-    cut.save(buf, PIL_FORMAT[target_ext],
-             **({"quality": quality} if target_ext in (".jpg", ".webp") else {}))
-    data = buf.getvalue()
-
-    if dest_key:
-        dst = dest_key.strip("/")
-        if "/" in dst:
-            store.folder(dst.rsplit("/", 1)[0])
-        store.write(dst, data, content_type=CONTENT_TYPE[target_ext])
-    else:
-        dst = _into_input_pool(add_input, data, target_ext)
-
-    print(dst)
-    note = "" if inside == wanted else f" (clamped from {','.join(str(v) for v in wanted)})"
+    print(reply["image"]["node"])
+    # **The clamp is reported because a silent one is a box that is not the box
+    # anybody stated.** The route decides it — it is the only side that has read
+    # the image's dimensions — and says so in the reply.
+    note = "" if not reply["clamped"] else \
+        f" (clamped from {','.join(str(v) for v in reply['requested'])})"
     print(f"cropped {os.path.basename(_source_name(key))} "
-          f"{im.width}x{im.height} -> {cut.width}x{cut.height} "
-          f"at {','.join(str(v) for v in inside)}{note}; source untouched",
+          f"{reply['source']['width']}x{reply['source']['height']} -> "
+          f"{reply['width']}x{reply['height']} "
+          f"at {','.join(str(v) for v in reply['box'])}{note}; source untouched",
           file=sys.stderr)
     return 0

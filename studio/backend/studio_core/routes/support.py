@@ -45,7 +45,7 @@ from flask import g, jsonify, request
 
 from studio_core.clients.aws import s3
 from studio_core.errors import ForbiddenError, ValidationError
-from studio_core.services import catalog
+from studio_core.services import catalog, storyboard
 
 logger = logging.getLogger(__name__)
 
@@ -254,25 +254,12 @@ def with_output(record: dict) -> dict:
 def keep_cut(record: dict, node_id: str | None) -> list[dict]:
     """The cuts this scene has been assembled into before the current one.
 
-    **Re-cutting overwrote the only pointer to the previous take.** A scene holds
-    one `output` — deliberately, because a scene *is* one take — but assembling
-    is not a one-shot act: a shot gets re-rendered and the scene is cut again,
-    and the stitched file that was there is then reachable by nobody.
-
-    Same shape and same rules as `storyboard.keep_take`: only a node actually
-    being displaced is pushed, and a node already in the list is not pushed
-    twice, so the repeated writes that a single assemble makes cannot grow the
-    history.
+    **The implementation moved to `services/storyboard.py` and the name stayed
+    here.** The assemble that displaces a cut runs in the render worker now, and
+    a worker has no Flask request — so a pure function it needs could not go on
+    living in a route module. Every route that wrote a cut still calls this.
     """
-    was = output_node(record.get("output"))
-    cuts = [dict(cut) for cut in (record.get("cuts") or [])]
-    if not was or was == node_id:
-        return cuts
-    if any(cut.get("node") == was for cut in cuts):
-        return cuts
-    stored = record.get("output")
-    stored = {} if isinstance(stored, str) else dict(stored or {})
-    return [{**stored, "node": was}, *cuts]
+    return storyboard.keep_cut(record, node_id)
 
 
 def structured(code: str, message: str, status: int, **extra):

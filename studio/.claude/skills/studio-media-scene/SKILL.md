@@ -413,6 +413,13 @@ produced by this loop agree automatically, because each inherits its geometry
 from the previous shot's frame. Mixing in a clip rendered at another `mode` or
 aspect forces a re-encode, which the scene's record notes.
 
+**The encode happens in the service, not on this machine.** `assemble` resolves
+each shot to its clip and asks for the cut; the joining, the copies and the
+record are done where the video toolchain lives. The command waits and prints as
+it goes, so a long cut is visible rather than silent — and `Ctrl-C` abandons the
+wait rather than the cut, which finishes either way and leaves the scene saying
+so.
+
 A scene is one continuous take. When a piece has genuine breaks in it — a change
 of place, of time, of subject — build each stretch as its own scene and cut them
 together with **`studio-media-movie`**, rather than hiding a hard cut inside something

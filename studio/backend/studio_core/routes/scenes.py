@@ -11,10 +11,15 @@ prompts is what a person does to a plan; `run` and `panel` are what a render put
 there, and a plain replace would silently discard them — so a shot matched by id
 keeps both unless the request names them.
 
-**Stitching stays in the CLI.** `ffmpeg` ships in the pipeline wheel and the
-Lambda has none, so `assemble` downloads, stitches locally, uploads through
-`POST /api/scenes/<id>/output` and `PATCH`es the record. The API owns the record,
-not the encode.
+**Stitching is a render job, and this docstring used to say the opposite.** It
+said `ffmpeg` ships in the pipeline wheel and the Lambda has none, so `assemble`
+downloads, stitches locally and `PATCH`es the record — sound reasoning about a
+fact, and the fact was an image. `services/render.py` enqueues a cut and a worker
+Lambda with ffmpeg in its image does the download, the stitch and the record.
+
+`POST /api/scenes/<id>/output` below is unchanged and is not what the render path
+uses: it signs an upload for a cut made somewhere else, which is what a client
+holding the bytes wants.
 
 **No `rev` on the writes here, and that is a rule rather than an omission.** A
 character and a project are edited by people, twice at once, and losing somebody's
@@ -324,9 +329,13 @@ def get_scene(scene_id: str):
 # never learned it had one.
 #
 # `stitch` and `output` are the encoder's own report and are stored without being
-# read: `ffmpeg` ships in the CLI's wheel and the Lambda has none, so how the
-# file was made is not this service's to validate. `movies.py` accepted `output`
-# already, which is why a movie assembled and a scene did not.
+# read here. That used to be because the encoder was somewhere else entirely —
+# `ffmpeg` shipped in the CLI's wheel and the Lambda had none — and it stays true
+# for a better reason: the encoder is `services/render.py` now, which writes these
+# fields itself through `update_project_entity` rather than through this route, so
+# this route's job is to accept a report from a client that made a cut some other
+# way. `movies.py` accepted `output` already, which is why a movie assembled and a
+# scene did not.
 #
 # `SCENE_PLAN` joins it for the same reason it joins the create route: a scene is
 # revised by re-ingesting its plan, and a revision that could not move `setting`
