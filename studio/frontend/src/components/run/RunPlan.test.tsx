@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApproveBar, RunPlan } from "./RunPlan";
+import { ApproveBar, InFlightBar, RunPlan } from "./RunPlan";
 import type { RunRecord, RunSend } from "../../types";
 
 /**
@@ -145,7 +145,13 @@ describe("the plan", () => {
 });
 
 describe("the approve bar", () => {
-  const noop = { onApprove: vi.fn(), onRevoke: vi.fn(), busy: false, error: null };
+  const noop = {
+    onApprove: vi.fn(),
+    onRevoke: vi.fn(),
+    onSubmit: vi.fn(),
+    busy: false,
+    error: null,
+  };
 
   it("says nobody has approved a draft", () => {
     render(<ApproveBar run={record({ status: "draft" })} {...noop} />);
@@ -216,5 +222,125 @@ describe("the approve bar", () => {
     );
 
     expect(screen.getByText(/before approvals were recorded/)).toBeTruthy();
+  });
+});
+
+
+/**
+ * **The control that spends money, and the states it must not appear in.**
+ *
+ * The app could not submit at all until generation moved into the API — the
+ * provider credential lived in the CLI, so a run approved on this page then had
+ * to be sent from a terminal, and the approve bar said so in as many words.
+ *
+ * There is deliberately no second confirm dialog on Submit: the approve dialog
+ * is where a person reads the payload and says yes, and asking twice teaches
+ * somebody to click through the prompt that matters. What stands in for it is
+ * that this button exists in exactly one state — so the tests below are mostly
+ * about the states it is absent from.
+ */
+describe("submitting from the app", () => {
+  const noop = {
+    onApprove: vi.fn(),
+    onRevoke: vi.fn(),
+    onSubmit: vi.fn(),
+    busy: false,
+    error: null,
+  };
+  const approved = {
+    status: "approved" as const,
+    approval: { by: "sub-1", at: "2026-08-20T00:00:00Z", digest: "sha256:abc" },
+  };
+
+  it("offers to submit a run whose approval still matches its payload", () => {
+    render(<ApproveBar run={record(approved)} {...noop} />);
+
+    expect(screen.getByRole("button", { name: /Submit/ })).toBeTruthy();
+  });
+
+  it("sends nothing until the button is pressed", () => {
+    const onSubmit = vi.fn();
+    render(<ApproveBar run={record(approved)} {...noop} onSubmit={onSubmit} />);
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /Submit/ }));
+
+    expect(onSubmit).toHaveBeenCalledOnce();
+  });
+
+  it("does NOT offer to submit an unapproved draft", () => {
+    render(<ApproveBar run={record({ status: "draft" })} {...noop} />);
+
+    expect(screen.queryByRole("button", { name: /Submit/ })).toBeNull();
+  });
+
+  it("does NOT offer to submit a payload that changed after it was approved", () => {
+    /**
+     * The failure hard rule #2 names. The API would refuse this with a 409
+     * anyway; the button is absent so a person is not invited into a refusal.
+     */
+    render(<ApproveBar run={record({ ...approved, stale: true })} {...noop} />);
+
+    expect(screen.queryByRole("button", { name: /Submit/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /approve again/i })).toBeTruthy();
+  });
+
+  it("does NOT offer to submit a run that has already gone out", () => {
+    render(<ApproveBar run={record({ status: "running" })} {...noop} />);
+
+    expect(screen.queryByRole("button", { name: /Submit/ })).toBeNull();
+  });
+
+  it("stops pointing at the CLI once a payload is approved", () => {
+    /** The bar used to end "run `studio runs submit <id>` when you are ready to
+     * spend", which was the whole of the friction this closes. */
+    render(<ApproveBar run={record(approved)} {...noop} />);
+
+    expect(screen.queryByText(/studio runs submit/)).toBeNull();
+    expect(screen.getByText(/starts billing/)).toBeTruthy();
+  });
+
+  it("disables the button while a submission is in flight", () => {
+    render(<ApproveBar run={record(approved)} {...noop} busy />);
+
+    expect(
+      screen.getByRole("button", { name: /Submitting/ }).hasAttribute("disabled"),
+    ).toBe(true);
+  });
+});
+
+describe("a run that has gone out and not come back", () => {
+  const noop = { onReconcile: vi.fn(), busy: false, error: null };
+
+  it("says the page is watching, so the tab can be closed", () => {
+    /**
+     * The state that did not exist while the CLI held the lifecycle in one
+     * blocking command. A generation is closed by a callback now, so leaving is
+     * safe — and a person has to be told that rather than left to guess.
+     */
+    render(
+      <InFlightBar run={record({ status: "running", prediction_id: "p-1" })} {...noop} />,
+    );
+
+    expect(screen.getByText(/closing the tab changes nothing/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Check now/ })).toBeTruthy();
+  });
+
+  it("offers no check for a run that never named a prediction", () => {
+    /** Nothing reached the provider, so there is nothing to ask about. */
+    render(
+      <InFlightBar run={record({ status: "running", prediction_id: null })} {...noop} />,
+    );
+
+    expect(screen.queryByRole("button", { name: /Check now/ })).toBeNull();
+    expect(screen.getByText(/named no prediction/i)).toBeTruthy();
+  });
+
+  it("shows nothing at all for a run that is not in flight", () => {
+    const { container } = render(
+      <InFlightBar run={record({ status: "succeeded" })} {...noop} />,
+    );
+
+    expect(container.textContent).toBe("");
   });
 });

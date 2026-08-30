@@ -478,8 +478,22 @@ that breaks every time the pipeline ships.
   /api/runs/<id>/submit` is what calls Replicate; the SPA has no provider
   credential and never gains one, and it does not have to, because the spending
   moved behind that route. What it used to mean was that a run approved on this
-  page then had to be sent from a terminal — the page could show the payload,
-  record the yes, and not act on it.
+  page then had to be sent from a terminal — the approve bar ended by telling you
+  to run `studio runs submit <id>`, which is the friction this removed.
+- **The Submit button exists in exactly one state**, and that is what stands in
+  for a second confirm dialog. A run that is `approved` and whose payload has not
+  moved shows it; a draft, a stale approval and an already-sent run all show the
+  approve control instead. Asking twice would be approval theatre — the approve
+  dialog is where a person reads the payload and says yes — and it teaches
+  somebody to click through the prompt that matters. The CLI is the same shape:
+  `runs approve` confirms, `runs submit` goes.
+- **A run in flight has its own bar**, because what a person can do about a run
+  that has gone is nothing like what they can do about one that has not. It says
+  the page is watching and the tab can be closed — true only since the callback
+  landed, and worth saying rather than leaving somebody to guess — and offers
+  `Check now`, which is `reconcile`, for a run that has sat far longer than the
+  model usually takes. A run carrying no prediction id gets no button: nothing
+  reached the provider, so there is nothing to ask about.
 - **A run closes itself, so the page has something to poll and a reason to.**
   The prediction is closed by Replicate calling the API back rather than by
   whoever asked for it, which is why `TERMINAL_RUN_STATUSES` exists: a client

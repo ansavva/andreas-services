@@ -3,11 +3,18 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { Alert, Badge, Button, Spinner, Text } from "@ansavva/design-system";
 
-import { approveRun, getNodeText, getRun, revokeRunApproval } from "../apis/studio";
+import {
+  approveRun,
+  getNodeText,
+  getRun,
+  reconcileRun,
+  revokeRunApproval,
+  submitRun,
+} from "../apis/studio";
 import { PageBar } from "../components/layout/PageBar";
 import { Backlinks } from "../components/common/Backlinks";
 import { MediaThumb } from "../components/media/MediaThumb";
-import { ApproveBar, RunPlan } from "../components/run/RunPlan";
+import { ApproveBar, InFlightBar, RunPlan } from "../components/run/RunPlan";
 import { RunPlanEditor } from "../components/run/RunPlanEditor";
 import { useResource } from "../hooks/useResource";
 import { useProjectCrumb } from "../hooks/useProjectCrumb";
@@ -201,8 +208,25 @@ export function RunPage() {
           void decide(() => approveRun(data.id, data.plan_digest ?? ""))
         }
         onRevoke={() => void decide(() => revokeRunApproval(data.id))}
+        /* **The app can spend now, and until generation moved into the API it
+           could not.** The credential lived in the CLI, so a run approved on
+           this page had to be sent from a terminal. `decide` needs no change:
+           the route answers with the whole updated run, exactly as approve
+           does, so the badge and this bar swap over together. */
+        onSubmit={() => void decide(() => submitRun(data.id))}
       />
       )}
+
+      {/* Sent, and not back yet. Its own control, because what a person can do
+          about a run in flight is nothing like what they can do about one that
+          has not gone — and because this state did not exist while the CLI held
+          the whole lifecycle in one blocking command. */}
+      <InFlightBar
+        run={data}
+        busy={approving}
+        error={approveError}
+        onReconcile={() => void decide(() => reconcileRun(data.id))}
+      />
 
       <section className="flex flex-col gap-2">
         <Text variant="title">Outputs</Text>

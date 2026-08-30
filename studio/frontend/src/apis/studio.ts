@@ -719,6 +719,42 @@ export function revokeRunApproval(id: string) {
 }
 
 /**
+ * Send an approved run to the model. **This is the call that spends money.**
+ *
+ * **The app could not do this at all until generation moved into the API.** The
+ * spending lived in the CLI, holding the provider token, so a run approved on
+ * this page then had to be sent from a terminal — the page could show the
+ * payload, record the yes, and not act on it. It is one route now, and the
+ * credential stays server-side where the SPA can never hold one.
+ *
+ * Refused with 409 unless the run is approved and the approval still matches the
+ * payload. That is the same gate `runs submit` passes through, called from the
+ * same place, so the app and the CLI cannot come to disagree about what may be
+ * sent.
+ *
+ * It returns as soon as the provider has accepted the prediction — the run comes
+ * back `running`, not `succeeded`. What closes it is a callback, minutes later,
+ * which is why `RunPage` polls while a run is not terminal.
+ */
+export function submitRun(id: string) {
+  return apiSend<RunRecord>("POST", `/api/runs/${encodeURIComponent(id)}/submit`);
+}
+
+/**
+ * Ask the provider what happened to a run that went out and never came back.
+ *
+ * A generation is closed by a callback, and a callback can be lost — a deploy
+ * landing mid-flight, a signature the API refused, a queue nobody drained. The
+ * run sits at `running` with a prediction id: legible, and never resolving.
+ *
+ * Safe to repeat and safe to press on a run that is merely still working: it
+ * asks, and a prediction that has not finished leaves the row alone.
+ */
+export function reconcileRun(id: string) {
+  return apiSend<RunRecord>("POST", `/api/runs/${encodeURIComponent(id)}/reconcile`);
+}
+
+/**
  * Rewrite a draft's authored half. **Clears the approval, every time.**
  *
  * That is not this function's doing — the route does it — but a caller needs to
