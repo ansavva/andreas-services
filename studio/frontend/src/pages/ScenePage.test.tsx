@@ -591,3 +591,29 @@ it("still says 'The cut' when there is only one", async () => {
   draw(record({ output: { node: "node-1", name: "light-flex.mp4", url: "https://x/1.mp4" } }));
   expect(await screen.findByText("The cut")).toBeTruthy();
 });
+
+it("lists the runs behind a shot, using the shared run list", async () => {
+  // A link per tile answers "what made this picture" one picture at a time.
+  // Read together the runs answer a different question — what has been spent on
+  // this shot, what is still a draft, what failed.
+  draw(
+    record({
+      shots: [
+        shot({
+          run: "run-clip",
+          runs: [
+            { id: "run-clip", project: "proj-0001", role: "clip", status: "succeeded", model: "kling" },
+            { id: "run-old", project: "proj-0001", role: "earlier take", status: "succeeded", model: "kling" },
+          ],
+        }),
+      ],
+    }),
+  );
+
+  expect(await screen.findByText("Runs")).toBeTruthy();
+  expect(screen.getByText("clip")).toBeTruthy();
+  expect(screen.getByText("earlier take")).toBeTruthy();
+
+  fireEvent.click(screen.getByText("run-old"));
+  await waitFor(() => expect(landed).toContain("run-old"));
+});

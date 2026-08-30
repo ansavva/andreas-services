@@ -5,6 +5,7 @@ import { Badge, Button, Text } from "@ansavva/design-system";
 import type { RunAsset, Shot } from "../../types";
 import { MotionEditor, MotionFields, draftOf, draftToShot, type Draft } from "./motionPrompt";
 import { Frame, Sends } from "./Sends";
+import { RunList } from "../run/RunList";
 
 /**
  * The storyboard, split out of `ScenePage`.
@@ -149,6 +150,22 @@ export function ShotCard({
       )}
 
       <Sends shot={shot} bracketed={bracketed} onView={onView} onOpenRun={onOpenRun} />
+
+      {/* **The runs behind this shot, as a list rather than as links on tiles.**
+          Every frame here came out of a run, and a link per tile answers "what
+          made this picture" one picture at a time. Read together they answer a
+          different question — what has been spent on this shot, what is still a
+          draft, what failed — which is what a run list is for everywhere else in
+          the app, drawn by the same component so a status colour means the same
+          thing here as on a project or a character. */}
+      {(shot.runs ?? []).length > 0 && (
+        <section className="flex flex-col gap-1">
+          <Text variant="caption" tone="muted">
+            Runs
+          </Text>
+          <RunList runs={shot.runs ?? []} onOpen={(run) => onOpenRun(run.id)} />
+        </section>
+      )}
 
       {motion?.prompt &&
         (editing ? (

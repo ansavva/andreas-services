@@ -150,6 +150,61 @@ def list_scenes():
     return jsonify({"scenes": rows, "cursor": None}), 200
 
 
+def _shot_runs(entries: list[dict]) -> dict[str, list[dict]]:
+    """Every run a shot references, as the same summary a runs listing carries.
+
+    **A board is made of run output and could only say so in run ids.** The clip,
+    each boarded panel, the handoff frame and every superseded take came out of a
+    run, and the page drew a link per tile — a link is not a list, and a person
+    reading a shot wants to see the runs behind it together, with the status,
+    model and date every other run list on the site shows.
+
+    Read in ONE `entities_by_id` for the whole scene rather than per shot, and
+    returned as `{shot id: [rows]}` so the caller can attach without a second
+    pass. A row is `id`, `project`, `status`, `kind`, `model`, `created` and the
+    `role` it plays in this shot — the summary fields the shared list draws,
+    plus the one thing only the scene knows.
+    """
+    def roles_of(shot: dict) -> list[tuple[str, str]]:
+        found = [(shot["run"], "clip")] if shot.get("run") else []
+        opens = (shot.get("opens_on") or {}).get("from_run")
+        if opens:
+            found.append((opens, "handoff"))
+        for panel in shot.get("panels") or []:
+            if panel.get("run"):
+                found.append((panel["run"], panel.get("role") or "panel"))
+        for take in shot.get("takes") or []:
+            if take.get("run"):
+                found.append((take["run"], "earlier take"))
+        # First role wins: a run bound twice in one shot is one row, labelled by
+        # the first thing it is. Drawing it twice would read as two renders.
+        seen, ordered = set(), []
+        for run_id, role in found:
+            if run_id not in seen:
+                seen.add(run_id)
+                ordered.append((run_id, role))
+        return ordered
+
+    per_shot = {shot["id"]: roles_of(shot) for shot in entries}
+    wanted = [run_id for pairs in per_shot.values() for run_id, _ in pairs]
+    if not wanted:
+        return {}
+    records = catalog.entities_by_id(catalog.ENTITY_RUN, wanted)
+    return {
+        shot_id: [
+            {**{field: records[run_id].get(field) for field in RUN_ROW}, "role": role}
+            for run_id, role in pairs
+            if run_id in records
+        ]
+        for shot_id, pairs in per_shot.items()
+    }
+
+
+#: What a run row carries into a board. The same fields a runs listing draws, so
+#: one component can render both — see `frontend/src/components/run/RunList.tsx`.
+RUN_ROW = ("id", "project", "status", "kind", "model", "created")
+
+
 def _drawable(entries: list[dict], held: dict) -> list[dict]:
     """A scene's shots with every image pointer expanded into something drawable.
 
@@ -194,6 +249,7 @@ def _drawable(entries: list[dict], held: dict) -> list[dict]:
             wanted += nodes_for(panel.get("references"))
 
     found = {a["node"]: a for a in support.assets(list(dict.fromkeys(wanted)))}
+    runs_for = _shot_runs(entries)
     drawn = []
     for shot in entries:
         shot = dict(shot)
@@ -231,6 +287,8 @@ def _drawable(entries: list[dict], held: dict) -> list[dict]:
         shot["status"] = storyboard.shot_status(shot)
         shot["roles"] = storyboard.resolve_roles(shot)
         drawn.append(shot)
+    for shot, rows in zip(drawn, (runs_for.get(s["id"], []) for s in drawn)):
+        shot["runs"] = rows
     return drawn
 
 
