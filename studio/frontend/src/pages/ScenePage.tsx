@@ -98,28 +98,45 @@ export function ScenePage() {
 
       <Backlinks label="Cut into" links={data.movies} to={moviePath} />
 
-      {data.output && (
+      {(data.output || (data.cuts ?? []).length > 0) && (
         <section className="flex flex-col gap-2">
-          <Text variant="title">The cut</Text>
-          <button
-            type="button"
-            onClick={() =>
-              navigate(objectPath(data.output!.node, { in: "scene", id: sceneId }))
-            }
-            className="w-full max-w-md overflow-hidden rounded-md border border-line bg-card
-                       focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            <MediaThumb
-              nodeId={data.output.node}
-              url={data.output.url}
-              name={data.output.name}
-              isVideo
-              aspect="video"
-            />
-            <Text variant="caption" tone="muted" className="truncate px-2 py-1">
-              {data.output.name}
-            </Text>
-          </button>
+          <Text variant="title">
+            {(data.cuts ?? []).length > 0 ? "Cuts" : "The cut"}
+          </Text>
+          {/* **Every cut, newest first, not just the current one.** Assembling
+              is not a one-shot act: a shot gets re-rendered and the scene is
+              cut again, and comparing the two is the reason for doing it. The
+              older cut used to be overwritten in place and survived only as an
+              S3 object version, which is recoverable and not something anyone
+              can look at. */}
+          <div className="flex flex-wrap gap-3">
+            {[
+              ...(data.output ? [{ asset: data.output, current: true }] : []),
+              ...(data.cuts ?? []).map((asset) => ({ asset, current: false })),
+            ].map(({ asset, current }) => (
+              <button
+                key={asset.node}
+                type="button"
+                onClick={() => navigate(objectPath(asset.node, { in: "scene", id: sceneId }))}
+                className="w-full max-w-md overflow-hidden rounded-md border border-line bg-card
+                           focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                <MediaThumb
+                  nodeId={asset.node}
+                  url={asset.url}
+                  name={asset.name}
+                  isVideo
+                  aspect="video"
+                />
+                <span className="flex items-center gap-2 px-2 py-1">
+                  <Text variant="caption" tone="muted" className="truncate">
+                    {asset.name}
+                  </Text>
+                  {!current && <Badge intent="neutral">earlier</Badge>}
+                </span>
+              </button>
+            ))}
+          </div>
         </section>
       )}
 

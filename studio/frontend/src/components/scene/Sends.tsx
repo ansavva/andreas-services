@@ -1,4 +1,4 @@
-import { Badge, Text } from "@ansavva/design-system";
+import { Badge, Button, Text } from "@ansavva/design-system";
 
 import type { Panel, PanelRole, RunAsset, Shot } from "../../types";
 import { MediaThumb } from "../media/MediaThumb";
@@ -31,10 +31,13 @@ export function Sends({
   shot,
   bracketed,
   onView,
+  onOpenRun,
 }: {
   shot: Shot;
   bracketed: boolean;
   onView: (asset: RunAsset) => void;
+  /** Opens the run that produced a tile. Absent on tiles that had no run. */
+  onOpenRun: (run: string) => void;
 }) {
   const panels = shot.panels ?? [];
   const withRole = (role: PanelRole) => panels.filter((p) => p.role === role);
@@ -52,13 +55,21 @@ export function Sends({
     <section className="flex flex-col gap-3 rounded-md border border-line p-2">
       <SendRow label="Start">
         {handoff?.frame ? (
-          <Frame hint="handoff" asset={handoff.frame} onOpen={onView} />
+          <Frame
+            hint="handoff"
+            asset={handoff.frame}
+            onOpen={onView}
+            run={handoff.from_run}
+            onOpenRun={onOpenRun}
+          />
         ) : startPanel ? (
           <Frame
             hint={panelHint(startPanel, false)}
             title={startPanel.prompt}
             asset={startPanel.image}
             onOpen={onView}
+            run={startPanel.run}
+            onOpenRun={onOpenRun}
           />
         ) : (
           <Slot note="awaits previous shot" />
@@ -76,6 +87,8 @@ export function Sends({
               title={endPanel.prompt}
               asset={endPanel.image}
               onOpen={onView}
+              run={endPanel.run}
+              onOpenRun={onOpenRun}
             />
           ) : (
             <Slot note="not bracketed" />
@@ -91,6 +104,8 @@ export function Sends({
             title={p.prompt}
             asset={p.image}
             onOpen={onView}
+            run={p.run}
+            onOpenRun={onOpenRun}
           />
         ))}
         {assets.map((a) => (
@@ -108,6 +123,8 @@ export function Sends({
               title={p.prompt}
               asset={p.image}
               onOpen={onView}
+              run={p.run}
+              onOpenRun={onOpenRun}
             />
           ))}
         </SendRow>
@@ -189,6 +206,8 @@ export function Frame({
   title,
   asset,
   onOpen,
+  run,
+  onOpenRun,
 }: {
   /** Omitted inside a `SendRow`, whose own label already says what this is. */
   label?: string;
@@ -198,6 +217,17 @@ export function Frame({
   /** Opens the frame in the board's viewer. The asset, not its id — the tile
       already holds everything the drawer needs to draw it. */
   onOpen: (asset: RunAsset) => void;
+  /**
+   * The run that produced this tile, when one did.
+   *
+   * **Every picture on this board came from somewhere and none of them said
+   * where.** A sample, a start frame, a reference and the clip are all run
+   * output, and the run holds the prompt, the payload and the approval that
+   * made them — the things you want the moment a tile looks wrong. The board
+   * had one link, on the shot, so a sample that came out badly was a dead end.
+   */
+  run?: string | null;
+  onOpenRun?: (run: string) => void;
 }) {
   const isVideo = (asset?.content_type ?? "").startsWith("video/");
 
@@ -246,6 +276,11 @@ export function Frame({
           )}
           {hint && <Badge intent={hint === "stale" ? "warning" : "neutral"}>{hint}</Badge>}
         </span>
+      )}
+      {run && onOpenRun && (
+        <Button intent="ghost" size="sm" onClick={() => onOpenRun(run)}>
+          Run
+        </Button>
       )}
     </span>
   );

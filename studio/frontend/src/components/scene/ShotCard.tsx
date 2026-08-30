@@ -110,19 +110,45 @@ export function ShotCard({
           an INPUT, and `Sends` groups those by what they are sent as. The two
           used to be one filmstrip, which drew the same panel twice — once as a
           tile and once as the reference it becomes. */}
-      {shot.clip && (
+      {(shot.clip || (shot.takes ?? []).length > 0) && (
         <div className="flex flex-wrap gap-2">
-          <Frame label="clip" asset={shot.clip} onOpen={onView} />
+          {shot.clip && (
+            <Frame
+              label="clip"
+              asset={shot.clip}
+              onOpen={onView}
+              run={shot.run}
+              onOpenRun={onOpenRun}
+            />
+          )}
+          {/* **Earlier takes of this same shot, newest first.** A shot holds
+              one `run`, so a retry used to erase the only pointer to what it
+              replaced — the clip stayed in the project and nothing linked to
+              it. Comparing a re-render against the take it replaced is the
+              whole reason for re-rendering, and it was the one thing the board
+              could not do. */}
+          {(shot.takes ?? []).map((take) => (
+            <Frame
+              key={take.run ?? take.node ?? ""}
+              label="earlier"
+              hint="superseded"
+              asset={take.clip}
+              title="an earlier take of this shot"
+              onOpen={onView}
+              run={take.run}
+              onOpenRun={onOpenRun}
+            />
+          ))}
         </div>
       )}
 
       {(shot.panels ?? []).length === 0 && !shot.clip && !shot.opens_on?.node && (
         <Text variant="caption" tone="muted">
-          No panels — this shot was added straight from a run.
+          No panels — this shot renders from the previous shot&apos;s last frame.
         </Text>
       )}
 
-      <Sends shot={shot} bracketed={bracketed} onView={onView} />
+      <Sends shot={shot} bracketed={bracketed} onView={onView} onOpenRun={onOpenRun} />
 
       {motion?.prompt &&
         (editing ? (

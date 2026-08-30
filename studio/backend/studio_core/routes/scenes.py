@@ -184,6 +184,9 @@ def _drawable(entries: list[dict], held: dict) -> list[dict]:
         for node in (shot.get("node"), (shot.get("opens_on") or {}).get("node")):
             if node:
                 wanted.append(node)
+        # A superseded take is a clip like any other and is drawn like one; a
+        # history of ids nobody can watch is the thing keeping them was for.
+        wanted += [take["node"] for take in (shot.get("takes") or []) if take.get("node")]
         wanted += nodes_for((shot.get("motion") or {}).get("references"))
         for panel in shot.get("panels") or []:
             if panel.get("node"):
@@ -221,6 +224,10 @@ def _drawable(entries: list[dict], held: dict) -> list[dict]:
         # a handoff causes, which is positional and cannot be read off a panel.
         # Both were computed on one client and stored, so anything that wrote a
         # shot without recomputing them left the SPA drawing a stale answer.
+        shot["takes"] = [
+            {**take, **({"clip": found[take["node"]]} if take.get("node") in found else {})}
+            for take in shot.get("takes") or []
+        ]
         shot["status"] = storyboard.shot_status(shot)
         shot["roles"] = storyboard.resolve_roles(shot)
         drawn.append(shot)
@@ -267,7 +274,11 @@ def get_scene(scene_id: str):
 # revised by re-ingesting its plan, and a revision that could not move `setting`
 # or `defaults` would leave the envelope describing the plan before last.
 SCENE_FIELDS = (
-    "title", "status", "error", "characters", "stitch", "output", "assembled", *SCENE_PLAN,
+    "title", "status", "error", "characters", "stitch", "output", "assembled",
+    # Written by `support.keep_cut` on the two routes that set `output`, never
+    # by a client — see `SHOT_FIELDS`' `takes` for the same argument.
+    "cuts",
+    *SCENE_PLAN,
 )
 
 # The projection the listing row carries, and the only fields worth a second
@@ -295,6 +306,9 @@ def update_scene(scene_id: str):
         # to happen here too because `assemble` may write a different node than
         # the one it signed for.
         node = support.output_node(body["output"])
+        # Before the assignment lands: the cut being displaced is the one still
+        # on `record`, so this reads the stored value and not the incoming one.
+        assignments["cuts"] = support.keep_cut(record, node)
         if node:
             listing["thumb"] = node
     if not assignments:
@@ -373,9 +387,11 @@ def update_shot(scene_id: str, shot_id: str):
 def add_output(scene_id: str):
     """A placeholder and a presigned PUT for the stitched take.
 
-    One output rather than a list, because a scene *is* one take — the shots that
-    made it are `SHOT#` rows naming their own runs, and each of those has its own
-    outputs.
+    One CURRENT output rather than a list, because a scene *is* one take — the
+    shots that made it are `SHOT#` rows naming their own runs, and each of those
+    has its own outputs. The take it displaces is not thrown away, though: it
+    moves to `cuts`, because assembling is not a one-shot act and the stitched
+    file that was there was otherwise reachable by nobody.
     """
     body = support.body()
     held = support.memberships()
@@ -397,7 +413,10 @@ def add_output(scene_id: str):
         owner=catalog.blob_owner_for(record["folder"]),
     )
     catalog.update_project_entity(
-        KIND, record, {"output": {"node": node["node_id"]}}, {"thumb": node["node_id"]}
+        KIND, record,
+        {"output": {"node": node["node_id"]},
+         "cuts": support.keep_cut(record, node["node_id"])},
+        {"thumb": node["node_id"]},
     )
 
     return jsonify(

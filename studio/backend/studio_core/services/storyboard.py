@@ -563,6 +563,38 @@ def unrenderable(plan_doc: dict) -> list[str]:
     return problems
 
 
+TAKE_FIELDS = ("run", "runref", "node", "rendered")
+
+
+def keep_take(previous: dict, merged: dict) -> list[dict]:
+    """The runs a shot has been rendered by, newest-current-first behind it.
+
+    **A retry used to erase its predecessor.** A shot holds one `run`, so
+    re-rendering it — a wording change, a beat that came out wrong, a wedged run
+    resubmitted — overwrote the only pointer to the take before it. The run
+    itself survived in the project and was reachable by nobody: the board drew
+    the new take, and the old one existed at an id you had to have written down.
+
+    So the displaced take is pushed here rather than dropped. It is kept as the
+    four fields that let it be drawn and opened and no more; the run is the
+    record, and duplicating it would be a second copy to keep true.
+
+    **Deduplicated on `run`, and that is what makes this safe to call on every
+    write.** `put_shots` runs on every plan revision and `update_shot` on every
+    field patch, so a shot gets written many times per render with the same run
+    in place. Only a run that is actually being displaced is pushed, and a run
+    already in the list is not pushed twice — otherwise a `--force` re-ingest
+    would grow the history by one entry per ingest, for ever.
+    """
+    was, now = previous.get("run"), merged.get("run")
+    takes = [dict(take) for take in (previous.get("takes") or [])]
+    if not was or was == now:
+        return takes
+    if any(take.get("run") == was for take in takes):
+        return takes
+    return [{field: previous.get(field) for field in TAKE_FIELDS}, *takes]
+
+
 def merge_panels(previous: dict, revised: dict) -> list[dict]:
     """Carry a shot's recorded panel work onto its revised panels, matched by `n`.
 

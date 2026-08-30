@@ -239,10 +239,40 @@ def with_output(record: dict) -> dict:
     """
     stored = record.get("output")
     node_id = output_node(stored)
+    # `cuts` is expanded whether or not there is a current output: a scene can
+    # hold earlier cuts and no current one if the latest assemble failed, and
+    # returning early would hide exactly the history somebody is looking for.
+    cuts = [{**cut, **asset(cut["node"])}
+            for cut in (record.get("cuts") or []) if cut.get("node")]
     if not node_id:
-        return record
+        return {**record, "cuts": cuts} if cuts else record
     stored = {"node": node_id} if isinstance(stored, str) else stored
-    return {**record, "output": {**stored, **asset(node_id)}}
+    out = {**record, "output": {**stored, **asset(node_id)}}
+    return {**out, "cuts": cuts} if cuts else out
+
+
+def keep_cut(record: dict, node_id: str | None) -> list[dict]:
+    """The cuts this scene has been assembled into before the current one.
+
+    **Re-cutting overwrote the only pointer to the previous take.** A scene holds
+    one `output` — deliberately, because a scene *is* one take — but assembling
+    is not a one-shot act: a shot gets re-rendered and the scene is cut again,
+    and the stitched file that was there is then reachable by nobody.
+
+    Same shape and same rules as `storyboard.keep_take`: only a node actually
+    being displaced is pushed, and a node already in the list is not pushed
+    twice, so the repeated writes that a single assemble makes cannot grow the
+    history.
+    """
+    was = output_node(record.get("output"))
+    cuts = [dict(cut) for cut in (record.get("cuts") or [])]
+    if not was or was == node_id:
+        return cuts
+    if any(cut.get("node") == was for cut in cuts):
+        return cuts
+    stored = record.get("output")
+    stored = {} if isinstance(stored, str) else dict(stored or {})
+    return [{**stored, "node": was}, *cuts]
 
 
 def structured(code: str, message: str, status: int, **extra):
