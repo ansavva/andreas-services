@@ -946,3 +946,78 @@ def test_an_empty_prompt_is_left_to_the_error_that_already_covers_it():
     from studio_pipeline.engine.board import _unstructured_prompt_note
 
     assert _unstructured_prompt_note(_prose_shot("   ")) is None
+
+
+# --- a dry run leaves a draft, and a run can be attached to a shot ----------
+#
+# Both halves of one hole. `studio run --dry-run` has left a draft since the
+# split of `draft` out of `execute`; `scenes render --dry-run` was not moved
+# over and kept printing to a terminal instead. So every shot of a real scene
+# got submitted as a standalone run, and a standalone run is not recorded on
+# its shot — leaving scenes whose shots had plainly rendered but which
+# `scenes assemble` refused to cut.
+
+
+def test_a_dry_run_leaves_a_draft_per_shot(library, scene, no_network):
+    """The payload hard rule #2 asks a person to read now has an address."""
+    board_ready(library, scene)
+    r = run("scenes", "render", SCENE, "--shot", "1", "--dry-run")
+    assert r.exit_code == 0, f"{r.output}\n{r.exception!r}"
+    assert "draft(s) written" in r.output
+    assert "studio runs approve run-" in r.output
+
+
+def test_a_dry_run_still_bills_nothing(library, scene, no_network):
+    """`no_network` refuses `create_prediction`, so reaching one would raise."""
+    board_ready(library, scene)
+    r = run("scenes", "render", SCENE, "--shot", "1", "--dry-run")
+    assert r.exit_code == 0
+    assert "nothing submitted" in r.output
+
+
+def test_the_dry_run_prints_how_to_put_the_run_back_on_the_shot(library, scene, no_network):
+    """Approving and submitting a draft leaves the scene none the wiser.
+
+    The command that closes that loop is the one nobody could guess, so the
+    dry run names it rather than leaving it to be discovered by an assemble
+    that refuses.
+    """
+    board_ready(library, scene)
+    r = run("scenes", "render", SCENE, "--shot", "1", "--dry-run")
+    assert "studio scenes attach" in r.output
+    assert "--shot 1" in r.output
+
+
+def test_attach_records_a_finished_run_on_a_shot(
+    library, scene, no_network, a_model_that_answers, monkeypatch
+):
+    ref = _boarded_scene(monkeypatch, library, scene)
+    _render(monkeypatch, ref)
+    rendered = SC.scene_shots(SC.resolve_scene(ref))[0]
+    assert rendered.get("run"), "fixture did not render a shot"
+
+    # Clear it, the way a run submitted outside `scenes render` leaves it.
+    shots = SC.scene_shots(SC.resolve_scene(ref))
+    shots[0].update(run=None, runref=None, node=None, rendered=None)
+    SC.save_shots(SC.resolve_scene(ref), shots)
+    assert SC.scene_shots(SC.resolve_scene(ref))[0].get("run") is None
+
+    r = run("scenes", "attach", ref, "--shot", "1", "--run", rendered["run"])
+    assert r.exit_code == 0, f"{r.output}\n{r.exception!r}"
+    assert SC.scene_shots(SC.resolve_scene(ref))[0]["run"] == rendered["run"]
+
+
+def test_attach_refuses_a_run_that_has_not_succeeded(
+    library, scene, no_network, a_model_that_answers, monkeypatch
+):
+    """A shot in `rendered` with nothing to cut is the same broken scene."""
+    from studio_pipeline.domain import runs as R
+
+    ref = _boarded_scene(monkeypatch, library, scene)
+    draft = R.record_request(
+        SC.resolve_scene(ref)["project"], kind="video", engine="studio-media-kling",
+        model="kwaivgi/kling-v3-omni-video", input={"prompt": "x"})
+
+    r = run("scenes", "attach", ref, "--shot", "1", "--run", draft["id"])
+    assert r.exit_code != 0
+    assert "not succeeded" in r.output
