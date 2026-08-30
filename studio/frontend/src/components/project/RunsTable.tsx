@@ -17,6 +17,7 @@ import { getRuns } from "../../apis/studio";
 import { formatDate } from "../../utils/format";
 import type { RunStatus, RunSummary } from "../../types";
 import { MediaThumb } from "../media/MediaThumb";
+import { formatCost } from "../../utils/cost";
 
 interface Props {
   projectId: string;
@@ -276,7 +277,7 @@ export function RunsTable({ projectId, characters, onOpen }: Props) {
                 Replicate's prediction metrics differ by model, and a number this
                 app worked out itself would be a guess wearing a currency sign. */}
             <Text variant="caption" tone="muted" className="w-20 shrink-0 text-right tabular-nums">
-              {run.cost ? `${run.cost.currency} ${run.cost.amount.toFixed(3)}` : "—"}
+              {formatCost(run.cost, "—")}
             </Text>
           </button>
         ))}

@@ -15,6 +15,7 @@ import { PageBar } from "../components/layout/PageBar";
 import { Backlinks } from "../components/common/Backlinks";
 import { MediaThumb } from "../components/media/MediaThumb";
 import { ApproveBar, InFlightBar, RunPlan } from "../components/run/RunPlan";
+import { formatCost } from "../utils/cost";
 import { RunPlanEditor } from "../components/run/RunPlanEditor";
 import { useResource } from "../hooks/useResource";
 import { useProjectCrumb } from "../hooks/useProjectCrumb";
@@ -157,7 +158,7 @@ export function RunPage() {
         <Fact label="Completed" value={data.completed ? formatDate(data.completed) : "—"} />
         <Fact
           label="Cost"
-          value={data.cost ? `${data.cost.currency} ${data.cost.amount.toFixed(3)}` : "not reported"}
+          value={formatCost(data.cost)}
         />
       </section>
 
