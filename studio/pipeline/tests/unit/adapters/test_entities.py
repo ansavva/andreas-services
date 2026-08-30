@@ -95,6 +95,14 @@ WIRE_SURFACE = {
     "/api/runs/<id>/plan",
     "/api/runs/<id>/sends",
     "/api/runs/<id>/approve",
+    # **The route that spends money**, and the two either side of it. Generation
+    # moved into the API, so the CLI asks it to submit rather than calling
+    # Replicate itself — and reads a model's live schema and README through it
+    # too, which is what removed `REPLICATE_API_TOKEN` from this package.
+    "/api/runs/<id>/submit",
+    "/api/runs/<id>/reconcile",
+    "/api/models/<id>/schema",
+    "/api/models/<id>/readme",
     # scenes
     "/api/scenes",
     "/api/scenes/<id>",

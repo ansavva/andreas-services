@@ -67,10 +67,15 @@ from flask import Blueprint, g, jsonify, request
 
 from studio_core import config
 from studio_core.clients.aws import s3
-from studio_core.errors import ConflictError, NotFoundError, ValidationError
+from studio_core.errors import (
+    ConflictError,
+    NotFoundError,
+    UpstreamError,
+    ValidationError,
+)
 from studio_core.routes import projects as project_routes
 from studio_core.routes import support
-from studio_core.services import catalog, layout, manage
+from studio_core.services import catalog, generate, layout, manage
 
 logger = logging.getLogger(__name__)
 
@@ -374,6 +379,14 @@ def create_run():
             "kind": kind,
             "engine": body.get("engine"),
             "model": model,
+            # **A FILENAME, NOT AN IDENTITY**, and an envelope field rather than
+            # part of the plan. It has to be persisted because the thing that
+            # names the output file is now the callback, which arrives with no
+            # request body and cannot be told what to call anything — and it is
+            # deliberately outside `plan` because `plan_digest` hashes the plan:
+            # a rename would otherwise void an approval over something the
+            # provider is never sent. `services/generate.py::_output_names`.
+            "output_name": body.get("name"),
             # The AUTHORED half. `plan` is studio's own and is validated as a
             # map and no further: which knobs a model has is registry data, the
             # registry is the pipeline's, and a copy of it here would be a
@@ -1011,6 +1024,113 @@ def _refuse_submission(record: dict):
             digest=current,
         )
     return None
+
+
+@bp.post("/runs/<run_id>/submit")
+def submit_run(run_id: str):
+    """Send an approved run to the provider. **The route that spends money.**
+
+    **This is what moved.** Until now the CLI held the Replicate token, built the
+    presigned URLs, created the prediction and sat in a poll loop until it
+    settled — so a 15-minute video meant a terminal nobody could close, a killed
+    process left a run wedged at `pending`, and the SPA could not submit at all
+    because it had no credential and no way to wait. The provider work is here
+    now, the wait is a webhook, and both halves of studio reach it the same way.
+
+    The order below is the whole of the safety and none of it is incidental:
+
+    1. **Refuse an already-submitted run**, before anything else. A second POST
+       to this route is the cheapest way to buy the same prediction twice.
+    2. **Check the approval and the digest** — `_refuse_submission`, the same
+       function `PATCH /api/runs/<id>` uses, so there is one answer to "may this
+       be sent" rather than two that have to agree.
+    3. **Preflight the payload while the run is still `approved`.** A model that
+       will refuse the input must leave the run exactly as it was — editable,
+       approvable, submittable again — rather than at `pending` with nothing
+       behind it.
+    4. **Move to `pending`, then call the provider.** The gate stands in front of
+       the money rather than behind it, and a process that dies in between leaves
+       a run that reads as "went out and never answered" rather than as a draft.
+
+    The response says which of the two closing triggers this submission got.
+    `callback: "webhook"` means Replicate will call back and the caller should
+    watch the row; `callback: "poll"` means nothing can reach this API from the
+    internet — local development — and the caller drives
+    `POST /api/runs/<id>/reconcile` itself. See `services/generate.py`.
+    """
+    held = support.memberships()
+    record = _run(run_id, held)
+
+    if record.get("status") not in catalog.UNSUBMITTED_RUN_STATUSES:
+        raise ConflictError(
+            f"run {record['id']} is {record['status']}; it has already been sent"
+        )
+
+    refusal = _refuse_submission(record)
+    if refusal is not None:
+        return refusal
+
+    send_entries = catalog.sends(record["id"])
+    # Before `pending`, deliberately. See point 3 above.
+    entry, payload, bindings = generate.prepare(record, send_entries)
+
+    bump_count = not record.get("counted")
+    record = catalog.update_project_entity(
+        KIND,
+        record,
+        {"status": "pending", "submitted": catalog.now(), "counted": True},
+        {"status": "pending"},
+        bump_count=bump_count,
+    )
+
+    created = generate.dispatch(record, entry, payload, bindings)
+    prediction_id = created.get("id")
+    if not prediction_id:
+        # The provider answered and named no prediction. Nothing is in flight, so
+        # unlike a transport failure this one is knowable and is recorded as the
+        # failure it is.
+        record = catalog.update_project_entity(
+            KIND, record,
+            {"status": "failed", "completed": catalog.now(),
+             "error": "the provider returned no prediction id"},
+            {"status": "failed"},
+        )
+        raise UpstreamError("the provider returned no prediction id")
+
+    record = catalog.update_project_entity(
+        KIND, record, {"status": "running", "prediction_id": prediction_id},
+        {"status": "running"},
+    )
+    return jsonify({
+        **view(record, send_entries),
+        "callback": "webhook" if generate.callback_url(run_id) else "poll",
+    }), 200
+
+
+@bp.post("/runs/<run_id>/reconcile")
+def reconcile_run(run_id: str):
+    """Ask the provider what happened to this run's prediction, and close it.
+
+    **Two situations, one shape, and that is not a coincidence being papered
+    over.** In local development Replicate cannot reach `http://localhost:8000`,
+    so there was never going to be a callback; in production a callback can be
+    lost to a deploy landing mid-flight or to a signature this service refused.
+    From here both are "the run is `running`, the prediction is not, and nothing
+    told us" — and the remedy is the same question to the same endpoint.
+
+    It runs the identical closing code the webhook runs, so a run closed either
+    way is the same row. Idempotent: a run already finished comes back untouched
+    rather than re-uploading its output.
+
+    **Deliberately not a poller.** Nothing schedules this; it is called by a
+    caller that is waiting, or by a person who noticed. A sweep over stale
+    `running` rows would need a scheduler, a bound and a decision about how old
+    is too old, and none of those pay for themselves while the webhook is the
+    normal path.
+    """
+    held = support.memberships()
+    record = _run(run_id, held)
+    return jsonify(view(generate.reconcile(record))), 200
 
 
 @bp.post("/runs/<run_id>/outputs")

@@ -64,7 +64,6 @@ from types import SimpleNamespace
 import click
 import yaml
 
-from studio_pipeline.adapters import replicate as RA
 from studio_pipeline.adapters import store
 from studio_pipeline.domain import TEMPLATES_DIR
 from studio_pipeline.domain import characters as CHARACTER
@@ -739,12 +738,11 @@ def run_turnaround(name: str, opts) -> int:
         # can look up afterwards; the name is the only half a person recognises.
         print(f"  {node}  {store.node(node).get('name', '')}", file=sys.stderr)
 
-    token = RA.load_token()
     prepared = []
     for angle in angles:
         entry, args, payload, bindings = prepare(angle, spec, profile, name, opts)
         try:
-            SUB.preflight(entry, payload, bindings, token)
+            SUB.preflight(entry, payload, bindings)
         except MS.SchemaError as exc:
             raise TurnaroundError(f"angle {angle['id']!r} would be refused by {entry['key']}:\n{exc}")
         prepared.append((angle, entry, args, payload, bindings))
@@ -787,10 +785,10 @@ def run_turnaround(name: str, opts) -> int:
     for angle, entry, args, payload, bindings in prepared:
         print(f"\n----- {angle['id']} -----", file=sys.stderr)
         try:
-            code = SUB.execute(entry, payload, bindings, token, args)
+            code = SUB.execute(entry, payload, bindings, args)
             if code != 0:
                 raise SUB.SubmitError(f"exited {code}")
-        except (SUB.SubmitError, RA.ReplicateError) as exc:
+        except SUB.SubmitError as exc:
             print(f"  FAILED — {exc}", file=sys.stderr)
             failed.append((angle["id"], str(exc)))
             continue

@@ -27,7 +27,6 @@ import pytest
 from click.testing import CliRunner
 
 from studio_pipeline import cli
-from studio_pipeline.adapters import replicate as RA
 from studio_pipeline.adapters import store
 from studio_pipeline.domain import projects as PROJECTS
 from studio_pipeline.domain import scenes as SC
@@ -41,8 +40,8 @@ SCENE = f"porch-teaser/{PLANNED}"
 
 
 @pytest.fixture
-def no_network(monkeypatch):
-    """A permissive live schema, and a prediction call that refuses to be made."""
+def no_network(monkeypatch, fake_api):
+    """A permissive live schema, and a submission that refuses to be made."""
     def props(*_a, **_k):
         fields = {"prompt", "aspect_ratio", "output_format", "quality", "moderation",
                   "mode", "duration", "generate_audio", "image_input", "input_images",
@@ -53,18 +52,13 @@ def no_network(monkeypatch):
     monkeypatch.setattr("studio_pipeline.engine.schema.fetch", props)
 
     # **Not about billing — `conftest` already settled that.** This asserts the
-    # stronger property that a dry run does not call `create_prediction` AT
-    # ALL. The fake would answer it perfectly happily, and a board that
-    # submitted on a dry run would pass every other check in this file.
-    def refuse(*_a, **_k):
-        raise AssertionError("nothing may create a prediction in this suite")
-
-    monkeypatch.setattr("studio_pipeline.adapters.replicate.create_prediction", refuse)
-
-
-#: `adapters.replicate.create_prediction` as imported, before `no_network`
-#: replaces it. In `fake` mode this is the fake — see `conftest`.
-_REAL_CREATE_PREDICTION = RA.create_prediction
+    # stronger property that a dry run does not SUBMIT at all. The fake would
+    # answer a submission perfectly happily, and a board that submitted on a dry
+    # run would pass every other check in this file.
+    #
+    # It used to patch `adapters.replicate.create_prediction`, which is deleted:
+    # the CLI holds no provider client, so the seam is the API route it calls.
+    fake_api.submits_refused = True
 
 
 def run(*argv):
@@ -641,22 +635,22 @@ def test_a_shot_can_ask_for_the_characters_references(library, scene, no_network
 
 
 @pytest.fixture
-def a_model_that_answers(monkeypatch):
-    """Replicate answering successfully — which is now the suite-wide default.
+def a_model_that_answers(fake_api):
+    """A submission that goes through — which is the fake API's default.
 
     **This used to BE the stub**, three `monkeypatch.setattr` calls replacing
-    `create_prediction`, `poll` and `download` by hand. That is
-    `STUDIO_REPLICATE_MODE=fake` now, set once autouse in `conftest.py`, so all
-    this has to do is undo `no_network`'s refusal — and the media it writes is a
-    real decodable PNG rather than a header with zeros after it, which is what
-    lets `contact_sheet` and `frames` run against a boarded panel at all.
+    `create_prediction`, `poll` and `download` by hand. Then it was one line
+    undoing `no_network`'s refusal of `create_prediction`. Now it undoes
+    `no_network`'s refusal of the *route*, because the provider client left this
+    package entirely — and the media the fake writes is still a real decodable
+    JPEG rather than a header with zeros after it, which is what lets
+    `contact_sheet` and `frames` run against a boarded panel at all.
 
     Kept as a named fixture because the name is the documentation: a test that
     asks for `a_model_that_answers` is saying it expects a submit to happen,
     which is the opposite of every other test in this file.
     """
-    monkeypatch.setattr("studio_pipeline.adapters.replicate.create_prediction",
-                        _REAL_CREATE_PREDICTION)
+    fake_api.submits_refused = False
 
 
 def _board(monkeypatch, ref, **kw):

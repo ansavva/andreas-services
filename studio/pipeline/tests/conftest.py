@@ -47,17 +47,28 @@ os.environ["STUDIO_S3_BUCKET"] = "studio-prod-media-us-east-1"
 # gives, so the suite has to name one — `catalog gc` and `catalog verify`
 # refuse before they reach moto otherwise.
 os.environ["STUDIO_CATALOG_TABLE"] = "studio-prod-catalog"
-# Never let a test reach the real API, whatever is in studio/.env. TWO
-# mechanisms, and they fail differently on purpose:
+# **NOTHING IN THIS PACKAGE CAN BILL ANY MORE, and these two stay anyway.**
 #
-#   * `STUDIO_REPLICATE_MODE=fake` makes `adapters/replicate.py` answer all six
-#     of its functions locally. This is the one that tests are meant to rely on
-#     — it replaced a monkeypatch per test file, which a new file could forget.
-#   * A dud token, so that if the mode is ever unset the live client gets a 401
-#     from Replicate instead of a bill from it.
+# `adapters/replicate.py` is deleted. Generation moved into the API, so the one
+# paid call in the repository is `clients/replicate.create_prediction` in the
+# backend, and the CLI reaches it through `POST /api/runs/<id>/submit` — a route
+# `tests/support/fake_api.py` answers without a socket. The seam a test controls
+# is `fake_api.submits_refused`, not a stub over a provider client that no longer
+# exists here.
 #
-# `_no_outbound_sockets` below is the third and the only one that catches a paid
-# call reached indirectly, through a module neither of these knows about.
+# The two variables below are therefore belt-and-braces rather than the guard
+# they used to be, and they are kept for two reasons worth stating:
+#
+#   * **A dud token means a mistake costs a 401 rather than a bill.** If code
+#     that reaches a provider ever comes back to this package, it fails loudly
+#     on its first call instead of quietly working against somebody's account.
+#   * **`fake` is the word the backend suite uses**, and the two halves of studio
+#     agreeing on one spelling is what makes a divergence between them visible.
+#     `backend/tests/conftest.py` sets exactly these.
+#
+# `_no_outbound_sockets` below is the real backstop, and the only one that
+# catches a paid call reached indirectly — through a module neither of these
+# knows about, or a subprocess.
 os.environ["STUDIO_REPLICATE_MODE"] = "fake"
 os.environ["REPLICATE_API_TOKEN"] = "r8_test_token"
 
@@ -156,9 +167,11 @@ def _registry_is_a_copy(monkeypatch, tmp_path):
     words the suite was making live calls to a model provider and depending on
     them FAILING.
 
-    The moment `STUDIO_REPLICATE_MODE=fake` made that call succeed with an
-    empty body, the refresh wrote an empty snapshot over every model and
-    deleted 391 lines of hand-verified schema. Two board tests went red because
+    The moment the provider was faked and that call succeeded with an empty
+    body, the refresh wrote an empty snapshot over every model and deleted 391
+    lines of hand-verified schema. (The schema fetch is
+    `GET /api/models/<name>/schema` now, which `fake_api` answers with an empty
+    document — so the hazard is unchanged and so is this fixture.) Two board tests went red because
     `panel_format` reads `snapshot.output_format.enum` — which is the good news;
     the file had already been corrupted on the run before.
 
@@ -190,18 +203,22 @@ def _registry_is_a_copy(monkeypatch, tmp_path):
 
 @pytest.fixture(autouse=True)
 def _no_outbound_sockets(monkeypatch):
-    """The backstop `STUDIO_REPLICATE_MODE` cannot be.
+    """The backstop no config switch can be, and now the primary guard.
 
     A config switch can only fake the calls that go through the module it
-    switches. It says nothing about a paid call added to `adapters/s3`, or
+    switches. It says nothing about a paid call added to `adapters/store`, or
     reached through a dependency, or made by a subprocess — and
     `test_dev_seed`'s source scan says the same of itself in its own docstring.
     This closes that by construction: connecting anywhere but loopback raises,
     so the failure is a stack trace naming the caller rather than an invoice.
 
-    Patched on `socket.socket.connect` rather than on a library, because every
-    HTTP client in the tree ends up there — urllib in `adapters/replicate.py`,
-    urllib3 under botocore — and patching one of them leaves the others open.
+    **It is doing more of the work than it used to.** `STUDIO_REPLICATE_MODE`
+    guarded `adapters/replicate.py`, which is deleted — so what stops a stray
+    HTTP call from this package today is this fixture and the fake API, not a
+    mode flag. Patched on `socket.socket.connect` rather than on a library,
+    because every HTTP client in the tree ends up there — urllib in
+    `adapters/api.py`, urllib3 under botocore — and patching one of them leaves
+    the others open.
     """
     import socket
 
@@ -212,10 +229,11 @@ def _no_outbound_sockets(monkeypatch):
         if isinstance(host, str) and host not in _LOOPBACK:
             raise RuntimeError(
                 f"a test tried to open a socket to {host!r}. Nothing in the "
-                "unit suite talks to the network: moto is in-process, the API "
-                "is a fake, and Replicate answers from "
-                "STUDIO_REPLICATE_MODE=fake. If this is a real integration "
-                "test it belongs in tests/integration/.")
+                "unit suite talks to the network: moto is in-process and the "
+                "API is a fake — including its submit route, which is the only "
+                "thing that can spend money and no longer lives in this "
+                "package. If this is a real integration test it belongs in "
+                "tests/integration/.")
         return real_connect(self, address, *args, **kwargs)
 
     monkeypatch.setattr(socket.socket, "connect", guarded)

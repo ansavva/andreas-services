@@ -55,7 +55,6 @@ from types import SimpleNamespace
 
 import click
 
-from studio_pipeline.adapters import replicate as RA
 from studio_pipeline.adapters import store
 from studio_pipeline.domain import contact_sheet as SHEET
 from studio_pipeline.domain import paths as P
@@ -591,7 +590,6 @@ def run_check(ref: str, opts) -> int:
     """
     manifest = _resolve(ref, opts.project)
     shots = select_shots(manifest, tuple(opts.shot or ()))
-    token = RA.load_token()
     problems: list[str] = []
     notes: list[str] = []
     ok = 0
@@ -602,13 +600,13 @@ def run_check(ref: str, opts) -> int:
                 continue
             try:
                 entry, _args, payload, bindings = prepare_panel(manifest, shot, panel, opts)
-                SUB.preflight(entry, payload, bindings, token)
+                SUB.preflight(entry, payload, bindings)
                 ok += 1
             except (BoardError, MS.SchemaError) as exc:
                 problems.append(str(exc))
         try:
             entry, _args, payload, bindings, shot_notes = prepare_shot(manifest, shot, opts)
-            SUB.preflight(entry, payload, bindings, token)
+            SUB.preflight(entry, payload, bindings)
             notes += shot_notes
             ok += 1
         except (BoardError, MS.SchemaError) as exc:
@@ -651,7 +649,6 @@ def run_board(ref: str, opts) -> int:
               f"panel again.", file=sys.stderr)
         return 0
 
-    token = RA.load_token()
 
     # Prepared one at a time rather than all up front, because a panel's inputs
     # include the panels before it — which for a fresh board do not exist yet.
@@ -663,7 +660,7 @@ def run_board(ref: str, opts) -> int:
     for shot, panel in wanted:
         entry, args, payload, bindings = prepare_panel(manifest, shot, panel, opts)
         try:
-            SUB.preflight(entry, payload, bindings, token)
+            SUB.preflight(entry, payload, bindings)
         except MS.SchemaError as exc:
             raise BoardError(f"{shot['id']} panel {panel['n']} would be refused by "
                              f"{entry['key']}:\n{exc}")
@@ -705,8 +702,8 @@ def run_board(ref: str, opts) -> int:
             # record now and this was never updated, so `record != 0` was true of
             # every successful render: all ten panels billed, all ten were
             # reported as `exited {…}`, and the board recorded none of them.
-            submitted = SUB.execute(entry, payload, bindings, token, args)
-        except (SUB.SubmitError, RA.ReplicateError) as exc:
+            submitted = SUB.execute(entry, payload, bindings, args)
+        except SUB.SubmitError as exc:
             print(f"  FAILED — {exc}", file=sys.stderr)
             failed.append((label, str(exc)))
             continue
@@ -793,13 +790,12 @@ def run_render(ref: str, opts) -> int:
     manifest = _resolve(ref, opts.project)
     owner = manifest['project_slug']
     shots = select_shots(manifest, tuple(opts.shot))
-    token = RA.load_token()
 
     prepared, notes = [], []
     for shot in shots:
         entry, args, payload, bindings, shot_notes = prepare_shot(manifest, shot, opts)
         try:
-            SUB.preflight(entry, payload, bindings, token)
+            SUB.preflight(entry, payload, bindings)
         except MS.SchemaError as exc:
             raise BoardError(f"{shot['id']} would be refused by {entry['key']}:\n{exc}")
         prepared.append((shot, entry, args, payload, bindings))
@@ -833,8 +829,8 @@ def run_render(ref: str, opts) -> int:
     for shot, entry, args, payload, bindings in prepared:
         print(f"\n----- {shot['id']} -----", file=sys.stderr)
         try:
-            record = SUB.execute(entry, payload, bindings, token, args)
-        except (SUB.SubmitError, RA.ReplicateError) as exc:
+            record = SUB.execute(entry, payload, bindings, args)
+        except SUB.SubmitError as exc:
             print(f"  FAILED — {exc}", file=sys.stderr)
             failed.append((shot["id"], str(exc)))
             continue

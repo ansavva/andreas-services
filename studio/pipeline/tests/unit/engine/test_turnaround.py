@@ -706,10 +706,10 @@ def test_turnaround_dry_run_renders_every_angle_and_submits_nothing(library, spe
                              "moderation", entry["images"]["refs"])}
     monkeypatch.setattr("studio_pipeline.engine.schema.fetch", lambda *a, **k: (props, {}))
 
-    def refuse(*a, **k):
-        raise AssertionError("a dry run must not create a prediction")
-
-    monkeypatch.setattr("studio_pipeline.adapters.replicate.create_prediction", refuse)
+    # **"Must not submit", which is stronger than "must not bill".** The seam
+    # used to be `adapters.replicate.create_prediction`; the CLI holds no
+    # provider client now, so it is the API route the CLI would call.
+    library.fake.submits_refused = True
 
     result = CliRunner().invoke(cli.main, [
         "character", "turnaround", "subject-a", "--project", "porch-teaser", "--dry-run"])

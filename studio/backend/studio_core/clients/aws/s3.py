@@ -148,6 +148,39 @@ def put_text(key: str, body: bytes, content_type: str) -> None:
         raise UpstreamError("Could not save the file") from exc
 
 
+def put_file(key: str, path: str, content_type: str) -> None:
+    """Upload a file from disk as **one** `PutObject`.
+
+    The second path by which bytes from outside the bucket can enter it, after
+    `presign_put`, and the two are bounded differently because they are used
+    differently. A presigned PUT is handed to a client and so is bounded at
+    signing time; this one is called by the service itself, with a key off a node
+    record it just created and a file it just wrote — the caller is the bound.
+
+    **A single PUT and deliberately not `upload_file`.** boto3's managed transfer
+    switches to multipart above 8 MB, and a multipart ETag is a hash of the part
+    hashes with a `-N` suffix rather than the MD5 of the object — which
+    `s3.content_hash` correctly refuses to record, so every video output would
+    land with no checksum at all. `config.max_output_bytes` is S3's own
+    single-PUT ceiling, which is what makes this possible for anything the
+    callback will accept.
+
+    The body is a file handle rather than `bytes`: botocore streams it, so a
+    200 MB clip never sits in the Lambda's heap.
+    """
+    try:
+        with open(path, "rb") as handle:
+            client().put_object(
+                Bucket=config.media_bucket(),
+                Key=key,
+                Body=handle,
+                ContentType=content_type,
+            )
+    except ClientError as exc:
+        logger.warning("PutObject failed for %s: %s", key, exc)
+        raise UpstreamError("Could not store the model output") from exc
+
+
 def presign(key: str, *, disposition: str = "inline", filename: str | None = None) -> str:
     """A presigned GET URL for one object.
 

@@ -33,7 +33,6 @@ from types import SimpleNamespace
 
 import click
 
-from studio_pipeline.adapters import replicate as RA
 from studio_pipeline.domain import projects as PROJ
 from studio_pipeline.domain import runs as R
 from studio_pipeline.engine import add_model as AM
@@ -90,9 +89,8 @@ def cmd_models_show(model, json_):
         entry = REG.get(model)
     except REG.RegistryError as e:
         die(str(e))
-    token = RA.load_token()
     try:
-        props, schemas = MS.fetch(entry["model"], token)
+        props, schemas = MS.fetch(entry["model"])
     except MS.SchemaError as e:
         die(str(e))
 
@@ -135,13 +133,12 @@ def cmd_models_show(model, json_):
 @click.argument("model", required=False)
 @click.option("--json", "json_", is_flag=True)
 def cmd_models_refresh(model, json_):
-    token = RA.load_token()
     targets = [model] if model else list(REG.all())
     import datetime as dt
     for name in targets:
         entry = REG.get(name)
         try:
-            props, schemas = MS.fetch(entry["model"], token)
+            props, schemas = MS.fetch(entry["model"])
         except MS.SchemaError as e:
             print(f"  {name}: SKIPPED — {e}", file=sys.stderr)
             continue
@@ -214,14 +211,13 @@ def _ephemeral_entry(model: str) -> dict:
     The guessed fields are the point of the warning: `accepts_ext` in particular
     is inferred from prose and is the one most likely to be wrong.
     """
-    token = RA.load_token()
     try:
-        props, schemas = MS.fetch(model, token)
+        props, schemas = MS.fetch(model)
     except MS.SchemaError as e:
         die(str(e))
     if not props:
         die(f"{model} has no published input schema — cannot run it.")
-    entry, _notes = AM.infer(model, props, schemas, AM.readme(model, token))
+    entry, _notes = AM.infer(model, props, schemas, AM.readme(model))
     entry["key"] = model
     print(f"note: {model} is not registered; running it off its live schema. "
           f"Fields are inferred rather than curated — `studio add-model {model}` "
@@ -321,7 +317,6 @@ def cmd_run(**options):
     if args.timeout is None:
         args.timeout = d["timeout"]
 
-    token = RA.load_token()
 
     # Where a run lands is never guessed. It used to fall back to the character
     # name and then to a pseudo-character called `misc`, which is how output
@@ -351,7 +346,7 @@ def cmd_run(**options):
                   "prompt will not stay on-model.", file=sys.stderr)
 
     try:
-        SUB.preflight(entry, payload, bindings, token)
+        SUB.preflight(entry, payload, bindings)
     except MS.SchemaError as e:
         die(str(e))
 
@@ -382,9 +377,9 @@ def cmd_run(**options):
     try:
         # `execute` returns the run record; a single generation has nothing left
         # to do with it, and the exit code a caller reads is success or `die`.
-        SUB.execute(entry, payload, bindings, token, args,
+        SUB.execute(entry, payload, bindings, args,
                     on_drafted=lambda record: _refuse_a_duplicate(record, args))
-    except (SUB.SubmitError, RA.ReplicateError) as e:
+    except SUB.SubmitError as e:
         die(str(e))
     # **Nothing to record afterwards any more.** The ledger had to be written
     # after the submit — a payload the provider refused was not paid for, and an

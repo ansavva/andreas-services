@@ -81,11 +81,13 @@ def entry_for(record: dict):
         f"the registry — see `studio models`.")
 
 
-def submit_draft(record: dict, token: str | None = None) -> dict:
-    """Send an approved draft. Returns the closed run record.
+def submit_draft(record: dict) -> dict:
+    """Send an approved draft. Returns the run record the wait settled on.
 
-    The token is fetched the same way `studio run` fetches it, so a draft
-    submitted here bills identically to one submitted in one command.
+    **The `token` parameter is gone.** Nothing in this package holds a Replicate
+    credential; `submit` asks the API, which does. A draft submitted here bills
+    identically to one submitted in a single `studio run`, because both are the
+    same call to the same route.
     """
     entry = entry_for(record)
     payload = payload_of(record)
@@ -96,25 +98,16 @@ def submit_draft(record: dict, token: str | None = None) -> dict:
     # settled every one of them. A namespace carrying just those is honest about
     # that: there is nothing left to decide here, and a full argument parser
     # would invite something to be decided differently the second time.
+    #
+    # **`name` is not among them any more.** It used to be, because this process
+    # did the download and so chose the filename; the API does it now, off the
+    # `output_name` recorded when the draft was written. A name supplied here
+    # would be a second answer arriving after the row already had one.
     args = types.SimpleNamespace(
         project=project,
-        name=_output_name(record),
         poll=True,
         interval=SUB.defaults(record["kind"])["interval"],
         timeout=SUB.defaults(record["kind"])["timeout"],
         dest=None,
     )
-    return SUB.submit(entry, record, payload, bindings,
-                      token or _token(), args)
-
-
-def _output_name(record: dict) -> str:
-    """What the downloaded file is called. A filename, never an identity."""
-    return (record.get("plan") or {}).get("name") or record["kind"]
-
-
-def _token() -> str:
-    """The provider token, loaded exactly as `studio run` loads it."""
-    from studio_pipeline.adapters import replicate as RA
-
-    return RA.load_token()
+    return SUB.submit(entry, record, payload, bindings, args)
