@@ -36,19 +36,28 @@ and call Replicate — the whole credential path — **without creating a
 prediction**. Proving it through a submission would mean a real generation on
 every deploy: a bill, and a payload nobody approved.
 
-Set the value once, by hand, from a machine with the `default` profile:
+**The value comes from a GitHub environment secret**, `REPLICATE_API_TOKEN` on
+the `studio-production` environment:
 
-```bash
-aws ssm put-parameter --overwrite --type SecureString \
-  --name /studio/prod/replicate-api-token --value r8_…
+```
+Settings → Environments → studio-production → Add secret
+  REPLICATE_API_TOKEN = r8_…
 ```
 
+`studio-prod.yaml` writes it into the SecureString on every app deploy, so
+rotating the token is: update the secret, re-run the workflow. The workflow
+**skips rather than writes** when the secret is unset — an empty SecureString
+would overwrite a good token with nothing and surface much later as "the provider
+is down".
+
 Terraform creates the parameter with a placeholder and carries
-`ignore_changes = [value]`, so a real token survives every apply and the secret
-is never in the plan, the state or a workflow's environment. Until it is set,
-this test fails with a message naming the four things that look identical from
-outside — a missing `ssm:GetParameter`, a missing `kms:Decrypt`, an unset
-parameter name, and the placeholder itself.
+`ignore_changes = [value]`, so the written token survives every apply. It is
+deliberately not a `TF_VAR_`: that would put the secret in the plan output and
+in the state file.
+
+Until it is set, this test fails with a message naming the four things that look
+identical from outside — a missing `ssm:GetParameter`, a missing `kms:Decrypt`,
+an unset parameter name, and the placeholder itself.
 
 ## This is a detector, not a gate
 

@@ -141,23 +141,32 @@ module "catalog" {
 #
 # **Terraform creates the parameter and never the value.** `ignore_changes` on
 # `value` is what makes that true rather than aspirational: the placeholder below
-# is written once, on the apply that creates the parameter, and a real token put
-# there afterwards survives every subsequent apply. The alternative — a
-# `TF_VAR_replicate_api_token` in CI — would put the secret in the workflow's
-# environment, in the plan output, and in the state file.
+# is written once, on the apply that creates the parameter, and the real token
+# written afterwards survives every subsequent apply.
 #
-# So the token is set out of band, once, by a person:
+# **The writer is `studio-prod.yaml`, from the `REPLICATE_API_TOKEN` environment
+# secret on `studio-production`.** It puts the value here on every app deploy, so
+# rotating the token is "update the secret, re-run the workflow" and nothing has
+# to be remembered about SSM at all.
 #
-#     aws ssm put-parameter --overwrite --type SecureString #       --name /studio/prod/replicate-api-token --value r8_…
+# The alternative — a `TF_VAR_replicate_api_token` — would put the secret in the
+# plan output and in the state file, which is why the value travels through the
+# workflow's `put-parameter` rather than through this resource.
 #
-# Until that happens, `POST /api/runs/<id>/submit` answers 500 with a message
-# naming this parameter, and nothing else in studio is affected — browsing,
-# listing and every read route are untouched.
+# Until the secret is set, `POST /api/runs/<id>/submit` answers 500 with a
+# message naming this parameter, and nothing else in studio is affected —
+# browsing, listing and every read route are untouched.
+#
+# **This is the first SecureString in the account**, and writing one needs
+# `kms:Encrypt` through SSM in the CI role — a grant that lives in
+# `infra/envs/shared` and is applied by a DIFFERENT workflow. The shared apply
+# has to land before studio's next deploy, or that deploy fails at this resource
+# with an error naming a service nobody changed.
 resource "aws_ssm_parameter" "replicate_api_token" {
   name        = "/${local.project}/${local.environment}/replicate-api-token"
-  description = "Replicate API token. Set out of band; Terraform never holds the value."
+  description = "Replicate API token. Written by studio-prod.yaml from a GitHub environment secret; Terraform never holds the value."
   type        = "SecureString"
-  value       = "placeholder-set-this-out-of-band"
+  value       = "placeholder-the-deploy-workflow-writes-the-real-one"
 
   tags = local.common_tags
 

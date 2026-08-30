@@ -320,6 +320,44 @@ jobs:
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           echo "ECR_REGISTRY=${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> "$GITHUB_ENV"
 
+      # -----------------------------------------------------------------------
+      # THE PROVIDER TOKEN: GitHub environment secret -> SSM SecureString.
+      #
+      # **CI is the writer and the Lambda is the reader, and the value is never
+      # in between.** The function reads the SecureString at call time under its
+      # own role, so the token does not appear in the `jq` document below, in
+      # `update-function-configuration`, or in a Lambda environment where
+      # `lambda:GetFunctionConfiguration` would hand it to anyone who can list
+      # the account. Terraform creates the parameter with a placeholder and
+      # carries `ignore_changes = [value]`, so this write survives every apply
+      # and the secret is never in a plan or in state.
+      #
+      # Rotating it is: update the environment secret, re-run this workflow.
+      # This step runs on every app deploy, so nothing else has to be remembered.
+      #
+      # **An unset secret skips rather than writes.** An empty SecureString would
+      # overwrite a good token with nothing, and the failure would surface much
+      # later as "the provider is down" on the first submission of the day.
+      # -----------------------------------------------------------------------
+      - name: Store the Replicate token
+        env:
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${REPLICATE_API_TOKEN}" ]; then
+            echo "::warning::REPLICATE_API_TOKEN is not set on the studio-production" \
+                 "environment. Generation will fail with a message naming" \
+                 "/studio/prod/replicate-api-token; everything else is unaffected."
+            exit 0
+          fi
+          # `--value` reads the masked env var rather than an inline literal, so
+          # the token is not written into the workflow file and GitHub masks it
+          # out of any log line that manages to echo it.
+          aws ssm put-parameter --overwrite --type SecureString \
+            --name /studio/prod/replicate-api-token \
+            --value "${REPLICATE_API_TOKEN}" >/dev/null
+          echo "Stored the Replicate token in /studio/prod/replicate-api-token"
+
       - name: Update Lambda env vars
         run: |
           set -euo pipefail
@@ -355,11 +393,9 @@ jobs:
           # track one pool.
           # STUDIO_REPLICATE_TOKEN_PARAMETER is a parameter NAME, never a token.
           # The Lambda reads the SecureString at call time under its own role, so
-          # the secret never sits in this document, in this runner's memory, or in
-          # a function's environment where `lambda:GetFunctionConfiguration` would
-          # expose it. Set the value out of band:
-          #   aws ssm put-parameter --overwrite --type SecureString \
-          #     --name /studio/prod/replicate-api-token --value r8_…
+          # the secret never sits in this document or in a function's environment
+          # where `lambda:GetFunctionConfiguration` would expose it. The step
+          # above is what puts the value there, from the environment secret.
           jq -n --arg bucket "${MEDIA_BUCKET}" \
                 --arg prefix "" \
                 --arg origin "https://studio.andreas.services" \

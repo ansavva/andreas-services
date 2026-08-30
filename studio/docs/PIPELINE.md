@@ -330,7 +330,7 @@ API keys:
 
   | Where | How |
   |---|---|
-  | The deployed API | An SSM SecureString, `/studio/prod/replicate-api-token`, read by the Lambda under its own role. Terraform creates the parameter and never holds the value — set it with `aws ssm put-parameter --overwrite --type SecureString`. |
+  | The deployed API | An SSM SecureString, `/studio/prod/replicate-api-token`, read by the Lambda under its own role. The value comes from the `REPLICATE_API_TOKEN` **environment secret** on `studio-production`, written there by `studio-prod.yaml` on every app deploy. Terraform creates the parameter and never holds the value. |
   | A local API under `dev-up.sh` | `~/.config/andreas-services/studio/dev.env`, the file that already holds this machine's dev pool password. `dev-up.sh` sources it into the Flask process. |
 
   ```
