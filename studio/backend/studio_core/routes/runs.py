@@ -10,7 +10,7 @@ grepping.
 
 | Studio owns (row, validated, queryable) | The provider owns (blob, verbatim) |
 |---|---|
-| id, project, status, kind, engine, model, prediction id, timings, bindings, characters, folder, outputs, lineage, cost, error | the exact `input` sent, the exact response returned |
+| id, project, status, kind, engine, model, prediction id, timings, bindings, characters, folder, outputs, cost, error | the exact `input` sent, the exact response returned |
 
 The old rule — "do not decode `request.json`" — is not weakened; it is moved to
 where it is actually true. The pipeline changes the payload's shape freely, so
@@ -400,7 +400,6 @@ def create_run():
             "completed": None,
             "characters": characters,
             "outputs": [],
-            "lineage": body.get("lineage") or {"from_run": None, "from_output": None},
             "cost": None,
             "error": None,
             "payload": {"request": None, "response": None, "prompt": None},
@@ -666,13 +665,12 @@ def resolve_run():
 
 @bp.get("/runs/<run_id>")
 def get_run(run_id: str):
-    """The envelope, bindings and outputs expanded, payload left as ids, and both
-    ways back up.
+    """The envelope, bindings and outputs expanded, payload left as ids, and the
+    way back up.
 
-    `scenes` is which scenes bound this run into a shot; `derived` is what was
-    chained off it. Neither could be asked before the edge rows existed — the
-    first lived in a shot attribute, the second in a `lineage.from_run` scalar,
-    and `by-sk` can see neither.
+    `scenes` is which scenes bound this run into a shot, which could not be asked
+    before the edge rows existed: it lived in a shot attribute, and `by-sk`
+    cannot see into one.
 
     **`payload` stays three node ids.** They are fetched as text through
     `GET /api/nodes/<id>/text` by whoever wants them, which is where the "never
@@ -719,7 +717,6 @@ def view(record: dict, send_entries: list[dict] | None = None) -> dict:
             "approval": None,
             **record,
             "scenes": support.holders(record["id"], catalog.ENTITY_SCENE),
-            "derived": support.holders(record["id"], catalog.ENTITY_RUN),
             # **The ordered list, each image with what it is for and where it
             # came from.** This is the half `bindings` never held: the map says
             # an image was sent, and a send says it was the start frame, or the
@@ -967,26 +964,16 @@ def update_run(run_id: str):
             assignments.setdefault("submitted", catalog.now())
         assignments["status"] = body["status"]
         listing["status"] = body["status"]
-    for field in ("prediction_id", "submitted", "completed", "error", "cost", "lineage"):
+    for field in ("prediction_id", "submitted", "completed", "error", "cost"):
         if field in body:
             assignments[field] = body[field]
 
     if not assignments:
         raise ValidationError("nothing to change")
 
-    # A run's parent can be recorded here rather than at create — `chain` writes
-    # the envelope first and learns what it continued from afterwards — so the
-    # lineage edge has to be maintained on this path too. Without it the reverse
-    # ("what was chained off this run") would be right only for runs that knew
-    # their parent at birth, which is the harder half to notice being wrong.
-    edges = None
-    if "lineage" in assignments:
-        parent = (assignments["lineage"] or {}).get("from_run")
-        edges = {catalog.ENTITY_RUN: [parent] if parent else []}
-
     return jsonify(
         catalog.update_project_entity(KIND, record, assignments, listing,
-                                      edges=edges, bump_count=bump_count)
+                                      bump_count=bump_count)
     ), 200
 
 

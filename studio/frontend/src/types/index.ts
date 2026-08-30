@@ -592,14 +592,7 @@ export interface RunSummary {
   created: string;
   cost: RunCost | null;
   thumb: HeroImage | null;
-  /** Present when the run was chained off another's output. */
-  lineage?: RunLineage;
   characters?: string[];
-}
-
-export interface RunLineage {
-  from_run: string | null;
-  from_output: string | null;
 }
 
 /**
@@ -678,11 +671,8 @@ export interface RunRecord {
   characters: string[];
   folder: string;
   outputs: RunAsset[];
-  lineage: RunLineage;
   /** Which scenes bound this run into a shot. */
   scenes: Backlink[];
-  /** What was chained off it — `lineage.from_run` read the other way. */
-  derived: Backlink[];
   cost: RunCost | null;
   error: string | null;
   payload: { request: string | null; response: string | null; prompt: string | null };

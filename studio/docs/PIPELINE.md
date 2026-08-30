@@ -567,7 +567,7 @@ Every submission to Replicate, from any `studio-*` engine, is recorded as a
 **run**:
 
 **A run is a row with a folder.** The envelope — status, model, prediction id,
-timings, cost, bindings, outputs, lineage — is `RUN#<id>`/`META`, and it is
+timings, cost, bindings, outputs — is `RUN#<id>`/`META`, and it is
 studio's to validate and query. The provider's own documents stay bytes:
 
 ```

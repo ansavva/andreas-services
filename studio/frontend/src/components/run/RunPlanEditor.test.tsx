@@ -63,7 +63,6 @@ function draft(over: Partial<RunRecord> = {}): RunRecord {
     folder: "node-folder",
     outputs: [],
     scenes: [],
-    derived: [],
     bindings: {},
     sends: [send(), send({ order: 2, node: "node-2", name: "profile.webp" })],
     plan: {
@@ -76,7 +75,6 @@ function draft(over: Partial<RunRecord> = {}): RunRecord {
     plan_digest: "sha256:abc",
     approval: null,
     stale: false,
-    lineage: { from_run: null, from_output: null },
     payload: { prompt: null, request: null, response: null },
     ...over,
   } as RunRecord;

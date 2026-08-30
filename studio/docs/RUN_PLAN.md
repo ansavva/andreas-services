@@ -129,7 +129,7 @@ intended",** which is what `draft` and `discarded` are for.
   │                                                                │
   │  RECORDED ───────────────────────────────────────────────────  │
   │    status, kind, model, engine, prediction_id, counted         │
-  │    submitted, completed, outputs, cost, error, lineage         │
+  │    submitted, completed, outputs, cost, error                  │
   │    payload  { request, response, prompt }   ← blob ids, opaque │
   └───────────────────────────┬────────────────────────────────────┘
                               │  RUN#<id> / SEND#0001 … SEND#000n

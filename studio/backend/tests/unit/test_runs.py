@@ -9,8 +9,8 @@ about:
   reading `request.json` for each, and grepping.
 
 **The split that makes a run presentable without making this service a liar** is
-the envelope — status, model, timings, bindings as node ids, outputs, lineage,
-cost — beside a payload that is stored verbatim and never decoded. The old rule
+the envelope — status, model, timings, bindings as node ids, outputs, cost —
+beside a payload that is stored verbatim and never decoded. The old rule
 is not weakened; it is moved to where it is actually true.
 
 **Hard rule #3 moved here with the bindings.** S3 is the only origin: anything
@@ -145,7 +145,7 @@ def test_the_listing_row_is_the_one_deliberate_projection(empty_api):
     row = catalog.project_entities(project["id"], catalog.ENTITY_RUN)[0]
 
     assert set(row) >= {"id", "status", "model", "kind", "created", "lib"}
-    # Not the whole envelope: no bindings, no payload, no lineage.
+    # Not the whole envelope: no bindings and no payload.
     assert "bindings" not in row and "payload" not in row
 
 
