@@ -500,6 +500,64 @@ def _after_the_output_expired(record: dict, gone: Exception):
     )
 
 
+#: A value carrying a URI scheme. The same shape `routes/runs.py` refuses in a
+#: binding, and for the same reason — `https:`, `s3:`, `data:` and `file:` are
+#: all things that are not a node id. A node id holds no colon.
+_URI = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:")
+
+
+def _unsigned_input(record: dict, prediction: dict) -> dict:
+    """The provider's echo of `input`, with our presigned URLs put back as node ids.
+
+    **Hard rule #3 says a signed URL is never stored, and storing the response
+    verbatim broke it.** A callback carries the payload back to us, image fields
+    and all, and those fields hold the short-lived S3 URLs `dispatch` minted — so
+    writing the document unchanged filed a set of working credentials for the
+    library inside the run's own folder. They expire, and the reader already has
+    access to the run, which is why this is a leak worth closing quietly rather
+    than an incident. It is still the rule.
+
+    **Substituted rather than redacted, because the node id is the better
+    value.** A reader of `response.json` wants to know which image was in which
+    field and in which position; a URL answered that badly and expired, and
+    `[removed]` would not answer it at all. The mapping is the run's own `SEND#`
+    rows, which are ordered — the same rows `dispatch` presigned in the same
+    order — so position lines up by construction rather than by parsing anything
+    out of a URL.
+
+    **`output` is deliberately untouched.** Those URLs are the provider's, not
+    ours: they grant nothing in this library, they are the only record of what
+    the model actually returned, and the pipeline's `record_result` kept them for
+    exactly that reason before this moved. The rule is about *our* signatures.
+
+    Anything URL-shaped that cannot be mapped is replaced with a marker rather
+    than left. A field this service cannot account for is the one case where
+    guessing wrong means leaving a live URL in the document.
+    """
+    payload = prediction.get("input")
+    if not isinstance(payload, dict):
+        return prediction
+
+    bound: dict[str, list[str]] = {}
+    for send in catalog.sends(record["id"]):
+        if send.get("field"):
+            bound.setdefault(send["field"], []).append(send["node"])
+
+    def swap(field: str, value, index: int = 0):
+        if not isinstance(value, str) or not _URI.match(value):
+            return value
+        nodes = bound.get(field) or []
+        return nodes[index] if index < len(nodes) else "[a presigned URL studio did not store]"
+
+    rewritten = {}
+    for field, value in payload.items():
+        if isinstance(value, list):
+            rewritten[field] = [swap(field, item, i) for i, item in enumerate(value)]
+        else:
+            rewritten[field] = swap(field, value)
+    return {**prediction, "input": rewritten}
+
+
 def _response_document(record: dict, prediction: dict) -> str | None:
     """The provider's response, stored verbatim as a node. Returns its id.
 
@@ -507,6 +565,12 @@ def _response_document(record: dict, prediction: dict) -> str | None:
     encoded and written, and nothing here reads a key inside it — except the
     handful `close_from_prediction` reads off the *parsed* body it was handed,
     which is a different thing from decoding the stored document later.
+
+    **Two exceptions, and both are named rather than silent.** `input` has its
+    presigned URLs put back as node ids (`_unsigned_input`, hard rule #3), and an
+    oversized `logs` is truncated. The document says so in both cases, because a
+    document that has been edited and does not admit it is worse than one that
+    was never stored.
 
     **`logs` is truncated; the document is never dropped.** This used to drop an
     oversized response whole, on the reasoning that half a JSON document is worse
@@ -519,6 +583,7 @@ def _response_document(record: dict, prediction: dict) -> str | None:
     result is still valid JSON and still the provider's own document; what it is
     not is verbatim, which is why it says so inside itself.
     """
+    prediction = _unsigned_input(record, prediction)
     text = json.dumps(prediction, indent=2, sort_keys=True, default=str)
     if len(text.encode()) > config.max_text_bytes():
         prediction = dict(prediction)

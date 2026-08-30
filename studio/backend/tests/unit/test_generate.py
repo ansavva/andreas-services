@@ -636,3 +636,111 @@ def test_a_provider_that_is_merely_unreachable_is_still_retried(
             "output": ["https://fake.invalid/x/0.png"]})
 
     assert catalog.entity(catalog.ENTITY_RUN, record["id"])["status"] == "running"
+
+
+# ── hard rule #3, at the one place it had quietly stopped holding ───────────
+
+
+def _uploaded(api, parent_id, name, body=b"webp-bytes"):
+    """A node with bytes behind it, so a send may legitimately name it."""
+    node = api.post(
+        "/api/nodes", json={"parent": parent_id, "name": name, "kind": "file"}
+    ).get_json()
+    record = catalog.node(node["id"])
+    return catalog.set_blob(
+        node["id"], record["blob_key"], size=len(body), content_type="image/webp"
+    )
+
+
+def _with_sends(api, project, nodes):
+    run = _draft(api, project, sends=[
+        {"field": "image_input", "role": "reference", "node": node}
+        for node in nodes
+    ])
+    api.post(f"/api/runs/{run['id']}/approve", json={"digest": run["plan_digest"]})
+    api.post(f"/api/runs/{run['id']}/submit")
+    return catalog.entity(catalog.ENTITY_RUN, run["id"])
+
+
+def test_the_stored_response_holds_node_ids_where_signed_urls_were(
+        empty_api, media_bucket):
+    """**A callback echoes the payload back, presigned URLs and all.**
+
+    Storing it verbatim filed a set of working credentials for the library inside
+    the run's own folder — short-lived, and readable by anyone who could already
+    read the run, but hard rule #3 says a signed URL is never stored and it was
+    being stored.
+
+    Substituted rather than redacted: the node id is what a reader of
+    `response.json` actually wants, and the ordered `SEND#` rows are the same
+    ones `dispatch` presigned, so position lines up by construction.
+    """
+    project = _project(empty_api)
+    root = empty_api.get(f"/api/projects/{project['id']}").get_json()["root"]
+    first = _uploaded(empty_api, root, "one.webp")
+    second = _uploaded(empty_api, root, "two.webp")
+    record = _with_sends(empty_api, project, [first["node_id"], second["node_id"]])
+
+    generate.close_from_prediction(record, {
+        "id": record["prediction_id"],
+        "status": "succeeded",
+        "output": ["https://replicate.delivery/pbxt/abc/0.png"],
+        # What Replicate really sends back: the payload it was given.
+        "input": {
+            "prompt": "a porch at dusk",
+            "image_input": [
+                "https://studio-prod-media.s3.amazonaws.com/blobs/x?X-Amz-Signature=deadbeef",
+                "https://studio-prod-media.s3.amazonaws.com/blobs/y?X-Amz-Signature=cafe",
+            ],
+        },
+    })
+
+    closed = catalog.entity(catalog.ENTITY_RUN, record["id"])
+    stored = json.loads(
+        empty_api.get(f"/api/nodes/{closed['payload']['response']}/text")
+        .get_json()["content"])
+
+    assert stored["input"]["image_input"] == [first["node_id"], second["node_id"]]
+    assert "X-Amz-Signature" not in json.dumps(stored["input"])
+    # The prompt is untouched: this rewrites URLs, not the document.
+    assert stored["input"]["prompt"] == "a porch at dusk"
+
+
+def test_the_providers_own_output_urls_are_kept(empty_api, media_bucket):
+    """**`output` is not ours and is deliberately left alone.**
+
+    Those URLs grant nothing in this library and are the only record of what the
+    model actually returned — which is why the pipeline kept them as debugging
+    material before any of this moved. The rule is about *our* signatures.
+    """
+    project = _project(empty_api)
+    record = _running(empty_api, project)
+
+    closed = generate.close_from_prediction(record, {
+        "id": record["prediction_id"], "status": "succeeded",
+        "output": ["https://fake.invalid/x/0.png"]})
+
+    stored = json.loads(
+        empty_api.get(f"/api/nodes/{closed['payload']['response']}/text")
+        .get_json()["content"])
+    assert stored["output"] == ["https://fake.invalid/x/0.png"]
+
+
+def test_a_url_that_cannot_be_mapped_is_replaced_rather_than_left(
+        empty_api, media_bucket):
+    """**Fail toward removal.** A field this service cannot account for is the
+    one case where guessing wrong leaves a live URL in the document."""
+    project = _project(empty_api)
+    record = _running(empty_api, project)
+
+    closed = generate.close_from_prediction(record, {
+        "id": record["prediction_id"], "status": "succeeded",
+        "output": ["https://fake.invalid/x/0.png"],
+        "input": {"some_field_with_no_send": "https://example.test/signed?sig=abc"},
+    })
+
+    stored = json.loads(
+        empty_api.get(f"/api/nodes/{closed['payload']['response']}/text")
+        .get_json()["content"])
+    assert stored["input"]["some_field_with_no_send"] == (
+        "[a presigned URL studio did not store]")

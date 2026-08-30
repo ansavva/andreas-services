@@ -379,6 +379,25 @@ would do the download, so a developer's consumer would stop exercising it.
 The window is bounded instead — prod's consumer runs seconds after the callback —
 and the DLQ is alarmed.
 
+### Hard rule #3 at the moment the payload comes back
+
+A callback echoes `input` to us — image fields and all — so storing the
+provider's response verbatim filed the presigned URLs `submit` had minted, in
+the run's own folder. Short-lived, and readable only by somebody who could
+already read the run, and still exactly what "a signed URL is never stored"
+forbids.
+
+**They are put back as node ids rather than removed.** The run's ordered `SEND#`
+rows are the same rows the URLs were minted from, in the same order, so the
+mapping is by construction rather than by parsing anything out of a URL — and a
+reader of `response.json` gets the thing they actually wanted, which is which
+image was in which field and in which position. Anything URL-shaped that cannot
+be accounted for is replaced with a marker; the one case where guessing wrong
+leaves a live URL is the case that fails toward removal.
+
+`output` is untouched. Those URLs are the provider's, grant nothing here, and are
+the only record of what the model returned.
+
 ### What if the callback never arrives?
 
 `POST /api/runs/<id>/reconcile` asks the provider directly and closes the run
