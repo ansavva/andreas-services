@@ -114,12 +114,7 @@ variable "replicate_token_parameter" {
   default     = ""
 }
 
-variable "replicate_token_parameter_arn" {
-  description = <<-EOT
-    ARN of the same parameter, scoping the `ssm:GetParameter` grant to exactly
-    one name. Empty means no grant is written at all, which is what an
-    environment with no deployed API wants.
-  EOT
-  type        = string
-  default     = ""
-}
+# `replicate_token_parameter_arn` was here and is DELETED. It took the ARN off
+# `aws_ssm_parameter.replicate_api_token`, which made the `count` that used it
+# unresolvable at plan time and failed a prod deploy outright. The ARN is now
+# composed from the name inside the module. See `main.tf`.
