@@ -587,7 +587,15 @@ def keep_take(previous: dict, merged: dict) -> list[dict]:
     would grow the history by one entry per ingest, for ever.
     """
     was, now = previous.get("run"), merged.get("run")
-    takes = [dict(take) for take in (previous.get("takes") or [])]
+    # The base list comes off `merged`, not off `previous`. Both writers build
+    # `merged` as `{**stored, **changes}`, so this is the stored history unless
+    # a caller named `takes` explicitly — and a caller that did means it. That
+    # is the only way to state a history the API never saw happen: takes are
+    # normally a by-product of displacement, so a shot re-rendered before this
+    # field existed has runs that are real and a history that is empty, and
+    # nothing could put them back. Reading `previous` here made the field
+    # write-only, which is a strange thing for a field to be.
+    takes = [dict(take) for take in (merged.get("takes") or [])]
     if not was or was == now:
         return takes
     if any(take.get("run") == was for take in takes):

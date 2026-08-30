@@ -646,3 +646,21 @@ def test_a_superseded_take_comes_back_drawable(empty_api, catalog_table):
     take = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]["takes"][0]
     assert take["run"] == "run-first"
     assert take["clip"]["node"] == node
+
+
+def test_a_history_can_be_stated_for_work_done_before_it_was_kept(empty_api):
+    """Takes are normally a by-product of displacement, which leaves no way to
+    record one that happened before the field existed. A caller that names
+    `takes` means it; displacement still appends to what it named."""
+    project = _project(empty_api)
+    scene = _scene(empty_api, project, shots=[{"prompt": "wide"}])
+    shot = scene["shots"][0]["id"]
+
+    empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}",
+                    json={"run": "run-current", "takes": [{"run": "run-from-before"}]})
+    fetched = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]
+    assert [t["run"] for t in fetched["takes"]] == ["run-from-before"]
+
+    empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={"run": "run-newer"})
+    fetched = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]
+    assert [t["run"] for t in fetched["takes"]] == ["run-current", "run-from-before"]
