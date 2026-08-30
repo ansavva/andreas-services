@@ -78,6 +78,9 @@ function draw(scene: SceneRecord) {
             its own, so what a click does is *navigate* — this stands in for the
             screen it navigates to. */}
         <Route path="/o/:nodeId" element={<Land />} />
+        {/* Opening a RUN is a different navigation from opening an object, and
+            the board now does both — every tile links to the run behind it. */}
+        <Route path="/p/:projectId/r/:runId" element={<Land />} />
       </Routes>
     </MemoryRouter>,
   { wrapper: TestProviders },
@@ -486,4 +489,131 @@ it("says nothing when the scene has not been cut into anything", async () => {
 
   await screen.findByText("The whistle comes off");
   expect(screen.queryByText("Cut into")).toBeNull();
+});
+
+// ─────────────── the links out, and the takes kept ───────────────
+//
+// Every picture on this board came from a run and none of them said which. A
+// sample that came out wrong was a dead end: the run holds the prompt, the
+// payload and the approval that produced it, and there was no way to reach it.
+
+it("links a sample panel to the run that rendered it", async () => {
+  draw(
+    record({
+      shots: [
+        shot({
+          panels: [
+            {
+              n: 1,
+              role: "sample",
+              prompt: "the peak of this beat",
+              run: "run-sample",
+              node: "node-s",
+              image: { node: "node-s", name: "s.png", url: "https://x/s.png" },
+            },
+          ],
+        }),
+      ],
+    }),
+  );
+
+  const samples = await screen.findByText("Samples");
+  const row = samples.parentElement as HTMLElement;
+  fireEvent.click(within(row).getByRole("button", { name: "Run" }));
+  await waitFor(() => expect(landed).toContain("run-sample"));
+});
+
+it("links the handoff frame to the run it came out of", async () => {
+  draw(
+    record({
+      shots: [
+        shot({
+          continues: true,
+          opens_on: {
+            node: "node-h",
+            from_run: "run-previous",
+            frame: { node: "node-h", name: "h.png", url: "https://x/h.png" },
+          },
+        }),
+      ],
+    }),
+  );
+
+  const start = await screen.findByText("Start");
+  const row = start.parentElement as HTMLElement;
+  fireEvent.click(within(row).getByRole("button", { name: "Run" }));
+  await waitFor(() => expect(landed).toContain("run-previous"));
+});
+
+it("draws an earlier take beside the clip it was replaced by", async () => {
+  // A shot holds one `run`, so a retry used to erase the only pointer to what
+  // it replaced. Comparing the two is the reason for re-rendering at all.
+  draw(
+    record({
+      shots: [
+        shot({
+          run: "run-current",
+          node: "node-now",
+          clip: { node: "node-now", name: "now.mp4", url: "https://x/now.mp4" },
+          takes: [
+            {
+              run: "run-earlier",
+              node: "node-was",
+              clip: { node: "node-was", name: "was.mp4", url: "https://x/was.mp4" },
+            },
+          ],
+        }),
+      ],
+    }),
+  );
+
+  expect(await screen.findByText("earlier")).toBeTruthy();
+  expect(screen.getByText("superseded")).toBeTruthy();
+});
+
+it("draws every cut of the scene, newest first, marking the older ones", async () => {
+  draw(
+    record({
+      output: { node: "node-2", name: "light-flex-2.mp4", url: "https://x/2.mp4" },
+      cuts: [{ node: "node-1", name: "light-flex.mp4", url: "https://x/1.mp4" }],
+    }),
+  );
+
+  expect(await screen.findByText("Cuts")).toBeTruthy();
+  expect(screen.getByText("light-flex-2.mp4")).toBeTruthy();
+  expect(screen.getByText("light-flex.mp4")).toBeTruthy();
+  expect(screen.getByText("earlier")).toBeTruthy();
+});
+
+it("still says 'The cut' when there is only one", async () => {
+  // The plural is a signal that there is history to look at; a scene cut once
+  // should not imply there is.
+  draw(record({ output: { node: "node-1", name: "light-flex.mp4", url: "https://x/1.mp4" } }));
+  expect(await screen.findByText("The cut")).toBeTruthy();
+});
+
+it("lists the runs behind a shot, using the shared run list", async () => {
+  // A link per tile answers "what made this picture" one picture at a time.
+  // Read together the runs answer a different question — what has been spent on
+  // this shot, what is still a draft, what failed.
+  draw(
+    record({
+      shots: [
+        shot({
+          run: "run-clip",
+          runs: [
+            { id: "run-clip", project: "proj-0001", role: "clip", status: "succeeded", model: "kling" },
+            { id: "run-old", project: "proj-0001", role: "earlier take", status: "succeeded", model: "kling" },
+          ],
+        }),
+      ],
+    }),
+  );
+
+  expect(await screen.findByText("Runs")).toBeTruthy();
+  expect(screen.getByText("clip")).toBeTruthy();
+  expect(screen.getByText("earlier take")).toBeTruthy();
+
+  fireEvent.click(screen.getByText("run-old"));
+  await waitFor(() => expect(landed).toContain("run-old"));
 });

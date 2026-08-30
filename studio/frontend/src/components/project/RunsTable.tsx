@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 
 import {
   Alert,
-  Badge,
   Button,
   DateInput,
   Field,
@@ -14,10 +13,8 @@ import {
 } from "@ansavva/design-system";
 
 import { getRuns } from "../../apis/studio";
-import { formatDate } from "../../utils/format";
 import type { RunStatus, RunSummary } from "../../types";
-import { MediaThumb } from "../media/MediaThumb";
-import { formatCost } from "../../utils/cost";
+import { RunList } from "../run/RunList";
 
 interface Props {
   projectId: string;
@@ -49,21 +46,6 @@ const STATUSES: RunStatus[] = [
   "failed",
   "cancelled",
 ];
-
-const STATUS_INTENT: Record<RunStatus, "neutral" | "success" | "danger" | "warning"> = {
-  // Unsubmitted. `approved` is a warning rather than a success on purpose: it
-  // means money is about to be spent and has not been yet, which is a state
-  // worth noticing rather than a job well done.
-  draft: "neutral",
-  approved: "warning",
-  discarded: "neutral",
-  pending: "neutral",
-  running: "warning",
-  succeeded: "success",
-  failed: "danger",
-  cancelled: "neutral",
-  adopted: "neutral",
-};
 
 /**
  * Every run in a project, filterable — the screen studio did not have.
@@ -223,65 +205,7 @@ export function RunsTable({ projectId, characters, onOpen }: Props) {
         </Text>
       )}
 
-      <div className="flex flex-col gap-2">
-        {runs.map((run) => (
-          <button
-            key={run.id}
-            type="button"
-            onClick={() => onOpen(run)}
-            className="flex w-full items-center gap-3 rounded-md border border-line bg-card p-2 text-left
-                       transition-colors hover:bg-surface-alt
-                       focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            {/* The thumbnail is the run's first output, signed by the listing —
-                which is what the projection on the listing row is for. A run that
-                has not produced anything yet shows its kind instead. */}
-            <span className="size-14 shrink-0 overflow-hidden rounded-md border border-line bg-surface-alt">
-              {run.thumb ? (
-                <MediaThumb
-                  nodeId={run.thumb.node}
-                  url={run.thumb.url}
-                  name=""
-                  aspect="auto"
-                />
-              ) : (
-                <span className="flex h-full w-full items-center justify-center text-xs text-muted">
-                  {run.kind}
-                </span>
-              )}
-            </span>
-
-            <span className="min-w-0 flex-1">
-              {/* A run has no label. The date is what identifies one to a
-                  person, which is what the old slug was imitating by carrying a
-                  timestamp; the model is the next most useful thing about it. */}
-              <Text variant="body" className="truncate">
-                {formatDate(run.created)}
-              </Text>
-              <Text variant="caption" tone="muted" className="truncate">
-                {run.model}
-              </Text>
-              {/* Lineage is what makes a chain readable at a glance: this run was
-                  built off another's output, and that is usually the reason it
-                  exists. */}
-              {run.lineage?.from_run && (
-                <Text variant="caption" tone="muted" className="truncate">
-                  chained from a previous run
-                </Text>
-              )}
-            </span>
-
-            <Badge intent={STATUS_INTENT[run.status]}>{run.status}</Badge>
-
-            {/* Recorded when the provider reports it and never computed —
-                Replicate's prediction metrics differ by model, and a number this
-                app worked out itself would be a guess wearing a currency sign. */}
-            <Text variant="caption" tone="muted" className="w-20 shrink-0 text-right tabular-nums">
-              {formatCost(run.cost, "—")}
-            </Text>
-          </button>
-        ))}
-      </div>
+      <RunList runs={runs} onOpen={(run) => onOpen(run as RunSummary)} />
 
       {loading && (
         <div className="flex justify-center py-6">

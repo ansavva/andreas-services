@@ -150,6 +150,61 @@ def list_scenes():
     return jsonify({"scenes": rows, "cursor": None}), 200
 
 
+def _shot_runs(entries: list[dict]) -> dict[str, list[dict]]:
+    """Every run a shot references, as the same summary a runs listing carries.
+
+    **A board is made of run output and could only say so in run ids.** The clip,
+    each boarded panel, the handoff frame and every superseded take came out of a
+    run, and the page drew a link per tile — a link is not a list, and a person
+    reading a shot wants to see the runs behind it together, with the status,
+    model and date every other run list on the site shows.
+
+    Read in ONE `entities_by_id` for the whole scene rather than per shot, and
+    returned as `{shot id: [rows]}` so the caller can attach without a second
+    pass. A row is `id`, `project`, `status`, `kind`, `model`, `created` and the
+    `role` it plays in this shot — the summary fields the shared list draws,
+    plus the one thing only the scene knows.
+    """
+    def roles_of(shot: dict) -> list[tuple[str, str]]:
+        found = [(shot["run"], "clip")] if shot.get("run") else []
+        opens = (shot.get("opens_on") or {}).get("from_run")
+        if opens:
+            found.append((opens, "handoff"))
+        for panel in shot.get("panels") or []:
+            if panel.get("run"):
+                found.append((panel["run"], panel.get("role") or "panel"))
+        for take in shot.get("takes") or []:
+            if take.get("run"):
+                found.append((take["run"], "earlier take"))
+        # First role wins: a run bound twice in one shot is one row, labelled by
+        # the first thing it is. Drawing it twice would read as two renders.
+        seen, ordered = set(), []
+        for run_id, role in found:
+            if run_id not in seen:
+                seen.add(run_id)
+                ordered.append((run_id, role))
+        return ordered
+
+    per_shot = {shot["id"]: roles_of(shot) for shot in entries}
+    wanted = [run_id for pairs in per_shot.values() for run_id, _ in pairs]
+    if not wanted:
+        return {}
+    records = catalog.entities_by_id(catalog.ENTITY_RUN, wanted)
+    return {
+        shot_id: [
+            {**{field: records[run_id].get(field) for field in RUN_ROW}, "role": role}
+            for run_id, role in pairs
+            if run_id in records
+        ]
+        for shot_id, pairs in per_shot.items()
+    }
+
+
+#: What a run row carries into a board. The same fields a runs listing draws, so
+#: one component can render both — see `frontend/src/components/run/RunList.tsx`.
+RUN_ROW = ("id", "project", "status", "kind", "model", "created")
+
+
 def _drawable(entries: list[dict], held: dict) -> list[dict]:
     """A scene's shots with every image pointer expanded into something drawable.
 
@@ -184,6 +239,9 @@ def _drawable(entries: list[dict], held: dict) -> list[dict]:
         for node in (shot.get("node"), (shot.get("opens_on") or {}).get("node")):
             if node:
                 wanted.append(node)
+        # A superseded take is a clip like any other and is drawn like one; a
+        # history of ids nobody can watch is the thing keeping them was for.
+        wanted += [take["node"] for take in (shot.get("takes") or []) if take.get("node")]
         wanted += nodes_for((shot.get("motion") or {}).get("references"))
         for panel in shot.get("panels") or []:
             if panel.get("node"):
@@ -191,6 +249,7 @@ def _drawable(entries: list[dict], held: dict) -> list[dict]:
             wanted += nodes_for(panel.get("references"))
 
     found = {a["node"]: a for a in support.assets(list(dict.fromkeys(wanted)))}
+    runs_for = _shot_runs(entries)
     drawn = []
     for shot in entries:
         shot = dict(shot)
@@ -221,9 +280,15 @@ def _drawable(entries: list[dict], held: dict) -> list[dict]:
         # a handoff causes, which is positional and cannot be read off a panel.
         # Both were computed on one client and stored, so anything that wrote a
         # shot without recomputing them left the SPA drawing a stale answer.
+        shot["takes"] = [
+            {**take, **({"clip": found[take["node"]]} if take.get("node") in found else {})}
+            for take in shot.get("takes") or []
+        ]
         shot["status"] = storyboard.shot_status(shot)
         shot["roles"] = storyboard.resolve_roles(shot)
         drawn.append(shot)
+    for shot, rows in zip(drawn, (runs_for.get(s["id"], []) for s in drawn)):
+        shot["runs"] = rows
     return drawn
 
 
@@ -267,7 +332,11 @@ def get_scene(scene_id: str):
 # revised by re-ingesting its plan, and a revision that could not move `setting`
 # or `defaults` would leave the envelope describing the plan before last.
 SCENE_FIELDS = (
-    "title", "status", "error", "characters", "stitch", "output", "assembled", *SCENE_PLAN,
+    "title", "status", "error", "characters", "stitch", "output", "assembled",
+    # Written by `support.keep_cut` on the two routes that set `output`, never
+    # by a client — see `SHOT_FIELDS`' `takes` for the same argument.
+    "cuts",
+    *SCENE_PLAN,
 )
 
 # The projection the listing row carries, and the only fields worth a second
@@ -295,6 +364,9 @@ def update_scene(scene_id: str):
         # to happen here too because `assemble` may write a different node than
         # the one it signed for.
         node = support.output_node(body["output"])
+        # Before the assignment lands: the cut being displaced is the one still
+        # on `record`, so this reads the stored value and not the incoming one.
+        assignments["cuts"] = support.keep_cut(record, node)
         if node:
             listing["thumb"] = node
     if not assignments:
@@ -373,9 +445,11 @@ def update_shot(scene_id: str, shot_id: str):
 def add_output(scene_id: str):
     """A placeholder and a presigned PUT for the stitched take.
 
-    One output rather than a list, because a scene *is* one take — the shots that
-    made it are `SHOT#` rows naming their own runs, and each of those has its own
-    outputs.
+    One CURRENT output rather than a list, because a scene *is* one take — the
+    shots that made it are `SHOT#` rows naming their own runs, and each of those
+    has its own outputs. The take it displaces is not thrown away, though: it
+    moves to `cuts`, because assembling is not a one-shot act and the stitched
+    file that was there was otherwise reachable by nobody.
     """
     body = support.body()
     held = support.memberships()
@@ -397,7 +471,10 @@ def add_output(scene_id: str):
         owner=catalog.blob_owner_for(record["folder"]),
     )
     catalog.update_project_entity(
-        KIND, record, {"output": {"node": node["node_id"]}}, {"thumb": node["node_id"]}
+        KIND, record,
+        {"output": {"node": node["node_id"]},
+         "cuts": support.keep_cut(record, node["node_id"])},
+        {"thumb": node["node_id"]},
     )
 
     return jsonify(

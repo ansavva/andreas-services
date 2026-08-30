@@ -51,12 +51,23 @@ alternative is worse: a second node pointing at one blob is copy-on-write
 (#334), and the API's delete route destroys the shared bytes when either row
 goes. So the copy is real — two blobs, two independent lifetimes.
 
-RE-CUTTING OVERWRITES
----------------------
-The cut replaces the file in `output/` rather than versioning it by name, so the
-scene folder always shows current state instead of accumulating cuts nobody
-prunes. A replace through the API keeps the node's identity, so anything already
-naming the cut still names it.
+RE-CUTTING KEEPS THE ONE BEFORE IT
+---------------------------------
+Each cut is its own node: the first is `<slug>.mp4` and later ones take a
+suffix, `<slug>-2.mp4` and up. `output` names the newest and `cuts` lists the
+rest, newest first.
+
+**This reverses an earlier decision and is worth saying why.** The cut used to
+replace the file in `output/`, so the folder always showed current state instead
+of accumulating cuts nobody prunes, and a superseded cut survived as an S3
+object version. That is genuinely recoverable and it is not *visible*: an object
+version has no node, so nothing lists it, nothing draws it and nothing links to
+it. A person who re-cut a scene after re-rendering one shot could not put the
+two takes side by side, which is the thing re-cutting is for.
+
+The old argument was about tidiness and the new one is about being able to look
+at your own work, so the accumulation is accepted. Old cuts are deletable like
+any other node.
 
 **What makes that recoverable is true of PROD only.** The prod bucket versions
 every object and grants no `s3:DeleteObjectVersion`, so a superseded cut is
@@ -444,7 +455,12 @@ def assemble(record: dict, refs: tuple[str, ...] = (),
         shot["duration"] = pr["duration"]
 
     superseded = scene_output_node(record)
-    name = f"{R.slugify(slug)}.mp4"
+    # A NEW node per cut, so the one before it stays reachable. Numbered from
+    # what the record already holds rather than from the folder, because the
+    # record is what `cuts` is read off and a stray file in the folder must not
+    # be able to renumber a history that does not include it.
+    take = len(record.get("cuts") or []) + (1 if superseded else 0) + 1
+    name = f"{R.slugify(slug)}.mp4" if take == 1 else f"{R.slugify(slug)}-{take}.mp4"
     signed = entities.scene_output(record["id"], name,
                                    os.path.getsize(out_local), "video/mp4")
     store.upload_to_url(signed, pathlib.Path(out_local))
@@ -455,8 +471,8 @@ def assemble(record: dict, refs: tuple[str, ...] = (),
     record = save_shots(entities.get_scene(record["id"]), shots)
 
     if superseded:
-        print("  (the previous cut is superseded, not destroyed — it survives as "
-              "an object version, and only in prod: a dev stack is unversioned)")
+        print(f"  (the previous cut is kept — {superseded} — and listed under "
+              f"`cuts` on the scene)")
 
     if dest_dir:
         os.makedirs(dest_dir, exist_ok=True)

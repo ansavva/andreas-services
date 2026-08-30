@@ -517,3 +517,189 @@ def test_creating_a_movie_records_the_cut(empty_api):
 
 
 
+
+
+# ─────────────────────── takes and cuts, kept ───────────────────────
+#
+# A shot holds one `run` and a scene one `output`, which is right — a shot is
+# rendered by a run and a scene IS one take. What was wrong is that replacing
+# either erased the only pointer to what was there. The runs and the stitched
+# files survived in the project and were reachable by nobody: the board drew the
+# new take and the old one sat at an id you had to have written down.
+
+
+def test_re_rendering_a_shot_keeps_the_take_it_displaced(empty_api):
+    project = _project(empty_api)
+    scene = _scene(empty_api, project, shots=[{"prompt": "wide"}])
+    shot = scene["shots"][0]["id"]
+
+    for run in ("run-first", "run-second"):
+        empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={"run": run})
+
+    fetched = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]
+    assert fetched["run"] == "run-second"
+    assert [take["run"] for take in fetched["takes"]] == ["run-first"]
+
+
+def test_the_newest_displaced_take_is_first(empty_api):
+    """Newest-first, so the take before the current one is the one you see."""
+    project = _project(empty_api)
+    scene = _scene(empty_api, project, shots=[{"prompt": "wide"}])
+    shot = scene["shots"][0]["id"]
+
+    for run in ("run-a", "run-b", "run-c"):
+        empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={"run": run})
+
+    fetched = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]
+    assert [take["run"] for take in fetched["takes"]] == ["run-b", "run-a"]
+
+
+def test_writing_a_shot_without_changing_its_run_keeps_the_history_flat(empty_api):
+    """The guard that makes this safe to call on every write.
+
+    `put_shots` runs on every plan revision and `update_shot` on every field
+    patch, so a shot is written many times with the same run in place. Pushing
+    unconditionally would grow the history by one per `--force` re-ingest, for
+    ever.
+    """
+    project = _project(empty_api)
+    scene = _scene(empty_api, project, shots=[{"prompt": "wide"}])
+    shot = scene["shots"][0]["id"]
+
+    empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={"run": "run-first"})
+    empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={"run": "run-second"})
+    for _ in range(3):
+        empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={"beat": "a beat"})
+        empty_api.patch(
+            f"/api/scenes/{scene['id']}/shots",
+            json={"shots": [{"id": shot, "prompt": "wide"}]},
+        )
+
+    fetched = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]
+    assert fetched["run"] == "run-second"
+    assert [take["run"] for take in fetched["takes"]] == ["run-first"]
+
+
+def test_a_plan_revision_keeps_the_take_a_re_render_displaced(empty_api):
+    """`put_shots`, not just the one-field patch — a `--force` re-ingest that
+    carries a new run reaches the other writer."""
+    project = _project(empty_api)
+    scene = _scene(empty_api, project, shots=[{"id": "shot-01", "prompt": "wide"}])
+
+    for run in ("run-first", "run-second"):
+        empty_api.patch(
+            f"/api/scenes/{scene['id']}/shots",
+            json={"shots": [{"id": "shot-01", "prompt": "wide", "run": run}]},
+        )
+
+    fetched = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]
+    assert [take["run"] for take in fetched["takes"]] == ["run-first"]
+
+
+def test_re_cutting_a_scene_keeps_the_cut_it_displaced(empty_api):
+    project = _project(empty_api)
+    scene = _scene(empty_api, project)
+
+    # A NEW name per cut, which is what `assemble` now sends: `create_node`
+    # dedupes on name, so re-cutting to the same filename would hand back the
+    # same node and there would be no displaced take to keep.
+    first = empty_api.post(
+        f"/api/scenes/{scene['id']}/output",
+        json={"size": 10, "content_type": "video/mp4", "name": "cut.mp4"},
+    ).get_json()["node"]
+    empty_api.post(
+        f"/api/scenes/{scene['id']}/output",
+        json={"size": 10, "content_type": "video/mp4", "name": "cut-2.mp4"},
+    )
+
+    fetched = empty_api.get(f"/api/scenes/{scene['id']}").get_json()
+    assert fetched["output"]["node"] != first
+    assert [cut["node"] for cut in fetched["cuts"]] == [first]
+
+
+def test_a_kept_cut_comes_back_drawable(empty_api):
+    """A pointer nobody can draw is the bug this replaced, one level down."""
+    project = _project(empty_api)
+    scene = _scene(empty_api, project)
+    for name in ("cut.mp4", "cut-2.mp4"):
+        empty_api.post(
+            f"/api/scenes/{scene['id']}/output",
+            json={"size": 10, "content_type": "video/mp4", "name": name},
+        )
+
+    cut = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["cuts"][0]
+    assert cut["node"] and "url" in cut
+
+
+def test_a_superseded_take_comes_back_drawable(empty_api, catalog_table):
+    """A history of run ids nobody can watch is not what keeping them was for."""
+    project = _project(empty_api)
+    scene = _scene(empty_api, project, shots=[{"prompt": "wide"}])
+    shot = scene["shots"][0]["id"]
+    node = catalog.create_node(scene["folder"], "take.mp4", catalog.KIND_FILE,
+                               owner=catalog.blob_owner_for(scene["folder"]))["node_id"]
+
+    empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}",
+                    json={"run": "run-first", "node": node})
+    empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={"run": "run-second"})
+
+    take = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]["takes"][0]
+    assert take["run"] == "run-first"
+    assert take["clip"]["node"] == node
+
+
+def test_a_history_can_be_stated_for_work_done_before_it_was_kept(empty_api):
+    """Takes are normally a by-product of displacement, which leaves no way to
+    record one that happened before the field existed. A caller that names
+    `takes` means it; displacement still appends to what it named."""
+    project = _project(empty_api)
+    scene = _scene(empty_api, project, shots=[{"prompt": "wide"}])
+    shot = scene["shots"][0]["id"]
+
+    empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}",
+                    json={"run": "run-current", "takes": [{"run": "run-from-before"}]})
+    fetched = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]
+    assert [t["run"] for t in fetched["takes"]] == ["run-from-before"]
+
+    empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={"run": "run-newer"})
+    fetched = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]
+    assert [t["run"] for t in fetched["takes"]] == ["run-current", "run-from-before"]
+
+
+def test_a_shot_reports_the_runs_behind_it(empty_api):
+    """A board is made of run output and could only say so in run ids."""
+    project = _project(empty_api)
+    scene = _scene(empty_api, project, shots=[{"prompt": "wide"}])
+    shot = scene["shots"][0]["id"]
+    run = empty_api.post("/api/runs", json={
+        "project": project["id"], "kind": "video", "engine": "studio-media-kling",
+        "model": "kwaivgi/kling-v3-omni-video", "input": {"prompt": "x"},
+    }).get_json()
+
+    empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={"run": run["id"]})
+
+    rows = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]["runs"]
+    assert [r["id"] for r in rows] == [run["id"]]
+    # The same fields a runs listing carries, so one component draws both.
+    assert rows[0]["model"] == "kwaivgi/kling-v3-omni-video"
+    assert rows[0]["status"] == "draft"
+    assert rows[0]["role"] == "clip"
+
+
+def test_a_run_bound_twice_in_one_shot_is_one_row(empty_api):
+    """Drawing it twice would read as two renders."""
+    project = _project(empty_api)
+    scene = _scene(empty_api, project, shots=[{"prompt": "wide"}])
+    shot = scene["shots"][0]["id"]
+    run = empty_api.post("/api/runs", json={
+        "project": project["id"], "kind": "video", "engine": "studio-media-kling",
+        "model": "m", "input": {"prompt": "x"},
+    }).get_json()
+
+    empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={
+        "run": run["id"],
+        "panels": [{"n": 1, "role": "sample", "prompt": "p", "run": run["id"]}],
+    })
+
+    rows = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]["runs"]
+    assert [r["role"] for r in rows] == ["clip"]
