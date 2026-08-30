@@ -44,7 +44,15 @@ const drawable = (entry: FileEntry) =>
  * out — which is the order a person reads a shot in, so it is the order
  * scrolling moves through.
  */
-function shotAssets(shot: Shot): RunAsset[] {
+/**
+ * Everything a shot draws, in the order the board draws it.
+ *
+ * Exported for its own test. It is the list that decides whether a tile opens
+ * or reads as a dead link, it had no coverage, and the omission it shipped with
+ * — earlier takes, drawn on the card and absent from here — is invisible from
+ * the outside until you click one.
+ */
+export function shotAssets(shot: Shot): RunAsset[] {
   const handoff = shot.continues !== false ? shot.opens_on?.frame : undefined;
   const panels = [...(shot.panels ?? [])]
     .sort((a, b) => a.n - b.n)
@@ -56,6 +64,14 @@ function shotAssets(shot: Shot): RunAsset[] {
     ...panels,
     ...(shot.motion?.reference_assets ?? []),
     ...(shot.clip ? [shot.clip] : []),
+    // **Earlier takes belong in the feed for the same reason the clip does.**
+    // The board draws a tile for each one and a tile opens the viewer, so a
+    // take the feed does not hold is a tile that reads as a dead link — which
+    // is what "the video doesn't play" turned out to be. Anything drawn on this
+    // page has to be reachable from here.
+    ...(shot.takes ?? [])
+      .map((take) => take.clip)
+      .filter((clip): clip is RunAsset => Boolean(clip)),
   ];
 }
 
@@ -151,7 +167,8 @@ export function useViewerFeed(
     if (source.in === "scene") {
       const scene = await getScene(source.id);
       const shots = [...scene.shots].sort((a, b) => a.order - b.order);
-      const cut = scene.output ? [scene.output] : [];
+      // The current cut and every earlier one — the page draws them all.
+      const cut = [...(scene.output ? [scene.output] : []), ...(scene.cuts ?? [])];
       return dedupe([...cut, ...shots.flatMap(shotAssets)].map(fromAsset));
     }
 
