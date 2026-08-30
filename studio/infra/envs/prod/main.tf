@@ -9,6 +9,14 @@ locals {
   # website-api.andreas.services.
   api_domain = "studio-api.andreas.services"
 
+  # **A literal, and it has to be one.** Both the parameter below and the IAM
+  # grant in `modules/compute` are built from this string; taking the name off
+  # the resource instead made the grant's `count` unresolvable at plan time and
+  # failed a prod deploy with `Invalid count argument`. `terraform validate`
+  # does not resolve references between resources, so nothing caught it until a
+  # real plan ran.
+  replicate_token_name = "/studio/prod/replicate-api-token"
+
   common_tags = {
     Project     = local.project
     Environment = local.environment
@@ -163,7 +171,7 @@ module "catalog" {
 # has to land before studio's next deploy, or that deploy fails at this resource
 # with an error naming a service nobody changed.
 resource "aws_ssm_parameter" "replicate_api_token" {
-  name        = "/${local.project}/${local.environment}/replicate-api-token"
+  name        = local.replicate_token_name
   description = "Replicate API token. Written by studio-prod.yaml from a GitHub environment secret; Terraform never holds the value."
   type        = "SecureString"
   value       = "placeholder-the-deploy-workflow-writes-the-real-one"
@@ -185,8 +193,9 @@ module "compute" {
   # so the token never sits in the function's environment, where
   # `lambda:GetFunctionConfiguration` would hand it to anyone who can list the
   # account. The ARN scopes the grant to this one parameter.
-  replicate_token_parameter     = aws_ssm_parameter.replicate_api_token.name
-  replicate_token_parameter_arn = aws_ssm_parameter.replicate_api_token.arn
+  # The NAME as a literal, never the resource's attribute — that is what keeps
+  # the grant's `count` resolvable at plan time. The module composes the ARN.
+  replicate_token_parameter = local.replicate_token_name
 
   # From the module, not from the variable directly: this is what orders the
   # IAM policy after the bucket exists.
@@ -266,7 +275,7 @@ module "callbacks" {
   media_root_prefix = var.media_root_prefix
 
   catalog_table_name        = module.catalog.table_name
-  replicate_token_parameter = aws_ssm_parameter.replicate_api_token.name
+  replicate_token_parameter = local.replicate_token_name
 
   # `:latest`, matching the Lambda in `modules/compute`: the deploy workflow
   # repoints both to `:${{ github.sha }}` after the image is pushed, and both
@@ -274,6 +283,12 @@ module "callbacks" {
   #
   # **A non-empty value here is what creates the worker at all.** `envs/dev`
   # passes nothing, has no ECR repository, and drains the queue from a laptop.
+  # **`create_worker` is an explicit flag, not an inference from the image URI**,
+  # and that is the same plan-time lesson one module over. Deriving it from
+  # `module.compute.ecr_repository_url` keyed a `count` on a resource attribute,
+  # which resolves only because prod's ECR repository already exists — on a
+  # fresh account it would fail the plan exactly as the token grant did.
+  create_worker    = true
   worker_image_uri = "${module.compute.ecr_repository_url}:latest"
   worker_role_arn  = module.compute.api_role_arn
   worker_role_name = module.compute.api_role_name

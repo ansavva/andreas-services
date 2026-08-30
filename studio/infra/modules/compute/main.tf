@@ -1,7 +1,20 @@
 locals {
   api_name  = "${var.project}-${var.environment}-api"
   api_image = var.create_ecr ? "${aws_ecr_repository.api[0].repository_url}:latest" : var.api_image_uri
+
+  # Composed from the parameter NAME rather than taken from the resource, so it
+  # is known at plan time — see the note above `data.aws_iam_policy_document
+  # .provider_token`, which a prod deploy failed on. A parameter name always
+  # begins with `/` and the ARN form does not repeat it.
+  provider_token_arn = var.replicate_token_parameter == "" ? "" : format(
+    "arn:aws:ssm:%s:%s:parameter%s",
+    data.aws_region.current.region,
+    data.aws_caller_identity.current.account_id,
+    var.replicate_token_parameter,
+  )
 }
+
+data "aws_caller_identity" "current" {}
 
 # ---------------------------------------------------------------------------
 # ECR
@@ -283,14 +296,40 @@ resource "aws_iam_role_policy" "catalog_access" {
 # The parameter is declared in `envs/prod`, not here, because the worker Lambda
 # in `modules/callbacks` reads the same one and neither module should own a
 # resource the other depends on.
+#
+# **`count` KEYS OFF THE PARAMETER NAME, NOT ITS ARN, AND THAT IS THE WHOLE OF A
+# FAILED PROD DEPLOY.**
+#
+# It was `var.replicate_token_parameter_arn == "" ? 0 : 1`, with the ARN taken
+# from `aws_ssm_parameter.replicate_api_token.arn` in `envs/prod` — a *resource
+# attribute*, which does not exist until the parameter has been created. So on
+# the apply that creates it, Terraform cannot resolve the count at plan time and
+# refuses the whole plan:
+#
+#     Error: Invalid count argument
+#     The "count" value depends on resource attributes that cannot be determined
+#     until apply.
+#
+# **`terraform validate` cannot catch this**, which is why five clean validates
+# and a green PR preceded it: validate checks syntax and types and does not
+# resolve references between resources. Only a real plan does.
+#
+# The name is a plain string composed in `envs/prod`'s locals from literals, so
+# it is known before anything is created. The ARN is built from it below rather
+# than passed in.
+#
+# What this costs is the dependency edge — the policy no longer *references* the
+# parameter, so Terraform will not order them. That is acceptable here and would
+# not be everywhere: an IAM grant naming a parameter that does not exist yet is
+# inert rather than wrong, and the parameter is created in the same apply.
 data "aws_iam_policy_document" "provider_token" {
-  count = var.replicate_token_parameter_arn == "" ? 0 : 1
+  count = var.replicate_token_parameter == "" ? 0 : 1
 
   statement {
     sid       = "ReadTheProviderToken"
     effect    = "Allow"
     actions   = ["ssm:GetParameter"]
-    resources = [var.replicate_token_parameter_arn]
+    resources = [local.provider_token_arn]
   }
 
   statement {
@@ -308,7 +347,7 @@ data "aws_iam_policy_document" "provider_token" {
 }
 
 resource "aws_iam_role_policy" "provider_token" {
-  count  = var.replicate_token_parameter_arn == "" ? 0 : 1
+  count  = var.replicate_token_parameter == "" ? 0 : 1
   name   = "${local.api_name}-provider-token"
   role   = aws_iam_role.api.id
   policy = data.aws_iam_policy_document.provider_token[0].json

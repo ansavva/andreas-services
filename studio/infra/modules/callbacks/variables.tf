@@ -41,6 +41,21 @@ variable "replicate_token_parameter" {
   default     = ""
 }
 
+variable "create_worker" {
+  description = <<-EOT
+    Whether this environment gets a queue consumer Lambda. **A literal, never
+    derived from another resource**: it drives a `count`, and a `count` that
+    depends on a resource attribute cannot be resolved at plan time — which
+    failed a prod deploy in `modules/compute` and was latent here.
+
+    `false` is what the per-machine dev environment passes: it has no ECR
+    repository, and the queue is drained by a process beside `dev-up.sh` running
+    the developer's own working tree.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "worker_image_uri" {
   description = <<-EOT
     The API's container image, which the worker runs at a different handler.

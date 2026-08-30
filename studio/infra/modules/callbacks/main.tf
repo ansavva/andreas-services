@@ -60,10 +60,18 @@
 # a forged message costs one consumer invocation that refuses it and deletes it.
 
 locals {
-  name          = "${var.name_prefix}-callbacks"
-  receiver      = "${var.name_prefix}-callback-receiver"
-  worker        = "${var.name_prefix}-callback-worker"
-  create_worker = var.worker_image_uri != ""
+  name     = "${var.name_prefix}-callbacks"
+  receiver = "${var.name_prefix}-callback-receiver"
+  worker   = "${var.name_prefix}-callback-worker"
+  # **An explicit flag, because a `count` may not depend on a resource
+  # attribute.** This read `var.worker_image_uri != ""`, and prod passes
+  # `"${module.compute.ecr_repository_url}:latest"` — an attribute of a
+  # repository that, on a fresh account, does not exist at plan time. It worked
+  # only because prod's ECR was already in state. `modules/compute` had the same
+  # shape against the SSM parameter and it failed a real deploy with
+  # `Invalid count argument`; this is the same bug, one module over, waiting for
+  # a first apply into an empty account.
+  create_worker = var.create_worker
 }
 
 # ---------------------------------------------------------------------------
