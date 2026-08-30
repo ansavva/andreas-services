@@ -111,7 +111,21 @@ storage rather than invocation, so it belongs to
 
 Each entry carries a `snapshot` of its schema's enums and ranges. It exists so
 **`studio-media-prompt` can validate a prompt offline**, without a network call. It is
-advisory only: everything that submits re-validates against the live schema, so
+**A registry entry may also carry `defaults` — inputs studio sets when you do
+not.** `gpt-image-2` and `gpt-image-1.5` default to `quality: medium` and
+`moderation: low`. They are applied *under* anything you pass, so `--extra
+'{"quality":"high"}'` still wins, and they appear in the payload you approve
+rather than being applied invisibly.
+
+The tier is where the money is: at `high` a `gpt-image-2` image costs about
+$0.198 and roughly 83% of that is output tokens, which is exactly what the
+quality tier buys. `medium` is the default because most work is iteration; ask
+for `high` when the result is going to be kept — a character's reference images
+are the case that always should, which is why `character turnaround` sets it
+explicitly.
+
+The snapshot below is advisory only: everything that submits re-validates
+against the live schema, so
 a stale snapshot can cost a retry but can never let a bad payload bill. Refresh
 with `studio models refresh`.
 

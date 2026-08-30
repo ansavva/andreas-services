@@ -144,6 +144,36 @@ def field(entry: dict, path: str, default=None):
     return default if cur is None else cur
 
 
+def defaults(entry: dict) -> dict:
+    """The inputs studio sets when a caller does not. **Studio's decision, not the
+    provider's.**
+
+    Not to be confused with `snapshot.<field>.default`, which sits right beside it
+    and is the opposite kind of thing: that records what the PROVIDER does when a
+    field is absent, it is rewritten wholesale by `studio models refresh`, and a
+    studio decision parked there would be silently reverted by the next refresh.
+    This block is authored, reviewed in a diff, and never touched by a refresh.
+
+    **Applied under the caller, never over it** — see `runner.build_payload`. A
+    default is what happens when nobody chose; anything explicitly set, by
+    `--extra`, by `--input-file`, by a flag, or by `character turnaround`'s
+    per-model block, wins.
+
+    It exists because `quality` was costing real money by accident. A `gpt-image-2`
+    image at `high` is ~$0.198 and at `medium` about a third of that, the
+    difference being output tokens, and an ad-hoc `studio run` that named no
+    quality got whatever the caller typed or the provider's `auto`. A tier is a
+    decision; it belongs somewhere it is made once and can be read.
+
+    Per-model rather than global, because the fields are not shared: `quality` and
+    `moderation` exist on the two OpenAI models and nowhere else, and
+    `nano-banana-pro` spells the same idea `safety_filter_level`. A value set on a
+    model that has no such field is an unknown input the live schema check refuses
+    — correctly, and after a draft has been written.
+    """
+    return dict(entry.get("defaults") or {})
+
+
 def accepts_ext(entry: dict) -> set[str]:
     """The image extensions this model will take, as a set."""
     return set(field(entry, "images.accepts_ext", []) or [])

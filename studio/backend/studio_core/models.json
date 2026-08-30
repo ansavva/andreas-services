@@ -177,6 +177,10 @@
           ".webp"
         ]
       },
+      "defaults": {
+        "quality": "medium",
+        "moderation": "low"
+      },
       "denied": {
         "background": {
           "transparent": "gpt-image-2 does not support transparent backgrounds (its schema still lists the value). Use gpt-image-1.5 for transparent PNGs."
@@ -271,6 +275,10 @@
           ".png",
           ".webp"
         ]
+      },
+      "defaults": {
+        "quality": "medium",
+        "moderation": "low"
       },
       "prompt": {
         "max_chars": null

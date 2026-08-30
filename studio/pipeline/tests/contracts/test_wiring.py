@@ -210,7 +210,11 @@ def test_dry_run_actually_renders_a_payload(library, monkeypatch):
 
     from studio_pipeline import cli
 
-    props = {f: {} for f in ("prompt", "aspect_ratio", "output_format", "input_images")}
+    # `quality` and `moderation` are here because the REAL model has them and
+    # the registry now defaults both. A stub narrower than the model it stands
+    # in for turns a correct default into a spurious "does not accept".
+    props = {f: {} for f in ("prompt", "aspect_ratio", "output_format",
+                             "input_images", "quality", "moderation")}
     monkeypatch.setattr("studio_pipeline.engine.schema.fetch", lambda *a, **k: (props, {}))
 
     result = CliRunner().invoke(cli.main, [
@@ -234,7 +238,8 @@ def test_input_pool_numbers_actually_bind(library, monkeypatch):
 
     from studio_pipeline import cli
 
-    props = {f: {} for f in ("prompt", "aspect_ratio", "input_images")}
+    props = {f: {} for f in ("prompt", "aspect_ratio", "input_images",
+                             "quality", "moderation")}
     monkeypatch.setattr("studio_pipeline.engine.schema.fetch", lambda *a, **k: (props, {}))
 
     result = CliRunner().invoke(cli.main, [

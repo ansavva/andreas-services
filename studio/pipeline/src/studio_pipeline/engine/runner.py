@@ -190,6 +190,25 @@ def build_payload(entry: dict, args) -> dict:
     if args.aspect_ratio:
         payload["aspect_ratio"] = args.aspect_ratio
 
+    # ── the registry's defaults, UNDER everything a caller asked for ──────────
+    #
+    # **Last in the function and first in precedence order**, which is the whole
+    # of the rule: a default is what happens when nobody chose. `--extra`, an
+    # `--input-file`, `--aspect-ratio` and `character turnaround`'s per-model
+    # block have all had their say by now, and each of them keeps it.
+    #
+    # It is here rather than at the three call sites because there are three:
+    # `studio run`, `scenes board` and `scenes render` all build their payload
+    # through this function, and a default applied in one of them would be a
+    # default the other two silently did not have.
+    #
+    # **They are visible, not implicit.** Whatever lands here is in the payload
+    # `submit.render` prints and a person approves under hard rule #2 — so a
+    # wrong default is something you read before you spend, not something you
+    # discover on an invoice. That is what makes setting one safe at all.
+    for field, value in REG.defaults(entry).items():
+        payload.setdefault(field, value)
+
     # Never trust image fields baked into the payload — they are bound from S3.
     imgs = entry.get("images") or {}
     for f in (imgs.get("refs"), imgs.get("start"), imgs.get("end")):

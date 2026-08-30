@@ -110,3 +110,85 @@ def test_add_model_still_writes_a_prompt_block_when_the_schema_has_one():
                                     "description": "Max 5000 characters."}},
                         {}, "a generator")
     assert entry["prompt"] == {"max_chars": 5000}
+
+
+# ── the registry's defaults ──────────────────────────────────────────────────
+#
+# **Studio's decision about a knob, made once instead of per call site.** It
+# exists because `quality` was costing real money by accident: a `gpt-image-2`
+# image at `high` is ~$0.198 and at `medium` about a third of that, and an
+# ad-hoc `studio run` naming no quality got whatever the caller typed.
+#
+# Everything here is about PRECEDENCE, because that is the only way a default
+# can do harm — by overriding somebody who chose.
+
+DEFAULTED = {**PROMPTED, "key": "a-defaulted-model",
+             "defaults": {"quality": "medium", "moderation": "low"}}
+
+
+def _args(**kw):
+    base = dict(input_file=None, prompt="a porch", prompt_file=None,
+                extra=None, aspect_ratio=None)
+    return SimpleNamespace(**{**base, **kw})
+
+
+def test_a_default_is_applied_when_nobody_chose():
+    payload = RUN.build_payload(DEFAULTED, _args())
+
+    assert payload["quality"] == "medium"
+    assert payload["moderation"] == "low"
+
+
+def test_extra_beats_a_default():
+    """**`--extra` is somebody choosing**, and a default may never override one."""
+    payload = RUN.build_payload(DEFAULTED, _args(extra='{"quality": "high"}'))
+
+    assert payload["quality"] == "high", "the caller asked for high"
+    assert payload["moderation"] == "low", "and said nothing about moderation"
+
+
+def test_an_input_file_beats_a_default(tmp_path):
+    """The same rule for the other way a payload arrives whole.
+
+    `character turnaround` reaches this through `--extra`, carrying its
+    `per_model` block — which is where `quality: high` for a reference shoot is
+    set, deliberately, and which this must not undo.
+    """
+    f = tmp_path / "input.json"
+    f.write_text('{"prompt": "a porch", "quality": "high"}')
+    payload = RUN.build_payload(DEFAULTED, _args(prompt=None, input_file=str(f)))
+
+    assert payload["quality"] == "high"
+
+
+def test_a_model_with_no_defaults_gets_none():
+    """Per-model, because the fields are not shared: `quality` and `moderation`
+    exist on the two OpenAI models and nowhere else. A value set on a model that
+    has no such field is an unknown input the live schema check refuses — after
+    a draft has been written."""
+    payload = RUN.build_payload(PROMPTED, _args())
+
+    assert "quality" not in payload
+    assert "moderation" not in payload
+
+
+def test_the_shipped_registry_only_defaults_fields_the_model_has():
+    """**The guard that stops a default becoming a submit-time refusal.**
+
+    A default naming a field the model does not accept passes every test that
+    uses a fixture and fails against the live schema, at the moment somebody
+    spends. Asserted against the registry that actually ships.
+    """
+    from studio_pipeline.engine import registry as REG
+
+    for key, entry in REG.all().items():
+        snapshot = entry.get("snapshot") or {}
+        for field, value in REG.defaults(entry).items():
+            assert field in snapshot, (
+                f"{key} defaults `{field}`, which is not in its schema snapshot"
+            )
+            allowed = (snapshot[field] or {}).get("enum")
+            if allowed:
+                assert value in allowed, (
+                    f"{key} defaults {field}={value!r}, not one of {allowed}"
+                )
