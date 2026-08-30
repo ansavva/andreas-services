@@ -133,11 +133,51 @@ module "catalog" {
   tags = local.common_tags
 }
 
+# THE PROVIDER TOKEN. **THE ONLY SECRET STUDIO HOLDS.**
+#
+# Declared here rather than inside a module because two of them read it: the API
+# Lambda, which creates predictions, and the callback worker, which asks about
+# them. Neither should own a resource the other depends on.
+#
+# **Terraform creates the parameter and never the value.** `ignore_changes` on
+# `value` is what makes that true rather than aspirational: the placeholder below
+# is written once, on the apply that creates the parameter, and a real token put
+# there afterwards survives every subsequent apply. The alternative — a
+# `TF_VAR_replicate_api_token` in CI — would put the secret in the workflow's
+# environment, in the plan output, and in the state file.
+#
+# So the token is set out of band, once, by a person:
+#
+#     aws ssm put-parameter --overwrite --type SecureString #       --name /studio/prod/replicate-api-token --value r8_…
+#
+# Until that happens, `POST /api/runs/<id>/submit` answers 500 with a message
+# naming this parameter, and nothing else in studio is affected — browsing,
+# listing and every read route are untouched.
+resource "aws_ssm_parameter" "replicate_api_token" {
+  name        = "/${local.project}/${local.environment}/replicate-api-token"
+  description = "Replicate API token. Set out of band; Terraform never holds the value."
+  type        = "SecureString"
+  value       = "placeholder-set-this-out-of-band"
+
+  tags = local.common_tags
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
 module "compute" {
   source = "../../modules/compute"
 
   project     = local.project
   environment = local.environment
+
+  # A NAME and an ARN, never the value. The API reads the parameter at call time
+  # so the token never sits in the function's environment, where
+  # `lambda:GetFunctionConfiguration` would hand it to anyone who can list the
+  # account. The ARN scopes the grant to this one parameter.
+  replicate_token_parameter     = aws_ssm_parameter.replicate_api_token.name
+  replicate_token_parameter_arn = aws_ssm_parameter.replicate_api_token.arn
 
   # From the module, not from the variable directly: this is what orders the
   # IAM policy after the bucket exists.
@@ -191,6 +231,60 @@ module "api_gateway" {
 
   throttle_rate  = var.api_throttling_rate_limit
   throttle_burst = var.api_throttling_burst_limit
+
+  tags = local.common_tags
+}
+
+# WHERE A FINISHED GENERATION IS REPORTED, AND WHAT CLOSES THE RUN.
+#
+# Its own gateway, deliberately, and `modules/callbacks/main.tf` argues the
+# whole case. The short version: a callback cannot hold a Cognito token, so on
+# the API's gateway it would have been the second unauthenticated exception and
+# the first one that writes. Here there is no authorizer to carve an exception
+# out of — one route, reaching a function that can do nothing but enqueue.
+#
+# The worker runs the API's image at a different handler and under the API's own
+# role: the work is identical, and a second role would be a hand-kept copy of
+# `modules/compute`'s policies that drifts. It is sized for what it does — a
+# video download and an upload — which is why the API Lambda did NOT have to
+# grow to absorb this.
+module "callbacks" {
+  source = "../../modules/callbacks"
+
+  name_prefix = "${local.project}-${local.environment}"
+
+  media_bucket_name = module.media.bucket_name
+  media_root_prefix = var.media_root_prefix
+
+  catalog_table_name        = module.catalog.table_name
+  replicate_token_parameter = aws_ssm_parameter.replicate_api_token.name
+
+  # `:latest`, matching the Lambda in `modules/compute`: the deploy workflow
+  # repoints both to `:${{ github.sha }}` after the image is pushed, and both
+  # carry `ignore_changes = [image_uri]` so Terraform sets it once.
+  #
+  # **A non-empty value here is what creates the worker at all.** `envs/dev`
+  # passes nothing, has no ECR repository, and drains the queue from a laptop.
+  worker_image_uri = "${module.compute.ecr_repository_url}:latest"
+  worker_role_arn  = module.compute.api_role_arn
+  worker_role_name = module.compute.api_role_name
+
+  tags = local.common_tags
+}
+
+# Terraform knows where callbacks arrive; `update-lambda` reads this back and
+# sets it on the API Lambda as `STUDIO_WEBHOOK_BASE_URL`.
+#
+# **Through SSM rather than through the module's `environment` block**, and not
+# for the usual reason. The block would be a dependency cycle: `modules/compute`
+# is `modules/callbacks`'s input (it lends the worker its role), so it cannot
+# also read that module's output. The workflow is what sets every variable on a
+# running function in any case — see `modules/compute`'s `ignore_changes`.
+resource "aws_ssm_parameter" "callback_base_url" {
+  name        = "/${local.project}/${local.environment}/callback-base-url"
+  description = "Origin Replicate is told to call back on when a prediction finishes"
+  type        = "String"
+  value       = module.callbacks.base_url
 
   tags = local.common_tags
 }

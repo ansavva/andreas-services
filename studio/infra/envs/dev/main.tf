@@ -12,12 +12,31 @@
 # `dev-aws-*.sh` scripts read it and pass it in. Nothing here is applied by CI,
 # and no tfvars file is committed — see `terraform.tfvars.example`.
 #
-# What this environment deliberately does NOT declare: hosting, CloudFront,
-# API Gateway, the custom API domain, ECR, or the Lambda. The dev backend is
-# Flask on `:8000` under `dev-up.sh` and the SPA is Vite on `:5173`, both
-# talking to the real AWS resources below. A per-machine CloudFront
-# distribution would cost 20 minutes per apply and per destroy to prove
-# nothing.
+# What this environment deliberately does NOT declare: hosting, CloudFront, the
+# custom API domain, ECR, or the API Lambda. The dev backend is Flask on `:8000`
+# under `dev-up.sh` and the SPA is Vite on `:5173`, both talking to the real AWS
+# resources below. A per-machine CloudFront distribution would cost 20 minutes
+# per apply and per destroy to prove nothing.
+#
+# **It DOES declare an API Gateway now, and that sentence used to say it never
+# would.** The exception is `module.callbacks`, and it is worth stating why it
+# earns one when hosting does not.
+#
+# Replicate cannot reach `http://localhost:8000`. So for as long as this
+# environment had no public endpoint, the callback that closes a generation
+# could not be exercised on a developer's machine at all — local development
+# fell back to polling, and the code that closes a run in production was code
+# nobody had ever run outside a unit test. That is not a convenience gap; it is
+# the most expensive path in studio being unreachable from the place it is
+# written.
+#
+# What makes it affordable is that the deployed half is tiny and fixed. The
+# receiver is a single dependency-free file, packaged as a zip straight from the
+# repo — no ECR, no image build, no deploy step — and all it does is put the
+# callback on a queue. **The half that changes is not deployed at all**:
+# `dev-up.sh` runs a consumer that long-polls that queue and closes the run with
+# the working tree. So a real, signed Replicate callback reaches the code being
+# edited, and an apply here is still seconds.
 
 locals {
   project     = "studio"
@@ -104,6 +123,30 @@ module "storage" {
   # one thing that differs between this bucket's CORS rule and prod's is visible
   # here rather than only in the module.
   cors_allowed_origins = var.spa_origins
+
+  tags = local.common_tags
+}
+
+
+# WHERE A FINISHED GENERATION IS REPORTED — PER MACHINE.
+#
+# The same module prod uses, minus the worker. `worker_image_uri` is left unset,
+# so no consumer Lambda is created and nothing here needs an ECR repository or
+# the API's execution role; what drains the queue is a process beside
+# `dev-up.sh`, running this checkout. See the note at the top of this file.
+#
+# The URL is an `execute-api` hostname rather than anything under
+# `andreas.services`: it is called by one machine that is told where to call,
+# never typed, so a DNS record and a certificate would buy nothing and cost a
+# minute per apply.
+module "callbacks" {
+  source = "../../modules/callbacks"
+
+  name_prefix = local.resource_prefix
+
+  # No `worker_image_uri`, no `replicate_token_parameter`, no bucket and no
+  # table. Every one of those is the worker's, and there is no worker here — the
+  # local consumer reads the developer's own environment and their own AWS key.
 
   tags = local.common_tags
 }

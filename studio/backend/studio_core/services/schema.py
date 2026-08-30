@@ -34,17 +34,19 @@ whose enum changed under a committed snapshot.
 import logging
 
 from studio_core.clients import replicate
+from studio_core.errors import ValidationError
 
 logger = logging.getLogger(__name__)
 
 
-class SchemaError(ValueError):
+class SchemaError(ValidationError):
     """A payload the target model will not accept — raised before anything bills.
 
-    A `ValidationError` in everything but name: it is the caller's request that
-    is wrong, so `routes/runs.py` turns it into a 400 rather than letting it
-    reach the generic 500 handler. It is its own type because the submit path
-    catches it specifically to say *which* half of the payload was refused.
+    **A `ValidationError`, not merely something like one.** It is the caller's
+    request that is wrong, and `app_factory` maps that type to 400 — so
+    subclassing is what stops a refused payload reaching the generic handler and
+    coming back as `Internal error`, which would report a fixable mistake as an
+    outage. It is its own type only so a caller can catch it specifically.
     """
 
 

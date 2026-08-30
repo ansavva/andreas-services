@@ -101,3 +101,25 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "replicate_token_parameter" {
+  description = <<-EOT
+    Name of the SSM SecureString holding the Replicate API token, reaching the
+    Lambda as `STUDIO_REPLICATE_TOKEN_PARAMETER`. A NAME and never a value: the
+    API reads it at call time so the secret never sits in the function's
+    environment. Empty in an environment that has none — a developer's machine
+    supplies `REPLICATE_API_TOKEN` directly and never touches SSM.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "replicate_token_parameter_arn" {
+  description = <<-EOT
+    ARN of the same parameter, scoping the `ssm:GetParameter` grant to exactly
+    one name. Empty means no grant is written at all, which is what an
+    environment with no deployed API wants.
+  EOT
+  type        = string
+  default     = ""
+}

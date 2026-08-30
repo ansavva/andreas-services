@@ -271,6 +271,16 @@ jobs:
           # applies before the frontend builds, so the SPA can never ship
           # redirecting at a domain that does not exist yet.
           put /studio/prod/cognito-auth-domain   "$(tf cognito_auth_domain)"
+          # Where Replicate calls back when a prediction finishes. `update-lambda`
+          # reads it back as STUDIO_WEBHOOK_BASE_URL. It has to travel through SSM
+          # rather than through Terraform's own `environment` block, and not for
+          # the usual reason: `modules/compute` lends the callback worker its
+          # execution role, so it cannot also read `modules/callbacks`'s output
+          # without a dependency cycle.
+          put /studio/prod/callback-base-url     "$(tf callback_base_url)"
+          # The consumer's function name, so the step below can pin its image
+          # alongside the API's. Both run the SAME image at different handlers.
+          put /studio/prod/callback-worker       "$(tf callback_worker_function_name)"
 
   # ---------------------------------------------------------------------------
   # Set the Lambda's env vars and pin its code to :sha.
@@ -318,6 +328,8 @@ jobs:
           CATALOG_TABLE=$(get catalog-table)
           POOL_ID=$(get cognito-user-pool-id)
           CLIENT_ID=$(get cognito-client-id)
+          CALLBACK_URL=$(get callback-base-url)
+          WORKER=$(get callback-worker)
 
           # THIS BLOCK, NOT TERRAFORM, IS WHAT SETS THE LAMBDA'S ENVIRONMENT.
           # The function carries `ignore_changes = [environment]`, so the
@@ -341,19 +353,29 @@ jobs:
           # Mangum. They are the same two parameters the frontend build and
           # `dev-setup.sh` read, so the API, the SPA and a local dev session all
           # track one pool.
+          # STUDIO_REPLICATE_TOKEN_PARAMETER is a parameter NAME, never a token.
+          # The Lambda reads the SecureString at call time under its own role, so
+          # the secret never sits in this document, in this runner's memory, or in
+          # a function's environment where `lambda:GetFunctionConfiguration` would
+          # expose it. Set the value out of band:
+          #   aws ssm put-parameter --overwrite --type SecureString \
+          #     --name /studio/prod/replicate-api-token --value r8_…
           jq -n --arg bucket "${MEDIA_BUCKET}" \
                 --arg prefix "" \
                 --arg origin "https://studio.andreas.services" \
                 --arg table "${CATALOG_TABLE}" \
                 --arg pool "${POOL_ID}" \
                 --arg client "${CLIENT_ID}" \
+                --arg callback "${CALLBACK_URL}" \
             '{Variables: {
-              STUDIO_MEDIA_BUCKET:         $bucket,
-              STUDIO_MEDIA_ROOT_PREFIX:    $prefix,
-              STUDIO_ALLOWED_ORIGIN:       $origin,
-              STUDIO_CATALOG_TABLE:        $table,
-              STUDIO_COGNITO_USER_POOL_ID: $pool,
-              STUDIO_COGNITO_CLIENT_ID:    $client
+              STUDIO_MEDIA_BUCKET:              $bucket,
+              STUDIO_MEDIA_ROOT_PREFIX:         $prefix,
+              STUDIO_ALLOWED_ORIGIN:            $origin,
+              STUDIO_CATALOG_TABLE:             $table,
+              STUDIO_COGNITO_USER_POOL_ID:      $pool,
+              STUDIO_COGNITO_CLIENT_ID:         $client,
+              STUDIO_WEBHOOK_BASE_URL:          $callback,
+              STUDIO_REPLICATE_TOKEN_PARAMETER: "/studio/prod/replicate-api-token"
             }}' > /tmp/env-api.json
 
           aws lambda update-function-configuration \
@@ -362,16 +384,48 @@ jobs:
           aws lambda wait function-updated \
             --function-name "${{ env.API_LAMBDA_NAME }}" --region "${{ env.AWS_REGION }}"
 
+          # THE CALLBACK WORKER, WHICH RUNS THE SAME IMAGE AT ANOTHER HANDLER.
+          #
+          # It needs the bucket, the table and the token parameter and nothing
+          # else: it holds no Cognito ids because it answers no request, and no
+          # allowed origin because no browser reaches it. Updated in the same
+          # step as the API so the two cannot be left on different code — a
+          # worker running last week's image would close runs with last week's
+          # closing logic, silently and correctly-looking.
+          jq -n --arg bucket "${MEDIA_BUCKET}" \
+                --arg prefix "" \
+                --arg table "${CATALOG_TABLE}" \
+            '{Variables: {
+              STUDIO_MEDIA_BUCKET:              $bucket,
+              STUDIO_MEDIA_ROOT_PREFIX:         $prefix,
+              STUDIO_CATALOG_TABLE:             $table,
+              STUDIO_REPLICATE_TOKEN_PARAMETER: "/studio/prod/replicate-api-token"
+            }}' > /tmp/env-worker.json
+
+          aws lambda update-function-configuration \
+            --function-name "${WORKER}" \
+            --region "${{ env.AWS_REGION }}" --environment file:///tmp/env-worker.json
+          aws lambda wait function-updated \
+            --function-name "${WORKER}" --region "${{ env.AWS_REGION }}"
+          echo "WORKER=${WORKER}" >> "$GITHUB_ENV"
+
       - name: Update Lambda function code
         run: |
           set -euo pipefail
-          aws lambda update-function-code \
-            --function-name "${{ env.API_LAMBDA_NAME }}" \
-            --image-uri "${ECR_REGISTRY}/${{ env.API_ECR_REPO }}:${{ github.sha }}" \
-            --region "${{ env.AWS_REGION }}" \
-            --output table --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
-          aws lambda wait function-updated \
-            --function-name "${{ env.API_LAMBDA_NAME }}" --region "${{ env.AWS_REGION }}"
+          # **Both functions, pinned to the same sha.** They are one image
+          # entered at two handlers, so a partial update leaves the thing that
+          # CLOSES a run on different code from the thing that SUBMITS one —
+          # which fails in the least visible way there is, at the end of a
+          # generation somebody has already paid for.
+          for fn in "${{ env.API_LAMBDA_NAME }}" "${WORKER}"; do
+            aws lambda update-function-code \
+              --function-name "$fn" \
+              --image-uri "${ECR_REGISTRY}/${{ env.API_ECR_REPO }}:${{ github.sha }}" \
+              --region "${{ env.AWS_REGION }}" \
+              --output table --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
+            aws lambda wait function-updated \
+              --function-name "$fn" --region "${{ env.AWS_REGION }}"
+          done
 
       - name: Smoke-check the API
         run: |
