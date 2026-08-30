@@ -664,3 +664,42 @@ def test_a_history_can_be_stated_for_work_done_before_it_was_kept(empty_api):
     empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={"run": "run-newer"})
     fetched = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]
     assert [t["run"] for t in fetched["takes"]] == ["run-current", "run-from-before"]
+
+
+def test_a_shot_reports_the_runs_behind_it(empty_api):
+    """A board is made of run output and could only say so in run ids."""
+    project = _project(empty_api)
+    scene = _scene(empty_api, project, shots=[{"prompt": "wide"}])
+    shot = scene["shots"][0]["id"]
+    run = empty_api.post("/api/runs", json={
+        "project": project["id"], "kind": "video", "engine": "studio-media-kling",
+        "model": "kwaivgi/kling-v3-omni-video", "input": {"prompt": "x"},
+    }).get_json()
+
+    empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={"run": run["id"]})
+
+    rows = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]["runs"]
+    assert [r["id"] for r in rows] == [run["id"]]
+    # The same fields a runs listing carries, so one component draws both.
+    assert rows[0]["model"] == "kwaivgi/kling-v3-omni-video"
+    assert rows[0]["status"] == "draft"
+    assert rows[0]["role"] == "clip"
+
+
+def test_a_run_bound_twice_in_one_shot_is_one_row(empty_api):
+    """Drawing it twice would read as two renders."""
+    project = _project(empty_api)
+    scene = _scene(empty_api, project, shots=[{"prompt": "wide"}])
+    shot = scene["shots"][0]["id"]
+    run = empty_api.post("/api/runs", json={
+        "project": project["id"], "kind": "video", "engine": "studio-media-kling",
+        "model": "m", "input": {"prompt": "x"},
+    }).get_json()
+
+    empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={
+        "run": run["id"],
+        "panels": [{"n": 1, "role": "sample", "prompt": "p", "run": run["id"]}],
+    })
+
+    rows = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]["runs"]
+    assert [r["role"] for r in rows] == ["clip"]

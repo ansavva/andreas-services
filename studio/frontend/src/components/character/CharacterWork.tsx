@@ -1,13 +1,13 @@
 import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { Badge, Spinner, Text } from "@ansavva/design-system";
+import { Spinner, Text } from "@ansavva/design-system";
 
 import { getCharacterProjects, getCharacterRuns } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
-import { formatDate } from "../../utils/format";
 import { projectPath, runPath } from "../../utils/location";
 import { EntityCard } from "../entity/EntityCard";
+import { RunList } from "../run/RunList";
 import { LoadError } from "../common/LoadError";
 
 /**
@@ -42,33 +42,10 @@ export function CharacterRuns({ characterId }: { characterId: string }) {
     );
   }
 
-  return (
-    <div className="flex flex-col gap-2">
-      {runs.map((run) => (
-        <button
-          key={run.id}
-          type="button"
-          // A run's address needs its project as well as its own id, and the
-          // row carries both — which is the shape `/p/<id>/r/<id>` exists for.
-          onClick={() => navigate(runPath(run.project, run.id))}
-          className="flex w-full items-center gap-3 rounded-md border border-line bg-card p-2 text-left
-                     transition-colors hover:bg-surface-alt
-                     focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          <span className="min-w-0 flex-1">
-            {/* A run has no name — the date is what a person recognises it by. */}
-            <Text variant="body" className="truncate">
-              {formatDate(run.created)}
-            </Text>
-            <Text variant="caption" tone="muted" className="block truncate">
-              {run.model}
-            </Text>
-          </span>
-          <Badge intent={run.status === "failed" ? "danger" : "neutral"}>{run.status}</Badge>
-        </button>
-      ))}
-    </div>
-  );
+  // The rows are `RunList`'s. This tab used to draw its own — no thumbnail, and
+  // a status badge that only knew `failed`, so a `running` run read grey here
+  // and amber on a project page for the same run.
+  return <RunList runs={runs} onOpen={(run) => navigate(runPath(run.project as string, run.id))} />;
 }
 
 export function CharacterProjects({ characterId }: { characterId: string }) {
