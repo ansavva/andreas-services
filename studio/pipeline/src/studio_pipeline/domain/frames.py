@@ -261,28 +261,30 @@ def _where(project: dict, add_input: bool) -> str:
         project["root"], P.INPUT_FOLDER if add_input else RENDERS_FOLDER)["id"]
 
 
-def _pull(ref, project, dest, add_input, *, name: str, at=None, from_end=None,
-          count=None) -> tuple[dict, dict, str | None]:
-    """Resolve, enqueue, wait. -> (run record, the produced asset, local path).
+def _pull(run: dict, video: str, dest, add_input, *, name: str, at=None,
+          from_end=None, count=None) -> tuple[dict, str | None]:
+    """Enqueue, wait, and bring it down if a local path was asked for.
 
     One helper for all three commands because they differ only in which render
-    kind they ask for and what the file is called — the resolution, the
-    destination and the local copy are identical, and were three copies before
-    the encode moved.
+    kind they ask for and what the file is called — the destination and the local
+    copy are identical, and were three copies before the encode moved.
+
+    **Takes the resolved run and video rather than the runref.** Resolving a
+    runref is two API calls (`runs/resolve` and the record), and doing it here as
+    well as in the caller — which needs the run to name the output file — made
+    every `frames` command pay for it twice.
     """
-    run, video = resolve_video(ref, project)
-    record = _project_of(run)
-    params = {"node": video, "dest": _where(record, add_input), "name": name}
+    params = {"node": video, "dest": _where(_project_of(run), add_input),
+              "name": name}
     if count is None:
         params.update({"at": at, "from_end": from_end})
         result = RENDER.submit("frame", params, what="the frame")
         asset = result["frame"]
     else:
         params["count"] = count
-        result = RENDER.submit("grid", {**params, "count": count}, what="the grid")
+        result = RENDER.submit("grid", params, what="the grid")
         asset = result["grid"]
-    local = RENDER.fetch(asset, dest) if dest else None
-    return run, {**asset, **result}, local
+    return {**asset, **result}, (RENDER.fetch(asset, dest) if dest else None)
 
 
 def _emit(run: dict, asset: dict, local: str | None, add_input: bool,
@@ -329,9 +331,9 @@ def main():
 @errors.reports(RENDER.RenderError, api.ApiError, R.RunError)
 def do_last(ref, add_input, chain, dest, project):
     """The final frame — the chaining handoff."""
-    run, _ = resolve_video(ref, project)
-    run, asset, local = _pull(ref, project, dest, add_input,
-                              name=f"{run['id']}_last.png", from_end=0.2)
+    run, video = resolve_video(ref, project)
+    asset, local = _pull(run, video, dest, add_input,
+                         name=f"{run['id']}_last.png", from_end=0.2)
     _emit(run, asset, local, add_input, chain)
 
 
@@ -347,9 +349,9 @@ def do_last(ref, add_input, chain, dest, project):
 @errors.reports(RENDER.RenderError, api.ApiError, R.RunError)
 def do_at(ref, add_input, chain, dest, project, time):
     """One frame at a given time."""
-    run, _ = resolve_video(ref, project)
-    run, asset, local = _pull(ref, project, dest, add_input,
-                              name=f"{run['id']}_t{time:g}.png", at=time)
+    run, video = resolve_video(ref, project)
+    asset, local = _pull(run, video, dest, add_input,
+                         name=f"{run['id']}_t{time:g}.png", at=time)
     _emit(run, asset, local, add_input, chain)
 
 
@@ -366,9 +368,9 @@ def do_grid(ref, count, dest, project):
     from, so it lands in the project's `renders/` folder and stays out of the
     pool the next shot reads.
     """
-    run, _ = resolve_video(ref, project)
-    run, asset, local = _pull(ref, project, dest, False,
-                              name=f"{run['id']}_grid.jpg", count=count)
+    run, video = resolve_video(ref, project)
+    asset, local = _pull(run, video, dest, False,
+                         name=f"{run['id']}_grid.jpg", count=count)
     print(local or asset["node"])
     if local:
         print(asset["node"])
