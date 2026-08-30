@@ -35,7 +35,6 @@ function record(over: Partial<RunRecord> = {}): RunRecord {
     error: null,
     outputs: [],
     scenes: [],
-    derived: [],
     bindings: {},
     // The authored half. Present on every response the API gives — `get_run`
     // always writes these three keys, `null` included, so a client never has to
@@ -45,7 +44,6 @@ function record(over: Partial<RunRecord> = {}): RunRecord {
     plan_digest: null,
     approval: null,
     stale: false,
-    lineage: { from_run: null, from_output: null },
     payload: { prompt: null, request: null, response: null },
     ...over,
   } as RunRecord;

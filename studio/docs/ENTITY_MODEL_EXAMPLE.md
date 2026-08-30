@@ -248,7 +248,6 @@ character" — a question that has no answer today at any price.
 
   "folder":  "node-12cd5f83-6a09-4b71-8e24-c9f503a7b16d",
   "outputs": ["node-3610c8b4-5d92-4e07-83f1-6c24a9b1e7d5"],
-  "lineage": { "from_run": null, "from_output": null },
   "cost": { "currency": "USD", "amount": 0.032 },
   "error": null,
 

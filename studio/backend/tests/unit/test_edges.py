@@ -149,18 +149,6 @@ def test_a_plan_revision_that_drops_a_shot_drops_its_run_edge(empty_api):
     assert empty_api.get(f"/api/runs/{run['id']}").get_json()["scenes"] == []
 
 
-def test_a_run_names_what_was_chained_off_it(empty_api):
-    """`lineage.from_run` is a scalar pointing up. This is the way down."""
-    project = _project(empty_api)
-    parent = _run(empty_api, project)
-    child = _run(empty_api, project,
-                 lineage={"from_run": parent["id"], "from_output": None})
-
-    body = empty_api.get(f"/api/runs/{parent['id']}").get_json()
-    assert [entry["id"] for entry in body["derived"]] == [child["id"]]
-    assert empty_api.get(f"/api/runs/{child['id']}").get_json()["derived"] == []
-
-
 def test_a_character_still_names_its_projects(empty_api):
     """The relationship that already worked, kept honest through the refactor.
 
@@ -213,24 +201,6 @@ def test_setting_a_movies_scenes_answers_in_the_read_shape(empty_api):
     read = empty_api.get(f"/api/movies/{movie['id']}").get_json()
 
     assert written["scenes"] == read["scenes"]
-
-
-def test_lineage_recorded_after_the_fact_is_still_readable_downwards(empty_api):
-    """`chain` writes the envelope before it knows what it continued from.
-
-    So the parent arrives by PATCH, not at create — and that path wrote the
-    scalar without the edge, which would have made the reverse correct only for
-    runs that knew their parent at birth.
-    """
-    project = _project(empty_api)
-    parent = _run(empty_api, project)
-    child = _run(empty_api, project)
-
-    empty_api.patch(f"/api/runs/{child['id']}",
-                    json={"lineage": {"from_run": parent["id"], "from_output": None}})
-
-    body = empty_api.get(f"/api/runs/{parent['id']}").get_json()
-    assert [entry["id"] for entry in body["derived"]] == [child["id"]]
 
 
 def test_creating_a_movie_answers_in_the_read_shape(empty_api):

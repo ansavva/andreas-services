@@ -108,13 +108,6 @@ export function RunList({
                 {run.model}
               </Text>
             )}
-            {/* Lineage is what makes a chain readable at a glance: this run was
-                built off another's output, and that is usually why it exists. */}
-            {run.lineage?.from_run && (
-              <Text variant="caption" tone="muted" className="block truncate">
-                chained from a previous run
-              </Text>
-            )}
           </span>
 
           {run.role && <Badge intent="neutral">{run.role}</Badge>}

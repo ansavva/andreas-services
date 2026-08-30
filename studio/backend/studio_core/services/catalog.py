@@ -2972,7 +2972,7 @@ def set_project_characters(project_id: str, lib: str, characters: list[str]) -> 
 #
 # | Studio owns (row, validated, queryable) | The provider owns (blob, verbatim) |
 # |---|---|
-# | id, project, status, model, engine, kind, characters, bindings (node ids), timings, prediction id, error, outputs, lineage | the exact `input` sent, the exact response returned |
+# | id, project, status, model, engine, kind, characters, bindings (node ids), timings, prediction id, error, outputs | the exact `input` sent, the exact response returned |
 #
 # That split preserves the reason the old rule existed — the pipeline changes the
 # payload's shape freely, so a service that parsed one would become a liar — while
@@ -3003,14 +3003,11 @@ def _listing_sk(kind: str, created: str, entity_id: str) -> str:
 def _edge_targets(attributes: dict) -> list[str]:
     """Every entity id an envelope points at, flattened for `edge_steps`.
 
-    `characters` and `scenes` are lists of ids; `lineage.from_run` is a single
-    parent, and it is an edge like any other — "what came out of this run" is
-    the same question as "which projects involve this character", asked one
-    prefix over.
+    `characters` and `scenes` are lists of ids, and each is an edge like any
+    other — "which runs used this character" is the same question as "which
+    projects involve this character", asked one prefix over.
     """
-    targets = [*(attributes.get("characters") or []), *(attributes.get("scenes") or [])]
-    parent = (attributes.get("lineage") or {}).get("from_run")
-    return [*targets, *([parent] if parent else [])]
+    return [*(attributes.get("characters") or []), *(attributes.get("scenes") or [])]
 
 
 def create_project_entity(

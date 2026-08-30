@@ -448,7 +448,6 @@ what points at it.
   "characters": ["char-…"],                  // also written as rows
   "folder": "node-…",                        // the run's own folder
   "outputs": ["node-…", …],
-  "lineage": { "from_run": "run-…", "from_output": "node-…" },
   "cost": { "currency": "USD", "amount": 0.032 },   // when the provider reports it
   "error": null,
   "payload": { "request": "node-…", "response": "node-…", "prompt": "node-…" }
@@ -620,7 +619,7 @@ moves with it.
 |---|---|
 | `POST /api/runs` | `{project, kind, engine, model, slug, input, bindings, characters?, prompt?}` → **201** `{id, folder, payload}`. Creates run + project link + character links + folder + payload blobs. **Refuses a URL-shaped binding** |
 | `GET /api/runs` | `?project=&character=&model=&status=&since=&cursor=` — the query that replaces `runs find` |
-| `GET /api/runs/<id>` | envelope + output nodes + lineage |
+| `GET /api/runs/<id>` | envelope + output nodes + the scenes that bound it |
 | `PATCH /api/runs/<id>` | `{status, prediction_id?, error?, cost?, completed?}` |
 | `POST /api/runs/<id>/outputs` | `{name, size, content_type}` → a node under the run's `output/` and a presigned PUT |
 | `POST /api/runs/<id>/response` | `{body}` → stores the provider response as a payload blob |
@@ -775,9 +774,9 @@ Tabs: **Profile · References · Corpus · Seed · Archive · Files**
 Tabs: **Overview · Runs · Scenes · Movies · Inputs · Files**
 
 - **Runs** is the screen that does not exist today: a filterable list — model,
-  status, character, date — each row showing its output thumbnail, model, cost
-  and lineage. A run opens to its envelope, its outputs, its chain, and its
-  payload documents as raw text (still never parsed).
+  status, character, date — each row showing its output thumbnail, model and
+  cost. A run opens to its envelope, its outputs, and its payload documents as
+  raw text (still never parsed).
 - **Scenes / Movies** show the plan, the shots and the cut.
 - **Inputs** is the working pool with positions shown, because `--input N` is a
   position.

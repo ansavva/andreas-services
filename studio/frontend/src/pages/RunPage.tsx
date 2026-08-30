@@ -21,7 +21,7 @@ import { useResource } from "../hooks/useResource";
 import { useProjectCrumb } from "../hooks/useProjectCrumb";
 import { formatBytes, formatDate, formatTextContent } from "../utils/format";
 import { isTerminal, isUnsubmitted, type RunAsset, type RunRecord } from "../types";
-import { objectPath, runPath, scenePath } from "../utils/location";
+import { objectPath, scenePath } from "../utils/location";
 
 /**
  * One run: what studio recorded about it, what came out, and — separately, and
@@ -29,7 +29,7 @@ import { objectPath, runPath, scenePath } from "../utils/location";
  *
  * **That separation is the rule the entity model preserved rather than removed.**
  * Everything above `payload` is studio's own envelope: the status, the model, the
- * bindings as node ids, the outputs, the cost, the lineage. It is validated, it
+ * bindings as node ids, the outputs and the cost. It is validated, it
  * is queryable, and it is safe to render as fields. The request and response
  * bodies are the provider's, the pipeline changes their shape freely, and this
  * page shows them as **text and nothing else**. It does not parse them, it does
@@ -143,11 +143,6 @@ export function RunPage() {
       )}
 
       <Backlinks label="Used in" links={data.scenes} to={scenePath} />
-      <Backlinks
-        label="Chained into"
-        links={data.derived}
-        to={(id) => runPath(data.project, id)}
-      />
 
       <section className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         <Fact label="Model" value={data.model} />
@@ -285,37 +280,6 @@ export function RunPage() {
         )}
       </section>
       )}
-
-      <section className="flex flex-col gap-2">
-        <Text variant="title">Chain</Text>
-        {/* Lineage is two node-shaped pointers and nothing more, which is exactly
-            enough to walk a chain backwards: the run this one continued, and the
-            frame of it that was picked up. */}
-        {data.lineage.from_run === null ? (
-          <Text variant="body" tone="muted">
-            This run starts a chain — nothing came before it.
-          </Text>
-        ) : (
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              intent="ghost"
-              size="sm"
-              onClick={() => navigate(runPath(projectId, data.lineage.from_run as string))}
-            >
-              Continued from the previous run
-            </Button>
-            {data.lineage.from_output && (
-              <Button
-                intent="ghost"
-                size="sm"
-                onClick={() => navigate(objectPath(data.lineage.from_output as string))}
-              >
-                Open the frame it started from
-              </Button>
-            )}
-          </div>
-        )}
-      </section>
 
       <section className="flex flex-col gap-2">
         <Text variant="title">Payload</Text>

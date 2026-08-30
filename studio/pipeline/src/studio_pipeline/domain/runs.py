@@ -5,7 +5,7 @@ where "everything about it" lives:
 
     the row   id, project, status, kind, engine, model, prediction id,
               timings, bindings (NODE IDS), characters, folder, outputs,
-              lineage, cost, error                    — studio owns and validates
+              cost, error                             — studio owns and validates
     the blobs request.json, prompt.json, result.json  — the provider owns, and
               studio stores them verbatim and never decodes them
 

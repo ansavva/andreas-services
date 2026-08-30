@@ -1258,9 +1258,6 @@ class FakeApi:
                     self.scenes,
                     lambda sc: any(shot.get("run") == record["id"]
                                    for shot in self.shots.get(sc["id"], []))),
-                "derived": self._backlinks(
-                    self.runs,
-                    lambda r: (r.get("lineage") or {}).get("from_run") == record["id"]),
                 "outputs": [{"node": n, "name": self.nodes.get(n, {}).get("name"),
                              "size": self.nodes.get(n, {}).get("size"),
                              "url": f"memory://{self.nodes.get(n, {}).get('blob_key')}"}
@@ -1398,7 +1395,6 @@ class FakeApi:
                   "completed": None,
                   "characters": list(body.get("characters") or []),
                   "folder": folder["id"], "outputs": [],
-                  "lineage": {"from_run": None, "from_output": None},
                   "cost": None, "error": None, "payload": payload,
                   # **A filename, not an identity**, and an envelope field rather
                   # than part of the plan — `plan_digest` hashes the plan, so a
@@ -1449,7 +1445,7 @@ class FakeApi:
                         raise FakeError(409, "the payload changed after it was "
                                              "approved; approve it again")
             for field in ("status", "prediction_id", "error", "cost", "completed",
-                          "submitted", "lineage", "outputs"):
+                          "submitted", "outputs"):
                 if field in body:
                     record[field] = body[field]
             return self._run_view(record)

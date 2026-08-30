@@ -28,7 +28,7 @@ import { ViewerPage } from "./pages/ViewerPage";
  * /characters /projects   one list each, which the header links to
  * /c/<char_id>            character: profile, references, its folders, files
  * /p/<proj_id>            project: overview, runs, scenes, movies, inputs, files
- * /p/<proj_id>/r/<run_id> one run — its envelope, outputs, chain and payloads
+ * /p/<proj_id>/r/<run_id> one run — its envelope, outputs and payloads
  * /s/<scene_id>           scene
  * /m/<movie_id>           movie
  * /f          /f/<id>     the folder browser: the library root, or one folder
