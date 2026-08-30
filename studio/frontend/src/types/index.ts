@@ -880,6 +880,25 @@ export interface Shot {
   clip?: RunAsset;
   duration?: number | null;
   rendered?: string | null;
+  /**
+   * The runs this shot was rendered by BEFORE the current one, newest first.
+   *
+   * A shot holds one `run`, so a retry — a reworded beat, a take that came out
+   * wrong — used to erase the only pointer to what it replaced. The run itself
+   * survived in the project and was reachable by nobody. Written by the API on
+   * every shot write, never by a client.
+   */
+  takes?: Take[];
+}
+
+/** A run that used to be a shot's, kept so it can still be opened and watched. */
+export interface Take {
+  run: string | null;
+  runref?: string | null;
+  node?: string | null;
+  rendered?: string | null;
+  /** Expanded by the API from `node`, so the board can draw it. */
+  clip?: RunAsset;
 }
 
 export interface SceneSummary {
@@ -911,6 +930,15 @@ export interface SceneRecord extends SceneSummary {
   shots: Shot[];
   /** The stitched take, once `assemble` has uploaded it. */
   output: RunAsset | null;
+  /**
+   * Earlier cuts of this scene, newest first.
+   *
+   * Each assemble writes its own node now, so re-cutting after re-rendering a
+   * shot leaves both takes side by side. It used to overwrite one node and rely
+   * on S3 object versioning, which is recoverable but not *visible* — a version
+   * has no node, so nothing lists it, draws it or links to it.
+   */
+  cuts?: RunAsset[];
   /** Which movies cut this scene. */
   movies: Backlink[];
 

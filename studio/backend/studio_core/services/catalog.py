@@ -3248,6 +3248,11 @@ def shots(scene_id: str) -> list[dict]:
 SHOT_FIELDS = (
     "order", "beat", "prompt", "panels", "motion", "continues", "status",
     "opens_on", "run", "runref", "node", "shot_node", "panel", "duration", "rendered",
+    # The runs this shot has been rendered by before the current one. Written by
+    # `storyboard.keep_take` on the two routes below rather than by any caller —
+    # a client that had to remember to preserve its own history would forget,
+    # and the CLI is not the only client.
+    "takes",
 )
 
 
@@ -3343,6 +3348,10 @@ def put_shots(scene_id: str, lib: str, entries: list[dict]) -> list[dict]:
         # no reader has to tell "no handoff yet" from "this field does not exist".
         if not merged.get("opens_on"):
             merged["opens_on"] = {"node": None, "from_run": None}
+        # BEFORE `status`, and before anything else reads `merged`: a take is
+        # displaced by this very write, so the comparison is between what was
+        # stored and what is about to be.
+        merged["takes"] = storyboard.keep_take(previous, merged)
         merged["status"] = storyboard.shot_status(merged)
         merged["order"] = (
             merged["order"] if merged.get("order") is not None else (index + 1) * 10
@@ -3376,6 +3385,11 @@ def update_shot(scene_id: str, lib: str, shot_id: str, changes: dict) -> dict:
         raise NotFoundError(shot_id)
 
     merged = {**entry, **{k: v for k, v in changes.items() if k in SHOT_FIELDS}}
+    # The one-field patch route reaches this too: `scenes render` and
+    # `scenes attach` both record a run through here, so a retry that never
+    # touches the plan still keeps the take it displaced.
+    merged["takes"] = storyboard.keep_take(entry, merged)
+    merged["status"] = storyboard.shot_status(merged)
     others = [item for item in shots(scene_id) if item["id"] != shot_id]
     _write([(_shot_item(scene_id, shot_id, merged), None),
             *_shot_run_edges(scene_id, lib, [*others, merged], _now())])
