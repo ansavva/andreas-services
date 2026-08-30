@@ -354,6 +354,31 @@ changes runs from the working tree. Three things came along with it:
 
 `infra/modules/callbacks` carries the rest of the argument.
 
+### The output URL expires, and the queue is spending a budget it does not own
+
+**Replicate deletes an output file about an hour after the prediction
+completes.** Everything between the callback firing and the bytes being in S3 is
+spending that hour, and the dead-letter queue does **not** preserve them — it
+preserves the report. Three things follow, and they are the whole of the answer:
+
+* **The retry ladder is set against the hour**, not against a general idea of
+  resilience: three attempts at a 360-second visibility timeout is 18 minutes,
+  leaving ~40 in which somebody can still act. It was five, which is 30.
+* **An expired URL is refreshed once.** A 403 is an aged signature and a 404 is a
+  deleted file, and they are the same at the socket, so the consumer asks
+  `GET /v1/predictions/<id>` for a fresh URL before believing the worse one.
+* **A file that is genuinely gone closes the run `failed` and says so.** It used
+  to raise, which put the message back on the queue to be retried against a URL
+  that will never work again — five times, then the DLQ, with the run still
+  reading `running` and nobody told anything.
+
+That last one is a real loss, stated rather than engineered away. Guaranteeing
+the bytes would mean capturing them in the receiver, which costs the property
+that made receive and process separate in the first place: the deployed half
+would do the download, so a developer's consumer would stop exercising it.
+The window is bounded instead — prod's consumer runs seconds after the callback —
+and the DLQ is alarmed.
+
 ### What if the callback never arrives?
 
 `POST /api/runs/<id>/reconcile` asks the provider directly and closes the run

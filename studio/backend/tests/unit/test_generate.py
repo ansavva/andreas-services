@@ -24,6 +24,7 @@ import json
 
 import pytest
 
+from studio_core import config
 from studio_core.clients import replicate
 from studio_core.services import catalog, generate
 
@@ -461,3 +462,177 @@ def test_a_model_the_deployed_registry_does_not_carry_is_a_404(empty_api):
     with pytest.raises(Exception) as raised:
         generate.entry_for({"id": "run-x", "model": "vendor/not-registered"})
     assert "registry" in str(raised.value)
+
+
+# ── failures, which is the case the reporting has to be good in ─────────────
+
+
+def test_a_failed_render_keeps_the_tail_of_its_logs(empty_api, media_bucket,
+                                                    monkeypatch):
+    """**An oversized response used to be dropped whole, and a failure is
+    exactly when it is oversized.**
+
+    A video render's `logs` run to megabytes precisely when it went wrong, so the
+    old rule discarded the provider's account of the failure in the one case
+    somebody needs it — leaving `error[:2000]` as the entire record. The tail is
+    kept rather than the head: a render's logs end with the reason it stopped.
+    """
+    monkeypatch.setattr(config, "max_text_bytes", lambda: 4096)
+    project = _project(empty_api)
+    record = _running(empty_api, project)
+
+    closed = generate.close_from_prediction(record, {
+        "id": record["prediction_id"], "status": "failed",
+        "error": "E006: the shot durations do not sum to duration",
+        "logs": ("boot " * 5000) + "FINAL LINE: out of memory",
+    })
+
+    assert closed["status"] == "failed"
+    stored = json.loads(
+        empty_api.get(f"/api/nodes/{closed['payload']['response']}/text")
+        .get_json()["content"])
+    assert "FINAL LINE: out of memory" in stored["logs"]
+    assert "dropped by studio" in stored["logs"], "it says it was cut"
+
+
+def test_a_cancelled_prediction_is_recorded_as_cancelled(empty_api, media_bucket):
+    """`canceled` is Replicate's spelling and `cancelled` is studio's. The
+    callback filter asks for `completed`, which fires for this too."""
+    project = _project(empty_api)
+    record = _running(empty_api, project)
+
+    closed = generate.close_from_prediction(record, {
+        "id": record["prediction_id"], "status": "canceled"})
+
+    assert closed["status"] == "cancelled"
+
+
+def test_a_status_the_provider_invents_is_treated_as_a_failure(
+        empty_api, media_bucket):
+    """**Fail closed.** An unmapped provider word reaching `PATCH /api/runs/<id>`
+    would be a 400 on the one call that has to succeed — the only report a paid
+    prediction will ever make."""
+    project = _project(empty_api)
+    record = _running(empty_api, project)
+
+    closed = generate.close_from_prediction(record, {
+        "id": record["prediction_id"], "status": "exploded"})
+
+    assert closed["status"] == "failed"
+
+
+def test_a_close_that_failed_part_way_can_be_retried(empty_api, media_bucket,
+                                                     monkeypatch):
+    """**A name clash used to make the redrive fail identically, forever.**
+
+    `create_node` refuses a taken name, so a close that stored output 1 and then
+    died on output 2 left the run `running` with `image.png` already in the
+    folder — and every retry hit the clash and marched a paid generation to the
+    dead-letter queue over a filename. Numbering means the retry lands beside the
+    stray: one orphan file, which is tidyable, rather than a run that can never
+    close.
+    """
+    project = _project(empty_api)
+    record = _running(empty_api, project, name="frame")
+    prediction = {"id": record["prediction_id"], "status": "succeeded",
+                  "output": ["https://fake.invalid/x/0.png",
+                             "https://fake.invalid/x/1.png"]}
+
+    calls = {"n": 0}
+    real = generate.replicate.download
+
+    def fail_on_the_second(url, path, *, max_bytes):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("the network went away")
+        return real(url, path, max_bytes=max_bytes)
+
+    monkeypatch.setattr(generate.replicate, "download", fail_on_the_second)
+    with pytest.raises(RuntimeError):
+        generate.close_from_prediction(record, prediction)
+
+    # The run never closed, so a redrive delivers the same callback again.
+    monkeypatch.setattr(generate.replicate, "download", real)
+    closed = generate.close_from_prediction(
+        catalog.entity(catalog.ENTITY_RUN, record["id"]), prediction)
+
+    assert closed["status"] == "succeeded"
+    assert len(closed["outputs"]) == 2
+
+
+# ── the output URL expires, and that is a race the queue can lose ───────────
+
+
+def test_an_expired_signature_is_retried_against_a_fresh_url(
+        empty_api, media_bucket, monkeypatch):
+    """**A 403 is an aged signature, not a deleted file**, and they are the same
+    at the socket. One more request re-signs the same object, so it is worth
+    asking before declaring a paid generation lost."""
+    project = _project(empty_api)
+    record = _running(empty_api, project)
+
+    calls = {"n": 0}
+    real = generate.replicate.download
+
+    def expired_once(url, path, *, max_bytes):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise generate.replicate.OutputGone("GET … -> 403")
+        return real(url, path, max_bytes=max_bytes)
+
+    monkeypatch.setattr(generate.replicate, "download", expired_once)
+
+    closed = generate.close_from_prediction(record, {
+        "id": record["prediction_id"], "status": "succeeded",
+        "output": ["https://fake.invalid/x/0.png"]})
+
+    assert closed["status"] == "succeeded"
+    assert len(closed["outputs"]) == 1
+
+
+def test_an_output_that_is_really_gone_closes_the_run_failed(
+        empty_api, media_bucket, monkeypatch):
+    """**The run says why, instead of redriving into a dead-letter queue.**
+
+    This used to propagate, so the message went back on the queue to be tried
+    against a URL that will never work again — five times, then the DLQ, with the
+    run still reading `running` and nobody told anything. A `failed` run naming
+    the reason is the outcome somebody can act on.
+    """
+    def always_gone(*_a, **_kw):
+        raise generate.replicate.OutputGone("GET … -> 404")
+
+    monkeypatch.setattr(generate.replicate, "download", always_gone)
+    project = _project(empty_api)
+    record = _running(empty_api, project)
+
+    closed = generate.close_from_prediction(record, {
+        "id": record["prediction_id"], "status": "succeeded",
+        "output": ["https://fake.invalid/x/0.png"]})
+
+    assert closed["status"] == "failed"
+    assert "no longer available" in closed["error"]
+    assert closed["outputs"] == []
+
+
+def test_a_provider_that_is_merely_unreachable_is_still_retried(
+        empty_api, media_bucket, monkeypatch):
+    """**Do not confuse "gone" with "cannot ask".** A bad round trip while
+    checking for a fresh URL is transient, so it raises and the queue tries
+    again — declaring a paid generation lost on one failed request would be the
+    expensive mistake."""
+    monkeypatch.setattr(generate.replicate, "download",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            generate.replicate.OutputGone("GET … -> 403")))
+    monkeypatch.setattr(generate.replicate, "get_prediction",
+                        lambda _p: (_ for _ in ()).throw(
+                            generate.replicate.ReplicateError("connection reset")))
+    project = _project(empty_api)
+    record = _running(empty_api, project)
+
+    with pytest.raises(generate.replicate.ReplicateError):
+        generate.close_from_prediction(record, {
+            "id": record["prediction_id"], "status": "succeeded",
+            "output": ["https://fake.invalid/x/0.png"]})
+
+    assert catalog.entity(catalog.ENTITY_RUN, record["id"])["status"] == "running"

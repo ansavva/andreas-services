@@ -70,14 +70,23 @@ locals {
 # The queue, and the one behind it
 # ---------------------------------------------------------------------------
 
-# THE DEAD-LETTER QUEUE IS NOT HYGIENE HERE.
+# THE DEAD-LETTER QUEUE PRESERVES THE REPORT, NOT THE BYTES.
 #
-# A message on this queue is a completed generation somebody paid for. If the
-# consumer cannot store the output — S3 refusing a write, the catalog throttling,
-# a bug — the alternative to a DLQ is that the file is gone and the run sits at
-# `running` forever with no record of why. `maxReceiveCount` is deliberately
-# generous for the same reason: five attempts across a transient AWS failure is
-# cheap, and giving up early on a paid artifact is not.
+# **This comment used to claim more than it can deliver and the correction is the
+# important part.** It said a message here is "a generation that was paid for and
+# whose output was never stored", implying the DLQ is how that output is
+# eventually recovered. It is not: Replicate serves outputs on time-limited URLs
+# and **deletes the files themselves after about an hour**, so a message that
+# reaches this queue very often names bytes that are already unreachable.
+#
+# What the DLQ actually preserves is the *report* — which prediction, for which
+# run, and the provider's own account of it — and that is worth keeping. What
+# preserves the bytes is being fast, so the retry budget below is set against
+# that hour rather than against a general idea of resilience.
+#
+# `services/generate.py` closes the loop from the other side: an output that has
+# genuinely expired closes the run `failed` saying exactly that, rather than
+# redriving against a URL that will never work again.
 resource "aws_sqs_queue" "dlq" {
   name                      = "${local.name}-dlq"
   message_retention_seconds = 1209600 # 14 days, the maximum
@@ -100,10 +109,65 @@ resource "aws_sqs_queue" "main" {
   # paid artifacts; the default four days would quietly discard them.
   message_retention_seconds = 1209600
 
+  # THREE ATTEMPTS, AND THE NUMBER IS ARITHMETIC RATHER THAN TASTE.
+  #
+  # A redrive waits out the visibility timeout, so the ladder is
+  # `maxReceiveCount × visibility_timeout` of wall clock before a message lands
+  # in the DLQ — and it is spending a budget it does not own: Replicate deletes
+  # an output file about an hour after the prediction completes.
+  #
+  #     3 × (300 + 60) = 18 minutes, against a ~60 minute budget.
+  #
+  # It was five, which is 30 minutes and leaves half the window gone before
+  # anybody is told. Three rides out a transient AWS failure and leaves ~40
+  # minutes in which somebody can act on the DLQ alarm below.
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.dlq.arn
-    maxReceiveCount     = 5
+    maxReceiveCount     = 3
   })
+
+  tags = var.tags
+}
+
+# ANYTHING IN THE DLQ IS TIME-CRITICAL, SO IT IS ALARMED RATHER THAN LEFT TO BE
+# NOTICED.
+#
+# A message here is a completed generation whose output has not been stored, and
+# the file behind it dies about an hour after the prediction did. The gap between
+# "this failed" and "somebody looked" is therefore the whole of whether a paid
+# artifact survives — not a thing to leave to whoever next opens the console.
+#
+# **An alarm with no action notifies nobody, and that is the state this ships
+# in.** studio has no SNS topic and no notification convention, and inventing one
+# here — a topic, a subscription, an email confirmation somebody has to click —
+# would be a second feature riding along with this change. So the alarm exists,
+# fires, and is visible; `alarm_topic_arn` wires it to a real destination the day
+# there is one. Stated plainly rather than left for a reader to discover by not
+# being paged.
+resource "aws_cloudwatch_metric_alarm" "dlq" {
+  alarm_name        = "${local.name}-dlq-not-empty"
+  alarm_description = "A model output was paid for and not stored. Replicate deletes output files about an hour after the prediction completes, so this is time-critical."
+
+  namespace   = "AWS/SQS"
+  metric_name = "ApproximateNumberOfMessagesVisible"
+  dimensions  = { QueueName = aws_sqs_queue.dlq.name }
+
+  # One minute, one datapoint, greater than zero. No averaging and no tolerance:
+  # a single message here is the condition, and a threshold waiting for a second
+  # would spend the window this alarm exists to protect.
+  statistic           = "Maximum"
+  period              = 60
+  evaluation_periods  = 1
+  comparison_operator = "GreaterThanThreshold"
+  threshold           = 0
+
+  # An empty queue reports no datapoints rather than a zero, so without this the
+  # alarm sticks in ALARM forever after the first message and stops meaning
+  # anything.
+  treat_missing_data = "notBreaching"
+
+  alarm_actions = var.alarm_topic_arn == "" ? [] : [var.alarm_topic_arn]
+  ok_actions    = var.alarm_topic_arn == "" ? [] : [var.alarm_topic_arn]
 
   tags = var.tags
 }

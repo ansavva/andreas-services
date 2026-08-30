@@ -88,6 +88,22 @@ class ReplicateError(UpstreamError):
     """
 
 
+class OutputGone(ReplicateError):
+    """The output file is no longer at that URL. **Not a transient failure.**
+
+    Replicate serves outputs from `replicate.delivery` on time-limited URLs and
+    deletes the files themselves after about an hour. Two different things
+    therefore look the same from here — a signed URL whose signature aged out,
+    and a file that no longer exists — and only the first is recoverable, by
+    asking for the prediction again and getting a fresh URL.
+
+    It is its own type because the caller must not retry it blindly. A redrive
+    against a deleted file fails identically forever and walks a paid generation
+    to the dead-letter queue; `services/generate.py` refreshes once and then
+    closes the run `failed` with an honest reason.
+    """
+
+
 def mode() -> str:
     """`live` or `fake`, read fresh on every call.
 
@@ -406,6 +422,12 @@ def download(url: str, path: str, *, max_bytes: int) -> int:
                     )
                 handle.write(chunk)
     except urllib.error.HTTPError as exc:
+        # **403 as well as 404 and 410.** An expired *signature* is a 403 from
+        # the CDN and a deleted *file* is a 404; a caller that only caught 404
+        # would treat the recoverable case as permanent and never refresh.
+        if exc.code in (403, 404, 410):
+            raise OutputGone(
+                f"GET {url} -> {exc.code}: the output is not there") from exc
         raise ReplicateError(f"GET {url} -> {exc.code}") from exc
     except OSError as exc:
         raise ReplicateError(f"GET {url} failed: {exc}") from exc

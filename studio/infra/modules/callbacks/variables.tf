@@ -119,6 +119,18 @@ variable "throttle_burst" {
   default     = 40
 }
 
+variable "alarm_topic_arn" {
+  description = <<-EOT
+    SNS topic the dead-letter alarm publishes to. **Empty means the alarm still
+    exists and notifies nobody** — it fires and is visible in the console, and
+    that is deliberately called out rather than hidden: studio has no
+    notification convention yet, and inventing a topic plus a subscription here
+    would be a second feature riding along with the callback path.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Tags applied to all resources"
   type        = map(string)

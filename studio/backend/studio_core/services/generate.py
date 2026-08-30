@@ -375,8 +375,7 @@ def _output_urls(prediction: dict) -> list[str]:
     return [item for item in (output or []) if isinstance(item, str)]
 
 
-def _store_output(record: dict, folder_id: str, owner, url: str,
-                  name: str) -> str:
+def _store_output(record: dict, folder_id: str, url: str, name: str) -> str:
     """Download one output and put it in the run's `output/` folder.
 
     **Through the filesystem, never through memory.** See
@@ -387,10 +386,21 @@ def _store_output(record: dict, folder_id: str, owner, url: str,
 
     The node is created first because its id is what names the key — the same
     ordering every other upload path in this service uses.
+
+    **No `owner` is passed in**, unlike the bulk copy path, because
+    `create_numbered` resolves it. That is one ancestry read per output rather
+    than one per close; a run produces a handful of files, so the saving the
+    cache would buy is smaller than the branch needed to use it.
     """
-    node = catalog.create_node(
-        folder_id, name, catalog.KIND_FILE, owner=owner
-    )
+    # **`create_numbered`, not `create_node`, and this is a retry bug rather than
+    # a nicety.** A name clash in `create_node` is a `ConflictError`, and a close
+    # that fails part-way through several outputs leaves the first one already
+    # written — so the redrive hit the clash, failed identically every time, and
+    # marched a paid generation to the dead-letter queue over a filename. The
+    # numbered form means a retry lands `image (2).png` beside a stray from the
+    # first attempt: one orphan file, which is tidyable, instead of a run that
+    # can never close.
+    node = catalog.create_numbered(folder_id, name, catalog.KIND_FILE)
     content_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
 
     handle, staged = tempfile.mkstemp(prefix="studio-output-")
@@ -439,6 +449,57 @@ def _output_names(record: dict, urls: list[str]) -> list[str]:
     return names
 
 
+def _store_all(record: dict, urls: list[str]) -> list[str]:
+    """Download every output into the run's `output/` folder, in order."""
+    folder = layout.folder_under(record["folder"], layout.OUTPUT_FOLDER)
+    return [
+        _store_output(record, folder["node_id"], url, name)
+        for url, name in zip(urls, _output_names(record, urls))
+    ]
+
+
+def _after_the_output_expired(record: dict, gone: Exception):
+    """**Ask once for a fresh URL; if the file is really gone, say so.**
+
+    Replicate serves outputs on time-limited URLs and deletes the files after
+    about an hour, and the two failures are indistinguishable at the socket. The
+    first is recoverable — `GET /v1/predictions/<id>` re-signs the same file — so
+    it is worth exactly one more request before giving up.
+
+    **Giving up means closing the run `failed`, not retrying.** This used to be
+    an exception that propagated, which put the message back on the queue to be
+    attempted against a URL that will never work again, five times, and then into
+    the dead-letter queue — where the run still said `running` and nobody was
+    told anything. A run that says `failed` and names the reason is the honest
+    outcome and the one somebody can act on: the generation was paid for, and its
+    bytes are not recoverable.
+
+    That is a real loss, and the reason it is survivable rather than guarded
+    against is in `infra/modules/callbacks`: the window is bounded by how far
+    behind the consumer can fall, and prod's consumer runs seconds after the
+    callback.
+    """
+    logger.warning("Outputs for run %s were gone; asking for fresh URLs: %s",
+                   record["id"], gone)
+    try:
+        fresh = _output_urls(replicate.get_prediction(record["prediction_id"]))
+        if fresh:
+            return _store_all(record, fresh), "succeeded", None
+    except replicate.OutputGone:
+        pass
+    except replicate.ReplicateError as exc:
+        # The provider is unreachable, which IS transient — let the queue retry
+        # rather than declaring a paid generation lost on one bad round trip.
+        raise exc
+
+    return [], "failed", (
+        "the prediction succeeded but its output was no longer available to "
+        "download. Replicate deletes output files about an hour after a "
+        "prediction completes, and this callback was processed after that. The "
+        "generation was paid for; its bytes are not recoverable."
+    )
+
+
 def _response_document(record: dict, prediction: dict) -> str | None:
     """The provider's response, stored verbatim as a node. Returns its id.
 
@@ -447,12 +508,36 @@ def _response_document(record: dict, prediction: dict) -> str | None:
     handful `close_from_prediction` reads off the *parsed* body it was handed,
     which is a different thing from decoding the stored document later.
 
-    Oversized responses are dropped rather than truncated. A `logs` field can run
-    to megabytes on a failed video, and half a JSON document is worse than none:
-    it looks readable and is not.
+    **`logs` is truncated; the document is never dropped.** This used to drop an
+    oversized response whole, on the reasoning that half a JSON document is worse
+    than none — which is true of truncating the *text*, and was the wrong remedy.
+    A `logs` field runs to megabytes precisely when a video render **failed**, so
+    the rule discarded the provider's account of the failure in exactly the case
+    somebody needs it, leaving `error[:2000]` as the only record.
+
+    So the one unbounded field is cut, in place, with a marker saying so. The
+    result is still valid JSON and still the provider's own document; what it is
+    not is verbatim, which is why it says so inside itself.
     """
     text = json.dumps(prediction, indent=2, sort_keys=True, default=str)
     if len(text.encode()) > config.max_text_bytes():
+        prediction = dict(prediction)
+        logs = prediction.get("logs")
+        if isinstance(logs, str):
+            # The tail, not the head: a render's logs end with the reason it
+            # stopped, and the beginning is model boot-up nobody reads.
+            keep = max(config.max_text_bytes() // 2, 1024)
+            prediction["logs"] = (
+                f"[… {len(logs) - keep} characters of logs dropped by studio; "
+                f"the tail is kept because that is where a failure is …]\n"
+                + logs[-keep:]
+            )
+        text = json.dumps(prediction, indent=2, sort_keys=True, default=str)
+
+    if len(text.encode()) > config.max_text_bytes():
+        # Something other than `logs` is enormous. Now there is nothing safe to
+        # cut, and a document that cannot be stored is reported rather than
+        # silently absent.
         logger.warning("Response for run %s is too large to store (%d bytes)",
                        record["id"], len(text.encode()))
         return None
@@ -504,6 +589,14 @@ def close_from_prediction(record: dict, prediction: dict) -> dict:
         # empty run in the grid with a thumbnail that never loads.
         status, error = "failed", "the prediction succeeded but returned no output"
 
+    outputs: list[str] = []
+    if urls:
+        try:
+            outputs = _store_all(record, urls)
+        except replicate.OutputGone as gone:
+            outputs, status, error = _after_the_output_expired(record, gone)
+            urls = outputs
+
     assignments: dict = {
         "status": status,
         "completed": catalog.now(),
@@ -515,13 +608,7 @@ def close_from_prediction(record: dict, prediction: dict) -> dict:
         assignments["cost"] = cost
 
     listing: dict = {"status": status}
-    if urls:
-        folder = layout.folder_under(record["folder"], layout.OUTPUT_FOLDER)
-        owner = catalog.blob_owner_for(folder["node_id"])
-        outputs = [
-            _store_output(record, folder["node_id"], owner, url, name)
-            for url, name in zip(urls, _output_names(record, urls))
-        ]
+    if outputs:
         assignments["outputs"] = outputs
         # The first output becomes the listing row's thumbnail, which is what
         # lets the runs grid draw without reading an envelope per tile.
