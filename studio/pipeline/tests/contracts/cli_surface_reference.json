@@ -4936,6 +4936,70 @@
           }
         }
       },
+      "attach": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "project, when the sceneref does not carry one",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
+          "run": {
+            "choices": null,
+            "default": null,
+            "dest": "run",
+            "flag": false,
+            "flags": [
+              "--run"
+            ],
+            "help": "the finished run whose video becomes this shot",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
+          "shot": {
+            "choices": null,
+            "default": null,
+            "dest": "shot",
+            "flag": false,
+            "flags": [
+              "--shot"
+            ],
+            "help": "the shot to record it on, by number or id",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        }
+      },
       "board": {
         "arguments": {
           "ref": {

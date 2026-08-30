@@ -809,9 +809,26 @@ def run_render(ref: str, opts) -> int:
         print(f"note: {note}", file=sys.stderr)
 
     # GATE 1
+    #
+    # **A dry run leaves a DRAFT per shot, exactly as `studio run --dry-run`
+    # does.** It used to render each payload to the terminal and keep nothing,
+    # so the thing hard rule #2 asks a person to READ had no address: it could
+    # not be opened in the app, linked to, or approved later. `studio run` was
+    # given drafts and this path was left behind, which is why every shot of a
+    # real scene ended up submitted as a standalone run — and a standalone run
+    # is not recorded on its shot, so `scenes assemble` then refused to cut a
+    # scene whose shots had all plainly rendered. See `cmd_attach`.
     sheet_cache: dict[str, str] = {}
+    drafts: list[tuple[dict, dict]] = []
     for shot, entry, args, payload, bindings in prepared:
         run = f"{owner}/{R.slugify(args.slug)}"
+        if opts.dry_run:
+            try:
+                record = SUB.draft(entry, payload, bindings, args)
+            except SUB.SubmitError as exc:
+                raise BoardError(f"{shot['id']}: {exc}")
+            run = record["id"]
+            drafts.append((shot, record))
         print(f"\n===== {shot['id']}  ->  a shot of {manifest['label']} =====")
         print(SUB.render(entry, run, payload, bindings, False))
         sheet = review_sheet(manifest, shot["id"], _sheet_items(entry, bindings),
@@ -819,8 +836,16 @@ def run_render(ref: str, opts) -> int:
         print(f"===== IMAGES — what {shot['id']} actually sends =====\n{sheet}")
 
     if opts.dry_run:
-        print(f"\n(dry run — {len(prepared)} shot(s) rendered, nothing submitted, "
+        print(f"\n(dry run — {len(drafts)} draft(s) written, nothing submitted, "
               f"nothing billed)", file=sys.stderr)
+        for shot, record in drafts:
+            n = next(s["n"] for s in shots if s["id"] == shot["id"])
+            print(f"\n{shot['id']}: {record['id']}\n"
+                  f"       approve it:  studio runs approve {record['id']}\n"
+                  f"       submit it:   studio runs submit {record['id']}\n"
+                  f"       then record it on the shot:\n"
+                  f"         studio scenes attach {manifest['label']} "
+                  f"--shot {n} --run {record['id']}", file=sys.stderr)
         return 0
 
     if not click.confirm(f"\nsubmit {len(prepared)} shot generation(s) for "
@@ -924,6 +949,80 @@ def cmd_board(ref, **kw):
 def cmd_render(ref, **kw):
     """`studio scenes render` — render a shot's video from the plan."""
     raise SystemExit(run_render(ref, SimpleNamespace(**kw)))
+
+
+def run_attach(ref: str, opts) -> int:
+    """Record an already-finished run as a shot's video.
+
+    **The gap this closes.** `scenes render` writes the run onto the shot itself,
+    so a scene rendered through it needs nothing here. A run submitted any other
+    way — from a draft that `scenes render --dry-run` wrote, from `studio run`,
+    or re-submitted after a wedged one was deleted — has no idea it belongs to a
+    shot, and there was no way to tell it. The scene then holds shots that have
+    demonstrably rendered while `run` stays null, `scenes handoff` finds nothing
+    to carry forward and `scenes assemble` refuses the cut with "N shot(s) have
+    not been rendered". Writing the ids back by hand through a re-ingested plan
+    is what people did instead, and it is not a thing anyone should have to know.
+
+    The run must have SUCCEEDED and must hold a video: attaching a draft, a
+    failed run or a still would put a shot into `rendered` with nothing to cut,
+    which is the same broken scene arrived at from the other side.
+    """
+    manifest = _resolve(ref, opts.project)
+    shots = select_shots(manifest, (str(opts.shot),))
+    shot = shots[0]
+
+    try:
+        record = R.resolve_run(opts.run, manifest["project_slug"])
+    except R.RunError as exc:
+        raise BoardError(str(exc))
+    if record.get("status") != "succeeded":
+        raise BoardError(
+            f"run {record['id']} is {record.get('status')}, not succeeded — "
+            f"a shot may only be attached to a run that finished")
+    # `kind` and not the output's content type. The registry sets `kind` from
+    # the model, so it says what the run IS; a content type says what the
+    # provider happened to hand back, which under the fake adapter is a
+    # placeholder PNG even for a video model. Checking the wrong one made this
+    # unattachable in the suite and told you nothing extra in production.
+    if record.get("kind") != "video":
+        raise BoardError(
+            f"run {record['id']} is a {record.get('kind')} run — a shot is a video")
+    outputs = record.get("outputs") or []
+    if not outputs:
+        raise BoardError(f"run {record['id']} holds no output to use as a shot")
+
+    made = dict(run=record["id"], runref=f"{record['id']}#1",
+                node=(outputs[0] or {}).get("node"), rendered=R._now())
+    was = shot.get("run")
+    # Read the CURRENT manifest and write into that — never the captured copy.
+    # `select_shots` hands back copies and `save_shots` replaces the list
+    # wholesale, so mutating `shot` and saving a fresh read drops the update.
+    # This is #497, and the render loop below made the same mistake twice.
+    shots_now = SC.scene_shots(manifest)
+    for current in shots_now:
+        if current["id"] == shot["id"]:
+            current.update(made)
+    manifest = SC.save_shots(manifest, shots_now)
+
+    if was and was != record["id"]:
+        print(f"note: {shot['id']} already named {was}; replaced", file=sys.stderr)
+    print(json.dumps({"scene": manifest["label"], "shot": shot["id"],
+                      **made}, indent=2))
+    return 0
+
+
+@click.command("attach", epilog="\n\nArguments:\n  REF  <project>/<slug>")
+@click.argument("ref", required=True)
+@click.option("--project", help="project, when the sceneref does not carry one")
+@click.option("--run", "run", required=True,
+              help="the finished run whose video becomes this shot")
+@click.option("--shot", required=True,
+              help="the shot to record it on, by number or id")
+@reports(BoardError, SB.PlanError, P.PathError, MS.SchemaError)
+def cmd_attach(ref, **kw):
+    """Record a finished run as a shot's video."""
+    raise SystemExit(run_attach(ref, SimpleNamespace(**kw)))
 
 
 @click.command("check", epilog="\n\nArguments:\n  REF  <project>/<slug>")

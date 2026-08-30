@@ -160,6 +160,7 @@ _character.main.add_command(_turnaround.cmd_turnaround, "turnaround")
 _scenes.main.add_command(_board.cmd_board, "board")
 _scenes.main.add_command(_board.cmd_render, "render")
 _scenes.main.add_command(_board.cmd_check, "check")
+_scenes.main.add_command(_board.cmd_attach, "attach")
 
 for _name, _cmd in [
     ("add-model", _add_model.add_model),

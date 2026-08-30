@@ -240,6 +240,34 @@ by everything downstream and re-billed. Looking costs nothing.
 four-shot scene with audio is real money, and shot N+1's start frame does not
 exist until shot N is rendered and its handoff taken.
 
+### `--dry-run` leaves a draft, and a draft has to be put back on its shot
+
+`scenes render --dry-run` writes a **draft run per shot** rather than printing a
+payload that scrolls away, so the thing hard rule #2 asks a person to read has an
+address: it can be opened in the app, linked to, and approved later.
+
+```bash
+studio scenes render <project>/<slug> --shot 1 --dry-run   # -> draft run-…
+studio runs approve run-…                                  # read it, say yes
+studio runs submit run-…                                   # bills
+studio scenes attach <project>/<slug> --shot 1 --run run-… # tell the scene
+```
+
+**That last line is not optional and is easy to miss.** `scenes render` without
+`--dry-run` records the run on the shot itself; a run submitted any other way —
+from one of these drafts, from `studio run`, or re-submitted after a wedged one
+was deleted — does not know it belongs to a shot. The scene is then left holding
+shots that have plainly rendered while `run` stays null, and the failure surfaces
+much later and somewhere else:
+
+- `scenes handoff` finds no previous shot to carry a frame from, and
+- `scenes assemble` refuses the cut with *"N shot(s) have not been rendered"*.
+
+`scenes attach` is what closes that loop. It takes a run that **succeeded** and
+is of **kind `video`** — attaching a draft, a failed run or a still would put a
+shot into `rendered` with nothing to cut, which is the same broken scene reached
+from the other side.
+
 **`scenes handoff` replaces the old three-step dance** of grabbing a frame,
 adding it to the input pool and recording it in a list kept beside the scene.
 The scene now records it directly, so there is no second list to point at the
