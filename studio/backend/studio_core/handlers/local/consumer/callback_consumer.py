@@ -22,7 +22,6 @@ developer who has not run `dev-aws-setup.sh` since this landed is the ordinary
 case rather than an error.
 """
 
-import json
 import logging
 import os
 import signal

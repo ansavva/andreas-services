@@ -14,9 +14,13 @@ Replicate what a model accepts and recording the answer:
     studio add-model <owner>/<name>   the entry, once
     studio models refresh             the schema snapshots, repeatedly
 
-Both need `REPLICATE_API_TOKEN`, which is the CLI's and not the deployed
-service's, so both stay here rather than becoming routes. `routes/models.py`
-says the same thing from the other side.
+**Both stay here, and the reason changed.** It used to be that both needed
+`REPLICATE_API_TOKEN`, which was the CLI's and not the deployed service's. That
+is now the other way round: the API holds the credential and these two ask it,
+through `GET /api/models/<name>/schema`. What keeps them out of the API is the
+half that is left — they **write a file in the repo**, reviewed in a PR, and a
+write route would let the deployed registry diverge from the committed one.
+`routes/models.py` says the same thing from the other side.
 
 **The file is under `backend/` now.** It was `engine/models.json` in this
 package, and it moved so that one copy could serve the API, the SPA and this CLI

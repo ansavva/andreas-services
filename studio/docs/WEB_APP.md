@@ -474,6 +474,18 @@ that breaks every time the pipeline ships.
   only the half that actually moved, and the approve bar is hidden while it is
   open. Both routes refuse a submitted run, which is why the button appears on an
   unsubmitted one rather than being answered with a 409.
+- **The app can SUBMIT now, and until #536 it could not.** `POST
+  /api/runs/<id>/submit` is what calls Replicate; the SPA has no provider
+  credential and never gains one, and it does not have to, because the spending
+  moved behind that route. What it used to mean was that a run approved on this
+  page then had to be sent from a terminal — the page could show the payload,
+  record the yes, and not act on it.
+- **A run closes itself, so the page has something to poll and a reason to.**
+  The prediction is closed by Replicate calling the API back rather than by
+  whoever asked for it, which is why `TERMINAL_RUN_STATUSES` exists: a client
+  that knows which states can still change stops asking on its own instead of
+  waiting for somebody to press reload. A run stuck at `running` long after it
+  should have settled is `POST /api/runs/<id>/reconcile`.
 - **The API takes the ID token, never the access token.** A REST
   `COGNITO_USER_POOLS` authorizer only reads the incoming token as an *access*
   token when the method declares `authorization_scopes`. This one declares none
@@ -892,6 +904,8 @@ nothing accepts one back.
 | `GET /api/projects/<id>/inputs` · `/runs` · `/scenes` · `/movies` | The working pool, and the three tiers |
 | `GET \| POST /api/runs` | Query by project, character, model, status, date; or record one. **Refuses a URL-shaped binding** |
 | `GET \| PATCH \| DELETE /api/runs/<id>` | The envelope, with outputs and bindings expanded |
+| `POST /api/runs/<id>/submit` | **Sends an approved run to the provider.** The one route in this service that spends money |
+| `POST /api/runs/<id>/reconcile` | Asks the provider what happened and closes the run — for a callback that never arrived |
 | `POST /api/runs/<id>/outputs` · `/response` | An upload URL per output; the provider's response stored as a payload blob |
 | `GET \| POST /api/scenes` · `GET \| PATCH \| DELETE /api/scenes/<id>` | The scene record |
 | `PATCH /api/scenes/<id>/shots` · `/shots/<shot_id>` | The plan: revise it, or change one shot |

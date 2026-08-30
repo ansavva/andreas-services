@@ -60,9 +60,9 @@
 # a forged message costs one consumer invocation that refuses it and deletes it.
 
 locals {
-  name        = "${var.name_prefix}-callbacks"
-  receiver    = "${var.name_prefix}-callback-receiver"
-  worker      = "${var.name_prefix}-callback-worker"
+  name          = "${var.name_prefix}-callbacks"
+  receiver      = "${var.name_prefix}-callback-receiver"
+  worker        = "${var.name_prefix}-callback-worker"
   create_worker = var.worker_image_uri != ""
 }
 
@@ -323,16 +323,16 @@ resource "aws_lambda_function" "worker" {
   # a real checksum. Memory stays flat because the download never enters the
   # heap, but the disk has to hold the whole file, and the wall clock has to
   # cover a transfer of it.
-  timeout               = var.worker_timeout
-  memory_size           = var.worker_memory
+  timeout     = var.worker_timeout
+  memory_size = var.worker_memory
   ephemeral_storage { size = var.worker_ephemeral_storage }
 
   environment {
     variables = {
-      STUDIO_MEDIA_BUCKET               = var.media_bucket_name
-      STUDIO_MEDIA_ROOT_PREFIX          = var.media_root_prefix
-      STUDIO_CATALOG_TABLE              = var.catalog_table_name
-      STUDIO_REPLICATE_TOKEN_PARAMETER  = var.replicate_token_parameter
+      STUDIO_MEDIA_BUCKET              = var.media_bucket_name
+      STUDIO_MEDIA_ROOT_PREFIX         = var.media_root_prefix
+      STUDIO_CATALOG_TABLE             = var.catalog_table_name
+      STUDIO_REPLICATE_TOKEN_PARAMETER = var.replicate_token_parameter
     }
   }
 

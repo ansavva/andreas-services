@@ -27,9 +27,11 @@ the profile names are chosen to match what is already on disk.
 **Nothing secret goes in `config`.** Every value in it is a resource name or an
 id: the same five `dev-up.sh` exports into a shell, and the same ones sitting
 unencrypted in SSM under `/studio/prod/`. Passwords stay in `<profile>.env` at
-mode 600, and `REPLICATE_API_TOKEN` is deliberately **not** a profile field —
-it is not environment-scoped (the same token is used wherever you are), which
-`studio_pipeline.__init__` already argues at the point it reads it.
+mode 600, and `REPLICATE_API_TOKEN` is **not a profile field and is no longer
+read by this package at all** — generation moved into the API (#536), so the
+provider credential is the API's: an SSM SecureString in prod, and
+`~/.config/andreas-services/studio/dev.env` for a local one under `dev-up.sh`.
+It was never environment-scoped, which is why it was never a profile field.
 
 ## An explicit profile wins, including over the environment
 

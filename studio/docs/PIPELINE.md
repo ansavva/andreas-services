@@ -208,8 +208,9 @@ studio/pipeline/
         │   ├── api.py             one transport: token, refresh, library header
         │   ├── auth.py            Cognito sign-in + the token cache
         │   ├── s3.py              the AWS-login bridge — almost gone, see below
-        │   ├── replicate.py       the HTTP client
         │   └── ffmpeg.py          probe / stitch / grab
+        │                          (`replicate.py` is DELETED — the provider
+        │                           client moved into the API; see below)
         │
         ├── session/               who you are, and where you are pointing
         │   ├── commands.py        `studio login` / `logout` / `whoami`
@@ -230,6 +231,8 @@ studio/pipeline/
         │   ├── turnaround.py           `studio character turnaround` — the standard set
         │   ├── board.py           `studio scenes board` / `render` / `check`
         │   ├── registry.py  schema.py  submit.py  refs.py  add_model.py
+        │   │                     submit.py keeps the AUTHORING half; the half
+        │   │                     that bills is the API's (#536)
         │
         └── objects/               raw object access
             └── upload.py  download.py  presign.py  convert.py
@@ -314,24 +317,33 @@ External tools:
   vendors `imageio-ffmpeg`; this is for checking a render by hand.
 
 API keys:
-- **REPLICATE_API_TOKEN** — https://replicate.com/account/api-tokens —
-  **required**. Every engine runs on Replicate — video:
-  `bytedance/seedance-2.0`, `kwaivgi/kling-v3-omni-video`, `google/veo-3.1`,
-  `xai/grok-imagine-video`; image: `google/nano-banana-pro`,
-  `google/nano-banana-2`, `openai/gpt-image-2`, `openai/gpt-image-1.5`.
-  the registry served at `GET /api/models` is the list that is actually true.
+- **REPLICATE_API_TOKEN** — https://replicate.com/account/api-tokens — **not
+  read by the CLI at all, and this entry used to say "required".**
 
-  **Put it in `~/.config/andreas-services/studio/dev.env`**, the file that
-  already holds this machine's dev pool password:
+  Generation moved into the API (#536), so the provider credential moved with
+  it. `studio run` asks the API to submit; `studio models show`, `studio models
+  refresh` and `studio add-model` read a live schema through
+  `GET /api/models/<name>/schema`. **Nothing in `pipeline/` reads this variable,
+  and `adapters/replicate.py` is deleted.**
+
+  What still needs it is whichever API you are pointed at:
+
+  | Where | How |
+  |---|---|
+  | The deployed API | An SSM SecureString, `/studio/prod/replicate-api-token`, read by the Lambda under its own role. Terraform creates the parameter and never holds the value — set it with `aws ssm put-parameter --overwrite --type SecureString`. |
+  | A local API under `dev-up.sh` | `~/.config/andreas-services/studio/dev.env`, the file that already holds this machine's dev pool password. `dev-up.sh` sources it into the Flask process. |
 
   ```
   REPLICATE_API_TOKEN=r8_…
   ```
 
-  `studio/.env` is still read, and second — so a token already there keeps
-  working, and moving it to the config dir takes effect without deleting
-  anything. The order is what makes the move safe: the config dir wins, so a
-  line left behind cannot quietly send the old token to Replicate.
+  There is deliberately **no per-machine SSM parameter**: a token is not
+  environment-scoped, so a developer's own file is the right place for it and a
+  parameter per machine would be a secret per machine to rotate.
+
+  A line left in `studio/.env` is now inert rather than dangerous — nothing in
+  the pipeline reads it. `dev-setup.sh` still warns about it, because a secret
+  inside the repo is worth removing whether or not anything loads it.
 
   The reason to prefer the config dir is that `.gitignore` protects a secret
   from `git add` and from nothing else — not from `git add -f`, not from a
@@ -764,7 +776,7 @@ or projects.
 | `auth.py` | The Cognito sign-in behind `studio login`, and the token cache it writes — **keyed by profile**, so a prod session and a dev session coexist instead of one overwriting the other for every shell on the machine. Its `DEFAULT_API_URL` is deleted: unset is a refusal, not a silent connection to production. |
 | `s3.py` | **Deleted.** It was the boto3 session every AWS-direct caller asked for, and its callers — `adapters/ddb.py` and the three `maintenance/` modules that reconciled the bucket against the table — are deleted too. The one thing that outlived it is a plain boto3 session for `profile sync`, which lives in `profiles.py` as `aws_session()` because that is its only caller. |
 | `ddb.py` | **Deleted**, with the six `maintenance/` commands that were its only callers. The marshalling it held — floats to `Decimal` on the way in, `Decimal` to int recursively on the way out, each paid for by a real failure — travelled to `scripts/dev_seed/dev_seed/aws.py`, which is the one tool left that writes DynamoDB directly. |
-| `replicate.py` | Token, HTTP, download, poll. |
+| `replicate.py` | **Deleted.** It was the whole billing surface of studio — six functions, and its docstring said so. Generation moved into the API (#536), so the one paid call in the repository is `backend/studio_core/clients/replicate.create_prediction`, reached through `POST /api/runs/<id>/submit`. What is left on this side is `engine/submit.py`'s authoring half and `wait_for`, which watches a run row and can be interrupted without losing a generation. **Nothing in this package holds `REPLICATE_API_TOKEN` any more**, including `studio models show`, `studio models refresh` and `studio add-model` — all three read a live schema through `GET /api/models/<name>/schema`. |
 | `ffmpeg.py` | Probe, stitch, frame grab, contact grid. A scene and a movie join their inputs by identical rules because they call the same function. ffmpeg ships in the wheel; no system install. |
 
 **`session/` — who you are, and where you are pointing.** `commands.py` is
@@ -827,15 +839,15 @@ next identical payload look like a duplicate.
 | Module | Purpose |
 |---|---|
 | `registry.py` | **Reads the registry, over the wire.** `GET /api/models` via `adapters/entities.models`, memoised once per process. The file itself is `backend/studio_core/models.json` — it moved so the API and the SPA could measure a reference selection against the same entries the CLI does, which `ENGINE_CAPS` (three families of nine) had been standing in for. |
-| `registry_file.py` | **Writes it.** The repo file, for the only two commands that edit it — `add-model` and `models refresh`, both of which are really asking Replicate what a model accepts. Separate from the reader on purpose: reading works against any environment, writing is a reviewed repo change that reaches production on deploy. |
+| `registry_file.py` | **Writes it.** The repo file, for the only two commands that edit it — `add-model` and `models refresh`, both of which are really asking the API to ask Replicate what a model accepts. Separate from the reader on purpose: reading works against any environment, writing is a reviewed repo change that reaches production on deploy. |
 | `registry.py` | Load / look up / list; snapshot saving for refreshes. |
 | `runner.py` | `studio run` — builds the payload and invokes *any* registered model. |
-| `submit.py` | The one submit lifecycle, image and video alike. |
-| `schema.py` | Live schema fetch; validates fields, enums, ranges, `denied`. |
+| `submit.py` | **The AUTHORING half of the submit lifecycle**, image and video alike: gather every image input as node ids, preflight, render the two documents hard rule #2 asks a person to read, and record the draft. The billing half — presign, create the prediction, upload the output, close the run — is `POST /api/runs/<id>/submit` and a callback (#536). `wait_for` is what is left of `poll`, and the difference is the point: it watches the run *row*, so `Ctrl-C` abandons a wait rather than a generation. |
+| `schema.py` | Validates fields, enums, ranges and `denied` — off a schema fetched through `GET /api/models/<name>/schema` rather than from Replicate directly, which is what removed the provider token from this package. The API runs its own copy of the check at submit time, because the SPA also submits and never passes through here; that one is the gate and this one is the better message. |
 | `refs.py` | Character reference selection and project input pool → S3 keys. |
 | `turnaround.py` | `studio character turnaround` — the STANDARD reference set, one run per angle in `domain/templates/reference_angles.yaml`. Reads the character's bible for the prompt, binds an angle image from `config/`, then files, describes and indexes each result. Lives here rather than in `domain/` because it invokes models; it drives the same lifecycle as `runner.py` rather than repeating it. |
 | `board.py` | `studio scenes board` / `render` / `check` — the two commands that spend money in a scene's life, plus the free one that says whether they would work. Turns the plan's roles into bindings and hands them to the same lifecycle `runner.py` drives. Every cap, exclusion and format rule stays in `submit.py`; a copy here is the one that drifts. |
-| `add_model.py` | Onboarding: fetch schema + README, infer an entry, append it to the registry. It writes no documentation — see `studio-media-add-model`. |
+| `add_model.py` | Onboarding: fetch schema + README **through the API**, infer an entry, append it to the registry. The inference stays here because what it produces is a repo file somebody reviews; the fetch does not, because it was one of the last three reasons a developer's machine held a Replicate token. It writes no documentation — see `studio-media-add-model`. |
 
 **`objects/` — moving bytes.** `upload.py`, `download.py`, `presign.py`
 (how assets reach Replicate), `convert.py` (re-encode so a target engine accepts
@@ -919,10 +931,13 @@ in the package writes `local/migrations/` any more.
    so studio's permissions live at the root even though its skills do not.
 6. Add a test. `pipeline/tests/` is moto-backed and needs no AWS; the suite is
    deliberately weighted towards wiring rather than features, because a
-   restructure is what actually breaks this code. **Do not stub Replicate in
-   it** — `conftest.py` sets `STUDIO_REPLICATE_MODE=fake` autouse and
-   `adapters/replicate.py` answers locally, with an autouse socket guard behind
-   that for anything reached indirectly. See `studio-code-pipeline`.
+   restructure is what actually breaks this code. **Do not stub the provider in
+   it** — there is nothing on this side left to stub. Submitting is
+   `POST /api/runs/<id>/submit`, which `tests/support/fake_api.py` answers
+   without a socket, and the seam a test controls is `fake_api.submits_refused`
+   ("nothing may submit", which is stronger than "nothing may bill"). An autouse
+   socket guard sits behind that for anything reached indirectly. See
+   `studio-code-pipeline`.
 7. Document it in the table above, and in `studio/CLAUDE.md`.
 
 To add a new *model* rather than a new skill, use `studio-media-add-model` — models
