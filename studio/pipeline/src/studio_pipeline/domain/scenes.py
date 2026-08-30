@@ -69,12 +69,19 @@ The old argument was about tidiness and the new one is about being able to look
 at your own work, so the accumulation is accepted. Old cuts are deletable like
 any other node.
 
-**What makes that recoverable is true of PROD only.** The prod bucket versions
-every object and grants no `s3:DeleteObjectVersion`, so a superseded cut is
-still there to restore. A per-machine dev stack has no versioning, deliberately
-— `infra/modules/dev_storage/main.tf` says why: the recovery there is a re-seed
-via `dev-aws-reset.sh`, and version history would only slow the teardown and
-bill for bytes nobody restores. Against dev, a re-cut destroys the previous one.
+**This paragraph used to end "against dev, a re-cut destroys the previous one",
+and that had stopped being true three paragraphs above it.** It described the
+recovery the OVERWRITE had, not the one this scheme has: the prod bucket versions
+every object and grants no `s3:DeleteObjectVersion`, so a replaced cut survived
+as a version, while a per-machine dev stack has no versioning
+(`infra/modules/dev_storage/main.tf` says why) and a replaced cut was simply
+gone.
+
+Neither half applies once each cut is its own node. Nothing is replaced, so there
+is nothing for versioning to rescue, and dev and prod behave identically. Object
+versioning still matters in prod for everything a DELETE touches — it is what
+makes every erasure the API can perform a recoverable tombstone — and it no
+longer has anything to do with re-cutting.
 
 STITCHING MOVED INTO THE SERVICE, AND THIS SECTION USED TO ARGUE THE OPPOSITE
 -----------------------------------------------------------------------------

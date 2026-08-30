@@ -393,15 +393,22 @@ Shot order is cut order, taken from the plan. The scene lands at
 `<project>/scenes/<slug>/` with the source clips copied
 into `shots/`, and the stitched video in `output/`.
 
-Re-cutting **overwrites** `output/<slug>.mp4`: the path keeps its record, so
-everything naming the scene stays true, and the folder shows current state
-instead of accumulating cuts nobody prunes.
+Re-cutting **keeps the cut it displaces.** Each cut is its own file: the first is
+`output/<slug>.mp4` and later ones take a suffix, `<slug>-2.mp4` and up. The
+scene's `output` names the newest and `cuts` lists the rest, newest first — so
+two takes of one scene can be put side by side, which is the thing re-cutting is
+for.
 
-**Do not count on getting the previous cut back.** Production keeps prior
-revisions; a local dev stack deliberately does not, and your commands run
-against a dev stack. If a cut is worth keeping, keep it under its own slug
-before re-cutting — this is the page you are on when you re-cut, so it is the
-page that has to say so.
+**This page said the opposite, and told you to keep a cut under its own slug
+before re-cutting.** That was true of an earlier scheme where the cut replaced
+the file in `output/`: the folder always showed current state, and a superseded
+cut survived only as an S3 object version — recoverable in production, gone in a
+dev stack, and invisible in both, because a version has nothing listing it,
+drawing it or linking to it. Nothing is replaced now, so the advice is retired
+and the behaviour is identical in every environment.
+
+What that costs is accumulation: `studio scenes outputs <project>/<slug>` lists
+every cut, and one not worth keeping is deletable like any other file.
 
 No storyboard? `studio scenes assemble <project>/<slug> --shot <runref> --shot
 <runref>` appends runs directly, so "just stitch these three clips" is still one
