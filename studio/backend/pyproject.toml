@@ -16,6 +16,32 @@ asgiref = "3.8.1"
 # The `crypto` extra is not optional: it brings `cryptography`, without which
 # PyJWT imports fine and then refuses the first RS256 token Cognito signs.
 PyJWT = {version = "2.13.0", extras = ["crypto"]}
+# **Pillow is in `main`, so the API image carries it and the render image does
+# too.** `routes/images.py` answers `convert` and `crop` synchronously — both are
+# sub-second on one image, so a queue round trip would cost more than the work —
+# and Pillow is ~3 MB installed. Compare `imageio-ffmpeg` below, which is ~80 MB
+# and is why the render worker is a second image rather than a second handler on
+# this one.
+Pillow = "11.3.0"
+
+# THE RENDER IMAGE'S EXTRA GROUP, AND THE WHOLE OF THE DIFFERENCE BETWEEN THE
+# TWO IMAGES.
+#
+# `Dockerfile` installs `--only main`; `Dockerfile.render` installs
+# `--only main,render`. That is the entire delta, which is what stops the two
+# drifting into different Python versions, different Flask pins or different
+# `studio_core` — a bug fixed in the API is fixed in the worker by construction.
+#
+# `imageio-ffmpeg` vendors a static ffmpeg binary, so there is no system install,
+# no `yum install ffmpeg` against a repository that does not carry it, and no
+# build from source in a Dockerfile. It is the same wheel the pipeline used, so
+# the encoder that cut every scene in the library is the encoder that cuts the
+# next one.
+[tool.poetry.group.render]
+optional = true
+
+[tool.poetry.group.render.dependencies]
+imageio-ffmpeg = "0.6.0"
 
 [tool.poetry.group.dev.dependencies]
 # Both backends the suite mocks, named explicitly. The `dynamodb` extra adds
@@ -24,7 +50,10 @@ PyJWT = {version = "2.13.0", extras = ["crypto"]}
 # declared anyway: leaning on a transitive of a *different* extra is how a
 # suite breaks on an unrelated dependency change, with an import error naming
 # neither service. Dev group only — the Lambda image installs `--only main`.
-moto = {version = "4.2.14", extras = ["s3", "dynamodb"]}
+# `sqs` joins them for the render queue. Same argument as the `dynamodb` extra
+# above: leaning on a transitive of a different extra is how a suite breaks on an
+# unrelated dependency change, with an import error naming neither service.
+moto = {version = "4.2.14", extras = ["s3", "dynamodb", "sqs"]}
 pytest = "7.4.3"
 # Report-only; CI prints the number and gates on nothing. See [tool.coverage].
 pytest-cov = "^5.0"

@@ -114,6 +114,16 @@ WIRE_SURFACE = {
     "/api/movies/<id>",
     "/api/movies/<id>/scenes",
     "/api/movies/<id>/output",
+    # renders — where ~1,360 lines of local media processing went. A job is
+    # enqueued and polled; the worker has ffmpeg in its image and this package
+    # does not.
+    "/api/renders",
+    "/api/renders/<id>",
+    # the two operations that are NOT on that queue. Both are sub-second on a
+    # single image, so a queue round trip would cost more than the work — see
+    # `backend/studio_core/routes/images.py`.
+    "/api/images/convert",
+    "/api/images/crop",
     # phrasebook
     "/api/phrasebook",
     "/api/phrasebook/<id>/<id>",

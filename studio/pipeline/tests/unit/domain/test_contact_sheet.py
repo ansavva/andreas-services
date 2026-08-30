@@ -13,7 +13,6 @@ model draws — an id to fetch by, a name to read.
 
 from __future__ import annotations
 
-import pathlib
 
 import pytest
 from click.testing import CliRunner
@@ -45,21 +44,29 @@ def test_a_pool_of_group_folders_is_gathered_recursively(library, tmp_path):
     assert out.exists()
 
 
-def test_the_group_survives_into_the_local_name(library, tmp_path):
+def test_the_group_survives_into_the_caption(library, tmp_path):
     """`face/<name>_1` and `body/<name>_1` are two images with one basename.
 
-    Downloaded under bare basenames they land on one path: the second overwrites
-    the first, and the sheet shows that image twice under one caption. The
-    caption is the local filename, so the group has to be in it.
-    """
-    paths = SHEET._gather_from_store(NAME, "reference", str(tmp_path))
+    **The collision this defends against was a filesystem one and is now a
+    caption one.** Downloaded under bare basenames the two landed on one path,
+    the second overwrote the first, and the sheet showed that image twice under
+    one label. Nothing is downloaded here any more — the worker reads the nodes —
+    so what is left is the label itself, and a sheet with two tiles reading
+    `<name>_1` is just as unreadable as one showing the image twice.
 
-    assert [pathlib.Path(p).name for p in paths] == [
-        "body_full-length.webp",
-        "face_front-neutral.webp",
-        "face_three-quarter.webp",
+    So the caption is the path relative to the pool, and it is asserted at the
+    point the job is submitted: the order and the labels are what this package
+    decides, and the layout is the worker's.
+    """
+    images = SHEET.pool_images(
+        CHARACTER.pool_folder(CHARACTER.resolve(NAME), "reference")["id"])
+
+    assert [image["rel"] for image in images] == [
+        "body/full-length.webp",
+        "face/front-neutral.webp",
+        "face/three-quarter.webp",
     ]
-    assert all(pathlib.Path(p).exists() for p in paths)
+    assert all(image["node"].startswith("node-") for image in images)
 
 
 def test_a_pool_that_is_not_there_says_so(library, tmp_path):
@@ -86,7 +93,8 @@ def test_a_refused_pool_is_not_an_empty_one(library, monkeypatch, tmp_path):
     monkeypatch.setattr(store, "children_of", refused)
 
     with pytest.raises(api.Forbidden):
-        SHEET._gather_from_store(NAME, "reference", str(tmp_path))
+        SHEET.pool_images(
+            CHARACTER.pool_folder(CHARACTER.resolve(NAME), "reference")["id"])
 
 
 def test_contact_sheet_can_sheet_one_group_of_a_pool(library, tmp_path):

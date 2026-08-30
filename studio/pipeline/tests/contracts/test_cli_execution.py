@@ -102,7 +102,11 @@ def test_usage_error_exits_two(library):
     """A mutually exclusive pair still refuses, with argparse's exit code."""
     result = CliRunner().invoke(cli.main, ["contact-sheet", "--out", "/tmp/x.png"])
     assert result.exit_code == 2, result.output
-    assert "exactly one of --character or --src" in result.output
+    # **`--src` is refused outright now**, where it used to be one half of an
+    # exactly-one-of pair. The sheet is laid out by the render worker, which can
+    # only see the library — so a directory of local files has no version of this
+    # that works, and the refusal names the fix.
+    assert "provide --character" in result.output
 
 
 # --------------------------------------------------------------------------

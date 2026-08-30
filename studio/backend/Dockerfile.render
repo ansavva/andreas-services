@@ -1,0 +1,38 @@
+# THE RENDER WORKER'S IMAGE. A THREE-LINE DELTA ON `Dockerfile`.
+#
+# Same base, same Poetry, same `studio_core`. The only difference is one extra
+# dependency group and the handler it is entered at — which is deliberate: two
+# images that share everything but a group cannot drift into different Python
+# versions, different Flask pins or different application code, so a fix in the
+# API is a fix in the worker by construction.
+#
+# **What the group buys is ffmpeg**, through `imageio-ffmpeg`'s vendored static
+# binary. There is no `yum install ffmpeg` here because Amazon Linux carries no
+# such package, and no build from source because that is minutes per CI run for
+# a binary a wheel already ships. It is the same wheel the CLI used, so the
+# encoder that cut every scene in the library is the encoder that cuts the next.
+#
+# **Why not one image at a second handler**, which is what the callback worker
+# does: `imageio-ffmpeg` is ~80 MB, and the API image is pulled for every cold
+# start of a function that answers folder listings in milliseconds. A listing
+# should not pay for a video toolchain it will never call.
+FROM public.ecr.aws/lambda/python:3.11
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# A real TrueType font, for the captions on a contact sheet. Without it Pillow
+# falls back to `ImageFont.load_default()`, which is a bitmap font that ignores
+# the requested size — the sheet still builds and its labels are unreadably
+# small, which is a failure that looks like a success. `media/sheet.py` names
+# this exact path first.
+RUN yum install -y dejavu-sans-fonts && yum clean all
+
+RUN pip install --no-cache-dir poetry==2.2.1 && \
+    poetry config virtualenvs.create false
+
+COPY pyproject.toml poetry.lock ./
+RUN poetry install --only main,render --no-root --no-interaction --no-ansi
+
+COPY studio_core ./studio_core
+CMD ["studio_core.handlers.aws.render.render_handler.handler"]

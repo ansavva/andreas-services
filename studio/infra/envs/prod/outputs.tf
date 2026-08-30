@@ -103,3 +103,35 @@ output "replicate_token_parameter" {
   EOT
   value       = aws_ssm_parameter.replicate_api_token.name
 }
+
+output "render_queue_url" {
+  description = <<-EOT
+    The queue the API enqueues render jobs onto. `deploy-infra` writes it to SSM
+    and `update-lambda` sets it on the API Lambda as `STUDIO_RENDER_QUEUE_URL`.
+
+    **Read by the API, unlike the callback queue's URL**, which the API never
+    needs: a callback arrives at its own gateway and the worker is wired by an
+    event source mapping. A render is asked for by the API, so the API is what
+    holds this.
+  EOT
+  value       = module.render.queue_url
+}
+
+output "render_dlq_url" {
+  description = <<-EOT
+    Where a render job goes after five failed attempts. Nothing here is
+    perishable — every input is already in the media bucket — but a message means
+    a `RENDER#` row is stuck at `running` and somebody is polling it.
+  EOT
+  value       = module.render.dlq_url
+}
+
+output "render_ecr_repository_url" {
+  description = "The SECOND image repository. `Dockerfile.render` is the API's plus ffmpeg."
+  value       = module.render.ecr_repository_url
+}
+
+output "render_worker_function_name" {
+  description = "The render worker; the deploy workflow pins its image the way it pins the other two."
+  value       = module.render.worker_function_name
+}

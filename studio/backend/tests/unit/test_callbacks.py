@@ -383,32 +383,42 @@ def test_the_local_consumer_deletes_what_it_handled_and_keeps_what_failed(monkey
     bug in their tree gets the same callback delivered into the fix — which is
     the whole reason the processing half is not deployed.
     """
-    from studio_core.handlers.local.consumer import callback_consumer
+    import logging
+
+    from studio_core.handlers.local.consumer import poll
 
     def handle(body):
         if "boom" in body:
             raise RuntimeError("not yet")
         return {"id": "run-x", "status": "succeeded"}
 
-    monkeypatch.setattr(callbacks, "handle", handle)
     sqs = _Sqs([
         {"Body": "fine", "ReceiptHandle": "r1"},
         {"Body": "boom", "ReceiptHandle": "r2"},
     ])
 
-    assert callback_consumer.drain(sqs, "https://sqs.test/q") == 2
+    # `poll.drain` rather than `callback_consumer.drain`: the loop is shared with
+    # the render consumer now, and this is where it lives.
+    handled = poll.drain(sqs, "https://sqs.test/q", batch=10, handle=handle,
+                         droppable=callbacks.Rejected,
+                         log=logging.getLogger("test"))
+    assert handled == 2
     assert sqs.deleted == ["r1"]
 
 
 def test_the_local_consumer_deletes_a_rejected_message(monkeypatch):
     """Same rule as the worker's: it will never succeed, so it goes."""
-    from studio_core.handlers.local.consumer import callback_consumer
+    import logging
 
-    monkeypatch.setattr(callbacks, "handle", lambda _b: (_ for _ in ()).throw(
-        callbacks.Rejected("forged")))
+    from studio_core.handlers.local.consumer import poll
+
+    def handle(_body):
+        raise callbacks.Rejected("forged")
+
     sqs = _Sqs([{"Body": "{}", "ReceiptHandle": "r1"}])
 
-    callback_consumer.drain(sqs, "https://sqs.test/q")
+    poll.drain(sqs, "https://sqs.test/q", batch=10, handle=handle,
+               droppable=callbacks.Rejected, log=logging.getLogger("test"))
 
     assert sqs.deleted == ["r1"]
 

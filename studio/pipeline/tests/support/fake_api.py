@@ -246,6 +246,13 @@ class FakeApi:
         #: scene_id -> [shot]. The `SHOT#` rows.
         self.shots: dict[str, list[dict]] = {}
         self.terms: list[dict] = []
+        #: render-<uuid> -> the job row. The `RENDER#` rows.
+        self.renders: dict[str, dict] = {}
+        #: Set it and `POST /api/renders` refuses. The seam that proves a dry
+        #: run enqueues NOTHING, exactly as `submits_refused` proves it bills
+        #: nothing — "no render happened" is stronger than "the render was
+        #: harmless", and a fake would answer one perfectly happily.
+        self.renders_refused: str | None = None
 
         # ── the submission knobs ────────────────────────────────────────────
         #
@@ -523,6 +530,10 @@ class FakeApi:
             (r"/api/movies/([^/]+)/scenes", self._r_movie_scenes),
             (r"/api/movies/([^/]+)/output", self._r_movie_output),
             (r"/api/movies/([^/]+)", self._r_movie),
+            (r"/api/renders", self._r_renders),
+            (r"/api/renders/([^/]+)", self._r_render),
+            (r"/api/images/convert", self._r_image_convert),
+            (r"/api/images/crop", self._r_image_crop),
             (r"/api/phrasebook", self._r_phrasebook),
             (r"/api/phrasebook/([^/]+)/([^/]+)", self._r_phrasebook_term),
         ]
@@ -1864,6 +1875,272 @@ class FakeApi:
                 "headers": {"Content-Type": body["content_type"],
                             "Content-Length": str(body["size"])}}
 
+    # ── renders ─────────────────────────────────────────────────────────────
+    #
+    # **SYNCHRONOUS, AND THAT IS THE ONE PLACE THIS FAKE IS NOT THE SERVICE.**
+    #
+    # In production a render is a row plus a message plus a worker Lambda with
+    # ffmpeg in its image. Here the work happens inside the POST and the row
+    # comes back already `succeeded`, so the CLI's poll loop reads a terminal
+    # status on its first `GET` and the suite runs in milliseconds.
+    #
+    # What that still proves is everything this package is responsible for: that
+    # the right kind was asked for, with the parts in the right ORDER, resolved
+    # to node ids, against the right destination — and that the record the worker
+    # writes is the record the CLI then reads back rather than one it asserted
+    # for itself. What it cannot prove is the encode, which is the backend's
+    # suite's job and not this one's.
+    #
+    # No ffmpeg here, deliberately: this package does not depend on it any more,
+    # and installing it to test a wheel that has dropped it would defeat the
+    # change. A cut is a placeholder file with a real size.
+
+    def _render_result(self, kind, params):
+        if kind == "assemble":
+            return self._render_assemble(params)
+        if kind in ("frame", "grid"):
+            return self._render_still(kind, params)
+        if kind == "sheet":
+            return self._render_sheet(params)
+        raise FakeError(400, f"'{kind}' is not a render kind")
+
+    def _render_parts(self, params):
+        parts = params.get("parts")
+        if not isinstance(parts, list) or not parts:
+            raise FakeError(400, "parts must be a non-empty list")
+        for part in parts:
+            if not isinstance(part, dict) or part.get("node") not in self.nodes:
+                raise FakeError(404, f"no such node: {(part or {}).get('node')}")
+        return parts
+
+    def _render_asset(self, node):
+        record = self.nodes[node]
+        return {"node": node, "name": record["name"],
+                "size": record.get("size") or 0,
+                "content_type": record.get("content_type")}
+
+    def _render_assemble(self, params):
+        target = params.get("target") or ""
+        parts = self._render_parts(params)
+        store, child, stem, label = (
+            (self.scenes, "shots", "shot", "shots") if target.startswith("scene-")
+            else (self.movies, "scenes", "scene", "scenes"))
+        record = store.get(target)
+        if record is None:
+            raise FakeError(404, f"no such target: {target}")
+
+        folder = self._folder_under(record["folder"], child)
+        for n, part in enumerate(parts, 1):
+            name = self.nodes[part["node"]]["name"]
+            ext = ("." + name.rsplit(".", 1)[-1]) if "." in name else ".mp4"
+            part["n"] = n
+            part["duration"] = 5.0
+            # A real copy, not a second node on one blob: copy-on-write is what
+            # the CLI's own comment says this must not be.
+            part["copy"] = self.put_file(
+                folder["id"], _unique_file(self, folder["id"], f"{stem}-{n:02d}{ext}"),
+                b"fake cut part")["id"]
+
+        info = {"method": "concat demuxer, stream copy (no re-encode)",
+                f"uniform_{label}": True,
+                "cuts": [{"n": p["n"], "node": p["copy"], "duration": p["duration"],
+                          **{k: p[k] for k in ("run", "scene", "shot", "slug") if k in p}}
+                         for p in parts]}
+
+        slug = record.get("slug") or record["id"]
+        was = record.get("output")
+        was_node = was.get("node") if isinstance(was, dict) else was
+        take = len(record.get("cuts") or []) + (1 if was_node else 0) + 1
+        name = f"{slug}.mp4" if take == 1 else f"{slug}-{take}.mp4"
+        out_folder = self._folder_under(record["folder"], "output")["id"]
+        output = self.put_file(out_folder, _unique_file(self, out_folder, name),
+                               b"fake stitched cut")
+
+        cuts = list(record.get("cuts") or [])
+        if was_node and was_node != output["id"] and \
+                not any(c.get("node") == was_node for c in cuts):
+            stored = {} if isinstance(was, str) else dict(was or {})
+            cuts = [{**stored, "node": was_node}, *cuts]
+
+        record.update({"output": {"node": output["id"], "duration": 10.0},
+                       "stitch": info, "cuts": cuts, "assembled": _now(),
+                       "status": "assembled", "updated": _now()})
+        if params.get("characters") is not None:
+            record["characters"] = sorted(set(params["characters"]))
+
+        # The shot rows the worker writes back. A part with no `shot` was
+        # appended with `--shot <runref>` against a scene with no plan; there is
+        # no row to update and nothing is invented for it.
+        for part in parts:
+            if not part.get("shot"):
+                continue
+            for shot in self.shots.get(target) or []:
+                if shot.get("id") == part["shot"]:
+                    shot.update({"n": part["n"], "node": part["node"],
+                                 "shot_node": part["copy"],
+                                 "duration": part["duration"]})
+        return {"output": self._render_asset(output["id"]), "stitch": info,
+                "target": target, "re_encoded": False}
+
+    def _render_still(self, kind, params):
+        node = params.get("node")
+        if node not in self.nodes:
+            raise FakeError(404, f"no such node: {node}")
+        dest = self.nodes.get(params.get("dest") or "")
+        if dest is None or dest["kind"] != "folder":
+            raise FakeError(400, f"{params.get('dest')} is not a folder")
+        # `create_numbered`, as the service uses — a produced file whose name is
+        # taken lands beside the first rather than 409ing a job that would then
+        # fail identically on every redrive.
+        made = self.put_file(
+            dest["id"], _unique_file(self, dest["id"], params.get("name") or "frame.png"),
+            _placeholder_image(), content_type="image/png")
+        if kind == "frame":
+            return {"frame": self._render_asset(made["id"])}
+        return {"grid": self._render_asset(made["id"]),
+                "sampled_at": [round(i + 0.5, 2) for i in range(params.get("count") or 4)]}
+
+    def _render_sheet(self, params):
+        parts = self._render_parts(params)
+        dest = self.nodes.get(params.get("dest") or "")
+        if dest is None or dest["kind"] != "folder":
+            raise FakeError(400, f"{params.get('dest')} is not a folder")
+        # **Given captions are kept in the order they were given.** A board reads
+        # in shot order and a payload review's tile N is what a prompt cites as
+        # `[ImageN]`; sorting them would renumber the thing the sheet says.
+        captions = [part.get("caption") or self.nodes[part["node"]]["name"]
+                    for part in parts]
+        made = self.put_file(
+            dest["id"], _unique_file(self, dest["id"], params.get("name") or "sheet.png"),
+            _placeholder_image(), content_type="image/png")
+        cols = params.get("cols") or 5
+        cell = params.get("cell") or 300
+        rows = (len(parts) + cols - 1) // cols
+        return {"sheet": self._render_asset(made["id"]),
+                "width": cols * cell, "height": rows * (cell + max(20, cell // 12)),
+                "tiles": len(parts), "cols": cols, "cell": cell,
+                "captions": captions, "unreadable": []}
+
+    def _r_renders(self, method, body, params):
+        if method != "POST":
+            raise FakeError(405, method)
+        if self.renders_refused:
+            raise FakeError(500, self.renders_refused)
+        kind = body.get("kind") or ""
+        render_id = "render-" + str(uuid.uuid4())
+        row = {"id": render_id, "lib": self.lib, "kind": kind,
+               "params": body.get("params") or {}, "status": "queued",
+               "result": None, "error": None, "created": _now(), "updated": _now()}
+        self.renders[render_id] = row
+        try:
+            row["result"] = self._render_result(kind, body.get("params") or {})
+        except FakeError:
+            raise
+        row.update({"status": "succeeded", "updated": _now()})
+        return row
+
+    def _r_render(self, method, body, params, render_id):
+        if method != "GET":
+            raise FakeError(405, method)
+        row = self.renders.get(render_id)
+        if row is None:
+            raise FakeError(404, f"no such render: {render_id}")
+        return row
+
+    # ── images ──────────────────────────────────────────────────────────────
+    #
+    # Synchronous in the service too, so this fake is doing what the route does:
+    # read the bytes, run Pillow, write a new node. The source is never modified.
+
+    def _image_source(self, body):
+        node = self.nodes.get(body.get("node") or "")
+        if node is None or node["kind"] != "file":
+            raise FakeError(404, f"no such node: {body.get('node')}")
+        data = self.s3.get_object(Bucket=BUCKET, Key=node["blob_key"])["Body"].read()
+        return node, data
+
+    def _image_target(self, body, node):
+        wanted = body.get("to")
+        ext_for = {"png": ".png", "jpg": ".jpg", "jpeg": ".jpg", "webp": ".webp"}
+        formats = {".png": "PNG", ".jpg": "JPEG", ".webp": "WEBP"}
+        if wanted:
+            if wanted not in ext_for:
+                raise FakeError(400, f"cannot convert to '{wanted}'")
+            ext = ext_for[wanted]
+        else:
+            found = ("." + node["name"].rsplit(".", 1)[-1].lower()) \
+                if "." in node["name"] else ""
+            ext = found if found in formats else ".png"
+        dest = body.get("dest") or node["parent_id"]
+        if dest not in self.nodes or self.nodes[dest]["kind"] != "folder":
+            raise FakeError(400, f"{dest} is not a folder")
+        stem = node["name"].rsplit(".", 1)[0] if "." in node["name"] else node["name"]
+        return ext, formats[ext], dest, (body.get("name") or f"{stem}{ext}")
+
+    def _image_write(self, dest, name, data, ext):
+        types = {".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp"}
+        made = self.put_file(dest, _unique_file(self, dest, name), data,
+                             content_type=types.get(ext))
+        return {"node": made["id"], "name": made["name"], "size": len(data),
+                "content_type": types.get(ext)}
+
+    def _r_image_convert(self, method, body, params):
+        if method != "POST":
+            raise FakeError(405, method)
+        import io
+
+        from PIL import Image
+
+        node, data = self._image_source(body)
+        ext, fmt, dest, name = self._image_target(body, node)
+        image = Image.open(io.BytesIO(data))
+        if ext == ".jpg" and image.mode in ("RGBA", "P", "LA"):
+            image = image.convert("RGB")
+        buffer = io.BytesIO()
+        image.save(buffer, fmt, **({"quality": body.get("quality") or 95}
+                                   if ext in (".jpg", ".webp") else {}))
+        out = buffer.getvalue()
+        return {"image": self._image_write(dest, name, out, ext),
+                "source": {"node": node["id"], "bytes": len(data)},
+                "bytes": len(out)}
+
+    def _r_image_crop(self, method, body, params):
+        if method != "POST":
+            raise FakeError(405, method)
+        import io
+
+        from PIL import Image
+
+        node, data = self._image_source(body)
+        ext, fmt, dest, name = self._image_target(body, node)
+        try:
+            wanted = tuple(int(float(v)) for v in str(body.get("box") or "").split(","))
+        except ValueError:
+            raise FakeError(400, "box must be four numbers") from None
+        if len(wanted) != 4:
+            raise FakeError(400, "box takes four numbers, LEFT,TOP,RIGHT,BOTTOM")
+        image = Image.open(io.BytesIO(data))
+        inside = (max(0, min(wanted[0], image.width)),
+                  max(0, min(wanted[1], image.height)),
+                  max(0, min(wanted[2], image.width)),
+                  max(0, min(wanted[3], image.height)))
+        if inside[2] <= inside[0] or inside[3] <= inside[1]:
+            raise FakeError(400, f"box {','.join(str(v) for v in wanted)} is entirely "
+                                 f"outside the {image.width}x{image.height} image.")
+        cut = image.crop(inside)
+        if ext == ".jpg" and cut.mode in ("RGBA", "P", "LA"):
+            cut = cut.convert("RGB")
+        buffer = io.BytesIO()
+        cut.save(buffer, fmt, **({"quality": body.get("quality") or 95}
+                                 if ext in (".jpg", ".webp") else {}))
+        out = buffer.getvalue()
+        return {"image": self._image_write(dest, name, out, ext),
+                "source": {"node": node["id"], "bytes": len(data),
+                           "width": image.width, "height": image.height},
+                "requested": list(wanted), "box": list(inside),
+                "clamped": inside != wanted,
+                "width": cut.width, "height": cut.height}
+
     # ── phrasebook ──────────────────────────────────────────────────────────
 
     def _r_phrasebook(self, method, body, params):
@@ -1947,6 +2224,24 @@ _NUM_RE = re.compile(r"(\d+)")
 
 def _natural(name: str):
     return [int(p) if p.isdigit() else p.lower() for p in _NUM_RE.split(name)]
+
+
+def _unique_file(fake: FakeApi, parent_id: str, name: str) -> str:
+    """A file name free in this parent, as `catalog.create_numbered` produces.
+
+    `frame (2).png`, not `frame-2.png`: a clash on a produced file is resolved by
+    the catalog's own numbering, and a double that spelled it differently would
+    let a test assert a name the service never writes.
+    """
+    if not fake._child(parent_id, name):
+        return name
+    stem, dot, ext = name.rpartition(".")
+    stem, ext = (stem, dot + ext) if dot else (name, "")
+    for n in itertools.count(2):
+        candidate = f"{stem} ({n}){ext}"
+        if not fake._child(parent_id, candidate):
+            return candidate
+    raise AssertionError("unreachable")
 
 
 def _unique(fake: FakeApi, parent_id: str, name: str) -> str:

@@ -253,3 +253,46 @@ def allowed_origin():
 
 def aws_region():
     return os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+
+
+def render_queue_url():
+    """The SQS queue a render job is enqueued onto, or `""`.
+
+    **Empty is not a misconfiguration in every environment**, which is why it has
+    no default and no refusal here: prod sets it, a per-machine dev stack sets it
+    (the queue is cheap — it is the *worker* dev declines), and CI leaves it
+    unset because nothing there enqueues. `services.render.enqueue` is what
+    refuses, at the moment a caller actually asks for work, with a message
+    naming this variable — the same shape `webhook_base_url` uses.
+    """
+    return os.environ.get("STUDIO_RENDER_QUEUE_URL", "").strip()
+
+
+def max_render_inputs():
+    """How many nodes one render job may name.
+
+    A bound on the thing that decides a job's disk and wall clock. It is not the
+    real constraint — `media/workspace.reserve` measures bytes, which is what
+    actually runs out — but a request naming ten thousand nodes should be
+    refused at the route rather than after ten thousand catalog reads.
+
+    Fifty is far above any real cut: the longest scene in the library is a
+    handful of shots, and a contact sheet of a character pool is tens of images.
+    """
+    return int(os.environ.get("STUDIO_MAX_RENDER_INPUTS", "50"))
+
+
+def max_image_bytes():
+    """The largest image `routes/images.py` will pull into the API Lambda's heap.
+
+    **This one is about memory, not about policy.** `convert` and `crop` are
+    answered synchronously in the API image, which runs at 512 MB, and Pillow
+    decodes to raw pixels: a 32 MB JPEG is a few hundred megabytes decoded and a
+    deliberately crafted one is far worse. Pillow's own `MAX_IMAGE_PIXELS` guard
+    (~89 megapixels) catches the decompression bomb; this catches the ordinary
+    case of somebody pointing `crop` at a video.
+
+    Anything larger belongs on the render queue, where there is a real disk and
+    minutes of wall clock — which is the same reason the sheet job is there.
+    """
+    return int(os.environ.get("STUDIO_MAX_IMAGE_BYTES", str(32 * 1024 * 1024)))

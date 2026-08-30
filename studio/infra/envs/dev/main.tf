@@ -150,3 +150,25 @@ module "callbacks" {
 
   tags = local.common_tags
 }
+
+# THE RENDER QUEUE. A QUEUE AND NOTHING ELSE, FOR THE SAME REASON AS ABOVE.
+#
+# `create_ecr` and `create_worker` are both false here: a per-machine image build
+# would cost minutes per apply, and the render image is the larger of the two —
+# it carries ffmpeg. So this environment gets the queue, and `dev-up.sh` runs
+# `handlers/local/consumer/render_consumer.py` beside the API to drain it with
+# the developer's own working tree and their own ffmpeg.
+#
+# That is the same arrangement callbacks has, and it buys the same thing: the
+# code that stitches a scene in production is code a developer has run.
+#
+# **No `api_role_name` either.** The API here is a process under a developer's own
+# IAM key, not a Lambda with a role to attach a grant to — so the `SendMessage`
+# that reaches this queue is authorised by that key, which already holds it.
+module "render" {
+  source = "../../modules/render"
+
+  name_prefix = local.resource_prefix
+
+  tags = local.common_tags
+}

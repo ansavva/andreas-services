@@ -75,7 +75,7 @@ studio movies outputs <project>/latest --presign
 `<project>/<scene_id>`, `<project>/latest`, or a unique fragment of the id. A
 scene has exactly one output, so there is no `#N`.
 
-No approval gate applies here: a movie bills nothing. It is ffmpeg over material
+No approval gate applies here: a movie bills nothing. It is a stitch over material
 already in the library. (The gate covers what is sent to a model — see the repo
 CLAUDE.md.)
 
@@ -115,7 +115,12 @@ and a scene join by identical rules:
   geometry and a common audio layout, and `stitch.method` says so rather than
   it happening silently.
 
-ffmpeg comes from the `imageio-ffmpeg` wheel — no system install.
+**The encode happens in the service, not on this machine.** `movies new`
+resolves every sceneref, creates the movie row and asks the API to cut it; the
+scenes are joined by a worker whose container image carries ffmpeg, and the
+finished movie, the stitch report and the copies land on the record. The command
+waits and prints as it goes — `Ctrl-C` abandons the wait, not the cut, and
+`movies show` says how it went.
 
 ## Checking one
 

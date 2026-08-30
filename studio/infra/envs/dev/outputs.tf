@@ -68,3 +68,21 @@ output "callback_dlq_url" {
   description = "Where a callback goes after five failed attempts against this machine's consumer"
   value       = module.callbacks.dlq_url
 }
+
+output "render_queue_url" {
+  description = <<-EOT
+    The queue this machine's render jobs land on. `dev-up.sh` exports it as
+    `STUDIO_RENDER_QUEUE_URL` — read by the local API, which enqueues, and by the
+    local consumer, which drains it and does the stitching with the working tree.
+
+    **Both halves need it here**, unlike the callback queue, whose URL the prod
+    API never sees because an event source mapping wires the worker to it. The
+    thing that enqueues a render is the API.
+  EOT
+  value       = module.render.queue_url
+}
+
+output "render_dlq_url" {
+  description = "Where a render job goes after five failed attempts against this machine's consumer"
+  value       = module.render.dlq_url
+}

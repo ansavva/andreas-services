@@ -12,11 +12,14 @@ A scene is a row. `latest` is `created` on it, `status` is recomputed and
 merges by id. So the tests that guarded the document are gone and what replaced
 them asserts the row.
 
-**One thing deliberately did not move: the encode.** ffmpeg ships in this wheel
-and the Lambda has none, so `assemble` still downloads every rendered shot,
-stitches locally, uploads through a signed URL and only then `PATCH`es the
-record. `test_the_cut_is_made_locally_and_only_the_record_goes_to_the_api` is the
-test that says so.
+**The encode moved too, and this file used to say it had not.** It said ffmpeg
+ships in this wheel and the Lambda has none, so `assemble` downloads every
+rendered shot and stitches locally. It resolves each shot to a video node and
+enqueues one render job now; the worker downloads, copies each shot into
+`shots/`, stitches and writes the record.
+`test_the_cut_is_a_render_job_and_the_worker_writes_the_record` is the test that
+says so, and what it asserts is the half this package still owns: resolution,
+order, and reading the record back rather than asserting it.
 """
 
 from __future__ import annotations
@@ -244,27 +247,17 @@ def test_assemble_refuses_a_scene_with_nothing_in_it(library):
     assert "no shots" in result.output
 
 
-def test_the_cut_is_made_locally_and_only_the_record_goes_to_the_api(
+def test_the_cut_is_a_render_job_and_the_worker_writes_the_record(
         library, scene, monkeypatch, tmp_path):
-    """**Stitching stays in the CLI, and this is the test that says so.**
+    """**Stitching left the CLI, and this is the test that says so.**
 
-    ffmpeg ships in this wheel and the Lambda has none. So the shots come DOWN,
-    `adapters/ffmpeg` joins them here, the result goes UP through the URL
-    `POST /api/scenes/<id>/output` signs, and the API owns the record and
-    nothing about how the file was made.
+    It asserted the opposite — that the shots came DOWN, that `adapters/ffmpeg`
+    joined them here and that the result went UP through a signed URL. What is
+    asserted now is the seam that replaced it: one `POST /api/renders` of kind
+    `assemble`, naming this scene and its shots as NODE IDS in cut order, and a
+    record that comes back from the service carrying the output, the status and
+    the per-shot copies.
     """
-    joined = []
-
-    def fake_stitch(paths, out, label=""):
-        joined.extend(paths)
-        with open(out, "wb") as fh:
-            fh.write(b"mp4-bytes")
-        return {"method": "concat demuxer, stream copy (no re-encode)",
-                "probes": [{"duration": 5.0} for _ in paths]}
-
-    monkeypatch.setattr(SC, "stitch", fake_stitch)
-    monkeypatch.setattr(SC, "probe", lambda path: {"duration": 10.0})
-
     # Two rendered shots: a run each, with a video output.
     clips = []
     for n in (1, 2):
@@ -287,7 +280,15 @@ def test_the_cut_is_made_locally_and_only_the_record_goes_to_the_api(
 
     result = _run("assemble", "porch-teaser/the-encounter")
     assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
-    assert len(joined) == 2, "both shots were joined on this machine"
+
+    job = list(library.fake.renders.values())[-1]
+    assert job["kind"] == "assemble"
+    assert job["params"]["target"] == scene["id"]
+    # The clips, by node id and in cut order — resolved HERE, because "this run
+    # produced three videos, say which" is a refusal a person acts on and must
+    # not arrive as a failed job twenty seconds later.
+    assert [part["node"] for part in job["params"]["parts"]] == [n for _, n in clips]
+    assert [part["run"] for part in job["params"]["parts"]] == [r for r, _ in clips]
 
     after = SC.resolve_scene(scene["id"])
     assert after["output"]["node"].startswith("node-")

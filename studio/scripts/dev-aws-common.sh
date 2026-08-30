@@ -285,6 +285,18 @@ load_dev_stack_outputs() {
   # in words, and names the re-apply.
   DEV_CALLBACK_URL="$(jq -r '.outputs.callback_base_url.value // empty' <<<"$state_json")"
   DEV_CALLBACK_QUEUE="$(jq -r '.outputs.callback_queue_url.value // empty' <<<"$state_json")"
+  # WHERE A STITCH HAPPENS FOR THIS MACHINE.
+  #
+  # `envs/dev` declares the render queue and declines the worker Lambda and its
+  # ECR repository, for the reason it declines every image: a per-machine build
+  # would cost minutes per apply, and the render image is the larger of the two.
+  # So `dev-up.sh` drains this with `handlers/local/consumer/render_consumer.py`
+  # and the developer's own ffmpeg — which is `imageio-ffmpeg`'s bundled binary
+  # either way, so it is the encoder prod runs.
+  #
+  # Optional on the same terms as the callback queue: a stack applied before this
+  # landed has none, and everything that does not stitch still works.
+  DEV_RENDER_QUEUE="$(jq -r '.outputs.render_queue_url.value // empty' <<<"$state_json")"
   [[ -n "$DEV_POOL_ID" && -n "$DEV_CLIENT_ID" && -n "$DEV_AUTH_DOMAIN" && -n "$DEV_BUCKET" && -n "$DEV_TABLE" ]] ||
     die "Terraform state is missing required development outputs. Re-run ./studio/scripts/dev-aws-setup.sh."
 }

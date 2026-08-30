@@ -296,6 +296,72 @@ module "callbacks" {
   tags = local.common_tags
 }
 
+# WHERE A STITCH HAPPENS.
+#
+# `modules/render/main.tf` argues the whole case; the short version is that
+# `routes/scenes.py` used to say stitching stays in the CLI because the Lambda
+# has no `ffmpeg`, and that is a statement about an image. This is a **second
+# image** rather than ffmpeg in the API's: an 80 MB video toolchain should not be
+# pulled on every cold start of a function that answers folder listings, and a
+# re-encode is minutes against API Gateway's 30-second ceiling.
+#
+# It takes a role of its own, unlike the callback worker, which shares the API's.
+# The premise there — "it does exactly what the API does" — does not hold here:
+# this worker never calls Replicate, so the API's role would hand it the provider
+# token and the ability to spend money for a code path that does not exist. The
+# two policy DOCUMENTS come across instead, so there is one definition of what
+# library access means and two roles scoped to two jobs.
+module "render" {
+  source = "../../modules/render"
+
+  name_prefix = "${local.project}-${local.environment}"
+
+  # **Literals, for the plan-time reason `modules/compute` failed a deploy on.**
+  # A `count` that depends on a resource attribute cannot be resolved before
+  # anything is created, and both of these drive one.
+  create_ecr    = true
+  create_worker = true
+
+  # No `worker_image_uri`: the module composes `<account>.dkr.ecr.<region>
+  # .amazonaws.com/studio-prod-render:latest` from literals, because it declares
+  # both the repository and the function and passing its own output back in
+  # would be a cycle. The deploy workflow repoints the function to
+  # `:${{ github.sha }}` afterwards, and `ignore_changes = [image_uri]` means
+  # Terraform sets it once.
+
+  # The API's grant to enqueue, attached to the API's role from inside the module
+  # that declares the queue — the same arrangement `modules/callbacks` uses for
+  # the worker's drain grant, and for the same reason: neither module should own
+  # a resource the other depends on.
+  create_api_grant = true
+  api_role_name    = module.compute.api_role_name
+
+  # One definition of library access, two roles. See the outputs in
+  # `modules/compute` for why this is documents rather than the role.
+  media_access_policy   = module.compute.media_access_policy
+  catalog_access_policy = module.compute.catalog_access_policy
+
+  media_bucket_name  = module.media.bucket_name
+  media_root_prefix  = var.media_root_prefix
+  catalog_table_name = module.catalog.table_name
+
+  tags = local.common_tags
+}
+
+# `update-lambda` reads this back and sets it on the API Lambda as
+# `STUDIO_RENDER_QUEUE_URL`. Through SSM rather than through `modules/compute`'s
+# `environment` block for the reason the callback URL travels the same way: that
+# block carries `ignore_changes` and applies once at creation, and the workflow
+# is what sets every variable on a running function.
+resource "aws_ssm_parameter" "render_queue_url" {
+  name        = "/${local.project}/${local.environment}/render-queue-url"
+  description = "SQS queue the API enqueues render jobs onto"
+  type        = "String"
+  value       = module.render.queue_url
+
+  tags = local.common_tags
+}
+
 # Terraform knows where callbacks arrive; `update-lambda` reads this back and
 # sets it on the API Lambda as `STUDIO_WEBHOOK_BASE_URL`.
 #

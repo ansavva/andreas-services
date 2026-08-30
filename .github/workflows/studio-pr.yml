@@ -101,8 +101,21 @@ jobs:
       - name: Run tests
         run: cd studio/backend && poetry run pytest -q --cov --cov-report=term-missing:skip-covered
 
+      # BOTH IMAGES, BECAUSE THERE ARE TWO NOW AND ONLY ONE OF THEM WOULD FAIL
+      # QUIETLY.
+      #
+      # `Dockerfile.render` shares this context, this `pyproject.toml` and this
+      # lock file with the API's, and differs by one Poetry group and a `CMD`. So
+      # a broken lock file breaks both and either build would catch it — but a
+      # `poetry install --only main,render` against a group that does not
+      # resolve, or a `CMD` naming a handler module that was renamed, breaks only
+      # the second, and the first thing to notice would be a prod deploy.
       - name: Docker build (packaging check)
-        run: cd studio/backend && docker build -t studio-api:ci .
+        run: |
+          set -euo pipefail
+          cd studio/backend
+          docker build -t studio-api:ci .
+          docker build -f Dockerfile.render -t studio-render:ci .
 
   frontend:
     name: Frontend — lint/typecheck/test/build

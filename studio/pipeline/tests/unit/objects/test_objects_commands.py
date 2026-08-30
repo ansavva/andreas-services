@@ -370,19 +370,27 @@ def test_convert_gives_each_source_its_own_node_in_the_pool(library):
     assert set(nodes) <= pool
 
 
-def test_convert_of_the_same_source_twice_overwrites_itself(source_png, library):
-    """Idempotence, which the uniqueness fix must not cost.
+def test_convert_of_the_same_source_twice_keeps_both(source_png, library):
+    """**This asserted the opposite, and the reversal is the point.**
 
-    The pool name carries a digest of the SOURCE key rather than a counter, so
-    running the same conversion again lands on the same name instead of growing
-    the pool a copy at a time. `--for` is documented as safe to run
-    unconditionally in a chain, and that is only true if repeating it is free.
+    A conversion used to be staged to a temp file under a name this module
+    invented — the source's stem plus a digest of its key — precisely so that
+    repeating one overwrote itself instead of growing the pool a copy at a time.
+    That naming rule was a second implementation of the pool's, and it existed
+    only because the bytes were in this process.
+
+    The API writes the file now and `catalog.create_numbered` resolves the clash,
+    so a repeat lands `frame (2).jpg` beside the first. That is a real change and
+    it is the safer half of the trade: nothing is silently destroyed, which is
+    what an overwrite in a versionless dev bucket was. `--for` is still safe to
+    run unconditionally in a chain, because an already-acceptable source
+    short-circuits before any request is made — see the test above.
     """
     from studio_pipeline.domain import projects as PROJECTS
 
     runs = [_run("convert", "--key", source_png, "--to", "jpg",
                  "--add-input", "porch-teaser") for _ in range(2)]
     assert [r.exit_code for r in runs] == [0, 0], runs[-1].output
-    assert runs[0].output.splitlines()[0] == runs[1].output.splitlines()[0]
+    assert runs[0].output.splitlines()[0] != runs[1].output.splitlines()[0]
     pool = PROJECTS.input_pool(PROJECTS.resolve("porch-teaser"))
-    assert len([e for e in pool if e["content_type"] == "image/jpeg"]) == 1
+    assert len([e for e in pool if e["content_type"] == "image/jpeg"]) == 2

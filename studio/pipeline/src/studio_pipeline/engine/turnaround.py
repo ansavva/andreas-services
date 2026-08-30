@@ -56,7 +56,6 @@ from __future__ import annotations
 
 import json
 import os
-import pathlib
 import string
 import sys
 from types import SimpleNamespace
@@ -560,7 +559,7 @@ def identity_nodes(name: str, source: str, pick: str | None, tags: str | None,
 # seeing what is actually being sent
 # --------------------------------------------------------------------------
 
-def review_sheet(angle_id: str, nodes: list[str], out_dir: str, cache: dict) -> str:
+def review_sheet(angle_id: str, nodes: list[str], out_dir: str, dest: str) -> str:
     """A labelled contact sheet of the images one payload binds, in angle order.
 
     The payload review names its images (`<presigned: characters/…>`) but a name
@@ -570,29 +569,30 @@ def review_sheet(angle_id: str, nodes: list[str], out_dir: str, cache: dict) -> 
     a panel whose speech balloon the model will happily reproduce.
 
     Tiles are captioned `[ImageN]` in the order the model receives them, so the
-    sheet and the prompt's citations read against each other.
+    sheet and the prompt's citations read against each other. **Captions are
+    given, so the worker leaves the order alone** — natural-sorting them by
+    filename would renumber the citations the prompt makes.
 
-    **Takes node ids and captions them by their `name`.** It took S3 keys and
-    captioned them with `os.path.basename`, which under the entity model would
-    have written a uuid under every tile — the sheet exists to be recognised,
-    and a caption nobody can match to a file is worse than none.
+    **A render job, because Pillow is not in this wheel any more.** Everything
+    bound here is already a node — hard rule #3 means anything sent to a model is
+    already in S3 — so nothing is uploaded to build this, and `cache` (which
+    memoised a download per node) is gone with the downloads.
+
+    It costs a round trip on the approval path, which is a real cost on the one
+    path that must not be tedious. It is bounded: a turnaround binds a handful of
+    references, and the job is Pillow over images the worker streams.
     """
-    from studio_pipeline.domain import contact_sheet as SHEET
+    from studio_pipeline.domain import renders as RENDER
 
-    os.makedirs(out_dir, exist_ok=True)
-    paths, captions = [], []
-    for i, node in enumerate(nodes, start=1):
-        name = store.node(node).get("name") or node
-        local = cache.get(node)
-        if local is None:
-            local = os.path.join(out_dir, f"src-{len(cache)}-{name}")
-            store.download_node(node, pathlib.Path(local))
-            cache[node] = local
-        paths.append(local)
-        captions.append(f"[Image{i}] {name}")
-    out = os.path.join(out_dir, f"{angle_id}.png")
-    return SHEET.build(paths, out, cols=min(len(paths), 5), cell=320,
-                       captions=captions, quiet=True)
+    result = RENDER.submit("sheet", {
+        "parts": [RENDER.part(node, caption=f"[Image{i}] "
+                              f"{store.node(node).get('name') or node}")
+                  for i, node in enumerate(nodes, start=1)],
+        "cols": min(len(nodes), 5), "cell": 320,
+        "dest": dest,
+        "name": f"{angle_id}.png",
+    }, what="the review sheet")
+    return RENDER.fetch(result["sheet"], out_dir, f"{angle_id}.png")
 
 
 # --------------------------------------------------------------------------
@@ -748,7 +748,12 @@ def run_turnaround(name: str, opts) -> int:
         prepared.append((angle, entry, args, payload, bindings))
 
     # GATE 1 — every payload, in full, before anything bills.
-    sheet_cache: dict[str, str] = {}
+    # Where a review sheet is written in the library. Resolved once: the worker
+    # produces a node and S3 is the only way its bytes reach this machine, so a
+    # sheet exists in `review/` whether or not `--review-sheet DIR` was given.
+    sheet_dest = (store.ensure_child_folder(
+        CHARACTER.resolve(name)["root"], "review")["id"]
+        if opts.review_sheet else None)
     for angle, entry, args, payload, bindings in prepared:
         # A LABEL for the approval block, not an id. A run id is minted by the
         # API when the run is recorded, which has not happened yet and must not:
@@ -759,7 +764,7 @@ def run_turnaround(name: str, opts) -> int:
         if opts.review_sheet:
             field = (entry.get("images") or {}).get("refs")
             sheet = review_sheet(angle["id"], bindings.get(field) or [],
-                                 opts.review_sheet, sheet_cache)
+                                 opts.review_sheet, sheet_dest)
             print(f"===== IMAGES — what {angle['id']} actually sends =====\n{sheet}")
 
     if opts.dry_run:

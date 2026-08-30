@@ -324,8 +324,8 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds")
 
 
-#: The same clock every row is stamped with, for the one caller outside this
-#: module that needs one: an approval records WHEN, and a timestamp minted
+#: The same clock every row is stamped with, for the callers outside this module
+#: that need one: an approval records WHEN, and so does a cut. A timestamp minted
 #: anywhere else would be a second clock to reconcile.
 now = _now
 
@@ -3708,3 +3708,114 @@ def add_term(lib: str, model: str, avoid: str, use: str, note: str | None = None
 
 def delete_term(lib: str, model: str, avoid: str) -> None:
     _write([(_delete(_lib_pk(lib), f"{TERM_PREFIX}{model}#{avoid}"), None)])
+
+
+# ──────────────────────────── render jobs ────────────────────────────
+#
+# A RENDER JOB IS A ROW, AND DELIBERATELY NOT A SIXTH ENTITY.
+#
+# Stitching, frame extraction and contact sheets moved off a developer's laptop
+# onto a worker Lambda (see `services/render.py`), and the caller that used to
+# watch a progress bar now has to be told when the work finished. The issue that
+# moved the code proposed polling the record — a scene and a movie already carry
+# a status — and that is right as far as it goes: it does not go as far as
+# `frames grid`, which produces an image belonging to no scene, or as far as
+# reporting *why* something failed, since a scene's `error` is one field for
+# every kind of failure a scene can have.
+#
+# So a job has a row of its own: `pk = RENDER#<id>`, `sk = META`. It is not an
+# entity — no `ENTITY_KEYS` prefix, no slug claim, no listing projection, no
+# `by-recent` presence, nothing in `docs/ENTITY_MODEL.md`. The precedent above it
+# in this file is `SWEEP#`: bookkeeping the service writes about work in flight,
+# read by the machinery and not by a person browsing a library.
+#
+# **There is no listing.** A job is addressed by the id its enqueue returned, and
+# nothing walks them. That is a real limitation — nothing answers "what is stuck"
+# — and the thing that does answer it is the dead-letter alarm in
+# `modules/render`, which fires on a message that ran out of retries. A listing
+# is a second row (a `LIB#` sort key carrying the timestamp) and can be added the
+# day a person wants a page of them; adding it now would be a projection nothing
+# reads.
+#
+# `lib` is on the row because the worker has no request and therefore no
+# `g.library`, and because `GET /api/renders/<id>` has to check the caller is in
+# it — an id is a v4 UUID, but "unguessable" is not an authorization model.
+
+RENDER_PREFIX = "RENDER#"
+
+#: A job that has been accepted and not yet picked up, one that a worker holds,
+#: and the two ways it ends. `succeeded`/`failed` mirror `RUN_STATUSES` rather
+#: than inventing `done`/`error`, so a reader who knows what a run's status
+#: means knows what a render's does.
+RENDER_STATUSES = frozenset({"queued", "running", "succeeded", "failed"})
+
+TERMINAL_RENDER_STATUSES = frozenset({"succeeded", "failed"})
+
+
+def _render_pk(render_id: str) -> str:
+    return f"{RENDER_PREFIX}{render_id}"
+
+
+def create_render(lib: str, kind: str, params: dict) -> dict:
+    """Write a queued job row. -> the record, whose `id` is what a caller polls.
+
+    Written **before** the message is enqueued, so a worker cannot receive a job
+    whose row does not exist yet. The other order has a real race: SQS delivery
+    is fast enough that a worker has read a missing row in production systems
+    built the other way round, and there is nothing sensible to do about it from
+    the worker's side.
+
+    The cost of this order is the opposite failure — a row written and a
+    `SendMessage` that then throws — which leaves a job `queued` forever. That is
+    visible (the poller times out saying so) rather than silent, and it spends
+    nothing.
+    """
+    render_id = f"render-{uuid.uuid4()}"
+    now = _now()
+    record = {"id": render_id, "lib": lib, "kind": kind, "params": params,
+              "status": "queued", "result": None, "error": None,
+              "created": now, "updated": now}
+    _write([(_put(_render_pk(render_id), META, record, unique=True), None)])
+    return record
+
+
+def render(render_id: str) -> dict:
+    """One job row, by id."""
+    if not render_id.startswith("render-"):
+        raise NotFoundError(render_id)
+    try:
+        response = dynamodb.client().get_item(
+            TableName=config.catalog_table(),
+            Key={"pk": {"S": _render_pk(render_id)}, "sk": {"S": META}},
+        )
+    except ClientError as exc:
+        logger.warning("GetItem failed for %s: %s", render_id, exc)
+        raise UpstreamError("Could not read the catalog") from exc
+    item = response.get("Item")
+    if not item:
+        raise NotFoundError(render_id)
+    # `_entity`, not `_attributes`, and the difference is `_numbers`. A job's
+    # `params` carry `cols`, `cell`, `count`, `at` — every one of which comes back
+    # from DynamoDB as a `Decimal`, and `Image.new` refuses one with
+    # `'decimal.Decimal' object cannot be interpreted as an integer`. The
+    # validation on the way in is done against the request's JSON, so nothing
+    # before this read would notice.
+    return _entity(item)
+
+
+def update_render(render_id: str, **assignments) -> dict:
+    """Move a job on. Unconditional — one worker holds one message at a time.
+
+    No `rev` and no condition beyond the row existing, for the reason
+    `routes/scenes.py` gives about a scene: this record is driven by a machine
+    in sequence, not edited by two people at once. SQS's visibility timeout is
+    what stops two workers holding the same job, and a redrive of a job that
+    already succeeded is idempotent because the assignments are absolute rather
+    than incremental.
+    """
+    if "status" in assignments and assignments["status"] not in RENDER_STATUSES:
+        raise ValidationError(f"'{assignments['status']}' is not a render status")
+    assignments["updated"] = _now()
+    _write([(_update({"pk": {"S": _render_pk(render_id)}, "sk": {"S": META}},
+                     assignments), NotFoundError(render_id))])
+    return render(render_id)

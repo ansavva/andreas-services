@@ -207,10 +207,10 @@ studio/pipeline/
         │   ├── store.py           the media store, by path, through the API
         │   ├── api.py             one transport: token, refresh, library header
         │   ├── auth.py            Cognito sign-in + the token cache
-        │   ├── s3.py              the AWS-login bridge — almost gone, see below
-        │   └── ffmpeg.py          probe / stitch / grab
-        │                          (`replicate.py` is DELETED — the provider
-        │                           client moved into the API; see below)
+        │   └── s3.py              the AWS-login bridge — almost gone, see below
+        │                          (`replicate.py` and `ffmpeg.py` are DELETED —
+        │                           the provider client and the encoder both
+        │                           moved into the API; see below)
         │
         ├── session/               who you are, and where you are pointing
         │   ├── commands.py        `studio login` / `logout` / `whoami`
@@ -219,6 +219,7 @@ studio/pipeline/
         ├── domain/                WHAT THINGS ARE — records and the tree's shape
         │   ├── paths.py           the one module that knows the key layout
         │   ├── runs.py  scenes.py  storyboard.py  movies.py  frames.py
+        │   ├── renders.py         ask the service to encode; wait; fetch
         │   ├── projects.py
         │   ├── characters/       base.py profile.py refs.py pools.py rename.py cli.py
         │   ├── curate.py  contact_sheet.py
@@ -613,13 +614,23 @@ own record naming scenes in cut order. A shot's `order` is an attribute, so
 revising a plan moves rows rather than rewriting a document.
 
 Both are **derived, never a source of truth**: the runs they name remain the
-history, so either can always be rebuilt. Sources are copied in server-side so a
-scene stays playable as its runs accumulate around it, and each manifest records
-the originating ref beside the copied key — copying does not lose lineage. Both
-stitch through the same function — `adapters/ffmpeg.py`'s `stitch()`, which
-stream-copies when the
+history, so either can always be rebuilt. Sources are copied in so a scene stays
+playable as its runs accumulate around it, and the record names the originating
+ref beside the copied node — copying does not lose lineage. Both stitch through
+the same function, and **that function is in the service now**:
+`backend/studio_core/media/ffmpeg.py`'s `stitch()`, which stream-copies when the
 inputs already agree on codec, geometry, frame rate and audio layout, and
 re-encodes (recording that it did) when they don't.
+
+**The encode moved out of this package**, along with frame extraction and contact
+sheets — ~1,360 lines. `ffmpeg` shipped in this wheel and the Lambda had none,
+which was a fact about an image; a second container image
+(`backend/Dockerfile.render`) carries it, a route enqueues onto
+`studio-prod-render`, and a worker Lambda does the download, the stitch and the
+record. `domain/renders.py` is this side of that seam: it resolves inputs to node
+ids, posts one job and polls the row. `convert` and `crop` did **not** go on that
+queue — both are sub-second on one image, so they are synchronous routes in the
+API image with Pillow and no ffmpeg.
 
 ### Identity vs working material — never conflate them
 
@@ -804,13 +815,14 @@ into a config file by a person.
 | `scenes.py` | The **scene store**: a piece planned, shot and cut, under `projects/<p>/scenes/<slug>/`. Owns the manifest, `assemble`, `handoff`, and the read-only half of the CLI. Writing a manifest ensures the scene's folder — `new_scene` writes one for a scene that has never existed, and the catalog has no folder until something asks for it. |
 | `storyboard.py` | **The plan document**, pure data: what a shot's panels mean, which one is the start frame once the chain has spoken, how a revision merges onto work already paid for. No S3, no models — so the rules that decide what a shot sends are testable on their own. |
 | `movies.py` | The **movie store**: scenes cut into one piece. The same shape one tier up, including the folders a cut needs. Copying a scene in is a read plus a write rather than a server-side `CopyObject`; see `store.copy` for why one blob under two rows is not on offer. |
-| `frames.py` | Stills out of a run's video — the handoff frame, and the contact grid that lets a clip be looked at before more money is spent on it. Its `chain` store is for a sequence with no scene behind it; a planned scene derives its own frames from `scene.json`. |
+| `frames.py` | Stills out of a run's video — the handoff frame, and the contact grid that lets a clip be looked at before more money is spent on it. It resolves a runref to one video **node** and enqueues a render job; the clip is never downloaded here. Its `chain` store is for a sequence with no scene behind it; a planned scene derives its own frames from its shot rows. |
+| `renders.py` | **Asking the service to encode something, and waiting for it.** Enqueue, poll the `render-<uuid>` row, fetch the node it produced. `Ctrl-C` abandons a wait rather than the work, exactly as `engine/submit.wait_for` does — the job is being done elsewhere and the row is still there to read. Resolution stays on this side deliberately: `latest`, `#N`, "this run produced three videos, say which" are refusals with an action in them, and they belong in front of a person rather than at the far end of a queue. |
 | `characters/` | The character record, in four modules. `base` — names, pools, node helpers. `profile` — the bible: schema, and the `edit` local round trip whose conflict check is a `rev` sent with the write, so the API refuses a stale push itself. That was the S3 ETag, then the node's `updated_at`, and both were check-then-write with a gap; `rev` is compare-and-swap and closes it. `refs` — the `REF#` rows: attach, describe, order, regroup, detach, and the selection the API resolves. `pools` — corpus/seed/archive, material rather than identity. `cli` assembles the group; commands are `@click.command` and registered there, which is what keeps the package acyclic. **`rename.py` is gone** — a rename is one `PATCH`, because the slug is an attribute rather than a path segment. |
 | `curate.py` | The pool operations that go wrong by hand — `dedupe`, `groups`, `move`. **`renumber` and `regroup` are deleted**: order and group are attributes on a `REF#` row, so there are no holes to close and regrouping writes no object. `move` is the one worth knowing — when a byte-identical copy is already in the destination it deletes the source instead, which is the one path here that removes an image. |
 | `curate.py` | Pool maintenance — dedupe, move, groups. **`digest` is a dictionary read now**: the API records the MD5 of every object when it confirms the upload (S3 hands it back as the ETag of a single PUT), so comparing two images is comparing two served values. It used to download each same-size candidate over HTTPS, which made hashing a forty-image pool to find nothing forty downloads. |
 | `prompt.py` | **Reading the object and printing the answer, and nothing else.** The rules — one camera move per shot, no bare "fast", no camera verbs in the action, the beat budget, the start-frame redundancy warning — are `backend/studio_core/services/prompt.py` and reachable at `POST /api/prompt`. They needed the registry and the phrasebook, both of which are the API's, and while they lived here nothing but `studio prompt` could run one of them: the SPA could offer no checking at all. 690 lines → 157. |
 | `phrasebook.py` | Per-model wording lists, as `LIB#`/`TERM#` rows. It was a YAML document in the bucket with no catalog node, which is why it was read by raw key and written by an overwrite that could not invent the file — so `phrasebook add` failed outright on a library that had never held one. A row has no such state: the first `add` writes the first term. |
-| `contact_sheet.py` | Labeled thumbnail grids over arbitrary keys. The character-pool half walks the pool **recursively**, like `characters/refs`: `reference` is the default and holds group folders rather than images, so a one-level listing would report the commonest invocation as an empty pool. Each tile's local name carries its group, because `face/<name>_1` and `body/<name>_1` share a basename and collided in one directory. |
+| `contact_sheet.py` | Labeled thumbnail grids over a character pool. It walks the pool **recursively**, like `characters/refs`: `reference` is the default and holds group folders rather than images, so a one-level listing would report the commonest invocation as an empty pool. Each tile's caption carries its group, because `face/<name>_1` and `body/<name>_1` share a basename. **The layout is a render job** — Pillow left this wheel with ffmpeg — and it is on the queue rather than being a synchronous route like `convert`, because what is unbounded here is N downloads where N is a character pool. `--src` is refused: a worker cannot see this machine's disk. |
 
 **The duplicate-submission guard is a query, and `engine/ledger.py` is deleted.**
 It kept a fingerprint of model, inputs and bound images per profile beside the
@@ -852,19 +864,37 @@ next identical payload look like a duplicate.
 
 **`objects/` — moving bytes.** `upload.py`, `download.py`, `presign.py`
 (how assets reach Replicate), `convert.py` (re-encode so a target engine accepts
-it) and `crop.py` (cut a rectangle out of one). `convert` writes into the
-project input pool through `projects.add_inputs` rather than repeating its
-numbering, staging the converted bytes to a temp file because that function
-takes local paths; `--dest-key` ensures the destination folder first, since the
-catalog has no folder until something asks for one. **`upload` ensures its
-`--folder` for the same reason** — it did not, so the first file into a new
-subfolder failed on a missing parent while `convert` in the next command
-succeeded, and nothing in the CLI created a folder at all. `crop.py` reuses
-`convert`'s source resolution, format table and destination handling; what is
-its own is the box parser and the clamp, where every error message names the way
-the box was wrong — `LEFT,TOP,WIDTH,HEIGHT` instead of `LEFT,TOP,RIGHT,BOTTOM`
-being the commonest. It deliberately contains no subject detection: that is
-platform work, and a wrong box is worse than no command.
+it) and `crop.py` (cut a rectangle out of one).
+
+**`convert` and `crop` are one `POST` each now, and Pillow is not in this
+wheel.** They are the two operations that deliberately did *not* go on the render
+queue: both are sub-second on a single image, so an enqueue plus two polls would
+cost more wall clock than the work — and Pillow is ~3 MB where `imageio-ffmpeg`
+is ~80, so the API image carries it and every request does not pay for a video
+toolchain. `backend/studio_core/routes/images.py` argues the split.
+
+What stays here is the part a route should not decide. `--for kling` is a
+registry lookup answering "is a conversion needed at all", and an
+already-acceptable source makes no request — a route answering "nothing to do"
+with a node id it did not create would be a strange thing for a POST to do.
+`--dest-key` ensures the destination folder first, since the catalog has no
+folder until something asks for one; **`upload` ensures its `--folder` for the
+same reason** — it did not, so the first file into a new subfolder failed on a
+missing parent while `convert` in the next command succeeded. `crop.py` reuses
+`convert`'s source resolution and destination handling; what is its own is the
+box parser, where every error message names the way the box was wrong —
+`LEFT,TOP,WIDTH,HEIGHT` instead of `LEFT,TOP,RIGHT,BOTTOM` being the commonest.
+The box is parsed on both sides and that is not duplication worth removing: a
+refusal that arrives before a request beats one that arrives as a 400, and the
+route has to check anyway because the SPA is not this command. It deliberately
+contains no subject detection: that is platform work, and a wrong box is worse
+than no command.
+
+**Two behaviours changed with the move and are worth knowing.** A repeated
+conversion lands `frame (2).jpg` beside the first rather than overwriting it —
+`catalog.create_numbered` never clobbers, which is the safer half of the trade in
+a versionless dev bucket. And a `--dest-key` with no slash in it lands beside the
+source rather than in the library root.
 
 **`maintenance/` — deleted, all of it.** This section used to describe eleven
 commands in various states of finishing. They are gone, and what replaced each is

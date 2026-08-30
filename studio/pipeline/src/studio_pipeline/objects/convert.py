@@ -11,17 +11,23 @@ into the tree — by default into the **project's input pool**, which is where
 working material belongs. The source is never modified: a run's output is
 append-only history, so it is copied, not re-encoded in place.
 
-Everything moves through `adapters/store`, so nothing here holds a bucket name
-or a credential. Two consequences worth knowing:
+THE PIXELS ARE PUSHED AROUND BY THE SERVICE, SYNCHRONOUSLY
+-----------------------------------------------------------
+**Pillow used to be in this wheel.** It is in the API image now, and this command
+is one `POST /api/images/convert`: the bytes never come down and never go back
+up, so a conversion is a request rather than a download, a decode, an encode and
+an upload.
 
-  * The **pool numbering is `projects.add_inputs`'**, not a second copy of it.
-    The bytes are in memory and that function takes local paths, so they are
-    staged to a temp file — cheaper than a second implementation of the naming
-    rule, which is what this module used to carry.
-  * `--dest-key` **ensures the destination folder first.** Folders were free in
-    S3 (a key with slashes in it produced the appearance of one) and are
-    catalog rows now, so a write into a folder nothing has created yet fails on
-    a parent that does not exist.
+**It is not on the render queue, and that was a decision rather than an
+oversight.** Stitching went to a worker because a re-encode is minutes and
+because ffmpeg is 80 MB nothing else should carry. A conversion is sub-second on
+one image, so an enqueue plus two polls would cost more wall clock than the work
+— and Pillow is 3 MB. `backend/studio_core/routes/images.py` states the split.
+
+What stays on this side is the **decision**: `--for kling` is a registry lookup
+that answers "is a conversion needed at all", and a source that is already
+acceptable makes no request. A route answering "nothing to do" with a node id it
+did not create would be a strange thing for a POST to do.
 
   # a run's output -> PNG in the project's input pool
   studio convert --run <project>/latest#1 --to png --add-input <project>
@@ -39,16 +45,14 @@ unconditionally.
 """
 from __future__ import annotations
 
-import hashlib
-import io
 import os
 import sys
-import tempfile
 
 import click
 
-from studio_pipeline.errors import die
-from studio_pipeline.adapters import api, store
+from studio_pipeline.errors import die, reports
+from studio_pipeline.adapters import api, entities, store
+from studio_pipeline.domain import paths as P
 from studio_pipeline.domain import projects as PROJECTS
 from studio_pipeline.domain import runs as R
 from studio_pipeline.engine import registry as REG
@@ -61,45 +65,45 @@ CONTENT_TYPE = {".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp"
 
 
 
-def _pool_name(source: str, key: str, ext: str) -> str:
-    """What a converted image is called inside the pool.
+def input_pool(project: str) -> str:
+    """The project's input pool folder node — where converted material belongs.
 
-    **The staged basename is the pool's name, so it has to be unique per
-    source.** It did not used to be: `projects.add_inputs` renumbered every file
-    to `<project>_in_<n>`, so this staged the bytes as a constant
-    `converted<ext>` and let the numbering do the work. `add_inputs` now keeps
-    the basename it is handed, and a same-named key overwrites — so seven
-    conversions in a row all wrote `converted.jpg`, and six of them silently
-    replaced the one before. The pool listed one file and the caller held seven
-    node ids that were all the same node.
+    **`add_inputs` no longer has to be gone through**, and the reason the old
+    code did is gone with it. The bytes used to be in this process's memory and
+    `projects.add_inputs` takes local paths, so a conversion was staged to a temp
+    file under a name this module had to invent — with a digest of the source key
+    in it, because seven conversions in a row all called `converted.jpg` silently
+    overwrote each other.
 
-    The source's own stem is not enough on its own: a node id resolves to a name
-    like `image.png`, and a character's face and body angle images are BOTH
-    called that, so two different sources would still collide. So the stem
-    carries the readability and a short digest of the source key carries the
-    uniqueness. Being a digest of the key rather than a counter, converting the
-    SAME source twice lands on the same name and overwrites itself, which is the
-    idempotence a chained `--for` call wants.
+    The API writes the file now and `create_numbered` resolves a clash, so a
+    second conversion of the same source lands `frame (2).png` beside the first.
+    The naming rule has one implementation again, and it is the catalog's.
     """
-    stem = os.path.splitext(os.path.basename(source))[0] or "converted"
-    return f"{stem}-{hashlib.sha256(key.encode()).hexdigest()[:8]}{ext}"
+    return store.ensure_child_folder(
+        PROJECTS.require_project(project)["root"], P.INPUT_FOLDER)["id"]
 
 
-def _into_input_pool(project: str, data: bytes, ext: str, name: str) -> str:
-    """Write converted bytes into a project's input pool, and return the node.
+def destination(add_input: str | None, dest_key: str | None
+                ) -> tuple[str | None, str | None]:
+    """-> (destination folder node, filename), from whichever flag was given.
 
-    **`projects.add_inputs` owns the pool**, and this module used to carry a
-    second copy of its naming rule. That function takes local paths — the pool is
-    normally fed from disk — so the bytes are staged to a temp file under the
-    name the pool should hold. It also ensures the pool folder, which a project
-    that has never had an input does not have.
+    `--dest-key` is a NAME PATH, so its parent has to exist before a file can
+    hang off it. Folders were free in S3 — a key with slashes produced the
+    appearance of one — and are catalog rows now, and `--dest-key` is the flag
+    most likely to name somewhere nothing has ever written. A path with no slash
+    sits in the library root, which is already there; asking for it would try to
+    create a folder named after the file. **It now lands beside the source
+    instead**, because the route resolves an unnamed destination to the source's
+    own parent — a small change, stated rather than hidden, and reachable only by
+    a `--dest-key` with no slash in it.
     """
-    with tempfile.TemporaryDirectory(prefix="convert-") as tmp:
-        staged = os.path.join(tmp, name)
-        with open(staged, "wb") as fh:
-            fh.write(data)
-        return PROJECTS.add_inputs(PROJECTS.require_project(project),
-                                   [staged])[0]["node"]
+    if dest_key:
+        clean = dest_key.strip("/")
+        if "/" in clean:
+            parent, name = clean.rsplit("/", 1)
+            return store.folder(parent)["id"], name
+        return None, clean
+    return input_pool(add_input), None
 
 
 def _source_name(key: str) -> str:
@@ -131,6 +135,12 @@ def _source_name(key: str) -> str:
 @click.option("--quality", type=int, default=95, help="JPEG/WebP quality (default 95).")
 @click.option("--run", help="Source runref, e.g. <name>/latest#1.")
 @click.option("--to", type=click.Choice(["jpeg", "jpg", "png", "webp"]), help="Target format.")
+# **Reported rather than raised**, and it was `die("no such object: …")` before.
+# The source used to be read here, so a missing one was this module's 404 to
+# name; the route reads it now, so the 404 arrives as an `api.NotFound` carrying
+# the path — and without this the commonest failure of this command is a
+# traceback instead of the sentence it always printed.
+@reports(api.NotFound, api.Forbidden, api.ApiError, R.RunError)
 def convert(add_input, dest_key, for_, key, project, quality, run, to):
     if not add_input and not dest_key:
         die("choose a destination: --add-input PROJECT (usual) or --dest-key KEY.")
@@ -170,43 +180,23 @@ def convert(add_input, dest_key, for_, key, project, quality, run, to):
         print("source is already in the target format; nothing converted.", file=sys.stderr)
         return 0
 
-    # --- convert (source is never modified) ---------------------------------
-    from PIL import Image
+    # --- the conversion is a request now ------------------------------------
+    #
+    # `--key` may hold a name path rather than a node id, so it is resolved to a
+    # node first: the route takes a node, because a node is the one address a
+    # rename cannot invalidate.
+    node = key if key.startswith("node-") else store.resolve(key)["id"]
+    folder, name = destination(add_input, dest_key)
+    reply = entities.convert_image(node, to=to or ("png" if for_ else None),
+                                   dest=folder, name=name, quality=quality)
 
-    try:
-        body = store.read_node(key) if key.startswith("node-") else store.read(key)
-    except api.NotFound:
-        # Named, because the commonest source of one is a runref that resolved
-        # to a key nothing wrote — and a traceback does not say which key.
-        die(f"no such object: {key}")
-    im = Image.open(io.BytesIO(body))
-    if target_ext == ".jpg" and im.mode in ("RGBA", "P", "LA"):
-        im = im.convert("RGB")  # JPEG has no alpha channel
-    buf = io.BytesIO()
-    save_kwargs = {"quality": quality} if target_ext in (".jpg", ".webp") else {}
-    im.save(buf, PIL_FORMAT[target_ext], **save_kwargs)
-    data = buf.getvalue()
-
-    # --- destination --------------------------------------------------------
-    if dest_key:
-        dst = dest_key.strip("/")
-        # The parent has to exist before a file can hang off it. S3 made the
-        # folder out of the key's slashes; the catalog does not, and `--dest-key`
-        # is the flag most likely to name somewhere nothing has written yet.
-        # A key with no slash sits in the library root, which is already there —
-        # asking for it would try to create a folder named after the file.
-        if "/" in dst:
-            store.folder(dst.rsplit("/", 1)[0])
-        store.write(dst, data, content_type=CONTENT_TYPE[target_ext])
-    else:
-        dst = _into_input_pool(add_input, data, target_ext,
-                               _pool_name(_source_name(key), key, target_ext))
-
-    print(dst)
+    image = reply["image"]
+    print(image["node"])
     # `_source_name`, not the raw `key`: with a runref the key is a node id, and
     # `os.path.basename` of a uuid is the uuid — which tells a reader nothing
     # about which image was converted.
-    print(f"converted {os.path.basename(_source_name(key))} ({ext}, {len(body)} B) -> "
-          f"{os.path.basename(dst)} ({target_ext}, {len(data)} B); source untouched",
+    print(f"converted {os.path.basename(_source_name(key))} "
+          f"({ext}, {reply['source']['bytes']} B) -> "
+          f"{image.get('name')} ({target_ext}, {reply['bytes']} B); source untouched",
           file=sys.stderr)
     return 0

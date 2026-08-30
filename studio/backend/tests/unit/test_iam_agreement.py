@@ -83,6 +83,11 @@ IAM_ACTION = {
 # three interesting rows is the name of the call — see the module docstring.
 S3_ACTIONS = {
     "get_object": {"s3:GetObject"},
+    # A managed transfer, and still one action. `download_fileobj` issues ranged
+    # GETs under the covers — which is why it needs no multipart grant on the way
+    # *in*, unlike `upload_file` on the way out, which this service deliberately
+    # never uses.
+    "download_fileobj": {"s3:GetObject"},
     "head_object": {"s3:GetObject"},
     "put_object": {"s3:PutObject"},
     "copy_object": {"s3:GetObject", "s3:PutObject"},

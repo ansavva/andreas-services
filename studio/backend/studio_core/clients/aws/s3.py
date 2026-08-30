@@ -263,6 +263,32 @@ def get_body(key: str, max_bytes: int) -> bytes:
     return response["Body"].read(max_bytes)
 
 
+def download(key: str, path: str) -> str:
+    """Stream one object to a local file. -> the path it was written to.
+
+    **The counterpart of `put_file`, and the same argument in reverse.** A render
+    job downloads clips a scene is cut from, and a 1080p shot is hundreds of
+    megabytes: `get_body` would put all of it in the Lambda's heap, so a
+    four-shot scene would need more memory than the file it is producing.
+    `download_fileobj` streams, so the peak is a buffer and the disk holds the
+    rest — which is why `modules/render` buys ephemeral storage rather than
+    memory.
+
+    Unlike `put_file` there is no multipart hazard on the way in: a ranged GET
+    reassembles to the same bytes, and the checksum this service records is
+    written on the way *out*.
+    """
+    try:
+        with open(path, "wb") as handle:
+            client().download_fileobj(config.media_bucket(), key, handle)
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") in ("404", "NoSuchKey", "NotFound"):
+            raise NotFoundError(key) from exc
+        logger.warning("GetObject failed for %s: %s", key, exc)
+        raise UpstreamError("Could not read the object") from exc
+    return path
+
+
 def content_hash(metadata: dict) -> str | None:
     """The MD5 of an object's bytes, off whatever S3 just told us about it.
 

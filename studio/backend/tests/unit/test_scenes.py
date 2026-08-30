@@ -15,10 +15,15 @@ to a plan; `run` and `panel` are what a render put there, and a plain replace
 would silently discard them — which would read as "the render vanished" long
 after the request that caused it.
 
-**Stitching stays in the CLI.** `ffmpeg` ships in the pipeline wheel and the
-Lambda has none, so `assemble` downloads, stitches locally, uploads through
-`POST /api/scenes/<id>/output` and patches the record. The API owns the record,
-not the encode — which is why there is an upload route here and no encode.
+**Stitching used to stay in the CLI and this file used to say so.** The reason
+given was that `ffmpeg` ships in the pipeline wheel and the Lambda has none —
+which is a fact about an image, and the image changed. A cut is a render job
+(`test_render.py`) done by a second container that has ffmpeg in it, and the
+worker writes `output`, `stitch`, `cuts` and `assembled` back onto the scene.
+
+`POST /api/scenes/<id>/output` is still here and still tested. It signs an upload
+for a cut made somewhere else, which is what a client that already holds the
+bytes wants; the render path does not use it.
 """
 
 from studio_core import config

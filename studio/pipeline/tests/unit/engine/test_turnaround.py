@@ -28,6 +28,7 @@ import yaml
 from click.testing import CliRunner
 
 from studio_pipeline import STUDIO_DIR, cli
+from studio_pipeline.adapters import store
 from studio_pipeline.domain import paths as P
 from studio_pipeline.domain import runs as R
 from studio_pipeline.engine import registry as REG
@@ -994,38 +995,67 @@ def test_review_sheet_labels_images_in_the_order_the_model_gets_them(library, sp
     seed = library.fake._child(library.character_root, "seed")
     photo = library.fake.put_file(seed["id"], "subject-a_1.png", png)["id"]
 
-    out = TURN.review_sheet("face_front", [plate, photo], str(tmp_path / "sheet"), {})
+    dest = library.fake._child(library.character_root, "seed")["id"]
+    out = TURN.review_sheet("face_front", [plate, photo],
+                            str(tmp_path / "sheet"), dest)
+
     assert os.path.isfile(out)
     assert out.endswith("face_front.png")
+    # **The captions are what this test is about, and they are now asserted on
+    # the JOB rather than by reading pixels.** The layout happens in the render
+    # worker; what this package decides is which nodes, in which order, under
+    # which labels — and `[ImageN]` in binding order is the whole point, because
+    # a sheet that natural-sorted its tiles would renumber the citations the
+    # prompt makes.
+    job = list(library.fake.renders.values())[-1]
+    assert job["kind"] == "sheet"
+    assert [part["node"] for part in job["params"]["parts"]] == [plate, photo]
+    assert [part["caption"].split()[0] for part in job["params"]["parts"]] == \
+        ["[Image1]", "[Image2]"]
 
 
-def test_review_sheet_downloads_each_image_once(library, spec, tmp_path):
-    """Identity images repeat across angles; the cache is what stops re-fetching."""
+def test_review_sheet_downloads_nothing_it_is_laying_out(library, spec, tmp_path,
+                                                         monkeypatch):
+    """**This asserted a download cache and there is nothing left to cache.**
+
+    Identity images repeat across angles, and every one of them used to come down
+    to this machine to be laid out by Pillow — so a per-run cache was what stopped
+    the same file being fetched once per angle. The worker reads them out of S3
+    now, so the only thing this process pulls is the finished sheet: one download
+    per angle, whatever the angle binds.
+    """
     from PIL import Image
     Image.new("RGB", (40, 60), "grey").save(tmp_path / "src.png")
     seed = library.fake._child(library.character_root, "seed")
     node = library.fake.put_file(seed["id"], "subject-a_1.png",
                                  (tmp_path / "src.png").read_bytes())["id"]
 
-    cache: dict = {}
-    TURN.review_sheet("a", [node], str(tmp_path / "s"), cache)
-    first = dict(cache)
-    TURN.review_sheet("b", [node], str(tmp_path / "s"), cache)
-    assert cache == first, "the second angle re-downloaded an image it already had"
+    fetched = []
+    real = store.download_node
+    monkeypatch.setattr(store, "download_node",
+                        lambda n, d: (fetched.append(n), real(n, d))[1])
+
+    TURN.review_sheet("a", [node], str(tmp_path / "s"), seed["id"])
+    TURN.review_sheet("b", [node], str(tmp_path / "s"), seed["id"])
+
+    assert node not in fetched, "a tile came down to be laid out here"
+    assert len(fetched) == 2, "one download per angle: the sheet itself"
 
 
-def test_contact_sheet_still_sorts_and_labels_by_name_without_captions(tmp_path):
-    """The browsing caller is unchanged by the review caller's needs."""
-    from PIL import Image
+def test_the_browsing_caller_still_natural_sorts_where_the_review_caller_does_not():
+    """The browsing caller is unchanged by the review caller's needs.
 
-    from studio_pipeline.domain import contact_sheet as SHEET
-    paths = []
-    for n in (10, 2):
-        p = tmp_path / f"subject-a_{n}.png"
-        Image.new("RGB", (30, 30), "grey").save(p)
-        paths.append(str(p))
-    out = SHEET.build(paths, str(tmp_path / "sheet.png"), cols=2, cell=60, quiet=True)
-    assert os.path.isfile(out)
+    Two orders, one layout engine. A pool listing wants `_2` before `_10`, which
+    is `natural_key`; a payload review wants the binding order left alone,
+    because tile N is what the prompt cites as `[ImageN]`. `SHEET.build` is in
+    the render worker's image now, so the sorting rule is asserted where it lives
+    — `backend/tests/unit/test_media.py`. What is still this package's is which
+    of the two it asks for, and `contact-sheet` asks by handing captions off the
+    natural-sorted pool walk.
+    """
+    names = ["subject-a_10.png", "subject-a_2.png"]
+    assert sorted(names, key=store.natural_key) == \
+        ["subject-a_2.png", "subject-a_10.png"]
 
 
 # --- the image budget ------------------------------------------------------

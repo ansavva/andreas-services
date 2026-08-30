@@ -76,15 +76,16 @@ export STUDIO_ALLOWED_ORIGIN="http://localhost:5173"
 # ---------------------------------------------------------------------------
 # A subshell, because `dev-aws-common.sh`'s `die` exits and the failure here
 # needs a message this script writes rather than that one. Its `log` output goes
-# to stderr, so what is captured is exactly the four values.
+# to stderr, so what is captured is exactly the values printed below.
 if ! dev_stack="$(
   # shellcheck source=dev-aws-common.sh
   source "$ROOT/studio/scripts/dev-aws-common.sh"
   load_machine_id false
   load_aws_identity
   load_dev_stack_outputs
-  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$DEV_POOL_ID" "$DEV_CLIENT_ID" \
-    "$DEV_BUCKET" "$DEV_TABLE" "$DEV_CALLBACK_URL" "$DEV_CALLBACK_QUEUE"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$DEV_POOL_ID" "$DEV_CLIENT_ID" \
+    "$DEV_BUCKET" "$DEV_TABLE" "$DEV_CALLBACK_URL" "$DEV_CALLBACK_QUEUE" \
+    "$DEV_RENDER_QUEUE"
 )"; then
   echo "Could not read this machine's dev stack." >&2
   echo "  The API verifies every request's token against the dev pool, so it" >&2
@@ -93,7 +94,7 @@ if ! dev_stack="$(
   exit 1
 fi
 IFS=$'\t' read -r POOL_ID CLIENT_ID MEDIA_BUCKET CATALOG_TABLE \
-  CALLBACK_URL CALLBACK_QUEUE <<<"$dev_stack"
+  CALLBACK_URL CALLBACK_QUEUE RENDER_QUEUE <<<"$dev_stack"
 
 export STUDIO_COGNITO_USER_POOL_ID="$POOL_ID"
 export STUDIO_COGNITO_CLIENT_ID="$CLIENT_ID"
@@ -125,6 +126,27 @@ else
   echo "This machine's stack has no callback endpoint, so a finished generation" >&2
   echo "  will not close itself. Re-apply with ./studio/scripts/dev-aws-setup.sh," >&2
   echo "  or close runs by hand with: studio runs reconcile <run>" >&2
+fi
+
+# ---------------------------------------------------------------------------
+# THE RENDER QUEUE, WHICH IS WHY THIS MACHINE ALSO RUNS A SECOND CONSUMER.
+#
+# Stitching moved out of the CLI and into the service, so `scenes assemble`,
+# `movies new`, `frames last` and `frames grid` are now `POST /api/renders` plus
+# a poll. In prod the queue is drained by a Lambda running a second image that
+# carries ffmpeg; here it is drained by a process below, running this checkout
+# against the ffmpeg in the backend's own virtualenv.
+#
+# Optional on the same terms as the callback queue above: a stack applied before
+# this landed has none, and everything that does not stitch still works. What
+# breaks with it unset is a clear refusal from `services/render.enqueue` naming
+# this variable — not a silent fall-through.
+# ---------------------------------------------------------------------------
+if [ -n "${RENDER_QUEUE:-}" ]; then
+  export STUDIO_RENDER_QUEUE_URL="$RENDER_QUEUE"
+else
+  echo "This machine's stack has no render queue, so scenes cannot be assembled" >&2
+  echo "  and frames cannot be pulled. Re-apply with ./studio/scripts/dev-aws-setup.sh." >&2
 fi
 
 # The Replicate token. The API holds the provider credential now — the CLI has
@@ -216,6 +238,18 @@ if [ -n "${STUDIO_CALLBACK_QUEUE_URL:-}" ]; then
   echo "Callbacks → ${STUDIO_CALLBACK_QUEUE_URL##*/}"
 fi
 (cd studio/backend && poetry run python -m studio_core.handlers.local.consumer.callback_consumer) &
+pids+=($!)
+
+# THE RENDER CONSUMER. The same arrangement, one queue over.
+#
+# `infra/envs/dev` declares the render queue and no worker, so this is what does
+# the stitching for a local stack — with the working tree, which is the whole
+# point. Started unconditionally for the same reason as the one above: it says so
+# once and exits 0 when the queue is unset.
+if [ -n "${STUDIO_RENDER_QUEUE_URL:-}" ]; then
+  echo "Renders  → ${STUDIO_RENDER_QUEUE_URL##*/}"
+fi
+(cd studio/backend && poetry run python -m studio_core.handlers.local.consumer.render_consumer) &
 pids+=($!)
 
 echo "Frontend → http://localhost:5173"
