@@ -17,8 +17,9 @@ local development pointed at production. It does not any longer — see the root
 | `catalog` | **The library.** The DynamoDB table that says what exists. |
 | `media` | **The media bucket.** Bytes only; nothing lists it. |
 | `auth` | Cognito user pool (admin-create-only) + secretless SPA client |
-| `compute` | ECR repo, the API Lambda, and its IAM — the bucket *and* table policies |
+| `compute` | ECR repo, the API Lambda, and its IAM — the bucket, the table, *and* the provider token |
 | `api_gateway` | REST API, Cognito authorizer, CORS gateway responses, stage |
+| `callbacks` | **Where a finished generation is reported.** Its own HTTP API, a receiver Lambda, SQS + a DLQ, and — in prod only — the worker that closes the run. **Both environments.** |
 | `api_domain` | `studio-api.andreas.services` custom domain + Route53 record |
 | `hosting` | The SPA's S3 bucket, CloudFront, OAC, SPA-fallback function |
 | `dev_storage` | **dev only.** `media` + `catalog` with every guard removed |
@@ -369,7 +370,28 @@ it is learned once and applies to both services.
 studio-dev-<short12>-app                         Cognito pool + SPA client
 studio-dev-<short12>-media-us-east-1             the dev media bucket
 studio-dev-<short12>-catalog                     the dev catalog table
+studio-dev-<short12>-callbacks                   the callback queue (+ -dlq)
+studio-dev-<short12>-callback-receiver           the Lambda Replicate calls
 ```
+
+**The last two are the exception to "this environment declares no Lambda and no
+API Gateway", and they earn it for one reason: Replicate cannot reach
+`http://localhost:8000`.** Generation happens in the API now and a prediction is
+closed by a callback, so without a public endpoint per machine the webhook path
+could not be exercised on a developer's machine at all — local development would
+poll, and the code that closes a run in production would be code nobody had ever
+run.
+
+What keeps it cheap is that **the deployed half is trivial and the half that
+changes is not deployed.** The receiver is one dependency-free file, packaged by
+Terraform as a zip straight out of `backend/` — no ECR, no image build, no
+deploy step — and all it does is put the callback on the queue. `dev-up.sh` then
+runs a consumer that long-polls that queue and closes the run with the working
+tree. An apply is still seconds.
+
+A stack applied before this landed has neither, and everything else about it
+works: `dev-up.sh` says so once and a finished generation waits for `studio runs
+reconcile <run>`.
 
 `<short12>` is the first twelve hex characters of the UUID. `dev-aws-common.sh`
 computes it as `RESOURCE_PREFIX` and passes it in; `envs/dev` never generates

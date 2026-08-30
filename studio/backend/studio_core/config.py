@@ -138,6 +138,89 @@ def max_folder_objects():
     return int(os.environ.get("STUDIO_MAX_FOLDER_OBJECTS", "2000"))
 
 
+def replicate_token_parameter():
+    """The SSM parameter holding the Replicate API token, or `""` for none.
+
+    A **name**, not a value: the parameter is a SecureString and this service
+    reads it at call time so the secret never sits in the function's environment,
+    where `lambda:GetFunctionConfiguration` would hand it to anyone who can list
+    the account. Set by the deploy workflow from the compute module's output.
+    """
+    return os.environ.get("STUDIO_REPLICATE_TOKEN_PARAMETER", "").strip()
+
+
+def replicate_token_env():
+    """The Replicate token straight from the environment, or `""`.
+
+    **This is how local development and the test suite work**, and it is checked
+    before the parameter above. `dev-up.sh` runs this API as an ordinary process
+    under a developer's own AWS key, and the token is already in
+    `~/.config/andreas-services/studio/dev.env` — so requiring SSM locally would
+    mean provisioning a per-machine parameter for a value that is not
+    environment-scoped in the first place.
+
+    In prod it is unset. That asymmetry is the point: the deployed function reads
+    a SecureString, and nothing in the deploy workflow ever holds the plaintext.
+    """
+    return os.environ.get("REPLICATE_API_TOKEN", "").strip()
+
+
+def webhook_base_url():
+    """Where Replicate should call back, or `""` when nothing can reach us.
+
+    **Not this API's own origin.** It is the receiver's — a small zip Lambda
+    behind its own API Gateway route, which enqueues the callback and answers in
+    milliseconds. In prod the two happen to sit on the same gateway; on a
+    developer's machine they are nothing alike, because the API is Flask on
+    `localhost:8000` and the receiver is a per-machine `execute-api` URL in AWS.
+    That asymmetry is the point of the split: a laptop cannot receive a webhook,
+    and it can drain a queue.
+
+    **`""` is a supported configuration rather than a misconfiguration.** A
+    machine with no dev stack provisioned, and CI, both run with it unset: the
+    prediction is created with no webhook at all and the run is closed by
+    `POST /api/runs/<id>/reconcile` instead. `services.generate` reports which of
+    the two a submission got, in the `callback` field of its response.
+    """
+    return os.environ.get("STUDIO_WEBHOOK_BASE_URL", "").strip().rstrip("/")
+
+
+def callback_queue_url():
+    """The SQS queue a received callback is enqueued onto, or `""`.
+
+    Read by the local consumer (`handlers/local/consumer`) and by nothing else
+    in this process: the receiver Lambda reads its own environment directly
+    because it imports none of this, and the prod worker is driven by an event
+    source mapping rather than by a poll.
+    """
+    return os.environ.get("STUDIO_CALLBACK_QUEUE_URL", "").strip()
+
+
+def webhook_tolerance_seconds():
+    """How far out of date a webhook's timestamp may be before it is refused.
+
+    Bounds replay: a captured callback re-sent after this window fails
+    verification even though its signature is still valid for its own body. Five
+    minutes is the value Replicate's own documentation uses, and it has to
+    absorb real clock skew between their sender and this Lambda — too tight and
+    a legitimate callback is dropped, which loses an output somebody paid for.
+    """
+    return int(os.environ.get("STUDIO_WEBHOOK_TOLERANCE_SECONDS", "300"))
+
+
+def max_output_bytes():
+    """The largest model output this service will pull into the bucket.
+
+    The same 5 GiB ceiling `max_upload_bytes` names, and for the same reason: it
+    is the point past which a single `PutObject` is impossible. The callback
+    streams the download to disk and then sends it in one PUT, so the object's
+    ETag stays the MD5 of its bytes and `s3.content_hash` keeps working — a
+    multipart upload would produce a hash-of-hashes and every output would lose
+    the checksum #535 added.
+    """
+    return int(os.environ.get("STUDIO_MAX_OUTPUT_BYTES", str(5 * 1024**3)))
+
+
 def cognito_user_pool_id():
     """The pool whose issuer and signing keys a caller's token is checked against.
 

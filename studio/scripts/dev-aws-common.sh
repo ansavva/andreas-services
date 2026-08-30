@@ -271,6 +271,20 @@ load_dev_stack_outputs() {
   DEV_AUTH_DOMAIN="$(jq -r '.outputs.cognito_auth_domain.value // empty' <<<"$state_json")"
   DEV_BUCKET="$(jq -r '.outputs.media_bucket_name.value // empty' <<<"$state_json")"
   DEV_TABLE="$(jq -r '.outputs.catalog_table_name.value // empty' <<<"$state_json")"
+  # WHERE REPLICATE CALLS BACK FOR THIS MACHINE, AND THE QUEUE IT LANDS ON.
+  #
+  # Replicate cannot reach `http://localhost:8000`, so a generation submitted
+  # against this stack is reported to a real AWS endpoint that enqueues it, and
+  # `dev-up.sh` runs a consumer which drains that queue with the local working
+  # tree. See `infra/modules/callbacks`.
+  #
+  # **Deliberately NOT in the required list below.** A stack applied before this
+  # landed has neither, and every other thing a developer does with it still
+  # works — so an empty value degrades to "runs are closed by `studio runs
+  # reconcile`" rather than refusing to start the app. `dev-up.sh` says so once,
+  # in words, and names the re-apply.
+  DEV_CALLBACK_URL="$(jq -r '.outputs.callback_base_url.value // empty' <<<"$state_json")"
+  DEV_CALLBACK_QUEUE="$(jq -r '.outputs.callback_queue_url.value // empty' <<<"$state_json")"
   [[ -n "$DEV_POOL_ID" && -n "$DEV_CLIENT_ID" && -n "$DEV_AUTH_DOMAIN" && -n "$DEV_BUCKET" && -n "$DEV_TABLE" ]] ||
     die "Terraform state is missing required development outputs. Re-run ./studio/scripts/dev-aws-setup.sh."
 }

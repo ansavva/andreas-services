@@ -83,7 +83,8 @@ if ! dev_stack="$(
   load_machine_id false
   load_aws_identity
   load_dev_stack_outputs
-  printf '%s\t%s\t%s\t%s\n' "$DEV_POOL_ID" "$DEV_CLIENT_ID" "$DEV_BUCKET" "$DEV_TABLE"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$DEV_POOL_ID" "$DEV_CLIENT_ID" \
+    "$DEV_BUCKET" "$DEV_TABLE" "$DEV_CALLBACK_URL" "$DEV_CALLBACK_QUEUE"
 )"; then
   echo "Could not read this machine's dev stack." >&2
   echo "  The API verifies every request's token against the dev pool, so it" >&2
@@ -91,7 +92,8 @@ if ! dev_stack="$(
   echo "    ./studio/scripts/dev-aws-setup.sh && ./studio/scripts/dev-user.sh" >&2
   exit 1
 fi
-IFS=$'\t' read -r POOL_ID CLIENT_ID MEDIA_BUCKET CATALOG_TABLE <<<"$dev_stack"
+IFS=$'\t' read -r POOL_ID CLIENT_ID MEDIA_BUCKET CATALOG_TABLE \
+  CALLBACK_URL CALLBACK_QUEUE <<<"$dev_stack"
 
 export STUDIO_COGNITO_USER_POOL_ID="$POOL_ID"
 export STUDIO_COGNITO_CLIENT_ID="$CLIENT_ID"
@@ -101,6 +103,43 @@ export STUDIO_COGNITO_CLIENT_ID="$CLIENT_ID"
 # refuses an incomplete state, so reaching here means all four are set.
 export STUDIO_MEDIA_BUCKET="$MEDIA_BUCKET"
 export STUDIO_CATALOG_TABLE="$CATALOG_TABLE"
+
+# ---------------------------------------------------------------------------
+# THE CALLBACK PATH, WHICH IS WHY THIS MACHINE HAS AN API GATEWAY IN AWS.
+#
+# Generation happens in the API now, and a prediction is closed by Replicate
+# calling back. Replicate cannot reach `http://localhost:8000` — so a callback
+# for a run submitted here lands on this machine's own endpoint, which enqueues
+# it, and the consumer started further down drains that queue and closes the run
+# **with this checkout**. The webhook path is therefore exercised by the code
+# being edited rather than first running for real in production.
+#
+# Both are optional. A stack applied before this landed has neither, and the
+# only consequence is that a finished generation waits for
+# `studio runs reconcile <run>` instead of closing itself.
+# ---------------------------------------------------------------------------
+if [ -n "$CALLBACK_URL" ] && [ -n "$CALLBACK_QUEUE" ]; then
+  export STUDIO_WEBHOOK_BASE_URL="$CALLBACK_URL"
+  export STUDIO_CALLBACK_QUEUE_URL="$CALLBACK_QUEUE"
+else
+  echo "This machine's stack has no callback endpoint, so a finished generation" >&2
+  echo "  will not close itself. Re-apply with ./studio/scripts/dev-aws-setup.sh," >&2
+  echo "  or close runs by hand with: studio runs reconcile <run>" >&2
+fi
+
+# The Replicate token. The API holds the provider credential now — the CLI has
+# none at all — so it is the local Flask process that needs it, and it is read
+# from the same file it has always lived in. In prod the equivalent is an SSM
+# SecureString the Lambda reads under its own role; there is deliberately no
+# per-machine parameter, because a token is not environment-scoped.
+if [ -z "${REPLICATE_API_TOKEN:-}" ] && [ -f "$HOME/.config/andreas-services/studio/dev.env" ]; then
+  # shellcheck disable=SC1091
+  set -a; source "$HOME/.config/andreas-services/studio/dev.env"; set +a
+fi
+if [ -z "${REPLICATE_API_TOKEN:-}" ]; then
+  echo "REPLICATE_API_TOKEN is not set, so this API cannot submit a generation." >&2
+  echo "  Put it in ~/.config/andreas-services/studio/dev.env. Everything else works." >&2
+fi
 
 # Where `studio login` and every other CLI call go (#300). Defaults to the
 # deployed API; pointed at the Flask process this script is about to start, so
@@ -160,6 +199,23 @@ trap cleanup EXIT INT TERM
 
 echo "Backend  → http://localhost:8000"
 (cd studio/backend && poetry run python -m studio_core.handlers.local.api.api_dev_server) &
+pids+=($!)
+
+# THE CONSUMER. **The half of the callback path that is not deployed.**
+#
+# It long-polls this machine's queue and closes each finished run with the
+# working tree — `services/callbacks.py`, the same module the prod worker Lambda
+# drives. That is the whole reason receiving and processing were separated: the
+# deployed half is a fixed twenty lines that only enqueues, and the half that
+# changes runs here, under Flask's own reloader-free process but from the same
+# source tree.
+#
+# Started even when the queue is unset: it says so once and exits 0, which is
+# quieter than a conditional here and means one less thing to keep in step.
+if [ -n "${STUDIO_CALLBACK_QUEUE_URL:-}" ]; then
+  echo "Callbacks → ${STUDIO_CALLBACK_QUEUE_URL##*/}"
+fi
+(cd studio/backend && poetry run python -m studio_core.handlers.local.consumer.callback_consumer) &
 pids+=($!)
 
 echo "Frontend → http://localhost:5173"

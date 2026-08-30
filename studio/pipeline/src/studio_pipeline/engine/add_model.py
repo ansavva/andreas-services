@@ -40,7 +40,8 @@ import sys
 
 import click
 
-from studio_pipeline.adapters import replicate as RA
+from studio_pipeline.adapters import api
+from studio_pipeline.adapters import entities
 from studio_pipeline.engine import registry as REG
 from studio_pipeline.engine import registry_file as RF
 from studio_pipeline.engine import schema as MS
@@ -60,11 +61,18 @@ VIDEO_HINTS = ("duration", "fps", "generate_audio", "mode", "multi_prompt", "vid
 EXT_RE = re.compile(r"\.(jpe?g|png|webp|gif|bmp)\b", re.I)
 
 
-def readme(model: str, token: str) -> str:
-    """The model's prose docs. Returns "" when it has none — not fatal."""
+def readme(model: str) -> str:
+    """The model's prose docs. Returns "" when it has none — not fatal.
+
+    Read through `GET /api/models/<name>/readme` rather than from Replicate
+    directly: the API holds the provider credential now, and onboarding a model
+    was one of the last three reasons a developer's machine needed one. What is
+    inferred from this prose still happens here, because what it produces is a
+    repo file somebody reviews.
+    """
     try:
-        return RA.api_text(f"{RA.API_ROOT}/models/{model}/readme", token)
-    except RA.ReplicateError:
+        return entities.model_readme(model)
+    except api.ApiError:
         return ""
 
 
@@ -215,15 +223,14 @@ def add_model(model, json_, key, write):
         die(f"{model} is already registered as {existing['key']!r}.\n"
             f"       edit models.json directly, then: studio models refresh {existing['key']}")
 
-    token = RA.load_token()
     try:
-        props, schemas = MS.fetch(model, token)
+        props, schemas = MS.fetch(model)
     except MS.SchemaError as e:
         die(str(e))
     if not props:
         die(f"{model} has no published input schema — cannot onboard it.")
 
-    entry, notes = infer(model, props, schemas, readme(model, token))
+    entry, notes = infer(model, props, schemas, readme(model))
     key = key or model.split("/", 1)[1]
 
     if json_:

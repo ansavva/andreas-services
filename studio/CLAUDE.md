@@ -25,7 +25,7 @@ Studio is one service with two halves that share one library.
 
 | Half | Where | Runs | Doc |
 |---|---|---|---|
-| **The pipeline** — makes the media | `pipeline/` (code) + `.claude/skills/` (docs) | Locally, inside Claude, on the token `studio login` stores — **no AWS credentials at all** (#308). **Never deploys.** | [docs/PIPELINE.md](docs/PIPELINE.md) |
+| **The pipeline** — makes the media | `pipeline/` (code) + `.claude/skills/` (docs) | Locally, inside Claude, on the token `studio login` stores — **no AWS credentials at all** (#308), and since #536 **no Replicate credential either**. **Never deploys.** | [docs/PIPELINE.md](docs/PIPELINE.md) |
 | **The app** — browses the media | `backend/`, `frontend/` | `studio.andreas.services` + `studio-api.andreas.services`, deployed by CI | [docs/WEB_APP.md](docs/WEB_APP.md) |
 | The library both read | `infra/modules/catalog` + `infra/modules/media` | prod: `studio-prod-catalog` + `s3://studio-prod-media-us-east-1/`. Locally: this machine's dev stack. | [infra/README.md](infra/README.md) |
 
@@ -106,6 +106,13 @@ Every generation costs money. Before any submit, show the complete `input`
 object as two JSON documents — `PROMPT` then `INPUT` — and get explicit
 approval. Re-approve after **any** edit. `--dry-run` renders exactly this
 without billing.
+
+**The spending moved into the API and this rule did not move with it (#536).**
+`POST /api/runs/<id>/submit` is what calls Replicate now; what shows a person the
+payload is still the CLI, and still the SPA's run page. That is deliberate rather
+than left over: a service has nobody in front of it, so the half of this rule
+that a machine can enforce — the approval exists and still matches — is the
+digest gate, and the half only a person can perform stays where the person is.
 
 **Approval is of a payload, not of a plan.** A yes to "shall I shoot?", a
 multiple-choice answer, or a payload shown several messages ago is not approval
@@ -253,6 +260,12 @@ Four things worth knowing before using it:
 - **Selecting `prod` is treated as sufficient intent — there is no confirmation
   step.** Hard rule #2 is untouched and still applies: a generation shows its
   full payload and waits for a yes wherever it runs.
+- **A profile now decides whose Replicate account pays, indirectly.** The CLI
+  holds no provider token; the API it is pointed at does. So `--profile prod`
+  submits against the deployed API's credential and a `dev-up.sh` shell submits
+  against the one in `~/.config/andreas-services/studio/dev.env`. Both are real
+  money — the dev stack is real AWS and a real Replicate account — and the only
+  thing `fake` mode ever protected was the test suites.
 
 **A profile is not a permission boundary, and there is much less behind it than
 there was.** This used to warn that `catalog gc`, `catalog verify` and `dev-seed`
@@ -298,6 +311,26 @@ a stack holding any name outside `DEV_SUBJECTS` and requires
 shared material `dev-setup.sh` pushes: the angle images, and nothing else. It
 used to seed a starting `phrasebook/wording.yaml` too (#425); the phrasebook is
 `TERM#` rows now, so there is no document to seed.
+
+**A dev stack now holds a public endpoint, and it is the only one studio has.**
+`module.callbacks` gives each machine an API Gateway, an SQS queue and a small
+receiver Lambda, because Replicate cannot call back to `http://localhost:8000` —
+so a generation submitted against a local API is reported to that endpoint, and
+`dev-up.sh` runs a consumer that drains the queue and closes the run **with the
+working tree**. Before this, the code that closes a run in production was code
+nobody had ever executed locally.
+
+Three consequences worth knowing:
+
+- **A stack applied before #536 has neither**, and everything else still works.
+  `dev-up.sh` says so once and a finished generation waits for `studio runs
+  reconcile <run>`. Re-apply with `dev-aws-setup.sh` to get the endpoint.
+- **The receiver is a zip built from `backend/`, not an image.** No ECR, no build
+  step, so an apply is still seconds — `envs/dev` declines a Lambda everywhere
+  else for exactly that reason.
+- **`dev-aws-destroy.sh` takes the queue with it.** A callback in flight during a
+  teardown is lost, which is the same as any other dev resource and is why the
+  reconcile route exists.
 
 **`STUDIO_DEV_MACHINE_ID` targets a stack this machine did not create.** Export
 it and every command above agrees, because `dev-aws-common.sh` persists it. Two

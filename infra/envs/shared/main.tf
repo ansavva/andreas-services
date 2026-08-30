@@ -348,6 +348,45 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     actions   = ["ssm:DescribeParameters"]
     resources = ["*"]
   }
+
+  # KMS, and ONLY through SSM. **Required the moment any service stores a
+  # SecureString**, which studio is the first to do — the Replicate API token,
+  # written here by `studio-prod.yaml` from a GitHub environment secret and read
+  # at runtime by the Lambda under its own role.
+  #
+  # A SecureString is encrypted with the account's AWS-managed `aws/ssm` key,
+  # whose key policy grants the account access *conditioned on the call arriving
+  # via SSM* — which means it delegates the real decision to IAM, so the caller's
+  # own policy has to allow it. Without this, `PutParameter --type SecureString`
+  # and Terraform's read-back both fail with an `AccessDeniedException` naming
+  # **KMS**, which sends the reader to look for a KMS policy that does not exist.
+  #
+  # `kms:ViaService` is the whole of the scope and is what makes `resources =
+  # ["*"]` acceptable here: this role can use the key through Parameter Store and
+  # in no other way. It cannot decrypt an EBS volume, an S3 object or anybody's
+  # secret — only a parameter it is already allowed to read by the statement
+  # above.
+  #
+  # **This is applied by a DIFFERENT workflow from the one that needs it**, which
+  # is the same trap the SSM statement above documents: the shared apply has to
+  # land before studio's next deploy, or that deploy fails at the parameter with
+  # an error naming a service nobody changed.
+  statement {
+    sid    = "UseTheSsmKeyThroughSsmOnly"
+    effect = "Allow"
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:DescribeKey",
+    ]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["ssm.${var.aws_region}.amazonaws.com"]
+    }
+  }
 }
 
 resource "aws_iam_policy" "github_actions" {

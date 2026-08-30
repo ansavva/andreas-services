@@ -73,7 +73,8 @@ is position N in the resolved selection.
 
 `--dry-run` renders the payload for approval and submits nothing. The same
 checks run on a dry run as on a real submit, so **an approved payload is a
-payload that submits**:
+payload that submits** — and a payload the model would refuse is refused before
+a draft is even written, leaving nothing behind:
 
 1. **`denied`** — documented constraints the schema does *not* enforce. The
    generated schema is sometimes more permissive than the model (`gpt-image-2`
@@ -136,8 +137,18 @@ actually honours.** `studio-media-add-model` reads both for exactly this reason.
   [`studio-media-s3`](../studio-media-s3/SKILL.md)).
 - **The request is recorded before submitting**, so a failed render
   is still history.
+- **The submission is declared before the provider is called.** A run reaches
+  `pending` first, so the approval gate stands in front of the money — and a
+  process that dies in between leaves a run that reads as "went out and never
+  answered" rather than as a draft nobody sent.
 - **Never `Prefer: wait`.** A timed-out wait retries internally and can create
-  duplicate *billed* predictions. Create, then poll.
+  duplicate *billed* predictions. The prediction is created and then left alone;
+  the provider reports back when it finishes.
+- **A generation is not attached to your terminal.** `studio run` waits for a
+  result, and interrupting that wait abandons the wait rather than the run —
+  the work is closed by something else, so it finishes either way. A run that is
+  still `running` long after it should have settled is
+  `studio runs reconcile <run>`.
 - **Identity and working material stay distinct** — a character's `reference/`
   is identity, chosen from a described index and capped by the model; a
   project's `input/` is uncapped working material, picked from by number. A

@@ -2,23 +2,41 @@
 
 The image and video submitters were ~816 lines doing the same nine steps with
 different field names. Those names are registry data now, so the steps live
-here once:
+here once — but **only the first four of them are still in this process**:
 
-    gather image inputs as NODE IDS
-      -> reject what this model will not accept  (docs first, then live schema)
-      -> render for approval / stop at --dry-run
-      -> RECORD THE RUN                          (before submitting, so a
-                                                  failure is still history)
-      -> presign at the last moment              (never stored)
-      -> create the prediction                   (this is what bills)
-      -> poll                                    (never `Prefer: wait`)
-      -> upload the output into the run
-      -> close the run
+    gather image inputs as NODE IDS               ── here
+      -> reject what this model will not accept   ── here (a courtesy; see below)
+      -> render for approval / stop at --dry-run  ── here.  HARD RULE #2.
+      -> RECORD THE RUN as a DRAFT                ── here
+      ─────────────────────────────────────────────────────────────────────────
+      -> presign at the last moment               ── the API
+      -> create the prediction                    ── the API.  This bills.
+      -> upload the output into the run           ── the callback consumer
+      -> close the run                            ── the callback consumer
 
-Every invariant the two originals defended is defended here, and the places
-where they legitimately differ — a video may be submitted without waiting, an
-image may not be generated imageless by accident — are `KIND` below, not
-branches scattered through the flow.
+**`poll` is gone from that list entirely and its absence is the change.** The
+prediction used to be waited on by this process, so a 15-minute video meant a
+terminal nobody could close, `Ctrl-C` left a run wedged at `pending` with a
+prediction still running, and the SPA could not submit at all because it had no
+credential and nothing to wait in. Replicate calls the API back now. What is left
+here is `wait_for`, which watches the run row and can be interrupted without
+losing anything — the generation is not attached to this terminal any more.
+
+**Nothing in this module holds a Replicate token, and nothing in this package
+does.** `adapters/replicate.py` is deleted. The one paid call in the repository
+is `clients/replicate.create_prediction` in the backend, reached through
+`POST /api/runs/<id>/submit`.
+
+What did NOT move is the half that faces a person. `gather` decides which image
+lands in which field and in which position, `render` prints the two documents
+hard rule #2 asks somebody to read, and `draft` records the payload before any of
+it is approved. Those are authoring, they bill nothing, and they belong where the
+person is.
+
+Every invariant the two originals defended is defended here or in
+`services/generate.py`, and the places where the two mediums legitimately differ
+— a video may be submitted without waiting, an image may not be generated
+imageless by accident — are `KIND` below, not branches scattered through the flow.
 
 BINDINGS ARE NODE IDS
 ---------------------
@@ -45,12 +63,12 @@ deleted.
 
 import json
 import os
+import pathlib
 import sys
-import tempfile
+import time
 
 from studio_pipeline.adapters import api
 from studio_pipeline.adapters import entities
-from studio_pipeline.adapters import replicate as RA
 from studio_pipeline.adapters import store
 from studio_pipeline.domain import runs as R
 from studio_pipeline.engine import refs as REFS
@@ -441,15 +459,24 @@ def _check_image_budget(entry: dict, bindings: dict) -> None:
             f"reference rather than a face one.")
 
 
-def preflight(entry: dict, payload: dict, bindings: dict, token: str) -> None:
+def preflight(entry: dict, payload: dict, bindings: dict) -> None:
     """Documented constraints first, then the live schema.
 
     Runs on --dry-run too, so an approved payload is a payload that submits.
+
+    **A courtesy now, not the gate.** The API runs its own copy of this at submit
+    time (`services/generate.preflight`), because the SPA submits too and never
+    passes through here. What this one buys is the message: it happens before the
+    draft is written, so a bad payload never becomes a row, and it can afford the
+    sibling-model lookup below that names where an unknown field *is* accepted.
+
+    **No token.** The schema is read through `GET /api/models/<name>/schema` —
+    see `engine/schema.py` for why the credential left this package.
     """
     model = entry["model"]
     _check_image_budget(entry, bindings)
     MS.check_denied(payload, entry, model)
-    props, schemas = MS.fetch(model, token)
+    props, schemas = MS.fetch(model)
     alts: dict[str, dict] = {}
     if [k for k in list(payload) + list(bindings) if k not in props]:
         # Only on the error path — worth extra lookups to name the fix.
@@ -457,7 +484,7 @@ def preflight(entry: dict, payload: dict, bindings: dict, token: str) -> None:
             if key == entry["key"]:
                 continue
             try:
-                alts[key], _ = MS.fetch(other["model"], token)
+                alts[key], _ = MS.fetch(other["model"])
             except MS.SchemaError:
                 pass
     MS.check(payload, bindings, model, props, schemas, alternatives=alts)
@@ -466,6 +493,21 @@ def preflight(entry: dict, payload: dict, bindings: dict, token: str) -> None:
 # --------------------------------------------------------------------------
 # 3. render — the approval view
 # --------------------------------------------------------------------------
+
+#: What the approval render says the payload will be POSTed to.
+#:
+#: **A string this process no longer calls**, and it stays because hard rule #2
+#: is about what a person can check: a payload document that did not say where it
+#: was going would be a worse thing to approve. It came from
+#: `adapters/replicate.predictions_endpoint`, which went with the rest of that
+#: module when the submission moved into the API.
+REPLICATE_PREDICTIONS = "https://api.replicate.com/v1/models/{model}/predictions"
+
+
+def predictions_endpoint(model: str) -> str:
+    """The URL the API will POST this payload to. Shown, never called."""
+    return REPLICATE_PREDICTIONS.format(model=model)
+
 
 def render(entry: dict, run: str, payload: dict, bindings: dict, as_json: bool) -> str:
     """The two-document approval render, or raw JSON for machines.
@@ -480,7 +522,7 @@ def render(entry: dict, run: str, payload: dict, bindings: dict, as_json: bool) 
     will hold and what a follow-up command takes. `--json` keeps bare ids,
     because its consumer is a machine that wants the identity and not the label.
     """
-    endpoint = RA.predictions_endpoint(entry["model"])
+    endpoint = predictions_endpoint(entry["model"])
     if as_json:
         return json.dumps({
             "run": run, "model": entry["model"], "endpoint": endpoint,
@@ -607,7 +649,17 @@ def draft(entry: dict, payload: dict, bindings: dict, args) -> dict:
             plan=plan_of(entry, payload),
             sends=sends_for(entry, bindings),
             characters=REFS.character_ids(characters),
-            prompt_source=prompt_source)
+            prompt_source=prompt_source,
+            # **What the output file will be called, recorded at DRAFT time.**
+            # It used to be an argument to the download, because the download
+            # happened in this process. The API downloads now, driven by a
+            # callback that arrives with no request body — so if the name is not
+            # on the row before the submission, nothing will ever know it.
+            #
+            # Not part of `plan`, deliberately: `plan_digest` hashes the plan, so
+            # a filename in there would void an approval over something the
+            # provider is never sent.
+            name=R.slugify(getattr(args, "name", None) or defaults(kind)["slug"]))
     except R.RunError as e:
         raise SubmitError(f"refusing to record an invalid request: {e}")
     except REFS.RefError as e:
@@ -635,8 +687,7 @@ def approve(record: dict) -> dict:
             f"studio runs show {record['id']}"
         ) from exc
 
-
-def execute(entry: dict, payload: dict, bindings: dict, token: str, args,
+def execute(entry: dict, payload: dict, bindings: dict, args,
             on_drafted=None) -> dict:
     """Draft, approve, submit — and return the RUN RECORD.
 
@@ -657,115 +708,161 @@ def execute(entry: dict, payload: dict, bindings: dict, token: str, args,
     window where a duplicate can be refused for free: the draft exists, so its
     fingerprint does, and nothing has billed. `runner.py` passes the refusal;
     a caller that does not care passes nothing and the flow is what it was.
+
+    **The `token` argument is gone from here and from `submit`.** Nothing in this
+    package holds a Replicate credential any more; the API does.
     """
     record = draft(entry, payload, bindings, args)
     if on_drafted is not None:
         on_drafted(record)
     approve(record)
-    return submit(entry, record, payload, bindings, token, args)
+    return submit(entry, record, payload, bindings, args)
 
 
 def submit(entry: dict, record: dict, payload: dict, bindings: dict,
-           token: str, args) -> dict:
-    """The half that bills. Refused by the API unless the run is approved.
+           args) -> dict:
+    """Ask the API to send it. **One call, and this process stops being load-bearing.**
 
-    **The status moves to `pending` BEFORE the provider is called**, which is
-    what puts the gate in front of the money rather than behind it. It also makes
-    a killed process legible: a run left at `pending` with no prediction id was
-    submitted and never answered, where a run left at `draft` never went out.
+    This function was 100 lines: patch to `pending`, presign every binding, create
+    the prediction, poll until it settled, download each output, upload it into
+    the run, close the row. All of that is `POST /api/runs/<id>/submit` and a
+    callback now, and what it cost to keep here is worth restating rather than
+    forgetting:
+
+    * **A generation was attached to a terminal.** A 15-minute video meant a
+      window nobody could close, and `Ctrl-C` at minute 14 left a run at
+      `running` with a prediction still billing and nothing to record it.
+    * **The SPA could not submit at all.** It has no provider credential and
+      nowhere to poll from, so every generation had to originate in a CLI.
+    * **The download was this machine's.** A 200 MB clip came down a home
+      connection and went back up to S3.
+
+    `payload` and `bindings` are still parameters and are still **not sent**. The
+    API rebuilds both from the run's own plan and sends, which is the point: a
+    payload assembled twice is two opinions about what was approved. They are
+    here because the caller has them and because `--dest` and the render below
+    read them, and they are deliberately not passed to the route.
+
+    **What is preserved exactly:** the API moves the run to `pending` before it
+    calls the provider, so the approval gate still stands in front of the money
+    and a submission that dies in flight still reads as "went out and never
+    answered" rather than as a draft.
     """
     kind = entry["kind"]
     d = defaults(kind)
     project = args.project          # the project record, resolved by the caller
-    # **A FILENAME, NOT AN IDENTITY.** This used to be the run's slug, which
-    # named the run, named its folder and named its outputs all at once. The run
-    # and its folder are named by id now; what survives here is the only part
-    # that was ever worth having — what the downloaded file is called.
-    name = R.slugify(getattr(args, "name", None) or d["slug"])
-
     run_id = record["id"]
     print(f"run {run_id}  (in {project['slug']})", file=sys.stderr)
 
-    # **The submission is declared before the provider is called.** The API
-    # refuses this transition unless the run is approved and the approval still
-    # matches the payload, so the gate stands in front of the money rather than
-    # behind it — and a process killed after this point leaves a run at
-    # `pending` with no prediction id, which reads as "went out, never answered"
-    # rather than as a draft nobody submitted.
     try:
-        entities.patch_run(run_id, status="pending")
+        sent = entities.submit_run(run_id)
     except api.ApiError as exc:
         raise SubmitError(
             f"refusing to submit run {run_id}: {exc}\n"
-            f"       Nothing was sent and nothing billed. Read the payload and "
-            f"approve it: studio runs approve {run_id}"
+            f"       Read the payload and approve it: studio runs approve {run_id}"
         ) from exc
 
-    # Mint presigned URLs at the last possible moment; they are never stored.
-    for f, val in bindings.items():
-        payload[f] = ([presign(one) for one in val] if isinstance(val, list)
-                      else presign(val))
-    if bindings:
-        print(f"minted presigned URL(s) for {sorted(bindings)}", file=sys.stderr)
-
-    created = RA.create_prediction(entry["model"], payload, token)
-    pid = created.get("id")
-    if not pid:
-        R.record_result(run_id, prediction_id=None, status="failed",
-                        error="no prediction id returned")
-        raise SubmitError(f"no prediction id returned: {json.dumps(created)[:400]}")
+    prediction = sent.get("prediction_id")
+    # **How this run will be closed**, decided by the API and reported rather
+    # than guessed. `webhook` means Replicate will call back and the row is what
+    # to watch; `poll` means nothing on the internet can reach that API — a
+    # machine with no receiver provisioned — and `reconcile` is what moves it.
+    callback = sent.get("callback") or "poll"
+    print(f"submitted — prediction {prediction} (closed by {callback})",
+          file=sys.stderr)
 
     if not (d["always_poll"] or getattr(args, "poll", False)):
-        print(json.dumps({"run": run_id, "id": pid, "status": created.get("status")},
+        print(json.dumps({"run": run_id, "id": prediction, "status": sent.get("status")},
                          indent=2))
-        print("not polling — re-run with --poll, or archive later with the prediction id.",
-              file=sys.stderr)
-        # The prediction id is recorded even though nothing waits for it: it is
-        # the only handle on a video that is still rendering, and a run left at
-        # `pending` forever is a row that lies about a submission that happened.
-        #
-        # `entities.patch_run`, not `runs.record_result` — that one closes a run:
-        # it writes the response document and stamps `completed`, and neither is
-        # true of a prediction still in flight.
-        return entities.patch_run(run_id, status="running", prediction_id=pid)
+        print(f"not waiting — the run closes on its own. Watch it with: "
+              f"studio runs show {run_id}", file=sys.stderr)
+        return sent
 
-    try:
-        cur = RA.poll(pid, token, args.interval, args.timeout,
-                      on_status=lambda s: print(f"  {s}", file=sys.stderr))
-    except TimeoutError as e:
-        R.record_result(run_id, prediction_id=pid, status="timeout", error=str(e))
-        raise SubmitError(f"{e}; prediction {pid} may still be running.")
+    closed = wait_for(run_id, callback, args.interval, args.timeout)
 
-    if cur.get("status") != "succeeded":
-        R.record_result(run_id, prediction_id=pid, status=cur.get("status"),
-                        error=cur.get("error"))
-        raise SubmitError(f"prediction {cur.get('status')}: {cur.get('error')}")
+    if closed.get("status") != "succeeded":
+        raise SubmitError(
+            f"run {run_id} {closed.get('status')}: {closed.get('error')}")
 
-    out = cur.get("output")
-    urls = [out] if isinstance(out, str) else list(out or [])
-    if not urls:
-        R.record_result(run_id, prediction_id=pid, status="succeeded",
-                        error="no output returned")
-        raise SubmitError("prediction succeeded but returned no output.")
+    outputs = [o.get("node") for o in closed.get("outputs") or [] if o.get("node")]
+    if getattr(args, "dest", None):
+        _save_local(closed, args.dest)
 
-    # --- the run OWNS its output; medium is an attribute, not a folder -------
-    staged = tempfile.mkdtemp(prefix=d["tmp"])
-    out_nodes = []
-    for i, u in enumerate(urls, start=1):
-        ext = os.path.splitext(u.split("?")[0])[1] or d["default_ext"]
-        base = f"{name}{'' if len(urls) == 1 else f'-{i}'}{ext}"
-        local = RA.download(u, os.path.join(staged, base))
-        out_nodes.append(R.upload_output(run_id, local, base))
-        if getattr(args, "dest", None):
-            os.makedirs(args.dest, exist_ok=True)
-            os.replace(local, os.path.join(args.dest, base))
-        else:
-            os.remove(local)
-
-    closed = R.record_result(run_id, prediction_id=pid, status="succeeded",
-                             outputs=out_nodes, source_urls=urls)
     print(json.dumps({
         "run": run_id, "runref": f"{run_id}#1", "model": entry["model"],
-        "status": "succeeded", "outputs": out_nodes,
+        "status": "succeeded", "outputs": outputs,
     }, indent=2))
     return closed
+
+
+def wait_for(run_id: str, callback: str, interval: int, timeout: int) -> dict:
+    """Watch a run until it settles. **Waiting, not driving.**
+
+    The distinction is the whole of what changed. This used to poll the
+    *provider* holding the only handle on a running prediction, so interrupting
+    it lost the generation. It polls the *run row* now: the work is being closed
+    by something else, and `Ctrl-C` here abandons a wait rather than a
+    generation. Whatever this process does or does not do, the run finishes.
+
+    Two ways to ask, and the API said which applies at submit time:
+
+    * `webhook` — read the row. Something else is closing it.
+    * `poll` — nothing can reach that API, so this drives `reconcile`, which asks
+      the provider and closes the run in the same call. Same closing code either
+      way; see `services/generate.py`.
+
+    A timeout is **not** a failure of the run and does not mark it as one. The
+    prediction is still going and will still be closed; what ran out is this
+    terminal's patience, and the message says how to pick the thread back up.
+    """
+    deadline = time.time() + timeout
+    seen = None
+    while True:
+        try:
+            current = (entities.reconcile_run(run_id) if callback == "poll"
+                       else entities.get_run(run_id))
+        except api.ApiError as exc:
+            raise SubmitError(
+                f"could not read run {run_id} while waiting: {exc}\n"
+                f"       The generation is unaffected: studio runs show {run_id}"
+            ) from exc
+
+        status = current.get("status")
+        if status != seen:
+            print(f"  {status}", file=sys.stderr)
+            seen = status
+        if status in TERMINAL:
+            return current
+        if time.time() > deadline:
+            raise SubmitError(
+                f"gave up waiting after {timeout}s; run {run_id} is {status} and "
+                f"is still going.\n"
+                f"       Nothing was lost — it closes on its own. Check it with: "
+                f"studio runs show {run_id}\n"
+                f"       Or close it now with:  studio runs reconcile {run_id}")
+        time.sleep(interval)
+
+
+#: What `wait_for` stops on. **Studio's words, not the provider's** — the API
+#: owns the run's status and maps `canceled` to `cancelled` on the way in, so a
+#: caller here never sees Replicate's vocabulary.
+TERMINAL = frozenset({"succeeded", "failed", "cancelled", "discarded"})
+
+
+def _save_local(record: dict, dest: str) -> None:
+    """`--dest`: keep a copy of each output on this machine.
+
+    The bytes used to be here already — they came down from the provider through
+    this process — so this was `os.replace` out of a temporary directory. The
+    output goes provider → API → S3 now and never touches this machine, so a
+    local copy is a download, and it is one that happens **after** the run is
+    safely closed rather than being on the path to closing it.
+    """
+    os.makedirs(dest, exist_ok=True)
+    for output in record.get("outputs") or []:
+        node = output.get("node")
+        if not node:
+            continue
+        name = output.get("name") or node
+        store.download_node(node, pathlib.Path(dest) / name)
+        print(f"saved {os.path.join(dest, name)}", file=sys.stderr)

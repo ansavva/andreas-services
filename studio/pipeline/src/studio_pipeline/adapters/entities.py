@@ -363,7 +363,7 @@ def create_run(*, project: str, kind: str, engine: str, model: str,
                input: dict, bindings: dict | None = None,
                characters: list[str] | None = None,
                prompt: dict | None = None, plan: dict | None = None,
-               sends: list[dict] | None = None) -> dict:
+               sends: list[dict] | None = None, name: str | None = None) -> dict:
     """Create the run as a DRAFT, before the approval and before the submission.
 
     The ordering is the whole point and predates this route: `request.json` was
@@ -382,10 +382,18 @@ def create_run(*, project: str, kind: str, engine: str, model: str,
     something to attach to. `sends` supersedes `bindings` and carries what the
     map could not — each image's role and where it came from — and either is
     accepted so that a caller can be moved over one at a time.
+
+    **`name` is what the OUTPUT FILE will be called, and it is recorded here
+    because nothing else will be in a position to say.** The download used to
+    happen in this process, so the filename was an argument to it; it happens in
+    the API now, driven by a webhook that arrives with no request body at all. It
+    is deliberately not part of `plan`: `plan_digest` hashes the plan, so a
+    rename would void an approval over something the provider is never sent.
     """
     body = {"project": project, "kind": kind, "engine": engine, "model": model,
             "input": input, "bindings": bindings or {}}
-    body.update(_clean(characters=characters, prompt=prompt, plan=plan, sends=sends))
+    body.update(_clean(characters=characters, prompt=prompt, plan=plan, sends=sends,
+                       name=name))
     return api.post("/api/runs", body)
 
 
@@ -479,6 +487,46 @@ def patch_run(run_id: str, *, status: str | None = None,
     if error is not None:
         body["error"] = error
     return api.patch(f"/api/runs/{run_id}", body)
+
+
+def submit_run(run_id: str) -> dict:
+    """Send an approved run to the provider. **The call that spends money.**
+
+    **This replaced the whole billing half of `engine/submit.py`.** The CLI used
+    to hold the Replicate token, mint the presigned URLs, create the prediction
+    and then sit in a poll loop until it settled — so a 15-minute video meant a
+    terminal nobody could close and a killed process left a run wedged. All of
+    that is one call now, and what waits for the answer is a webhook.
+
+    The API refuses this unless the run is approved and the approval still
+    matches the payload, which is hard rule #2's gate standing in front of the
+    money rather than behind it.
+
+    The reply carries the run, and `callback`, which says how this submission
+    will be closed:
+
+    * `"webhook"` — Replicate will call the API back. Watch the row.
+    * `"poll"` — nothing on the internet can reach that API, which is what local
+      development looks like. The caller drives `reconcile_run` itself.
+
+    A caller that ignores `callback` and polls the row would hang forever in the
+    second case, which is why `submit.wait_for` reads it rather than assuming.
+    """
+    return api.post(f"/api/runs/{run_id}/submit", {})
+
+
+def reconcile_run(run_id: str) -> dict:
+    """Ask the API to ask the provider what happened, and close the run on it.
+
+    Two situations, one call. Locally there was never going to be a callback —
+    Replicate cannot reach a laptop — and in production one can be lost to a
+    deploy landing mid-flight. From here both are "the run says `running` and
+    nothing has told us otherwise".
+
+    Idempotent: a run already finished comes back untouched rather than having
+    its output uploaded twice.
+    """
+    return api.post(f"/api/runs/{run_id}/reconcile", {})
 
 
 def add_run_output(run_id: str, name: str, size: int, content_type: str) -> dict:
@@ -667,6 +715,31 @@ def models() -> dict:
     """Every registry entry, keyed by registry name."""
     found = api.get("/api/models")
     return (found or {}).get("models") or {} if isinstance(found, dict) else {}
+
+
+def model_schema(model: str) -> dict:
+    """A model's LIVE input schema, fetched by the API from the provider.
+
+    `{model, props, schemas, snapshot}`. **The CLI holds no Replicate token**, so
+    this is the only way it can see a schema at all — and that is the point
+    rather than a limitation: three commands that never spend anything used to be
+    the reason a provider credential sat on every developer's machine.
+
+    Registered or not. `studio add-model` and `studio run owner/name` both ask
+    about a model precisely because it is not in the registry yet.
+    """
+    return api.get(f"/api/models/{model}/schema")
+
+
+def model_readme(model: str) -> str:
+    """A model's README as raw markdown, fetched by the API from the provider.
+
+    Read by `studio add-model`, which infers a registry entry from prose the
+    schema does not carry. The inference stays here because what it produces is a
+    repo file somebody reviews.
+    """
+    found = api.get(f"/api/models/{model}/readme")
+    return (found or {}).get("readme") or "" if isinstance(found, dict) else ""
 
 
 def build_prompt(obj: dict, engine: str, *, emit: str = "both",

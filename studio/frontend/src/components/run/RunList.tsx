@@ -3,6 +3,7 @@ import { Badge, Text } from "@ansavva/design-system";
 import { formatDate } from "../../utils/format";
 import type { RunKind, RunStatus, RunSummary } from "../../types";
 import { MediaThumb } from "../media/MediaThumb";
+import { formatCost } from "../../utils/cost";
 
 /**
  * The one way a run is drawn in a list, wherever a list of runs appears.
@@ -124,7 +125,7 @@ export function RunList({
               app worked out itself would be a guess wearing a currency sign. */}
           {run.cost !== undefined && (
             <Text variant="caption" tone="muted" className="w-20 shrink-0 text-right tabular-nums">
-              {run.cost ? `${run.cost.currency} ${run.cost.amount.toFixed(3)}` : "—"}
+              {formatCost(run.cost, "—")}
             </Text>
           )}
         </button>

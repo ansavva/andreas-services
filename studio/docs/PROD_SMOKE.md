@@ -20,6 +20,45 @@ a mystery failure.
 
 What is left for a human is the one thing CI cannot grant itself: **a password.**
 
+## What it now also proves: the provider credential
+
+**Generation moved into the API (#536), so the deployed function holds a secret
+for the first time** — a `SecureString` at `/studio/prod/replicate-api-token`,
+read at call time under the Lambda's own role rather than injected as an
+environment variable. That is a new IAM grant, and a new IAM grant is the one
+class of failure this suite exists for: moto does not enforce IAM and the
+integration suite runs under a developer's much wider key, so neither can tell
+you whether the *deployed role* may make the call.
+
+`test_the_lambda_can_read_the_provider_token` drives
+`GET /api/models/<name>/schema`, which makes the API fetch the token, decrypt it
+and call Replicate — the whole credential path — **without creating a
+prediction**. Proving it through a submission would mean a real generation on
+every deploy: a bill, and a payload nobody approved.
+
+**The value comes from a GitHub environment secret**, `REPLICATE_API_TOKEN` on
+the `studio-production` environment:
+
+```
+Settings → Environments → studio-production → Add secret
+  REPLICATE_API_TOKEN = r8_…
+```
+
+`studio-prod.yaml` writes it into the SecureString on every app deploy, so
+rotating the token is: update the secret, re-run the workflow. The workflow
+**skips rather than writes** when the secret is unset — an empty SecureString
+would overwrite a good token with nothing and surface much later as "the provider
+is down".
+
+Terraform creates the parameter with a placeholder and carries
+`ignore_changes = [value]`, so the written token survives every apply. It is
+deliberately not a `TF_VAR_`: that would put the secret in the plan output and
+in the state file.
+
+Until it is set, this test fails with a message naming the four things that look
+identical from outside — a missing `ssm:GetParameter`, a missing `kms:Decrypt`,
+an unset parameter name, and the placeholder itself.
+
 ## This is a detector, not a gate
 
 Say it plainly, because the shape of the workflow invites the opposite reading.

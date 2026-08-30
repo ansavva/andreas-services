@@ -63,3 +63,43 @@ output "catalog_table_name" {
   EOT
   value       = module.catalog.table_name
 }
+
+output "callback_base_url" {
+  description = <<-EOT
+    Origin Replicate is told to call back on. The deploy workflow writes it to
+    `/studio/prod/callback-base-url` and `update-lambda` reads it back as
+    `STUDIO_WEBHOOK_BASE_URL` — the same route the media bucket and the catalog
+    table take, and here it is the only one available: `modules/compute` lends
+    the callback worker its execution role, so it cannot also read that module's
+    output without a cycle.
+  EOT
+  value       = module.callbacks.base_url
+}
+
+output "callback_queue_url" {
+  description = "The queue a received callback lands on, drained by the worker Lambda"
+  value       = module.callbacks.queue_url
+}
+
+output "callback_dlq_url" {
+  description = <<-EOT
+    Where a callback goes after five failed attempts. Worth an output rather than
+    console archaeology: a message here is a generation that was paid for and
+    whose output was never stored.
+  EOT
+  value       = module.callbacks.dlq_url
+}
+
+output "callback_worker_function_name" {
+  description = "The queue consumer; the deploy workflow pins its image alongside the API's"
+  value       = module.callbacks.worker_function_name
+}
+
+output "replicate_token_parameter" {
+  description = <<-EOT
+    The SecureString the API and the worker read the provider token from.
+    **Terraform creates it and never holds its value** — set it out of band with
+    `aws ssm put-parameter --overwrite --type SecureString`.
+  EOT
+  value       = aws_ssm_parameter.replicate_api_token.name
+}

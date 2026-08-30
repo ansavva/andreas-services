@@ -266,3 +266,10 @@ jobs:
         run: |
           terraform -chdir=studio/infra/envs/prod init -backend=false -input=false
           terraform -chdir=studio/infra/envs/prod validate
+          # `envs/dev` too, and it is not symmetry for its own sake. Nothing
+          # applies this environment in CI — it is per machine — so a syntax
+          # error or a missing variable in it is found by whichever developer
+          # next runs `dev-aws-setup.sh`, at the moment they wanted a working
+          # stack. A validate costs seconds and moves that to the PR.
+          terraform -chdir=studio/infra/envs/dev init -backend=false -input=false
+          terraform -chdir=studio/infra/envs/dev validate

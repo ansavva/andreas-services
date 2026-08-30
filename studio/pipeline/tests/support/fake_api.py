@@ -186,6 +186,32 @@ def _fingerprint(model, plan, sends) -> str:
     return "sha256:" + hashlib.sha256(material.encode()).hexdigest()[:32]
 
 
+def _placeholder_image() -> bytes:
+    """A real, decodable image that is visibly not a render.
+
+    Real because the pipeline does real work on outputs — `contact_sheet` builds
+    sheets from them, `frames` decodes them, `curate dedupe` hashes them — and
+    magic bytes with a PNG header on the front fail all of that in ways that
+    look like pipeline bugs. Visibly a placeholder because a fake left on has to
+    be obvious on sight.
+
+    Lifted verbatim from `adapters/replicate.py`'s fake, which is deleted. The
+    provider client left this package; the property it defended did not.
+    """
+    import io
+
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGB", (512, 512), (255, 0, 220))
+    draw = ImageDraw.Draw(image)
+    for offset in range(-512, 512, 64):
+        draw.line([(offset, 0), (offset + 512, 512)], fill=(0, 0, 0), width=8)
+    draw.text((16, 16), "STUDIO FAKE\nnot a render", fill=(255, 255, 255))
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 def _now(counter=itertools.count()) -> str:
     """A monotonic ISO timestamp with microsecond resolution.
 
@@ -220,6 +246,37 @@ class FakeApi:
         #: scene_id -> [shot]. The `SHOT#` rows.
         self.shots: dict[str, list[dict]] = {}
         self.terms: list[dict] = []
+
+        # ── the submission knobs ────────────────────────────────────────────
+        #
+        # Three, and each replaces a `monkeypatch.setattr` that used to reach
+        # into `adapters/replicate.py`. That module is deleted: the CLI holds no
+        # provider client to stub, so what a test controls now is how the API
+        # behaves when asked to submit.
+
+        #: run id -> what its prediction will do, applied by `reconcile`. A
+        #: submission does not settle at the moment it is made, because the real
+        #: one does not either — something else closes the run afterwards, and a
+        #: fake that skipped that would leave `submit.wait_for` untested.
+        self.pending: dict[str, str] = {}
+
+        #: What the NEXT submission's prediction will do. Reset to `succeeded`
+        #: after each use, so a test asking for one failure gets exactly one.
+        self.next_outcome = "succeeded"
+
+        #: What `POST /runs/<id>/submit` reports as the closing mechanism.
+        #: `poll` by default, which is what a machine with no callback receiver
+        #: sees and what makes `wait_for` drive `reconcile` deterministically.
+        #: A test exercising the webhook branch sets `"webhook"`.
+        self.callback = "poll"
+
+        #: **"Nothing may submit", which is stronger than "nothing may bill".**
+        #: `test_board` and `test_turnaround` assert that a dry run does not
+        #: reach the provider AT ALL — the fake would answer a submission
+        #: perfectly happily, and a board that submitted on a dry run would pass
+        #: every other check in those files.
+        self.submits_refused = False
+
         #: Raw keys with no node, reached by `GET /api/asset` — the angle images.
         self.root = self._node(None, "", "folder")
         self.root["path"] = "/"
@@ -416,6 +473,8 @@ class FakeApi:
             (r"/api/libraries", self._r_libraries),
             (r"/api/models", self._r_models),
             (r"/api/prompt", self._r_prompt),
+            (r"/api/models/(.+)/schema", self._r_model_schema),
+            (r"/api/models/(.+)/readme", self._r_model_readme),
             (r"/api/models/(.+)", self._r_model),
             (r"/api/resolve", self._r_resolve),
             (r"/api/asset", self._r_asset),
@@ -452,6 +511,8 @@ class FakeApi:
             (r"/api/runs/([^/]+)/plan", self._r_run_plan),
             (r"/api/runs/([^/]+)/sends", self._r_run_sends),
             (r"/api/runs/([^/]+)/approve", self._r_run_approve),
+            (r"/api/runs/([^/]+)/submit", self._r_run_submit),
+            (r"/api/runs/([^/]+)/reconcile", self._r_run_reconcile),
             (r"/api/runs/([^/]+)", self._r_run),
             (r"/api/scenes", self._r_scenes),
             (r"/api/scenes/([^/]+)/shots", self._r_shots),
@@ -504,6 +565,29 @@ class FakeApi:
         if method != "GET":
             raise FakeError(405, f"{method} /api/models")
         return {"models": _committed_registry()}
+
+    def _r_model_schema(self, method, body, params, name):
+        """`GET /api/models/<name>/schema` — the LIVE schema, which the fake has none of.
+
+        **Empty, and that is the honest answer.** The real route proxies
+        Replicate; nothing here reaches a provider, so there is no schema to
+        return and `engine/schema.check` reads two empty maps as "could not
+        fetch" and reports a skipped validation rather than inventing a pass.
+
+        A test that needs validation to actually happen patches
+        `studio_pipeline.engine.schema.fetch` with the properties it cares
+        about — which is what `test_board`'s `no_network` fixture does, and what
+        it did when this fetch went to Replicate directly.
+        """
+        if method != "GET":
+            raise FakeError(405, f"{method} /api/models/{name}/schema")
+        return {"model": name, "props": {}, "schemas": {}}
+
+    def _r_model_readme(self, method, body, params, name):
+        """`GET /api/models/<name>/readme` — prose the fake does not have either."""
+        if method != "GET":
+            raise FakeError(405, f"{method} /api/models/{name}/readme")
+        return {"model": name, "readme": f"# fake\n\nNo README was fetched. {name}\n"}
 
     def _r_model(self, method, body, params, name):
         if method != "GET":
@@ -1316,6 +1400,12 @@ class FakeApi:
                   "folder": folder["id"], "outputs": [],
                   "lineage": {"from_run": None, "from_output": None},
                   "cost": None, "error": None, "payload": payload,
+                  # **A filename, not an identity**, and an envelope field rather
+                  # than part of the plan — `plan_digest` hashes the plan, so a
+                  # rename would void an approval over something the provider is
+                  # never sent. Recorded at draft time because the callback that
+                  # names the output file arrives with no request body.
+                  "output_name": body.get("name"),
                   "input": body.get("input") or {}}
         record["plan_digest"] = _plan_digest(record["plan"], sends)
         record["fingerprint"] = _fingerprint(record.get("model"), record["plan"], sends)
@@ -1405,6 +1495,116 @@ class FakeApi:
                               "via": via}
         record["status"] = "approved"
         return self._run_view(record)
+
+    # ── the submission, and the callback that closes it ─────────────────────
+    #
+    # **This is what replaced `adapters/replicate.py`'s fake.** The pipeline used
+    # to hold the provider client, so the suite faked Replicate; the API holds it
+    # now, so the suite fakes the API's submit route instead. The same three
+    # properties are preserved, because they are what made the old one safe:
+    #
+    #   * **Deterministic.** A prediction id is a hash of the run, so two
+    #     identical submissions in a test produce the same id.
+    #   * **Nothing sleeps and no socket opens.** The prediction settles the
+    #     moment it is asked about.
+    #   * **The media is real and visibly a placeholder.** Things downstream do
+    #     real work on an output — `contact_sheet` reads its dimensions, `frames`
+    #     decodes it — so magic bytes fail in ways that look like pipeline bugs.
+
+    def _r_run_submit(self, method, body, params, run_id):
+        """`POST /api/runs/<id>/submit` — the gate, then a prediction.
+
+        The gate is the real route's, spelled out rather than shared, for the
+        reason this whole file exists: a fake more generous than the thing it
+        fakes hides the bug it was written to catch. An unapproved run is a 409
+        here exactly as it is in production.
+        """
+        if method != "POST":
+            raise FakeError(405, f"{method} /api/runs/{run_id}/submit")
+        record = self.runs.get(run_id)
+        if record is None:
+            raise FakeError(404, f"no such run: {run_id}")
+
+        if self.submits_refused:
+            # The stronger property `test_board`'s `no_network` fixture asserts:
+            # not "this did not bill" but "this did not submit AT ALL". A dry run
+            # that submitted would otherwise pass every other check in the file.
+            raise AssertionError("nothing may submit in this suite")
+
+        if record["status"] not in UNSUBMITTED:
+            raise FakeError(409, f"run {run_id} is {record['status']}; it has "
+                                 "already been sent")
+        if record["status"] != "approved":
+            raise FakeError(409, f"run {run_id} is {record['status']} and has "
+                                 "not been approved")
+        current = _plan_digest(record.get("plan"), record["sends"])
+        if (record.get("approval") or {}).get("digest") != current:
+            raise FakeError(409, "the payload changed after it was approved; "
+                                 "review and approve it again")
+
+        record["status"] = "running"
+        record["submitted"] = _now()
+        record["counted"] = True
+        record["prediction_id"] = "fake" + hashlib.sha256(
+            run_id.encode()).hexdigest()[:20]
+        # Queued rather than applied: the real submission returns as soon as the
+        # provider has accepted it, and the run is closed later by something
+        # else. A fake that closed it here would make `wait_for` untested.
+        self.pending[run_id] = self.next_outcome
+        self.next_outcome = "succeeded"
+        return {**self._run_view(record), "callback": self.callback}
+
+    def _r_run_reconcile(self, method, body, params, run_id):
+        """`POST /api/runs/<id>/reconcile` — ask, and close on the answer.
+
+        Idempotent, like the real one: a run already finished comes back
+        untouched rather than growing a second copy of its output.
+        """
+        if method != "POST":
+            raise FakeError(405, f"{method} /api/runs/{run_id}/reconcile")
+        record = self.runs.get(run_id)
+        if record is None:
+            raise FakeError(404, f"no such run: {run_id}")
+        return self._run_view(self._close(record))
+
+    def _close(self, record: dict) -> dict:
+        """Apply whatever the queued prediction did. **The fake's callback.**"""
+        if record["status"] in ("succeeded", "failed", "cancelled", "discarded"):
+            return record
+        outcome = self.pending.pop(record["id"], None)
+        if outcome is None:
+            return record
+        if outcome != "succeeded":
+            record["status"] = outcome
+            record["completed"] = _now()
+            record["error"] = f"the fake provider reported {outcome}"
+            return record
+
+        folder = self._child(record["folder"], "output") or self._create_node(
+            record["folder"], "output", "folder")
+        stem = record.get("output_name") or record["kind"]
+        # `.png` for an image, because that is what the extension is taken off
+        # in production: `generate._output_names` reads it from the output URL
+        # rather than from the registry, and Replicate's image models deliver
+        # PNGs. A fake that named the file `.jpg` would quietly disagree with
+        # every real run.
+        ext = ".png" if record["kind"] == "image" else ".mp4"
+        node = self._create_node(folder["id"], f"{stem}{ext}", "file")
+        body = _placeholder_image() if record["kind"] == "image" else b"studio-fake-clip"
+        self.s3.put_object(Bucket=BUCKET, Key=node["blob_key"], Body=body)
+        node["size"] = len(body)
+        node["content_type"] = mimetypes.guess_type(node["name"])[0] or "application/octet-stream"
+
+        record["outputs"] = [*(record.get("outputs") or []), node["id"]]
+        record["status"] = "succeeded"
+        record["completed"] = _now()
+        record["cost"] = {"amount": None, "currency": None, "predict_time": 0.0}
+        record["payload"] = {**(record.get("payload") or {}),
+                             "response": self._document(
+                                 record["folder"], "response.json",
+                                 json.dumps({"id": record["prediction_id"],
+                                             "status": "succeeded"}, indent=2))}
+        return record
 
     def _draft(self, run_id: str) -> dict:
         record = self.runs[run_id]

@@ -65,6 +65,41 @@ def test_the_smoke_account_reaches_exactly_one_library(api, fixture):
     assert reachable[0]["role"] == fixture["user"]["role"]
 
 
+def test_the_lambda_can_read_the_provider_token(api):
+    """**The `ssm:GetParameter` + `kms:Decrypt` grant, and nothing else can prove it.**
+
+    Generation moved into the API, so the deployed function now holds a provider
+    credential — a SecureString it reads at call time under its own role. That is
+    a new IAM grant, and this suite exists because a new IAM grant is exactly
+    what the other two suites cannot check: moto does not enforce IAM, and the
+    integration suite runs under a developer's own key. `dynamodb:BatchGetItem`
+    shipped missing behind a fully green suite for precisely this reason.
+
+    **It is a READ route, deliberately, and it bills nothing.**
+    `GET /api/models/<name>/schema` makes the API fetch the token, decrypt it and
+    call Replicate — every step of the credential path — without creating a
+    prediction. Exercising the grant through `POST /api/runs/<id>/submit` would
+    have meant a real generation on every deploy, which is a bill and, under hard
+    rule #2, a payload nobody approved.
+
+    **Two grants, and only one of them fails visibly on its own.** Granting
+    `ssm:GetParameter` without `kms:Decrypt` fails at runtime with an
+    `AccessDeniedException` naming *KMS*, which sends a reader to the wrong
+    policy — so the assertion is on the schema coming back, which requires both.
+    """
+    schema = api.get("/api/models/google/nano-banana-pro/schema")
+
+    assert schema["model"] == "google/nano-banana-pro"
+    assert schema["props"], (
+        "The live schema came back empty. `services/schema.fetch` swallows a "
+        "provider failure and reports a skipped validation, so this is what a "
+        "missing ssm:GetParameter, a missing kms:Decrypt, an unset "
+        "STUDIO_REPLICATE_TOKEN_PARAMETER or a placeholder token all look like "
+        "from outside. Check the Lambda's log group for which."
+    )
+    assert "prompt" in schema["props"]
+
+
 def test_the_root_folder_lists(api, root_node, scratch):
     """`GET /api/tree` on the library's own root, with something in it.
 

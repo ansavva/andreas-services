@@ -550,9 +550,25 @@ export const isTerminal = (status: RunStatus): boolean =>
 export type RunKind = "image" | "video";
 
 /** What a model charged, when the provider reported it. Never computed here. */
+/**
+ * What a run cost, as far as the provider will say — **which is not a price.**
+ *
+ * Replicate's prediction body carries no money in it: billing is per second of
+ * the model's hardware and the rate lives on the account, not on the response.
+ * So `amount` is null on everything the callback closes, and `predict_time` is
+ * the real number — what a price would be derived from.
+ *
+ * **Both halves are nullable and that is load-bearing.** They were `number` and
+ * `string`, which was true only of runs that predate the callback: a `cost`
+ * object with a null `amount` crashed the run page on `amount.toFixed(3)`, live,
+ * on the first real generation. `formatCost` is the one place this is rendered
+ * for exactly that reason.
+ */
 export interface RunCost {
-  currency: string;
-  amount: number;
+  currency: string | null;
+  amount: number | null;
+  /** Seconds of model time. What the provider actually reports. */
+  predict_time?: number | null;
 }
 
 /**

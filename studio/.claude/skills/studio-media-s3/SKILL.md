@@ -243,7 +243,9 @@ The store is **private**. To let Replicate fetch an image or video, presign it â
 a short-lived HTTPS URL carrying its own signature, signed by the API against
 credentials the CLI does not hold. Pass the URLs straight into a prediction's
 `reference_images` / `image` inputs. Only short URLs enter the agent context; the
-bytes never do. No `REPLICATE_API_TOKEN` is needed for references.
+bytes never do. **No `REPLICATE_API_TOKEN` is needed here for anything**: the
+API holds the provider credential and does the submitting, so the CLI never has
+one.
 
 **`--expires` is accepted and ignored, everywhere it appears.** The API owns the
 URL's lifetime and sets it centrally; a number passed here cannot be honoured, so

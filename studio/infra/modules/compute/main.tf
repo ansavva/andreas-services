@@ -256,6 +256,66 @@ resource "aws_iam_role_policy" "catalog_access" {
   policy = data.aws_iam_policy_document.catalog_access.json
 }
 
+# THE PROVIDER CREDENTIAL. **STUDIO HELD NONE UNTIL GENERATION MOVED HERE.**
+#
+# For all of studio's life this role could reach its own bucket and its own
+# table and nothing else, so "what does a compromise of this function get you"
+# had an answer that stopped at the library. It now also gets you the ability to
+# spend money on Replicate. That is a real widening and it is worth stating
+# rather than discovering, so: the grant below is the whole of it, and it is
+# scoped to ONE parameter name.
+#
+# **The value is read at call time, not injected as an environment variable.**
+# Every other studio setting arrives through `update-lambda`'s `jq` block, and
+# doing that here would have been less code — but a Lambda's environment is
+# readable by anyone holding `lambda:GetFunctionConfiguration` and is printed in
+# the console, so the token would be visible to a strictly larger set of
+# principals than this policy names. `clients/aws/ssm.py` caches it per
+# container, so this is one read per cold start rather than one per submission.
+#
+# **`kms:Decrypt` is not optional and is the half that gets forgotten.**
+# `GetParameter` with `WithDecryption=true` on a SecureString authorizes against
+# KMS as well, so granting only the first fails at runtime with an
+# `AccessDeniedException` naming *KMS* — which sends the reader to the wrong
+# policy entirely. The key is the account's default SSM key; the condition ties
+# the grant to parameter-store use of it rather than to KMS at large.
+#
+# The parameter is declared in `envs/prod`, not here, because the worker Lambda
+# in `modules/callbacks` reads the same one and neither module should own a
+# resource the other depends on.
+data "aws_iam_policy_document" "provider_token" {
+  count = var.replicate_token_parameter_arn == "" ? 0 : 1
+
+  statement {
+    sid       = "ReadTheProviderToken"
+    effect    = "Allow"
+    actions   = ["ssm:GetParameter"]
+    resources = [var.replicate_token_parameter_arn]
+  }
+
+  statement {
+    sid       = "DecryptTheProviderToken"
+    effect    = "Allow"
+    actions   = ["kms:Decrypt"]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["ssm.${data.aws_region.current.region}.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "provider_token" {
+  count  = var.replicate_token_parameter_arn == "" ? 0 : 1
+  name   = "${local.api_name}-provider-token"
+  role   = aws_iam_role.api.id
+  policy = data.aws_iam_policy_document.provider_token[0].json
+}
+
+data "aws_region" "current" {}
+
 # ---------------------------------------------------------------------------
 # Lambda — the deploy workflow owns image_uri + environment after creation
 # ---------------------------------------------------------------------------
@@ -271,6 +331,14 @@ resource "aws_lambda_function" "api" {
   # round trip each; since #316 a rename and a move move no bytes.) The Lambda
   # refuses anything larger rather than relying on this number, so the timeout is
   # the backstop and the config value is the contract.
+  #
+  # **This did NOT grow when generation moved in, and that is the point of
+  # `modules/callbacks`.** Closing a run downloads a model output and puts it in
+  # the bucket, which wants minutes and gigabytes; doing it here would have
+  # charged every folder listing for the largest video studio can produce. It is
+  # a separate function on a queue, sized for that job. What this Lambda gained
+  # is `POST /api/runs/<id>/submit`, which creates a prediction and returns —
+  # one HTTP round trip to Replicate, comfortably inside 60 seconds.
   timeout     = 60
   memory_size = 512
 
@@ -298,6 +366,24 @@ resource "aws_lambda_function" "api" {
       STUDIO_CATALOG_TABLE        = var.catalog_table_name
       STUDIO_COGNITO_USER_POOL_ID = var.cognito_user_pool_id
       STUDIO_COGNITO_CLIENT_ID    = var.cognito_client_id
+
+      # The NAME of the SecureString, never its value. See the policy above.
+      STUDIO_REPLICATE_TOKEN_PARAMETER = var.replicate_token_parameter
+
+      # **`STUDIO_WEBHOOK_BASE_URL` is deliberately absent from this block.**
+      #
+      # It is `modules/callbacks`'s output, and this module is that module's
+      # input (it lends the worker its execution role) — so reading it here
+      # would be a dependency cycle between the two. It is set by
+      # `update-lambda`, which is what actually sets every variable on a running
+      # function anyway.
+      #
+      # What that means on a FIRST apply into an empty account is that the API
+      # answers submissions with `callback: "poll"` until the workflow's
+      # `update-lambda` step runs. That is a safe degradation rather than a
+      # broken deploy: the prediction is created without a webhook and the run
+      # is closed by `POST /api/runs/<id>/reconcile`, which is the same code
+      # reached by a different trigger.
     }
   }
 

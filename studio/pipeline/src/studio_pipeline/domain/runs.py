@@ -73,11 +73,9 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import mimetypes
 import os
 import re
 import sys
-from pathlib import Path
 
 import click
 
@@ -217,7 +215,7 @@ def record_request(
     project: str, *, kind: str, engine: str, model: str,
     input: dict, bindings: dict | None = None, prompt_source: dict | None = None,
     characters: list[str] | None = None, plan: dict | None = None,
-    sends: list[dict] | None = None,
+    sends: list[dict] | None = None, name: str | None = None,
 ) -> dict:
     """Create the run as a DRAFT. **Called before the submission AND before the
     approval.**
@@ -234,77 +232,42 @@ def record_request(
     **No slug is sent.** A run has none; the API names its folder for its id.
     What the caller used to pass here as `slug` was doing two jobs, and only one
     of them was any good — see `--name` on `studio run`, which keeps the good
-    one: what the output FILE is called.
+    one: what the output FILE is called, and which arrives here as `name`.
+
+    **`name` is recorded now rather than used later**, and that is a consequence
+    of the download moving into the API. It was an argument to the download while
+    the download was this process's; the callback that closes a run carries no
+    request body, so a filename that is not on the row before the submission is a
+    filename nothing can recover.
     """
     clean = check_bindings(bindings or {})
     try:
         return entities.create_run(
             project=project, kind=kind, engine=engine, model=model,
             input=input, bindings=clean, plan=plan, sends=sends,
-            characters=characters or [], prompt=prompt_source)
+            characters=characters or [], prompt=prompt_source, name=name)
     except api.ApiError as exc:
         raise RunError(str(exc)) from exc
 
 
-def upload_output(run_id: str, local: str, name: str | None = None) -> str:
-    """Put one artifact in the run's `output/` and return its NODE ID.
-
-    Three calls: the API mints the node and a presigned PUT together, the bytes
-    go straight to S3, and `store.upload_to_url` confirms the node so the row
-    records what landed. Deliberately not `store.write_into` — that would create
-    a second node beside the one the route already made, and the run's `outputs`
-    list would name the wrong one.
-
-    **It was two calls until the confirm was added, and that is what made every
-    `output/` folder look empty.** The bytes were always in S3 and the run page
-    always drew them — it expands `outputs` by id and presigns off `blob_key`,
-    which no listing does — so the only symptom was the folder. See
-    `store.upload_to_url`.
-    """
-    base = name or os.path.basename(local)
-    size = os.path.getsize(local)
-    ct = mimetypes.guess_type(local)[0] or "application/octet-stream"
-    signed = entities.add_run_output(run_id, base, size, ct)
-    store.upload_to_url(signed, Path(local))
-    return signed["node"]
-
-
-def record_result(
-    run_id: str, *, prediction_id: str | None, status: str,
-    outputs: list[str] | None = None, source_urls: list[str] | None = None,
-    error=None, extra: dict | None = None,
-) -> dict:
-    """Close the run: `PATCH` the envelope, and store the response verbatim.
-
-    `outputs` are node ids and are already on the record — `upload_output` put
-    them there. They are accepted here so a caller can keep the one call it
-    always made, and they are not re-sent.
-
-    The response document keeps the transient provider URLs, which is the one
-    place they are allowed to survive: they are debugging material inside a blob
-    nothing parses, not a binding anything replays.
-    """
-    entities.put_run_response(run_id, dumps({
-        "prediction_id": prediction_id, "status": status,
-        "completed_at": _now(), "outputs": outputs or [],
-        "source_urls": source_urls or [], "error": _stringify(error),
-        **(extra or {}),
-    }))
-    return entities.patch_run(run_id, status=status, prediction_id=prediction_id,
-                              completed=_now(),
-                              error=_stringify(error) if error is not None else None)
-
-
-def _stringify(error):
-    """An error as something JSON can hold.
-
-    Exceptions arrive here from three call sites in `submit.py` and one in
-    `board.py`, and `json.dumps` refuses them — which turned a failed prediction
-    into a `TypeError` on the way to recording that it failed.
-    """
-    if error is None or isinstance(error, (str, int, float, bool, list, dict)):
-        return error
-    return str(error)
+# **`upload_output` and `record_result` were here, and both are deleted.**
+#
+# They were the last two steps of `engine/submit.py`: put each downloaded file
+# into the run's `output/` folder, then `PATCH` the envelope closed and store the
+# provider's response beside it. Both now happen in the API, off a callback, in
+# `services/generate.close_from_prediction`.
+#
+# They are removed rather than left unused, and that is the point rather than
+# tidiness. A function here that closes a run would be a **second closing
+# implementation** — one reachable from a terminal, writing the same fields in a
+# slightly different order, drifting from the one the webhook actually runs. The
+# repository has been bitten by exactly that shape before: `plan_digest` had
+# three implementations and one of them silently disagreed, reporting 131 healthy
+# runs as stale.
+#
+# What replaced them for a person who needs to close a run by hand is
+# `studio runs reconcile`, which asks the API to ask the provider — so the row is
+# written by the same code either way.
 
 
 # --- reading runs ---------------------------------------------------------
@@ -867,7 +830,36 @@ def do_submit(runref, project):
     # top keeps `domain` free of `engine` at import time, which is the direction
     # the dependency arrow points everywhere else in this package.
     from studio_pipeline.engine import resubmit
-    print(json.dumps(resubmit.submit_draft(record), indent=2))
+    print(json.dumps({k: v for k, v in resubmit.submit_draft(record).items()
+                      if k != "payload"}, indent=2))
+
+
+@main.command("reconcile")
+@click.argument("runref", required=True)
+@click.option("--project", help="Default project for a bare runref.")
+@reports(RunError, api.ApiError)
+def do_reconcile(runref, project):
+    """Ask the provider what happened to a run's prediction, and close it.
+
+    **For a run that went out and never came back.** A generation is closed by a
+    callback now, and a callback can be lost — a deploy landing mid-flight, a
+    signature the API refused, a message nobody drained. The run sits at
+    `running` with a prediction id: legible, and never resolving. This is what
+    resolves it.
+
+    It is also the whole of the story on a machine with no callback receiver
+    provisioned, where there was never going to be a callback in the first place.
+
+    **Nothing here decides anything and nothing here bills.** The API asks
+    Replicate for the prediction and closes the run with the same code the
+    callback consumer runs, so a run closed this way and a run closed by a webhook
+    are the same row. Safe to repeat: a run that has already finished comes back
+    untouched rather than having its output uploaded twice.
+    """
+    record = resolve_run(runref, project)
+    updated = entities.reconcile_run(record["id"])
+    print(json.dumps({k: updated.get(k) for k in
+                      ("id", "status", "error", "outputs")}, indent=2))
 
 
 @main.command("discard")

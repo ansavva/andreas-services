@@ -273,8 +273,139 @@ Additive. Every existing route kept its shape.
 | `POST /api/runs/<id>/approve` | `{digest}` → **409 `stale_digest`** if it no longer matches, carrying the current one |
 | `DELETE /api/runs/<id>/approve` | Revokes; back to `draft` |
 | `PATCH /api/runs/<id>` | Leaving the unsubmitted states is **409 `not_approved`** unless approved with a current digest |
+| `POST /api/runs/<id>/submit` | **Sends it.** The route that spends money — see below |
+| `POST /api/runs/<id>/reconcile` | Ask the provider what happened and close the run on the answer |
 | `GET /api/runs/<id>` | Gains `plan`, `plan_digest`, `approval`, `stale` and `sends` (expanded, with role and source) |
 | `GET /api/runs` | Gains `?include=drafts`; drafts and discards hidden otherwise |
+
+### Submission is a route now, and the run closes itself
+
+**The gate above was built while the CLI still did the spending.** It refused a
+transition; what performed the transition was `engine/submit.py`, holding the
+Replicate token, minting the presigned URLs, creating the prediction and then
+sitting in a poll loop until it settled. Three things followed, and #536 is about
+all three:
+
+* **A generation was attached to a terminal.** A 15-second Kling shot is minutes
+  of wall clock; `Ctrl-C` at the wrong moment left a run at `running` with a
+  prediction still billing and nothing to record what it produced.
+* **The SPA could not submit at all.** It has no provider credential and nowhere
+  to poll from, so every generation had to originate in a CLI — including the
+  ones a person had just approved on the run page in front of them.
+* **The download was a developer's own connection.** Provider → laptop → S3, for
+  a file that was going to S3 either way.
+
+So `POST /api/runs/<id>/submit` does the spending, and **the run is closed by
+Replicate calling back** rather than by whatever asked for it:
+
+```
+   CLI or SPA                 API                    Replicate
+       │                       │                         │
+       ├── submit ────────────►│                         │
+       │                       ├─ approved? digest?      │
+       │                       ├─ preflight              │   ← still `approved`
+       │                       ├─ status = pending       │   ← the gate is passed
+       │                       ├─ presign the sends      │
+       │                       ├─ create prediction ────►│
+       │◄── running, pred id ──┤                         │
+       │                       │                         │
+       │                       │◄──── callback ──────────┤   (minutes later)
+       │                       ├─ verify, download, store
+       │                       └─ status = succeeded
+```
+
+**The status moves to `pending` before the provider is called**, exactly as it
+did in the CLI, which is what keeps the approval gate in front of the money —
+and what makes a submission that dies in flight legible as "went out and never
+answered" rather than as a draft nobody sent.
+
+**Preflight runs before `pending`**, which is the one ordering that changed
+meaning. A payload the model will refuse leaves the run `approved` and
+resubmittable; only a payload that has actually gone out reaches a state that
+implies money.
+
+### Receiving a callback and processing one are separate, and that is about dev
+
+The callback lands on a small **receiver** that enqueues it verbatim and answers
+in milliseconds. A **consumer** verifies the signature and closes the run: a
+worker Lambda in production, and a process beside `dev-up.sh` on a developer's
+machine.
+
+**This reverses a decision recorded in #536, and the reversal is the point.**
+That issue said "No worker, no queue" and rejected a worker Lambda as adding
+"SQS, a DLQ and a second Lambda to avoid a public route". What it was rejecting
+was a **polling** worker — one that asks Replicate for status on a timer, which
+needs all of that machinery just to avoid exposing an endpoint. This is an event
+consumer draining completions that are already being pushed to us, and it was
+adopted for a reason the issue could not have weighed, because it surfaced while
+answering a different question: **Replicate cannot reach `http://localhost:8000`.**
+
+With the close inline in the API Lambda, local development had to fall back to
+polling, and the code that closes a run in production was code no developer had
+ever executed. Splitting receive from process fixes exactly that — the deployed
+half is a dependency-free zip Lambda that only enqueues, and the half that
+changes runs from the working tree. Three things came along with it:
+
+* the callback is acknowledged before a 200 MB download rather than after it;
+* a failed upload is a redrive and then a dead-letter queue, where it used to be
+  a paid-for file that was simply gone;
+* the three functions size independently — the API Lambda stays at 512 MB and 60
+  seconds instead of growing to fit the largest video studio can produce.
+
+`infra/modules/callbacks` carries the rest of the argument.
+
+### The output URL expires, and the queue is spending a budget it does not own
+
+**Replicate deletes an output file about an hour after the prediction
+completes.** Everything between the callback firing and the bytes being in S3 is
+spending that hour, and the dead-letter queue does **not** preserve them — it
+preserves the report. Three things follow, and they are the whole of the answer:
+
+* **The retry ladder is set against the hour**, not against a general idea of
+  resilience: three attempts at a 360-second visibility timeout is 18 minutes,
+  leaving ~40 in which somebody can still act. It was five, which is 30.
+* **An expired URL is refreshed once.** A 403 is an aged signature and a 404 is a
+  deleted file, and they are the same at the socket, so the consumer asks
+  `GET /v1/predictions/<id>` for a fresh URL before believing the worse one.
+* **A file that is genuinely gone closes the run `failed` and says so.** It used
+  to raise, which put the message back on the queue to be retried against a URL
+  that will never work again — five times, then the DLQ, with the run still
+  reading `running` and nobody told anything.
+
+That last one is a real loss, stated rather than engineered away. Guaranteeing
+the bytes would mean capturing them in the receiver, which costs the property
+that made receive and process separate in the first place: the deployed half
+would do the download, so a developer's consumer would stop exercising it.
+The window is bounded instead — prod's consumer runs seconds after the callback —
+and the DLQ is alarmed.
+
+### Hard rule #3 at the moment the payload comes back
+
+A callback echoes `input` to us — image fields and all — so storing the
+provider's response verbatim filed the presigned URLs `submit` had minted, in
+the run's own folder. Short-lived, and readable only by somebody who could
+already read the run, and still exactly what "a signed URL is never stored"
+forbids.
+
+**They are put back as node ids rather than removed.** The run's ordered `SEND#`
+rows are the same rows the URLs were minted from, in the same order, so the
+mapping is by construction rather than by parsing anything out of a URL — and a
+reader of `response.json` gets the thing they actually wanted, which is which
+image was in which field and in which position. Anything URL-shaped that cannot
+be accounted for is replaced with a marker; the one case where guessing wrong
+leaves a live URL is the case that fails toward removal.
+
+`output` is untouched. Those URLs are the provider's, grant nothing here, and are
+the only record of what the model returned.
+
+### What if the callback never arrives?
+
+`POST /api/runs/<id>/reconcile` asks the provider directly and closes the run
+with **the same code the consumer runs**. It is not a poller and nothing
+schedules it; it is called by a caller that is waiting, or by a person who
+noticed. Two situations reach it and they are the same situation from this side:
+a production callback lost to a deploy landing mid-flight, and a machine where
+there was never going to be a callback at all.
 
 A plan is validated as a map and no further: which knobs a model has is registry
 data, the registry is the pipeline's, and a copy of it here would be a second
@@ -294,6 +425,7 @@ studio runs list <project> --status draft   # what is waiting
 studio runs edit run-<uuid>                 # $EDITOR over the payload; withdraws the yes
 studio runs approve run-<uuid>              # re-renders the payload, asks, approves
 studio runs submit run-<uuid>               # refuses an unapproved or stale run
+studio runs reconcile run-<uuid>            # for one that went out and never came back
 studio runs discard run-<uuid>              # a draft that will not be submitted
 ```
 

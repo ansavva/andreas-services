@@ -14,6 +14,31 @@ os.environ.setdefault("STUDIO_CATALOG_TABLE", "studio-prod-catalog")
 # rewrite what every test in the suite is asserting about.
 os.environ["STUDIO_MEDIA_ROOT_PREFIX"] = ""
 
+# NOTHING IN THIS SUITE MAY BILL.
+#
+# Generation moved into this service, so for the first time the backend can
+# reach a paid API. The three guards below are the pipeline's, spelled the same
+# way on purpose — `pipeline/tests/conftest.py` has had them since the engine was
+# one module, and a reader who knows one suite's guard now knows the other's.
+# They fail differently, which is the point of having three:
+#
+#   * `STUDIO_REPLICATE_MODE=fake` answers every call in `clients/replicate.py`
+#     locally: no socket, no token, no bill.
+#   * a DUD token catches a live call if the mode is ever unset — a 401 from
+#     Replicate rather than a charge.
+#   * the autouse socket guard further down catches a paid call reached
+#     INDIRECTLY, through a module neither of the above knows about, which a
+#     config flag cannot see by construction.
+#
+# Assigned rather than defaulted, both of them. A developer who exported `live`
+# in the shell they run the suite from would otherwise be believed.
+os.environ["STUDIO_REPLICATE_MODE"] = "fake"
+os.environ["REPLICATE_API_TOKEN"] = "dud-token-the-suite-must-never-use"
+# No callback URL, so a submission under test takes the `poll` branch and there
+# is no webhook to deliver. The webhook route is tested by calling it directly
+# with a signature the test computes — see `tests/unit/test_hooks.py`.
+os.environ["STUDIO_WEBHOOK_BASE_URL"] = ""
+
 from moto import mock_dynamodb, mock_s3  # noqa: E402
 
 from studio_core import app_factory, config  # noqa: E402
@@ -387,6 +412,24 @@ def _no_outbound_sockets(monkeypatch):
         return real_connect(self, address, *args, **kwargs)
 
     monkeypatch.setattr(socket.socket, "connect", guarded)
+
+
+@pytest.fixture(autouse=True)
+def provider_caches():
+    """Clear anything `clients/replicate.py` and `clients/aws/ssm.py` remember.
+
+    Both cache for the life of the container, which is right in a Lambda and
+    wrong across tests: a webhook secret or a token read in one test would answer
+    in the next, so a test that means to assert a *fetch* would pass without one.
+    """
+    from studio_core.clients import replicate as _replicate
+    from studio_core.clients.aws import ssm as _ssm
+
+    _replicate.reset_secret()
+    _ssm.reset_cache()
+    yield
+    _replicate.reset_secret()
+    _ssm.reset_cache()
 
 
 @pytest.fixture(autouse=True)

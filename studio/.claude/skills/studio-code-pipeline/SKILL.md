@@ -45,6 +45,13 @@ for this reason, and a new fixture should too.
 
 These are the ones that have actually cost time.
 
+- **Submitting is a route, not a function here.** `engine/submit.py` keeps the
+  half that faces a person — gather, preflight, render, draft — and
+  `POST /api/runs/<id>/submit` does the spending. A prediction is closed by a
+  callback, so `wait_for` watches the run *row* and `Ctrl-C` abandons a wait
+  rather than a generation. `runs.upload_output` and `runs.record_result` are
+  deleted rather than left unused: a second way to close a run, reachable from a
+  terminal, is the exact drift this change removed.
 - **`--help` is not a test.** Every subcommand printed usage happily while
   `engine/refs.py` referenced an undefined name, and again while `character`,
   `curate` and `run` had no handler to dispatch to. Usage never reaches either.
@@ -109,26 +116,31 @@ rather than escaping.
 
 ### Nothing in a test may bill
 
-**Do not stub the provider in your test.** `conftest.py` sets
-`STUDIO_REPLICATE_MODE=fake` autouse, and the adapter answers every one of its
-six functions locally — a deterministic prediction id, an immediate `succeeded`,
-and a real decodable placeholder PNG that hashing and contact sheets can work
-on. A test that needs a genuine clip points `STUDIO_REPLICATE_FAKE_DIR` at a
-directory holding `output.mp4`.
+**There is nothing on this side left to stub.** The provider client that used to
+sit in `adapters/` is deleted: generation moved into the API, so the only paid
+call in the repository is in the backend, and this package reaches it through
+`POST /api/runs/<id>/submit`. `tests/support/fake_api.py`
+answers that route without opening a socket — a deterministic prediction id, a
+prediction that settles when `reconcile` asks, and a real decodable placeholder
+PNG that hashing and contact sheets can work on.
 
-That is one switch because it used to be none: each test that reached the engine
-patched the adapter by hand, and a new test file that forgot called the provider
-for real. Three guards now, and they fail differently on purpose:
+**The seam a test controls is `fake_api.submits_refused`.** Set it, and any
+submission raises. That is the property `test_board` and `test_turnaround`
+actually want and it is stronger than "nothing billed": a dry run must not submit
+**at all**, and a fake would answer a submission perfectly happily.
+
+Three guards behind it, failing differently on purpose:
 
 | Guard | Catches |
 |---|---|
-| `STUDIO_REPLICATE_MODE=fake` | every call through the adapter |
-| a dud `REPLICATE_API_TOKEN` | a live call if the mode is ever unset — 401, not a bill |
-| an autouse socket guard | a paid call reached **indirectly**, which neither of the above can see |
+| the fake API | every submission this package can make |
+| an autouse socket guard | anything reaching the network by another route — **the primary guard now**, since there is no provider client here to switch off |
+| a dud `REPLICATE_API_TOKEN` | code that reaches a provider ever coming back to this package — a 401, not a bill |
 
-`live` is the default and `fake` is set only by `conftest.py`, so running
-`studio` by hand bills exactly as it always did and hard rule #2's approval gate
-is untouched.
+`backend/tests/conftest.py` carries the matching three for the half that *can*
+spend, spelled the same way on purpose: a reader who knows one suite's guard
+knows the other's, and a divergence between them is visible rather than a thing
+to discover.
 
 ### The integration tier
 

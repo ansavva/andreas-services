@@ -207,12 +207,14 @@ export function ApproveBar({
   run,
   onApprove,
   onRevoke,
+  onSubmit,
   busy,
   error,
 }: {
   run: RunRecord;
   onApprove: () => void;
   onRevoke: () => void;
+  onSubmit: () => void;
   busy: boolean;
   error: string | null;
 }) {
@@ -248,9 +250,24 @@ export function ApproveBar({
         </Text>
 
         {run.status === "approved" && !run.stale ? (
-          <Button intent="ghost" size="sm" onClick={onRevoke} disabled={busy}>
-            Revoke
-          </Button>
+          <>
+            <Button intent="ghost" size="sm" onClick={onRevoke} disabled={busy}>
+              Revoke
+            </Button>
+            {/* **The click that spends, and it is deliberately not behind a
+                second dialog.** The approve dialog is where a person reads the
+                payload and says yes to it; asking again here would be approval
+                theatre, and it would teach somebody to click through the one
+                prompt that matters. It mirrors the CLI exactly, where `runs
+                approve` confirms and `runs submit` simply goes.
+
+                What stands in for a confirm is that this button only exists on
+                a run that is approved AND whose payload has not moved since —
+                every other state renders the approve control instead. */}
+            <Button intent="primary" size="sm" onClick={onSubmit} disabled={busy}>
+              {busy ? "Submitting…" : "Submit — this spends"}
+            </Button>
+          </>
         ) : (
           <Dialog.Root open={confirming} onOpenChange={setConfirming}>
             {/* The trigger IS the button, styled — `Dialog.Trigger` renders its
@@ -286,8 +303,71 @@ export function ApproveBar({
       </div>
 
       <Text variant="caption" tone="muted">
-        Approving records who and when. It does not submit anything — run{" "}
-        <code>studio runs submit {run.id}</code> when you are ready to spend.
+        {run.status === "approved" && !run.stale
+          ? "Submitting sends the payload above to the model and starts billing. The run closes itself when the model answers — you can leave this page."
+          : "Approving records who and when. It does not send anything; a Submit button appears once this payload is approved."}
+      </Text>
+    </section>
+  );
+}
+
+/**
+ * A run that went out and has not come back. **The one control for a stuck run.**
+ *
+ * A generation is closed by the provider calling the API back, which is what
+ * lets a person shut this tab — and which introduces a state that did not exist
+ * while the CLI held the whole lifecycle: sent, still `running`, and nothing has
+ * reported. Usually that is simply a model taking its time, so this says so
+ * plainly and offers the check rather than implying something is wrong.
+ *
+ * **Not shown on a run with no prediction id.** That one never reached the
+ * provider, so there is nothing to ask about; the fix is to submit it, and the
+ * approve bar above is already where that happens.
+ */
+export function InFlightBar({
+  run,
+  onReconcile,
+  busy,
+  error,
+}: {
+  run: RunRecord;
+  onReconcile: () => void;
+  busy: boolean;
+  error: string | null;
+}) {
+  if (run.status !== "pending" && run.status !== "running") return null;
+  if (!run.prediction_id) {
+    return (
+      <Alert.Root intent="warning">
+        <Alert.Title>This run went out and named no prediction</Alert.Title>
+        <Alert.Description>
+          It was declared before the provider was called and never got an answer, so
+          nothing is known to be running. Nothing further will happen on its own.
+        </Alert.Description>
+      </Alert.Root>
+    );
+  }
+
+  return (
+    <section className="flex flex-col gap-2 rounded-md border border-line bg-card p-3">
+      {error && (
+        <Alert.Root intent="danger">
+          <Alert.Title>That did not work</Alert.Title>
+          <Alert.Description>{error}</Alert.Description>
+        </Alert.Root>
+      )}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <Text variant="body" className="min-w-48 flex-1">
+          Working. This page is watching it and will fill in on its own; closing the tab
+          changes nothing.
+        </Text>
+        <Button intent="ghost" size="sm" onClick={onReconcile} disabled={busy}>
+          {busy ? "Checking…" : "Check now"}
+        </Button>
+      </div>
+      <Text variant="caption" tone="muted">
+        Only worth pressing if this has sat here far longer than the model usually
+        takes — it asks the provider directly, in case the report back was lost.
       </Text>
     </section>
   );

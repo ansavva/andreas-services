@@ -474,6 +474,32 @@ that breaks every time the pipeline ships.
   only the half that actually moved, and the approve bar is hidden while it is
   open. Both routes refuse a submitted run, which is why the button appears on an
   unsubmitted one rather than being answered with a 409.
+- **The app can SUBMIT now, and until #536 it could not.** `POST
+  /api/runs/<id>/submit` is what calls Replicate; the SPA has no provider
+  credential and never gains one, and it does not have to, because the spending
+  moved behind that route. What it used to mean was that a run approved on this
+  page then had to be sent from a terminal — the approve bar ended by telling you
+  to run `studio runs submit <id>`, which is the friction this removed.
+- **The Submit button exists in exactly one state**, and that is what stands in
+  for a second confirm dialog. A run that is `approved` and whose payload has not
+  moved shows it; a draft, a stale approval and an already-sent run all show the
+  approve control instead. Asking twice would be approval theatre — the approve
+  dialog is where a person reads the payload and says yes — and it teaches
+  somebody to click through the prompt that matters. The CLI is the same shape:
+  `runs approve` confirms, `runs submit` goes.
+- **A run in flight has its own bar**, because what a person can do about a run
+  that has gone is nothing like what they can do about one that has not. It says
+  the page is watching and the tab can be closed — true only since the callback
+  landed, and worth saying rather than leaving somebody to guess — and offers
+  `Check now`, which is `reconcile`, for a run that has sat far longer than the
+  model usually takes. A run carrying no prediction id gets no button: nothing
+  reached the provider, so there is nothing to ask about.
+- **A run closes itself, so the page has something to poll and a reason to.**
+  The prediction is closed by Replicate calling the API back rather than by
+  whoever asked for it, which is why `TERMINAL_RUN_STATUSES` exists: a client
+  that knows which states can still change stops asking on its own instead of
+  waiting for somebody to press reload. A run stuck at `running` long after it
+  should have settled is `POST /api/runs/<id>/reconcile`.
 - **The API takes the ID token, never the access token.** A REST
   `COGNITO_USER_POOLS` authorizer only reads the incoming token as an *access*
   token when the method declares `authorization_scopes`. This one declares none
@@ -892,6 +918,8 @@ nothing accepts one back.
 | `GET /api/projects/<id>/inputs` · `/runs` · `/scenes` · `/movies` | The working pool, and the three tiers |
 | `GET \| POST /api/runs` | Query by project, character, model, status, date; or record one. **Refuses a URL-shaped binding** |
 | `GET \| PATCH \| DELETE /api/runs/<id>` | The envelope, with outputs and bindings expanded |
+| `POST /api/runs/<id>/submit` | **Sends an approved run to the provider.** The one route in this service that spends money |
+| `POST /api/runs/<id>/reconcile` | Asks the provider what happened and closes the run — for a callback that never arrived |
 | `POST /api/runs/<id>/outputs` · `/response` | An upload URL per output; the provider's response stored as a payload blob |
 | `GET \| POST /api/scenes` · `GET \| PATCH \| DELETE /api/scenes/<id>` | The scene record |
 | `PATCH /api/scenes/<id>/shots` · `/shots/<shot_id>` | The plan: revise it, or change one shot |

@@ -16,7 +16,6 @@ from click.testing import CliRunner
 
 from studio_pipeline import cli
 from studio_pipeline.adapters import entities as E
-from studio_pipeline.adapters import store
 from studio_pipeline.domain import runs as R
 
 
@@ -129,60 +128,33 @@ def test_a_run_has_no_slug_and_its_folder_is_named_for_its_id(library):
 
 # ── outputs ─────────────────────────────────────────────────────────────────
 
-def test_an_output_lands_in_the_runs_output_folder_and_on_the_row(library, tmp_path):
-    """One call mints the node and the presigned PUT together.
+def _output(library, name: str, body: bytes = b"jpeg-out"):
+    """An output on a run, put there the way the API puts one there.
 
-    Deliberately not `store.write_into`: that would create a second node beside
-    the one the route already made, and the run's `outputs` list would name the
-    wrong one.
+    **`R.upload_output` is gone and this is not a replacement for it.** That
+    function downloaded a provider's file and pushed it up from this machine; the
+    API does both now, off a callback. What survives is the route it used —
+    `POST /api/runs/<id>/outputs` — which is still how an artifact that already
+    exists locally is filed, and which is all these tests need to arrange a run
+    that has produced something.
     """
-    local = tmp_path / "frame.png"
-    local.write_bytes(b"png-bytes")
-    node = R.upload_output(library.run, str(local))
-    assert node.startswith("node-")
-    assert node in [o["node"] for o in R.run_outputs(library.run)]
-    # The row holds it, so the ORDER is the record's rather than a listing's.
-    assert R.run_outputs(library.run)[-1]["node"] == node
+    from tests.conftest import _confirm
+
+    signed = E.add_run_output(library.run, name, len(body),
+                              "image/png" if name.endswith(".png") else "image/jpeg")
+    _confirm(library.fake, signed, body)
+    return signed["node"]
 
 
-def test_an_output_is_confirmed_so_its_folder_can_list_it(library, tmp_path):
-    """**The call that was missing, and the whole reason `output/` looked empty.**
-
-    An upload is create, PUT, confirm. The entity route does the create and signs
-    the PUT; only the confirm records `size`, and the API hides any file row that
-    has none — a placeholder is a key with nothing proven behind it, so listing
-    one draws a tile that will not load.
-
-    `upload_output` stopped after the PUT. Every output studio had ever produced
-    was therefore invisible in the folder it lived in, while the run page drew it
-    perfectly: that page expands `outputs` by id and presigns off `blob_key`,
-    neither of which consults a listing. 170 outputs in prod were in that state.
-
-    So the assertion is on the node's own record rather than on the run's — the
-    run named the node all along, which is exactly why the run page lied.
-    """
-    local = tmp_path / "frame.png"
-    local.write_bytes(b"png-bytes")
-
-    node = R.upload_output(library.run, str(local))
-
-    record = store.node(node)
-    assert "size" in record, "unconfirmed: the API will hide this from every listing"
-    assert record["size"] == len(b"png-bytes")
-    assert record["content_type"] == "image/png"
-
-
-def test_outputs_come_back_in_the_order_the_run_recorded(library, tmp_path):
+def test_outputs_come_back_in_the_order_the_run_recorded(library):
     """**Order is the record's, not a listing's**, and that is a real change.
 
     It was a natural sort over `output/`'s children because the folder was the
     only source — which is why `-10` sorting before `-2` was a live hazard. The
     row holds the order they were written in, so there is nothing to re-derive.
     """
-    for name in ("out-10.png", "out-2.png"):
-        local = tmp_path / name
-        local.write_bytes(b"png")
-        R.upload_output(library.run, str(local))
+    _output(library, "out-10.png", b"png")
+    _output(library, "out-2.png", b"png")
     assert [o["name"] for o in R.run_outputs(library.run)] == [
         "output-1.jpeg", "out-10.png", "out-2.png"]
 
@@ -196,29 +168,72 @@ def test_a_run_that_never_produced_output_has_none(library):
 
 # ── completion ──────────────────────────────────────────────────────────────
 
-def test_recording_a_result_patches_the_row_and_stores_the_response(library):
-    record = R.record_request(library.project, kind="image", engine="e",
-                              model="m", input={}, bindings={})
-    # Through the gate, not around it: the API refuses to move a run out of the
-    # unsubmitted states without an approval naming its exact payload.
-    E.approve_run(record["id"], record["plan_digest"])
-    R.record_result(record["id"], prediction_id="pred-1", status="succeeded",
-                    outputs=[], source_urls=["https://replicate.test/x"])
-    after = E.get_run(record["id"])
-    assert after["status"] == "succeeded"
-    assert after["prediction_id"] == "pred-1"
-    assert after["payload"]["response"].startswith("node-")
+# **The two tests that were here are deleted, and the deletion is the point.**
+#
+# They exercised `R.record_result` — `PATCH` the envelope closed, store the
+# provider's response beside it, stringify an exception on the way in. That
+# function is gone: a run is closed by the API, off a callback, in
+# `services/generate.close_from_prediction`, and a second closing implementation
+# reachable from a terminal is exactly what this change was for.
+#
+# What they asserted is asserted in `backend/tests/unit/test_generate.py`, where
+# the code now lives. What is tested from THIS side is that a submission reaches
+# a closed run at all, which is `test_submitting_a_draft_closes_the_run` below.
 
 
-def test_an_exception_is_recorded_rather_than_raising_on_the_way_in(library):
-    """`json.dumps` refuses an exception, which turned a failed prediction into
-    a `TypeError` on the way to recording that it failed."""
+def test_submitting_a_draft_closes_the_run(library):
+    """**One call submits, and something else closes it.** The whole change.
+
+    `studio runs submit` used to create the prediction, poll it, download every
+    output and patch the row — in this process, so a 15-minute video meant a
+    terminal nobody could close. It is `POST /api/runs/<id>/submit` and a
+    callback now: this waits, and the run finishes whether it waits or not.
+
+    The wait is driven by whichever mechanism the API says will close the run —
+    here `poll`, so `reconcile` does it, which is what a machine with no callback
+    receiver provisioned sees.
+    """
     record = R.record_request(library.project, kind="image", engine="e",
-                              model="m", input={}, bindings={})
+                              model="google/nano-banana-pro",
+                              input={"prompt": "a porch"}, bindings={},
+                              name="a-porch")
     E.approve_run(record["id"], record["plan_digest"])
-    R.record_result(record["id"], prediction_id=None, status="failed",
-                    error=RuntimeError("the provider said no"))
-    assert E.get_run(record["id"])["error"] == "the provider said no"
+
+    from studio_pipeline.engine import resubmit
+
+    closed = resubmit.submit_draft(E.get_run(record["id"]))
+
+    assert closed["status"] == "succeeded"
+    assert closed["prediction_id"], "a submitted run names its prediction"
+    assert len(closed["outputs"]) == 1
+    # The name was recorded on the DRAFT, because the thing that downloads the
+    # file arrives with no request body and could not otherwise know it.
+    assert closed["outputs"][0]["name"] == "a-porch.png"
+
+
+def test_a_submission_that_is_never_answered_is_closed_by_reconcile(library):
+    """`studio runs reconcile` — for a callback that did not arrive.
+
+    A generation is closed by something else now, and that something else can
+    fail to happen: a deploy landing mid-flight, a signature the API refused, a
+    queue nobody drained. The run sits at `running` with a prediction id, which
+    is legible and never resolves. This is what resolves it, and it is safe to
+    repeat.
+    """
+    record = R.record_request(library.project, kind="image", engine="e",
+                              model="google/nano-banana-pro",
+                              input={"prompt": "a porch"}, bindings={})
+    E.approve_run(record["id"], record["plan_digest"])
+    sent = E.submit_run(record["id"])
+    assert sent["status"] == "running", "submitted, and not yet closed"
+
+    closed = E.reconcile_run(record["id"])
+    assert closed["status"] == "succeeded"
+
+    # Idempotent: a webhook is at-least-once and a person may run this twice.
+    again = E.reconcile_run(record["id"])
+    assert again["status"] == "succeeded"
+    assert len(again["outputs"]) == 1, "a repeat must not upload the output twice"
 
 
 def test_the_payload_documents_read_back_verbatim(library):
@@ -341,10 +356,8 @@ def test_resolving_output_nodes_returns_ids_not_paths(library):
     assert R.resolve_output_nodes("porch-teaser/latest") == [library.run_output]
 
 
-def test_an_index_picks_one_output(library, tmp_path):
-    local = tmp_path / "second.png"
-    local.write_bytes(b"png")
-    second = R.upload_output(library.run, str(local))
+def test_an_index_picks_one_output(library):
+    second = _output(library, "second.png", b"png")
     assert R.resolve_output_nodes(f"{library.run}#2") == [second]
 
 
@@ -502,11 +515,13 @@ def test_an_owner_slash_name_is_inferred_from_the_live_schema(library, monkeypat
     """
     from studio_pipeline.engine import runner as RUNNER
 
-    monkeypatch.setattr(RUNNER.RA, "load_token", lambda: "r8_test")
-    monkeypatch.setattr(RUNNER.MS, "fetch", lambda model, token: (
+    # **No token to patch any more.** The schema is read through
+    # `GET /api/models/<name>/schema`, so what a test stubs is the fetch rather
+    # than a credential the CLI no longer holds.
+    monkeypatch.setattr(RUNNER.MS, "fetch", lambda model: (
         {"image": {"type": "string", "format": "uri"},
          "upscale_factor": {"type": "string"}}, {}))
-    monkeypatch.setattr(RUNNER.AM, "readme", lambda model, token: "an upscaler")
+    monkeypatch.setattr(RUNNER.AM, "readme", lambda model: "an upscaler")
 
     entry = RUNNER._ephemeral_entry("vendor/an-upscaler")
 

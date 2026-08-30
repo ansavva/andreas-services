@@ -308,3 +308,7 @@ studio/frontend/coverage/
 studio/frontend/test-results/
 studio/frontend/playwright-report/
 studio/frontend/blob-report/
+
+# Terraform packages the callback receiver into a zip at plan time; the output
+# is a build artifact of `infra/modules/callbacks`, not source.
+.terraform-build/

@@ -41,3 +41,30 @@ output "catalog_table_name" {
   description = "The development catalog table the local API reads and writes"
   value       = module.storage.catalog_table_name
 }
+
+output "callback_base_url" {
+  description = <<-EOT
+    Where Replicate is told to call back for runs submitted against this stack.
+    `dev-up.sh` exports it as `STUDIO_WEBHOOK_BASE_URL` for the local API.
+
+    **Not the local API's own origin**, and it cannot be: Replicate cannot reach
+    `http://localhost:8000`. This is a real AWS endpoint whose only job is to put
+    the callback on the queue below, which this machine then drains.
+  EOT
+  value       = module.callbacks.base_url
+}
+
+output "callback_queue_url" {
+  description = <<-EOT
+    The queue this machine's callbacks land on. `dev-up.sh` exports it as
+    `STUDIO_CALLBACK_QUEUE_URL` and runs a consumer that long-polls it and closes
+    runs with the local working tree — which is the whole point of the split
+    between receiving a callback and processing one.
+  EOT
+  value       = module.callbacks.queue_url
+}
+
+output "callback_dlq_url" {
+  description = "Where a callback goes after five failed attempts against this machine's consumer"
+  value       = module.callbacks.dlq_url
+}
