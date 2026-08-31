@@ -6,7 +6,7 @@
       "runtimeExecutable": "/bin/bash",
       "runtimeArgs": [
         "-c",
-        "exec ./studio/scripts/dev-up.sh"
+        "unset PORT; exec ./studio/scripts/dev-up.sh"
       ],
       "port": 5173
     },
