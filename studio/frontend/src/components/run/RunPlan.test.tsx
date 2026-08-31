@@ -68,10 +68,13 @@ describe("the plan", () => {
 
     expect(screen.getByText(/a porch at dawn/)).toBeTruthy();
     expect(screen.getByText("aspect_ratio")).toBeTruthy();
-    // Twice: once as the badge in the heading, once in the params row. The
-    // heading badge is there because aspect ratio is the parameter people scan
-    // for, and repeating it costs less than making them hunt.
-    expect(screen.getAllByText("9:16")).toHaveLength(2);
+    // **Once, in the params row — and this used to assert twice.** A badge at
+    // the top of the section repeated it, on the reasoning that aspect ratio is
+    // the parameter people scan for and repeating it costs less than making
+    // them hunt. In place it read as a label for the whole plan rather than as
+    // one setting among several — a bare `3:2` under the heading, next to
+    // nothing that said what it was.
+    expect(screen.getAllByText("9:16")).toHaveLength(1);
   });
 
   it("says when a plan was reconstructed rather than written", () => {
@@ -104,9 +107,20 @@ describe("the plan", () => {
       <RunPlan
         run={record({
           sends: [
-            send({ order: 1, source: { kind: "character", character: "char-1", group: "face" } }),
-            send({ order: 2, node: "node-2", source: { kind: "run", run: "run-0", output: 2 } }),
-            send({ order: 3, node: "node-3", source: { kind: "input-pool", project: "proj-1", position: 4 } }),
+            send({
+              order: 1,
+              source: { kind: "character", character: "char-1", group: "face" },
+            }),
+            send({
+              order: 2,
+              node: "node-2",
+              source: { kind: "run", run: "run-0", output: 2 },
+            }),
+            send({
+              order: 3,
+              node: "node-3",
+              source: { kind: "input-pool", project: "proj-1", position: 4 },
+            }),
           ],
         })}
         onView={vi.fn()}
@@ -123,7 +137,12 @@ describe("the plan", () => {
       <RunPlan
         run={record({
           sends: [
-            send({ order: 1, field: "start_image", role: "start", node: "node-s" }),
+            send({
+              order: 1,
+              field: "start_image",
+              role: "start",
+              node: "node-s",
+            }),
             send({ order: 2, node: "node-r" }),
           ],
         })}
@@ -164,7 +183,10 @@ describe("the approve bar", () => {
      * tell that an edit had happened after a yes.
      */
     render(
-      <ApproveBar run={record({ status: "approved", stale: true })} {...noop} />,
+      <ApproveBar
+        run={record({ status: "approved", stale: true })}
+        {...noop}
+      />,
     );
 
     expect(screen.getByText(/changed after it was approved/)).toBeTruthy();
@@ -176,7 +198,11 @@ describe("the approve bar", () => {
       <ApproveBar
         run={record({
           status: "approved",
-          approval: { by: "sub-1", at: "2026-08-20T00:00:00Z", digest: "sha256:abc" },
+          approval: {
+            by: "sub-1",
+            at: "2026-08-20T00:00:00Z",
+            digest: "sha256:abc",
+          },
         })}
         {...noop}
       />,
@@ -193,10 +219,16 @@ describe("the approve bar", () => {
      */
     const onApprove = vi.fn();
     render(
-      <ApproveBar run={record({ status: "draft", sends: [send()] })} {...noop} onApprove={onApprove} />,
+      <ApproveBar
+        run={record({ status: "draft", sends: [send()] })}
+        {...noop}
+        onApprove={onApprove}
+      />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Approve this payload/ }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Approve this payload/ }),
+    );
     expect(onApprove).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
@@ -213,7 +245,11 @@ describe("the approve bar", () => {
       <ApproveBar
         run={record({
           status: "succeeded",
-          approval: { by: "backfill", at: "2026-08-01T00:00:00Z", digest: "sha256:abc" },
+          approval: {
+            by: "backfill",
+            at: "2026-08-01T00:00:00Z",
+            digest: "sha256:abc",
+          },
         })}
         {...noop}
       />,
@@ -222,7 +258,6 @@ describe("the approve bar", () => {
     expect(screen.getByText(/before approvals were recorded/)).toBeTruthy();
   });
 });
-
 
 /**
  * **The control that spends money, and the states it must not appear in.**
@@ -302,7 +337,9 @@ describe("submitting from the app", () => {
     render(<ApproveBar run={record(approved)} {...noop} busy />);
 
     expect(
-      screen.getByRole("button", { name: /Submitting/ }).hasAttribute("disabled"),
+      screen
+        .getByRole("button", { name: /Submitting/ })
+        .hasAttribute("disabled"),
     ).toBe(true);
   });
 });
@@ -317,7 +354,10 @@ describe("a run that has gone out and not come back", () => {
      * safe — and a person has to be told that rather than left to guess.
      */
     render(
-      <InFlightBar run={record({ status: "running", prediction_id: "p-1" })} {...noop} />,
+      <InFlightBar
+        run={record({ status: "running", prediction_id: "p-1" })}
+        {...noop}
+      />,
     );
 
     expect(screen.getByText(/closing the tab changes nothing/i)).toBeTruthy();
@@ -327,7 +367,10 @@ describe("a run that has gone out and not come back", () => {
   it("offers no check for a run that never named a prediction", () => {
     /** Nothing reached the provider, so there is nothing to ask about. */
     render(
-      <InFlightBar run={record({ status: "running", prediction_id: null })} {...noop} />,
+      <InFlightBar
+        run={record({ status: "running", prediction_id: null })}
+        {...noop}
+      />,
     );
 
     expect(screen.queryByRole("button", { name: /Check now/ })).toBeNull();
