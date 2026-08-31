@@ -219,4 +219,9 @@ def _draft_one(angle: dict, blocks: dict, character: dict, entry: dict,
     if preview:
         return {"angle": angle["id"], "plan": draft["plan"],
                 "model": draft["model"], "sends": draft["sends"]}
-    return run_routes.create_draft(draft, held) | {"angle": angle["id"]}
+    # The PLAN comes back on the drafted entry too, so a caller that has to show
+    # somebody the payload does not have to assemble it a second time or re-read
+    # the run. Assembling twice is two chances to differ; re-reading is a request
+    # per angle to see what this one already holds.
+    return run_routes.create_draft(draft, held) | {
+        "angle": angle["id"], "plan": draft["plan"], "model": draft["model"]}

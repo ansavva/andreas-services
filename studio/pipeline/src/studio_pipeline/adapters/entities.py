@@ -677,6 +677,32 @@ def delete_spec_angle(angle_id: str) -> dict:
     return api.delete(f"/api/reference-spec/angles/{_segment(angle_id)}")
 
 
+def draft_turnaround(character_id: str, *, project: str, identity: list[str],
+                     group: str | None = None, angles: list[str] | None = None,
+                     model: str | None = None, extra: dict | None = None,
+                     preview: bool = False) -> dict:
+    """Draft a character's reference angles, or preview what they would say.
+
+    **The assembly is the API's**, and this is the whole of what the CLI does
+    about it now. The bible filling and the slot arithmetic used to live in
+    `engine/turnaround.py`; two implementations of that would be two opinions
+    about what a run was told to render, and a run records the outcome rather
+    than the reasoning, so the disagreement would be undetectable afterwards.
+
+    `preview` stops before the write and answers `preview` rather than `drafted`.
+    """
+    body = {"project": project, "identity": identity}
+    body.update(_clean(group=group, model=model))
+    if angles:
+        body["angles"] = angles
+    if extra:
+        body["extra"] = extra
+    if preview:
+        body["preview"] = True
+    got = api.post(f"/api/characters/{_segment(character_id)}/turnaround", body)
+    return got if isinstance(got, dict) else {"drafted": [], "failed": []}
+
+
 def _segment(value: str) -> str:
     """One path segment, quoted. `safe=''` because the default keeps `/`.
 

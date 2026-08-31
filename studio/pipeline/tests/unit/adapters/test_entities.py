@@ -129,6 +129,7 @@ WIRE_SURFACE = {
     "/api/phrasebook/<id>/<id>",
     # The reference spec: the prose a turnaround fills. Blocks and angles are
     # separate rows, so they are separate routes — editing one is one write.
+    "/api/characters/<id>/turnaround",
     "/api/reference-spec",
     "/api/reference-spec/angles/<id>",
     "/api/reference-spec/blocks/<id>",

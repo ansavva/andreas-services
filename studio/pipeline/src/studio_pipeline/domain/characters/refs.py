@@ -52,12 +52,10 @@ import pathlib
 import sys
 
 import click
-import yaml
 
 from studio_pipeline.adapters import api, entities, store
 # For `add-refs --from-run`: resolving a runref to its output node ids. One-way —
 # the run store knows nothing about characters.
-from studio_pipeline.domain import TEMPLATES_DIR
 from studio_pipeline.domain import runs as R
 from studio_pipeline.domain.characters.base import (
     IMG_EXTS,
@@ -258,13 +256,19 @@ def cmd_selection(name, dest, json_, limit, pick, presign, slots, tags):
 
 # --- writing into the index ------------------------------------------------
 
-#: The angle spec, read for one reason: a run made by `turnaround` records the
-#: angle it rendered, and the angle already carries the description and tags that
-#: image should be filed under. Read as DATA from `domain/templates/`, not
-#: through `engine.turnaround`, because `domain` must not import `engine` — the
-#: arrow points `cli -> domain -> adapters` and a cycle here is what split the
-#: character modules apart in the first place.
-_SPEC_PATH = TEMPLATES_DIR / "reference_angles.yaml"
+#: The angle spec is READ FROM THE API, for one reason: a run made by
+#: `turnaround` records the angle it rendered, and the angle already carries the
+#: description and tags that image should be filed under.
+#:
+#: It was a file in `domain/templates/`, read here as data rather than through
+#: `engine.turnaround` because `domain` must not import `engine`. That reasoning
+#: is intact and the file is gone: the spec is rows now, so this asks the
+#: adapter, which is where the arrow already pointed (`domain -> adapters`).
+#:
+#: **A library with no spec promotes undescribed rather than failing.** The same
+#: answer as a run naming no angle at all — provenance is a bonus here, never a
+#: requirement, and a promotion refused over a missing description would block
+#: work the description was only ever meant to save typing on.
 
 #: What a run calls the angle it rendered, newest spelling first. `turnaround`
 #: writes `reference_angle`; every run made before the rename wrote
@@ -293,8 +297,12 @@ def _angle_description(run_record: dict) -> tuple[str | None, list[str] | None]:
     if not angle_id:
         return None, None
     try:
-        spec = yaml.safe_load(_SPEC_PATH.read_text()) or {}
-    except OSError:
+        spec = entities.reference_spec()
+    except Exception:                                        # noqa: BLE001
+        # Any failure to READ the spec promotes undescribed. This is a
+        # convenience on a write somebody is already doing, so it must never be
+        # the thing that stops it — the file read this replaced swallowed
+        # `OSError` for exactly the same reason.
         return None, None
     for angle in spec.get("angles") or []:
         if angle.get("id") == angle_id:

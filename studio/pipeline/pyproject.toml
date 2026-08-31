@@ -56,7 +56,6 @@ packages = ["src/studio_pipeline"]
 # The angle spec is read at runtime by `character turnaround`, so a wheel without
 # it fails only when someone runs the command. The angle images it names are NOT
 # package data — they live in studio/config/ and reach the bucket via dev-setup.
-"src/studio_pipeline/domain/templates/reference_angles.yaml" = "studio_pipeline/domain/templates/reference_angles.yaml"
 
 [dependency-groups]
 dev = [

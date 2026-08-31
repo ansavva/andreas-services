@@ -249,6 +249,12 @@ class FakeApi:
         #: The reference spec, as the two row classes the catalog keeps it in.
         self.spec_blocks: dict[str, str] = {}
         self.spec_angles: dict[str, dict] = {}
+        #: Every turnaround body this fake was asked for, newest last, and
+        #: what to answer `failed` with. A test asserts on the REQUEST here
+        #: rather than on a prompt: assembling is the service's job, and the
+        #: seam worth checking is what the CLI decided to send.
+        self.turnarounds: list[dict] = []
+        self.turnaround_failures: list[dict] = []
         #: render-<uuid> -> the job row. The `RENDER#` rows.
         self.renders: dict[str, dict] = {}
         #: Set it and `POST /api/renders` refuses. The seam that proves a dry
@@ -539,6 +545,7 @@ class FakeApi:
             (r"/api/images/crop", self._r_image_crop),
             (r"/api/phrasebook", self._r_phrasebook),
             (r"/api/phrasebook/([^/]+)/([^/]+)", self._r_phrasebook_term),
+            (r"/api/characters/([^/]+)/turnaround", self._r_turnaround),
             (r"/api/reference-spec", self._r_reference_spec),
             (r"/api/reference-spec/blocks/([^/]+)", self._r_spec_block),
             (r"/api/reference-spec/angles/([^/]+)", self._r_spec_angle),
@@ -2184,6 +2191,46 @@ class FakeApi:
             raise FakeError(404, f"no phrasebook term {avoid!r} for {model}")
         self.terms.remove(term)
         return {"deleted": avoid}
+
+    # ── drafting a turnaround ───────────────────────────────────────────────
+
+    def _r_turnaround(self, method, body, params, character_id):
+        if method != "POST":
+            raise FakeError(405, method)
+        self.turnarounds.append(body)
+        angles = [a for a in self.spec_angles.values()
+                  if not body.get("group") or a.get("group") == body["group"]]
+        if body.get("angles"):
+            angles = [a for a in angles if a["id"] in body["angles"]]
+
+        made = []
+        for angle in angles:
+            plan = {"version": 1, "origin": "authored",
+                    # Assembled by the SERVICE in the real thing. Substituting the
+                    # blocks here is enough for the CLI's job, which is to print
+                    # what came back rather than to compose it.
+                    "prompt": angle["prompt"].format(**self.spec_blocks),
+                    "params": {"aspect_ratio": "2:3", **(body.get("extra") or {})}}
+            entry = {"angle": angle["id"], "plan": plan,
+                     "model": body.get("model") or "openai/gpt-image-2",
+                     "sends": [{"field": "input_images", "role": "reference", "node": n}
+                               for n in body.get("identity") or []]}
+            if not body.get("preview"):
+                # Through the fake's own run creation rather than a second copy
+                # of it, exactly as the route goes through `create_draft`: the
+                # thing worth checking is that a turnaround makes ORDINARY
+                # drafts, and a bespoke shortcut here would hide it if it did not.
+                run = self._r_runs("POST", {
+                    "project": body.get("project"), "kind": "image",
+                    "engine": "studio-media-gpt-image-2",
+                    "model": entry["model"], "plan": plan,
+                    "sends": entry["sends"],
+                }, {})
+                entry.update(id=run["id"], status="draft")
+            made.append(entry)
+
+        key = "preview" if body.get("preview") else "drafted"
+        return {key: made, "failed": list(self.turnaround_failures)}
 
     # ── the reference spec ──────────────────────────────────────────────────
     #
