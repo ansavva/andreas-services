@@ -24,11 +24,14 @@ import { AutoTextarea } from "../common/AutoTextarea";
  * `null` when it does not parse, which is a legitimate state: a plain prose
  * prompt is valid on every engine here, and the raw text is shown instead.
  */
-function parsePrompt(text: string | undefined | null): MotionPrompt | null {
+export function parsePrompt(
+  text: string | undefined | null,
+): MotionPrompt | null {
   if (!text) return null;
   try {
     const parsed: unknown = JSON.parse(text);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+      return null;
     return parsed as MotionPrompt;
   } catch {
     return null;
@@ -36,7 +39,10 @@ function parsePrompt(text: string | undefined | null): MotionPrompt | null {
 }
 
 /** The blocks worth their own heading, in the order the compiler emits them. */
-const PROMPT_FIELDS: Array<{ key: keyof MotionPrompt & string; label: string }> = [
+export const PROMPT_FIELDS: Array<{
+  key: keyof MotionPrompt & string;
+  label: string;
+}> = [
   { key: "subject", label: "Subject" },
   { key: "action", label: "Action" },
   { key: "scene", label: "Scene" },
@@ -46,11 +52,32 @@ const PROMPT_FIELDS: Array<{ key: keyof MotionPrompt & string; label: string }> 
   { key: "avoid", label: "Avoid" },
 ];
 
-function cameraLine(camera: MotionPrompt["camera"]): string {
+export function cameraLine(camera: MotionPrompt["camera"]): string {
   if (!camera) return "";
-  return [camera.shot, camera.movement, camera.lens_mm ? `${camera.lens_mm}mm` : null, camera.speed]
+  return [
+    camera.shot,
+    camera.movement,
+    camera.lens_mm ? `${camera.lens_mm}mm` : null,
+    camera.speed,
+  ]
     .filter(Boolean)
     .join(" · ");
+}
+
+/**
+ * The prompt, read as prose. Falls back to the raw text when it is not JSON.
+ *
+ * **Takes a prompt rather than a shot, because a run has one too.** A run's
+ * plan and a shot's motion carry the same artifact — studio's own compiled
+ * document — and the run screen was drawing it as raw JSON while this drew
+ * fields. JSON is not what a person reads or edits, so both use this.
+ */
+export function PromptFields({
+  prompt,
+}: {
+  prompt: string | undefined | null;
+}) {
+  return <MotionFields motion={{ prompt: prompt ?? "" } as Motion} />;
 }
 
 /** The prompt, read as prose. Falls back to the raw text when it is not JSON. */
@@ -71,7 +98,9 @@ export function MotionFields({ motion }: { motion: Motion }) {
   const camera = cameraLine(doc.camera);
   return (
     <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-[7rem_minmax(0,1fr)]">
-      {PROMPT_FIELDS.filter((f) => typeof doc[f.key] === "string" && doc[f.key]).map((f) => (
+      {PROMPT_FIELDS.filter(
+        (f) => typeof doc[f.key] === "string" && doc[f.key],
+      ).map((f) => (
         <div key={f.key} className="contents">
           <dt>
             <Text variant="caption" tone="muted">
@@ -99,6 +128,48 @@ export function MotionFields({ motion }: { motion: Motion }) {
       )}
     </dl>
   );
+}
+
+/** The document's string fields, flattened for a form. */
+export function fieldsOf(doc: MotionPrompt): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const f of PROMPT_FIELDS) {
+    if (typeof doc[f.key] === "string") fields[f.key] = doc[f.key] as string;
+  }
+  return fields;
+}
+
+/**
+ * The form's values back into the document.
+ *
+ * **Rebuilt from the original, never from the form alone**, so a key the form
+ * does not show — `dialogue`, whatever the schema grows next — survives an edit
+ * in its original position rather than being silently dropped.
+ */
+export function docWithFields(
+  original: MotionPrompt,
+  fields: Record<string, string>,
+  camera?: { shot: string; movement: string; lens_mm: string; speed: string },
+): MotionPrompt {
+  const doc: MotionPrompt = { ...original };
+  for (const f of PROMPT_FIELDS) {
+    const next = fields[f.key];
+    if (next === undefined) continue;
+    if (next.trim()) doc[f.key] = next;
+    else delete doc[f.key];
+  }
+  if (camera) {
+    const lens = Number(camera.lens_mm);
+    const built = {
+      ...(camera.shot ? { shot: camera.shot } : {}),
+      ...(camera.movement ? { movement: camera.movement } : {}),
+      ...(camera.lens_mm && Number.isFinite(lens) ? { lens_mm: lens } : {}),
+      ...(camera.speed ? { speed: camera.speed } : {}),
+    };
+    if (Object.keys(built).length) doc.camera = built;
+    else delete doc.camera;
+  }
+  return doc;
 }
 
 /** The editable copy of a shot, flat because a form is flat. */
@@ -214,17 +285,19 @@ export function MotionEditor({
         </Field.Root>
       </div>
 
-      {PROMPT_FIELDS.filter((f) => draft.fields[f.key] !== undefined).map((f) => (
-        <Field.Root key={f.key} name={f.key}>
-          <Field.Label>{f.label}</Field.Label>
-          <AutoTextarea
-            value={draft.fields[f.key]}
-            onValueChange={(next: string) =>
-              set({ fields: { ...draft.fields, [f.key]: next } })
-            }
-          />
-        </Field.Root>
-      ))}
+      {PROMPT_FIELDS.filter((f) => draft.fields[f.key] !== undefined).map(
+        (f) => (
+          <Field.Root key={f.key} name={f.key}>
+            <Field.Label>{f.label}</Field.Label>
+            <AutoTextarea
+              value={draft.fields[f.key]}
+              onValueChange={(next: string) =>
+                set({ fields: { ...draft.fields, [f.key]: next } })
+              }
+            />
+          </Field.Root>
+        ),
+      )}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {(["shot", "movement", "lens_mm", "speed"] as const).map((k) => (
@@ -232,7 +305,9 @@ export function MotionEditor({
             <Field.Label>{CAMERA_LABELS[k]}</Field.Label>
             <Input
               value={draft.camera[k]}
-              onValueChange={(next) => set({ camera: { ...draft.camera, [k]: next } })}
+              onValueChange={(next) =>
+                set({ camera: { ...draft.camera, [k]: next } })
+              }
             />
           </Field.Root>
         ))}
@@ -245,14 +320,6 @@ export function MotionEditor({
         <Button intent="ghost" size="sm" onClick={onCancel} disabled={saving}>
           Cancel
         </Button>
-        {/* The wording is what a shot is judged on and what it costs to get
-            wrong, so the gate that spends money re-validates it: `studio scenes
-            check` runs the real validator — one camera move, no bare "fast",
-            the beat budget — before any render. This form does not, and must not
-            pretend to. */}
-        <Text variant="caption" tone="muted" className="self-center">
-          Re-check with <code>studio scenes check</code> before rendering.
-        </Text>
       </div>
     </div>
   );

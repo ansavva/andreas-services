@@ -155,6 +155,76 @@ export const TEXT_NODE: Node = {
 export const RUN_PROJECT = "proj-e2e0-0000-0000-0000-00000000proj";
 export const RUN_ID = "run-e2e00000-0000-0000-0000-000000000run";
 
+/**
+ * One assembled scene, synthesised like `RUN` and for the same reason.
+ *
+ * Its cut is the MP4 this suite already serves, so the scene screen's right-hand
+ * column is exercised with real playable bytes rather than a poster that could
+ * be anything.
+ */
+export const SCENE_ID = "scene-e2e0-0000-0000-0000-0000000scene";
+
+export const SCENE: Record<string, unknown> = {
+  id: SCENE_ID,
+  project: RUN_PROJECT,
+  slug: "e2e-scene",
+  title: "An end-to-end scene",
+  status: "assembled",
+  movies: [],
+  created: "2026-08-31T12:00:00+00:00",
+  folder: "node-e2e-scene-folder",
+  setting: "A bare studio wall, one hard key from the left.",
+  output: {
+    node: CLIP_ITEM.id,
+    name: CLIP_ITEM.name,
+    url: CLIP_PATH,
+    size: CLIP.byteLength,
+    content_type: "video/mp4",
+  },
+  cuts: [],
+  shots: [
+    {
+      id: "shot-e2e-01",
+      order: 10,
+      prompt: "",
+      run: null,
+      panel: null,
+      beat: "He raises both arms",
+      status: "rendered",
+      continues: false,
+      panels: [],
+      motion: {
+        prompt: "a steady double-bicep flex",
+        duration: 5,
+        model: "kling",
+      },
+      // A rendered shot, so the shot's own right-hand column has something in
+      // it — the per-shot split is what this page is really about.
+      run: "run-e2e-shot-01",
+      node: CLIP_ITEM.id,
+      rendered: "2026-08-31T12:20:00+00:00",
+      clip: {
+        node: CLIP_ITEM.id,
+        name: CLIP_ITEM.name,
+        url: CLIP_PATH,
+        size: CLIP.byteLength,
+        content_type: "video/mp4",
+      },
+      runs: [
+        {
+          id: "run-e2e-shot-01",
+          project: RUN_PROJECT,
+          role: "clip",
+          status: "succeeded",
+          kind: "video",
+          model: "kwaivgi/kling-v3-omni-video",
+          created: "2026-08-31T12:15:00+00:00",
+        },
+      ],
+    },
+  ],
+};
+
 export const RUN: Record<string, unknown> = {
   id: RUN_ID,
   lib: LIBRARY,
@@ -223,7 +293,13 @@ export async function stubApi(page: Page): Promise<void> {
     if (path.endsWith("/api/characters")) return json(route, characters);
     if (path.includes("/api/characters/")) return json(route, character);
     if (path.endsWith("/api/projects")) return json(route, projects);
+    // The draft payload preview, before the more general run route so it is not
+    // swallowed by it.
+    if (path.includes("/api/runs/") && path.endsWith("/payload")) {
+      return json(route, { request: RUN.payload ?? {}, prompt: null });
+    }
     if (path.includes("/api/runs/")) return json(route, RUN);
+    if (path.includes("/api/scenes/")) return json(route, SCENE);
     // The clip leads the walk, so `/o?in=recursive` opens on it. The seed
     // carries no video and a library does, so a reel that is stills all the way
     // down is the less faithful answer of the two.

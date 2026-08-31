@@ -1,11 +1,25 @@
 import { useCallback, useMemo, useState } from "react";
 
-import { Alert, Badge, Button, Field, Input, Select, Text } from "@ansavva/design-system";
+import {
+  Alert,
+  Badge,
+  Button,
+  Field,
+  Input,
+  Select,
+  Text,
+} from "@ansavva/design-system";
 
 import { getProject, patchRunPlan, patchRunSends } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
 import type { FileEntry, RunPlan, RunRecord, RunSend } from "../../types";
 import { AutoTextarea } from "../common/AutoTextarea";
+import {
+  PROMPT_FIELDS,
+  docWithFields,
+  fieldsOf,
+  parsePrompt,
+} from "../scene/motionPrompt";
 import { TrashIcon } from "../common/icons";
 import { MediaPicker } from "../browse/MediaPicker";
 import { MediaThumb } from "../media/MediaThumb";
@@ -69,14 +83,57 @@ export function RunPlanEditor({
    * under the cursor as somebody typed a `{`.
    */
   const structured = useMemo(
-    () => run.plan?.prompt != null && typeof run.plan.prompt !== "string",
+    // **Does it PARSE as a document — not: is it a JS object.** This read
+    // `typeof run.plan.prompt !== "string"`, and `studio prompt` emits the
+    // compiled document as a JSON *string*, which is what `--prompt-json`
+    // stores. So every properly authored plan took the prose branch and was
+    // edited as raw JSON in a textarea — the exact thing this form exists to
+    // stop. Viewing was unaffected, because `parsePrompt` takes either.
+    () => parsePrompt(promptText(run.plan?.prompt)) !== null,
+    [run.plan],
+  );
+
+  /**
+   * Whether the document was STORED as a string, so it is saved back as one.
+   *
+   * A plan authored by `studio prompt --emit prompt` holds a string; one built
+   * by an older path holds an object. Both parse; writing the wrong one back
+   * would silently change the shape of a record this form was only meant to
+   * reword.
+   */
+  const storedAsString = useMemo(
+    () => typeof run.plan?.prompt === "string",
     [run.plan],
   );
 
   const [prompt, setPrompt] = useState(() => promptText(run.plan?.prompt));
+  /**
+   * A structured prompt is edited FIELD BY FIELD, the way a shot's is.
+   *
+   * It used to be one textarea of raw JSON that had to stay valid — so a
+   * misplaced comma lost the save, and reading your own prompt meant reading
+   * escaping. The document is studio's own, with a schema `studio prompt`
+   * validates, so a form over its fields is both safer and what a person came
+   * to change. A prose prompt has no fields and keeps the textarea.
+   */
+  const [promptFields, setPromptFields] = useState<Record<string, string>>(() =>
+    fieldsOf(parsePrompt(promptText(run.plan?.prompt)) ?? {}),
+  );
+  const [camera, setCamera] = useState(() => {
+    const doc = parsePrompt(promptText(run.plan?.prompt)) ?? {};
+    return {
+      shot: doc.camera?.shot ?? "",
+      movement: doc.camera?.movement ?? "",
+      lens_mm: doc.camera?.lens_mm ? String(doc.camera.lens_mm) : "",
+      speed: doc.camera?.speed ?? "",
+    };
+  });
   const [note, setNote] = useState(run.plan?.note ?? "");
   const [params, setParams] = useState<[string, string][]>(() =>
-    Object.entries(run.plan?.params ?? {}).map(([key, value]) => [key, paramText(value)]),
+    Object.entries(run.plan?.params ?? {}).map(([key, value]) => [
+      key,
+      paramText(value),
+    ]),
   );
   const [rows, setRows] = useState<Row[]>(() => run.sends.map(rowOf));
   const [picking, setPicking] = useState(false);
@@ -104,7 +161,26 @@ export function RunPlanEditor({
 
       // Parsed before anything is written, so a malformed document cannot leave
       // the plan saved and the images not — or the other way round.
-      const plan = planOf(run.plan, prompt, structured, params, note);
+      const nextPrompt = structured
+        ? JSON.stringify(
+            docWithFields(
+              parsePrompt(promptText(run.plan?.prompt)) ?? {},
+              promptFields,
+              camera,
+            ),
+            null,
+            2,
+          )
+        : prompt;
+      // `planOf` parses when the plan holds an object and passes the string
+      // through when it holds a string — so the record keeps the shape it had.
+      const plan = planOf(
+        run.plan,
+        nextPrompt,
+        structured && !storedAsString,
+        params,
+        note,
+      );
       if (JSON.stringify(plan) !== JSON.stringify(run.plan)) {
         latest = await patchRunPlan(run.id, plan);
       }
@@ -128,7 +204,18 @@ export function RunPlanEditor({
     } finally {
       setBusy(false);
     }
-  }, [note, onSaved, params, prompt, rows, run, structured]);
+  }, [
+    camera,
+    promptFields,
+    note,
+    onSaved,
+    params,
+    prompt,
+    rows,
+    run,
+    storedAsString,
+    structured,
+  ]);
 
   /**
    * Which model inputs this run already binds — the choices offered for a new
@@ -168,8 +255,9 @@ export function RunPlanEditor({
       </div>
 
       <Text variant="caption" tone="muted" className="max-w-prose">
-        Saving any change here returns this run to a draft and clears who approved it. Nothing can
-        be submitted on a yes given to a different payload.
+        Saving any change here returns this run to a draft and clears who
+        approved it. Nothing can be submitted on a yes given to a different
+        payload.
       </Text>
 
       {error && (
@@ -179,28 +267,63 @@ export function RunPlanEditor({
         </Alert.Root>
       )}
 
-      <Field.Root name="prompt">
-        <Field.Label>Prompt</Field.Label>
-        <AutoTextarea
-          value={prompt}
-          onValueChange={setPrompt}
-          minRows={structured ? 8 : 4}
-          className="font-mono text-xs"
-        />
-        <Field.Description>
-          {structured
-            ? "A structured prompt document. It is saved as JSON, so it has to stay valid JSON."
-            : "Saved as the sentence it is. Nothing here parses it."}
-        </Field.Description>
-      </Field.Root>
+      {structured ? (
+        <>
+          {PROMPT_FIELDS.filter((f) => promptFields[f.key] !== undefined).map(
+            (f) => (
+              <Field.Root key={f.key} name={f.key}>
+                <Field.Label>{f.label}</Field.Label>
+                <AutoTextarea
+                  value={promptFields[f.key]}
+                  onValueChange={(next: string) =>
+                    setPromptFields({ ...promptFields, [f.key]: next })
+                  }
+                />
+              </Field.Root>
+            ),
+          )}
+
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {(["shot", "movement", "lens_mm", "speed"] as const).map((k) => (
+              <Field.Root key={k} name={`camera_${k}`}>
+                <Field.Label>{k === "lens_mm" ? "Lens (mm)" : k}</Field.Label>
+                <Input
+                  value={camera[k]}
+                  onValueChange={(next: string) =>
+                    setCamera({ ...camera, [k]: next })
+                  }
+                />
+              </Field.Root>
+            ))}
+          </div>
+        </>
+      ) : (
+        <Field.Root name="prompt">
+          <Field.Label>Prompt</Field.Label>
+          <AutoTextarea
+            value={prompt}
+            onValueChange={setPrompt}
+            minRows={4}
+            className="font-mono text-xs"
+          />
+          <Field.Description>
+            Saved as the sentence it is. Nothing here parses it.
+          </Field.Description>
+        </Field.Root>
+      )}
 
       <Params rows={params} onChange={setParams} />
 
       <Field.Root name="note">
         <Field.Label>Note</Field.Label>
-        <Input value={note} onValueChange={setNote} placeholder="What this run is for" />
+        <Input
+          value={note}
+          onValueChange={setNote}
+          placeholder="What this run is for"
+        />
         <Field.Description>
-          For a reader. It is part of the plan, so it is part of what an approval names.
+          For a reader. It is part of the plan, so it is part of what an
+          approval names.
         </Field.Description>
       </Field.Root>
 
@@ -232,7 +355,10 @@ export function RunPlanEditor({
           startId={project?.root ?? null}
           taken={new Set(rows.map((row) => row.node))}
           onSubmit={async (files) => {
-            setRows((current) => [...current, ...files.map((file) => added(file, current))]);
+            setRows((current) => [
+              ...current,
+              ...files.map((file) => added(file, current)),
+            ]);
             setPicking(false);
           }}
           onClose={() => setPicking(false)}
@@ -296,7 +422,11 @@ function Params({
       ))}
 
       <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
-        <Button intent="ghost" size="sm" onClick={() => onChange([...rows, ["", ""]])}>
+        <Button
+          intent="ghost"
+          size="sm"
+          onClick={() => onChange([...rows, ["", ""]])}
+        >
           Add a parameter
         </Button>
         {/* Said out loud, because it is the one place this form guesses. A value
@@ -477,7 +607,11 @@ function added(file: FileEntry, current: Row[]): Row {
 
 /** The stored sends in the shape the editor compares against — what is written. */
 function sentOf(sends: RunSend[]) {
-  return sends.map((send) => ({ field: send.field, role: send.role, node: send.node }));
+  return sends.map((send) => ({
+    field: send.field,
+    role: send.role,
+    node: send.node,
+  }));
 }
 
 function promptText(prompt: unknown): string {
@@ -515,7 +649,9 @@ function planOf(
     ...plan,
     prompt: structured ? JSON.parse(prompt) : prompt,
     params: Object.fromEntries(
-      params.filter(([key]) => key !== "").map(([key, value]) => [key, paramValue(value)]),
+      params
+        .filter(([key]) => key !== "")
+        .map(([key, value]) => [key, paramValue(value)]),
     ),
     note: note === "" ? null : note,
   };

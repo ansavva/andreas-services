@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RunPlanEditor } from "./RunPlanEditor";
@@ -27,9 +33,13 @@ vi.mock("../../apis/studio", () => ({
   getTree: vi.fn(() =>
     Promise.resolve({ folders: [], files: [], breadcrumbs: [], sort: "name" }),
   ),
-  getAsset: vi.fn(() => Promise.resolve({ url: "https://example.test/re-signed" })),
+  getAsset: vi.fn(() =>
+    Promise.resolve({ url: "https://example.test/re-signed" }),
+  ),
   // Read for its `root`, which is where the picker opens.
-  getProject: vi.fn(() => Promise.resolve({ id: "proj-1", root: "node-project" })),
+  getProject: vi.fn(() =>
+    Promise.resolve({ id: "proj-1", root: "node-project" }),
+  ),
 }));
 
 afterEach(() => {
@@ -163,7 +173,9 @@ describe("editing a plan", () => {
     fireEvent.change(screen.getByLabelText("Parameter 2 name"), {
       target: { value: "duration" },
     });
-    fireEvent.change(screen.getByLabelText("Parameter 2 value"), { target: { value: "8" } });
+    fireEvent.change(screen.getByLabelText("Parameter 2 value"), {
+      target: { value: "8" },
+    });
     fireEvent.click(screen.getByText("Save the plan"));
 
     await waitFor(() => expect(patchRunPlan).toHaveBeenCalled());
@@ -178,33 +190,95 @@ describe("editing a plan", () => {
      * document — and the run page says which it is.
      */
     patchRunPlan.mockResolvedValue(draft());
-    editor(draft({ plan: { version: 1, origin: "backfilled", prompt: "a porch", params: {} } }));
+    editor(
+      draft({
+        plan: {
+          version: 1,
+          origin: "backfilled",
+          prompt: "a porch",
+          params: {},
+        },
+      }),
+    );
 
-    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "a porch at noon" } });
+    fireEvent.change(screen.getByLabelText("Prompt"), {
+      target: { value: "a porch at noon" },
+    });
     fireEvent.click(screen.getByText("Save the plan"));
 
     await waitFor(() => expect(patchRunPlan).toHaveBeenCalled());
     expect(planSent().origin).toBe("backfilled");
   });
 
-  it("refuses to save a structured prompt that stopped being JSON", async () => {
+  it("edits a structured prompt as fields, so it cannot stop being JSON", async () => {
+    // **This replaces "refuses to save a structured prompt that stopped being
+    // JSON".** That test guarded a textarea of raw JSON that had to stay valid:
+    // a misplaced comma lost the save, and reading your own prompt meant reading
+    // escaping. The document is studio's own, with a schema `studio prompt`
+    // validates, so it is edited field by field — the way a scene's shot has
+    // always edited it — and the invalid state the old test guarded is now
+    // unreachable rather than caught.
     editor(
       draft({
         plan: {
           version: 1,
           origin: "authored",
-          prompt: { shot: "a porch at dawn" },
+          prompt: { subject: "a man on a porch", action: "he turns" },
           params: {},
         },
       }),
     );
 
-    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "{ shot: " } });
+    // No single `Prompt` box any more; one input per field of the document.
+    expect(screen.queryByLabelText("Prompt")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Subject"), {
+      target: { value: "a man on a porch at dawn" },
+    });
     fireEvent.click(screen.getByText("Save the plan"));
 
-    expect(await screen.findByText(/not valid JSON/)).toBeTruthy();
-    expect(patchRunPlan).not.toHaveBeenCalled();
-    expect(patchRunSends).not.toHaveBeenCalled();
+    await waitFor(() => expect(patchRunPlan).toHaveBeenCalled());
+    const sent = planSent().prompt as Record<string, unknown>;
+    expect(sent.subject).toBe("a man on a porch at dawn");
+    // The key the form did not show survives, because the document is rebuilt
+    // from the original rather than from the form alone.
+    expect(sent.action).toBe("he turns");
+  });
+
+  it("edits a document STORED AS A STRING as fields, and saves a string back", async () => {
+    // **The case that shipped broken.** `studio prompt --emit prompt` produces
+    // the compiled document as a JSON *string*, and `--prompt-json` stores it
+    // that way — so every properly authored plan holds a string. `structured`
+    // asked `typeof !== "string"`, which is false for all of them, and the form
+    // fell through to the prose textarea: a person opened Edit on a real plan
+    // and got raw JSON, which is the one thing this form exists to prevent.
+    editor(
+      draft({
+        plan: {
+          version: 1,
+          origin: "authored",
+          prompt: JSON.stringify({
+            subject: "a man on a porch",
+            action: "he turns",
+          }),
+          params: {},
+        },
+      }),
+    );
+
+    expect(screen.queryByLabelText("Prompt")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Subject"), {
+      target: { value: "a man on a porch at dawn" },
+    });
+    fireEvent.click(screen.getByText("Save the plan"));
+
+    await waitFor(() => expect(patchRunPlan).toHaveBeenCalled());
+    const sent = planSent().prompt;
+    // Still a string, because that is how it arrived — rewording a plan must
+    // not quietly change the shape of the record.
+    expect(typeof sent).toBe("string");
+    const parsed = JSON.parse(sent as string) as Record<string, unknown>;
+    expect(parsed.subject).toBe("a man on a porch at dawn");
+    expect(parsed.action).toBe("he turns");
   });
 
   it("says that saving withdraws the approval, before anything is typed", () => {

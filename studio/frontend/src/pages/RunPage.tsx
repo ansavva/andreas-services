@@ -14,13 +14,14 @@ import {
   approveRun,
   getNodeText,
   getRun,
+  getRunPayloadPreview,
   reconcileRun,
   revokeRunApproval,
   submitRun,
 } from "../apis/studio";
 import { PageBar } from "../components/layout/PageBar";
 import { Backlinks } from "../components/common/Backlinks";
-import { MediaPlayer } from "../components/media/MediaPlayer";
+import { OutputPanel } from "../components/media/OutputPanel";
 import { MediaThumb } from "../components/media/MediaThumb";
 import { ApproveBar, InFlightBar, RunPlan } from "../components/run/RunPlan";
 import { formatCost } from "../utils/cost";
@@ -84,6 +85,8 @@ export function RunPage() {
    * carry, and a payload pane in the query string would survive a share and
    * open someone else on a raw request document.
    */
+  /** Whether anything has actually gone to the provider — see `PayloadDocument`. */
+  const sent = Boolean(data?.submitted);
   const [pane, setPane] = useState("plan");
   const [approving, setApproving] = useState(false);
   const [approveError, setApproveError] = useState<string | null>(null);
@@ -370,20 +373,32 @@ export function RunPage() {
               <div className="flex min-w-0 flex-col gap-3 pt-4">
                 <section className="flex flex-col gap-3">
                   <Text variant="caption" tone="muted">
-                    Exactly what went to the provider and exactly what came
-                    back. Studio stores these and decodes neither.
+                    {sent
+                      ? "Exactly what went to the provider and exactly what came back. Studio stores these and decodes neither."
+                      : "Nothing has gone to the provider yet. What follows is what WOULD go, rebuilt from the plan every time you open this — it is what an approval is of. The stored documents below are written at submit time."}
                   </Text>
+
+                  {/* **A draft's payload, so it can be read before it is
+                      approved.** Hard rule #2 asks a person to approve the full
+                      payload and the page could not show one: a draft has no
+                      `request.json`, because that records what was actually
+                      sent. Built by the API from the same allowlist `submit`
+                      uses, never re-derived here — see `getRunPayloadPreview`. */}
+                  {!sent && <PayloadPreview runId={data.id} />}
                   <PayloadDocument
                     label="prompt.json"
                     node={data.payload.prompt}
+                    sent={sent}
                   />
                   <PayloadDocument
                     label="request.json"
                     node={data.payload.request}
+                    sent={sent}
                   />
                   <PayloadDocument
                     label="response.json"
                     node={data.payload.response}
+                    sent={sent}
                   />
                 </section>
               </div>
@@ -429,12 +444,61 @@ export function RunPage() {
  * to it. That is not parsing in the sense the rule forbids: no field is looked
  * up, nothing branches on the shape, and what is shown is the same document.
  */
+/**
+ * What a draft would send, fetched fresh.
+ *
+ * Re-read whenever the run record changes — an edit to the plan rewrites the
+ * payload, and a preview that went stale the moment it was useful would be
+ * worse than none.
+ */
+function PayloadPreview({ runId }: { runId: string }) {
+  const load = useCallback(() => getRunPayloadPreview(runId), [runId]);
+  const { data, loading, error } = useResource(["payload", runId], load);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-6">
+        <Spinner size="md" label="Reading the payload" />
+      </div>
+    );
+  }
+  if (error || !data) {
+    return (
+      <Text variant="caption" tone="muted">
+        The payload could not be built: {error ?? "nothing came back"}
+      </Text>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <Text variant="caption" tone="muted" className="font-mono">
+        request.json — what this run would send
+      </Text>
+      <pre className="max-h-96 overflow-y-auto whitespace-pre-wrap break-words rounded-none border border-line bg-card p-3 font-mono text-xs leading-relaxed text-ink">
+        <code>{JSON.stringify(data.request, null, 2)}</code>
+      </pre>
+    </div>
+  );
+}
+
 function PayloadDocument({
   label,
   node,
+  sent,
 }: {
   label: string;
   node: string | null;
+  /**
+   * Whether this run has been submitted.
+   *
+   * An absent document means two different things and the page said one
+   * sentence for both. On a draft nothing has gone out yet, so there is nothing
+   * to record — and a person who has just edited the plan reasonably wonders
+   * why `request.json` does not show the edit. On a submitted run an absent
+   * document is a gap in the record instead.
+   */
+  sent: boolean;
 }) {
   const load = useCallback(
     () =>
@@ -451,7 +515,10 @@ function PayloadDocument({
     return (
       <div className="border-t border-line py-2">
         <Text variant="caption" tone="muted" className="font-mono">
-          {label} — not written for this run
+          {label} —{" "}
+          {sent
+            ? "not written for this run"
+            : "written when this run is submitted"}
         </Text>
       </div>
     );
@@ -503,101 +570,6 @@ function PayloadDocument({
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-/**
- * A run's output: watchable here, and openable properly.
- *
- * **Two complaints, one component.** A video output was a poster in a tile — to
- * see it move you left the page for the object screen, which is the exact trip
- * the inline player exists to end. And the tile was a `<button>`, so a
- * command-click did nothing: the browser has no new-tab gesture for a button,
- * so the app was discarding the one affordance every person already has for
- * "not here, over there".
- *
- * The media plays in place, and the caption under it is a real `<a href>` —
- * command, control, shift and middle click go to the browser, a plain click to
- * the router. The same bargain `PageBar`'s crumbs make.
- *
- * **The link cannot wrap the player.** The player is full of buttons, and an
- * anchor containing a button is neither one thing nor the other to a keyboard
- * or a screen reader. So the caption carries the link and says where it goes.
- *
- * `fit="contain"` without exception: an output is the thing being judged, and
- * `cover` crops to fill the box — which on anything but a square clip quietly
- * cut the edges off the shot.
- */
-function OutputPanel({
-  asset,
-  sole,
-  to,
-}: {
-  asset: RunAsset;
-  /** The only output — then it is the subject of the page, not a tile in a grid. */
-  sole: boolean;
-  to: string;
-}) {
-  const navigate = useNavigate();
-  const isVideo = (asset.content_type ?? "").startsWith("video/");
-
-  /** Every gesture that means "somewhere else" belongs to the browser. */
-  const open = (event: React.MouseEvent) => {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
-      return;
-    event.preventDefault();
-    navigate(to);
-  };
-
-  return (
-    <div className="flex min-w-0 flex-col gap-1 border border-line bg-card p-1">
-      {isVideo ? (
-        <MediaPlayer
-          nodeId={asset.node}
-          url={asset.url}
-          name={asset.name}
-          isVideo
-          aspect={sole ? "auto" : "square"}
-          fit="contain"
-        />
-      ) : (
-        <a
-          href={to}
-          onClick={open}
-          className="block focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          <MediaThumb
-            nodeId={asset.node}
-            url={asset.url}
-            name={asset.name}
-            aspect={sole ? "auto" : "square"}
-            fit="contain"
-            className="w-full rounded-none"
-          />
-        </a>
-      )}
-
-      {/* `flex-col`, because two `Text` captions are inline spans: without it
-          the name and the size ran together as "flex-draft.mp42.7 MB". */}
-      <a
-        href={to}
-        onClick={open}
-        className="flex min-w-0 flex-col px-1 pb-1 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-      >
-        <Text variant="caption" tone="muted" className="truncate font-mono">
-          {asset.name}
-        </Text>
-        {asset.size !== undefined && (
-          <Text
-            variant="caption"
-            tone="muted"
-            className="font-mono tabular-nums"
-          >
-            {formatBytes(asset.size)}
-          </Text>
-        )}
-      </a>
     </div>
   );
 }
