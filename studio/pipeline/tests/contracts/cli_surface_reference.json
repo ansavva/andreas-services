@@ -1407,7 +1407,7 @@
             "flags": [
               "--seed-pick"
             ],
-            "help": "Comma-separated seed files to carry identity, when seed/ holds more than one angle sends.",
+            "help": "Comma-separated seed files to carry identity, when seed/ holds more than one angle sends. A file in a subfolder is named <folder>/<file>.",
             "hidden": false,
             "multiple": false,
             "nargs": 1,

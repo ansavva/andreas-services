@@ -421,6 +421,12 @@ studio character turnaround <name> --project <project> --angle body_back   # re-
 - **Identity comes from `seed/`** when it has any, because driving a shoot off
   already-generated references feeds model output back in as identity and
   compounds drift. `--identity refs` / `--pick` / `--pick-tag` override that.
+- **`seed/` is read as a TREE, subfolders and all**, so `--seed-pick` names a
+  filed photograph as `<folder>/<file>` — a bare name works too while only one
+  file answers to it, and is refused rather than guessed when two folders share
+  it. A tidied pool is usually far bigger than the four an angle sends, so
+  expect to be asked which; the refusal lists them by the same path you type
+  back.
 - **The medium comes from the character**, not from the spec — an angle renders in
   whatever `rendering.default_style` says, and is told to match the medium of
   the reference images it is given. A character drawn in ink is not turned into a

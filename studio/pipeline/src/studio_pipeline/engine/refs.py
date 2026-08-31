@@ -173,18 +173,29 @@ def character_ref_nodes(character: str, slots: list[int] | None = None,
             character_selection(character, slots, pick, tags, cap, cap_name)]
 
 
-def character_pool_nodes(character: str, pool: str) -> list[dict]:
+def character_pool_nodes(character: str, pool: str, *,
+                         tree: bool = False) -> list[dict]:
     """The file nodes in a character's corpus/, seed/ or archive/ pool.
 
     Node **records**, not bare ids, because every caller picks out of this pool
     by name: `--seed-pick` names a file, and the refusal that lists an oversized
     pool has to print something a person recognises. A uuid is neither.
 
+    `tree=True` descends into the pool's subfolders and labels each entry with a
+    `path` relative to the pool. A pool is a tree the moment anyone files it —
+    `seed/original/`, `seed/restored/` — and the root listing then answers with
+    only what was never filed, which is a wrong answer that looks like a small
+    pool rather than like an error. Callers CHOOSING identity out of a pool want
+    the tree; `curate`, which works a folder at a time so it does not read a
+    subtree's worth of bytes, wants the default.
+
     `archive/` is retired material: resolve it only when the user asked for
     those images specifically.
     """
     record = character_record(character)
     with _reason(f"{character}'s {pool} pool"):
+        if tree:
+            return CHARACTER.pool_tree_nodes(record, pool)
         return CHARACTER.pool_nodes(record, pool)
 
 

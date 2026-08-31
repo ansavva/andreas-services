@@ -440,23 +440,82 @@ def _seed_nodes(name: str) -> list[dict]:
     person (which wants the filename). A pool listing that returned only ids
     would make every refusal below print uuids at somebody trying to choose
     between four photographs.
+
+    **The WHOLE pool, subfolders included.** This read the root listing alone,
+    which is the same thing as asserting that nobody files their seed material —
+    and the moment anyone does, the photographs they filed stop existing as far
+    as a shoot is concerned. Not refused with a message: absent. One character
+    had thirteen restored photographs one folder down and a shoot went on
+    resolving identity from the four loose ones in the root, while `--seed-pick`
+    answered "not in seed/" to every name in the folder a person was reading off
+    `character pool <name> seed --group restored`.
+
+    Each entry carries a `path` relative to the pool, which is what `_label`
+    prints and what `--seed-pick` matches, so two folders may hold the same
+    basename without either becoming unnameable.
     """
-    return [n for n in REFS.character_pool_nodes(name, "seed")
+    return [n for n in REFS.character_pool_nodes(name, "seed", tree=True)
             if os.path.splitext(n.get("name") or "")[1].lower() in R.IMG_EXTS]
 
 
 def _seed_picked(name: str, seed_pick: str) -> list[dict]:
-    """Resolve `--seed-pick` names, by basename or bare stem, in the order given."""
+    """Resolve `--seed-pick` names, in the order given.
+
+    Four spellings of the same image, because the pool is a tree and a person
+    types whichever one they are looking at: the pool-relative path
+    (`restored/<file>.jpg`), that path without its extension, the bare basename,
+    and the bare stem. The paths are matched first — they are the unambiguous
+    form, and the only one that can name both of two same-named files.
+
+    **An ambiguous basename is refused, not resolved.** Two subfolders may hold
+    a `front.jpg`, and picking whichever the walk reached first would decide
+    which photograph carries a person's identity by sort order. That is the same
+    mistake `_too_many` exists to prevent one level up, so it fails the same way:
+    say which paths matched, and let the person name one.
+    """
     seed = _seed_nodes(name)
     want = [x.strip() for x in seed_pick.split(",") if x.strip()]
-    by_base = {n["name"]: n for n in seed}
-    by_stem = {os.path.splitext(b)[0]: n for b, n in by_base.items()}
-    missing = [w for w in want if w not in by_base and w not in by_stem]
+
+    def _path(entry: dict) -> str:
+        return entry.get("path") or entry.get("name") or ""
+
+    by_path = {_path(n): n for n in seed}
+    by_path_stem = {os.path.splitext(p)[0]: n for p, n in by_path.items()}
+    by_base: dict[str, list[dict]] = {}
+    for entry in seed:
+        by_base.setdefault(entry.get("name") or "", []).append(entry)
+        stem = os.path.splitext(entry.get("name") or "")[0]
+        if stem:
+            by_base.setdefault(stem, []).append(entry)
+
+    chosen, missing, ambiguous = [], [], []
+    for one in want:
+        if one in by_path:
+            chosen.append(by_path[one])
+        elif one in by_path_stem:
+            chosen.append(by_path_stem[one])
+        elif len(by_base.get(one, [])) == 1:
+            chosen.append(by_base[one][0])
+        elif by_base.get(one):
+            ambiguous.append(one)
+        else:
+            missing.append(one)
+
+    if ambiguous:
+        lines = "".join(
+            f"       {one} -> {', '.join(_path(e) for e in by_base[one])}\n"
+            for one in ambiguous)
+        raise TurnaroundError(
+            f"more than one file in {name}'s seed/ is called this:\n{lines}"
+            f"       name the one you mean by its path, e.g. "
+            f"{_path(by_base[ambiguous[0]][0])}")
     if missing:
         raise TurnaroundError(
             f"not in {name}'s seed/: {', '.join(missing)}\n"
-            f"       see: studio character pool {name} seed")
-    return [by_base.get(w) or by_stem[w] for w in want]
+            f"       see: studio character pool {name} seed\n"
+            f"       a pool has subfolders; a file in one is named "
+            f"<folder>/<file>")
+    return chosen
 
 
 def _ids(entries: list[dict]) -> list[str]:
@@ -475,8 +534,15 @@ def _label(entry: dict) -> str:
     Its filename, which is the only thing they can recognise. A node id is the
     right thing to BIND and the wrong thing to print in a refusal — the
     distinction the entity model makes everywhere, applied to one message.
+
+    Its pool-relative PATH when it has one, because that is what a person types
+    back: a listing of a tree that printed bare basenames would offer names
+    `--seed-pick` then had to guess between, and would hide that two of them are
+    different photographs in different folders. Reference entries carry no
+    `path` and are unaffected.
     """
-    return entry.get("name") or entry.get("node") or entry.get("id") or "?"
+    return (entry.get("path") or entry.get("name")
+            or entry.get("node") or entry.get("id") or "?")
 
 
 def identity_nodes(name: str, source: str, pick: str | None, tags: str | None,
@@ -856,7 +922,8 @@ TURNAROUND_OPTIONS = [
                                 "instead of seed/."),
     click.option("--seed-pick", "seed_pick",
                  help="Comma-separated seed files to carry identity, when seed/ holds more "
-                      "than one angle sends."),
+                      "than one angle sends. A file in a subfolder is named "
+                      "<folder>/<file>."),
     click.option("--pick-tag", help="Identity from references carrying ALL these tags."),
     click.option("--project", help="REQUIRED. The project these runs belong to."),
     click.option("--review-sheet", "review_sheet", metavar="DIR",

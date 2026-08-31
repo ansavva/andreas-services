@@ -142,6 +142,31 @@ def pool_nodes(record: dict, pool: str, group: str | None = None) -> list[dict]:
     return store.files_of(folder["id"])
 
 
+def pool_tree_nodes(record: dict, pool: str) -> list[dict]:
+    """Every file node in a pool INCLUDING its subfolders, each carrying a `path`.
+
+    `pool_nodes` reads one folder, and `--group` reaches exactly one named
+    subfolder of it. Both are the right shape for `curate`, which works a folder
+    at a time on purpose. They are the wrong shape for a caller asking "what
+    material does this character have", because a pool is a tree: `seed/` grows
+    an `original/`, a `restored/` and a folder per age as soon as anyone tidies
+    it, and a listing of the root then answers with whatever was never filed.
+
+    That silence is what this exists to end. A turnaround resolved seed identity
+    through the root listing alone, so a folder of restored photographs one
+    level down was invisible to it — not refused, not mentioned, simply absent
+    from the pool it believed it had read, while `--seed-pick` rejected every one
+    of their names as "not in seed/". A pool bigger than an angle sends is a
+    question for a person (`_too_many` asks it); a pool bigger than the code can
+    see is not a question at all.
+
+    The `path` on each entry is relative to the pool — `restored/<file>` one
+    folder down, the bare basename at the root — so a name is unambiguous even
+    when two folders hold the same one.
+    """
+    return store.walk_files_of(pool_folder(record, pool)["id"])
+
+
 def upload_file(parent_id: str, local: str, name: str | None = None,
                 content_type: str | None = None) -> dict:
     """Upload one local file INTO a folder node, and return the node it made.

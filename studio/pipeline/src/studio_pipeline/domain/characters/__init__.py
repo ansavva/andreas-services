@@ -28,6 +28,7 @@ from studio_pipeline.domain.characters.base import (
     die,
     pool_folder,
     pool_nodes,
+    pool_tree_nodes,
     read_text,
     resolve,
     upload_file,
@@ -61,7 +62,8 @@ __all__ = [
     "IMG_EXTS", "LOCAL_DIR", "NAME_RE", "POOLS", "PROFILE_KEYS", "REFERENCE_POOL",
     "TEMPLATE", "UNSORTED", "check_name", "check_profile", "die", "do_pull", "do_push",
     "document", "entry_node", "fetch_profile", "load_profile", "local_paths", "main",
-    "parse_profile", "pool_folder", "pool_nodes", "read_text", "reference_entries",
+    "parse_profile", "pool_folder", "pool_nodes", "pool_tree_nodes", "read_text",
+    "reference_entries",
     "remote_rev", "resolve", "save_profile", "selection_nodes", "split_document",
     "unified", "upload_file", "write_text",
 ]
