@@ -246,6 +246,9 @@ class FakeApi:
         #: scene_id -> [shot]. The `SHOT#` rows.
         self.shots: dict[str, list[dict]] = {}
         self.terms: list[dict] = []
+        #: The reference spec, as the two row classes the catalog keeps it in.
+        self.spec_blocks: dict[str, str] = {}
+        self.spec_angles: dict[str, dict] = {}
         #: render-<uuid> -> the job row. The `RENDER#` rows.
         self.renders: dict[str, dict] = {}
         #: Set it and `POST /api/renders` refuses. The seam that proves a dry
@@ -536,6 +539,9 @@ class FakeApi:
             (r"/api/images/crop", self._r_image_crop),
             (r"/api/phrasebook", self._r_phrasebook),
             (r"/api/phrasebook/([^/]+)/([^/]+)", self._r_phrasebook_term),
+            (r"/api/reference-spec", self._r_reference_spec),
+            (r"/api/reference-spec/blocks/([^/]+)", self._r_spec_block),
+            (r"/api/reference-spec/angles/([^/]+)", self._r_spec_angle),
         ]
 
     # ── node routes ─────────────────────────────────────────────────────────
@@ -2178,6 +2184,41 @@ class FakeApi:
             raise FakeError(404, f"no phrasebook term {avoid!r} for {model}")
         self.terms.remove(term)
         return {"deleted": avoid}
+
+    # ── the reference spec ──────────────────────────────────────────────────
+    #
+    # `{"blocks": {...}, "angles": [...]}`, which is the shape the route returns.
+    # Answering a bare list here is the exact mistake the phrasebook handler
+    # above records: the fake was more forgiving than the service, so the suite
+    # passed while the CLI read nothing.
+
+    def _r_reference_spec(self, method, body, params):
+        if method != "GET":
+            raise FakeError(405, method)
+        angles = sorted(self.spec_angles.values(),
+                        key=lambda a: (a.get("order") or 0, a["id"]))
+        return {"blocks": dict(self.spec_blocks), "angles": angles}
+
+    def _r_spec_block(self, method, body, params, name):
+        name = urllib.parse.unquote(name)
+        if method == "PATCH":
+            self.spec_blocks[name] = body["text"]
+            return {"name": name, "text": body["text"], "updated": _now()}
+        if method == "DELETE":
+            self.spec_blocks.pop(name, None)
+            return {"name": name, "deleted": True}
+        raise FakeError(405, method)
+
+    def _r_spec_angle(self, method, body, params, angle_id):
+        angle_id = urllib.parse.unquote(angle_id)
+        if method == "PATCH":
+            record = {k: v for k, v in body.items() if k != "id"}
+            self.spec_angles[angle_id] = {"id": angle_id, **record}
+            return self.spec_angles[angle_id]
+        if method == "DELETE":
+            self.spec_angles.pop(angle_id, None)
+            return {"id": angle_id, "deleted": True}
+        raise FakeError(405, method)
 
     # ── seeding ─────────────────────────────────────────────────────────────
 

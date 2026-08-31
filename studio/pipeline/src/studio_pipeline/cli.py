@@ -25,6 +25,7 @@ from studio_pipeline.domain import curate as _curate
 from studio_pipeline.domain import frames as _frames
 from studio_pipeline.domain import movies as _movies
 from studio_pipeline.domain import phrasebook as _phrasebook
+from studio_pipeline.domain import spec as _spec
 from studio_pipeline.domain import projects as _projects
 from studio_pipeline.domain import prompt as _prompt
 from studio_pipeline.domain import runs as _runs
@@ -59,7 +60,7 @@ class _Grouped(click.Group):
         ("generate",    ["run", "models", "add-model"]),
         ("records",     ["runs", "scenes", "movies", "frames", "projects"]),
         ("characters",  ["character", "curate", "contact-sheet"]),
-        ("authoring",   ["prompt", "phrasebook"]),
+        ("authoring",   ["prompt", "phrasebook", "spec"]),
         ("objects",     ["upload", "download", "describe", "presign", "convert", "crop",
                          "config"]),
     ]
@@ -181,6 +182,7 @@ for _name, _cmd in [
     ("convert", _convert.convert),
     ("crop", _crop.crop),
     ("config", _config_sync.main),
+    ("spec", _spec.main),
 ]:
     main.add_command(_cmd, _name)
 

@@ -642,6 +642,53 @@ def movie_output(movie_id: str, name: str, size: int, content_type: str) -> dict
                     {"name": name, "size": size, "content_type": content_type})
 
 
+# ── the reference spec ──────────────────────────────────────────────────────
+
+def reference_spec() -> dict:
+    """The blocks and angles a turnaround fills. `{"blocks": {...}, "angles": [...]}`.
+
+    Wrapped, like `/api/phrasebook` and unlike the bare-array listings — and the
+    shape is normalised here rather than at the call site, because the last
+    module that let a wrapped answer reach `_as_list` reported every library's
+    phrasebook as empty for the whole life of a migration.
+    """
+    found = api.get("/api/reference-spec")
+    if not isinstance(found, dict):
+        return {"blocks": {}, "angles": []}
+    return {"blocks": found.get("blocks") or {},
+            "angles": _as_list(found.get("angles"))}
+
+
+def put_spec_block(name: str, text: str) -> dict:
+    """Write one shared block. An overwrite: a block IS its name."""
+    return api.patch(f"/api/reference-spec/blocks/{_segment(name)}", {"text": text})
+
+
+def put_spec_angle(angle_id: str, fields: dict) -> dict:
+    """Write one angle — its group, template, description and tags."""
+    return api.patch(f"/api/reference-spec/angles/{_segment(angle_id)}", fields)
+
+
+def delete_spec_block(name: str) -> dict:
+    return api.delete(f"/api/reference-spec/blocks/{_segment(name)}")
+
+
+def delete_spec_angle(angle_id: str) -> dict:
+    return api.delete(f"/api/reference-spec/angles/{_segment(angle_id)}")
+
+
+def _segment(value: str) -> str:
+    """One path segment, quoted. `safe=''` because the default keeps `/`.
+
+    A block name or an angle id has no reason to hold a slash, and the cost of
+    one that did is a 404 nobody can read — the same trap
+    `delete_phrasebook_term` documents for a model key that genuinely does.
+    """
+    import urllib.parse
+
+    return urllib.parse.quote(value, safe="")
+
+
 # ── phrasebook ──────────────────────────────────────────────────────────────
 
 def phrasebook(model: str | None = None) -> list[dict]:
