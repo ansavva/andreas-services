@@ -10,6 +10,7 @@ import {
 } from "@ansavva/design-system";
 
 import { Frame, SendRow, Slot } from "../scene/Sends";
+import { PromptFields } from "../scene/motionPrompt";
 import type { RunAsset, RunRecord, RunSend } from "../../types";
 import { formatDate, formatTextContent } from "../../utils/format";
 import { getUserEmail, getUserSub } from "../../auth/oauth";
@@ -39,7 +40,6 @@ export function RunPlan({
   if (!run.plan && run.sends.length === 0) {
     return (
       <section className="flex flex-col gap-2">
-        <Text variant="title">Plan</Text>
         <Text variant="body" tone="muted">
           This run predates the plan, and its request could not be
           reconstructed.
@@ -50,8 +50,9 @@ export function RunPlan({
 
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <Text variant="title">Plan</Text>
+      {/* No `Plan` heading: the tab above already says it, and two of them a
+          few pixels apart read as two sections. The badges keep their row. */}
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 empty:hidden">
         {run.plan?.origin === "backfilled" && (
           // Said plainly rather than hidden. A reconstructed plan is not a
           // person's words about their own intent — it is what the recorded
@@ -79,7 +80,11 @@ export function RunPlan({
         </Text>
       )}
 
-      {run.plan?.prompt != null && <Prompt prompt={run.plan.prompt} />}
+      {/* **Images, then the words.** A shot's plan read this way round and a
+          run's read the other, which is two answers to "what am I looking at
+          first" for one artifact. The pictures are what a person recognises;
+          the document is what they then read. */}
+      <Sends sends={run.sends} onView={onView} />
 
       {run.plan && Object.keys(run.plan.params).length > 0 && (
         <div className="flex flex-wrap gap-2">
@@ -97,7 +102,20 @@ export function RunPlan({
         </div>
       )}
 
-      <Sends sends={run.sends} onView={onView} />
+      {/* **Fields, not JSON.** This is studio's own compiled document with a
+          schema `studio prompt` validates — not the provider's payload, whose
+          shape studio does not own and does not parse. 1.4 kB of escaped JSON
+          is not showing anyone their prompt, which is the reason a shot has
+          drawn it this way all along. */}
+      {run.plan?.prompt != null && (
+        <PromptFields
+          prompt={
+            typeof run.plan.prompt === "string"
+              ? run.plan.prompt
+              : JSON.stringify(run.plan.prompt)
+          }
+        />
+      )}
     </section>
   );
 }

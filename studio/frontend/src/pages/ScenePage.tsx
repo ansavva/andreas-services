@@ -163,8 +163,12 @@ export function ScenePage() {
         )}
 
         <section className="flex flex-col gap-3">
+          {/* **No `Storyboard` heading, and no `Setting` one either.** A scene
+              cannot exist without a storyboard — the shots ARE the scene — so
+              naming the section named the page a second time. The line here is
+              what was worth keeping: how the shots chain, how many there are,
+              how long they run. */}
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line pb-2">
-            <Text variant="title">Storyboard</Text>
             <Badge intent="neutral" className="font-mono">
               {isBracketed(data.shots) ? "bracketed" : "chained"}
             </Badge>

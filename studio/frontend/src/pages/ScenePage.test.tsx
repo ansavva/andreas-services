@@ -488,9 +488,16 @@ it("still draws a scene assembled from bare runs, which has no storyboard at all
   );
 
   expect(await screen.findByText("wide on the touchline")).toBeTruthy();
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: /open its run/i })).toBeTruthy(),
-  );
+  // **`Open its run` is gone, and this shot is why it could not just be
+  // deleted.** A scene cut from bare runs has a `run` per shot and no
+  // storyboard, so nothing expands `runs` — the shot synthesises one row so the
+  // single remaining route to a run still reaches it here.
+  const tab = await screen.findByRole("tab", { name: /^Runs/ });
+  expect(tab.textContent).toContain("1");
+  fireEvent.click(tab);
+  // The role is what the synthesised row carries, and it is what proves the row
+  // rendered at all rather than the tab merely existing.
+  await waitFor(() => expect(screen.getByText("clip")).toBeTruthy());
 });
 
 it("shows an End row only when the scene brackets its shots", async () => {

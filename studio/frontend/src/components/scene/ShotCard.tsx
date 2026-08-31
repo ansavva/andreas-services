@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { Badge, Button, Tabs, Text } from "@ansavva/design-system";
 
-import type { RunAsset, Shot } from "../../types";
+import type { RunAsset, Shot, ShotRun } from "../../types";
 import { Prompt } from "../run/RunPlan";
 import { OutputPanel } from "../media/OutputPanel";
 import {
@@ -59,7 +59,21 @@ export function ShotCard({
   /** Outputs are plural: the current clip plus every superseded take. */
   const outputCount = (shot.clip ? 1 : 0) + (shot.takes ?? []).length;
   const hasOutput = outputCount > 0;
-  const runCount = (shot.runs ?? []).length;
+  /**
+   * The runs to list, which is not always the ones the API expanded.
+   *
+   * A scene assembled from bare runs has a `run` on each shot and no storyboard
+   * behind it, so nothing expands `runs` — and with `Open its run` gone from the
+   * title row that shot would have had no route to its run at all. One synthetic
+   * row keeps the single way in honest.
+   */
+  const runs: ShotRun[] =
+    (shot.runs ?? []).length > 0
+      ? (shot.runs as ShotRun[])
+      : shot.run
+        ? [{ id: shot.run, role: "clip" }]
+        : [];
+  const runCount = runs.length;
 
   const motion = shot.motion;
   const caption = shot.beat || shot.prompt || shot.id;
@@ -98,7 +112,10 @@ export function ShotCard({
         >
           {String(n).padStart(2, "0")}
         </Text>
-        <Text variant="body" className="min-w-48 flex-1 font-medium">
+        {/* The shot is the heading here; `Inputs` and `Outputs` under it are
+            its sub-headings. All three were `title`, so a column label read as
+            loudly as the thing it labels. */}
+        <Text variant="title" className="min-w-48 flex-1">
           {caption}
         </Text>
         {shot.status && (
@@ -124,16 +141,12 @@ export function ShotCard({
             below is for a scene assembled from bare runs, which has no status
             at all. Showing both put `rendered` next to `not rendered` on the
             same card. */}
-        {shot.run ? (
-          <Button
-            intent="ghost"
-            size="sm"
-            onClick={() => onOpenRun(shot.run as string)}
-          >
-            Open its run
-          </Button>
-        ) : (
-          !shot.status && <Badge intent="warning">not rendered</Badge>
+        {/* **No `Open its run` button.** A shot already offers its runs three
+            other ways — the `Runs` tab below, the caption under its output, and
+            the run rows themselves — and a fourth on the title row was the one
+            competing with the shot's own name. */}
+        {!shot.run && !shot.status && (
+          <Badge intent="warning">not rendered</Badge>
         )}
         {!editing && (
           <Button
@@ -158,19 +171,26 @@ export function ShotCard({
           Output first in the DOM, so one column below `lg` leads with the
           clip and needs no `order` override. Same mechanism as `RunPage`. */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
-        {hasOutput && (
-          <div className="flex flex-col gap-3 lg:col-start-2 lg:row-start-1">
-            {/* Titled and ruled, exactly as the run screen heads its own
+        {/* **Always drawn, empty or not.** A shot with nothing rendered used
+            to collapse the column, so the storyboard alternated between one
+            layout and two down the page and a planned shot looked like a
+            different kind of thing from a shot in flight. */}
+        <div className="flex flex-col gap-3 lg:col-start-2 lg:row-start-1">
+          {/* Titled and ruled, exactly as the run screen heads its own
                 column. A muted caption made a shot's output look like a label
                 on a thumbnail rather than the other half of the page. */}
-            <Text variant="title" className="border-b border-line pb-2">
-              {outputCount === 1 ? "Outputs" : `Outputs · ${outputCount}`}
-            </Text>
-            {/* **The run screen's output panel, not a thumbnail.** A shot's
+          <Text
+            variant="body"
+            className="border-b border-line pb-2 font-medium"
+          >
+            {outputCount > 1 ? `Outputs · ${outputCount}` : "Outputs"}
+          </Text>
+          {/* **The run screen's output panel, not a thumbnail.** A shot's
                 clip is the thing being judged, so it plays where it is, is
                 sized to the media rather than cropped into a tile, and its
                 caption is a real link — the same three properties the run
                 screen's output has, because it is the same component. */}
+          {hasOutput ? (
             <div className="flex flex-col gap-3">
               {shot.clip && (
                 <OutputPanel
@@ -196,14 +216,21 @@ export function ShotCard({
                 ) : null,
               )}
             </div>
-          </div>
-        )}
+          ) : (
+            <Text variant="body" tone="muted">
+              Nothing rendered yet.
+            </Text>
+          )}
+        </div>
 
         <div className="flex min-w-0 flex-col gap-3 lg:col-start-1 lg:row-start-1">
           {/* `Inputs` is the heading and the tabs sit under it — the shape the
               run screen settled on, so a shot reads as a small one rather than
               as a differently-built thing that happens to be nearby. */}
-          <Text variant="title" className="border-b border-line pb-2">
+          <Text
+            variant="body"
+            className="border-b border-line pb-2 font-medium"
+          >
             Inputs
           </Text>
 
@@ -275,12 +302,12 @@ export function ShotCard({
                   draft, what failed — which is what a run list is for everywhere else in
                   the app, drawn by the same component so a status colour means the same
                   thing here as on a project or a character. */}
+                    {/* No `Runs` caption inside the `Runs` tab — the tab says
+                        it, and saying it twice a few pixels apart is the same
+                        duplication the run screen just lost. */}
                     <section className="flex flex-col gap-1">
-                      <Text variant="caption" tone="muted">
-                        Runs
-                      </Text>
                       <RunList
-                        runs={shot.runs ?? []}
+                        runs={runs}
                         onOpen={(run) => onOpenRun(run.id)}
                       />
                     </section>
