@@ -84,6 +84,8 @@ export function RunPage() {
    * carry, and a payload pane in the query string would survive a share and
    * open someone else on a raw request document.
    */
+  /** Whether anything has actually gone to the provider — see `PayloadDocument`. */
+  const sent = Boolean(data?.submitted);
   const [pane, setPane] = useState("plan");
   const [approving, setApproving] = useState(false);
   const [approveError, setApproveError] = useState<string | null>(null);
@@ -370,20 +372,24 @@ export function RunPage() {
               <div className="flex min-w-0 flex-col gap-3 pt-4">
                 <section className="flex flex-col gap-3">
                   <Text variant="caption" tone="muted">
-                    Exactly what went to the provider and exactly what came
-                    back. Studio stores these and decodes neither.
+                    {sent
+                      ? "Exactly what went to the provider and exactly what came back. Studio stores these and decodes neither."
+                      : "Nothing has gone to the provider yet. These are written at submit time and record what was actually sent — editing the plan above does not change them, because nothing was sent to change."}
                   </Text>
                   <PayloadDocument
                     label="prompt.json"
                     node={data.payload.prompt}
+                    sent={sent}
                   />
                   <PayloadDocument
                     label="request.json"
                     node={data.payload.request}
+                    sent={sent}
                   />
                   <PayloadDocument
                     label="response.json"
                     node={data.payload.response}
+                    sent={sent}
                   />
                 </section>
               </div>
@@ -432,9 +438,20 @@ export function RunPage() {
 function PayloadDocument({
   label,
   node,
+  sent,
 }: {
   label: string;
   node: string | null;
+  /**
+   * Whether this run has been submitted.
+   *
+   * An absent document means two different things and the page said one
+   * sentence for both. On a draft nothing has gone out yet, so there is nothing
+   * to record — and a person who has just edited the plan reasonably wonders
+   * why `request.json` does not show the edit. On a submitted run an absent
+   * document is a gap in the record instead.
+   */
+  sent: boolean;
 }) {
   const load = useCallback(
     () =>
@@ -451,7 +468,10 @@ function PayloadDocument({
     return (
       <div className="border-t border-line py-2">
         <Text variant="caption" tone="muted" className="font-mono">
-          {label} — not written for this run
+          {label} —{" "}
+          {sent
+            ? "not written for this run"
+            : "written when this run is submitted"}
         </Text>
       </div>
     );

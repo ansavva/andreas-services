@@ -83,7 +83,26 @@ export function RunPlanEditor({
    * under the cursor as somebody typed a `{`.
    */
   const structured = useMemo(
-    () => run.plan?.prompt != null && typeof run.plan.prompt !== "string",
+    // **Does it PARSE as a document — not: is it a JS object.** This read
+    // `typeof run.plan.prompt !== "string"`, and `studio prompt` emits the
+    // compiled document as a JSON *string*, which is what `--prompt-json`
+    // stores. So every properly authored plan took the prose branch and was
+    // edited as raw JSON in a textarea — the exact thing this form exists to
+    // stop. Viewing was unaffected, because `parsePrompt` takes either.
+    () => parsePrompt(promptText(run.plan?.prompt)) !== null,
+    [run.plan],
+  );
+
+  /**
+   * Whether the document was STORED as a string, so it is saved back as one.
+   *
+   * A plan authored by `studio prompt --emit prompt` holds a string; one built
+   * by an older path holds an object. Both parse; writing the wrong one back
+   * would silently change the shape of a record this form was only meant to
+   * reword.
+   */
+  const storedAsString = useMemo(
+    () => typeof run.plan?.prompt === "string",
     [run.plan],
   );
 
@@ -149,9 +168,19 @@ export function RunPlanEditor({
               promptFields,
               camera,
             ),
+            null,
+            2,
           )
         : prompt;
-      const plan = planOf(run.plan, nextPrompt, structured, params, note);
+      // `planOf` parses when the plan holds an object and passes the string
+      // through when it holds a string — so the record keeps the shape it had.
+      const plan = planOf(
+        run.plan,
+        nextPrompt,
+        structured && !storedAsString,
+        params,
+        note,
+      );
       if (JSON.stringify(plan) !== JSON.stringify(run.plan)) {
         latest = await patchRunPlan(run.id, plan);
       }
@@ -184,6 +213,7 @@ export function RunPlanEditor({
     prompt,
     rows,
     run,
+    storedAsString,
     structured,
   ]);
 

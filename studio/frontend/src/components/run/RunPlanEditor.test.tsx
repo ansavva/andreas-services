@@ -244,6 +244,43 @@ describe("editing a plan", () => {
     expect(sent.action).toBe("he turns");
   });
 
+  it("edits a document STORED AS A STRING as fields, and saves a string back", async () => {
+    // **The case that shipped broken.** `studio prompt --emit prompt` produces
+    // the compiled document as a JSON *string*, and `--prompt-json` stores it
+    // that way — so every properly authored plan holds a string. `structured`
+    // asked `typeof !== "string"`, which is false for all of them, and the form
+    // fell through to the prose textarea: a person opened Edit on a real plan
+    // and got raw JSON, which is the one thing this form exists to prevent.
+    editor(
+      draft({
+        plan: {
+          version: 1,
+          origin: "authored",
+          prompt: JSON.stringify({
+            subject: "a man on a porch",
+            action: "he turns",
+          }),
+          params: {},
+        },
+      }),
+    );
+
+    expect(screen.queryByLabelText("Prompt")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Subject"), {
+      target: { value: "a man on a porch at dawn" },
+    });
+    fireEvent.click(screen.getByText("Save the plan"));
+
+    await waitFor(() => expect(patchRunPlan).toHaveBeenCalled());
+    const sent = planSent().prompt;
+    // Still a string, because that is how it arrived — rewording a plan must
+    // not quietly change the shape of the record.
+    expect(typeof sent).toBe("string");
+    const parsed = JSON.parse(sent as string) as Record<string, unknown>;
+    expect(parsed.subject).toBe("a man on a porch at dawn");
+    expect(parsed.action).toBe("he turns");
+  });
+
   it("says that saving withdraws the approval, before anything is typed", () => {
     editor();
 
