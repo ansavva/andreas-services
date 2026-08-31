@@ -20,7 +20,7 @@ import {
 } from "../apis/studio";
 import { PageBar } from "../components/layout/PageBar";
 import { Backlinks } from "../components/common/Backlinks";
-import { MediaPlayer } from "../components/media/MediaPlayer";
+import { OutputPanel } from "../components/media/OutputPanel";
 import { MediaThumb } from "../components/media/MediaThumb";
 import { ApproveBar, InFlightBar, RunPlan } from "../components/run/RunPlan";
 import { formatCost } from "../utils/cost";
@@ -503,101 +503,6 @@ function PayloadDocument({
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-/**
- * A run's output: watchable here, and openable properly.
- *
- * **Two complaints, one component.** A video output was a poster in a tile — to
- * see it move you left the page for the object screen, which is the exact trip
- * the inline player exists to end. And the tile was a `<button>`, so a
- * command-click did nothing: the browser has no new-tab gesture for a button,
- * so the app was discarding the one affordance every person already has for
- * "not here, over there".
- *
- * The media plays in place, and the caption under it is a real `<a href>` —
- * command, control, shift and middle click go to the browser, a plain click to
- * the router. The same bargain `PageBar`'s crumbs make.
- *
- * **The link cannot wrap the player.** The player is full of buttons, and an
- * anchor containing a button is neither one thing nor the other to a keyboard
- * or a screen reader. So the caption carries the link and says where it goes.
- *
- * `fit="contain"` without exception: an output is the thing being judged, and
- * `cover` crops to fill the box — which on anything but a square clip quietly
- * cut the edges off the shot.
- */
-function OutputPanel({
-  asset,
-  sole,
-  to,
-}: {
-  asset: RunAsset;
-  /** The only output — then it is the subject of the page, not a tile in a grid. */
-  sole: boolean;
-  to: string;
-}) {
-  const navigate = useNavigate();
-  const isVideo = (asset.content_type ?? "").startsWith("video/");
-
-  /** Every gesture that means "somewhere else" belongs to the browser. */
-  const open = (event: React.MouseEvent) => {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
-      return;
-    event.preventDefault();
-    navigate(to);
-  };
-
-  return (
-    <div className="flex min-w-0 flex-col gap-1 border border-line bg-card p-1">
-      {isVideo ? (
-        <MediaPlayer
-          nodeId={asset.node}
-          url={asset.url}
-          name={asset.name}
-          isVideo
-          aspect={sole ? "auto" : "square"}
-          fit="contain"
-        />
-      ) : (
-        <a
-          href={to}
-          onClick={open}
-          className="block focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          <MediaThumb
-            nodeId={asset.node}
-            url={asset.url}
-            name={asset.name}
-            aspect={sole ? "auto" : "square"}
-            fit="contain"
-            className="w-full rounded-none"
-          />
-        </a>
-      )}
-
-      {/* `flex-col`, because two `Text` captions are inline spans: without it
-          the name and the size ran together as "flex-draft.mp42.7 MB". */}
-      <a
-        href={to}
-        onClick={open}
-        className="flex min-w-0 flex-col px-1 pb-1 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-      >
-        <Text variant="caption" tone="muted" className="truncate font-mono">
-          {asset.name}
-        </Text>
-        {asset.size !== undefined && (
-          <Text
-            variant="caption"
-            tone="muted"
-            className="font-mono tabular-nums"
-          >
-            {formatBytes(asset.size)}
-          </Text>
-        )}
-      </a>
     </div>
   );
 }
