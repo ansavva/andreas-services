@@ -158,6 +158,25 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
     [angles, group, picked, project, record.id],
   );
 
+  // **Above the early returns, and that is not style.** These are hooks, and
+  // React requires the same hooks in the same order on every render — with
+  // `if (rootTree.loading) return` between them and the top, the first
+  // resolved render ran three hooks the loading render had not, which React
+  // reports as a changed hook order and which corrupts state silently in
+  // production.
+  const previews = useMemo(
+    () => Object.fromEntries((result?.preview ?? []).map((p) => [p.angle, p])),
+    [result],
+  );
+  const drafts = useMemo(
+    () => Object.fromEntries((result?.drafted ?? []).map((d) => [d.angle, d])),
+    [result],
+  );
+  const problems = useMemo(
+    () => Object.fromEntries((result?.failed ?? []).map((f) => [f.angle, f.error])),
+    [result],
+  );
+
   if (rootTree.loading) return <Spinner />;
   if (!seedFolder) {
     return (
@@ -179,75 +198,62 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
   const unpicked = angles.filter((a) => (picked[a.id] ?? []).length === 0);
   const ready = project !== "" && angles.length > 0 && unpicked.length === 0;
 
+  // The angle the pool on the right is picking for. Defaults to the first, so
+  // the panel is never a dead box asking you to choose before you can start.
+  const focused = angles.find((a) => a.id === openAngle) ?? angles[0];
+
+
   return (
     <div className="flex flex-col gap-4">
       <Card.Root>
         <Card.Title>Where the runs go</Card.Title>
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap gap-4">
-            <div className="flex flex-col gap-1">
-              <Text variant="caption" tone="muted">
-                Project
+        <div className="flex flex-wrap gap-4">
+          <div className="flex flex-col gap-1">
+            <Text variant="caption" tone="muted">
+              Project
+            </Text>
+            {/* Required and never inferred: a run belongs to a project, and
+                guessing puts runs somewhere nobody looks again. */}
+            <Select
+              aria-label="Project"
+              options={[
+                { value: "", label: "Choose a project…" },
+                ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.slug })),
+              ]}
+              value={project}
+              onValueChange={setProject}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Text variant="caption" tone="muted">
+              Angles
+            </Text>
+            <Select
+              aria-label="Angles"
+              options={[
+                { value: "all", label: "Face and body" },
+                { value: "face", label: "Face only" },
+                { value: "body", label: "Body only" },
+              ]}
+              value={group}
+              onValueChange={setGroup}
+            />
+          </div>
+          <div className="flex flex-col justify-end gap-1">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button intent="ghost" onClick={() => send(true)} disabled={!ready || busy !== null}>
+                {busy === "preview" ? "Assembling…" : "Preview"}
+              </Button>
+              <Button onClick={() => send(false)} disabled={!ready || busy !== null}>
+                {busy === "draft" ? "Drafting…" : `Draft ${angles.length} angle(s)`}
+              </Button>
+              <Text tone="muted">
+                {unpicked.length > 0
+                  ? `${unpicked.length} angle(s) still need photographs.`
+                  : "Nothing is approved and nothing bills."}
               </Text>
-              {/* Required and never inferred: a run belongs to a project, and
-                  guessing puts runs somewhere nobody looks again. */}
-              <Select
-                aria-label="Project"
-                options={[
-                  { value: "", label: "Choose a project…" },
-                  ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.slug })),
-                ]}
-                value={project}
-                onValueChange={setProject}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Text variant="caption" tone="muted">
-                Angles
-              </Text>
-              <Select
-                aria-label="Angles"
-                options={[
-                  { value: "all", label: "Face and body" },
-                  { value: "face", label: "Face only" },
-                  { value: "body", label: "Body only" },
-                ]}
-                value={group}
-                onValueChange={setGroup}
-              />
             </div>
           </div>
-        </div>
-      </Card.Root>
-
-      {(spec.loading || pool.loading) ? <Spinner /> : null}
-
-      {angles.map((angle) => (
-        <AnglePicker
-          key={angle.id}
-          angle={angle}
-          files={pool.data?.items ?? []}
-          picked={picked[angle.id] ?? []}
-          open={openAngle === angle.id}
-          onOpen={() => setOpenAngle(openAngle === angle.id ? null : angle.id)}
-          onToggle={(node) => toggle(angle.id, node)}
-          onCopyToAll={() => copyToAll(angle.id)}
-        />
-      ))}
-
-      <Card.Root>
-        <div className="flex flex-wrap items-center gap-3">
-          <Button intent="ghost" onClick={() => send(true)} disabled={!ready || busy !== null}>
-            {busy === "preview" ? "Assembling…" : "Preview"}
-          </Button>
-          <Button onClick={() => send(false)} disabled={!ready || busy !== null}>
-            {busy === "draft" ? "Drafting…" : `Draft ${angles.length} angle(s)`}
-          </Button>
-          <Text tone="muted">
-            {unpicked.length > 0
-              ? `${unpicked.length} angle(s) still need photographs.`
-              : "Nothing is approved and nothing bills."}
-          </Text>
         </div>
       </Card.Root>
 
@@ -258,102 +264,126 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
         </Alert.Root>
       ) : null}
 
-      {result ? <Outcome result={result} project={project} /> : null}
+      {spec.loading || pool.loading ? <Spinner /> : null}
+
+      {/*
+        **Two columns where there is room for two.** The angles are the work and
+        the pool is the tool, so the pool goes to the side and STAYS there —
+        `sticky`, because picking for the eleventh angle otherwise means
+        scrolling the grid back into view for every one of them. Below `lg` it
+        stacks, which is the same two things in the only order that fits.
+      */}
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(300px,400px)] lg:items-start">
+        <div className="flex flex-col gap-4">
+          {angles.map((angle) => (
+            <AngleCard
+              key={angle.id}
+              angle={angle}
+              files={pool.data?.items ?? []}
+              picked={picked[angle.id] ?? []}
+              focused={focused?.id === angle.id}
+              onFocus={() => setOpenAngle(angle.id)}
+              onCopyToAll={() => copyToAll(angle.id)}
+              preview={previews[angle.id]?.plan.prompt}
+              draft={drafts[angle.id]}
+              problem={problems[angle.id]}
+              project={project}
+            />
+          ))}
+        </div>
+
+        <aside className="lg:sticky lg:top-4">
+          <Card.Root>
+            <Card.Title>
+              {focused ? `Photographs for ${focused.id}` : "Pick an angle"}
+            </Card.Title>
+            {focused ? (
+              <>
+                <Text tone="muted">
+                  Click in the order the model should see them — a prompt citing
+                  [Image2] means the second one.
+                </Text>
+                <div className="grid grid-cols-3 gap-2">
+                  {(pool.data?.items ?? []).map((file) => {
+                    const at = (picked[focused.id] ?? []).indexOf(file.id);
+                    return (
+                      <button
+                        key={file.id}
+                        type="button"
+                        onClick={() => toggle(focused.id, file.id)}
+                        aria-pressed={at >= 0}
+                        aria-label={`${focused.id}: ${file.name}${at >= 0 ? `, picked ${at + 1}` : ""}`}
+                        className="relative text-left"
+                      >
+                        <MediaThumb
+                          nodeId={file.id}
+                          url={file.url}
+                          name={file.name}
+                          dimmed={(picked[focused.id] ?? []).length > 0 && at < 0}
+                          badge={at >= 0 ? String(at + 1) : undefined}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <Text tone="muted">
+                Choose an angle on the left to pick its photographs.
+              </Text>
+            )}
+          </Card.Root>
+        </aside>
+      </div>
     </div>
   );
 }
 
-function Outcome({ result, project }: { result: TurnaroundResult; project: string }) {
-  return (
-    <>
-      {(result.failed ?? []).length > 0 ? (
-        <Alert.Root intent="warning">
-          <Alert.Title>
-            {result.failed.length} angle(s) were not drafted
-          </Alert.Title>
-          <Alert.Description>
-            {/* One bad angle does not cancel the rest — a failure is almost
-                always a property of that angle alone, most often a template
-                citing a block somebody deleted. */}
-            {result.failed.map((f) => `${f.angle}: ${f.error}`).join(" · ")}
-          </Alert.Description>
-        </Alert.Root>
-      ) : null}
-
-      {result.preview
-        ? result.preview.map((entry) => (
-            <Card.Root key={entry.angle}>
-              <Card.Title>
-                {entry.angle} <Badge size="sm">preview</Badge>
-              </Card.Title>
-              <div className="flex flex-col gap-2">
-                {/* `whitespace-pre-wrap`, because HTML collapses runs of
-                    whitespace and the blank lines in a prompt are now real —
-                    they survive assembly and reach the model. Rendered without
-                    it, a paragraphed prompt reads as the same wall of text it
-                    was written to stop being, and the editor would look like it
-                    had done nothing. */}
-                <Text className="whitespace-pre-wrap font-mono">{entry.plan.prompt}</Text>
-              </div>
-            </Card.Root>
-          ))
-        : null}
-
-      {result.drafted ? (
-        <Card.Root>
-          <Card.Title>{result.drafted.length} draft(s)</Card.Title>
-          <div className="flex flex-col gap-2">
-            <Text tone="muted">
-              Nothing is approved and nothing has been submitted. Open each one
-              to read its payload and say yes to it.
-            </Text>
-            <ul className="mt-2 flex flex-col gap-1">
-              {result.drafted.map((entry) => (
-                <li key={entry.id}>
-                  <Link to={runPath(project, entry.id)}>{entry.angle}</Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </Card.Root>
-      ) : null}
-    </>
-  );
-}
-
+//: The blank bible template's own placeholder marker. A prompt still holding
+//: one is a prompt asking a model to render the words `<garment>`.
+const UNFILLED = /<[a-z][^<>]{2,60}>/g;
 
 /**
- * One angle: what it is, and which photographs it will be shot from.
+ * One angle: what it is, what it will be shot from, and what it would say.
  *
- * The plate is the point of the header. An angle id says `face_three_quarter_back_right`
- * and the prompt spends a paragraph defining it in terms of what is visible in
- * frame; the picture says it at a glance. These plates are the ones a face
- * angle stopped SENDING when the guide was found to distort the face it existed
- * to record — which is exactly why showing them is free: an illustration
- * outside the payload cannot influence a render.
+ * The plate is the point of the header. An angle id says
+ * `face_three_quarter_back_right` and its prompt spends a paragraph defining
+ * that in terms of what is visible in frame; the picture says it at a glance.
+ * These are the plates a face angle stopped SENDING when the guide was found to
+ * distort the face it existed to record — which is exactly why showing them is
+ * free: an illustration outside the payload cannot influence a render.
+ *
+ * **The picks are shown large.** They were 48px, which is not a size anybody can
+ * judge a photograph at — and judging them is the entire decision this screen
+ * exists for.
+ *
+ * **The preview belongs here, not in a list at the bottom.** What an angle will
+ * say is a fact about that angle, and reading it meant scrolling past fourteen
+ * cards to a stack of prose in a different order.
  */
-function AnglePicker({
+function AngleCard({
   angle,
   files,
   picked,
-  open,
-  onOpen,
-  onToggle,
+  focused,
+  onFocus,
   onCopyToAll,
+  preview,
+  draft,
+  problem,
+  project,
 }: {
   angle: SpecAngle;
   files: FileEntry[];
   picked: string[];
-  open: boolean;
-  onOpen: () => void;
-  onToggle: (node: string) => void;
+  focused: boolean;
+  onFocus: () => void;
   onCopyToAll: () => void;
+  preview?: string;
+  draft?: { angle: string; id: string; status: string };
+  problem?: string;
+  project: string;
 }) {
-  // Resolve the path, then SIGN it. Two calls, and the second is not optional:
-  // `/api/resolve` answers a node view with no url, and `MediaThumb` only
-  // re-signs from its `onError` — which an empty `src` never fires, because the
-  // browser does not attempt a load at all. Fourteen empty boxes and no network
-  // request is what that looked like.
   const plate = useResource(
     angle.illustration ? ["plate", angle.illustration] : null,
     angle.illustration
@@ -369,10 +399,15 @@ function AnglePicker({
   );
 
   return (
-    <Card.Root>
+    <Card.Root
+      // The focused angle is the one the pool on the right is picking for, so
+      // it has to be visible at a glance — otherwise every click lands
+      // somewhere the eye is not.
+      className={focused ? "outline outline-2 outline-primary" : undefined}
+    >
       <div className="flex items-start gap-3">
         {plate.data ? (
-          <span className="w-16 shrink-0">
+          <span className="w-20 shrink-0">
             <MediaThumb
               nodeId={plate.data.id}
               url={plate.data.url}
@@ -391,53 +426,72 @@ function AnglePicker({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        {/* The picks themselves, always visible — the answer to "what will this
-            angle be shot from" should not need a click. */}
         {chosen.map((file, at) => (
-          <span key={file.id} className="w-12">
+          <span key={file.id} className="w-28">
             <MediaThumb
               nodeId={file.id}
               url={file.url}
               name={file.name}
               badge={String(at + 1)}
+              showName
             />
           </span>
         ))}
         {chosen.length === 0 ? <Text tone="muted">No photographs yet.</Text> : null}
-        <Button intent="ghost" onClick={onOpen} aria-expanded={open}>
-          {open ? "Done" : chosen.length ? "Change" : "Pick photographs"}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button intent="ghost" onClick={onFocus} aria-pressed={focused}>
+          {chosen.length ? "Change" : "Pick photographs"}
         </Button>
         {chosen.length > 0 ? (
           <Button intent="ghost" onClick={onCopyToAll}>
             Use for every angle
           </Button>
         ) : null}
+        {draft ? (
+          <Link to={runPath(project, draft.id)}>Open the draft</Link>
+        ) : null}
       </div>
 
-      {open ? (
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-          {files.map((file) => {
-            const at = picked.indexOf(file.id);
-            return (
-              <button
-                key={file.id}
-                type="button"
-                onClick={() => onToggle(file.id)}
-                aria-pressed={at >= 0}
-                aria-label={`${angle.id}: ${file.name}${at >= 0 ? `, picked ${at + 1}` : ""}`}
-                className="relative text-left"
-              >
-                <MediaThumb
-                  nodeId={file.id}
-                  url={file.url}
-                  name={file.name}
-                  dimmed={picked.length > 0 && at < 0}
-                  badge={at >= 0 ? String(at + 1) : undefined}
-                />
-              </button>
-            );
-          })}
-        </div>
+      {problem ? (
+        <Alert.Root intent="warning">
+          <Alert.Title>Not drafted</Alert.Title>
+          <Alert.Description>{problem}</Alert.Description>
+        </Alert.Root>
+      ) : null}
+
+      {preview && UNFILLED.test(preview) ? (
+        <Alert.Root intent="warning">
+          <Alert.Title>This character's bible is not filled in</Alert.Title>
+          <Alert.Description>
+            {/*
+              The blank bible template writes its own placeholders — `<garment>`,
+              `<one plain colour, optional>` — and `top_text` reads them out
+              verbatim, so they reach the prompt as literal angle brackets and a
+              model is asked to render a `<garment>`. Nothing said so: the
+              preview showed them beside real prose and left it to be noticed.
+
+              Matched on the template's own marker rather than a list of known
+              placeholders, so a field nobody has thought of is caught too.
+            */}
+            {preview.match(UNFILLED)?.join(", ")} — these come from the bible,
+            not from the angle. Fill them in on the Profile tab under Wardrobe
+            before shooting, or the model is asked to render them literally.
+          </Alert.Description>
+        </Alert.Root>
+      ) : null}
+
+      {preview ? (
+        <>
+          <Text variant="caption" tone="muted">
+            What this angle would say
+          </Text>
+          {/* `whitespace-pre-wrap`: HTML collapses runs of whitespace and the
+              blank lines here are real — they survive assembly and reach the
+              model. */}
+          <Text className="whitespace-pre-wrap font-mono">{preview}</Text>
+        </>
       ) : null}
     </Card.Root>
   );
