@@ -151,14 +151,14 @@ function BlockEditor({
   return (
     <Card.Root>
       <Card.Title>{name}</Card.Title>
-      <Card.Body>
+      <div className="flex flex-col gap-2">
         <Field.Root name={`block-${name}`}>
           <AutoTextarea value={draft} onValueChange={setDraft} />
         </Field.Root>
         {failed ? <Alert.Root intent="danger">
             <Alert.Description>{failed}</Alert.Description>
           </Alert.Root> : null}
-      </Card.Body>
+      </div>
       <Card.Footer>
         <Button onClick={save} disabled={!dirty || saving}>
           {saving ? "Saving…" : "Save"}
@@ -238,7 +238,7 @@ function AngleEditor({
         {angle.id} <Badge size="sm">{angle.group}</Badge>
         {angle.angle_image ? <Badge size="sm">guide</Badge> : null}
       </Card.Title>
-      <Card.Body>
+      <div className="flex flex-col gap-2">
         <Field.Root name={`prompt-${angle.id}`}>
           <Field.Label>Prompt</Field.Label>
           <AutoTextarea value={prompt} onValueChange={setPrompt} />
@@ -282,7 +282,7 @@ function AngleEditor({
         {failed ? <Alert.Root intent="danger">
             <Alert.Description>{failed}</Alert.Description>
           </Alert.Root> : null}
-      </Card.Body>
+      </div>
       <Card.Footer>
         <Button onClick={save} disabled={!dirty || saving}>
           {saving ? "Saving…" : "Save"}

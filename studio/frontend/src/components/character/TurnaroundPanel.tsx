@@ -119,7 +119,7 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
     <div className="flex flex-col gap-4">
       <Card.Root>
         <Card.Title>Where the runs go</Card.Title>
-        <Card.Body>
+        <div className="flex flex-col gap-2">
           <div className="flex flex-wrap gap-4">
             <div className="flex flex-col gap-1">
               <Text variant="caption" tone="muted">
@@ -153,12 +153,12 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
               />
             </div>
           </div>
-        </Card.Body>
+        </div>
       </Card.Root>
 
       <Card.Root>
         <Card.Title>Which photographs say who this is</Card.Title>
-        <Card.Body>
+        <div className="flex flex-col gap-2">
           <Text tone="muted">
             Picked in order — the model is handed them in this order, and a
             prompt citing [Image2] means the second one.
@@ -193,7 +193,7 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
           {!pool.loading && (pool.data?.items ?? []).length === 0 ? (
             <Text tone="muted">This seed pool holds no images.</Text>
           ) : null}
-        </Card.Body>
+        </div>
         <Card.Footer>
           <Button intent="ghost" onClick={() => send(true)} disabled={!ready || busy !== null}>
             {busy === "preview" ? "Assembling…" : "Preview"}
@@ -244,9 +244,9 @@ function Outcome({ result, project }: { result: TurnaroundResult; project: strin
               <Card.Title>
                 {entry.angle} <Badge size="sm">preview</Badge>
               </Card.Title>
-              <Card.Body>
+              <div className="flex flex-col gap-2">
                 <Text>{entry.plan.prompt}</Text>
-              </Card.Body>
+              </div>
             </Card.Root>
           ))
         : null}
@@ -254,7 +254,7 @@ function Outcome({ result, project }: { result: TurnaroundResult; project: strin
       {result.drafted ? (
         <Card.Root>
           <Card.Title>{result.drafted.length} draft(s)</Card.Title>
-          <Card.Body>
+          <div className="flex flex-col gap-2">
             <Text tone="muted">
               Nothing is approved and nothing has been submitted. Open each one
               to read its payload and say yes to it.
@@ -266,7 +266,7 @@ function Outcome({ result, project }: { result: TurnaroundResult; project: strin
                 </li>
               ))}
             </ul>
-          </Card.Body>
+          </div>
         </Card.Root>
       ) : null}
     </>
