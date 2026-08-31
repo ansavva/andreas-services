@@ -790,6 +790,41 @@ def _revised(record: dict, assignments: dict, send_entries: list[dict]) -> dict:
     )
 
 
+@bp.get("/runs/<run_id>/payload")
+def preview_payload(run_id: str):
+    """The payload this run WOULD send, rebuilt from the plan as it stands.
+
+    **Hard rule #2 asks a person to approve the full payload, and until this
+    existed the app could not show them one.** A draft has no `request.json` —
+    that document records what was actually sent and is written after dispatch —
+    so the payload tab was empty for exactly the runs whose payload most needed
+    reading, and an edit to the plan appeared to change nothing.
+
+    It is the SAME assembly `submit` uses, not a second one: `generate.payload_of`
+    is the single allowlist of what reaches a provider, and its own docstring
+    says why that matters — a field added to the plan later must not silently
+    become part of a payload somebody approved as something else. Re-deriving it
+    in the client would have been that second copy.
+
+    **Bindings are node ids, never presigned URLs.** Presigning is what
+    `dispatch` does at the last moment; minting URLs to draw a preview would put
+    live credentials in a page that is only being read.
+
+    Drafts only. On a submitted run the honest answer is the stored
+    `request.json`, and computing a fresh one would invite comparing a run
+    against a payload it was never given.
+    """
+    held = support.memberships()
+    record = _run(run_id, held)
+    _draftable(record)
+
+    send_entries = catalog.sends(record["id"])
+    entry = generate.entry_for(record)
+    payload = generate.payload_of(record)
+    bindings = generate.bindings_of(send_entries, entry)
+    return jsonify({"request": {**payload, **bindings}, "prompt": payload.get("prompt")}), 200
+
+
 @bp.patch("/runs/<run_id>/plan")
 def update_plan(run_id: str):
     """Rewrite a draft's authored half. Clears the approval, every time."""

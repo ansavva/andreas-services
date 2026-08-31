@@ -293,6 +293,11 @@ export async function stubApi(page: Page): Promise<void> {
     if (path.endsWith("/api/characters")) return json(route, characters);
     if (path.includes("/api/characters/")) return json(route, character);
     if (path.endsWith("/api/projects")) return json(route, projects);
+    // The draft payload preview, before the more general run route so it is not
+    // swallowed by it.
+    if (path.includes("/api/runs/") && path.endsWith("/payload")) {
+      return json(route, { request: RUN.payload ?? {}, prompt: null });
+    }
     if (path.includes("/api/runs/")) return json(route, RUN);
     if (path.includes("/api/scenes/")) return json(route, SCENE);
     // The clip leads the walk, so `/o?in=recursive` opens on it. The seed

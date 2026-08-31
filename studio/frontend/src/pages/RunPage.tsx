@@ -14,6 +14,7 @@ import {
   approveRun,
   getNodeText,
   getRun,
+  getRunPayloadPreview,
   reconcileRun,
   revokeRunApproval,
   submitRun,
@@ -374,8 +375,16 @@ export function RunPage() {
                   <Text variant="caption" tone="muted">
                     {sent
                       ? "Exactly what went to the provider and exactly what came back. Studio stores these and decodes neither."
-                      : "Nothing has gone to the provider yet. These are written at submit time and record what was actually sent — editing the plan above does not change them, because nothing was sent to change."}
+                      : "Nothing has gone to the provider yet. What follows is what WOULD go, rebuilt from the plan every time you open this — it is what an approval is of. The stored documents below are written at submit time."}
                   </Text>
+
+                  {/* **A draft's payload, so it can be read before it is
+                      approved.** Hard rule #2 asks a person to approve the full
+                      payload and the page could not show one: a draft has no
+                      `request.json`, because that records what was actually
+                      sent. Built by the API from the same allowlist `submit`
+                      uses, never re-derived here — see `getRunPayloadPreview`. */}
+                  {!sent && <PayloadPreview runId={data.id} />}
                   <PayloadDocument
                     label="prompt.json"
                     node={data.payload.prompt}
@@ -435,6 +444,44 @@ export function RunPage() {
  * to it. That is not parsing in the sense the rule forbids: no field is looked
  * up, nothing branches on the shape, and what is shown is the same document.
  */
+/**
+ * What a draft would send, fetched fresh.
+ *
+ * Re-read whenever the run record changes — an edit to the plan rewrites the
+ * payload, and a preview that went stale the moment it was useful would be
+ * worse than none.
+ */
+function PayloadPreview({ runId }: { runId: string }) {
+  const load = useCallback(() => getRunPayloadPreview(runId), [runId]);
+  const { data, loading, error } = useResource(["payload", runId], load);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-6">
+        <Spinner size="md" label="Reading the payload" />
+      </div>
+    );
+  }
+  if (error || !data) {
+    return (
+      <Text variant="caption" tone="muted">
+        The payload could not be built: {error ?? "nothing came back"}
+      </Text>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <Text variant="caption" tone="muted" className="font-mono">
+        request.json — what this run would send
+      </Text>
+      <pre className="max-h-96 overflow-y-auto whitespace-pre-wrap break-words rounded-none border border-line bg-card p-3 font-mono text-xs leading-relaxed text-ink">
+        <code>{JSON.stringify(data.request, null, 2)}</code>
+      </pre>
+    </div>
+  );
+}
+
 function PayloadDocument({
   label,
   node,

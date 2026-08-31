@@ -8,7 +8,14 @@ import { TestProviders } from "../test-providers";
 vi.mock("../apis/studio", () => ({
   getRun: vi.fn(),
   getNodeText: vi.fn(),
-  getProject: vi.fn().mockResolvedValue({ id: "proj-1", slug: "a-project", title: "A project" }),
+  // A draft's payload tab asks the API what it would send — see
+  // `PayloadPreview`. Unmocked it hangs the poll test for its whole timeout.
+  getRunPayloadPreview: vi
+    .fn()
+    .mockResolvedValue({ request: {}, prompt: null }),
+  getProject: vi
+    .fn()
+    .mockResolvedValue({ id: "proj-1", slug: "a-project", title: "A project" }),
 }));
 
 import { getRun } from "../apis/studio";
@@ -83,7 +90,9 @@ it("keeps asking while the run can still change", async () => {
   const first = read.mock.calls.length;
   // Long enough to cross the 5s interval without a fake clock, which React
   // Query's own timers do not cooperate with cleanly.
-  await waitFor(() => expect(read.mock.calls.length).toBeGreaterThan(first), { timeout: 7000 });
+  await waitFor(() => expect(read.mock.calls.length).toBeGreaterThan(first), {
+    timeout: 7000,
+  });
 }, 12_000);
 
 it("stops asking once the run has finished", async () => {
@@ -121,7 +130,9 @@ it("names the project in the trail", async () => {
  */
 it("names the scene that used this run, and goes there", async () => {
   read.mockResolvedValue(
-    record({ scenes: [{ id: "scene-9", slug: "a-scene", title: "A scene" }] } as Partial<RunRecord>),
+    record({
+      scenes: [{ id: "scene-9", slug: "a-scene", title: "A scene" }],
+    } as Partial<RunRecord>),
   );
   await open();
 

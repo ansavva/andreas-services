@@ -763,6 +763,25 @@ export function getRun(id: string) {
 }
 
 /**
+ * The payload a DRAFT would send, rebuilt from the plan as it stands.
+ *
+ * Hard rule #2 asks a person to approve the full payload, and a draft has no
+ * `request.json` — that document records what was actually sent and is written
+ * after dispatch. So the run whose payload most needs reading was the one whose
+ * payload tab was empty, and an edit to the plan appeared to change nothing.
+ *
+ * Answered by the API rather than assembled here on purpose: `payload_of` is
+ * the single allowlist of what reaches a provider, and a second copy in this
+ * file is exactly how a field added to the plan later becomes part of a payload
+ * somebody approved as something else.
+ */
+export function getRunPayloadPreview(id: string) {
+  return apiGet<{ request: Record<string, unknown>; prompt: unknown }>(
+    `/api/runs/${encodeURIComponent(id)}/payload`,
+  );
+}
+
+/**
  * Approve a draft — record that somebody read THIS payload and said yes to it.
  *
  * **The digest is the whole of it.** It is sent, not stored: the API recomputes
