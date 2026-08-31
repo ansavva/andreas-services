@@ -18,11 +18,12 @@ import type { SceneRecord, Shot } from "../types";
 // the trail says where the scene sits rather than just "Project".
 vi.mock("../apis/studio", () => ({
   getScene: vi.fn(),
+  patchScene: vi.fn(),
   patchShot: vi.fn(),
   getProject: vi.fn(),
 }));
 
-import { getProject, getScene, patchShot } from "../apis/studio";
+import { getProject, getScene, patchScene, patchShot } from "../apis/studio";
 import { ScenePage } from "./ScenePage";
 import { TestProviders } from "../test-providers";
 
@@ -771,4 +772,31 @@ it("lists the runs behind a shot, using the shared run list", async () => {
 
   fireEvent.click(screen.getByText("run-old"));
   await waitFor(() => expect(landed).toContain("run-old"));
+});
+
+it("edits the scene's setting in place, and keeps the board's URLs alive", async () => {
+  // The setting was readable and not editable, and it is the one field a person
+  // actually revises: it is prepended byte-identically to every panel prompt,
+  // so it is the lever that keeps separately rendered panels agreeing on one
+  // room. `PATCH /scenes/<id>` has accepted it all along; the frontend simply
+  // never asked.
+  const patch = vi.mocked(patchScene);
+  patch.mockResolvedValue({ setting: "A garage at night" } as SceneRecord);
+  draw(record({ setting: "A bare studio wall" }));
+
+  expect(await screen.findByText("A bare studio wall")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: /^edit the setting$/i }));
+
+  fireEvent.change(screen.getByLabelText("Setting"), {
+    target: { value: "A garage at night" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+  await waitFor(() =>
+    expect(patch).toHaveBeenCalledWith(ID, { setting: "A garage at night" }),
+  );
+  // Merged, not refetched: a re-GET would re-sign every panel URL on the board
+  // to show one changed sentence.
+  expect(await screen.findByText("A garage at night")).toBeTruthy();
+  expect(vi.mocked(getScene).mock.calls.length).toBe(1);
 });

@@ -320,14 +320,6 @@ export function MotionEditor({
         <Button intent="ghost" size="sm" onClick={onCancel} disabled={saving}>
           Cancel
         </Button>
-        {/* The wording is what a shot is judged on and what it costs to get
-            wrong, so the gate that spends money re-validates it: `studio scenes
-            check` runs the real validator — one camera move, no bare "fast",
-            the beat budget — before any render. This form does not, and must not
-            pretend to. */}
-        <Text variant="caption" tone="muted" className="self-center">
-          Re-check with <code>studio scenes check</code> before rendering.
-        </Text>
       </div>
     </div>
   );

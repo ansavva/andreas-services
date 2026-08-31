@@ -95,7 +95,10 @@ export function getNode(id: string) {
  * whatever object happens to sit at that string, which since #294 is nothing at
  * all for anything uploaded through the app: its bytes are at `blobs/<id>`.
  */
-export function getAsset(node: string, disposition: "inline" | "attachment" = "inline") {
+export function getAsset(
+  node: string,
+  disposition: "inline" | "attachment" = "inline",
+) {
   return apiGet<AssetResponse>("/api/asset", { node, disposition });
 }
 
@@ -159,11 +162,17 @@ export function describeNode(
   id: string,
   changes: { description?: string | null; tags?: string[] | null },
 ) {
-  return apiSend<NodeRecord>("PATCH", `/api/nodes/${encodeURIComponent(id)}`, changes);
+  return apiSend<NodeRecord>(
+    "PATCH",
+    `/api/nodes/${encodeURIComponent(id)}`,
+    changes,
+  );
 }
 
 export function renameNode(id: string, name: string) {
-  return apiSend<NodeRecord>("PATCH", `/api/nodes/${encodeURIComponent(id)}`, { name });
+  return apiSend<NodeRecord>("PATCH", `/api/nodes/${encodeURIComponent(id)}`, {
+    name,
+  });
 }
 
 /**
@@ -213,7 +222,11 @@ export function deleteNodes(ids: string[]) {
  * places that have to agree, and PATCH is already in all four.
  */
 export function saveNodeText(id: string, content: string) {
-  return apiSend<SavedText>("PATCH", `/api/nodes/${encodeURIComponent(id)}/text`, { content });
+  return apiSend<SavedText>(
+    "PATCH",
+    `/api/nodes/${encodeURIComponent(id)}/text`,
+    { content },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -259,10 +272,14 @@ export function createNode(
  * that file. The grant is one key, one length, one type, once.
  */
 export function getUploadUrl(id: string, size: number, contentType: string) {
-  return apiSend<UploadGrant>("POST", `/api/nodes/${encodeURIComponent(id)}/upload-url`, {
-    size,
-    content_type: contentType,
-  });
+  return apiSend<UploadGrant>(
+    "POST",
+    `/api/nodes/${encodeURIComponent(id)}/upload-url`,
+    {
+      size,
+      content_type: contentType,
+    },
+  );
 }
 
 /**
@@ -274,7 +291,11 @@ export function getUploadUrl(id: string, size: number, contentType: string) {
  * a folder listing draws as a tile that will not load.
  */
 export function confirmUpload(id: string) {
-  return apiSend<NodeRecord>("POST", `/api/nodes/${encodeURIComponent(id)}/confirm-upload`, {});
+  return apiSend<NodeRecord>(
+    "POST",
+    `/api/nodes/${encodeURIComponent(id)}/confirm-upload`,
+    {},
+  );
 }
 
 /**
@@ -374,14 +395,17 @@ export function patchCharacter(
  * writes `PUT` into the next route, the preflight fails in the browser and
  * nowhere else, and the same afternoon gets spent twice.
  */
-export function setCharacterProfile(id: string, profile: CharacterProfile, rev: number) {
+export function setCharacterProfile(
+  id: string,
+  profile: CharacterProfile,
+  rev: number,
+) {
   return apiSend<EntityPatch<CharacterRecord>>(
     "PATCH",
     `/api/characters/${encodeURIComponent(id)}/profile`,
     { profile, rev },
   );
 }
-
 
 /**
  * Delete a character.
@@ -407,13 +431,17 @@ export function deleteCharacter(
 ) {
   return apiSend<{ id: string; deleted: number }>(
     "DELETE",
-    `/api/characters/${encodeURIComponent(id)}?files=${files}` + (force ? "&force=1" : ""),
+    `/api/characters/${encodeURIComponent(id)}?files=${files}` +
+      (force ? "&force=1" : ""),
   );
 }
 
 /** The reference index, grouped and in `order` within each group. */
 export function getReferences(id: string, group?: string) {
-  return apiGet<ReferenceIndex>(`/api/characters/${encodeURIComponent(id)}/references`, { group });
+  return apiGet<ReferenceIndex>(
+    `/api/characters/${encodeURIComponent(id)}/references`,
+    { group },
+  );
 }
 
 /**
@@ -426,9 +454,19 @@ export function getReferences(id: string, group?: string) {
  */
 export function addReference(
   id: string,
-  body: { node: string; group: string; description?: string; tags?: string[]; after?: string },
+  body: {
+    node: string;
+    group: string;
+    description?: string;
+    tags?: string[];
+    after?: string;
+  },
 ) {
-  return apiSend<ReferenceEntry>("POST", `/api/characters/${encodeURIComponent(id)}/references`, body);
+  return apiSend<ReferenceEntry>(
+    "POST",
+    `/api/characters/${encodeURIComponent(id)}/references`,
+    body,
+  );
 }
 
 /**
@@ -443,7 +481,12 @@ export function addReference(
 export function patchReference(
   id: string,
   node: string,
-  body: { group?: string; description?: string; tags?: string[]; after?: string },
+  body: {
+    group?: string;
+    description?: string;
+    tags?: string[];
+    after?: string;
+  },
 ) {
   return apiSend<ReferenceEntry>(
     "PATCH",
@@ -451,7 +494,6 @@ export function patchReference(
     body,
   );
 }
-
 
 /** Detach an entry. The file stays exactly where it is. */
 export function deleteReference(id: string, node: string) {
@@ -510,12 +552,15 @@ export interface DefaultSetAck {
 }
 
 export function setDefaultSet(id: string, nodes: string[], rev: number) {
-  return apiSend<DefaultSetAck>("PATCH", `/api/characters/${encodeURIComponent(id)}/default-set`, {
-    nodes,
-    rev,
-  });
+  return apiSend<DefaultSetAck>(
+    "PATCH",
+    `/api/characters/${encodeURIComponent(id)}/default-set`,
+    {
+      nodes,
+      rev,
+    },
+  );
 }
-
 
 /**
  * Revise one shot of a storyboard.
@@ -525,7 +570,11 @@ export function setDefaultSet(id: string, nodes: string[], rev: number) {
  * and that is deliberate — a scene is driven by the machine rendering it, in
  * sequence, so demanding one would make every write re-read the record first.
  */
-export function patchShot(sceneId: string, shotId: string, body: Partial<Shot>) {
+export function patchShot(
+  sceneId: string,
+  shotId: string,
+  body: Partial<Shot>,
+) {
   return apiSend<Shot>(
     "PATCH",
     `/api/scenes/${encodeURIComponent(sceneId)}/shots/${encodeURIComponent(shotId)}`,
@@ -535,12 +584,16 @@ export function patchShot(sceneId: string, shotId: string, body: Partial<Shot>) 
 
 /** Runs that used this character — one query, where it used to be a full walk. */
 export function getCharacterRuns(id: string, cursor?: string) {
-  return apiGet<RunPage>(`/api/characters/${encodeURIComponent(id)}/runs`, { cursor });
+  return apiGet<RunPage>(`/api/characters/${encodeURIComponent(id)}/runs`, {
+    cursor,
+  });
 }
 
 /** Projects this character is involved in — a question with no answer before. */
 export function getCharacterProjects(id: string) {
-  return apiGet<ProjectSummary[]>(`/api/characters/${encodeURIComponent(id)}/projects`);
+  return apiGet<ProjectSummary[]>(
+    `/api/characters/${encodeURIComponent(id)}/projects`,
+  );
 }
 
 export function getProjects() {
@@ -562,7 +615,13 @@ export function createProject(body: {
 
 export function patchProject(
   id: string,
-  body: { rev: number; slug?: string; title?: string; description?: string; hero?: string },
+  body: {
+    rev: number;
+    slug?: string;
+    title?: string;
+    description?: string;
+    hero?: string;
+  },
 ) {
   return apiSend<EntityPatch<ProjectRecord>>(
     "PATCH",
@@ -584,9 +643,14 @@ export function deleteProject(
   files: "keep" | "delete" = "keep",
   cascade = false,
 ) {
-  return apiSend<{ id: string; files: string; removed: Record<string, number> }>(
+  return apiSend<{
+    id: string;
+    files: string;
+    removed: Record<string, number>;
+  }>(
     "DELETE",
-    `/api/projects/${encodeURIComponent(id)}?files=${files}` + (cascade ? "&cascade=1" : ""),
+    `/api/projects/${encodeURIComponent(id)}?files=${files}` +
+      (cascade ? "&cascade=1" : ""),
   );
 }
 
@@ -708,14 +772,21 @@ export function getRun(id: string) {
  * until this existed.
  */
 export function approveRun(id: string, digest: string) {
-  return apiSend<RunRecord>("POST", `/api/runs/${encodeURIComponent(id)}/approve`, {
-    digest,
-  });
+  return apiSend<RunRecord>(
+    "POST",
+    `/api/runs/${encodeURIComponent(id)}/approve`,
+    {
+      digest,
+    },
+  );
 }
 
 /** Take an approval back. The run returns to `draft` and cannot be submitted. */
 export function revokeRunApproval(id: string) {
-  return apiSend<RunRecord>("DELETE", `/api/runs/${encodeURIComponent(id)}/approve`);
+  return apiSend<RunRecord>(
+    "DELETE",
+    `/api/runs/${encodeURIComponent(id)}/approve`,
+  );
 }
 
 /**
@@ -737,7 +808,10 @@ export function revokeRunApproval(id: string) {
  * which is why `RunPage` polls while a run is not terminal.
  */
 export function submitRun(id: string) {
-  return apiSend<RunRecord>("POST", `/api/runs/${encodeURIComponent(id)}/submit`);
+  return apiSend<RunRecord>(
+    "POST",
+    `/api/runs/${encodeURIComponent(id)}/submit`,
+  );
 }
 
 /**
@@ -751,7 +825,10 @@ export function submitRun(id: string) {
  * asks, and a prediction that has not finished leaves the row alone.
  */
 export function reconcileRun(id: string) {
-  return apiSend<RunRecord>("POST", `/api/runs/${encodeURIComponent(id)}/reconcile`);
+  return apiSend<RunRecord>(
+    "POST",
+    `/api/runs/${encodeURIComponent(id)}/reconcile`,
+  );
 }
 
 /**
@@ -763,9 +840,13 @@ export function reconcileRun(id: string) {
  * beside `request.json` describing something that was never sent.
  */
 export function patchRunPlan(id: string, plan: RunPlan) {
-  return apiSend<RunRecord>("PATCH", `/api/runs/${encodeURIComponent(id)}/plan`, {
-    plan,
-  });
+  return apiSend<RunRecord>(
+    "PATCH",
+    `/api/runs/${encodeURIComponent(id)}/plan`,
+    {
+      plan,
+    },
+  );
 }
 
 /** Replace the ordered images a draft binds. Clears the approval, every time. */
@@ -773,13 +854,35 @@ export function patchRunSends(
   id: string,
   sends: { field: string; role: string | null; node: string }[],
 ) {
-  return apiSend<RunRecord>("PATCH", `/api/runs/${encodeURIComponent(id)}/sends`, {
-    sends,
-  });
+  return apiSend<RunRecord>(
+    "PATCH",
+    `/api/runs/${encodeURIComponent(id)}/sends`,
+    {
+      sends,
+    },
+  );
 }
 
 export function getScene(id: string) {
   return apiGet<SceneRecord>(`/api/scenes/${encodeURIComponent(id)}`);
+}
+
+/**
+ * Change a scene's own fields — its setting, its title, its status.
+ *
+ * `setting` is the one a person edits: it is prepended byte-identically to
+ * every panel prompt, so it is the single lever that keeps separately rendered
+ * panels agreeing on one room, and it was readable on the scene screen with no
+ * way to change it. `PATCH /scenes/<id>` has accepted it all along —
+ * `SCENE_PLAN` on the route — so this is the wrapper that was missing, not the
+ * capability.
+ */
+export function patchScene(id: string, body: Partial<SceneRecord>) {
+  return apiSend<SceneRecord>(
+    "PATCH",
+    `/api/scenes/${encodeURIComponent(id)}`,
+    body,
+  );
 }
 
 export function getMovie(id: string) {

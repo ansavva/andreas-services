@@ -1,9 +1,10 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { Alert, Badge, Spinner, Text } from "@ansavva/design-system";
+import { Alert, Badge, Button, Spinner, Text } from "@ansavva/design-system";
 
-import { getScene, patchShot } from "../apis/studio";
+import { getScene, patchScene, patchShot } from "../apis/studio";
+import { AutoTextarea } from "../components/common/AutoTextarea";
 import { PageBar } from "../components/layout/PageBar";
 import { Backlinks } from "../components/common/Backlinks";
 import { OutputPanel } from "../components/media/OutputPanel";
@@ -52,6 +53,38 @@ export function ScenePage() {
   // The route answers with the merged shot, so the page swaps that one row in
   // rather than refetching the scene — a re-GET would re-sign every panel URL
   // on the board to show one reworded sentence.
+  /**
+   * The setting, which was readable and not editable.
+   *
+   * It is the one field on a scene a person actually revises — prepended
+   * byte-identically to every panel prompt, so it is the single lever that
+   * keeps separately rendered panels agreeing on one room — and the only way to
+   * change it was to re-ingest the whole plan from a JSON file.
+   */
+  const [editingSetting, setEditingSetting] = useState(false);
+  const [settingDraft, setSettingDraft] = useState("");
+  const [settingSaving, setSettingSaving] = useState(false);
+  const [settingError, setSettingError] = useState<string | null>(null);
+
+  const saveSetting = useCallback(async () => {
+    setSettingSaving(true);
+    setSettingError(null);
+    try {
+      const updated = await patchScene(sceneId, { setting: settingDraft });
+      // The route answers with the whole scene, but only this field moved —
+      // merging rather than replacing keeps every presigned panel URL on the
+      // board alive instead of re-signing the lot to show one sentence.
+      setData((current) =>
+        current ? { ...current, setting: updated.setting } : current,
+      );
+      setEditingSetting(false);
+    } catch (err) {
+      setSettingError((err as Error).message);
+    } finally {
+      setSettingSaving(false);
+    }
+  }, [sceneId, setData, settingDraft]);
+
   const saveShot = useCallback(
     async (shotId: string, body: Partial<Shot>) => {
       const updated = await patchShot(sceneId, shotId, body);
@@ -105,6 +138,23 @@ export function ScenePage() {
         <Text variant="caption" tone="muted" className="font-mono">
           {formatDate(data.created)}
         </Text>
+        {/* **How the scene is built belongs with what it is called.** This sat
+            over the shots as its own ruled row, which made it read as a section
+            heading for them — but `chained`, the shot count and the planned
+            runtime are facts about the SCENE, the same kind of thing as its
+            status and its date, and this is where those already are. */}
+        <Badge intent="neutral" className="font-mono">
+          {isBracketed(data.shots) ? "bracketed" : "chained"}
+        </Badge>
+        <Text variant="caption" tone="muted">
+          {data.shots.length} shot{data.shots.length === 1 ? "" : "s"}
+          {plannedRuntime(data.shots)
+            ? ` · ${plannedRuntime(data.shots)}s planned`
+            : ""}
+          {isBracketed(data.shots)
+            ? " · each shot pinned at both ends"
+            : " · each shot opens on the last frame of the one before"}
+        </Text>
       </PageBar>
 
       {/* **The cut leads, at full width.** It IS the scene — every shot below
@@ -148,40 +198,73 @@ export function ScenePage() {
       )}
 
       <div className="flex min-w-0 flex-col gap-6">
-        {data.setting && (
-          <section className="flex flex-col gap-2">
-            <Text variant="title" className="border-b border-line pb-2">
-              Setting
-            </Text>
-            {/* Prepended byte-identically to every panel prompt, which is what
-                  makes seven separately rendered panels agree on one room. Shown
-                  once here for the same reason it is written once there. */}
-            <Text variant="body" tone="muted" className="max-w-prose">
-              {data.setting}
-            </Text>
-          </section>
-        )}
+        {/* **One block that says what this scene is, then the shots.**
+            It was three competing headings — `Setting` over one paragraph,
+            `Storyboard` over the shots — each with its own rule, so the page
+            read as three sections of which two were labels for a sentence. A
+            scene IS its shots, and `Setting` is jargon for a description that
+            happens to be locked.
 
+            So: what it looks like, then how it is built, under one rule, and
+            the shots after it. Both lines are muted and neither is a heading —
+            the scene's own name at the top is the heading. */}
         <section className="flex flex-col gap-3">
-          {/* **No `Storyboard` heading, and no `Setting` one either.** A scene
-              cannot exist without a storyboard — the shots ARE the scene — so
-              naming the section named the page a second time. The line here is
-              what was worth keeping: how the shots chain, how many there are,
-              how long they run. */}
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line pb-2">
-            <Badge intent="neutral" className="font-mono">
-              {isBracketed(data.shots) ? "bracketed" : "chained"}
-            </Badge>
-            <Text variant="caption" tone="muted">
-              {data.shots.length} shot{data.shots.length === 1 ? "" : "s"}
-              {plannedRuntime(data.shots)
-                ? ` · ${plannedRuntime(data.shots)}s planned`
-                : ""}
-              {isBracketed(data.shots)
-                ? " · each shot pinned at both ends"
-                : " · each shot opens on the last frame of the one before"}
-            </Text>
-          </div>
+          {/* The description, and it earns its place twice: it is what the
+              scene looks like, and it is prepended byte-identically to every
+              panel prompt, which is what makes separately rendered panels agree
+              on one room. Editable for that second reason — it is the lever,
+              not a caption. */}
+          {editingSetting ? (
+            <div className="flex max-w-prose flex-col gap-2">
+              {settingError && (
+                <Alert.Root intent="danger">
+                  <Alert.Title>Could not save the setting</Alert.Title>
+                  <Alert.Description>{settingError}</Alert.Description>
+                </Alert.Root>
+              )}
+              <AutoTextarea
+                value={settingDraft}
+                onValueChange={setSettingDraft}
+                minRows={3}
+                aria-label="Setting"
+              />
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => void saveSetting()}
+                  disabled={settingSaving}
+                >
+                  {settingSaving ? "Saving…" : "Save"}
+                </Button>
+                <Button
+                  intent="ghost"
+                  size="sm"
+                  onClick={() => setEditingSetting(false)}
+                  disabled={settingSaving}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex max-w-prose flex-col items-start gap-1">
+              <Text variant="body" tone="muted">
+                {data.setting || "No setting written for this scene."}
+              </Text>
+              <Button
+                intent="ghost"
+                size="sm"
+                onClick={() => {
+                  setSettingDraft(data.setting ?? "");
+                  setSettingError(null);
+                  setEditingSetting(true);
+                }}
+              >
+                Edit the setting
+              </Button>
+            </div>
+          )}
+
           {data.shots.length === 0 ? (
             <Text variant="body" tone="muted">
               Nothing planned yet.
