@@ -41,6 +41,7 @@ One node type. A folder is a node with no blob; a file is a node with one.
 | Scene / Movie in project | `PROJ#<proj_id>` | `SCENE#<created>#<id>` | |
 | Shot | `SCENE#<scene_id>` | `SHOT#<shot_id>` | one row per planned shot |
 | Phrasebook term | `LIB#<lib>` | `TERM#<model>#<avoid>` | the wording lists |
+| Reference spec | `LIB#<lib>` | `SPEC#BLOCK#<name>` / `SPEC#ANGLE#<id>` | how a reference prompt is written |
 | Sweep | `LIB#<lib>` | `SWEEP#<opened>#<id>#<n>` | blobs a delete is about to strand |
 
 **An id is the identity; a slug is a label.** Every entity has a `v4` UUID that
@@ -3650,6 +3651,104 @@ def plan_digest(plan: dict | None, send_entries: list[dict]) -> str:
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"),
                          ensure_ascii=False, default=str)
     return "sha256:" + hashlib.sha256(encoded.encode()).hexdigest()
+
+
+# ────────────────────────── the reference spec ──────────────────────────
+#
+# HOW A REFERENCE PROMPT IS WRITTEN, AS ROWS — the shared prose blocks and the
+# per-angle templates that a turnaround fills from a character's bible.
+#
+# It was `domain/templates/reference_angles.yaml`, a file in the pipeline
+# package. That put every word of it behind a `pip install`: the SPA could not
+# read a prompt, let alone change one, so a wording fix meant a code change, a
+# review and a release — for prose whose whole nature is that it is tuned against
+# what a model actually returned. The same argument `POST /api/prompt` already
+# won for video prompts, one tier down.
+#
+# **Rows rather than a document under `config/`,** which is where this was first
+# headed. A single YAML blob is precisely the shape `phrasebook/wording.yaml`
+# was moved OFF, and for reasons that apply here unchanged: one bad edit takes
+# out all fourteen angles at once, two editors racing overwrite each other
+# wholesale rather than per-field, and nothing can be read without parsing the
+# whole. A block is a row, an angle is a row, and a UI form edits one of them.
+#
+# `SPEC#BLOCK#<name>` and `SPEC#ANGLE#<id>` share the `SPEC#` prefix so the whole
+# spec is one `begins_with`, and sort so every block precedes every angle — which
+# is also the order they have to be assembled in, since an angle template cites
+# blocks by name.
+#
+# WHAT IS DELIBERATELY NOT HERE: the model, the aspect ratio and the moderation
+# setting. Those are engine configuration rather than prose — a wrong one is a
+# payload the provider rejects, not a worse sentence — so they stay in code where
+# preflight already covers them.
+
+SPEC_PREFIX = "SPEC#"
+BLOCK_PREFIX = f"{SPEC_PREFIX}BLOCK#"
+ANGLE_PREFIX = f"{SPEC_PREFIX}ANGLE#"
+
+#: What an angle row carries besides its template. `description` and `tags` are
+#: read at PROMOTION rather than at render — `add-refs --from-run` writes them
+#: onto the image — so they belong to the angle and not to the prompt.
+ANGLE_FIELDS = ("group", "prompt", "description", "tags", "angle_image", "torso_image")
+
+
+def reference_spec(lib: str) -> dict:
+    """The whole spec: `{"blocks": {name: text}, "angles": [angle, ...]}`.
+
+    One query. Blocks come back as a mapping because that is what a template
+    fills from, and angles as a list because their ORDER is the order a
+    turnaround shoots in — the face turn and then the body turn, each going
+    round the same way.
+    """
+    items = _query(
+        TableName=config.catalog_table(),
+        KeyConditionExpression="pk = :pk AND begins_with(sk, :spec)",
+        ExpressionAttributeValues={":pk": {"S": _lib_pk(lib)}, ":spec": {"S": SPEC_PREFIX}},
+    )
+    blocks, angles = {}, []
+    for item in items:
+        record = _entity(item)
+        sk = item["sk"]["S"]
+        if sk.startswith(BLOCK_PREFIX):
+            blocks[sk.removeprefix(BLOCK_PREFIX)] = record.get("text") or ""
+        else:
+            angles.append({"id": sk.removeprefix(ANGLE_PREFIX),
+                           **{k: record.get(k) for k in ANGLE_FIELDS if record.get(k) is not None},
+                           "order": record.get("order")})
+    # `order` is an attribute, gapped by 1000, exactly as a reference's is — so an
+    # angle can be moved without renumbering its neighbours. Ties fall back to the
+    # id so the list is stable rather than arbitrary.
+    angles.sort(key=lambda a: (a.get("order") if a.get("order") is not None else 0, a["id"]))
+    return {"blocks": blocks, "angles": angles}
+
+
+def put_spec_block(lib: str, name: str, text: str) -> dict:
+    """Write one shared block. An overwrite, because a block IS its name."""
+    record = {"name": name, "text": text, "updated": _now()}
+    _write([(_put(_lib_pk(lib), f"{BLOCK_PREFIX}{name}", record), None)])
+    return record
+
+
+def put_spec_angle(lib: str, angle_id: str, fields: dict) -> dict:
+    """Write one angle. Unknown keys are dropped rather than stored.
+
+    Dropping rather than refusing: a caller that round-trips `reference_spec`
+    hands back `id` and whatever the read added, and rejecting those would make
+    the obvious edit-then-save flow fail on fields it produced itself.
+    """
+    record = {k: v for k, v in fields.items() if k in ANGLE_FIELDS}
+    record["order"] = fields.get("order")
+    record["updated"] = _now()
+    _write([(_put(_lib_pk(lib), f"{ANGLE_PREFIX}{angle_id}", record), None)])
+    return {"id": angle_id, **record}
+
+
+def delete_spec_angle(lib: str, angle_id: str) -> None:
+    _write([(_delete(_lib_pk(lib), f"{ANGLE_PREFIX}{angle_id}"), None)])
+
+
+def delete_spec_block(lib: str, name: str) -> None:
+    _write([(_delete(_lib_pk(lib), f"{BLOCK_PREFIX}{name}"), None)])
 
 
 # ─────────────────────────── the phrasebook ───────────────────────────
