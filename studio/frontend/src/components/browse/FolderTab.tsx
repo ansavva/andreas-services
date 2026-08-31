@@ -58,7 +58,10 @@ export function useLocalBrowserNav(rootId: string): BrowserNav {
       // mean the one thing in this app most worth sending someone was the one
       // thing with no link. Back returns to the tab, at the folder it was on —
       // which is the half `?folder=` bought.
-      openFile: (file: FileEntry) => navigate(objectPath(file.id, { in: "f", id: folder })),
+      openFile: (file: FileEntry) =>
+        navigate(objectPath(file.id, { in: "f", id: folder })),
+      fileHref: (file: FileEntry) =>
+        objectPath(file.id, { in: "f", id: folder }),
       playReel: () => navigate(feedPath({ in: "recursive", id: folder })),
     }),
     [folder, navigate, rootId, setFolderParam, sort],
@@ -116,7 +119,11 @@ function FolderShortcuts({ rootId, nav }: { rootId: string; nav: BrowserNav }) {
 
   return (
     <ChipRow role="group" aria-label="Folder shortcuts">
-      <FolderChip label="Top" active={here === rootId} onClick={() => nav.goToFolder(rootId)} />
+      <FolderChip
+        label="Top"
+        active={here === rootId}
+        onClick={() => nav.goToFolder(rootId)}
+      />
       {folders.map((folder) => (
         <FolderChip
           key={folder.id}
@@ -143,7 +150,7 @@ function FolderChip({
       type="button"
       onClick={onClick}
       aria-current={active ? "true" : undefined}
-      className={`shrink-0 snap-start rounded-full border px-3 py-1 font-body text-sm transition-colors
+      className={`shrink-0 snap-start rounded-none border px-3 py-1 font-body text-sm transition-colors
                   focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                     active
                       ? "border-primary bg-primary text-primary-text"

@@ -362,10 +362,12 @@ export function ReferencesGrid({ characterId, rootId, defaultSet, rev, onSaved }
               onValueChange={(next: string[]) => setTag(next[0] ?? null)}
             >
               {tags.map((each) => (
-                // `rounded-full` merges cleanly over the package's `rounded-md`;
-                // its `px-md py-sm` is left alone, being a t-shirt key that
+                // Square, like every other chip in the app now. `rounded-none`
+                // merges cleanly over the package's own `rounded-md` — this
+                // used to be `rounded-full` and it merged the same way. Its
+                // `px-md py-sm` is left alone, being a t-shirt key that
                 // `tailwind-merge` would keep alongside anything written here.
-                <Toggle key={each} value={each} className="shrink-0 rounded-full">
+                <Toggle key={each} value={each} className="shrink-0 rounded-none">
                   {each}
                 </Toggle>
               ))}
@@ -492,7 +494,7 @@ function ReferenceTile({
         event.stopPropagation();
         onDrop();
       }}
-      className={`relative overflow-hidden rounded-md border transition-opacity ${
+      className={`relative overflow-hidden rounded-none border transition-opacity ${
         dragging ? "border-primary opacity-60" : "border-line"
       }`}
     >
@@ -511,7 +513,7 @@ function ReferenceTile({
         />
         <span
           className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t
-                     from-black/80 to-transparent px-1.5 pb-1 pt-4 font-body text-xs text-white"
+                     from-neutral-1/85 to-transparent px-1.5 pb-1 pt-4 font-mono text-xs text-neutral-12"
         >
           {entry.file.name}
         </span>
@@ -523,10 +525,10 @@ function ReferenceTile({
       {picking ? (
         <span
           className={`pointer-events-none absolute left-1.5 top-1.5 flex size-6 items-center
-                      justify-center rounded-md border ${
+                      justify-center rounded-none border ${
                         isDefault
                           ? "border-primary bg-primary text-primary-text"
-                          : "border-white/70 bg-black/50"
+                          : "border-neutral-a11 bg-neutral-1/85"
                       }`}
         >
           {isDefault && <CheckIcon className="size-4 fill-none stroke-current stroke-[3]" />}
@@ -639,7 +641,7 @@ function Unattached({
         {loose.map((file) => (
           <div
             key={file.id}
-            className="relative overflow-hidden rounded-md border border-dashed border-line"
+            className="relative overflow-hidden rounded-none border border-dashed border-line"
           >
             <MediaThumb
               nodeId={file.id}
@@ -686,9 +688,9 @@ function AttachButton({
       title={armed ? `Confirm — add to ${group}` : "Add as a reference"}
       onClick={() => (armed ? onAttach() : setArmed(true))}
       onBlur={() => setArmed(false)}
-      className={`absolute inset-x-1 bottom-1 rounded-md px-2 py-1 font-body text-xs transition-colors
+      className={`absolute inset-x-1 bottom-1 rounded-none px-2 py-1 font-body text-xs transition-colors
                   focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary
-                  ${armed ? "bg-primary text-primary-text" : "bg-black/70 text-white hover:bg-black/85"}`}
+                  ${armed ? "bg-primary text-primary-text" : "bg-neutral-1/80 text-neutral-12 hover:bg-neutral-1/95"}`}
     >
       {armed ? `Add to ${group}?` : "Add as reference"}
     </button>

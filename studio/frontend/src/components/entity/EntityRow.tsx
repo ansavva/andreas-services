@@ -31,15 +31,20 @@ interface Props {
  */
 export function EntityRow({ title, subtitle, status, thumb, index, onOpen }: Props) {
   return (
+    // **A ruled row, not a card.** A list of these was a column of bordered,
+    // filled boxes with a gap between each — four visible edges per scene to
+    // say the one thing a single hairline says. The rule is on the row itself
+    // rather than on a wrapper, so the list is `flex flex-col` with no gap and
+    // the rules land flush.
     <button
       type="button"
       onClick={onOpen}
-      className="flex w-full items-center gap-3 rounded-md border border-line bg-card p-2 text-left
-                 transition-colors hover:bg-surface-alt
-                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      className="flex w-full items-center gap-3 rounded-none border-b border-line px-1 py-2 text-left
+                 transition-colors hover:bg-card
+                 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
     >
       {index !== undefined && (
-        <Text variant="body" className="w-8 shrink-0 text-right tabular-nums">
+        <Text variant="body" family="mono" className="w-8 shrink-0 text-right tabular-nums">
           {index}
         </Text>
       )}
@@ -50,10 +55,10 @@ export function EntityRow({ title, subtitle, status, thumb, index, onOpen }: Pro
           url={thumb.url}
           name=""
           aspect="auto"
-          className="size-14 shrink-0 rounded-md border border-line"
+          className="size-14 shrink-0 rounded-none border border-line"
         />
       ) : (
-        <span className="size-14 shrink-0 rounded-md border border-line bg-surface-alt" />
+        <span className="size-14 shrink-0 rounded-none border border-line bg-surface-alt" />
       )}
 
       <span className="min-w-0 flex-1">
@@ -63,12 +68,14 @@ export function EntityRow({ title, subtitle, status, thumb, index, onOpen }: Pro
         <Text variant="body" className="truncate">
           {title}
         </Text>
-        <Text variant="caption" tone="muted" className="block truncate">
+        <Text variant="caption" tone="muted" className="block truncate font-mono">
           {subtitle}
         </Text>
       </span>
 
-      <Badge intent="neutral">{status}</Badge>
+      <Badge intent="neutral" className="font-mono">
+        {status}
+      </Badge>
     </button>
   );
 }

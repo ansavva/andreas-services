@@ -179,7 +179,8 @@ export function CharacterPage() {
         }
       >
         <Text variant="display">{record.display_name}</Text>
-        <Text variant="caption" tone="muted">
+        {/* The slug is what a `studio` command is given, so it is mono. */}
+        <Text variant="caption" tone="muted" className="font-mono">
           {record.slug}
         </Text>
       </PageBar>

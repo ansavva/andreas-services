@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,13 +6,17 @@ import type { FileEntry, RunRecord, TreeResponse } from "../types";
 import { TestProviders } from "../test-providers";
 
 /**
- * What the viewer scrolls through, and where it gets it.
+ * What the object screen walks through, and where it gets it.
  *
  * **This is the file the whole `?in=` rework rests on.** The viewer used to be
  * the folder browser with a file laid over it, so opening a run's output left
  * the run; now the address names the sequence and the page has to pick the
  * right source and find the open node inside it. Getting that wrong is silent —
  * the frame still renders, it is just surrounded by the wrong neighbours.
+ *
+ * These cases survived the reel unchanged, which is the point of asserting them
+ * here: what Phase C replaced is the body, and the source selection, the
+ * position within it and the address rewriting are none of it.
  */
 vi.mock("../apis/studio", () => ({
   getTree: vi.fn(),
@@ -28,7 +32,7 @@ vi.mock("../apis/studio", () => ({
 }));
 
 import { getAsset, getNode, getRun, getTree } from "../apis/studio";
-import { ViewerPage } from "./ViewerPage";
+import { ObjectPage } from "./ObjectPage";
 
 const tree = vi.mocked(getTree);
 const run = vi.mocked(getRun);
@@ -74,8 +78,8 @@ function open(path: string) {
   render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path="/o" element={<ViewerPage />} />
-        <Route path="/o/:nodeId" element={<ViewerPage />} />
+        <Route path="/o" element={<ObjectPage />} />
+        <Route path="/o/:nodeId" element={<ObjectPage />} />
       </Routes>
     </MemoryRouter>,
     { wrapper: TestProviders },
@@ -83,16 +87,16 @@ function open(path: string) {
 }
 
 describe("which sequence the address names", () => {
-  it("scrolls a folder, and opens on the file that was clicked", async () => {
+  it("walks a folder, and opens on the file that was clicked", async () => {
     open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
 
     // "2 of 3" is the whole assertion: the folder is the source, and the open
-    // node's position in it is what the viewer started on rather than the top.
+    // node's position in it is what the page opened on rather than the top.
     await waitFor(() => expect(screen.getByText(/2 of 3/)).toBeTruthy());
     expect(tree).toHaveBeenCalledWith({ node: FOLDER }, "newest");
   });
 
-  it("scrolls a RUN's frames, and never asks for a folder", async () => {
+  it("walks a RUN's frames, and never asks for a folder", async () => {
     // The bug this rework existed to kill: a run's output opened the file tree.
     run.mockResolvedValue({
       id: "run-1",
@@ -108,7 +112,7 @@ describe("which sequence the address names", () => {
     expect(tree).not.toHaveBeenCalled();
   });
 
-  it("shows one pane and asks for the node itself when there is no context", async () => {
+  it("shows one file and asks for the node itself when there is no context", async () => {
     // A share link's usual shape. It must not guess a folder.
     node.mockResolvedValue({
       id: "node-lone",
@@ -129,9 +133,33 @@ describe("which sequence the address names", () => {
 
   it("opens a feed at its first frame when the address carries no id", async () => {
     // `/o?in=…` is what "Play reel" navigates to — see `feedPath`. The id
-    // appears a moment later, when the first pane settles.
+    // appears a moment later, when the first file resolves.
     open(`/o?in=${encodeURIComponent(`f:${FOLDER}`)}`);
 
+    await waitFor(() => expect(screen.getByText(/1 of 3/)).toBeTruthy());
+  });
+});
+
+describe("walking the feed", () => {
+  it("steps with the arrow keys and rewrites the address", async () => {
+    // The reel scrolled and reported the settled pane; a page steps. Both end
+    // in the same `replace` navigation, which is what keeps twenty files looked
+    // at from being twenty back-presses to escape.
+    open(`/o/node-a?in=${encodeURIComponent(`f:${FOLDER}`)}`);
+    await waitFor(() => expect(screen.getByText(/1 of 3/)).toBeTruthy());
+
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    await waitFor(() => expect(screen.getByText(/2 of 3/)).toBeTruthy());
+
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+    await waitFor(() => expect(screen.getByText(/1 of 3/)).toBeTruthy());
+  });
+
+  it("does not step past either end", async () => {
+    open(`/o/node-a?in=${encodeURIComponent(`f:${FOLDER}`)}`);
+    await waitFor(() => expect(screen.getByText(/1 of 3/)).toBeTruthy());
+
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
     await waitFor(() => expect(screen.getByText(/1 of 3/)).toBeTruthy());
   });
 });

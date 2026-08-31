@@ -90,8 +90,10 @@ export function ScenePage() {
     <>
       <PageBar crumbs={crumbs}>
         <Text variant="display">{data.title || data.slug}</Text>
-        <Badge intent="neutral">{data.status}</Badge>
-        <Text variant="caption" tone="muted">
+        <Badge intent="neutral" className="font-mono">
+          {data.status}
+        </Badge>
+        <Text variant="caption" tone="muted" className="font-mono">
           {formatDate(data.created)}
         </Text>
       </PageBar>
@@ -99,8 +101,8 @@ export function ScenePage() {
       <Backlinks label="Cut into" links={data.movies} to={moviePath} />
 
       {(data.output || (data.cuts ?? []).length > 0) && (
-        <section className="flex flex-col gap-2">
-          <Text variant="title">
+        <section className="flex flex-col gap-3">
+          <Text variant="title" className="border-b border-line pb-2">
             {(data.cuts ?? []).length > 0 ? "Cuts" : "The cut"}
           </Text>
           {/* **Every cut, newest first, not just the current one.** Assembling
@@ -118,7 +120,7 @@ export function ScenePage() {
                 key={asset.node}
                 type="button"
                 onClick={() => navigate(objectPath(asset.node, { in: "scene", id: sceneId }))}
-                className="w-full max-w-md overflow-hidden rounded-md border border-line bg-card
+                className="w-full max-w-md overflow-hidden rounded-none border border-line bg-card
                            focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 <MediaThumb
@@ -129,7 +131,7 @@ export function ScenePage() {
                   aspect="video"
                 />
                 <span className="flex items-center gap-2 px-2 py-1">
-                  <Text variant="caption" tone="muted" className="truncate">
+                  <Text variant="caption" tone="muted" className="truncate font-mono">
                     {asset.name}
                   </Text>
                   {!current && <Badge intent="neutral">earlier</Badge>}
@@ -141,8 +143,10 @@ export function ScenePage() {
       )}
 
       {data.setting && (
-        <section className="flex flex-col gap-1">
-          <Text variant="title">Setting</Text>
+        <section className="flex flex-col gap-2">
+          <Text variant="title" className="border-b border-line pb-2">
+            Setting
+          </Text>
           {/* Prepended byte-identically to every panel prompt, which is what
               makes seven separately rendered panels agree on one room. Shown
               once here for the same reason it is written once there. */}
@@ -152,10 +156,12 @@ export function ScenePage() {
         </section>
       )}
 
-      <section className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <section className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line pb-2">
           <Text variant="title">Storyboard</Text>
-          <Badge intent="neutral">{isBracketed(data.shots) ? "bracketed" : "chained"}</Badge>
+          <Badge intent="neutral" className="font-mono">
+            {isBracketed(data.shots) ? "bracketed" : "chained"}
+          </Badge>
           <Text variant="caption" tone="muted">
             {data.shots.length} shot{data.shots.length === 1 ? "" : "s"}
             {plannedRuntime(data.shots) ? ` · ${plannedRuntime(data.shots)}s planned` : ""}
@@ -169,7 +175,7 @@ export function ScenePage() {
             Nothing planned yet.
           </Text>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col">
             {[...data.shots]
               .sort((a, b) => a.order - b.order)
               .map((shot, index) => (

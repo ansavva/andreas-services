@@ -1,3 +1,5 @@
+import { IconButton } from "@ansavva/design-system";
+
 import { copyLabel, useCopyToClipboard, type CopyStatus } from "../../hooks/useCopyToClipboard";
 import { CheckIcon, ClipboardIcon, WarningIcon } from "./icons";
 
@@ -44,20 +46,27 @@ interface Props {
  * It is always a *sibling* of whatever opens the resource, never a child: every
  * card, row and tile in this app is itself a `<button>`, and a button inside a
  * button is invalid HTML that browsers resolve by dropping one of them.
+ *
+ * **The box is the design system's `IconButton` now, not a hand-rolled one.**
+ * What that buys is the part this file kept getting subtly wrong on its own:
+ * the accessible name is a *required prop*, so a nameless copy button is no
+ * longer expressible, and the focus ring, the disabled treatment and the hover
+ * fill come from the same three rows every other icon control in the monorepo
+ * uses. Only `tone` is left here, because only the *surface* is studio's.
  */
 export function CopyKeyButton({ value, noun = "key", tone = "row", className = "" }: Props) {
   const { status, copy } = useCopyToClipboard();
   const label = copyLabel(status, `Copy ${noun}`);
 
   return (
-    <button
-      type="button"
+    <IconButton
+      label={label}
+      // `sm` (32px) rather than `md`: this sits beside `Button size="sm"` in a
+      // text page's toolbar and inside a dense file row, and the package
+      // documents `sm` as exactly that deliberate opt-in to a smaller target.
+      size="sm"
       onClick={() => void copy(value)}
-      aria-label={label}
-      title={label}
-      className={`shrink-0 rounded-md transition-colors
-                  focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary
-                  ${toneStyles[tone]} ${className}`}
+      className={`shrink-0 ${toneStyles[tone]} ${className}`}
     >
       {/* `aria-live` on the icon's label, so a screen reader hears the outcome
           of a press whose only other feedback is a colour change. */}
@@ -68,19 +77,25 @@ export function CopyKeyButton({ value, noun = "key", tone = "row", className = "
         status={status}
         className={`${tone === "tile" ? "size-4" : "size-5"} fill-none stroke-current stroke-[1.5] ${statusStroke[status]}`}
       />
-    </button>
+    </IconButton>
   );
 }
 
 /**
  * The three surfaces an address is copied from. `chrome` deliberately matches
- * `ViewerChrome`'s own buttons — it sits in that row and must not read as a
+ * the object screen's own buttons — it sits in that row and must not read as a
  * different kind of control.
+ *
+ * **All three used to be written in `white/NN` and `black/NN`**, which is
+ * exactly the literal the neutral ramp exists to retire: nothing could re-brand
+ * them and nothing could tell a scrim from a hover. `neutral-1` is the ramp's
+ * darkest step — what a scrim over unknown media has to be — and the `a` steps
+ * are the alpha rungs, for a fill that lands on a surface it cannot see.
  */
 const toneStyles: Record<Tone, string> = {
-  row: "p-2 text-muted hover:bg-surface-alt hover:text-ink",
-  tile: "bg-black/55 p-1.5 text-white/85 hover:bg-black/80 hover:text-white",
-  chrome: "p-2 text-white/80 hover:bg-white/15 hover:text-white",
+  row: "text-muted hover:text-ink",
+  tile: "bg-neutral-1/80 text-neutral-a11 hover:bg-neutral-1/95 hover:text-neutral-12",
+  chrome: "text-neutral-a11 hover:bg-neutral-a5 hover:text-neutral-12",
 };
 
 /** Outcome beats tone: a copied tick is green on a photograph too. */

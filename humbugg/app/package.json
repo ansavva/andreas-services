@@ -18,8 +18,8 @@
     "brand:check": "node tool/reconcile-cognito-branding.ts --check"
   },
   "dependencies": {
-    "@ansavva/design-system": "0.15.0",
-    "@ansavva/tokens": "^0.3.2",
+    "@ansavva/design-system": "0.16.0",
+    "@ansavva/tokens": "^0.4.0",
     "@expo-google-fonts/archivo": "^0.4.2",
     "@expo-google-fonts/lily-script-one": "^0.4.1",
     "@expo-google-fonts/spectral": "^0.4.1",

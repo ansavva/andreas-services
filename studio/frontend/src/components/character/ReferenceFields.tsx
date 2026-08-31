@@ -109,7 +109,7 @@ export function ReferenceFields({ characterId, node, onChanged }: Props) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Text variant="caption" className="text-white/70">
+        <Text variant="caption" tone="muted">
           Reference
         </Text>
         {(entry.default ?? false) && <Badge intent="success">default set</Badge>}
@@ -122,7 +122,7 @@ export function ReferenceFields({ characterId, node, onChanged }: Props) {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
         <div className="flex flex-col gap-1">
-          <Text variant="caption" className="text-white/70">
+          <Text variant="caption" tone="muted">
             Group
           </Text>
           <Select
@@ -139,20 +139,19 @@ export function ReferenceFields({ characterId, node, onChanged }: Props) {
         </div>
 
         <div className="flex flex-col gap-1">
-          <Text variant="caption" className="text-white/70">
+          <Text variant="caption" tone="muted">
             Position
           </Text>
           <div className="flex items-center gap-2">
-            <Text variant="caption" className="tabular-nums text-white/70">
+            <Text variant="caption" tone="muted" className="tabular-nums font-mono">
               {index + 1} of {entries.length}
             </Text>
-            <Button intent="ghost" size="sm" className="text-white" disabled={busy || index === 0} onClick={() => nudge(-1)}>
+            <Button intent="ghost" size="sm" disabled={busy || index === 0} onClick={() => nudge(-1)}>
               <span aria-hidden="true">↑</span> Up
             </Button>
             <Button
               intent="ghost"
               size="sm"
-              className="text-white"
               disabled={busy || index === entries.length - 1}
               onClick={() => nudge(1)}
             >
@@ -163,7 +162,7 @@ export function ReferenceFields({ characterId, node, onChanged }: Props) {
       </div>
 
       <div className="flex flex-col gap-2">
-        <Text variant="caption" className="text-white/70">
+        <Text variant="caption" tone="muted">
           Caption — what a shoot is told this reference shows
         </Text>
         <AutoTextarea
@@ -188,7 +187,7 @@ export function ReferenceFields({ characterId, node, onChanged }: Props) {
             {busy ? "Saving…" : "Save caption"}
           </Button>
           {draft !== null && draft !== entry.description && (
-            <Button intent="ghost" size="sm" className="text-white" onClick={() => setDraft(null)}>
+            <Button intent="ghost" size="sm" onClick={() => setDraft(null)}>
               Discard
             </Button>
           )}

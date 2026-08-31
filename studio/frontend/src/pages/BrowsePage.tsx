@@ -1,8 +1,16 @@
 import { useCallback, useMemo } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
-import { FolderBrowser, type BrowserNav } from "../components/browse/FolderBrowser";
-import { DEFAULT_SORT, isSortOrder, type FileEntry, type SortOrder } from "../types";
+import {
+  FolderBrowser,
+  type BrowserNav,
+} from "../components/browse/FolderBrowser";
+import {
+  DEFAULT_SORT,
+  isSortOrder,
+  type FileEntry,
+  type SortOrder,
+} from "../types";
 import {
   feedPath,
   folderPath,
@@ -58,7 +66,10 @@ export function BrowsePage() {
    */
   const goToFolder = useCallback(
     (nextId: FolderId, { replace = false }: { replace?: boolean } = {}) => {
-      navigate({ pathname: folderPath(nextId), search: location.search }, { replace });
+      navigate(
+        { pathname: folderPath(nextId), search: location.search },
+        { replace },
+      );
     },
     [location.search, navigate],
   );
@@ -73,9 +84,21 @@ export function BrowsePage() {
       // grid was showing. Anything else means clicking the third tile and
       // arriving somewhere else in the reel.
       openFile: (file: FileEntry) => {
-        const search = new URLSearchParams({ in: sourceParam({ in: "f", id: folder }) });
+        const search = new URLSearchParams({
+          in: sourceParam({ in: "f", id: folder }),
+        });
         if (sort !== DEFAULT_SORT) search.set("sort", sort);
         navigate({ pathname: objectPath(file.id), search: search.toString() });
+      },
+      // The same address `openFile` navigates to, spelled out — an `href` is
+      // what makes command-click work, and it has to agree with the handler or
+      // the two gestures land in different places.
+      fileHref: (file: FileEntry) => {
+        const search = new URLSearchParams({
+          in: sourceParam({ in: "f", id: folder }),
+        });
+        if (sort !== DEFAULT_SORT) search.set("sort", sort);
+        return `${objectPath(file.id)}?${search.toString()}`;
       },
       playReel: () => navigate(feedPath({ in: "recursive", id: folder })),
     }),

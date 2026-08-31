@@ -123,7 +123,7 @@ export function RunsTable({ projectId, characters, onOpen }: Props) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end gap-2 rounded-md border border-line bg-card p-3">
+      <div className="flex flex-wrap items-end gap-2 rounded-none border border-line bg-card p-3">
         <div className="min-w-40">
           <Field.Root name="status">
             <Field.Label>Status</Field.Label>

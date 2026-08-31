@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { Alert, Breadcrumbs, Button, Input, Spinner, Text } from "@ansavva/design-system";
+import {
+  Alert,
+  Breadcrumbs,
+  Button,
+  Input,
+  Spinner,
+  Text,
+} from "@ansavva/design-system";
 
 import {
   copyNodes,
@@ -18,7 +25,11 @@ import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { CopyKeyButton } from "../common/CopyKeyButton";
 import { DestinationPicker } from "./DestinationPicker";
 import { FileRow } from "./FileRow";
-import { FilterControl, folderMatchesFilter, matchesFilter } from "./FilterControl";
+import {
+  FilterControl,
+  folderMatchesFilter,
+  matchesFilter,
+} from "./FilterControl";
 import { FolderCard } from "./FolderCard";
 import { MediaTile } from "./MediaTile";
 import { SortControl } from "./SortControl";
@@ -49,6 +60,14 @@ export interface BrowserNav {
   goToFolder: (id: FolderId, options?: { replace?: boolean }) => void;
   /** Opens the viewer at this file, with this browser as its context. */
   openFile: (file: FileEntry) => void;
+  /**
+   * The same destination as `openFile`, as an address rather than an act.
+   *
+   * Both exist because a tile needs both: an `href` so the browser can offer
+   * its own new-tab, new-window and copy-address gestures, and a handler so a
+   * plain click stays a client-side navigation instead of a page load.
+   */
+  fileHref: (file: FileEntry) => string;
   /** Opens the viewer on everything beneath the folder on screen. */
   playReel: () => void;
 }
@@ -143,7 +162,8 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
    * one.
    */
   const allCrumbs = data?.breadcrumbs ?? [];
-  const boundaryIndex = boundary === null ? 0 : allCrumbs.findIndex((c) => c.id === boundary);
+  const boundaryIndex =
+    boundary === null ? 0 : allCrumbs.findIndex((c) => c.id === boundary);
   const crumbs = boundaryIndex > 0 ? allCrumbs.slice(boundaryIndex) : allCrumbs;
 
   /**
@@ -170,15 +190,20 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
     [data, filter],
   );
   const media = useMemo(
-    () => files.filter((file) => file.kind === "image" || file.kind === "video"),
+    () =>
+      files.filter((file) => file.kind === "image" || file.kind === "video"),
     [files],
   );
   const others = useMemo(
-    () => files.filter((file) => file.kind !== "image" && file.kind !== "video"),
+    () =>
+      files.filter((file) => file.kind !== "image" && file.kind !== "video"),
     [files],
   );
   const folders = useMemo(
-    () => (data?.folders ?? []).filter((folder) => folderMatchesFilter(folder, filter)),
+    () =>
+      (data?.folders ?? []).filter((folder) =>
+        folderMatchesFilter(folder, filter),
+      ),
     [data, filter],
   );
 
@@ -222,7 +247,8 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
 
   /** "3 files", "1 key" — the count and its noun, agreeing about plurality. */
   const selectedNoun = useCallback(
-    (one: string, many: string) => `${selection.count} ${selection.count === 1 ? one : many}`,
+    (one: string, many: string) =>
+      `${selection.count} ${selection.count === 1 ? one : many}`,
     [selection.count],
   );
 
@@ -270,7 +296,8 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
       if (!pickerTarget) return;
       // Unlike a move, a copy can land in the folder you are looking at — so
       // both re-fetch, which `run` does by default.
-      if (pickerTarget.verb === "copy") await run(copyNodes(pickerTarget.ids, destination));
+      if (pickerTarget.verb === "copy")
+        await run(copyNodes(pickerTarget.ids, destination));
       else await run(moveNodes(pickerTarget.ids, destination));
       selection.clear();
     },
@@ -358,14 +385,24 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
     [uploads],
   );
 
-  const isEmpty = !loading && !error && data && data.folders.length === 0 && data.files.length === 0;
+  const isEmpty =
+    !loading &&
+    !error &&
+    data &&
+    data.folders.length === 0 &&
+    data.files.length === 0;
 
   // Empty because of the filter is a different sentence from empty because the
   // folder is: one is undone by clearing a box, the other is a fact about the
   // library. Saying "this folder is empty" over a folder holding sixty things
   // is the kind of wrong that makes someone go looking for a bug.
   const hiddenByFilter =
-    !loading && !error && !isEmpty && folders.length === 0 && media.length === 0 && others.length === 0;
+    !loading &&
+    !error &&
+    !isEmpty &&
+    folders.length === 0 &&
+    media.length === 0 &&
+    others.length === 0;
 
   return (
     <div
@@ -383,7 +420,9 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
       }}
       onDrop={onDrop}
       className={`flex w-full flex-col gap-6 ${
-        dragging ? "outline-2 outline-offset-[-8px] outline-dashed outline-primary" : ""
+        dragging
+          ? "outline-2 outline-offset-[-8px] outline-dashed outline-primary"
+          : ""
       }`}
     >
       {/*
@@ -430,7 +469,9 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
                   // Files tab that is not the library root — so it is navigated
                   // to by id rather than by the `null` the standalone browser
                   // uses for the top.
-                  goToFolder(index === 0 && boundary === null ? null : crumb.id);
+                  goToFolder(
+                    index === 0 && boundary === null ? null : crumb.id,
+                  );
                 }}
               >
                 {crumb.name}
@@ -483,7 +524,7 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
             disabled={hereId === null}
             aria-label="New folder"
             title="New folder"
-            className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
+            className="shrink-0 rounded-none p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
                        disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent
                        focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
@@ -510,7 +551,9 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
           <Button
             intent="ghost"
             size="sm"
-            onClick={selection.count > 0 ? selection.clear : selection.selectAll}
+            onClick={
+              selection.count > 0 ? selection.clear : selection.selectAll
+            }
           >
             {selection.count > 0 ? "Select none" : "Select all"}
           </Button>
@@ -531,18 +574,27 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
             if (event.key === "Escape") setNewFolder(null);
           }}
           aria-label="New folder"
-          className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-card p-3"
+          className="flex flex-wrap items-center gap-2 rounded-none border border-line bg-card p-3"
         >
           <Text variant="caption" tone="muted">
             New folder in {prefix ?? "…"}
           </Text>
           <div className="min-w-48 flex-1">
-            <Input value={newFolder} onValueChange={setNewFolder} placeholder="folder name" />
+            <Input
+              value={newFolder}
+              onValueChange={setNewFolder}
+              placeholder="folder name"
+            />
           </div>
           <Button type="submit" size="sm">
             Create
           </Button>
-          <Button type="button" intent="ghost" size="sm" onClick={() => setNewFolder(null)}>
+          <Button
+            type="button"
+            intent="ghost"
+            size="sm"
+            onClick={() => setNewFolder(null)}
+          >
             Cancel
           </Button>
         </form>
@@ -551,7 +603,10 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
       {/* Above the listing rather than over it: an upload is something you
           started and then keep browsing through, and a floating panel would
           cover the grid it is filling. */}
-      <UploadStatus items={uploads.items} onClearFinished={uploads.clearFinished} />
+      <UploadStatus
+        items={uploads.items}
+        onClearFinished={uploads.clearFinished}
+      />
 
       {actionError && (
         <Alert.Root intent="danger">
@@ -590,86 +645,90 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
           only images could be selected — a folder holding nothing but
           `result.json` files then had no bar at all, and "Select all" under a
           heading that says "Photos" would now also take the text files. */}
-        {selection.count > 0 && (
-          <div className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-card px-3 py-2">
-            <Text variant="caption" tone="muted" className="tabular-nums">
-              {selection.count} of {files.length} selected
-            </Text>
+      {selection.count > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-none border border-line bg-card px-3 py-2">
+          <Text
+            variant="caption"
+            tone="muted"
+            className="font-mono tabular-nums"
+          >
+            {selection.count} of {files.length} selected
+          </Text>
 
-            <div className="flex-1" />
+          <div className="flex-1" />
 
-            {/* One key per line, in grid order rather than the order they were
+          {/* One key per line, in grid order rather than the order they were
                 picked: this is going into a shell loop or a `--keys` argument,
                 and the order you happened to click in is not information. */}
-            <CopyKeyButton
-              value={selection.selectedItems.map((item) => item.key).join("\n")}
-              noun={selectedNoun("key", "keys")}
-            />
+          <CopyKeyButton
+            value={selection.selectedItems.map((item) => item.key).join("\n")}
+            noun={selectedNoun("key", "keys")}
+          />
 
-            {/* Media has no per-tile menu the way a row does — sixty thumbnails
+          {/* Media has no per-tile menu the way a row does — sixty thumbnails
                 with a control each is the crowding this grid exists to avoid —
                 so this bar is where a bulk move and a bulk copy are reached
                 from. */}
-            <button
-              type="button"
-              onClick={() =>
-                setPickerTarget({
-                  verb: "copy",
-                  ids: selection.selectedItems.map((item) => item.id),
-                  noun: selectedNoun("file", "files"),
-                })
-              }
-              aria-label={`Copy ${selectedNoun("file", "files")} to…`}
-              title={`Copy ${selectedNoun("file", "files")} to…`}
-              className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
+          <button
+            type="button"
+            onClick={() =>
+              setPickerTarget({
+                verb: "copy",
+                ids: selection.selectedItems.map((item) => item.id),
+                noun: selectedNoun("file", "files"),
+              })
+            }
+            aria-label={`Copy ${selectedNoun("file", "files")} to…`}
+            title={`Copy ${selectedNoun("file", "files")} to…`}
+            className="shrink-0 rounded-none p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
                          focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            >
-              {/* Two sheets, one behind the other: the source stays, which is
+          >
+            {/* Two sheets, one behind the other: the source stays, which is
                   the whole difference from the arrow on the move button. */}
-              <CopyIcon />
-            </button>
+            <CopyIcon />
+          </button>
 
-            <button
-              type="button"
-              onClick={() =>
-                setPickerTarget({
-                  verb: "move",
-                  ids: selection.selectedItems.map((item) => item.id),
-                  noun: selectedNoun("file", "files"),
-                })
-              }
-              aria-label={`Move ${selectedNoun("file", "files")}`}
-              title={`Move ${selectedNoun("file", "files")}`}
-              className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
+          <button
+            type="button"
+            onClick={() =>
+              setPickerTarget({
+                verb: "move",
+                ids: selection.selectedItems.map((item) => item.id),
+                noun: selectedNoun("file", "files"),
+              })
+            }
+            aria-label={`Move ${selectedNoun("file", "files")}`}
+            title={`Move ${selectedNoun("file", "files")}`}
+            className="shrink-0 rounded-none p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
                          focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            >
-              {/* A folder with something going into it — the destination is
+          >
+            {/* A folder with something going into it — the destination is
                   what a move is about, and the arrow says which way. */}
-              <FolderIntoIcon />
-            </button>
+            <FolderIntoIcon />
+          </button>
 
-            {/* Under five, the armed button — the cost of being wrong is a
+          {/* Under five, the armed button — the cost of being wrong is a
                 handful of frames still on screen. Above it, the count has to
                 be typed: a selection is invisible once it is gone, and
                 "select all" then "delete" is two presses from emptying a
                 folder. */}
-            {selection.count < BULK_GATE ? (
-              <ConfirmDeleteButton
-                tone="bar"
-                noun={selectedNoun("file", "files")}
-                onConfirm={deleteSelected}
-              />
-            ) : (
-              <ConfirmDestroyDialog
-                label={`Delete ${selection.count}`}
-                title={`Delete ${selectedNoun("file", "files")}?`}
-                summary="They are removed from this folder and from the library. Nothing else is touched."
-                confirmWord={String(selection.count)}
-                onConfirm={deleteSelected}
-              />
-            )}
-          </div>
-        )}
+          {selection.count < BULK_GATE ? (
+            <ConfirmDeleteButton
+              tone="bar"
+              noun={selectedNoun("file", "files")}
+              onConfirm={deleteSelected}
+            />
+          ) : (
+            <ConfirmDestroyDialog
+              label={`Delete ${selection.count}`}
+              title={`Delete ${selectedNoun("file", "files")}?`}
+              summary="They are removed from this folder and from the library. Nothing else is touched."
+              confirmWord={String(selection.count)}
+              onConfirm={deleteSelected}
+            />
+          )}
+        </div>
+      )}
 
       {folders.length > 0 && (
         <section className="flex flex-col gap-2">
@@ -704,9 +763,10 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
               a type union rather than a thing. */}
           <Text variant="title">
             Photos &amp; video{" "}
-            <span className="font-body text-sm text-muted">({media.length})</span>
+            <span className="font-body text-sm text-muted">
+              ({media.length})
+            </span>
           </Text>
-
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             {media.map((file) => (
@@ -716,7 +776,10 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
                 selected={selection.selected.has(file.id)}
                 selectionActive={selection.count > 0}
                 onOpen={() => nav.openFile(file)}
-                onToggleSelect={(extend) => selection.toggleAt(indexOf.get(file.id) ?? 0, extend)}
+                to={nav.fileHref(file)}
+                onToggleSelect={(extend) =>
+                  selection.toggleAt(indexOf.get(file.id) ?? 0, extend)
+                }
               />
             ))}
           </div>
@@ -733,14 +796,25 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
                 file={file}
                 selected={selection.selected.has(file.id)}
                 selectionActive={selection.count > 0}
-                onToggleSelect={(extend) => selection.toggleAt(indexOf.get(file.id) ?? 0, extend)}
+                onToggleSelect={(extend) =>
+                  selection.toggleAt(indexOf.get(file.id) ?? 0, extend)
+                }
                 onOpen={() => nav.openFile(file)}
+                to={nav.fileHref(file)}
                 onRename={(name) => run(renameNode(file.id, name))}
                 onMove={() =>
-                  setPickerTarget({ verb: "move", ids: [file.id], noun: file.name })
+                  setPickerTarget({
+                    verb: "move",
+                    ids: [file.id],
+                    noun: file.name,
+                  })
                 }
                 onCopyTo={() =>
-                  setPickerTarget({ verb: "copy", ids: [file.id], noun: file.name })
+                  setPickerTarget({
+                    verb: "copy",
+                    ids: [file.id],
+                    noun: file.name,
+                  })
                 }
                 onDelete={() => run(deleteNodes([file.id]))}
               />
@@ -764,7 +838,6 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
           onClose={() => setPickerTarget(null)}
         />
       )}
-
     </div>
   );
 }

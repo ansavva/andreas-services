@@ -67,19 +67,33 @@ export function ShotCard({
   }
 
   return (
-    <article className="flex flex-col gap-3 rounded-md border border-line bg-card p-3">
+    // A storyboard is a sequence, and a sequence of ruled panels reads as one
+    // board where a stack of filled cards reads as a pile. The rule is on the
+    // BOTTOM: the section heading already draws one above the first shot, and
+    // a `border-t` here would have put two hairlines twelve pixels apart.
+    <article className="flex flex-col gap-3 rounded-none border-b border-line py-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <Text variant="body" tone="muted" className="tabular-nums">
+        <Text variant="body" tone="muted" family="mono" className="tabular-nums">
           {String(n).padStart(2, "0")}
         </Text>
         <Text variant="body" className="min-w-48 flex-1 font-medium">
           {caption}
         </Text>
         {shot.status && (
-          <Badge intent={shot.status === "rendered" ? "success" : "neutral"}>{shot.status}</Badge>
+          <Badge intent={shot.status === "rendered" ? "success" : "neutral"} className="font-mono">
+            {shot.status}
+          </Badge>
         )}
-        {duration ? <Badge intent="neutral">{duration}s</Badge> : null}
-        {motion?.model && <Badge intent="neutral">{motion.model}</Badge>}
+        {duration ? (
+          <Badge intent="neutral" className="font-mono tabular-nums">
+            {duration}s
+          </Badge>
+        ) : null}
+        {motion?.model && (
+          <Badge intent="neutral" className="font-mono">
+            {motion.model}
+          </Badge>
+        )}
         {/* One answer to "has this been shot", not two. `status` is computed
             from the plan and is what a storyboarded scene carries; the badge
             below is for a scene assembled from bare runs, which has no status

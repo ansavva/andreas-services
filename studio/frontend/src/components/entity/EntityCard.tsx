@@ -34,11 +34,15 @@ export function EntityCard({ title, slug, hero, counts, onOpen }: Props) {
       type="button"
       onClick={onOpen}
       title={slug}
-      className="flex w-full items-center gap-3 rounded-md border border-line bg-card p-2 text-left
-                 transition-colors hover:bg-surface-alt
-                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      // Square, and a hairline rather than a filled card. These sit in a grid
+      // where a rule alone would not close the shape, so the border stays —
+      // what goes is the rounding and the fill that made each one an object
+      // floating on the page instead of a cell in a grid.
+      className="flex w-full items-center gap-3 rounded-none border border-line p-2 text-left
+                 transition-colors hover:bg-card
+                 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
     >
-      <span className="size-16 shrink-0 overflow-hidden rounded-md border border-line bg-surface-alt">
+      <span className="size-16 shrink-0 overflow-hidden rounded-none border border-line bg-surface-alt">
         {hero ? (
           <MediaThumb nodeId={hero.node} url={hero.url} name="" aspect="auto" />
         ) : (
@@ -65,10 +69,13 @@ export function EntityCard({ title, slug, hero, counts, onOpen }: Props) {
         <Text variant="body" weight="medium" className="truncate">
           {title}
         </Text>
-        <Text variant="caption" tone="muted" className="block truncate">
+        {/* The slug is an address and the counts are numbers — both metadata,
+            both mono. `tabular-nums` is kept as well: it is what lines the
+            counts up between one card and the next. */}
+        <Text variant="caption" tone="muted" className="block truncate font-mono">
           {slug}
         </Text>
-        <Text variant="caption" tone="muted" className="block truncate tabular-nums">
+        <Text variant="caption" tone="muted" className="block truncate font-mono tabular-nums">
           {counts}
         </Text>
       </span>
