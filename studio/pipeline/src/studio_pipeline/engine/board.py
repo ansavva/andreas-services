@@ -527,7 +527,7 @@ def review_sheet(manifest: dict, label: str, items: list[tuple[str, str]],
     result = RENDER.submit("sheet", {
         "parts": [RENDER.part(node, caption=caption) for node, caption in items],
         "cols": min(len(items), 5), "cell": 320,
-        "dest": SC.scene_folder(manifest, "review"),
+        "dest": SC.scene_folder(manifest, SC.REVIEW_FOLDER),
         "name": f"{label}.png",
     }, what="the review sheet")
     node = result["sheet"]
@@ -718,7 +718,7 @@ def run_board(ref: str, opts) -> int:
         # was when approved. A real copy — two blobs, two lifetimes — because a
         # second row on one blob is copy-on-write (#334) and the delete route
         # destroys the shared bytes when either row goes.
-        storyboard = SC.scene_folder(manifest, "storyboard")
+        storyboard = SC.scene_folder(manifest, SC.STORYBOARD_FOLDER)
         # **The panel being replaced still holds the name.** A stale panel is
         # re-rendered under the same `<shot>-p<n>` file name, so the rename
         # collided with the copy it was superseding and no stale panel could ever

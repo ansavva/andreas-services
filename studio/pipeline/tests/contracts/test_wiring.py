@@ -12,7 +12,9 @@ function that used it. `test_no_undefined_names_anywhere` here, and
 suite, are the two that go red on it.
 """
 
+import ast
 import importlib
+import pathlib
 import pkgutil
 
 import pytest
@@ -249,3 +251,90 @@ def test_input_pool_numbers_actually_bind(library, monkeypatch):
     # Position one in the pool listing, as a NODE ID — `--input N` stopped
     # meaning "the file whose name ends _N" when the pool stopped being numbered.
     assert library.input_3 in result.output
+
+
+# ── the modules this package borrows from the other half of studio ──────────
+
+#: Backend `services/` modules the CLI's unit suite loads for real rather than
+#: approximating: `tests/support/fake_api.py` imports each one so that a test
+#: gets the API's own answer to "is this plan coherent", "will this prompt
+#: render" and "what was this approval an approval OF".
+SHARED_SERVICES = ("digest", "prompt", "registry", "storyboard")
+
+_SERVICES = studio_pipeline.STUDIO_DIR / "backend" / "studio_core" / "services"
+
+#: What none of them may reach. Not a taste rule — the pipeline declares neither,
+#: so an import of either turns every unit test in this suite into a test that
+#: needs the backend's environment installed.
+FORBIDDEN_ROOTS = frozenset({"flask", "boto3", "botocore", "werkzeug", "PIL",
+                             "mangum", "jwt", "requests"})
+
+
+def _imported_roots(source: pathlib.Path) -> set[str]:
+    """Top-level module names a file imports, read out of the source.
+
+    Static, so the answer does not depend on what happens to be installed in the
+    interpreter running the suite — which is the whole question: a machine with
+    Flask on it would pass a runtime probe while the wheel it ships still could
+    not.
+    """
+    roots: set[str] = set()
+    for node in ast.walk(ast.parse(source.read_text())):
+        if isinstance(node, ast.Import):
+            roots.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            roots.add(node.module.split(".")[0])
+    return roots
+
+
+@pytest.mark.parametrize("name", SHARED_SERVICES)
+def test_a_shared_backend_service_stays_loadable_from_here(name):
+    """**The precondition the fake's `_backend_service` rests on.**
+
+    Each of these is loaded, not copied — which is what stopped `plan_digest`
+    being a second implementation of `catalog.plan_digest`, the copy whose own
+    comment admitted nothing held the two together and which `routes/runs.py`
+    records as one of three, one of them silently disagreeing.
+
+    The arrangement holds only while the module reaches nothing the pipeline does
+    not have. It is asserted here rather than left to fail at import because the
+    failure would land in whichever unrelated test happened to touch the fake
+    first, and would read as that test's problem.
+
+    `registry` is on the list without being loaded directly: `prompt` imports it,
+    so it is just as load-bearing.
+    """
+    reached = _imported_roots(_SERVICES / f"{name}.py")
+    assert not (reached & FORBIDDEN_ROOTS), (
+        f"services/{name}.py imports {sorted(reached & FORBIDDEN_ROOTS)}; "
+        f"tests/support/fake_api.py loads it and this package declares none of them"
+    )
+
+
+@pytest.mark.parametrize("name", SHARED_SERVICES)
+def test_a_shared_backend_service_reaches_only_shared_backend_modules(name):
+    """The chain, not just the first link.
+
+    `prompt` imports `registry`, which is why `registry` is on the list at all. A
+    fourth module joining that chain without joining the list would be checked by
+    nothing — and its own imports are exactly where Flask or boto3 would arrive.
+    """
+    allowed = {f"studio_core.services.{other}" for other in SHARED_SERVICES}
+    allowed.add("studio_core.errors")
+
+    reached = set()
+    for node in ast.walk(ast.parse((_SERVICES / f"{name}.py").read_text())):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("studio_core"):
+            if node.module == "studio_core.services":
+                reached.update(f"studio_core.services.{alias.name}"
+                               for alias in node.names)
+            else:
+                reached.add(node.module)
+        elif isinstance(node, ast.Import):
+            reached.update(alias.name for alias in node.names
+                           if alias.name.startswith("studio_core"))
+
+    assert reached <= allowed, (
+        f"services/{name}.py reaches {sorted(reached - allowed)}; add it to "
+        f"SHARED_SERVICES so its own imports are checked too, or stop reaching it"
+    )

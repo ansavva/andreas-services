@@ -106,13 +106,27 @@ There is no `--cov-fail-under`. A threshold picked before anyone has read a real
 number either sits below it, and means nothing, or fires on unrelated PRs until
 somebody deletes it. Ratchet from these once there is a trend to ratchet.
 
-The suite stands up a miniature of the real library under moto —
-`mock_dynamodb` **and** `mock_s3`, because the library is a catalog table with a
-bucket behind it. **Mock both.** The catalog is what says a thing exists;
-seeding only the bucket produces a tree nothing can list, which is the shape of
-the old S3-as-truth fixture and no longer resembles what the code reads. An
-autouse fixture also blocks any reach at a real table, so an unmocked call fails
-rather than escaping.
+The suite stands up a miniature of the real library, and **the catalog half of it
+is no longer moto**. `tests/support/fake_api.py` is an in-memory studio API sitting
+at `adapters.api.request`, so a test exercises the route the CLI actually builds
+rather than a table it would never address directly — this package holds no AWS
+client to mock. `mock_s3` stays, because bytes are real: `store` PUTs and GETs
+presigned URLs, the fake signs them as `memory://<blob_key>` onto a moto bucket,
+and `curate dedupe` hashes what comes back.
+
+**Seed through the fake, never around it.** The catalog is what says a thing
+exists; a fixture that wrote bytes and no rows would produce a tree nothing can
+list, which is the shape of the old S3-as-truth fixture and no longer resembles
+what the code reads.
+
+Three of the fake's answers are **the API's own code, loaded rather than
+approximated** — `services/storyboard.py`, `services/prompt.py` and
+`services/digest.py`, the last of which was a copy until #538. All three are
+written to import nothing outside the standard library, which is what makes them
+loadable from a suite that declares none of the API's runtime dependencies;
+`test_a_shared_backend_service_stays_loadable_from_here` holds that precondition
+up statically, and a fourth module joining the chain has to join
+`SHARED_SERVICES` with it.
 
 ### Nothing in a test may bill
 

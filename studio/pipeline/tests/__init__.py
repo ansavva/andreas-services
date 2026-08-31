@@ -29,11 +29,16 @@ WHAT THE GUARDS DO, AND WHY YOU SHOULD NOT WORK AROUND THEM
 
 `conftest.py` autouses four, and each one is a bug that already happened:
 
-  * `STUDIO_REPLICATE_MODE=fake` — **do not stub the provider yourself.** Every
-    test that reached the engine used to monkeypatch the adapter by hand, and a
-    new file that forgot called Replicate for real.
-  * `_no_outbound_sockets` — loopback only. Catches a paid call reached
-    INDIRECTLY, which the mode switch cannot see.
+  * the **fake API** — `tests/support/fake_api.py` answers `adapters.api.request`
+    in memory, including `POST /api/runs/<id>/submit`. The seam a test controls
+    is `fake_api.submits_refused`, which is stronger than "nothing billed": a
+    dry run must not submit AT ALL, and a fake would answer one happily.
+  * `_no_outbound_sockets` — loopback only, and **the primary guard now**. There
+    is no provider client left in this package to switch off, so what stops a
+    paid call reached indirectly — through a module nothing knows about, or a
+    subprocess — is this. `STUDIO_REPLICATE_MODE=fake` and a dud
+    `REPLICATE_API_TOKEN` are still set beside it, belt-and-braces: if code that
+    reaches a provider ever comes back here it costs a 401, not a bill.
   * `_registry_is_a_copy` — `studio models refresh` rewrites `models.json` in
     place and the dispatch test invokes every leaf command. It once deleted 391
     lines of committed schema.

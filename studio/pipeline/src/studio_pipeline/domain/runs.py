@@ -85,9 +85,11 @@ from studio_pipeline.errors import reports
 SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
 IMG_EXTS = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".bmp"}
 VID_EXTS = {".mp4", ".mov", ".webm", ".m4v"}
-#: What an id looks like. Not parsed for meaning — the prefix is for a human
-#: reading a log, and nothing recovers anything from it.
-ID_RE = re.compile(r"^(run|scene|movie|char|proj|node)-[0-9a-f-]{36}$")
+#: **There is no `ID_RE`.** One existed and nothing ever matched against it,
+#: which is the correct number of matches: an id's prefix is for a person
+#: reading a log, and every command that takes one either passes it to the API
+#: or tests `startswith("node-")` to tell an id from a name path. A regex that
+#: says what an id looks like invites parsing one for meaning.
 #: What a send may be FOR. The API is the enforcer and refuses anything else;
 #: this is here so `runs edit` can name the four in an error message rather than
 #: spending a round trip to be told. `submit.py` assigns them from the registry —

@@ -25,7 +25,7 @@ Studio is one service with two halves that share one library.
 
 | Half | Where | Runs | Doc |
 |---|---|---|---|
-| **The pipeline** — makes the media | `pipeline/` (code) + `.claude/skills/` (docs) | Locally, inside Claude, on the token `studio login` stores — **no AWS credentials at all** (#308), and since #536 **no Replicate credential either**. **Never deploys.** | [docs/PIPELINE.md](docs/PIPELINE.md) |
+| **The pipeline** — makes the media | `pipeline/` (code) + `.claude/skills/` (docs) | Locally, inside Claude, on the token `studio login` stores — **no AWS credentials at all** (#308), and since #536 **no Replicate credential either**. **A thin client**: 19,368 lines before #531, 13,899 after #538, and its dependencies are `click`, `pyyaml`, `pycognito` and one boto3 call that finds the API. **Never deploys.** | [docs/PIPELINE.md](docs/PIPELINE.md) |
 | **The app** — browses the media | `backend/`, `frontend/` | `studio.andreas.services` + `studio-api.andreas.services`, deployed by CI. **Two images now**: the API's, and a render worker's that carries `ffmpeg` | [docs/WEB_APP.md](docs/WEB_APP.md) |
 | The library both read | `infra/modules/catalog` + `infra/modules/media` | prod: `studio-prod-catalog` + `s3://studio-prod-media-us-east-1/`. Locally: this machine's dev stack. | [infra/README.md](infra/README.md) |
 
@@ -487,10 +487,14 @@ studio/scripts/dev-test-integration.sh          # both integration suites; needs
 Each of these is a bug that already happened, and each is now enforced rather
 than remembered. If a guard is in the way, the test belongs in a different tier.
 
-- **Do not stub the model provider yourself.** `STUDIO_REPLICATE_MODE=fake` is
-  set autouse; the adapter answers all six of its functions locally. Every test
-  that reached the engine used to monkeypatch it by hand, and a new file that
-  forgot called Replicate for real.
+- **Do not stub the model provider yourself.** In `backend/`,
+  `STUDIO_REPLICATE_MODE=fake` is set autouse and `clients/replicate.py` answers
+  every call locally. In `pipeline/` **there is nothing left to stub** — the
+  provider client is deleted, submitting is `POST /api/runs/<id>/submit`, and
+  `tests/support/fake_api.py` answers it; the seam a test controls is
+  `fake_api.submits_refused`. Every test that reached the engine used to
+  monkeypatch a client by hand, and a new file that forgot called Replicate for
+  real.
 - **Do not reach the network.** A socket guard allows loopback only in the unit
   suites, and blocks the provider hosts in the integration suites. The unit
   suite once made live calls to `api.replicate.com` and depended on them 401-ing.
