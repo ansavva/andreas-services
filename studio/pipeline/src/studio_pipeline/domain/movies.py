@@ -83,7 +83,9 @@ from studio_pipeline.domain import (
 
 #: Folders inside a movie's own folder. Convention, resolved by name and created
 #: if absent; the record names one node (`folder`) and no map of these.
-SCENES_FOLDER = "scenes"
+#:
+#: `scenes/` is the movie's counterpart of a scene's `shots/` and is likewise
+#: absent: the render worker names and creates it — see `domain/scenes.py`.
 OUTPUT_FOLDER = "output"
 
 

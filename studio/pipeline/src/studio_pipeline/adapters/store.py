@@ -626,5 +626,9 @@ def node_text(node_id: str) -> str:
     return api.get(f"/api/nodes/{node_id}/text").get("content", "")
 
 
-def set_node_text(node_id: str, content: str) -> dict:
-    return api.patch(f"/api/nodes/{node_id}/text", {"content": content})
+# **There is no `set_node_text`.** Nothing in the pipeline writes a text node:
+# the run payload documents are written by the API when a run is recorded, and
+# the one document a person edits — a character's bible — is a `PATCH
+# /api/characters/<id>/profile` carrying a `rev`, not a blind overwrite of a
+# blob. A wrapper for `PATCH /api/nodes/<id>/text` existed anyway and had never
+# been called; the SPA's text editor still uses the route.

@@ -378,7 +378,7 @@ def angle_keys(angle: dict) -> list[str]:
 
 def _angle_key(angle: dict, field: str) -> str:
     rel = angle[field]
-    if not rel.startswith(P.CONFIG + "/"):
+    if not rel.startswith(P.config_root()):
         raise TurnaroundError(
             f"angle {angle['id']!r}: {field} {rel!r} must be a key under "
             f"{P.CONFIG}/ — angle images are config, not character material."

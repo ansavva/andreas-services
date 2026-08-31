@@ -111,7 +111,12 @@ studio/
 │   │   ├── routes/           # nodes.py + libraries.py (the catalog's surface),
 │   │   │                     #   browse.py (a folder ready to draw), manage.py (writes)
 │   │   ├── services/         # catalog.py owns the item shapes; browse.py, manage.py,
-│   │   │                     #   identity.py (JWT), keys.py (classification + confinement)
+│   │   │                     #   identity.py (JWT), keys.py (classification + confinement),
+│   │   │                     #   generate.py + callbacks.py (the paid call and its webhook),
+│   │   │                     #   render.py (the queue the worker image drains).
+│   │   │                     # storyboard.py, prompt.py, registry.py and digest.py are
+│   │   │                     #   the ones the PIPELINE's test fake loads by path, so
+│   │   │                     #   none of the four may import Flask or boto3
 │   │   └── clients/aws/      # dynamodb.py, s3.py — the only boto3 in the service
 │   └── tests/                # pytest + moto over a miniature of the table and the bucket
 ├── frontend/                 # Vite + React SPA (studio.andreas.services)

@@ -88,10 +88,18 @@ WIRE_SURFACE = {
     "/api/runs/resolve",
     "/api/runs/<id>",
     "/api/runs/<id>/outputs",
-    "/api/runs/<id>/response",
+    # NOT `/api/runs/<id>/response`. Storing the provider's reply verbatim was
+    # this package's job while this package was what received one; a callback
+    # consumer receives it now (#536), and the wrapper that spelled the route
+    # outlived its last caller by two PRs.
     # The plan and its approval. `plan` and `sends` are the authored half a run
     # gained; `approve` is the one that carries a digest, so that a yes names the
     # payload it was a yes to and dies when that payload changes.
+    #
+    # POST only. The SPA withdraws an approval — `DELETE` on the same route —
+    # and nothing at a terminal does: `runs edit` writes the plan or the sends,
+    # and the API voids the approval as a consequence of the write rather than
+    # as a second call somebody has to remember to make.
     "/api/runs/<id>/plan",
     "/api/runs/<id>/sends",
     "/api/runs/<id>/approve",
@@ -108,12 +116,16 @@ WIRE_SURFACE = {
     "/api/scenes/<id>",
     "/api/scenes/<id>/shots",
     "/api/scenes/<id>/shots/<id>",
-    "/api/scenes/<id>/output",
     # movies
     "/api/movies",
     "/api/movies/<id>",
     "/api/movies/<id>/scenes",
-    "/api/movies/<id>/output",
+    # NOT `/api/scenes/<id>/output` and NOT `/api/movies/<id>/output`. Both
+    # minted an upload URL for a take this process had just encoded, and this
+    # process encodes nothing since #537 — the render worker files its own
+    # output. The backend still serves both; the CLI has no reason to call
+    # either, and a wrapper spelling one would put a route in this table that
+    # nothing reconciles.
     # renders — where ~1,360 lines of local media processing went. A job is
     # enqueued and polled; the worker has ffmpeg in its image and this package
     # does not.
