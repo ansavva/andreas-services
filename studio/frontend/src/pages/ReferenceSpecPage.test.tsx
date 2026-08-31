@@ -56,7 +56,9 @@ it("shows a block INSIDE the angle that cites it, not on another tab", async () 
   read.mockResolvedValue(SPEC);
   show();
   expect(await screen.findByText(/face_front/)).toBeTruthy();
-  expect(screen.getByText("{face_only}")).toBeTruthy();
+  // By ROLE: `{face_only}` now appears twice on purpose — once as a pill inside
+  // the prompt, once as the block's own header. The header is the button.
+  expect(screen.getByRole("button", { name: /\{face_only\}/ })).toBeTruthy();
   expect(screen.queryByRole("tab")).toBeNull();
 });
 
@@ -121,7 +123,7 @@ it("saves one block without refetching the whole spec", async () => {
   show();
 
   // Expand the block where it sits, inside the angle that cites it.
-  fireEvent.click(await screen.findByText("{face_only}"));
+  fireEvent.click(await screen.findByRole("button", { name: /\{face_only\}/ }));
   const box = await screen.findByDisplayValue(/THE FACE COMES FROM/);
   fireEvent.change(box, { target: { value: "edited" } });
   fireEvent.click(screen.getAllByText("Save")[0]!);

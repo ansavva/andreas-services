@@ -4,6 +4,8 @@ import { Alert, Badge, Button, Card, Field, Spinner, Text } from "@ansavva/desig
 
 import { getReferenceSpec, saveSpecAngle, saveSpecBlock } from "../apis/studio";
 import { AutoTextarea } from "../components/common/AutoTextarea";
+import { TokenizedPromptEditor } from "../components/common/TokenizedPromptEditor";
+import type { PromptToken } from "../components/common/TokenizedPromptEditor";
 import { PageBar } from "../components/layout/PageBar";
 import { useResource } from "../hooks/useResource";
 import type { ReferenceSpec, SpecAngle } from "../types";
@@ -231,6 +233,18 @@ function AngleEditor({
   const dirty = prompt !== angle.prompt || description !== angle.description;
 
   const cited = useMemo(() => citations(prompt), [prompt]);
+  // What `+` offers: this library's blocks, then the values the assembler fills
+  // from the character. Both are placeholders in the template and only one of
+  // them is editable, which is why the pill says which it is.
+  const promptTokens = useMemo<PromptToken[]>(
+    () => [
+      ...Object.entries(spec.blocks)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([name, text]) => ({ name, kind: "block" as const, hint: text.slice(0, 60) })),
+      ...[...COMPUTED].sort().map((name) => ({ name, kind: "computed" as const })),
+    ],
+    [spec.blocks],
+  );
   const unknown = useMemo(
     () => cited.filter((name) => !(name in spec.blocks) && !COMPUTED.has(name)),
     [cited, spec.blocks],
@@ -273,15 +287,18 @@ function AngleEditor({
       <div className="flex flex-col gap-2">
         <Field.Root name={`prompt-${angle.id}`}>
           <Field.Label>Prompt</Field.Label>
-          {/* Monospace, because WHITESPACE IS NOW PART OF THE PROMPT. Blank
-              lines survive assembly and reach the model — the best render this
-              repo has produced was laid out in paragraphs — so a proportional
-              face that hides a doubled space or a trailing one is hiding
-              something that is actually sent. */}
-          <AutoTextarea
+          {/* Pills, not characters. A template is text with named holes, and
+              typed by hand a mistyped `{face_onl}` looked exactly like a
+              correct one and did not fail until the angle was drafted and
+              refused. Inserted from a list, it cannot be mistyped at all.
+
+              The value is still the same plain string — see the editor's own
+              note on why the round trip has to be byte-exact. */}
+          <TokenizedPromptEditor
             value={prompt}
             onValueChange={setPrompt}
-            className="font-mono"
+            tokens={promptTokens}
+            ariaLabel={`Prompt for ${angle.id}`}
           />
         </Field.Root>
 
