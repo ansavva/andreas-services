@@ -78,7 +78,9 @@ const reel = fixture<Reel>("reel");
 export const LIBRARY = libraries[0].id;
 export const CHARACTER = characters[0].id;
 export const CHARACTER_ROOT = character.root;
-export const SEED_FOLDER = characterRoot.find((node) => node.name === "seed")!.id;
+export const SEED_FOLDER = characterRoot.find(
+  (node) => node.name === "seed",
+)!.id;
 
 /** A 1x1 PNG, so an `<img>` that reaches a stub actually decodes. */
 const PIXEL = Buffer.from(
@@ -132,7 +134,6 @@ export const CLIP_ITEM: Item = {
   url: CLIP_PATH,
 };
 
-/** What a `prompt.json` in this folder would look like. */
 export const TEXT_NODE: Node = {
   ...STILL,
   id: "node-e2e00000-0000-0000-0000-0000000073x7",
@@ -140,6 +141,55 @@ export const TEXT_NODE: Node = {
   content_type: "application/json",
   size: 42,
 };
+
+/**
+ * One finished run, synthesised rather than captured.
+ *
+ * A real run's JSON is presigned — `X-Amz-Credential` carries an access key id —
+ * and `e2e/README.md` exists because a hand capture once put one in git. The
+ * shape here is the API's; the values are the two fixtures this suite already
+ * serves, so the output is the same MP4 the player specs use. That makes this
+ * the end-to-end check on video previews too: a run whose output renders as a
+ * broken image is a run whose thumbnail forgot it was a video.
+ */
+export const RUN_PROJECT = "proj-e2e0-0000-0000-0000-00000000proj";
+export const RUN_ID = "run-e2e00000-0000-0000-0000-000000000run";
+
+export const RUN: Record<string, unknown> = {
+  id: RUN_ID,
+  lib: LIBRARY,
+  project: RUN_PROJECT,
+  status: "succeeded",
+  kind: "video",
+  engine: "kling-replicate",
+  model: "kwaivgi/kling-v3-omni-video",
+  prediction_id: "e2epredict0000",
+  created: "2026-08-31T12:29:00+00:00",
+  submitted: "2026-08-31T12:33:30+00:00",
+  completed: "2026-08-31T12:35:38+00:00",
+  cost: 0.84,
+  bindings: {},
+  sends: [],
+  plan: null,
+  approval: null,
+  scenes: [],
+  characters: [],
+  outputs: [
+    {
+      node: CLIP_ITEM.id,
+      name: CLIP_ITEM.name,
+      url: CLIP_PATH,
+      size: CLIP.byteLength,
+      content_type: "video/mp4",
+    },
+  ],
+  // `prompt` points at the text node this suite already serves, so the payload
+  // pane has something to render and the wrapping can be measured rather than
+  // asserted from the class list.
+  payload: { prompt: TEXT_NODE.id, request: null, response: null },
+};
+
+/** What a `prompt.json` in this folder would look like. */
 
 export const TEXT_BODY = '{\n  "shot": "e2e",\n  "seconds": 5\n}\n';
 
@@ -173,11 +223,16 @@ export async function stubApi(page: Page): Promise<void> {
     if (path.endsWith("/api/characters")) return json(route, characters);
     if (path.includes("/api/characters/")) return json(route, character);
     if (path.endsWith("/api/projects")) return json(route, projects);
+    if (path.includes("/api/runs/")) return json(route, RUN);
     // The clip leads the walk, so `/o?in=recursive` opens on it. The seed
     // carries no video and a library does, so a reel that is stills all the way
     // down is the less faithful answer of the two.
     if (path.endsWith("/api/reel")) {
-      return json(route, { ...reel, items: [CLIP_ITEM, ...reel.items], total: reel.total + 1 });
+      return json(route, {
+        ...reel,
+        items: [CLIP_ITEM, ...reel.items],
+        total: reel.total + 1,
+      });
     }
     if (path.endsWith("/api/nodes")) {
       if (parent === CHARACTER_ROOT) return json(route, characterRoot);
@@ -190,7 +245,12 @@ export async function stubApi(page: Page): Promise<void> {
     const node = /\/api\/nodes\/([^/]+)(?:\/(text|owner))?$/.exec(path);
     if (node) {
       const record = NODES.get(decodeURIComponent(node[1]!));
-      if (!record) return json(route, { error: `e2e: no fixture for node ${node[1]}` }, 501);
+      if (!record)
+        return json(
+          route,
+          { error: `e2e: no fixture for node ${node[1]}` },
+          501,
+        );
       if (node[2] === "owner") return json(route, record.owner ?? null);
       if (node[2] === "text") {
         return json(route, {
@@ -209,7 +269,8 @@ export async function stubApi(page: Page): Promise<void> {
     // decided by the node, because a re-sign of a clip that answers with a PNG
     // is exactly the failure this suite is here to notice.
     if (path.includes("/download-url") || path.includes("/asset")) {
-      const asset = url.searchParams.get("node") === CLIP_ITEM.id ? CLIP_PATH : PIXEL_PATH;
+      const asset =
+        url.searchParams.get("node") === CLIP_ITEM.id ? CLIP_PATH : PIXEL_PATH;
       return json(route, { url: `${url.origin}${asset}` });
     }
     return json(route, { error: `e2e: no fixture for ${path}` }, 501);

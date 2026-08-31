@@ -28,6 +28,8 @@ import {
   CHARACTER,
   CLIP_ITEM,
   LIBRARY,
+  RUN_ID,
+  RUN_PROJECT,
   STILL,
   TEXT_NODE,
   fixture,
@@ -412,3 +414,59 @@ test("the current tile's selection ring is not clipped", async ({ page }) => {
     )
     .toBeGreaterThanOrEqual(4);
 });
+
+/**
+ * **The run screen splits, and collapses output-first.**
+ *
+ * Two assertions in one test because they are one decision. Above `lg` the
+ * result sits in the right-hand column beside what produced it, the way the
+ * provider's own playground reads. Below it there is one column and the OUTPUT
+ * LEADS — the run page used to stack input first, so on a phone the thing a
+ * person opened the page for sat under a fact table, an approval bar and every
+ * binding the run had.
+ *
+ * The output section is first in the DOM at both widths, which is what makes
+ * the narrow case need no `order` override; the wide case places it with
+ * `col-start`. So the heading order below is also the screen-reader order.
+ */
+for (const [label, width, splits] of [
+  ["desktop", 1440, true],
+  ["mobile", 390, false],
+] as const) {
+  test(`the run screen ${splits ? "splits" : "stacks output-first"} at ${label}`, async ({
+    page,
+  }) => {
+    stubOnly();
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`/p/${RUN_PROJECT}/r/${RUN_ID}`);
+    await page.waitForLoadState("networkidle");
+
+    // Both columns are named, and the result is read first either way.
+    await expect(page.getByText("Inputs", { exact: true })).toBeVisible();
+    await expect(page.getByText("Outputs", { exact: true })).toBeVisible();
+
+    const geometry = await page.evaluate(() => {
+      const sections = [...document.querySelectorAll("section")];
+      const outputs = sections.find((s) =>
+        s.textContent?.startsWith("Outputs"),
+      );
+      const column = document.querySelector('[class*="lg:col-start-1"]');
+      if (!outputs || !column) return null;
+      const out = outputs.getBoundingClientRect();
+      const left = column.getBoundingClientRect();
+      return {
+        sideBySide: out.left >= left.right - 1,
+        outputAbove: out.top < left.top,
+      };
+    });
+
+    expect(geometry).not.toBeNull();
+    expect(geometry!.sideBySide).toBe(splits);
+    // Stacked, the result leads. Split, they start on the same row.
+    if (!splits) expect(geometry!.outputAbove).toBe(true);
+
+    // The output is a video and must render as one — an `.mp4` handed to <img>
+    // is the broken thumbnail this suite exists to keep fixed.
+    await expect(page.locator("main video").first()).toBeVisible();
+  });
+}

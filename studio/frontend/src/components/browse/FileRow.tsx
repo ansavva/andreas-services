@@ -9,6 +9,11 @@ import { RenameForm } from "../common/RenameForm";
 import { CheckIcon, FileIcon } from "../common/icons";
 import { Checkbox } from "@ansavva/design-system";
 
+/** One shape for the row whether it ends up a link or a button. */
+const ROW =
+  "flex min-w-0 flex-1 items-center gap-3 rounded-none px-3 py-2.5 text-left " +
+  "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary";
+
 interface Props {
   file: FileEntry;
   /**
@@ -25,6 +30,13 @@ interface Props {
   selectionActive: boolean;
   onToggleSelect: (extend: boolean) => void;
   onOpen: () => void;
+  /**
+   * Where opening it goes, as an address — see `MediaTile.to`.
+   *
+   * A row is not always openable (`viewable` is false for anything the viewer
+   * cannot draw), so this is a link only when there is somewhere to go.
+   */
+  to?: string;
   onRename: (name: string) => Promise<unknown>;
   /** Asks the page to open its destination picker on this file, to move it. */
   onMove: () => void;
@@ -40,6 +52,7 @@ export function FileRow({
   selectionActive,
   onToggleSelect,
   onOpen,
+  to,
   onRename,
   onMove,
   onCopyTo,
@@ -85,29 +98,69 @@ export function FileRow({
         </Checkbox.Indicator>
       </Checkbox.Root>
 
-      <button
-        type="button"
-        // Once anything is picked the folder is in selection mode and a press
-        // extends rather than opens — the same bargain the media grid makes.
-        onClick={(event) => (selectionActive ? onToggleSelect(event.shiftKey) : onOpen())}
-        disabled={!viewable && !selectionActive}
-        className="flex min-w-0 flex-1 items-center gap-3 rounded-none px-3 py-2.5 text-left
-                   disabled:cursor-default disabled:opacity-60
-                   focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
-      >
-        <FileIcon className="size-5 shrink-0 fill-none stroke-muted stroke-[1.5]" />
+      {/* An `<a>` when there is an address and the row can be opened, so
+          command-click, middle-click and "copy link" all work — a `<button>`
+          offers none of them. Selection mode and an unviewable row both fall
+          back to the button, because neither has a destination. */}
+      {to && viewable && !selectionActive ? (
+        <a
+          href={to}
+          onClick={(event) => {
+            if (
+              event.metaKey ||
+              event.ctrlKey ||
+              event.shiftKey ||
+              event.altKey
+            )
+              return;
+            event.preventDefault();
+            onOpen();
+          }}
+          className={ROW}
+        >
+          <FileIcon className="size-5 shrink-0 fill-none stroke-muted stroke-[1.5]" />
+          <span className="min-w-0 flex-1">
+            <Text variant="body" className="truncate">
+              {file.name}
+            </Text>
+            <Text
+              variant="caption"
+              tone="muted"
+              className="truncate font-mono tabular-nums"
+            >
+              {formatBytes(file.size)} · {formatDate(file.last_modified)}
+            </Text>
+          </span>
+        </a>
+      ) : (
+        <button
+          type="button"
+          // Once anything is picked the folder is in selection mode and a press
+          // extends rather than opens — the same bargain the media grid makes.
+          onClick={(event) =>
+            selectionActive ? onToggleSelect(event.shiftKey) : onOpen()
+          }
+          disabled={!viewable && !selectionActive}
+          className={`${ROW} disabled:cursor-default disabled:opacity-60`}
+        >
+          <FileIcon className="size-5 shrink-0 fill-none stroke-muted stroke-[1.5]" />
 
-        <span className="min-w-0 flex-1">
-          <Text variant="body" className="truncate">
-            {file.name}
-          </Text>
-          {/* A byte count and a timestamp — the canonical metadata pair, and
+          <span className="min-w-0 flex-1">
+            <Text variant="body" className="truncate">
+              {file.name}
+            </Text>
+            {/* A byte count and a timestamp — the canonical metadata pair, and
               the reason a mono role exists. */}
-          <Text variant="caption" tone="muted" className="truncate font-mono tabular-nums">
-            {formatBytes(file.size)} · {formatDate(file.last_modified)}
-          </Text>
-        </span>
-      </button>
+            <Text
+              variant="caption"
+              tone="muted"
+              className="truncate font-mono tabular-nums"
+            >
+              {formatBytes(file.size)} · {formatDate(file.last_modified)}
+            </Text>
+          </span>
+        </button>
+      )}
 
       {file.language && (
         <Badge intent="neutral" className="font-mono">

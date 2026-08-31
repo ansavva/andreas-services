@@ -189,3 +189,35 @@ test("a cold link has no back arrow, because back would leave the app", async ({
     page.getByRole("button", { name: "Back", exact: true }),
   ).toHaveCount(0);
 });
+
+/**
+ * **Every tile is a link, so the browser's own gestures work on it.**
+ *
+ * Command-click, middle-click, "open in new tab", "copy link address" — a
+ * `<button>` offers none of them, and the media grid was built out of buttons,
+ * so the one place in this app most worth opening in a second tab was the one
+ * place you could not. The fix is an `href` the router intercepts on a plain
+ * click only.
+ *
+ * Asserted as markup rather than by driving a modifier-click: what a real
+ * command-click does is the browser's business, and a test that opened a tab
+ * would be checking Chromium. What this can check is that we handed it
+ * something to work with.
+ */
+test("media tiles are links, so a modified click can leave the page", async ({
+  page,
+}) => {
+  stubOnly("the stub feed is what makes the grid deterministic");
+  // Home's Recent grid, which the reel fixture fills — a character's Files tab
+  // needs a tab click to reach and this is about the tile, not the route.
+  await page.goto("/");
+  await page.waitForLoadState("networkidle");
+
+  const linked = page.locator('main a[href*="/o/"]');
+  await expect.poll(async () => linked.count()).toBeGreaterThan(0);
+
+  // The address has to be the same place a plain click goes, or the two
+  // gestures land differently and the link is worse than no link.
+  const href = await linked.first().getAttribute("href");
+  expect(href).toMatch(/^\/o\/node-/);
+});

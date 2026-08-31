@@ -1,10 +1,18 @@
 import { useState } from "react";
 
-import { Alert, Badge, Button, Dialog, Text, buttonClass } from "@ansavva/design-system";
+import {
+  Alert,
+  Badge,
+  Button,
+  Dialog,
+  Text,
+  buttonClass,
+} from "@ansavva/design-system";
 
 import { Frame, SendRow, Slot } from "../scene/Sends";
 import type { RunAsset, RunRecord, RunSend } from "../../types";
 import { formatDate, formatTextContent } from "../../utils/format";
+import { getUserEmail, getUserSub } from "../../auth/oauth";
 
 /**
  * What a run WAS FOR — the half a run page could not show until runs had a plan.
@@ -33,7 +41,8 @@ export function RunPlan({
       <section className="flex flex-col gap-2">
         <Text variant="title">Plan</Text>
         <Text variant="body" tone="muted">
-          This run predates the plan, and its request could not be reconstructed.
+          This run predates the plan, and its request could not be
+          reconstructed.
         </Text>
       </section>
     );
@@ -57,9 +66,10 @@ export function RunPlan({
 
       {run.plan?.origin === "backfilled" && (
         <Text variant="caption" tone="muted" className="max-w-prose">
-          Rebuilt from the request this run recorded when it was submitted. The prompt and
-          the parameters are exactly what went out; the note a person would have written is
-          not recoverable, because nothing asked for one at the time.
+          Rebuilt from the request this run recorded when it was submitted. The
+          prompt and the parameters are exactly what went out; the note a person
+          would have written is not recoverable, because nothing asked for one
+          at the time.
         </Text>
       )}
 
@@ -74,7 +84,10 @@ export function RunPlan({
       {run.plan && Object.keys(run.plan.params).length > 0 && (
         <div className="flex flex-wrap gap-2">
           {Object.entries(run.plan.params).map(([key, value]) => (
-            <span key={key} className="rounded-none border border-line bg-card px-2 py-1">
+            <span
+              key={key}
+              className="rounded-none border border-line bg-card px-2 py-1"
+            >
               <Text variant="caption" tone="muted">
                 {key}
               </Text>{" "}
@@ -97,7 +110,13 @@ export function RunPlan({
  * image is an existing reference of him" — so the number on each tile is part of the
  * payload rather than a label for it.
  */
-function Sends({ sends, onView }: { sends: RunSend[]; onView: (a: RunAsset) => void }) {
+function Sends({
+  sends,
+  onView,
+}: {
+  sends: RunSend[];
+  onView: (a: RunAsset) => void;
+}) {
   if (sends.length === 0) {
     return (
       <SendRow label="Images">
@@ -106,10 +125,13 @@ function Sends({ sends, onView }: { sends: RunSend[]; onView: (a: RunAsset) => v
     );
   }
 
-  const byRole = (role: RunSend["role"]) => sends.filter((send) => send.role === role);
+  const byRole = (role: RunSend["role"]) =>
+    sends.filter((send) => send.role === role);
   const start = byRole("start");
   const end = byRole("end");
-  const rest = sends.filter((send) => !["start", "end"].includes(send.role ?? ""));
+  const rest = sends.filter(
+    (send) => !["start", "end"].includes(send.role ?? ""),
+  );
 
   return (
     <div className="flex flex-col gap-3 rounded-none border border-line p-2">
@@ -138,11 +160,26 @@ function Sends({ sends, onView }: { sends: RunSend[]; onView: (a: RunAsset) => v
   );
 }
 
-function Send({ send, onView }: { send: RunSend; onView: (a: RunAsset) => void }) {
+function Send({
+  send,
+  onView,
+}: {
+  send: RunSend;
+  onView: (a: RunAsset) => void;
+}) {
   return (
     <div className="flex flex-col items-center gap-1">
-      <Frame hint={String(send.order)} title={send.name} asset={send} onOpen={onView} />
-      <Text variant="caption" tone="muted" className="max-w-24 truncate text-center">
+      <Frame
+        hint={String(send.order)}
+        title={send.name}
+        asset={send}
+        onOpen={onView}
+      />
+      <Text
+        variant="caption"
+        tone="muted"
+        className="max-w-24 truncate text-center"
+      >
         {describe(send)}
       </Text>
     </div>
@@ -182,14 +219,17 @@ function describe(send: RunSend): string {
  * paragraph would throw away the structure that makes it re-editable.
  */
 function Prompt({ prompt }: { prompt: unknown }) {
-  const text = typeof prompt === "string" ? prompt : JSON.stringify(prompt, null, 2);
+  const text =
+    typeof prompt === "string" ? prompt : JSON.stringify(prompt, null, 2);
   return (
     // `whitespace-pre-wrap break-words`, not `overflow-auto` alone: a prompt is
     // prose, and at 390px an unwrapped one runs off the right edge and has to be
     // scrolled sideways a line at a time. A structured prompt keeps its
     // indentation, which is what `pre-wrap` preserves and `normal` would not.
     <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-none border border-line bg-card p-3 font-mono text-xs leading-relaxed text-ink">
-      <code>{formatTextContent(text, typeof prompt === "string" ? "text" : "json")}</code>
+      <code>
+        {formatTextContent(text, typeof prompt === "string" ? "text" : "json")}
+      </code>
     </pre>
   );
 }
@@ -219,6 +259,14 @@ export function ApproveBar({
   error: string | null;
 }) {
   const [confirming, setConfirming] = useState(false);
+  // Who "by" is, when it is this browser — see `approver`.
+  //
+  // Read straight off the token rather than through `useAuth`: this component
+  // is mounted by tests that provide no `AuthProvider`, and the hook throws
+  // without one, which took the whole run screen down to an empty div. The
+  // claims are a localStorage read either way — the context adds a subscription
+  // this has no use for.
+  const self = { sub: getUserSub(), email: getUserEmail() };
 
   if (run.status !== "draft" && run.status !== "approved") {
     if (!run.approval) return null;
@@ -226,7 +274,7 @@ export function ApproveBar({
       <Text variant="caption" tone="muted">
         {run.approval.by === "backfill"
           ? "Approved before approvals were recorded — stamped by the backfill at the moment this run was created."
-          : `Approved by ${run.approval.by} on ${formatDate(run.approval.at)}.${
+          : `Approved by ${approver(run.approval.by, self)} on ${formatDate(run.approval.at)}.${
               run.approval.via === "relayed"
                 ? " Relayed — the yes was given elsewhere and passed on by an agent, not entered here."
                 : ""
@@ -246,7 +294,7 @@ export function ApproveBar({
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <Text variant="body" className="min-w-48 flex-1">
-          {sentence(run)}
+          {sentence(run, self)}
         </Text>
 
         {run.status === "approved" && !run.stale ? (
@@ -264,7 +312,12 @@ export function ApproveBar({
                 What stands in for a confirm is that this button only exists on
                 a run that is approved AND whose payload has not moved since —
                 every other state renders the approve control instead. */}
-            <Button intent="primary" size="sm" onClick={onSubmit} disabled={busy}>
+            <Button
+              intent="primary"
+              size="sm"
+              onClick={onSubmit}
+              disabled={busy}
+            >
               {busy ? "Submitting…" : "Submit — this spends"}
             </Button>
           </>
@@ -274,17 +327,21 @@ export function ApproveBar({
                 own `<button>`, so wrapping a `Button` in one nests a button in a
                 button and the browser quietly makes the press do nothing.
                 `buttonClass` is what the package exports for this. */}
-            <Dialog.Trigger className={buttonClass({ size: "sm" })} disabled={busy}>
+            <Dialog.Trigger
+              className={buttonClass({ size: "sm" })}
+              disabled={busy}
+            >
               {run.stale ? "Review and approve again" : "Approve this payload"}
             </Dialog.Trigger>
             <Dialog.Backdrop />
             <Dialog.Popup className="flex w-full max-w-md flex-col gap-4 p-4">
               <Dialog.Title>Approve this payload?</Dialog.Title>
               <Text variant="body">
-                You are approving the prompt, the parameters and the {run.sends.length} image
-                {run.sends.length === 1 ? "" : "s"} above, in that order. Editing any of them
-                afterwards withdraws this approval — nothing can be submitted on a yes given
-                to something else.
+                You are approving the prompt, the parameters and the{" "}
+                {run.sends.length} image
+                {run.sends.length === 1 ? "" : "s"} above, in that order.
+                Editing any of them afterwards withdraws this approval — nothing
+                can be submitted on a yes given to something else.
               </Text>
               <div className="flex flex-wrap justify-end gap-2">
                 <Dialog.Close>Cancel</Dialog.Close>
@@ -341,8 +398,9 @@ export function InFlightBar({
       <Alert.Root intent="warning">
         <Alert.Title>This run went out and named no prediction</Alert.Title>
         <Alert.Description>
-          It was declared before the provider was called and never got an answer, so
-          nothing is known to be running. Nothing further will happen on its own.
+          It was declared before the provider was called and never got an
+          answer, so nothing is known to be running. Nothing further will happen
+          on its own.
         </Alert.Description>
       </Alert.Root>
     );
@@ -358,30 +416,56 @@ export function InFlightBar({
       )}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <Text variant="body" className="min-w-48 flex-1">
-          Working. This page is watching it and will fill in on its own; closing the tab
-          changes nothing.
+          Working. This page is watching it and will fill in on its own; closing
+          the tab changes nothing.
         </Text>
         <Button intent="ghost" size="sm" onClick={onReconcile} disabled={busy}>
           {busy ? "Checking…" : "Check now"}
         </Button>
       </div>
       <Text variant="caption" tone="muted">
-        Only worth pressing if this has sat here far longer than the model usually
-        takes — it asks the provider directly, in case the report back was lost.
+        Only worth pressing if this has sat here far longer than the model
+        usually takes — it asks the provider directly, in case the report back
+        was lost.
       </Text>
     </section>
   );
 }
 
-function sentence(run: RunRecord): string {
+/**
+ * Who approved it, in words a person recognises.
+ *
+ * An approval records a Cognito **sub**, and a sub names nobody —
+ * "Approved by d4f85488-f0c1-70be-c28f-61945af32ed1" is a string that cannot
+ * even answer "was that me?". The API resolves no directory, so the one
+ * identity the browser can name with certainty is the one holding the token:
+ * if the sub matches, say the signed-in address.
+ *
+ * Everything else keeps the sub, deliberately. A second person's sub is not
+ * knowable here, and inventing a friendlier placeholder for it would make an
+ * unattributed approval look attributed — the opposite of what this line is
+ * for. `backfill` is handled by its caller and never reaches this.
+ */
+function approver(
+  by: string,
+  self: { sub: string | null; email: string | null },
+): string {
+  if (self.sub && by === self.sub) return self.email ?? "you";
+  return by;
+}
+
+function sentence(
+  run: RunRecord,
+  self: { sub: string | null; email: string | null },
+): string {
   if (run.stale) {
     return "This payload changed after it was approved. Nothing can be submitted until it is read and approved again.";
   }
   if (run.status === "approved") {
     if (run.approval?.via === "relayed") {
-      return `Approved by ${run.approval.by}, relayed — this exact payload is cleared to submit, on a yes given elsewhere and passed on rather than entered here.`;
+      return `Approved by ${approver(run.approval.by, self)}, relayed — this exact payload is cleared to submit, on a yes given elsewhere and passed on rather than entered here.`;
     }
-    return `Approved${run.approval ? ` by ${run.approval.by}` : ""} — this exact payload is cleared to submit.`;
+    return `Approved${run.approval ? ` by ${approver(run.approval.by, self)}` : ""} — this exact payload is cleared to submit.`;
   }
   return "Nothing has been approved. This run cannot be submitted until somebody reads the payload above and says yes to it.";
 }
