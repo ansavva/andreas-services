@@ -4,8 +4,12 @@ import type {
   CharacterProfile,
   CharacterSummary,
   CopiedNodes,
+  CreateRunBody,
+  CreatedRun,
   DeletedNodes,
   Library,
+  ModelEntry,
+  ModelSchema,
   MovedNodes,
   MovieRecord,
   MovieSummary,
@@ -21,6 +25,7 @@ import type {
   RunPage,
   RunPlan,
   RunRecord,
+  SelectionResponse,
   SavedText,
   SceneRecord,
   Shot,
@@ -100,7 +105,10 @@ export function getNode(id: string) {
  * whatever object happens to sit at that string, which since #294 is nothing at
  * all for anything uploaded through the app: its bytes are at `blobs/<id>`.
  */
-export function getAsset(node: string, disposition: "inline" | "attachment" = "inline") {
+export function getAsset(
+  node: string,
+  disposition: "inline" | "attachment" = "inline",
+) {
   return apiGet<AssetResponse>("/api/asset", { node, disposition });
 }
 
@@ -164,11 +172,17 @@ export function describeNode(
   id: string,
   changes: { description?: string | null; tags?: string[] | null },
 ) {
-  return apiSend<NodeRecord>("PATCH", `/api/nodes/${encodeURIComponent(id)}`, changes);
+  return apiSend<NodeRecord>(
+    "PATCH",
+    `/api/nodes/${encodeURIComponent(id)}`,
+    changes,
+  );
 }
 
 export function renameNode(id: string, name: string) {
-  return apiSend<NodeRecord>("PATCH", `/api/nodes/${encodeURIComponent(id)}`, { name });
+  return apiSend<NodeRecord>("PATCH", `/api/nodes/${encodeURIComponent(id)}`, {
+    name,
+  });
 }
 
 /**
@@ -218,7 +232,11 @@ export function deleteNodes(ids: string[]) {
  * places that have to agree, and PATCH is already in all four.
  */
 export function saveNodeText(id: string, content: string) {
-  return apiSend<SavedText>("PATCH", `/api/nodes/${encodeURIComponent(id)}/text`, { content });
+  return apiSend<SavedText>(
+    "PATCH",
+    `/api/nodes/${encodeURIComponent(id)}/text`,
+    { content },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -264,10 +282,14 @@ export function createNode(
  * that file. The grant is one key, one length, one type, once.
  */
 export function getUploadUrl(id: string, size: number, contentType: string) {
-  return apiSend<UploadGrant>("POST", `/api/nodes/${encodeURIComponent(id)}/upload-url`, {
-    size,
-    content_type: contentType,
-  });
+  return apiSend<UploadGrant>(
+    "POST",
+    `/api/nodes/${encodeURIComponent(id)}/upload-url`,
+    {
+      size,
+      content_type: contentType,
+    },
+  );
 }
 
 /**
@@ -279,7 +301,11 @@ export function getUploadUrl(id: string, size: number, contentType: string) {
  * a folder listing draws as a tile that will not load.
  */
 export function confirmUpload(id: string) {
-  return apiSend<NodeRecord>("POST", `/api/nodes/${encodeURIComponent(id)}/confirm-upload`, {});
+  return apiSend<NodeRecord>(
+    "POST",
+    `/api/nodes/${encodeURIComponent(id)}/confirm-upload`,
+    {},
+  );
 }
 
 /**
@@ -379,14 +405,17 @@ export function patchCharacter(
  * writes `PUT` into the next route, the preflight fails in the browser and
  * nowhere else, and the same afternoon gets spent twice.
  */
-export function setCharacterProfile(id: string, profile: CharacterProfile, rev: number) {
+export function setCharacterProfile(
+  id: string,
+  profile: CharacterProfile,
+  rev: number,
+) {
   return apiSend<EntityPatch<CharacterRecord>>(
     "PATCH",
     `/api/characters/${encodeURIComponent(id)}/profile`,
     { profile, rev },
   );
 }
-
 
 /**
  * Delete a character.
@@ -412,7 +441,8 @@ export function deleteCharacter(
 ) {
   return apiSend<{ id: string; deleted: number }>(
     "DELETE",
-    `/api/characters/${encodeURIComponent(id)}?files=${files}` + (force ? "&force=1" : ""),
+    `/api/characters/${encodeURIComponent(id)}?files=${files}` +
+      (force ? "&force=1" : ""),
   );
 }
 
@@ -480,7 +510,10 @@ export function draftTurnaround(
 }
 
 export function getReferences(id: string, group?: string) {
-  return apiGet<ReferenceIndex>(`/api/characters/${encodeURIComponent(id)}/references`, { group });
+  return apiGet<ReferenceIndex>(
+    `/api/characters/${encodeURIComponent(id)}/references`,
+    { group },
+  );
 }
 
 /**
@@ -493,9 +526,19 @@ export function getReferences(id: string, group?: string) {
  */
 export function addReference(
   id: string,
-  body: { node: string; group: string; description?: string; tags?: string[]; after?: string },
+  body: {
+    node: string;
+    group: string;
+    description?: string;
+    tags?: string[];
+    after?: string;
+  },
 ) {
-  return apiSend<ReferenceEntry>("POST", `/api/characters/${encodeURIComponent(id)}/references`, body);
+  return apiSend<ReferenceEntry>(
+    "POST",
+    `/api/characters/${encodeURIComponent(id)}/references`,
+    body,
+  );
 }
 
 /**
@@ -510,7 +553,12 @@ export function addReference(
 export function patchReference(
   id: string,
   node: string,
-  body: { group?: string; description?: string; tags?: string[]; after?: string },
+  body: {
+    group?: string;
+    description?: string;
+    tags?: string[];
+    after?: string;
+  },
 ) {
   return apiSend<ReferenceEntry>(
     "PATCH",
@@ -518,7 +566,6 @@ export function patchReference(
     body,
   );
 }
-
 
 /** Detach an entry. The file stays exactly where it is. */
 export function deleteReference(id: string, node: string) {
@@ -577,12 +624,15 @@ export interface DefaultSetAck {
 }
 
 export function setDefaultSet(id: string, nodes: string[], rev: number) {
-  return apiSend<DefaultSetAck>("PATCH", `/api/characters/${encodeURIComponent(id)}/default-set`, {
-    nodes,
-    rev,
-  });
+  return apiSend<DefaultSetAck>(
+    "PATCH",
+    `/api/characters/${encodeURIComponent(id)}/default-set`,
+    {
+      nodes,
+      rev,
+    },
+  );
 }
-
 
 /**
  * Revise one shot of a storyboard.
@@ -592,7 +642,11 @@ export function setDefaultSet(id: string, nodes: string[], rev: number) {
  * and that is deliberate — a scene is driven by the machine rendering it, in
  * sequence, so demanding one would make every write re-read the record first.
  */
-export function patchShot(sceneId: string, shotId: string, body: Partial<Shot>) {
+export function patchShot(
+  sceneId: string,
+  shotId: string,
+  body: Partial<Shot>,
+) {
   return apiSend<Shot>(
     "PATCH",
     `/api/scenes/${encodeURIComponent(sceneId)}/shots/${encodeURIComponent(shotId)}`,
@@ -600,14 +654,55 @@ export function patchShot(sceneId: string, shotId: string, body: Partial<Shot>) 
   );
 }
 
+/**
+ * The ordered images a model would actually be shown, and the cap they face.
+ *
+ * **A route rather than a function in each half of studio**, so the CLI and this
+ * app cannot disagree about what slot 3 was. `pick` names files, `tag` names
+ * tags, `group` names a group; each takes a comma-joined list, and the first one
+ * given wins in that order. None given falls through to the `default_set`.
+ *
+ * **Two refusals a caller has to surface rather than work around**, both 409:
+ * `over_cap` when more references match than the model will take, carrying every
+ * candidate so a person can choose, and `stale_default_set` when the set names a
+ * node that is no longer a reference. Neither is truncated or filtered, because
+ * a generation shown seven of eighteen images silently is a result nobody can
+ * explain afterwards.
+ *
+ * **`ApiError.message` is the CODE on those two, not the sentence.** The API's
+ * ordinary errors put their prose in `error` and a structured one puts the code
+ * there, so `apis/client` — which reads `error` first — surfaces `over_cap`
+ * verbatim and drops the `index`. A caller that wants the candidates has to read
+ * the response itself; a caller that only reports needs to say more than the
+ * code word.
+ */
+export function getCharacterSelection(
+  id: string,
+  opts: { pick?: string; tag?: string; group?: string; limit?: number } = {},
+) {
+  return apiGet<SelectionResponse>(
+    `/api/characters/${encodeURIComponent(id)}/selection`,
+    {
+      pick: opts.pick,
+      tag: opts.tag,
+      group: opts.group,
+      limit: opts.limit === undefined ? undefined : String(opts.limit),
+    },
+  );
+}
+
 /** Runs that used this character — one query, where it used to be a full walk. */
 export function getCharacterRuns(id: string, cursor?: string) {
-  return apiGet<RunPage>(`/api/characters/${encodeURIComponent(id)}/runs`, { cursor });
+  return apiGet<RunPage>(`/api/characters/${encodeURIComponent(id)}/runs`, {
+    cursor,
+  });
 }
 
 /** Projects this character is involved in — a question with no answer before. */
 export function getCharacterProjects(id: string) {
-  return apiGet<ProjectSummary[]>(`/api/characters/${encodeURIComponent(id)}/projects`);
+  return apiGet<ProjectSummary[]>(
+    `/api/characters/${encodeURIComponent(id)}/projects`,
+  );
 }
 
 export function getProjects() {
@@ -629,7 +724,13 @@ export function createProject(body: {
 
 export function patchProject(
   id: string,
-  body: { rev: number; slug?: string; title?: string; description?: string; hero?: string },
+  body: {
+    rev: number;
+    slug?: string;
+    title?: string;
+    description?: string;
+    hero?: string;
+  },
 ) {
   return apiSend<EntityPatch<ProjectRecord>>(
     "PATCH",
@@ -651,9 +752,14 @@ export function deleteProject(
   files: "keep" | "delete" = "keep",
   cascade = false,
 ) {
-  return apiSend<{ id: string; files: string; removed: Record<string, number> }>(
+  return apiSend<{
+    id: string;
+    files: string;
+    removed: Record<string, number>;
+  }>(
     "DELETE",
-    `/api/projects/${encodeURIComponent(id)}?files=${files}` + (cascade ? "&cascade=1" : ""),
+    `/api/projects/${encodeURIComponent(id)}?files=${files}` +
+      (cascade ? "&cascade=1" : ""),
   );
 }
 
@@ -745,12 +851,48 @@ export function getRuns(
      * worse than a screen that never offered the choice.
      */
     include?: string;
+    /**
+     * **The one filter that is not for a screen.** It answers "has this exact
+     * payload already gone out here", which is a question about money rather
+     * than about what to draw — pass `include: "drafts"` with it, or the draft
+     * being asked about is itself hidden from the answer.
+     */
+    fingerprint?: string;
     since?: string;
     limit?: string;
     cursor?: string;
   } = {},
 ) {
   return apiGet<RunPage>("/api/runs", params);
+}
+
+/**
+ * Create a run as a **draft**. Nothing is submitted and nothing is billed.
+ *
+ * Only `project`, `kind` and `model` are required; a draft with no plan and no
+ * sends is legal, and is what the composer strip makes before the editor fills
+ * it in. The digest and the fingerprint are recomputed server-side from what
+ * actually landed and come back on the 201 — never derived here, because
+ * `plan_digest` has had three implementations in this repository and one of them
+ * silently disagreed.
+ */
+export function createRun(body: CreateRunBody) {
+  return apiSend<CreatedRun>("POST", "/api/runs", body);
+}
+
+/**
+ * Delete a run. `files` keeps its folder by default.
+ *
+ * **The route has no status gate** — it will delete a succeeded run and its
+ * outputs as readily as an abandoned draft. The app offers this on unsubmitted
+ * runs only, which is a decision about what to put a button on rather than
+ * something this call enforces.
+ */
+export function deleteRun(id: string, files: "keep" | "delete" = "keep") {
+  return apiSend<{ id: string; files: string }>(
+    "DELETE",
+    `/api/runs/${encodeURIComponent(id)}?files=${files}`,
+  );
 }
 
 /**
@@ -766,6 +908,25 @@ export function getRun(id: string) {
 }
 
 /**
+ * The payload a DRAFT would send, rebuilt from the plan as it stands.
+ *
+ * Hard rule #2 asks a person to approve the full payload, and a draft has no
+ * `request.json` — that document records what was actually sent and is written
+ * after dispatch. So the run whose payload most needs reading was the one whose
+ * payload tab was empty, and an edit to the plan appeared to change nothing.
+ *
+ * Answered by the API rather than assembled here on purpose: `payload_of` is
+ * the single allowlist of what reaches a provider, and a second copy in this
+ * file is exactly how a field added to the plan later becomes part of a payload
+ * somebody approved as something else.
+ */
+export function getRunPayloadPreview(id: string) {
+  return apiGet<{ request: Record<string, unknown>; prompt: unknown }>(
+    `/api/runs/${encodeURIComponent(id)}/payload`,
+  );
+}
+
+/**
  * Approve a draft — record that somebody read THIS payload and said yes to it.
  *
  * **The digest is the whole of it.** It is sent, not stored: the API recomputes
@@ -775,14 +936,21 @@ export function getRun(id: string) {
  * until this existed.
  */
 export function approveRun(id: string, digest: string) {
-  return apiSend<RunRecord>("POST", `/api/runs/${encodeURIComponent(id)}/approve`, {
-    digest,
-  });
+  return apiSend<RunRecord>(
+    "POST",
+    `/api/runs/${encodeURIComponent(id)}/approve`,
+    {
+      digest,
+    },
+  );
 }
 
 /** Take an approval back. The run returns to `draft` and cannot be submitted. */
 export function revokeRunApproval(id: string) {
-  return apiSend<RunRecord>("DELETE", `/api/runs/${encodeURIComponent(id)}/approve`);
+  return apiSend<RunRecord>(
+    "DELETE",
+    `/api/runs/${encodeURIComponent(id)}/approve`,
+  );
 }
 
 /**
@@ -804,7 +972,10 @@ export function revokeRunApproval(id: string) {
  * which is why `RunPage` polls while a run is not terminal.
  */
 export function submitRun(id: string) {
-  return apiSend<RunRecord>("POST", `/api/runs/${encodeURIComponent(id)}/submit`);
+  return apiSend<RunRecord>(
+    "POST",
+    `/api/runs/${encodeURIComponent(id)}/submit`,
+  );
 }
 
 /**
@@ -818,7 +989,10 @@ export function submitRun(id: string) {
  * asks, and a prediction that has not finished leaves the row alone.
  */
 export function reconcileRun(id: string) {
-  return apiSend<RunRecord>("POST", `/api/runs/${encodeURIComponent(id)}/reconcile`);
+  return apiSend<RunRecord>(
+    "POST",
+    `/api/runs/${encodeURIComponent(id)}/reconcile`,
+  );
 }
 
 /**
@@ -830,9 +1004,13 @@ export function reconcileRun(id: string) {
  * beside `request.json` describing something that was never sent.
  */
 export function patchRunPlan(id: string, plan: RunPlan) {
-  return apiSend<RunRecord>("PATCH", `/api/runs/${encodeURIComponent(id)}/plan`, {
-    plan,
-  });
+  return apiSend<RunRecord>(
+    "PATCH",
+    `/api/runs/${encodeURIComponent(id)}/plan`,
+    {
+      plan,
+    },
+  );
 }
 
 /** Replace the ordered images a draft binds. Clears the approval, every time. */
@@ -840,13 +1018,90 @@ export function patchRunSends(
   id: string,
   sends: { field: string; role: string | null; node: string }[],
 ) {
-  return apiSend<RunRecord>("PATCH", `/api/runs/${encodeURIComponent(id)}/sends`, {
-    sends,
-  });
+  return apiSend<RunRecord>(
+    "PATCH",
+    `/api/runs/${encodeURIComponent(id)}/sends`,
+    {
+      sends,
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The model registry
+//
+// Read-only, and the same answer for every caller: which models exist is a
+// property of the service rather than of a library. The API serves what shipped
+// in `models.json`; `studio add-model` and `studio models refresh` write that
+// file in a reviewed commit, and nothing here can change it.
+// ---------------------------------------------------------------------------
+
+/**
+ * A model name as a path, encoded **per segment**.
+ *
+ * A registry key is a bare word but a Replicate id is `owner/name`, and the
+ * routes take `<path:name>` precisely so both spellings resolve. Encoding the
+ * whole string would turn that slash into `%2F` — which Werkzeug's path
+ * converter does not match, so the request 404s on a model that exists.
+ */
+function modelPath(name: string): string {
+  return name.split("/").map(encodeURIComponent).join("/");
+}
+
+/**
+ * Every registry entry, keyed by registry name.
+ *
+ * **Unwrapped from `{models: {…}}`.** A map rather than an array because every
+ * caller looks a model up by the key it was given, and each entry carries its
+ * own `key`, so iterating loses nothing.
+ */
+export function getModels() {
+  return apiGet<{ models: Record<string, ModelEntry> }>("/api/models").then(
+    (body) => body.models ?? {},
+  );
+}
+
+/** One entry, by registry key, alias, or the Replicate `owner/name`. */
+export function getModel(name: string) {
+  return apiGet<ModelEntry>(`/api/models/${modelPath(name)}`);
+}
+
+/**
+ * The model's input schema, **fetched live from the provider on every call.**
+ *
+ * So: lazily, once, when an editor actually opens — never on a poll and never
+ * per keystroke. It is a round trip to Replicate sitting inside a request
+ * somebody is waiting on, and it is a different question from the entry's
+ * `snapshot`, which `models refresh` recorded into the repo and may be months
+ * old. This one is what the provider will accept today.
+ *
+ * A provider failure answers with empty maps rather than an error, so `props`
+ * being empty means "could not ask", not "this model takes nothing".
+ */
+export function getModelSchema(name: string) {
+  return apiGet<ModelSchema>(`/api/models/${modelPath(name)}/schema`);
 }
 
 export function getScene(id: string) {
   return apiGet<SceneRecord>(`/api/scenes/${encodeURIComponent(id)}`);
+}
+
+/**
+ * Change a scene's own fields — its setting, its title, its status.
+ *
+ * `setting` is the one a person edits: it is prepended byte-identically to
+ * every panel prompt, so it is the single lever that keeps separately rendered
+ * panels agreeing on one room, and it was readable on the scene screen with no
+ * way to change it. `PATCH /scenes/<id>` has accepted it all along —
+ * `SCENE_PLAN` on the route — so this is the wrapper that was missing, not the
+ * capability.
+ */
+export function patchScene(id: string, body: Partial<SceneRecord>) {
+  return apiSend<SceneRecord>(
+    "PATCH",
+    `/api/scenes/${encodeURIComponent(id)}`,
+    body,
+  );
 }
 
 export function getMovie(id: string) {

@@ -3,8 +3,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Input, Text } from "@ansavva/design-system";
 import { CheckIcon, CloseIcon } from "./icons";
 
-export type RenameTone = "row" | "chrome";
-
 interface Props {
   /** The current name, which is what the field opens pre-filled with. */
   name: string;
@@ -12,7 +10,6 @@ interface Props {
   onRename: (next: string) => Promise<unknown>;
   /** Called once the rename lands, and on cancel. The parent owns "is it open". */
   onClose: () => void;
-  tone?: RenameTone;
   className?: string;
 }
 
@@ -26,20 +23,25 @@ interface Props {
  * renamed a file through a letterbox. A parent that knows a rename is in
  * progress can give the field a line of its own, and the rows do.
  *
- * Inline rather than in a dialog, for the same reason delete has no dialog: this
- * is also rendered inside the viewer chrome, which is often inside a fullscreen
- * element, and anything portalled to `<body>` is simply not painted while one
- * is. Editing where the name already sits is the better interaction anyway — the
- * old name is the starting point for the new one, so the field opens holding it
- * with the *stem* selected, and typing replaces the name without eating the
- * extension.
+ * **It used to be inline because of fullscreen, and now it is inline because a
+ * row is the right place for it.** The second copy of this control lived in the
+ * viewer's chrome, which was often inside a fullscreen element where anything
+ * portalled to `<body>` is not painted — so a dialog was impossible there and
+ * every rename was this field. `Drawer.Root`'s `container` (design system
+ * 0.16.0) removed the impossibility, and the object screen's rename is one
+ * field in `viewer/FileDetailsPanel` now — it was briefly a dialog of its own,
+ * which is the step that got merged away. What is left here is the case that was
+ * always better inline: a listing you are working down, where the row can give
+ * the field a full line and the old name is the starting point for the new one.
+ * The field opens holding it with the *stem* selected, so typing replaces the
+ * name without eating the extension.
  *
  * A rejected rename keeps the field open with the reason underneath it. That is
  * the whole reason the API distinguishes 409 from 400: "that name is taken" is
  * something you fix by typing a different name, and closing the field to say so
  * would throw away what you had typed.
  */
-export function RenameForm({ name, onRename, onClose, tone = "row", className = "" }: Props) {
+export function RenameForm({ name, onRename, onClose, className = "" }: Props) {
   const [value, setValue] = useState(name);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -88,7 +90,7 @@ export function RenameForm({ name, onRename, onClose, tone = "row", className = 
       }}
       // Escape is handled here rather than on the field: the event bubbles out of
       // the input either way, and stopping it at the form keeps a cancelled
-      // rename from also closing the reel this is sitting inside.
+      // rename from also closing the page this is sitting inside.
       onKeyDown={(event) => {
         if (event.key !== "Escape") return;
         event.stopPropagation();
@@ -99,16 +101,16 @@ export function RenameForm({ name, onRename, onClose, tone = "row", className = 
     >
       <div ref={fieldRef} className="flex min-w-0 items-center gap-1">
         <Input value={value} onValueChange={setValue} placeholder={name} />
-        <IconButton type="submit" tone={tone} disabled={busy} label="Save name">
+        <IconButton type="submit" disabled={busy} label="Save name">
           <CheckIcon />
         </IconButton>
-        <IconButton type="button" tone={tone} onClick={onClose} label="Cancel rename (Esc)">
+        <IconButton type="button" onClick={onClose} label="Cancel rename (Esc)">
           <CloseIcon />
         </IconButton>
       </div>
 
       {error && (
-        <Text variant="caption" className={tone === "chrome" ? "text-white" : "text-danger"}>
+        <Text variant="caption" className="text-danger">
           {error}
         </Text>
       )}
@@ -119,23 +121,18 @@ export function RenameForm({ name, onRename, onClose, tone = "row", className = 
 function IconButton({
   children,
   label,
-  tone,
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { label: string; tone: RenameTone }) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { label: string }) {
   return (
     <button
       {...props}
       aria-label={label}
       title={label}
-      className={`shrink-0 rounded-md transition-colors disabled:opacity-60 ${toneStyles[tone]}
-                  focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary`}
+      className="shrink-0 rounded-md p-2 text-muted transition-colors disabled:opacity-60
+                 hover:bg-surface-alt hover:text-ink
+                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
     >
       {children}
     </button>
   );
 }
-
-export const toneStyles: Record<RenameTone, string> = {
-  row: "p-2 text-muted hover:bg-surface-alt hover:text-ink",
-  chrome: "p-2 text-white/80 hover:bg-white/15 hover:text-white",
-};

@@ -110,8 +110,6 @@ blob is now unreferenced is not a question a single delete can answer.
 """
 
 import collections
-import hashlib
-import json
 import logging
 import time
 import uuid
@@ -124,7 +122,15 @@ from botocore.exceptions import ClientError
 from studio_core import config
 from studio_core.clients.aws import dynamodb
 from studio_core.errors import ConflictError, NotFoundError, UpstreamError, ValidationError
-from studio_core.services import keys, storyboard
+from studio_core.services import digest, keys, storyboard
+# Re-exported so every caller keeps saying `catalog.plan_digest(...)`. They live
+# in `digest.py` because the pipeline's test fake loads that module rather than
+# restating the hash — see its docstring, and `routes/runs.py` on the three
+# implementations one of these once had.
+from studio_core.services.digest import (  # noqa: F401
+    plan_digest,
+    submission_fingerprint,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -2002,25 +2008,16 @@ def _claim_sk(kind: str, slug: str) -> str:
     return f"{CLAIM_PREFIX[kind]}{slug}"
 
 
-def _numbers(value):
-    """Turn every `Decimal` a read hands back into an int or a float.
-
-    The deserialiser returns `Decimal` for every N, which is right for money and
-    wrong for everything about to be JSON-encoded into a response — `jsonify`
-    refuses one outright. `_record` does this for `size` alone because a node has
-    exactly one number on it; an entity record has `rev`, three `counts`, a
-    reference `order` and a `cost.amount` nested two deep, so this walks.
-
-    Integral values come back as `int` so a `rev` reads as `7` rather than `7.0`
-    — a client comparing the two would be right to be confused.
-    """
-    if isinstance(value, Decimal):
-        return int(value) if value == value.to_integral_value() else float(value)
-    if isinstance(value, dict):
-        return {key: _numbers(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_numbers(item) for item in value]
-    return value
+#: Turn every `Decimal` a read hands back into an int or a float — `jsonify`
+#: refuses one outright, and `_record` does this for `size` alone because a node
+#: has exactly one number on it while an entity record has `rev`, three `counts`,
+#: a reference `order` and a `cost.amount` nested two deep.
+#:
+#: **It is `digest.plain_numbers` and not a function of this module's own**,
+#: because `plan_digest` needs the identical walk for a different reason: a value
+#: hashed before the round trip and rehashed after it must produce one digest.
+#: Two implementations of that walk is two ways for a payload to hash twice.
+_numbers = digest.plain_numbers
 
 
 def _entity(item: dict) -> dict:
@@ -3583,74 +3580,12 @@ def put_sends(run_id: str, entries: list[dict]) -> list[dict]:
 
 
 # ──────────────────────── the plan digest ────────────────────────
-
-
-def submission_fingerprint(model: str | None, plan: dict | None,
-                           send_entries: list[dict]) -> str:
-    """What makes two submissions the same one, projected so a query can find it.
-
-    **This retires a local file.** `engine/ledger.py` kept a per-machine list of
-    recently submitted payload hashes because a batch of 72 upscales was driven
-    twice — the harness reported the job finished when it had not, both passes
-    ran, ~46 images were generated twice and about $2.30 bought results that
-    overwrote each other. Nothing noticed, because `run` builds a payload and
-    sends it and every send is the first one as far as the pipeline knows.
-
-    Its own docstring named the right fix and declined to build it: the run store
-    could answer this, but the listing rows are a small projection and do not
-    carry the payload, so comparing meant one `GET /api/runs/<id>` per candidate
-    — on the order of 1800 requests before the first submit of that batch. So it
-    projects a fingerprint onto the listing row, and `GET /api/runs?fingerprint=`
-    is one query.
-
-    **Derived from `plan_digest` rather than hashed independently.** The plan IS
-    the payload and the sends ARE the bindings, so a second hash over the same
-    material would be a second answer to "is this the same submission" — and the
-    two would drift the first time either changed what it included. Only the
-    model is added, because two identical plans on different engines are
-    different submissions.
-
-    What this catches that the local file could not: a second machine, and a
-    colleague. What it still does not catch is a payload assembled differently
-    for the same intent — a fingerprint is a guard rail, not a lock.
-    """
-    return "sha256:" + hashlib.sha256(
-        f"{model or ''}\n{plan_digest(plan, send_entries)}".encode()
-    ).hexdigest()[:32]
-
-
-def plan_digest(plan: dict | None, send_entries: list[dict]) -> str:
-    """A hash over everything a person approves: the plan AND the images.
-
-    **This is what makes an approval mean something after the fact.** Hard rule
-    #2 says re-approve after *any* edit, and until now nothing checked it: the
-    approval was a `y` at a terminal and the payload could be edited afterwards
-    with no trace. An approval records the digest it was given, `POST
-    /api/runs/<id>/approve` refuses one that no longer matches, and the submit
-    transition refuses a run whose recorded digest has gone stale.
-
-    The sends are hashed by `(field, role, node)` and their ORDER — swapping two
-    reference images changes what the model is shown, and a prompt citing "the
-    first image" makes that change material rather than cosmetic. `source` is
-    excluded: it is provenance for a reader, and re-deriving it more accurately
-    later must not invalidate an approval nobody's payload changed.
-
-    `_numbers` runs first so a value that has been round-tripped through
-    DynamoDB hashes the same as the one that was sent — the deserialiser hands
-    back `Decimal` for every number, and `Decimal("0.5")` and `0.5` do not
-    serialise alike.
-    """
-    payload = _numbers({
-        "plan": plan or {},
-        "sends": [
-            {"field": entry.get("field"), "role": entry.get("role"),
-             "node": entry.get("node")}
-            for entry in send_entries or []
-        ],
-    })
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"),
-                         ensure_ascii=False, default=str)
-    return "sha256:" + hashlib.sha256(encoded.encode()).hexdigest()
+#
+# Both derivations moved to `services/digest.py` and are re-exported at the top
+# of this module, so `catalog.plan_digest` and `catalog.submission_fingerprint`
+# still name them. They left because this module imports boto3 and the pipeline's
+# test fake cannot: it loads `digest.py` and gets the real hash, where it used to
+# carry a copy whose own comment admitted nothing held the two together.
 
 
 # ────────────────────────── the reference spec ──────────────────────────

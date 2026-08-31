@@ -32,7 +32,7 @@ export function OwnerLink({ nodeId }: { nodeId: string }) {
     <button
       type="button"
       onClick={() => navigate(to)}
-      className="rounded-md text-left text-white/70 underline-offset-2 hover:text-white hover:underline
+      className="rounded-none text-left text-muted underline-offset-2 hover:text-ink hover:underline
                  focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
     >
       {/* The slug, because that is what a person types at the CLI and the two

@@ -22,12 +22,20 @@ import { AppHeader } from "./AppHeader";
  * here on purpose: it belongs to the page, changes with the page's own data,
  * and hoisting it would mean every screen pushing state up into a context to
  * have it rendered back down.
+ *
+ * **The column is spaced on a 24px line.** `gap-6` between sections, `py-6`
+ * top and bottom, and the header's own `py-3` is half of it — so a section
+ * boundary always lands on the same rhythm whatever the page above it did.
+ * Replicate's grid is the same number arrived at the same way (`lh` = 24px);
+ * what studio takes from it is the single spacing step, not the unit.
+ * Horizontal padding stays smaller than vertical on a phone, because 24px of
+ * side margin on a 390px screen is 12% of the picture.
  */
 export function AppLayout() {
   return (
     <div className="flex min-h-full flex-col">
       <AppHeader />
-      <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 p-4 sm:p-6">
+      <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6">
         <Outlet />
       </main>
     </div>

@@ -1,14 +1,52 @@
-import { useCallback, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
-import { Alert, Badge, Button, Field, Input, Select, Text } from "@ansavva/design-system";
+import {
+  Alert,
+  Badge,
+  Button,
+  Field,
+  Input,
+  Select,
+  Text,
+} from "@ansavva/design-system";
 
-import { getProject, patchRunPlan, patchRunSends } from "../../apis/studio";
+import { ApiError } from "../../apis/client";
+import {
+  getCharacterSelection,
+  getCharacters,
+  getModel,
+  getModelSchema,
+  getProject,
+  patchRunPlan,
+  patchRunSends,
+} from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
-import type { FileEntry, RunPlan, RunRecord, RunSend } from "../../types";
+import type {
+  FileEntry,
+  ModelEntry,
+  ModelSchema,
+  RunPlan,
+  RunRecord,
+  RunSend,
+  SelectionEntry,
+} from "../../types";
 import { AutoTextarea } from "../common/AutoTextarea";
+import {
+  PROMPT_FIELDS,
+  docWithFields,
+  fieldsOf,
+  parsePrompt,
+} from "../scene/motionPrompt";
 import { TrashIcon } from "../common/icons";
 import { MediaPicker } from "../browse/MediaPicker";
 import { MediaThumb } from "../media/MediaThumb";
+import { SchemaParams, describedKeys } from "./SchemaParams";
 
 /** What a send may be FOR. The API refuses anything else. */
 const ROLES = ["start", "end", "reference", "input"] as const;
@@ -69,19 +107,188 @@ export function RunPlanEditor({
    * under the cursor as somebody typed a `{`.
    */
   const structured = useMemo(
-    () => run.plan?.prompt != null && typeof run.plan.prompt !== "string",
+    // **Does it PARSE as a document — not: is it a JS object.** This read
+    // `typeof run.plan.prompt !== "string"`, and `studio prompt` emits the
+    // compiled document as a JSON *string*, which is what `--prompt-json`
+    // stores. So every properly authored plan took the prose branch and was
+    // edited as raw JSON in a textarea — the exact thing this form exists to
+    // stop. Viewing was unaffected, because `parsePrompt` takes either.
+    () => parsePrompt(promptText(run.plan?.prompt)) !== null,
+    [run.plan],
+  );
+
+  /**
+   * Whether the document was STORED as a string, so it is saved back as one.
+   *
+   * A plan authored by `studio prompt --emit prompt` holds a string; one built
+   * by an older path holds an object. Both parse; writing the wrong one back
+   * would silently change the shape of a record this form was only meant to
+   * reword.
+   */
+  const storedAsString = useMemo(
+    () => typeof run.plan?.prompt === "string",
     [run.plan],
   );
 
   const [prompt, setPrompt] = useState(() => promptText(run.plan?.prompt));
+  /**
+   * A structured prompt is edited FIELD BY FIELD, the way a shot's is.
+   *
+   * It used to be one textarea of raw JSON that had to stay valid — so a
+   * misplaced comma lost the save, and reading your own prompt meant reading
+   * escaping. The document is studio's own, with a schema `studio prompt`
+   * validates, so a form over its fields is both safer and what a person came
+   * to change. A prose prompt has no fields and keeps the textarea.
+   */
+  const [promptFields, setPromptFields] = useState<Record<string, string>>(() =>
+    fieldsOf(parsePrompt(promptText(run.plan?.prompt)) ?? {}),
+  );
+  const [camera, setCamera] = useState(() => {
+    const doc = parsePrompt(promptText(run.plan?.prompt)) ?? {};
+    return {
+      shot: doc.camera?.shot ?? "",
+      movement: doc.camera?.movement ?? "",
+      lens_mm: doc.camera?.lens_mm ? String(doc.camera.lens_mm) : "",
+      speed: doc.camera?.speed ?? "",
+    };
+  });
   const [note, setNote] = useState(run.plan?.note ?? "");
   const [params, setParams] = useState<[string, string][]>(() =>
-    Object.entries(run.plan?.params ?? {}).map(([key, value]) => [key, paramText(value)]),
+    Object.entries(run.plan?.params ?? {}).map(([key, value]) => [
+      key,
+      paramText(value),
+    ]),
   );
   const [rows, setRows] = useState<Row[]>(() => run.sends.map(rowOf));
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * What the model is — its registry entry, and its LIVE input schema.
+   *
+   * **Once per mount, by hand, rather than through `useResource`.** The schema
+   * route proxies Replicate on every call, so it must not be a cached query that
+   * a refocus or a remount refires; it is asked when somebody opens this editor
+   * and not again. The entry is asked in the same breath because the two are
+   * read together and neither blocks anything.
+   *
+   * **Either failure degrades to the freeform rows rather than to nothing.**
+   * `Promise.allSettled`, so a provider that is down loses the typed form and
+   * keeps the image fields — and `asked` is what lets the form say so out loud
+   * instead of silently drawing the old key/value editor.
+   */
+  const [model, setModel] = useState<{
+    entry: ModelEntry | null;
+    schema: ModelSchema | null;
+    asked: boolean;
+  }>({ entry: null, schema: null, asked: false });
+
+  useEffect(() => {
+    if (!run.model) return undefined;
+    let live = true;
+    void (async () => {
+      const [entry, schema] = await Promise.allSettled([
+        getModel(run.model),
+        getModelSchema(run.model),
+      ]);
+      if (!live) return;
+      setModel({
+        entry: entry.status === "fulfilled" ? entry.value : null,
+        schema: schema.status === "fulfilled" ? schema.value : null,
+        asked: true,
+      });
+    })();
+    return () => {
+      live = false;
+    };
+  }, [run.model]);
+
+  /**
+   * The inputs that carry images, by name — skipped by the params form and
+   * offered to the send rows.
+   *
+   * Hard rule #3 in the one place a person could break it by typing: an image is
+   * a node this library already holds, and it reaches the provider as a
+   * presigned URL minted at submit. A parameter box for `image_input` would be a
+   * place to paste a URL, which `runs.py` refuses after the fact.
+   */
+  const imageFields = useMemo(
+    () =>
+      [
+        model.entry?.images?.refs,
+        model.entry?.images?.start,
+        model.entry?.images?.end,
+      ].filter((field): field is string => Boolean(field)),
+    [model.entry],
+  );
+
+  /**
+   * The schema, or `null` when there is nothing usable in it.
+   *
+   * **An empty `props` map is a failure wearing a 200.** `services/schema.py`
+   * answers `{}, {}` when the provider cannot be reached, deliberately, so that a
+   * fetch that 500s never stops a payload a person already approved — which
+   * means "this model takes no inputs" and "nobody could ask" arrive here as the
+   * same body. No model takes no inputs, so this reads it as the second.
+   */
+  const schema = useMemo(() => {
+    const props = model.schema?.props ?? {};
+    return Object.keys(props).length > 0 ? model.schema : null;
+  }, [model.schema]);
+
+  const typedKeys = useMemo(
+    () => describedKeys(schema, new Set(imageFields)),
+    [schema, imageFields],
+  );
+
+  /**
+   * The parameters the typed form does not describe, kept as rows.
+   *
+   * **Forward-compatible on purpose.** A plan written by the CLI against a newer
+   * schema, or by a version of this app that had no form at all, still has to be
+   * editable — so a key the schema does not mention is shown rather than hidden,
+   * and nothing here drops one.
+   */
+  const freeform = useMemo(
+    () => params.filter(([key]) => !typedKeys.has(key)),
+    [params, typedKeys],
+  );
+
+  const typedValues = useMemo(
+    () => Object.fromEntries(params.filter(([key]) => typedKeys.has(key))),
+    [params, typedKeys],
+  );
+
+  const setParam = useCallback((key: string, text: string | null) => {
+    setParams((current) => {
+      const at = current.findIndex(([each]) => each === key);
+      // Unset, which is not the same as empty: the key leaves the map entirely,
+      // so the model chooses and the plan does not claim a person did.
+      if (text === null)
+        return at === -1 ? current : current.filter((_, index) => index !== at);
+      if (at === -1) return [...current, [key, text]];
+      return current.map((row, index) =>
+        index === at ? ([key, text] as [string, string]) : row,
+      );
+    });
+  }, []);
+
+  /**
+   * The freeform rows back into the one ordered list.
+   *
+   * Typed keys first, which is the order they are drawn in. It only matters at
+   * all because `params` is a list until it is written; with no schema in hand
+   * every key is freeform and the list comes back exactly as it went in.
+   */
+  const setFreeform = useCallback(
+    (next: [string, string][]) =>
+      setParams((current) => [
+        ...current.filter(([key]) => typedKeys.has(key)),
+        ...next,
+      ]),
+    [typedKeys],
+  );
 
   const move = useCallback((index: number, by: number) => {
     setRows((current) => {
@@ -104,7 +311,26 @@ export function RunPlanEditor({
 
       // Parsed before anything is written, so a malformed document cannot leave
       // the plan saved and the images not — or the other way round.
-      const plan = planOf(run.plan, prompt, structured, params, note);
+      const nextPrompt = structured
+        ? JSON.stringify(
+            docWithFields(
+              parsePrompt(promptText(run.plan?.prompt)) ?? {},
+              promptFields,
+              camera,
+            ),
+            null,
+            2,
+          )
+        : prompt;
+      // `planOf` parses when the plan holds an object and passes the string
+      // through when it holds a string — so the record keeps the shape it had.
+      const plan = planOf(
+        run.plan,
+        nextPrompt,
+        structured && !storedAsString,
+        params,
+        note,
+      );
       if (JSON.stringify(plan) !== JSON.stringify(run.plan)) {
         latest = await patchRunPlan(run.id, plan);
       }
@@ -128,22 +354,41 @@ export function RunPlanEditor({
     } finally {
       setBusy(false);
     }
-  }, [note, onSaved, params, prompt, rows, run, structured]);
+  }, [
+    camera,
+    promptFields,
+    note,
+    onSaved,
+    params,
+    prompt,
+    rows,
+    run,
+    storedAsString,
+    structured,
+  ]);
 
   /**
-   * Which model inputs this run already binds — the choices offered for a new
-   * image, plus free text.
+   * Which model inputs to offer for a new image — what this run already binds,
+   * plus the image fields the registry names for this model.
    *
-   * **Read off the run rather than off a registry**, because there is no
-   * registry here and there must not become one: which fields a model accepts is
-   * `models.json`, the pipeline owns it, and a copy in this app would be a second
-   * answer that goes stale silently. What the run itself binds is a fact this
-   * page already holds, and a wrong field is refused at submit by the live schema
-   * check rather than shipped.
+   * **This used to be read off the run alone, and said why: there was no
+   * registry here and there must not become one, because `models.json` was the
+   * pipeline's file and a copy in this app would be a second answer that went
+   * stale silently.** That reasoning was right about a copy and is no longer
+   * about one. The registry moved into the API — `backend/studio_core/models.json`,
+   * served by `routes/models.py` — precisely so there is ONE copy at runtime;
+   * the pipeline reads it over HTTP too. Asking `GET /api/models/<name>` here is
+   * reading that same copy, not making a second.
+   *
+   * What has not changed is what enforces it: a wrong field is refused at submit
+   * by the live schema check. These are completions, not a decision.
    */
   const fields = useMemo(
-    () => Array.from(new Set(rows.map((row) => row.field).filter(Boolean))),
-    [rows],
+    () =>
+      Array.from(
+        new Set([...rows.map((row) => row.field), ...imageFields].filter(Boolean)),
+      ),
+    [rows, imageFields],
   );
 
   /**
@@ -160,16 +405,107 @@ export function RunPlanEditor({
     useCallback(() => getProject(run.project), [run.project]),
   );
 
+  /**
+   * Who a reference set can be picked from — the project's own characters, and
+   * the whole library only when the project names none.
+   *
+   * The project's list is the answer nearly every time and it is already in
+   * hand; asking `/api/characters` as well would be a second request whose top
+   * result is what the project already said. A project with no involvement rows
+   * is the case that needs the fallback: a run authored before anyone was
+   * attached to it.
+   */
+  const { data: library } = useResource(
+    project && project.characters.length === 0 ? ["characters"] : null,
+    useCallback(() => getCharacters(), []),
+  );
+
+  const characters = useMemo(
+    () =>
+      project?.characters.length
+        ? project.characters
+        : (library ?? []).map((each) => ({
+            id: each.id,
+            slug: each.slug,
+            display_name: each.display_name,
+          })),
+    [project, library],
+  );
+
+  /**
+   * The room left under this model's reference cap, or `null` where it has none.
+   *
+   * **This is not the check.** `GET /selection` refuses over its own cap and the
+   * submit refuses again; this is what stops asking for eleven when the model
+   * takes seven, so the refusal is rarer rather than reinterpreted here.
+   */
+  const roomForRefs = useMemo(() => {
+    const cap = model.entry?.images?.max_refs;
+    if (typeof cap !== "number") return null;
+    return cap - rows.filter((row) => row.role === "reference").length;
+  }, [model.entry, rows]);
+
+  /**
+   * What the FIRST image added to an empty run binds to.
+   *
+   * **A video model's first image is its start frame**, near enough always: the
+   * frame-first workflow renders a still and animates it, so an empty video run
+   * gaining an image is that handoff. Guessing `image_input` there produced a
+   * payload that submitted nowhere, and the box beside it can still be typed
+   * over. Where the registry could not be read this is `null` and the old
+   * fallback stands.
+   */
+  const firstField = useMemo(
+    () =>
+      run.kind === "video"
+        ? (model.entry?.images?.start ?? null)
+        : (model.entry?.images?.refs ?? null),
+    [run.kind, model.entry],
+  );
+
+  /**
+   * A resolved selection, appended as reference rows.
+   *
+   * The field is the registry's answer for this model where there is one, and
+   * otherwise whatever the rows already there are using — a selection landing on
+   * a different input from the images beside it would be a payload nobody meant.
+   */
+  const appendSelection = useCallback(
+    (selection: SelectionEntry[]) => {
+      setRows((current) => {
+        const field =
+          model.entry?.images?.refs ??
+          [...current].reverse().find((row) => row.role === "reference")?.field ??
+          current.at(-1)?.field ??
+          "image_input";
+        return [
+          ...current,
+          ...selection.map((entry, index) => ({
+            key: `${entry.node}:selected:${current.length + index}`,
+            field,
+            role: "reference",
+            node: entry.node,
+            name: entry.name ?? entry.node,
+            url: entry.url ?? undefined,
+            isVideo: false,
+          })),
+        ];
+      });
+    },
+    [model.entry],
+  );
+
   return (
-    <section className="flex flex-col gap-4 rounded-md border border-line bg-card p-3">
+    <section className="flex flex-col gap-4 rounded-none border border-line bg-card p-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <Text variant="title">Editing the plan</Text>
         <Badge intent="warning">withdraws the approval</Badge>
       </div>
 
       <Text variant="caption" tone="muted" className="max-w-prose">
-        Saving any change here returns this run to a draft and clears who approved it. Nothing can
-        be submitted on a yes given to a different payload.
+        Saving any change here returns this run to a draft and clears who
+        approved it. Nothing can be submitted on a yes given to a different
+        payload.
       </Text>
 
       {error && (
@@ -179,28 +515,93 @@ export function RunPlanEditor({
         </Alert.Root>
       )}
 
-      <Field.Root name="prompt">
-        <Field.Label>Prompt</Field.Label>
-        <AutoTextarea
-          value={prompt}
-          onValueChange={setPrompt}
-          minRows={structured ? 8 : 4}
-          className="font-mono text-xs"
-        />
-        <Field.Description>
-          {structured
-            ? "A structured prompt document. It is saved as JSON, so it has to stay valid JSON."
-            : "Saved as the sentence it is. Nothing here parses it."}
-        </Field.Description>
-      </Field.Root>
+      {structured ? (
+        <>
+          {PROMPT_FIELDS.filter((f) => promptFields[f.key] !== undefined).map(
+            (f) => (
+              <Field.Root key={f.key} name={f.key}>
+                <Field.Label>{f.label}</Field.Label>
+                <AutoTextarea
+                  value={promptFields[f.key]}
+                  onValueChange={(next: string) =>
+                    setPromptFields({ ...promptFields, [f.key]: next })
+                  }
+                />
+              </Field.Root>
+            ),
+          )}
 
-      <Params rows={params} onChange={setParams} />
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {(["shot", "movement", "lens_mm", "speed"] as const).map((k) => (
+              <Field.Root key={k} name={`camera_${k}`}>
+                <Field.Label>{k === "lens_mm" ? "Lens (mm)" : k}</Field.Label>
+                <Input
+                  value={camera[k]}
+                  onValueChange={(next: string) =>
+                    setCamera({ ...camera, [k]: next })
+                  }
+                />
+              </Field.Root>
+            ))}
+          </div>
+        </>
+      ) : (
+        <Field.Root name="prompt">
+          <Field.Label>Prompt</Field.Label>
+          <AutoTextarea
+            value={prompt}
+            onValueChange={setPrompt}
+            minRows={4}
+            className="font-mono text-xs"
+          />
+          <Field.Description>
+            Saved as the sentence it is. Nothing here parses it.
+          </Field.Description>
+        </Field.Root>
+      )}
+
+      <div className="flex flex-col gap-3">
+        <Text variant="caption" tone="muted">
+          Parameters
+        </Text>
+
+        {schema && (
+          <SchemaParams
+            schema={schema}
+            skip={new Set(imageFields)}
+            values={typedValues}
+            onSet={setParam}
+          />
+        )}
+
+        {model.asked && !schema && (
+          // Said out loud rather than degraded quietly: the boxes below look the
+          // same either way, and "this model takes these inputs" and "nobody
+          // could ask" are different claims to be making at somebody.
+          <Text variant="caption" tone="muted">
+            Could not read {run.model}&rsquo;s inputs, so parameters here are a
+            name and a value. The payload is still checked against the live
+            schema at submit.
+          </Text>
+        )}
+
+        <Params
+          rows={freeform}
+          onChange={setFreeform}
+          heading={schema ? "Anything else this model takes" : undefined}
+        />
+      </div>
 
       <Field.Root name="note">
         <Field.Label>Note</Field.Label>
-        <Input value={note} onValueChange={setNote} placeholder="What this run is for" />
+        <Input
+          value={note}
+          onValueChange={setNote}
+          placeholder="What this run is for"
+        />
         <Field.Description>
-          For a reader. It is part of the plan, so it is part of what an approval names.
+          For a reader. It is part of the plan, so it is part of what an
+          approval names.
         </Field.Description>
       </Field.Root>
 
@@ -210,10 +611,17 @@ export function RunPlanEditor({
         onChange={setRows}
         onMove={move}
         onAdd={() => setPicking(true)}
+        helper={
+          <CharacterRefs
+            choices={characters}
+            room={roomForRefs}
+            onAppend={appendSelection}
+          />
+        }
       />
 
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <Button intent="ghost" size="sm" onClick={onCancel} disabled={busy}>
+        <Button intent="secondary" size="sm" onClick={onCancel} disabled={busy}>
           Cancel
         </Button>
         <Button size="sm" onClick={() => void save()} disabled={busy}>
@@ -232,7 +640,10 @@ export function RunPlanEditor({
           startId={project?.root ?? null}
           taken={new Set(rows.map((row) => row.node))}
           onSubmit={async (files) => {
-            setRows((current) => [...current, ...files.map((file) => added(file, current))]);
+            setRows((current) => [
+              ...current,
+              ...files.map((file) => added(file, current, firstField)),
+            ]);
             setPicking(false);
           }}
           onClose={() => setPicking(false)}
@@ -243,28 +654,38 @@ export function RunPlanEditor({
 }
 
 /**
- * The parameters, as rows.
+ * The parameters the schema does not describe, as rows.
  *
  * **A key-value editor rather than a JSON box**, because the values are a flat
  * map of knobs — aspect ratio, quality, duration — and typing braces around
  * three of them to change one is the kind of edit a text box makes and a form
  * does not.
+ *
+ * **It stays below the typed form rather than being replaced by it.** A schema
+ * this app cannot draw, a key a newer model grew, and a plan the CLI wrote
+ * against either are all still editable here; a form that showed only what it
+ * understood would silently hide the rest of somebody's plan.
  */
 function Params({
   rows,
   onChange,
+  heading,
 }: {
   rows: [string, string][];
   onChange: (next: [string, string][]) => void;
+  /** Only when a typed form sits above and these rows need distinguishing. */
+  heading?: string;
 }) {
   const set = (index: number, pair: [string, string]) =>
     onChange(rows.map((row, at) => (at === index ? pair : row)));
 
   return (
     <div className="flex flex-col gap-2">
-      <Text variant="caption" tone="muted">
-        Parameters
-      </Text>
+      {heading !== undefined && (
+        <Text variant="caption" tone="muted">
+          {heading}
+        </Text>
+      )}
 
       {rows.map(([key, value], index) => (
         // Not `flex-wrap`: at 390px a wrapping row put the delete button alone
@@ -284,7 +705,7 @@ function Params({
             className="min-w-0 flex-1"
           />
           <Button
-            intent="ghost"
+            intent="secondary"
             size="sm"
             className="shrink-0"
             aria-label={`Remove ${key || `parameter ${index + 1}`}`}
@@ -296,7 +717,11 @@ function Params({
       ))}
 
       <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
-        <Button intent="ghost" size="sm" onClick={() => onChange([...rows, ["", ""]])}>
+        <Button
+          intent="secondary"
+          size="sm"
+          onClick={() => onChange([...rows, ["", ""]])}
+        >
           Add a parameter
         </Button>
         {/* Said out loud, because it is the one place this form guesses. A value
@@ -325,12 +750,15 @@ function Sends({
   onChange,
   onMove,
   onAdd,
+  helper,
 }: {
   rows: Row[];
   fields: string[];
   onChange: (next: Row[]) => void;
   onMove: (index: number, by: number) => void;
   onAdd: () => void;
+  /** The other way to add images — a character's references, in one gesture. */
+  helper?: ReactNode;
 }) {
   const set = (index: number, row: Row) =>
     onChange(rows.map((each, at) => (at === index ? row : each)));
@@ -350,7 +778,7 @@ function Sends({
       {rows.map((row, index) => (
         <div
           key={row.key}
-          className="flex flex-wrap items-center gap-2 rounded-md border border-line p-2"
+          className="flex flex-wrap items-center gap-2 rounded-none border border-line p-2"
         >
           <span className="w-6 shrink-0 text-center font-body text-xs text-muted tabular-nums">
             {index + 1}
@@ -363,17 +791,24 @@ function Sends({
               name={row.name}
               isVideo={row.isVideo}
               aspect="portrait"
-              className="w-14 shrink-0 rounded-md border border-line"
+              className="w-14 shrink-0 rounded-none border border-line"
             />
           ) : (
-            <span className="flex h-[4.7rem] w-14 shrink-0 items-center justify-center rounded-md border border-dashed border-line bg-surface-alt" />
+            <span className="flex h-[4.7rem] w-14 shrink-0 items-center justify-center rounded-none border border-dashed border-line bg-surface-alt" />
           )}
 
           <div className="flex min-w-40 flex-1 flex-col gap-1">
             <Text variant="caption" className="truncate">
               {row.name}
             </Text>
-            <div className="flex items-center gap-2">
+            {/* **Every control on this line, and every one of them 44px.**
+                The three buttons used to be a sibling of this whole column, so
+                they centred against the row — thumbnail and filename included —
+                and sat fifteen pixels above the two controls they act on. The
+                heights disagreed as well: an `Input` is 40 from the package's
+                shared `controlBox`, a `Select` trigger is 44, and a `sm` Button
+                is 32, so a row of them stepped down three times. */}
+            <div className="field-row flex flex-wrap items-center gap-2">
               <Input
                 aria-label={`Model input for image ${index + 1}`}
                 value={row.field}
@@ -388,43 +823,43 @@ function Sends({
                 onValueChange={(role: string) => set(index, { ...row, role })}
                 className="shrink-0"
               />
+              <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  intent="secondary"
+                  size="sm"
+                  aria-label={`Move image ${index + 1} earlier`}
+                  disabled={index === 0}
+                  onClick={() => onMove(index, -1)}
+                >
+                  ↑
+                </Button>
+                <Button
+                  intent="secondary"
+                  size="sm"
+                  aria-label={`Move image ${index + 1} later`}
+                  disabled={index === rows.length - 1}
+                  onClick={() => onMove(index, 1)}
+                >
+                  ↓
+                </Button>
+                <Button
+                  intent="secondary"
+                  size="sm"
+                  aria-label={`Remove image ${index + 1}`}
+                  onClick={() => onChange(rows.filter((_, at) => at !== index))}
+                >
+                  <TrashIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+                </Button>
+              </div>
             </div>
-          </div>
-
-          <div className="flex items-center gap-1">
-            <Button
-              intent="ghost"
-              size="sm"
-              aria-label={`Move image ${index + 1} earlier`}
-              disabled={index === 0}
-              onClick={() => onMove(index, -1)}
-            >
-              ↑
-            </Button>
-            <Button
-              intent="ghost"
-              size="sm"
-              aria-label={`Move image ${index + 1} later`}
-              disabled={index === rows.length - 1}
-              onClick={() => onMove(index, 1)}
-            >
-              ↓
-            </Button>
-            <Button
-              intent="ghost"
-              size="sm"
-              aria-label={`Remove image ${index + 1}`}
-              onClick={() => onChange(rows.filter((_, at) => at !== index))}
-            >
-              <TrashIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
-            </Button>
           </div>
         </div>
       ))}
 
-      {/* The fields this run already binds, offered as completions rather than as
-          the only choices — a datalist suggests, a select would decide, and this
-          app has no registry to decide from. */}
+      {/* The fields this run binds and the ones the registry names for this
+          model, offered as completions rather than as the only choices — a
+          datalist suggests, a select would decide, and the entry lists the image
+          inputs rather than every input a payload may carry. */}
       <datalist id="run-send-fields">
         {fields.map((field) => (
           <option key={field} value={field} />
@@ -432,12 +867,154 @@ function Sends({
       </datalist>
 
       <div>
-        <Button intent="ghost" size="sm" onClick={onAdd}>
+        <Button intent="secondary" size="sm" onClick={onAdd}>
           Add an image
         </Button>
       </div>
+
+      {helper}
     </div>
   );
+}
+
+/**
+ * A character's references, added as sends in one gesture.
+ *
+ * **What `--character` and `--pick` do on the command line**, which the app
+ * could only do by finding each image in the picker and knowing which ones were
+ * the identity. The selection is resolved by the API — default set, or a group,
+ * or a tag — so which images a character means is answered in one place rather
+ * than approximated here.
+ *
+ * **A refusal is shown and nothing is added.** `over_cap` is the whole point:
+ * the route sends back the index it would have had to drop, and quietly keeping
+ * the first seven of eleven would be a generation nobody could explain
+ * afterwards — the same failure `characters.py` refuses a stale default set
+ * over. Narrowing by group or tag is the way through, and it is a person's
+ * choice to make.
+ *
+ * Inline, like every other control in this editor. No dialog.
+ */
+function CharacterRefs({
+  choices,
+  room,
+  onAppend,
+}: {
+  choices: Array<{ id: string; slug: string; display_name: string }>;
+  /** Room left under the model's reference cap; `null` where it has none. */
+  room: number | null;
+  onAppend: (selection: SelectionEntry[]) => void;
+}) {
+  const [picked, setPicked] = useState("");
+  const [group, setGroup] = useState("");
+  const [tag, setTag] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [dropped, setDropped] = useState<OverCapEntry[] | null>(null);
+
+  // A sole character is the choice; anything else is asked. Derived rather than
+  // seeded by an effect, so it holds the moment an async list lands.
+  const who = picked || (choices.length === 1 ? (choices[0]?.id ?? "") : "");
+
+  if (choices.length === 0) return null;
+
+  const add = async () => {
+    setBusy(true);
+    setError(null);
+    setDropped(null);
+    try {
+      if (room !== null && room <= 0) {
+        setError(
+          "This model's reference cap is already used up. Remove an image above first.",
+        );
+        return;
+      }
+      const { selection } = await getCharacterSelection(who, {
+        group: group === "" ? undefined : group,
+        tag: tag === "" ? undefined : tag,
+        limit: room === null ? undefined : room,
+      });
+      onAppend(selection);
+    } catch (err) {
+      // The API's own sentence, not a rewrite of it: `support.structured` writes
+      // one that names the counts, and a second wording here would be a second
+      // claim about what happened.
+      setError((err as Error).message);
+      if (err instanceof ApiError && err.code === "over_cap") {
+        const index = err.body?.index;
+        setDropped(Array.isArray(index) ? (index as OverCapEntry[]) : null);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2 rounded-none border border-dashed border-line p-2">
+      <Text variant="caption" tone="muted">
+        Or add a character&rsquo;s references
+      </Text>
+
+      <div className="field-row flex flex-wrap items-end gap-2">
+        <Field.Root name="ref_character" className="min-w-40 flex-1">
+          <Field.Label>Character</Field.Label>
+          <Select
+            options={choices.map((each) => ({
+              value: each.id,
+              label: each.display_name || each.slug,
+            }))}
+            value={who}
+            onValueChange={setPicked}
+            placeholder="Pick one"
+          />
+        </Field.Root>
+        <Field.Root name="ref_group" className="w-28">
+          <Field.Label>Group</Field.Label>
+          <Input value={group} onValueChange={setGroup} placeholder="any" />
+        </Field.Root>
+        <Field.Root name="ref_tag" className="w-28">
+          <Field.Label>Tag</Field.Label>
+          <Input value={tag} onValueChange={setTag} placeholder="any" />
+        </Field.Root>
+        <Button
+          intent="secondary"
+          size="sm"
+          disabled={who === "" || busy}
+          onClick={() => void add()}
+        >
+          {busy ? "Adding…" : "Add references"}
+        </Button>
+      </div>
+
+      <Text variant="caption" tone="muted">
+        {room === null
+          ? "Whichever images the character's default set names, unless a group or tag narrows it."
+          : `Room for ${room} more under this model's reference cap.`}
+      </Text>
+
+      {error && (
+        <Alert.Root intent="danger">
+          <Alert.Title>Nothing was added</Alert.Title>
+          <Alert.Description>{error}</Alert.Description>
+        </Alert.Root>
+      )}
+
+      {dropped && (
+        <Text variant="caption" tone="muted">
+          The {dropped.length} that matched:{" "}
+          {dropped.map((each) => each.name ?? each.node).join(", ")}
+        </Text>
+      )}
+    </div>
+  );
+}
+
+/** One row of an `over_cap` refusal's index — what it would have had to drop. */
+interface OverCapEntry {
+  node: string;
+  name?: string | null;
+  group?: string | null;
+  description?: string | null;
 }
 
 /** A stored send, as a row. */
@@ -458,15 +1035,18 @@ function rowOf(send: RunSend, index: number): Row {
  *
  * A new image is almost always another reference beside the ones already there,
  * and an empty field would be a payload that submits nowhere. Where there is no
- * row to copy, the fallback names the field every image model in the registry
- * happens to use; it is a starting point that the box next to it can be typed
- * over, not a claim about what the model accepts.
+ * row to copy, `first` is what the registry says this model's images bind to —
+ * its start frame on a video run, its reference input otherwise. The last
+ * fallback names the field every image model in the registry happens to use, and
+ * is what is left when the registry could not be read at all; all three are a
+ * starting point the box next to it can be typed over, not a claim about what
+ * the model accepts.
  */
-function added(file: FileEntry, current: Row[]): Row {
+function added(file: FileEntry, current: Row[], first: string | null): Row {
   const last = current.at(-1);
   return {
     key: `${file.id}:new:${current.length}`,
-    field: last?.field ?? "image_input",
+    field: last?.field ?? first ?? "image_input",
     role: last?.role ?? "reference",
     node: file.id,
     name: file.name,
@@ -477,7 +1057,11 @@ function added(file: FileEntry, current: Row[]): Row {
 
 /** The stored sends in the shape the editor compares against — what is written. */
 function sentOf(sends: RunSend[]) {
-  return sends.map((send) => ({ field: send.field, role: send.role, node: send.node }));
+  return sends.map((send) => ({
+    field: send.field,
+    role: send.role,
+    node: send.node,
+  }));
 }
 
 function promptText(prompt: unknown): string {
@@ -515,7 +1099,9 @@ function planOf(
     ...plan,
     prompt: structured ? JSON.parse(prompt) : prompt,
     params: Object.fromEntries(
-      params.filter(([key]) => key !== "").map(([key, value]) => [key, paramValue(value)]),
+      params
+        .filter(([key]) => key !== "")
+        .map(([key, value]) => [key, paramValue(value)]),
     ),
     note: note === "" ? null : note,
   };

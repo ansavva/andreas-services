@@ -28,10 +28,21 @@ does not go back for it.
 
 ## What is deliberately not here
 
-**Bytes.** They travel presigned, and `adapters/store.py` owns that. A route
-that hands out an upload URL is here (`add_run_output`, `scene_output`) because
-its *request* shape is entity knowledge; what the caller then does with the URL
-is the store's business.
+**Bytes.** They travel presigned, and `adapters/store.py` owns that. The one
+route left here that hands out an upload URL is `add_run_output`, because its
+*request* shape is entity knowledge; what the caller then does with the URL is
+the store's business.
+
+**And there are fewer of those than there were.** `scene_output` and
+`movie_output` minted upload URLs for a stitched take that this process had just
+encoded; a worker encodes it and files it now, so both went with the encoder
+(#537). `put_run_response` stored a provider's reply that this process had just
+received; the callback consumer receives it now (#536). `revoke_run_approval`
+and `patch_movie` were never reached from a command at all. **A wrapper with no
+caller is a claim about the wire surface that nothing checks**, and
+`test_the_wire_surface_is_the_table` reads this file to build that claim — so a
+route the CLI does not call must not be spelled here, however faithfully the
+backend still serves it for the SPA.
 
 **Node routes.** `POST /api/nodes`, the move/copy/delete verbs and the text
 routes live in `adapters/store.py`, beside the path resolution they share. The
@@ -428,10 +439,6 @@ def approve_run(run_id: str, digest: str, via: str = "interactive") -> dict:
     return api.post(f"/api/runs/{run_id}/approve", {"digest": digest, "via": via})
 
 
-def revoke_run_approval(run_id: str) -> dict:
-    return api.delete(f"/api/runs/{run_id}/approve")
-
-
 def query_runs(*, project: str | None = None, character: str | None = None,
                model: str | None = None, status: str | None = None,
                since: str | None = None, limit: int | None = None,
@@ -535,16 +542,6 @@ def add_run_output(run_id: str, name: str, size: int, content_type: str) -> dict
                     {"name": name, "size": size, "content_type": content_type})
 
 
-def put_run_response(run_id: str, body) -> dict:
-    """Store the provider's response verbatim as a payload blob.
-
-    `body` is whatever the provider sent. **Studio does not decode it** — it is
-    serialised on the way out and read back as text, and the rule that nothing
-    parses these documents survives here rather than being restated in `runs.py`.
-    """
-    return api.post(f"/api/runs/{run_id}/response", {"body": body})
-
-
 def delete_run(run_id: str, *, files: str = "keep") -> dict:
     return api.delete(f"/api/runs/{run_id}", files=files)
 
@@ -592,17 +589,6 @@ def patch_shot(scene_id: str, shot_id: str, **fields) -> dict:
     return api.patch(f"/api/scenes/{scene_id}/shots/{shot_id}", _clean(**fields))
 
 
-def scene_output(scene_id: str, name: str, size: int, content_type: str) -> dict:
-    """An upload URL for the stitched take. **The encode stays local.**
-
-    `ffmpeg` ships in this wheel and the Lambda has none, so `assemble`
-    downloads, stitches here, uploads through this URL and then `PATCH`es the
-    record. The API owns the record; it does not own the encode.
-    """
-    return api.post(f"/api/scenes/{scene_id}/output",
-                    {"name": name, "size": size, "content_type": content_type})
-
-
 # ── movies ──────────────────────────────────────────────────────────────────
 
 def create_movie(*, project: str, slug: str, title: str = "",
@@ -619,10 +605,6 @@ def get_movie(movie_id: str) -> dict:
     return api.get(f"/api/movies/{movie_id}")
 
 
-def patch_movie(movie_id: str, **fields) -> dict:
-    return api.patch(f"/api/movies/{movie_id}", _clean(**fields))
-
-
 def delete_movie(movie_id: str, *, files: str = "keep") -> dict:
     return api.delete(f"/api/movies/{movie_id}", files=files)
 
@@ -634,12 +616,6 @@ def put_movie_scenes(movie_id: str, scenes: list[str]) -> dict:
     500. The answer is the movie in its read shape, so it can be merged.
     """
     return api.request("PATCH", f"/api/movies/{movie_id}/scenes", {"scenes": scenes})
-
-
-def movie_output(movie_id: str, name: str, size: int, content_type: str) -> dict:
-    """An upload URL for the finished cut. See `scene_output` — same arrangement."""
-    return api.post(f"/api/movies/{movie_id}/output",
-                    {"name": name, "size": size, "content_type": content_type})
 
 
 # ── the reference spec ──────────────────────────────────────────────────────
@@ -669,13 +645,12 @@ def put_spec_angle(angle_id: str, fields: dict) -> dict:
     return api.patch(f"/api/reference-spec/angles/{_segment(angle_id)}", fields)
 
 
-def delete_spec_block(name: str) -> dict:
-    return api.delete(f"/api/reference-spec/blocks/{_segment(name)}")
-
-
-def delete_spec_angle(angle_id: str) -> dict:
-    return api.delete(f"/api/reference-spec/angles/{_segment(angle_id)}")
-
+# There are deliberately no `delete_spec_*` wrappers, and #553 is why: a wrapper
+# with no caller is a claim about the wire surface that nothing checks, and it
+# deleted five of them for that reason on the day this was written. `studio spec`
+# never removes a row — a push states what a file contains, not that nothing else
+# exists — so nothing here would call them. The API serves both DELETEs for the
+# app, which is the same footing `/api/runs/<id>/response` is on.
 
 def draft_turnaround(character_id: str, *, project: str, identity: list[str],
                      group: str | None = None, angles: list[str] | None = None,

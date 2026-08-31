@@ -60,8 +60,11 @@ from studio_pipeline.engine import registry as REG
 # What each model accepts is registry data — `--for` takes any model key, so a
 # model added with `studio-media-add-model` is convertible for without touching this file.
 EXT_FOR = {"png": ".png", "jpg": ".jpg", "jpeg": ".jpg", "webp": ".webp"}
-PIL_FORMAT = {".png": "PNG", ".jpg": "JPEG", ".webp": "WEBP"}
-CONTENT_TYPE = {".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp"}
+# `PIL_FORMAT` and `CONTENT_TYPE` sat beside it until now. Both were arguments to
+# an encode this process performed; the route performs it, so the target format
+# travels as the word a person typed and the content type is the service's to
+# decide from it. Only the extension table is still read here, and only to answer
+# "is a conversion needed at all".
 
 
 

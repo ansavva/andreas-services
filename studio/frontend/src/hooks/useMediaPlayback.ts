@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
- * Playback for the reel: which video is live, whether it has sound, and where
- * it is in time.
+ * Playback for one video at a time: which one is live, whether it has sound,
+ * and where it is in time.
+ *
+ * **This was `useReelPlayback`, and only the name changed.** The reel is one
+ * caller of it and `MediaPlayer` is another — a player that mounts a single
+ * element is the reel's `WINDOW = 1` case, so the keyed map, the "exactly one
+ * plays" effect and every line below carried over untouched. Nothing in the
+ * section that follows is about the reel.
  *
  * ---------------------------------------------------------------------------
  * WHY UNMUTING USED TO FAIL
@@ -39,7 +45,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * that first press established.
  */
 
-export interface ReelPlayback {
+export interface MediaPlayback {
   muted: boolean;
   /** True when the browser refused sound. Cleared by the next successful press. */
   blocked: boolean;
@@ -54,7 +60,7 @@ export interface ReelPlayback {
   seekBy: (delta: number) => void;
 }
 
-export function useReelPlayback(currentKey: string | undefined): ReelPlayback {
+export function useMediaPlayback(currentKey: string | undefined): MediaPlayback {
   const videos = useRef(new Map<string, HTMLVideoElement>());
   // Read inside callbacks that must not be re-created per frame — a ref-backed
   // mirror keeps `register` and the seek helpers stable while `time` ticks.

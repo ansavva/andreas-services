@@ -16,6 +16,7 @@ import { EntityRow } from "../components/entity/EntityRow";
 import { MediaThumb } from "../components/media/MediaThumb";
 import { ProjectDetails } from "../components/project/ProjectDetails";
 import { RunsTable } from "../components/project/RunsTable";
+import { NewRunStrip } from "../components/run/NewRunStrip";
 import { useResource } from "../hooks/useResource";
 import type { ProjectRecord } from "../types";
 import { formatBytes, formatDate } from "../utils/format";
@@ -102,7 +103,9 @@ export function ProjectPage() {
         }
       >
         <Text variant="display">{record.title || record.slug}</Text>
-        <Text variant="caption" tone="muted">
+        {/* The slug is the address a person types at the CLI, so it is set in
+            the face every other address on this app now uses. */}
+        <Text variant="caption" tone="muted" className="font-mono">
           {record.slug}
         </Text>
       </PageBar>
@@ -125,9 +128,15 @@ export function ProjectPage() {
 
         <Tabs.Panel value="overview" className="flex flex-col gap-4">
           <div className="flex flex-wrap gap-2">
-            <Badge intent="neutral">{record.counts.runs} runs</Badge>
-            <Badge intent="neutral">{record.counts.scenes} scenes</Badge>
-            <Badge intent="neutral">{record.counts.movies} movies</Badge>
+            <Badge intent="neutral" className="font-mono tabular-nums">
+              {record.counts.runs} runs
+            </Badge>
+            <Badge intent="neutral" className="font-mono tabular-nums">
+              {record.counts.scenes} scenes
+            </Badge>
+            <Badge intent="neutral" className="font-mono tabular-nums">
+              {record.counts.movies} movies
+            </Badge>
           </div>
 
           {/* Involvement is rows, not a list on the record — which is what makes
@@ -143,12 +152,22 @@ export function ProjectPage() {
             }
           />
 
-          <Text variant="caption" tone="muted">
+          {/* `block`: `caption` is a `<span>`, and an inline box takes no
+              top border or padding of its own. */}
+          <Text variant="caption" tone="muted" className="block border-t border-line pt-2 font-mono">
             Created {formatDate(record.created)} · updated {formatDate(record.updated)}
           </Text>
         </Tabs.Panel>
 
-        <Tabs.Panel value="runs">
+        {/* The strip sits above the table rather than in the page bar, because
+            what it makes is a run in THIS project — and because the page bar's
+            one action deletes the project. */}
+        <Tabs.Panel value="runs" className="flex flex-col gap-4">
+          {/* Top-right, above the list it adds to — where "make one of these"
+              sits on every listing that has one. */}
+          <div className="flex justify-end">
+            <NewRunStrip projectId={record.id} />
+          </div>
           <RunsTable
             projectId={record.id}
             characters={record.characters}
@@ -191,7 +210,7 @@ function ScenesTab({ projectId }: { projectId: string }) {
     );
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col">
       {data.map((scene) => (
         <EntityRow
           key={scene.id}
@@ -221,7 +240,7 @@ function MoviesTab({ projectId }: { projectId: string }) {
     );
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col">
       {data.map((movie) => (
         <EntityRow
           key={movie.id}
@@ -258,17 +277,14 @@ function InputsTab({ projectId }: { projectId: string }) {
     );
 
   return (
-    <div className="flex flex-col gap-2">
-      <Text variant="caption" tone="muted">
-        The number is what <code>--input N</code> means. It is a position in this order, not
+    <div className="flex flex-col">
+      <Text variant="caption" tone="muted" className="block pb-2">
+        The number is what <code className="font-mono">--input N</code> means. It is a position in this order, not
         anything stored — renaming a file renumbers the pool.
       </Text>
       {data.map((input, index) => (
-        <div
-          key={input.id}
-          className="flex items-center gap-3 rounded-md border border-line bg-card p-2"
-        >
-          <Text variant="body" className="w-8 shrink-0 text-right tabular-nums">
+        <div key={input.id} className="flex items-center gap-3 border-t border-line py-2">
+          <Text variant="body" family="mono" className="w-8 shrink-0 text-right tabular-nums">
             {index + 1}
           </Text>
           <MediaThumb
@@ -276,14 +292,14 @@ function InputsTab({ projectId }: { projectId: string }) {
             url={input.url}
             name={input.name}
             aspect="auto"
-            className="size-12 shrink-0 rounded-md border border-line"
+            className="size-12 shrink-0 rounded-none border border-line"
           />
           <div className="min-w-0 flex-1">
             <Text variant="body" className="truncate">
               {input.name}
             </Text>
             {input.size !== undefined && (
-              <Text variant="caption" tone="muted">
+              <Text variant="caption" tone="muted" className="font-mono tabular-nums">
                 {formatBytes(input.size)}
               </Text>
             )}

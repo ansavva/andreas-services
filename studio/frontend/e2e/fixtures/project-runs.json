@@ -1,0 +1,53 @@
+{
+  "cursor": null,
+  "runs": [
+    {
+      "created": "2026-08-31T17:38:29.395688+00:00",
+      "fingerprint": "sha256:419c6c2459a9e3a07cf9c02a41e2731e",
+      "id": "run-9d85b085-1fab-4024-9026-eeb2ab35b0ab",
+      "kind": "video",
+      "lib": "lib-160af8b7-bf45-5fd0-b4d1-8bd7e52fac07",
+      "model": "bytedance/seedance-2.0",
+      "project": "proj-69e3a948-1bfd-48ee-8646-263265fd4289",
+      "status": "draft"
+    },
+    {
+      "created": "2026-08-31T16:31:45.960601+00:00",
+      "fingerprint": "sha256:ebf89e6de79cb41c82efa665832f15dc",
+      "id": "run-b4549b4e-04a6-4db0-8772-cf1cda5b7de0",
+      "kind": "video",
+      "lib": "lib-160af8b7-bf45-5fd0-b4d1-8bd7e52fac07",
+      "model": "kwaivgi/kling-v3-omni-video",
+      "project": "proj-69e3a948-1bfd-48ee-8646-263265fd4289",
+      "status": "draft"
+    },
+    {
+      "created": "2026-08-31T12:29:45.705187+00:00",
+      "fingerprint": "sha256:8ae7fab822febd1967f4778e15d46e27",
+      "id": "run-fb93b7ab-2330-4436-a117-b218e192a1a3",
+      "kind": "video",
+      "lib": "lib-160af8b7-bf45-5fd0-b4d1-8bd7e52fac07",
+      "model": "kwaivgi/kling-v3-omni-video",
+      "project": "proj-69e3a948-1bfd-48ee-8646-263265fd4289",
+      "status": "succeeded",
+      "thumb": {
+        "node": "node-849c7e11-489b-47af-9a53-9d1b892f1c09",
+        "url": "/e2e-asset.mp4"
+      }
+    },
+    {
+      "created": "2026-08-30T15:22:00.060151+00:00",
+      "fingerprint": "sha256:068385405b756b296d389e69a3690571",
+      "id": "run-33e44241-23cb-49fa-88a4-dfa2312d1e0e",
+      "kind": "image",
+      "lib": "lib-160af8b7-bf45-5fd0-b4d1-8bd7e52fac07",
+      "model": "openai/gpt-image-2",
+      "project": "proj-69e3a948-1bfd-48ee-8646-263265fd4289",
+      "status": "succeeded",
+      "thumb": {
+        "node": "node-a0cefc42-b294-4570-9e3e-47bd9c015ef8",
+        "url": "/e2e-asset.png"
+      }
+    }
+  ]
+}

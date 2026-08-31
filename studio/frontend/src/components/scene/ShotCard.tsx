@@ -1,10 +1,17 @@
 import { useState } from "react";
 
-import { Badge, Button, Text } from "@ansavva/design-system";
+import { Badge, Button, Tabs, Text } from "@ansavva/design-system";
 
-import type { RunAsset, Shot } from "../../types";
-import { MotionEditor, MotionFields, draftOf, draftToShot, type Draft } from "./motionPrompt";
-import { Frame, Sends } from "./Sends";
+import type { RunAsset, Shot, ShotRun } from "../../types";
+import { OutputPanel } from "../media/OutputPanel";
+import {
+  MotionFields,
+  MotionEditor,
+  draftOf,
+  draftToShot,
+  type Draft,
+} from "./motionPrompt";
+import { Sends } from "./Sends";
 import { RunList } from "../run/RunList";
 
 /**
@@ -30,6 +37,7 @@ export function ShotCard({
   bracketed,
   onOpenRun,
   onView,
+  frameHref,
   onSave,
 }: {
   shot: Shot;
@@ -37,12 +45,34 @@ export function ShotCard({
   bracketed: boolean;
   onOpenRun: (run: string) => void;
   onView: (asset: RunAsset) => void;
+  /** Where a frame opens, as an address — the scene owns the `?in=` context. */
+  frameHref: (asset: RunAsset) => string;
   onSave: (shotId: string, body: Partial<Shot>) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(() => draftOf(shot));
+
+  const [pane, setPane] = useState("plan");
+  /** Outputs are plural: the current clip plus every superseded take. */
+  const outputCount = (shot.clip ? 1 : 0) + (shot.takes ?? []).length;
+  const hasOutput = outputCount > 0;
+  /**
+   * The runs to list, which is not always the ones the API expanded.
+   *
+   * A scene assembled from bare runs has a `run` on each shot and no storyboard
+   * behind it, so nothing expands `runs` — and with `Open its run` gone from the
+   * title row that shot would have had no route to its run at all. One synthetic
+   * row keeps the single way in honest.
+   */
+  const runs: ShotRun[] =
+    (shot.runs ?? []).length > 0
+      ? (shot.runs as ShotRun[])
+      : shot.run
+        ? [{ id: shot.run, role: "clip" }]
+        : [];
+  const runCount = runs.length;
 
   const motion = shot.motion;
   const caption = shot.beat || shot.prompt || shot.id;
@@ -67,119 +97,231 @@ export function ShotCard({
   }
 
   return (
-    <article className="flex flex-col gap-3 rounded-md border border-line bg-card p-3">
+    // A storyboard is a sequence, and a sequence of ruled panels reads as one
+    // board where a stack of filled cards reads as a pile. The rule is on the
+    // BOTTOM: the section heading already draws one above the first shot, and
+    // a `border-t` here would have put two hairlines twelve pixels apart.
+    <article className="flex flex-col gap-3 rounded-none border-b border-line py-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <Text variant="body" tone="muted" className="tabular-nums">
+        <Text
+          variant="body"
+          tone="muted"
+          family="mono"
+          className="tabular-nums"
+        >
           {String(n).padStart(2, "0")}
         </Text>
-        <Text variant="body" className="min-w-48 flex-1 font-medium">
+        {/* The shot is the heading here; `Inputs` and `Outputs` under it are
+            its sub-headings. All three were `title`, so a column label read as
+            loudly as the thing it labels. */}
+        <Text variant="title" className="min-w-48 flex-1">
           {caption}
         </Text>
         {shot.status && (
-          <Badge intent={shot.status === "rendered" ? "success" : "neutral"}>{shot.status}</Badge>
+          <Badge
+            intent={shot.status === "rendered" ? "success" : "neutral"}
+            className="font-mono"
+          >
+            {shot.status}
+          </Badge>
         )}
-        {duration ? <Badge intent="neutral">{duration}s</Badge> : null}
-        {motion?.model && <Badge intent="neutral">{motion.model}</Badge>}
+        {duration ? (
+          <Badge intent="neutral" className="font-mono tabular-nums">
+            {duration}s
+          </Badge>
+        ) : null}
+        {motion?.model && (
+          <Badge intent="neutral" className="font-mono">
+            {motion.model}
+          </Badge>
+        )}
         {/* One answer to "has this been shot", not two. `status` is computed
             from the plan and is what a storyboarded scene carries; the badge
             below is for a scene assembled from bare runs, which has no status
             at all. Showing both put `rendered` next to `not rendered` on the
             same card. */}
-        {shot.run ? (
-          <Button intent="ghost" size="sm" onClick={() => onOpenRun(shot.run as string)}>
-            Open its run
-          </Button>
-        ) : (
-          !shot.status && <Badge intent="warning">not rendered</Badge>
-        )}
-        {!editing && (
-          <Button
-            intent="ghost"
-            size="sm"
-            onClick={() => {
-              setDraft(draftOf(shot));
-              setSaveError(null);
-              setEditing(true);
-            }}
-          >
-            Edit
-          </Button>
+        {/* **No `Open its run` button.** A shot already offers its runs three
+            other ways — the `Runs` tab below, the caption under its output, and
+            the run rows themselves — and a fourth on the title row was the one
+            competing with the shot's own name. */}
+        {!shot.run && !shot.status && (
+          <Badge intent="warning">not rendered</Badge>
         )}
       </div>
 
-      {/* The clip is OUTPUT and sits on its own; everything else a shot has is
-          an INPUT, and `Sends` groups those by what they are sent as. The two
-          used to be one filmstrip, which drew the same panel twice — once as a
-          tile and once as the reference it becomes. */}
-      {(shot.clip || (shot.takes ?? []).length > 0) && (
-        <div className="flex flex-wrap gap-2">
-          {shot.clip && (
-            <Frame
-              label="clip"
-              asset={shot.clip}
-              onOpen={onView}
-              run={shot.run}
-              onOpenRun={onOpenRun}
-            />
-          )}
-          {/* **Earlier takes of this same shot, newest first.** A shot holds
-              one `run`, so a retry used to erase the only pointer to what it
-              replaced — the clip stayed in the project and nothing linked to
-              it. Comparing a re-render against the take it replaced is the
-              whole reason for re-rendering, and it was the one thing the board
-              could not do. */}
-          {(shot.takes ?? []).map((take) => (
-            <Frame
-              key={take.run ?? take.node ?? ""}
-              label="earlier"
-              hint="superseded"
-              asset={take.clip}
-              title="an earlier take of this shot"
-              onOpen={onView}
-              run={take.run}
-              onOpenRun={onOpenRun}
-            />
-          ))}
-        </div>
-      )}
+      {/* **A shot is a small run screen.** Its own inputs on the left, its
+          own output on the right, and the outputs are plural on purpose — a
+          re-render does not erase the take it replaced, and comparing the two
+          is the whole reason to re-render.
 
-      {(shot.panels ?? []).length === 0 && !shot.clip && !shot.opens_on?.node && (
-        <Text variant="caption" tone="muted">
-          No panels — this shot renders from the previous shot&apos;s last frame.
-        </Text>
-      )}
-
-      <Sends shot={shot} bracketed={bracketed} onView={onView} onOpenRun={onOpenRun} />
-
-      {/* **The runs behind this shot, as a list rather than as links on tiles.**
-          Every frame here came out of a run, and a link per tile answers "what
-          made this picture" one picture at a time. Read together they answer a
-          different question — what has been spent on this shot, what is still a
-          draft, what failed — which is what a run list is for everywhere else in
-          the app, drawn by the same component so a status colour means the same
-          thing here as on a project or a character. */}
-      {(shot.runs ?? []).length > 0 && (
-        <section className="flex flex-col gap-1">
-          <Text variant="caption" tone="muted">
-            Runs
+          Output first in the DOM, so one column below `lg` leads with the
+          clip and needs no `order` override. Same mechanism as `RunPage`. */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
+        {/* **Always drawn, empty or not.** A shot with nothing rendered used
+            to collapse the column, so the storyboard alternated between one
+            layout and two down the page and a planned shot looked like a
+            different kind of thing from a shot in flight. */}
+        <div className="flex flex-col gap-3 lg:col-start-2 lg:row-start-1">
+          {/* Titled and ruled, exactly as the run screen heads its own
+                column. A muted caption made a shot's output look like a label
+                on a thumbnail rather than the other half of the page. */}
+          <Text
+            variant="body"
+            className="border-b border-line pb-2 font-medium"
+          >
+            {outputCount > 1 ? `Outputs · ${outputCount}` : "Outputs"}
           </Text>
-          <RunList runs={shot.runs ?? []} onOpen={(run) => onOpenRun(run.id)} />
-        </section>
-      )}
+          {/* **The run screen's output panel, not a thumbnail.** A shot's
+                clip is the thing being judged, so it plays where it is, is
+                sized to the media rather than cropped into a tile, and its
+                caption is a real link — the same three properties the run
+                screen's output has, because it is the same component. */}
+          {hasOutput ? (
+            <div className="flex flex-col gap-3">
+              {shot.clip && (
+                <OutputPanel
+                  asset={shot.clip}
+                  sole={outputCount === 1}
+                  to={frameHref(shot.clip)}
+                />
+              )}
+              {/* **Earlier takes of this same shot, newest first.** A shot holds
+                  one `run`, so a retry used to erase the only pointer to what it
+                  replaced — the clip stayed in the project and nothing linked to
+                  it. Comparing a re-render against the take it replaced is the
+                  whole reason for re-rendering. */}
+              {(shot.takes ?? []).map((take) =>
+                take.clip ? (
+                  <OutputPanel
+                    key={take.run ?? take.node ?? ""}
+                    asset={take.clip}
+                    sole={false}
+                    to={frameHref(take.clip)}
+                    badge={<Badge intent="neutral">earlier</Badge>}
+                  />
+                ) : null,
+              )}
+            </div>
+          ) : (
+            <Text variant="body" tone="muted">
+              Nothing rendered yet.
+            </Text>
+          )}
+        </div>
 
-      {motion?.prompt &&
-        (editing ? (
-          <MotionEditor
-            draft={draft}
-            onChange={setDraft}
-            onSave={save}
-            onCancel={() => setEditing(false)}
-            saving={saving}
-            error={saveError}
-          />
-        ) : (
-          <MotionFields motion={motion} />
-        ))}
+        <div className="flex min-w-0 flex-col gap-3 lg:col-start-1 lg:row-start-1">
+          {/* `Inputs` is the heading and the tabs sit under it — the shape the
+              run screen settled on, so a shot reads as a small one rather than
+              as a differently-built thing that happens to be nearby. */}
+          <Text
+            variant="body"
+            className="border-b border-line pb-2 font-medium"
+          >
+            Inputs
+          </Text>
+
+          {/* The runs are a tab rather than a section below, because they
+              answer a different question from the inputs — what has been spent
+              on this shot, what is still a draft, what failed — and stacking
+              them pushed the motion prompt off the bottom of every card. */}
+          <Tabs.Root value={pane} defaultValue="plan" onValueChange={setPane}>
+            <Tabs.List className="overflow-x-auto border-b border-line">
+              <Tabs.Tab value="plan">Plan</Tabs.Tab>
+              <Tabs.Tab value="runs">
+                Runs{runCount ? ` · ${runCount}` : ""}
+              </Tabs.Tab>
+            </Tabs.List>
+
+            <Tabs.Panel value="plan">
+              <div className="flex min-w-0 flex-col gap-3 pt-3">
+                {(shot.panels ?? []).length === 0 &&
+                  !shot.clip &&
+                  !shot.opens_on?.node && (
+                    <Text variant="caption" tone="muted">
+                      No panels — this shot renders from the previous
+                      shot&apos;s last frame.
+                    </Text>
+                  )}
+
+                <Sends
+                  shot={shot}
+                  bracketed={bracketed}
+                  onView={onView}
+                  onOpenRun={onOpenRun}
+                />
+
+                {motion?.prompt &&
+                  (editing ? (
+                    <MotionEditor
+                      draft={draft}
+                      onChange={setDraft}
+                      onSave={save}
+                      onCancel={() => setEditing(false)}
+                      saving={saving}
+                      error={saveError}
+                    />
+                  ) : (
+                    // Fields, not JSON — and the RUN screen agrees now, which
+                    // is the direction this converged in the end. It is
+                    // studio's own document with a schema `studio prompt`
+                    // validates, so escaped JSON is neither what a person reads
+                    // nor what they edit.
+                    <div className="flex flex-col gap-2">
+                      <MotionFields motion={motion} />
+                      {/* **Beside what it edits, not up on the title row.** It
+                          sat at the far end of the shot's header, three badges
+                          away from the prompt it opens — so on a wide card the
+                          button and its subject were opposite corners, and it
+                          read as an action on the whole shot. */}
+                      <div className="flex">
+                        <Button
+                          intent="secondary"
+                          size="sm"
+                          onClick={() => {
+                            setDraft(draftOf(shot));
+                            setSaveError(null);
+                            setEditing(true);
+                          }}
+                        >
+                          Edit the prompt
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </Tabs.Panel>
+
+            <Tabs.Panel value="runs">
+              <div className="flex min-w-0 flex-col gap-3 pt-3">
+                {runCount === 0 ? (
+                  <Text variant="body" tone="muted">
+                    Nothing has been run for this shot yet.
+                  </Text>
+                ) : (
+                  <>
+                    {/* **The runs behind this shot, as a list rather than as links on tiles.**
+                  Every frame here came out of a run, and a link per tile answers "what
+                  made this picture" one picture at a time. Read together they answer a
+                  different question — what has been spent on this shot, what is still a
+                  draft, what failed — which is what a run list is for everywhere else in
+                  the app, drawn by the same component so a status colour means the same
+                  thing here as on a project or a character. */}
+                    {/* No `Runs` caption inside the `Runs` tab — the tab says
+                        it, and saying it twice a few pixels apart is the same
+                        duplication the run screen just lost. */}
+                    <section className="flex flex-col gap-1">
+                      <RunList
+                        runs={runs}
+                        onOpen={(run) => onOpenRun(run.id)}
+                      />
+                    </section>
+                  </>
+                )}
+              </div>
+            </Tabs.Panel>
+          </Tabs.Root>
+        </div>
+      </div>
     </article>
   );
 }

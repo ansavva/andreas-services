@@ -27,9 +27,9 @@ vi.mock("../apis/studio", () => ({
 
 import { getAsset, getNodeText } from "../apis/studio";
 import { MediaTile } from "./browse/MediaTile";
-import { MediaSurface } from "./viewer/MediaSurface";
+import { MediaPlayer } from "./media/MediaPlayer";
 import { TextPage } from "./text/TextPage";
-import { ViewerChrome } from "./viewer/ViewerChrome";
+import { ObjectActions } from "./viewer/ObjectActions";
 import { TestProviders } from "../test-providers";
 
 const signed = vi.mocked(getAsset);
@@ -87,10 +87,13 @@ describe("re-signing a tile whose URL expired", () => {
     await waitFor(() => expect(signed).toHaveBeenCalledWith(FILE.id));
   });
 
-  it("asks the same way from the viewer as from the grid", async () => {
+  it("asks the same way from the player as from the grid", async () => {
     // Two components, one hook, two call sites — and only one of them was
     // covered until a control showed the other could be swapped silently.
-    render(<MediaSurface file={FILE} />, { wrapper: TestProviders });
+    render(
+      <MediaPlayer nodeId={FILE.id} url={FILE.url} name={FILE.name} />,
+      { wrapper: TestProviders },
+    );
 
     fireEvent.error(screen.getByRole("img"));
 
@@ -113,16 +116,7 @@ describe("the download button", () => {
 
     // `attachment` is the only reason a cross-origin download downloads, so it
     // is asserted beside the address rather than in a case of its own.
-    render(
-      <ViewerChrome
-        file={FILE}
-        isFullscreen={false}
-        fullscreenSupported={false}
-        onToggleFullscreen={() => {}}
-        onClose={() => {}}
-      />,
-    { wrapper: TestProviders },
-    );
+    render(<ObjectActions file={FILE} />, { wrapper: TestProviders });
 
     fireEvent.click(screen.getByLabelText("Download"));
 

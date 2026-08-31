@@ -123,7 +123,7 @@ export function RunsTable({ projectId, characters, onOpen }: Props) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end gap-2 rounded-md border border-line bg-card p-3">
+      <div className="flex flex-wrap items-end gap-2 rounded-none border border-line bg-card p-3">
         <div className="min-w-40">
           <Field.Root name="status">
             <Field.Label>Status</Field.Label>
@@ -187,8 +187,10 @@ export function RunsTable({ projectId, characters, onOpen }: Props) {
           </Field.Root>
         </div>
 
-        <Button size="sm" onClick={() => fetchPage(null)}>
-          Apply
+        {/* `md`, so it stands at the same 44px as the Selects beside it — see
+            the note in `NewRunStrip` on the package's three control heights. */}
+        <Button onClick={() => fetchPage(null)}>
+          Search
         </Button>
       </div>
 
@@ -215,7 +217,7 @@ export function RunsTable({ projectId, characters, onOpen }: Props) {
 
       {cursor !== null && !loading && (
         <div className="flex justify-center">
-          <Button intent="ghost" size="sm" onClick={() => fetchPage(cursor)}>
+          <Button intent="secondary" size="sm" onClick={() => fetchPage(cursor)}>
             Load more
           </Button>
         </div>

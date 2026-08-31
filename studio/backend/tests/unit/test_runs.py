@@ -701,6 +701,44 @@ def test_a_run_cannot_be_submitted_without_an_approval(empty_api):
     assert catalog.entity(catalog.ENTITY_RUN, run["id"])["status"] == "draft"
 
 
+def test_the_payload_preview_follows_the_plan(empty_api):
+    """**What approval is supposed to be reading, before anything is sent.**
+
+    Hard rule #2 asks a person to approve the full payload, and a draft has no
+    `request.json` to read — that document records what was actually sent and is
+    written after dispatch. So the payload a draft would send was unreadable in
+    the app, and editing the plan appeared to change nothing.
+
+    It is the same assembly `submit` uses, so an edit moves it.
+    """
+    project = _project(empty_api)
+    run = _create(empty_api, project, plan={"prompt": "a rooftop at dawn"})
+
+    before = empty_api.get(f"/api/runs/{run['id']}/payload").get_json()
+    assert before["request"]["prompt"] == "a rooftop at dawn"
+
+    empty_api.patch(f"/api/runs/{run['id']}/plan", json={"plan": {"prompt": "a rooftop at dusk"}})
+
+    after = empty_api.get(f"/api/runs/{run['id']}/payload").get_json()
+    assert after["request"]["prompt"] == "a rooftop at dusk", "the preview is rebuilt, not stored"
+
+
+def test_the_payload_preview_is_refused_once_the_run_has_been_submitted(empty_api):
+    """Once something has gone out, the honest answer is `request.json`.
+
+    Computing a fresh payload for a submitted run would invite comparing it
+    against one the provider was never given — the same dishonesty `_draftable`
+    refuses a plan edit to prevent.
+    """
+    project = _project(empty_api)
+    run = _create(empty_api, project, plan={"prompt": "a rooftop at dawn"})
+    _approve(empty_api, run)
+    empty_api.patch(f"/api/runs/{run['id']}", json={"status": "pending"})
+
+    resp = empty_api.get(f"/api/runs/{run['id']}/payload")
+    assert resp.status_code == 409
+
+
 def test_approving_then_editing_the_plan_refuses_the_submission(empty_api):
     """**Approve-then-edit is the failure this whole mechanism exists to catch.**
 

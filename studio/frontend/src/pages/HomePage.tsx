@@ -3,7 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { Button, Spinner, Text } from "@ansavva/design-system";
 
 import { MediaTile } from "../components/browse/MediaTile";
-import { CharactersSection, ProjectsSection } from "../components/entity/EntitySections";
+import {
+  CharactersSection,
+  ProjectsSection,
+} from "../components/entity/EntitySections";
 import { useReel } from "../hooks/useReel";
 import { feedPath, folderPath, objectPath } from "../utils/location";
 import { LoadError } from "../components/common/LoadError";
@@ -54,15 +57,22 @@ export function HomePage() {
       <CharactersSection />
       <ProjectsSection />
 
-      <section className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+      <section className="flex flex-col gap-3">
+        {/* Same ruled heading as the two `EntitySections` above it — this
+            section is open-coded because its action pair is its own, not
+            because it is a different kind of thing. */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2">
           <Text variant="title">Recent</Text>
           <div className="flex items-center gap-2">
             {/* The library's file tree. It is in the header now as well — this
                 stays because it is the thing the tiles beside it come from, and
                 a section that shows twelve of something wants a way to see the
                 rest. */}
-            <Button intent="ghost" size="sm" onClick={() => navigate(folderPath(null))}>
+            <Button
+              intent="secondary"
+              size="sm"
+              onClick={() => navigate(folderPath(null))}
+            >
               Browse files
             </Button>
             {/* A navigation, like every other reel in the app now — the
@@ -78,7 +88,9 @@ export function HomePage() {
           </div>
         </div>
 
-        {reel.loading && recent.length === 0 && <Spinner size="md" label="Loading recent media" />}
+        {reel.loading && recent.length === 0 && (
+          <Spinner size="md" label="Loading recent media" />
+        )}
         {reel.error && <LoadError what="recent media" message={reel.error} />}
 
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
@@ -95,13 +107,15 @@ export function HomePage() {
               file={file}
               selected={false}
               selectionActive={false}
-              onOpen={() => navigate(objectPath(file.id, { in: "recursive", id: null }))}
+              onOpen={() =>
+                navigate(objectPath(file.id, { in: "recursive", id: null }))
+              }
+              to={objectPath(file.id, { in: "recursive", id: null })}
               onToggleSelect={() => undefined}
             />
           ))}
         </div>
       </section>
-
     </>
   );
 }

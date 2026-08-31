@@ -40,13 +40,13 @@ export function FolderCard({ name, prefix, onOpen, onRename, onMove, onDelete }:
     // is `basis-full`, so it takes a line of its own instead of being squeezed
     // into what is left of this one beside the name.
     <div
-      className="flex w-full flex-wrap items-center gap-2 rounded-md border border-line bg-card pr-2
+      className="flex w-full flex-wrap items-center gap-2 rounded-none border border-line bg-card pr-2
                  transition-colors hover:bg-surface-alt"
     >
       <button
         type="button"
         onClick={onOpen}
-        className="flex min-w-0 flex-1 items-center gap-3 rounded-md px-3 py-2.5 text-left
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-none px-3 py-2.5 text-left
                    focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
       >
         <FolderIcon className="size-5 shrink-0 fill-none stroke-muted stroke-[1.5]" />
@@ -55,8 +55,10 @@ export function FolderCard({ name, prefix, onOpen, onRename, onMove, onDelete }:
           <Text variant="body" weight="medium" className="truncate">
             {title}
           </Text>
+          {/* A run folder's subtitle IS its timestamp — `describeFolder` splits
+              it out of the name — so it is metadata by construction. */}
           {subtitle && (
-            <Text variant="caption" tone="muted" className="truncate tabular-nums">
+            <Text variant="caption" tone="muted" className="truncate font-mono tabular-nums">
               {subtitle}
             </Text>
           )}

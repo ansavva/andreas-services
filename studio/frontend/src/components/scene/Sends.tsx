@@ -41,7 +41,8 @@ export function Sends({
 }) {
   const panels = shot.panels ?? [];
   const withRole = (role: PanelRole) => panels.filter((p) => p.role === role);
-  const handoff = shot.continues !== false && shot.opens_on?.node ? shot.opens_on : null;
+  const handoff =
+    shot.continues !== false && shot.opens_on?.node ? shot.opens_on : null;
   const startPanel = withRole("start")[0];
   const endPanel = withRole("end")[0];
   // A handoff outranks a start panel and demotes it to a reference — the only
@@ -52,7 +53,7 @@ export function Sends({
   const assets = shot.motion?.reference_assets ?? [];
 
   return (
-    <section className="flex flex-col gap-3 rounded-md border border-line p-2">
+    <section className="flex flex-col gap-3 rounded-none border border-line p-2">
       <SendRow label="Start">
         {handoff?.frame ? (
           <Frame
@@ -109,9 +110,17 @@ export function Sends({
           />
         ))}
         {assets.map((a) => (
-          <Frame key={a.node} hint="reference" title={a.name} asset={a} onOpen={onView} />
+          <Frame
+            key={a.node}
+            hint="reference"
+            title={a.name}
+            asset={a}
+            onOpen={onView}
+          />
         ))}
-        {references.length === 0 && assets.length === 0 && <Slot note="scene frames" />}
+        {references.length === 0 && assets.length === 0 && (
+          <Slot note="scene frames" />
+        )}
       </SendRow>
 
       {samples.length > 0 && (
@@ -154,8 +163,12 @@ export function isBracketed(shots: Shot[]): boolean {
  */
 export function Slot({ note }: { note: string }) {
   return (
+    // `w-24`, matching `Frame`. A slot, a rendered panel and an unrendered one
+    // are the same thing in three states — an image position on the board — and
+    // this drew one of them four pixels narrower, so a row of Start /
+    // References / Samples stepped in and out as panels rendered.
     <span
-      className="flex aspect-[3/4] w-20 shrink-0 items-center justify-center rounded-md
+      className="flex aspect-[3/4] w-24 shrink-0 items-center justify-center rounded-none
                  border border-dashed border-line bg-surface-alt p-1 text-center"
     >
       <Text variant="caption" tone="muted">
@@ -180,7 +193,13 @@ function panelHint(panel: Panel, demoted: boolean): string | undefined {
   return undefined;
 }
 
-export function SendRow({ label, children }: { label: string; children: React.ReactNode }) {
+export function SendRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-1">
       <Text variant="caption" tone="muted">
@@ -238,13 +257,13 @@ export function Frame({
       name={asset.name}
       isVideo={isVideo}
       aspect="portrait"
-      className="w-24 rounded-md border border-line"
+      className="w-24 shrink-0 rounded-none border border-line"
     />
   ) : (
     // A planned-but-unrendered panel is the normal state of a board, not an
     // error, so it draws as a dashed frame carrying its prompt.
     <span
-      className="flex aspect-[3/4] w-24 items-center justify-center overflow-hidden rounded-md
+      className="flex aspect-[3/4] w-24 shrink-0 items-center justify-center overflow-hidden rounded-none
                  border border-dashed border-line bg-surface-alt p-1 text-center"
     >
       <Text variant="caption" tone="muted" className="line-clamp-4">
@@ -254,7 +273,7 @@ export function Frame({
   );
 
   return (
-    <span className="flex w-24 flex-col gap-1">
+    <span className="flex w-24 shrink-0 flex-col gap-1">
       {asset?.url ? (
         <button
           type="button"
@@ -274,11 +293,15 @@ export function Frame({
               {label}
             </Text>
           )}
-          {hint && <Badge intent={hint === "stale" ? "warning" : "neutral"}>{hint}</Badge>}
+          {hint && (
+            <Badge intent={hint === "stale" ? "warning" : "neutral"}>
+              {hint}
+            </Badge>
+          )}
         </span>
       )}
       {run && onOpenRun && (
-        <Button intent="ghost" size="sm" onClick={() => onOpenRun(run)}>
+        <Button intent="secondary" size="sm" onClick={() => onOpenRun(run)}>
           Run
         </Button>
       )}

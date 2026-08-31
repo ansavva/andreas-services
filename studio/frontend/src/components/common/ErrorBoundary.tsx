@@ -87,7 +87,7 @@ export class ErrorBoundary extends Component<
             What broke
           </Text>
           <pre
-            className="max-h-64 overflow-auto rounded-md bg-surface-alt p-2 text-xs
+            className="max-h-64 overflow-auto rounded-none bg-surface-alt p-2 text-xs
                        whitespace-pre-wrap text-muted"
           >
             {error.message || String(error)}
@@ -98,7 +98,7 @@ export class ErrorBoundary extends Component<
           <Text variant="caption" tone="muted">
             Where
           </Text>
-          <pre className="overflow-x-auto rounded-md bg-surface-alt p-2 text-xs text-muted">
+          <pre className="overflow-x-auto rounded-none bg-surface-alt p-2 text-xs text-muted">
             {window.location.pathname}
           </pre>
         </div>
@@ -110,7 +110,7 @@ export class ErrorBoundary extends Component<
           <Button intent="primary" size="sm" onClick={() => window.location.reload()}>
             Reload
           </Button>
-          <Button intent="ghost" size="sm" onClick={this.goBack}>
+          <Button intent="secondary" size="sm" onClick={this.goBack}>
             Go back
           </Button>
         </div>

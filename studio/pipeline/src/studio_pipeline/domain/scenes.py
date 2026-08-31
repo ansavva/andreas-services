@@ -149,7 +149,12 @@ VIDEO_EXT = R.VID_EXTS
 
 #: Folders inside a scene's own folder. Convention, resolved by name and created
 #: if absent — the scene record names one node (`folder`) and no map of these.
-SHOTS_FOLDER = "shots"
+#:
+#: **`shots/` is not here, and its absence is the point.** It holds the per-shot
+#: copies an assemble leaves behind, and an assemble is a job on the render queue
+#: now — `services/render.py` names that folder and creates it. A constant kept
+#: on this side would be a second spelling of a name this package never writes,
+#: and the two could disagree with nothing to notice.
 OUTPUT_FOLDER = "output"
 REVIEW_FOLDER = "review"
 STORYBOARD_FOLDER = "storyboard"

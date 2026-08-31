@@ -25,11 +25,14 @@ interface Props {
  * and it does it. That is a deliberate choice over the usual dialog, for two
  * reasons.
  *
- * The first is that a portalled dialog is not painted while a `<video>` is in
- * native fullscreen, which is exactly where deleting a clip is most natural —
- * the same constraint that keeps `CopyKeyButton`'s feedback inline.
+ * **It had two reasons and one of them has expired; the button stays.** The
+ * first was that a portalled dialog is not painted while a `<video>` is in
+ * native fullscreen, which is exactly where deleting a clip is most natural.
+ * `Dialog.Root`'s `container` (design system 0.16.0) answers that — the object
+ * screen's rename is a dialog now — so it is no longer an argument for
+ * anything.
  *
- * The second is that a modal trains the wrong reflex. A dialog that always
+ * The second is untouched by it: a modal trains the wrong reflex. A dialog that always
  * appears in the same place gets a second click aimed at it before it renders;
  * a button that *changes what it says where your finger already is* cannot be
  * dismissed without reading it. The arming is not a formality — it expires.
@@ -118,7 +121,7 @@ export function ConfirmDeleteButton({
       onClick={press}
       onBlur={disarm}
       onKeyDown={(event) => {
-        // Only while armed, so the reel's own Escape handler is untouched the
+        // Only while armed, so the page's own Escape handler is untouched the
         // rest of the time.
         if (event.key === "Escape" && phase === "armed") {
           event.stopPropagation();
@@ -214,7 +217,9 @@ export function ConfirmDeleteButton({
  */
 const toneStyles: Record<Tone, string> = {
   row: "p-2 text-muted hover:bg-surface-alt hover:text-danger",
-  chrome: "p-2 text-white/80 hover:bg-white/15 hover:text-white",
+  // Over a media frame — the player's chrome row, which is a surface this
+  // button cannot see the colour of.
+  chrome: "p-2 text-neutral-12 hover:bg-neutral-a5 active:bg-neutral-a6",
   // Text at rest AND armed, unlike `bar` — but not the *same* text. This is a
   // page-level destroy — a project with its runs, a character with its
   // references — and a trash can in a page header reads as "delete something on
@@ -231,7 +236,7 @@ const toneStyles: Record<Tone, string> = {
 
 const armedStyles: Record<Tone, string> = {
   row: "p-2 bg-danger/15 text-danger",
-  chrome: "p-2 bg-danger/80 text-white",
+  chrome: "p-2 bg-danger/80 text-neutral-1",
   // Never reached: `page` always renders as text, so it takes the same inline
   // danger fill `bar` does when armed.
   page: "",

@@ -29,7 +29,11 @@ SIX CHECKS, and the two skill families are not held to the same one:
   3. no `aws …` or `boto3` anywhere — a skill cannot reach AWS
   4. no `<module>.py <subcommand>` survives in command position
   5. a `studio-media-*` skill names no module; a `studio-code-*` skill may, and
-     the modules it names must exist
+     the modules it names must exist — a bare `<name>.py` somewhere under
+     `pipeline/`, a `<dir>/<name>.py` anywhere under `studio/`. The second form
+     is checked because a code skill legitimately names the backend service
+     modules the pipeline's test fake loads, and matching those against
+     `pipeline/` alone passed them for the wrong reason.
   6. every relative link resolves
 
 Check 5 is why the families exist. Two media skills used to carry tables of every
@@ -57,6 +61,7 @@ all — `s3_convert --for` outlived its module by months for that reason.
 
 from __future__ import annotations
 
+import functools
 import pathlib
 import re
 import shlex
@@ -101,7 +106,15 @@ RETIRED_BARE = {"s3_convert": "convert", "build_prompt": "prompt",
 _STUDIO_CALL = re.compile(r"(?:^|`|\$ )studio ([a-z][\w-]*)(?:[ \t]+([^\s`'\"\\]+))?", re.M)
 _INLINE_CALL = re.compile(r"(?:`|\$ )studio ([a-z][\w-]*)(?:[ \t]+([^\s`'\"\\]+))?")
 _SCRIPT_CALL = re.compile(r"\b([a-z0-9_]+)\.py[ \t]+(\S+)")
-_MODULE_NAME = re.compile(r"\b[a-z0-9_]+\.py\b")
+# A BARE module basename — one written with no directory in front of it, which is
+# how the pipeline's own modules are named. A name reached by a path is matched by
+# `_PATHED_MODULE` below and checked against the half it actually lives in: the
+# two skills that name `services/storyboard.py` and `services/prompt.py` were
+# passing because files of those names happen to exist under `pipeline/` too, so
+# the check that was meant to catch a rotted name was reading the wrong tree.
+_MODULE_NAME = re.compile(r"(?<![/\w.])[a-z0-9_]+\.py\b")
+#: `<dir>/<name>.py`, and `backend/` is the one other half a code skill may name.
+_PATHED_MODULE = re.compile(r"\b((?:[a-z0-9_]+/)+[a-z0-9_]+\.py)\b")
 _LINK = re.compile(r"\]\((\.\.?/[^)#]*)\)")
 
 
@@ -361,16 +374,50 @@ def check_no_script_era(text: str) -> list[str]:
     return out
 
 
+@functools.lru_cache(maxsize=1)
+def _studio_sources() -> frozenset[str]:
+    """Every `.py` path in `studio/`, as posix strings, `.venv` and friends out.
+
+    Built once. `rglob` per name walked the virtualenvs and `node_modules` on
+    every call, which turned a linter that runs on pre-commit into a
+    several-second pause.
+    """
+    skip = {".venv", "node_modules", "__pycache__", ".git", "node_modules"}
+    found = set()
+    for path in studio_pipeline.STUDIO_DIR.rglob("*.py"):
+        if skip & set(path.parts):
+            continue
+        found.add(path.as_posix())
+    return frozenset(found)
+
+
+def _pathed_exists(rel: str) -> bool:
+    """Is `<dir>/<name>.py` a real file in either half of studio?
+
+    Matched by suffix rather than resolved from a root, because a skill writes the
+    tail a reader needs — `services/prompt.py`, not
+    `backend/studio_core/services/prompt.py` — and both halves are legitimate for
+    a code skill to name: the fake API in `pipeline/tests/` loads three of the
+    backend's own service modules rather than restating them, so they are as
+    load-bearing to this package as anything under `src/`.
+    """
+    tail = "/" + rel
+    return any(path.endswith(tail) for path in _studio_sources())
+
+
 def check_module_names(text: str, family: str) -> list[str]:
     named = sorted(set(_MODULE_NAME.findall(text)))
+    pathed = sorted(set(_PATHED_MODULE.findall(text)))
     bare = sorted(b for b in RETIRED_BARE if re.search(rf"`{re.escape(b)}[ `]", text))
     if family == "code":
         # A code skill may name modules — they just have to be real.
         return [f"{m} does not exist under pipeline/"
                 for m in named if not any(PIPELINE.rglob(m))] + [
+               f"{m} names no file in studio/" for m in pathed
+               if not _pathed_exists(m)] + [
                f"`{b}` is retired" + (f"; use `studio {RETIRED_BARE[b]}`" if RETIRED_BARE[b] else "")
                for b in bare]
-    return [f"names implementation: {m}" for m in named + bare]
+    return [f"names implementation: {m}" for m in named + pathed + bare]
 
 
 def check_links(skill: pathlib.Path, text: str) -> list[str]:
@@ -383,6 +430,27 @@ def check_links(skill: pathlib.Path, text: str) -> list[str]:
 _SKILL_REF = re.compile(r"\bstudio-(?:media|code)-[a-z0-9][a-z0-9-]*(?<!-)")
 _SKIP_DIRS = {".venv", "node_modules", "dist", ".git", "__pycache__", ".pytest_cache"}
 _SKIP_SUFFIX = {".png", ".jpg", ".jpeg", ".webp", ".mp4", ".ico", ".lock", ".pyc"}
+
+
+def _is_test_fixture(path) -> bool:
+    """A test file, which INVENTS names rather than referring to them.
+
+    A run's `engine` is a skill name, so a test that authors a run has to put
+    something in that field — and an invented one is the honest thing to put,
+    because naming a real skill would tie a UI test to a registry entry somebody
+    may retire. Scanning those files reported three such fixtures as stale
+    references to skills that had never existed.
+
+    (This docstring may not spell one of those invented names either: the scan
+    reads every file under `studio/`, including this one, so an example here
+    would report itself. It did.)
+
+    This scan exists to catch the opposite case: a RENAMED family leaving dead
+    names in `.env.example` and `infra/README.md`, files nothing thought to look
+    at. A fixture is not that, and excluding it costs nothing the check was for.
+    """
+    return any(part.endswith((".test.tsx", ".test.ts", ".spec.ts", ".spec.tsx"))
+               for part in (path.name,))
 
 
 def check_references(skills: set[str]) -> dict[str, list[str]]:
@@ -404,6 +472,7 @@ def check_references(skills: set[str]) -> dict[str, list[str]]:
             f for f in base.rglob("*")
             if f.is_file() and f.suffix not in _SKIP_SUFFIX
             and not _SKIP_DIRS & set(f.parts)
+            and not _is_test_fixture(f)
         ]
         for f in files:
             try:

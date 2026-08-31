@@ -27,7 +27,7 @@ export function LoadError({ what, message, onRetry }: Props) {
       <Alert.Description>{message}</Alert.Description>
       {onRetry && (
         <div className="mt-2">
-          <Button intent="ghost" size="sm" onClick={onRetry}>
+          <Button intent="secondary" size="sm" onClick={onRetry}>
             Try again
           </Button>
         </div>

@@ -80,12 +80,20 @@ OUTPUT_FOLDER = "output"
 #
 # The angle images are shared material that belongs to the library rather than to
 # any entity, and they are ordinary nodes now — which is what retired
-# `GET /api/asset?key=`. But nothing in this service creates or resolves that
-# folder: the angle images come from the repo, so the push is `studio config sync`,
-# and the folder is made by the same `POST /api/nodes` calls any other client
-# would use. A constant here would be a name the API knows and never applies,
-# which is what the first version of this was — it sat unused while a shoot
-# refused every angle image for want of a row.
+# `GET /api/asset?key=`. Nothing in this service CREATES that folder: the angle
+# images come from the repo, so the push is `studio config sync`, and the folder
+# is made by the same `POST /api/nodes` calls any other client would use. A
+# constant here would be a name the API knows and never applies, which is what
+# the first version of this was — it sat unused while a shoot refused every
+# angle image for want of a row.
+#
+# **This used to say the service never RESOLVES it either, and that half stopped
+# being true when the turnaround moved here.** `routes/turnaround.py` walks the
+# name path an angle's `angle_image` holds, because the spec is rows now and a
+# body angle still binds a guide. It walks whatever path the row gives it rather
+# than composing one from a prefix — so the reason for the absence is intact and
+# stronger: there is no place left that would want the constant, because nothing
+# builds that path at all, it is read.
 
 
 def folder_under(parent_id: str, name: str) -> dict:

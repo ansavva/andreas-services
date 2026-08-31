@@ -73,14 +73,17 @@ ORDER_GAP = 1000
 def _backend_service(name: str):
     """A backend `services/<name>.py`, loaded by path. **Not a copy of it.**
 
-    Two modules are shared this way — `storyboard` and `prompt` — and both are
-    written to import neither Flask nor boto3 so that a unit test needs neither.
-    What they hold is judgement the API now owns: whether a plan is coherent,
-    whether a prompt will render well. A fake that approximated either would let
-    the CLI's tests pass against answers the real service does not give, which is
-    the failure this fake exists to prevent. `_plan_digest` above is the
-    cautionary case — a second implementation with a comment admitting nothing
-    holds the two together.
+    Four modules are shared this way — `storyboard`, `prompt`, `digest` and
+    `reference` — and all four are written to import neither Flask nor boto3 so
+    that a unit test needs neither. What they hold is the API's own answers: whether a plan
+    is coherent, whether a prompt will render well, and what a person's approval
+    was an approval OF. A fake that approximated any of them would let the CLI's
+    tests pass against answers the real service does not give, which is the
+    failure this fake exists to prevent.
+
+    **`digest` is the third because it used to be a copy.** It was unreachable
+    while it lived in `catalog.py`, which imports boto3; moving it into a module
+    of its own is what let this file stop restating it.
 
     Imported through `backend/` on `sys.path` rather than by file path, because
     `prompt` reads the registry and a path-loaded module cannot resolve
@@ -106,8 +109,7 @@ def _storyboard():
     Normalising a plan, validating it and deriving a shot's status are the API's
     now, so a fake that did not do them would let the CLI's tests pass against
     shapes the real service refuses — which is the failure this fake exists to
-    prevent. `_plan_digest` above is the cautionary case: a second implementation
-    with a comment admitting nothing holds the two together.
+    prevent.
 
     Loaded from the file rather than imported as a package because the pipeline
     does not depend on the backend and must not start to. `services/storyboard.py`
@@ -152,38 +154,26 @@ RUN_STATUSES = frozenset({"draft", "approved", "pending", "running", "succeeded"
 
 
 def _plan_digest(plan, sends) -> str:
-    """A hash over what a person approves: the plan AND the ordered images.
+    """The BACKEND's digest, loaded rather than restated.
 
-    **A second implementation of `catalog.plan_digest`, and it has to agree with
-    it.** Nothing can hold the two together automatically — the pipeline does not
-    import the backend, which is the same reason `derive.extension` is a copy of
-    `keys.extension` — so the shape is stated in both places and the integration
-    suite is what actually exercises the real one.
+    **This was the cautionary case in this file and is no longer one.** It was a
+    second implementation of `catalog.plan_digest` whose own comment admitted
+    nothing held the two together — and `routes/runs.py` records that this hash
+    has had three implementations in the repository, one of which silently
+    disagreed. A digest that disagrees does not produce a wrong answer; it
+    produces every approval failing, or one silently passing.
 
-    What it hashes is the reason it exists: the sends by `(field, role, node)` in
-    order, so reordering two references is a real edit, and `source` excluded, so
-    describing an image's provenance more accurately later does not void an
-    approval nobody's payload changed.
+    What made it a copy was reachability, not judgement: it lived in
+    `catalog.py`, which imports boto3, so a unit suite could not load it. It is
+    `services/digest.py` now — `hashlib`, `json` and `decimal`, nothing else —
+    and is loaded the same way `storyboard` and `prompt` are.
     """
-    payload = {
-        "plan": plan or {},
-        "sends": [{"field": s.get("field"), "role": s.get("role"),
-                   "node": s.get("node")} for s in sends or []],
-    }
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"),
-                         ensure_ascii=False, default=str)
-    return "sha256:" + hashlib.sha256(encoded.encode()).hexdigest()
+    return _backend_service("digest").plan_digest(plan, sends)
 
 
 def _fingerprint(model, plan, sends) -> str:
-    """`catalog.submission_fingerprint`, restated for the same reason as above.
-
-    Derived from `_plan_digest` rather than hashed independently, which is what
-    the service does — so if the two digests agree, these agree too, and there
-    is one thing to keep in step rather than two.
-    """
-    material = f"{model or ''}\n{_plan_digest(plan, sends)}"
-    return "sha256:" + hashlib.sha256(material.encode()).hexdigest()[:32]
+    """`catalog.submission_fingerprint`, from the same module for the same reason."""
+    return _backend_service("digest").submission_fingerprint(model, plan, sends)
 
 
 def _placeholder_image() -> bytes:
@@ -2205,11 +2195,16 @@ class FakeApi:
 
         made = []
         for angle in angles:
-            plan = {"version": 1, "origin": "authored",
-                    # Assembled by the SERVICE in the real thing. Substituting the
-                    # blocks here is enough for the CLI's job, which is to print
-                    # what came back rather than to compose it.
-                    "prompt": angle["prompt"].format(**self.spec_blocks),
+            # **The BACKEND's assembler, loaded rather than restated** — the same
+            # arrangement `digest` is on, and for the reason this file's own
+            # cautionary note gives: a fake that approximates the answer lets the
+            # CLI's tests pass against words the real service does not produce.
+            # `services/reference.py` imports `string` and `errors`, nothing else.
+            character = self._entity(self.characters, character_id, "character")
+            prompt = _backend_service("reference").assemble(
+                angle, self.spec_blocks, character.get("profile") or {},
+                identity_positions=list(range(1, len(body.get("identity") or []) + 1)))
+            plan = {"version": 1, "origin": "authored", "prompt": prompt,
                     "params": {"aspect_ratio": "2:3", **(body.get("extra") or {})}}
             entry = {"angle": angle["id"], "plan": plan,
                      "model": body.get("model") or "openai/gpt-image-2",

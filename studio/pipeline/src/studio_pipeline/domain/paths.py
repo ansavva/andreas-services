@@ -120,16 +120,15 @@ def join(*parts: str) -> str:
 # ── shared material: the last raw keys ──────────────────────────────────────
 
 def config_root() -> str:
+    """The `config/` prefix with its separator — what an angle image's path must
+    start with. A caller writing `P.CONFIG + "/"` is spelling it a second time,
+    which is the drift this exists to prevent.
+    """
     return CONFIG + "/"
 
 
 def config_prefix(*parts: str) -> str:
     return join(CONFIG, *parts)
-
-
-def config_key(*parts: str) -> str:
-    """SHARED. Key-addressed, because it has no catalog node. See the docstring."""
-    return config_prefix(*parts)
 
 
 def angle_prefix(group: str) -> str:

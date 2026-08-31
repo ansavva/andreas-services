@@ -205,12 +205,15 @@ studio/pipeline/
         │
         ├── adapters/              THE OUTSIDE WORLD — everything with a side effect
         │   ├── store.py           the media store, by path, through the API
+        │   ├── entities.py        the entity routes — the ONLY place a route
+        │   │                      spelling lives, and the wire surface a test
+        │   │                      reads back out of it
         │   ├── api.py             one transport: token, refresh, library header
-        │   ├── auth.py            Cognito sign-in + the token cache
-        │   └── s3.py              the AWS-login bridge — almost gone, see below
-        │                          (`replicate.py` and `ffmpeg.py` are DELETED —
-        │                           the provider client and the encoder both
-        │                           moved into the API; see below)
+        │   └── auth.py            Cognito sign-in + the token cache
+        │                          (`s3.py`, `ddb.py`, `replicate.py` and
+        │                           `ffmpeg.py` are all DELETED — the AWS
+        │                           clients, the provider client and the encoder
+        │                           left with the work that needed them)
         │
         ├── session/               who you are, and where you are pointing
         │   ├── commands.py        `studio login` / `logout` / `whoami`
@@ -221,7 +224,7 @@ studio/pipeline/
         │   ├── runs.py  scenes.py  storyboard.py  movies.py  frames.py
         │   ├── renders.py         ask the service to encode; wait; fetch
         │   ├── projects.py
-        │   ├── characters/       base.py profile.py refs.py pools.py rename.py cli.py
+        │   ├── characters/       base.py profile.py refs.py pools.py cli.py
         │   ├── curate.py  contact_sheet.py
         │   ├── phrasebook.py  prompt.py
         │   ├── spec.py            move the reference spec between stacks
@@ -237,8 +240,39 @@ studio/pipeline/
         │   │                     that bills is the API's (#536)
         │
         └── objects/               raw object access
-            └── upload.py  download.py  presign.py  convert.py
+            └── upload.py  download.py  presign.py  describe.py
+                convert.py  crop.py  config_sync.py
 ```
+
+### How big it is, and what the audit actually moved
+
+`src/studio_pipeline/` held **19,368** lines when the CLI→API audit opened
+(#531–#538) and holds **13,899** now — a third of it gone. The shape of the
+curve is worth more than the endpoints:
+
+| After | Lines | |
+|---|---|---|
+| before #531 | 19,368 | both AWS adapters, `maintenance/`, `engine/ledger.py`, plan validation, prompt authoring, dedupe downloads |
+| #535 | 13,812 | −5,556. Everything that needed no new infrastructure had moved |
+| #536 (generation → the API) | 13,833 | **+21** |
+| #537 (ffmpeg and Pillow → a worker) | 13,902 | **+69** |
+| #538 | 13,899 | −3 |
+
+**The last three rows are the finding.** #536 deleted the provider client and
+#537 deleted ~1,360 lines of media processing, and the package got *bigger*: a
+thin client that says why it is thin costs more lines than the implementation it
+replaced, because the reasoning is what a reader needs and the implementation was
+self-evident. Judge the move by `pyproject.toml` instead — `pillow`,
+`imageio-ffmpeg` and the Replicate token are gone, and `boto3` survives for one
+caller.
+
+It also means **#538 found far less to delete than it was written expecting.**
+That issue predicted `engine/` minus the registry would be callerless once #536
+and #537 landed; both landed as in-place rewrites, so what they left behind was
+five adapter wrappers, a handful of constants and one duplicated hash — not four
+thousand lines. The rest of `engine/` is the half that faces a person, and hard
+rule #2 is why it stays: `gather`, `preflight`, `render` and `draft` bill nothing
+and belong where somebody can read the payload.
 
 **`maintenance/` was a seventh subpackage and is gone.** It held the AWS-direct
 one-shots — `catalog_check.py`, `catalog_gc.py`, `backfill_plans.py`,
@@ -768,8 +802,30 @@ names rotted into references to files that no longer existed. A doc that names a
 module has to be maintained alongside the code — keeping it here, next to this
 paragraph, is what makes that possible.
 
-The package is `studio/pipeline/src/studio_pipeline/`, in six subpackages plus
-three modules at its root.
+The package is `studio/pipeline/src/studio_pipeline/`, in five subpackages plus
+three modules at its root. It was six while `maintenance/` existed.
+
+### What is still local, and why
+
+**19,368 lines before #531; 13,899 after #538.** Seven PRs moved everything that
+could move, and #538 was written expecting to delete `engine/` whole. It did not,
+and the reason is worth stating once so it is not re-derived every six months.
+
+| Still here | Why it cannot be a route |
+|---|---|
+| `profiles.py`, `adapters/auth.py` | How the CLI **finds** the API. `profiles.aws_session()` is the one boto3 call left in the package, and a call that locates a service cannot go through it. |
+| `engine/submit.py`'s authoring half, `engine/board.py`, `engine/turnaround.py`, `engine/runner.py` | **Hard rule #2.** They gather, preflight, render the two documents a person reads, and record a draft. The half that spends is `POST /api/runs/<id>/submit` and has been since #536. A service has nobody in front of it; the half only a person can perform stays where the person is. |
+| `engine/refs.py`, `engine/schema.py` | Already thin — a selection is `GET /api/characters/<id>/selection` and a schema is `GET /api/models/<name>/schema`. What is left is the message a refusal needs, which a 409 body cannot carry. |
+| `engine/registry_file.py`, `engine/add_model.py`'s inference | They edit a **committed file**. A write route would put a reviewed repo change behind an HTTP call. |
+| `domain/storyboard.py`'s role and frame helpers | Read by `board.py` on material it has just built and **not yet written** — the one case a served derivation cannot answer. |
+| `domain/renders.py`, and the resolution in front of every render job | `latest`, `#N`, "that scene is not cut yet" are refusals with an action in them. At the far end of a queue they arrive twenty seconds later as a failed row. |
+| the local-file halves of `upload`, `download`, `describe`, `presign`, `prompt`, `character edit`, `config sync` | A service cannot see this machine's disk. `--src` on `contact-sheet` is refused for exactly this reason. |
+
+What #538 did find was the residue seven migrations leave: five adapter wrappers
+for routes with no caller left (a claim about the wire surface that nothing
+checks), four constants naming things this package no longer writes, and a plan
+digest copied into the pipeline's test fake because the original was locked
+inside a module that imports boto3. All of those are gone.
 
 **At the root.** `cli.py` is wiring and nothing else. `errors.py` turns a domain
 failure into `error: …` and exit 1. **`profiles.py` decides which stack an
@@ -783,13 +839,14 @@ or projects.
 
 | Module | Purpose |
 |---|---|
-| `store.py` | **The media store, addressed by path and reached through the API.** Resolve a name path to a node, list its files in natural order, read, write, upload, copy, presign, and ensure a folder exists. No bucket name, no credentials — bytes travel to S3 directly on presigned URLs the API signs, which is what keeps a video out of the Lambda's request limit. `s3.py` is being retired into this. |
+| `store.py` | **The media store, addressed by path and reached through the API.** Resolve a name path to a node, list its files in natural order, read, write, upload, copy, presign, and ensure a folder exists. No bucket name, no credentials — bytes travel to S3 directly on presigned URLs the API signs, which is what keeps a video out of the Lambda's request limit. **There is no `set_node_text`**: nothing here writes a text node, and a wrapper for a route the CLI never calls is a claim about the wire surface that nothing checks. |
+| `entities.py` | **The entity routes — the only place in the package that knows one's spelling.** Characters, projects, runs, scenes, movies, models, renders, images and the phrasebook. `test_the_route_table_is_the_whole_wire_surface` reads the `/api/…` literals straight out of this file and `store.py` and asserts them against a table in both directions, which is why a wrapper with no caller has to go rather than be left for later: it would put a route in that table that nobody reconciles. |
 | `api.py` | One transport for every call the CLI makes: bearer token, refresh-on-401, library header, error mapping. Decided once so no caller re-decides it. |
 | `auth.py` | The Cognito sign-in behind `studio login`, and the token cache it writes — **keyed by profile**, so a prod session and a dev session coexist instead of one overwriting the other for every shell on the machine. Its `DEFAULT_API_URL` is deleted: unset is a refusal, not a silent connection to production. |
 | `s3.py` | **Deleted.** It was the boto3 session every AWS-direct caller asked for, and its callers — `adapters/ddb.py` and the three `maintenance/` modules that reconciled the bucket against the table — are deleted too. The one thing that outlived it is a plain boto3 session for `profile sync`, which lives in `profiles.py` as `aws_session()` because that is its only caller. |
 | `ddb.py` | **Deleted**, with the six `maintenance/` commands that were its only callers. The marshalling it held — floats to `Decimal` on the way in, `Decimal` to int recursively on the way out, each paid for by a real failure — travelled to `scripts/dev_seed/dev_seed/aws.py`, which is the one tool left that writes DynamoDB directly. |
 | `replicate.py` | **Deleted.** It was the whole billing surface of studio — six functions, and its docstring said so. Generation moved into the API (#536), so the one paid call in the repository is `backend/studio_core/clients/replicate.create_prediction`, reached through `POST /api/runs/<id>/submit`. What is left on this side is `engine/submit.py`'s authoring half and `wait_for`, which watches a run row and can be interrupted without losing a generation. **Nothing in this package holds `REPLICATE_API_TOKEN` any more**, including `studio models show`, `studio models refresh` and `studio add-model` — all three read a live schema through `GET /api/models/<name>/schema`. |
-| `ffmpeg.py` | Probe, stitch, frame grab, contact grid. A scene and a movie join their inputs by identical rules because they call the same function. ffmpeg ships in the wheel; no system install. |
+| `ffmpeg.py` | **Deleted.** Probe, stitch, frame grab and contact grid moved into a render worker running a second container image (#537), and `pillow` and `imageio-ffmpeg` left `pyproject.toml` with them. `domain/renders.py` is this side of that seam: resolve the inputs to node ids, post one job, poll the row. The rule that had to survive the port did — a stitch stream-copies when the inputs agree, re-encodes when they do not, and RECORDS which it did. |
 
 **`session/` — who you are, and where you are pointing.** `commands.py` is
 `studio login` / `logout` / `whoami`; everything the CLI knows about identity it
@@ -813,14 +870,13 @@ into a config file by a person.
 | `paths.py` | **Slug rules, the starting layout names, and address joining — and nothing else.** It was 334 lines of key construction whose only job was making twelve modules spell `characters/<slug>/…` identically, and it is a name checker now. An entity record names its own nodes, so nothing builds a path to assert where something must be. |
 | `projects.py` | Project CRUD through the entity routes, plus the **input pool**. `require_project()` turns a missing `--project` into an error that lists the real options. Creating a project is one call: the API writes the record, the slug claim, the root folder and the starting subfolders in one transaction, so there is no half-made project to recover from. |
 | `runs.py` | The shared **run store** every engine records into: the envelope, output uploads, runref resolution for chaining, `find --character` across projects — which is one API query now rather than a walk over every project's every run folder. It refuses a URL-shaped binding, and so does the API; keeping the check here as well is what makes a `--dry-run` refuse before anything is sent. |
-| `scenes.py` | The **scene store**: a piece planned, shot and cut, under `projects/<p>/scenes/<slug>/`. Owns the manifest, `assemble`, `handoff`, and the read-only half of the CLI. Writing a manifest ensures the scene's folder — `new_scene` writes one for a scene that has never existed, and the catalog has no folder until something asks for it. |
-| `storyboard.py` | **The plan document**, pure data: what a shot's panels mean, which one is the start frame once the chain has spoken, how a revision merges onto work already paid for. No S3, no models — so the rules that decide what a shot sends are testable on their own. |
+| `scenes.py` | The **scene store**: a piece planned, shot and cut. Owns the shot rows, the read-only half of the CLI, and the resolution `assemble` and `handoff` do before they hand off — both are render jobs now, so what is on this side is turning `latest`, `#N` and "that scene is not cut yet" into node ids and a refusal a person can act on. `new_scene` writes a scene that has never existed; the catalog has no folder until something asks for one. |
+| `storyboard.py` | **What is left of the plan document on this side.** Normalising an authored plan, validating it, merging a revision onto rendered work and deriving every status are `backend/studio_core/services/storyboard.py` — they were derivations run on one client and stored, so anything else writing a shot left the SPA drawing a stale answer. What stays: reading a plan off local disk, refusing a `<project>/<slug>` before a request is spent on it, and the role and frame helpers `engine/board.py` needs **on material it has just built and not yet written** — the one case a served derivation cannot answer. Those follow `board.py` if it ever moves, and not before. |
 | `movies.py` | The **movie store**: scenes cut into one piece. The same shape one tier up, including the folders a cut needs. Copying a scene in is a read plus a write rather than a server-side `CopyObject`; see `store.copy` for why one blob under two rows is not on offer. |
 | `frames.py` | Stills out of a run's video — the handoff frame, and the contact grid that lets a clip be looked at before more money is spent on it. It resolves a runref to one video **node** and enqueues a render job; the clip is never downloaded here. Its `chain` store is for a sequence with no scene behind it; a planned scene derives its own frames from its shot rows. |
 | `renders.py` | **Asking the service to encode something, and waiting for it.** Enqueue, poll the `render-<uuid>` row, fetch the node it produced. `Ctrl-C` abandons a wait rather than the work, exactly as `engine/submit.wait_for` does — the job is being done elsewhere and the row is still there to read. Resolution stays on this side deliberately: `latest`, `#N`, "this run produced three videos, say which" are refusals with an action in them, and they belong in front of a person rather than at the far end of a queue. |
 | `characters/` | The character record, in four modules. `base` — names, pools, node helpers. `profile` — the bible: schema, and the `edit` local round trip whose conflict check is a `rev` sent with the write, so the API refuses a stale push itself. That was the S3 ETag, then the node's `updated_at`, and both were check-then-write with a gap; `rev` is compare-and-swap and closes it. `refs` — the `REF#` rows: attach, describe, order, regroup, detach, and the selection the API resolves. `pools` — corpus/seed/archive, material rather than identity. `cli` assembles the group; commands are `@click.command` and registered there, which is what keeps the package acyclic. **`rename.py` is gone** — a rename is one `PATCH`, because the slug is an attribute rather than a path segment. |
-| `curate.py` | The pool operations that go wrong by hand — `dedupe`, `groups`, `move`. **`renumber` and `regroup` are deleted**: order and group are attributes on a `REF#` row, so there are no holes to close and regrouping writes no object. `move` is the one worth knowing — when a byte-identical copy is already in the destination it deletes the source instead, which is the one path here that removes an image. |
-| `curate.py` | Pool maintenance — dedupe, move, groups. **`digest` is a dictionary read now**: the API records the MD5 of every object when it confirms the upload (S3 hands it back as the ETag of a single PUT), so comparing two images is comparing two served values. It used to download each same-size candidate over HTTPS, which made hashing a forty-image pool to find nothing forty downloads. |
+| `curate.py` | The pool operations that go wrong by hand — `dedupe`, `groups`, `move`. **`renumber` and `regroup` are deleted**: order and group are attributes on a `REF#` row, so there are no holes to close and regrouping writes no object. `move` is the one worth knowing — when a byte-identical copy is already in the destination it deletes the source instead, which is the one path here that removes an image. **`digest` is a dictionary read**: the API records the MD5 of every object when it confirms the upload (S3 hands it back as the ETag of a single PUT), so comparing two images is comparing two served values. It used to download each same-size candidate over HTTPS, which made hashing a forty-image pool to find nothing forty downloads. |
 | `prompt.py` | **Reading the object and printing the answer, and nothing else.** The rules — one camera move per shot, no bare "fast", no camera verbs in the action, the beat budget, the start-frame redundancy warning — are `backend/studio_core/services/prompt.py` and reachable at `POST /api/prompt`. They needed the registry and the phrasebook, both of which are the API's, and while they lived here nothing but `studio prompt` could run one of them: the SPA could offer no checking at all. 690 lines → 157. |
 | `phrasebook.py` | Per-model wording lists, as `LIB#`/`TERM#` rows. It was a YAML document in the bucket with no catalog node, which is why it was read by raw key and written by an overwrite that could not invent the file — so `phrasebook add` failed outright on a library that had never held one. A row has no such state: the first `add` writes the first term. |
 | `contact_sheet.py` | Labeled thumbnail grids over a character pool. It walks the pool **recursively**, like `characters/refs`: `reference` is the default and holds group folders rather than images, so a one-level listing would report the commonest invocation as an empty pool. Each tile's caption carries its group, because `face/<name>_1` and `body/<name>_1` share a basename. **The layout is a render job** — Pillow left this wheel with ffmpeg — and it is on the queue rather than being a synchronous route like `convert`, because what is unbounded here is N downloads where N is a character pool. `--src` is refused: a worker cannot see this machine's disk. |
@@ -834,9 +890,21 @@ and did not carry the payload, making a server-side comparison one
 72-image batch.
 
 Its own docstring named the fix: project the fingerprint onto the listing row and
-filter on it. `catalog.submission_fingerprint` derives one from `plan_digest` —
-which already hashes the plan and the ordered sends — plus the model, so there is
-no second hash to keep in step. `GET /api/runs?fingerprint=` is one query.
+filter on it. `submission_fingerprint` derives one from `plan_digest` — which
+already hashes the plan and the ordered sends — plus the model, so there is no
+second hash to keep in step. `GET /api/runs?fingerprint=` is one query.
+
+**Both live in `backend/studio_core/services/digest.py`, which is a module for
+one reason: so the CLI's tests can load them.** They were in `catalog.py`, which
+imports boto3, so `pipeline/tests/support/fake_api.py` could not reach them and
+carried a copy — and the copy's own comment admitted nothing held the two
+together. `digest.py` imports `hashlib`, `json` and `decimal` and nothing else,
+which is the same precondition `services/storyboard.py` and `services/prompt.py`
+already meet for the same fake;
+`test_a_shared_backend_service_stays_loadable_from_here` asserts it statically,
+so a Flask import arrives as a named failure rather than as whichever unrelated
+test happened to touch the fake first. `catalog.py` re-exports both, so every
+caller still says `catalog.plan_digest(...)`.
 
 Two consequences worth knowing. It now catches what a per-machine file never
 could: a second machine, and a colleague. And the check moved to *after* the
@@ -854,18 +922,21 @@ next identical payload look like a duplicate.
 | `registry.py` | **Reads the registry, over the wire.** `GET /api/models` via `adapters/entities.models`, memoised once per process. The file itself is `backend/studio_core/models.json` — it moved so the API and the SPA could measure a reference selection against the same entries the CLI does, which `ENGINE_CAPS` (three families of nine) had been standing in for. |
 | `registry.py`'s `defaults` | **What studio sets when a caller does not.** An authored `defaults` block on an entry, applied by `build_payload` **under** everything a caller asked for — so `--extra`, an `--input-file` and `character turnaround`'s `per_model` block all still win. Not to be confused with `snapshot.<field>.default` sitting beside it, which records what the PROVIDER does and is rewritten wholesale by `models refresh`; a studio decision parked there would be reverted by the next refresh. It exists because `quality` was costing money by accident — a `gpt-image-2` image at `high` is ~$0.198 and at `medium` about a third of that. Per-model, because the fields are not shared: `quality` and `moderation` are the two OpenAI models' and `nano-banana-pro` spells the same idea `safety_filter_level`. |
 | `registry_file.py` | **Writes it.** The repo file, for the only two commands that edit it — `add-model` and `models refresh`, both of which are really asking the API to ask Replicate what a model accepts. Separate from the reader on purpose: reading works against any environment, writing is a reviewed repo change that reaches production on deploy. |
-| `registry.py` | Load / look up / list; snapshot saving for refreshes. |
 | `runner.py` | `studio run` — builds the payload and invokes *any* registered model. |
 | `submit.py` | **The AUTHORING half of the submit lifecycle**, image and video alike: gather every image input as node ids, preflight, render the two documents hard rule #2 asks a person to read, and record the draft. The billing half — presign, create the prediction, upload the output, close the run — is `POST /api/runs/<id>/submit` and a callback (#536). `wait_for` is what is left of `poll`, and the difference is the point: it watches the run *row*, so `Ctrl-C` abandons a wait rather than a generation. |
 | `schema.py` | Validates fields, enums, ranges and `denied` — off a schema fetched through `GET /api/models/<name>/schema` rather than from Replicate directly, which is what removed the provider token from this package. The API runs its own copy of the check at submit time, because the SPA also submits and never passes through here; that one is the gate and this one is the better message. |
-| `refs.py` | Character reference selection and project input pool → S3 keys. |
+| `refs.py` | Character reference selection and project input pool → **node ids**. Selection itself is `GET /api/characters/<id>/selection`, so the CLI and the SPA cannot disagree about which images a generation saw; what is left here is the translation, and the over-cap refusal that names the commands which narrow a set. Nothing walks `reference/` any more. |
+| `resubmit.py` | Send a draft somebody has already approved — `studio runs submit`, and the retry path. It is separate from `runner.py` because there is nothing to author: the plan, the sends and the approval are on the row, so this is a status check and one `POST`. |
 | `turnaround.py` | `studio character turnaround` — the STANDARD reference set, one DRAFT per angle. Resolves which images carry identity (`--seed-pick`, the seed-tree walk, the oversized-pool refusal) and hands them to `POST /api/characters/<id>/turnaround`, which assembles the prompt and writes the drafts. **The spec and the bible filling are no longer here**: they were `domain/templates/reference_angles.yaml` plus this module, and both moved to the API so the app can read and edit a reference prompt — see `studio spec`. |
 | `board.py` | `studio scenes board` / `render` / `check` — the two commands that spend money in a scene's life, plus the free one that says whether they would work. Turns the plan's roles into bindings and hands them to the same lifecycle `runner.py` drives. Every cap, exclusion and format rule stays in `submit.py`; a copy here is the one that drifts. |
 | `add_model.py` | Onboarding: fetch schema + README **through the API**, infer an entry, append it to the registry. The inference stays here because what it produces is a repo file somebody reviews; the fetch does not, because it was one of the last three reasons a developer's machine held a Replicate token. It writes no documentation — see `studio-media-add-model`. |
 
 **`objects/` — moving bytes.** `upload.py`, `download.py`, `presign.py`
-(how assets reach Replicate), `convert.py` (re-encode so a target engine accepts
-it) and `crop.py` (cut a rectangle out of one).
+(how assets reach Replicate), `describe.py` (a caption on a node, which is what
+makes a reference index selectable), `convert.py` (re-encode so a target engine
+accepts it), `crop.py` (cut a rectangle out of one) and `config_sync.py`
+(`studio config sync` — push the repo's `config/` angle images into the library,
+the one command here whose source is this checkout rather than the tree).
 
 **`convert` and `crop` are one `POST` each now, and Pillow is not in this
 wheel.** They are the two operations that deliberately did *not* go on the render

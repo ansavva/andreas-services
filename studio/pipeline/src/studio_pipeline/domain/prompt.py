@@ -50,6 +50,12 @@ from studio_pipeline.adapters import api, entities
 
 #: Which flags become overrides, and under which names the API expects them.
 #: Declared once so the command signature and the request body cannot drift.
+#:
+#: **It said that already and was not doing it.** The command restated all
+#: sixteen names in a dict literal and this tuple had no reader at all, so the
+#: two could disagree in either direction and nothing would notice — an option
+#: added below and forgotten here would simply never reach the API. The body is
+#: built from this tuple now, which is what the sentence above always claimed.
 OVERRIDE_FLAGS = (
     "subject", "action", "scene", "style", "lighting", "audio", "negative",
     "start_image", "camera_movement", "camera_shot", "lens_mm",
@@ -121,17 +127,17 @@ def prompt(source, action, aspect_ratio, audio, camera_movement, camera_shot, co
            resolution, scene, seed, start_image, strict, style, subject):
     obj = load_object(source, json_text=json_)
 
-    flags = {
-        "subject": subject, "action": action, "scene": scene, "style": style,
-        "lighting": lighting, "audio": audio, "negative": negative,
-        "start_image": start_image, "camera_movement": camera_movement,
-        "camera_shot": camera_shot, "lens_mm": lens_mm,
-        "aspect_ratio": aspect_ratio, "duration": duration,
-        "resolution": resolution, "seed": seed, "no_audio": no_audio,
-    }
+    # Read off the parameters by the names in `OVERRIDE_FLAGS`, so the tuple is
+    # the only place the list exists. Click passes every option as a keyword
+    # argument named after its flag, which is what makes `locals()` exactly the
+    # signature here and not a grab-bag — `source`, `emit`, `engine`, `json_`,
+    # `compact` and `strict` are not overrides and are simply not asked for.
+    flags = locals()
     # Only what was actually typed. A `None` here would be indistinguishable
-    # from "clear this field" on the far side.
-    overrides = {name: value for name, value in flags.items() if value not in (None, False)}
+    # from "clear this field" on the far side, and `False` is what an unset
+    # `is_flag` looks like.
+    overrides = {name: flags[name] for name in OVERRIDE_FLAGS
+                 if flags[name] not in (None, False)}
 
     try:
         answer = entities.build_prompt(obj, engine, emit=emit, compact=compact,

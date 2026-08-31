@@ -1,0 +1,682 @@
+{
+  "models": {
+    "gpt-image-1.5": {
+      "defaults": {
+        "moderation": "low",
+        "quality": "medium"
+      },
+      "images": {
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ],
+        "end": null,
+        "max_refs": null,
+        "refs": "input_images",
+        "start": null,
+        "start_excludes_refs": false
+      },
+      "key": "gpt-image-1.5",
+      "kind": "image",
+      "model": "openai/gpt-image-1.5",
+      "note": "OpenAI. Explicit input_fidelity ('high' to hold a face, 'low' to dial it down \u2014 gpt-image-2 cannot). Aspect limited to 1:1/3:2/2:3. The one that does transparent backgrounds.",
+      "prompt": {
+        "max_chars": null
+      },
+      "skill": "studio-media-gpt-image-1-5",
+      "snapshot": {
+        "aspect_ratio": {
+          "default": "1:1",
+          "enum": [
+            "1:1",
+            "3:2",
+            "2:3"
+          ]
+        },
+        "background": {
+          "default": "auto",
+          "enum": [
+            "auto",
+            "transparent",
+            "opaque"
+          ]
+        },
+        "input_fidelity": {
+          "default": "low",
+          "enum": [
+            "low",
+            "high"
+          ]
+        },
+        "moderation": {
+          "default": "auto",
+          "enum": [
+            "auto",
+            "low"
+          ]
+        },
+        "number_of_images": {
+          "default": 1,
+          "maximum": 10,
+          "minimum": 1
+        },
+        "output_compression": {
+          "default": 90,
+          "maximum": 100,
+          "minimum": 0
+        },
+        "output_format": {
+          "default": "webp",
+          "enum": [
+            "png",
+            "jpeg",
+            "webp"
+          ]
+        },
+        "quality": {
+          "default": "auto",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "auto"
+          ]
+        },
+        "refreshed": "2026-08-15"
+      }
+    },
+    "gpt-image-2": {
+      "defaults": {
+        "moderation": "low",
+        "quality": "medium"
+      },
+      "denied": {
+        "background": {
+          "transparent": "gpt-image-2 does not support transparent backgrounds (its schema still lists the value). Use gpt-image-1.5 for transparent PNGs."
+        }
+      },
+      "images": {
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ],
+        "end": null,
+        "max_refs": null,
+        "refs": "input_images",
+        "start": null,
+        "start_excludes_refs": false
+      },
+      "key": "gpt-image-2",
+      "kind": "image",
+      "model": "openai/gpt-image-2",
+      "note": "OpenAI, newest. Strong instruction-following and legible text; widest aspect list, including explicit pixel sizes. Reference images are held at HIGH FIDELITY AUTOMATICALLY \u2014 the input_fidelity knob is absent because it is always on, not because it was lost.",
+      "prompt": {
+        "max_chars": null
+      },
+      "skill": "studio-media-gpt-image-2",
+      "snapshot": {
+        "aspect_ratio": {
+          "default": "1:1",
+          "enum": [
+            "1:1",
+            "3:2",
+            "2:3",
+            "4:3",
+            "3:4",
+            "16:9",
+            "9:16",
+            "auto",
+            "1024x1024",
+            "1536x1024",
+            "1024x1536",
+            "1536x1152",
+            "1152x1536",
+            "2048x2048",
+            "2048x1152",
+            "1152x2048",
+            "3840x2160",
+            "2160x3840"
+          ]
+        },
+        "background": {
+          "default": "auto",
+          "enum": [
+            "auto",
+            "transparent",
+            "opaque"
+          ]
+        },
+        "moderation": {
+          "default": "auto",
+          "enum": [
+            "auto",
+            "low"
+          ]
+        },
+        "number_of_images": {
+          "default": 1,
+          "maximum": 10,
+          "minimum": 1
+        },
+        "output_compression": {
+          "default": 90,
+          "maximum": 100,
+          "minimum": 0
+        },
+        "output_format": {
+          "default": "webp",
+          "enum": [
+            "png",
+            "jpeg",
+            "webp"
+          ]
+        },
+        "quality": {
+          "default": "auto",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "auto"
+          ]
+        },
+        "refreshed": "2026-08-15"
+      }
+    },
+    "grok-imagine-video": {
+      "aliases": [],
+      "images": {
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ],
+        "end": null,
+        "max_refs": 0,
+        "refs": null,
+        "start": "image",
+        "start_excludes_refs": false
+      },
+      "key": "grok-imagine-video",
+      "kind": "video",
+      "model": "xai/grok-imagine-video",
+      "note": "xAI Grok Imagine Video (Aurora). Native synced audio incl. lip-sync. Two things nothing else here does: a true duration RANGE (1-15s, not an enum) and a video-EDITING mode via the `video` input (max 8.7s in, output matches its duration/ratio/resolution). No reference images and no last frame. NEGATIVE DIRECTION IS IGNORED \u2014 the model has no negative_prompt field and the README says prompt-embedded negatives are dropped too; describe what you want instead. accepts_ext confirmed by the README.",
+      "prompt": {
+        "max_chars": null
+      },
+      "skill": "studio-media-grok-imagine-video",
+      "snapshot": {
+        "aspect_ratio": {
+          "default": "auto",
+          "enum": [
+            "auto",
+            "16:9",
+            "4:3",
+            "1:1",
+            "9:16",
+            "3:4",
+            "3:2",
+            "2:3"
+          ]
+        },
+        "duration": {
+          "default": 5,
+          "maximum": 15,
+          "minimum": 1
+        },
+        "resolution": {
+          "default": "720p",
+          "enum": [
+            "720p",
+            "480p"
+          ]
+        }
+      },
+      "video": {
+        "allow_intelligent_duration": false,
+        "image_tokens": false,
+        "max_cuts": null,
+        "negative": "prompt",
+        "resolution_field": "resolution",
+        "resolution_map": null,
+        "technical": "api"
+      }
+    },
+    "image-upscale": {
+      "images": {
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ],
+        "end": null,
+        "max_refs": null,
+        "refs": null,
+        "start": "image",
+        "start_excludes_refs": false
+      },
+      "key": "image-upscale",
+      "kind": "image",
+      "model": "topazlabs/image-upscale",
+      "note": "The only model here that RESTORES rather than generates: it enlarges an image that already exists and invents nothing, so it is what seed and reference material goes through. `High Fidelity V2` preserves detail, `Low Resolution V2` is for badly degraded sources, and `face_enhancement_creativity: 0` sharpens a face without redrawing it. Priced on OUTPUT megapixels, not runtime.",
+      "prompt": null,
+      "skill": "studio-media-image-upscale",
+      "snapshot": {
+        "enhance_model": {
+          "default": "Standard V2",
+          "enum": [
+            "Standard V2",
+            "Low Resolution V2",
+            "CGI",
+            "High Fidelity V2",
+            "Text Refine"
+          ]
+        },
+        "face_enhancement": {
+          "default": false
+        },
+        "face_enhancement_creativity": {
+          "default": 0,
+          "maximum": 1,
+          "minimum": 0
+        },
+        "face_enhancement_strength": {
+          "default": 0.8,
+          "maximum": 1,
+          "minimum": 0
+        },
+        "output_format": {
+          "default": "jpg",
+          "enum": [
+            "jpg",
+            "png"
+          ]
+        },
+        "subject_detection": {
+          "default": "None",
+          "enum": [
+            "None",
+            "All",
+            "Foreground",
+            "Background"
+          ]
+        },
+        "upscale_factor": {
+          "default": "None",
+          "enum": [
+            "None",
+            "2x",
+            "4x",
+            "6x"
+          ]
+        }
+      }
+    },
+    "kling": {
+      "aliases": [
+        "kling-replicate"
+      ],
+      "images": {
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png"
+        ],
+        "end": "end_image",
+        "end_excludes_refs": true,
+        "max_refs": 7,
+        "refs": "reference_images",
+        "start": "start_image",
+        "start_counts_toward_max_refs": true,
+        "start_excludes_refs": false
+      },
+      "key": "kling",
+      "kind": "video",
+      "model": "kwaivgi/kling-v3-omni-video",
+      "note": "Kling 3.0 / O3 Omni. Pay-per-second, no resource package. Start frame AND reference images can be combined. Native multi-shot to 6 cuts (durations must sum to `duration`, else E006). Rejects .webp.",
+      "prompt": {
+        "max_chars": 2500
+      },
+      "skill": "studio-media-kling",
+      "snapshot": {
+        "aspect_ratio": {
+          "default": "16:9",
+          "enum": [
+            "16:9",
+            "9:16",
+            "1:1"
+          ]
+        },
+        "duration": {
+          "default": 5,
+          "maximum": 15,
+          "minimum": 3
+        },
+        "generate_audio": {
+          "default": false
+        },
+        "keep_original_sound": {
+          "default": true
+        },
+        "mode": {
+          "default": "pro",
+          "enum": [
+            "standard",
+            "pro",
+            "4k"
+          ]
+        },
+        "refreshed": "2026-08-15",
+        "video_reference_type": {
+          "default": "feature",
+          "enum": [
+            "feature",
+            "base"
+          ]
+        }
+      },
+      "video": {
+        "allow_intelligent_duration": false,
+        "image_tokens": false,
+        "max_cuts": 6,
+        "negative": "prompt",
+        "resolution_field": "mode",
+        "resolution_map": {
+          "1080p": "pro",
+          "4k": "4k",
+          "720p": "standard"
+        },
+        "technical": "replicate_kling"
+      }
+    },
+    "nano-banana-2": {
+      "images": {
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ],
+        "end": null,
+        "max_refs": 14,
+        "refs": "image_input",
+        "start": null,
+        "start_excludes_refs": false
+      },
+      "key": "nano-banana-2",
+      "kind": "image",
+      "model": "google/nano-banana-2",
+      "note": "Google, Gemini 3.1 Flash Image. Faster/cheaper sibling of Pro; 1K default. Adds the extreme 1:4/4:1/1:8/8:1 aspect ratios and Google Search / Image Search grounding.",
+      "prompt": {
+        "max_chars": null
+      },
+      "skill": "studio-media-nano-banana-2",
+      "snapshot": {
+        "aspect_ratio": {
+          "default": "match_input_image",
+          "enum": [
+            "match_input_image",
+            "1:1",
+            "1:4",
+            "1:8",
+            "2:3",
+            "3:2",
+            "3:4",
+            "4:1",
+            "4:3",
+            "4:5",
+            "5:4",
+            "8:1",
+            "9:16",
+            "16:9",
+            "21:9"
+          ]
+        },
+        "google_search": {
+          "default": false
+        },
+        "image_input": {
+          "default": []
+        },
+        "image_search": {
+          "default": false
+        },
+        "output_format": {
+          "default": "jpg",
+          "enum": [
+            "jpg",
+            "png"
+          ]
+        },
+        "refreshed": "2026-08-15",
+        "resolution": {
+          "default": "1K",
+          "enum": [
+            "1K",
+            "2K",
+            "4K"
+          ]
+        }
+      }
+    },
+    "nano-banana-pro": {
+      "images": {
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ],
+        "end": null,
+        "max_refs": 14,
+        "refs": "image_input",
+        "start": null,
+        "start_excludes_refs": false
+      },
+      "key": "nano-banana-pro",
+      "kind": "image",
+      "model": "google/nano-banana-pro",
+      "note": "Google, built on Gemini 3 Pro. 2K default, up to 4K. Tunable safety_filter_level and match_input_image aspect. Docs: holds resemblance for up to 5 people across a composition.",
+      "prompt": {
+        "max_chars": null
+      },
+      "skill": "studio-media-nano-banana-pro",
+      "snapshot": {
+        "allow_fallback_model": {
+          "default": false
+        },
+        "aspect_ratio": {
+          "default": "match_input_image",
+          "enum": [
+            "match_input_image",
+            "1:1",
+            "2:3",
+            "3:2",
+            "3:4",
+            "4:3",
+            "4:5",
+            "5:4",
+            "9:16",
+            "16:9",
+            "21:9"
+          ]
+        },
+        "image_input": {
+          "default": []
+        },
+        "output_format": {
+          "default": "jpg",
+          "enum": [
+            "jpg",
+            "png"
+          ]
+        },
+        "refreshed": "2026-08-15",
+        "resolution": {
+          "default": "2K",
+          "enum": [
+            "1K",
+            "2K",
+            "4K"
+          ]
+        },
+        "safety_filter_level": {
+          "default": "block_only_high",
+          "enum": [
+            "block_low_and_above",
+            "block_medium_and_above",
+            "block_only_high"
+          ]
+        }
+      }
+    },
+    "seedance": {
+      "aliases": [],
+      "images": {
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp",
+          ".gif",
+          ".bmp"
+        ],
+        "end": "last_frame_image",
+        "max_refs": 9,
+        "refs": "reference_images",
+        "start": "image",
+        "start_excludes_refs": true
+      },
+      "key": "seedance",
+      "kind": "video",
+      "model": "bytedance/seedance-2.0",
+      "note": "ByteDance Seedance 2.0. Native audio, first/last frame, reference images/videos/audio. A first frame and a reference set CANNOT be combined.",
+      "prompt": {
+        "max_chars": 4000,
+        "recommended_words": 600
+      },
+      "skill": "studio-media-seedance",
+      "snapshot": {
+        "aspect_ratio": {
+          "default": "16:9",
+          "enum": [
+            "16:9",
+            "4:3",
+            "1:1",
+            "3:4",
+            "9:16",
+            "21:9",
+            "9:21",
+            "adaptive"
+          ]
+        },
+        "duration": {
+          "default": 5,
+          "maximum": 15,
+          "minimum": -1
+        },
+        "generate_audio": {
+          "default": true
+        },
+        "reference_audios": {
+          "default": []
+        },
+        "reference_images": {
+          "default": []
+        },
+        "reference_videos": {
+          "default": []
+        },
+        "refreshed": "2026-08-15",
+        "resolution": {
+          "default": "720p",
+          "enum": [
+            "480p",
+            "720p",
+            "1080p",
+            "4k"
+          ]
+        }
+      },
+      "video": {
+        "allow_intelligent_duration": true,
+        "image_tokens": true,
+        "max_cuts": null,
+        "negative": "prompt",
+        "resolution_field": "resolution",
+        "resolution_map": null,
+        "technical": "api"
+      }
+    },
+    "veo-3.1": {
+      "aliases": [],
+      "images": {
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ],
+        "end": "last_frame",
+        "end_excludes_refs": true,
+        "max_refs": 3,
+        "refs": "reference_images",
+        "start": "image",
+        "start_excludes_refs": false
+      },
+      "key": "veo-3.1",
+      "kind": "video",
+      "model": "google/veo-3.1",
+      "note": "Google Veo 3.1. Native synced audio, 24 fps, SynthID watermark. The only video engine here with a SEED and with negative_prompt as a real parameter. reference_images caps at 3 and ONLY works at aspect_ratio 16:9 with duration 8 \u2014 the schema still accepts other combinations and silently drops the reference set. A last_frame is ignored when reference_images are present. accepts_ext unverified: the README names no formats.",
+      "prompt": {
+        "max_chars": null
+      },
+      "skill": "studio-media-veo-3-1",
+      "snapshot": {
+        "aspect_ratio": {
+          "default": "16:9",
+          "enum": [
+            "16:9",
+            "9:16"
+          ]
+        },
+        "duration": {
+          "default": 8,
+          "enum": [
+            4,
+            6,
+            8
+          ]
+        },
+        "generate_audio": {
+          "default": true
+        },
+        "reference_images": {
+          "default": []
+        },
+        "resolution": {
+          "default": "1080p",
+          "enum": [
+            "720p",
+            "1080p"
+          ]
+        }
+      },
+      "video": {
+        "allow_intelligent_duration": false,
+        "image_tokens": false,
+        "max_cuts": null,
+        "negative": "param",
+        "resolution_field": "resolution",
+        "resolution_map": null,
+        "technical": "api"
+      }
+    }
+  }
+}

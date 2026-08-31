@@ -46,7 +46,9 @@ export function isAuthConfigured(): boolean {
 
 function requireConfig(): { domain: string; clientId: string } {
   if (!DOMAIN || !CLIENT_ID) {
-    throw new Error("Cognito is not configured. See frontend/.env.local.example.");
+    throw new Error(
+      "Cognito is not configured. See frontend/.env.local.example.",
+    );
   }
   return { domain: DOMAIN, clientId: CLIENT_ID };
 }
@@ -63,7 +65,10 @@ function logoutUri(): string {
 function base64UrlEncode(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 }
 
 function randomBase64Url(byteLength: number): string {
@@ -73,7 +78,10 @@ function randomBase64Url(byteLength: number): string {
 }
 
 async function s256Challenge(verifier: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(verifier),
+  );
   return base64UrlEncode(new Uint8Array(digest));
 }
 
@@ -119,6 +127,30 @@ export function getIdToken(): string | null {
 
 export function isAuthenticated(): boolean {
   return getIdToken() !== null;
+}
+
+/**
+ * The `sub` claim off the ID token.
+ *
+ * Not decoration: a run's approval records WHO said yes as a Cognito sub, and a
+ * sub is unreadable — "Approved by d4f85488-…" tells a person nothing about
+ * whether it was them. Comparing it against this is what lets the run screen
+ * say a name instead. It stays a comparison rather than a lookup because the
+ * API resolves no directory, so the only identity the browser can name for
+ * certain is the one holding the token.
+ */
+export function getUserSub(): string | null {
+  const idToken = getIdToken();
+  const payload = idToken?.split(".")[1];
+  if (!payload) return null;
+  try {
+    const claims = JSON.parse(
+      atob(payload.replace(/-/g, "+").replace(/_/g, "/")),
+    ) as { sub?: string };
+    return claims.sub ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /** The email claim off the ID token, for the header's "signed in as" line. */
@@ -217,7 +249,10 @@ async function postToken(body: URLSearchParams): Promise<TokenResponse> {
   if (!response.ok) {
     let detail = `The token endpoint returned HTTP ${response.status}.`;
     try {
-      const err = (await response.json()) as { error?: string; error_description?: string };
+      const err = (await response.json()) as {
+        error?: string;
+        error_description?: string;
+      };
       if (err.error) detail = err.error_description ?? err.error;
     } catch {
       /* non-JSON error body */
@@ -257,7 +292,8 @@ export async function handleCallback(params: URLSearchParams): Promise<string> {
   }
 
   const verifier = sessionStorage.getItem(VERIFIER_KEY);
-  if (!verifier) throw new Error("The sign-in verifier is missing. Start again.");
+  if (!verifier)
+    throw new Error("The sign-in verifier is missing. Start again.");
 
   const tokens = await postToken(
     new URLSearchParams({
@@ -356,6 +392,9 @@ export function logout(): void {
   const { domain, clientId } = requireConfig();
   signingOut = true;
   clearTokens();
-  const params = new URLSearchParams({ client_id: clientId, logout_uri: logoutUri() });
+  const params = new URLSearchParams({
+    client_id: clientId,
+    logout_uri: logoutUri(),
+  });
   window.location.assign(`https://${domain}/logout?${params.toString()}`);
 }

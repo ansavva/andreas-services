@@ -53,19 +53,23 @@ export function MoviePage() {
     <>
       <PageBar crumbs={crumbs}>
         <Text variant="display">{data.title || data.slug}</Text>
-        <Badge intent="neutral">{data.status}</Badge>
-        <Text variant="caption" tone="muted">
+        <Badge intent="neutral" className="font-mono">
+          {data.status}
+        </Badge>
+        <Text variant="caption" tone="muted" className="font-mono">
           {formatDate(data.created)}
         </Text>
       </PageBar>
 
       {data.output && (
-        <section className="flex flex-col gap-2">
-          <Text variant="title">The piece</Text>
+        <section className="flex flex-col gap-3">
+          <Text variant="title" className="border-b border-line pb-2">
+            The piece
+          </Text>
           <button
             type="button"
             onClick={() => navigate(objectPath(data.output!.node))}
-            className="w-full max-w-2xl overflow-hidden rounded-md border border-line bg-card
+            className="w-full max-w-2xl overflow-hidden rounded-none border border-line bg-card
                        focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <MediaThumb
@@ -75,21 +79,23 @@ export function MoviePage() {
               isVideo
               aspect="video"
             />
-            <Text variant="caption" tone="muted" className="truncate px-2 py-1">
+            <Text variant="caption" tone="muted" className="truncate px-2 py-1 font-mono">
               {data.output.name}
             </Text>
           </button>
         </section>
       )}
 
-      <section className="flex flex-col gap-2">
-        <Text variant="title">Scenes</Text>
+      <section className="flex flex-col gap-3">
+        <Text variant="title" className="border-b border-line pb-2">
+          Scenes
+        </Text>
         {data.scenes.length === 0 ? (
           <Text variant="body" tone="muted">
             No scenes are cut into this yet.
           </Text>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col">
             {data.scenes.map((scene, index) => (
               <EntityRow
                 key={scene.id}

@@ -131,7 +131,7 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
           ))}
         </Breadcrumbs.Root>
 
-        <div className="min-h-48 flex-1 overflow-auto rounded-md border border-line">
+        <div className="min-h-48 flex-1 overflow-auto rounded-none border border-line">
           {loading && (
             <div className="flex h-48 items-center justify-center">
               <Spinner size="md" label="Loading folder" />
@@ -206,7 +206,7 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
         )}
 
         <div className="flex items-center justify-end gap-2">
-          <Button intent="ghost" size="sm" onClick={onClose}>
+          <Button intent="secondary" size="sm" onClick={onClose}>
             Cancel
           </Button>
           <Button size="sm" disabled={chosen.length === 0 || busy} onClick={submit}>
@@ -251,7 +251,7 @@ function Tile({
       aria-pressed={chosen}
       aria-label={already ? `${file.name} — already sent` : file.name}
       title={file.name}
-      className={`relative flex flex-col gap-1 rounded-md border p-1 text-left transition-colors
+      className={`relative flex flex-col gap-1 rounded-none border p-1 text-left transition-colors
                   disabled:cursor-default disabled:opacity-40
                   focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary
                   ${chosen ? "border-primary bg-surface-alt" : "border-line hover:bg-surface-alt"}`}
@@ -263,7 +263,7 @@ function Tile({
         isVideo={file.kind === "video"}
         aspect="portrait"
         dimmed={chosen}
-        className="w-full rounded-md"
+        className="w-full rounded-none"
       />
       <Text variant="caption" tone="muted" className="truncate">
         {already ? "already sent" : file.name}

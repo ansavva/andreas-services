@@ -29,8 +29,8 @@ PITR is its only recovery. See [../infra/README.md](../infra/README.md).
 
 The generation pipeline produces the media and records it through
 `POST /api/runs`. Studio makes the result browsable: folders keep their
-structure, images and video are the focus, and every item can be opened
-fullscreen or flipped through as a vertical reel.
+structure, images and video are the focus, and every item has a page of its own
+where it plays in place, with the feed it belongs to beside it.
 
 **Studio reads the library, tidies it, and now accepts bytes for it — it still
 does not produce it.** It browses, and it can rename, move, copy, delete, create
@@ -111,7 +111,12 @@ studio/
 │   │   ├── routes/           # nodes.py + libraries.py (the catalog's surface),
 │   │   │                     #   browse.py (a folder ready to draw), manage.py (writes)
 │   │   ├── services/         # catalog.py owns the item shapes; browse.py, manage.py,
-│   │   │                     #   identity.py (JWT), keys.py (classification + confinement)
+│   │   │                     #   identity.py (JWT), keys.py (classification + confinement),
+│   │   │                     #   generate.py + callbacks.py (the paid call and its webhook),
+│   │   │                     #   render.py (the queue the worker image drains).
+│   │   │                     # storyboard.py, prompt.py, registry.py and digest.py are
+│   │   │                     #   the ones the PIPELINE's test fake loads by path, so
+│   │   │                     #   none of the four may import Flask or boto3
 │   │   └── clients/aws/      # dynamodb.py, s3.py — the only boto3 in the service
 │   └── tests/                # pytest + moto over a miniature of the table and the bucket
 ├── frontend/                 # Vite + React SPA (studio.andreas.services)
@@ -415,8 +420,8 @@ Three things about this shape drive the UI: run and scene folders sort
 chronologically because their names start with a timestamp; a run's output lives
 one level down in `output/`, so a run folder itself usually shows only JSON; and
 a subject is split across two top-level trees — `characters/<name>/` and
-`projects/<name>/` are the same subject, and reel mode is what puts them back
-together, since it walks recursively from wherever you are.
+`projects/<name>/` are the same subject, and the recursive feed is what puts them
+back together, since it walks from wherever you are.
 
 There used to be a fourth, and it is retired rather than deleted because anyone
 who read this file before will look for it. **"A folder has no LastModified"**
@@ -466,12 +471,18 @@ that breaks every time the pipeline ships.
 - **Approving in the app is a real write, and it is bound to a hash.** `POST
   /api/runs/<id>/approve` sends the digest the page was showing; the API
   recomputes and answers 409 if the payload moved. It is not a permission
-  boundary — the CLI holds the same kind of token — so the page states the
-  digest in words rather than implying an authority it does not have.
+  boundary — the CLI holds the same kind of token — so the page claims no
+  authority it does not have.
+
+  **This bullet used to end "so the page states the digest in words", and the
+  page no longer does.** The three digest sentences belonged to a bar that could
+  sit there holding an approval nobody had acted on yet; one gesture writes the
+  approval and submits, so there is no interval for them to describe. The write
+  and the hash are unchanged — only the sentences are gone.
 - **Editing a plan is two writes, and each one withdraws the approval.** `PATCH
   /api/runs/<id>/plan` and `PATCH /api/runs/<id>/sends` each replace their half
   whole, recompute the digest and return the run to `draft` — so the editor sends
-  only the half that actually moved, and the approve bar is hidden while it is
+  only the half that actually moved, and the run bar is hidden while it is
   open. Both routes refuse a submitted run, which is why the button appears on an
   unsubmitted one rather than being answered with a 409.
 - **The app can SUBMIT now, and until #536 it could not.** `POST
@@ -480,13 +491,52 @@ that breaks every time the pipeline ships.
   moved behind that route. What it used to mean was that a run approved on this
   page then had to be sent from a terminal — the approve bar ended by telling you
   to run `studio runs submit <id>`, which is the friction this removed.
-- **The Submit button exists in exactly one state**, and that is what stands in
-  for a second confirm dialog. A run that is `approved` and whose payload has not
-  moved shows it; a draft, a stale approval and an already-sent run all show the
-  approve control instead. Asking twice would be approval theatre — the approve
-  dialog is where a person reads the payload and says yes — and it teaches
-  somebody to click through the prompt that matters. The CLI is the same shape:
-  `runs approve` confirms, `runs submit` goes.
+- **Running is ONE armed button — "Run — this spends" — and approving is what
+  pressing it does.**
+
+  **This section used to say the opposite, and it is kept rather than edited
+  over.** It said: "The Submit button exists in exactly one state, and that is
+  what stands in for a second confirm dialog. A run that is `approved` and whose
+  payload has not moved shows it; a draft, a stale approval and an already-sent
+  run all show the approve control instead." Behind it sat an approve dialog and,
+  after it, a separate Submit.
+
+  That was redundant in a UI where the payload is on screen. The page renders the
+  plan, the ordered images and — since #557 — the exact payload a draft would
+  send, rebuilt by the same assembly `submit` uses. Asking for a yes over that
+  document and then asking again under a different word is what teaches somebody
+  to click through the first one. **Running them is approval**, which is also the
+  CLI's ordinary gesture: `studio run` drafts, approves and submits in one act.
+
+  **Nothing mechanical was given up.** `RunBar` still writes the approval — the
+  digest of the payload this page is rendering, `via: "interactive"` — and writes
+  it *before* it submits, so the API's compare-and-swap still refuses a
+  submission whose payload moved underneath, and the audit trail still records
+  who said yes and when. `POST /approve` and `POST /submit` are unchanged and
+  still enforce the same gate for every caller, so a CLI-made draft, `runs
+  approve --relayed` and anything else that reaches the API behave exactly as
+  before. `draft` and `approved` now render the same control, because the
+  distinction was only ever about which of two buttons you got.
+
+  The dialog went with the second press. First press arms and says what the
+  second will do; the second runs. See `ArmedButton`, which `ConfirmDeleteButton`
+  and `RunAgainButton` share the mechanics of.
+- **A run's outputs can be promoted into a character, inline.** An image output
+  carries a `Promote…` control beside it — a **sibling** of `OutputPanel`, never
+  inside it, because the panel's caption is a real `<a href>` and its player is
+  full of buttons. Pressing it expands a panel under the outputs grid, scoped to
+  that output. It is the CLI's `character add-refs --from-run` performed step for
+  step: a **real copy** into the character's `reference/<group>/` folder, then a
+  `REF#` row on the **copy**, so the run keeps its own output and every record
+  citing it stays correct. Hard rule #2b is satisfied by the press itself — the
+  person choosing the character and the group IS the approval — and the panel
+  states plainly what it will do before it happens. Video outputs get no control:
+  a reference is a picture a later render is checked against.
+- **None of these flows uses a dialog, and that is a requirement rather than a
+  style.** Creating a draft is an inline strip on the project's Runs tab,
+  promoting is an inline panel, and every gesture that spends or destroys is
+  arm-then-fire in the button itself. `ConfirmDestroyDialog` remains for entity
+  deletion and nothing on the run surface reaches for it.
 - **A run in flight has its own bar**, because what a person can do about a run
   that has gone is nothing like what they can do about one that has not. It says
   the page is watching and the tab can be closed — true only since the callback
@@ -565,29 +615,41 @@ that breaks every time the pipeline ships.
   positioned over it (`MediaTile`) or beside it (`FileRow`, `FolderCard`) —
   which is why those three carry their frame on a wrapper `<div>` rather than on
   the button. Anything else that lands in a listing has to be built the same
-  way. Its feedback is inline for the same reason the viewer's is:
-  `ViewerChrome` is often inside a fullscreen element, and a toast portalled to
-  `<body>` is not painted while one is.
-- **A row's actions live in one `⋯` menu; the viewer's stay inline.** That split
-  is not inconsistency, it is the fullscreen constraint again. `ItemActions` uses
-  `Dropdown`, which is absolutely positioned inside its own relative wrapper and
-  therefore fine on a row — but `MovePicker` uses `Dialog`, which **portals to
-  `<body>`**, so it is reachable only from the browse page and there is
-  deliberately no move button in `ViewerChrome`. If you ever want one there, it
-  has to be built inline the way `RenameForm` and `ConfirmDeleteButton` are, not
-  by reaching for the picker.
-- **Rename is opened by the row, not by the button.** `RenameForm` is the field;
-  `RenameButton` is a pencil that opens one in place and is now used only by
-  `ViewerChrome`. The rows drive `RenameForm` themselves and render it
-  `basis-full` on a wrapped line, because when it was a flex child of the control
-  strip it rendered about forty pixels wide. A parent that knows a rename is open
-  is what makes the field typeable — keep it that way.
+  way. Its feedback is inline because a toast portalled to `<body>` is not
+  painted while an element is in native fullscreen — which the object screen's
+  player can be. The design system's `container` prop is the answer where a
+  control genuinely needs a portal there; a two-word confirmation is not worth
+  one.
+- **A row's actions live in one `⋯` menu; the object screen names its own.**
+  That split used to be the fullscreen constraint and is now a judgement about
+  listings. `ItemActions` uses `Dropdown`, which is absolutely positioned inside
+  its own relative wrapper, so it needed nothing from a portal and still does
+  not; it collapses four icons that would otherwise sit on every row. The object
+  screen has one file and room to name what can be done to it, so
+  `ObjectActions` spells them out.
+- **A portal CAN paint inside fullscreen now, and that changed what is possible
+  rather than what is there.** `Dialog`, `Drawer` and `AlertDialog` take a
+  `container` as of design system 0.16.0; hand them the element that is
+  fullscreen and the whole dialog mounts inside it instead of on `<body>`.
+  `MediaPlayer` reports its own container through `onContainerChange` — from the
+  ref callback, not from state, because the dialog parts read the target WHILE
+  RENDERING and a ref filled by the same commit is still `null` then.
+  `ObjectPage` holds it in state and passes it down. Keep `transform`, `filter`,
+  `contain` and `will-change` off that element: any of them makes it the
+  containing block for the popup's `position: fixed` and moves it.
+- **Rename is a dialog on the object screen and a row-inline field in a
+  listing.** `viewer/RenameDialog` is the first thing built on the `container`
+  prop above, and it replaced a pencil that opened `RenameForm` inside a
+  fixed-height chrome strip, where the field rendered about forty pixels wide.
+  `RenameForm` survives for the rows, which drive it themselves and render it
+  `basis-full` on a wrapped line — a parent that knows a rename is open is what
+  makes the field typeable. Keep it that way.
 - **The media grid has a selection mode, and it changes what a press means.**
   Once anything is selected (`useSelection`), pressing a tile extends the
   selection instead of opening it — the photo-library bargain, and the only way
   to pick forty tiles on a touch screen without hunting forty checkboxes. Escape
-  clears, but only when no overlay is open, because the reel, the text page and
-  the move picker each bind Escape to their own close — and the picker is often
+  clears, but only when no overlay is open, because the object screen, the text
+  page and the move picker each bind Escape to their own close — and the picker is often
   open *on* the selection, so clearing it there would be Escape cancelling a move
   by emptying what was being moved. Selection is keyed by node id rather
   than by grid index: a listing can be re-fetched underneath one — every write
@@ -619,9 +681,9 @@ that breaks every time the pipeline ships.
     accident, one wasted origin round trip at a time.
 - **An object URL names the file, not its folder, so the folder is asked for.**
   `hooks/useFolder` reads `parent_id` off `GET /api/nodes/<id>` — but only when
-  the listing already in hand does not hold the file. That is what keeps a reel
-  scrolling forty clips at zero requests: it rewrites the URL to each one, and
-  every one is in the listing. A cold share link asks once. Keeping the last
+  the listing already in hand does not hold the file. That is what keeps a walk
+  through forty clips at zero requests: the object screen rewrites the URL to
+  each one, and every one is in the listing. A cold share link asks once. Keeping the last
   folder instead would be wrong rather than merely lazy — going back into an
   object URL after browsing elsewhere would keep a folder the file is not in.
 - **Names and paths come off the breadcrumbs.** The folder's own name, its
@@ -630,34 +692,54 @@ that breaks every time the pipeline ships.
   walking `parent_id`. Rebuilding any of it client-side would be a second,
   guessing implementation — and a path↔id translation layer in the SPA is
   exactly what #313 exists to avoid.
-- **The reel is sized in `dvh`, not `inset-0`, and sound lives in the top bar
-  because of it.** `index.html` asks for `viewport-fit=cover`, so a `fixed`
-  element pinned to all four sides is laid out against the *large* viewport —
-  the one with the browser's toolbars hidden — and mobile Safari then draws its
-  bottom toolbar over the result. Anything on the bottom edge of the reel was
-  underneath it and unpressable. That swallowed the mute button in portrait and
-  gave it back in landscape, where the toolbar collapses, which is how the bug
-  was reported: "there is no way to mute unless I turn the phone sideways". The
-  fix is `.reel-shell` (`height: 100dvh`, which tracks those toolbars) plus
-  `env(safe-area-inset-*)` padding on both bars — but the transport bar is still
-  the one edge of the screen a browser puts its own chrome on, so **sound moved
-  to `ViewerChrome`** and only the scrubber stayed. Keep controls you press
-  *while a clip is playing* out of the bottom bar.
+- **A full-screen box is sized in `dvh`, never `inset-0`, and the reel paid for
+  it.** `index.html` asks for `viewport-fit=cover`, so a `fixed` element pinned
+  to all four sides is laid out against the *large* viewport — the one with the
+  browser's toolbars hidden — and mobile Safari then draws its bottom toolbar
+  over the result. Anything on that bottom edge was underneath it and
+  unpressable. It swallowed the mute button in portrait and gave it back in
+  landscape, where the toolbar collapses, which is how the bug was reported:
+  "there is no way to mute unless I turn the phone sideways". `.reel-shell` is
+  gone with the reel; the rule moved into `MediaPlayer`, whose fullscreen shell
+  is `height: 100dvh; max-height: 100dvh` and whose two chrome rows carry
+  `env(safe-area-inset-*)` padding — and only while it owns the screen, because
+  a landscape iPhone reports a 44px left inset that would be nonsense inside a
+  300px player sitting nowhere near a bezel. **Sound is in the top row, not the
+  bottom one**, for the half of the lesson `dvh` does not fix: the bottom edge is
+  where a browser puts its own chrome, so keep controls you press *while a clip
+  is playing* out of it.
+- **Do not "fix" the mobile focus-zoom with `maximum-scale` in the viewport
+  meta.** That disables pinch-zoom, which is a WCAG 1.4.4 failure. The fix is
+  16px inputs and it is upstream in the design system; `index.html`'s meta is
+  unchanged and should stay that way.
 - **Unmuting has to happen inside the click, not in an effect afterwards.**
-  `useReelPlayback.toggleMuted` sets `video.muted` on the element synchronously
+  `useMediaPlayback.toggleMuted` sets `video.muted` on the element synchronously
   and lets React state follow; the state does not cause the change. A passive
   effect is a later task, and Safari grants sound only within the gesture's own
   turn of the event loop — deferring it is why the unmute button used to do
   nothing. A refused `play()` is caught, not swallowed: playback falls back to
   muted and `blocked` is raised so the UI can say why. Check `volume` too, since
   a muted element sitting at `volume === 0` is still silent after unmuting.
-- **The reel is the only viewer.** There was a lightbox beside it — a horizontal
-  filmstrip with its own keyboard map and swipe handling — and it is gone.
-  Because there is only one viewer now, the axes are free to be specific:
-  Up/Down move between items, Left/Right move through *time*. `useKeyboardNav`
-  ignores anything targeting an INPUT, which is what lets the scrub bar be a
-  native `<input type="range">` and answer the arrow keys itself with no
-  coordination between the two.
+- **`/o/<id>` is a page, and the reel it replaced was an overlay.** It used to
+  be `fixed inset-x-0 z-50` over a black shell: a vertical scroll-snap column of
+  full-viewport panes, its own chrome floating on the media, its own transport,
+  and a five-pane mounting window sized to the decoder. It is `ObjectPage` now —
+  inside `AppLayout`, with a `PageBar`, one `MediaPlayer` in the content column,
+  the file's own words beside it, and the neighbours as a horizontal filmstrip.
+  **What that gave up, deliberately:** flick-to-next-clip on touch, the
+  describing pass down a column, and `scroll-snap-stop: always`. The decoder
+  budget went away rather than being solved differently — a stage mounts one
+  `<video>`. If flick-to-next turns out to matter, a pointer-swipe handler on
+  the player is the cheapest recovery.
+  With one axis left, `useKeyboardNav` is Left/Right between files, plus Space,
+  `m`, `f` and Esc. **Seeking did not move to another key, it moved to the
+  control that owns it**: the seek bar is a `Slider`, which answers the arrow
+  keys natively, and the hook ignores anything targeting an INPUT — so
+  Left/Right scrub while the bar has focus and step between files when it does
+  not, with nothing coordinating the two. Space, `m` and `f` reach the player
+  through `MediaPlayer`'s `onControlsChange`, because all three sit behind state
+  the player owns and pressing them by finding a button's `aria-label` would
+  make those labels an API.
 - **The reel's cursor is still an offset, and the reason changed underneath it.**
   This bullet used to say "an offset, not an S3 continuation token", and the
   contrast is retired: there is no S3 listing left to have a continuation token.
@@ -671,9 +753,9 @@ that breaks every time the pipeline ships.
   one page's worth of URLs, never the branch's. Keep it that way.
   The enumeration bound **truncates** rather than refusing, and says so in
   `truncated`: a page of a library may be shorter than the library. The SPA
-  carries it through `useReel` to `ReelView`, which renders the count as
+  carries it through `useReel` to `ObjectHeader`, which renders the count as
   `12 of 2000+` — the `+` is the whole of the UI for it, and it is enough,
-  because the alternative is a reel that silently claims the library ends where
+  because the alternative is a feed that silently claims the library ends where
   the cap did.
 - **One picker, two verbs.** `DestinationPicker` serves both move and copy,
   because "browse to a folder and press the button" is the same interaction
@@ -689,7 +771,7 @@ that breaks every time the pipeline ships.
   changes an item's position under `newest` and certainly under `name`; replaying
   that into a sorted array correctly is more code than one request, and it is
   code that would be wrong exactly where nobody tests. Three exceptions, for
-  different reasons: the recursive reel drops a deleted item locally
+  different reasons: the recursive feed drops a deleted item locally
   (`useReel.dropItem`) because re-walking would shift every already-loaded page
   under the scroll position; a **folder** move does not clear the selection
   because there was none; and deleting the folder you are *in* skips the refresh
@@ -717,12 +799,13 @@ that breaks every time the pipeline ships.
   separates the cluster from the primary. The two rows now split exactly as the
   comment above them claims: *where you are* on top, everything you can *do*
   below.
-- **Destructive confirmation is in the button, never in a dialog.**
+- **Destructive confirmation for ONE file is in the button, not in a dialog.**
   `ConfirmDeleteButton` arms on the first press, names what it will destroy, and
-  disarms on a timeout, on blur, or on Escape. A portalled dialog is not painted
-  while a `<video>` is in native fullscreen — the same constraint that keeps
-  `CopyKeyButton`'s feedback inline — and a dialog in a fixed position trains a
-  second click that lands before anyone reads it.
+  disarms on a timeout, on blur, or on Escape. It had two reasons and only one
+  survives: the portal-in-fullscreen constraint is answered by the `container`
+  prop above, and what is left is that a dialog in a fixed position trains a
+  second click that lands before anyone reads it. A **cascade** is a different
+  bargain and gets `ConfirmDestroyDialog`, where the word has to be typed.
 - **There is no query string left that becomes an S3 key.** `GET /api/asset`
   takes `?node=` and nothing else. It was the last one, and it survived because
   that route was also how the **pipeline** read *shared* material: the
@@ -779,17 +862,20 @@ that breaks every time the pipeline ships.
   in `optimizeDeps.rollupOptions.resolve.extensions`; `tsconfig.json` mirrors it
   as `moduleSuffixes`. `studio-pr.yml` audits the built source map in both
   directions, because picking the wrong leaf compiles cleanly.
-- **`@ansavva/design-system` is pinned exactly (0.14.1).** `0.x` caret ranges do
+- **`@ansavva/design-system` is pinned exactly (0.16.0).** `0.x` caret ranges do
   not pick up minors. Read the package's `CHANGELOG.md` before bumping.
 - **React 19**, matching `website/frontend` and `humbugg/marketing`. The design
   system's source uses React 19 DOM props (`inert`, `onScrollEnd`), so React 18
   types fail `tsc` inside `node_modules`.
-- **Reel mode mounts a window, not the world.** Only panes within ±2 of the
-  snapped index render a media element; the rest keep their height so scroll
-  position stays honest. A hundred live `<video>` elements exhausts the decoder.
-  Ref callbacks are memoised per key in `useReelPlayback.register` — an inline
-  arrow in the render loop is a new identity every render, which would detach and
-  re-attach every mounted pane's ref on every tick of the scrub bar.
+- **A `<video>` gets no `src` until its box is near the viewport, and that is
+  what replaced the reel's mounting window.** The reel rendered a media element
+  only within ±2 panes of the snapped one, because a hundred live `<video>`
+  elements exhausts the decoder. The object screen mounts one, and the grids use
+  `useNearViewport` — which is what stops sixty range requests on a folder of
+  sixty clips, while `preload="metadata"` is how a poster frame arrives free out
+  of a bucket that ships no derivatives. Ref callbacks are still memoised per key
+  in `useMediaPlayback.register`: an inline arrow is a new identity every render,
+  which would detach and re-attach the element on every tick of the scrub bar.
 - **Ties in a date sort used to be the common case. They are not any more, and
   the tie-break is gone.** S3's `LastModified` has one-second resolution and a
   run writes its whole output inside one second, so a date sort tied almost

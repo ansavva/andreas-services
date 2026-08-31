@@ -157,17 +157,23 @@ export function TextPage({ file, onClose, onSaved }: Props) {
           <Text variant="title" className="truncate">
             {file.name}
           </Text>
-          <Text variant="caption" tone="muted" className="truncate">
+          {/* The name path — the thing `CopyKeyButton` beside it copies, and
+              the thing a `studio` command is handed. */}
+          <Text variant="caption" tone="muted" className="truncate font-mono">
             {file.key}
           </Text>
         </div>
 
-        {data && <Badge intent="neutral">{data.language}</Badge>}
+        {data && (
+          <Badge intent="neutral" className="font-mono">
+            {data.language}
+          </Badge>
+        )}
 
         {/* Rendered/raw is a *reading* choice, so it is gone while editing —
             there is only one way to edit markdown and it is as markdown. */}
         {isMarkdown && !editing && (
-          <Button intent="ghost" size="sm" onClick={() => setRaw((value) => !value)}>
+          <Button intent="secondary" size="sm" onClick={() => setRaw((value) => !value)}>
             {raw ? "Rendered" : "Raw"}
           </Button>
         )}
@@ -176,7 +182,7 @@ export function TextPage({ file, onClose, onSaved }: Props) {
             file's contents, and the key that names the file. */}
         <CopyKeyButton value={file.key} />
         {data && !editing && (
-          <Button intent="ghost" size="sm" onClick={() => void contentCopy.copy(data.content)}>
+          <Button intent="secondary" size="sm" onClick={() => void contentCopy.copy(data.content)}>
             {copyLabel(contentCopy.status, "Copy text")}
           </Button>
         )}
@@ -187,7 +193,7 @@ export function TextPage({ file, onClose, onSaved }: Props) {
               {saving ? "Saving…" : dirty ? "Save" : "Saved"}
             </Button>
             <Button
-              intent="ghost"
+              intent="secondary"
               size="sm"
               disabled={saving}
               onClick={() => {
@@ -212,7 +218,7 @@ export function TextPage({ file, onClose, onSaved }: Props) {
             Discard changes
           </Button>
         ) : (
-          <Button intent="ghost" size="sm" onClick={close} aria-label="Close (Esc)">
+          <Button intent="secondary" size="sm" onClick={close} aria-label="Close (Esc)">
             Close
           </Button>
         )}

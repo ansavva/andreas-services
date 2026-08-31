@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 
+import { useNearViewport } from "../../hooks/useNearViewport";
 import { useSignedSrc } from "../../hooks/useSignedSrc";
 import { formatDuration } from "../../utils/format";
 
@@ -38,6 +39,19 @@ interface Props {
    * controls that already carry the name.
    */
   name: string;
+  /**
+   * Whether this is a video, when the caller knows.
+   *
+   * **Omitting it no longer means "image".** It used to default to `false`, so
+   * every caller that could not know — `HeroImage` is `{node, url}` and carries
+   * no kind, which is `EntityCard`, `EntityRow` and the project's input pool —
+   * silently rendered an `.mp4` through `<img>` and drew a broken image. The
+   * runs list did it too, and that is how this was found.
+   *
+   * Left undefined, the kind is read off the object's extension instead. An
+   * explicit value always wins, because a caller with a real `kind` field knows
+   * better than a file name does.
+   */
   isVideo?: boolean;
   aspect?: keyof typeof ASPECTS;
   /** `cover` fills the box and crops; `contain` shows the whole frame. */
@@ -87,15 +101,52 @@ interface Props {
  *   — and because the observer fires immediately for anything already on screen,
  *   nothing visible waits for it.
  *
+ * **A video tile previews on hover, and it is deliberately not Replicate's
+ * version of that.** Replicate's gallery tiles are bare
+ * `<video autoplay muted loop role="presentation">` — they play the moment they
+ * are mounted. Studio cannot: a folder here holds sixty clips, and a hundred
+ * live decoders is the budget failure `WEB_APP.md` already records against the
+ * reel. So the element is the same bare, controlless, muted, looping one and
+ * only the *trigger* differs — a mouse entering the box, over a `src` the
+ * viewport discipline above has already allowed. Nothing loads earlier than it
+ * did; `preload="metadata"` still buys the poster and `near` still gates the
+ * source, so a hover on a tile that has not reached the viewport plays nothing
+ * rather than starting a fetch.
+ *
+ * Mouse only, and reduced motion opts out. `pointerType` is checked because a
+ * tap emits a synthetic pointer-enter, and on touch the press is already a
+ * navigation — a clip that starts playing under the finger that is opening it
+ * is a decoder spent on a frame nobody sees.
+ *
  * **Presentational only, and it renders no `<button>`.** Every tile in this app
  * is already inside one, and a button cannot contain a button — the constraint
  * that shaped `MediaTile`'s checkbox and `EntityCard`. Callers own the click.
  */
+/**
+ * The extensions the media tree actually stores video under.
+ *
+ * Read off the object's own name or its S3 key, never the presigned URL's query
+ * string — the signature carries `X-Amz-*` parameters and a naive `.endsWith`
+ * against the whole URL never matches.
+ */
+const VIDEO_EXTENSIONS = /\.(mp4|mov|webm|m4v)$/i;
+
+function looksLikeVideo(name: string, url: string): boolean {
+  if (VIDEO_EXTENSIONS.test(name)) return true;
+  try {
+    return VIDEO_EXTENSIONS.test(new URL(url).pathname);
+  } catch {
+    // A relative or malformed URL — the stub suite serves some. Fall back to
+    // the raw string with any query cut off by hand.
+    return VIDEO_EXTENSIONS.test(url.split("?")[0] ?? "");
+  }
+}
+
 export function MediaThumb({
   nodeId,
   url,
   name,
-  isVideo = false,
+  isVideo: isVideoProp,
   aspect = "square",
   fit = "cover",
   badge,
@@ -105,10 +156,37 @@ export function MediaThumb({
   className = "",
   title,
 }: Props) {
+  const isVideo = isVideoProp ?? looksLikeVideo(name, url);
+
   const { src, failed, onError } = useSignedSrc(nodeId, url);
   const [duration, setDuration] = useState<number | null>(null);
   const box = useRef<HTMLSpanElement>(null);
+  const video = useRef<HTMLVideoElement>(null);
   const near = useNearViewport(box, isVideo);
+
+  /**
+   * Start or stop the hover preview.
+   *
+   * The `element.src` guard is the viewport discipline showing through: with no
+   * source mounted there is nothing to play, and calling `play()` anyway is how
+   * a hover would turn into the very range request `near` exists to defer.
+   *
+   * A rejected `play()` is ordinary rather than exceptional here — leaving the
+   * box before the promise settles aborts it — so it is swallowed. This is not
+   * the reel's `NotAllowedError` case: the element is muted, which is the
+   * condition every autoplay policy grants.
+   */
+  const preview = useCallback((on: boolean) => {
+    const element = video.current;
+    if (!element || !element.src) return;
+    if (on) {
+      if (prefersReducedMotion()) return;
+      void element.play().catch(() => undefined);
+    } else {
+      element.pause();
+      element.currentTime = 0;
+    }
+  }, []);
 
   const media = `h-full w-full ${FITS[fit]} ${dimmed ? "opacity-75" : ""} ${mediaClassName}`;
 
@@ -116,6 +194,12 @@ export function MediaThumb({
     <span
       ref={box}
       title={title}
+      onPointerEnter={(event) => {
+        if (isVideo && event.pointerType === "mouse") preview(true);
+      }}
+      onPointerLeave={(event) => {
+        if (isVideo && event.pointerType === "mouse") preview(false);
+      }}
       className={`relative block overflow-hidden bg-surface-alt ${ASPECTS[aspect]} ${className}`}
     >
       {failed ? (
@@ -124,13 +208,21 @@ export function MediaThumb({
         </span>
       ) : isVideo ? (
         <video
+          ref={video}
           // `src` withheld until near the viewport — see the note above. `key`
           // is not needed: setting src on a mounted <video> starts the load.
           src={near ? src : undefined}
           onError={onError}
-          onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
+          onLoadedMetadata={(event) =>
+            setDuration(event.currentTarget.duration)
+          }
           preload="metadata"
+          // No `controls`, and `role="presentation"` for the same reason the
+          // `<img>` below carries an empty `alt`: this is a picture inside a
+          // control that already has a name, not a player.
+          role="presentation"
           muted
+          loop
           playsInline
           className={media}
         />
@@ -153,10 +245,14 @@ export function MediaThumb({
         />
       )}
 
+      {/* Square, and mono: a duration is metadata. `bg-neutral-1/80` is the
+          ramp's darkest step at the weight the black literal here used to
+          carry — a scrim over media has to be dark, and the point of the ramp
+          is that "dark" is now a token this app can re-value. */}
       {(badge ?? (isVideo && !failed)) && (
         <span
-          className="pointer-events-none absolute bottom-1.5 right-1.5 rounded-sm bg-black/70 px-1.5
-                     py-0.5 font-body text-[11px] tabular-nums text-white"
+          className="pointer-events-none absolute bottom-1.5 right-1.5 bg-neutral-1/80 px-1.5
+                     py-0.5 font-mono text-[11px] tabular-nums text-neutral-12"
         >
           {badge ?? (duration ? formatDuration(duration) : "video")}
         </span>
@@ -164,8 +260,9 @@ export function MediaThumb({
 
       {showName && (
         <span
-          className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/80
-                     to-transparent px-2 pb-1.5 pt-6 text-left font-body text-[11px] text-white/90
+          className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t
+                     from-neutral-1/85 to-transparent px-2 pb-1.5 pt-6 text-left font-mono text-[11px]
+                     text-neutral-12
                      opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
         >
           {name}
@@ -176,40 +273,17 @@ export function MediaThumb({
 }
 
 /**
- * Whether an element has come within a screen of the viewport.
+ * Whether the reader has asked for less motion.
  *
- * `rootMargin` is a full viewport height so a clip is loading by the time it is
- * scrolled to rather than starting then. Latches on: once something has been
- * seen there is no benefit to unloading it, and a `<video>` whose `src` was
- * taken away goes blank.
+ * Read at the moment of the hover rather than subscribed to: this decides one
+ * `play()` call, and a `matchMedia` listener per tile would be sixty listeners
+ * on a folder of sixty clips to answer a question that costs nothing to ask.
  *
- * Returns `true` outright when not watching, so the image path never pays for
- * an observer it does not use.
+ * The `typeof` guard is for jsdom, which implements no `matchMedia` at all —
+ * a test that renders a grid should not have to stub one.
  */
-function useNearViewport(ref: React.RefObject<HTMLElement | null>, watch: boolean): boolean {
-  const [near, setNear] = useState(!watch);
-
-  useEffect(() => {
-    if (!watch || near) return;
-    const element = ref.current;
-    if (!element) return;
-
-    // jsdom has no IntersectionObserver, and a test that renders a grid should
-    // not have to stub one to see anything.
-    if (typeof IntersectionObserver === "undefined") {
-      setNear(true);
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) setNear(true);
-      },
-      { rootMargin: "100% 0px" },
-    );
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [near, ref, watch]);
-
-  return near;
+function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function")
+    return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
