@@ -119,7 +119,11 @@ def load_spec(path: str = SPEC_PATH) -> dict:
     if len(set(ids)) != len(ids):
         raise TurnaroundError(f"{path} has duplicate angle id(s).")
     for angle in spec["angles"]:
-        missing = [k for k in ("id", "group", "angle_image", "prompt", "description", "tags")
+        # `angle_image` is NOT required. An angle may bind no plate — the face
+        # angles do not, because a plate saying how to stand was measurably
+        # distorting the face it existed to record. `prompt` still is required:
+        # with no plate, the wording is the only thing that says what the angle IS.
+        missing = [k for k in ("id", "group", "prompt", "description", "tags")
                    if not angle.get(k)]
         if missing:
             raise TurnaroundError(f"{path}: angle {angle.get('id')!r} is missing {missing}.")
@@ -314,7 +318,7 @@ def _slots_phrase(positions: list[int]) -> str:
 
 
 def build_prompt(angle: dict, spec: dict, profile: dict,
-                 angle_position: int, identity_positions: list[int],
+                 angle_position: int | None, identity_positions: list[int],
                  torso_position: int | None = None) -> str:
     """Fill one angle's prompt template. Raises if the spec names a value we lack."""
     defaults = spec.get("defaults") or {}
@@ -327,9 +331,13 @@ def build_prompt(angle: dict, spec: dict, profile: dict,
         "build": _build_text(profile, angle["group"]),
         "age": _age_text(profile),
         "identity_block": (profile.get("text_identity_block") or "").strip(),
-        "angle_slot": f"[Image{angle_position}]",
         "identity_slots": _slots_phrase(identity_positions),
     }
+    # Both slots are ABSENT rather than empty when the angle binds no such
+    # image, for the reason the torso comment already gave: a prompt citing a
+    # plate it never declared should fail, not render "".
+    if angle_position is not None:
+        values["angle_slot"] = f"[Image{angle_position}]"
     # Absent rather than empty when the angle binds no torso angle image, so a prompt
     # that cites one it never declared fails loudly instead of rendering "".
     if torso_position is not None:
@@ -348,13 +356,18 @@ def build_prompt(angle: dict, spec: dict, profile: dict,
 # the images
 # --------------------------------------------------------------------------
 
-def angle_key(angle: dict) -> str:
-    """The angle's angle image, as a full key, checked for shape.
+def angle_key(angle: dict) -> str | None:
+    """The angle's angle image, as a full key, checked for shape — or None.
 
     The spec stores a bucket-relative key (`config/angle/body/front.png`) so the
     prose in source control names the object in S3 that `dev-setup.sh` copies out.
+
+    **None when the angle declares no plate**, which the face angles now do not.
+    A plate says how to stand, and the words in those prompts say it precisely
+    enough — while the plate itself was measurably costing the FACE, which is
+    the one thing a face angle exists to record. See the spec's own note.
     """
-    return _angle_key(angle, "angle_image")
+    return _angle_key(angle, "angle_image") if angle.get("angle_image") else None
 
 
 def torso_angle_key(angle: dict) -> str | None:
@@ -824,7 +837,10 @@ def prepare(angle: dict, spec: dict, profile: dict, name: str, opts):
     # for every angle with an angle image, which is all of them.
     angle_images = [SUB.as_node(key) for key in angle_keys(angle)]
     torso = SUB.as_node(torso_angle_key(angle)) if torso_angle_key(angle) else None
-    angle_pos = ordered.index(angle_images[0]) + 1
+    # `None` when the angle binds no plate, so `build_prompt` leaves `angle_slot`
+    # UNDEFINED rather than empty — a prompt that cites a plate it never declared
+    # then fails loudly, exactly as it already does for `torso_slot`.
+    angle_pos = ordered.index(angle_images[0]) + 1 if angle_images else None
     torso_pos = ordered.index(torso) + 1 if torso else None
     identity_pos = [i + 1 for i, k in enumerate(ordered) if k not in angle_images]
 

@@ -107,6 +107,47 @@ defaults:
     hidden behind the bridge of the nose, the far ear is out of view, and the
     near ear is fully visible. BOTH eyes look directly into the lens — the gaze
     does not drift off camera.
+  # ── FACE: no plate, and no written description of the person ───────────
+  #
+  # Both were measured against a live character on gpt-image-2 and both were
+  # costing the face:
+  #
+  #   * The PLATE distorted it. `{guide}` spends four clauses saying take
+  #     nothing from this image but the stance, and the face came back pulled
+  #     toward the generic head anyway — an image outvotes a sentence, which is
+  #     the same lesson `guide_torso` was added for, reaching the opposite
+  #     conclusion because here the contested thing IS the subject. A face angle
+  #     exists to record a face; a guide that costs the face costs the angle.
+  #   * The DESCRIPTION was redundant. `{build}`, `{age}` and `{must}` are the
+  #     bible in prose, and against five photographs of the real face they add
+  #     nothing and pull toward whatever the words over-state. The seed images
+  #     already say who this is, in the medium the model reads best.
+  #
+  # So a face angle now carries the ANGLE, the CROP, the SCALE, and the
+  # instruction to take the face from the references — and nothing about the
+  # person that a photograph already carries. The stance the plate used to
+  # supply is stated geometrically instead, in terms of what is visible in the
+  # frame rather than in degrees.
+  #
+  # THE BODY ANGLES ARE UNCHANGED and still bind a plate. The reasoning does not
+  # carry: a body angle records a BUILD that a head-and-shoulders seed pool does
+  # not evidence, so there the description is the only source and the plate is
+  # not competing with better evidence.
+  face_only: >-
+    THE FACE COMES FROM THE REFERENCE IMAGES. They show this person's real
+    face: match its bone structure, the WIDTH of the jaw and chin, the set and
+    spacing of the eyes, the nose, the hairline and the shape of the skull to
+    them. Study the nose closely, and preserve the person's ethnicity exactly
+    as the images show it.
+  # `turn_check` without its gaze clause. The tested prompt dropped both that
+  # and "eyes returning to the lens", and the result is a three-quarter looking
+  # off camera — which is why the two three-quarter `description`s below no
+  # longer claim the eyes are on it. A description that contradicts its own
+  # plate is what put a `reference_set_authority` note in one live bible.
+  turn_check_face: >-
+    A TRUE forty-five degrees, not a slight turn: the far cheek is partly
+    hidden behind the bridge of the nose, the far ear is out of view, and the
+    near ear is fully visible.
   must_intro_face: >-
     Preserve these identity cues exactly:
   # A body angle image exists to record a BUILD, and the first one rendered lost it:
@@ -192,153 +233,125 @@ angles:
   # ── face ──────────────────────────────────────────────────────────────
   - id: face_front
     group: face
-    angle_image: config/angle/face/front.png
     description: >-
       Head and shoulders, front on, looking straight down the lens, neutral expression, grey studio backdrop.
     tags: [face, front, neutral, studio]
     prompt: >-
-      {identity_slots} show the person. {angle_slot} {guide}
-      A studio portrait of the person, front on, squared to the camera, looking straight down the lens. Neutral expression, mouth
-      closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
-      no hips and no legs anywhere in the frame. {scale_face}
-      {face_intro}
-      {build_intro} {build}
-      {age_intro} {age}. {top}. {backdrop_face}
-      {light} {style} {quality} {must}
+      A studio portrait of the person, front on, squared to the camera, looking
+      straight down the lens. Neutral expression, mouth closed. CROPPED AT
+      MID-CHEST — head and shoulders only, with no waist, no hips and no legs
+      anywhere in the frame. {scale_face}
+      {face_only}
+      {top}. {backdrop_face} {light} {style} {quality}
 
   - id: face_three_quarter_right
     group: face
-    angle_image: config/angle/face/three-quarter-right.png
     description: >-
-      Head and shoulders, face turned toward the right edge of frame, eyes to camera, grey studio backdrop.
+      Head and shoulders, face turned toward the right edge of frame, grey studio backdrop.
     tags: [face, three-quarter, right, studio]
     prompt: >-
-      {identity_slots} show the person. {angle_slot} {guide}
-      A studio portrait of the person, turned about 45 degrees so the nose points toward the RIGHT edge of the frame, eyes returning to the lens. {turn_check} Neutral expression, mouth
-      closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
-      no hips and no legs anywhere in the frame. {scale_face}
-      {face_intro}
-      {build_intro} {build}
-      {age_intro} {age}. {top}. {backdrop_face}
-      {light} {style} {quality} {must}
+      A studio portrait of the person, turned about 45 degrees so the nose points
+      toward the RIGHT edge of the frame. {turn_check_face} Neutral expression,
+      mouth closed. CROPPED AT MID-CHEST — head and shoulders only, with no
+      waist, no hips and no legs anywhere in the frame. {scale_face}
+      {face_only}
+      {top}. {backdrop_face} {light} {style} {quality}
 
   - id: face_profile_right
     group: face
-    angle_image: config/angle/face/profile-right.png
     description: >-
       Head and shoulders in full profile, face toward the right edge of frame, grey studio backdrop.
     tags: [face, profile, right, studio]
     prompt: >-
-      {identity_slots} show the person. {angle_slot} {guide}
-      A studio portrait of the person, in FULL PROFILE, turned 90 degrees so the nose points directly at the RIGHT edge of the frame, gaze level and straight ahead. Neutral expression, mouth
-      closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
-      no hips and no legs anywhere in the frame. {scale_face}
-      {face_intro}
-      {build_intro} {build}
-      {age_intro} {age}. {top}. {backdrop_face}
-      {light} {style} {quality} {must}
+      A studio portrait of the person, in FULL PROFILE, turned 90 degrees so the
+      nose points directly at the RIGHT edge of the frame, gaze level and
+      straight ahead. Neutral expression, mouth closed. CROPPED AT MID-CHEST —
+      head and shoulders only, with no waist, no hips and no legs anywhere in
+      the frame. {scale_face}
+      {face_only}
+      {top}. {backdrop_face} {light} {style} {quality}
 
   - id: face_three_quarter_back_right
     group: face
-    angle_image: config/angle/face/three-quarter-back-right.png
-    torso_image: config/angle/body/three-quarter-back-right.png
     description: >-
       Head and shoulders from behind at three-quarters, head and shoulders turned together, a sliver of the face at the right edge of the head, grey studio backdrop.
     tags: [face, three-quarter, back, right, studio]
     prompt: >-
-      {identity_slots} show the person. {angle_slot} {guide}
-      {torso_slot} {guide_torso}
       A studio portrait of the person seen FROM BEHIND at three-quarters — the
       head AND THE SHOULDERS TOGETHER turned about 135 degrees away from the
       lens, so the back of the head fills most of the frame. THE SHOULDERS ARE
-      ANGLED, NOT SQUARE: one shoulder is clearly nearer the camera than the
-      other and the far side of the chest is turning out of view, exactly as in
-      {torso_slot}. Only a NARROW SLIVER of the face breaks the silhouette on
-      the side toward the RIGHT edge of the frame — the brow, the cheekbone and
-      the tip of the nose, and no more. NOT A PROFILE: the eye, the mouth and
-      the front of the chin must not be visible. Neutral
-      expression, mouth
-      closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
-      no hips and no legs anywhere in the frame. {scale_face}
-      {face_intro}
-      {build_intro} {build}
-      {age_intro} {age}. {top}. {backdrop_face}
-      {light} {style} {quality} {must}
+      ANGLED, NOT SQUARE: the near shoulder is clearly closer to the lens and
+      sits LOWER IN THE FRAME than the far one, the far side of the chest is
+      turning out of view, and the line across the top of the shoulders runs
+      DIAGONALLY rather than straight across. Only a NARROW SLIVER of the face
+      breaks the silhouette on the side toward the RIGHT edge of the frame — the
+      brow, the cheekbone and the tip of the nose, and no more. NOT A PROFILE:
+      the eye, the mouth and the front of the chin must not be visible. Neutral
+      expression, mouth closed. CROPPED AT MID-CHEST — head and shoulders only,
+      with no waist, no hips and no legs anywhere in the frame. {scale_face}
+      {face_only}
+      {top}. {backdrop_face} {light} {style} {quality}
 
   - id: face_back
     group: face
-    angle_image: config/angle/face/back.png
     description: >-
       Head and shoulders straight from behind, the back of the head to the lens, grey studio backdrop.
     tags: [face, back, studio]
     prompt: >-
-      {identity_slots} show the person. {angle_slot} {guide}
-      A studio portrait of the person, directly away from the camera, the back of the head to the lens. Neutral expression, mouth
-      closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
-      no hips and no legs anywhere in the frame. {scale_face}
-      {face_intro}
-      {build_intro} {build}
-      {age_intro} {age}. {top}. {backdrop_face}
-      {light} {style} {quality} {must}
+      A studio portrait of the person, directly away from the camera, the back of
+      the head to the lens. Neutral expression, mouth closed. CROPPED AT
+      MID-CHEST — head and shoulders only, with no waist, no hips and no legs
+      anywhere in the frame. {scale_face}
+      {face_only}
+      {top}. {backdrop_face} {light} {style} {quality}
 
   - id: face_three_quarter_back_left
     group: face
-    angle_image: config/angle/face/three-quarter-back-left.png
-    torso_image: config/angle/body/three-quarter-back-left.png
     description: >-
       Head and shoulders from behind at three-quarters, head and shoulders turned together, a sliver of the face at the left edge of the head, grey studio backdrop.
     tags: [face, three-quarter, back, left, studio]
     prompt: >-
-      {identity_slots} show the person. {angle_slot} {guide}
-      {torso_slot} {guide_torso}
       A studio portrait of the person seen FROM BEHIND at three-quarters — the
       head AND THE SHOULDERS TOGETHER turned about 135 degrees away from the
       lens, so the back of the head fills most of the frame. THE SHOULDERS ARE
-      ANGLED, NOT SQUARE: one shoulder is clearly nearer the camera than the
-      other and the far side of the chest is turning out of view, exactly as in
-      {torso_slot}. Only a NARROW SLIVER of the face breaks the silhouette on
-      the side toward the LEFT edge of the frame — the brow, the cheekbone and
-      the tip of the nose, and no more. NOT A PROFILE: the eye, the mouth and
-      the front of the chin must not be visible. Neutral
-      expression, mouth
-      closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
-      no hips and no legs anywhere in the frame. {scale_face}
-      {face_intro}
-      {build_intro} {build}
-      {age_intro} {age}. {top}. {backdrop_face}
-      {light} {style} {quality} {must}
+      ANGLED, NOT SQUARE: the near shoulder is clearly closer to the lens and
+      sits LOWER IN THE FRAME than the far one, the far side of the chest is
+      turning out of view, and the line across the top of the shoulders runs
+      DIAGONALLY rather than straight across. Only a NARROW SLIVER of the face
+      breaks the silhouette on the side toward the LEFT edge of the frame — the
+      brow, the cheekbone and the tip of the nose, and no more. NOT A PROFILE:
+      the eye, the mouth and the front of the chin must not be visible. Neutral
+      expression, mouth closed. CROPPED AT MID-CHEST — head and shoulders only,
+      with no waist, no hips and no legs anywhere in the frame. {scale_face}
+      {face_only}
+      {top}. {backdrop_face} {light} {style} {quality}
 
   - id: face_profile_left
     group: face
-    angle_image: config/angle/face/profile-left.png
     description: >-
       Head and shoulders in full profile, face toward the left edge of frame, grey studio backdrop.
     tags: [face, profile, left, studio]
     prompt: >-
-      {identity_slots} show the person. {angle_slot} {guide}
-      A studio portrait of the person, in FULL PROFILE, turned 90 degrees so the nose points directly at the LEFT edge of the frame, gaze level and straight ahead. Neutral expression, mouth
-      closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
-      no hips and no legs anywhere in the frame. {scale_face}
-      {face_intro}
-      {build_intro} {build}
-      {age_intro} {age}. {top}. {backdrop_face}
-      {light} {style} {quality} {must}
+      A studio portrait of the person, in FULL PROFILE, turned 90 degrees so the
+      nose points directly at the LEFT edge of the frame, gaze level and
+      straight ahead. Neutral expression, mouth closed. CROPPED AT MID-CHEST —
+      head and shoulders only, with no waist, no hips and no legs anywhere in
+      the frame. {scale_face}
+      {face_only}
+      {top}. {backdrop_face} {light} {style} {quality}
 
   - id: face_three_quarter_left
     group: face
-    angle_image: config/angle/face/three-quarter-left.png
     description: >-
-      Head and shoulders, face turned toward the left edge of frame, eyes to camera, grey studio backdrop.
+      Head and shoulders, face turned toward the left edge of frame, grey studio backdrop.
     tags: [face, three-quarter, left, studio]
     prompt: >-
-      {identity_slots} show the person. {angle_slot} {guide}
-      A studio portrait of the person, turned about 45 degrees so the nose points toward the LEFT edge of the frame, eyes returning to the lens. {turn_check} Neutral expression, mouth
-      closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist,
-      no hips and no legs anywhere in the frame. {scale_face}
-      {face_intro}
-      {build_intro} {build}
-      {age_intro} {age}. {top}. {backdrop_face}
-      {light} {style} {quality} {must}
+      A studio portrait of the person, turned about 45 degrees so the nose points
+      toward the LEFT edge of the frame. {turn_check_face} Neutral expression,
+      mouth closed. CROPPED AT MID-CHEST — head and shoulders only, with no
+      waist, no hips and no legs anywhere in the frame. {scale_face}
+      {face_only}
+      {top}. {backdrop_face} {light} {style} {quality}
 
   # ── body ──────────────────────────────────────────────────────────────
   - id: body_front

@@ -51,7 +51,10 @@ def test_spec_loads_and_every_slot_is_complete(spec):
     assert spec["angles"], "the spec defines no angles"
     for angle in spec["angles"]:
         assert angle["group"] in P.ANGLE_GROUPS
-        assert angle["angle_image"].startswith(P.CONFIG + "/")
+        # A plate is OPTIONAL — the face angles bind none. When one is named it
+        # is still config, never character material.
+        if angle.get("angle_image"):
+            assert angle["angle_image"].startswith(P.CONFIG + "/")
         assert angle["description"].strip()
         assert angle["tags"]
 
@@ -72,7 +75,8 @@ def test_every_pose_image_exists_in_the_repo(spec):
     """
     missing = [
         angle["angle_image"] for angle in spec["angles"]
-        if not os.path.isfile(os.path.join(REPO_CONFIG, angle["angle_image"].split("/", 1)[1]))
+        if angle.get("angle_image")
+        and not os.path.isfile(os.path.join(REPO_CONFIG, angle["angle_image"].split("/", 1)[1]))
     ]
     assert not missing, f"angle image(s) not in studio/config/: {missing}"
 
@@ -127,29 +131,54 @@ def test_back_three_quarter_slots_turn_the_shoulders_and_forbid_a_profile(spec):
         assert "not square" in text.lower(), angle["id"]
 
 
-def test_face_back_three_quarters_bind_a_torso_guide(spec):
-    """Wording alone did not rotate the torso, because the image disagreed.
+def test_no_face_angle_binds_a_plate(spec):
+    """The plate distorted the one thing a face angle exists to record.
 
-    A face plate is cut from a head sheet and ends at a neck stump, so it shows
-    no shoulder line — and a symmetric stump reads as square to the camera.
-    Both back three-quarters came back with a correctly turned head on a flat
-    back even after the prompt was rewritten to insist the shoulders turn. The
-    fix is a second plate that actually depicts the angle, so these angles are
-    the one place two guides are bound. The other six face angles need no such
-    thing: their orientation is legible from the head alone.
+    `{guide}` spends four clauses saying take nothing from this image but the
+    stance, and the face still came back pulled toward the generic head: an
+    image outvotes a sentence. That is the same finding `guide_torso` was added
+    for — and it points the other way here, because on a face angle the thing
+    the plate competes with IS the subject.
+
+    So both plates are gone from the face group, the torso guide with them, and
+    the stance is stated geometrically instead. The body angles keep theirs: a
+    body angle records a BUILD that a head-and-shoulders seed pool does not
+    evidence, so there the plate is not competing with better evidence.
     """
-    face_backs = [s for s in spec["angles"]
-                  if s["group"] == "face" and "three_quarter_back" in s["id"]]
-    assert len(face_backs) == 2
-    for angle in face_backs:
-        torso = angle.get("torso_image")
-        assert torso, f"{angle['id']} binds no torso guide"
-        # Same orientation as the head plate, from the body set.
-        assert torso == angle["angle_image"].replace("/face/", "/body/"), angle["id"]
-        assert "{torso_slot}" in angle["prompt"], angle["id"]
-    others = [s for s in spec["angles"] if s not in face_backs]
-    assert not [s["id"] for s in others if s.get("torso_image")], \
-        "only the face back three-quarters should need a second guide"
+    face = [a for a in spec["angles"] if a["group"] == "face"]
+    assert len(face) == 8
+    for angle in face:
+        assert not angle.get("angle_image"), angle["id"]
+        assert not angle.get("torso_image"), angle["id"]
+        assert "{angle_slot}" not in angle["prompt"], angle["id"]
+        assert "{torso_slot}" not in angle["prompt"], angle["id"]
+        assert "{guide}" not in angle["prompt"], angle["id"]
+    # Every BODY angle still binds one, and none binds a torso guide any more.
+    for angle in [a for a in spec["angles"] if a["group"] == "body"]:
+        assert angle.get("angle_image"), angle["id"]
+        assert "{angle_slot}" in angle["prompt"], angle["id"]
+        assert not angle.get("torso_image"), angle["id"]
+
+
+def test_the_back_three_quarters_state_the_shoulder_line_in_WORDS(spec):
+    """What the torso guide used to carry has to survive its removal.
+
+    A face plate ends at a neck stump, so a second whole-figure plate was bound
+    to say which way the shoulders point — and both back three-quarters came
+    back flat-backed without it. With no plate at all the wording is the only
+    thing left, so it has to be checkable rather than a direction in degrees:
+    which shoulder is nearer, where it sits in the frame, and that the line
+    across the top runs diagonally.
+    """
+    backs = [a for a in spec["angles"]
+             if a["group"] == "face" and "three_quarter_back" in a["id"]]
+    assert len(backs) == 2
+    for angle in backs:
+        text = angle["prompt"]
+        assert "SHOULDERS ARE" in text and "NOT SQUARE" in text, angle["id"]
+        assert "LOWER IN THE FRAME" in text, angle["id"]
+        assert "DIAGONALLY" in text, angle["id"]
+
 
 
 def test_every_slot_states_the_build_and_disowns_the_guides(spec):
@@ -168,9 +197,15 @@ def test_every_slot_states_the_build_and_disowns_the_guides(spec):
     shows the neck, the traps, the shoulder line and the upper arm, which is
     most of what reads as build.
     """
-    for angle in spec["angles"]:
+    # BODY angles only. The face angles carry no written description of the
+    # person at all now — five photographs of the real face outrank prose about
+    # it, and the prose pulled toward whatever it over-stated. The reasoning
+    # does not reach the body, where the pool evidences almost nothing.
+    for angle in [a for a in spec["angles"] if a["group"] == "body"]:
         assert "{build}" in angle["prompt"], angle["id"]
         assert "{build_intro}" in angle["prompt"], angle["id"]
+    for angle in [a for a in spec["angles"] if a["group"] == "face"]:
+        assert "{build}" not in angle["prompt"], angle["id"]
     intro = (spec["defaults"] or {}).get("build_intro", "")
     assert "NOT THE GUIDE" in intro, "the intro must disown the pose guide by name"
 
@@ -191,8 +226,16 @@ def test_the_face_and_the_build_name_different_authorities(spec):
     assert "the images win" in face, "the face clause must give the images priority"
     assert "WIDTH of the jaw and chin" in face, "face width is the drift this catches"
     assert "THIS DESCRIPTION first" in build, "the build clause must give the text priority"
-    for angle in spec["angles"]:
+    for angle in [a for a in spec["angles"] if a["group"] == "body"]:
         assert "{face_intro}" in angle["prompt"], angle["id"]
+    # The face group says the same thing in its own block, which drops the
+    # "checklist further down" sentence because there is no longer a checklist.
+    face_only = (spec["defaults"] or {}).get("face_only", "")
+    assert "WIDTH of the jaw and chin" in face_only
+    assert "checklist" not in face_only
+    for angle in [a for a in spec["angles"] if a["group"] == "face"]:
+        assert "{face_only}" in angle["prompt"], angle["id"]
+        assert "{face_intro}" not in angle["prompt"], angle["id"]
 
 
 def test_a_plate_wears_the_bibles_stated_colour_when_it_has_one():
@@ -301,7 +344,7 @@ def test_every_slot_states_the_age_and_says_it_beats_the_references(spec):
     references are precisely what disagree. `identity.apparent_age` has been in
     the bible all along; the prompt now reads it and says it outranks them.
     """
-    for angle in spec["angles"]:
+    for angle in [a for a in spec["angles"] if a["group"] == "body"]:
         assert "{age_intro} {age}" in angle["prompt"], angle["id"]
     intro = (spec["defaults"] or {}).get("age_intro", "")
     assert "do not all agree" in intro, "the intro must say the references conflict"
@@ -362,10 +405,20 @@ def test_three_quarter_slots_say_what_forty_five_degrees_looks_like(spec):
            and "back" not in s["id"]]
     assert tqs, "expected front three-quarter angles"
     for angle in tqs:
-        assert "{turn_check}" in angle["prompt"], angle["id"]
+        # The face group uses the gaze-free variant: the tested prompt dropped
+        # both that clause and "eyes returning to the lens", and the result the
+        # set is being rebuilt from looks off camera. The two `description`s
+        # therefore no longer claim otherwise.
+        key = "{turn_check_face}" if angle["group"] == "face" else "{turn_check}"
+        assert key in angle["prompt"], angle["id"]
+        if angle["group"] == "face":
+            assert "eyes to camera" not in angle["description"], angle["id"]
     check = (spec["defaults"] or {}).get("turn_check", "")
     assert "far ear is out of view" in check
     assert "BOTH eyes look directly into the lens" in check
+    face_check = (spec["defaults"] or {}).get("turn_check_face", "")
+    assert "far ear is out of view" in face_check
+    assert "eyes" not in face_check
 
 
 def test_the_set_covers_the_orientations_each_group_can_render(spec):
@@ -412,15 +465,19 @@ def test_prompts_fill_completely_and_carry_the_bible(spec):
         # An angle binding a second guide gets a position for it; one that does
         # not must render without ever being handed a `torso_slot` to fill.
         torso = 2 if angle.get("torso_image") else None
-        text = TURN.build_prompt(angle, spec, PROFILE, 1, [3, 4], torso)
+        plate = 1 if angle.get("angle_image") else None
+        text = TURN.build_prompt(angle, spec, PROFILE, plate, [3, 4], torso)
         assert not re.search(r"\{[a-z_]+\}", text), f"{angle['id']} has an unfilled placeholder"
-        assert "A long straight nose" in text, angle["id"]
-        # A face plate wears the bible's usual top; a body plate strips back to
-        # shorts so the silhouette reads. Each group names only its own.
+        # A face angle wears the bible's usual top; a body angle strips back to
+        # shorts so the silhouette reads. Each group names only its own — and
+        # `{top}` is the ONLY thing a face prompt still takes from the bible,
+        # because the reference photographs carry the rest.
         if angle["group"] == "face":
             assert "polo shirt" in text.lower(), angle["id"]
+            assert "A long straight nose" not in text, angle["id"]
         else:
             assert "shorts" in text.lower(), angle["id"]
+            assert "A long straight nose" in text, angle["id"]
 
 
 def test_a_body_prompt_says_its_wardrobe_overrides_the_bible(spec):
@@ -472,7 +529,7 @@ def test_a_plates_path_is_refused_like_any_other_path(library, spec):
     """
     _seed_plates(library.fake, spec)
     with pytest.raises(R.RunError, match="not a node id"):
-        R.check_bindings({"input_images": [TURN.angle_key(spec["angles"][0])]})
+        R.check_bindings({"input_images": [TURN.angle_key(_plated(spec))]})
     with pytest.raises(R.RunError, match="not a node id"):
         R.check_bindings({"input_images": ["elsewhere/front.png"]})
 
@@ -564,6 +621,16 @@ def _seed_plates(fake, spec):
     # would otherwise make a second node with the same name in the same folder.
     for key in dict.fromkeys(k for angle in spec["angles"] for k in TURN.angle_keys(angle)):
         fake.put_shared(key, b"png-bytes")
+
+
+def _plated(spec):
+    """The first angle that actually binds a plate.
+
+    `spec["angles"][0]` used to be one and is now `face_front`, which binds
+    none. A test about plate handling has to ask for a plate rather than assume
+    the first angle has one.
+    """
+    return next(a for a in spec["angles"] if a.get("angle_image"))
 
 
 def _seed_pool(fake, library, *names: str):
@@ -743,7 +810,7 @@ def test_citations_match_where_the_plate_actually_lands(library, spec):
     from types import SimpleNamespace
     _seed_plates(library.fake, spec)
     seed, = _seed_pool(library.fake, library, "subject-a_1.webp")
-    angle = next(s for s in spec["angles"] if s["id"] == "face_front")
+    angle = next(s for s in spec["angles"] if s["id"] == "body_front")
     entry = REG.get(spec["defaults"]["model"])
     opts = SimpleNamespace(model=None, project=library.project, extra=None,
                            aspect_ratio=None, dry_run=True, yes=False, dest=None,
@@ -1283,7 +1350,7 @@ def test_a_turnaround_finds_the_plates_that_config_sync_pushed(library, spec, mo
 
     monkeypatch.setattr(config_sync, "local_angle_images",
                         lambda: [(TURN.angle_key(angle), "/dev/null")
-                                 for angle in spec["angles"]])
+                                 for angle in spec["angles"] if angle.get("angle_image")])
     monkeypatch.setattr(config_sync.store, "upload",
                         lambda path, _src, **kw: library.fake.put_shared(path, b"png-bytes"))
 
@@ -1299,7 +1366,7 @@ def test_config_sync_is_a_dry_run_without_apply(library, spec, monkeypatch):
     from studio_pipeline.objects import config_sync
 
     monkeypatch.setattr(config_sync, "local_angle_images",
-                        lambda: [(TURN.angle_key(spec["angles"][0]), "/dev/null")])
+                        lambda: [(TURN.angle_key(_plated(spec)), "/dev/null")])
     result = CliRunner().invoke(cli.main, ["config", "sync"])
     assert result.exit_code == 0
     assert "--apply" in result.output
