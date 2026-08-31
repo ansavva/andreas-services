@@ -473,19 +473,22 @@ for (const [label, width, splits] of [
 }
 
 /**
- * **The scene screen takes the run screen's split, and must keep taking it.**
+ * **The scene screen's split is INSIDE a shot, and the cut is above it.**
  *
- * Same decision, same mechanism: the cut is what the page is for, so it leads
- * when there is one column and sits on the right when there are two. This is a
- * separate test rather than a loop over both pages because the two layouts are
- * allowed to fail independently — they share an intent, not a component, and a
- * regression in one should not be reported as a regression in the other.
+ * This asserted a page-level split and was wrong about the page: a run has one
+ * payload and one output, so its screen splits once; a scene has a RESULT and
+ * then N shots that each have inputs and outputs of their own. So the cut leads
+ * at full width — it is the scene, not a column beside it — and the two-column
+ * treatment belongs to each shot.
+ *
+ * A shot's outputs are plural on purpose: a re-render keeps the take it
+ * replaced, and comparing them is the reason to re-render at all.
  */
 for (const [label, width, splits] of [
   ["desktop", 1440, true],
   ["mobile", 390, false],
 ] as const) {
-  test(`the scene screen ${splits ? "splits" : "stacks cut-first"} at ${label}`, async ({
+  test(`a scene's shot ${splits ? "splits" : "stacks output-first"} at ${label}`, async ({
     page,
   }) => {
     stubOnly();
@@ -497,19 +500,42 @@ for (const [label, width, splits] of [
       const cut = [...document.querySelectorAll("section")].find((s) =>
         /^(Cuts|The cut)/.test(s.textContent ?? ""),
       );
-      const column = document.querySelector('[class*="lg:col-start-1"]');
-      if (!cut || !column) return null;
+      const shot = document.querySelector("article");
+      const inputs = shot?.querySelector('[class*="lg:col-start-1"]');
+      const outputs = shot?.querySelector('[class*="lg:col-start-2"]');
+      if (!cut || !shot || !inputs || !outputs) return null;
       const c = cut.getBoundingClientRect();
-      const l = column.getBoundingClientRect();
-      return { sideBySide: c.left >= l.right - 1, cutAbove: c.top < l.top };
+      const i = inputs.getBoundingClientRect();
+      const o = outputs.getBoundingClientRect();
+      const board = shot.getBoundingClientRect();
+      return {
+        // The cut is above every shot, and spans the same width the storyboard
+        // does rather than half of it. Measured against the board rather than
+        // `main`, whose own padding makes it wider than any of its children.
+        cutAboveShots: c.bottom <= board.top + 1,
+        cutIsFullWidth: c.width >= board.width - 2,
+        shotSplits: o.left >= i.right - 1,
+        outputAbove: o.top < i.top,
+      };
     });
 
     expect(geometry).not.toBeNull();
-    expect(geometry!.sideBySide).toBe(splits);
-    if (!splits) expect(geometry!.cutAbove).toBe(true);
-
-    // The cut is a video and plays here — a scene that renders its own output
-    // as a dead poster is the trip to the object screen this layout removes.
-    await expect(page.locator("main video").first()).toBeVisible();
+    expect(geometry!.cutAboveShots).toBe(true);
+    expect(geometry!.cutIsFullWidth).toBe(true);
+    expect(geometry!.shotSplits).toBe(splits);
+    if (!splits) expect(geometry!.outputAbove).toBe(true);
   });
 }
+
+test("a shot's runs are a tab, not a list under its inputs", async ({
+  page,
+}) => {
+  stubOnly();
+  await page.goto(`/s/${SCENE_ID}`);
+  await page.waitForLoadState("networkidle");
+
+  const runs = page.getByRole("tab", { name: /^Runs/ });
+  await expect(runs).toBeVisible();
+  await runs.click();
+  await expect(page.getByText("clip", { exact: true }).first()).toBeVisible();
+});

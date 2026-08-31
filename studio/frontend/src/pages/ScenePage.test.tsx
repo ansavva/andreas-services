@@ -1,4 +1,11 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -36,7 +43,11 @@ function shot(over: Partial<Shot> = {}): Shot {
     status: "planned",
     continues: false,
     panels: [],
-    motion: { prompt: "he lifts the lanyard over his head", duration: 6, model: "kling" },
+    motion: {
+      prompt: "he lifts the lanyard over his head",
+      duration: 6,
+      model: "kling",
+    },
     ...over,
   };
 }
@@ -68,7 +79,11 @@ function Land() {
 
 function draw(scene: SceneRecord) {
   read.mockResolvedValue(scene);
-  project.mockResolvedValue({ id: "proj-0001", slug: "a-project", title: "A project" } as never);
+  project.mockResolvedValue({
+    id: "proj-0001",
+    slug: "a-project",
+    title: "A project",
+  } as never);
   landed = "";
   return render(
     <MemoryRouter initialEntries={[`/s/${ID}`]}>
@@ -83,7 +98,7 @@ function draw(scene: SceneRecord) {
         <Route path="/p/:projectId/r/:runId" element={<Land />} />
       </Routes>
     </MemoryRouter>,
-  { wrapper: TestProviders },
+    { wrapper: TestProviders },
   );
 }
 
@@ -117,7 +132,11 @@ it("draws a boarded panel as its image and an unboarded one as a placeholder", a
               role: "start",
               prompt: "square to camera",
               node: "node-a",
-              image: { node: "node-a", name: "panel-01.png", url: "https://example/panel-01.png" },
+              image: {
+                node: "node-a",
+                name: "panel-01.png",
+                url: "https://example/panel-01.png",
+              },
             },
             { n: 2, role: "sample", prompt: "the peak of the move" },
           ],
@@ -127,19 +146,29 @@ it("draws a boarded panel as its image and an unboarded one as a placeholder", a
   );
 
   await screen.findByText("The whistle comes off");
-  const boarded = screen.getAllByRole("button", { name: /square to camera/i })[0]!;
-  expect(within(boarded).getByRole("presentation", { hidden: true })).toBeTruthy();
+  const boarded = screen.getAllByRole("button", {
+    name: /square to camera/i,
+  })[0]!;
+  expect(
+    within(boarded).getByRole("presentation", { hidden: true }),
+  ).toBeTruthy();
   // The unboarded one carries its prompt instead of a picture, and is not a
   // link to a node that does not exist.
   expect(screen.getAllByText("the peak of the move").length).toBeGreaterThan(0);
-  expect(screen.queryByRole("button", { name: /the peak of the move/i })).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: /the peak of the move/i }),
+  ).toBeNull();
 });
 
 it("labels a sample as a sample, because it is the one panel that binds to nothing", async () => {
   draw(
     record({
       shots: [
-        shot({ panels: [{ n: 1, role: "sample", prompt: "what the shot should look like" }] }),
+        shot({
+          panels: [
+            { n: 1, role: "sample", prompt: "what the shot should look like" },
+          ],
+        }),
       ],
     }),
   );
@@ -161,7 +190,11 @@ it("leads the strip with the frame the shot opens on", async () => {
           continues: true,
           opens_on: {
             node: "node-handoff",
-            frame: { node: "node-handoff", name: "last.png", url: "https://example/last.png" },
+            frame: {
+              node: "node-handoff",
+              name: "last.png",
+              url: "https://example/last.png",
+            },
           },
         }),
       ],
@@ -185,7 +218,11 @@ it("flags a panel whose prompt moved on after the image was rendered", async () 
               prompt: "reworded since",
               node: "node-a",
               stale: true,
-              image: { node: "node-a", name: "panel-01.png", url: "https://example/panel-01.png" },
+              image: {
+                node: "node-a",
+                name: "panel-01.png",
+                url: "https://example/panel-01.png",
+              },
             },
           ],
         }),
@@ -221,7 +258,13 @@ it("shows the motion prompt without making anyone click for it", async () => {
   // panel reveals with a `grid-rows-[0fr]`-to-`[1fr]` transition that never
   // progresses: the trigger flipped `aria-expanded` and the panel opened to a
   // zero-height row, so the prompt read as blank.
-  draw(record({ shots: [shot({ motion: { prompt: '{ "subject": "the man, unchanged" }' } })] }));
+  draw(
+    record({
+      shots: [
+        shot({ motion: { prompt: '{ "subject": "the man, unchanged" }' } }),
+      ],
+    }),
+  );
 
   await screen.findByText("The whistle comes off");
   expect(screen.getByText("the man, unchanged")).toBeTruthy();
@@ -233,7 +276,12 @@ const PROMPT = JSON.stringify(
   {
     subject: "The man from the source image, unchanged",
     action: "He lifts the lanyard over his head",
-    camera: { shot: "wide", movement: "static/hold", lens_mm: 50, speed: "locked off" },
+    camera: {
+      shot: "wide",
+      movement: "static/hold",
+      lens_mm: 50,
+      speed: "locked off",
+    },
     style: "Photorealistic live-action",
     avoid: "changing face, cuts",
     dialogue: ["a key this form does not show"],
@@ -251,14 +299,22 @@ it("reads the motion prompt as prose, not as JSON", async () => {
 
   await screen.findByText("The whistle comes off");
   expect(screen.getByText("Subject")).toBeTruthy();
-  expect(screen.getByText("The man from the source image, unchanged")).toBeTruthy();
-  expect(screen.getByText("wide · static/hold · 50mm · locked off")).toBeTruthy();
+  expect(
+    screen.getByText("The man from the source image, unchanged"),
+  ).toBeTruthy();
+  expect(
+    screen.getByText("wide · static/hold · 50mm · locked off"),
+  ).toBeTruthy();
   expect(screen.queryByText(/^\{$/)).toBeNull();
 });
 
 it("falls back to the raw text when the prompt is prose rather than JSON", async () => {
   // A plain prose prompt is legal on every engine here.
-  draw(record({ shots: [shot({ motion: { prompt: "he lifts the lanyard, slowly" } })] }));
+  draw(
+    record({
+      shots: [shot({ motion: { prompt: "he lifts the lanyard, slowly" } })],
+    }),
+  );
 
   await screen.findByText("The whistle comes off");
   expect(screen.getByText("he lifts the lanyard, slowly")).toBeTruthy();
@@ -270,7 +326,9 @@ it("saves an edit as both the document and the string the model is given", async
   await screen.findByText("The whistle comes off");
 
   fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
-  fireEvent.change(screen.getByLabelText("Action"), { target: { value: "He ducks through it" } });
+  fireEvent.change(screen.getByLabelText("Action"), {
+    target: { value: "He ducks through it" },
+  });
   fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
   await waitFor(() => expect(save).toHaveBeenCalled());
@@ -285,7 +343,14 @@ it("saves an edit as both the document and the string the model is given", async
   expect(sent.camera.lens_mm).toBe(50);
   expect(sent.dialogue).toEqual(["a key this form does not show"]);
   // Order is the document's, not the form's.
-  expect(Object.keys(sent)).toEqual(["subject", "action", "camera", "style", "avoid", "dialogue"]);
+  expect(Object.keys(sent)).toEqual([
+    "subject",
+    "action",
+    "camera",
+    "style",
+    "avoid",
+    "dialogue",
+  ]);
   // The parsed document travels alongside the string the model receives.
   expect((body.motion as { prompt_json: unknown }).prompt_json).toEqual(sent);
 });
@@ -313,10 +378,19 @@ it("says what the shot will send, and what it will not", async () => {
           continues: true,
           opens_on: {
             node: "node-tail",
-            frame: { node: "node-tail", name: "tail.png", url: "https://example/tail.png" },
+            frame: {
+              node: "node-tail",
+              name: "tail.png",
+              url: "https://example/tail.png",
+            },
           },
           panels: [
-            { n: 1, role: "start", prompt: "the opening", references: { characters: ["subject-a"] } },
+            {
+              n: 1,
+              role: "start",
+              prompt: "the opening",
+              references: { characters: ["subject-a"] },
+            },
             { n: 2, role: "sample", prompt: "the peak" },
           ],
         }),
@@ -341,7 +415,9 @@ it("says what the shot will send, and what it will not", async () => {
 });
 
 it("says a start frame is pending rather than showing an empty slot", async () => {
-  draw(record({ shots: [shot({ continues: true, opens_on: null, panels: [] })] }));
+  draw(
+    record({ shots: [shot({ continues: true, opens_on: null, panels: [] })] }),
+  );
 
   await screen.findByText("The whistle comes off");
   expect(screen.getByText("awaits previous shot")).toBeTruthy();
@@ -350,15 +426,25 @@ it("says a start frame is pending rather than showing an empty slot", async () =
 it("shows the setting once, not once per panel", async () => {
   draw(record({ setting: "A plain mid-grey seamless studio cyclorama." }));
 
-  expect(await screen.findByText("A plain mid-grey seamless studio cyclorama.")).toBeTruthy();
+  expect(
+    await screen.findByText("A plain mid-grey seamless studio cyclorama."),
+  ).toBeTruthy();
 });
 
 it("totals the planned runtime, which is what the scene will cost to shoot", async () => {
   draw(
     record({
       shots: [
-        shot({ id: "shot-01", order: 10, motion: { prompt: "a", duration: 6 } }),
-        shot({ id: "shot-02", order: 20, motion: { prompt: "b", duration: 12 } }),
+        shot({
+          id: "shot-01",
+          order: 10,
+          motion: { prompt: "a", duration: 6 },
+        }),
+        shot({
+          id: "shot-02",
+          order: 20,
+          motion: { prompt: "b", duration: 12 },
+        }),
       ],
     }),
   );
@@ -384,7 +470,9 @@ it("still draws a scene assembled from bare runs, which has no storyboard at all
   );
 
   expect(await screen.findByText("wide on the touchline")).toBeTruthy();
-  await waitFor(() => expect(screen.getByRole("button", { name: /open its run/i })).toBeTruthy());
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: /open its run/i })).toBeTruthy(),
+  );
 });
 
 it("shows an End row only when the scene brackets its shots", async () => {
@@ -419,7 +507,11 @@ it("draws a reference the plan names as a thumbnail, not as a filename", async (
             prompt: "x",
             references: { characters: ["subject-a"], pick: "front.png" },
             reference_assets: [
-              { node: "node-ref", name: "front.png", url: "https://example/front.png" },
+              {
+                node: "node-ref",
+                name: "front.png",
+                url: "https://example/front.png",
+              },
             ],
           },
         }),
@@ -451,7 +543,11 @@ it("opens a frame in the viewer, in the scene's own context", async () => {
               role: "start",
               prompt: "square to camera",
               node: "node-a",
-              image: { node: "node-a", name: "shot-01-p1.jpeg", url: "https://example/a.jpeg" },
+              image: {
+                node: "node-a",
+                name: "shot-01-p1.jpeg",
+                url: "https://example/a.jpeg",
+              },
             },
           ],
         }),
@@ -467,7 +563,11 @@ it("opens a frame in the viewer, in the scene's own context", async () => {
 });
 
 it("does not offer a viewer for a frame that has not been rendered", async () => {
-  draw(record({ shots: [shot({ panels: [{ n: 1, role: "start", prompt: "not yet" }] })] }));
+  draw(
+    record({
+      shots: [shot({ panels: [{ n: 1, role: "start", prompt: "not yet" }] })],
+    }),
+  );
 
   await screen.findByText("The whistle comes off");
   expect(screen.queryByRole("button", { name: /not yet/i })).toBeNull();
@@ -478,7 +578,9 @@ it("does not offer a viewer for a frame that has not been rendered", async () =>
  * movie held its scenes in a JSON list and no index addresses into one.
  */
 it("names the movie that cut this scene", async () => {
-  draw(record({ movies: [{ id: "movie-3", slug: "the-cut", title: "The cut" }] }));
+  draw(
+    record({ movies: [{ id: "movie-3", slug: "the-cut", title: "The cut" }] }),
+  );
 
   expect(await screen.findByText("Cut into")).toBeTruthy();
   expect(screen.getByRole("button", { name: "The cut" })).toBeTruthy();
@@ -559,7 +661,11 @@ it("draws an earlier take beside the clip it was replaced by", async () => {
             {
               run: "run-earlier",
               node: "node-was",
-              clip: { node: "node-was", name: "was.mp4", url: "https://x/was.mp4" },
+              clip: {
+                node: "node-was",
+                name: "was.mp4",
+                url: "https://x/was.mp4",
+              },
             },
           ],
         }),
@@ -574,8 +680,14 @@ it("draws an earlier take beside the clip it was replaced by", async () => {
 it("draws every cut of the scene, newest first, marking the older ones", async () => {
   draw(
     record({
-      output: { node: "node-2", name: "light-flex-2.mp4", url: "https://x/2.mp4" },
-      cuts: [{ node: "node-1", name: "light-flex.mp4", url: "https://x/1.mp4" }],
+      output: {
+        node: "node-2",
+        name: "light-flex-2.mp4",
+        url: "https://x/2.mp4",
+      },
+      cuts: [
+        { node: "node-1", name: "light-flex.mp4", url: "https://x/1.mp4" },
+      ],
     }),
   );
 
@@ -588,7 +700,15 @@ it("draws every cut of the scene, newest first, marking the older ones", async (
 it("still says 'The cut' when there is only one", async () => {
   // The plural is a signal that there is history to look at; a scene cut once
   // should not imply there is.
-  draw(record({ output: { node: "node-1", name: "light-flex.mp4", url: "https://x/1.mp4" } }));
+  draw(
+    record({
+      output: {
+        node: "node-1",
+        name: "light-flex.mp4",
+        url: "https://x/1.mp4",
+      },
+    }),
+  );
   expect(await screen.findByText("The cut")).toBeTruthy();
 });
 
@@ -602,16 +722,35 @@ it("lists the runs behind a shot, using the shared run list", async () => {
         shot({
           run: "run-clip",
           runs: [
-            { id: "run-clip", project: "proj-0001", role: "clip", status: "succeeded", model: "kling" },
-            { id: "run-old", project: "proj-0001", role: "earlier take", status: "succeeded", model: "kling" },
+            {
+              id: "run-clip",
+              project: "proj-0001",
+              role: "clip",
+              status: "succeeded",
+              model: "kling",
+            },
+            {
+              id: "run-old",
+              project: "proj-0001",
+              role: "earlier take",
+              status: "succeeded",
+              model: "kling",
+            },
           ],
         }),
       ],
     }),
   );
 
-  expect(await screen.findByText("Runs")).toBeTruthy();
-  expect(screen.getByText("clip")).toBeTruthy();
+  // The runs moved behind a tab on the shot, so reaching them is a click now —
+  // and the tab is labelled with its count, which is what makes it worth
+  // opening. Asserting the count too, because a tab that says `Runs · 2` and
+  // opens on one run is the failure this test would otherwise miss.
+  const tab = await screen.findByRole("tab", { name: /^Runs/ });
+  expect(tab.textContent).toContain("2");
+  fireEvent.click(tab);
+
+  expect(await screen.findByText("clip")).toBeTruthy();
   expect(screen.getByText("earlier take")).toBeTruthy();
 
   fireEvent.click(screen.getByText("run-old"));

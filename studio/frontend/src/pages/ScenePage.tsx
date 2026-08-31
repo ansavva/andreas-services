@@ -92,6 +92,9 @@ export function ScenePage() {
     );
   }
 
+  /** A scene that has not been cut has nothing for the second column. */
+  const hasCut = Boolean(data.output) || (data.cuts ?? []).length > 0;
+
   return (
     <>
       <PageBar crumbs={crumbs}>
@@ -104,16 +107,17 @@ export function ScenePage() {
         </Text>
       </PageBar>
 
-      {/* **The same split the run screen takes**, for the same reason: a scene
-          has a thing it produced and an account of how, and stacking them put
-          the cut — the whole point of the page — under a setting paragraph and
-          a storyboard of seven panels.
+      {/* **The cut leads, at full width.** It IS the scene — every shot below
+          is an account of how it was made — so it is not a column beside the
+          storyboard, it is what the storyboard produced.
 
-          The cut is FIRST IN THE DOM, so below `lg` it simply leads and needs
-          no `order` override, and above `lg` a `col-start` puts it on the
-          right. Identical mechanism to `RunPage`; if one changes, change both. */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
-        <section className="flex flex-col gap-3 lg:col-start-2 lg:row-start-1">
+          The split that matters on this page is one level down, inside each
+          shot, where that shot's own inputs and its own output sit side by
+          side. A page-level split was the wrong reading of the run screen: a
+          run has one payload and one output, a scene has a result and then N
+          shots that each have both. */}
+      {hasCut && (
+        <section className="flex flex-col gap-3">
           <Text variant="title" className="border-b border-line pb-2">
             {(data.cuts ?? []).length > 0 ? "Cuts" : "The cut"}
           </Text>
@@ -126,7 +130,10 @@ export function ScenePage() {
           <div className="flex flex-col gap-3">
             {[
               ...(data.output ? [{ asset: data.output, current: true }] : []),
-              ...(data.cuts ?? []).map((asset) => ({ asset, current: false })),
+              ...(data.cuts ?? []).map((asset) => ({
+                asset,
+                current: false,
+              })),
             ].map(({ asset, current }) => (
               <OutputPanel
                 key={asset.node}
@@ -138,63 +145,63 @@ export function ScenePage() {
             ))}
           </div>
         </section>
+      )}
 
-        <div className="flex min-w-0 flex-col gap-6 lg:col-start-1 lg:row-start-1">
-          {data.setting && (
-            <section className="flex flex-col gap-2">
-              <Text variant="title" className="border-b border-line pb-2">
-                Setting
-              </Text>
-              {/* Prepended byte-identically to every panel prompt, which is what
+      <div className="flex min-w-0 flex-col gap-6">
+        {data.setting && (
+          <section className="flex flex-col gap-2">
+            <Text variant="title" className="border-b border-line pb-2">
+              Setting
+            </Text>
+            {/* Prepended byte-identically to every panel prompt, which is what
                   makes seven separately rendered panels agree on one room. Shown
                   once here for the same reason it is written once there. */}
-              <Text variant="body" tone="muted" className="max-w-prose">
-                {data.setting}
-              </Text>
-            </section>
-          )}
-
-          <section className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line pb-2">
-              <Text variant="title">Storyboard</Text>
-              <Badge intent="neutral" className="font-mono">
-                {isBracketed(data.shots) ? "bracketed" : "chained"}
-              </Badge>
-              <Text variant="caption" tone="muted">
-                {data.shots.length} shot{data.shots.length === 1 ? "" : "s"}
-                {plannedRuntime(data.shots)
-                  ? ` · ${plannedRuntime(data.shots)}s planned`
-                  : ""}
-                {isBracketed(data.shots)
-                  ? " · each shot pinned at both ends"
-                  : " · each shot opens on the last frame of the one before"}
-              </Text>
-            </div>
-            {data.shots.length === 0 ? (
-              <Text variant="body" tone="muted">
-                Nothing planned yet.
-              </Text>
-            ) : (
-              <div className="flex flex-col">
-                {[...data.shots]
-                  .sort((a, b) => a.order - b.order)
-                  .map((shot, index) => (
-                    <ShotCard
-                      key={shot.id}
-                      shot={shot}
-                      n={index + 1}
-                      bracketed={isBracketed(data.shots)}
-                      onOpenRun={(run) => navigate(runPath(data.project, run))}
-                      onView={openFrame}
-                      onSave={saveShot}
-                    />
-                  ))}
-              </div>
-            )}
+            <Text variant="body" tone="muted" className="max-w-prose">
+              {data.setting}
+            </Text>
           </section>
+        )}
 
-          <Backlinks label="Cut into" links={data.movies} to={moviePath} />
-        </div>
+        <section className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line pb-2">
+            <Text variant="title">Storyboard</Text>
+            <Badge intent="neutral" className="font-mono">
+              {isBracketed(data.shots) ? "bracketed" : "chained"}
+            </Badge>
+            <Text variant="caption" tone="muted">
+              {data.shots.length} shot{data.shots.length === 1 ? "" : "s"}
+              {plannedRuntime(data.shots)
+                ? ` · ${plannedRuntime(data.shots)}s planned`
+                : ""}
+              {isBracketed(data.shots)
+                ? " · each shot pinned at both ends"
+                : " · each shot opens on the last frame of the one before"}
+            </Text>
+          </div>
+          {data.shots.length === 0 ? (
+            <Text variant="body" tone="muted">
+              Nothing planned yet.
+            </Text>
+          ) : (
+            <div className="flex flex-col">
+              {[...data.shots]
+                .sort((a, b) => a.order - b.order)
+                .map((shot, index) => (
+                  <ShotCard
+                    key={shot.id}
+                    shot={shot}
+                    n={index + 1}
+                    bracketed={isBracketed(data.shots)}
+                    onOpenRun={(run) => navigate(runPath(data.project, run))}
+                    onView={openFrame}
+                    onSave={saveShot}
+                  />
+                ))}
+            </div>
+          )}
+        </section>
+
+        <Backlinks label="Cut into" links={data.movies} to={moviePath} />
       </div>
     </>
   );

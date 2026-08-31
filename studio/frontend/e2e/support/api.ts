@@ -190,7 +190,7 @@ export const SCENE: Record<string, unknown> = {
       run: null,
       panel: null,
       beat: "He raises both arms",
-      status: "planned",
+      status: "rendered",
       continues: false,
       panels: [],
       motion: {
@@ -198,6 +198,29 @@ export const SCENE: Record<string, unknown> = {
         duration: 5,
         model: "kling",
       },
+      // A rendered shot, so the shot's own right-hand column has something in
+      // it — the per-shot split is what this page is really about.
+      run: "run-e2e-shot-01",
+      node: CLIP_ITEM.id,
+      rendered: "2026-08-31T12:20:00+00:00",
+      clip: {
+        node: CLIP_ITEM.id,
+        name: CLIP_ITEM.name,
+        url: CLIP_PATH,
+        size: CLIP.byteLength,
+        content_type: "video/mp4",
+      },
+      runs: [
+        {
+          id: "run-e2e-shot-01",
+          project: RUN_PROJECT,
+          role: "clip",
+          status: "succeeded",
+          kind: "video",
+          model: "kwaivgi/kling-v3-omni-video",
+          created: "2026-08-31T12:15:00+00:00",
+        },
+      ],
     },
   ],
 };
