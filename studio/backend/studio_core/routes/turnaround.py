@@ -97,11 +97,13 @@ def draft_turnaround(character_id: str):
             f"a reference angle is a still, but {entry['key']} is a "
             f"{entry.get('kind')} model")
 
+    preview = bool(body.get("preview"))
     drafted, failed = [], []
     for angle in angles:
         try:
             drafted.append(_draft_one(angle, spec["blocks"], record, entry,
-                                      project, identity, body, held))
+                                      project, identity, body, held,
+                                      preview=preview))
         except (ValidationError, NotFoundError) as refusal:
             # ONE BAD ANGLE DOES NOT CANCEL THE REST. A failure here is almost
             # always a property of that angle alone — a template citing a block
@@ -110,6 +112,11 @@ def draft_turnaround(character_id: str):
             # once, because the failing one happened to sort first.
             failed.append({"angle": angle["id"], "error": str(refusal)})
 
+    if preview:
+        # Writes nothing, so 200 rather than 201 and `preview` rather than
+        # `drafted` — a caller must not be able to mistake one for the other and
+        # then look for run ids that were never minted.
+        return jsonify({"preview": drafted, "failed": failed}), 200
     return jsonify({"drafted": drafted, "failed": failed}), 201
 
 
@@ -163,8 +170,16 @@ def _plate_nodes(angle: dict, lib: str) -> list:
 
 
 def _draft_one(angle: dict, blocks: dict, character: dict, entry: dict,
-               project: str, identity: list, body: dict, held) -> dict:
-    """Assemble one angle and write it as a draft."""
+               project: str, identity: list, body: dict, held,
+               preview: bool = False) -> dict:
+    """Assemble one angle, and write it as a draft unless this is a preview.
+
+    The preview exists because the CLI's `--dry-run` and the SPA's live editor
+    ask the same question — *what would this angle say?* — and answering it
+    twice would be two assemblies to keep in step. It stops before the write, so
+    it is safe to call on every keystroke of an editor, which is the same
+    property `POST /api/prompt` is built around.
+    """
     plates = _plate_nodes(angle, character["lib"])
     # The plates first and identity after, which is the order the model is
     # handed them and therefore the order `[ImageN]` counts in. Positions are
@@ -189,18 +204,19 @@ def _draft_one(angle: dict, blocks: dict, character: dict, entry: dict,
     if not field:
         raise ValidationError(f"{entry['key']} takes no reference images")
 
-    return run_routes.create_draft(
-        {
-            "project": project,
-            "kind": "image",
-            "engine": entry.get("skill"),
-            "model": entry.get("model") or entry["key"],
-            "name": f"ref-{angle['id'].replace('_', '-')}",
-            "characters": [character["id"]],
-            "plan": {"version": 1, "origin": "authored",
-                     "prompt": prompt, "params": params},
-            "sends": [{"field": field, "role": "reference", "node": node}
-                      for node in ordered],
-        },
-        held,
-    ) | {"angle": angle["id"]}
+    draft = {
+        "project": project,
+        "kind": "image",
+        "engine": entry.get("skill"),
+        "model": entry.get("model") or entry["key"],
+        "name": f"ref-{angle['id'].replace('_', '-')}",
+        "characters": [character["id"]],
+        "plan": {"version": 1, "origin": "authored",
+                 "prompt": prompt, "params": params},
+        "sends": [{"field": field, "role": "reference", "node": node}
+                  for node in ordered],
+    }
+    if preview:
+        return {"angle": angle["id"], "plan": draft["plan"],
+                "model": draft["model"], "sends": draft["sends"]}
+    return run_routes.create_draft(draft, held) | {"angle": angle["id"]}

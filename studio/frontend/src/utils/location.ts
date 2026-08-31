@@ -47,6 +47,12 @@ export const HOME_PATH = "/";
  */
 export const CHARACTERS_PATH = "/characters";
 export const PROJECTS_PATH = "/projects";
+/**
+ * The reference spec belongs to the LIBRARY, not to a character: one set of
+ * angles describes every character in it. So it is a section, beside the two
+ * listings, rather than a tab on a character page.
+ */
+export const REFERENCE_SPEC_PATH = "/reference-spec";
 
 /** A folder node id, or `null` for the library root. */
 export type FolderId = string | null;

@@ -10,6 +10,7 @@ import { HomePage } from "./pages/HomePage";
 import { MoviePage } from "./pages/MoviePage";
 import { ProjectPage } from "./pages/ProjectPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
+import { ReferenceSpecPage } from "./pages/ReferenceSpecPage";
 import { RunPage } from "./pages/RunPage";
 import { ScenePage } from "./pages/ScenePage";
 import { ViewerPage } from "./pages/ViewerPage";
@@ -71,6 +72,12 @@ export function StudioRoutes() {
 
         <Route path="/characters" element={<CharactersPage />} />
         <Route path="/projects" element={<ProjectsPage />} />
+        {/*
+          The reference spec belongs to the LIBRARY, not to a character: one
+          set of angles describes every character in it. So it sits beside
+          the two listings rather than under a character id.
+        */}
+        <Route path="/reference-spec" element={<ReferenceSpecPage />} />
 
         <Route path="/c/:characterId" element={<CharacterPage />} />
         <Route path="/p/:projectId" element={<ProjectPage />} />

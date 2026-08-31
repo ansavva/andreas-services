@@ -314,3 +314,28 @@ def test_a_library_with_no_spec_says_so_rather_than_drafting_nothing(empty_api):
     )
     assert resp.status_code == 404
     assert "spec push" in resp.get_json()["error"]
+
+
+def test_a_preview_assembles_and_writes_nothing(empty_api):
+    """The CLI's `--dry-run` and the SPA's live editor ask the same question.
+
+    Answering it twice would be two assemblies to keep in step. It stops before
+    the write, so it is safe on every keystroke — the property
+    `POST /api/prompt` is built around.
+    """
+    _spec(empty_api)
+    character = _character_with_bible(empty_api)
+    project = empty_api.post("/api/projects", json={"slug": "refs"}).get_json()
+    node = _seed_node(empty_api, character)
+
+    resp = empty_api.post(
+        f"/api/characters/{character['id']}/turnaround",
+        json={"project": project["id"], "identity": [node], "preview": True},
+    )
+
+    assert resp.status_code == 200          # not 201: nothing was created
+    got = resp.get_json()
+    assert BLOCK in got["preview"][0]["plan"]["prompt"]
+    assert "drafted" not in got
+    # And no run exists.
+    assert empty_api.get(f"/api/runs?project={project['id']}").get_json()["runs"] == []

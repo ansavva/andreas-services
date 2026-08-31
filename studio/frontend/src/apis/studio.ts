@@ -29,6 +29,11 @@ import type {
   TextResponse,
   TreeResponse,
   UploadGrant,
+  ReferenceSpec,
+  SpecAngle,
+  SpecAngleBody,
+  SpecBlock,
+  TurnaroundResult,
 } from "../types";
 import { apiGet, apiSend } from "./client";
 
@@ -412,6 +417,68 @@ export function deleteCharacter(
 }
 
 /** The reference index, grouped and in `order` within each group. */
+/**
+ * The reference spec: the prose a turnaround fills from a character's bible.
+ *
+ * It was a YAML file in the pipeline package, so this screen could not exist —
+ * a wording change meant a code change, a review and a release, for prose whose
+ * whole nature is that it gets tuned against what a model returned.
+ *
+ * Blocks and angles are separate rows, so editing one is one write and two
+ * people editing different angles do not overwrite each other.
+ */
+export function getReferenceSpec() {
+  return apiGet<ReferenceSpec>("/api/reference-spec");
+}
+
+export function saveSpecBlock(name: string, text: string) {
+  return apiSend<SpecBlock>("PATCH", `/api/reference-spec/blocks/${encodeURIComponent(name)}`, {
+    text,
+  });
+}
+
+export function saveSpecAngle(id: string, body: SpecAngleBody) {
+  return apiSend<SpecAngle>("PATCH", `/api/reference-spec/angles/${encodeURIComponent(id)}`, body);
+}
+
+export function deleteSpecBlock(name: string) {
+  return apiSend<{ name: string }>("DELETE", `/api/reference-spec/blocks/${encodeURIComponent(name)}`);
+}
+
+export function deleteSpecAngle(id: string) {
+  return apiSend<{ id: string }>("DELETE", `/api/reference-spec/angles/${encodeURIComponent(id)}`);
+}
+
+/**
+ * Draft a character's reference angles, or preview what they would say.
+ *
+ * `preview` stops before the write and answers 200 rather than 201, so it is
+ * safe to call while somebody is still typing. Without it every angle becomes
+ * an unapproved `draft` — nothing is approved and nothing bills, which is hard
+ * rule #2 left exactly where it was.
+ *
+ * `identity` is required and is never inferred: which photographs say who
+ * somebody is is the judgement a reference library is built out of.
+ */
+export function draftTurnaround(
+  characterId: string,
+  body: {
+    project: string;
+    identity: string[];
+    group?: "face" | "body";
+    angles?: string[];
+    model?: string;
+    extra?: Record<string, unknown>;
+    preview?: boolean;
+  },
+) {
+  return apiSend<TurnaroundResult>(
+    "POST",
+    `/api/characters/${encodeURIComponent(characterId)}/turnaround`,
+    body,
+  );
+}
+
 export function getReferences(id: string, group?: string) {
   return apiGet<ReferenceIndex>(`/api/characters/${encodeURIComponent(id)}/references`, { group });
 }
