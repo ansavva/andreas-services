@@ -804,6 +804,58 @@ def test_turnaround_dry_run_renders_every_angle_and_submits_nothing(library, spe
     assert "nothing billed" in result.output
 
 
+def test_turnaround_dry_run_leaves_one_draft_per_angle(library, spec, monkeypatch):
+    """A payload you can open, not one that scrolls away.
+
+    `studio run --dry-run` has left a draft since a run gained an authored half;
+    a turnaround printed a count and recorded nothing, so there was no address to
+    review, link to or approve. Drafting is not submitting and not approving —
+    `NEVER_BILLED` names the state — and the approval is still a separate row
+    bound to the plan's digest.
+    """
+    _seed_plates(library.fake, spec)
+    entry = REG.get(spec["defaults"]["model"])
+    props = {f: {} for f in ("prompt", "aspect_ratio", "output_format", "quality",
+                             "moderation", entry["images"]["refs"])}
+    monkeypatch.setattr("studio_pipeline.engine.schema.fetch", lambda *a, **k: (props, {}))
+    library.fake.submits_refused = True
+
+    from studio_pipeline.adapters import entities as E
+    before = E.query_runs(project=library.project)
+
+    result = CliRunner().invoke(cli.main, [
+        "character", "turnaround", "subject-a", "--project", "porch-teaser", "--dry-run"])
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+
+    after = E.query_runs(project=library.project)
+    made = len(after["runs"]) - len(before["runs"])
+    assert made == len(spec["angles"])
+    # Every one of them a DRAFT: unapproved, unsubmitted, and billed nothing.
+    fresh = after["runs"][:made]
+    assert {r["status"] for r in fresh} == {"draft"}
+    assert not any(r.get("approval") for r in fresh)
+    # And each one addressable, which is the whole point of the change.
+    for record in fresh:
+        assert record["id"] in result.output
+
+
+def test_app_origin_drops_the_api_label(monkeypatch):
+    monkeypatch.setattr("studio_pipeline.adapters.auth.api_url",
+                        lambda: "https://studio-api.andreas.services")
+    assert TURN.app_origin() == "https://studio.andreas.services"
+
+
+def test_app_origin_is_none_for_a_host_that_is_not_that_shape(monkeypatch):
+    """A dev API on localhost has no app at a guessable port.
+
+    The caller prints bare run ids then, which is what `runs show` and
+    `runs approve` take anyway — a wrong link is worse than no link.
+    """
+    monkeypatch.setattr("studio_pipeline.adapters.auth.api_url",
+                        lambda: "http://localhost:8000")
+    assert TURN.app_origin() is None
+
+
 def test_turnaround_needs_a_project(library, spec):
     result = CliRunner().invoke(cli.main, ["character", "turnaround", "subject-a", "--dry-run"])
     assert result.exit_code != 0

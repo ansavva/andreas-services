@@ -18,7 +18,8 @@ dependency arrow `cli → domain → adapters` stays intact, and importing
 
 NOTHING SUBMITS WITHOUT APPROVAL. Every payload is rendered as the two-document
 PROMPT / INPUT review first, and the batch then needs one explicit confirmation
-from a person. `--dry-run` stops after the render.
+from a person. `--dry-run` stops after drafting, so every payload has an
+address in the app and none of them is approved.
 
 WHAT THE ANGLE IMAGE IS FOR, AND WHY CITATIONS ARE COMPUTED
 -----------------------------------------------------
@@ -58,12 +59,13 @@ import json
 import os
 import string
 import sys
+import urllib.parse
 from types import SimpleNamespace
 
 import click
 import yaml
 
-from studio_pipeline.adapters import store
+from studio_pipeline.adapters import auth, store
 from studio_pipeline.domain import TEMPLATES_DIR
 from studio_pipeline.domain import characters as CHARACTER
 from studio_pipeline.domain import paths as P
@@ -409,6 +411,78 @@ def check_angles(angles: list[dict]) -> None:
             + "       These live in the repo under studio/config/ and are copied out by\n"
             "       studio/scripts/dev-setup.sh — run it, then try again."
         )
+
+
+def app_origin() -> str | None:
+    """Where the SPA that shows a run lives, derived from the API's own host.
+
+    The two halves of studio are one label apart — `studio-api.andreas.services`
+    serves the API and `studio.andreas.services` serves the app — so the origin
+    is the API's with `-api` dropped from its first label. Derived rather than
+    configured because a profile carries the five values that select a STACK,
+    and adding a sixth for a cosmetic link would make every existing profile
+    incomplete.
+
+    `None` when the host is not that shape — a dev API on localhost has no app
+    at a guessable port — and the caller prints the ids alone, which are what
+    `runs show` and `runs approve` take anyway.
+    """
+    try:
+        parsed = urllib.parse.urlparse(auth.api_url())
+    except Exception:                                        # noqa: BLE001
+        return None
+    host, _, rest = (parsed.hostname or "").partition(".")
+    if not host.endswith("-api") or not rest:
+        return None
+    return f"{parsed.scheme}://{host[:-len('-api')]}.{rest}"
+
+
+def _draft_only(prepared: list, project: dict, name: str) -> int:
+    """Record every angle as a DRAFT and stop. **Nothing is approved, nothing bills.**
+
+    This is what `studio run --dry-run` does, and a turnaround not doing it was
+    the difference between a payload you can open and a payload that scrolls
+    past. The old branch printed a count and returned, and this module argued
+    for that in a comment: a run id "has not happened yet and must not", because
+    hard rule #2 says the payload is approved before anything exists.
+
+    **That reasoning predates a run having an authored half.** A draft is not a
+    submission and not an approval — it is the payload, given an address, in a
+    state `NEVER_BILLED` names explicitly. The approval is a separate row bound
+    to a digest of the plan and its `SEND#` rows, and the API refuses to move a
+    run out of the unsubmitted states without one that still matches. So drafting
+    here makes the gate STRONGER than the text block it replaces: the words and
+    images somebody agreed to end up where they can be read back, in the app,
+    instead of in a terminal scrollback nobody can link to.
+
+    One bad angle does not cancel the rest, for the reason the submit loop below
+    gives: a failure is almost always a property of that angle alone.
+    """
+    origin = app_origin()
+    drafted: list[tuple[str, dict]] = []
+    failed: list[tuple[str, str]] = []
+    for angle, entry, args, payload, bindings in prepared:
+        try:
+            drafted.append((angle["id"], SUB.draft(entry, payload, bindings, args)))
+        except SUB.SubmitError as exc:
+            failed.append((angle["id"], str(exc)))
+
+    print(f"\n{len(drafted)} draft(s) — nothing approved, nothing submitted, "
+          f"nothing billed:", file=sys.stderr)
+    for angle_id, record in drafted:
+        where = (f"{origin}/p/{project['id']}/r/{record['id']}" if origin
+                 else record["id"])
+        print(f"  {angle_id:<32} {where}", file=sys.stderr)
+    for angle_id, why in failed:
+        print(f"  {angle_id:<32} NOT DRAFTED — {why}", file=sys.stderr)
+
+    if drafted:
+        print(f"\nreview and approve each in the app, then send it:\n"
+              f"  studio runs submit <run-id>\n"
+              f"  studio runs discard <run-id>      # one you do not want\n"
+              f"  studio runs list {project['slug']} --status draft",
+              file=sys.stderr)
+    return 1 if failed else 0
 
 
 def _too_many(name: str, pool: str, entries: list[dict], limit: int, how: str) -> TurnaroundError:
@@ -807,6 +881,12 @@ def run_turnaround(name: str, opts) -> int:
     prepared = []
     for angle in angles:
         entry, args, payload, bindings = prepare(angle, spec, profile, name, opts)
+        # **The RECORD, not the slug.** `draft` reads `args.project["id"]`, and
+        # `angle_args` carries whatever `--project` was typed as. `gather` never
+        # dereferenced it — a turnaround passes no `--input`, which is the only
+        # thing that reads the project pool — so a slug travelled this far
+        # unnoticed until a run had to be recorded from it.
+        args.project = project
         try:
             SUB.preflight(entry, payload, bindings)
         except MS.SchemaError as exc:
@@ -834,9 +914,7 @@ def run_turnaround(name: str, opts) -> int:
             print(f"===== IMAGES — what {angle['id']} actually sends =====\n{sheet}")
 
     if opts.dry_run:
-        print(f"\n(dry run — {len(prepared)} angle(s) rendered, nothing submitted, "
-              f"nothing billed)", file=sys.stderr)
-        return 0
+        return _draft_only(prepared, project, name)
 
     # No `--yes`. A person reads the payloads above and answers this, or nothing
     # is submitted: an approval flag is the door an agent walks through while
