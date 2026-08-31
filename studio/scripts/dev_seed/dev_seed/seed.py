@@ -193,6 +193,7 @@ def read_library(ddb, library: str | None = None) -> dict:
     """
     libraries, metas = {}, {}
     records, refs, involves = {}, collections.defaultdict(list), collections.defaultdict(list)
+    settings = collections.defaultdict(list)
     for item in aws.scan(ddb):
         pk, sk = item.get("pk", ""), item.get("sk", "")
         if sk == "META" and pk.startswith("LIB#"):
@@ -206,6 +207,8 @@ def read_library(ddb, library: str | None = None) -> dict:
             refs[pk].append(dict(item, node=sk.removeprefix("REF#")))
         elif pk.startswith("PROJ#") and sk.startswith("CHAR#"):
             involves[pk].append(sk)
+        elif pk.startswith("LIB#") and sk.startswith(SETTINGS_PREFIXES):
+            settings[pk.removeprefix("LIB#")].append(item)
 
     if not libraries:
         die(f"no library in '{aws.table()}'. Sign in to the local app and put "
@@ -226,7 +229,8 @@ def read_library(ddb, library: str | None = None) -> dict:
     return {"lib": lib, "root": root, "name": libraries[lib].get("name") or "Studio",
             "nodes": nodes,
             "records": {pk: row for pk, row in records.items() if row.get("lib") == lib},
-            "refs": dict(refs), "involves": dict(involves)}
+            "refs": dict(refs), "involves": dict(involves),
+            "settings": settings.get(lib, [])}
 
 
 def name_paths(library: dict) -> dict[str, str]:
@@ -334,6 +338,24 @@ def expand(paths: dict[str, str], wanted: list[str]) -> dict:
 #:
 #: `catalog_gc.SHARED_PREFIXES` is the same idea for the same two names, on the
 #: delete side.
+#: Sort-key prefixes in the `LIB#<lib>` partition that a fixture CARRIES.
+#:
+#: **That partition was invisible to this command.** `read_library`'s scan
+#: matched `sk == "META"` or a `CHAR#`/`PROJ#` prefix, so every other row filed
+#: under the library itself fell through the `elif` chain — which meant the
+#: phrasebook's `TERM#` rows had never travelled in a fixture, despite
+#: `phrasebook` sitting in `SHARED_ROOTS` above. That constant is about
+#: top-level FOLDER NAMES in the node tree, which is a different thing entirely,
+#: and the coincidence of names is what let this go unnoticed.
+#:
+#: `SPEC#` is how a reference prompt is written and `TERM#` is the wording list.
+#: Both are library configuration a fresh stack is useless without: with no
+#: spec rows a turnaround has no angles and cannot run at all.
+#:
+#: `SWEEP#` is deliberately NOT here. A sweep row records blobs a delete was
+#: about to strand in the stack it happened in; it means nothing anywhere else.
+SETTINGS_PREFIXES = ("SPEC#", "TERM#")
+
 SHARED_ROOTS = frozenset({"config", "phrasebook"})
 
 DEV_SUBJECTS = frozenset({
@@ -578,12 +600,32 @@ def build(library: dict, paths: dict[str, str], selected: set[str],
                             "sha256": hashlib.sha256(body).hexdigest()}
         nodes.append(node)
 
+    # `settings` carries the LIBRARY-scoped rows — the reference spec and the
+    # phrasebook. Verbatim apart from the keys, because unlike a node they name
+    # nothing that gets a new id in the destination: a block's name and a term's
+    # model/avoid pair ARE its identity, in every stack.
     catalog = {"version": 2, "library_name": library["name"],
-               "entities": entities(library, paths, selected), "nodes": nodes}
+               "entities": entities(library, paths, selected),
+               "settings": settings_of(library), "nodes": nodes}
     manifest = {"version": version, "object_count": len(objects),
                 "total_bytes": sum(o["size"] for o in objects.values()),
                 "objects": objects}
     return catalog, manifest
+
+
+def settings_of(library: dict) -> list[dict]:
+    """The library-scoped rows a fixture carries, as `{"sk": …, …}` records.
+
+    The sort key is kept whole rather than split into a kind and a name: it is
+    already the identity, `rows` writes it back unchanged, and a parse here
+    would be a second place that knows how `SPEC#BLOCK#<name>` is spelled.
+
+    `pk` and `lib` are dropped — the destination library is not this one.
+    """
+    return [
+        {k: v for k, v in row.items() if k not in ("pk", "lib")}
+        for row in sorted(library.get("settings") or [], key=lambda r: r["sk"])
+    ]
 
 
 def document(doc: dict) -> bytes:
@@ -942,6 +984,12 @@ def rows(catalog: dict, manifest: dict, bucket: str, lib: str,
         items.append({k: v for k, v in record.items() if v is not None})
         items.append({"pk": f"LIB#{lib}", "sk": f"{claim}#{slug}",
                       "entity": eid, "created": stamp})
+
+    # The library-scoped rows, re-keyed onto the destination library and
+    # otherwise verbatim. A fixture with none of these is a valid fixture — one
+    # published before this existed — so an absent key is empty, not an error.
+    for row in catalog.get("settings") or []:
+        items.append({"pk": f"LIB#{lib}", **row})
     return items
 
 
