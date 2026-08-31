@@ -146,11 +146,11 @@ export function ReferenceFields({ characterId, node, onChanged }: Props) {
             <Text variant="caption" tone="muted" className="tabular-nums font-mono">
               {index + 1} of {entries.length}
             </Text>
-            <Button intent="ghost" size="sm" disabled={busy || index === 0} onClick={() => nudge(-1)}>
+            <Button intent="secondary" size="sm" disabled={busy || index === 0} onClick={() => nudge(-1)}>
               <span aria-hidden="true">↑</span> Up
             </Button>
             <Button
-              intent="ghost"
+              intent="secondary"
               size="sm"
               disabled={busy || index === entries.length - 1}
               onClick={() => nudge(1)}
@@ -187,7 +187,7 @@ export function ReferenceFields({ characterId, node, onChanged }: Props) {
             {busy ? "Saving…" : "Save caption"}
           </Button>
           {draft !== null && draft !== entry.description && (
-            <Button intent="ghost" size="sm" onClick={() => setDraft(null)}>
+            <Button intent="secondary" size="sm" onClick={() => setDraft(null)}>
               Discard
             </Button>
           )}

@@ -206,7 +206,7 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
         )}
 
         <div className="flex items-center justify-end gap-2">
-          <Button intent="ghost" size="sm" onClick={onClose}>
+          <Button intent="secondary" size="sm" onClick={onClose}>
             Cancel
           </Button>
           <Button size="sm" disabled={chosen.length === 0 || busy} onClick={submit}>

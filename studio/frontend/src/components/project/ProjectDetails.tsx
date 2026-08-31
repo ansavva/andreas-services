@@ -107,7 +107,7 @@ export function ProjectDetails({ record, onSaved }: Props) {
         </Button>
         {dirty && (
           <Button
-            intent="ghost"
+            intent="secondary"
             size="sm"
             onClick={() => {
               setTitle(record.title ?? "");

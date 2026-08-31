@@ -317,7 +317,7 @@ export function MotionEditor({
         <Button intent="primary" size="sm" onClick={onSave} disabled={saving}>
           {saving ? "Saving…" : "Save"}
         </Button>
-        <Button intent="ghost" size="sm" onClick={onCancel} disabled={saving}>
+        <Button intent="secondary" size="sm" onClick={onCancel} disabled={saving}>
           Cancel
         </Button>
       </div>

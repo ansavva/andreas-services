@@ -5,7 +5,9 @@ Two modes, one set of specs.
 ```bash
 npm run e2e            # stubbed. No AWS, no credentials, no stack. CI runs this.
 npm run e2e:live       # the same specs against dev-up.sh and the seeded stack.
-python e2e/fixtures/capture.py            # re-take the fixtures off the real API
+python e2e/fixtures/capture.py            # re-take every fixture off the real API
+python e2e/fixtures/capture.py --seed     # only the published-seed group
+python e2e/fixtures/capture.py --runs     # only the run-authoring group
 python e2e/fixtures/capture.py --video    # just the MP4; needs no API and no token
 ```
 
@@ -19,6 +21,58 @@ presigned URLs**: `/api/reel` answers with them, and a presigned URL carries the
 signing key's access key id and a signature. The first capture put both straight
 into git, and the browser then fetched real S3 for fourteen images — caught by
 the spec that asserts nothing escapes to the network.
+
+Every scrubbed URL becomes `/e2e-asset.png`, or `/e2e-asset.mp4` when the key
+that was signed was a clip — a `<video>` handed PNG bytes draws "this file could
+not be loaded", which proves nothing about the thing under test. On the way to
+disk the script also refuses a bare access key id (`AKIA…`/`ASIA…`) and a JWT,
+which is what every request it makes carries in its own header.
+
+## Two capture groups, and no one stack is right for both
+
+The **seed** group — `libraries`, `characters`, `character`, `character-root`,
+`seed-folder`, `projects`, `reel` — is a portrait of the published dev-seed
+fixture and nothing else. `browse.spec.ts` asserts against those numbers on
+purpose; the "49 jpeg and 5 png" spec is the record of why the seed images were
+normalised at all. **Re-take it on a freshly seeded stack only** — off a stack
+somebody has since worked in, those assertions quietly become a snapshot of one
+developer's afternoon.
+
+The **authoring** group — `project`, `project-runs`, `run-draft`, `run-image`,
+`created-run`, `created-run-record`, `models`, `model-schema`, `references`,
+`character-tree`, `reference-tree` — is the opposite. The seed holds no project,
+no runs and nothing ever submitted, so the three screens `runs.spec.ts` is about
+have nothing in it to be captured from; it needs a stack that **has** been worked
+in. Which project and which runs is discovery — the first project, its newest
+draft, its newest succeeded image run — with `STUDIO_E2E_PROJECT` and
+`STUDIO_E2E_SCHEMA_MODEL` to steer it.
+
+So a bare `capture.py` does both and the second half refuses, loudly, on a fresh
+stack. That is the two groups disagreeing about which stack they want, said out
+loud rather than one of them being written wrong.
+
+**`created-run.json` is the one thing this script writes.** There is no way to
+capture the shape of a creation without creating something, so it makes a draft,
+captures both the 201 and the `GET` of the same run, and deletes it again. A
+draft sends nothing and bills nothing — `submit` is the call that spends, and
+the script never makes it.
+
+## The stub branches on the METHOD, not only the path
+
+Every flow `runs.spec.ts` covers POSTs to a path that also has a GET: `/api/runs`
+is the listing and the create, `/api/nodes` is the browse and the mkdir,
+`/api/characters/<id>/references` is the library and the attach. `stubApi`
+dispatched on `url.pathname` alone until those flows existed, which would have
+answered each of them with the other one's body — a green test against a stub
+doing the opposite of the thing under test. Writes are matched first and answered
+from a short table; anything unrecognised still gets the loud 501, now naming the
+method as well as the path.
+
+Two nodes in `support/api.ts` are synthesised rather than captured for a reason
+that is not the usual one: the `unsorted` group folder and the copy a promotion
+makes **do not exist until the run under test creates them**. `unsorted` is
+absent from the captured `reference/` listing deliberately, so the spec walks the
+branch that creates a group folder rather than the branch that finds one.
 
 ## The one fixture that is made rather than taken
 

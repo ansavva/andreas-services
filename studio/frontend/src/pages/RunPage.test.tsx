@@ -1,8 +1,14 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { RunRecord } from "../types";
+import type { RunRecord, RunStatus, RunSummary } from "../types";
 import { TestProviders } from "../test-providers";
 
 vi.mock("../apis/studio", () => ({
@@ -13,15 +19,51 @@ vi.mock("../apis/studio", () => ({
   getRunPayloadPreview: vi
     .fn()
     .mockResolvedValue({ request: {}, prompt: null }),
-  getProject: vi
-    .fn()
-    .mockResolvedValue({ id: "proj-1", slug: "a-project", title: "A project" }),
+  // `characters` included: the plan editor reads its length to decide whether
+  // to fall back to the whole library, and a project shape missing it crashed
+  // the editor rather than the crumb that asks for the name.
+  getProject: vi.fn().mockResolvedValue({
+    id: "proj-1",
+    slug: "a-project",
+    title: "A project",
+    characters: [],
+  }),
+  getCharacters: vi.fn().mockResolvedValue([]),
+  // "Has this exact payload already gone out here" — see `DuplicateNotice`.
+  // Empty unless a case says otherwise.
+  getRuns: vi.fn().mockResolvedValue({ runs: [], cursor: null }),
+  deleteRun: vi.fn().mockResolvedValue({ id: "run-1", files: "keep" }),
+  // Reached through the components this page mounts rather than by the page
+  // itself: `RunBar` spends, `RunPlanEditor` writes. Present so the factory is
+  // a complete stand-in for the module — a missing name is `undefined` and
+  // fails at the call, which reads as a bug in the page.
+  approveRun: vi.fn(),
+  submitRun: vi.fn(),
+  reconcileRun: vi.fn(),
+  patchRunPlan: vi.fn(),
+  patchRunSends: vi.fn(),
+  // The editor asks the registry what this model takes, and degrades when it
+  // cannot — rejected here, which is the path this file exercises.
+  getModel: vi.fn().mockRejectedValue(new Error("no registry in tests")),
+  getModelSchema: vi.fn().mockRejectedValue(new Error("no registry in tests")),
+  getCharacterSelection: vi.fn(),
+  // `PromotePanel`'s four primitives. Present for the same reason as the two
+  // above: an accessed name that is not on the factory is a vitest error about
+  // the mock, which reads as a bug in the page.
+  getCharacter: vi.fn(),
+  getReferences: vi.fn().mockResolvedValue({ groups: {}, counts: {} }),
+  getTree: vi.fn(),
+  createNode: vi.fn(),
+  copyNodes: vi.fn(),
+  addReference: vi.fn(),
 }));
 
-import { getRun } from "../apis/studio";
+import { deleteRun, getRun, getRuns } from "../apis/studio";
 import { RunPage } from "./RunPage";
 
 const read = vi.mocked(getRun);
+const listRuns = vi.mocked(getRuns);
+const remove = vi.mocked(deleteRun);
 
 const PROJECT = "proj-1";
 const RUN = "run-1";
@@ -56,6 +98,21 @@ function record(over: Partial<RunRecord> = {}): RunRecord {
   } as RunRecord;
 }
 
+/** A listing row, which is what `?fingerprint=` answers with. */
+function summary(id: string, status: RunStatus): RunSummary {
+  return {
+    id,
+    project: PROJECT,
+    status,
+    kind: "image",
+    model: "a-model",
+    created: "2026-08-19T00:00:00Z",
+    cost: null,
+    thumb: null,
+    fingerprint: "fp-1",
+  };
+}
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
@@ -65,11 +122,14 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-async function open() {
+async function open(state?: { editing?: boolean }) {
   render(
-    <MemoryRouter initialEntries={[`/p/${PROJECT}/r/${RUN}`]}>
+    <MemoryRouter
+      initialEntries={[{ pathname: `/p/${PROJECT}/r/${RUN}`, state }]}
+    >
       <Routes>
         <Route path="/p/:projectId/r/:runId" element={<RunPage />} />
+        <Route path="/p/:projectId" element={<div>the project page</div>} />
       </Routes>
     </MemoryRouter>,
     { wrapper: TestProviders },
@@ -148,4 +208,222 @@ it("says nothing at all when no scene has used it", async () => {
   // The ordinary case — most runs are never cut into anything, so a permanent
   // "Used in: —" would be noise on almost every run in the library.
   expect(screen.queryByText("Used in")).toBeNull();
+});
+
+/**
+ * **What this page lets a person DO, which until now was read it.**
+ *
+ * Three controls, and which of them exists is decided by one thing: whether the
+ * run has been sent. An unsubmitted run can still be run or thrown away; a sent
+ * one can only be run again, as a second run. Nothing lets a submitted run be
+ * re-sent — a run row records one submission.
+ */
+const again = () => screen.queryByRole("button", { name: /run again/i });
+const discard = () =>
+  screen.queryByRole("button", { name: /delete this run/i });
+
+it("offers Run again only once a run has been sent", async () => {
+  read.mockResolvedValue(record({ status: "succeeded" }));
+  await open();
+
+  expect(again()).toBeTruthy();
+});
+
+it("offers no Run again on a run that has not gone out", async () => {
+  /**
+   * A draft has its own control — the one-act Run — and offering both would be
+   * two buttons that spend, one of which quietly makes a second run first.
+   */
+  read.mockResolvedValue(record({ status: "draft" }));
+  await open();
+
+  expect(again()).toBeNull();
+  // The one-act Run, which is a bare "Run" now — the cost moved to the armed
+  // press and the explanation to the tooltip.
+  expect(screen.getByRole("button", { name: "Run" })).toBeTruthy();
+});
+
+it("offers Discard on an unsubmitted run, and deletes it back to the project", async () => {
+  /**
+   * `DELETE /api/runs/<id>` has no status gate — the app is what restricts this
+   * to runs nothing was spent on. An accidental draft should cost nothing to
+   * undo, which is the whole reason drafts are cheap to make.
+   */
+  read.mockResolvedValue(record({ status: "draft" }));
+  await open();
+
+  const button = discard();
+  expect(button).toBeTruthy();
+  // Armed first: the same two-press confirm every destructive control in this
+  // app uses, and never a dialog.
+  fireEvent.click(button as HTMLElement);
+  fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
+
+  await waitFor(() => expect(remove).toHaveBeenCalledWith(RUN));
+  await screen.findByText("the project page");
+});
+
+it("offers no Discard once a run has been sent", async () => {
+  read.mockResolvedValue(record({ status: "succeeded" }));
+  await open();
+
+  expect(discard()).toBeNull();
+});
+
+/**
+ * **The duplicate warning, which is about money rather than about drawing.**
+ *
+ * A fingerprint is the hash of what would go to the provider, so two runs
+ * sharing one are two charges for the same picture. It warns and does not
+ * refuse: a model answers differently every time, so a second attempt at the
+ * same payload is the ordinary way to get another frame.
+ */
+it("warns when another run in the project already sent this payload", async () => {
+  read.mockResolvedValue(record({ status: "draft", fingerprint: "fp-1" }));
+  listRuns.mockResolvedValue({
+    runs: [summary(RUN, "draft"), summary("run-0", "succeeded")],
+    cursor: null,
+  });
+  await open();
+
+  expect(await screen.findByText(/has been run here before/)).toBeTruthy();
+  // Asked WITH drafts, or the draft being asked about is hidden from its own
+  // question.
+  expect(listRuns).toHaveBeenCalledWith(
+    expect.objectContaining({ fingerprint: "fp-1", include: "drafts" }),
+  );
+});
+
+it("does not call a run its own duplicate, nor count another draft", async () => {
+  /**
+   * The run itself shares its own fingerprint by definition, and a second draft
+   * cost nothing — nothing was sent for either, so neither is a charge to warn
+   * about.
+   */
+  read.mockResolvedValue(record({ status: "draft", fingerprint: "fp-1" }));
+  listRuns.mockResolvedValue({
+    runs: [summary(RUN, "draft"), summary("run-9", "draft")],
+    cursor: null,
+  });
+  await open();
+
+  await waitFor(() => expect(listRuns).toHaveBeenCalled());
+  expect(screen.queryByText(/has been run here before/)).toBeNull();
+});
+
+/**
+ * Arriving with the editor already open.
+ *
+ * The composer strip makes a draft with an empty plan and exists only to be
+ * filled in, so landing on its read view — a page saying the run predates the
+ * plan, with an Edit button under it — would be a step nobody wants. Carried by
+ * the navigation rather than the URL: it describes one arrival, not the page.
+ */
+it("opens in the editor when the navigation asked for it", async () => {
+  read.mockResolvedValue(record({ status: "draft" }));
+  await open({ editing: true });
+
+  expect(await screen.findByText("Editing the plan")).toBeTruthy();
+  // The armed spend control is hidden behind the form: a Run button beside
+  // unsaved words is a yes to whichever of the two you were not looking at.
+  expect(screen.queryByRole("button", { name: /this spends/ })).toBeNull();
+});
+
+/**
+ * **Promote to reference, and only from a picture.**
+ *
+ * A reference is what every later render of a character is checked against, so a
+ * clip cannot be one — the CLI says the same thing by resolving `--from-run`
+ * outputs against its image extension set. The control is a SIBLING of the
+ * output panel rather than something inside it: the panel's caption is a real
+ * `<a href>` and its player is full of buttons, and a button inside an anchor is
+ * neither one thing nor the other to a keyboard.
+ */
+const promote = () => screen.queryByRole("button", { name: /promote/i });
+
+function output(node: string, contentType: string) {
+  return {
+    node,
+    name: node,
+    content_type: contentType,
+    url: `https://example.invalid/${node}`,
+  };
+}
+
+it("offers Promote on an image output", async () => {
+  read.mockResolvedValue(
+    record({ outputs: [output("frame.webp", "image/webp")] }),
+  );
+  await open();
+
+  expect(promote()).toBeTruthy();
+});
+
+it("offers no Promote on a video output", async () => {
+  read.mockResolvedValue(record({ outputs: [output("clip.mp4", "video/mp4")] }));
+  await open();
+
+  expect(promote()).toBeNull();
+});
+
+it("opens the promote panel under the outputs when pressed", async () => {
+  read.mockResolvedValue(
+    record({
+      characters: ["char-1"],
+      outputs: [output("frame.webp", "image/webp")],
+    }),
+  );
+  await open();
+
+  fireEvent.click(promote() as HTMLElement);
+
+  // The panel's own sentence — hard rule #2b said before the fact rather than
+  // after, in terms of what the reader is deciding rather than of the copy the
+  // code makes.
+  expect(
+    await screen.findByText(/References are the pictures studio works from/i),
+  ).toBeTruthy();
+});
+
+/**
+ * An empty Outputs is three different facts, and saying the wrong one is a lie
+ * about whether money was spent.
+ *
+ * "Nothing came back" is a report on a submission — the run went out, the model
+ * answered, and the answer was empty. Said on a draft it tells somebody still
+ * writing a plan that their run failed.
+ */
+describe("what an empty Outputs says", () => {
+  it("says a draft has not run", async () => {
+    read.mockResolvedValue(record({ status: "draft", outputs: [] }));
+    await open();
+
+    expect(screen.getByText("Not run yet.")).toBeTruthy();
+  });
+
+  it("says a run in flight is still working", async () => {
+    read.mockResolvedValue(
+      record({ status: "running", prediction_id: "p-1", outputs: [] }),
+    );
+    await open();
+
+    expect(screen.getByText("Still working.")).toBeTruthy();
+  });
+
+  it("says nothing came back only once something was sent", async () => {
+    read.mockResolvedValue(record({ status: "succeeded", outputs: [] }));
+    await open();
+
+    expect(screen.getByText("Nothing came back.")).toBeTruthy();
+  });
+});
+
+
+it("ignores an editing arrival on a run that has been sent", async () => {
+  /** `PATCH /plan` refuses a submitted run; the state describes an intention
+   * and the run decides whether it is possible. */
+  read.mockResolvedValue(record({ status: "succeeded" }));
+  await open({ editing: true });
+
+  expect(screen.queryByText("Editing the plan")).toBeNull();
 });

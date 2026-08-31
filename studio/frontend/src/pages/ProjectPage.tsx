@@ -16,6 +16,7 @@ import { EntityRow } from "../components/entity/EntityRow";
 import { MediaThumb } from "../components/media/MediaThumb";
 import { ProjectDetails } from "../components/project/ProjectDetails";
 import { RunsTable } from "../components/project/RunsTable";
+import { NewRunStrip } from "../components/run/NewRunStrip";
 import { useResource } from "../hooks/useResource";
 import type { ProjectRecord } from "../types";
 import { formatBytes, formatDate } from "../utils/format";
@@ -158,7 +159,15 @@ export function ProjectPage() {
           </Text>
         </Tabs.Panel>
 
-        <Tabs.Panel value="runs">
+        {/* The strip sits above the table rather than in the page bar, because
+            what it makes is a run in THIS project — and because the page bar's
+            one action deletes the project. */}
+        <Tabs.Panel value="runs" className="flex flex-col gap-4">
+          {/* Top-right, above the list it adds to — where "make one of these"
+              sits on every listing that has one. */}
+          <div className="flex justify-end">
+            <NewRunStrip projectId={record.id} />
+          </div>
           <RunsTable
             projectId={record.id}
             characters={record.characters}

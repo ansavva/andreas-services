@@ -14,6 +14,10 @@ vi.mock("../apis/studio", () => ({
   getProjectMovies: vi.fn().mockResolvedValue([]),
   getProjectInputs: vi.fn().mockResolvedValue([]),
   getCharacters: vi.fn().mockResolvedValue([]),
+  // The Runs tab's composer strip reads the registry. Answering with nothing
+  // keeps this file about the page: the strip has its own suite.
+  getModels: vi.fn().mockResolvedValue({}),
+  createRun: vi.fn(),
   deleteProject: vi.fn(),
   patchProject: vi.fn(),
   setProjectCharacters: vi.fn(),
@@ -80,6 +84,24 @@ it("opens the tab the address names", async () => {
 it("opens Overview when the address names no tab", async () => {
   await open();
   expect(screen.getByRole("tab", { name: "Overview" }).getAttribute("aria-selected")).toBe("true");
+});
+
+/**
+ * Authoring a run starts where the runs are.
+ *
+ * Not in the page bar: its one action deletes the project, and what this makes
+ * belongs to the project rather than being another thing done *to* it.
+ */
+it("offers the run composer on the Runs tab and nowhere else", async () => {
+  await open(`/p/${ID}?tab=runs`);
+  // Disclosed rather than permanent: the tab offers the control, and the form
+  // opens in its place. A form standing open across a tab that is mostly read
+  // is what this replaced.
+  fireEvent.click(screen.getByRole("button", { name: "New run" }));
+  expect(screen.getByRole("button", { name: "Create draft" })).toBeTruthy();
+
+  fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
+  await waitFor(() => expect(screen.queryByRole("button", { name: "New run" })).toBeNull());
 });
 
 /**

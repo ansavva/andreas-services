@@ -1,0 +1,34 @@
+{
+  "approval": null,
+  "bindings": {},
+  "characters": [],
+  "counted": false,
+  "created": "2026-08-31T17:50:10.172582+00:00",
+  "engine": "studio-media-gpt-image-2",
+  "fingerprint": "sha256:756549a22e9f88cdecd6ecbb0696f487",
+  "folder": "node-88daa95e-e566-4278-888f-3c0f62cd0800",
+  "id": "run-6980854b-c7f1-453e-8e04-e37e2e6219b9",
+  "kind": "image",
+  "lib": "lib-160af8b7-bf45-5fd0-b4d1-8bd7e52fac07",
+  "model": "openai/gpt-image-2",
+  "outputs": [],
+  "payload": {
+    "prompt": null,
+    "request": null,
+    "response": null
+  },
+  "plan": {
+    "origin": "authored",
+    "params": {},
+    "prompt": "",
+    "version": 1
+  },
+  "plan_digest": "sha256:34abbf5495b7aedebbd98d1fdb74022a408b5a049610f7292c4ab42e807953ec",
+  "project": "proj-69e3a948-1bfd-48ee-8646-263265fd4289",
+  "rev": 1,
+  "scenes": [],
+  "sends": [],
+  "stale": false,
+  "status": "draft",
+  "updated": "2026-08-31T17:50:10.364972+00:00"
+}

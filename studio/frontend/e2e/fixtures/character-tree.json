@@ -1,0 +1,48 @@
+{
+  "breadcrumbs": [
+    {
+      "id": "node-57ec4a3a-7594-5328-99f1-f9b44e620c45",
+      "name": "/",
+      "prefix": ""
+    },
+    {
+      "id": "node-43fbd3f9-35f7-540c-b1c7-68b35c15b25d",
+      "name": "jason",
+      "prefix": "jason/"
+    }
+  ],
+  "counts": {
+    "files": 0,
+    "folders": 4,
+    "media": 0
+  },
+  "files": [],
+  "folders": [
+    {
+      "id": "node-5ab90c23-3802-53a9-9bdd-2356635ac5b2",
+      "last_modified": "2026-08-27T02:19:24.255448+00:00",
+      "name": "archive",
+      "prefix": "jason/archive/"
+    },
+    {
+      "id": "node-f88aa9c5-d20f-5c8e-b168-ca37f6840013",
+      "last_modified": "2026-08-27T02:19:24.255406+00:00",
+      "name": "corpus",
+      "prefix": "jason/corpus/"
+    },
+    {
+      "id": "node-50419549-a358-5e80-81cf-bb5546503ae6",
+      "last_modified": "2026-08-27T02:19:24.255381+00:00",
+      "name": "reference",
+      "prefix": "jason/reference/"
+    },
+    {
+      "id": "node-4ec78d55-c7f6-5506-a300-c5f19d9c3f19",
+      "last_modified": "2026-08-27T02:19:24.255428+00:00",
+      "name": "seed",
+      "prefix": "jason/seed/"
+    }
+  ],
+  "prefix": "jason/",
+  "sort": "name"
+}

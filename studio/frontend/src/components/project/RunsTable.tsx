@@ -187,8 +187,10 @@ export function RunsTable({ projectId, characters, onOpen }: Props) {
           </Field.Root>
         </div>
 
-        <Button size="sm" onClick={() => fetchPage(null)}>
-          Apply
+        {/* `md`, so it stands at the same 44px as the Selects beside it — see
+            the note in `NewRunStrip` on the package's three control heights. */}
+        <Button onClick={() => fetchPage(null)}>
+          Search
         </Button>
       </div>
 
@@ -215,7 +217,7 @@ export function RunsTable({ projectId, characters, onOpen }: Props) {
 
       {cursor !== null && !loading && (
         <div className="flex justify-center">
-          <Button intent="ghost" size="sm" onClick={() => fetchPage(cursor)}>
+          <Button intent="secondary" size="sm" onClick={() => fetchPage(cursor)}>
             Load more
           </Button>
         </div>

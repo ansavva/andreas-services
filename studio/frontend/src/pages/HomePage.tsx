@@ -69,7 +69,7 @@ export function HomePage() {
                 a section that shows twelve of something wants a way to see the
                 rest. */}
             <Button
-              intent="ghost"
+              intent="secondary"
               size="sm"
               onClick={() => navigate(folderPath(null))}
             >

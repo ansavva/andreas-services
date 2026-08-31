@@ -445,7 +445,7 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
           tab cannot climb out of the character.
         */}
         <Button
-          intent="ghost"
+          intent="secondary"
           size="sm"
           disabled={atRoot}
           aria-label="Up one folder"
@@ -549,7 +549,7 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
             makes a reel a place you can link to and press back out of. */}
         {files.length > 0 && (
           <Button
-            intent="ghost"
+            intent="secondary"
             size="sm"
             onClick={
               selection.count > 0 ? selection.clear : selection.selectAll
@@ -591,7 +591,7 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
           </Button>
           <Button
             type="button"
-            intent="ghost"
+            intent="secondary"
             size="sm"
             onClick={() => setNewFolder(null)}
           >

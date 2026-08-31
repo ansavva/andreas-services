@@ -1,19 +1,34 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApproveBar, InFlightBar, RunPlan } from "./RunPlan";
+vi.mock("../../apis/studio", () => ({
+  approveRun: vi.fn(),
+  submitRun: vi.fn(),
+}));
+
+import { approveRun, submitRun } from "../../apis/studio";
+import { ApiError } from "../../apis/client";
+import { InFlightBar, RunBar, RunPlan } from "./RunPlan";
 import type { RunRecord, RunSend } from "../../types";
 
 /**
- * The Plan section and the approve bar.
+ * The Plan section and the run bar.
  *
  * What these hold up is the part that is easy to get subtly wrong in a way
- * nobody notices: that the digest state is stated in WORDS, that a reconstructed
- * plan says so, and that an image's provenance is drawn rather than reduced back
- * to the field name — which is all `bindings` could ever say.
+ * nobody notices: that a reconstructed plan says so, that an image's provenance
+ * is drawn rather than reduced back to the field name — which is all `bindings`
+ * could ever say — and that the one control leading to money takes two presses
+ * and writes an approval before it sends anything.
  */
 
 afterEach(cleanup);
+beforeEach(() => vi.clearAllMocks());
 
 function send(over: Partial<RunSend> = {}): RunSend {
   return {
@@ -161,78 +176,184 @@ describe("the plan", () => {
   });
 });
 
-describe("the approve bar", () => {
-  const noop = {
-    onApprove: vi.fn(),
-    onRevoke: vi.fn(),
-    onSubmit: vi.fn(),
-    busy: false,
-    error: null,
-  };
+/**
+ * **The control that spends money — one act, two presses, and no dialog.**
+ *
+ * The app could not submit at all until generation moved into the API, and when
+ * it could, it asked twice: a dialog to approve, then a separate Submit button.
+ * That was modelled on `runs approve` + `runs submit`, but the CLI's ordinary
+ * gesture is `studio run`, which drafts, approves and submits in one — so the
+ * page was asking for the same yes under two words, and a second confirm on the
+ * thing that matters is what teaches somebody to click through the first.
+ *
+ * **Nothing mechanical was dropped with it**, and these cases are what says so:
+ * the approval row is still written, with the digest of the payload the page is
+ * rendering, and a refusal of it sends nothing. The old suite's argument about
+ * the states the Submit button must be absent from is answered structurally now
+ * — a run that has gone out renders no button at all.
+ */
+describe("the run bar", () => {
+  const bar = { onRan: vi.fn(), onReload: vi.fn() };
+  const approve = vi.mocked(approveRun);
+  const submit = vi.mocked(submitRun);
 
-  it("says nobody has approved a draft", () => {
-    render(<ApproveBar run={record({ status: "draft" })} {...noop} />);
+  /**
+   * The bar holds exactly one button, so it is found by role rather than by
+   * label — the label is the thing that changes between the two presses, and a
+   * matcher on it would have to know both halves of what is under test.
+   */
+  function press(times: number) {
+    for (let i = 0; i < times; i += 1) {
+      fireEvent.click(screen.getByRole("button"));
+    }
+  }
 
-    expect(screen.getByText(/Nothing has been approved/)).toBeTruthy();
-  });
-
-  it("says the payload changed, when it has", () => {
+  it("is a button, and says what it will send on hover", async () => {
     /**
-     * **The sentence the whole mechanism exists to be able to say.** Hard rule
-     * #2 says re-approve after any edit; until the digest existed, nothing could
-     * tell that an edit had happened after a yes.
+     * **This used to assert the sentence beside the button**, back when three
+     * of them framed it: what it sends, that one press arms and the second
+     * runs, and that the run closes itself. The payload they described is on
+     * the page already, so the explanation moved onto the control — where it
+     * is read by hovering or by tabbing to it, which is what `aria-describedby`
+     * on the trigger is for. What stays visible without asking is the cost, and
+     * it appears on the armed press.
      */
     render(
-      <ApproveBar
-        run={record({ status: "approved", stale: true })}
-        {...noop}
+      <RunBar run={record({ status: "draft", sends: [send()] })} {...bar} />,
+    );
+
+    const button = screen.getByRole("button", { name: "Run" });
+    fireEvent.focus(button);
+
+    expect(
+      await screen.findByText(/1 image above, in that order/),
+    ).toBeTruthy();
+    expect(button.getAttribute("aria-describedby")).toBeTruthy();
+  });
+
+  it("says it spends only once it is armed", () => {
+    render(<RunBar run={record({ status: "draft" })} {...bar} />);
+
+    expect(screen.queryByRole("button", { name: /this spends/ })).toBeNull();
+    press(1);
+    expect(screen.getByRole("button", { name: /this spends/ })).toBeTruthy();
+  });
+
+  it("arms on the first press and calls nothing", () => {
+    /**
+     * The confirmation is the button changing under your finger. It is not a
+     * formality either — the arming expires, and moving focus away or pressing
+     * Escape takes it back, which `ConfirmDeleteButton` establishes and this
+     * borrows wholesale.
+     */
+    render(<RunBar run={record({ status: "draft" })} {...bar} />);
+
+    press(1);
+
+    expect(approve).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /Press again/ })).toBeTruthy();
+  });
+
+  it("approves the payload on screen, then submits it, in that order", async () => {
+    /**
+     * **The digest is the one off the record this page loaded** — never
+     * recomputed here. `plan_digest` has had three implementations in this
+     * repository and one of them silently disagreed; a client that derived its
+     * own would be a fourth.
+     */
+    const order: string[] = [];
+    const sent = record({ status: "running" });
+    approve.mockImplementation(async () => {
+      order.push("approve");
+      return record({ status: "approved" });
+    });
+    submit.mockImplementation(async () => {
+      order.push("submit");
+      return sent;
+    });
+
+    const onRan = vi.fn();
+    render(
+      <RunBar
+        run={record({ status: "draft", plan_digest: "sha256:abc" })}
+        {...bar}
+        onRan={onRan}
       />,
     );
 
-    expect(screen.getByText(/changed after it was approved/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: /approve again/i })).toBeTruthy();
+    press(2);
+
+    await waitFor(() => expect(order).toEqual(["approve", "submit"]));
+    expect(approve).toHaveBeenCalledWith("run-1", "sha256:abc");
+    expect(onRan).toHaveBeenCalledWith(sent);
   });
 
-  it("offers to revoke an approval that still matches its payload", () => {
+  it("sends nothing when the approval is refused, and says why inline", async () => {
+    /**
+     * The failure hard rule #2 names, and the reason the digest exists: the plan
+     * moved after this page drew it — in another tab, or from a terminal — so
+     * the yes on offer is a yes to something nobody here has read.
+     *
+     * **The API's own sentence, not its code.** `support.structured` answers
+     * both; printing `stale_digest` at a person is what the `code`/`message`
+     * split exists to stop. The code only decides what to add.
+     */
+    approve.mockRejectedValue(
+      new ApiError(
+        "The plan changed after it was approved.",
+        409,
+        "stale_digest",
+      ),
+    );
+    const onReload = vi.fn();
     render(
-      <ApproveBar
+      <RunBar run={record({ status: "draft" })} {...bar} onReload={onReload} />,
+    );
+
+    press(2);
+
+    await waitFor(() =>
+      expect(screen.getByText(/changed after it was approved/)).toBeTruthy(),
+    );
+    expect(submit).not.toHaveBeenCalled();
+    expect(onReload).toHaveBeenCalled();
+    expect(screen.queryByText("stale_digest")).toBeNull();
+  });
+
+  it("offers no run at all once one has gone out", () => {
+    /**
+     * Structural rather than disabled. A run row records ONE submission — its
+     * request, its response, its outputs — so there is nothing to press here;
+     * what a submitted run offers instead is `RunAgainButton`, which makes a
+     * second run.
+     */
+    render(<RunBar run={record({ status: "running" })} {...bar} />);
+
+    expect(screen.queryByRole("button", { name: /run/i })).toBeNull();
+  });
+
+  it("keeps saying who approved a run after it went out", () => {
+    render(
+      <RunBar
         run={record({
-          status: "approved",
+          status: "succeeded",
           approval: {
             by: "sub-1",
             at: "2026-08-20T00:00:00Z",
             digest: "sha256:abc",
+            via: "relayed",
           },
         })}
-        {...noop}
+        {...bar}
       />,
     );
 
-    expect(screen.getByRole("button", { name: "Revoke" })).toBeTruthy();
-  });
-
-  it("approves only after the dialog is confirmed", () => {
-    /**
-     * One click is not an approval. The dialog restates what is being approved —
-     * the prompt, the parameters and the images, in order — because hard rule #2
-     * is about a person reading a payload, not about a button existing.
-     */
-    const onApprove = vi.fn();
-    render(
-      <ApproveBar
-        run={record({ status: "draft", sends: [send()] })}
-        {...noop}
-        onApprove={onApprove}
-      />,
-    );
-
-    fireEvent.click(
-      screen.getByRole("button", { name: /Approve this payload/ }),
-    );
-    expect(onApprove).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
-    expect(onApprove).toHaveBeenCalledOnce();
+    expect(screen.getByText(/Approved by sub-1/)).toBeTruthy();
+    // A relayed yes was given elsewhere and passed on by an agent. It reads as
+    // the weaker claim it is, or the row is indistinguishable from a person
+    // pressing the button.
+    expect(screen.getByText(/Relayed/)).toBeTruthy();
   });
 
   it("names the backfill rather than pretending a person approved it", () => {
@@ -242,7 +363,7 @@ describe("the approve bar", () => {
      * carrying somebody's sub could not.
      */
     render(
-      <ApproveBar
+      <RunBar
         run={record({
           status: "succeeded",
           approval: {
@@ -251,97 +372,15 @@ describe("the approve bar", () => {
             digest: "sha256:abc",
           },
         })}
-        {...noop}
+        {...bar}
       />,
     );
 
     expect(screen.getByText(/before approvals were recorded/)).toBeTruthy();
   });
-});
 
-/**
- * **The control that spends money, and the states it must not appear in.**
- *
- * The app could not submit at all until generation moved into the API — the
- * provider credential lived in the CLI, so a run approved on this page then had
- * to be sent from a terminal, and the approve bar said so in as many words.
- *
- * There is deliberately no second confirm dialog on Submit: the approve dialog
- * is where a person reads the payload and says yes, and asking twice teaches
- * somebody to click through the prompt that matters. What stands in for it is
- * that this button exists in exactly one state — so the tests below are mostly
- * about the states it is absent from.
- */
-describe("submitting from the app", () => {
-  const noop = {
-    onApprove: vi.fn(),
-    onRevoke: vi.fn(),
-    onSubmit: vi.fn(),
-    busy: false,
-    error: null,
-  };
-  const approved = {
-    status: "approved" as const,
-    approval: { by: "sub-1", at: "2026-08-20T00:00:00Z", digest: "sha256:abc" },
-  };
-
-  it("offers to submit a run whose approval still matches its payload", () => {
-    render(<ApproveBar run={record(approved)} {...noop} />);
-
-    expect(screen.getByRole("button", { name: /Submit/ })).toBeTruthy();
-  });
-
-  it("sends nothing until the button is pressed", () => {
-    const onSubmit = vi.fn();
-    render(<ApproveBar run={record(approved)} {...noop} onSubmit={onSubmit} />);
-
-    expect(onSubmit).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: /Submit/ }));
-
-    expect(onSubmit).toHaveBeenCalledOnce();
-  });
-
-  it("does NOT offer to submit an unapproved draft", () => {
-    render(<ApproveBar run={record({ status: "draft" })} {...noop} />);
-
-    expect(screen.queryByRole("button", { name: /Submit/ })).toBeNull();
-  });
-
-  it("does NOT offer to submit a payload that changed after it was approved", () => {
-    /**
-     * The failure hard rule #2 names. The API would refuse this with a 409
-     * anyway; the button is absent so a person is not invited into a refusal.
-     */
-    render(<ApproveBar run={record({ ...approved, stale: true })} {...noop} />);
-
-    expect(screen.queryByRole("button", { name: /Submit/ })).toBeNull();
-    expect(screen.getByRole("button", { name: /approve again/i })).toBeTruthy();
-  });
-
-  it("does NOT offer to submit a run that has already gone out", () => {
-    render(<ApproveBar run={record({ status: "running" })} {...noop} />);
-
-    expect(screen.queryByRole("button", { name: /Submit/ })).toBeNull();
-  });
-
-  it("stops pointing at the CLI once a payload is approved", () => {
-    /** The bar used to end "run `studio runs submit <id>` when you are ready to
-     * spend", which was the whole of the friction this closes. */
-    render(<ApproveBar run={record(approved)} {...noop} />);
-
-    expect(screen.queryByText(/studio runs submit/)).toBeNull();
-    expect(screen.getByText(/starts billing/)).toBeTruthy();
-  });
-
-  it("disables the button while a submission is in flight", () => {
-    render(<ApproveBar run={record(approved)} {...noop} busy />);
-
-    expect(
-      screen
-        .getByRole("button", { name: /Submitting/ })
-        .hasAttribute("disabled"),
-    ).toBe(true);
-  });
+  /* Whether the bar is drawn at all while the plan is being edited is the page's
+     decision, not this component's — `RunPage.test.tsx` holds it up. */
 });
 
 describe("a run that has gone out and not come back", () => {

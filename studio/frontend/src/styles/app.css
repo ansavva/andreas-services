@@ -141,9 +141,15 @@
      match it — square for the small stuff, a 2px hint on the large surfaces
      (menus, popovers) so an overlay still has an edge against what is behind
      it. `--radius-pill` is untouched; a pill is a shape, not a corner. */
+  /* **Square, not nearly square.** The 2px above was measured against
+     Replicate's chrome and read as "a hint of a corner"; at 2x it still reads
+     as rounded on a button. Studio's surfaces are hairline-separated
+     rectangles, and a corner radius is the one thing that stops them looking
+     like one system. `--radius-pill` is untouched: a pill is a shape, not a
+     corner. */
   --radius-sm: 0px;
-  --radius-md: 0.125rem;
-  --radius-lg: 0.125rem;
+  --radius-md: 0px;
+  --radius-lg: 0px;
 }
 
 [data-theme='dark'] {
@@ -250,4 +256,89 @@ body {
     linear-gradient(-45deg, transparent 75%, rgb(255 255 255 / 0.04) 75%);
   background-size: 16px 16px;
   background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+
+/* ─────────────────────────── two buttons, and only two ───────────────────────
+ *
+ * **Studio has a primary and an outline, and nothing else.** The package ships
+ * three weights — `primary` (filled), `secondary` (a grey fill) and `ghost`
+ * (bare) — and `secondary`'s fill is the odd one here: against studio's
+ * hairline-separated panels a filled grey block reads as a third surface rather
+ * than as a control. The outline says "a button, not the main one" without
+ * inventing a colour.
+ *
+ * **This is a consumer-side restyle of a package intent, and that is worth
+ * naming.** The durable fix is upstream in `@ansavva/design-system` — the
+ * theming seam is a token, and no token can add a border, so a token override
+ * could not have done this. It is keyed to the exact class set `buttonClass`
+ * emits for `secondary` plus two of its base classes, so it cannot catch a
+ * plain `bg-surface-alt` panel. If the package ever restyles that intent,
+ * delete this block rather than reconciling it.
+ */
+.cursor-pointer.no-underline.bg-surface-alt {
+  background-color: transparent;
+  border: 1px solid var(--color-line);
+}
+
+.cursor-pointer.no-underline.bg-surface-alt:hover {
+  /* The hover is the fill arriving, not the border changing — the edge is what
+     makes it the same button throughout. */
+  background-color: var(--color-surface-alt);
+}
+
+/* ───────────────────────────────── tooltips ──────────────────────────────────
+ *
+ * The package inverts a tooltip — `bg-ink text-bg` — which in this dark theme
+ * paints a white card over the page. Everything else studio floats above the
+ * page (menus, popovers, drawers) is a dark surface with the same hairline
+ * border, and a tooltip arriving white reads as a different application. Same
+ * reasoning as the block above: keyed to the emitted classes, delete it if the
+ * package changes its mind.
+ */
+.absolute.bg-ink.text-bg {
+  background-color: var(--color-card);
+  color: var(--color-ink);
+  border: 1px solid var(--color-line);
+}
+
+
+/* ──────────────────────────── one control height ────────────────────────────
+ *
+ * **Every form control in this app is 44px, and this is the one place that is
+ * decided.** The package ships three heights for things that sit side by side:
+ * a `Select` trigger and a `md` Button are 44 — the WCAG 2.5.5 target-size
+ * floor both of them cite — an `Input` is 40 from the shared `controlBox`, and
+ * a `Toggle` sets no height at all and lands at 36 from its padding.
+ *
+ * Bottom-aligned, as a field row is, those disagreements do not read as a few
+ * pixels: each control's LABEL sits above its own box, so three heights put
+ * three labels on three lines. It was fixed four times in four rows by hand
+ * before it was fixed here, and the same latent bug sat in every row nobody had
+ * looked at yet.
+ *
+ * **The durable fix is upstream**: `controlBox` should be `h-11`, which is what
+ * `input.props.ts` would say if it applied the reasoning its own `Select` and
+ * `Button` comments already carry. Until the package does that, this normalises
+ * the two shapes it emits at 40 — the plain control box, and the input-group
+ * wrapper that owns the border for the input inside it.
+ *
+ * `sm` Buttons are deliberately NOT swept: the package calls 32 an opt-in to a
+ * smaller target, and dense chrome — a row's `⋯` actions, a tile's controls —
+ * is where that belongs. A `sm` button in a FIELD row is the mistake, and
+ * `.field-row` below is how a row says so.
+ */
+input.h-10,
+.h-10:has(> input) {
+  height: 2.75rem;
+}
+
+/* Everything inside is a control on one line: use it on a row that mixes a
+ * `Toggle`, a `sm` Button or an `IconButton` in with the fields, where the rule
+ * above cannot reach. One class on the ROW, never a height per control. */
+/* `textarea` is deliberately absent from both selectors: the package fixes no
+ * height on one, and `AutoTextarea` grows with what is typed — pinning it to a
+ * control height would clip the thing it exists to show. */
+.field-row :is(input, button, [role="combobox"]) {
+  height: 2.75rem;
 }
