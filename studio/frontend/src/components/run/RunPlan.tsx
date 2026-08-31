@@ -51,7 +51,14 @@ export function RunPlan({
   return (
     <section className="flex flex-col gap-3">
       {/* No `Plan` heading: the tab above already says it, and two of them a
-          few pixels apart read as two sections. The badges keep their row. */}
+          few pixels apart read as two sections.
+
+          No lone `aspect_ratio` badge either. It was one parameter promoted out
+          of `plan.params` to the top of the section — where it read as a label
+          for the whole plan rather than as one setting among several — while
+          the same value was drawn again as a chip below with every other
+          parameter. `reconstructed` stays: that is a fact about the plan
+          itself, not one of its values. */}
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 empty:hidden">
         {run.plan?.origin === "backfilled" && (
           // Said plainly rather than hidden. A reconstructed plan is not a
@@ -60,9 +67,6 @@ export function RunPlan({
           // detail needs to know which they are looking at.
           <Badge intent="neutral">reconstructed</Badge>
         )}
-        {run.plan?.params?.aspect_ratio ? (
-          <Badge intent="neutral">{String(run.plan.params.aspect_ratio)}</Badge>
-        ) : null}
       </div>
 
       {run.plan?.origin === "backfilled" && (
