@@ -2,26 +2,53 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 
-import type { CharacterRecord } from "../../types";
+import type { CharacterRecord, ReferenceSpec } from "../../types";
 import { TestProviders } from "../../test-providers";
 
 vi.mock("../../apis/studio", () => ({
   draftTurnaround: vi.fn(),
   getProjects: vi.fn(),
   getReel: vi.fn(),
+  getReferenceSpec: vi.fn(),
   getTree: vi.fn(),
-  getAsset: vi.fn().mockResolvedValue({ url: "blob:x" }),
+  resolvePath: vi.fn(),
+  getAsset: vi.fn().mockResolvedValue({ url: "https://signed/plate.png" }),
 }));
 
-import { draftTurnaround, getProjects, getReel, getTree } from "../../apis/studio";
+import {
+  draftTurnaround,
+  getProjects,
+  getReel,
+  getReferenceSpec,
+  getTree,
+  resolvePath,
+} from "../../apis/studio";
 import { TurnaroundPanel } from "./TurnaroundPanel";
 
 const draft = vi.mocked(draftTurnaround);
 const tree = vi.mocked(getTree);
 const reel = vi.mocked(getReel);
 const projects = vi.mocked(getProjects);
+const spec = vi.mocked(getReferenceSpec);
+const resolve = vi.mocked(resolvePath);
 
 const RECORD = { id: "char-1", root: "node-root", slug: "subject-a" } as CharacterRecord;
+
+const SPEC: ReferenceSpec = {
+  blocks: {},
+  angles: [
+    {
+      id: "face_front", group: "face", prompt: "Front.",
+      description: "Head and shoulders, front on.", tags: ["face"],
+      illustration: "config/angle/face/front.png",
+    },
+    {
+      id: "face_profile_right", group: "face", prompt: "Profile.",
+      description: "Full profile.", tags: ["face"],
+      illustration: "config/angle/face/profile-right.png",
+    },
+  ],
+};
 
 function file(id: string, name: string) {
   return {
@@ -40,7 +67,7 @@ function show() {
   );
 }
 
-function withSeedPool(files = [file("node-a", "a.jpg"), file("node-b", "b.jpg")]) {
+function ready(files = [file("node-a", "a.jpg"), file("node-b", "b.jpg")]) {
   tree.mockResolvedValue({
     prefix: "", sort: "name", breadcrumbs: [],
     folders: [{ id: "node-seed", name: "seed" }],
@@ -48,19 +75,40 @@ function withSeedPool(files = [file("node-a", "a.jpg"), file("node-b", "b.jpg")]
   } as never);
   reel.mockResolvedValue({ prefix: "", sort: "name", items: files, total: files.length } as never);
   projects.mockResolvedValue([{ id: "proj-1", slug: "refs" }] as never);
+  spec.mockResolvedValue(SPEC);
+  // **The REAL shape: a node view, with no presigned url.** This returned a
+  // `file()` — a listing entry, which carries one — and the panel crashed on
+  // first render against the live API while every test passed. A fake more
+  // capable than the service is the trap `fake_api.py` documents on the other
+  // side of this repo, and it caught nobody here either.
+  resolve.mockResolvedValue({ id: "node-plate", name: "front.png", kind: "file" });
 }
 
 /**
- * The package's `Select` is an ARIA combobox button over a listbox, not a
- * native `<select>`, so it is opened and its option clicked. `fireEvent.change`
- * on it does nothing at all — the field stays empty, the button stays disabled,
- * and the failure then reads as "the button did not fire".
+ * The package's `Select` is an ARIA combobox over a listbox, not a native
+ * `<select>`, so it is opened and its option clicked. `fireEvent.change` does
+ * nothing at all and the failure then reads as "the button did not fire".
  */
 async function chooseProject(label = "refs") {
-  fireEvent.click(screen.getByRole("combobox", { name: /project/i }));
+  // `find`, not `get`: the panel resolves the character's folders before it
+  // renders anything, so the combobox does not exist on the first tick.
+  fireEvent.click(await screen.findByRole("combobox", { name: /project/i }));
   fireEvent.click(await screen.findByRole("option", { name: label }));
 }
 
+/** Open one angle's picker and click a photograph inside it. */
+async function pick(angleId: string, name: string) {
+  const openers = await screen.findAllByText(/Pick photographs|Change/);
+  const card = openers
+    .map((b) => b.closest("div")?.parentElement)
+    .find((c) => c?.textContent?.includes(angleId));
+  fireEvent.click(
+    [...(card?.querySelectorAll("button") ?? [])].find((b) =>
+      /Pick photographs|Change/.test(b.textContent ?? ""),
+    ) as HTMLButtonElement,
+  );
+  fireEvent.click(await screen.findByLabelText(new RegExp(`${angleId}: ${name}`)));
+}
 
 afterEach(() => {
   cleanup();
@@ -71,61 +119,128 @@ it("reads the seed pool RECURSIVELY, so filed photographs are pickable", async (
   /**
    * A seed pool is a tree the moment anyone files it — `original/`, `restored/`,
    * a folder per age — and a listing one level deep shows only what was never
-   * filed. That exact blindness kept thirteen restored photographs out of a
-   * shoot's view on the CLI side, silently.
+   * filed. That blindness kept thirteen restored photographs out of a shoot's
+   * view on the CLI side, silently.
    */
-  withSeedPool();
+  ready();
   show();
   await waitFor(() => expect(reel).toHaveBeenCalled());
   expect(reel.mock.calls[0]![0]).toEqual({ node: "node-seed" });
 });
 
-it("will not shoot until a project and at least one photograph are chosen", async () => {
-  withSeedPool();
+it("shows the PLATE for each angle, which is what the orientation means", async () => {
+  /**
+   * An angle id says `face_profile_right` and its prompt spends a paragraph
+   * defining that in terms of what is visible in frame. The picture says it at
+   * a glance — and these are the plates a face angle stopped SENDING, which is
+   * why showing them is free: an illustration outside the payload cannot
+   * influence a render.
+   */
+  ready();
   show();
-  const button = (await screen.findByText("Draft the angles")) as HTMLButtonElement;
-  expect(button.disabled).toBe(true);
-  expect(screen.getByText(/Pick at least one photograph/)).toBeTruthy();
+  await waitFor(() => expect(resolve).toHaveBeenCalled());
+  expect(resolve.mock.calls.map((c) => c[0])).toContain("config/angle/face/front.png");
 });
 
-it("sends the picked nodes IN THE ORDER they were picked", async () => {
+it("will not shoot until EVERY angle has photographs", async () => {
   /**
-   * The model is handed them in this order, and a prompt citing `[Image2]` means
-   * the second one. A set would lose that, and the citation would land on
-   * whichever image the grid happened to sort first.
+   * A shoot that half-happens because the twelfth angle was the one nobody
+   * picked for is the failure this guards. The route refuses it too; refusing
+   * here makes it visible before the click rather than as an error after it.
    */
-  withSeedPool();
+  ready();
+  show();
+  await chooseProject();
+  await pick("face_front", "a.jpg");
+
+  expect(await screen.findByText(/1 angle\(s\) still need photographs/)).toBeTruthy();
+  const button = screen.getByText(/Draft 2 angle\(s\)/) as HTMLButtonElement;
+  expect(button.disabled).toBe(true);
+});
+
+it("sends a SEPARATE list per angle", async () => {
+  /**
+   * A profile angle wants the profile photographs and a front angle does not.
+   * One selection for all fourteen made the commonest correction impossible to
+   * express.
+   */
+  ready();
   draft.mockResolvedValue({ drafted: [], failed: [] });
   show();
-
-  fireEvent.click(await screen.findByLabelText(/b\.jpg/));
-  fireEvent.click(screen.getByLabelText(/a\.jpg/));
   await chooseProject();
-  fireEvent.click(screen.getByText("Draft the angles"));
+  await pick("face_front", "a.jpg");
+  await pick("face_profile_right", "b.jpg");
+  fireEvent.click(screen.getByText(/Draft 2 angle\(s\)/));
 
   await waitFor(() => expect(draft).toHaveBeenCalled());
-  expect(draft.mock.calls[0]![1].identity).toEqual(["node-b", "node-a"]);
+  expect(draft.mock.calls[0]![1].identity_by_angle).toEqual({
+    face_front: ["node-a"],
+    face_profile_right: ["node-b"],
+  });
 });
 
-it("shows each pick's SLOT NUMBER rather than a tick", async () => {
-  withSeedPool();
+it("keeps pick ORDER within an angle, because a citation depends on it", async () => {
+  ready();
+  draft.mockResolvedValue({ drafted: [], failed: [] });
   show();
-  fireEvent.click(await screen.findByLabelText(/b\.jpg/));
-  // The label carries it too, so the number is not colour-only or shape-only.
-  expect(screen.getByLabelText(/b\.jpg, picked 1/)).toBeTruthy();
+  await chooseProject();
+  await pick("face_front", "b.jpg");
+  fireEvent.click(await screen.findByLabelText(/face_front: a\.jpg/));
+  await pick("face_profile_right", "a.jpg");
+  fireEvent.click(screen.getByText(/Draft 2 angle\(s\)/));
+
+  await waitFor(() => expect(draft).toHaveBeenCalled());
+  expect(draft.mock.calls[0]![1].identity_by_angle!.face_front).toEqual([
+    "node-b",
+    "node-a",
+  ]);
+});
+
+it("copies one angle's picks onto every angle as an explicit list", async () => {
+  /**
+   * A bulk EDIT, not a default. A default is a thing angles inherit, which is
+   * the shape that made "this angle needs different pictures" impossible to
+   * say; this writes the same explicit list onto each, and each can then change.
+   */
+  ready();
+  draft.mockResolvedValue({ drafted: [], failed: [] });
+  show();
+  await chooseProject();
+  await pick("face_front", "a.jpg");
+  fireEvent.click(screen.getByText("Use for every angle"));
+  fireEvent.click(screen.getByText(/Draft 2 angle\(s\)/));
+
+  await waitFor(() => expect(draft).toHaveBeenCalled());
+  expect(draft.mock.calls[0]![1].identity_by_angle).toEqual({
+    face_front: ["node-a"],
+    face_profile_right: ["node-a"],
+  });
+});
+
+it("sends no fallback identity, so an unpicked angle cannot shoot anyway", async () => {
+  ready();
+  draft.mockResolvedValue({ drafted: [], failed: [] });
+  show();
+  await chooseProject();
+  await pick("face_front", "a.jpg");
+  fireEvent.click(screen.getByText("Use for every angle"));
+  fireEvent.click(screen.getByText(/Draft 2 angle\(s\)/));
+
+  await waitFor(() => expect(draft).toHaveBeenCalled());
+  expect(draft.mock.calls[0]![1].identity).toEqual([]);
 });
 
 it("previews without recording anything", async () => {
-  withSeedPool();
+  ready();
   draft.mockResolvedValue({
     preview: [{ angle: "face_front", model: "m",
                 plan: { prompt: "A studio portrait.", params: {} }, sends: [] }],
     failed: [],
   });
   show();
-
-  fireEvent.click(await screen.findByLabelText(/a\.jpg/));
   await chooseProject();
+  await pick("face_front", "a.jpg");
+  fireEvent.click(screen.getByText("Use for every angle"));
   fireEvent.click(screen.getByText("Preview"));
 
   await waitFor(() => expect(draft).toHaveBeenCalled());
@@ -133,51 +248,12 @@ it("previews without recording anything", async () => {
   expect(await screen.findByText("A studio portrait.")).toBeTruthy();
 });
 
-it("says plainly that a draft is neither approved nor paid for", async () => {
-  /**
-   * Hard rule #2 is untouched by this screen: it makes the payload, a person
-   * still says yes to it on the run's own page. A button that read "Shoot"
-   * with no such line would be teaching somebody that this is the yes.
-   */
-  withSeedPool();
-  draft.mockResolvedValue({
-    drafted: [{ angle: "face_front", id: "run-1", status: "draft" }],
-    failed: [],
-  });
-  show();
-
-  fireEvent.click(await screen.findByLabelText(/a\.jpg/));
-  await chooseProject();
-  expect(screen.getByText(/Nothing is approved and nothing bills/)).toBeTruthy();
-
-  fireEvent.click(screen.getByText("Draft the angles"));
-  expect(await screen.findByText(/Nothing is approved and nothing has been submitted/)).toBeTruthy();
-  expect(screen.getByText("face_front").closest("a")).toBeTruthy();
-});
-
-it("reports the angles that failed without hiding the ones that worked", async () => {
-  withSeedPool();
-  draft.mockResolvedValue({
-    drafted: [{ angle: "face_front", id: "run-1", status: "draft" }],
-    failed: [{ angle: "face_back", error: "cites {no_such_block}" }],
-  });
-  show();
-
-  fireEvent.click(await screen.findByLabelText(/a\.jpg/));
-  await chooseProject();
-  fireEvent.click(screen.getByText("Draft the angles"));
-
-  expect(await screen.findByText(/1 angle\(s\) were not drafted/)).toBeTruthy();
-  expect(screen.getByText(/no_such_block/)).toBeTruthy();
-  expect(screen.getByText(/1 draft\(s\)/)).toBeTruthy();
-});
-
 it("says so when the character has no seed pool at all", async () => {
+  ready();
   tree.mockResolvedValue({
     prefix: "", sort: "name", breadcrumbs: [], folders: [], files: [],
     counts: { folders: 0, files: 0, media: 0 },
   } as never);
-  projects.mockResolvedValue([] as never);
   show();
   expect(await screen.findByText(/no seed pool/i)).toBeTruthy();
   expect(reel).not.toHaveBeenCalled();

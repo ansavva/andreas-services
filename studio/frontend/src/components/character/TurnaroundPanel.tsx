@@ -3,10 +3,18 @@ import { Link } from "react-router-dom";
 
 import { Alert, Badge, Button, Card, Select, Spinner, Text } from "@ansavva/design-system";
 
-import { draftTurnaround, getProjects, getReel, getTree } from "../../apis/studio";
+import {
+  draftTurnaround,
+  getProjects,
+  getReel,
+  getAsset,
+  getReferenceSpec,
+  getTree,
+  resolvePath,
+} from "../../apis/studio";
 import { MediaThumb } from "../media/MediaThumb";
 import { useResource } from "../../hooks/useResource";
-import type { CharacterRecord, TurnaroundResult } from "../../types";
+import type { CharacterRecord, FileEntry, SpecAngle, TurnaroundResult } from "../../types";
 import { runPath } from "../../utils/location";
 
 /**
@@ -32,6 +40,22 @@ import { runPath } from "../../utils/location";
  * are picked, and a prompt citing `[Image2]` means the second one in that list,
  * so each selection carries its number rather than a tick.
  *
+ * **And the choice is per ANGLE.** A profile angle wants the profile
+ * photographs; a front angle does not; a body angle wants the figure shots a
+ * head-and-shoulders pool barely has. One selection for all fourteen made the
+ * commonest correction — this angle needs different pictures — impossible to
+ * express, so it is fourteen selections. `Use for every angle` copies one
+ * across when they genuinely are the same, which is a bulk edit rather than a
+ * default: every angle still ends up holding its own explicit list.
+ *
+ * ## The plate says what the angle is
+ *
+ * Each angle shows its `illustration` — the generic figure from `config/`. It
+ * is what the orientation MEANS, in a picture, next to the words asking for it.
+ * These are the same plates a face angle stopped sending to the model, which is
+ * exactly why they are safe to show: an illustration that is not in the payload
+ * cannot influence a render.
+ *
  * ## Nothing here spends
  *
  * Preview assembles and records nothing. Draft writes one unapproved `draft` per
@@ -42,12 +66,20 @@ import { runPath } from "../../utils/location";
 export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
   const [project, setProject] = useState("");
   const [group, setGroup] = useState("all");
-  const [picked, setPicked] = useState<string[]>([]);
+  //: angle id -> the node ids picked for it, IN PICK ORDER.
+  const [picked, setPicked] = useState<Record<string, string[]>>({});
+  const [openAngle, setOpenAngle] = useState<string | null>(null);
   const [result, setResult] = useState<TurnaroundResult | null>(null);
   const [busy, setBusy] = useState<"preview" | "draft" | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
 
   const projects = useResource(["projects"], useCallback(() => getProjects(), []));
+  const spec = useResource(["reference-spec"], useCallback(() => getReferenceSpec(), []));
+
+  const angles = useMemo(
+    () => (spec.data?.angles ?? []).filter((a) => group === "all" || a.group === group),
+    [group, spec.data],
+  );
 
   // The character's own folders, to find `seed/`. Its node id is not on the
   // record — the four pools are convention rather than schema, so a character
@@ -70,12 +102,31 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
     seedFolder ? () => getReel({ node: seedFolder.id }, "name") : null,
   );
 
-  const toggle = useCallback((id: string) => {
+  const toggle = useCallback((angleId: string, node: string) => {
     setResult(null);
-    setPicked((current) =>
-      current.includes(id) ? current.filter((n) => n !== id) : [...current, id],
-    );
+    setPicked((current) => {
+      const held = current[angleId] ?? [];
+      return {
+        ...current,
+        [angleId]: held.includes(node)
+          ? held.filter((n) => n !== node)
+          : [...held, node],
+      };
+    });
   }, []);
+
+  // A bulk EDIT, not a default: it writes the same explicit list onto every
+  // angle, and each one can then be changed. A default would have been a thing
+  // angles inherit, which is the shape that made "this angle needs different
+  // pictures" impossible to say.
+  const copyToAll = useCallback(
+    (from: string) =>
+      setPicked((current) => {
+        const source = current[from] ?? [];
+        return Object.fromEntries(angles.map((a) => [a.id, [...source]]));
+      }),
+    [angles],
+  );
 
   const send = useCallback(
     async (preview: boolean) => {
@@ -85,7 +136,13 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
         setResult(
           await draftTurnaround(record.id, {
             project,
-            identity: picked,
+            // Per angle, and nothing else. There is no fallback from here: the
+            // route takes `identity` as one, and sending both would let an
+            // angle nobody picked for shoot anyway.
+            identity: [],
+            identity_by_angle: Object.fromEntries(
+              angles.map((a) => [a.id, picked[a.id] ?? []]),
+            ),
             group: group === "all" ? undefined : (group as "face" | "body"),
             preview,
           }),
@@ -96,7 +153,9 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
         setBusy(null);
       }
     },
-    [group, picked, project, record.id],
+    // `angles` belongs here: it is what decides WHICH angles get sent, and a
+    // stale copy would draft the previous group's list after the filter moved.
+    [angles, group, picked, project, record.id],
   );
 
   if (rootTree.loading) return <Spinner />;
@@ -113,7 +172,12 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
     );
   }
 
-  const ready = project !== "" && picked.length > 0;
+  // Every angle, not any angle. A shoot that half-happens because the twelfth
+  // was the one nobody picked for is the failure this guards — the route
+  // refuses it too, and refusing here means it is visible before the click
+  // rather than as an error after it.
+  const unpicked = angles.filter((a) => (picked[a.id] ?? []).length === 0);
+  const ready = project !== "" && angles.length > 0 && unpicked.length === 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -156,57 +220,35 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
         </div>
       </Card.Root>
 
+      {(spec.loading || pool.loading) ? <Spinner /> : null}
+
+      {angles.map((angle) => (
+        <AnglePicker
+          key={angle.id}
+          angle={angle}
+          files={pool.data?.items ?? []}
+          picked={picked[angle.id] ?? []}
+          open={openAngle === angle.id}
+          onOpen={() => setOpenAngle(openAngle === angle.id ? null : angle.id)}
+          onToggle={(node) => toggle(angle.id, node)}
+          onCopyToAll={() => copyToAll(angle.id)}
+        />
+      ))}
+
       <Card.Root>
-        <Card.Title>Which photographs say who this is</Card.Title>
-        <div className="flex flex-col gap-2">
-          <Text tone="muted">
-            Picked in order — the model is handed them in this order, and a
-            prompt citing [Image2] means the second one.
-          </Text>
-          {pool.loading ? <Spinner /> : null}
-          <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
-            {(pool.data?.items ?? []).map((file) => {
-              const at = picked.indexOf(file.id);
-              return (
-                <button
-                  key={file.id}
-                  type="button"
-                  onClick={() => toggle(file.id)}
-                  aria-pressed={at >= 0}
-                  aria-label={`${file.name}${at >= 0 ? `, picked ${at + 1}` : ""}`}
-                  className="relative text-left"
-                >
-                  <MediaThumb
-                    nodeId={file.id}
-                    url={file.url}
-                    name={file.name}
-                    dimmed={picked.length > 0 && at < 0}
-                    /* The NUMBER, not a tick. Order is part of the choice, and
-                       a tick would say "chosen" while hiding which slot it
-                       lands in — the thing a prompt's citations depend on. */
-                    badge={at >= 0 ? String(at + 1) : undefined}
-                  />
-                </button>
-              );
-            })}
-          </div>
-          {!pool.loading && (pool.data?.items ?? []).length === 0 ? (
-            <Text tone="muted">This seed pool holds no images.</Text>
-          ) : null}
-        </div>
-        <Card.Footer>
+        <div className="flex flex-wrap items-center gap-3">
           <Button intent="ghost" onClick={() => send(true)} disabled={!ready || busy !== null}>
             {busy === "preview" ? "Assembling…" : "Preview"}
           </Button>
           <Button onClick={() => send(false)} disabled={!ready || busy !== null}>
-            {busy === "draft" ? "Drafting…" : "Draft the angles"}
+            {busy === "draft" ? "Drafting…" : `Draft ${angles.length} angle(s)`}
           </Button>
           <Text tone="muted">
-            {picked.length === 0
-              ? "Pick at least one photograph."
-              : `${picked.length} picked. Nothing is approved and nothing bills.`}
+            {unpicked.length > 0
+              ? `${unpicked.length} angle(s) still need photographs.`
+              : "Nothing is approved and nothing bills."}
           </Text>
-        </Card.Footer>
+        </div>
       </Card.Root>
 
       {failed ? (
@@ -245,7 +287,13 @@ function Outcome({ result, project }: { result: TurnaroundResult; project: strin
                 {entry.angle} <Badge size="sm">preview</Badge>
               </Card.Title>
               <div className="flex flex-col gap-2">
-                <Text>{entry.plan.prompt}</Text>
+                {/* `whitespace-pre-wrap`, because HTML collapses runs of
+                    whitespace and the blank lines in a prompt are now real —
+                    they survive assembly and reach the model. Rendered without
+                    it, a paragraphed prompt reads as the same wall of text it
+                    was written to stop being, and the editor would look like it
+                    had done nothing. */}
+                <Text className="whitespace-pre-wrap font-mono">{entry.plan.prompt}</Text>
               </div>
             </Card.Root>
           ))
@@ -270,5 +318,127 @@ function Outcome({ result, project }: { result: TurnaroundResult; project: strin
         </Card.Root>
       ) : null}
     </>
+  );
+}
+
+
+/**
+ * One angle: what it is, and which photographs it will be shot from.
+ *
+ * The plate is the point of the header. An angle id says `face_three_quarter_back_right`
+ * and the prompt spends a paragraph defining it in terms of what is visible in
+ * frame; the picture says it at a glance. These plates are the ones a face
+ * angle stopped SENDING when the guide was found to distort the face it existed
+ * to record — which is exactly why showing them is free: an illustration
+ * outside the payload cannot influence a render.
+ */
+function AnglePicker({
+  angle,
+  files,
+  picked,
+  open,
+  onOpen,
+  onToggle,
+  onCopyToAll,
+}: {
+  angle: SpecAngle;
+  files: FileEntry[];
+  picked: string[];
+  open: boolean;
+  onOpen: () => void;
+  onToggle: (node: string) => void;
+  onCopyToAll: () => void;
+}) {
+  // Resolve the path, then SIGN it. Two calls, and the second is not optional:
+  // `/api/resolve` answers a node view with no url, and `MediaThumb` only
+  // re-signs from its `onError` — which an empty `src` never fires, because the
+  // browser does not attempt a load at all. Fourteen empty boxes and no network
+  // request is what that looked like.
+  const plate = useResource(
+    angle.illustration ? ["plate", angle.illustration] : null,
+    angle.illustration
+      ? async () => {
+          const node = await resolvePath(angle.illustration as string);
+          return { id: node.id, url: (await getAsset(node.id)).url };
+        }
+      : null,
+  );
+  const chosen = useMemo(
+    () => picked.map((id) => files.find((f) => f.id === id)).filter(Boolean) as FileEntry[],
+    [files, picked],
+  );
+
+  return (
+    <Card.Root>
+      <div className="flex items-start gap-3">
+        {plate.data ? (
+          <span className="w-16 shrink-0">
+            <MediaThumb
+              nodeId={plate.data.id}
+              url={plate.data.url}
+              name={angle.id}
+              aspect="square"
+              fit="contain"
+            />
+          </span>
+        ) : null}
+        <span className="flex min-w-0 flex-col gap-1">
+          <Text>
+            {angle.id} <Badge size="sm">{angle.group}</Badge>
+          </Text>
+          <Text tone="muted">{angle.description}</Text>
+        </span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {/* The picks themselves, always visible — the answer to "what will this
+            angle be shot from" should not need a click. */}
+        {chosen.map((file, at) => (
+          <span key={file.id} className="w-12">
+            <MediaThumb
+              nodeId={file.id}
+              url={file.url}
+              name={file.name}
+              badge={String(at + 1)}
+            />
+          </span>
+        ))}
+        {chosen.length === 0 ? <Text tone="muted">No photographs yet.</Text> : null}
+        <Button intent="ghost" onClick={onOpen} aria-expanded={open}>
+          {open ? "Done" : chosen.length ? "Change" : "Pick photographs"}
+        </Button>
+        {chosen.length > 0 ? (
+          <Button intent="ghost" onClick={onCopyToAll}>
+            Use for every angle
+          </Button>
+        ) : null}
+      </div>
+
+      {open ? (
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+          {files.map((file) => {
+            const at = picked.indexOf(file.id);
+            return (
+              <button
+                key={file.id}
+                type="button"
+                onClick={() => onToggle(file.id)}
+                aria-pressed={at >= 0}
+                aria-label={`${angle.id}: ${file.name}${at >= 0 ? `, picked ${at + 1}` : ""}`}
+                className="relative text-left"
+              >
+                <MediaThumb
+                  nodeId={file.id}
+                  url={file.url}
+                  name={file.name}
+                  dimmed={picked.length > 0 && at < 0}
+                  badge={at >= 0 ? String(at + 1) : undefined}
+                />
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </Card.Root>
   );
 }

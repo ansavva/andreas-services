@@ -73,15 +73,35 @@ def draft_turnaround(character_id: str):
                               "guessing puts runs somewhere nobody looks again")
 
     identity = body.get("identity") or []
-    if not isinstance(identity, list) or not identity:
-        raise ValidationError(
-            "identity must be a non-empty list of node ids — which photographs "
-            "carry identity is not something this route may decide")
-    if not all(isinstance(node, str) and node.startswith("node-") for node in identity):
-        raise ValidationError("every identity entry must be a node id")
+    per_angle = body.get("identity_by_angle") or {}
+    if not isinstance(per_angle, dict):
+        raise ValidationError("identity_by_angle must be an object keyed by angle id")
+    if not isinstance(identity, list):
+        raise ValidationError("identity must be a list of node ids")
+    for nodes in [identity, *per_angle.values()]:
+        if not isinstance(nodes, list):
+            raise ValidationError("every identity selection must be a list of node ids")
+        if not all(isinstance(n, str) and n.startswith("node-") for n in nodes):
+            raise ValidationError("every identity entry must be a node id")
 
     spec = catalog.reference_spec(g.library)
     angles = _selected(spec["angles"], body.get("group"), body.get("angles"))
+
+    # **Every angle must end up with photographs, and this is where that is
+    # checked** — before any of them is drafted, so a shoot cannot half-happen
+    # because the twelfth angle was the one nobody picked for.
+    #
+    # `identity_by_angle` beats `identity`, which is the fallback. Two shapes
+    # because two callers want different things: the app picks per angle (a
+    # profile angle wants the profile photographs, and a front angle does not),
+    # while the CLI resolves ONE set from `--seed-pick` and means it for all of
+    # them. A single shape would have made one of them lie.
+    unpicked = [a["id"] for a in angles if not (per_angle.get(a["id"]) or identity)]
+    if unpicked:
+        raise ValidationError(
+            "no identity images for: " + ", ".join(unpicked) + ". Which "
+            "photographs say who somebody is is not something this route may "
+            "decide — pick for each angle, or send `identity` as a fallback.")
     if not angles:
         raise NotFoundError(
             "no angles matched. This library's reference spec holds "
@@ -102,8 +122,9 @@ def draft_turnaround(character_id: str):
     for angle in angles:
         try:
             drafted.append(_draft_one(angle, spec["blocks"], record, entry,
-                                      project, identity, body, held,
-                                      preview=preview))
+                                      project,
+                                      per_angle.get(angle["id"]) or identity,
+                                      body, held, preview=preview))
         except (ValidationError, NotFoundError) as refusal:
             # ONE BAD ANGLE DOES NOT CANCEL THE REST. A failure here is almost
             # always a property of that angle alone — a template citing a block

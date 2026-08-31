@@ -52,7 +52,7 @@ from studio_pipeline.errors import die
 #: rather than sent — a pulled file round-trips whatever the API added, and
 #: refusing those would make edit-then-push fail on fields it produced itself.
 ANGLE_FIELDS = ("group", "prompt", "description", "tags", "order",
-                "angle_image", "torso_image")
+                "angle_image", "torso_image", "illustration")
 
 
 class SpecError(RuntimeError):

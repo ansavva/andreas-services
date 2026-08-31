@@ -189,9 +189,14 @@ def _seed_node(api, character, name="seed-1.jpg"):
     """
     from studio_core.services import catalog as cat
 
-    seed = api.post("/api/nodes",
+    # Reused, not recreated: a second call would collide on the folder name and
+    # the failure surfaces as a KeyError on the FILE, several lines away.
+    made = api.post("/api/nodes",
                     json={"parent": character["root"], "name": "seedpool",
                           "kind": "folder"}).get_json()
+    seed = made if "id" in made else next(
+        n for n in api.get(f"/api/nodes?parent={character['root']}").get_json()
+        if n["name"] == "seedpool")
     node = api.post("/api/nodes",
                     json={"parent": seed["id"], "name": name,
                           "kind": "file"}).get_json()
@@ -338,4 +343,103 @@ def test_a_preview_assembles_and_writes_nothing(empty_api):
     assert BLOCK in got["preview"][0]["plan"]["prompt"]
     assert "drafted" not in got
     # And no run exists.
+    assert empty_api.get(f"/api/runs?project={project['id']}").get_json()["runs"] == []
+
+
+# ─────────────────── whitespace, and per-angle identity ───────────────────
+
+
+def test_the_prompt_keeps_its_newlines():
+    """**They were being destroyed, and that cost the best prompt this repo has.**
+
+    Assembly ended `" ".join(text.split())`, which collapses every newline into
+    a space. Right while the source was a folded YAML scalar — a line break
+    there is how the file wrapped, not something anybody chose — and wrong the
+    moment the source became a row a person types into a box.
+
+    The single best-performing reference render this repository has produced was
+    authored by hand with six newlines in its prompt, separating the angle, the
+    scale and the identity instruction into paragraphs. Assembled through the
+    old path it came out as one wall of text, so the pipeline could not
+    reproduce its own best result.
+    """
+    from studio_core.services import reference
+
+    template = "First line.\n\nSecond paragraph. {face_only}\n\nThird."
+    text = reference.assemble({"id": "x", "group": "face", "prompt": template},
+                              {"face_only": BLOCK}, PROFILE)
+    assert text.count("\n\n") == 2
+    assert text.startswith("First line.")
+
+
+def test_trailing_space_on_a_line_still_goes():
+    """Invisible, never deliberate, and it would move the approval digest.
+
+    Two prompts that read identically must hash identically, or an approval
+    fails over something nobody can see on screen.
+    """
+    from studio_core.services import reference
+
+    text = reference.assemble(
+        {"id": "x", "group": "face", "prompt": "One.   \nTwo.  "}, {}, PROFILE)
+    assert text == "One.\nTwo."
+
+
+def test_a_bible_FIELD_is_still_flattened():
+    """The opposite case, and it stays the opposite.
+
+    A bible field is a sentence or two typed into a form; the line breaks in it
+    are the textarea's rather than the author's. The TEMPLATE is what somebody
+    laid out deliberately.
+    """
+    from studio_core.services import reference
+
+    profile = {**PROFILE, "identity": {"apparent_age": "Late\n30s", "height_read": "5'10\""}}
+    assert reference.age_text(profile) == "Late 30s"
+
+
+def test_each_angle_can_be_given_its_OWN_photographs(empty_api):
+    """A profile angle wants the profile shots; a front angle does not.
+
+    `identity_by_angle` beats `identity`, which stays as the fallback — the CLI
+    resolves one set from `--seed-pick` and means it for every angle, and a
+    single shape would have made one of the two callers lie.
+    """
+    _spec(empty_api)
+    empty_api.patch("/api/reference-spec/angles/face_profile_right",
+                    json={**ANGLE, "order": 1500})
+    character = _character_with_bible(empty_api)
+    project = empty_api.post("/api/projects", json={"slug": "refs"}).get_json()
+    front = _seed_node(empty_api, character, "front.jpg")
+    side = _seed_node(empty_api, character, "side.jpg")
+
+    got = empty_api.post(
+        f"/api/characters/{character['id']}/turnaround",
+        json={"project": project["id"], "identity": [front],
+              "identity_by_angle": {"face_profile_right": [side]},
+              "preview": True},
+    ).get_json()
+
+    by_angle = {e["angle"]: [s["node"] for s in e["sends"]] for e in got["preview"]}
+    assert by_angle["face_front"] == [front]
+    assert by_angle["face_profile_right"] == [side]
+
+
+def test_an_angle_nobody_picked_for_is_refused_BEFORE_anything_is_drafted(empty_api):
+    """A shoot must not half-happen because the twelfth angle was the one missed."""
+    _spec(empty_api)
+    empty_api.patch("/api/reference-spec/angles/face_back", json={**ANGLE, "order": 1500})
+    character = _character_with_bible(empty_api)
+    project = empty_api.post("/api/projects", json={"slug": "refs"}).get_json()
+    node = _seed_node(empty_api, character)
+
+    resp = empty_api.post(
+        f"/api/characters/{character['id']}/turnaround",
+        json={"project": project["id"],
+              "identity_by_angle": {"face_front": [node]}},
+    )
+
+    assert resp.status_code == 400
+    assert "face_back" in resp.get_json()["error"]
+    # And nothing was written for the angle that WAS picked for.
     assert empty_api.get(f"/api/runs?project={project['id']}").get_json()["runs"] == []

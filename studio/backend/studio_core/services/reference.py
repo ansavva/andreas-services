@@ -53,6 +53,13 @@ BODY_ONLY_FIELDS = ("midsection", "lower_body", "lower_body_and_hands", "body_ha
 
 
 def _clean(value) -> str:
+    """One bible FIELD, flattened to a line.
+
+    Deliberately still collapsing, and deliberately not what happens to the
+    assembled prompt. A bible field is a sentence or two stored in a form; the
+    line breaks in it are the textarea's, not the author's. The TEMPLATE is the
+    opposite case and keeps every one — see `assemble`.
+    """
     return " ".join(str(value or "").split())
 
 
@@ -194,4 +201,22 @@ def assemble(angle: dict, blocks: dict, profile: dict,
             f"angle {angle.get('id')!r} has a malformed template: {exc}. "
             f"A literal brace must be doubled — {{{{ and }}}}."
         )
-    return " ".join(text.split())
+    # **Whitespace is PRESERVED, and it used to be destroyed here.**
+    #
+    # This ended `" ".join(text.split())`, which collapses every newline into a
+    # space. That was right while the source was a folded YAML scalar, where a
+    # line break was an artifact of how the file wrapped rather than something
+    # anybody chose — and it became wrong the moment the source became a row a
+    # person types into a box.
+    #
+    # Not a readability preference. The single best-performing reference render
+    # this repository has produced was authored by hand with SIX newlines in its
+    # prompt, separating the angle, the scale and the identity instruction into
+    # paragraphs; assembled through here it would have come out as one wall of
+    # text. Blank lines and CAPS are what these models actually read as
+    # structure, and the spec leans on both.
+    #
+    # Trailing space per line still goes — it is invisible, it is never
+    # deliberate, and it would make two otherwise identical prompts hash to
+    # different approval digests.
+    return "\n".join(line.rstrip() for line in text.strip().splitlines())

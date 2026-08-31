@@ -46,12 +46,35 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-it("lists the angles and the blocks a library holds", async () => {
+it("shows a block INSIDE the angle that cites it, not on another tab", async () => {
+  /**
+   * They were two tabs, which made the commonest edit — read a prompt, notice a
+   * phrase is wrong, fix it — a switch, a hunt and a switch back, with the
+   * prompt off screen while you changed the words it uses. A template is mostly
+   * citations, so hiding the blocks hid most of the prompt.
+   */
   read.mockResolvedValue(SPEC);
   show();
   expect(await screen.findByText(/face_front/)).toBeTruthy();
-  expect(screen.getByText(/Angles \(1\)/)).toBeTruthy();
-  expect(screen.getByText(/Blocks \(1\)/)).toBeTruthy();
+  expect(screen.getByText("{face_only}")).toBeTruthy();
+  expect(screen.queryByRole("tab")).toBeNull();
+});
+
+it("says how many angles a block reaches BEFORE it is edited", async () => {
+  /**
+   * A block reads as local until you know it is not, and a shared edit noticed
+   * on save is noticed too late.
+   */
+  read.mockResolvedValue({
+    blocks: SPEC.blocks,
+    angles: [
+      SPEC.angles[0]!,
+      { ...SPEC.angles[0]!, id: "face_back", prompt: "Back. {face_only}" },
+    ],
+  });
+  show();
+  const counts = await screen.findAllByText("2 angles");
+  expect(counts.length).toBe(2);
 });
 
 it("says what to do when a library holds no spec at all", async () => {
@@ -97,7 +120,8 @@ it("saves one block without refetching the whole spec", async () => {
   saveBlock.mockResolvedValue({ name: "face_only", text: "edited" });
   show();
 
-  fireEvent.click(await screen.findByText(/Blocks \(1\)/));
+  // Expand the block where it sits, inside the angle that cites it.
+  fireEvent.click(await screen.findByText("{face_only}"));
   const box = await screen.findByDisplayValue(/THE FACE COMES FROM/);
   fireEvent.change(box, { target: { value: "edited" } });
   fireEvent.click(screen.getAllByText("Save")[0]!);

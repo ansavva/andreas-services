@@ -3624,7 +3624,14 @@ ANGLE_PREFIX = f"{SPEC_PREFIX}ANGLE#"
 #: What an angle row carries besides its template. `description` and `tags` are
 #: read at PROMOTION rather than at render — `add-refs --from-run` writes them
 #: onto the image — so they belong to the angle and not to the prompt.
-ANGLE_FIELDS = ("group", "prompt", "description", "tags", "angle_image", "torso_image")
+#: `illustration` is shown to a PERSON and never sent to a model — the two are
+#: separate fields because they became separate things. A face angle binds no
+#: `angle_image` any more (the guide was distorting the face it existed to
+#: record) and its plate is still the clearest picture of what that orientation
+#: IS, so it survives here as a diagram. Keeping one field for both would mean
+#: the only way to illustrate an angle was to send the illustration.
+ANGLE_FIELDS = ("group", "prompt", "description", "tags", "angle_image",
+                "torso_image", "illustration")
 
 
 def reference_spec(lib: str) -> dict:

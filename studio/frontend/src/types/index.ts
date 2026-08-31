@@ -99,6 +99,23 @@ export interface NodeOwner {
   slug: string | null;
 }
 
+/**
+ * A node as `GET /api/resolve` and `GET /api/nodes/<id>` report it.
+ *
+ * Deliberately NOT a `FileEntry`. That is what a listing hands out — it carries
+ * a presigned `url` because the route that builds it expands a POINTER to a
+ * node into what a page can draw. A node addressed by its own id reports its
+ * own fields and nothing signed, so anything wanting to display one asks
+ * `MediaThumb` to sign from the id.
+ */
+export interface NodeView {
+  id: string;
+  name: string;
+  kind: "file" | "folder";
+  size?: number;
+  content_type?: string | null;
+}
+
 export interface FileEntry {
   /** The node id. This is what the URL names and what a selection holds. */
   id: string;
@@ -408,6 +425,16 @@ export interface SpecAngle {
   /** A guide image, as a name path under `config/`. Face angles bind none. */
   angle_image?: string | null;
   torso_image?: string | null;
+  /**
+   * A picture of what this orientation IS, shown to a person and never sent.
+   *
+   * Separate from `angle_image` because they became separate things: a face
+   * angle stopped binding a guide when the guide was found to distort the face
+   * it existed to record, and its plate is still the clearest illustration of
+   * the angle. One field for both would mean the only way to show an angle was
+   * to send the picture to the model.
+   */
+  illustration?: string | null;
 }
 
 export type SpecAngleBody = Omit<SpecAngle, "id">;

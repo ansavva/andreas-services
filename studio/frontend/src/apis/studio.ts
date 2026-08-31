@@ -34,6 +34,7 @@ import type {
   TextResponse,
   TreeResponse,
   UploadGrant,
+  NodeView,
   ReferenceSpec,
   SpecAngle,
   SpecAngleBody,
@@ -457,6 +458,24 @@ export function deleteCharacter(
  * Blocks and angles are separate rows, so editing one is one write and two
  * people editing different angles do not overwrite each other.
  */
+/**
+ * One name path to the node it names.
+ *
+ * The address a person types, resolved once — the same route the CLI has always
+ * used. Here it turns an angle's `illustration` path into something showable
+ * without the app ever composing a path of its own.
+ *
+ * **It answers a NODE VIEW, not a file entry, and the difference is a crash.**
+ * `support.view` reports the node's own fields; it carries no presigned `url`,
+ * because a URL is what `support.assets` adds when a record POINTS at a node.
+ * Typed as `FileEntry` this compiled happily and then threw on the first render
+ * — `looksLikeVideo(name, url)` split an undefined. Pass the id to `MediaThumb`
+ * and let it sign.
+ */
+export function resolvePath(path: string) {
+  return apiGet<NodeView>("/api/resolve", { path });
+}
+
 export function getReferenceSpec() {
   return apiGet<ReferenceSpec>("/api/reference-spec");
 }
@@ -494,7 +513,10 @@ export function draftTurnaround(
   characterId: string,
   body: {
     project: string;
+    /** The fallback, for a caller that means one set for every angle. */
     identity: string[];
+    /** Per angle, and it beats the fallback. See the route's own note. */
+    identity_by_angle?: Record<string, string[]>;
     group?: "face" | "body";
     angles?: string[];
     model?: string;

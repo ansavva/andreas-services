@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 
-import { Alert, Badge, Button, Card, Field, Spinner, Tabs, Text } from "@ansavva/design-system";
+import { Alert, Badge, Button, Card, Field, Spinner, Text } from "@ansavva/design-system";
 
 import { getReferenceSpec, saveSpecAngle, saveSpecBlock } from "../apis/studio";
 import { AutoTextarea } from "../components/common/AutoTextarea";
@@ -59,18 +59,23 @@ export function ReferenceSpecPage() {
           </Alert.Description>
         </Alert.Root>
       ) : (
-        <Tabs.Root defaultValue="angles">
-          <Tabs.List className="overflow-x-auto border-b border-line">
-            <Tabs.Tab value="angles">Angles ({data.angles.length})</Tabs.Tab>
-            <Tabs.Tab value="blocks">Blocks ({Object.keys(data.blocks).length})</Tabs.Tab>
-          </Tabs.List>
-          <Tabs.Panel value="angles">
-            <AngleList spec={data} setData={setData} />
-          </Tabs.Panel>
-          <Tabs.Panel value="blocks">
-            <BlockList spec={data} setData={setData} />
-          </Tabs.Panel>
-        </Tabs.Root>
+        <>
+          {/*
+            **One page, and blocks inline where they are cited.**
+
+            They were two tabs, which made the commonest edit — read a prompt,
+            notice a phrase is wrong, fix it — a switch, a hunt and a switch
+            back, with the prompt no longer on screen while you changed the
+            words it uses. An angle template is mostly citations; the blocks ARE
+            most of what it says, so hiding them behind a tab hid most of the
+            prompt.
+          */}
+          <Text tone="muted">
+            {data.angles.length} angles. A block is shared prose — expand one to
+            read or edit it, and the change reaches every angle citing it.
+          </Text>
+          <AngleList spec={data} setData={setData} />
+        </>
       )}
     </>
   );
@@ -106,26 +111,19 @@ const COMPUTED = new Set([
   "torso_slot",
 ]);
 
-function BlockList({ spec, setData }: { spec: ReferenceSpec; setData: SetData }) {
-  const names = useMemo(() => Object.keys(spec.blocks).sort(), [spec.blocks]);
-  return (
-    <>
-      {names.map((name) => (
-        <BlockEditor key={name} name={name} text={spec.blocks[name] ?? ""} setData={setData} />
-      ))}
-    </>
-  );
-}
-
 function BlockEditor({
   name,
   text,
   setData,
+  usedBy,
 }: {
   name: string;
   text: string;
   setData: SetData;
+  /** How many angles cite this block. Shown BEFORE the box, not after a save. */
+  usedBy: number;
 }) {
+  const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(text);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -149,27 +147,61 @@ function BlockEditor({
   }, [draft, name, setData]);
 
   return (
-    <Card.Root>
-      <Card.Title>{name}</Card.Title>
-      <div className="flex flex-col gap-2">
-        <Field.Root name={`block-${name}`}>
-          <AutoTextarea value={draft} onValueChange={setDraft} />
-        </Field.Root>
-        {failed ? <Alert.Root intent="danger">
-            <Alert.Description>{failed}</Alert.Description>
-          </Alert.Root> : null}
-      </div>
-      <Card.Footer>
-        <Button onClick={save} disabled={!dirty || saving}>
-          {saving ? "Saving…" : "Save"}
-        </Button>
-        {dirty ? (
-          <Button intent="ghost" onClick={() => setDraft(text)} disabled={saving}>
-            Revert
-          </Button>
-        ) : null}
-      </Card.Footer>
-    </Card.Root>
+    <div className="rounded border border-line">
+      {/*
+        Collapsed by default. An angle cites six or seven blocks and expanding
+        all of them would bury the template they belong to — the thing the
+        reader came for.
+      */}
+      <button
+        type="button"
+        onClick={() => setOpen((was) => !was)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between px-3 py-2 text-left"
+      >
+        <span className="font-mono text-sm">{`{${name}}`}</span>
+        <span className="flex items-center gap-2">
+          {dirty ? <Badge size="sm">unsaved</Badge> : null}
+          <Text tone="muted">
+            {usedBy === 1 ? "1 angle" : `${usedBy} angles`}
+          </Text>
+        </span>
+      </button>
+      {open ? (
+        <div className="flex flex-col gap-2 px-3 pb-3">
+          {/* Said before the edit, not after it. A block reads as local until
+              you know it is not, and a shared edit noticed on save is noticed
+              too late. */}
+          {usedBy > 1 ? (
+            <Text tone="muted">
+              Shared — editing this changes {usedBy} angles.
+            </Text>
+          ) : null}
+          <Field.Root name={`block-${name}`}>
+            <AutoTextarea value={draft} onValueChange={setDraft} className="font-mono" />
+          </Field.Root>
+          {failed ? (
+            <Alert.Root intent="danger">
+              <Alert.Description>{failed}</Alert.Description>
+            </Alert.Root>
+          ) : null}
+          <div className="flex gap-2">
+            <Button onClick={save} disabled={!dirty || saving}>
+              {saving ? "Saving…" : "Save"}
+            </Button>
+            {dirty ? (
+              <Button intent="ghost" onClick={() => setDraft(text)} disabled={saving}>
+                Revert
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : (
+        <Text tone="muted" className="block truncate px-3 pb-2">
+          {text}
+        </Text>
+      )}
+    </div>
   );
 }
 
@@ -241,7 +273,16 @@ function AngleEditor({
       <div className="flex flex-col gap-2">
         <Field.Root name={`prompt-${angle.id}`}>
           <Field.Label>Prompt</Field.Label>
-          <AutoTextarea value={prompt} onValueChange={setPrompt} />
+          {/* Monospace, because WHITESPACE IS NOW PART OF THE PROMPT. Blank
+              lines survive assembly and reach the model — the best render this
+              repo has produced was laid out in paragraphs — so a proportional
+              face that hides a doubled space or a trailing one is hiding
+              something that is actually sent. */}
+          <AutoTextarea
+            value={prompt}
+            onValueChange={setPrompt}
+            className="font-mono"
+          />
         </Field.Root>
 
         {/*
@@ -256,9 +297,26 @@ function AngleEditor({
           says what it is. A red-vs-grey pill would have carried this warning on
           hue alone, which is exactly the thing that note rules out.
         */}
-        <Text>
-          Cites: {cited.length === 0 ? "nothing" : cited.join(", ")}
-        </Text>
+        {/*
+          The cited blocks, in place. Reading a prompt without them is reading a
+          third of it — a template is mostly citations — and editing one used to
+          mean leaving the prompt behind on another tab.
+        */}
+        {cited.filter((name) => name in spec.blocks).map((name) => (
+          <BlockEditor
+            key={name}
+            name={name}
+            text={spec.blocks[name] ?? ""}
+            setData={setData}
+            usedBy={spec.angles.filter((a) => citations(a.prompt).includes(name)).length}
+          />
+        ))}
+        {cited.some((name) => COMPUTED.has(name)) ? (
+          <Text tone="muted">
+            Filled from the character:{" "}
+            {cited.filter((name) => COMPUTED.has(name)).join(", ")}
+          </Text>
+        ) : null}
         {unknown.length > 0 ? (
           <Alert.Root intent="warning">
             <Alert.Title>
