@@ -267,7 +267,15 @@ it("shows the motion prompt without making anyone click for it", async () => {
   );
 
   await screen.findByText("The whistle comes off");
-  expect(screen.getByText("the man, unchanged")).toBeTruthy();
+  // The wording is on the page without a press. It sits inside the prompt
+  // DOCUMENT now rather than in a field of its own, so this matches within the
+  // block instead of against a whole text node.
+  expect(
+    screen.getByText(
+      (_, node) => Boolean(node?.textContent?.includes("the man, unchanged")),
+      { selector: "code" },
+    ),
+  ).toBeTruthy();
   // Nothing to press, so nothing to be stuck closed.
   expect(screen.queryByRole("button", { name: /motion prompt/i })).toBeNull();
 });
@@ -290,22 +298,32 @@ const PROMPT = JSON.stringify(
   2,
 );
 
-it("reads the motion prompt as prose, not as JSON", async () => {
-  // It reached the page as 1.4 kB of escaped JSON, which is not showing anyone
-  // their prompt. This is studio's OWN document with a schema `studio prompt`
-  // validates — the run page's "never parsed" rule is about the PROVIDER's
-  // payload, whose shape studio does not own, and applying it here was wrong.
+it("draws the motion prompt as the same document the run screen draws", async () => {
+  // **This reverses a decision, and the reversal was asked for.** It used to
+  // read: "reads the motion prompt as prose, not as JSON", on the reasoning
+  // that 1.4 kB of escaped JSON is not showing anyone their prompt, and that
+  // the run page's never-parse rule is about the PROVIDER's payload — whose
+  // shape studio does not own — so it should not have applied to studio's own
+  // document.
+  //
+  // That reasoning is still on the table: by it, the run screen is the one
+  // drawing this wrongly, and converging the other way — teaching the run to
+  // render fields — would have kept the lesson. The instruction was to make a
+  // shot look like a run, so a shot looks like a run, and this comment is here
+  // so the trade is visible if the two ever converge again.
   draw(record({ shots: [shot({ motion: { prompt: PROMPT, duration: 6 } })] }));
 
   await screen.findByText("The whistle comes off");
-  expect(screen.getByText("Subject")).toBeTruthy();
-  expect(
-    screen.getByText("The man from the source image, unchanged"),
-  ).toBeTruthy();
-  expect(
-    screen.getByText("wide · static/hold · 50mm · locked off"),
-  ).toBeTruthy();
-  expect(screen.queryByText(/^\{$/)).toBeNull();
+  const document_ = await screen.findByText(
+    (_, node) => Boolean(node?.textContent?.includes('"subject"')),
+    { selector: "code" },
+  );
+  expect(document_).toBeTruthy();
+  expect(document_.textContent).toContain(
+    "The man from the source image, unchanged",
+  );
+  // The field list is gone with it.
+  expect(screen.queryByText("Subject")).toBeNull();
 });
 
 it("falls back to the raw text when the prompt is prose rather than JSON", async () => {
@@ -673,8 +691,12 @@ it("draws an earlier take beside the clip it was replaced by", async () => {
     }),
   );
 
+  // `earlier` is a badge on the take's own output panel now — the small
+  // `Frame` that carried a `superseded` hint is gone, because a shot's outputs
+  // are drawn by the same panel the run screen uses.
   expect(await screen.findByText("earlier")).toBeTruthy();
-  expect(screen.getByText("superseded")).toBeTruthy();
+  expect(screen.getByText("was.mp4")).toBeTruthy();
+  expect(screen.getByText("now.mp4")).toBeTruthy();
 });
 
 it("draws every cut of the scene, newest first, marking the older ones", async () => {

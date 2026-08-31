@@ -218,7 +218,15 @@ function describe(send: RunSend): string {
  * prompt is authored as JSON by `studio prompt`, and flattening one into a
  * paragraph would throw away the structure that makes it re-editable.
  */
-function Prompt({ prompt }: { prompt: unknown }) {
+/**
+ * A prompt document, drawn the one way.
+ *
+ * Exported because a scene's shot carries the same thing — a compiled prompt
+ * document — and was drawing it as a definition list of Subject / Action /
+ * Style while the run screen drew it as the document it is. Two renderings of
+ * one artifact is how they drift.
+ */
+export function Prompt({ prompt }: { prompt: unknown }) {
   const text =
     typeof prompt === "string" ? prompt : JSON.stringify(prompt, null, 2);
   return (

@@ -24,7 +24,7 @@ import { AutoTextarea } from "../common/AutoTextarea";
  * `null` when it does not parse, which is a legitimate state: a plain prose
  * prompt is valid on every engine here, and the raw text is shown instead.
  */
-function parsePrompt(text: string | undefined | null): MotionPrompt | null {
+export function parsePrompt(text: string | undefined | null): MotionPrompt | null {
   if (!text) return null;
   try {
     const parsed: unknown = JSON.parse(text);

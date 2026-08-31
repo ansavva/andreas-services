@@ -194,6 +194,12 @@ export function ScenePage() {
                     bracketed={isBracketed(data.shots)}
                     onOpenRun={(run) => navigate(runPath(data.project, run))}
                     onView={openFrame}
+                    // The scene owns the `?in=` context, so it is the scene
+                    // that can name a frame's address — a shot knows only the
+                    // asset.
+                    frameHref={(asset) =>
+                      objectPath(asset.node, { in: "scene", id: sceneId })
+                    }
                     onSave={saveShot}
                   />
                 ))}

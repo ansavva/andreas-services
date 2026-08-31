@@ -3,14 +3,16 @@ import { useState } from "react";
 import { Badge, Button, Tabs, Text } from "@ansavva/design-system";
 
 import type { RunAsset, Shot } from "../../types";
+import { Prompt } from "../run/RunPlan";
+import { OutputPanel } from "../media/OutputPanel";
 import {
   MotionEditor,
-  MotionFields,
   draftOf,
   draftToShot,
+  parsePrompt,
   type Draft,
 } from "./motionPrompt";
-import { Frame, Sends } from "./Sends";
+import { Sends } from "./Sends";
 import { RunList } from "../run/RunList";
 
 /**
@@ -36,6 +38,7 @@ export function ShotCard({
   bracketed,
   onOpenRun,
   onView,
+  frameHref,
   onSave,
 }: {
   shot: Shot;
@@ -43,6 +46,8 @@ export function ShotCard({
   bracketed: boolean;
   onOpenRun: (run: string) => void;
   onView: (asset: RunAsset) => void;
+  /** Where a frame opens, as an address — the scene owns the `?in=` context. */
+  frameHref: (asset: RunAsset) => string;
   onSave: (shotId: string, body: Partial<Shot>) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
@@ -50,7 +55,7 @@ export function ShotCard({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(() => draftOf(shot));
 
-  const [pane, setPane] = useState("inputs");
+  const [pane, setPane] = useState("plan");
   /** Outputs are plural: the current clip plus every superseded take. */
   const outputCount = (shot.clip ? 1 : 0) + (shot.takes ?? []).length;
   const hasOutput = outputCount > 0;
@@ -154,60 +159,67 @@ export function ShotCard({
           clip and needs no `order` override. Same mechanism as `RunPage`. */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
         {hasOutput && (
-          <div className="flex flex-col gap-2 lg:col-start-2 lg:row-start-1">
-            <Text variant="caption" tone="muted">
-              {outputCount === 1 ? "Output" : `Outputs · ${outputCount}`}
+          <div className="flex flex-col gap-3 lg:col-start-2 lg:row-start-1">
+            {/* Titled and ruled, exactly as the run screen heads its own
+                column. A muted caption made a shot's output look like a label
+                on a thumbnail rather than the other half of the page. */}
+            <Text variant="title" className="border-b border-line pb-2">
+              {outputCount === 1 ? "Outputs" : `Outputs · ${outputCount}`}
             </Text>
-            {/* The clip is OUTPUT and sits on its own; everything else a shot has is
-              an INPUT, and `Sends` groups those by what they are sent as. The two
-              used to be one filmstrip, which drew the same panel twice — once as a
-              tile and once as the reference it becomes. */}
-            <div className="flex flex-col gap-2">
+            {/* **The run screen's output panel, not a thumbnail.** A shot's
+                clip is the thing being judged, so it plays where it is, is
+                sized to the media rather than cropped into a tile, and its
+                caption is a real link — the same three properties the run
+                screen's output has, because it is the same component. */}
+            <div className="flex flex-col gap-3">
               {shot.clip && (
-                <Frame
-                  label="clip"
+                <OutputPanel
                   asset={shot.clip}
-                  onOpen={onView}
-                  run={shot.run}
-                  onOpenRun={onOpenRun}
+                  sole={outputCount === 1}
+                  to={frameHref(shot.clip)}
                 />
               )}
               {/* **Earlier takes of this same shot, newest first.** A shot holds
                   one `run`, so a retry used to erase the only pointer to what it
                   replaced — the clip stayed in the project and nothing linked to
                   it. Comparing a re-render against the take it replaced is the
-                  whole reason for re-rendering, and it was the one thing the board
-                  could not do. */}
-              {(shot.takes ?? []).map((take) => (
-                <Frame
-                  key={take.run ?? take.node ?? ""}
-                  label="earlier"
-                  hint="superseded"
-                  asset={take.clip}
-                  title="an earlier take of this shot"
-                  onOpen={onView}
-                  run={take.run}
-                  onOpenRun={onOpenRun}
-                />
-              ))}
+                  whole reason for re-rendering. */}
+              {(shot.takes ?? []).map((take) =>
+                take.clip ? (
+                  <OutputPanel
+                    key={take.run ?? take.node ?? ""}
+                    asset={take.clip}
+                    sole={false}
+                    to={frameHref(take.clip)}
+                    badge={<Badge intent="neutral">earlier</Badge>}
+                  />
+                ) : null,
+              )}
             </div>
           </div>
         )}
 
         <div className="flex min-w-0 flex-col gap-3 lg:col-start-1 lg:row-start-1">
+          {/* `Inputs` is the heading and the tabs sit under it — the shape the
+              run screen settled on, so a shot reads as a small one rather than
+              as a differently-built thing that happens to be nearby. */}
+          <Text variant="title" className="border-b border-line pb-2">
+            Inputs
+          </Text>
+
           {/* The runs are a tab rather than a section below, because they
               answer a different question from the inputs — what has been spent
               on this shot, what is still a draft, what failed — and stacking
               them pushed the motion prompt off the bottom of every card. */}
-          <Tabs.Root value={pane} defaultValue="inputs" onValueChange={setPane}>
+          <Tabs.Root value={pane} defaultValue="plan" onValueChange={setPane}>
             <Tabs.List className="overflow-x-auto border-b border-line">
-              <Tabs.Tab value="inputs">Inputs</Tabs.Tab>
+              <Tabs.Tab value="plan">Plan</Tabs.Tab>
               <Tabs.Tab value="runs">
                 Runs{runCount ? ` · ${runCount}` : ""}
               </Tabs.Tab>
             </Tabs.List>
 
-            <Tabs.Panel value="inputs">
+            <Tabs.Panel value="plan">
               <div className="flex min-w-0 flex-col gap-3 pt-3">
                 {(shot.panels ?? []).length === 0 &&
                   !shot.clip &&
@@ -236,7 +248,14 @@ export function ShotCard({
                       error={saveError}
                     />
                   ) : (
-                    <MotionFields motion={motion} />
+                    // The run screen's own renderer, not a second one. A
+                    // shot's `motion.prompt` IS a compiled prompt document —
+                    // the same artifact a run's plan carries — and drawing it
+                    // as a Subject / Action / Style list here while the run
+                    // drew the document made one thing look like two.
+                    <Prompt
+                      prompt={parsePrompt(motion.prompt) ?? motion.prompt}
+                    />
                   ))}
               </div>
             </Tabs.Panel>
