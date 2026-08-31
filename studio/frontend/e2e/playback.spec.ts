@@ -30,6 +30,7 @@ import {
   LIBRARY,
   RUN_ID,
   RUN_PROJECT,
+  SCENE_ID,
   STILL,
   TEXT_NODE,
   fixture,
@@ -467,6 +468,48 @@ for (const [label, width, splits] of [
 
     // The output is a video and must render as one — an `.mp4` handed to <img>
     // is the broken thumbnail this suite exists to keep fixed.
+    await expect(page.locator("main video").first()).toBeVisible();
+  });
+}
+
+/**
+ * **The scene screen takes the run screen's split, and must keep taking it.**
+ *
+ * Same decision, same mechanism: the cut is what the page is for, so it leads
+ * when there is one column and sits on the right when there are two. This is a
+ * separate test rather than a loop over both pages because the two layouts are
+ * allowed to fail independently — they share an intent, not a component, and a
+ * regression in one should not be reported as a regression in the other.
+ */
+for (const [label, width, splits] of [
+  ["desktop", 1440, true],
+  ["mobile", 390, false],
+] as const) {
+  test(`the scene screen ${splits ? "splits" : "stacks cut-first"} at ${label}`, async ({
+    page,
+  }) => {
+    stubOnly();
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`/s/${SCENE_ID}`);
+    await page.waitForLoadState("networkidle");
+
+    const geometry = await page.evaluate(() => {
+      const cut = [...document.querySelectorAll("section")].find((s) =>
+        /^(Cuts|The cut)/.test(s.textContent ?? ""),
+      );
+      const column = document.querySelector('[class*="lg:col-start-1"]');
+      if (!cut || !column) return null;
+      const c = cut.getBoundingClientRect();
+      const l = column.getBoundingClientRect();
+      return { sideBySide: c.left >= l.right - 1, cutAbove: c.top < l.top };
+    });
+
+    expect(geometry).not.toBeNull();
+    expect(geometry!.sideBySide).toBe(splits);
+    if (!splits) expect(geometry!.cutAbove).toBe(true);
+
+    // The cut is a video and plays here — a scene that renders its own output
+    // as a dead poster is the trip to the object screen this layout removes.
     await expect(page.locator("main video").first()).toBeVisible();
   });
 }
