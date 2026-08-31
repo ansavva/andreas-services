@@ -237,7 +237,7 @@ export function ScenePage() {
                   {settingSaving ? "Saving…" : "Save"}
                 </Button>
                 <Button
-                  intent="ghost"
+                  intent="secondary"
                   size="sm"
                   onClick={() => setEditingSetting(false)}
                   disabled={settingSaving}
@@ -252,7 +252,7 @@ export function ScenePage() {
                 {data.setting || "No setting written for this scene."}
               </Text>
               <Button
-                intent="ghost"
+                intent="secondary"
                 size="sm"
                 onClick={() => {
                   setSettingDraft(data.setting ?? "");

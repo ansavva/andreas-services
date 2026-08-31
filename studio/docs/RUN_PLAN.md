@@ -482,11 +482,41 @@ them differently is what would need justifying.
 
 - **The sends draw as a filmstrip**, numbered in bind order, each captioned with
   where it came from: `character · face`, `earlier run · #2`, `input 4`.
-- **The approve bar states the digest in words**, never as a hash: nobody has
-  approved this / this exact payload is cleared / the payload changed after it
-  was approved. It sits **below** the plan, because its own sentence says "reads
-  the payload above" and because the control that leads to spending should not be
-  the first thing on the screen.
+- **Running a draft is ONE armed press — `Run — this spends` — and that press is
+  the approval.**
+
+  **This bullet used to describe a two-step approve bar, and it is kept rather
+  than edited over.** It said: "The approve bar states the digest in words, never
+  as a hash: nobody has approved this / this exact payload is cleared / the
+  payload changed after it was approved." Behind it were an approve dialog, a
+  Revoke button and a separate Submit.
+
+  The separate approve step was redundant in a UI where the payload is on screen:
+  the page renders the plan, the ordered images and the exact payload a draft
+  would send. Asking for a yes over that and then asking again under a different
+  word is what teaches somebody to click through the first one. Running them is
+  approval — the same one act `studio run` performs from a terminal.
+
+  **The mechanism is untouched.** `RunBar` calls `POST /approve` with the digest
+  the page is rendering and then `POST /submit`, in that order, so the
+  compare-and-swap in this document still holds: a payload that moved underneath
+  answers 409 `stale_digest` and nothing is sent. Both routes are unchanged, and
+  so is every other caller — a CLI-made draft, `runs approve`, `runs approve
+  --relayed` and `runs submit` all behave exactly as described above. What went
+  is one screen's second gesture, not a gate.
+
+  The three digest sentences went with it, because there is no longer an interval
+  they can describe: an approval written by the same press that submits cannot
+  sit around waiting to go stale. `draft` and `approved` therefore render the
+  same control. The bar still sits **below** the plan — the control that spends
+  should not be the first thing on the screen.
+- **An image output can be promoted into a character from here**, inline: pick a
+  character and a group, and the output is **copied** into
+  `reference/<group>/` and the copy gets the `REF#` row. That is
+  `character add-refs --from-run` performed step for step, and hard rule #2b is
+  satisfied by the press — a person choosing the character and the group is the
+  separate decision the rule asks for. The run keeps its own output; the two are
+  independent blobs from then on.
 - **`Bindings` now appears only for a run with no sends.** Plan → Images says
   everything it said and more, so drawing both put the same pictures on screen
   twice, the second time with less information.
@@ -502,8 +532,8 @@ through a terminal.
 - **A mode, not an always-editable form.** This page is read far more often than
   it is written, and the plan is the thing an approval names — a prompt sitting
   in a text box invites a keystroke into the document somebody is about to say
-  yes to. The approve bar is hidden while the editor is open for the same reason:
-  an approve button beside unsaved words is a yes to whichever of the two you
+  yes to. The run bar is hidden while the editor is open for the same reason: an
+  armed spend button beside unsaved words is a yes to whichever of the two you
   were not looking at.
 - **Two writes, and only the half that moved.** Each `PATCH` replaces its half
   whole, and each clears the approval — so sending both every time would withdraw

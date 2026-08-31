@@ -1,0 +1,39 @@
+{
+  "approval": null,
+  "bindings": {},
+  "characters": [],
+  "counted": false,
+  "created": "2026-08-31T17:38:29.395688+00:00",
+  "engine": "studio-media-seedance",
+  "fingerprint": "sha256:419c6c2459a9e3a07cf9c02a41e2731e",
+  "folder": "node-9957e505-c72d-4f98-898f-63d6bab2db1a",
+  "id": "run-9d85b085-1fab-4024-9026-eeb2ab35b0ab",
+  "kind": "video",
+  "lib": "lib-160af8b7-bf45-5fd0-b4d1-8bd7e52fac07",
+  "model": "bytedance/seedance-2.0",
+  "outputs": [],
+  "payload": {
+    "prompt": null,
+    "request": null,
+    "response": null
+  },
+  "plan": {
+    "origin": "authored",
+    "params": {
+      "aspect_ratio": "16:9",
+      "duration": 5,
+      "generate_audio": true,
+      "resolution": "720p"
+    },
+    "prompt": "",
+    "version": 1
+  },
+  "plan_digest": "sha256:954ae3cb4d01f19ea8ec037f2b89ee9ed0974b2d0f619a3fb70f54d9f63471ed",
+  "project": "proj-69e3a948-1bfd-48ee-8646-263265fd4289",
+  "rev": 1,
+  "scenes": [],
+  "sends": [],
+  "stale": false,
+  "status": "draft",
+  "updated": "2026-08-31T17:38:29.577736+00:00"
+}

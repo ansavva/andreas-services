@@ -1,31 +1,35 @@
-import { useCallback, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import {
   Alert,
   Badge,
   Button,
+  Drawer,
   Spinner,
   Tabs,
   Text,
 } from "@ansavva/design-system";
 
 import {
-  approveRun,
+  deleteRun,
   getNodeText,
   getRun,
   getRunPayloadPreview,
+  getRuns,
   reconcileRun,
-  revokeRunApproval,
-  submitRun,
 } from "../apis/studio";
 import { PageBar } from "../components/layout/PageBar";
 import { Backlinks } from "../components/common/Backlinks";
+import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
 import { OutputPanel } from "../components/media/OutputPanel";
 import { MediaThumb } from "../components/media/MediaThumb";
-import { ApproveBar, InFlightBar, RunPlan } from "../components/run/RunPlan";
+import { InFlightBar, RunBar, RunPlan } from "../components/run/RunPlan";
+import { PromotePanel } from "../components/run/PromotePanel";
+import { RunAgainButton } from "../components/run/RunAgainButton";
 import { formatCost } from "../utils/cost";
 import { RunPlanEditor } from "../components/run/RunPlanEditor";
+import { useDisclosure } from "../hooks/useDisclosure";
 import { useResource } from "../hooks/useResource";
 import { useProjectCrumb } from "../hooks/useProjectCrumb";
 import { formatBytes, formatDate, formatTextContent } from "../utils/format";
@@ -35,7 +39,7 @@ import {
   type RunAsset,
   type RunRecord,
 } from "../types";
-import { objectPath, scenePath } from "../utils/location";
+import { objectPath, projectPath, runPath, scenePath } from "../utils/location";
 
 /**
  * One run: what studio recorded about it, what came out, and — separately, and
@@ -69,12 +73,16 @@ export function RunPage() {
    * that changes underneath you. It polls while the run can still move and stops
    * the moment it cannot, which is what `isTerminal` is for.
    */
-  const { data, loading, error, setData } = useResource(["run", runId], load, {
-    refetchInterval: (query) => {
-      const status = (query.state.data as RunRecord | undefined)?.status;
-      return status && !isTerminal(status) ? 5_000 : false;
+  const { data, loading, error, reload, setData } = useResource(
+    ["run", runId],
+    load,
+    {
+      refetchInterval: (query) => {
+        const status = (query.state.data as RunRecord | undefined)?.status;
+        return status && !isTerminal(status) ? 5_000 : false;
+      },
     },
-  });
+  );
   const crumbs = useProjectCrumb(projectId);
 
   /**
@@ -88,8 +96,9 @@ export function RunPage() {
   /** Whether anything has actually gone to the provider — see `PayloadDocument`. */
   const sent = Boolean(data?.submitted);
   const [pane, setPane] = useState("plan");
-  const [approving, setApproving] = useState(false);
-  const [approveError, setApproveError] = useState<string | null>(null);
+  // The in-flight bar's "check now", and nothing else — see `decide`.
+  const [checking, setChecking] = useState(false);
+  const [checkError, setCheckError] = useState<string | null>(null);
   /**
    * Whether the plan is being edited rather than read.
    *
@@ -98,24 +107,79 @@ export function RunPage() {
    * names — a page whose prompt sits in a text box invites a keystroke into the
    * document somebody is about to say yes to.
    */
-  const [editing, setEditing] = useState(false);
+  /**
+   * **Opened in the editor when whoever navigated here said so.** A draft made
+   * by the composer strip has an empty plan and exists only to be filled in, so
+   * landing on its read view — a page saying a run predates the plan, with an
+   * "Edit the plan" button under it — would be a step nobody wants. The state is
+   * carried by the navigation rather than by the URL: it describes one arrival,
+   * not the page, and a shared link should open what everyone else sees.
+   */
+  const arrived = useLocation().state as { editing?: boolean } | null;
+  const [editing, setEditing] = useState(Boolean(arrived?.editing));
 
   /**
-   * Approve or revoke, then swap the record in rather than refetching.
+   * **Re-read on every change of run, because this page does not remount.**
+   *
+   * `useState`'s initial value is evaluated once per MOUNT, and moving from one
+   * run to another is the same route pattern — React Router re-renders this
+   * component rather than remounting it. So `Duplicate`, which navigates from a
+   * run page to the draft it just made, handed `editing` to a `useState` that
+   * had already run: the draft opened read-only, with an "Edit the plan" button
+   * under it, which is the one thing a clone made to be changed should not do.
+   * Arriving from anywhere else worked, because that was a real mount.
+   *
+   * Keyed on the run rather than on the state so it also CLOSES the editor when
+   * the run changes — carrying an open editor onto a different run would be a
+   * form pointing at a plan nobody opened it for.
+   */
+  const openedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (openedFor.current === runId) return;
+    openedFor.current = runId;
+    setEditing(Boolean(arrived?.editing));
+  }, [runId, arrived]);
+
+  /**
+   * Which output has its promote panel open — a node id, or nothing.
+   *
+   * One at a time, and scoped to the output rather than to the page: promoting
+   * is a decision about one picture, and a panel that stayed open while you
+   * pressed a second tile would be a form pointing at an image you were no
+   * longer looking at.
+   *
+   * **Nothing is refetched when it succeeds.** Promoting copies the output into
+   * a character and attaches the copy; the run is not touched by any of it, so
+   * a re-read would re-sign every URL on the page to show nothing new.
+   */
+  const promoteDirty = useRef(false);
+  /** Raised when a dismissal was refused because the form had words in it. */
+  const [promoteWarning, setPromoteWarning] = useState(false);
+  const promote = useDisclosure(
+    useCallback(() => !promoteDirty.current, []),
+  );
+
+  /**
+   * Reconcile, then swap the record in rather than refetching.
    *
    * The route answers with the whole updated run, and a re-GET would re-sign
    * every send and every output URL to show one badge changing.
+   *
+   * **It used to carry approve, revoke and submit too**, and carries neither
+   * approve nor submit now: those are one act performed inside `RunBar`, which
+   * owns its own busy and error state because the two calls it makes have to be
+   * told apart — a refusal on the first means nothing was sent.
    */
   const decide = useCallback(
     async (act: () => Promise<RunRecord>) => {
-      setApproving(true);
-      setApproveError(null);
+      setChecking(true);
+      setCheckError(null);
       try {
         setData(await act());
       } catch (err) {
-        setApproveError((err as Error).message);
+        setCheckError((err as Error).message);
       } finally {
-        setApproving(false);
+        setChecking(false);
       }
     },
     [setData],
@@ -148,6 +212,14 @@ export function RunPage() {
       </>
     );
   }
+
+  /**
+   * The editor is for a plan that can still change, so a submitted run never
+   * gets one — including when `state.editing` said to open it. The state
+   * describes an intention at the moment of navigation and the run is what
+   * decides whether it is possible.
+   */
+  const showEditor = editing && isUnsubmitted(data.status);
 
   return (
     <>
@@ -189,9 +261,18 @@ export function RunPage() {
           <Text variant="title" className="border-b border-line pb-2">
             Outputs
           </Text>
+          {/* **An empty Outputs means three different things**, and it used to
+              say the last one whichever it was: "Nothing came back" on a draft
+              claims the run went out and the model returned nothing, which is
+              false about a run nobody has sent. A person reading it on a plan
+              they are still writing has been told their run failed. */}
           {data.outputs.length === 0 ? (
             <Text variant="body" tone="muted">
-              Nothing came back.
+              {isUnsubmitted(data.status)
+                ? "Not run yet."
+                : data.status === "pending" || data.status === "running"
+                  ? "Still working."
+                  : "Nothing came back."}
             </Text>
           ) : (
             <div
@@ -202,12 +283,87 @@ export function RunPage() {
               }`}
             >
               {data.outputs.map((asset) => (
-                <OutputPanel
-                  key={asset.node}
-                  asset={asset}
-                  sole={data.outputs.length === 1}
-                  to={objectPath(asset.node, RUN)}
-                />
+                <Fragment key={asset.node}>
+                  <OutputPanel
+                    asset={asset}
+                    sole={data.outputs.length === 1}
+                    to={objectPath(asset.node, RUN)}
+                    /* On the caption row, against the file it acts on. Below
+                       the card it read as debris floating between the output
+                       and the next heading, belonging to neither.
+
+                       **Images only**, which is the CLI's own restriction:
+                       `add-refs --from-run` resolves output nodes by image
+                       extension. A reference is a picture a later render is
+                       checked against, and a clip cannot be one. */
+                    /* **The trigger stays and stops being the primary.** Its
+                       panel carries the live `Promote`, so a second filled
+                       button up here would be one act wearing two controls;
+                       pressed, this one is the open row's marker and the way
+                       to close it again. */
+                    action={
+                      isPromotable(asset) ? (
+                        <Button
+                          size="sm"
+                          intent={promote.isOpen(asset.node) ? "ghost" : "primary"}
+                          aria-expanded={promote.isOpen(asset.node)}
+                          onClick={() => promote.toggle(asset.node)}
+                        >
+                          Promote
+                        </Button>
+                      ) : undefined
+                    }
+                  />
+
+                  {/* **A drawer, not an expando under the tile.** The form is
+                      read against the picture it is about — is this the face
+                      to file as identity — so the output has to stay on screen
+                      while it is filled in. An expando pushed the grid around
+                      to make room and put the form below the thing it was
+                      about; a right-hand panel leaves the outputs where they
+                      are and sits beside them.
+
+                      Studio has deleted two drawers before, and neither
+                      argument reaches this one: both held MEDIA — a 256px
+                      reference thumbnail nobody could judge, and a frame
+                      viewer that needed an address and fullscreen. A form
+                      needs neither. */}
+                  {promote.isOpen(asset.node) && (
+                    <Drawer.Root
+                      open
+                      onOpenChange={(next: boolean) => {
+                        if (next) return;
+                        // The backdrop and Escape both arrive here. A form
+                        // with words in it declines and says so rather than
+                        // discarding them on a stray click outside.
+                        if (promoteDirty.current) {
+                          setPromoteWarning(true);
+                          return;
+                        }
+                        promote.close();
+                      }}
+                    >
+                      <Drawer.Backdrop />
+                      <Drawer.Panel className="w-full max-w-md overflow-y-auto">
+                        <PromotePanel
+                          asset={asset}
+                          runCharacters={data.characters ?? []}
+                          onClose={promote.close}
+                          onDirtyChange={(dirty) => {
+                            promoteDirty.current = dirty;
+                            if (!dirty) setPromoteWarning(false);
+                          }}
+                          unsavedWarning={promoteWarning}
+                          onDiscard={() => {
+                            setPromoteWarning(false);
+                            promote.close();
+                          }}
+                          onKeepEditing={() => setPromoteWarning(false)}
+                        />
+                      </Drawer.Panel>
+                    </Drawer.Root>
+                  )}
+                </Fragment>
               ))}
             </div>
           )}
@@ -251,7 +407,7 @@ export function RunPage() {
             page used to open on the result of a submission with no account of the
             intent behind it, which is the wrong way round for the one screen a
             person opens to ask "what was this?" */}
-                {editing ? (
+                {showEditor ? (
                   <RunPlanEditor
                     run={data}
                     onSaved={(updated) => {
@@ -272,46 +428,71 @@ export function RunPage() {
                 that was never sent — so the button is absent rather than present
                 and answered with a 409. */}
                     {isUnsubmitted(data.status) && (
-                      <div>
+                      <div className="flex flex-wrap items-center gap-2">
                         <Button
-                          intent="ghost"
+                          intent="secondary"
                           size="sm"
                           onClick={() => setEditing(true)}
                         >
                           Edit the plan
                         </Button>
+                        {/* **Discard, and it is offered here only.** `DELETE
+                            /api/runs/<id>` has no status gate — it will take a
+                            succeeded run and its outputs as readily as an
+                            abandoned draft — so what restricts this to
+                            unsubmitted runs is the app, deliberately. Nothing
+                            has been spent on one, and a draft made by a
+                            mis-click should cost nothing to undo.
+
+                            `files=keep` by default: an unsubmitted run has
+                            produced no files, so there is nothing to sweep and
+                            asking would be a question about nothing. */}
+                        <ConfirmDeleteButton
+                          noun="this run"
+                          tone="page"
+                          onConfirm={async () => {
+                            await deleteRun(data.id);
+                            navigate(projectPath(data.project));
+                          }}
+                        />
                       </div>
                     )}
                   </>
                 )}
 
-                {/* **Under the plan, not over it.** Its own sentence says "reads the
+                {/* Read before the button that spends, which is the only place
+                    it can do its job. */}
+                {!showEditor && isUnsubmitted(data.status) && (
+                  <DuplicateNotice run={data} />
+                )}
+
+                {/* **Under the plan, not over it.** Its own sentence says "the
             payload above", and it sat above the payload — so the control that
             spends money was the first thing on the screen and the thing it asks
             you to read was the second. */}
-                {/* Hidden while the plan is being edited: an approve button beside a form
-            holding unsaved words is a yes to whichever of the two you were not
-            looking at. */}
-                {!editing && (
-                  <ApproveBar
-                    run={data}
-                    busy={approving}
-                    error={approveError}
-                    onApprove={() =>
-                      void decide(() =>
-                        approveRun(data.id, data.plan_digest ?? ""),
-                      )
-                    }
-                    onRevoke={() =>
-                      void decide(() => revokeRunApproval(data.id))
-                    }
-                    /* **The app can spend now, and until generation moved into the API it
-             could not.** The credential lived in the CLI, so a run approved on
-             this page had to be sent from a terminal. `decide` needs no change:
-             the route answers with the whole updated run, exactly as approve
-             does, so the badge and this bar swap over together. */
-                    onSubmit={() => void decide(() => submitRun(data.id))}
-                  />
+                {/* Hidden while the plan is being edited: an armed spend button beside a
+            form holding unsaved words is a yes to whichever of the two you were
+            not looking at. */}
+                {/* **Right-aligned, with every other control that acts on
+                    this run.** A button on the left edge of a wide column
+                    reads as the start of a sentence the page does not
+                    continue; the actions belong together at the end of the
+                    block they act on. */}
+                {!showEditor && (
+                  <div className="flex justify-end">
+                    <RunBar run={data} onRan={setData} onReload={reload} />
+                  </div>
+                )}
+
+                {/* **The only thing a submitted run can still do**, and it makes
+                    a second run rather than re-sending this one — a run row
+                    records one submission. Beside the approval sentence
+                    `RunBar` leaves behind, because the two together are the
+                    account of this attempt and the offer of the next. */}
+                {!isUnsubmitted(data.status) && (
+                  <div className="flex justify-end">
+                    <RunAgainButton run={data} />
+                  </div>
                 )}
 
                 {/* Sent, and not back yet. Its own control, because what a person can do
@@ -320,8 +501,8 @@ export function RunPage() {
             the whole lifecycle in one blocking command. */}
                 <InFlightBar
                   run={data}
-                  busy={approving}
-                  error={approveError}
+                  busy={checking}
+                  error={checkError}
                   onReconcile={() => void decide(() => reconcileRun(data.id))}
                 />
 
@@ -430,6 +611,90 @@ export function RunPage() {
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * Whether this output can become a character reference.
+ *
+ * **Images only.** A reference is a picture every later render is checked
+ * against, so a clip cannot be one — the CLI says the same thing by resolving
+ * `--from-run` output nodes against its image extension set. Decided on
+ * `content_type`, which the API sends off the stored row, rather than on the
+ * filename: the extension is a label a rename can change and the type is what
+ * was measured when the bytes landed.
+ */
+function isPromotable(asset: RunAsset): boolean {
+  return (asset.content_type ?? "").startsWith("image/");
+}
+
+/**
+ * **This payload has already been sent from this project.**
+ *
+ * A fingerprint is the hash of what would go to the provider, so two runs
+ * carrying the same one are two charges for the same picture. `rerunBodyOf`
+ * copies a payload byte for byte precisely so that stays detectable — which is
+ * only worth anything if something reads it back.
+ *
+ * **A warning and not a refusal**, because running the same payload twice is a
+ * real thing to want: a model is not deterministic, and a second attempt at the
+ * same prompt is the ordinary way to get a different frame. It is the CLI's
+ * `--again` said as something to read rather than as a flag to remember, and the
+ * decision stays with the person.
+ *
+ * Drafts and discarded runs are not twins: nothing was sent for either, so
+ * neither cost anything. An approved one is counted — it is cleared to send, and
+ * two runs racing to spend on one payload is exactly the case this is for.
+ *
+ * It clears itself on an edit without being told to: the fingerprint moves with
+ * the plan, so the query asks about a payload nothing else has.
+ */
+function DuplicateNotice({ run }: { run: RunRecord }) {
+  const navigate = useNavigate();
+  const fingerprint = run.fingerprint ?? null;
+  const load = useCallback(
+    () =>
+      getRuns({
+        project: run.project,
+        fingerprint: fingerprint ?? "",
+        // Without it the route hides drafts — including the one being asked
+        // about, which would make a draft invisible to its own question.
+        include: "drafts",
+      }),
+    [fingerprint, run.project],
+  );
+  const { data } = useResource(
+    fingerprint ? ["runs", "fingerprint", fingerprint] : null,
+    fingerprint ? load : null,
+  );
+
+  const twin = (data?.runs ?? []).find(
+    (other) =>
+      other.id !== run.id &&
+      other.status !== "draft" &&
+      other.status !== "discarded",
+  );
+  if (!twin) return null;
+
+  return (
+    <Alert.Root intent="warning">
+      <Alert.Title>This payload has been run here before</Alert.Title>
+      <Alert.Description>
+        <span>
+          Another run in this project sent exactly this prompt, these parameters
+          and these images on {formatDate(twin.created)}. Running it again is
+          allowed and bills again — a model answers differently every time, so a
+          second attempt is often the point.{" "}
+        </span>
+        <button
+          type="button"
+          onClick={() => navigate(runPath(twin.project, twin.id))}
+          className="rounded text-sm text-accent underline underline-offset-2 hover:opacity-80"
+        >
+          Open the earlier run
+        </button>
+      </Alert.Description>
+    </Alert.Root>
   );
 }
 

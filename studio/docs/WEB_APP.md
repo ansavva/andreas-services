@@ -471,12 +471,18 @@ that breaks every time the pipeline ships.
 - **Approving in the app is a real write, and it is bound to a hash.** `POST
   /api/runs/<id>/approve` sends the digest the page was showing; the API
   recomputes and answers 409 if the payload moved. It is not a permission
-  boundary — the CLI holds the same kind of token — so the page states the
-  digest in words rather than implying an authority it does not have.
+  boundary — the CLI holds the same kind of token — so the page claims no
+  authority it does not have.
+
+  **This bullet used to end "so the page states the digest in words", and the
+  page no longer does.** The three digest sentences belonged to a bar that could
+  sit there holding an approval nobody had acted on yet; one gesture writes the
+  approval and submits, so there is no interval for them to describe. The write
+  and the hash are unchanged — only the sentences are gone.
 - **Editing a plan is two writes, and each one withdraws the approval.** `PATCH
   /api/runs/<id>/plan` and `PATCH /api/runs/<id>/sends` each replace their half
   whole, recompute the digest and return the run to `draft` — so the editor sends
-  only the half that actually moved, and the approve bar is hidden while it is
+  only the half that actually moved, and the run bar is hidden while it is
   open. Both routes refuse a submitted run, which is why the button appears on an
   unsubmitted one rather than being answered with a 409.
 - **The app can SUBMIT now, and until #536 it could not.** `POST
@@ -485,13 +491,52 @@ that breaks every time the pipeline ships.
   moved behind that route. What it used to mean was that a run approved on this
   page then had to be sent from a terminal — the approve bar ended by telling you
   to run `studio runs submit <id>`, which is the friction this removed.
-- **The Submit button exists in exactly one state**, and that is what stands in
-  for a second confirm dialog. A run that is `approved` and whose payload has not
-  moved shows it; a draft, a stale approval and an already-sent run all show the
-  approve control instead. Asking twice would be approval theatre — the approve
-  dialog is where a person reads the payload and says yes — and it teaches
-  somebody to click through the prompt that matters. The CLI is the same shape:
-  `runs approve` confirms, `runs submit` goes.
+- **Running is ONE armed button — "Run — this spends" — and approving is what
+  pressing it does.**
+
+  **This section used to say the opposite, and it is kept rather than edited
+  over.** It said: "The Submit button exists in exactly one state, and that is
+  what stands in for a second confirm dialog. A run that is `approved` and whose
+  payload has not moved shows it; a draft, a stale approval and an already-sent
+  run all show the approve control instead." Behind it sat an approve dialog and,
+  after it, a separate Submit.
+
+  That was redundant in a UI where the payload is on screen. The page renders the
+  plan, the ordered images and — since #557 — the exact payload a draft would
+  send, rebuilt by the same assembly `submit` uses. Asking for a yes over that
+  document and then asking again under a different word is what teaches somebody
+  to click through the first one. **Running them is approval**, which is also the
+  CLI's ordinary gesture: `studio run` drafts, approves and submits in one act.
+
+  **Nothing mechanical was given up.** `RunBar` still writes the approval — the
+  digest of the payload this page is rendering, `via: "interactive"` — and writes
+  it *before* it submits, so the API's compare-and-swap still refuses a
+  submission whose payload moved underneath, and the audit trail still records
+  who said yes and when. `POST /approve` and `POST /submit` are unchanged and
+  still enforce the same gate for every caller, so a CLI-made draft, `runs
+  approve --relayed` and anything else that reaches the API behave exactly as
+  before. `draft` and `approved` now render the same control, because the
+  distinction was only ever about which of two buttons you got.
+
+  The dialog went with the second press. First press arms and says what the
+  second will do; the second runs. See `ArmedButton`, which `ConfirmDeleteButton`
+  and `RunAgainButton` share the mechanics of.
+- **A run's outputs can be promoted into a character, inline.** An image output
+  carries a `Promote…` control beside it — a **sibling** of `OutputPanel`, never
+  inside it, because the panel's caption is a real `<a href>` and its player is
+  full of buttons. Pressing it expands a panel under the outputs grid, scoped to
+  that output. It is the CLI's `character add-refs --from-run` performed step for
+  step: a **real copy** into the character's `reference/<group>/` folder, then a
+  `REF#` row on the **copy**, so the run keeps its own output and every record
+  citing it stays correct. Hard rule #2b is satisfied by the press itself — the
+  person choosing the character and the group IS the approval — and the panel
+  states plainly what it will do before it happens. Video outputs get no control:
+  a reference is a picture a later render is checked against.
+- **None of these flows uses a dialog, and that is a requirement rather than a
+  style.** Creating a draft is an inline strip on the project's Runs tab,
+  promoting is an inline panel, and every gesture that spends or destroys is
+  arm-then-fire in the button itself. `ConfirmDestroyDialog` remains for entity
+  deletion and nothing on the run surface reaches for it.
 - **A run in flight has its own bar**, because what a person can do about a run
   that has gone is nothing like what they can do about one that has not. It says
   the page is watching and the tab can be closed — true only since the callback

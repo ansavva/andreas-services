@@ -35,6 +35,7 @@ export function OutputPanel({
   sole,
   to,
   badge,
+  action,
 }: {
   asset: RunAsset;
   /** The only output — then it is the subject of the page, not a tile in a grid. */
@@ -42,6 +43,15 @@ export function OutputPanel({
   to: string;
   /** A scene shows "earlier" on every cut but the current one. */
   badge?: ReactNode;
+  /**
+   * A control acting on this output, on the caption row.
+   *
+   * A **sibling** of the caption link rather than a child: the caption is an
+   * `<a>`, and a button inside an anchor is neither one thing nor the other to
+   * a keyboard. Outside the card it read as debris between the output and
+   * whatever came next, which is what this slot exists to stop.
+   */
+  action?: ReactNode;
 }) {
   const navigate = useNavigate();
   const isVideo = (asset.content_type ?? "").startsWith("video/");
@@ -82,12 +92,16 @@ export function OutputPanel({
         </a>
       )}
 
+      {/* The caption and anything acting on this output share one row, so the
+          control sits against the name it belongs to rather than under the
+          card. */}
+      <div className="flex min-w-0 items-end justify-between gap-2 px-1 pb-1">
       {/* `flex-col`, because two `Text` captions are inline spans: without it
           the name and the size ran together as "flex-draft.mp42.7 MB". */}
       <a
         href={to}
         onClick={open}
-        className="flex min-w-0 flex-col px-1 pb-1 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        className="flex min-w-0 flex-col hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         <span className="flex min-w-0 items-center gap-2">
           <Text variant="caption" tone="muted" className="truncate font-mono">
@@ -105,6 +119,8 @@ export function OutputPanel({
           </Text>
         )}
       </a>
+        {action}
+      </div>
     </div>
   );
 }

@@ -301,7 +301,7 @@ export function Frame({
         </span>
       )}
       {run && onOpenRun && (
-        <Button intent="ghost" size="sm" onClick={() => onOpenRun(run)}>
+        <Button intent="secondary" size="sm" onClick={() => onOpenRun(run)}>
           Run
         </Button>
       )}

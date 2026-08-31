@@ -1,0 +1,15 @@
+{
+  "created": "2026-08-31T17:50:10.172582+00:00",
+  "fingerprint": "sha256:756549a22e9f88cdecd6ecbb0696f487",
+  "folder": "node-88daa95e-e566-4278-888f-3c0f62cd0800",
+  "id": "run-6980854b-c7f1-453e-8e04-e37e2e6219b9",
+  "payload": {
+    "prompt": null,
+    "request": null,
+    "response": null
+  },
+  "plan_digest": "sha256:34abbf5495b7aedebbd98d1fdb74022a408b5a049610f7292c4ab42e807953ec",
+  "project": "proj-69e3a948-1bfd-48ee-8646-263265fd4289",
+  "sends": [],
+  "status": "draft"
+}

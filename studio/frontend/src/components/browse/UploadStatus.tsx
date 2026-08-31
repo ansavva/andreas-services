@@ -71,7 +71,7 @@ export function UploadStatus({ items, onClearFinished }: Props) {
 
       {finished > 0 && (
         <div className="flex justify-end">
-          <Button intent="ghost" size="sm" onClick={onClearFinished}>
+          <Button intent="secondary" size="sm" onClick={onClearFinished}>
             Clear finished
           </Button>
         </div>

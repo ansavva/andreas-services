@@ -13,12 +13,9 @@ interface HeaderProps {
   position?: string;
   /** Where the page sits. The context the address carries, as one crumb. */
   crumbs?: Crumb[];
-  /** Passed to the actions — see `ObjectActions`' own `container`. */
-  container?: HTMLElement | null;
-  onRename?: (name: string) => Promise<unknown>;
   onDelete?: () => Promise<unknown>;
-  describing?: boolean;
-  onToggleDescribing?: () => void;
+  editing?: boolean;
+  onToggleEditing?: () => void;
   onClose?: () => void;
 }
 
@@ -40,11 +37,9 @@ export function ObjectHeader({
   file,
   position,
   crumbs,
-  container,
-  onRename,
   onDelete,
-  describing = false,
-  onToggleDescribing,
+  editing = false,
+  onToggleEditing,
   onClose,
 }: HeaderProps) {
   return (
@@ -53,11 +48,9 @@ export function ObjectHeader({
       actions={
         <ObjectActions
           file={file}
-          container={container ?? null}
-          onRename={onRename}
           onDelete={onDelete}
-          describing={describing}
-          onToggleDescribing={onToggleDescribing}
+          editing={editing}
+          onToggleEditing={onToggleEditing}
           onClose={onClose}
         />
       }
@@ -92,9 +85,9 @@ interface DetailsProps {
  * beside the media is that somewhere, so the whole caption is on screen and the
  * tags are readable without opening anything.
  *
- * It is read-only. Editing is `DescribePanel`, which takes this column's place
- * while it is open — one thing in one slot rather than a panel sliding over a
- * copy of itself.
+ * It is read-only, and it stays on screen. Editing is `FileDetailsPanel`, in a
+ * drawer over the page — it used to take this column's place instead, which
+ * meant opening the editor removed the thing being edited from view.
  */
 export function ObjectDetails({ file, aside }: DetailsProps) {
   const tags = file.tags ?? [];

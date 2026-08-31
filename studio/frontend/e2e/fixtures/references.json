@@ -1,0 +1,74 @@
+{
+  "counts": {
+    "face": 4
+  },
+  "groups": {
+    "face": [
+      {
+        "default": true,
+        "description": "Dev fixture reference, promoted from the seed pool.",
+        "file": {
+          "content_type": "image/jpeg",
+          "name": "seed-01.jpg",
+          "size": 167810,
+          "url": "/e2e-asset.png"
+        },
+        "group": "face",
+        "node": "node-f342d48b-725a-4e99-a305-63a3f3f56965",
+        "order": 1000,
+        "tags": [
+          "face",
+          "dev"
+        ]
+      },
+      {
+        "default": true,
+        "description": "Dev fixture reference, promoted from the seed pool.",
+        "file": {
+          "content_type": "image/jpeg",
+          "name": "seed-02.jpg",
+          "size": 84012,
+          "url": "/e2e-asset.png"
+        },
+        "group": "face",
+        "node": "node-e6994393-a38c-4b6e-9fd5-869d4a598f32",
+        "order": 2000,
+        "tags": [
+          "face",
+          "dev"
+        ]
+      },
+      {
+        "default": true,
+        "description": "Dev fixture reference, promoted from the seed pool.",
+        "file": {
+          "content_type": "image/jpeg",
+          "name": "seed-03.jpg",
+          "size": 171796,
+          "url": "/e2e-asset.png"
+        },
+        "group": "face",
+        "node": "node-770b3582-2dda-4b6f-ab72-55b9798f436e",
+        "order": 3000,
+        "tags": [
+          "face",
+          "dev"
+        ]
+      },
+      {
+        "default": false,
+        "description": null,
+        "file": {
+          "content_type": "image/jpeg",
+          "name": "seed-10.jpg",
+          "size": 72615,
+          "url": "/e2e-asset.png"
+        },
+        "group": "face",
+        "node": "node-a0d7ddb3-1f07-57c2-9911-cf576a1832cd",
+        "order": 4000,
+        "tags": []
+      }
+    ]
+  }
+}

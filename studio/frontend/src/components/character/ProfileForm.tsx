@@ -379,7 +379,7 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
           revision {rev}
         </Text>
         <div className="flex-1" />
-        <Button intent="ghost" size="sm" disabled={!dirty || busy} onClick={revert}>
+        <Button intent="secondary" size="sm" disabled={!dirty || busy} onClick={revert}>
           Revert
         </Button>
         <Button size="sm" disabled={!dirty || busy} onClick={save}>
@@ -423,7 +423,7 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
         <nav aria-label="Profile sections" className="hidden lg:block">
           {/* `top-14` clears the sticky save bar above it. */}
           <div className="sticky top-14 flex flex-col gap-1">
-            <Button intent="ghost" size="sm" className="justify-start" onClick={toggleAll}>
+            <Button intent="secondary" size="sm" className="justify-start" onClick={toggleAll}>
               {allOpen ? "Collapse all" : "Expand all"}
             </Button>
             <Separator className="my-1" />
@@ -461,7 +461,7 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
             {/* `-ms-3` cancels the button's own `px-3` so its text starts on the
                 same line as the section titles below it. Left indented, it read
                 as belonging to nothing. */}
-            <Button intent="ghost" size="sm" className="-ms-3" onClick={toggleAll}>
+            <Button intent="secondary" size="sm" className="-ms-3" onClick={toggleAll}>
               {allOpen ? "Collapse all" : "Expand all"}
             </Button>
           </div>
@@ -927,7 +927,7 @@ function GroupList({
 
   const add = (
     <Button
-      intent="ghost"
+      intent="secondary"
       size="sm"
       onClick={() =>
         onChange(path, [
@@ -958,7 +958,7 @@ function GroupList({
               {index + 1}
             </Text>
             <Button
-              intent="ghost"
+              intent="secondary"
               size="sm"
               onClick={() => onChange(path, items.filter((_, at) => at !== index))}
             >

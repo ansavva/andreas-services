@@ -4,8 +4,12 @@ import type {
   CharacterProfile,
   CharacterSummary,
   CopiedNodes,
+  CreateRunBody,
+  CreatedRun,
   DeletedNodes,
   Library,
+  ModelEntry,
+  ModelSchema,
   MovedNodes,
   MovieRecord,
   MovieSummary,
@@ -21,6 +25,7 @@ import type {
   RunPage,
   RunPlan,
   RunRecord,
+  SelectionResponse,
   SavedText,
   SceneRecord,
   Shot,
@@ -582,6 +587,43 @@ export function patchShot(
   );
 }
 
+/**
+ * The ordered images a model would actually be shown, and the cap they face.
+ *
+ * **A route rather than a function in each half of studio**, so the CLI and this
+ * app cannot disagree about what slot 3 was. `pick` names files, `tag` names
+ * tags, `group` names a group; each takes a comma-joined list, and the first one
+ * given wins in that order. None given falls through to the `default_set`.
+ *
+ * **Two refusals a caller has to surface rather than work around**, both 409:
+ * `over_cap` when more references match than the model will take, carrying every
+ * candidate so a person can choose, and `stale_default_set` when the set names a
+ * node that is no longer a reference. Neither is truncated or filtered, because
+ * a generation shown seven of eighteen images silently is a result nobody can
+ * explain afterwards.
+ *
+ * **`ApiError.message` is the CODE on those two, not the sentence.** The API's
+ * ordinary errors put their prose in `error` and a structured one puts the code
+ * there, so `apis/client` — which reads `error` first — surfaces `over_cap`
+ * verbatim and drops the `index`. A caller that wants the candidates has to read
+ * the response itself; a caller that only reports needs to say more than the
+ * code word.
+ */
+export function getCharacterSelection(
+  id: string,
+  opts: { pick?: string; tag?: string; group?: string; limit?: number } = {},
+) {
+  return apiGet<SelectionResponse>(
+    `/api/characters/${encodeURIComponent(id)}/selection`,
+    {
+      pick: opts.pick,
+      tag: opts.tag,
+      group: opts.group,
+      limit: opts.limit === undefined ? undefined : String(opts.limit),
+    },
+  );
+}
+
 /** Runs that used this character — one query, where it used to be a full walk. */
 export function getCharacterRuns(id: string, cursor?: string) {
   return apiGet<RunPage>(`/api/characters/${encodeURIComponent(id)}/runs`, {
@@ -742,12 +784,48 @@ export function getRuns(
      * worse than a screen that never offered the choice.
      */
     include?: string;
+    /**
+     * **The one filter that is not for a screen.** It answers "has this exact
+     * payload already gone out here", which is a question about money rather
+     * than about what to draw — pass `include: "drafts"` with it, or the draft
+     * being asked about is itself hidden from the answer.
+     */
+    fingerprint?: string;
     since?: string;
     limit?: string;
     cursor?: string;
   } = {},
 ) {
   return apiGet<RunPage>("/api/runs", params);
+}
+
+/**
+ * Create a run as a **draft**. Nothing is submitted and nothing is billed.
+ *
+ * Only `project`, `kind` and `model` are required; a draft with no plan and no
+ * sends is legal, and is what the composer strip makes before the editor fills
+ * it in. The digest and the fingerprint are recomputed server-side from what
+ * actually landed and come back on the 201 — never derived here, because
+ * `plan_digest` has had three implementations in this repository and one of them
+ * silently disagreed.
+ */
+export function createRun(body: CreateRunBody) {
+  return apiSend<CreatedRun>("POST", "/api/runs", body);
+}
+
+/**
+ * Delete a run. `files` keeps its folder by default.
+ *
+ * **The route has no status gate** — it will delete a succeeded run and its
+ * outputs as readily as an abandoned draft. The app offers this on unsubmitted
+ * runs only, which is a decision about what to put a button on rather than
+ * something this call enforces.
+ */
+export function deleteRun(id: string, files: "keep" | "delete" = "keep") {
+  return apiSend<{ id: string; files: string }>(
+    "DELETE",
+    `/api/runs/${encodeURIComponent(id)}?files=${files}`,
+  );
 }
 
 /**
@@ -880,6 +958,61 @@ export function patchRunSends(
       sends,
     },
   );
+}
+
+// ---------------------------------------------------------------------------
+// The model registry
+//
+// Read-only, and the same answer for every caller: which models exist is a
+// property of the service rather than of a library. The API serves what shipped
+// in `models.json`; `studio add-model` and `studio models refresh` write that
+// file in a reviewed commit, and nothing here can change it.
+// ---------------------------------------------------------------------------
+
+/**
+ * A model name as a path, encoded **per segment**.
+ *
+ * A registry key is a bare word but a Replicate id is `owner/name`, and the
+ * routes take `<path:name>` precisely so both spellings resolve. Encoding the
+ * whole string would turn that slash into `%2F` — which Werkzeug's path
+ * converter does not match, so the request 404s on a model that exists.
+ */
+function modelPath(name: string): string {
+  return name.split("/").map(encodeURIComponent).join("/");
+}
+
+/**
+ * Every registry entry, keyed by registry name.
+ *
+ * **Unwrapped from `{models: {…}}`.** A map rather than an array because every
+ * caller looks a model up by the key it was given, and each entry carries its
+ * own `key`, so iterating loses nothing.
+ */
+export function getModels() {
+  return apiGet<{ models: Record<string, ModelEntry> }>("/api/models").then(
+    (body) => body.models ?? {},
+  );
+}
+
+/** One entry, by registry key, alias, or the Replicate `owner/name`. */
+export function getModel(name: string) {
+  return apiGet<ModelEntry>(`/api/models/${modelPath(name)}`);
+}
+
+/**
+ * The model's input schema, **fetched live from the provider on every call.**
+ *
+ * So: lazily, once, when an editor actually opens — never on a poll and never
+ * per keystroke. It is a round trip to Replicate sitting inside a request
+ * somebody is waiting on, and it is a different question from the entry's
+ * `snapshot`, which `models refresh` recorded into the repo and may be months
+ * old. This one is what the provider will accept today.
+ *
+ * A provider failure answers with empty maps rather than an error, so `props`
+ * being empty means "could not ask", not "this model takes nothing".
+ */
+export function getModelSchema(name: string) {
+  return apiGet<ModelSchema>(`/api/models/${modelPath(name)}/schema`);
 }
 
 export function getScene(id: string) {

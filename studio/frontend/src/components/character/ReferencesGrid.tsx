@@ -307,7 +307,7 @@ export function ReferencesGrid({ characterId, rootId, defaultSet, rev, onSaved }
                 {saving ? "Saving…" : "Save default set"}
               </Button>
               <Button
-                intent="ghost"
+                intent="secondary"
                 size="sm"
                 disabled={saving}
                 onClick={() => setPicking(null)}
@@ -318,7 +318,7 @@ export function ReferencesGrid({ characterId, rootId, defaultSet, rev, onSaved }
           ) : (
             groups.length > 0 && (
               <Button
-                intent="ghost"
+                intent="secondary"
                 size="sm"
                 onClick={() => setPicking(new Set(defaultSet))}
               >

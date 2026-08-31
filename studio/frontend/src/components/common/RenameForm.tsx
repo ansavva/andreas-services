@@ -27,9 +27,10 @@ interface Props {
  * row is the right place for it.** The second copy of this control lived in the
  * viewer's chrome, which was often inside a fullscreen element where anything
  * portalled to `<body>` is not painted — so a dialog was impossible there and
- * every rename was this field. `Dialog.Root`'s `container` (design system
- * 0.16.0) removed the impossibility, and the object screen's rename is a real
- * dialog now (`viewer/RenameDialog`). What is left here is the case that was
+ * every rename was this field. `Drawer.Root`'s `container` (design system
+ * 0.16.0) removed the impossibility, and the object screen's rename is one
+ * field in `viewer/FileDetailsPanel` now — it was briefly a dialog of its own,
+ * which is the step that got merged away. What is left here is the case that was
  * always better inline: a listing you are working down, where the row can give
  * the field a full line and the old name is the starting point for the new one.
  * The field opens holding it with the *stem* selected, so typing replaces the

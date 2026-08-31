@@ -198,7 +198,7 @@ export function DestinationPicker({
         )}
 
         <div className="flex items-center justify-end gap-2">
-          <Button intent="ghost" size="sm" onClick={onClose}>
+          <Button intent="secondary" size="sm" onClick={onClose}>
             Cancel
           </Button>
           {/* Disabled rather than absent, with the reason on the label: a button

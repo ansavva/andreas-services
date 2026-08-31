@@ -24,9 +24,20 @@ export function setLibrary(id: string | null): void {
 }
 
 export class ApiError extends Error {
+  /**
+   * A failure a caller has to branch on, and the sentence it says out loud.
+   *
+   * `support.structured` answers `{error: <code>, message: <sentence>, …}` plus
+   * fields the code alone cannot carry — `over_cap` sends back the index it
+   * would have had to drop, `stale_digest` the digest that is current now. The
+   * `message` used to be the code, so a screen either printed `over_cap` at a
+   * person or branched on a string that was also its own UI copy.
+   */
   constructor(
     message: string,
     readonly status: number,
+    readonly code?: string,
+    readonly body?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "ApiError";
@@ -147,13 +158,21 @@ async function request<T>(
     // The API's own errors are JSON; API Gateway's authorizer rejections are
     // not, so fall back to the status text rather than throwing on the parse.
     let message = response.statusText;
+    let code: string | undefined;
+    let body: Record<string, unknown> | undefined;
     try {
-      const body = (await response.json()) as { error?: string; message?: string };
-      message = body.error ?? body.message ?? message;
+      body = (await response.json()) as Record<string, unknown>;
+      // `error` is a CODE on a structured failure and a sentence on every other
+      // one, so the sentence is preferred and the code kept beside it. Reading
+      // `error` first put `over_cap` on screen where the message was.
+      const error = typeof body.error === "string" ? body.error : undefined;
+      const sentence = typeof body.message === "string" ? body.message : undefined;
+      message = sentence ?? error ?? message;
+      code = error;
     } catch {
       /* non-JSON error body */
     }
-    throw new ApiError(message, response.status);
+    throw new ApiError(message, response.status, code, body);
   }
 
   return (await response.json()) as T;

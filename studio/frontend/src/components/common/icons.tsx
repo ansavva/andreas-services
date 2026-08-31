@@ -53,6 +53,13 @@ export const FolderIcon = ({ className }: Props) => (
   </Glyph>
 );
 
+/** A bare plus. What "make one of these" looks like above a list. */
+export const PlusIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M12 5v14M5 12h14" />
+  </Glyph>
+);
+
 export const FolderPlusIcon = ({ className }: Props) => (
   <Glyph className={className}>
     <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
@@ -185,13 +192,6 @@ export const SoundOffIcon = ({ className }: Props) => (
   <Glyph className={className}>
     <path d="M11 5 6 9H3v6h3l5 4Z" />
     <path d="m16 9 5 6m0-6-5 6" />
-  </Glyph>
-);
-
-/** Three ragged lines — a caption, which is what the panel behind it writes. */
-export const DescribeIcon = ({ className }: Props) => (
-  <Glyph className={className}>
-    <path d="M4 6h16M4 12h10M4 18h7" />
   </Glyph>
 );
 

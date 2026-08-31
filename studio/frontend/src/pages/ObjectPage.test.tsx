@@ -140,6 +140,64 @@ describe("which sequence the address names", () => {
   });
 });
 
+describe("editing the file's own fields", () => {
+  /** Opens the folder feed on `OPEN` and presses the one editing control. */
+  async function openEditor() {
+    open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
+    await waitFor(() => expect(screen.getByText(/2 of 3/)).toBeTruthy());
+
+    // One control, and it is the same one in the header and over the player —
+    // hence `getAllBy`. There used to be two here, a describe toggle and a
+    // rename dialog, editing three fields of one row between them.
+    fireEvent.click(screen.getAllByLabelText("Edit details")[0]!);
+    return await screen.findByRole("dialog");
+  }
+
+  it("opens one drawer holding the name beside the description", async () => {
+    const drawer = await openEditor();
+
+    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("b.png");
+    expect(screen.getByLabelText("Description")).toBeTruthy();
+    expect(screen.getByLabelText("Add a tag")).toBeTruthy();
+    // Nothing named "Rename" is left to open a second surface.
+    expect(screen.queryByLabelText(/^Rename/)).toBeNull();
+    // The read-only details stay on the page under it. The editor used to take
+    // their place in the column, so opening it hid the thing being edited.
+    expect(drawer.contains(screen.getByLabelText("File details"))).toBe(false);
+  });
+
+  it("refuses a dismissal while words are unsaved, and keeps them", async () => {
+    await openEditor();
+
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "Shirtless at the pool." },
+    });
+    fireEvent.click(document.querySelector("[data-drawer-backdrop]")!);
+
+    expect(screen.getByText("Leave without saving?")).toBeTruthy();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect((screen.getByLabelText("Description") as HTMLTextAreaElement).value).toBe(
+      "Shirtless at the pool.",
+    );
+
+    // And the way out is offered rather than taken.
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("takes a pristine dismissal at face value", async () => {
+    const drawer = await openEditor();
+
+    fireEvent.keyDown(drawer, { key: "Escape" });
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // Escape closed the drawer and NOT the page: two listeners answering one
+    // press is a dismissal and a `navigate(-1)`, which is one key leaving two
+    // screens.
+    expect(screen.getByText(/2 of 3/)).toBeTruthy();
+  });
+});
+
 describe("walking the feed", () => {
   it("steps with the arrow keys and rewrites the address", async () => {
     // The reel scrolled and reported the settled pane; a page steps. Both end

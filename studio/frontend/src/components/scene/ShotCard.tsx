@@ -275,7 +275,7 @@ export function ShotCard({
                           read as an action on the whole shot. */}
                       <div className="flex">
                         <Button
-                          intent="ghost"
+                          intent="secondary"
                           size="sm"
                           onClick={() => {
                             setDraft(draftOf(shot));

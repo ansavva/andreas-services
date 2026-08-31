@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { Spinner, Text, Button } from "@ansavva/design-system";
+import { Drawer, Spinner, Text, Button } from "@ansavva/design-system";
 
 import { deleteNodes, describeNode, renameNode } from "../apis/studio";
 import { ReferenceFields } from "../components/character/ReferenceFields";
 import type { Crumb } from "../components/layout/PageBar";
 import { MediaPlayer, type MediaPlayerControls } from "../components/media/MediaPlayer";
 import { TextPage } from "../components/text/TextPage";
-import { DescribePanel } from "../components/viewer/DescribePanel";
+import { FileDetailsPanel } from "../components/viewer/FileDetailsPanel";
 import { Filmstrip } from "../components/viewer/Filmstrip";
 import { ObjectActions } from "../components/viewer/ObjectActions";
 import { ObjectDetails, ObjectHeader } from "../components/viewer/ObjectHeader";
@@ -67,7 +67,7 @@ export function ObjectPage() {
   /**
    * The player's own container and controls, held in state rather than in refs.
    *
-   * The container is what `Dialog.Root`'s `container` needs — the parts read it
+   * The container is what `Drawer.Root`'s `container` needs — the parts read it
    * WHILE RENDERING, so a ref filled by the same commit is still null on the
    * render that mounts them. The controls are how Space, `m` and `f` reach a
    * player that owns its own playback state. Both arrive through callbacks that
@@ -77,14 +77,55 @@ export function ObjectPage() {
   const [controls, setControls] = useState<MediaPlayerControls | null>(null);
 
   /**
-   * Closed by default.
+   * Closed by default, and a drawer when it is open.
    *
    * **The describing pass is one of the things this rework gives up.** In the
    * reel the panel stayed open as the column scrolled, so captioning ten clips
-   * was one press and nine flicks. On a page it is one file at a time, and the
-   * panel takes the column beside the player rather than covering it.
+   * was one press and nine flicks. On a page it is one file at a time.
+   *
+   * **It used to replace the details column, and rename was a second surface
+   * beside it.** One drawer holds all three of the file's own fields now: two
+   * controls that opened two overlays to edit one row told a reader nothing
+   * about which to press, and the column swap meant the read-only details
+   * vanished exactly while they were being edited.
    */
-  const [describing, setDescribing] = useState(false);
+  const [editing, setEditing] = useState(false);
+
+  /**
+   * Whether the drawer holds unsaved words, and whether a dismissal was refused.
+   *
+   * A ref rather than state, because the dismissal handler reads it and nothing
+   * renders from it — `RunPage` carries the promote drawer's the same way, and
+   * the panel is careful to report it through a ref of its own.
+   */
+  const editDirty = useRef(false);
+  const [editWarning, setEditWarning] = useState(false);
+
+  /**
+   * Whether the player owns the screen, because that decides where the drawer
+   * is mounted.
+   *
+   * **It is aimed at the player ONLY while the player is fullscreen**, and that
+   * qualifier is the whole point. Anything portalled to `<body>` is mounted,
+   * focusable and unpainted while a frame fills the screen, so a drawer opened
+   * from the chrome over the media has to be a descendant of the fullscreen
+   * element — the reason the rename dialog this absorbed carried a `container`.
+   * Aiming it there *unconditionally* is the version that was tried first and
+   * looked broken: the player's box is `isolate`, so a panel inside it is
+   * z-ordered within that stacking context and the app header paints straight
+   * over its top edge. `position: fixed` still measured against the viewport
+   * throughout — it is stacking, not geometry, and only the fullscreen case
+   * needs the container to pay for it.
+   */
+  const [fullscreen, setFullscreen] = useState(false);
+  useEffect(() => {
+    // `Boolean(...)`, not `!== null`: jsdom defines no `fullscreenElement` at
+    // all, and the strict comparison reads `undefined` as "yes, fullscreen".
+    const sync = () => setFullscreen(Boolean(document.fullscreenElement));
+    sync();
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
 
   const items = feed.items;
   const found = items.findIndex((item) => item.id === nodeId);
@@ -203,14 +244,22 @@ export function ObjectPage() {
    * **Escape is handed over entirely while a text file is open.** `TextPage`
    * binds its own, and two listeners calling the same `close` is `navigate(-1)`
    * twice — one press leaving two screens.
+   *
+   * **The details drawer takes the whole keyboard for the same reason.** It
+   * binds Escape itself, so leaving these bound would make one press a
+   * dismissal *and* a `navigate(-1)` — and a form that declined the dismissal
+   * would lose its words to the page behind it anyway. It is modal, so stepping
+   * the feed underneath it is wrong whatever the key does.
    */
+  const modal = editing;
   useKeyboardNav({
-    onPrev: isText ? undefined : () => step(-1),
-    onNext: isText ? undefined : () => step(1),
-    onClose: isText ? undefined : close,
-    onTogglePlay: controls ? () => controls.togglePlay() : undefined,
-    onToggleMuted: controls ? () => controls.toggleMuted() : undefined,
-    onToggleFullscreen: controls ? () => controls.toggleFullscreen() : undefined,
+    onPrev: isText || modal ? undefined : () => step(-1),
+    onNext: isText || modal ? undefined : () => step(1),
+    onClose: isText || modal ? undefined : close,
+    onTogglePlay: controls && !modal ? () => controls.togglePlay() : undefined,
+    onToggleMuted: controls && !modal ? () => controls.toggleMuted() : undefined,
+    onToggleFullscreen:
+      controls && !modal ? () => controls.toggleFullscreen() : undefined,
   });
 
   if (open && isText) {
@@ -244,17 +293,33 @@ export function ObjectPage() {
   const renameThis = (name: string) => rename(current, name);
   const removeThis = () => remove(current);
 
+  /**
+   * Every way of putting the drawer away asks the form first.
+   *
+   * The backdrop, Escape and the panel's own Close all arrive here, so a form
+   * holding typed words declines all three the same way rather than declining
+   * the accidental ones and honouring the deliberate one — a press of "Close" is
+   * not a decision to throw a description away either.
+   */
+  const askToClose = () => {
+    if (editDirty.current) {
+      setEditWarning(true);
+      return;
+    }
+    setEditWarning(false);
+    setEditing(false);
+  };
+  const toggleEditing = () => (editing ? askToClose() : setEditing(true));
+
   return (
     <>
       <ObjectHeader
         file={current}
         position={position}
         crumbs={crumbsFor(source)}
-        container={stage}
-        onRename={renameThis}
         onDelete={removeThis}
-        describing={describing}
-        onToggleDescribing={() => setDescribing((up) => !up)}
+        editing={editing}
+        onToggleEditing={toggleEditing}
         onClose={close}
       />
 
@@ -284,17 +349,18 @@ export function ObjectPage() {
             className="h-[min(65dvh,44rem)] border border-line"
             onContainerChange={setStage}
             onControlsChange={setControls}
-            // Rename and delete, and only those two. They have to be reachable
+            // Edit and delete, and only those two. They have to be reachable
             // while the player is fullscreen, where the header below is not
             // painted; everything else on the header is a thing you do with the
-            // page in front of you.
+            // page in front of you. Rename used to be the first of the pair and
+            // is now one field inside the second.
             actions={
               <ObjectActions
                 file={current}
                 variant="media"
-                container={stage}
-                onRename={renameThis}
                 onDelete={removeThis}
+                editing={editing}
+                onToggleEditing={toggleEditing}
               />
             }
           />
@@ -310,14 +376,53 @@ export function ObjectPage() {
         </div>
 
         <aside className="flex min-w-0 flex-col gap-4">
-          {describing ? (
-            <DescribePanel
-              // Remounted per file so a caption typed on one cannot be carried
-              // onto the next by a step.
+          <ObjectDetails
+            file={current}
+            // A link that arrived with no context: say what the file belongs
+            // to and offer the way there. Everywhere else the crumb above
+            // already says it.
+            aside={source === null ? <OwnerLink nodeId={current.id} /> : undefined}
+          />
+        </aside>
+      </div>
+
+      {editing && (
+        /*
+          **The editor is a drawer over the page, and over the frame while the
+          frame owns the screen.** See `fullscreen` above for why the container
+          is conditional rather than simply the player.
+        */
+        <Drawer.Root
+          open
+          container={fullscreen ? stage : null}
+          onOpenChange={(next: boolean) => {
+            if (next) return;
+            // The backdrop and Escape both arrive here, and both go through the
+            // one refusal — see `askToClose`.
+            askToClose();
+          }}
+        >
+          <Drawer.Backdrop />
+          <Drawer.Panel className="w-full max-w-md overflow-y-auto">
+            <FileDetailsPanel
+              // Remounted per file so a name or caption typed on one cannot be
+              // carried onto the next by a step.
               key={current.id}
               file={current}
               onSave={(changes) => describe(current, changes)}
-              onClose={() => setDescribing(false)}
+              onRename={renameThis}
+              onClose={askToClose}
+              onDirtyChange={(dirty) => {
+                editDirty.current = dirty;
+                if (!dirty) setEditWarning(false);
+              }}
+              unsavedWarning={editWarning}
+              onDiscard={() => {
+                editDirty.current = false;
+                setEditWarning(false);
+                setEditing(false);
+              }}
+              onKeepEditing={() => setEditWarning(false)}
               // Only in a character's reference pool. Elsewhere a node has no
               // group, no position and no caption, and the panel is the file's
               // own fields alone.
@@ -331,17 +436,9 @@ export function ObjectPage() {
                 ) : undefined
               }
             />
-          ) : (
-            <ObjectDetails
-              file={current}
-              // A link that arrived with no context: say what the file belongs
-              // to and offer the way there. Everywhere else the crumb above
-              // already says it.
-              aside={source === null ? <OwnerLink nodeId={current.id} /> : undefined}
-            />
-          )}
-        </aside>
-      </div>
+          </Drawer.Panel>
+        </Drawer.Root>
+      )}
     </>
   );
 }

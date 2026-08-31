@@ -219,8 +219,18 @@ export interface MovedNodes {
 export interface CopiedNodes {
   destination: string;
   copied: number;
-  /** The new nodes, in the order the ids were sent. */
-  ids: string[];
+  /**
+   * The new nodes, in the order the ids were sent.
+   *
+   * **This said `ids: string[]` and the route has never sent one.** It answers
+   * `{destination, copied, nodes}` — whole records, because the numbering is
+   * decided at the destination and a caller cannot re-derive the name it got.
+   * Nothing read the field until promote-to-reference needed the copy's id, so
+   * a type that was an assertion nobody had checked went three routes' worth of
+   * time without a symptom. Read the id off `nodes`, and never assume the name
+   * you sent.
+   */
+  nodes: NodeRecord[];
 }
 
 export interface DeletedNodes {
@@ -406,15 +416,29 @@ export interface ReferenceIndex {
  * is a 409 carrying the index rather than a silent truncation, so the refusal
  * arrives before the money is spent.
  */
+/**
+ * One image of a resolved selection, in the position the model will see it in.
+ *
+ * **Everything but `slot` and `node` is nullable, and this used to declare none
+ * of it.** `name` was missing entirely — the route sends it because a person
+ * reviewing a payload has to know which picture is `[Image3]` — and `url` is
+ * null for a reference whose node carries no blob.
+ */
+export interface SelectionEntry {
+  /** 1-based position in the resolved list. What `[Image3]` counts. */
+  slot: number;
+  node: string;
+  name: string | null;
+  group: string | null;
+  description: string | null;
+  url: string | null;
+}
+
 export interface SelectionResponse {
-  selection: Array<{
-    slot: number;
-    node: string;
-    group: string;
-    description: string;
-    url: string;
-  }>;
-  cap: number;
+  selection: SelectionEntry[];
+  /** The ceiling this was measured against — `null` when the caller named none. */
+  cap: number | null;
+  /** Which of `tag`, `pick`, `group`, `default` or `all` chose these. */
   source: string;
 }
 
@@ -593,6 +617,8 @@ export interface RunSummary {
   cost: RunCost | null;
   thumb: HeroImage | null;
   characters?: string[];
+  /** Projected onto the row so `?fingerprint=` is one query — see `RunRecord`. */
+  fingerprint?: string;
 }
 
 /**
@@ -659,6 +685,21 @@ export interface RunRecord {
   plan: RunPlan | null;
   /** A hash over the plan AND the ordered sends — what an approval names. */
   plan_digest: string | null;
+  /**
+   * What makes two submissions the same one — `plan_digest` plus the model.
+   *
+   * Answers "has this exact payload already gone out here" through
+   * `GET /api/runs?fingerprint=`, which is why it is on the listing row too.
+   * Absent on runs written before it existed.
+   */
+  fingerprint?: string | null;
+  /**
+   * What the output file is called. **A filename, not an identity.**
+   *
+   * Outside `plan` on purpose: `plan_digest` hashes the plan, so a rename would
+   * otherwise void an approval over something the provider is never sent.
+   */
+  output_name?: string | null;
   /** Who said yes, when, and to which payload. `null` until somebody has. */
   approval: RunApproval | null;
   /**
@@ -746,6 +787,160 @@ export interface RunApproval {
 export interface RunPage {
   runs: RunSummary[];
   cursor: string | null;
+}
+
+/**
+ * What `POST /api/runs` takes. Three fields are required and the rest are not.
+ *
+ * **No provider `input` here, deliberately.** The route accepts one and writes
+ * it to `request.json`; submit rebuilds the body it actually sends from
+ * `plan.prompt + plan.params + sends` (`generate.payload_of`), which is the one
+ * allowlist of what reaches a provider. An `input` authored in the browser would
+ * be a second answer to that, recorded as if it were the first.
+ *
+ * `sends` and `bindings` are the same argument twice: send `sends` when the
+ * roles are known, `bindings` when only the fields are. Sending both is not an
+ * error — the API reads `sends` and ignores the map.
+ */
+export interface CreateRunBody {
+  project: string;
+  kind: RunKind;
+  model: string;
+  engine?: string;
+  /** The output filename. Lands on the record as `output_name`. */
+  name?: string;
+  characters?: string[];
+  sends?: RunSendInput[];
+  /** The older spelling: `{field: [nodeId, …]}`, read as sends with a null role. */
+  bindings?: Record<string, string[]>;
+  plan?: RunPlan | null;
+}
+
+/**
+ * A send as a caller AUTHORS it — the three fields the digest hashes.
+ *
+ * `order` is the position in the list and `source` is derived by the API from
+ * where the node sits, so neither is sent. See `RunSend` for what comes back.
+ */
+export interface RunSendInput {
+  field: string;
+  role: RunSend["role"];
+  node: string;
+}
+
+/**
+ * The 201 body of `POST /api/runs`. **Not a `RunRecord`** — it carries the
+ * handful of fields whose values the caller could not have known, and nothing
+ * else: no status history, no outputs, no expanded assets.
+ *
+ * `plan_digest` is here so the next call can be `approveRun(id, plan_digest)`
+ * without a read in between, and `fingerprint` so a duplicate check is one query.
+ */
+export interface CreatedRun {
+  id: string;
+  project: string;
+  status: RunStatus;
+  folder: string;
+  payload: { request: string | null; response: string | null; prompt: string | null };
+  plan_digest: string;
+  fingerprint: string;
+  /** The rows as written, renumbered from 1. `source` is null on every one. */
+  sends: Array<RunSendInput & { order: number; source: RunSendSource | null }>;
+  created: string;
+}
+
+// ---------------------------------------------------------------------------
+// The model registry, as the API serves it
+//
+// `models.json` ships inside the API image and `GET /api/models` hands it back,
+// so there is one copy at runtime as well as one in the repo. Nothing below is
+// per-library: two accounts get byte-identical answers.
+// ---------------------------------------------------------------------------
+
+/**
+ * One prop of a recorded schema snapshot — an enum, a default, a range.
+ *
+ * Deliberately partial: which keys a prop has depends on the provider's own
+ * schema, and `models refresh` records what it found.
+ */
+export interface SnapshotProp {
+  enum?: unknown[];
+  default?: unknown;
+  minimum?: number;
+  maximum?: number;
+}
+
+/**
+ * The snapshot map: one entry per input, plus `refreshed`.
+ *
+ * **`refreshed` is a date string sitting among the props**, which is why the
+ * index signature is a union and why anything walking this has to skip that key
+ * rather than trust every value to be an object.
+ */
+export interface ModelSnapshot {
+  [prop: string]: SnapshotProp | string | undefined;
+  refreshed?: string;
+}
+
+/**
+ * One registry entry, as `GET /api/models` and `/api/models/<name>` return it.
+ *
+ * `key` is the registry name and is attached by the API to every entry,
+ * including the ones inside the map, so a caller that iterates does not lose it.
+ * `model` is the Replicate `owner/name` — which is what `POST /api/runs` wants,
+ * and `key` is not.
+ */
+export interface ModelEntry {
+  key: string;
+  model: string;
+  kind: RunKind;
+  /** The `studio-media-*` skill that documents this model. */
+  skill: string;
+  /**
+   * Which inputs take images, by field name. `null` where a model has no such
+   * field — a still model has no start frame — so a null is "not offered"
+   * rather than "unknown".
+   */
+  images?: {
+    refs?: string | null;
+    start?: string | null;
+    end?: string | null;
+    /** `null` means no cap, which is not the same as absent. */
+    max_refs?: number | null;
+    accepts_ext?: string[];
+    start_counts_toward_max_refs?: boolean;
+    start_excludes_refs?: boolean;
+    end_excludes_refs?: boolean;
+  };
+  prompt?: { max_chars?: number | null; recommended_words?: number | null };
+  note?: string;
+  /** Params the pipeline always sends unless something overrides them. */
+  defaults?: Record<string, unknown>;
+  /** Values the schema still advertises that this model will not honour. */
+  denied?: Record<string, Record<string, string>>;
+  /** Video-only wiring: where the negative prompt and technical block go. */
+  video?: Record<string, unknown>;
+  snapshot?: ModelSnapshot;
+  aliases?: string[];
+}
+
+/**
+ * One property of a LIVE provider schema. **Deliberately loose.**
+ *
+ * `GET /api/models/<name>/schema` proxies Replicate and distils nothing, so this
+ * is the provider's own OpenAPI fragment: `type`, `enum`, `default`, `minimum`,
+ * `x-order`, an `allOf` naming a `$ref` into `schemas`. Declaring those leaves
+ * would be a copy of a schema studio does not own — the condensed form lives in
+ * `ModelEntry.snapshot`, which studio does own.
+ */
+export type SchemaProp = Record<string, unknown>;
+
+export interface ModelSchema {
+  /** The Replicate `owner/name` this resolved to, which may not be what was asked. */
+  model: string;
+  props: Record<string, SchemaProp>;
+  /** The sibling components an enum may hide behind a `$ref`. */
+  schemas?: Record<string, SchemaProp>;
 }
 
 /**

@@ -110,7 +110,7 @@ export class ErrorBoundary extends Component<
           <Button intent="primary" size="sm" onClick={() => window.location.reload()}>
             Reload
           </Button>
-          <Button intent="ghost" size="sm" onClick={this.goBack}>
+          <Button intent="secondary" size="sm" onClick={this.goBack}>
             Go back
           </Button>
         </div>
