@@ -39,6 +39,19 @@ interface Props {
    * controls that already carry the name.
    */
   name: string;
+  /**
+   * Whether this is a video, when the caller knows.
+   *
+   * **Omitting it no longer means "image".** It used to default to `false`, so
+   * every caller that could not know — `HeroImage` is `{node, url}` and carries
+   * no kind, which is `EntityCard`, `EntityRow` and the project's input pool —
+   * silently rendered an `.mp4` through `<img>` and drew a broken image. The
+   * runs list did it too, and that is how this was found.
+   *
+   * Left undefined, the kind is read off the object's extension instead. An
+   * explicit value always wins, because a caller with a real `kind` field knows
+   * better than a file name does.
+   */
   isVideo?: boolean;
   aspect?: keyof typeof ASPECTS;
   /** `cover` fills the box and crops; `contain` shows the whole frame. */
@@ -109,11 +122,31 @@ interface Props {
  * is already inside one, and a button cannot contain a button — the constraint
  * that shaped `MediaTile`'s checkbox and `EntityCard`. Callers own the click.
  */
+/**
+ * The extensions the media tree actually stores video under.
+ *
+ * Read off the object's own name or its S3 key, never the presigned URL's query
+ * string — the signature carries `X-Amz-*` parameters and a naive `.endsWith`
+ * against the whole URL never matches.
+ */
+const VIDEO_EXTENSIONS = /\.(mp4|mov|webm|m4v)$/i;
+
+function looksLikeVideo(name: string, url: string): boolean {
+  if (VIDEO_EXTENSIONS.test(name)) return true;
+  try {
+    return VIDEO_EXTENSIONS.test(new URL(url).pathname);
+  } catch {
+    // A relative or malformed URL — the stub suite serves some. Fall back to
+    // the raw string with any query cut off by hand.
+    return VIDEO_EXTENSIONS.test(url.split("?")[0] ?? "");
+  }
+}
+
 export function MediaThumb({
   nodeId,
   url,
   name,
-  isVideo = false,
+  isVideo: isVideoProp,
   aspect = "square",
   fit = "cover",
   badge,
@@ -123,6 +156,8 @@ export function MediaThumb({
   className = "",
   title,
 }: Props) {
+  const isVideo = isVideoProp ?? looksLikeVideo(name, url);
+
   const { src, failed, onError } = useSignedSrc(nodeId, url);
   const [duration, setDuration] = useState<number | null>(null);
   const box = useRef<HTMLSpanElement>(null);
@@ -178,7 +213,9 @@ export function MediaThumb({
           // is not needed: setting src on a mounted <video> starts the load.
           src={near ? src : undefined}
           onError={onError}
-          onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
+          onLoadedMetadata={(event) =>
+            setDuration(event.currentTarget.duration)
+          }
           preload="metadata"
           // No `controls`, and `role="presentation"` for the same reason the
           // `<img>` below carries an empty `alt`: this is a picture inside a
@@ -246,6 +283,7 @@ export function MediaThumb({
  * a test that renders a grid should not have to stub one.
  */
 function prefersReducedMotion(): boolean {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function")
+    return false;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }

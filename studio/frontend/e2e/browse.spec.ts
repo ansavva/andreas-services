@@ -14,7 +14,8 @@ import { expect, test } from "@playwright/test";
 import { CHARACTER, LIBRARY, fixture, stubApi } from "./support/api";
 import { signIn } from "./support/session";
 
-const SEED = fixture<Array<{ name: string; content_type: string }>>("seed-folder");
+const SEED =
+  fixture<Array<{ name: string; content_type: string }>>("seed-folder");
 
 const LIVE = process.env.E2E_LIVE === "1";
 
@@ -38,7 +39,9 @@ function stubOnly(reason: string): void {
   test.skip(LIVE, reason);
 }
 
-test("a seeded session reaches the app rather than the hosted sign-in page", async ({ page }) => {
+test("a seeded session reaches the app rather than the hosted sign-in page", async ({
+  page,
+}) => {
   // `App.tsx` redirects to Cognito Managed Login unless `authenticated`, so if
   // the seeded token store stopped satisfying `auth/oauth.ts` every spec below
   // would fail against a page that is not even served from this origin —
@@ -70,7 +73,9 @@ test("the header offers the three sections", async ({ page }) => {
   }
 });
 
-test("the home page lists the seeded character with its real counts", async ({ page }) => {
+test("the home page lists the seeded character with its real counts", async ({
+  page,
+}) => {
   await page.goto("/");
 
   await expect(page.getByText("Characters (1)")).toBeVisible();
@@ -105,7 +110,8 @@ test("nothing 5xxs, so no fixture is missing", async ({ page }) => {
   // was never captured is a failure here rather than a quietly empty screen.
   const failures: string[] = [];
   page.on("response", (response) => {
-    if (response.status() >= 500) failures.push(`${response.status()} ${response.url()}`);
+    if (response.status() >= 500)
+      failures.push(`${response.status()} ${response.url()}`);
   });
 
   await page.goto("/");
@@ -129,4 +135,57 @@ test("the captured listing still says 49 jpeg and 5 png", async ({ page }) => {
   expect(SEED.filter((n) => n.content_type === "image/png")).toHaveLength(5);
   expect(SEED.filter((n) => n.content_type === "image/jpeg")).toHaveLength(49);
   expect(SEED.filter((n) => n.name.endsWith(".png"))).toHaveLength(5);
+});
+
+/**
+ * **Back is not the breadcrumb**, and `PageBar` now carries both.
+ *
+ * A crumb goes UP — to the folder or the project. Back goes where you actually
+ * came from, and `?in=` makes those routinely different: a file opened from a
+ * feed has an "up" it has never visited. The arrow only appears when there is
+ * an entry to undo, because a cold share link's back leaves the app entirely.
+ *
+ * `exact: true` is not decoration: Playwright matches an accessible name as a
+ * case-insensitive SUBSTRING, and a character's body-angle stills are named
+ * "…back…", so a loose locator matches four tiles in the Recent grid and the
+ * test fails on a page that is behaving perfectly.
+ *
+ * **These must navigate in-app, never with a second `page.goto`.** A `goto` is
+ * a full document load, so React Router's `location.key` resets to `"default"`
+ * and the arrow correctly hides — a test written that way fails against a
+ * perfectly good implementation, which is exactly what happened while writing
+ * this one.
+ */
+test("a back arrow appears once there is somewhere to go back to", async ({
+  page,
+}) => {
+  stubOnly(
+    "the arrow is router state, and the stub feed is what makes the walk deterministic",
+  );
+  await page.goto("/");
+  await page.waitForLoadState("networkidle");
+
+  await expect(
+    page.getByRole("button", { name: "Back", exact: true }),
+  ).toHaveCount(0);
+
+  await page.getByText("jason", { exact: true }).first().click();
+  await page.waitForURL(/\/c\//);
+
+  const back = page.getByRole("button", { name: "Back", exact: true });
+  await expect(back).toBeVisible();
+
+  await back.click();
+  await expect.poll(async () => new URL(page.url()).pathname).toBe("/");
+});
+
+test("a cold link has no back arrow, because back would leave the app", async ({
+  page,
+}) => {
+  stubOnly("same feed");
+  await page.goto(`/c/${CHARACTER}`);
+  await page.waitForLoadState("networkidle");
+  await expect(
+    page.getByRole("button", { name: "Back", exact: true }),
+  ).toHaveCount(0);
 });

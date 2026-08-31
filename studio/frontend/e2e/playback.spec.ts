@@ -24,7 +24,15 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 
-import { CHARACTER, CLIP_ITEM, LIBRARY, STILL, TEXT_NODE, fixture, stubApi } from "./support/api";
+import {
+  CHARACTER,
+  CLIP_ITEM,
+  LIBRARY,
+  STILL,
+  TEXT_NODE,
+  fixture,
+  stubApi,
+} from "./support/api";
 import { signIn } from "./support/session";
 
 const LIVE = process.env.E2E_LIVE === "1";
@@ -80,17 +88,23 @@ async function stage(page: Page) {
   });
 }
 
-test("the object screen is a page in the app shell, not an overlay", async ({ page }) => {
+test("the object screen is a page in the app shell, not an overlay", async ({
+  page,
+}) => {
   stubOnly();
   await page.goto(at(CLIP_ITEM.id));
 
   // The three things that make it a page: the shell's own navigation above it,
   // a `PageBar` naming the file, and the neighbours drawn underneath rather
   // than scrolled through in the dark.
-  await expect(page.getByRole("navigation", { name: /sections/i }).first()).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: /sections/i }).first(),
+  ).toBeVisible();
   await expect(page.getByText(CLIP_ITEM.name).first()).toBeVisible();
   await expect(page.getByLabel("Neighbours")).toBeVisible();
-  await expect(page.getByRole("region", { name: "File details" })).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "File details" }),
+  ).toBeVisible();
 
   // `/o/<id>` was `fixed inset-x-0 z-50` over a black shell until Phase C. This
   // is that sentence as an assertion: nothing between the player and `<main>`
@@ -101,7 +115,8 @@ test("the object screen is a page in the app shell, not an overlay", async ({ pa
       (candidate) => !strip?.contains(candidate),
     ) as HTMLElement | null | undefined;
     while (element && element.tagName !== "MAIN") {
-      if (getComputedStyle(element).position === "fixed") return element.className;
+      if (getComputedStyle(element).position === "fixed")
+        return element.className;
       element = element.parentElement;
     }
     return null;
@@ -109,7 +124,9 @@ test("the object screen is a page in the app shell, not an overlay", async ({ pa
   expect(pinned).toBeNull();
 });
 
-test("a poster plays in place, and closing returns to it without navigating", async ({ page }) => {
+test("a poster plays in place, and closing returns to it without navigating", async ({
+  page,
+}) => {
   stubOnly();
   await page.goto(at(CLIP_ITEM.id));
 
@@ -127,8 +144,12 @@ test("a poster plays in place, and closing returns to it without navigating", as
   // arrived without H.264 — the bundled one has it, and this says so out loud
   // rather than reporting a mysteriously stalled player.
   await expect.poll(async () => (await stage(page))?.videoWidth).toBe(64);
-  await expect.poll(async () => (await stage(page))?.currentTime ?? 0).toBeGreaterThan(0);
-  await expect(page.getByRole("button", { name: /^(Play|Pause) \(space\)$/ })).toBeVisible();
+  await expect
+    .poll(async () => (await stage(page))?.currentTime ?? 0)
+    .toBeGreaterThan(0);
+  await expect(
+    page.getByRole("button", { name: /^(Play|Pause) \(space\)$/ }),
+  ).toBeVisible();
 
   // **The affordance studio never had.** Close is a return to the poster, in
   // the same box, at the same address — not a way out of a mode.
@@ -145,7 +166,9 @@ test("space and m reach the player from the page", async ({ page }) => {
   await page.goto(at(CLIP_ITEM.id));
   // The player hands its controls up on mount, so the keys are dead until the
   // poster is on screen — waiting for it is waiting for that.
-  await expect(page.getByRole("button", { name: `Play ${CLIP_ITEM.name}` })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: `Play ${CLIP_ITEM.name}` }),
+  ).toBeVisible();
 
   await page.keyboard.press(" ");
   await expect.poll(async () => (await stage(page))?.paused).toBe(false);
@@ -157,7 +180,9 @@ test("space and m reach the player from the page", async ({ page }) => {
   await expect.poll(async () => (await stage(page))?.paused).toBe(true);
 });
 
-test("prev and next walk the feed and rewrite the address rather than pushing", async ({ page }) => {
+test("prev and next walk the feed and rewrite the address rather than pushing", async ({
+  page,
+}) => {
   stubOnly();
   await page.goto(at(FEED[0]!.id));
   const entries = await page.evaluate(() => history.length);
@@ -181,7 +206,9 @@ test("stepping stops at both ends of the feed", async ({ page }) => {
   const last = FEED[FEED.length - 1]!;
 
   await page.goto(at(FEED[0]!.id));
-  await expect(page.getByRole("button", { name: "Previous (←)" })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Previous (←)" }),
+  ).toBeDisabled();
   await page.keyboard.press("ArrowLeft");
   // Long enough for a rewrite to have happened if one were coming: the address
   // is rewritten from an effect, in the tick after the keystroke.
@@ -195,7 +222,9 @@ test("stepping stops at both ends of the feed", async ({ page }) => {
   await expect(page).toHaveURL(at(last.id));
 });
 
-test("a cold link with no context shows the file and says what it belongs to", async ({ page }) => {
+test("a cold link with no context shows the file and says what it belongs to", async ({
+  page,
+}) => {
   stubOnly();
   // The share link's durable half: the id alone, with the `?in=` a browser
   // would have added stripped off.
@@ -220,7 +249,9 @@ test("a non-media node still opens the text page", async ({ page }) => {
   // frame, and Phase C moved the branch that decides which.
   await page.goto(`/o/${TEXT_NODE.id}`);
 
-  await expect(page.getByRole("dialog", { name: TEXT_NODE.name })).toBeVisible();
+  await expect(
+    page.getByRole("dialog", { name: TEXT_NODE.name }),
+  ).toBeVisible();
   await expect(page.getByText('"shot"')).toBeVisible();
   await expect(page.getByRole("button", { name: "Close (Esc)" })).toBeVisible();
 });
@@ -233,12 +264,15 @@ test("playing a clip sends no request off the origin", async ({ page }) => {
   const escaped: string[] = [];
   page.on("request", (request) => {
     const url = request.url();
-    if (!url.startsWith("http://localhost:4173") && !url.startsWith("data:")) escaped.push(url);
+    if (!url.startsWith("http://localhost:4173") && !url.startsWith("data:"))
+      escaped.push(url);
   });
 
   await page.goto(at(CLIP_ITEM.id));
   await page.getByRole("button", { name: `Play ${CLIP_ITEM.name}` }).click();
-  await expect.poll(async () => (await stage(page))?.currentTime ?? 0).toBeGreaterThan(0);
+  await expect
+    .poll(async () => (await stage(page))?.currentTime ?? 0)
+    .toBeGreaterThan(0);
   await page.waitForLoadState("networkidle");
 
   expect(escaped).toEqual([]);
@@ -265,7 +299,9 @@ for (const [label, width] of [
   ["desktop", 1280],
   ["mobile", 390],
 ] as const) {
-  test(`the page does not scroll horizontally at ${label}`, async ({ page }) => {
+  test(`the page does not scroll horizontally at ${label}`, async ({
+    page,
+  }) => {
     stubOnly();
     await page.setViewportSize({ width, height: 844 });
     await page.goto(at(CLIP_ITEM.id));
@@ -345,4 +381,34 @@ test("opening an object does not scroll the page, and the strip still centres", 
       }),
     )
     .toBeGreaterThan(0);
+});
+
+/**
+ * **The current tile's ring must not be clipped by its own scroller.**
+ *
+ * The filmstrip marks the current tile with `outline` + `outline-offset-2`, and
+ * an outline paints OUTSIDE the element's box. The strip had vertical padding
+ * and none horizontal, so `overflow-x-auto` sliced the ring off the first and
+ * last tiles — the two most often current, since a feed usually opens on its
+ * first item. Reported from a real screenshot, not caught by any assertion.
+ */
+test("the current tile's selection ring is not clipped", async ({ page }) => {
+  stubOnly();
+  await page.goto(at(CLIP_ITEM.id));
+  await page.waitForLoadState("networkidle");
+
+  // 2px offset + 2px stroke is the ring; anything less than 4 clips it.
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const strip = document.querySelector('[aria-label="Neighbours"]');
+        const tile = strip?.querySelector('[aria-current="true"]');
+        if (!strip || !tile) return -1;
+        return Math.round(
+          tile.getBoundingClientRect().left -
+            strip.getBoundingClientRect().left,
+        );
+      }),
+    )
+    .toBeGreaterThanOrEqual(4);
 });

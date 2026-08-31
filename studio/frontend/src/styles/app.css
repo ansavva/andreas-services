@@ -98,16 +98,30 @@
   --color-muted: var(--color-neutral-11);
   --color-line: var(--color-neutral-a5);
 
-  --color-primary: #5b9dff;
+  /* **The accent is the top of the ramp, not a hue.** It was #5b9dff, the one
+     saturated colour in a near-monochrome app, and on a wall of generated media
+     a blue focus ring and a blue selected-tile outline read as part of the
+     picture rather than as chrome. White is also Replicate's own posture: the
+     primary button is near-white with dark text on it.
+
+     Pointed at `neutral-12` rather than literal #fff so the accent, `ink` and
+     `brand` move together if the ramp is ever re-valued. `--color-primary-text`
+     is `neutral-1`, which is dark ON this fill — measured 16.28:1. */
+  --color-primary: var(--color-neutral-12);
   --color-primary-text: var(--color-neutral-1);
-  --color-accent: #5b9dff;
+  --color-accent: var(--color-neutral-12);
   --color-success: #39b17e;
   --color-warning: #d2a857;
   --color-danger: #e27f79;
 
-  --color-primary-hover: color-mix(in srgb, var(--color-primary) 88%, white 12%);
-  --color-primary-active: color-mix(in srgb, var(--color-primary) 84%, black 16%);
-  --color-accent-hover: color-mix(in srgb, var(--color-accent) 88%, white 12%);
+  /* **Hover DIMS, because the accent is already the brightest thing there is.**
+     These read `88%, white 12%` when the accent was blue. Mixing white into
+     white is white, so the hover state resolved identical to the rest state and
+     the affordance would have disappeared silently — nothing would have failed.
+     Both now mix toward black, and `active` goes further than `hover`. */
+  --color-primary-hover: color-mix(in srgb, var(--color-primary) 88%, black 12%);
+  --color-primary-active: color-mix(in srgb, var(--color-primary) 76%, black 24%);
+  --color-accent-hover: color-mix(in srgb, var(--color-accent) 88%, black 12%);
   --color-danger-hover: color-mix(in srgb, var(--color-danger) 88%, white 12%);
 
   /* Near-square, in Replicate's range. The design system's own `sm/md/lg` are
@@ -121,9 +135,15 @@
      corner here — that is the floor of the range agreeing with itself, not an
      oversight, and `rounded-xs` is the one to write when the intent is
      "as square as the scale goes". */
-  --radius-sm: 0.125rem;
-  --radius-md: 0.25rem;
-  --radius-lg: 0.375rem;
+  /* Measured, not guessed: at these values the search field and the account
+     menu both computed to 4px, which on a 2x display reads as a visibly
+     rounded corner. Replicate's own chrome sits at 0 and 2px, so this drops to
+     match it — square for the small stuff, a 2px hint on the large surfaces
+     (menus, popovers) so an overlay still has an edge against what is behind
+     it. `--radius-pill` is untouched; a pill is a shape, not a corner. */
+  --radius-sm: 0px;
+  --radius-md: 0.125rem;
+  --radius-lg: 0.125rem;
 }
 
 [data-theme='dark'] {
@@ -160,16 +180,30 @@
   --color-muted: var(--color-neutral-11);
   --color-line: var(--color-neutral-a5);
 
-  --color-primary: #5b9dff;
+  /* **The accent is the top of the ramp, not a hue.** It was #5b9dff, the one
+     saturated colour in a near-monochrome app, and on a wall of generated media
+     a blue focus ring and a blue selected-tile outline read as part of the
+     picture rather than as chrome. White is also Replicate's own posture: the
+     primary button is near-white with dark text on it.
+
+     Pointed at `neutral-12` rather than literal #fff so the accent, `ink` and
+     `brand` move together if the ramp is ever re-valued. `--color-primary-text`
+     is `neutral-1`, which is dark ON this fill — measured 16.28:1. */
+  --color-primary: var(--color-neutral-12);
   --color-primary-text: var(--color-neutral-1);
-  --color-accent: #5b9dff;
+  --color-accent: var(--color-neutral-12);
   --color-success: #39b17e;
   --color-warning: #d2a857;
   --color-danger: #e27f79;
 
-  --color-primary-hover: color-mix(in srgb, var(--color-primary) 88%, white 12%);
-  --color-primary-active: color-mix(in srgb, var(--color-primary) 84%, black 16%);
-  --color-accent-hover: color-mix(in srgb, var(--color-accent) 88%, white 12%);
+  /* **Hover DIMS, because the accent is already the brightest thing there is.**
+     These read `88%, white 12%` when the accent was blue. Mixing white into
+     white is white, so the hover state resolved identical to the rest state and
+     the affordance would have disappeared silently — nothing would have failed.
+     Both now mix toward black, and `active` goes further than `hover`. */
+  --color-primary-hover: color-mix(in srgb, var(--color-primary) 88%, black 12%);
+  --color-primary-active: color-mix(in srgb, var(--color-primary) 76%, black 24%);
+  --color-accent-hover: color-mix(in srgb, var(--color-accent) 88%, black 12%);
   --color-danger-hover: color-mix(in srgb, var(--color-danger) 88%, white 12%);
 }
 

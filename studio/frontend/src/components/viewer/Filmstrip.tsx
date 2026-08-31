@@ -37,7 +37,14 @@ interface Props {
  * The arrows are the same step Left/Right take, which is deliberate: a keyboard
  * shortcut nothing on screen mirrors is a shortcut nobody finds.
  */
-export function Filmstrip({ items, currentId, loading = false, onSelect, onPrev, onNext }: Props) {
+export function Filmstrip({
+  items,
+  currentId,
+  loading = false,
+  onSelect,
+  onPrev,
+  onNext,
+}: Props) {
   const strip = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -58,11 +65,15 @@ export function Filmstrip({ items, currentId, loading = false, onSelect, onPrev,
     // ancestor happens to be positioned.
     const tileBox = tile.getBoundingClientRect();
     const stripBox = el.getBoundingClientRect();
-    const left = el.scrollLeft + (tileBox.left - stripBox.left) - (el.clientWidth - tileBox.width) / 2;
+    const left =
+      el.scrollLeft +
+      (tileBox.left - stripBox.left) -
+      (el.clientWidth - tileBox.width) / 2;
 
     // jsdom implements neither, and this is decoration — the strip is correct
     // whether or not it scrolls itself.
-    if (typeof el.scrollTo === "function") el.scrollTo({ left, behavior: "smooth" });
+    if (typeof el.scrollTo === "function")
+      el.scrollTo({ left, behavior: "smooth" });
     else el.scrollLeft = left;
   }, [currentId]);
 
@@ -73,14 +84,25 @@ export function Filmstrip({ items, currentId, loading = false, onSelect, onPrev,
 
   return (
     <div className="flex items-center gap-1">
-      <IconButton label="Previous (←)" size="sm" disabled={!onPrev} onClick={() => onPrev?.()}>
+      <IconButton
+        label="Previous (←)"
+        size="sm"
+        disabled={!onPrev}
+        onClick={() => onPrev?.()}
+      >
         <ChevronDownIcon className={`${CHEVRON} rotate-90`} />
       </IconButton>
 
       <div
         ref={strip}
         aria-label="Neighbours"
-        className="no-scrollbar flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-1"
+        /* `p-1.5` rather than `py-1`, and the horizontal half is load-bearing.
+            The current tile marks itself with `outline` + `outline-offset-2`,
+            and an outline paints OUTSIDE the element's box — so with no
+            horizontal padding the scroller clipped the ring off the first and
+            last tiles, which are exactly the ones most often current. 6px
+            clears the 2px offset plus the 2px stroke with room to spare. */
+        className="no-scrollbar flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto p-1.5"
       >
         {items.map((item) => {
           const current = item.id === currentId;
@@ -126,7 +148,12 @@ export function Filmstrip({ items, currentId, loading = false, onSelect, onPrev,
         )}
       </div>
 
-      <IconButton label="Next (→)" size="sm" disabled={!onNext} onClick={() => onNext?.()}>
+      <IconButton
+        label="Next (→)"
+        size="sm"
+        disabled={!onNext}
+        onClick={() => onNext?.()}
+      >
         <ChevronDownIcon className={`${CHEVRON} -rotate-90`} />
       </IconButton>
     </div>

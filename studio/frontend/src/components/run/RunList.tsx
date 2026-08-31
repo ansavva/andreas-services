@@ -22,7 +22,10 @@ import { formatCost } from "../../utils/cost";
  * **Chrome is the caller's.** Filters, paging, empty states and headings differ
  * by screen and belong to the screen; what a RUN looks like does not.
  */
-export const STATUS_INTENT: Record<RunStatus, "neutral" | "success" | "danger" | "warning"> = {
+export const STATUS_INTENT: Record<
+  RunStatus,
+  "neutral" | "success" | "danger" | "warning"
+> = {
   // Unsubmitted. `approved` is a warning rather than a success on purpose: it
   // means money is about to be spent and has not been yet, which is a state
   // worth noticing rather than a job well done.
@@ -85,9 +88,19 @@ export function RunList({
               no thumbnails at all draws neither, rather than a row of empty
               squares. */}
           {(run.thumb || run.kind) && (
-            <span className="size-14 shrink-0 overflow-hidden rounded-none border border-line bg-surface-alt">
+            <span className="size-20 shrink-0 overflow-hidden rounded-none border border-line bg-surface-alt">
               {run.thumb ? (
-                <MediaThumb nodeId={run.thumb.node} url={run.thumb.url} name="" aspect="auto" />
+                // `isVideo` is not optional here even though its default is
+                // `false`: a video run's first output is an `.mp4`, and without
+                // this the row rendered it through `<img>` and drew a broken
+                // image. `run.kind` has said which it is all along.
+                <MediaThumb
+                  nodeId={run.thumb.node}
+                  url={run.thumb.url}
+                  name=""
+                  aspect="auto"
+                  isVideo={run.kind === "video"}
+                />
               ) : (
                 <span className="flex h-full w-full items-center justify-center text-xs text-muted">
                   {run.kind as RunKind}
@@ -106,7 +119,11 @@ export function RunList({
               {run.created ? formatDate(run.created) : run.id}
             </Text>
             {run.model && (
-              <Text variant="caption" tone="muted" className="block truncate font-mono">
+              <Text
+                variant="caption"
+                tone="muted"
+                className="block truncate font-mono"
+              >
                 {run.model}
               </Text>
             )}
@@ -127,7 +144,11 @@ export function RunList({
               Replicate's prediction metrics differ by model, and a number this
               app worked out itself would be a guess wearing a currency sign. */}
           {run.cost !== undefined && (
-            <Text variant="caption" tone="muted" className="w-20 shrink-0 text-right font-mono tabular-nums">
+            <Text
+              variant="caption"
+              tone="muted"
+              className="w-20 shrink-0 text-right font-mono tabular-nums"
+            >
               {formatCost(run.cost, "—")}
             </Text>
           )}

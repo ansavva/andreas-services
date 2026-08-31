@@ -4,35 +4,35 @@
       "lightMode": {
         "hover": {
           "backgroundColor": "222222ff",
-          "borderColor": "6fa9ffff",
-          "textColor": "6fa9ffff"
+          "borderColor": "d1d1d1ff",
+          "textColor": "d1d1d1ff"
         },
         "defaults": {
           "backgroundColor": "191919ff",
-          "borderColor": "5b9dffff",
-          "textColor": "5b9dffff"
+          "borderColor": "eeeeeeff",
+          "textColor": "eeeeeeff"
         },
         "active": {
           "backgroundColor": "222222ff",
-          "borderColor": "4c84d6ff",
-          "textColor": "4c84d6ff"
+          "borderColor": "b5b5b5ff",
+          "textColor": "b5b5b5ff"
         }
       },
       "darkMode": {
         "hover": {
           "backgroundColor": "222222ff",
-          "borderColor": "6fa9ffff",
-          "textColor": "6fa9ffff"
+          "borderColor": "d1d1d1ff",
+          "textColor": "d1d1d1ff"
         },
         "defaults": {
           "backgroundColor": "191919ff",
-          "borderColor": "5b9dffff",
-          "textColor": "5b9dffff"
+          "borderColor": "eeeeeeff",
+          "textColor": "eeeeeeff"
         },
         "active": {
           "backgroundColor": "222222ff",
-          "borderColor": "4c84d6ff",
-          "textColor": "4c84d6ff"
+          "borderColor": "b5b5b5ff",
+          "textColor": "b5b5b5ff"
         }
       }
     },
@@ -106,15 +106,15 @@
     "primaryButton": {
       "lightMode": {
         "hover": {
-          "backgroundColor": "6fa9ffff",
+          "backgroundColor": "d1d1d1ff",
           "textColor": "111111ff"
         },
         "defaults": {
-          "backgroundColor": "5b9dffff",
+          "backgroundColor": "eeeeeeff",
           "textColor": "111111ff"
         },
         "active": {
-          "backgroundColor": "4c84d6ff",
+          "backgroundColor": "b5b5b5ff",
           "textColor": "111111ff"
         },
         "disabled": {
@@ -124,15 +124,15 @@
       },
       "darkMode": {
         "hover": {
-          "backgroundColor": "6fa9ffff",
+          "backgroundColor": "d1d1d1ff",
           "textColor": "111111ff"
         },
         "defaults": {
-          "backgroundColor": "5b9dffff",
+          "backgroundColor": "eeeeeeff",
           "textColor": "111111ff"
         },
         "active": {
-          "backgroundColor": "4c84d6ff",
+          "backgroundColor": "b5b5b5ff",
           "textColor": "111111ff"
         },
         "disabled": {
@@ -236,7 +236,7 @@
         },
         "match": {
           "itemBackgroundColor": "414d5cff",
-          "itemTextColor": "5b9dffff"
+          "itemTextColor": "eeeeeeff"
         }
       },
       "borderRadius": 8,
@@ -251,7 +251,7 @@
         },
         "match": {
           "itemBackgroundColor": "d1d5dbff",
-          "itemTextColor": "5b9dffff"
+          "itemTextColor": "eeeeeeff"
         }
       }
     },
@@ -290,7 +290,7 @@
           "borderColor": "ffffff22"
         },
         "selected": {
-          "backgroundColor": "5b9dffff",
+          "backgroundColor": "eeeeeeff",
           "foregroundColor": "111111ff"
         }
       },
@@ -300,7 +300,7 @@
           "borderColor": "ffffff22"
         },
         "selected": {
-          "backgroundColor": "5b9dffff",
+          "backgroundColor": "eeeeeeff",
           "foregroundColor": "111111ff"
         }
       }
@@ -362,10 +362,10 @@
     },
     "focusState": {
       "lightMode": {
-        "borderColor": "5b9dffff"
+        "borderColor": "eeeeeeff"
       },
       "darkMode": {
-        "borderColor": "5b9dffff"
+        "borderColor": "eeeeeeff"
       }
     },
     "inputLabel": {
@@ -379,18 +379,18 @@
     "link": {
       "lightMode": {
         "hover": {
-          "textColor": "6fa9ffff"
+          "textColor": "d1d1d1ff"
         },
         "defaults": {
-          "textColor": "5b9dffff"
+          "textColor": "eeeeeeff"
         }
       },
       "darkMode": {
         "hover": {
-          "textColor": "6fa9ffff"
+          "textColor": "d1d1d1ff"
         },
         "defaults": {
-          "textColor": "5b9dffff"
+          "textColor": "eeeeeeff"
         }
       }
     }
