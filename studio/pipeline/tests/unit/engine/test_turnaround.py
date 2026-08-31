@@ -579,6 +579,19 @@ def _seed_pool(fake, library, *names: str):
             for name in names]
 
 
+def _seed_subfolder(fake, library, folder: str, *names: str):
+    """Put image nodes one level down in `seed/<folder>/` and return their ids.
+
+    A seed pool is a tree as soon as anyone files it — `original/`, `restored/`,
+    a folder per age. `_seed_pool` builds the loose-in-the-root case; this
+    builds the filed one, which is what a shoot could not see.
+    """
+    seed = fake._child(library.character_root, "seed")
+    child = fake._create_node(seed["id"], folder, "folder")
+    return [fake.put_file(child["id"], name, b"webp-" + name.encode())["id"]
+            for name in names]
+
+
 def test_missing_plates_point_at_dev_setup(library, spec):
     with pytest.raises(TURN.TurnaroundError, match="dev-setup"):
         TURN.check_angles(spec["angles"])
@@ -647,6 +660,77 @@ def test_seed_pick_rejects_a_file_that_is_not_there(library):
     with pytest.raises(TURN.TurnaroundError, match="not in"):
         TURN.identity_nodes("subject-a", "seed", None, None,
                              seed_pick="nope.webp")
+
+
+def test_seed_identity_sees_files_filed_in_subfolders(library):
+    """A filed seed photograph was absent from the pool, not refused.
+
+    `_seed_nodes` read the pool ROOT, so tidying `seed/` into subfolders removed
+    every photograph in them from a shoot's view — silently, which is worse than
+    an error: the shoot went on resolving identity from whatever was still loose
+    in the root and reported nothing wrong.
+    """
+    loose, = _seed_pool(library.fake, library, "subject-a_1.webp")
+    filed = _seed_subfolder(library.fake, library, "restored",
+                            "subject-a_9.webp")
+    nodes, source = TURN.identity_nodes("subject-a", "seed", None, None, limit=4)
+    assert source == "seed"
+    assert set(nodes) == {loose, *filed}
+
+
+def test_seed_pick_names_a_file_by_its_subfolder_path(library):
+    _seed_pool(library.fake, library, "subject-a_1.webp")
+    filed, = _seed_subfolder(library.fake, library, "restored",
+                             "subject-a_9.webp")
+    nodes, _ = TURN.identity_nodes("subject-a", "seed", None, None, limit=4,
+                                    seed_pick="restored/subject-a_9.webp")
+    assert nodes == [filed]
+
+
+def test_seed_pick_takes_a_subfolder_file_by_bare_name_when_unambiguous(library):
+    """The path is the unambiguous spelling; a bare name still works alone.
+
+    A person reading `character pool <name> seed --group restored` types what
+    they see, and refusing that when exactly one file answers to it would be
+    pedantry rather than safety.
+    """
+    filed, = _seed_subfolder(library.fake, library, "restored",
+                             "subject-a_9.webp")
+    nodes, _ = TURN.identity_nodes("subject-a", "seed", None, None, limit=4,
+                                    seed_pick="subject-a_9")
+    assert nodes == [filed]
+
+
+def test_seed_pick_refuses_a_basename_two_folders_share(library):
+    """Sort order must not decide which photograph carries an identity.
+
+    Two folders holding a `front.webp` is ordinary — an original and its
+    restoration keep the same name. Resolving to whichever the walk reached
+    first would pick one silently, which is the mistake `_too_many` exists to
+    prevent one level up.
+    """
+    _seed_subfolder(library.fake, library, "original", "front.webp")
+    _seed_subfolder(library.fake, library, "restored", "front.webp")
+    with pytest.raises(TURN.TurnaroundError) as exc:
+        TURN.identity_nodes("subject-a", "seed", None, None, limit=4,
+                             seed_pick="front.webp")
+    assert "original/front.webp" in str(exc.value)
+    assert "restored/front.webp" in str(exc.value)
+
+
+def test_an_oversized_seed_pool_lists_files_by_their_path(library):
+    """A refusal a person cannot type back is not a choice.
+
+    `_label` prints the pool-relative path for seed entries so the names in the
+    listing are exactly the ones `--seed-pick` accepts.
+    """
+    _seed_pool(library.fake, library, "subject-a_1.webp")
+    _seed_subfolder(library.fake, library, "restored",
+                    "subject-a_9.webp", "subject-a_10.webp")
+    with pytest.raises(TURN.TurnaroundError) as exc:
+        TURN.identity_nodes("subject-a", "seed", None, None, limit=2)
+    assert "restored/subject-a_9.webp" in str(exc.value)
+    assert "subject-a_1.webp" in str(exc.value)
 
 
 def test_citations_match_where_the_plate_actually_lands(library, spec):

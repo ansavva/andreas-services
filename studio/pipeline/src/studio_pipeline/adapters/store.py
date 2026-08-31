@@ -445,6 +445,42 @@ def files_of(node_id: str) -> list[dict]:
     )
 
 
+def walk_files_of(node_id: str) -> list[dict]:
+    """Every file node beneath a folder, each carrying its path RELATIVE to it.
+
+    The id-addressed twin of `walk_files`, and it returns entries where that
+    returns name paths, for the reason `files` gives: a caller that has walked a
+    subtree wants `id` to bind the image and a name to print it. The relative
+    path is added as `path` — `restored/IMG_1082.jpg` for a file one folder
+    down, and the bare basename for one sitting in the root — because a subtree
+    can hold two files of the same name and a refusal that printed only the
+    basename would be asking a person to choose between two identical lines.
+
+    Depth-first, natural order per level, folders after the files beside them,
+    so the root's own images come first: they are the ones a caller named
+    without knowing there were subfolders at all.
+
+    **One request per folder**, as `walk_files` explains — the catalog has no
+    prefix scan. A pool is a handful of folders, so that is a handful of
+    requests; anything reading ONE folder should use `files_of`.
+    """
+    found: list[dict] = []
+
+    def descend(parent: str, prefix: str) -> None:
+        entries = children_of(parent)
+        for entry in sorted((e for e in entries
+                             if e.get("kind") == "file" and e.get("name")),
+                            key=lambda e: natural_key(e["name"])):
+            found.append({**entry, "path": prefix + entry["name"]})
+        for entry in sorted((e for e in entries
+                             if e.get("kind") == "folder" and e.get("name")),
+                            key=lambda e: natural_key(e["name"])):
+            descend(entry["id"], f"{prefix}{entry['name']}/")
+
+    descend(node_id, "")
+    return found
+
+
 def child(parent_id: str, name: str) -> dict | None:
     """The child of a folder with this name, or None.
 
