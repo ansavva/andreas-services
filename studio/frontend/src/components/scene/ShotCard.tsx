@@ -3,13 +3,12 @@ import { useState } from "react";
 import { Badge, Button, Tabs, Text } from "@ansavva/design-system";
 
 import type { RunAsset, Shot, ShotRun } from "../../types";
-import { Prompt } from "../run/RunPlan";
 import { OutputPanel } from "../media/OutputPanel";
 import {
+  MotionFields,
   MotionEditor,
   draftOf,
   draftToShot,
-  parsePrompt,
   type Draft,
 } from "./motionPrompt";
 import { Sends } from "./Sends";
@@ -148,19 +147,6 @@ export function ShotCard({
         {!shot.run && !shot.status && (
           <Badge intent="warning">not rendered</Badge>
         )}
-        {!editing && (
-          <Button
-            intent="ghost"
-            size="sm"
-            onClick={() => {
-              setDraft(draftOf(shot));
-              setSaveError(null);
-              setEditing(true);
-            }}
-          >
-            Edit
-          </Button>
-        )}
       </div>
 
       {/* **A shot is a small run screen.** Its own inputs on the left, its
@@ -275,14 +261,32 @@ export function ShotCard({
                       error={saveError}
                     />
                   ) : (
-                    // The run screen's own renderer, not a second one. A
-                    // shot's `motion.prompt` IS a compiled prompt document —
-                    // the same artifact a run's plan carries — and drawing it
-                    // as a Subject / Action / Style list here while the run
-                    // drew the document made one thing look like two.
-                    <Prompt
-                      prompt={parsePrompt(motion.prompt) ?? motion.prompt}
-                    />
+                    // Fields, not JSON — and the RUN screen agrees now, which
+                    // is the direction this converged in the end. It is
+                    // studio's own document with a schema `studio prompt`
+                    // validates, so escaped JSON is neither what a person reads
+                    // nor what they edit.
+                    <div className="flex flex-col gap-2">
+                      <MotionFields motion={motion} />
+                      {/* **Beside what it edits, not up on the title row.** It
+                          sat at the far end of the shot's header, three badges
+                          away from the prompt it opens — so on a wide card the
+                          button and its subject were opposite corners, and it
+                          read as an action on the whole shot. */}
+                      <div className="flex">
+                        <Button
+                          intent="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setDraft(draftOf(shot));
+                            setSaveError(null);
+                            setEditing(true);
+                          }}
+                        >
+                          Edit the prompt
+                        </Button>
+                      </div>
+                    </div>
                   ))}
               </div>
             </Tabs.Panel>
