@@ -483,7 +483,7 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
             disabled={hereId === null}
             aria-label="New folder"
             title="New folder"
-            className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
+            className="shrink-0 rounded-none p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
                        disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent
                        focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
@@ -531,7 +531,7 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
             if (event.key === "Escape") setNewFolder(null);
           }}
           aria-label="New folder"
-          className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-card p-3"
+          className="flex flex-wrap items-center gap-2 rounded-none border border-line bg-card p-3"
         >
           <Text variant="caption" tone="muted">
             New folder in {prefix ?? "…"}
@@ -591,8 +591,8 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
           `result.json` files then had no bar at all, and "Select all" under a
           heading that says "Photos" would now also take the text files. */}
         {selection.count > 0 && (
-          <div className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-card px-3 py-2">
-            <Text variant="caption" tone="muted" className="tabular-nums">
+          <div className="flex flex-wrap items-center gap-2 rounded-none border border-line bg-card px-3 py-2">
+            <Text variant="caption" tone="muted" className="font-mono tabular-nums">
               {selection.count} of {files.length} selected
             </Text>
 
@@ -621,7 +621,7 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
               }
               aria-label={`Copy ${selectedNoun("file", "files")} to…`}
               title={`Copy ${selectedNoun("file", "files")} to…`}
-              className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
+              className="shrink-0 rounded-none p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
                          focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               {/* Two sheets, one behind the other: the source stays, which is
@@ -640,7 +640,7 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
               }
               aria-label={`Move ${selectedNoun("file", "files")}`}
               title={`Move ${selectedNoun("file", "files")}`}
-              className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
+              className="shrink-0 rounded-none p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
                          focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               {/* A folder with something going into it — the destination is

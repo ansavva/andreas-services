@@ -52,7 +52,7 @@ export function Sends({
   const assets = shot.motion?.reference_assets ?? [];
 
   return (
-    <section className="flex flex-col gap-3 rounded-md border border-line p-2">
+    <section className="flex flex-col gap-3 rounded-none border border-line p-2">
       <SendRow label="Start">
         {handoff?.frame ? (
           <Frame
@@ -155,7 +155,7 @@ export function isBracketed(shots: Shot[]): boolean {
 export function Slot({ note }: { note: string }) {
   return (
     <span
-      className="flex aspect-[3/4] w-20 shrink-0 items-center justify-center rounded-md
+      className="flex aspect-[3/4] w-20 shrink-0 items-center justify-center rounded-none
                  border border-dashed border-line bg-surface-alt p-1 text-center"
     >
       <Text variant="caption" tone="muted">
@@ -238,13 +238,13 @@ export function Frame({
       name={asset.name}
       isVideo={isVideo}
       aspect="portrait"
-      className="w-24 rounded-md border border-line"
+      className="w-24 rounded-none border border-line"
     />
   ) : (
     // A planned-but-unrendered panel is the normal state of a board, not an
     // error, so it draws as a dashed frame carrying its prompt.
     <span
-      className="flex aspect-[3/4] w-24 items-center justify-center overflow-hidden rounded-md
+      className="flex aspect-[3/4] w-24 items-center justify-center overflow-hidden rounded-none
                  border border-dashed border-line bg-surface-alt p-1 text-center"
     >
       <Text variant="caption" tone="muted" className="line-clamp-4">

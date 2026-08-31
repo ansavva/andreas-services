@@ -2,6 +2,15 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "studio",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": [
+        "-c",
+        "exec ./studio/scripts/dev-up.sh"
+      ],
+      "port": 5173
+    },
+    {
       "name": "website",
       "runtimeExecutable": "/bin/sh",
       "runtimeArgs": [
@@ -13,7 +22,12 @@
     {
       "name": "humbugg-marketing",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "humbugg/marketing", "run", "dev"],
+      "runtimeArgs": [
+        "--prefix",
+        "humbugg/marketing",
+        "run",
+        "dev"
+      ],
       "port": 5173
     },
     {

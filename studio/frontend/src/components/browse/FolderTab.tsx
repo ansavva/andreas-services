@@ -143,7 +143,7 @@ function FolderChip({
       type="button"
       onClick={onClick}
       aria-current={active ? "true" : undefined}
-      className={`shrink-0 snap-start rounded-full border px-3 py-1 font-body text-sm transition-colors
+      className={`shrink-0 snap-start rounded-none border px-3 py-1 font-body text-sm transition-colors
                   focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                     active
                       ? "border-primary bg-primary text-primary-text"

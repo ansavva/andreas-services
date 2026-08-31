@@ -50,9 +50,10 @@ interface Props {
  *   left live behind a closed menu.
  *
  * A `Dropdown` is absolutely positioned inside its own relative wrapper rather
- * than portalled, which is why this is safe on rows the way a `Dialog` would not
- * be — and it is still only used on the browse page. The viewer chrome keeps its
- * inline controls, because that bar is often inside a fullscreen element.
+ * than portalled, so it needs nothing from the design system's `container` prop
+ * and never did. It stays a browse-page control because a menu is the answer to
+ * "four icons on every row", which is a listing's problem and not the object
+ * screen's — that screen has one file and room to name its actions.
  */
 export function ItemActions({
   name,

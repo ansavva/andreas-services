@@ -12,7 +12,7 @@ import { ProjectPage } from "./pages/ProjectPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { RunPage } from "./pages/RunPage";
 import { ScenePage } from "./pages/ScenePage";
-import { ViewerPage } from "./pages/ViewerPage";
+import { ObjectPage } from "./pages/ObjectPage";
 
 /**
  * Every route that names a thing names it by id. One does not: the address
@@ -32,7 +32,7 @@ import { ViewerPage } from "./pages/ViewerPage";
  * /s/<scene_id>           scene
  * /m/<movie_id>           movie
  * /f          /f/<id>     the folder browser: the library root, or one folder
- * /o/<id>     /o?in=…     the viewer: one file, among whatever `?in=` names
+ * /o/<id>     /o?in=…     one file, open, among whatever `?in=` names
  * /auth/callback          where Cognito Managed Login returns with ?code=
  * ```
  *
@@ -81,11 +81,12 @@ export function StudioRoutes() {
         <Route path="/f" element={<BrowsePage />} />
         <Route path="/f/:nodeId" element={<BrowsePage />} />
 
-        {/* The viewer is its own screen now. `/o` with no id opens a feed at
-            its first frame — see `feedPath` — and the address gains the id as
-            soon as the first pane settles. */}
-        <Route path="/o" element={<ViewerPage />} />
-        <Route path="/o/:nodeId" element={<ViewerPage />} />
+        {/* One file, open, and an ordinary page inside the layout above — it
+            was a `fixed inset-x-0 z-50` reel until Phase C. `/o` with no id
+            opens a feed at its first file (see `feedPath`) and the address
+            gains the id as soon as that file resolves. */}
+        <Route path="/o" element={<ObjectPage />} />
+        <Route path="/o/:nodeId" element={<ObjectPage />} />
       </Route>
 
       {/* **Above the catch-all, and it has to be.** Cognito returns to this

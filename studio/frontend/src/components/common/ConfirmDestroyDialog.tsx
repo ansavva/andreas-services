@@ -34,9 +34,13 @@ interface Props {
  * earns its friction honestly: the word cannot be guessed from muscle memory,
  * and getting it requires reading the sentence that says what is about to go.
  *
- * **This is not a replacement for the armed button** — the viewer keeps that
- * one, because a portalled dialog is not painted while a `<video>` is in native
- * fullscreen, which is where deleting a clip most often happens.
+ * **This is not a replacement for the armed button**, and the reason changed
+ * under it. It used to be that a portalled dialog is not painted while a
+ * `<video>` is in native fullscreen, so the viewer could not have had one; the
+ * design system's `container` prop (0.16.0) settles that, and both `Dialog` and
+ * `AlertDialog` will paint inside a fullscreen element if handed it. What is
+ * left is the argument about cost: one file is an armed button, a cascade is a
+ * typed word.
  */
 export function ConfirmDestroyDialog({
   label,
@@ -87,7 +91,7 @@ export function ConfirmDestroyDialog({
       <AlertDialog.Trigger
         className={buttonClass({
           size: "sm",
-          className: `bg-danger text-white hover:bg-danger-hover ${className ?? ""}`,
+          className: `bg-danger text-primary-text hover:bg-danger-hover ${className ?? ""}`,
         })}
       >
         {label}
@@ -115,7 +119,7 @@ export function ConfirmDestroyDialog({
           <Button
             size="sm"
             disabled={!armed || busy}
-            className="bg-danger text-white hover:bg-danger-hover"
+            className="bg-danger text-primary-text hover:bg-danger-hover"
             onClick={() => void run()}
           >
             {busy ? "Deleting…" : label}

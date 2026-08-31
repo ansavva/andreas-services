@@ -74,7 +74,7 @@ export function RunPlan({
       {run.plan && Object.keys(run.plan.params).length > 0 && (
         <div className="flex flex-wrap gap-2">
           {Object.entries(run.plan.params).map(([key, value]) => (
-            <span key={key} className="rounded-md border border-line bg-card px-2 py-1">
+            <span key={key} className="rounded-none border border-line bg-card px-2 py-1">
               <Text variant="caption" tone="muted">
                 {key}
               </Text>{" "}
@@ -112,7 +112,7 @@ function Sends({ sends, onView }: { sends: RunSend[]; onView: (a: RunAsset) => v
   const rest = sends.filter((send) => !["start", "end"].includes(send.role ?? ""));
 
   return (
-    <div className="flex flex-col gap-3 rounded-md border border-line p-2">
+    <div className="flex flex-col gap-3 rounded-none border border-line p-2">
       {start.length > 0 && (
         <SendRow label="Start frame">
           {start.map((send) => (
@@ -188,7 +188,7 @@ function Prompt({ prompt }: { prompt: unknown }) {
     // prose, and at 390px an unwrapped one runs off the right edge and has to be
     // scrolled sideways a line at a time. A structured prompt keeps its
     // indentation, which is what `pre-wrap` preserves and `normal` would not.
-    <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-line bg-card p-3 font-mono text-xs leading-relaxed text-ink">
+    <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-none border border-line bg-card p-3 font-mono text-xs leading-relaxed text-ink">
       <code>{formatTextContent(text, typeof prompt === "string" ? "text" : "json")}</code>
     </pre>
   );
@@ -236,7 +236,7 @@ export function ApproveBar({
   }
 
   return (
-    <section className="flex flex-col gap-2 rounded-md border border-line bg-card p-3">
+    <section className="flex flex-col gap-2 rounded-none border border-line bg-card p-3">
       {error && (
         <Alert.Root intent="danger">
           <Alert.Title>That did not work</Alert.Title>
@@ -349,7 +349,7 @@ export function InFlightBar({
   }
 
   return (
-    <section className="flex flex-col gap-2 rounded-md border border-line bg-card p-3">
+    <section className="flex flex-col gap-2 rounded-none border border-line bg-card p-3">
       {error && (
         <Alert.Root intent="danger">
           <Alert.Title>That did not work</Alert.Title>

@@ -42,10 +42,12 @@ export function AppHeader() {
     // media scrolling under a frosted bar reads as a rendering fault on a grid
     // of dark frames.
     <header className="sticky top-0 z-30 border-b border-line bg-bg">
-      <div className="mx-auto flex w-full max-w-7xl items-center gap-2 px-4 py-2 sm:gap-3 sm:px-6">
+      {/* `py-3` is half a 24px line, so the bar's own height lands on the
+          baseline the content column is spaced by. */}
+      <div className="mx-auto flex w-full max-w-7xl items-center gap-2 px-4 py-3 sm:gap-3 sm:px-6">
         <NavLink
           to={HOME_PATH}
-          className="shrink-0 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2
+          className="shrink-0 rounded-none focus-visible:outline-2 focus-visible:outline-offset-2
                      focus-visible:outline-primary"
         >
           <Text variant="title">Studio</Text>
@@ -75,7 +77,7 @@ export function AppHeader() {
         <AccountMenu email={email} onSignOut={() => void logout()} />
       </div>
 
-      <nav aria-label="Sections" className="px-4 pb-2 sm:hidden">
+      <nav aria-label="Sections" className="px-4 pb-3 sm:hidden">
         <ChipRow>
           {DESTINATIONS.map((each) => (
             <HeaderLink key={each.to} {...each} chip />
@@ -98,13 +100,23 @@ const DESTINATIONS = [
   { to: folderPath(null), label: "Files" },
 ];
 
+/**
+ * Square, both forms.
+ *
+ * The chip was a pill and the desktop link was a rounded box, which made the
+ * same three destinations read as two different kinds of control on the two
+ * screen sizes. A square chip is also what the rest of the chrome is now —
+ * hairline rules and right angles — and a pill is the one shape in that
+ * vocabulary that insists on being a badge.
+ */
 function HeaderLink({ to, label, chip = false }: { to: string; label: string; chip?: boolean }) {
   return (
     <NavLink
       to={to}
       className={({ isActive }) =>
-        `font-body text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2
-         focus-visible:outline-primary ${chip ? "shrink-0 snap-start rounded-full border px-3 py-1" : "rounded-md px-3 py-1.5"}
+        `rounded-none font-body text-sm transition-colors focus-visible:outline-2
+         focus-visible:outline-offset-2
+         focus-visible:outline-primary ${chip ? "shrink-0 snap-start border px-3 py-1" : "px-3 py-1.5"}
          ${
            isActive
              ? chip
@@ -133,7 +145,7 @@ function AccountMenu({ email, onSignOut }: { email: string | null; onSignOut: ()
       <Dropdown.Trigger
         aria-label={email ? `Account — ${email}` : "Account"}
         title={email ?? "Account"}
-        className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt
+        className="shrink-0 rounded-none p-2 text-muted transition-colors hover:bg-surface-alt
                    hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2
                    focus-visible:outline-primary"
       >
@@ -143,7 +155,14 @@ function AccountMenu({ email, onSignOut }: { email: string | null; onSignOut: ()
       {/* Right-aligned: the trigger is the last thing on the row, so a menu
           growing rightwards would hang off the page. Same reason as `ItemActions`. */}
       <Dropdown.Content className="left-auto right-0">
-        {email && <Dropdown.Item disabled>{email}</Dropdown.Item>}
+        {/* Mono, because an address is a string to be read character by
+            character rather than a phrase — the same rule every node id, key
+            and byte count on this app is now set under. */}
+        {email && (
+          <Dropdown.Item disabled className="font-mono text-xs">
+            {email}
+          </Dropdown.Item>
+        )}
         <Dropdown.Item onSelect={onSignOut}>Sign out</Dropdown.Item>
       </Dropdown.Content>
     </Dropdown.Root>

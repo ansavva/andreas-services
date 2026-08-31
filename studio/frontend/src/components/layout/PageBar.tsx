@@ -36,12 +36,20 @@ interface Props {
  * at, so a destructive button moved around under the title depending on how long
  * the name was. Two groups give it one place on a wide screen and one place on a
  * narrow one.
+ *
+ * **A hairline under it, not a card around it.** The title block used to end
+ * where the next section's own margin began, so on a page of stacked bordered
+ * cards the heading read as one more card. One rule at the bottom is what
+ * separates "what this page is" from "what is on it" — and it is the same rule
+ * every section boundary in the app is drawn with now, so a page reads as one
+ * column divided rather than a stack of boxes.
  */
 export function PageBar({ crumbs, children, actions }: Props) {
   const navigate = useNavigate();
 
   return (
-    <div className="flex flex-col gap-2">
+    // `gap-3` + `pb-3` is the 12px half-line the header's own padding sits on.
+    <div className="flex flex-col gap-3 border-b border-line pb-3">
       {crumbs && crumbs.length > 0 && (
         <Breadcrumbs.Root>
           {crumbs.map((crumb) => (

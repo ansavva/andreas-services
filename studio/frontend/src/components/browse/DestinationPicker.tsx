@@ -50,11 +50,13 @@ interface Props {
  * took a name path; `POST /api/nodes/move` and `/copy` take an id, and browsing
  * by the same address they accept means nothing has to translate between the two.
  *
- * It is a `Dialog`, which portals to `<body>`, and that is safe *here*
- * specifically: both are browse actions and the browser is never inside a
- * fullscreen element. The reel's controls stay inline for the reason
- * `ConfirmDeleteButton` documents, and that is why there is no move or copy
- * button in `ViewerChrome`.
+ * It is a `Dialog`, which portals to `<body>` — and that used to be the whole
+ * reason there was no move or copy button on the viewer, which was often inside
+ * a fullscreen element where a body portal is not painted. `Dialog.Root` takes
+ * a `container` as of design system 0.16.0, so that is a choice now rather than
+ * a wall: this picker would work over a fullscreen player if it were handed the
+ * player's element. It is still only wired to the browse page, because moving a
+ * file is something you do to a listing.
  */
 export function DestinationPicker({
   verb,

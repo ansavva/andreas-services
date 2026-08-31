@@ -161,7 +161,7 @@ export function RunPlanEditor({
   );
 
   return (
-    <section className="flex flex-col gap-4 rounded-md border border-line bg-card p-3">
+    <section className="flex flex-col gap-4 rounded-none border border-line bg-card p-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <Text variant="title">Editing the plan</Text>
         <Badge intent="warning">withdraws the approval</Badge>
@@ -350,7 +350,7 @@ function Sends({
       {rows.map((row, index) => (
         <div
           key={row.key}
-          className="flex flex-wrap items-center gap-2 rounded-md border border-line p-2"
+          className="flex flex-wrap items-center gap-2 rounded-none border border-line p-2"
         >
           <span className="w-6 shrink-0 text-center font-body text-xs text-muted tabular-nums">
             {index + 1}
@@ -363,10 +363,10 @@ function Sends({
               name={row.name}
               isVideo={row.isVideo}
               aspect="portrait"
-              className="w-14 shrink-0 rounded-md border border-line"
+              className="w-14 shrink-0 rounded-none border border-line"
             />
           ) : (
-            <span className="flex h-[4.7rem] w-14 shrink-0 items-center justify-center rounded-md border border-dashed border-line bg-surface-alt" />
+            <span className="flex h-[4.7rem] w-14 shrink-0 items-center justify-center rounded-none border border-dashed border-line bg-surface-alt" />
           )}
 
           <div className="flex min-w-40 flex-1 flex-col gap-1">

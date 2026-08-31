@@ -1,14 +1,10 @@
 import { useEffect } from "react";
 
 interface Handlers {
-  /** Up — the previous item in the column. */
+  /** Left — the previous item in the feed. */
   onPrev?: () => void;
-  /** Down — the next item in the column. */
+  /** Right — the next item in the feed. */
   onNext?: () => void;
-  /** Left. Seeks backward in a video; the caller maps it to `onPrev` for a still. */
-  onSeekBack?: () => void;
-  /** Right. Seeks forward in a video; the caller maps it to `onNext` for a still. */
-  onSeekForward?: () => void;
   onClose?: () => void;
   onToggleFullscreen?: () => void;
   onTogglePlay?: () => void;
@@ -16,24 +12,29 @@ interface Handlers {
 }
 
 /**
- * The reel's keyboard contract, in one place.
+ * The object screen's keyboard contract, in one place.
  *
- * **The two axes mean different things, and that is the point.** The reel is a
- * vertical column, so Up/Down move between clips — the direction the thing
- * actually scrolls. Left/Right move through *time*, which is where every video
- * player in the world puts them, and which is what makes scrubbing reachable
- * without a mouse. For a still there is no time to move through, so the caller
- * points both pairs at the same handlers and the distinction quietly vanishes.
+ * **There is one axis now, and losing the second one was the point.** The reel
+ * was a vertical scroll-snap column, so Up/Down moved between clips and
+ * Left/Right moved through *time* — two axes because the thing had two
+ * directions to have opinions about. The object screen is a page with one
+ * player on it and a filmstrip of neighbours running across, so "next" has
+ * exactly one meaning and it is horizontal. Left/Right are it.
  *
- * When this hook served a horizontal lightbox as well, both axes had to mean
- * "next item" or one of the two viewers felt broken. There is only one viewer
- * now, so the axes are free to be specific.
+ * **Seeking did not move to another key, it moved to the control that owns
+ * it.** The seek bar is a real `Slider`, which answers Left/Right natively
+ * while it has focus, and the walk below never sees those keystrokes because it
+ * ignores anything targeting an input. So Left/Right scrub while the bar is
+ * focused and step between files when it is not, with nothing coordinating the
+ * two — the same bargain the reel struck, minus the second axis it needed to
+ * strike it.
+ *
+ * Space, `m` and `f` reach the player through the controls it hands back (see
+ * `MediaPlayer`'s `onControlsChange`); this hook only names the keys.
  */
 export function useKeyboardNav({
   onPrev,
   onNext,
-  onSeekBack,
-  onSeekForward,
   onClose,
   onToggleFullscreen,
   onTogglePlay,
@@ -42,10 +43,8 @@ export function useKeyboardNav({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       // Never swallow a keystroke meant for a text box — the rename field, the
-      // code viewer's copy button — or for the scrub bar, which is a range
-      // input and answers the arrow keys natively. That last exclusion is what
-      // lets Left/Right mean "seek" globally and "nudge the slider" while the
-      // slider has focus, with no coordination between the two.
+      // describe panel, the code viewer's copy button — or for the seek bar,
+      // which is a range input and answers the arrow keys natively.
       const target = event.target as HTMLElement | null;
       if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
 
@@ -53,28 +52,16 @@ export function useKeyboardNav({
       if (event.metaKey || event.ctrlKey || event.altKey) return;
 
       switch (event.key) {
-        case "ArrowUp":
+        case "ArrowLeft":
           if (onPrev) {
             event.preventDefault();
             onPrev();
           }
           break;
-        case "ArrowDown":
+        case "ArrowRight":
           if (onNext) {
             event.preventDefault();
             onNext();
-          }
-          break;
-        case "ArrowLeft":
-          if (onSeekBack) {
-            event.preventDefault();
-            onSeekBack();
-          }
-          break;
-        case "ArrowRight":
-          if (onSeekForward) {
-            event.preventDefault();
-            onSeekForward();
           }
           break;
         case "Escape":
@@ -101,14 +88,5 @@ export function useKeyboardNav({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [
-    onClose,
-    onNext,
-    onPrev,
-    onSeekBack,
-    onSeekForward,
-    onTogglePlay,
-    onToggleFullscreen,
-    onToggleMuted,
-  ]);
+  }, [onClose, onNext, onPrev, onTogglePlay, onToggleFullscreen, onToggleMuted]);
 }

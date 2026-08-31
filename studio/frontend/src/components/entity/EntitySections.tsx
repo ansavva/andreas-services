@@ -69,11 +69,16 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <section className="flex flex-col gap-3">
+      {/* A hairline under the heading, the same rule `PageBar` draws under a
+          page title. It is what makes a column of sections read as one ruled
+          page rather than as headings floating over grids. */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2">
         <Text variant="title">
           {title}{" "}
-          {count !== undefined && <span className="font-body text-sm text-muted">({count})</span>}
+          {count !== undefined && (
+            <span className="font-mono text-sm text-muted tabular-nums">({count})</span>
+          )}
         </Text>
         {action}
       </div>

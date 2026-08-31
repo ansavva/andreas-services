@@ -23,6 +23,17 @@ there.
 
 Every URL becomes `/e2e-asset.png`, which `support/api.ts` answers with a real
 one-pixel PNG.
+
+ONE FIXTURE IS SYNTHESISED, AND IT IS STILL NOT FETCHED
+-------------------------------------------------------
+`e2e-asset.mp4` is generated here by ffmpeg rather than captured, because there
+is nothing to capture it from: the published dev seed is 54 stills, since runs,
+scenes and movies are model output and cost money to make. A `<video>` handed
+the one-pixel PNG cannot play, which is the whole reason `browse.spec.ts` never
+visited `/o`. Synthesising it locally keeps the rule the rest of this file is
+about — nothing here reaches out to the internet for a sample clip.
+
+    python capture.py --video     # just the MP4; needs no API and no token
 """
 from __future__ import annotations
 
@@ -30,7 +41,9 @@ import json
 import os
 import pathlib
 import re
+import shutil
 import subprocess
+import sys
 import urllib.request
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -78,7 +91,43 @@ def write(name: str, body) -> None:
     print(f"  {name}.json")
 
 
+#: Five seconds of one colour at 64x36 — 16:9 at the smallest size that is still
+#: recognisably a frame, and long enough that `currentTime` visibly moves under a
+#: test and the poster's duration badge has something to say. H.264 baseline,
+#: because that is what Playwright's bundled Chromium decodes.
+#:
+#: Three flags are about what lands in git rather than about the picture.
+#: `bitexact` drops the ffmpeg version stamp, so the same build re-runs to the
+#: same bytes instead of to a diff. `filter_units` drops SEI NAL units, which is
+#: where x264 writes its own version banner and command line — a committed binary
+#: should be frames and nothing else. `faststart` puts the index first, so a
+#: fulfilled 200 with no range support is enough to play it.
+FFMPEG = [
+    "ffmpeg", "-y", "-v", "error",
+    "-fflags", "+bitexact",
+    "-f", "lavfi", "-i", "color=c=0x1f1f1f:s=64x36:r=12:d=5",
+    "-c:v", "libx264", "-profile:v", "baseline", "-level", "3.0",
+    "-pix_fmt", "yuv420p", "-g", "12",
+    "-bsf:v", "filter_units=remove_types=6",
+    "-flags:v", "+bitexact", "-fflags", "+bitexact", "-movflags", "+faststart",
+]
+
+
+def video() -> None:
+    """The one fixture that is made rather than taken. See the header."""
+    if not shutil.which("ffmpeg"):
+        raise SystemExit("ffmpeg is not on PATH; `brew install ffmpeg`")
+    out = HERE / "e2e-asset.mp4"
+    subprocess.run([*FFMPEG, str(out)], check=True, timeout=120)  # noqa: S603
+    print(f"  {out.name} ({out.stat().st_size} bytes)")
+
+
 def main() -> None:
+    print(f"generating into {HERE}")
+    video()
+    if "--video" in sys.argv:
+        return
+
     bearer = token()
     libraries = get("/api/libraries", bearer, None)
     library = libraries[0]["id"]

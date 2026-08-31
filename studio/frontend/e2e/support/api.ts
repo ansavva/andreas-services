@@ -32,13 +32,48 @@ export function fixture<T>(name: string): T {
   ) as T;
 }
 
-const characterRoot = fixture<Array<{ id: string; name: string }>>("character-root");
+/** A row in a node listing, and what `GET /api/nodes/<id>` answers with. */
+interface Node {
+  id: string;
+  lib: string;
+  parent_id?: string;
+  name: string;
+  kind: string;
+  size?: number;
+  content_type?: string;
+  created_at: string;
+  updated_at?: string;
+  owner?: { kind: string; id: string; slug: string | null } | null;
+}
+
+/** A pane in the recursive walk — a different shape from a node row. */
+interface Item {
+  id: string;
+  key: string;
+  name: string;
+  size: number;
+  last_modified: string;
+  kind: string;
+  content_type: string;
+  url: string;
+}
+
+interface Reel {
+  prefix: string;
+  sort: string;
+  items: Item[];
+  total: number;
+  truncated: boolean;
+  next_cursor: string | null;
+}
+
+const characterRoot = fixture<Node[]>("character-root");
 const character = fixture<{ root: string }>("character");
 const characters = fixture<Array<{ id: string }>>("characters");
 const libraries = fixture<Array<{ id: string }>>("libraries");
 const projects = fixture<unknown>("projects");
-const seedFolder = fixture<unknown>("seed-folder");
-const reel = fixture<unknown>("reel");
+const seedFolder = fixture<Node[]>("seed-folder");
+const reel = fixture<Reel>("reel");
 
 export const LIBRARY = libraries[0].id;
 export const CHARACTER = characters[0].id;
@@ -49,6 +84,68 @@ export const SEED_FOLDER = characterRoot.find((node) => node.name === "seed")!.i
 const PIXEL = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
   "base64",
+);
+
+/**
+ * A real MP4, so a `<video>` that reaches a stub actually plays.
+ *
+ * Every asset here used to be the pixel above, which is why no spec had ever
+ * opened `/o`: a `<video>` handed PNG bytes fires `error` and the player shows
+ * "this file could not be loaded" — a screen that proves nothing about
+ * playback. Five seconds of one colour at 64x36, 1,741 bytes, H.264 so
+ * Playwright's bundled Chromium decodes it.
+ *
+ * **It is generated rather than captured, and that is not a hole in the rule
+ * this file is built on.** There is nothing to capture: the published dev seed
+ * is 54 stills, because runs, scenes and movies are model output and cost money
+ * to make. `capture.py --video` makes it, deterministically, with ffmpeg and no
+ * network — see that file's header.
+ */
+const CLIP = readFileSync(join(HERE, "..", "fixtures", "e2e-asset.mp4"));
+
+const PIXEL_PATH = "/e2e-asset.png";
+const CLIP_PATH = "/e2e-asset.mp4";
+
+/**
+ * The two things the seed does not hold, built out of two things it does.
+ *
+ * The seed is images and folders: no clip, and no `prompt.json` either. Both
+ * screens the object page can be — the player and the text page — therefore
+ * need one node that cannot come off the API. So these are captured rows with
+ * a few fields overridden, rather than objects typed out from memory: the
+ * SHAPE is still the API's, and a field the API stops sending disappears from
+ * here on the next capture the same way it disappears everywhere else.
+ */
+const STILL_ITEM = reel.items[0]!;
+
+/** The captured node the cold-link specs open, owner and all. */
+export const STILL = seedFolder[0]!;
+
+export const CLIP_ITEM: Item = {
+  ...STILL_ITEM,
+  id: "node-e2e00000-0000-0000-0000-00000000c11p",
+  key: "e2e/e2e-clip.mp4",
+  name: "e2e-clip.mp4",
+  kind: "video",
+  content_type: "video/mp4",
+  size: CLIP.byteLength,
+  url: CLIP_PATH,
+};
+
+/** What a `prompt.json` in this folder would look like. */
+export const TEXT_NODE: Node = {
+  ...STILL,
+  id: "node-e2e00000-0000-0000-0000-0000000073x7",
+  name: "e2e-prompt.json",
+  content_type: "application/json",
+  size: 42,
+};
+
+export const TEXT_BODY = '{\n  "shot": "e2e",\n  "seconds": 5\n}\n';
+
+/** Every node `GET /api/nodes/<id>` can answer for. */
+const NODES = new Map<string, Node>(
+  [...characterRoot, ...seedFolder, TEXT_NODE].map((node) => [node.id, node]),
 );
 
 function json(route: Route, body: unknown, status = 200) {
@@ -76,21 +173,53 @@ export async function stubApi(page: Page): Promise<void> {
     if (path.endsWith("/api/characters")) return json(route, characters);
     if (path.includes("/api/characters/")) return json(route, character);
     if (path.endsWith("/api/projects")) return json(route, projects);
-    if (path.endsWith("/api/reel")) return json(route, reel);
+    // The clip leads the walk, so `/o?in=recursive` opens on it. The seed
+    // carries no video and a library does, so a reel that is stills all the way
+    // down is the less faithful answer of the two.
+    if (path.endsWith("/api/reel")) {
+      return json(route, { ...reel, items: [CLIP_ITEM, ...reel.items], total: reel.total + 1 });
+    }
     if (path.endsWith("/api/nodes")) {
       if (parent === CHARACTER_ROOT) return json(route, characterRoot);
       if (parent === SEED_FOLDER) return json(route, seedFolder);
       return json(route, []);
     }
+
+    // One node, its words, or what owns it — the three routes a `/o/<id>` link
+    // with no `?in=` makes, and the only ones the browse specs never reached.
+    const node = /\/api\/nodes\/([^/]+)(?:\/(text|owner))?$/.exec(path);
+    if (node) {
+      const record = NODES.get(decodeURIComponent(node[1]!));
+      if (!record) return json(route, { error: `e2e: no fixture for node ${node[1]}` }, 501);
+      if (node[2] === "owner") return json(route, record.owner ?? null);
+      if (node[2] === "text") {
+        return json(route, {
+          id: record.id,
+          name: record.name,
+          language: "json",
+          truncated: false,
+          content: TEXT_BODY,
+        });
+      }
+      return json(route, record);
+    }
+
     // Signed reads: the app asks for a URL and then fetches it. Both are
-    // answered here so no request leaves the browser.
+    // answered here so no request leaves the browser. Which body comes back is
+    // decided by the node, because a re-sign of a clip that answers with a PNG
+    // is exactly the failure this suite is here to notice.
     if (path.includes("/download-url") || path.includes("/asset")) {
-      return json(route, { url: `${url.origin}/e2e-asset.png` });
+      const asset = url.searchParams.get("node") === CLIP_ITEM.id ? CLIP_PATH : PIXEL_PATH;
+      return json(route, { url: `${url.origin}${asset}` });
     }
     return json(route, { error: `e2e: no fixture for ${path}` }, 501);
   });
 
-  await page.route("**/e2e-asset.png", (route) =>
+  await page.route(`**${PIXEL_PATH}`, (route) =>
     route.fulfill({ status: 200, contentType: "image/png", body: PIXEL }),
+  );
+
+  await page.route(`**${CLIP_PATH}`, (route) =>
+    route.fulfill({ status: 200, contentType: "video/mp4", body: CLIP }),
   );
 }

@@ -672,7 +672,7 @@ function RailLink({
       type="button"
       onClick={onClick}
       aria-current={open ? "true" : undefined}
-      className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-left font-body text-sm transition-colors
+      className={`flex items-center gap-2 rounded-none px-2 py-1.5 text-left font-body text-sm transition-colors
                   focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                     open
                       ? "bg-surface-alt text-ink"

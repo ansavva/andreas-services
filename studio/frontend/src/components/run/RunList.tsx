@@ -75,7 +75,7 @@ export function RunList({
           key={run.id}
           type="button"
           onClick={() => onOpen(run)}
-          className="flex w-full items-center gap-3 rounded-md border border-line bg-card p-2 text-left
+          className="flex w-full items-center gap-3 rounded-none border border-line bg-card p-2 text-left
                      transition-colors hover:bg-surface-alt
                      focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
@@ -85,7 +85,7 @@ export function RunList({
               no thumbnails at all draws neither, rather than a row of empty
               squares. */}
           {(run.thumb || run.kind) && (
-            <span className="size-14 shrink-0 overflow-hidden rounded-md border border-line bg-surface-alt">
+            <span className="size-14 shrink-0 overflow-hidden rounded-none border border-line bg-surface-alt">
               {run.thumb ? (
                 <MediaThumb nodeId={run.thumb.node} url={run.thumb.url} name="" aspect="auto" />
               ) : (
@@ -100,24 +100,34 @@ export function RunList({
             {/* A run has no label. The date is what identifies one to a person,
                 which is what the old slug was imitating by carrying a timestamp;
                 the model is the next most useful thing about it. */}
-            <Text variant="body" className="truncate">
+            {/* A date standing in for a name, and a model id — both are
+                values rather than prose, so both are mono. */}
+            <Text variant="body" family="mono" className="truncate">
               {run.created ? formatDate(run.created) : run.id}
             </Text>
             {run.model && (
-              <Text variant="caption" tone="muted" className="block truncate">
+              <Text variant="caption" tone="muted" className="block truncate font-mono">
                 {run.model}
               </Text>
             )}
           </span>
 
-          {run.role && <Badge intent="neutral">{run.role}</Badge>}
-          {run.status && <Badge intent={STATUS_INTENT[run.status]}>{run.status}</Badge>}
+          {run.role && (
+            <Badge intent="neutral" className="font-mono">
+              {run.role}
+            </Badge>
+          )}
+          {run.status && (
+            <Badge intent={STATUS_INTENT[run.status]} className="font-mono">
+              {run.status}
+            </Badge>
+          )}
 
           {/* Recorded when the provider reports it and never computed —
               Replicate's prediction metrics differ by model, and a number this
               app worked out itself would be a guess wearing a currency sign. */}
           {run.cost !== undefined && (
-            <Text variant="caption" tone="muted" className="w-20 shrink-0 text-right tabular-nums">
+            <Text variant="caption" tone="muted" className="w-20 shrink-0 text-right font-mono tabular-nums">
               {formatCost(run.cost, "—")}
             </Text>
           )}

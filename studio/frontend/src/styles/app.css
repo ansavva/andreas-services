@@ -21,22 +21,85 @@
  * showing images and video, so the chrome carries almost no chroma and the
  * media is the only saturated thing on screen. The one accent is a cool blue
  * used for focus, selection and the active view toggle.
+ *
+ * THE CHROME IS A 12-STEP RAMP NOW, NOT FOUR FLAT SURFACES.
+ *
+ * The four surface roles could not express a hairline, a hover, a scrubber
+ * track and a scrim, so the viewer hard-coded `bg-white/15`, `text-white/80`
+ * and `bg-black/55` at its call sites — literals nothing could re-brand. The
+ * design system ships `--color-neutral-1…12` and their alpha twins as of
+ * 0.16.0; the values below are the ones Replicate ships for exactly this case
+ * (dark media on dark chrome), not a ramp invented here. Steps 1-2 are
+ * backgrounds, 3-5 component fills, 6-8 borders, 9-10 solids, 11-12 text; the
+ * `a` steps are the same rungs with alpha instead of a baked background, for
+ * anything that lands on a surface it cannot know — a control over a frame.
+ *
+ * The four legacy roles are kept, pointed at ramp steps, so every existing
+ * `bg-card` keeps painting while the call sites migrate onto the ramp.
+ *
+ * `@theme static` KEEPS THE WHOLE RAMP IN THE BUILD. DO NOT DROP THE KEYWORD.
+ *
+ * A bare `@theme` emits only the variables the build decides are used, so a
+ * ramp step nothing has reached for yet is dropped from the output. Measured
+ * on this stylesheet rather than assumed — Tailwind 4.3.3, `vite build`, then
+ * the `:root,:host` rules of `dist/assets/*.css`:
+ *
+ *   with `static`     24 of 24 steps
+ *   without           7  of 24 — 1, 2, 3, 11, 12, a5, a6 and nothing else
+ *
+ * Note what that measurement does NOT say. It does follow a `var()` from one
+ * theme variable to another: every step a role points at survived, so the
+ * upstream failure this keyword was added for — roles resolving to nothing —
+ * does not reproduce here. The seventeen that vanish are the ones no role and
+ * no utility names *yet*, which is precisely the set Phases B–D exist to start
+ * using: a scrubber track, a scrim, a hover fill. A `bg-neutral-a8` utility
+ * would pull its own variable back in, but a raw `var(--color-neutral-a8)` in
+ * plain CSS or an inline style would not, and would fail silently. `static`
+ * costs 0.6 kB and makes the ramp a contract instead of a race.
+ *
+ * `--font-mono` is deliberately absent: the design system's system stack is
+ * what studio wants, and studio has no font pipeline to serve anything else.
  */
 
-@theme {
+@theme static {
   --font-heading: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 
-  --color-bg: #08090a;
-  --color-card: #111315;
-  --color-surface-alt: #1a1d20;
-  --color-ink: #f2f3f5;
-  --color-brand: #f2f3f5;
-  --color-muted: rgb(242 243 245 / 0.62);
-  --color-line: rgb(242 243 245 / 0.12);
+  --color-neutral-1: #111111;
+  --color-neutral-2: #191919;
+  --color-neutral-3: #222222;
+  --color-neutral-4: #2a2a2a;
+  --color-neutral-5: #313131;
+  --color-neutral-6: #3a3a3a;
+  --color-neutral-7: #484848;
+  --color-neutral-8: #606060;
+  --color-neutral-9: #6e6e6e;
+  --color-neutral-10: #7b7b7b;
+  --color-neutral-11: #b4b4b4;
+  --color-neutral-12: #eeeeee;
+  --color-neutral-a1: #ffffff00;
+  --color-neutral-a2: #ffffff09;
+  --color-neutral-a3: #ffffff12;
+  --color-neutral-a4: #ffffff1b;
+  --color-neutral-a5: #ffffff22;
+  --color-neutral-a6: #ffffff2c;
+  --color-neutral-a7: #ffffff3b;
+  --color-neutral-a8: #ffffff55;
+  --color-neutral-a9: #ffffff64;
+  --color-neutral-a10: #ffffff72;
+  --color-neutral-a11: #ffffffaf;
+  --color-neutral-a12: #ffffffed;
+
+  --color-bg: var(--color-neutral-1);
+  --color-card: var(--color-neutral-2);
+  --color-surface-alt: var(--color-neutral-3);
+  --color-ink: var(--color-neutral-12);
+  --color-brand: var(--color-neutral-12);
+  --color-muted: var(--color-neutral-11);
+  --color-line: var(--color-neutral-a5);
 
   --color-primary: #5b9dff;
-  --color-primary-text: #08090a;
+  --color-primary-text: var(--color-neutral-1);
   --color-accent: #5b9dff;
   --color-success: #39b17e;
   --color-warning: #d2a857;
@@ -46,19 +109,59 @@
   --color-primary-active: color-mix(in srgb, var(--color-primary) 84%, black 16%);
   --color-accent-hover: color-mix(in srgb, var(--color-accent) 88%, white 12%);
   --color-danger-hover: color-mix(in srgb, var(--color-danger) 88%, white 12%);
+
+  /* Near-square, in Replicate's range. The design system's own `sm/md/lg` are
+     6/10/16px, which reads as a card system; studio wants hairline-separated
+     sections and 2/4/6px does not round the corner off a video frame. Sixty-
+     seven `rounded-md` call sites go from 10px to 4px on this line alone.
+
+     `--radius-none` (0) and `--radius-xs` (2px) come from the package
+     unchanged and are what a call site reaches for when it wants a square.
+     `sm` lands on 2px as well, so `rounded-sm` and `rounded-xs` are the same
+     corner here — that is the floor of the range agreeing with itself, not an
+     oversight, and `rounded-xs` is the one to write when the intent is
+     "as square as the scale goes". */
+  --radius-sm: 0.125rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.375rem;
 }
 
 [data-theme='dark'] {
-  --color-bg: #08090a;
-  --color-card: #111315;
-  --color-surface-alt: #1a1d20;
-  --color-ink: #f2f3f5;
-  --color-brand: #f2f3f5;
-  --color-muted: rgb(242 243 245 / 0.62);
-  --color-line: rgb(242 243 245 / 0.12);
+  --color-neutral-1: #111111;
+  --color-neutral-2: #191919;
+  --color-neutral-3: #222222;
+  --color-neutral-4: #2a2a2a;
+  --color-neutral-5: #313131;
+  --color-neutral-6: #3a3a3a;
+  --color-neutral-7: #484848;
+  --color-neutral-8: #606060;
+  --color-neutral-9: #6e6e6e;
+  --color-neutral-10: #7b7b7b;
+  --color-neutral-11: #b4b4b4;
+  --color-neutral-12: #eeeeee;
+  --color-neutral-a1: #ffffff00;
+  --color-neutral-a2: #ffffff09;
+  --color-neutral-a3: #ffffff12;
+  --color-neutral-a4: #ffffff1b;
+  --color-neutral-a5: #ffffff22;
+  --color-neutral-a6: #ffffff2c;
+  --color-neutral-a7: #ffffff3b;
+  --color-neutral-a8: #ffffff55;
+  --color-neutral-a9: #ffffff64;
+  --color-neutral-a10: #ffffff72;
+  --color-neutral-a11: #ffffffaf;
+  --color-neutral-a12: #ffffffed;
+
+  --color-bg: var(--color-neutral-1);
+  --color-card: var(--color-neutral-2);
+  --color-surface-alt: var(--color-neutral-3);
+  --color-ink: var(--color-neutral-12);
+  --color-brand: var(--color-neutral-12);
+  --color-muted: var(--color-neutral-11);
+  --color-line: var(--color-neutral-a5);
 
   --color-primary: #5b9dff;
-  --color-primary-text: #08090a;
+  --color-primary-text: var(--color-neutral-1);
   --color-accent: #5b9dff;
   --color-success: #39b17e;
   --color-warning: #d2a857;
@@ -76,65 +179,26 @@ body,
   height: 100%;
 }
 
-body {
-  background-color: var(--color-bg);
-  color: var(--color-ink);
-  /* The viewer paints black behind fullscreen media; asking the browser for dark
-     form controls and scrollbars keeps the chrome from going pale around it. */
+/* Declared on the ROOT, not on `body`. The viewer paints black behind
+   fullscreen media, and asking the browser for dark form controls and
+   scrollbars keeps the chrome from going pale around it — but the VIEWPORT's
+   own scrollbar reads the scheme off the root element, not off `body`, so a
+   `body`-only declaration left the outer scrollbar light on a dark app while
+   every inner control went dark. Measured: `getComputedStyle(document
+   .documentElement).colorScheme` was `normal` until this moved up. `body`
+   inherits it, so the descendants it used to cover still get it. */
+:root {
   color-scheme: dark;
 }
 
-/*
- * THE REEL IS NOT `inset-0`, AND ON A PHONE THAT IS THE WHOLE POINT.
- *
- * `index.html` asks for `viewport-fit=cover`, so a `position: fixed` box pinned
- * to all four sides is laid out against the *large* viewport — the one with the
- * browser's toolbars hidden. Mobile Safari then draws its bottom toolbar over
- * the result, and whatever sits on the bottom edge of the reel is underneath it
- * and cannot be pressed. In portrait that swallowed the sound button whole; in
- * landscape the toolbar collapses and it came back, which is exactly how the bug
- * was reported — "there is no way to mute unless I turn the phone sideways".
- *
- * `100dvh` is the *dynamic* viewport: it shrinks and grows as those toolbars do,
- * so the reel ends where the usable screen ends. `100vh` stays as the fallback
- * for anything that predates it — it is the old, wrong-on-mobile behaviour,
- * which is no worse than what was here before.
- *
- * Sound moved to `ViewerChrome` as well, because the bottom edge is a bad home
- * for a control you press mid-clip however carefully it is measured. The
- * scrubber that stayed carries `env(safe-area-inset-bottom)` padding for the
- * home indicator.
- */
-.reel-shell {
-  height: 100vh;
-  height: 100dvh;
+body {
+  background-color: var(--color-bg);
+  color: var(--color-ink);
 }
 
-/* Fullscreen has no browser chrome to avoid, and the element is sized by the
-   compositor rather than by the viewport. Written as its own rule because one
-   unrecognised selector would drop the whole list. */
-.reel-shell:fullscreen {
-  height: 100%;
-}
-.reel-shell:-webkit-full-screen {
-  height: 100%;
-}
-
-/* The reel is a scroll-snap column of full-viewport panes. `overscroll-contain`
-   stops a flick at either end from bouncing the page behind it, which on iOS
-   otherwise pulls the whole app down mid-scroll. */
-.reel-scroller {
-  scroll-snap-type: y mandatory;
-  overscroll-behavior-y: contain;
-  -webkit-overflow-scrolling: touch;
-}
-
-.reel-pane {
-  scroll-snap-align: center;
-  scroll-snap-stop: always;
-}
-
-/* Hide scrollbars in immersive surfaces without losing scrollability. */
+/* Hide scrollbars without losing scrollability — the filmstrip under the
+   object screen's player, which scrolls sideways and should read as a strip of
+   frames rather than as a scroll area. */
 .no-scrollbar {
   scrollbar-width: none;
 }
@@ -152,10 +216,4 @@ body {
     linear-gradient(-45deg, transparent 75%, rgb(255 255 255 / 0.04) 75%);
   background-size: 16px 16px;
   background-position: 0 0, 0 8px, 8px -8px, -8px 0;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .reel-scroller {
-    scroll-behavior: auto;
-  }
 }

@@ -25,10 +25,17 @@ interface Props {
  * What the picture shows, and how it is selected — edited where you are looking
  * at it.
  *
- * **The viewer is the right place for this and the grid is not.** You decide
- * what a frame is of while it fills the screen, not from a thumbnail — the same
- * argument `ViewerChrome` already makes for putting rename and delete up there
- * rather than on a tile.
+ * **The object screen is the right place for this and the grid is not.** You
+ * decide what a frame is of while it is large in front of you, not from a
+ * thumbnail — the same argument `ObjectActions` makes for putting rename and
+ * delete on that screen rather than on a tile.
+ *
+ * **It is a panel now, not a bottom sheet.** It used to be
+ * `absolute inset-x-0 bottom-0 max-h-[60%]` over the reel, covering the
+ * transport on purpose, because there was no page underneath to occupy — the
+ * viewer was a full-viewport takeover. On a page it takes the column beside the
+ * player, in place of the read-only `ObjectDetails` it is the editor for, and
+ * nothing has to be covered for it to be readable.
  *
  * ## Tags are free-form, and the input is the whole vocabulary
  *
@@ -63,9 +70,9 @@ export function DescribePanel({ file, onSave, onClose, extra }: Props) {
 
   const tags = useMemo(() => file.tags ?? [], [file.tags]);
 
-  // Scrolling the reel onto another clip must not leave the previous one's
-  // caption sitting in the field — the same reset `RenameButton` performs, and
-  // for the same reason.
+  // Stepping to another file must not leave the previous one's caption sitting
+  // in the field — the same reset `RenameDialog` performs, and for the same
+  // reason.
   useEffect(() => {
     setDraft(file.description ?? "");
     setTag("");
@@ -102,19 +109,18 @@ export function DescribePanel({ file, onSave, onClose, extra }: Props) {
   const dirty = draft.trim() !== (file.description ?? "").trim();
 
   return (
-    <div
-      className="pointer-events-auto absolute inset-x-0 bottom-0 z-20 max-h-[60%] overflow-y-auto
-                 bg-black/85 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-sm sm:p-6"
+    <section
+      className="border-t border-line pt-3 lg:border-t-0 lg:pt-0"
       aria-label="File details"
     >
-      <div className="mx-auto flex max-w-3xl flex-col gap-4">
+      <div className="flex flex-col gap-4">
         {/* Only the Hide control at the top. The sentence that used to sit here
             said "both are the file's own", which stopped being true the moment
             this panel could carry an entity's fields above them — a reference's
             group and caption belong to a CHARACTER, not to the file. It moved
             down to sit directly over the two things it describes. */}
         <div className="flex items-start justify-end">
-          <Button intent="ghost" size="sm" onClick={onClose} className="shrink-0 text-white">
+          <Button intent="ghost" size="sm" onClick={onClose} className="shrink-0">
             Hide
           </Button>
         </div>
@@ -122,11 +128,11 @@ export function DescribePanel({ file, onSave, onClose, extra }: Props) {
         {extra}
 
         <div className="flex flex-col gap-2">
-          <Text variant="caption" className="text-white/70">
+          <Text variant="caption" tone="muted">
             What this shows, and how it is selected. Both are the file&apos;s own —
             they travel with it through a move, a rename and a copy.
           </Text>
-          <Text variant="caption" className="text-white/70">
+          <Text variant="caption" tone="muted">
             Description
           </Text>
           <AutoTextarea
@@ -147,7 +153,6 @@ export function DescribePanel({ file, onSave, onClose, extra }: Props) {
               <Button
                 intent="ghost"
                 size="sm"
-                className="text-white"
                 onClick={() => setDraft(file.description ?? "")}
               >
                 Discard
@@ -157,22 +162,22 @@ export function DescribePanel({ file, onSave, onClose, extra }: Props) {
         </div>
 
         <div className="flex flex-col gap-2">
-          <Text variant="caption" className="text-white/70">
+          <Text variant="caption" tone="muted">
             Tags
           </Text>
           <div className="flex flex-wrap items-center gap-2">
             {tags.map((each) => (
               <span
                 key={each}
-                className="flex items-center gap-1 rounded-full bg-white/15 py-1 ps-3 pe-1
-                           font-body text-xs text-white"
+                className="flex items-center gap-1 rounded-xs bg-neutral-a3 py-1 ps-2 pe-1
+                           font-mono text-xs text-ink"
               >
                 {each}
                 <button
                   type="button"
                   aria-label={`Remove ${each}`}
                   disabled={busy}
-                  className="rounded-full px-1.5 text-white/70 hover:bg-white/20 hover:text-white"
+                  className="rounded-xs px-1.5 text-muted hover:bg-neutral-a5 hover:text-ink"
                   onClick={() =>
                     void save({ tags: tags.filter((keep) => keep !== each) })
                   }
@@ -182,7 +187,7 @@ export function DescribePanel({ file, onSave, onClose, extra }: Props) {
               </span>
             ))}
             {tags.length === 0 && (
-              <Text variant="caption" className="text-white/50">
+              <Text variant="caption" tone="muted">
                 No tags yet.
               </Text>
             )}
@@ -195,7 +200,7 @@ export function DescribePanel({ file, onSave, onClose, extra }: Props) {
               placeholder="Add a tag…"
               aria-label="Add a tag"
               // Enter adds rather than submitting anything: this panel is not a
-              // form, and the reel behind it binds single keys.
+              // form, and the page behind it binds single keys.
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
                   event.preventDefault();
@@ -203,6 +208,8 @@ export function DescribePanel({ file, onSave, onClose, extra }: Props) {
                 }
                 // Stopped here so typing a tag with an `m` or an `f` in it does
                 // not mute the clip or go fullscreen behind the panel.
+                // `useKeyboardNav` ignores INPUT targets as well; this is the
+                // belt to that braces, and it costs one line.
                 event.stopPropagation();
               }}
             />
@@ -218,6 +225,6 @@ export function DescribePanel({ file, onSave, onClose, extra }: Props) {
           </Text>
         )}
       </div>
-    </div>
+    </section>
   );
 }

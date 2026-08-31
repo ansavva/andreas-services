@@ -54,8 +54,11 @@ export function HomePage() {
       <CharactersSection />
       <ProjectsSection />
 
-      <section className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+      <section className="flex flex-col gap-3">
+        {/* Same ruled heading as the two `EntitySections` above it — this
+            section is open-coded because its action pair is its own, not
+            because it is a different kind of thing. */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2">
           <Text variant="title">Recent</Text>
           <div className="flex items-center gap-2">
             {/* The library's file tree. It is in the header now as well — this

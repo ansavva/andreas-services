@@ -196,7 +196,7 @@ function Involvement({ record, onSaved }: Props) {
                 disabled={busy}
                 aria-pressed={on}
                 onClick={() => void toggle(character.id)}
-                className={`rounded-full border px-3 py-1 font-body text-sm transition-colors
+                className={`rounded-none border px-3 py-1 font-body text-sm transition-colors
                             disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2
                             focus-visible:outline-primary ${
                               on

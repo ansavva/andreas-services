@@ -157,12 +157,18 @@ export function TextPage({ file, onClose, onSaved }: Props) {
           <Text variant="title" className="truncate">
             {file.name}
           </Text>
-          <Text variant="caption" tone="muted" className="truncate">
+          {/* The name path — the thing `CopyKeyButton` beside it copies, and
+              the thing a `studio` command is handed. */}
+          <Text variant="caption" tone="muted" className="truncate font-mono">
             {file.key}
           </Text>
         </div>
 
-        {data && <Badge intent="neutral">{data.language}</Badge>}
+        {data && (
+          <Badge intent="neutral" className="font-mono">
+            {data.language}
+          </Badge>
+        )}
 
         {/* Rendered/raw is a *reading* choice, so it is gone while editing —
             there is only one way to edit markdown and it is as markdown. */}

@@ -131,8 +131,14 @@ export function RunPage() {
       <PageBar crumbs={crumbs}>
         {/* A run has no name — the date is what a person recognises it by. */}
         <Text variant="display">{formatDate(data.created)}</Text>
-        <Badge intent={data.status === "failed" ? "danger" : "neutral"}>{data.status}</Badge>
-        <Badge intent="neutral">{data.kind}</Badge>
+        {/* A status and a kind are values the API chose, not prose — mono is
+            what says so, and is what every other status in the app wears. */}
+        <Badge intent={data.status === "failed" ? "danger" : "neutral"} className="font-mono">
+          {data.status}
+        </Badge>
+        <Badge intent="neutral" className="font-mono">
+          {data.kind}
+        </Badge>
       </PageBar>
 
       {data.error && (
@@ -144,7 +150,12 @@ export function RunPage() {
 
       <Backlinks label="Used in" links={data.scenes} to={scenePath} />
 
-      <section className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      {/* **Seven bordered cards became one ruled grid.** Each fact was a box
+          with its own border and fill, so the densest, least decorative part of
+          the page — a model name and five timestamps — carried the most chrome
+          on it. A rule above each cell separates them for the same cost as a
+          border and reads as one table rather than seven objects. */}
+      <section className="grid grid-cols-1 gap-x-6 sm:grid-cols-2 lg:grid-cols-3">
         <Fact label="Model" value={data.model} />
         <Fact label="Engine" value={data.engine} />
         <Fact label="Prediction" value={data.prediction_id ?? "—"} />
@@ -224,8 +235,10 @@ export function RunPage() {
         onReconcile={() => void decide(() => reconcileRun(data.id))}
       />
 
-      <section className="flex flex-col gap-2">
-        <Text variant="title">Outputs</Text>
+      <section className="flex flex-col gap-3">
+        <Text variant="title" className="border-b border-line pb-2">
+          Outputs
+        </Text>
         {data.outputs.length === 0 ? (
           <Text variant="body" tone="muted">
             Nothing came back.
@@ -250,8 +263,10 @@ export function RunPage() {
           with less information. This is what a run that predates the send rows
           and has not been backfilled still needs, and it retires itself. */}
       {data.sends.length === 0 && (
-      <section className="flex flex-col gap-2">
-        <Text variant="title">Bindings</Text>
+      <section className="flex flex-col gap-3">
+        <Text variant="title" className="border-b border-line pb-2">
+          Bindings
+        </Text>
         {/* Node ids, never URLs and never paths. A URL-shaped binding is refused
             by the API — hard rule #3, enforced for both halves of studio rather
             than only for the CLI — so what is drawn here is always material that
@@ -281,8 +296,10 @@ export function RunPage() {
       </section>
       )}
 
-      <section className="flex flex-col gap-2">
-        <Text variant="title">Payload</Text>
+      <section className="flex flex-col gap-3">
+        <Text variant="title" className="border-b border-line pb-2">
+          Payload
+        </Text>
         <Text variant="caption" tone="muted">
           Exactly what went to the provider and exactly what came back. Studio stores these and
           decodes neither.
@@ -316,8 +333,8 @@ function PayloadDocument({ label, node }: { label: string; node: string | null }
 
   if (node === null) {
     return (
-      <div className="rounded-md border border-line bg-card px-3 py-2">
-        <Text variant="caption" tone="muted">
+      <div className="border-t border-line py-2">
+        <Text variant="caption" tone="muted" className="font-mono">
           {label} — not written for this run
         </Text>
       </div>
@@ -325,21 +342,25 @@ function PayloadDocument({ label, node }: { label: string; node: string | null }
   }
 
   return (
-    <div className="rounded-md border border-line bg-card">
+    <div className="border-t border-line">
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left
+        className="flex w-full items-center gap-2 py-2 text-left transition-colors hover:text-muted
                    focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
       >
         <span aria-hidden="true" className="text-muted">
           {open ? "▾" : "▸"}
         </span>
-        <Text variant="body">{label}</Text>
+        {/* A file name, so mono — this is the one label on the page that is
+            literally a path a person would type. */}
+        <Text variant="body" family="mono">
+          {label}
+        </Text>
       </button>
 
       {open && (
-        <div className="border-t border-line">
+        <div className="border-t border-line bg-card">
           {loading && (
             <div className="flex justify-center py-6">
               <Spinner size="md" label={`Loading ${label}`} />
@@ -371,7 +392,7 @@ function AssetTile({ asset, onOpen }: { asset: RunAsset; onOpen: () => void }) {
       type="button"
       onClick={onOpen}
       title={asset.name}
-      className="flex flex-col gap-1 rounded-md border border-line bg-card p-1 text-left
+      className="flex flex-col gap-1 rounded-none border border-line bg-card p-1 text-left
                  transition-colors hover:bg-surface-alt
                  focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
     >
@@ -380,13 +401,13 @@ function AssetTile({ asset, onOpen }: { asset: RunAsset; onOpen: () => void }) {
         url={asset.url}
         name={asset.name}
         isVideo={isVideo}
-        className="w-full rounded-md"
+        className="w-full rounded-none"
       />
-      <Text variant="caption" tone="muted" className="truncate">
+      <Text variant="caption" tone="muted" className="truncate font-mono">
         {asset.name}
       </Text>
       {asset.size !== undefined && (
-        <Text variant="caption" tone="muted" className="tabular-nums">
+        <Text variant="caption" tone="muted" className="font-mono tabular-nums">
           {formatBytes(asset.size)}
         </Text>
       )}
@@ -394,13 +415,21 @@ function AssetTile({ asset, onOpen }: { asset: RunAsset; onOpen: () => void }) {
   );
 }
 
+/**
+ * One fact, under a hairline.
+ *
+ * The value is mono without exception, because every one of them is a value
+ * rather than a sentence — a model id, a prediction id, three timestamps and a
+ * cost. Setting them in the body face made a column of them fail to line up on
+ * anything, which is the whole argument for a monospaced face carrying metadata.
+ */
 function Fact({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-line bg-card px-3 py-2">
-      <Text variant="caption" tone="muted">
+    <div className="border-t border-line py-2">
+      <Text variant="caption" tone="muted" className="block">
         {label}
       </Text>
-      <Text variant="body" className="truncate">
+      <Text variant="body" family="mono" className="truncate">
         {value}
       </Text>
     </div>

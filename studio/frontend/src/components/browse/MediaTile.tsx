@@ -44,7 +44,10 @@ export function MediaTile({
         onClick={(event) => (selectionActive ? onToggleSelect(event.shiftKey) : onOpen())}
         title={file.name}
         aria-pressed={selectionActive ? selected : undefined}
-        className={`relative block h-full w-full overflow-hidden rounded-md border bg-card
+        // Square, not rounded. A grid of media is the one place the corner
+        // radius is visible against the picture rather than against the page,
+        // and a rounded frame crops the frame it is meant to present.
+        className={`relative block h-full w-full overflow-hidden rounded-none border bg-card
                     focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary
                     ${selected ? "border-primary ring-2 ring-primary" : "border-line"}`}
       >
@@ -75,7 +78,9 @@ export function MediaTile({
           onToggleSelect(event.shiftKey);
         }}
         aria-label={`Select ${file.name}`}
-        className={`absolute left-1.5 top-1.5 shadow-[0_0_0_1px_rgb(0_0_0/0.6)] transition-opacity
+        // The ring is what keeps a checkbox legible over a pale frame; it is
+        // the ramp's darkest step now rather than a black literal.
+        className={`absolute left-1.5 top-1.5 shadow-[0_0_0_1px_var(--color-neutral-1)] transition-opacity
                     focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100
                     pointer-coarse:opacity-100 ${selectionActive ? "opacity-100" : "opacity-0"}`}
       >
