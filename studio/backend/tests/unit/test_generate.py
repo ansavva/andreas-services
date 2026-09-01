@@ -744,3 +744,88 @@ def test_a_url_that_cannot_be_mapped_is_replaced_rather_than_left(
         .get_json()["content"])
     assert stored["input"]["some_field_with_no_send"] == (
         "[a presigned URL studio did not store]")
+
+
+# ─────────────── a scalar field named by more than one send ───────────────
+
+VEO = {"model": "google/veo-3.1", "kind": "video",
+       "images": {"start": "image", "end": "last_frame",
+                  "refs": "reference_images", "max_refs": 3}}
+
+
+def test_a_scalar_image_field_named_TWICE_is_refused_rather_than_dropped():
+    """**It was dropped, silently, and that is the bug this exists for.**
+
+    `bindings_of` keeps the first send for a scalar field and discards the rest,
+    because a start frame is a string and a list is a 422 from the provider.
+    Right for one send and a lie for several: a run bound a start frame and five
+    of a character's reference photographs, every one naming `image` because the
+    editor copied the field off the row above, and the payload went out with one
+    image and no `reference_images` at all. Six rows on screen, one image sent.
+    """
+    sends = [{"field": "image", "role": "start", "node": "node-a"}]
+    sends += [{"field": "image", "role": "reference", "node": f"node-{n}"}
+              for n in "bcde"]
+
+    with pytest.raises(Exception) as refusal:
+        generate.preflight(VEO, {"prompt": "x"},
+                           generate.bindings_of(sends, VEO), sends)
+
+    said = str(refusal.value)
+    assert "'image'" in said and "5 sends" in said
+    # And it says where they should have gone.
+    assert "reference_images" in said
+
+
+def test_ONE_send_on_a_scalar_field_is_exactly_right():
+    sends = [{"field": "image", "role": "start", "node": "node-a"},
+             {"field": "reference_images", "role": "reference", "node": "node-b"}]
+    bindings = generate.bindings_of(sends, VEO)
+    generate._check_scalar_fields(VEO, sends)
+    assert bindings["image"] == "node-a"
+    assert bindings["reference_images"] == ["node-b"]
+
+
+def test_a_model_with_no_reference_input_says_so_instead():
+    entry = {"model": "x/y", "kind": "video", "images": {"start": "image"}}
+    sends = [{"field": "image", "role": "start", "node": "node-a"},
+             {"field": "image", "role": "reference", "node": "node-b"}]
+    with pytest.raises(Exception) as refusal:
+        generate._check_scalar_fields(entry, sends)
+    assert "takes no reference images" in str(refusal.value)
+
+
+def test_a_start_frame_and_references_TOGETHER_are_refused_when_the_model_says_so():
+    """**The registry has said this since it was written and nothing read it.**
+
+    `start_excludes_refs` and `end_excludes_refs` were data with no enforcement
+    anywhere, so a Veo run went out carrying both and came back
+    `{'code': 3, 'message': 'Image and reference images cannot be both set.'}` —
+    a constraint the entry could have stated and the preflight could have caught
+    for nothing, after the run had already left `pending`.
+    """
+    entry = {"model": "google/veo-3.1", "kind": "video",
+             "images": {"start": "image", "refs": "reference_images",
+                        "start_excludes_refs": True, "max_refs": 3}}
+    bindings = {"image": "node-a", "reference_images": ["node-b"]}
+
+    with pytest.raises(Exception) as refusal:
+        generate._check_exclusive_images(entry, bindings)
+    said = str(refusal.value)
+    assert "'image'" in said and "'reference_images'" in said
+
+
+def test_either_one_ALONE_is_fine():
+    entry = {"model": "google/veo-3.1", "kind": "video",
+             "images": {"start": "image", "refs": "reference_images",
+                        "start_excludes_refs": True}}
+    generate._check_exclusive_images(entry, {"image": "node-a"})
+    generate._check_exclusive_images(entry, {"reference_images": ["node-b"]})
+
+
+def test_a_model_that_allows_BOTH_still_does():
+    entry = {"model": "x/y", "kind": "video",
+             "images": {"start": "start_image", "refs": "reference_images",
+                        "start_excludes_refs": False}}
+    generate._check_exclusive_images(
+        entry, {"start_image": "node-a", "reference_images": ["node-b"]})

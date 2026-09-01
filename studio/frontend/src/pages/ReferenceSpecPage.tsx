@@ -1,13 +1,32 @@
 import { useCallback, useMemo, useState } from "react";
 
-import { Alert, Badge, Button, Card, Field, Spinner, Text } from "@ansavva/design-system";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Field,
+  Input,
+  Spinner,
+  Tabs,
+  Text,
+} from "@ansavva/design-system";
 
-import { getReferenceSpec, saveSpecAngle, saveSpecBlock } from "../apis/studio";
+import {
+  deleteSpecBlock,
+  getReferenceSpec,
+  saveSpecAngle,
+  saveSpecBlock,
+} from "../apis/studio";
 import { AutoTextarea } from "../components/common/AutoTextarea";
+import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
 import { TokenizedPromptEditor } from "../components/common/TokenizedPromptEditor";
 import type { PromptToken } from "../components/common/TokenizedPromptEditor";
+import { AnglePlate } from "../components/common/AnglePlate";
+import { PromptPreview } from "../components/common/PromptPreview";
 import { PageBar } from "../components/layout/PageBar";
 import { useResource } from "../hooks/useResource";
+import { useSearchParamState } from "../hooks/useSearchParamState";
 import type { ReferenceSpec, SpecAngle } from "../types";
 
 /**
@@ -19,12 +38,19 @@ import type { ReferenceSpec, SpecAngle } from "../types";
  * returned — meant a code change, a review and a release. Anyone without a
  * checkout could not read it, let alone fix it.
  *
- * Two lists, because there are two row classes and they answer different
+ * Two tabs, because there are two row classes and they answer different
  * questions. A **block** is shared prose an angle cites by name; an **angle** is
  * one orientation's template plus the description and tags that get written onto
  * a promoted image. Editing either is one row's write, so two people working on
  * two angles do not overwrite each other — the property the phrasebook gained by
  * becoming rows, for the same reasons.
+ *
+ * **The blocks were inlined under each angle for a while, and are not any more.**
+ * The argument for inlining was that a template is mostly citations, so a prompt
+ * read without its blocks is a third of a prompt. That argument is now answered
+ * by `PromptPreview`, which writes every block out beside the box as you type —
+ * so the inline copies were the same prose a second time, pushing the next angle
+ * off the screen. Reading is the preview's job; editing is this tab's.
  *
  * **Saving here changes what every future reference render says, and nothing
  * else.** No run is touched: a run records the prompt it was given, so work
@@ -62,24 +88,59 @@ export function ReferenceSpecPage() {
         </Alert.Root>
       ) : (
         <>
-          {/*
-            **One page, and blocks inline where they are cited.**
-
-            They were two tabs, which made the commonest edit — read a prompt,
-            notice a phrase is wrong, fix it — a switch, a hunt and a switch
-            back, with the prompt no longer on screen while you changed the
-            words it uses. An angle template is mostly citations; the blocks ARE
-            most of what it says, so hiding them behind a tab hid most of the
-            prompt.
-          */}
-          <Text tone="muted">
-            {data.angles.length} angles. A block is shared prose — expand one to
-            read or edit it, and the change reaches every angle citing it.
-          </Text>
-          <AngleList spec={data} setData={setData} />
+          <SpecTabs spec={data} setData={setData} />
         </>
       )}
     </>
+  );
+}
+
+function SpecTabs({ spec, setData }: { spec: ReferenceSpec; setData: SetData }) {
+  // A query parameter, not `defaultValue`: a tab with no address cannot be
+  // sent to anyone, does not survive a refresh and is not what back goes to.
+  const [tab, setTab] = useSearchParamState("tab", "angles");
+  const names = useMemo(() => Object.keys(spec.blocks).sort(), [spec.blocks]);
+
+  return (
+    <Tabs.Root value={tab} defaultValue="angles" onValueChange={setTab}>
+      <Tabs.List className="overflow-x-auto border-b border-line">
+        <Tabs.Tab value="angles">Angles ({spec.angles.length})</Tabs.Tab>
+        <Tabs.Tab value="blocks">Blocks ({names.length})</Tabs.Tab>
+      </Tabs.List>
+
+      <Tabs.Panel value="angles">
+        {spec.angles.map((angle) => (
+          <AngleEditor key={angle.id} angle={angle} spec={spec} setData={setData} />
+        ))}
+      </Tabs.Panel>
+
+      <Tabs.Panel value="blocks">
+        {/*
+          **A grid, and the prose is the content.** These were full-width rows
+          carrying one truncated line each, so eighteen blocks were eighteen
+          screens of chrome and almost none of the words — on a tab whose entire
+          job is showing the words. Narrower columns fit more lines of each and
+          more blocks at once; an opened one takes the full width, because
+          editing a paragraph in a third of a screen is the opposite problem.
+        */}
+        <div className="grid gap-2 md:grid-cols-2 2xl:grid-cols-3">
+          <NewBlock taken={names} setData={setData} />
+          {names.map((name) => (
+            <BlockEditor
+              key={name}
+              name={name}
+              text={spec.blocks[name] ?? ""}
+              setData={setData}
+              usedBy={
+                spec.angles.filter((a) =>
+                  citations(a.prompt).some((c) => blockNamed(c) === name),
+                ).length
+              }
+            />
+          ))}
+        </div>
+      </Tabs.Panel>
+    </Tabs.Root>
   );
 }
 
@@ -96,22 +157,126 @@ type SetData = (
  * that into something visible now rather than a refusal later.
  */
 function citations(prompt: string): string[] {
-  const found = prompt.match(/\{[a-z_]+\}/g) ?? [];
+  const found = prompt.match(/\{[a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*\}/g) ?? [];
   return Array.from(new Set(found.map((token) => token.slice(1, -1))));
 }
 
-/** Values the assembler computes rather than reading off a block row. */
-const COMPUTED = new Set([
-  "top",
-  "style",
-  "must",
-  "build",
-  "age",
-  "identity_block",
+/**
+ * What a template may cite, by namespace.
+ *
+ * **Three sources, and they are edited in three different places** — which is
+ * the whole reason the dotted spelling exists. A bare name said nothing about
+ * where to go and change it, and worse, two of them could answer to the same
+ * word: a block called `top` lost to the character's bible every time, and one
+ * called `angle_slot` won or lost depending on whether the angle bound a plate.
+ */
+const CHARACTER = ["top", "style", "must", "build", "age", "identity_block"];
+//: `angle` and `torso` were the pose plates and are gone — they distorted the
+//: thing they existed to record. `anchor` is the sentence a chained shoot
+//: carries, empty when there is no anchor.
+const SLOT = ["identity", "anchor"];
+
+/** The bare spelling, which still resolves — see the editor's note on `legacy`. */
+const LEGACY = new Set([
+  ...CHARACTER,
   "identity_slots",
-  "angle_slot",
-  "torso_slot",
 ]);
+
+/** The block a citation names, whichever way it is spelled. */
+function blockNamed(cited: string): string | null {
+  if (cited.startsWith("block.")) return cited.slice(6);
+  return cited.includes(".") ? null : cited;
+}
+
+/**
+ * Write a block that does not exist yet.
+ *
+ * `PATCH` on a name nothing holds creates it — the route is an overwrite rather
+ * than a claim, because a block IS its name and saving an edit to one is the
+ * whole point of it. So creating and editing are the same call, and this is a
+ * form rather than a second route.
+ *
+ * **The name rule is the citation rule.** A block is cited as `{block.<name>}`
+ * and a dot in a format field is attribute access, so a name that is not an
+ * identifier is a block nothing can ever name. The API refuses one; saying so
+ * here means finding out while typing rather than on save.
+ */
+function NewBlock({ taken, setData }: { taken: string[]; setData: SetData }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [text, setText] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+
+  const problem = !name
+    ? null
+    : !/^[a-z_][a-z0-9_]*$/.test(name)
+      ? "Lowercase letters, digits and underscores, starting with a letter."
+      : taken.includes(name)
+        ? "A block already holds that name — open it to edit the words."
+        : null;
+
+  const create = useCallback(async () => {
+    setSaving(true);
+    setFailed(null);
+    try {
+      const saved = await saveSpecBlock(name, text);
+      setData((current) =>
+        current ? { ...current, blocks: { ...current.blocks, [name]: saved.text } } : current,
+      );
+      setName("");
+      setText("");
+      setOpen(false);
+    } catch (bad) {
+      setFailed(bad instanceof Error ? bad.message : String(bad));
+    } finally {
+      setSaving(false);
+    }
+  }, [name, setData, text]);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex h-full min-h-24 items-center justify-center rounded border border-dashed border-line px-2 py-1.5 text-sm text-muted hover:bg-surface-alt"
+      >
+        + New block
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex h-full flex-col gap-2 rounded border border-line p-2 md:col-span-full">
+      <Field.Root name="new-block-name" invalid={problem !== null}>
+        <Field.Label>Name</Field.Label>
+        <Field.Description>Cited as {`{block.${name || "name"}}`}.</Field.Description>
+        <Input value={name} onValueChange={setName} className="font-mono" />
+        {problem ? <Field.Error>{problem}</Field.Error> : null}
+      </Field.Root>
+      <Field.Root name="new-block-text">
+        <Field.Label>Text</Field.Label>
+        <AutoTextarea value={text} onValueChange={setText} className="font-mono" />
+      </Field.Root>
+      {failed ? (
+        <Alert.Root intent="danger">
+          <Alert.Description>{failed}</Alert.Description>
+        </Alert.Root>
+      ) : null}
+      <div className="flex gap-2">
+        <Button
+          onClick={create}
+          disabled={saving || problem !== null || !name || !text.trim()}
+        >
+          {saving ? "Creating…" : "Create"}
+        </Button>
+        <Button intent="ghost" onClick={() => setOpen(false)} disabled={saving}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 function BlockEditor({
   name,
@@ -148,29 +313,64 @@ function BlockEditor({
     }
   }, [draft, name, setData]);
 
+  const remove = useCallback(async () => {
+    setSaving(true);
+    setFailed(null);
+    try {
+      await deleteSpecBlock(name);
+      setData((current) => {
+        if (!current) return current;
+        const blocks = { ...current.blocks };
+        delete blocks[name];
+        return { ...current, blocks };
+      });
+    } catch (problem) {
+      setFailed(problem instanceof Error ? problem.message : String(problem));
+      setSaving(false);
+    }
+  }, [name, setData]);
+
   return (
-    <div className="rounded border border-line">
+    // `h-full`, and no `items-start` on the grid: the cells in a row are as tall
+    // as the tallest, so a one-line block beside a paragraph leaves a hole
+    // rather than a short box. Ragged bottoms read as a layout fault.
+    <div className={`flex h-full flex-col rounded border border-line ${open ? "md:col-span-full" : ""}`}>
       {/*
-        Collapsed by default. An angle cites six or seven blocks and expanding
-        all of them would bury the template they belong to — the thing the
-        reader came for.
+        Collapsed by default, and collapsed still SHOWS the prose — six lines of
+        it rather than one truncated line. A block is a paragraph and the
+        question this tab answers is what it says; a name and an ellipsis
+        answered nothing and took a full row to do it.
       */}
       <button
         type="button"
         onClick={() => setOpen((was) => !was)}
         aria-expanded={open}
-        className="flex w-full items-center justify-between px-3 py-2 text-left"
+        className="flex w-full flex-col gap-1 px-2 py-1.5 text-left"
       >
-        <span className="font-mono text-sm">{`{${name}}`}</span>
-        <span className="flex items-center gap-2">
-          {dirty ? <Badge size="sm">unsaved</Badge> : null}
-          <Text tone="muted">
-            {usedBy === 1 ? "1 angle" : `${usedBy} angles`}
-          </Text>
+        <span className="flex w-full items-center justify-between gap-2">
+          <span className="font-mono text-sm">{`{${name}}`}</span>
+          <span className="flex shrink-0 items-center gap-2">
+            {dirty ? <Badge size="sm">unsaved</Badge> : null}
+            <span className="text-xs text-muted">
+              {usedBy === 1 ? "1 angle" : `${usedBy} angles`}
+            </span>
+          </span>
         </span>
+        {open ? null : (
+          <span className="line-clamp-6 text-xs whitespace-pre-wrap text-muted">{text}</span>
+        )}
       </button>
       {open ? (
-        <div className="flex flex-col gap-2 px-3 pb-3">
+        <div
+          className="flex flex-col gap-2 px-2 pb-2"
+          // Escape closes, which is what a person tries first in a box that
+          // opened over the thing they were reading. The header toggles too,
+          // and did before this — but a header that gives no sign it is a
+          // control is a way out only for whoever wrote it.
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setOpen(false);
+          }}
+        >
           {/* Said before the edit, not after it. A block reads as local until
               you know it is not, and a shared edit noticed on save is noticed
               too late. */}
@@ -196,24 +396,30 @@ function BlockEditor({
                 Revert
               </Button>
             ) : null}
+            {/* Nothing is lost by closing: the draft lives on this component,
+                which stays mounted, and the collapsed card carries the
+                `unsaved` badge until it is saved or reverted. */}
+            <Button intent="ghost" onClick={() => setOpen(false)} disabled={saving}>
+              Close
+            </Button>
+            {/*
+              **Nothing checks whether an angle still cites it, and that is the
+              route's deliberate position** — a template names its blocks in
+              prose, so the only honest check is to assemble every angle and see
+              what fails, which the assembly does loudly. What this screen CAN do
+              is say the count before the press, because it already knows it.
+            */}
+            <ConfirmDeleteButton
+              noun={usedBy > 0
+                ? `{${name}} — ${usedBy} angle(s) cite it and will refuse to draft`
+                : `{${name}}`}
+              onConfirm={remove}
+              disabled={saving}
+            />
           </div>
         </div>
-      ) : (
-        <Text tone="muted" className="block truncate px-3 pb-2">
-          {text}
-        </Text>
-      )}
+      ) : null}
     </div>
-  );
-}
-
-function AngleList({ spec, setData }: { spec: ReferenceSpec; setData: SetData }) {
-  return (
-    <>
-      {spec.angles.map((angle) => (
-        <AngleEditor key={angle.id} angle={angle} spec={spec} setData={setData} />
-      ))}
-    </>
   );
 }
 
@@ -236,17 +442,32 @@ function AngleEditor({
   // What `+` offers: this library's blocks, then the values the assembler fills
   // from the character. Both are placeholders in the template and only one of
   // them is editable, which is why the pill says which it is.
-  const promptTokens = useMemo<PromptToken[]>(
-    () => [
-      ...Object.entries(spec.blocks)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([name, text]) => ({ name, kind: "block" as const, hint: text.slice(0, 60) })),
-      ...[...COMPUTED].sort().map((name) => ({ name, kind: "computed" as const })),
-    ],
-    [spec.blocks],
-  );
+  const promptTokens = useMemo<PromptToken[]>(() => {
+    const blocks = Object.entries(spec.blocks).sort(([a], [b]) => a.localeCompare(b));
+    return [
+      ...blocks.map(([name, text]) => ({
+        name: `block.${name}`,
+        kind: "block" as const,
+        hint: text.slice(0, 60),
+      })),
+      ...CHARACTER.map((name) => ({ name: `character.${name}`, kind: "computed" as const })),
+      ...SLOT.map((name) => ({ name: `slot.${name}`, kind: "computed" as const })),
+      // Not offered, still drawn — every template written before the namespaces
+      // uses the bare spelling and has to keep looking like what it is.
+      ...blocks.map(([name]) => ({ name, kind: "block" as const, legacy: true })),
+      ...[...LEGACY].map((name) => ({ name, kind: "computed" as const, legacy: true })),
+    ];
+  }, [spec.blocks]);
   const unknown = useMemo(
-    () => cited.filter((name) => !(name in spec.blocks) && !COMPUTED.has(name)),
+    () =>
+      cited.filter((name) => {
+        const block = blockNamed(name);
+        if (block !== null) return !(block in spec.blocks) && !LEGACY.has(block);
+        const [space, member] = name.split(".");
+        if (space === "character") return !CHARACTER.includes(member ?? "");
+        if (space === "slot") return !SLOT.includes(member ?? "");
+        return true;
+      }),
     [cited, spec.blocks],
   );
 
@@ -260,8 +481,6 @@ function AngleEditor({
         description,
         tags: angle.tags,
         order: angle.order,
-        angle_image: angle.angle_image,
-        torso_image: angle.torso_image,
       });
       setData((current) =>
         current
@@ -280,27 +499,49 @@ function AngleEditor({
 
   return (
     <Card.Root>
-      <Card.Title>
-        {angle.id} <Badge size="sm">{angle.group}</Badge>
-        {angle.angle_image ? <Badge size="sm">guide</Badge> : null}
-      </Card.Title>
+      {/* The plate, here too. This screen is where an angle's words are
+          actually written, and it showed the id and nothing else — so what the
+          orientation MEANS was only visible on the tab you shoot from. */}
+      <div className="flex items-start gap-3">
+        <AnglePlate path={angle.illustration} name={angle.id} className="w-16 shrink-0" />
+        <Card.Title>
+          {angle.id} <Badge size="sm">{angle.group}</Badge>
+        </Card.Title>
+      </div>
       <div className="flex flex-col gap-2">
-        <Field.Root name={`prompt-${angle.id}`}>
-          <Field.Label>Prompt</Field.Label>
-          {/* Pills, not characters. A template is text with named holes, and
-              typed by hand a mistyped `{face_onl}` looked exactly like a
-              correct one and did not fail until the angle was drafted and
-              refused. Inserted from a list, it cannot be mistyped at all.
+        {/*
+          **Side by side once there is room for it.** A template is mostly
+          citations, so the box shows a third of what the prompt says and the
+          rest is collapsed further down the page — judging an edit meant
+          expanding a block, reading it, collapsing it and assembling the whole
+          thing in your head. Below `xl` they stack, because two narrow columns
+          of monospace are worse than one.
+        */}
+        <div className="grid gap-3 xl:grid-cols-2">
+          <Field.Root name={`prompt-${angle.id}`}>
+            <Field.Label>Prompt</Field.Label>
+            {/* A description here as well as on the preview, so both columns'
+                headers are the same height and the two boxes line up. */}
+            <Field.Description>
+              Type {"{"} to insert a placeholder, or write one out in full.
+            </Field.Description>
+            {/* Pills, not characters. A template is text with named holes, and
+                typed by hand a mistyped `{face_onl}` looked exactly like a
+                correct one and did not fail until the angle was drafted and
+                refused. Typed or taken from the `{` menu, it becomes a pill
+                only if it names something.
 
-              The value is still the same plain string — see the editor's own
-              note on why the round trip has to be byte-exact. */}
-          <TokenizedPromptEditor
-            value={prompt}
-            onValueChange={setPrompt}
-            tokens={promptTokens}
-            ariaLabel={`Prompt for ${angle.id}`}
-          />
-        </Field.Root>
+                The value is still the same plain string — see the editor's own
+                note on why the round trip has to be byte-exact. */}
+            <TokenizedPromptEditor
+              value={prompt}
+              onValueChange={setPrompt}
+              tokens={promptTokens}
+              ariaLabel={`Prompt for ${angle.id}`}
+            />
+          </Field.Root>
+          <PromptPreview prompt={prompt} blocks={spec.blocks} />
+        </div>
 
         {/*
           A template citing a block nobody wrote does not break until somebody
@@ -314,26 +555,6 @@ function AngleEditor({
           says what it is. A red-vs-grey pill would have carried this warning on
           hue alone, which is exactly the thing that note rules out.
         */}
-        {/*
-          The cited blocks, in place. Reading a prompt without them is reading a
-          third of it — a template is mostly citations — and editing one used to
-          mean leaving the prompt behind on another tab.
-        */}
-        {cited.filter((name) => name in spec.blocks).map((name) => (
-          <BlockEditor
-            key={name}
-            name={name}
-            text={spec.blocks[name] ?? ""}
-            setData={setData}
-            usedBy={spec.angles.filter((a) => citations(a.prompt).includes(name)).length}
-          />
-        ))}
-        {cited.some((name) => COMPUTED.has(name)) ? (
-          <Text tone="muted">
-            Filled from the character:{" "}
-            {cited.filter((name) => COMPUTED.has(name)).join(", ")}
-          </Text>
-        ) : null}
         {unknown.length > 0 ? (
           <Alert.Root intent="warning">
             <Alert.Title>
@@ -348,9 +569,6 @@ function AngleEditor({
 
         <Field.Root name={`description-${angle.id}`}>
           <Field.Label>Description</Field.Label>
-          <Field.Description>
-            Written onto the image when a run is promoted. Never sent to a model.
-          </Field.Description>
           <AutoTextarea minRows={2} value={description} onValueChange={setDescription} />
         </Field.Root>
 

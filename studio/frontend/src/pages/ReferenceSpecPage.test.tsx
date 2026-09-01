@@ -6,16 +6,26 @@ import type { ReferenceSpec } from "../types";
 import { TestProviders } from "../test-providers";
 
 vi.mock("../apis/studio", () => ({
+  deleteSpecBlock: vi.fn(),
   getReferenceSpec: vi.fn(),
   saveSpecBlock: vi.fn(),
   saveSpecAngle: vi.fn(),
+  // The plate beside each angle: a node view, then its presigned url.
+  resolvePath: vi.fn().mockResolvedValue({ id: "node-plate", name: "front.png", kind: "file" }),
+  getAsset: vi.fn().mockResolvedValue({ url: "https://signed/plate.png" }),
 }));
 
-import { getReferenceSpec, saveSpecBlock } from "../apis/studio";
+import {
+  deleteSpecBlock,
+  getReferenceSpec,
+  resolvePath,
+  saveSpecBlock,
+} from "../apis/studio";
 import { ReferenceSpecPage } from "./ReferenceSpecPage";
 
 const read = vi.mocked(getReferenceSpec);
 const saveBlock = vi.mocked(saveSpecBlock);
+const removeBlock = vi.mocked(deleteSpecBlock);
 
 const SPEC: ReferenceSpec = {
   blocks: { face_only: "THE FACE COMES FROM THE REFERENCE IMAGES." },
@@ -27,6 +37,7 @@ const SPEC: ReferenceSpec = {
       description: "Head and shoulders, front on.",
       tags: ["face", "front"],
       order: 1000,
+      illustration: "config/angle/face/front.png",
     },
   ],
 };
@@ -46,20 +57,46 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-it("shows a block INSIDE the angle that cites it, not on another tab", async () => {
+/** Open the Blocks tab, which is where a block's prose is edited. */
+async function blocksTab() {
+  fireEvent.click(await screen.findByRole("tab", { name: /Blocks/ }));
+}
+
+it("keeps the blocks on their OWN tab, and previews them beside the prompt", async () => {
   /**
-   * They were two tabs, which made the commonest edit — read a prompt, notice a
-   * phrase is wrong, fix it — a switch, a hunt and a switch back, with the
-   * prompt off screen while you changed the words it uses. A template is mostly
-   * citations, so hiding the blocks hid most of the prompt.
+   * They were inlined under each angle for a while. The argument was that a
+   * template is mostly citations, so a prompt read without its blocks is a
+   * third of a prompt — and that argument is now answered by `PromptPreview`,
+   * which writes every block out beside the box as you type. The inline copies
+   * were the same prose a second time, pushing the next angle off the screen.
    */
   read.mockResolvedValue(SPEC);
   show();
   expect(await screen.findByText(/face_front/)).toBeTruthy();
-  // By ROLE: `{face_only}` now appears twice on purpose — once as a pill inside
-  // the prompt, once as the block's own header. The header is the button.
+
+  // The prose is on screen — expanded into the preview, not as an editor.
+  expect(screen.getByLabelText("Assembled preview").textContent).toContain(
+    "THE FACE COMES FROM THE REFERENCE IMAGES.",
+  );
+  expect(screen.queryByRole("button", { name: /\{face_only\}/ })).toBeNull();
+
+  await blocksTab();
   expect(screen.getByRole("button", { name: /\{face_only\}/ })).toBeTruthy();
-  expect(screen.queryByRole("tab")).toBeNull();
+});
+
+it("lists EVERY block, not only the ones some angle happens to cite", async () => {
+  /**
+   * A block nothing cites is the one most likely to be wrong, and inlining
+   * under citations made it the one thing the screen could not show.
+   */
+  read.mockResolvedValue({
+    blocks: { ...SPEC.blocks, orphan: "Nothing cites this." },
+    angles: SPEC.angles,
+  });
+  show();
+  await blocksTab();
+  expect(screen.getByRole("button", { name: /\{orphan\}/ })).toBeTruthy();
+  expect(screen.getByText("0 angles")).toBeTruthy();
 });
 
 it("says how many angles a block reaches BEFORE it is edited", async () => {
@@ -75,8 +112,8 @@ it("says how many angles a block reaches BEFORE it is edited", async () => {
     ],
   });
   show();
-  const counts = await screen.findAllByText("2 angles");
-  expect(counts.length).toBe(2);
+  await blocksTab();
+  expect(screen.getByText("2 angles")).toBeTruthy();
 });
 
 it("says what to do when a library holds no spec at all", async () => {
@@ -122,8 +159,8 @@ it("saves one block without refetching the whole spec", async () => {
   saveBlock.mockResolvedValue({ name: "face_only", text: "edited" });
   show();
 
-  // Expand the block where it sits, inside the angle that cites it.
-  fireEvent.click(await screen.findByRole("button", { name: /\{face_only\}/ }));
+  await blocksTab();
+  fireEvent.click(screen.getByRole("button", { name: /\{face_only\}/ }));
   const box = await screen.findByDisplayValue(/THE FACE COMES FROM/);
   fireEvent.change(box, { target: { value: "edited" } });
   fireEvent.click(screen.getAllByText("Save")[0]!);
@@ -137,4 +174,94 @@ it("does not offer to save until something has changed", async () => {
   show();
   const save = (await screen.findAllByText("Save"))[0] as HTMLButtonElement;
   expect(save.disabled).toBe(true);
+});
+
+it("shows the angle's PLATE, which is what the orientation means", async () => {
+  /**
+   * This screen is where an angle's words are written, and it showed the id and
+   * nothing else — so what `face_three_quarter_back_right` actually means was
+   * only visible on the tab you shoot from.
+   */
+  read.mockResolvedValue(SPEC);
+  show();
+  await screen.findByText(/face_front/);
+  await waitFor(() => expect(resolvePath).toHaveBeenCalledWith("config/angle/face/front.png"));
+});
+
+it("creates a block, which is the same call as editing one", async () => {
+  /**
+   * `PATCH` on a name nothing holds creates it — the route is an overwrite
+   * rather than a claim, because a block IS its name. So there is one route and
+   * this is a form, not a second endpoint.
+   */
+  read.mockResolvedValue(SPEC);
+  saveBlock.mockResolvedValue({ name: "backdrop_body", text: "White seamless." });
+  show();
+  await blocksTab();
+
+  fireEvent.click(screen.getByText("+ New block"));
+  fireEvent.change(screen.getByLabelText("Name"), {
+    target: { value: "backdrop_body" },
+  });
+  fireEvent.change(screen.getByLabelText("Text"), {
+    target: { value: "White seamless." },
+  });
+  fireEvent.click(screen.getByText("Create"));
+
+  await waitFor(() =>
+    expect(saveBlock).toHaveBeenCalledWith("backdrop_body", "White seamless."),
+  );
+  expect(await screen.findByRole("button", { name: /\{backdrop_body\}/ })).toBeTruthy();
+});
+
+it("refuses a name no template could ever cite", async () => {
+  /**
+   * A block is cited as `{block.<name>}` and a dot is attribute access, so a
+   * name that is not an identifier is a block nothing can name. The API refuses
+   * it; saying so here means finding out while typing.
+   */
+  read.mockResolvedValue(SPEC);
+  show();
+  await blocksTab();
+
+  fireEvent.click(screen.getByText("+ New block"));
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "2fast" } });
+  fireEvent.change(screen.getByLabelText("Text"), { target: { value: "prose" } });
+
+  expect(screen.getByText(/Lowercase letters, digits and underscores/)).toBeTruthy();
+  expect((screen.getByText("Create") as HTMLButtonElement).disabled).toBe(true);
+});
+
+it("will not silently overwrite a block that already exists", async () => {
+  read.mockResolvedValue(SPEC);
+  show();
+  await blocksTab();
+
+  fireEvent.click(screen.getByText("+ New block"));
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "face_only" } });
+  expect(screen.getByText(/already holds that name/)).toBeTruthy();
+});
+
+it("deletes a block, and says how many angles it will break first", async () => {
+  /**
+   * Nothing checks whether an angle still cites it — a template names its
+   * blocks in prose, so the only honest check is to assemble every angle and
+   * see what fails, which the assembly does loudly. What this screen can do is
+   * say the count before the press, because it already knows it.
+   */
+  read.mockResolvedValue(SPEC);
+  removeBlock.mockResolvedValue(undefined as never);
+  show();
+  await blocksTab();
+
+  fireEvent.click(screen.getByRole("button", { name: /\{face_only\}/ }));
+  const arm = screen.getByRole("button", { name: /Delete/ });
+  fireEvent.click(arm);
+  expect(screen.getByText(/1 angle\(s\) cite it/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: /1 angle\(s\) cite it/ }));
+
+  await waitFor(() => expect(removeBlock).toHaveBeenCalledWith("face_only"));
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: /\{face_only\}/ })).toBeNull(),
+  );
 });

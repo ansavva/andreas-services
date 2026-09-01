@@ -75,7 +75,7 @@ from studio_core.errors import (
 )
 from studio_core.routes import projects as project_routes
 from studio_core.routes import support
-from studio_core.services import catalog, generate, layout, manage
+from studio_core.services import catalog, generate, layout, manage, reference
 
 logger = logging.getLogger(__name__)
 
@@ -738,6 +738,13 @@ def view(record: dict, send_entries: list[dict] | None = None) -> dict:
             "plan_digest": None,
             "approval": None,
             **record,
+            # **Who this run is ABOUT, which `characters` alone does not answer.**
+            # That field is written at creation and nowhere else, so a run built
+            # by adding a character's references in the editor binds six of that
+            # character's photographs and records nobody. `cast` is what
+            # `{character.N}` counts, derived from the bindings when the record
+            # itself is silent — see `_cast`.
+            "cast": _cast(record),
             "scenes": support.holders(record["id"], catalog.ENTITY_SCENE),
             # **The ordered list, each image with what it is for and where it
             # came from.** This is the half `bindings` never held: the map says
@@ -859,9 +866,98 @@ def update_plan(run_id: str):
     if not isinstance(plan, dict):
         raise ValidationError("plan must be an object")
 
+    plan = _expanded(plan, record)
+
     send_entries = catalog.sends(record["id"])
     updated = _revised(record, {"plan": plan}, send_entries)
     return jsonify(view(updated, send_entries)), 200
+
+
+def _cast(record: dict) -> list:
+    """The characters this run is about, in order.
+
+    `run.characters` when it holds any — that is the run saying so itself.
+
+    **Otherwise, whoever owns the images it binds.** `characters` is written at
+    CREATION and nowhere else, so a run built by adding a character's references
+    in the editor binds six of that character's photographs and records nobody:
+    `{character.1.top}` would have had nothing to fill from on exactly the runs
+    most likely to want it. A reference image belongs to a character by its
+    ancestry, which `owner_of` already resolves for every listing, so the answer
+    is there to be read rather than guessed.
+
+    Derived rather than written back: this is a read for a prompt, and quietly
+    editing a run's provenance as a side effect of previewing one is not a thing
+    a preview should do.
+    """
+    named = record.get("characters") or []
+    if named:
+        return named
+
+    seen: list[str] = []
+    for entry in catalog.sends(record["id"]):
+        node = catalog.node(entry["node"])
+        owner = catalog.owner_of(node) if node else None
+        if owner and owner["kind"] == catalog.ENTITY_CHARACTER and owner["id"] not in seen:
+            seen.append(owner["id"])
+    return seen
+
+
+def _profiles(record: dict) -> list:
+    """The bibles of this run's cast, in the order `{character.N}` counts."""
+    return [
+        (catalog.entity(catalog.ENTITY_CHARACTER, cid) or {}).get("profile") or {}
+        for cid in _cast(record)
+    ]
+
+
+def _expanded(plan: dict, record: dict) -> dict:
+    """Fill a plan's `template` into its `prompt`, if it carries one.
+
+    **Expanded at SAVE, and the plan keeps both.** A template expanded at submit
+    would mean the payload a person approved is not the payload that gets sent,
+    and `plan_digest` — the whole mechanism that makes hard rule #2 something
+    other than a promise — would be hashing the wrong string. Expanding here
+    keeps the digest over exactly what reaches the model.
+
+    The template is kept beside it so the prompt stays re-editable: without it,
+    filling a template in once would leave the next editor a wall of finished
+    prose with no way back to what was written. Nothing re-expands on its own —
+    a character edited later does not silently move a drafted prompt — because
+    re-expanding takes a save, and a save withdraws the approval anyway.
+    """
+    template = plan.get("template")
+    if template is None:
+        return plan
+    if not isinstance(template, str):
+        raise ValidationError("plan.template must be a string")
+    blocks = catalog.reference_spec(record["lib"])["blocks"]
+    return {**plan, "prompt": reference.expand_cast(template, _profiles(record), blocks)}
+
+
+@bp.post("/runs/<run_id>/plan/preview")
+def preview_plan(run_id: str):
+    """What a template would become, without writing anything.
+
+    The editor calls it on every change, which is the same shape the turnaround
+    preview has and for the same reason: what a prompt will SAY is the thing
+    that tells you whether it is right, so it cannot sit behind the save that
+    withdraws the approval.
+    """
+    body = support.body()
+    held = support.memberships()
+    record = _run(run_id, held)
+
+    template = body.get("template")
+    if not isinstance(template, str):
+        raise ValidationError("template must be a string")
+    blocks = catalog.reference_spec(record["lib"])["blocks"]
+    prompt, spans = reference.expand_cast_parts(template, _profiles(record), blocks)
+    # The spans say WHERE each citation landed. An expanded prompt is a wall of
+    # prose in which nothing marks which words came from which citation, and
+    # that is the one question a reader of it has.
+    return jsonify({"prompt": prompt, "spans": spans,
+                    "characters": len(_cast(record))}), 200
 
 
 @bp.patch("/runs/<run_id>/sends")

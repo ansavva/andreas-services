@@ -7,6 +7,7 @@ import { TestProviders } from "../../test-providers";
 
 vi.mock("../../apis/studio", () => ({
   draftTurnaround: vi.fn(),
+  getProject: vi.fn(),
   getProjects: vi.fn(),
   getReel: vi.fn(),
   getReferenceSpec: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock("../../apis/studio", () => ({
 
 import {
   draftTurnaround,
+  getProject,
   getProjects,
   getReel,
   getReferenceSpec,
@@ -29,6 +31,7 @@ const draft = vi.mocked(draftTurnaround);
 const tree = vi.mocked(getTree);
 const reel = vi.mocked(getReel);
 const projects = vi.mocked(getProjects);
+const projectRecord = vi.mocked(getProject);
 const spec = vi.mocked(getReferenceSpec);
 const resolve = vi.mocked(resolvePath);
 
@@ -75,6 +78,7 @@ function ready(files = [file("node-a", "a.jpg"), file("node-b", "b.jpg")]) {
   } as never);
   reel.mockResolvedValue({ prefix: "", sort: "name", items: files, total: files.length } as never);
   projects.mockResolvedValue([{ id: "proj-1", slug: "refs" }] as never);
+  projectRecord.mockResolvedValue({ id: "proj-1", slug: "refs", root: "node-proj" } as never);
   spec.mockResolvedValue(SPEC);
   // **The REAL shape: a node view, with no presigned url.** This returned a
   // `file()` — a listing entry, which carries one — and the panel crashed on
@@ -96,18 +100,29 @@ async function chooseProject(label = "refs") {
   fireEvent.click(await screen.findByRole("option", { name: label }));
 }
 
-/** Open one angle's picker and click a photograph inside it. */
+/**
+ * Select an angle's card and click a photograph in the pool.
+ *
+ * **The card itself is the control.** It was a `Pick photographs` button inside
+ * the card — a second thing to aim at for a decision the card already stands
+ * for, reading as "open something" rather than "this one".
+ */
 async function pick(angleId: string, name: string) {
-  const openers = await screen.findAllByText(/Pick photographs|Change/);
-  const card = openers
-    .map((b) => b.closest("div")?.parentElement)
-    .find((c) => c?.textContent?.includes(angleId));
   fireEvent.click(
-    [...(card?.querySelectorAll("button") ?? [])].find((b) =>
-      /Pick photographs|Change/.test(b.textContent ?? ""),
-    ) as HTMLButtonElement,
+    await screen.findByRole("button", { name: `Pick photographs for ${angleId}` }),
   );
   fireEvent.click(await screen.findByLabelText(new RegExp(`${angleId}: ${name}`)));
+}
+
+/**
+ * The call that DRAFTS.
+ *
+ * The panel also previews on its own, on a debounce, so the first call to this
+ * mock is very often an assembly nobody asked for — asserting on `calls[0]`
+ * would read the preview's body and pass or fail for the wrong reason.
+ */
+function drafting() {
+  return draft.mock.calls.find((call) => !call[1].preview)!;
 }
 
 afterEach(() => {
@@ -172,8 +187,8 @@ it("sends a SEPARATE list per angle", async () => {
   await pick("face_profile_right", "b.jpg");
   fireEvent.click(screen.getByText(/Draft 2 angle\(s\)/));
 
-  await waitFor(() => expect(draft).toHaveBeenCalled());
-  expect(draft.mock.calls[0]![1].identity_by_angle).toEqual({
+  await waitFor(() => expect(drafting()).toBeTruthy());
+  expect(drafting()[1].identity_by_angle).toEqual({
     face_front: ["node-a"],
     face_profile_right: ["node-b"],
   });
@@ -189,8 +204,8 @@ it("keeps pick ORDER within an angle, because a citation depends on it", async (
   await pick("face_profile_right", "a.jpg");
   fireEvent.click(screen.getByText(/Draft 2 angle\(s\)/));
 
-  await waitFor(() => expect(draft).toHaveBeenCalled());
-  expect(draft.mock.calls[0]![1].identity_by_angle!.face_front).toEqual([
+  await waitFor(() => expect(drafting()).toBeTruthy());
+  expect(drafting()[1].identity_by_angle!.face_front).toEqual([
     "node-b",
     "node-a",
   ]);
@@ -210,8 +225,8 @@ it("copies one angle's picks onto every angle as an explicit list", async () => 
   fireEvent.click(screen.getByText("Use for every angle"));
   fireEvent.click(screen.getByText(/Draft 2 angle\(s\)/));
 
-  await waitFor(() => expect(draft).toHaveBeenCalled());
-  expect(draft.mock.calls[0]![1].identity_by_angle).toEqual({
+  await waitFor(() => expect(drafting()).toBeTruthy());
+  expect(drafting()[1].identity_by_angle).toEqual({
     face_front: ["node-a"],
     face_profile_right: ["node-a"],
   });
@@ -226,11 +241,19 @@ it("sends no fallback identity, so an unpicked angle cannot shoot anyway", async
   fireEvent.click(screen.getByText("Use for every angle"));
   fireEvent.click(screen.getByText(/Draft 2 angle\(s\)/));
 
-  await waitFor(() => expect(draft).toHaveBeenCalled());
-  expect(draft.mock.calls[0]![1].identity).toEqual([]);
+  await waitFor(() => expect(drafting()).toBeTruthy());
+  expect(drafting()[1].identity).toEqual([]);
 });
 
-it("previews without recording anything", async () => {
+it("assembles the prompts WITHOUT being asked, and before a project is chosen", async () => {
+  /**
+   * **There was a Preview button and it was the wrong shape twice over.** What
+   * an angle would say is the thing that tells you whether your choices are
+   * right, so putting it behind a click meant deciding first and reading
+   * afterwards — and the button was disabled until a project was chosen and all
+   * fourteen angles had photographs, which is the point at which there is
+   * nothing left to decide.
+   */
   ready();
   draft.mockResolvedValue({
     preview: [{ angle: "face_front", model: "m",
@@ -238,14 +261,25 @@ it("previews without recording anything", async () => {
     failed: [],
   });
   show();
-  await chooseProject();
-  await pick("face_front", "a.jpg");
-  fireEvent.click(screen.getByText("Use for every angle"));
-  fireEvent.click(screen.getByText("Preview"));
 
-  await waitFor(() => expect(draft).toHaveBeenCalled());
-  expect(draft.mock.calls[0]![1].preview).toBe(true);
+  // No project, no photographs, no click.
   expect(await screen.findByText("A studio portrait.")).toBeTruthy();
+  expect(draft.mock.calls[0]![1].preview).toBe(true);
+  expect(draft.mock.calls[0]![1].project).toBeUndefined();
+  expect(screen.queryByText("Preview")).toBeNull();
+});
+
+it("keeps showing the prompts when an assembly fails", async () => {
+  /**
+   * A preview runs on every change, so a network blip mid-click would otherwise
+   * replace the panel with a red box for something nobody did.
+   */
+  ready();
+  draft.mockRejectedValue(new Error("boom"));
+  show();
+  await screen.findAllByText(/face_front/);
+  await waitFor(() => expect(draft).toHaveBeenCalled());
+  expect(screen.queryByText(/The turnaround was refused/)).toBeNull();
 });
 
 it("says so when the character has no seed pool at all", async () => {
@@ -257,4 +291,112 @@ it("says so when the character has no seed pool at all", async () => {
   show();
   expect(await screen.findByText(/no seed pool/i)).toBeTruthy();
   expect(reel).not.toHaveBeenCalled();
+});
+
+it("removes one photograph from a card, where the mistake is visible", async () => {
+  /**
+   * It was only removable in the pool, by finding the same photograph among
+   * fifty and clicking it again — so the place that shows you the wrong picture
+   * was not the place you could take it off.
+   */
+  ready();
+  draft.mockResolvedValue({ drafted: [], failed: [] });
+  show();
+  await chooseProject();
+  await pick("face_front", "a.jpg");
+  await pick("face_front", "b.jpg");
+  // Every angle needs photographs before the panel will draft at all.
+  await pick("face_profile_right", "a.jpg");
+
+  fireEvent.click(screen.getByLabelText("Remove a.jpg from face_front"));
+  fireEvent.click(screen.getByText(/Draft 2 angle\(s\)/));
+
+  await waitFor(() => expect(drafting()).toBeTruthy());
+  expect(drafting()[1].identity_by_angle!.face_front).toEqual(["node-b"]);
+});
+
+it("opens a photograph full size on a modified click instead of picking it", async () => {
+  /**
+   * These are thumbnails of the only pictures that will say who this person is,
+   * and the decision is made by eye — so looking at one properly, without
+   * leaving the screen you are choosing on, is part of the job.
+   */
+  ready();
+  const open = vi.spyOn(window, "open").mockReturnValue(null);
+  show();
+  await chooseProject();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Pick photographs for face_front" }),
+  );
+
+  const thumb = await screen.findByLabelText(/face_front: a\.jpg/);
+  fireEvent.click(thumb, { metaKey: true });
+
+  expect(open).toHaveBeenCalledWith("https://x/node-a", "_blank", "noopener,noreferrer");
+  // And it did NOT become a pick.
+  expect(screen.getAllByText("No photographs yet.").length).toBeGreaterThan(0);
+  open.mockRestore();
+});
+
+it("shoots the ANCHOR alone first, then chains the rest off its render", async () => {
+  /**
+   * **A turnaround is not N independent shoots.** Every hand-authored
+   * production set was made as one anchor and then the rest chained off it,
+   * each binding the anchor's render as `[Image1]` and each told to take the
+   * wardrobe and the background from it. Shot independently the same prompts
+   * produced a different shirt every time, because nothing in them held it.
+   *
+   * Phase one drafts the anchor ALONE: drafting all fourteen and shooting the
+   * anchor out of that pile would leave thirteen payloads written against a
+   * render that does not exist yet, and a payload is the thing a person
+   * approves.
+   */
+  ready();
+  draft.mockResolvedValue({ drafted: [], failed: [] });
+  show();
+  await chooseProject();
+  await pick("face_front", "a.jpg");
+
+  const anchors = await screen.findAllByText("Make anchor");
+  fireEvent.click(anchors[0]!);
+  fireEvent.click(await screen.findByText("Draft the anchor"));
+
+  await waitFor(() => expect(drafting()).toBeTruthy());
+  expect(drafting()[1].angles).toEqual(["face_front"]);
+  expect(drafting()[1].anchor).toBeUndefined();
+});
+
+it("binds the chosen render for the REST once an anchor image is picked", async () => {
+  ready();
+  reel.mockResolvedValue({
+    prefix: "", sort: "newest", total: 1,
+    items: [file("node-render", "anchor.png")],
+  } as never);
+  draft.mockResolvedValue({ drafted: [], failed: [] });
+  show();
+  await chooseProject();
+
+  fireEvent.click((await screen.findAllByText("Make anchor"))[0]!);
+  fireEvent.click(await screen.findByLabelText("Anchor: anchor.png"));
+  fireEvent.click(await screen.findByText(/Draft 1 angle\(s\)/));
+
+  await waitFor(() => expect(drafting()).toBeTruthy());
+  // The anchor angle is not reshot, and the rest carry the render.
+  expect(drafting()[1].angles).toEqual(["face_profile_right"]);
+  expect(drafting()[1].anchor).toBe("node-render");
+});
+
+it("an anchored pass needs no fresh picks, because the anchor IS the identity", async () => {
+  ready();
+  reel.mockResolvedValue({
+    prefix: "", sort: "newest", total: 1,
+    items: [file("node-render", "anchor.png")],
+  } as never);
+  show();
+  await chooseProject();
+  fireEvent.click((await screen.findAllByText("Make anchor"))[0]!);
+  fireEvent.click(await screen.findByLabelText("Anchor: anchor.png"));
+
+  const button = (await screen.findByText(/Draft 1 angle\(s\)/)) as HTMLButtonElement;
+  expect(button.disabled).toBe(false);
 });

@@ -5,7 +5,10 @@ lives in the catalog rather than in the pipeline package, and there is a route
 that assembles it against a character and writes the drafts.
 """
 
+import pytest
+
 from studio_core import config
+from studio_core.errors import ValidationError
 from tests.conftest import CATALOG_LIBRARY
 
 BLOCK = "THE FACE COMES FROM THE REFERENCE IMAGES. Study the nose."
@@ -169,7 +172,9 @@ def test_the_height_number_is_sent_and_comes_first():
     """
     from studio_core.services import reference
 
-    assert reference.build_text(PROFILE, "face").startswith("5'10\"")
+    # Labelled and first — see `test_the_build_arrives_as_one_LABELLED_line_per_field`
+    # for why every field is now on a line of its own.
+    assert reference.build_text(PROFILE, "face").startswith("- Height: 5'10\"")
 
 
 # ─────────────────────── drafting a turnaround ───────────────────────
@@ -271,6 +276,29 @@ def test_a_turnaround_needs_a_project(empty_api):
     assert "project" in resp.get_json()["error"]
 
 
+def test_a_PREVIEW_needs_neither_a_project_nor_a_single_photograph(empty_api):
+    """**Both guards are about drafting, and previewing is not drafting.**
+
+    The SPA assembles a preview on every change so a person can read what an
+    angle would say while they are still choosing. Requiring what a draft
+    requires made that impossible: the words could not be seen until after every
+    decision they exist to inform. A preview writes nothing, so there is no run
+    to put in a project and no half-finished shoot to prevent — with no
+    photographs the prompt simply cites no identity slots, which is a true
+    answer to "what would this say so far".
+    """
+    _spec(empty_api)
+    character = _character_with_bible(empty_api)
+
+    resp = empty_api.post(f"/api/characters/{character['id']}/turnaround",
+                          json={"preview": True})
+
+    assert resp.status_code == 200
+    got = resp.get_json()
+    assert BLOCK in got["preview"][0]["plan"]["prompt"]
+    assert got["preview"][0]["sends"] == []
+
+
 def test_one_bad_angle_does_not_cancel_the_rest(empty_api):
     """A failure is almost always a property of that angle alone.
 
@@ -344,6 +372,248 @@ def test_a_preview_assembles_and_writes_nothing(empty_api):
     assert "drafted" not in got
     # And no run exists.
     assert empty_api.get(f"/api/runs?project={project['id']}").get_json()["runs"] == []
+
+
+def test_a_block_may_not_be_named_something_no_template_could_cite(empty_api):
+    """**A block is cited as `{block.<name>}`, and a dot is attribute access.**
+
+    `#` was the only refusal, which let somebody create `2fast` or `a-b`: rows
+    that exist, appear in the insert menu, and fail the moment a template names
+    them.
+    """
+    _spec(empty_api)
+    # No `#`: it is a URL fragment, so it never reaches the route to be judged.
+    for bad in ("2fast", "a-b", "Caps", "with space"):
+        resp = empty_api.patch(f"/api/reference-spec/blocks/{bad}",
+                               json={"text": "prose"})
+        assert resp.status_code == 400, bad
+
+    assert empty_api.patch("/api/reference-spec/blocks/_ok_1",
+                           json={"text": "prose"}).status_code == 200
+
+
+# ─────────────────────────── the anchor ───────────────────────────
+
+
+def test_an_anchored_pass_binds_the_anchor_FIRST_for_every_angle(empty_api):
+    """**A turnaround is not N independent shoots, and shooting it as one was
+    what produced fourteen different shirts.**
+
+    Every hand-authored production set was made as one anchor and then the rest
+    chained off it, each binding the anchor's output first. `[Image1]` is what
+    the `anchor` block names, so the position is part of the contract rather
+    than a coincidence of ordering.
+    """
+    _spec(empty_api)
+    empty_api.patch("/api/reference-spec/angles/face_back", json={**ANGLE, "order": 1500})
+    character = _character_with_bible(empty_api)
+    project = empty_api.post("/api/projects", json={"slug": "refs"}).get_json()
+    node = _seed_node(empty_api, character)
+
+    got = empty_api.post(
+        f"/api/characters/{character['id']}/turnaround",
+        json={"project": project["id"], "anchor": "node-anchor",
+              "identity_by_angle": {"face_front": [node], "face_back": [node]},
+              "preview": True},
+    ).get_json()
+
+    for entry in got["preview"]:
+        assert [s["node"] for s in entry["sends"]] == ["node-anchor", node]
+
+
+def test_the_anchor_is_not_bound_TWICE_when_it_is_also_picked(empty_api):
+    _spec(empty_api)
+    character = _character_with_bible(empty_api)
+    node = _seed_node(empty_api, character)
+
+    got = empty_api.post(
+        f"/api/characters/{character['id']}/turnaround",
+        json={"anchor": node, "identity_by_angle": {"face_front": [node]},
+              "preview": True},
+    ).get_json()
+    assert [s["node"] for s in got["preview"][0]["sends"]] == [node]
+
+
+def test_the_anchor_SENTENCE_appears_only_on_an_anchored_pass(empty_api):
+    """**Empty rather than absent, so one template is right in both phases.**
+
+    The first shot of a set has no anchor and must not carry the sentence; every
+    later one must. A template citing `{slot.anchor}` is correct either way, and
+    the words are the `anchor` block's — the code decides only whether.
+    """
+    _spec(empty_api)
+    empty_api.patch("/api/reference-spec/blocks/anchor",
+                    json={"text": "Match the wardrobe and the background of [Image1]."})
+    empty_api.patch("/api/reference-spec/angles/face_front",
+                    json={**ANGLE, "prompt": "Front on. {slot.anchor}"})
+    character = _character_with_bible(empty_api)
+    node = _seed_node(empty_api, character)
+
+    def prompt(**extra):
+        got = empty_api.post(f"/api/characters/{character['id']}/turnaround",
+                             json={"identity": [node], "preview": True, **extra}).get_json()
+        return got["preview"][0]["plan"]["prompt"]
+
+    assert prompt() == "Front on."
+    assert prompt(anchor="node-anchor").endswith(
+        "Match the wardrobe and the background of [Image1].")
+
+
+def test_an_anchor_alone_is_enough_to_shoot(empty_api):
+    """Phase two picks nothing new: the anchor IS the identity for the rest of
+    the set, so requiring a per-angle selection as well would make the chained
+    pass impossible to express."""
+    _spec(empty_api)
+    character = _character_with_bible(empty_api)
+    project = empty_api.post("/api/projects", json={"slug": "refs"}).get_json()
+
+    resp = empty_api.post(f"/api/characters/{character['id']}/turnaround",
+                          json={"project": project["id"], "anchor": "node-anchor"})
+    assert resp.status_code == 201
+
+
+def test_a_malformed_anchor_is_refused(empty_api):
+    _spec(empty_api)
+    character = _character_with_bible(empty_api)
+    resp = empty_api.post(f"/api/characters/{character['id']}/turnaround",
+                          json={"anchor": "run-not-a-node", "preview": True})
+    assert resp.status_code == 400
+    assert "anchor" in resp.get_json()["error"]
+
+
+# ──────────────────── the build, as labelled fields ────────────────────
+
+
+def test_the_build_arrives_as_one_LABELLED_line_per_field():
+    """**The run-on paragraph is what a turned body angle could not read.**
+
+    This joined every body field with a space. The hand-authored body prompts
+    that actually worked did not: each field arrived named and on its own line.
+    Which field a sentence belongs to is information the bible has, and the
+    run-on form threw it away — "the chest curves out in side view" only reads
+    as an instruction about the chest when it is labelled as one, and a wall of
+    unattributed sentences is what produced a flat side profile from a good
+    front one.
+    """
+    from studio_core.services import reference
+
+    text = reference.build_text({
+        "identity": {"height_read": "A head above most people"},
+        "body": {"silhouette": "A broad wedge",
+                 "chest_and_shoulders": "Full square chest, capped deltoids",
+                 "lower_body": "Heavy thighs"},
+    }, "body")
+
+    assert text.splitlines() == [
+        "- Height: A head above most people",
+        "- Silhouette: A broad wedge",
+        "- Chest and shoulders: Full square chest, capped deltoids",
+        "- Lower body: Heavy thighs",
+    ]
+
+
+def test_a_field_the_bible_gains_tomorrow_is_labelled_without_an_edit_here():
+    """The label is the bible's own key. A hard-coded map would silently drop
+    the field the day somebody writes a new one — which is the failure
+    `_extra_body_fields` already exists to prevent."""
+    from studio_core.services import reference
+
+    text = reference.build_text({"body": {"scars": "A pale line above the left knee"}},
+                                "body")
+    assert "- Scars: A pale line above the left knee" in text
+
+
+def test_a_face_angle_still_sees_nothing_below_the_crop():
+    """A face angle crops at mid-chest, so a leg is noise in its prompt."""
+    from studio_core.services import reference
+
+    text = reference.build_text({"body": {"chest_and_shoulders": "Full square chest",
+                                          "lower_body": "Heavy thighs"}}, "face")
+    assert "Chest and shoulders" in text
+    assert "Lower body" not in text
+
+
+# ─────────────────────── namespaced placeholders ───────────────────────
+
+
+def _assemble(template, blocks=None, **kw):
+    from studio_core.services import reference
+    return reference.assemble({"id": "face_front", "group": "face", "prompt": template},
+                              blocks if blocks is not None else {"face_only": BLOCK},
+                              PROFILE, **kw)
+
+
+def test_a_namespaced_placeholder_says_where_it_comes_from():
+    """**The point of the dotted spelling.** A reader of an assembled prompt
+    wants to know which words they can go and change, and a bare `{top}` does
+    not say whether that is a block or the character's bible."""
+    text = _assemble("{block.face_only} | {character.style} | {slot.identity}",
+                     identity_positions=[2, 3])
+    assert text == f"{BLOCK} | Realistic. | [Image2] and [Image3]"
+
+
+def test_the_bare_spelling_still_resolves_exactly_as_it_did():
+    """Every template written so far uses it, and the assembled OUTPUT is
+    identical either way — the digest hashes the prompt, not the template — so
+    moving a template over stales no approval and there is no flag day."""
+    assert _assemble("{face_only}") == _assemble("{block.face_only}")
+
+
+def test_a_bare_name_TWO_things_answer_to_is_refused_rather_than_resolved():
+    """**It used to resolve, and which one won was invisible.**
+
+    Blocks were spread into one flat mapping and the computed values overwrote
+    them, so a block named `top` lost to the bible every single time and nothing
+    anywhere said so. The dotted spelling makes the question answerable, so the
+    ambiguous bare one can be an error that names both readings.
+    """
+    with pytest.raises(ValidationError) as refusal:
+        _assemble("{top}", {"top": "A BLOCK CALLED TOP"})
+    assert "{block.top}" in str(refusal.value)
+    assert "{character.top}" in str(refusal.value)
+
+
+def test_the_two_readings_are_both_reachable_once_they_are_spelled_out():
+    text = _assemble("{block.top} :: {character.top}", {"top": "A BLOCK CALLED TOP"})
+    assert text.startswith("A BLOCK CALLED TOP :: Wearing a plain")
+
+
+def test_a_block_that_collides_is_fine_as_long_as_no_angle_cites_it_bare():
+    """The refusal is per TEMPLATE, not per block. A block named `top` that
+    every angle addresses as `{block.top}` is unambiguous and works."""
+    assert _assemble("{block.face_only}", {"face_only": BLOCK, "top": "unused"})
+
+
+def test_there_is_no_plate_slot_left_to_collide_with():
+    """**The nastiest collision, removed at the root rather than disambiguated.**
+
+    `angle_slot` was added AFTER the blocks were spread in and only when the
+    angle bound a plate, so a block of that name won on an angle with no plate
+    and lost on one with a plate — the same words rendering differently for a
+    reason nothing in the template mentioned. Plates are gone entirely (they
+    distorted the thing they existed to record), so the slot they filled is gone
+    with them and a block may be called `angle_slot` with nothing to fight.
+    """
+    assert _assemble("{block.angle_slot}", {"angle_slot": "A BLOCK"}) == "A BLOCK"
+    with pytest.raises(ValidationError):
+        _assemble("{slot.angle}")
+
+
+def test_a_MISTYPED_member_is_a_refusal_and_not_a_500():
+    """A dot in a format field is attribute access, so a missing member raises
+    `AttributeError` where a missing key raises `KeyError`. Unhandled it reaches
+    a person as a 500 on a route whose whole input is their own typing."""
+    with pytest.raises(ValidationError) as refusal:
+        _assemble("{character.tops}")
+    assert "tops" in str(refusal.value)
+    # And it says what the namespace DOES hold.
+    assert "character has:" in str(refusal.value)
+
+
+def test_a_namespace_that_does_not_exist_names_what_does():
+    with pytest.raises(ValidationError) as refusal:
+        _assemble("{wardrobe.top}")
+    assert "wardrobe" in str(refusal.value)
 
 
 # ─────────────────── whitespace, and per-angle identity ───────────────────
@@ -443,3 +713,14 @@ def test_an_angle_nobody_picked_for_is_refused_BEFORE_anything_is_drafted(empty_
     assert "face_back" in resp.get_json()["error"]
     # And nothing was written for the angle that WAS picked for.
     assert empty_api.get(f"/api/runs?project={project['id']}").get_json()["runs"] == []
+
+    # The same request as a PREVIEW is answered rather than refused — see
+    # `test_a_PREVIEW_needs_neither_a_project_nor_a_single_photograph`.
+    preview = empty_api.post(
+        f"/api/characters/{character['id']}/turnaround",
+        json={"project": project["id"],
+              "identity_by_angle": {"face_front": [node]},
+              "preview": True},
+    )
+    assert preview.status_code == 200
+    assert {e["angle"] for e in preview.get_json()["preview"]} == {"face_front", "face_back"}

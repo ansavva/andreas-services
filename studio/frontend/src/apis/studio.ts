@@ -509,14 +509,44 @@ export function deleteSpecAngle(id: string) {
  * `identity` is required and is never inferred: which photographs say who
  * somebody is is the judgement a reference library is built out of.
  */
+/**
+ * What a run plan's template would become, expanded against this run's cast.
+ *
+ * Writes nothing, so the editor can call it on every change — the save is what
+ * withdraws the approval, and what a prompt will SAY is exactly the thing that
+ * tells you whether it is right.
+ */
+export function previewPlanPrompt(runId: string, template: string) {
+  return apiSend<{
+    prompt: string;
+    /** Where each `{character.N.field}` landed in `prompt`, so it can be marked. */
+    spans: Array<{ name: string; start: number; end: number }>;
+    characters: number;
+  }>(
+    "POST",
+    `/api/runs/${encodeURIComponent(runId)}/plan/preview`,
+    { template },
+  );
+}
+
 export function draftTurnaround(
   characterId: string,
   body: {
-    project: string;
+    /** Required to DRAFT. A preview writes nothing, so it needs no project. */
+    project?: string;
     /** The fallback, for a caller that means one set for every angle. */
     identity: string[];
     /** Per angle, and it beats the fallback. See the route's own note. */
     identity_by_angle?: Record<string, string[]>;
+    /**
+     * An earlier render every angle in this pass is chained off.
+     *
+     * Bound FIRST for each of them and named `[Image1]` by the `anchor` block,
+     * which is how the wardrobe and the background stay constant across a set —
+     * shooting the angles independently is what produced fourteen different
+     * shirts.
+     */
+    anchor?: string;
     group?: "face" | "body";
     angles?: string[];
     model?: string;

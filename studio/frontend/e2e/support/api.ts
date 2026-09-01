@@ -87,6 +87,7 @@ const libraries = fixture<Array<{ id: string }>>("libraries");
 const projects = fixture<unknown>("projects");
 const seedFolder = fixture<Node[]>("seed-folder");
 const reel = fixture<Reel>("reel");
+const referenceSpec = fixture<unknown>("reference-spec");
 
 export const LIBRARY = libraries[0].id;
 export const CHARACTER = characters[0].id;
@@ -498,6 +499,9 @@ export async function stubApi(page: Page): Promise<void> {
     }
 
     if (path.endsWith("/api/libraries")) return json(route, libraries);
+    // Before `/api/characters`, which does not match it, but keeping the spec
+    // next to the listings it is a sibling of.
+    if (path.endsWith("/api/reference-spec")) return json(route, referenceSpec);
     if (path.endsWith("/api/characters")) return json(route, characters);
     // Before the character itself, which would otherwise swallow it — the old
     // dispatch answered a reference library with a character record.

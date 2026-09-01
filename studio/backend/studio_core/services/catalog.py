@@ -3624,14 +3624,14 @@ ANGLE_PREFIX = f"{SPEC_PREFIX}ANGLE#"
 #: What an angle row carries besides its template. `description` and `tags` are
 #: read at PROMOTION rather than at render — `add-refs --from-run` writes them
 #: onto the image — so they belong to the angle and not to the prompt.
-#: `illustration` is shown to a PERSON and never sent to a model — the two are
-#: separate fields because they became separate things. A face angle binds no
-#: `angle_image` any more (the guide was distorting the face it existed to
-#: record) and its plate is still the clearest picture of what that orientation
-#: IS, so it survives here as a diagram. Keeping one field for both would mean
-#: the only way to illustrate an angle was to send the illustration.
-ANGLE_FIELDS = ("group", "prompt", "description", "tags", "angle_image",
-                "torso_image", "illustration")
+#: `illustration` is shown to a PERSON and never sent to a model. It is what is
+#: left of the pose plates: an angle could bind one as a first image, and it
+#: distorted the very thing it existed to record — the face angles stopped
+#: sending theirs, and the body angles followed once eleven hand-authored
+#: production renders were compared and not one had bound a plate. The picture
+#: is still the clearest statement of what an orientation IS, so it survives as
+#: a diagram, on a field that cannot reach a payload.
+ANGLE_FIELDS = ("group", "prompt", "description", "tags", "illustration")
 
 
 def reference_spec(lib: str) -> dict:

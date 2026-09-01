@@ -8,7 +8,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../apis/client";
-import { RunPlanEditor } from "./RunPlanEditor";
+import { RunPlanEditor, added } from "./RunPlanEditor";
 import { TestProviders } from "../../test-providers";
 import type { ModelEntry, RunPlan, RunRecord, RunSend } from "../../types";
 
@@ -23,6 +23,7 @@ import type { ModelEntry, RunPlan, RunRecord, RunSend } from "../../types";
  */
 
 const patchRunPlan = vi.fn();
+const previewPrompt = vi.fn();
 const patchRunSends = vi.fn();
 const getModel = vi.fn();
 const getModelSchema = vi.fn();
@@ -32,6 +33,7 @@ const getTree = vi.fn();
 
 vi.mock("../../apis/studio", () => ({
   patchRunPlan: (...args: unknown[]) => patchRunPlan(...args),
+  previewPlanPrompt: (...args: unknown[]) => previewPrompt(...args),
   patchRunSends: (...args: unknown[]) => patchRunSends(...args),
   // The picker's listing call. Named here because the mock replaces the whole
   // module, and an unmocked `getTree` would be `undefined` the moment the dialog
@@ -478,3 +480,244 @@ describe("adding a character's references", () => {
     expect(patchRunSends).not.toHaveBeenCalled();
   });
 });
+
+  it("previews EXACTLY what the plan will store, beside the fields", async () => {
+    /**
+     * A structured prompt is six fields plus a camera block that compile into
+     * one document, so the thing being edited and the thing being sent look
+     * nothing alike. The preview reads the same expression `save` writes — two
+     * implementations of "what gets stored" disagree invisibly afterwards,
+     * because a run records the outcome and not the reasoning.
+     */
+    editor(
+      draft({
+        plan: {
+          version: 1,
+          origin: "authored",
+          prompt: { subject: "a man on a porch", action: "he turns" },
+          params: {},
+        },
+      }),
+    );
+
+    const preview = await screen.findByLabelText("Plan prompt preview");
+    expect(JSON.parse(preview.textContent!)).toEqual({
+      subject: "a man on a porch",
+      action: "he turns",
+    });
+
+    fireEvent.change(screen.getByLabelText("Subject"), {
+      target: { value: "a man on a porch at dawn" },
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText("Plan prompt preview").textContent,
+      ).toContain("at dawn"),
+    );
+
+    // And what it showed is what was written.
+    fireEvent.click(screen.getByText("Save the plan"));
+    await waitFor(() => expect(patchRunPlan).toHaveBeenCalled());
+    expect(planSent().prompt).toEqual(
+      JSON.parse(screen.getByLabelText("Plan prompt preview").textContent!),
+    );
+  });
+
+
+  it("offers this run's cast to cite, and saves the template beside the prompt", async () => {
+    /**
+     * **A `{` typed into a run's prompt used to be a brace on its way to a
+     * model.** The cast is numbered by the run's own binding — `{character.1}`
+     * is the first character bound to THIS run — because a slug is an attribute
+     * a rename swaps, and every record here names entity ids for that reason.
+     *
+     * Both halves are saved: `plan_digest` has to cover what reaches the model,
+     * so the API expands at save; the template survives so the next edit opens
+     * onto what was written rather than onto finished prose.
+     */
+    previewPrompt.mockResolvedValue({
+      prompt: "He wears a charcoal tee.",
+      spans: [{ name: "character.1.top", start: 9, end: 24 }],
+      characters: 1,
+    });
+    editor(
+      draft({
+        characters: ["char-1"],
+        plan: {
+          version: 1,
+          origin: "authored",
+          prompt: "He wears a charcoal tee.",
+          template: "He wears {character.1.top}.",
+          params: {},
+        },
+      }),
+    );
+
+    // The template is what is EDITED; the preview shows what it becomes.
+    const box = await screen.findByLabelText("Prompt");
+    await waitFor(() => expect(box.textContent).toContain("{character.1.top}"));
+    // Without the `{character.1.top}` label the preview draws around it — see
+    // "marks WHERE each citation landed".
+    await waitFor(() => {
+      const clone = screen
+        .getByLabelText("Plan prompt preview")
+        .cloneNode(true) as HTMLElement;
+      clone.querySelectorAll("[data-label]").forEach((l) => l.remove());
+      expect(clone.textContent).toBe("He wears a charcoal tee.");
+    });
+
+    fireEvent.click(screen.getByText("Save the plan"));
+    await waitFor(() => expect(patchRunPlan).toHaveBeenCalled());
+    expect(planSent().template).toBe("He wears {character.1.top}.");
+  });
+
+  it("keeps a plain textarea when the run binds no character", async () => {
+    /** A menu with no options is worse than no menu. */
+    editor(draft({}));
+    expect(await screen.findByLabelText("Prompt")).toBeInstanceOf(HTMLTextAreaElement);
+  });
+
+  it("marks WHERE each citation landed in the expansion", async () => {
+    /**
+     * An expanded prompt is a wall of prose in which nothing says which words
+     * came from which citation — the one question a reader of it has. The spans
+     * come from the same walk that filled the text, not a search afterwards.
+     */
+    previewPrompt.mockResolvedValue({
+      prompt: "He wears a charcoal tee.",
+      spans: [{ name: "character.1.top", start: 9, end: 23 }],
+      characters: 1,
+    });
+    editor(
+      draft({
+        characters: ["char-1"],
+        plan: { version: 1, origin: "authored", params: {},
+                prompt: "He wears a charcoal tee.",
+                template: "He wears {character.1.top}." },
+      }),
+    );
+
+    const marked = await waitFor(() => {
+      const found = document.querySelector('[data-block="character.1.top"]');
+      if (!found) throw new Error("nothing marked");
+      return found as HTMLElement;
+    });
+    expect(marked.textContent).toBe("{character.1.top}a charcoal tee");
+    // The text itself is untouched — the marks are around it, not in it.
+    const box = screen.getByLabelText("Plan prompt preview");
+    const clone = box.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll("[data-label]").forEach((l) => l.remove());
+    expect(clone.textContent).toBe("He wears a charcoal tee.");
+  });
+
+  it("adds a reference to the REFERENCE input, not to the start frame beside it", async () => {
+    /**
+     * **The bug that sent one image where six were shown.** Both field and role
+     * were copied off the previous row, so a run whose first row is the start
+     * frame gave every image added after it `field: "image"` — and `image`
+     * takes one value, so `bindings_of` kept the first and discarded the rest.
+     * The page showed six images and the provider got one, with
+     * `reference_images` absent entirely.
+     */
+    const row = added(
+      { id: "node-b", name: "b.png", kind: "image" } as never,
+      [{ key: "k", field: "image", role: "start", node: "node-a", name: "a.png" } as never],
+      "image",
+      { start: "image", refs: "reference_images" },
+    );
+    expect(row.field).toBe("reference_images");
+    expect(row.role).toBe("reference");
+  });
+
+  it("still starts a video run's first image on the start frame", () => {
+    /** The one case with nothing to reason from, which is what `first` is for. */
+    const row = added(
+      { id: "node-a", name: "a.png", kind: "image" } as never,
+      [],
+      "image",
+      { start: "image", refs: "reference_images" },
+    );
+    expect(row.field).toBe("image");
+  });
+
+  it("does not copy a SCALAR field onto a second image", () => {
+    const row = added(
+      { id: "node-b", name: "b.png", kind: "image" } as never,
+      [{ key: "k", field: "last_frame", role: "end", node: "node-a", name: "a.png" } as never],
+      null,
+      { end: "last_frame", refs: "reference_images" },
+    );
+    expect(row.field).toBe("reference_images");
+  });
+
+  it("says when a scalar input is overloaded, and repoints it in one press", async () => {
+    /**
+     * **The state real runs are already in.** `_check_scalar_fields` refuses it
+     * at submit now, but the rows were written that way before that existed,
+     * and a refusal at submit is later than a person can act on comfortably.
+     */
+    getModel.mockResolvedValue(entry({ kind: "video" }));
+    editor(
+      draft({
+        sends: [
+          { field: "start_image", role: "start", node: "node-a", name: "a.png",
+            order: 0, source: null, url: null } as unknown as RunSend,
+          { field: "start_image", role: "reference", node: "node-b", name: "b.png",
+            order: 0, source: null, url: null } as unknown as RunSend,
+          { field: "start_image", role: "reference", node: "node-c", name: "c.png",
+            order: 0, source: null, url: null } as unknown as RunSend,
+        ],
+      }),
+    );
+
+    expect(
+      await screen.findByText(/start_image takes one image, and 3 name it/i),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByText(/Move the 2 reference\(s\) to image_input/));
+
+    // The start frame keeps the scalar; the references move.
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText("Model input for image 1") as HTMLInputElement).value,
+      ).toBe("start_image"),
+    );
+    for (const n of [2, 3]) {
+      expect(
+        (screen.getByLabelText(`Model input for image ${n}`) as HTMLInputElement).value,
+      ).toBe("image_input");
+    }
+    await waitFor(() =>
+      expect(screen.queryByText(/takes one image, and/i)).toBeNull(),
+    );
+  });
+
+  it("drops a STALE template rather than letting it overwrite the edit", async () => {
+    /**
+     * **A run duplicated from a templated one carries the original's template.**
+     * `planOf` spreads it through untouched and the API expands whatever
+     * template it is handed — so on a run with no cast to expand against, the
+     * stale template silently overwrote the prompt and every edit was discarded
+     * on save. The template has to track what is in the box or not be sent.
+     */
+    editor(
+      draft({
+        characters: [],
+        plan: {
+          version: 1,
+          origin: "authored",
+          prompt: "The original sentence.",
+          template: "The original sentence.",
+          params: {},
+        },
+      }),
+    );
+
+    fireEvent.change(await screen.findByLabelText("Prompt"), {
+      target: { value: "An edited sentence." },
+    });
+    fireEvent.click(screen.getByText("Save the plan"));
+
+    await waitFor(() => expect(patchRunPlan).toHaveBeenCalled());
+    expect(planSent().prompt).toBe("An edited sentence.");
+    expect(planSent()).not.toHaveProperty("template");
+  });

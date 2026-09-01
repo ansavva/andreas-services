@@ -1,34 +1,103 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { MutableRefObject } from "react";
+import { createPortal } from "react-dom";
 
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
+import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
+import {
+  LexicalTypeaheadMenuPlugin,
+  MenuOption,
+} from "@lexical/react/LexicalTypeaheadMenuPlugin";
+import type { MenuTextMatch } from "@lexical/react/LexicalTypeaheadMenuPlugin";
 import {
   $createLineBreakNode,
   $createParagraphNode,
   $createTextNode,
   $getRoot,
-  $isParagraphNode,
   $getSelection,
   $isRangeSelection,
-  KEY_DOWN_COMMAND,
-  COMMAND_PRIORITY_CRITICAL,
+  TextNode,
 } from "lexical";
 
 import { $createTokenNode, TokenNode } from "./TokenNode";
 
-/** One thing a `+` can insert, and what kind of pill it becomes. */
+/** One thing the menu can insert, and what kind of pill it becomes. */
 export interface PromptToken {
   name: string;
   kind: "block" | "computed";
   /** First line of the block, or what the computed value is filled from. */
   hint?: string;
+  /**
+   * Drawn as a pill, but never offered by the menu.
+   *
+   * The bare spelling — `{scale_face}` rather than `{block.scale_face}` — still
+   * resolves and still has to LOOK like what it is, or every template written
+   * before the namespaces reads as broken. It is not offered, because there is
+   * no reason to write a new one.
+   */
+  legacy?: boolean;
 }
 
-const PLACEHOLDER = /\{[a-z_][a-z0-9_]*\}/g;
+//: A placeholder name: `scale_face`, or a namespaced `block.scale_face`.
+const PLACEHOLDER = /\{[a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*\}/g;
+
+/**
+ * `{` plus the name being typed, immediately before the caret.
+ *
+ * **The trigger is `{` because that is the character a placeholder starts
+ * with.** It was `+`, which is a key nobody can guess and nothing on the page
+ * announced — so the only way to insert a pill was to be told. Triggering on the
+ * brace means the menu appears while you type the thing you were going to type
+ * anyway, and there is nothing left to teach.
+ *
+ * The leading group refuses a doubled brace, because `{{` is how a template says
+ * a LITERAL brace and offering a placeholder there would be offering the one
+ * thing that cannot go there.
+ */
+const TRIGGER = /(^|[^{])(\{([a-z0-9_.]*))$/;
+
+/**
+ * What the menu would open on, given the text before the caret.
+ *
+ * Exported because it is the whole specification of when the menu appears, and
+ * it is the one part of the typeahead a jsdom test can reach: opening the real
+ * menu needs a live caret, which nothing in jsdom provides.
+ */
+export function promptTriggerMatch(text: string) {
+  const found = TRIGGER.exec(text);
+  if (found === null) return null;
+  return {
+    leadOffset: found.index + (found[1] ?? "").length,
+    matchingString: found[3] ?? "",
+    replaceableString: found[2] ?? "",
+  };
+}
+
+/**
+ * The next `{placeholder}` in `text` at or after `from`.
+ *
+ * A doubled brace is skipped: `{{` and `}}` are how a template says a LITERAL
+ * brace — `assemble` says so when it refuses a malformed one — and drawing an
+ * escape as a citation would claim the prompt cites something it does not.
+ */
+function nextPlaceholder(text: string, from = 0) {
+  PLACEHOLDER.lastIndex = from;
+  let found = PLACEHOLDER.exec(text);
+  while (found !== null) {
+    const start = found.index;
+    const end = start + found[0].length;
+    if (text[start - 1] !== "{" && text[end] !== "}") {
+      return { token: found[0], name: found[0].slice(1, -1), start, end };
+    }
+    found = PLACEHOLDER.exec(text);
+  }
+  return null;
+}
 
 /**
  * A prompt template, with its `{placeholders}` drawn as pills.
@@ -37,8 +106,8 @@ const PLACEHOLDER = /\{[a-z_][a-z0-9_]*\}/g;
  *
  * A template is text with named holes, and it was typed into a plain box: a
  * mistyped `{face_onl}` looked exactly like a correct one and did not fail until
- * the angle was drafted and refused. A pill cannot be mistyped, because it is
- * inserted rather than written.
+ * the angle was drafted and refused. A pill cannot be mistyped, because it
+ * either names a real placeholder or it does not become one.
  *
  * ## The invariant everything here protects
  *
@@ -52,6 +121,13 @@ const PLACEHOLDER = /\{[a-z_][a-z0-9_]*\}/g;
  * `TextNode` whose text IS `{name}`, so `root.getTextContent()` is the string.
  * There is no serialiser to keep in step, which is the only reason this is a
  * safe thing to put in front of a hashed payload.
+ *
+ * ## Two ways in, and neither has to be taught
+ *
+ * Type the placeholder — `Pillify` turns it into a pill on the closing brace —
+ * or take it from the menu that opens on `{`. The menu is the shortcut, not the
+ * entrance, which is what the hand-rolled version got wrong: it was the only way
+ * in, and it was a key combination with nothing on screen to name it.
  *
  * ## Reusable on purpose
  *
@@ -73,6 +149,19 @@ export function TokenizedPromptEditor({
     () => Object.fromEntries(tokens.map((t) => [t.name, t.kind])) as Record<string, "block" | "computed">,
     [tokens],
   );
+
+  // **The string the editor and the caller last agreed on.**
+  //
+  // Shared by both directions on purpose. It lived inside `Hydrate` and was
+  // written only when a NEW value arrived from outside, so a value that came
+  // back from the editor's own keystroke never matched it: every character
+  // typed rebuilt the whole document and put the caret back at the top, which
+  // made the box unusable for anything longer than one word.
+  //
+  // Written here whenever the editor emits, it says "this text is already in
+  // the editor" — so an echo of your own typing hydrates nothing, and a value
+  // genuinely changed by the caller (Revert, a fetch landing) still does.
+  const held = useRef<string | null>(null);
 
   return (
     <LexicalComposer
@@ -96,18 +185,33 @@ export function TokenizedPromptEditor({
               // `whitespace-pre-wrap`: blank lines are part of the prompt now —
               // they survive assembly and reach the model — so the editor has to
               // show them rather than collapse them like ordinary HTML.
-              className="min-h-24 whitespace-pre-wrap font-mono text-sm outline-none"
+              className="min-h-24 whitespace-pre-wrap font-mono text-sm leading-6 outline-none"
             />
           }
-          placeholder={<span className="text-muted">Write the angle's prompt…</span>}
+          placeholder={
+            <span className="text-muted">
+              Write the angle's prompt… type {"{"} for a placeholder.
+            </span>
+          }
           ErrorBoundary={LexicalErrorBoundary}
         />
-        <Hydrate value={value} kinds={kinds} />
+        {/* Cmd-Z. Lexical ships no history unless it is asked for, so undo did
+            nothing at all — in a box whose whole purpose is trying wordings out. */}
+        <HistoryPlugin />
+        <Hydrate value={value} held={held} />
+        <Pillify kinds={kinds} />
         <OnChangePlugin
           ignoreSelectionChange
-          onChange={(state) => state.read(() => onValueChange($getRoot().getTextContent()))}
+          onChange={(state) =>
+            state.read(() => {
+              const next = $getRoot().getTextContent();
+              if (next === held.current) return;
+              held.current = next;
+              onValueChange(next);
+            })
+          }
         />
-        <TypeaheadPlugin tokens={tokens} kinds={kinds} />
+        <Typeahead tokens={tokens} kinds={kinds} />
       </div>
     </LexicalComposer>
   );
@@ -119,13 +223,20 @@ export function TokenizedPromptEditor({
  * Only when the incoming value is not what the editor already holds — otherwise
  * every keystroke would rebuild the document and put the caret back at the top.
  */
-function Hydrate({ value, kinds }: { value: string; kinds: Record<string, "block" | "computed"> }) {
+function Hydrate({
+  value,
+  held,
+}: {
+  value: string;
+  held: MutableRefObject<string | null>;
+}) {
   const [editor] = useLexicalComposerContext();
-  const held = useRef<string | null>(null);
 
   useEffect(() => {
     if (held.current === value) return;
-    held.current = value;
+    // Deliberately NOT recorded here. The rebuild makes the editor emit, and
+    // that emission is what records it — which is also what lets the caller
+    // hear the parsed value once on mount.
     editor.update(() => {
       const root = $getRoot();
       root.clear();
@@ -133,33 +244,94 @@ function Hydrate({ value, kinds }: { value: string; kinds: Record<string, "block
       // Line breaks are their own node in Lexical, and `getTextContent()` gives
       // each of them back as "\n" — which is what makes the round trip exact
       // for a paragraphed prompt.
+      // **Plain text, and the transform makes the pills.** It used to build
+      // them here too, which meant two implementations of "this run of
+      // characters is a placeholder" — and the one a person's typing went
+      // through was the one with no test on it.
       value.split("\n").forEach((line, index) => {
         if (index > 0) paragraph.append($createLineBreakNode());
-        let at = 0;
-        for (const found of line.matchAll(PLACEHOLDER)) {
-          const name = found[0].slice(1, -1);
-          if (found.index > at) paragraph.append($createTextNode(line.slice(at, found.index)));
-          paragraph.append($createTokenNode(found[0], kinds[name] ?? "computed"));
-          at = found.index + found[0].length;
-        }
-        if (at < line.length) paragraph.append($createTextNode(line.slice(at)));
+        if (line !== "") paragraph.append($createTextNode(line));
       });
       root.append(paragraph);
     });
-  }, [editor, kinds, value]);
+  }, [editor, held, value]);
 
   return null;
 }
 
 /**
- * `+` opens the list; a click or Enter inserts the pill.
+ * A `{placeholder}` becomes a pill — whether typed, pasted or loaded.
  *
- * Deliberately not Lexical's own typeahead plugin. That one owns the caret, the
- * menu and the match, which is more machinery than one trigger character needs —
- * and its match logic is written for `@mentions`, where the query is part of the
- * document. Here the `+` is thrown away.
+ * **The only place text becomes a pill.** `Hydrate` puts the stored string in as
+ * plain text and this turns it into pills, so a prompt read from the API and a
+ * prompt typed by hand go through exactly the same code.
+ *
+ * **This is what makes the menu optional rather than mandatory.** Lexical's own
+ * `registerLexicalTextEntity` is the shape of this and is deliberately not used:
+ * its transform converts a target node back to plain text whenever the node
+ * beside it is a text entity or its mode is not normal, which would un-pill both
+ * of two ADJACENT placeholders — `{scale_face}{face_only}` is a real template —
+ * and would un-pill anything the moment you typed a character after it, because
+ * these nodes are in `token` mode. No reverse transform is needed here for the
+ * same reason: token mode means the caret cannot get inside a pill, so a pill's
+ * text cannot stop matching.
  */
-function TypeaheadPlugin({
+function Pillify({ kinds }: { kinds: Record<string, "block" | "computed"> }) {
+  const [editor] = useLexicalComposerContext();
+
+  // **A layout effect, so this is registered before `Hydrate` runs.** Passive
+  // effects fire in tree order, so a plugin's position in the JSX decided
+  // whether the loaded prompt got pills at all — it silently did not. Layout
+  // effects all run before passive ones, which makes the ordering a phase
+  // rather than a line number somebody can move.
+  useLayoutEffect(
+    () =>
+      editor.registerNodeTransform(TextNode, (node) => {
+        if (!node.isSimpleText()) return;
+        const found = nextPlaceholder(node.getTextContent());
+        if (found === null) return;
+        // One per pass. Lexical re-runs a transform until nothing is dirty, and
+        // the remainder left by the split is dirty, so a line pasted with six
+        // placeholders resolves without looping here.
+        const target =
+          found.start === 0
+            ? node.splitText(found.end)[0]
+            : node.splitText(found.start, found.end)[1];
+        target?.replace($createTokenNode(found.token, kinds[found.name] ?? "computed"));
+      }),
+    [editor, kinds],
+  );
+
+  return null;
+}
+
+class TokenOption extends MenuOption {
+  token: PromptToken;
+
+  constructor(token: PromptToken) {
+    super(token.name);
+    this.token = token;
+  }
+}
+
+/**
+ * The menu that opens on `{`.
+ *
+ * Lexical's own typeahead plugin, rather than the hand-rolled one this replaced.
+ * Three things it does that the hand-rolled one did not, each of which was a bug
+ * rather than a missing nicety:
+ *
+ * - **The trigger and the query stay in the document.** The old one held the
+ *   query in React state and threw the `+` away, so every character typed after
+ *   an accidental trigger went somewhere invisible and the sentence being typed
+ *   simply did not appear. Here the text is real text the whole time; dismissing
+ *   the menu leaves exactly what you typed.
+ * - **Arrow keys, Tab, Enter, Escape and `aria-activedescendant`**, from the
+ *   framework. The old one had no highlighted option at all and Enter took the
+ *   first match blindly.
+ * - **The menu is anchored at the caret** in a portal, not parked under the box.
+ */
+function Typeahead({
   tokens,
   kinds,
 }: {
@@ -167,112 +339,99 @@ function TypeaheadPlugin({
   kinds: Record<string, "block" | "computed">;
 }) {
   const [editor] = useLexicalComposerContext();
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState<string | null>(null);
 
-  const matches = useMemo(
+  const options = useMemo(
     () =>
-      tokens.filter((t) => t.name.toLowerCase().includes(query.toLowerCase())).slice(0, 8),
+      tokens
+        .filter((t) => !t.legacy)
+        .filter((t) => t.name.toLowerCase().includes((query ?? "").toLowerCase()))
+        .slice(0, 8)
+        .map((token) => new TokenOption(token)),
     [query, tokens],
   );
 
-  const insert = useCallback(
-    (name: string) => {
+  // `promptTriggerMatch`, not a second copy of it. There WAS a second copy, and
+  // when the regex grew the group that refuses `{{`, that copy went on reading
+  // group 1 — which had become the character BEFORE the brace. At the start of a
+  // node the query was therefore always empty and the menu never narrowed; in
+  // the middle of a paragraph it was the preceding space, which matches no
+  // placeholder, so no menu opened at all.
+  const trigger = useCallback(
+    (text: string): MenuTextMatch | null => promptTriggerMatch(text),
+    [],
+  );
+
+  const select = useCallback(
+    (option: TokenOption, nodeToReplace: TextNode | null, closeMenu: () => void) => {
       editor.update(() => {
-        const pill = $createTokenNode(`{${name}}`, kinds[name] ?? "computed");
-        const selection = $getSelection();
-        if ($isRangeSelection(selection)) {
-          selection.insertNodes([pill]);
-          return;
+        const pill = $createTokenNode(
+          `{${option.token.name}}`,
+          kinds[option.token.name] ?? option.token.kind,
+        );
+        if (nodeToReplace) {
+          nodeToReplace.replace(pill);
+        } else {
+          const selection = $getSelection();
+          if ($isRangeSelection(selection)) selection.insertNodes([pill]);
         }
-        // No caret — the list was opened from a click rather than from typing.
-        // Appending is the honest answer: refusing would make the button do
-        // nothing at all, which reads as broken rather than as "focus first".
-        const last = $getRoot().getLastChild();
-        if ($isParagraphNode(last)) last.append(pill);
+        pill.selectNext(0, 0);
+        closeMenu();
       });
-      setOpen(false);
-      setQuery("");
     },
     [editor, kinds],
   );
 
-  useEffect(
-    () =>
-      editor.registerCommand(
-        KEY_DOWN_COMMAND,
-        (event: KeyboardEvent) => {
-          if (event.key === "+" && !open) {
-            event.preventDefault();
-            setOpen(true);
-            setQuery("");
-            return true;
-          }
-          if (!open) return false;
-          if (event.key === "+") {
-            // The escape hatch. Stealing a printable character means a prompt
-            // that genuinely wants one has no way to say it, so a second `+`
-            // closes the list and types the character it was standing for.
-            event.preventDefault();
-            setOpen(false);
-            setQuery("");
-            editor.update(() => {
-              const selection = $getSelection();
-              if ($isRangeSelection(selection)) selection.insertText("+");
-            });
-            return true;
-          }
-          if (event.key === "Escape") {
-            setOpen(false);
-            return true;
-          }
-          if (event.key === "Enter" && matches[0]) {
-            event.preventDefault();
-            insert(matches[0].name);
-            return true;
-          }
-          if (event.key === "Backspace") {
-            setQuery((q) => q.slice(0, -1));
-            return true;
-          }
-          if (event.key.length === 1) {
-            event.preventDefault();
-            setQuery((q) => q + event.key);
-            return true;
-          }
-          return false;
-        },
-        // CRITICAL, not LOW: Lexical's own text insertion runs first at any
-        // lower priority, so the trigger arrived as a literal `+` in the
-        // document and the list never opened.
-        COMMAND_PRIORITY_CRITICAL,
-      ),
-    [editor, insert, matches, open],
-  );
-
-  if (!open) return null;
-
   return (
-    <div role="listbox" aria-label="Insert a placeholder" className="mt-1 flex flex-col gap-1">
-      <span className="font-mono text-xs text-muted">+{query}</span>
-      {matches.map((token) => (
-        <button
-          key={token.name}
-          type="button"
-          role="option"
-          aria-selected={false}
-          onClick={() => insert(token.name)}
-          className="flex items-baseline gap-2 rounded px-2 py-1 text-left hover:bg-surface-alt"
-        >
-          <span className="font-mono text-sm">{`{${token.name}}`}</span>
-          <span className="truncate text-xs text-muted">
-            {token.kind === "computed" ? "filled from the character" : token.hint}
-          </span>
-        </button>
-      ))}
-      {matches.length === 0 ? (
-        <span className="px-2 py-1 text-xs text-muted">Nothing matches “{query}”.</span>
-      ) : null}
-    </div>
+    <LexicalTypeaheadMenuPlugin<TokenOption>
+      options={options}
+      onQueryChange={setQuery}
+      onSelectOption={select}
+      triggerFn={trigger}
+      // A `{` typed immediately after a pill is the commonest case there is —
+      // a template is mostly citations — and the default suppresses the menu
+      // when the caret sits against a text entity, which every pill is.
+      ignoreEntityBoundary
+      menuRenderFn={(anchorElementRef, { selectedIndex, selectOptionAndCleanUp, setHighlightedIndex }) =>
+        anchorElementRef.current === null || options.length === 0
+          ? null
+          : createPortal(
+              <ul
+                role="listbox"
+                aria-label="Insert a placeholder"
+                className="m-0 max-h-64 w-72 list-none overflow-auto rounded border border-line bg-card p-1 shadow-lg"
+              >
+                {options.map((option, index) => (
+                  <li
+                    key={option.key}
+                    id={`typeahead-item-${index}`}
+                    role="option"
+                    aria-selected={selectedIndex === index}
+                    ref={option.setRefElement}
+                    // Without this the editor blurs on press, the caret goes,
+                    // and the menu closes before the click ever lands.
+                    onMouseDown={(event) => event.preventDefault()}
+                    onMouseEnter={() => setHighlightedIndex(index)}
+                    onClick={() => {
+                      setHighlightedIndex(index);
+                      selectOptionAndCleanUp(option);
+                    }}
+                    className={`flex cursor-pointer items-baseline gap-2 rounded px-2 py-1 ${
+                      selectedIndex === index ? "bg-surface-alt" : ""
+                    }`}
+                  >
+                    <span className="font-mono text-sm">{`{${option.token.name}}`}</span>
+                    <span className="truncate text-xs text-muted">
+                      {option.token.kind === "computed"
+                        ? "filled from the character"
+                        : option.token.hint}
+                    </span>
+                  </li>
+                ))}
+              </ul>,
+              anchorElementRef.current,
+            )
+      }
+    />
   );
 }

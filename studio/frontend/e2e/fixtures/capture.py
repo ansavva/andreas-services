@@ -350,6 +350,10 @@ def seed_group(bearer: str, library: str) -> dict:
 
     write("projects", get("/api/projects", bearer, library))
     write("reel", get("/api/reel?sort=newest", bearer, library))
+    # The reference spec seeds with the library, so it belongs to this group
+    # rather than the authoring one — no run has to have happened for it to
+    # exist.
+    write("reference-spec", get("/api/reference-spec", bearer, library))
     return character
 
 

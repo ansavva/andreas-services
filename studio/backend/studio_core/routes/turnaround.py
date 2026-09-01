@@ -67,10 +67,35 @@ def draft_turnaround(character_id: str):
     held = support.memberships()
     record = support.entity_at(catalog.ENTITY_CHARACTER, g.library, character_id, held)
 
+    # **Read first, because both of the guards below are about DRAFTING.**
+    # A preview writes nothing, and the SPA now assembles one on every change so
+    # a person can read what an angle would say while they are still choosing —
+    # which is the use `_draft_one` was built for and says so. Requiring the
+    # things a draft requires made that impossible: you could not see the words
+    # until after every decision they were meant to inform.
+    preview = bool(body.get("preview"))
+
     project = body.get("project")
-    if not isinstance(project, str) or not project:
+    if not preview and (not isinstance(project, str) or not project):
         raise ValidationError("project is required — a run belongs to one, and "
                               "guessing puts runs somewhere nobody looks again")
+
+    # **The anchor: an earlier render every angle in this pass is chained off.**
+    #
+    # A turnaround is not N independent shoots. Every hand-authored production
+    # set was made as one anchor and then the rest chained off it, each binding
+    # the anchor's output FIRST and each told to take the wardrobe and the
+    # background from it — which is the only thing that held those constant
+    # across a set. Shooting them independently is what produced fourteen
+    # different shirts.
+    #
+    # A node id rather than a run id: the run is how the image was made and the
+    # image is what gets bound, and a run may hold several outputs, so naming
+    # the run would leave the choice of which one to send unmade.
+    anchor = body.get("anchor")
+    if anchor is not None and not (isinstance(anchor, str)
+                                   and anchor.startswith("node-")):
+        raise ValidationError("anchor must be a node id")
 
     identity = body.get("identity") or []
     per_angle = body.get("identity_by_angle") or {}
@@ -96,8 +121,14 @@ def draft_turnaround(character_id: str):
     # profile angle wants the profile photographs, and a front angle does not),
     # while the CLI resolves ONE set from `--seed-pick` and means it for all of
     # them. A single shape would have made one of them lie.
-    unpicked = [a["id"] for a in angles if not (per_angle.get(a["id"]) or identity)]
-    if unpicked:
+    #
+    # A PREVIEW is exempt. With no photographs the assembled prompt simply cites
+    # no identity slots, which is a true answer to "what would this say so far"
+    # — and refusing it is what forced a person to finish picking for fourteen
+    # angles before they could read the words for one.
+    unpicked = [a["id"] for a in angles
+                if not (per_angle.get(a["id"]) or identity or anchor)]
+    if unpicked and not preview:
         raise ValidationError(
             "no identity images for: " + ", ".join(unpicked) + ". Which "
             "photographs say who somebody is is not something this route may "
@@ -117,14 +148,21 @@ def draft_turnaround(character_id: str):
             f"a reference angle is a still, but {entry['key']} is a "
             f"{entry.get('kind')} model")
 
-    preview = bool(body.get("preview"))
     drafted, failed = [], []
     for angle in angles:
         try:
+            picked = per_angle.get(angle["id"]) or identity
+            # First, and de-duplicated: `[Image1]` is what the `anchor` block
+            # names, so the position is part of the contract rather than a
+            # coincidence of ordering.
+            if anchor:
+                picked = [anchor] + [n for n in picked if n != anchor]
             drafted.append(_draft_one(angle, spec["blocks"], record, entry,
-                                      project,
-                                      per_angle.get(angle["id"]) or identity,
-                                      body, held, preview=preview))
+                                      # A preview never reaches the draft the
+                                      # project would go on.
+                                      project if isinstance(project, str) else "",
+                                      picked, body, held,
+                                      preview=preview, anchored=bool(anchor)))
         except (ValidationError, NotFoundError) as refusal:
             # ONE BAD ANGLE DOES NOT CANCEL THE REST. A failure here is almost
             # always a property of that angle alone — a template citing a block
@@ -161,38 +199,9 @@ def _selected(angles: list, group, wanted) -> list:
     return list(angles)
 
 
-def _plate_nodes(angle: dict, lib: str) -> list:
-    """The guide images this angle binds, resolved to node ids, in citation order.
-
-    An angle may bind none — the face angles do not, because a plate saying how
-    to stand was measurably distorting the face it existed to record. A body
-    angle binds one, and the spec stores it as a name path under `config/` so
-    the prose names the object rather than a uuid nobody can read.
-    """
-    nodes = []
-    for field in ("angle_image", "torso_image"):
-        path = angle.get(field)
-        if not path:
-            continue
-        # The same walk `GET /api/resolve` does, and for the same reason: the
-        # spec stores an ADDRESS. Splitting on `/` is unambiguous by
-        # construction — `keys.clean_name` refuses a slash in a name — so no
-        # stored name can contain a separator.
-        node_id = catalog.library(lib)["root_node"]
-        try:
-            for name in [seg for seg in path.split("/") if seg]:
-                node_id = catalog.child_by_name(node_id, name)["node_id"]
-        except NotFoundError:
-            raise NotFoundError(
-                f"angle {angle['id']!r} binds {path!r}, which has no node. "
-                f"Guide images are pushed by `studio config sync`.")
-        nodes.append(node_id)
-    return nodes
-
-
 def _draft_one(angle: dict, blocks: dict, character: dict, entry: dict,
                project: str, identity: list, body: dict, held,
-               preview: bool = False) -> dict:
+               preview: bool = False, anchored: bool = False) -> dict:
     """Assemble one angle, and write it as a draft unless this is a preview.
 
     The preview exists because the CLI's `--dry-run` and the SPA's live editor
@@ -201,22 +210,17 @@ def _draft_one(angle: dict, blocks: dict, character: dict, entry: dict,
     it is safe to call on every keystroke of an editor, which is the same
     property `POST /api/prompt` is built around.
     """
-    plates = _plate_nodes(angle, character["lib"])
-    # The plates first and identity after, which is the order the model is
-    # handed them and therefore the order `[ImageN]` counts in. Positions are
-    # read back off THIS list rather than assumed, because a template citing a
-    # hard-coded number aims its instruction at whatever happens to sit there.
-    ordered = plates + [n for n in identity if n not in plates]
-    angle_position = ordered.index(plates[0]) + 1 if plates else None
-    torso_position = ordered.index(plates[1]) + 1 if len(plates) > 1 else None
-    identity_positions = [i + 1 for i, node in enumerate(ordered) if node not in plates]
+    # The identity images, in the order they were picked — which is the order
+    # the model is handed them and therefore the order `[ImageN]` counts in.
+    # Positions are read back off THIS list rather than assumed, because a
+    # template citing a hard-coded number aims its instruction at whatever
+    # happens to sit there.
+    ordered = list(identity)
+    identity_positions = [i + 1 for i in range(len(ordered))]
 
-    prompt = reference.assemble(
-        angle, blocks, character.get("profile") or {},
-        angle_position=angle_position,
-        identity_positions=identity_positions,
-        torso_position=torso_position,
-    )
+    prompt = reference.assemble(angle, blocks, character.get("profile") or {},
+                                identity_positions=identity_positions,
+                                anchored=anchored)
 
     params = {**PORTABLE_PARAMS,
               **PER_MODEL_PARAMS.get(entry["key"], {}),
