@@ -8,7 +8,8 @@
         "-c",
         "unset PORT; exec ./studio/scripts/dev-up.sh"
       ],
-      "port": 5173
+      "port": 5173,
+      "autoPort": false
     },
     {
       "name": "website",
@@ -17,7 +18,8 @@
         "-c",
         "export PATH=/opt/homebrew/opt/node@20/bin:$PATH && exec npm --prefix website/frontend run dev"
       ],
-      "port": 5173
+      "port": 5173,
+      "autoPort": false
     },
     {
       "name": "humbugg-marketing",
