@@ -1204,7 +1204,7 @@
             "flags": [
               "--angle"
             ],
-            "help": "Render only this angle id. Repeatable — see the spec for the ids.",
+            "help": "Render only this angle id. Repeatable — `studio spec show` lists them.",
             "hidden": false,
             "multiple": true,
             "nargs": 1,
@@ -1219,22 +1219,7 @@
             "flags": [
               "--aspect-ratio"
             ],
-            "help": "Override the spec's aspect ratio for every angle.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "dest": {
-            "choices": null,
-            "default": null,
-            "dest": "dest",
-            "flag": false,
-            "flags": [
-              "--dest"
-            ],
-            "help": "Also keep a local copy of each rendered image in this directory.",
+            "help": "Override the aspect ratio for every angle.",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -1249,7 +1234,7 @@
             "flags": [
               "--dry-run"
             ],
-            "help": "Render every payload for approval; submit nothing, bill nothing.",
+            "help": "Assemble every payload and record nothing. Without it each angle becomes an unapproved draft.",
             "hidden": false,
             "multiple": false,
             "nargs": 0,
@@ -1332,7 +1317,7 @@
             "flags": [
               "--model"
             ],
-            "help": "Override the spec's model for every angle. See `models`.",
+            "help": "Override the model for every angle. See `models`.",
             "hidden": false,
             "multiple": false,
             "nargs": 1,

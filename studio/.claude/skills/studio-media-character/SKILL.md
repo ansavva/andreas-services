@@ -406,14 +406,21 @@ photographs** (who it is), and a prompt filled from the character's own bible â€
 its usual top, and every cue in `consistency.must`.
 
 ```bash
-studio character turnaround <name> --project <project> --dry-run   # fourteen payloads, no spend
-studio character turnaround <name> --project <project>             # shows them, then asks
+studio character turnaround <name> --project <project> --dry-run   # assemble, record nothing
+studio character turnaround <name> --project <project>             # one DRAFT per angle
 studio character turnaround <name> --project <project> --group face
 studio character turnaround <name> --project <project> --angle body_back   # re-shoot one
+studio spec show                                                   # what the angles are
 ```
 
-- **Nothing bills without approval.** Every payload is shown in full and the
-  batch then needs an explicit yes. There is no flag that answers it.
+- **Nothing bills, and nothing is even approved.** Every angle becomes an
+  unapproved DRAFT with an address you can open; `--dry-run` stops one step
+  earlier and records nothing at all. Approving and sending are `runs approve`
+  and `runs submit`, which is where they already were.
+- **The prompts are DATA, not part of this package.** They live in the library
+  as rows, the app edits them, and `studio spec pull` / `studio spec push` move them
+  between stacks â€” so a wording fix is not a release. `studio spec show` lists what a
+  stack holds. A library with no spec has no angles and cannot shoot at all.
 - **Nothing enters the character.** Results stay in their runs; the shoot prints
   the `add-refs --from-run` line for each. Look before promoting:
   `studio runs outputs <project>/latest --presign`.

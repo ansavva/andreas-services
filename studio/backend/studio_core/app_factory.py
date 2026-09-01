@@ -24,6 +24,8 @@ from studio_core.routes.models import bp as models_bp
 from studio_core.routes.movies import bp as movies_bp
 from studio_core.routes.nodes import bp as nodes_bp
 from studio_core.routes.phrasebook import bp as phrasebook_bp
+from studio_core.routes.reference_spec import bp as reference_spec_bp
+from studio_core.routes.turnaround import bp as turnaround_bp
 from studio_core.routes.projects import bp as projects_bp
 from studio_core.routes.prompt import bp as prompt_bp
 from studio_core.routes.renders import bp as renders_bp
@@ -255,6 +257,15 @@ def create_app() -> Flask:
     app.register_blueprint(scenes_bp)
     app.register_blueprint(movies_bp)
     app.register_blueprint(phrasebook_bp)
+    # How a reference prompt is written, as rows. Its own blueprint rather
+    # than part of `characters` because the spec belongs to the LIBRARY: one
+    # set of angles describes every character in it.
+    app.register_blueprint(reference_spec_bp)
+    # Drafting a character's reference angles. It writes RUNS, so it could
+    # live in `runs`; it is here because what it is ABOUT is a character's
+    # identity, and it calls `runs.create_draft` rather than reimplementing
+    # what a draft is.
+    app.register_blueprint(turnaround_bp)
     app.register_blueprint(models_bp)
     # The two halves of what used to be local media processing. `renders`
     # enqueues onto the render queue and reports on a job row; `images` does

@@ -330,9 +330,26 @@ def create_run():
     are S3 writes. A failure part-way leaves a draft holding less than it should,
     which is visible and re-runnable, and which nothing has yet paid for.
     """
-    body = support.body()
-    held = support.memberships()
+    try:
+        record = create_draft(support.body(), support.memberships())
+    except _InvalidBinding as refusal:
+        return support.structured("invalid_binding", str(refusal), 400)
+    return (jsonify(record), 201,
+            {"Location": f"/api/runs/{record['id']}"})
 
+
+def create_draft(body: dict, held) -> dict:
+    """Write one draft, from a body shaped like `POST /api/runs`'s.
+
+    **Split out of the route so a SECOND caller can make a draft without a
+    second implementation of what a draft IS.** `POST /api/characters/<id>/turnaround`
+    writes fourteen of these in one request; assembling the envelope, the sends,
+    the digest and the fingerprint a second time there would be two answers to a
+    question this service has to have exactly one of — and the divergence would
+    be invisible, because a run records the outcome and not the reasoning.
+
+    Everything below is unchanged from the route it came out of.
+    """
     project = project_routes.project_at(body.get("project") or "", held)
 
     kind = body.get("kind")
@@ -357,8 +374,13 @@ def create_run():
         else:
             bindings = validate_bindings(body.get("bindings"), project["lib"])
             send_entries = validate_sends(sends_from_bindings(bindings), project["lib"])
-    except _InvalidBinding as refusal:
-        return support.structured("invalid_binding", str(refusal), 400)
+    except _InvalidBinding:
+        # Raised on, not answered here. `create_draft` returns a RECORD, and an
+        # early `return support.structured(...)` made it return a Response
+        # instead — which the route then tried to `jsonify`, turning every
+        # refused binding into a 500. Hard rule #3's refusal is the one this
+        # service can least afford to report as a server error.
+        raise
 
     plan = body.get("plan")
     if plan is not None and not isinstance(plan, dict):
@@ -427,7 +449,7 @@ def create_run():
         {"fingerprint": fingerprint},
     )
 
-    return jsonify(
+    return (
         {
             "id": record["id"],
             # Echoed because the caller's next question is about this project —
@@ -446,7 +468,7 @@ def create_run():
             "sends": written,
             "created": record["created"],
         }
-    ), 201, {"Location": f"/api/runs/{record['id']}"}
+    )
 
 
 def _write_payload(record: dict, body: dict) -> dict:

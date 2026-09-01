@@ -43,9 +43,15 @@ Two rules follow:
   angle image that has not been synced cannot be used. `studio character turnaround` checks
   for them first and tells you to re-run `dev-setup.sh` if any are missing.
 
-The angle spec (`pipeline/src/studio_pipeline/domain/templates/reference_angles.yaml`)
-names each angle image by its S3 key, so the prompt lives in source control and the
-image it refers to lives in the bucket.
+The angle spec names each angle image by its name path under `config/`, so the
+image lives in the bucket and the row that refers to it lives in the catalog.
+
+**The spec itself is no longer in source control.** It was
+`pipeline/src/studio_pipeline/domain/templates/reference_angles.yaml`; it is
+`SPEC#` rows the API serves, the app edits and `studio spec` moves between
+stacks. The angle images did not move and are still pushed from this directory
+by `studio config sync` — only the body angles bind one, since a face angle
+binds no plate at all.
 
 ## What an angle image is, and what it is not
 

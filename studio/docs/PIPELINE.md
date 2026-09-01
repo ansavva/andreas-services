@@ -227,7 +227,8 @@ studio/pipeline/
         │   ├── characters/       base.py profile.py refs.py pools.py cli.py
         │   ├── curate.py  contact_sheet.py
         │   ├── phrasebook.py  prompt.py
-        │   └── templates/profile.yaml  reference_angles.yaml
+        │   ├── spec.py            move the reference spec between stacks
+        │   └── templates/profile.yaml
         │
         ├── engine/                MODEL INVOCATION
         │   ├── resubmit.py        send a draft somebody already approved
@@ -926,7 +927,7 @@ next identical payload look like a duplicate.
 | `schema.py` | Validates fields, enums, ranges and `denied` — off a schema fetched through `GET /api/models/<name>/schema` rather than from Replicate directly, which is what removed the provider token from this package. The API runs its own copy of the check at submit time, because the SPA also submits and never passes through here; that one is the gate and this one is the better message. |
 | `refs.py` | Character reference selection and project input pool → **node ids**. Selection itself is `GET /api/characters/<id>/selection`, so the CLI and the SPA cannot disagree about which images a generation saw; what is left here is the translation, and the over-cap refusal that names the commands which narrow a set. Nothing walks `reference/` any more. |
 | `resubmit.py` | Send a draft somebody has already approved — `studio runs submit`, and the retry path. It is separate from `runner.py` because there is nothing to author: the plan, the sends and the approval are on the row, so this is a status check and one `POST`. |
-| `turnaround.py` | `studio character turnaround` — the STANDARD reference set, one run per angle in `domain/templates/reference_angles.yaml`. Reads the character's bible for the prompt, binds an angle image from `config/`, then files, describes and indexes each result. Lives here rather than in `domain/` because it invokes models; it drives the same lifecycle as `runner.py` rather than repeating it. |
+| `turnaround.py` | `studio character turnaround` — the STANDARD reference set, one DRAFT per angle. Resolves which images carry identity (`--seed-pick`, the seed-tree walk, the oversized-pool refusal) and hands them to `POST /api/characters/<id>/turnaround`, which assembles the prompt and writes the drafts. **The spec and the bible filling are no longer here**: they were `domain/templates/reference_angles.yaml` plus this module, and both moved to the API so the app can read and edit a reference prompt — see `studio spec`. |
 | `board.py` | `studio scenes board` / `render` / `check` — the two commands that spend money in a scene's life, plus the free one that says whether they would work. Turns the plan's roles into bindings and hands them to the same lifecycle `runner.py` drives. Every cap, exclusion and format rule stays in `submit.py`; a copy here is the one that drifts. |
 | `add_model.py` | Onboarding: fetch schema + README **through the API**, infer an entry, append it to the registry. The inference stays here because what it produces is a repo file somebody reviews; the fetch does not, because it was one of the last three reasons a developer's machine held a Replicate token. It writes no documentation — see `studio-media-add-model`. |
 

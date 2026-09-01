@@ -20,7 +20,9 @@
     "e2e:live": "E2E_LIVE=1 playwright test"
   },
   "dependencies": {
+    "@lexical/react": "^0.49.0",
     "@tanstack/react-query": "^5.102.7",
+    "lexical": "^0.49.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^6.30.3"

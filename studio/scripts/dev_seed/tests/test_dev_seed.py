@@ -1018,3 +1018,78 @@ def test_a_shared_root_is_not_a_way_to_smuggle_a_name_through():
     still that character's folder, and a folder called `config` nested anywhere
     else has no bearing on what the top level holds."""
     assert ds.name_problems({"n1": "rosalind", "n2": "rosalind/config"})
+
+
+# ─────────────── the library-scoped rows a fixture carries ───────────────
+
+
+def test_a_fixture_carries_the_reference_spec_and_the_phrasebook():
+    """The `LIB#` partition was invisible to `read_library`.
+
+    Its scan matched `sk == "META"` or a `CHAR#`/`PROJ#` prefix, so every other
+    row filed under the library itself fell through — which meant the
+    phrasebook's `TERM#` rows had never travelled in a fixture at all, despite
+    `phrasebook` sitting in `SHARED_ROOTS`. That constant is about top-level
+    FOLDER NAMES in the node tree, a different thing, and the coincidence of
+    names is what let it go unnoticed.
+
+    With no spec rows a fresh stack has no angles and a turnaround cannot run,
+    so this is the difference between a seeded stack and a useless one.
+    """
+    library = {
+        "settings": [
+            {"pk": "LIB#lib-src", "sk": "SPEC#BLOCK#face_only", "lib": "lib-src",
+             "text": "Take the face from the images."},
+            {"pk": "LIB#lib-src", "sk": "TERM#m#sultry", "lib": "lib-src",
+             "use": "composed"},
+        ]
+    }
+    carried = ds.settings_of(library)
+
+    assert [row["sk"] for row in carried] == ["SPEC#BLOCK#face_only", "TERM#m#sultry"]
+    # `pk` and `lib` are dropped: the destination library is not this one.
+    assert all("pk" not in row and "lib" not in row for row in carried)
+
+
+def test_a_sweep_row_is_not_carried():
+    """It records blobs a delete was about to strand IN THAT STACK.
+
+    It means nothing anywhere else, so carrying it would seed a fresh library
+    with a warning about objects it has never had.
+    """
+    library = {"settings": []}          # `read_library` never collects one
+    assert ds.SETTINGS_PREFIXES == ("SPEC#", "TERM#")
+    assert "SWEEP#" not in ds.SETTINGS_PREFIXES
+    assert ds.settings_of(library) == []
+
+
+def test_settings_rows_land_under_the_DESTINATION_library():
+    catalog = {
+        "library_name": "Studio",
+        "nodes": [{"path": "config", "kind": "folder",
+                   "created_at": "2026-01-01T00:00:00Z"}],
+        "entities": [],
+        "settings": [{"sk": "SPEC#BLOCK#face_only", "text": "x"}],
+    }
+    items = ds.rows(catalog, {"objects": {}}, "studio-dev-abc-media-us-east-1",
+                      "lib-dest", "user-1")
+    spec_rows = [i for i in items if i["sk"].startswith("SPEC#")]
+
+    assert spec_rows == [{"pk": "LIB#lib-dest", "sk": "SPEC#BLOCK#face_only", "text": "x"}]
+
+
+def test_a_fixture_published_before_settings_existed_still_loads():
+    """An absent key is empty, not an error.
+
+    Every fixture published before this change has no `settings` key at all, and
+    a loader that required one would refuse the only fixture that exists.
+    """
+    catalog = {
+        "library_name": "Studio",
+        "nodes": [{"path": "config", "kind": "folder",
+                   "created_at": "2026-01-01T00:00:00Z"}],
+        "entities": [],
+    }
+    items = ds.rows(catalog, {"objects": {}}, "studio-dev-abc-media-us-east-1",
+                      "lib-dest", "user-1")
+    assert not [i for i in items if i["sk"].startswith(("SPEC#", "TERM#"))]

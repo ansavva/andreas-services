@@ -432,6 +432,27 @@ _SKIP_DIRS = {".venv", "node_modules", "dist", ".git", "__pycache__", ".pytest_c
 _SKIP_SUFFIX = {".png", ".jpg", ".jpeg", ".webp", ".mp4", ".ico", ".lock", ".pyc"}
 
 
+def _is_test_fixture(path) -> bool:
+    """A test file, which INVENTS names rather than referring to them.
+
+    A run's `engine` is a skill name, so a test that authors a run has to put
+    something in that field — and an invented one is the honest thing to put,
+    because naming a real skill would tie a UI test to a registry entry somebody
+    may retire. Scanning those files reported three such fixtures as stale
+    references to skills that had never existed.
+
+    (This docstring may not spell one of those invented names either: the scan
+    reads every file under `studio/`, including this one, so an example here
+    would report itself. It did.)
+
+    This scan exists to catch the opposite case: a RENAMED family leaving dead
+    names in `.env.example` and `infra/README.md`, files nothing thought to look
+    at. A fixture is not that, and excluding it costs nothing the check was for.
+    """
+    return any(part.endswith((".test.tsx", ".test.ts", ".spec.ts", ".spec.tsx"))
+               for part in (path.name,))
+
+
 def check_references(skills: set[str]) -> dict[str, list[str]]:
     """Every `studio-media-*` / `studio-code-*` mentioned anywhere must exist.
 
@@ -451,6 +472,7 @@ def check_references(skills: set[str]) -> dict[str, list[str]]:
             f for f in base.rglob("*")
             if f.is_file() and f.suffix not in _SKIP_SUFFIX
             and not _SKIP_DIRS & set(f.parts)
+            and not _is_test_fixture(f)
         ]
         for f in files:
             try:

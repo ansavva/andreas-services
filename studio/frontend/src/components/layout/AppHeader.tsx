@@ -3,7 +3,7 @@ import { NavLink } from "react-router-dom";
 import { Dropdown, Text } from "@ansavva/design-system";
 
 import { useAuth } from "../../context/AuthContext";
-import { CHARACTERS_PATH, HOME_PATH, PROJECTS_PATH, folderPath } from "../../utils/location";
+import { CHARACTERS_PATH, HOME_PATH, PROJECTS_PATH, REFERENCE_SPEC_PATH, folderPath } from "../../utils/location";
 import { ChipRow } from "../common/ChipRow";
 import { LibrarySwitcher } from "../common/LibrarySwitcher";
 import { HeaderSearch } from "./HeaderSearch";
@@ -98,6 +98,7 @@ const DESTINATIONS = [
   { to: CHARACTERS_PATH, label: "Characters" },
   { to: PROJECTS_PATH, label: "Projects" },
   { to: folderPath(null), label: "Files" },
+  { to: REFERENCE_SPEC_PATH, label: "Reference spec" },
 ];
 
 /**

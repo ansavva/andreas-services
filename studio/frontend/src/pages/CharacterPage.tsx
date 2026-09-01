@@ -9,6 +9,7 @@ import { FolderTab } from "../components/browse/FolderTab";
 import { PageBar } from "../components/layout/PageBar";
 import { CharacterProjects, CharacterRuns } from "../components/character/CharacterWork";
 import { ProfileForm } from "../components/character/ProfileForm";
+import { TurnaroundPanel } from "../components/character/TurnaroundPanel";
 import { ReferencesGrid } from "../components/character/ReferencesGrid";
 import { useResource } from "../hooks/useResource";
 import { CHARACTERS_PATH } from "../utils/location";
@@ -196,6 +197,11 @@ export function CharacterPage() {
         <Tabs.List className="overflow-x-auto border-b border-line">
           <Tabs.Tab value="profile">Profile</Tabs.Tab>
           <Tabs.Tab value="references">References</Tabs.Tab>
+          {/* Making them, as opposed to reading them. It sits beside
+              References because that is what it produces, and the two
+              questions — what does this character look like, and shoot the
+              set that says so — are one step apart. */}
+          <Tabs.Tab value="shoot">Shoot</Tabs.Tab>
           <Tabs.Tab value="files">Files</Tabs.Tab>
           {/* The reverse questions. Both routes existed with no caller, so a
               character was a dead end: who it is, what it looks like, and
@@ -246,6 +252,10 @@ export function CharacterPage() {
 
         <Tabs.Panel value="projects">
           <CharacterProjects characterId={record.id} />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="shoot">
+          <TurnaroundPanel record={record} />
         </Tabs.Panel>
 
         <Tabs.Panel value="files">

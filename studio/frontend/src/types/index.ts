@@ -99,6 +99,23 @@ export interface NodeOwner {
   slug: string | null;
 }
 
+/**
+ * A node as `GET /api/resolve` and `GET /api/nodes/<id>` report it.
+ *
+ * Deliberately NOT a `FileEntry`. That is what a listing hands out — it carries
+ * a presigned `url` because the route that builds it expands a POINTER to a
+ * node into what a page can draw. A node addressed by its own id reports its
+ * own fields and nothing signed, so anything wanting to display one asks
+ * `MediaThumb` to sign from the id.
+ */
+export interface NodeView {
+  id: string;
+  name: string;
+  kind: "file" | "folder";
+  size?: number;
+  content_type?: string | null;
+}
+
 export interface FileEntry {
   /** The node id. This is what the URL names and what a selection holds. */
   id: string;
@@ -383,6 +400,65 @@ export interface CharacterRecord {
  * (`<slug>_<group>_<n>.png`), which is why the file this names can now be called
  * anything and renamed freely: the row names its **node id**.
  */
+/**
+ * One shared block of the reference spec — prose an angle template cites by name.
+ *
+ * A row rather than a key in one document, so a bad edit breaks one block and
+ * two people editing different blocks do not overwrite each other. That is the
+ * shape the phrasebook was moved to for the same reasons.
+ */
+export interface SpecBlock {
+  name: string;
+  text: string;
+  updated?: string;
+}
+
+/** One orientation: its template, and how a promoted image gets described. */
+export interface SpecAngle {
+  id: string;
+  group: "face" | "body";
+  prompt: string;
+  /** Written onto the image by `add-refs --from-run`, never sent to a model. */
+  description: string;
+  tags: string[];
+  order?: number | null;
+  /** A guide image, as a name path under `config/`. Face angles bind none. */
+  angle_image?: string | null;
+  torso_image?: string | null;
+  /**
+   * A picture of what this orientation IS, shown to a person and never sent.
+   *
+   * Separate from `angle_image` because they became separate things: a face
+   * angle stopped binding a guide when the guide was found to distort the face
+   * it existed to record, and its plate is still the clearest illustration of
+   * the angle. One field for both would mean the only way to show an angle was
+   * to send the picture to the model.
+   */
+  illustration?: string | null;
+}
+
+export type SpecAngleBody = Omit<SpecAngle, "id">;
+
+/** `GET /api/reference-spec` — blocks keyed by name, angles in shooting order. */
+export interface ReferenceSpec {
+  blocks: Record<string, string>;
+  angles: SpecAngle[];
+}
+
+/**
+ * What `POST /api/characters/<id>/turnaround` answers.
+ *
+ * `drafted` when it wrote runs, `preview` when it was asked not to — separate
+ * keys on purpose, so a caller cannot mistake one for the other and go looking
+ * for run ids that were never minted. `failed` is per angle: one bad angle does
+ * not cancel the rest.
+ */
+export interface TurnaroundResult {
+  drafted?: Array<{ angle: string; id: string; status: string }>;
+  preview?: Array<{ angle: string; model: string; plan: { prompt: string; params: Record<string, unknown> }; sends: Array<{ node: string; field: string }> }>;
+  failed: Array<{ angle: string; error: string }>;
+}
+
 export interface ReferenceEntry {
   node: string;
   /** Absent inside a grouped listing, where the key already says it. */

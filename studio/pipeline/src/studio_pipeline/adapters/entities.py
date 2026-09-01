@@ -618,6 +618,78 @@ def put_movie_scenes(movie_id: str, scenes: list[str]) -> dict:
     return api.request("PATCH", f"/api/movies/{movie_id}/scenes", {"scenes": scenes})
 
 
+# ── the reference spec ──────────────────────────────────────────────────────
+
+def reference_spec() -> dict:
+    """The blocks and angles a turnaround fills. `{"blocks": {...}, "angles": [...]}`.
+
+    Wrapped, like `/api/phrasebook` and unlike the bare-array listings — and the
+    shape is normalised here rather than at the call site, because the last
+    module that let a wrapped answer reach `_as_list` reported every library's
+    phrasebook as empty for the whole life of a migration.
+    """
+    found = api.get("/api/reference-spec")
+    if not isinstance(found, dict):
+        return {"blocks": {}, "angles": []}
+    return {"blocks": found.get("blocks") or {},
+            "angles": _as_list(found.get("angles"))}
+
+
+def put_spec_block(name: str, text: str) -> dict:
+    """Write one shared block. An overwrite: a block IS its name."""
+    return api.patch(f"/api/reference-spec/blocks/{_segment(name)}", {"text": text})
+
+
+def put_spec_angle(angle_id: str, fields: dict) -> dict:
+    """Write one angle — its group, template, description and tags."""
+    return api.patch(f"/api/reference-spec/angles/{_segment(angle_id)}", fields)
+
+
+# There are deliberately no `delete_spec_*` wrappers, and #553 is why: a wrapper
+# with no caller is a claim about the wire surface that nothing checks, and it
+# deleted five of them for that reason on the day this was written. `studio spec`
+# never removes a row — a push states what a file contains, not that nothing else
+# exists — so nothing here would call them. The API serves both DELETEs for the
+# app, which is the same footing `/api/runs/<id>/response` is on.
+
+def draft_turnaround(character_id: str, *, project: str, identity: list[str],
+                     group: str | None = None, angles: list[str] | None = None,
+                     model: str | None = None, extra: dict | None = None,
+                     preview: bool = False) -> dict:
+    """Draft a character's reference angles, or preview what they would say.
+
+    **The assembly is the API's**, and this is the whole of what the CLI does
+    about it now. The bible filling and the slot arithmetic used to live in
+    `engine/turnaround.py`; two implementations of that would be two opinions
+    about what a run was told to render, and a run records the outcome rather
+    than the reasoning, so the disagreement would be undetectable afterwards.
+
+    `preview` stops before the write and answers `preview` rather than `drafted`.
+    """
+    body = {"project": project, "identity": identity}
+    body.update(_clean(group=group, model=model))
+    if angles:
+        body["angles"] = angles
+    if extra:
+        body["extra"] = extra
+    if preview:
+        body["preview"] = True
+    got = api.post(f"/api/characters/{_segment(character_id)}/turnaround", body)
+    return got if isinstance(got, dict) else {"drafted": [], "failed": []}
+
+
+def _segment(value: str) -> str:
+    """One path segment, quoted. `safe=''` because the default keeps `/`.
+
+    A block name or an angle id has no reason to hold a slash, and the cost of
+    one that did is a 404 nobody can read — the same trap
+    `delete_phrasebook_term` documents for a model key that genuinely does.
+    """
+    import urllib.parse
+
+    return urllib.parse.quote(value, safe="")
+
+
 # ── phrasebook ──────────────────────────────────────────────────────────────
 
 def phrasebook(model: str | None = None) -> list[dict]:
