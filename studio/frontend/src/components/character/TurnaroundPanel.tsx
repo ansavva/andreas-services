@@ -8,7 +8,6 @@ import {
   Button,
   Card,
   Select,
-  Spinner,
   Text,
   Tooltip,
   buttonClass,
@@ -22,6 +21,7 @@ import {
   getReferenceSpec,
   getTree,
 } from "../../apis/studio";
+import { ApertureSpinner } from "../common/Aperture";
 import { AnglePlate } from "../common/AnglePlate";
 import { PreviewBox } from "../common/PromptPreview";
 import { Marked, unfilledIn } from "../common/UnfilledMarks";
@@ -294,7 +294,7 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
     [result],
   );
 
-  if (rootTree.loading) return <Spinner />;
+  if (rootTree.loading) return <ApertureSpinner />;
   if (!seedFolder) {
     return (
       <Alert.Root intent="info">
@@ -386,7 +386,7 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
         </Alert.Root>
       ) : null}
 
-      {spec.loading || pool.loading ? <Spinner /> : null}
+      {spec.loading || pool.loading ? <ApertureSpinner /> : null}
 
       {/*
         **The anchor, and it is the whole shape of a turnaround.**

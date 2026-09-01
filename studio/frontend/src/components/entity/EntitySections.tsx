@@ -2,8 +2,9 @@ import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 
-import { Spinner, Text } from "@ansavva/design-system";
+import { Text } from "@ansavva/design-system";
 
+import { ApertureSpinner } from "../common/Aperture";
 import { getCharacters, getProjects } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
 import { characterPath, projectPath } from "../../utils/location";
@@ -83,7 +84,7 @@ function Section({
         {action}
       </div>
 
-      {loading && <Spinner size="md" label={`Loading ${title.toLowerCase()}`} />}
+      {loading && <ApertureSpinner size="md" label={`Loading ${title.toLowerCase()}`} />}
       {error && <LoadError what={errorTitle.replace("Could not load ", "")} message={error} onRetry={onRetry} />}
       {count === 0 && empty}
 

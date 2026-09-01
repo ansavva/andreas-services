@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { Alert, Badge, Button, Spinner, Text, Textarea } from "@ansavva/design-system";
+import { Alert, Badge, Button, Text, Textarea } from "@ansavva/design-system";
 
+import { ApertureSpinner } from "../common/Aperture";
 import { getNodeText, saveNodeText } from "../../apis/studio";
 import { copyLabel, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { formatTextContent } from "../../utils/format";
@@ -254,7 +255,7 @@ export function TextPage({ file, onClose, onSaved }: Props) {
 
           {!data && !error && (
             <div className="flex h-64 items-center justify-center">
-              <Spinner size="md" label="Loading file" />
+              <ApertureSpinner size="md" label="Loading file" />
             </div>
           )}
 

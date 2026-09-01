@@ -5,7 +5,6 @@ import {
   Breadcrumbs,
   Button,
   Input,
-  Spinner,
   Text,
 } from "@ansavva/design-system";
 
@@ -16,6 +15,7 @@ import {
   moveNodes,
   renameNode,
 } from "../../apis/studio";
+import { ApertureSpinner } from "../common/Aperture";
 import { useTree } from "../../hooks/useTree";
 import { useSelection } from "../../hooks/useSelection";
 import { useUploads } from "../../hooks/useUploads";
@@ -617,7 +617,7 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
 
       {loading && (
         <div className="flex justify-center py-16">
-          <Spinner size="lg" label="Loading folder" />
+          <ApertureSpinner size="lg" label="Loading folder" />
         </div>
       )}
 

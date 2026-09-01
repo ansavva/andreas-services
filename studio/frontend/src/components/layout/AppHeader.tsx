@@ -4,6 +4,7 @@ import { Dropdown, Text } from "@ansavva/design-system";
 
 import { useAuth } from "../../context/AuthContext";
 import { CHARACTERS_PATH, HOME_PATH, PROJECTS_PATH, REFERENCE_SPEC_PATH, folderPath } from "../../utils/location";
+import { ApertureMark } from "../common/Aperture";
 import { ChipRow } from "../common/ChipRow";
 import { LibrarySwitcher } from "../common/LibrarySwitcher";
 import { HeaderSearch } from "./HeaderSearch";
@@ -45,11 +46,16 @@ export function AppHeader() {
       {/* `py-3` is half a 24px line, so the bar's own height lands on the
           baseline the content column is spaced by. */}
       <div className="mx-auto flex w-full max-w-7xl items-center gap-2 px-4 py-3 sm:gap-3 sm:px-6">
+        {/* Mark and wordmark, one target. `aria-label` names the pair, because
+            the mark is `aria-hidden` and "Studio" on its own does not say that
+            pressing it goes home. */}
         <NavLink
           to={HOME_PATH}
-          className="shrink-0 rounded-none focus-visible:outline-2 focus-visible:outline-offset-2
-                     focus-visible:outline-primary"
+          aria-label="Studio — home"
+          className="flex shrink-0 items-center gap-2 rounded-none focus-visible:outline-2
+                     focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
+          <ApertureMark size="lg" />
           <Text variant="title">Studio</Text>
         </NavLink>
 

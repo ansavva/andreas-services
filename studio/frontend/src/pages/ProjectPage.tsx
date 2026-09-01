@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { Alert, Badge, Button, Spinner, Tabs, Text } from "@ansavva/design-system";
+import { Alert, Badge, Button, Tabs, Text } from "@ansavva/design-system";
 
 import {
   deleteProject,
@@ -10,6 +10,7 @@ import {
   getProjectMovies,
   getProjectScenes,
 } from "../apis/studio";
+import { ApertureSpinner } from "../components/common/Aperture";
 import { FolderTab } from "../components/browse/FolderTab";
 import { PageBar } from "../components/layout/PageBar";
 import { EntityRow } from "../components/entity/EntityRow";
@@ -48,7 +49,7 @@ export function ProjectPage() {
     return (
       <>
         <div className="flex justify-center py-16">
-          <Spinner size="lg" label="Loading project" />
+          <ApertureSpinner size="lg" label="Loading project" />
         </div>
       </>
     );
@@ -200,7 +201,7 @@ function ScenesTab({ projectId }: { projectId: string }) {
   const load = useCallback(() => getProjectScenes(projectId), [projectId]);
   const { data, loading, error, reload } = useResource(["project-scenes", projectId], load);
 
-  if (loading) return <Spinner size="md" label="Loading scenes" />;
+  if (loading) return <ApertureSpinner size="md" label="Loading scenes" />;
   if (error) return <LoadError what="scenes" message={error} onRetry={reload} />;
   if (!data || data.length === 0)
     return (
@@ -230,7 +231,7 @@ function MoviesTab({ projectId }: { projectId: string }) {
   const load = useCallback(() => getProjectMovies(projectId), [projectId]);
   const { data, loading, error, reload } = useResource(["project-movies", projectId], load);
 
-  if (loading) return <Spinner size="md" label="Loading movies" />;
+  if (loading) return <ApertureSpinner size="md" label="Loading movies" />;
   if (error) return <LoadError what="movies" message={error} onRetry={reload} />;
   if (!data || data.length === 0)
     return (
@@ -267,7 +268,7 @@ function InputsTab({ projectId }: { projectId: string }) {
   const load = useCallback(() => getProjectInputs(projectId), [projectId]);
   const { data, loading, error, reload } = useResource(["project-inputs", projectId], load);
 
-  if (loading) return <Spinner size="md" label="Loading inputs" />;
+  if (loading) return <ApertureSpinner size="md" label="Loading inputs" />;
   if (error) return <LoadError what="inputs" message={error} onRetry={reload} />;
   if (!data || data.length === 0)
     return (

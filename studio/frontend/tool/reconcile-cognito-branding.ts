@@ -17,11 +17,13 @@
 // with that command, commit, then re-run `npm run brand` to put the token
 // colours back over whatever the console wrote.
 //
-// NO ASSETS. Studio has no logo yet, so `form.logo` stays disabled and no
-// artwork is uploaded; undeclared asset categories are left alone, which means
-// Cognito keeps serving its own illustrations rather than this repo committing
-// artwork nobody here drew. When Studio gets a wordmark, it lands here as an
-// `asset` block in the Terraform — see humbugg's auth module for the shape.
+// STILL NO ASSETS, THOUGH THERE IS NOW A MARK. `src/utils/aperture.ts` draws
+// studio's aperture and `tool/render-mark.ts` renders it to a file, so the
+// artwork this comment used to say did not exist does. Uploading it is a
+// separate job and is not done: `form.logo` stays disabled, no asset is
+// declared, and Cognito keeps serving its own illustrations. When it is wired
+// up it lands as an `asset` block in the Terraform — see humbugg's auth module
+// for the shape.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

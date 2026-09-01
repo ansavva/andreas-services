@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { Alert, Breadcrumbs, Button, Dialog, Spinner, Text } from "@ansavva/design-system";
+import { Alert, Breadcrumbs, Button, Dialog, Text } from "@ansavva/design-system";
 
+import { ApertureSpinner } from "../common/Aperture";
 import { getTree } from "../../apis/studio";
 import type { Crumb, FolderEntry } from "../../types";
 import type { FolderId } from "../../utils/location";
@@ -150,7 +151,7 @@ export function DestinationPicker({
         <div className="min-h-40 flex-1 overflow-auto rounded-md border border-line">
           {loading && (
             <div className="flex h-40 items-center justify-center">
-              <Spinner size="md" label="Loading folders" />
+              <ApertureSpinner size="md" label="Loading folders" />
             </div>
           )}
 

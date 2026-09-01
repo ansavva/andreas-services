@@ -1,8 +1,9 @@
 import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { Spinner, Text } from "@ansavva/design-system";
+import { Text } from "@ansavva/design-system";
 
+import { ApertureSpinner } from "../common/Aperture";
 import { getCharacterProjects, getCharacterRuns } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
 import { projectPath, runPath } from "../../utils/location";
@@ -29,7 +30,7 @@ export function CharacterRuns({ characterId }: { characterId: string }) {
   const load = useCallback(() => getCharacterRuns(characterId), [characterId]);
   const { data, loading, error, reload } = useResource(["character-runs", characterId], load);
 
-  if (loading) return <Spinner size="md" label="Loading runs" />;
+  if (loading) return <ApertureSpinner size="md" label="Loading runs" />;
   if (error) return <LoadError what="runs" message={error} onRetry={reload} />;
 
   const runs = data?.runs ?? [];
@@ -53,7 +54,7 @@ export function CharacterProjects({ characterId }: { characterId: string }) {
   const load = useCallback(() => getCharacterProjects(characterId), [characterId]);
   const { data, loading, error, reload } = useResource(["character-projects", characterId], load);
 
-  if (loading) return <Spinner size="md" label="Loading projects" />;
+  if (loading) return <ApertureSpinner size="md" label="Loading projects" />;
   if (error) return <LoadError what="projects" message={error} onRetry={reload} />;
   if (!data || data.length === 0) {
     return (

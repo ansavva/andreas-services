@@ -2,8 +2,9 @@ import { useEffect, useMemo, type ReactNode } from "react";
 import { BrowserRouter, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 
-import { Alert, Spinner } from "@ansavva/design-system";
+import { Alert } from "@ansavva/design-system";
 
+import { ApertureSpinner } from "./components/common/Aperture";
 import { CALLBACK_PATH, login } from "./auth/oauth";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
@@ -54,7 +55,7 @@ function Gate({ children }: { children: ReactNode }) {
   if (!authenticated) {
     return (
       <div className="flex min-h-full items-center justify-center">
-        <Spinner size="lg" label={loading ? "Restoring your session" : "Taking you to sign in"} />
+        <ApertureSpinner size="lg" label={loading ? "Restoring your session" : "Taking you to sign in"} />
       </div>
     );
   }
@@ -111,7 +112,7 @@ function LibraryGate() {
   if (loading) {
     return (
       <div className="flex min-h-full items-center justify-center">
-        <Spinner size="lg" label="Opening your library" />
+        <ApertureSpinner size="lg" label="Opening your library" />
       </div>
     );
   }

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { Alert, Button, Spinner } from "@ansavva/design-system";
+import { Alert, Button } from "@ansavva/design-system";
 
+import { ApertureSpinner } from "../components/common/Aperture";
 import { useAuth } from "../context/AuthContext";
 import { handleCallback } from "../auth/oauth";
 
@@ -60,7 +61,7 @@ export function AuthCallbackPage() {
 
   return (
     <div className="flex min-h-full items-center justify-center">
-      <Spinner size="lg" label="Signing you in" />
+      <ApertureSpinner size="lg" label="Signing you in" />
     </div>
   );
 }

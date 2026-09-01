@@ -7,11 +7,11 @@ import {
   Field,
   Input,
   Select,
-  Spinner,
   Text,
   type DateStatus,
 } from "@ansavva/design-system";
 
+import { ApertureSpinner } from "../common/Aperture";
 import { getRuns } from "../../apis/studio";
 import type { RunStatus, RunSummary } from "../../types";
 import { RunList } from "../run/RunList";
@@ -211,7 +211,7 @@ export function RunsTable({ projectId, characters, onOpen }: Props) {
 
       {loading && (
         <div className="flex justify-center py-6">
-          <Spinner size="md" label="Loading runs" />
+          <ApertureSpinner size="md" label="Loading runs" />
         </div>
       )}
 

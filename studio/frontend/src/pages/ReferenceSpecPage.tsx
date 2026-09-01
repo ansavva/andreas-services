@@ -7,7 +7,6 @@ import {
   Card,
   Field,
   Input,
-  Spinner,
   Tabs,
   Text,
 } from "@ansavva/design-system";
@@ -18,6 +17,7 @@ import {
   saveSpecAngle,
   saveSpecBlock,
 } from "../apis/studio";
+import { ApertureSpinner } from "../components/common/Aperture";
 import { AutoTextarea } from "../components/common/AutoTextarea";
 import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
 import { TokenizedPromptEditor } from "../components/common/TokenizedPromptEditor";
@@ -63,7 +63,7 @@ export function ReferenceSpecPage() {
   const load = useCallback(() => getReferenceSpec(), []);
   const { data, loading, error, setData } = useResource(["reference-spec"], load);
 
-  if (loading) return <Spinner />;
+  if (loading) return <ApertureSpinner />;
   if (error)
     return (
       <Alert.Root intent="danger">
