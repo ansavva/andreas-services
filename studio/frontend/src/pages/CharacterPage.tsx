@@ -1,8 +1,9 @@
 import { useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { Alert, Button, Spinner, Tabs, Text } from "@ansavva/design-system";
+import { Alert, Button, Tabs, Text } from "@ansavva/design-system";
 
+import { ApertureSpinner } from "../components/common/Aperture";
 import { ApiError } from "../apis/client";
 import { deleteCharacter, getCharacter, patchCharacter, setCharacterProfile } from "../apis/studio";
 import { FolderTab } from "../components/browse/FolderTab";
@@ -116,7 +117,7 @@ export function CharacterPage() {
     return (
       <>
         <div className="flex justify-center py-16">
-          <Spinner size="lg" label="Loading character" />
+          <ApertureSpinner size="lg" label="Loading character" />
         </div>
       </>
     );

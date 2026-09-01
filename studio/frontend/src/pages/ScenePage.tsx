@@ -1,8 +1,9 @@
 import { useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { Alert, Badge, Button, Spinner, Text } from "@ansavva/design-system";
+import { Alert, Badge, Button, Text } from "@ansavva/design-system";
 
+import { ApertureSpinner } from "../components/common/Aperture";
 import { getScene, patchScene, patchShot } from "../apis/studio";
 import { AutoTextarea } from "../components/common/AutoTextarea";
 import { PageBar } from "../components/layout/PageBar";
@@ -106,7 +107,7 @@ export function ScenePage() {
     return (
       <>
         <div className="flex justify-center py-16">
-          <Spinner size="lg" label="Loading scene" />
+          <ApertureSpinner size="lg" label="Loading scene" />
         </div>
       </>
     );

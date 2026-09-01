@@ -6,7 +6,6 @@ import {
   Badge,
   Button,
   Drawer,
-  Spinner,
   Tabs,
   Text,
 } from "@ansavva/design-system";
@@ -19,6 +18,7 @@ import {
   getRuns,
   reconcileRun,
 } from "../apis/studio";
+import { ApertureSpinner } from "../components/common/Aperture";
 import { PageBar } from "../components/layout/PageBar";
 import { Backlinks } from "../components/common/Backlinks";
 import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
@@ -194,7 +194,7 @@ export function RunPage() {
     return (
       <>
         <div className="flex justify-center py-16">
-          <Spinner size="lg" label="Loading run" />
+          <ApertureSpinner size="lg" label="Loading run" />
         </div>
       </>
     );
@@ -733,7 +733,7 @@ function PayloadPreview({ runId }: { runId: string }) {
   if (loading) {
     return (
       <div className="flex justify-center py-6">
-        <Spinner size="md" label="Reading the payload" />
+        <ApertureSpinner size="md" label="Reading the payload" />
       </div>
     );
   }
@@ -821,7 +821,7 @@ function PayloadDocument({
         <div className="border-t border-line bg-card">
           {loading && (
             <div className="flex justify-center py-6">
-              <Spinner size="md" label={`Loading ${label}`} />
+              <ApertureSpinner size="md" label={`Loading ${label}`} />
             </div>
           )}
           {error && (

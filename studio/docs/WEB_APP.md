@@ -459,6 +459,18 @@ that breaks every time the pipeline ships.
 
 ## Conventions & gotchas
 
+- **The logo is a function, not a file, and the favicon is generated from it.**
+  `src/utils/aperture.ts` solves a six-blade iris at any openness;
+  `components/common/Aperture.tsx` draws it twice from that one construction —
+  `ApertureMark` in the header, and `ApertureSpinner`, which is the same mark
+  with `openness` moving and which replaced the design system's `Spinner` at
+  every loading call site. A browser tab cannot import a module, so
+  `npm run mark` renders `src/assets/aperture.svg` from the same function and
+  `npm run mark:check` fails the PR when the committed file has drifted. **Edit
+  the geometry and re-run `npm run mark`** — never the SVG. It goes through
+  Vite's asset pipeline rather than `public/`, so it comes out content-hashed
+  and the deploy's `immutable` cache-control is the right header for it.
+
 - **A run page shows three different kinds of thing, and conflating them is the
   one mistake to avoid here.** The *envelope* is studio's and safe to render as
   fields. The *payload documents* are the provider's and are shown as text and

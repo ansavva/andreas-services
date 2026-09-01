@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 
-import { IconButton, Spinner } from "@ansavva/design-system";
+import { IconButton } from "@ansavva/design-system";
 
+import { ApertureSpinner } from "../common/Aperture";
 import { MediaThumb } from "../media/MediaThumb";
 import { ChevronDownIcon } from "../common/icons";
 import type { FileEntry } from "../../types";
@@ -143,7 +144,7 @@ export function Filmstrip({
 
         {loading && (
           <span className="flex shrink-0 items-center px-2">
-            <Spinner size="sm" label="Loading more" />
+            <ApertureSpinner size="sm" label="Loading more" />
           </span>
         )}
       </div>

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { Drawer, Spinner, Text, Button } from "@ansavva/design-system";
+import { Drawer, Text, Button } from "@ansavva/design-system";
 
+import { ApertureSpinner } from "../components/common/Aperture";
 import { deleteNodes, describeNode, renameNode } from "../apis/studio";
 import { ReferenceFields } from "../components/character/ReferenceFields";
 import type { Crumb } from "../components/layout/PageBar";
@@ -270,7 +271,7 @@ export function ObjectPage() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
         {feed.loading ? (
-          <Spinner size="lg" label="Loading media" />
+          <ApertureSpinner size="lg" label="Loading media" />
         ) : (
           <>
             <Text variant="body" tone="muted">

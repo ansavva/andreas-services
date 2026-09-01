@@ -1,7 +1,8 @@
 import { useNavigate } from "react-router-dom";
 
-import { Button, Spinner, Text } from "@ansavva/design-system";
+import { Button, Text } from "@ansavva/design-system";
 
+import { ApertureSpinner } from "../components/common/Aperture";
 import { MediaTile } from "../components/browse/MediaTile";
 import {
   CharactersSection,
@@ -89,7 +90,7 @@ export function HomePage() {
         </div>
 
         {reel.loading && recent.length === 0 && (
-          <Spinner size="md" label="Loading recent media" />
+          <ApertureSpinner size="md" label="Loading recent media" />
         )}
         {reel.error && <LoadError what="recent media" message={reel.error} />}
 

@@ -14,6 +14,8 @@
     "lint": "eslint src --report-unused-disable-directives --max-warnings 0",
     "brand": "node tool/reconcile-cognito-branding.ts",
     "brand:check": "node tool/reconcile-cognito-branding.ts --check",
+    "mark": "node tool/render-mark.ts",
+    "mark:check": "node tool/render-mark.ts --check",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "e2e": "playwright test",

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { Alert, Badge, Button, Select, Spinner, Text, Toggle, ToggleGroup } from "@ansavva/design-system";
+import { Alert, Badge, Button, Select, Text, Toggle, ToggleGroup } from "@ansavva/design-system";
 
 import {
   addReference,
@@ -11,6 +11,7 @@ import {
   setDefaultSet,
   type DefaultSetAck,
 } from "../../apis/studio";
+import { ApertureSpinner } from "../common/Aperture";
 import { useResource } from "../../hooks/useResource";
 import { ENGINE_CAPS, type FileEntry, type ReferenceEntry } from "../../types";
 import { ChipRow } from "../common/ChipRow";
@@ -246,7 +247,7 @@ export function ReferencesGrid({ characterId, rootId, defaultSet, rev, onSaved }
     [groups],
   );
 
-  if (loading) return <Spinner size="md" label="Loading references" />;
+  if (loading) return <ApertureSpinner size="md" label="Loading references" />;
 
   if (error) {
     return (

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { Alert, Breadcrumbs, Button, Dialog, Spinner, Text } from "@ansavva/design-system";
+import { Alert, Breadcrumbs, Button, Dialog, Text } from "@ansavva/design-system";
 
+import { ApertureSpinner } from "../common/Aperture";
 import { getTree } from "../../apis/studio";
 import type { Crumb, FileEntry, FolderEntry } from "../../types";
 import type { FolderId } from "../../utils/location";
@@ -134,7 +135,7 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
         <div className="min-h-48 flex-1 overflow-auto rounded-none border border-line">
           {loading && (
             <div className="flex h-48 items-center justify-center">
-              <Spinner size="md" label="Loading folder" />
+              <ApertureSpinner size="md" label="Loading folder" />
             </div>
           )}
 

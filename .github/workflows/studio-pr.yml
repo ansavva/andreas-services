@@ -151,6 +151,13 @@ jobs:
       - name: Cognito branding in sync with app.css
         run: cd studio/frontend && npm run brand:check
 
+      # The favicon is generated from the same geometry the header mark and the
+      # loading animation are drawn from, because a browser tab cannot import a
+      # module. This is what stops the committed SVG becoming a second, stale
+      # drawing of the logo.
+      - name: Favicon in sync with the mark's geometry
+        run: cd studio/frontend && npm run mark:check
+
       # One suite, and it covers the legacy-URL resolver. Everything else on
       # this surface fails loudly — a broken listing is a blank page — but a
       # share link written before #313 that quietly stops resolving is invisible

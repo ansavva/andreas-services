@@ -1,8 +1,9 @@
 import { useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { Alert, Badge, Spinner, Text } from "@ansavva/design-system";
+import { Alert, Badge, Text } from "@ansavva/design-system";
 
+import { ApertureSpinner } from "../components/common/Aperture";
 import { getMovie } from "../apis/studio";
 import { PageBar } from "../components/layout/PageBar";
 import { EntityRow } from "../components/entity/EntityRow";
@@ -32,7 +33,7 @@ export function MoviePage() {
     return (
       <>
         <div className="flex justify-center py-16">
-          <Spinner size="lg" label="Loading movie" />
+          <ApertureSpinner size="lg" label="Loading movie" />
         </div>
       </>
     );
