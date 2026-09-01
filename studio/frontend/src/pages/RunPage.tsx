@@ -261,19 +261,36 @@ export function RunPage() {
           <Text variant="title" className="border-b border-line pb-2">
             Outputs
           </Text>
+          {/* **A failure IS the outcome, so it belongs here.** It sat under
+              Inputs → Plan, beside the images and the parameters — the account
+              of what was asked for — while Outputs said "Nothing came back" and
+              did not say why. The one column a person reads to find out what
+              happened had the answer in the other one. */}
+          {data.error && (
+            <Alert.Root intent="danger">
+              <Alert.Title>This run failed</Alert.Title>
+              <Alert.Description>{data.error}</Alert.Description>
+            </Alert.Root>
+          )}
+
           {/* **An empty Outputs means three different things**, and it used to
               say the last one whichever it was: "Nothing came back" on a draft
               claims the run went out and the model returned nothing, which is
               false about a run nobody has sent. A person reading it on a plan
-              they are still writing has been told their run failed. */}
+              they are still writing has been told their run failed.
+
+              A failed run is a fourth: the alert above says what happened, so
+              repeating "Nothing came back" underneath it says nothing twice. */}
           {data.outputs.length === 0 ? (
-            <Text variant="body" tone="muted">
-              {isUnsubmitted(data.status)
-                ? "Not run yet."
-                : data.status === "pending" || data.status === "running"
-                  ? "Still working."
-                  : "Nothing came back."}
-            </Text>
+            data.error ? null : (
+              <Text variant="body" tone="muted">
+                {isUnsubmitted(data.status)
+                  ? "Not run yet."
+                  : data.status === "pending" || data.status === "running"
+                    ? "Still working."
+                    : "Nothing came back."}
+              </Text>
+            )
           ) : (
             <div
               className={`grid gap-2 ${
@@ -390,13 +407,6 @@ export function RunPage() {
 
             <Tabs.Panel value="plan">
               <div className="flex min-w-0 flex-col gap-6 pt-4">
-                {data.error && (
-                  <Alert.Root intent="danger">
-                    <Alert.Title>This run failed</Alert.Title>
-                    <Alert.Description>{data.error}</Alert.Description>
-                  </Alert.Root>
-                )}
-
                 {/* **Seven bordered cards became one ruled grid.** Each fact was a box
             with its own border and fill, so the densest, least decorative part of
             the page — a model name and five timestamps — carried the most chrome

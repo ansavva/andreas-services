@@ -1,17 +1,30 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { KeyboardEvent, MouseEvent } from "react";
 import { Link } from "react-router-dom";
 
-import { Alert, Badge, Button, Card, Select, Spinner, Text } from "@ansavva/design-system";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Select,
+  Spinner,
+  Text,
+  Tooltip,
+  buttonClass,
+} from "@ansavva/design-system";
 
 import {
   draftTurnaround,
   getProjects,
+  getProject,
   getReel,
-  getAsset,
   getReferenceSpec,
   getTree,
-  resolvePath,
 } from "../../apis/studio";
+import { AnglePlate } from "../common/AnglePlate";
+import { PreviewBox } from "../common/PromptPreview";
+import { Marked, unfilledIn } from "../common/UnfilledMarks";
 import { MediaThumb } from "../media/MediaThumb";
 import { useResource } from "../../hooks/useResource";
 import type { CharacterRecord, FileEntry, SpecAngle, TurnaroundResult } from "../../types";
@@ -69,11 +82,43 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
   //: angle id -> the node ids picked for it, IN PICK ORDER.
   const [picked, setPicked] = useState<Record<string, string[]>>({});
   const [openAngle, setOpenAngle] = useState<string | null>(null);
+  /**
+   * **The angle shot first, and the render everything else chains off.**
+   *
+   * A turnaround is not N independent shoots. Every hand-authored production
+   * set was made as one anchor and then the rest chained off it, each binding
+   * the anchor's output as `[Image1]` and each told to take the wardrobe and
+   * the background from it. Shot independently, the same fourteen prompts
+   * produced fourteen different shirts.
+   *
+   * Two pieces of state because they are two decisions separated by a
+   * generation: which angle leads, and — once it has been approved, submitted
+   * and looked at — which of its images is good enough to hold the set to.
+   * Nothing here picks the second for you; that is the same judgement the
+   * photographs themselves get.
+   */
+  const [anchorAngle, setAnchorAngle] = useState<string | null>(null);
+  const [anchorNode, setAnchorNode] = useState<string | null>(null);
   const [result, setResult] = useState<TurnaroundResult | null>(null);
-  const [busy, setBusy] = useState<"preview" | "draft" | null>(null);
+  const [busy, setBusy] = useState<"draft" | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
+  //: angle id -> the assembled prompt, kept current without being asked for.
+  const [assembled, setAssembled] = useState<Record<string, string>>({});
 
   const projects = useResource(["projects"], useCallback(() => getProjects(), []));
+  // The project's folder, so the anchor can be chosen from what this shoot has
+  // already produced. A project summary carries no root, so this is a second
+  // read rather than something the listing could have answered.
+  const projectRecord = useResource(
+    project ? ["project", project] : null,
+    project ? () => getProject(project) : null,
+  );
+  const projectMedia = useResource(
+    projectRecord.data ? ["reel", projectRecord.data.root] : null,
+    projectRecord.data
+      ? () => getReel({ node: projectRecord.data!.root }, "newest")
+      : null,
+  );
   const spec = useResource(["reference-spec"], useCallback(() => getReferenceSpec(), []));
 
   const angles = useMemo(
@@ -102,8 +147,29 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
     seedFolder ? () => getReel({ node: seedFolder.id }, "name") : null,
   );
 
+  /**
+   * A modified click opens the photograph itself, rather than picking it.
+   *
+   * These are thumbnails of the only pictures that will say who this person is,
+   * and the decision is made by eye — so being able to look at one properly,
+   * without leaving the screen you are choosing on, is part of the job. Cmd or
+   * Ctrl is the gesture a browser already trained everyone to expect from a
+   * thing that opens in a new tab.
+   *
+   * Opened synchronously off the click with the url the listing already
+   * carries: re-signing first would put an `await` between the gesture and the
+   * `window.open`, which is exactly what a popup blocker stops.
+   */
+  const opened = useCallback((event: MouseEvent, url: string) => {
+    if (!event.metaKey && !event.ctrlKey) return false;
+    event.preventDefault();
+    window.open(url, "_blank", "noopener,noreferrer");
+    return true;
+  }, []);
+
   const toggle = useCallback((angleId: string, node: string) => {
     setResult(null);
+
     setPicked((current) => {
       const held = current[angleId] ?? [];
       return {
@@ -128,35 +194,90 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
     [angles],
   );
 
-  const send = useCallback(
-    async (preview: boolean) => {
-      setBusy(preview ? "preview" : "draft");
-      setFailed(null);
-      try {
-        setResult(
-          await draftTurnaround(record.id, {
-            project,
-            // Per angle, and nothing else. There is no fallback from here: the
-            // route takes `identity` as one, and sending both would let an
-            // angle nobody picked for shoot anyway.
-            identity: [],
-            identity_by_angle: Object.fromEntries(
-              angles.map((a) => [a.id, picked[a.id] ?? []]),
-            ),
-            group: group === "all" ? undefined : (group as "face" | "body"),
-            preview,
-          }),
-        );
-      } catch (problem) {
-        setFailed(problem instanceof Error ? problem.message : String(problem));
-      } finally {
-        setBusy(null);
-      }
-    },
-    // `angles` belongs here: it is what decides WHICH angles get sent, and a
-    // stale copy would draft the previous group's list after the filter moved.
-    [angles, group, picked, project, record.id],
+  const selection = useMemo(
+    () => Object.fromEntries(angles.map((a) => [a.id, picked[a.id] ?? []])),
+    [angles, picked],
   );
+
+  /**
+   * The angles this press is about.
+   *
+   * **Phase one is the anchor alone.** Drafting all fourteen and shooting the
+   * anchor out of that pile would leave thirteen payloads written against a
+   * render that does not exist yet — and a payload is what a person approves,
+   * so it has to be assembled after the thing it cites.
+   */
+  const shooting = useMemo(() => {
+    if (anchorAngle && !anchorNode) return angles.filter((a) => a.id === anchorAngle);
+    if (anchorAngle) return angles.filter((a) => a.id !== anchorAngle);
+    return angles;
+  }, [anchorAngle, anchorNode, angles]);
+
+  const draft = useCallback(async () => {
+    setBusy("draft");
+    setFailed(null);
+    try {
+      setResult(
+        await draftTurnaround(record.id, {
+          project,
+          angles: shooting.map((a) => a.id),
+          ...(anchorNode ? { anchor: anchorNode } : {}),
+          // Per angle, and nothing else. There is no fallback from here: the
+          // route takes `identity` as one, and sending both would let an
+          // angle nobody picked for shoot anyway.
+          identity: [],
+          identity_by_angle: selection,
+          group: group === "all" ? undefined : (group as "face" | "body"),
+        }),
+      );
+    } catch (problem) {
+      setFailed(problem instanceof Error ? problem.message : String(problem));
+    } finally {
+      setBusy(null);
+    }
+  }, [anchorNode, group, project, record.id, selection, shooting]);
+
+  /**
+   * **The prompts assemble themselves, and there is no Preview button.**
+   *
+   * There was one, and it was the wrong shape twice over: what an angle would
+   * say is the thing that tells you whether your choices are right, so putting
+   * it behind a click meant deciding first and reading afterwards — and the
+   * button was disabled until a project was chosen and all fourteen angles had
+   * photographs, which is the point at which there is nothing left to decide.
+   *
+   * The route was built for exactly this — `_draft_one` says a preview stops
+   * before the write and is safe to call on every keystroke — and its two
+   * guards, a project and a full picking, are now about drafting alone.
+   *
+   * Debounced, because clicking through a pool of fifty photographs is a burst
+   * of changes and only the last one is worth an assembly.
+   */
+  useEffect(() => {
+    if (angles.length === 0) return;
+    const timer = setTimeout(() => {
+      void draftTurnaround(record.id, {
+        identity: [],
+        identity_by_angle: selection,
+        group: group === "all" ? undefined : (group as "face" | "body"),
+        // The anchor changes what every prompt SAYS, so a preview without it
+        // would be a preview of a payload nobody is going to send.
+        ...(anchorNode ? { anchor: anchorNode } : {}),
+        preview: true,
+      })
+        .then((got) =>
+          setAssembled(
+            Object.fromEntries((got.preview ?? []).map((p) => [p.angle, p.plan.prompt])),
+          ),
+        )
+        // A preview that fails is not an error a person did anything about, and
+        // it must not take the screen: the per-angle refusal already surfaces
+        // through `failed` on the response, and a network blip here would
+        // otherwise replace the whole panel with a red box mid-click.
+        .catch(() => undefined);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [anchorNode, angles.length, group, record.id, selection]);
 
   // **Above the early returns, and that is not style.** These are hooks, and
   // React requires the same hooks in the same order on every render — with
@@ -164,10 +285,6 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
   // resolved render ran three hooks the loading render had not, which React
   // reports as a changed hook order and which corrupts state silently in
   // production.
-  const previews = useMemo(
-    () => Object.fromEntries((result?.preview ?? []).map((p) => [p.angle, p])),
-    [result],
-  );
   const drafts = useMemo(
     () => Object.fromEntries((result?.drafted ?? []).map((d) => [d.angle, d])),
     [result],
@@ -195,8 +312,12 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
   // was the one nobody picked for is the failure this guards — the route
   // refuses it too, and refusing here means it is visible before the click
   // rather than as an error after it.
-  const unpicked = angles.filter((a) => (picked[a.id] ?? []).length === 0);
-  const ready = project !== "" && angles.length > 0 && unpicked.length === 0;
+  // An anchored pass carries its identity in the anchor, so it needs no fresh
+  // picks — requiring them would make the chained phase impossible to express.
+  const unpicked = anchorNode
+    ? []
+    : shooting.filter((a) => (picked[a.id] ?? []).length === 0);
+  const ready = project !== "" && shooting.length > 0 && unpicked.length === 0;
 
   // The angle the pool on the right is picking for. Defaults to the first, so
   // the panel is never a dead box asking you to choose before you can start.
@@ -241,11 +362,12 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
           </div>
           <div className="flex flex-col justify-end gap-1">
             <div className="flex flex-wrap items-center gap-3">
-              <Button intent="ghost" onClick={() => send(true)} disabled={!ready || busy !== null}>
-                {busy === "preview" ? "Assembling…" : "Preview"}
-              </Button>
-              <Button onClick={() => send(false)} disabled={!ready || busy !== null}>
-                {busy === "draft" ? "Drafting…" : `Draft ${angles.length} angle(s)`}
+              <Button onClick={draft} disabled={!ready || busy !== null}>
+                {busy === "draft"
+                  ? "Drafting…"
+                  : anchorAngle && !anchorNode
+                    ? "Draft the anchor"
+                    : `Draft ${shooting.length} angle(s)`}
               </Button>
               <Text tone="muted">
                 {unpicked.length > 0
@@ -267,13 +389,96 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
       {spec.loading || pool.loading ? <Spinner /> : null}
 
       {/*
-        **Two columns where there is room for two.** The angles are the work and
-        the pool is the tool, so the pool goes to the side and STAYS there —
-        `sticky`, because picking for the eleventh angle otherwise means
-        scrolling the grid back into view for every one of them. Below `lg` it
-        stacks, which is the same two things in the only order that fits.
+        **The anchor, and it is the whole shape of a turnaround.**
+
+        Every hand-authored production set was one angle shot first and the rest
+        chained off its render — each binding it as `[Image1]`, each told to take
+        the wardrobe and the background from it. Shot independently the same
+        prompts produced a different shirt every time, because nothing in them
+        held it.
+
+        Two steps, deliberately, and the second is a person looking at a
+        picture: which angle leads, then which of its images is good enough to
+        hold the set to. Nothing here picks the second automatically — the
+        anchor decides what thirteen more renders will look like, which is a
+        heavier judgement than any of them individually.
       */}
-      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(300px,400px)] lg:items-start">
+      <Card.Root>
+        <Card.Title>Chain off an anchor</Card.Title>
+        {anchorAngle === null ? (
+          <Text tone="muted">
+            Mark one angle as the anchor to shoot it first. The rest then chain
+            off its render and take their wardrobe and background from it.
+          </Text>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <Text tone="muted">
+              <strong>{anchorAngle}</strong> leads.{" "}
+              {anchorNode
+                ? `The remaining ${shooting.length} angle(s) will bind the chosen render as [Image1].`
+                : "Draft and shoot it, then pick its render below to unlock the rest."}
+            </Text>
+            {projectMedia.data && projectMedia.data.items.length > 0 ? (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(130px,1fr))] gap-2">
+                {projectMedia.data.items.map((file) => (
+                  <button
+                    key={file.id}
+                    type="button"
+                    onClick={(event) => {
+                      if (opened(event, file.url)) return;
+                      setAnchorNode(anchorNode === file.id ? null : file.id);
+                    }}
+                    aria-pressed={anchorNode === file.id}
+                    aria-label={`Anchor: ${file.name}`}
+                    className="relative text-left"
+                  >
+                    <MediaThumb
+                      nodeId={file.id}
+                      url={file.url}
+                      name={file.name}
+                      aspect="portrait"
+                      fit="contain"
+                      dimmed={anchorNode !== null && anchorNode !== file.id}
+                      badge={anchorNode === file.id ? "1" : undefined}
+                    />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <Text tone="muted">
+                {project === ""
+                  ? "Choose a project to see what it has already produced."
+                  : "Nothing rendered in this project yet."}
+              </Text>
+            )}
+            <div>
+              <Button
+                intent="ghost"
+                onClick={() => {
+                  setAnchorAngle(null);
+                  setAnchorNode(null);
+                }}
+              >
+                Shoot every angle independently instead
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card.Root>
+
+      {/*
+        **An even split, because both halves are the work.** The pool was a
+        400px rail showing three thumbnails across, which is not a size anybody
+        picks photographs at — and picking them is the entire decision this
+        screen exists for. It gets half the screen and fills it with as many
+        columns as fit.
+
+        Still `sticky`, and now scrolling in place: picking for the eleventh
+        angle otherwise means scrolling the grid back into view for every one of
+        them. Below `lg` it stacks, which is the same two things in the only
+        order that fits.
+      */}
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start">
         <div className="flex flex-col gap-4">
           {angles.map((angle) => (
             <AngleCard
@@ -283,8 +488,15 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
               picked={picked[angle.id] ?? []}
               focused={focused?.id === angle.id}
               onFocus={() => setOpenAngle(angle.id)}
+              onRemove={(node) => toggle(angle.id, node)}
+              onOpen={opened}
+              anchor={anchorAngle === angle.id}
+              onAnchor={() => {
+                setAnchorNode(null);
+                setAnchorAngle(anchorAngle === angle.id ? null : angle.id);
+              }}
               onCopyToAll={() => copyToAll(angle.id)}
-              preview={previews[angle.id]?.plan.prompt}
+              preview={assembled[angle.id]}
               draft={drafts[angle.id]}
               problem={problems[angle.id]}
               project={project}
@@ -292,7 +504,7 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
           ))}
         </div>
 
-        <aside className="lg:sticky lg:top-4">
+        <aside className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-6rem)] lg:overflow-auto">
           <Card.Root>
             <Card.Title>
               {focused ? `Photographs for ${focused.id}` : "Pick an angle"}
@@ -303,22 +515,41 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
                   Click in the order the model should see them — a prompt citing
                   [Image2] means the second one.
                 </Text>
-                <div className="grid grid-cols-3 gap-2">
+                {/* `auto-fill`, not a column count: the panel is half the
+                    screen now, and how many photographs fit across it is a
+                    property of the screen rather than a number to pick. */}
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(130px,1fr))] gap-2">
                   {(pool.data?.items ?? []).map((file) => {
                     const at = (picked[focused.id] ?? []).indexOf(file.id);
                     return (
                       <button
                         key={file.id}
                         type="button"
-                        onClick={() => toggle(focused.id, file.id)}
+                        onClick={(event) => {
+                          if (opened(event, file.url)) return;
+                          toggle(focused.id, file.id);
+                        }}
                         aria-pressed={at >= 0}
                         aria-label={`${focused.id}: ${file.name}${at >= 0 ? `, picked ${at + 1}` : ""}`}
+                        title="Click to pick — ⌘/Ctrl-click to open full size"
                         className="relative text-left"
                       >
+                        {/*
+                          **`contain`, and portrait.** The default crops to a
+                          square, which took the head off a standing shot and
+                          the shoulders off a close portrait — on the one grid
+                          in this app whose entire purpose is judging a
+                          photograph by eye. A letterboxed thumbnail wastes a
+                          little space; a cropped one hides the thing being
+                          chosen. Portrait because these are pictures of a
+                          person, so it is the ratio that leaves least of it.
+                        */}
                         <MediaThumb
                           nodeId={file.id}
                           url={file.url}
                           name={file.name}
+                          aspect="portrait"
+                          fit="contain"
                           dimmed={(picked[focused.id] ?? []).length > 0 && at < 0}
                           badge={at >= 0 ? String(at + 1) : undefined}
                         />
@@ -338,10 +569,6 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
     </div>
   );
 }
-
-//: The blank bible template's own placeholder marker. A prompt still holding
-//: one is a prompt asking a model to render the words `<garment>`.
-const UNFILLED = /<[a-z][^<>]{2,60}>/g;
 
 /**
  * One angle: what it is, what it will be shot from, and what it would say.
@@ -367,6 +594,10 @@ function AngleCard({
   picked,
   focused,
   onFocus,
+  onRemove,
+  onOpen,
+  anchor,
+  onAnchor,
   onCopyToAll,
   preview,
   draft,
@@ -378,21 +609,17 @@ function AngleCard({
   picked: string[];
   focused: boolean;
   onFocus: () => void;
+  onRemove: (node: string) => void;
+  onOpen: (event: MouseEvent, url: string) => boolean;
+  /** Whether this angle leads the set — see the panel's note on the anchor. */
+  anchor: boolean;
+  onAnchor: () => void;
   onCopyToAll: () => void;
   preview?: string;
   draft?: { angle: string; id: string; status: string };
   problem?: string;
   project: string;
 }) {
-  const plate = useResource(
-    angle.illustration ? ["plate", angle.illustration] : null,
-    angle.illustration
-      ? async () => {
-          const node = await resolvePath(angle.illustration as string);
-          return { id: node.id, url: (await getAsset(node.id)).url };
-        }
-      : null,
-  );
   const chosen = useMemo(
     () => picked.map((id) => files.find((f) => f.id === id)).filter(Boolean) as FileEntry[],
     [files, picked],
@@ -400,23 +627,28 @@ function AngleCard({
 
   return (
     <Card.Root
+      // **The card IS the control.** Choosing which angle the pool picks for
+      // was a button inside the card saying "Pick photographs", which is a
+      // second thing to aim at for a decision the card itself already stands
+      // for — and it read as "open something" rather than "this one".
+      role="button"
+      tabIndex={0}
+      aria-pressed={focused}
+      aria-label={`Pick photographs for ${angle.id}`}
+      onClick={onFocus}
+      onKeyDown={(event: KeyboardEvent) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onFocus();
+        }
+      }}
       // The focused angle is the one the pool on the right is picking for, so
       // it has to be visible at a glance — otherwise every click lands
       // somewhere the eye is not.
-      className={focused ? "outline outline-2 outline-primary" : undefined}
+      className={`cursor-pointer ${focused ? "outline outline-2 outline-primary" : ""}`}
     >
       <div className="flex items-start gap-3">
-        {plate.data ? (
-          <span className="w-20 shrink-0">
-            <MediaThumb
-              nodeId={plate.data.id}
-              url={plate.data.url}
-              name={angle.id}
-              aspect="square"
-              fit="contain"
-            />
-          </span>
-        ) : null}
+        <AnglePlate path={angle.illustration} name={angle.id} />
         <span className="flex min-w-0 flex-col gap-1">
           <Text>
             {angle.id} <Badge size="sm">{angle.group}</Badge>
@@ -427,31 +659,98 @@ function AngleCard({
 
       <div className="flex flex-wrap items-center gap-2">
         {chosen.map((file, at) => (
-          <span key={file.id} className="w-28">
-            <MediaThumb
-              nodeId={file.id}
-              url={file.url}
-              name={file.name}
-              badge={String(at + 1)}
-              showName
-            />
+          <span key={file.id} className="relative w-28">
+            {/* The same gesture as in the pool: these are the pictures the
+                decision is about, and they are 112px wide here. */}
+            <button
+              type="button"
+              onClick={(event) => {
+                onOpen(event, file.url);
+              }}
+              aria-label={`Open ${file.name} full size`}
+              title="⌘/Ctrl-click to open full size"
+              className="block w-full text-left"
+            >
+              {/* Cropped here too, and these are the ones already chosen —
+                  the picture you are checking your own decision against. */}
+              <MediaThumb
+                nodeId={file.id}
+                url={file.url}
+                name={file.name}
+                aspect="portrait"
+                fit="contain"
+                badge={String(at + 1)}
+                showName
+              />
+            </button>
+            {/*
+              **Dropping one has to be possible from here.** It was only
+              possible in the pool, by finding the same photograph among fifty
+              and clicking it again — so the place that shows you the mistake
+              was not the place you could fix it.
+
+              `stopPropagation` because the card is itself the control that
+              selects an angle, and removing a picture is not selecting.
+            */}
+            <button
+              type="button"
+              aria-label={`Remove ${file.name} from ${angle.id}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onRemove(file.id);
+              }}
+              className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full border border-line bg-card text-xs text-ink hover:bg-surface-alt"
+            >
+              ×
+            </button>
           </span>
         ))}
         {chosen.length === 0 ? <Text tone="muted">No photographs yet.</Text> : null}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button intent="ghost" onClick={onFocus} aria-pressed={focused}>
-          {chosen.length ? "Change" : "Pick photographs"}
-        </Button>
-        {chosen.length > 0 ? (
-          <Button intent="ghost" onClick={onCopyToAll}>
-            Use for every angle
-          </Button>
-        ) : null}
-        {draft ? (
-          <Link to={runPath(project, draft.id)}>Open the draft</Link>
-        ) : null}
+      {/* `stopPropagation`: the card is a control now, and a click meant for a
+          button inside it must not also re-select the card underneath. */}
+      <div
+          className="flex flex-wrap items-center gap-2"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Tooltip.Root>
+            <Tooltip.Trigger
+              className={buttonClass({
+                intent: anchor ? "primary" : "secondary",
+                size: "sm",
+              })}
+              aria-pressed={anchor}
+              onClick={onAnchor}
+            >
+              {anchor ? "Anchor" : "Make anchor"}
+            </Tooltip.Trigger>
+            <Tooltip.Content>
+              Shoot this angle first and chain the rest off its render — they
+              bind it as [Image1] and take their wardrobe and background from
+              it. Without one, every angle is shot independently and nothing
+              holds the clothing constant across the set.
+            </Tooltip.Content>
+          </Tooltip.Root>
+          {chosen.length > 0 ? (
+            <Tooltip.Root>
+              {/* The outline weight, not ghost: it rewrites all fourteen
+                  angles, which is the largest thing this card can do and read
+                  as the least. */}
+              <Tooltip.Trigger
+                className={buttonClass({ intent: "secondary", size: "sm" })}
+                onClick={onCopyToAll}
+              >
+                Use for every angle
+              </Tooltip.Trigger>
+              <Tooltip.Content>
+                Writes this angle's photographs, in this order, onto every other
+                angle — replacing whatever they hold. Each can still be changed
+                afterwards; it is a bulk edit, not a default they follow.
+              </Tooltip.Content>
+            </Tooltip.Root>
+          ) : null}
+          {draft ? <Link to={runPath(project, draft.id)}>Open the draft</Link> : null}
       </div>
 
       {problem ? (
@@ -461,21 +760,14 @@ function AngleCard({
         </Alert.Root>
       ) : null}
 
-      {preview && UNFILLED.test(preview) ? (
+      {preview && unfilledIn(preview).length > 0 ? (
         <Alert.Root intent="warning">
           <Alert.Title>This character's bible is not filled in</Alert.Title>
           <Alert.Description>
-            {/*
-              The blank bible template writes its own placeholders — `<garment>`,
-              `<one plain colour, optional>` — and `top_text` reads them out
-              verbatim, so they reach the prompt as literal angle brackets and a
-              model is asked to render a `<garment>`. Nothing said so: the
-              preview showed them beside real prose and left it to be noticed.
-
-              Matched on the template's own marker rather than a list of known
-              placeholders, so a field nobody has thought of is caught too.
-            */}
-            {preview.match(UNFILLED)?.join(", ")} — these come from the bible,
+            {/* The reasoning, and the regex, are in `UnfilledMarks`. The
+                prompt below marks each one where it sits; this says what to do
+                about them. */}
+            {unfilledIn(preview).join(", ")} — these come from the bible,
             not from the angle. Fill them in on the Profile tab under Wardrobe
             before shooting, or the model is asked to render them literally.
           </Alert.Description>
@@ -483,15 +775,17 @@ function AngleCard({
       ) : null}
 
       {preview ? (
-        <>
-          <Text variant="caption" tone="muted">
-            What this angle would say
-          </Text>
-          {/* `whitespace-pre-wrap`: HTML collapses runs of whitespace and the
-              blank lines here are real — they survive assembly and reach the
-              model. */}
-          <Text className="whitespace-pre-wrap font-mono">{preview}</Text>
-        </>
+        // The same box the reference spec shows a prompt in — it is the same
+        // object one stage further on, with this character's values filled in.
+        // It was a bare paragraph here and a bordered box there.
+        <PreviewBox
+          name={`assembled-${angle.id}`}
+          label="What this angle would say"
+          description="Assembled from the reference spec and this character's bible. Nothing is sent."
+          ariaLabel={`Assembled prompt for ${angle.id}`}
+        >
+          <Marked text={preview} />
+        </PreviewBox>
       ) : null}
     </Card.Root>
   );

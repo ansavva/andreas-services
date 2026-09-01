@@ -26,6 +26,8 @@ import logging
 
 from flask import Blueprint, g, jsonify
 
+import re
+
 from studio_core.errors import ValidationError
 from studio_core.routes import support
 from studio_core.services import catalog
@@ -46,6 +48,11 @@ def read_spec():
     held = support.memberships()
     support.member_of(g.library, held)
     return jsonify(catalog.reference_spec(g.library)), 200
+
+
+#: What a block may be called. The same rule a Python identifier follows,
+#: because `{block.<name>}` resolves by attribute access.
+BLOCK_NAME = re.compile(r"[a-z_][a-z0-9_]*")
 
 
 @bp.patch("/reference-spec/blocks/<name>")
@@ -69,11 +76,16 @@ def put_block(name: str):
     text = body.get("text")
     if not isinstance(text, str) or not text.strip():
         raise ValidationError("text is required")
-    if "#" in name:
-        # `#` is the key separator, so a name holding one would be
-        # indistinguishable from a different row. Refused rather than escaped:
-        # a placeholder name never needs one.
-        raise ValidationError("a block name may not contain '#'")
+    if not BLOCK_NAME.fullmatch(name):
+        # **A block is cited as `{block.<name>}`, and a dot in a format field is
+        # attribute access** — so a name that is not a Python identifier is a
+        # block nothing can ever cite. `#` was the only thing refused here, and
+        # it let somebody create `2fast` or `a-b`: rows that exist, appear in the
+        # menu, and fail the moment a template names them.
+        raise ValidationError(
+            "a block name must be lowercase letters, digits and underscores, "
+            "starting with a letter or underscore — it is cited as "
+            "{block.<name>}, and anything else cannot be")
     return jsonify(catalog.put_spec_block(g.library, name, text)), 200
 
 

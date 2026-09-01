@@ -25,6 +25,7 @@ import {
   getProject,
   patchRunPlan,
   patchRunSends,
+  previewPlanPrompt,
 } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
 import type {
@@ -37,6 +38,9 @@ import type {
   SelectionEntry,
 } from "../../types";
 import { AutoTextarea } from "../common/AutoTextarea";
+import { TokenizedPromptEditor } from "../common/TokenizedPromptEditor";
+import type { PromptToken } from "../common/TokenizedPromptEditor";
+import { Filled, PreviewBox } from "../common/PromptPreview";
 import {
   PROMPT_FIELDS,
   docWithFields,
@@ -85,6 +89,42 @@ interface Row {
  * send rows alone and reordering the images leaves the plan alone — which
  * matters because each write is a full replace of its half.
  */
+/**
+ * An expanded prompt, with each citation marked where it landed.
+ *
+ * The spans come from the API — `reference.expand_cast_parts` records them
+ * while it fills, so they are the same walk that produced the text rather than
+ * a search after the fact. Rendered with the same `Filled` the reference spec
+ * preview uses, because it is the same question on both screens: which of these
+ * words can I go and change.
+ */
+function Expanded({
+  prompt,
+  spans,
+}: {
+  prompt: string;
+  spans: Array<{ name: string; start: number; end: number }>;
+}) {
+  const parts: React.ReactNode[] = [];
+  let at = 0;
+  for (const span of spans) {
+    if (span.start > at) parts.push(<span key={`t${at}`}>{prompt.slice(at, span.start)}</span>);
+    parts.push(
+      <Filled key={span.start} label={`{${span.name}}`} name={span.name}>
+        {prompt.slice(span.start, span.end)}
+      </Filled>,
+    );
+    at = span.end;
+  }
+  if (at < prompt.length) parts.push(<span key="tail">{prompt.slice(at)}</span>);
+  return <>{parts}</>;
+}
+
+//: What a run plan may cite off a character. The same six values a reference
+//: angle fills from a bible — `reference.character_values` is the one thing
+//: that produces them, on both surfaces.
+const CHARACTER_FIELDS = ["top", "style", "must", "build", "age", "identity_block"];
+
 export function RunPlanEditor({
   run,
   onSaved,
@@ -130,7 +170,17 @@ export function RunPlanEditor({
     [run.plan],
   );
 
-  const [prompt, setPrompt] = useState(() => promptText(run.plan?.prompt));
+  /**
+   * **The template when there is one, the prompt when there is not.**
+   *
+   * A plan that was written as a template keeps both — the expanded text
+   * because `plan_digest` has to cover what reaches the model, and the template
+   * because otherwise the next edit opens onto finished prose with no way back
+   * to what was typed. This is the half a person edits.
+   */
+  const [prompt, setPrompt] = useState(
+    () => run.plan?.template ?? promptText(run.plan?.prompt),
+  );
   /**
    * A structured prompt is edited FIELD BY FIELD, the way a shot's is.
    *
@@ -303,15 +353,45 @@ export function RunPlanEditor({
     });
   }, []);
 
-  const save = useCallback(async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      let latest = run;
+  /**
+   * **Exactly what will be saved as the plan's prompt.**
+   *
+   * Lifted out of `save` so the preview beside the fields and the write itself
+   * are one expression rather than two opinions about the same thing — the
+   * disagreement a second implementation produces is invisible afterwards,
+   * because the run records the outcome and not the reasoning.
+   *
+   * A structured prompt is six fields and a camera block that compile into one
+   * document, so what you are editing and what gets sent look nothing alike;
+   * that is the whole reason this is worth showing.
+   */
+  /**
+   * The cast, numbered by the run's own binding.
+   *
+   * `{character.1.top}` is the FIRST character bound to this run — the same
+   * one-based rule `[Image1]` already follows on these prompts. Numbered rather
+   * than named because a slug is an attribute a rename swaps, and every record
+   * here names entity ids for exactly that reason.
+   */
+  // `cast`, not `characters`: the record's field is written at creation and
+  // nowhere else, so a run built by adding a character's references binds its
+  // photographs and records nobody. The API derives it from the bindings.
+  const cast = (run.cast ?? run.characters ?? []).length;
+  const castTokens = useMemo<PromptToken[]>(
+    () =>
+      Array.from({ length: cast }).flatMap((_unused, i) =>
+        CHARACTER_FIELDS.map((field) => ({
+          name: `character.${i + 1}.${field}`,
+          kind: "computed" as const,
+          hint: `character ${i + 1}`,
+        })),
+      ),
+    [cast],
+  );
 
-      // Parsed before anything is written, so a malformed document cannot leave
-      // the plan saved and the images not — or the other way round.
-      const nextPrompt = structured
+  const nextPrompt = useMemo(
+    () =>
+      structured
         ? JSON.stringify(
             docWithFields(
               parsePrompt(promptText(run.plan?.prompt)) ?? {},
@@ -321,9 +401,45 @@ export function RunPlanEditor({
             null,
             2,
           )
-        : prompt;
+        : prompt,
+    [camera, prompt, promptFields, run.plan?.prompt, structured],
+  );
+
+  /**
+   * The expansion, from the API, debounced.
+   *
+   * **Not computed here.** `reference.character_values` is what fills a
+   * character into a prompt and it is deliberately the only thing that does —
+   * a second opinion about what somebody's usual garment is would disagree
+   * invisibly, because a run records the outcome and not the reasoning.
+   */
+  const [expanded, setExpanded] = useState<{
+    prompt: string;
+    spans: Array<{ name: string; start: number; end: number }>;
+  } | null>(null);
+  useEffect(() => {
+    if (structured || cast === 0) return;
+    const timer = setTimeout(() => {
+      void previewPlanPrompt(run.id, prompt)
+        .then((got) => setExpanded({ prompt: got.prompt, spans: got.spans }))
+        // A refusal is a real answer — a citation the run cannot fill — and the
+        // save says so properly. Showing the unexpanded text meanwhile beats
+        // replacing the panel with a red box on every keystroke.
+        .catch(() => setExpanded(null));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [cast, prompt, run.id, structured]);
+
+  const save = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      let latest = run;
+
       // `planOf` parses when the plan holds an object and passes the string
       // through when it holds a string — so the record keeps the shape it had.
+      // Parsed before anything is written, so a malformed document cannot leave
+      // the plan saved and the images not — or the other way round.
       const plan = planOf(
         run.plan,
         nextPrompt,
@@ -331,6 +447,21 @@ export function RunPlanEditor({
         params,
         note,
       );
+      // **The template goes with it, and the API expands it into `prompt`.**
+      // Both are kept: the digest has to cover what reaches the model, and the
+      // template has to survive or the next edit opens onto finished prose with
+      // no way back to what was written.
+      //
+      // **And it is REMOVED when this run has no cast to expand against.** A
+      // run duplicated from a templated one carries the original's template,
+      // `planOf` spreads it through untouched, and the API expands whatever
+      // template it is handed — so a stale one silently overwrote the prompt
+      // and every edit was discarded on save. The template has to track what is
+      // in the box or not be sent at all.
+      if (!structured) {
+        if (cast > 0) plan.template = prompt;
+        else delete plan.template;
+      }
       if (JSON.stringify(plan) !== JSON.stringify(run.plan)) {
         latest = await patchRunPlan(run.id, plan);
       }
@@ -355,12 +486,15 @@ export function RunPlanEditor({
       setBusy(false);
     }
   }, [
-    camera,
-    promptFields,
+    // `camera`, `promptFields` and `prompt` are what `nextPrompt` is computed
+    // from, so listing it is enough — and listing it is what keeps the saved
+    // prompt and the previewed one the same string.
+    cast,
+    nextPrompt,
     note,
     onSaved,
-    params,
     prompt,
+    params,
     rows,
     run,
     storedAsString,
@@ -473,10 +607,17 @@ export function RunPlanEditor({
   const appendSelection = useCallback(
     (selection: SelectionEntry[]) => {
       setRows((current) => {
+        // Never onto a scalar. Without the guard the last fallback was the row
+        // above — the start frame — and five reference images went into a field
+        // that holds one.
+        const scalars = [model.entry?.images?.start, model.entry?.images?.end]
+          .filter(Boolean);
+        const notScalar = (f: string | undefined) =>
+          f && !scalars.includes(f) ? f : undefined;
         const field =
           model.entry?.images?.refs ??
-          [...current].reverse().find((row) => row.role === "reference")?.field ??
-          current.at(-1)?.field ??
+          notScalar([...current].reverse().find((row) => row.role === "reference")?.field) ??
+          notScalar(current.at(-1)?.field) ??
           "image_input";
         return [
           ...current,
@@ -515,6 +656,15 @@ export function RunPlanEditor({
         </Alert.Root>
       )}
 
+      {/*
+        **The prompt, and what it compiles to, side by side** — the treatment the
+        reference spec cards have. A structured prompt is six fields plus a
+        camera block that become one document, so the thing being edited and the
+        thing being sent look nothing alike; a prose one wraps differently in a
+        textarea than it reads as a payload. Below `xl` they stack.
+      */}
+      <div className="grid gap-3 xl:grid-cols-2">
+      <div className="flex flex-col gap-3">
       {structured ? (
         <>
           {PROMPT_FIELDS.filter((f) => promptFields[f.key] !== undefined).map(
@@ -548,17 +698,63 @@ export function RunPlanEditor({
       ) : (
         <Field.Root name="prompt">
           <Field.Label>Prompt</Field.Label>
-          <AutoTextarea
-            value={prompt}
-            onValueChange={setPrompt}
-            minRows={4}
-            className="font-mono text-xs"
-          />
+          {/* The description ABOVE the box, and the same type as the preview
+              beside it. It sat underneath at `text-xs` while the preview was
+              `text-sm` with its description on top, so two boxes showing the
+              same sentence started at different heights and read at different
+              sizes — which looks like a rendering fault rather than a pair. */}
           <Field.Description>
-            Saved as the sentence it is. Nothing here parses it.
+            {cast > 0
+              ? `Type { to cite one of this run's ${cast} character(s). Expanded when you save.`
+              : "Saved as the sentence it is. This run binds no character to cite."}
           </Field.Description>
+          {/*
+            **The tokenized editor only when there is a cast to cite.**
+
+            It is the same editor the reference spec uses — a run's prompt was a
+            plain textarea, so a `{` typed into it was a brace on its way to a
+            model, which is what somebody trying to template one found. But a
+            run that binds no character has nothing to offer: a menu with no
+            options is worse than no menu, and a plain sentence needs no pills.
+          */}
+          {cast > 0 ? (
+            <TokenizedPromptEditor
+              value={prompt}
+              onValueChange={setPrompt}
+              tokens={castTokens}
+              ariaLabel="Prompt"
+            />
+          ) : (
+            <AutoTextarea
+              value={prompt}
+              onValueChange={setPrompt}
+              minRows={4}
+              className="font-mono text-sm leading-6"
+            />
+          )}
         </Field.Root>
       )}
+      </div>
+
+      <PreviewBox
+        name="plan-prompt-preview"
+        label="Preview"
+        description={
+          structured
+            ? "The document these fields compile to. This is what the plan stores."
+            : "Expanded against this run's cast. This is what the plan stores."
+        }
+        ariaLabel="Plan prompt preview"
+      >
+        {structured ? (
+          nextPrompt
+        ) : expanded ? (
+          <Expanded prompt={expanded.prompt} spans={expanded.spans} />
+        ) : (
+          nextPrompt
+        )}
+      </PreviewBox>
+      </div>
 
       <div className="flex flex-col gap-3">
         <Text variant="caption" tone="muted">
@@ -608,6 +804,7 @@ export function RunPlanEditor({
       <Sends
         rows={rows}
         fields={fields}
+        images={model.entry?.images ?? {}}
         onChange={setRows}
         onMove={move}
         onAdd={() => setPicking(true)}
@@ -642,7 +839,7 @@ export function RunPlanEditor({
           onSubmit={async (files) => {
             setRows((current) => [
               ...current,
-              ...files.map((file) => added(file, current, firstField)),
+              ...files.map((file) => added(file, current, firstField, model.entry?.images ?? {})),
             ]);
             setPicking(false);
           }}
@@ -747,6 +944,7 @@ function Params({
 function Sends({
   rows,
   fields,
+  images,
   onChange,
   onMove,
   onAdd,
@@ -754,6 +952,8 @@ function Sends({
 }: {
   rows: Row[];
   fields: string[];
+  /** What the registry says this model's image inputs are, and their arity. */
+  images: NonNullable<ModelEntry["images"]>;
   onChange: (next: Row[]) => void;
   onMove: (index: number, by: number) => void;
   onAdd: () => void;
@@ -763,11 +963,80 @@ function Sends({
   const set = (index: number, row: Row) =>
     onChange(rows.map((each, at) => (at === index ? row : each)));
 
+  /**
+   * Scalar image inputs that more than one row names.
+   *
+   * The registry says which fields hold ONE image (`images.start`,
+   * `images.end`); anything past the first is discarded on the way to the
+   * provider. Read off the rows being edited rather than the saved run, so it
+   * appears and clears as the fields change.
+   */
+  const scalars = [images.start, images.end].filter(Boolean) as string[];
+  const overloaded = scalars
+    .map((field) => ({ field, count: rows.filter((r) => r.field === field).length }))
+    .filter((f) => f.count > 1);
+
+  /**
+   * Move every row past the first off an overloaded field onto the reference
+   * input.
+   *
+   * The FIRST keeps it: that is the one the provider would actually have
+   * received, and the one a start frame is meant to be. Repointing all of them
+   * would throw the start frame away instead of rescuing the references.
+   */
+  const repoint = () => {
+    if (!images.refs) return;
+    const kept = new Set<string>();
+    onChange(
+      rows.map((row) => {
+        if (!overloaded.some((f) => f.field === row.field)) return row;
+        if (!kept.has(row.field)) {
+          kept.add(row.field);
+          return row;
+        }
+        return { ...row, field: images.refs as string, role: "reference" as const };
+      }),
+    );
+  };
+
   return (
     <div className="flex flex-col gap-2">
       <Text variant="caption" tone="muted">
         Images, in the order the model is handed them
       </Text>
+
+      {/*
+        **A scalar input named by more than one image is silently one image.**
+        `bindings_of` keeps the first send for a start or end frame — that field
+        is a string, and a list is a 422 from the provider — and drops the rest
+        without a word. A run reached production with six images on `image` and
+        went out with one, `reference_images` absent entirely.
+        `_check_scalar_fields` refuses that at submit now, but the rows are
+        already written that way on runs made before it, and a refusal at submit
+        is later than a person can act on comfortably. So it is said here, with
+        the correction one press away.
+      */}
+      {overloaded.length > 0 ? (
+        <Alert.Root intent="warning">
+          <Alert.Title>
+            {overloaded[0]!.field} takes one image, and {overloaded[0]!.count} name it
+          </Alert.Title>
+          <Alert.Description>
+            <div className="flex flex-col items-start gap-2">
+              <span>
+                {images.refs
+                  ? `${overloaded[0]!.count - 1} of them would be dropped before the model saw them. References belong in ${images.refs}.`
+                  : `${overloaded[0]!.count - 1} of them would be dropped before the model saw them, and this model takes no reference input.`}
+              </span>
+              {images.refs ? (
+                <Button intent="secondary" onClick={repoint}>
+                  Move the {overloaded[0]!.count - 1} reference(s) to {images.refs}
+                </Button>
+              ) : null}
+            </div>
+          </Alert.Description>
+        </Alert.Root>
+      ) : null}
 
       {rows.length === 0 && (
         <Text variant="body" tone="muted">
@@ -1031,23 +1300,58 @@ function rowOf(send: RunSend, index: number): Row {
 }
 
 /**
- * A picked file, as a row — taking its field and role from the row before it.
+ * A picked file, as a row.
  *
  * A new image is almost always another reference beside the ones already there,
- * and an empty field would be a payload that submits nowhere. Where there is no
- * row to copy, `first` is what the registry says this model's images bind to —
- * its start frame on a video run, its reference input otherwise. The last
- * fallback names the field every image model in the registry happens to use, and
- * is what is left when the registry could not be read at all; all three are a
- * starting point the box next to it can be typed over, not a claim about what
- * the model accepts.
+ * and an empty field would be a payload that submits nowhere.
+ *
+ * ## It copied the row above, and that dropped five images
+ *
+ * Both field and role came off the previous row. A run whose first row is the
+ * START FRAME therefore gave every image added after it `field: "image"` and
+ * `role: "start"` — and `image` takes one value, so `bindings_of` kept the
+ * first and discarded the rest. The page showed six images and the provider was
+ * sent one, with `reference_images` absent entirely.
+ *
+ * So the role is decided first and the field follows FROM the role: a reference
+ * goes to the model's reference input, a start frame to its start input. Only
+ * when the registry says nothing does it fall back to copying, and never onto a
+ * scalar field that is already taken.
  */
-function added(file: FileEntry, current: Row[], first: string | null): Row {
+export function added(
+  file: FileEntry,
+  current: Row[],
+  first: string | null,
+  images: NonNullable<ModelEntry["images"]>,
+): Row {
   const last = current.at(-1);
+  // **The FIRST image is still whatever the registry says this model's images
+  // bind to** — its start frame on a video run. That is the one case where
+  // there is nothing to reason from, and it is the case `first` exists for.
+  if (!last) {
+    return {
+      key: `${file.id}:new:${current.length}`,
+      field: first ?? "image_input",
+      role: "reference",
+      node: file.id,
+      name: file.name,
+      url: file.url,
+      isVideo: file.kind === "video",
+    };
+  }
+  // A second START is a contradiction — that field holds one image — so an
+  // image added after one is a reference, which is what it almost always is.
+  const role = last.role === "start" || last.role === "end" ? "reference" : last.role;
+  const scalars = [images.start, images.end].filter(Boolean);
+  const copied = last.field && !scalars.includes(last.field) ? last.field : null;
+  const field =
+    role === "reference"
+      ? (images.refs ?? copied ?? first ?? "image_input")
+      : (copied ?? first ?? "image_input");
   return {
     key: `${file.id}:new:${current.length}`,
-    field: last?.field ?? first ?? "image_input",
-    role: last?.role ?? "reference",
+    field,
+    role,
     node: file.id,
     name: file.name,
     url: file.url,

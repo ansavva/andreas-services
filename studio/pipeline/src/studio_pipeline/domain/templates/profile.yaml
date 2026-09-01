@@ -38,15 +38,15 @@ face:
 
 body:
   silhouette: <proportion — usually the single most reliable on-model cue>
-  chest_and_shoulders: <>
+  chest_and_shoulders: <width across the shoulders, how the chest reads, where it tapers>
   back: <taper, lats, blades, spinal furrow — the body angle image shot from behind
          has nothing else to check itself against>
-  arms: <>
+  arms: <length and thickness, how defined, where the muscle actually sits>
   hands: <palm and finger shape, nails, veins, hair; which wrist wears what>
   neck: <thickness AND length, the muscles that show, where facial hair stops>
   midsection: <how defined, honestly — "trim" and "shredded" are not the same>
   lower_body: <thighs, calves, hips; the shape, not just the size>
-  feet: <>
+  feet: <size and shape — only ever read by a body angle that shows them>
   body_hair: <state it explicitly if it matters — generators default to smooth>
   posture: <how they sit, stand, gesture>
 
@@ -57,17 +57,17 @@ wardrobe:
       colour: <one plain colour, optional>   # what a reference angle image wears; the
                                              # angle image ignores `detail` entirely
       detail: <colour, cut, any embroidery or graphic>
-  lower_body: <>
-  footwear: <>
+  lower_body: <trousers, shorts or skirt — cut, length and colour>
+  footwear: <the shoes they are usually in, and their colour>
   accessories:                  # the repeated ones — these carry recognition
     - <accessory, and which wrist / how worn>
   palette: <the colours the character and their world live in>
 
 voice:
   language: <language spoken lines are written in>
-  accent: <>
+  accent: <the accent by name, and how strong it is>
   accent_cues:                  # what to name in the audio/voice direction
-    - <>
+    - <one sound or word the accent lands on>
   manner: <how they behave on camera>
   delivery: <sentence length, pacing, volume>
 
@@ -79,9 +79,9 @@ rendering:
 
 consistency:
   must:                         # hard cues — verify every render against these
-    - <>
+    - <one cue every render must show — the checklist, one line each>
   never:                        # what must be absent, or must not drift
-    - <>
+    - <one thing that must never appear, or must never change>
   drift_modes:                  # how models get this character wrong
     - failure: <what the model does>
       fix: <what to state in the prompt instead>
@@ -90,4 +90,5 @@ consistency:
 # alongside a start frame. Covers only what a text-only engine cannot infer.
 # Folded (`>-`), so it reaches a prompt as ONE paragraph with no hard newlines.
 text_identity_block: >-
-  <>
+  <the ~50-70 word compression described above; `studio character textblock
+  <name>` prints the raw material to write it from>

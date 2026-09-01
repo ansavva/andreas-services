@@ -1355,3 +1355,141 @@ def test_a_name_is_not_a_runref(empty_api):
     resp = empty_api.get(f"/api/runs/resolve?ref={project['slug']}/my-nice-run")
     assert resp.status_code == 400
     assert "not a runref" in resp.get_json()["error"]
+
+
+# ─────────────────── a plan's template, and its cast ───────────────────
+
+
+def _run_with_cast(api, count=1):
+    """A draft bound to `count` character(s), each with a wardrobe."""
+    project = api.post("/api/projects", json={"slug": "cast"}).get_json()
+    ids = []
+    for n, top in enumerate(("crew-neck tee", "work jacket")[:count]):
+        made = api.post("/api/characters", json={
+            "slug": f"subject-{'ab'[n]}",
+            "profile": {"wardrobe": {"tops": [{"item": top, "colour": "charcoal"}]},
+                        "rendering": {"default_style": "Realistic"}},
+        }).get_json()
+        ids.append(made["id"])
+    return _create(api, project, characters=ids,
+                   plan={"version": 1, "origin": "authored",
+                         "prompt": "x", "params": {}})
+
+
+def test_a_plan_TEMPLATE_is_expanded_at_save_and_kept_beside_the_prompt(api):
+    """**Expanded at save, and the plan keeps both.**
+
+    A template expanded at SUBMIT would mean the payload a person approved is
+    not the payload that gets sent, and `plan_digest` — the whole mechanism that
+    makes hard rule #2 something other than a promise — would be hashing the
+    wrong string. The template is kept beside the prompt so the prompt stays
+    re-editable: without it, filling one in once leaves the next editor a wall
+    of finished prose with no way back to what was written.
+    """
+    run = _run_with_cast(api)
+    got = api.patch(f"/api/runs/{run['id']}/plan", json={"plan": {
+        "version": 1, "origin": "authored", "params": {},
+        "template": "He wears {character.1.top}.",
+    }}).get_json()
+
+    assert got["plan"]["template"] == "He wears {character.1.top}."
+    assert got["plan"]["prompt"].startswith("He wears Wearing a plain charcoal crew-neck tee")
+
+
+def test_a_plan_WITHOUT_a_template_is_written_exactly_as_it_arrives(api):
+    """Every run authored before this carries a prompt and no template, and
+    must keep opening and saving as the sentence it is."""
+    run = _run_with_cast(api)
+    got = api.patch(f"/api/runs/{run['id']}/plan", json={"plan": {
+        "version": 1, "origin": "authored", "params": {},
+        "prompt": "A literal sentence with no {braces} expanded.",
+    }}).get_json()
+    assert got["plan"]["prompt"] == "A literal sentence with no {braces} expanded."
+    assert "template" not in got["plan"]
+
+
+def test_the_cast_is_numbered_by_the_runs_own_binding(api):
+    """`{character.1}` is the first character bound to THIS run.
+
+    Numbered rather than named: a slug is an attribute a rename swaps, and every
+    record here names entity ids for that reason. A prompt citing a name would
+    be quietly wrong the moment somebody renamed the character.
+    """
+    run = _run_with_cast(api, count=2)
+    got = api.patch(f"/api/runs/{run['id']}/plan", json={"plan": {
+        "version": 1, "origin": "authored", "params": {},
+        "template": "{character.1.top} :: {character.2.top}",
+    }}).get_json()
+    assert "crew-neck tee" in got["plan"]["prompt"].split("::")[0]
+    assert "work jacket" in got["plan"]["prompt"].split("::")[1]
+
+
+def test_citing_a_character_the_run_does_not_bind_is_a_400_naming_the_range(api):
+    run = _run_with_cast(api)
+    resp = api.patch(f"/api/runs/{run['id']}/plan", json={"plan": {
+        "version": 1, "origin": "authored", "params": {},
+        "template": "{character.4.top}",
+    }})
+    assert resp.status_code == 400
+    assert "1 character(s)" in resp.get_json()["error"]
+
+
+def test_the_preview_expands_and_writes_NOTHING(api):
+    """It is called on every change, which is why it cannot be the save — the
+    save withdraws the approval."""
+    run = _run_with_cast(api)
+    before = api.get(f"/api/runs/{run['id']}").get_json()["plan"]
+
+    got = api.post(f"/api/runs/{run['id']}/plan/preview",
+                   json={"template": "He wears {character.1.top}."}).get_json()
+
+    assert got["characters"] == 1
+    assert "crew-neck tee" in got["prompt"]
+    assert api.get(f"/api/runs/{run['id']}").get_json()["plan"] == before
+
+
+def test_a_run_that_records_no_character_still_has_a_CAST(api):
+    """**`characters` is written at creation and nowhere else.**
+
+    A run built by adding a character's references in the editor binds six of
+    that character's photographs and records nobody — so `{character.1.top}`
+    had nothing to fill from on exactly the runs most likely to want it. A
+    reference image belongs to a character by its ancestry, which `owner_of`
+    already resolves for every listing, so the answer is there to be read.
+    """
+    project = api.post("/api/projects", json={"slug": "cast-derived"}).get_json()
+    made = api.post("/api/characters", json={
+        "slug": "subject-a",
+        "profile": {"wardrobe": {"tops": [{"item": "crew-neck tee", "colour": "charcoal"}]},
+                    "rendering": {"default_style": "Realistic"}},
+    }).get_json()
+    # `_uploaded` returns the catalog row, whose id key is `node_id`.
+    photo = _uploaded(api, made["root"], "face.png")["node_id"]
+
+    # Created with NO characters, then given one of that character's images.
+    run = _create(api, project, characters=[],
+                  plan={"version": 1, "origin": "authored", "prompt": "x", "params": {}})
+    api.patch(f"/api/runs/{run['id']}/sends",
+              json={"sends": [{"field": "image_input", "role": "reference",
+                               "node": photo}]})
+
+    got = api.get(f"/api/runs/{run['id']}").get_json()
+    assert got["characters"] == []
+    assert got["cast"] == [made["id"]]
+
+    # And the template can fill from it.
+    filled = api.patch(f"/api/runs/{run['id']}/plan", json={"plan": {
+        "version": 1, "origin": "authored", "params": {},
+        "template": "He wears {character.1.top}.",
+    }}).get_json()
+    assert "crew-neck tee" in filled["plan"]["prompt"]
+
+
+def test_the_records_OWN_characters_win_when_it_has_them(api):
+    """Deriving is the fallback, not the rule: a run that says who it is about
+    is answering the question itself."""
+    project = api.post("/api/projects", json={"slug": "cast-named"}).get_json()
+    named = api.post("/api/characters", json={"slug": "subject-a"}).get_json()
+    run = _create(api, project, characters=[named["id"]],
+                  plan={"version": 1, "origin": "authored", "prompt": "x", "params": {}})
+    assert api.get(f"/api/runs/{run['id']}").get_json()["cast"] == [named["id"]]

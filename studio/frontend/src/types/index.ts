@@ -422,17 +422,15 @@ export interface SpecAngle {
   description: string;
   tags: string[];
   order?: number | null;
-  /** A guide image, as a name path under `config/`. Face angles bind none. */
-  angle_image?: string | null;
-  torso_image?: string | null;
   /**
    * A picture of what this orientation IS, shown to a person and never sent.
    *
-   * Separate from `angle_image` because they became separate things: a face
-   * angle stopped binding a guide when the guide was found to distort the face
-   * it existed to record, and its plate is still the clearest illustration of
-   * the angle. One field for both would mean the only way to show an angle was
-   * to send the picture to the model.
+   * **All that is left of the pose plates.** An angle could bind one as a first
+   * image, and it distorted the very thing it existed to record — the face
+   * angles stopped sending theirs, and the body angles followed once eleven
+   * hand-authored production renders were compared and not one had bound a
+   * plate. The picture is still the clearest statement of what an orientation
+   * is, so it survives on a field that cannot reach a payload.
    */
   illustration?: string | null;
 }
@@ -723,6 +721,15 @@ export interface RunAsset {
  * text. Everything above `payload` is studio's own and is validated.
  */
 export interface RunRecord {
+  /**
+   * Who the run is ABOUT, which `characters` alone does not answer.
+   *
+   * `characters` is written at creation and nowhere else, so a run built by
+   * adding a character's references in the editor binds that character's
+   * photographs and records nobody. This is derived from the bindings when the
+   * record is silent, and it is what `{character.N}` counts.
+   */
+  cast?: string[];
   id: string;
   lib: string;
   project: string;
@@ -827,6 +834,16 @@ export interface RunSendSource {
 }
 
 export interface RunPlan {
+  /**
+   * What was TYPED, when the prompt was written as a template.
+   *
+   * Kept beside the expanded `prompt` rather than instead of it. The expansion
+   * happens at save so `plan_digest` covers exactly what reaches the model — a
+   * template expanded at submit would mean the payload somebody approved is not
+   * the payload sent — and the template is kept so the prompt stays editable
+   * instead of becoming a wall of finished prose with no way back.
+   */
+  template?: string;
   version: number;
   /** `authored` if a person wrote it; `backfilled` if it was reconstructed. */
   origin: "authored" | "backfilled";

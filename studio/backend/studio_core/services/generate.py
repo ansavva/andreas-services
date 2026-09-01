@@ -249,7 +249,71 @@ def _check_payload_rules(entry: dict, payload: dict) -> None:
         )
 
 
-def preflight(entry: dict, payload: dict, bindings: dict) -> None:
+def _check_scalar_fields(entry: dict, send_entries: list[dict]) -> None:
+    """A scalar image field named by more than one send is not a payload.
+
+    **`bindings_of` keeps the first and drops the rest, silently**, because a
+    start frame is a string and a list would be a 422 from the provider. That
+    collapse is right for one send and a lie for several: a run bound a start
+    frame and five of a character's reference photographs, every one of them
+    naming `image` because the editor copied the field off the row above, and
+    the payload went out with one image and no `reference_images` at all. The
+    run looked correct on screen — six images, six rows — and the five that
+    mattered were discarded between the page and the provider.
+
+    Refused rather than repaired: which field a reference belongs in is registry
+    data the caller can read, and quietly moving somebody's images to a
+    different input is the same class of silent decision.
+    """
+    images = entry.get("images") or {}
+    scalars = {images.get(name) for name in ("start", "end")} - {None}
+    counts: dict[str, int] = {}
+    for send in send_entries:
+        field = send.get("field")
+        if field in scalars:
+            counts[field] = counts.get(field, 0) + 1
+    over = sorted(f for f, n in counts.items() if n > 1)
+    if not over:
+        return
+    refs = images.get("refs")
+    raise ValidationError(
+        f"{over[0]!r} takes ONE image and {counts[over[0]]} sends name it, so "
+        f"{counts[over[0]] - 1} would be dropped without a word."
+        + (f" Reference images go in {refs!r}." if refs
+           else " This model takes no reference images.")
+    )
+
+
+def _check_exclusive_images(entry: dict, bindings: dict) -> None:
+    """Fields the provider refuses to receive together.
+
+    **The registry has said this for every model since it was written and
+    nothing read it.** `start_excludes_refs` and `end_excludes_refs` existed as
+    data with no enforcement anywhere, so a Veo run went out carrying both a
+    start frame and reference images and came back
+    `{'code': 3, 'message': 'Image and reference images cannot be both set.'}` —
+    a constraint the entry could have stated and the preflight could have caught
+    for nothing, after the run had already been submitted.
+
+    Refused here rather than at the provider because a submission that fails
+    there has already left `pending` behind it, and because the provider is the
+    expensive place to learn something the registry knows.
+    """
+    images = entry.get("images") or {}
+    refs = images.get("refs")
+    if not refs or refs not in bindings:
+        return
+    for name in ("start", "end"):
+        field = images.get(name)
+        if images.get(f"{name}_excludes_refs") and field and field in bindings:
+            raise ValidationError(
+                f"{entry['model']} will not take {field!r} and {refs!r} together — "
+                f"it refuses the request with both set. Send one or the other: "
+                f"the {name} frame, or the reference images.")
+
+
+def preflight(entry: dict, payload: dict, bindings: dict,
+              send_entries: list[dict] | None = None) -> None:
     """Documented constraints first, then the live schema.
 
     **Runs before the transition to `pending`.** A payload the model will refuse
@@ -258,6 +322,9 @@ def preflight(entry: dict, payload: dict, bindings: dict) -> None:
     state that reads as "went out and never answered".
     """
     model = entry["model"]
+    if send_entries is not None:
+        _check_scalar_fields(entry, send_entries)
+    _check_exclusive_images(entry, bindings)
     _check_image_budget(entry, bindings)
     _check_payload_rules(entry, payload)
     schema.check_denied(payload, entry, model)
@@ -270,7 +337,7 @@ def prepare(record: dict, send_entries: list[dict]) -> tuple[dict, dict, dict]:
     entry = entry_for(record)
     payload = payload_of(record)
     bindings = bindings_of(send_entries, entry)
-    preflight(entry, payload, bindings)
+    preflight(entry, payload, bindings, send_entries)
     return entry, payload, bindings
 
 
