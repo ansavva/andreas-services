@@ -215,7 +215,6 @@ node_modules/
 **/.react-router/
 package-lock.json
 **/package-lock.json
-!scout/frontend/package-lock.json
 !storybook/frontend/storybook-ui/package-lock.json
 !humbugg/frontend/package-lock.json
 !humbugg/app/package-lock.json

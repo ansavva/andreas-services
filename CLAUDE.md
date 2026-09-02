@@ -142,7 +142,6 @@ in both, by design.
 |-----------|---------|-------|
 | `storybook/` | AI portrait studio | Flask + React/Vite/HeroUI + Lambda (Docker) + DynamoDB |
 | `humbugg/` | Gift-exchange platform | ASP.NET Core 10 (C# 14) + React/Vite (marketing, `www`) + Expo/Expo Router (product app, `app`) + Lambda (Docker) + DynamoDB |
-| `scout/` | Events from Gmail | Python Lambdas + React/Vite/TS + DynamoDB |
 | `studio/` | AI media generation pipeline **and** a browser over its output | Claude Code skills (local, `uv`) + Flask + React/Vite/TS + Lambda (Docker) + Cognito + **DynamoDB** (`studio-prod-catalog`, single-table: characters, projects, runs, scenes, movies and the node tree; three GSIs) + S3 |
 | `infra/` | Shared infrastructure | Terraform |
 
@@ -216,7 +215,7 @@ The root `infra/` directory owns **cross-cutting AWS resources** shared by all s
 
 State is in S3: `s3://andreas-services-terraform-state/`
 - Shared: `shared/terraform.tfstate`
-- Per-service: `<service>/<env>/terraform.tfstate` (e.g. `humbugg/prod/`, `scout/prod/`)
+- Per-service: `<service>/<env>/terraform.tfstate` (e.g. `humbugg/prod/`, `studio/prod/`)
 
 Services reference shared resources via Terraform data sources — never duplicate them:
 ```hcl
@@ -275,7 +274,7 @@ data "aws_route53_zone" "main" {
 - **DB access**: DynamoDB via the AWS SDK for .NET (no ORM, no VPC needed)
 - **Note**: Humbugg was migrated from Python/Flask to ASP.NET Core — it is no longer a Python service. See `humbugg/CLAUDE.md` for details.
 
-### Backend (Lambda-only services like scout-events)
+### Backend (Lambda-only Python services)
 - **Language**: Python 3.11
 - **Logging**: Standard `logging` module; output goes to CloudWatch automatically
 - **AWS SDK**: boto3 — never hardcode credentials; rely on IAM role
@@ -375,7 +374,7 @@ infra/
 - `lifecycle { ignore_changes = [image_uri, environment] }` on Lambda resources — the deploy workflow owns both: `update-function-code` for the image and `update-function-configuration` for env vars. Terraform sets initial values on first creation only.
 
 ### Deployment (CI/CD)
-- **Standard**: GitHub Actions. Filenames follow `<service>-<env>.yaml` (combined deploy) and `<service>-pr.yml` (combined PR workflow) — e.g. `humbugg-prod.yaml`, `scout-pr.yml` — so the service and the trigger environment (PR vs Prod) are visible at a glance. Auxiliary workflows append a scope suffix after the env segment (e.g. `shared-prod-infra-plan.yaml`).
+- **Standard**: GitHub Actions. Filenames follow `<service>-<env>.yaml` (combined deploy) and `<service>-pr.yml` (combined PR workflow) — e.g. `humbugg-prod.yaml`, `studio-pr.yml` — so the service and the trigger environment (PR vs Prod) are visible at a glance. Auxiliary workflows append a scope suffix after the env segment (e.g. `shared-prod-infra-plan.yaml`).
 - **One combined PR workflow per service**: each service has a single `<service>-pr.yml` that runs on every PR. It validates only — lint, unit tests, Terraform validate, and a build to prove the image compiles. Where a service has a browser suite it runs there too, stubbed: studio's Playwright specs answer every `/api/**` from committed fixtures. **PR workflows never write to AWS**, which is also why no service's integration suite runs on PR — those are local, behind a flag. There are no ephemeral preview environments; they were removed because the maintenance and teardown cost outweighed their value for a solo repo.
 - **One combined prod deploy per service**: each service has a single `<service>-prod.yaml` with four jobs chained via `needs:`: `detect-changes → build-and-push → deploy-infra → update-lambda + deploy-frontend`. Image build runs **before** Terraform applies because Lambda resources reference `${ecr_repo}:latest` with `lifecycle { ignore_changes = [image_uri, environment] }`, so the image must already exist before Terraform creates the Lambda. Putting build-and-push first eliminates the chicken-and-egg trap on fresh AWS accounts. `update-lambda` then sets env vars and pins the function code to `:${{ github.sha }}` for traceability. This eliminates races between separate infra and app workflows that shared SSM params.
 - **Path filtering**: `dorny/paths-filter@v3` — only deploy when the service's files change
