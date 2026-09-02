@@ -508,7 +508,7 @@ it("shows an End row only when the scene brackets its shots", async () => {
 });
 
 it("draws a reference the plan names as a thumbnail, not as a filename", async () => {
-  // "plus peter" said nothing about which pictures are going, and which pictures
+  // "plus <name>" said nothing about which pictures are going, and which pictures
   // are going is the whole question. The API resolves the block to images.
   draw(
     record({
