@@ -260,4 +260,4 @@ Note that a generated frame promoted into a character's `reference/` is model
 output re-entering as identity input, which compounds drift. A frame pulled off
 a run belongs in the **project's** input pool; promoting one into a character is
 a deliberate curation decision, and it should be described in the bible when it
-happens (`studio character set-ref-desc`).
+happens — copy it into the character and tag it (`studio describe <node> --tag default --tag face`).

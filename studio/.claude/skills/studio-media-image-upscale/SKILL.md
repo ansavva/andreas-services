@@ -85,9 +85,11 @@ An upscale is a derived file, not a replacement. Keep the original: it is the
 only record of what the source really contained, and a restoration is an
 opinion about it. Land the result beside it under a name that says how it was
 made, and put it into a character's pools deliberately —
-`studio character add-to <name> seed <files>` for material, and
-`studio character add-refs <name> --to <group> --from-run <runref>` only once
-you have looked at it, per hard rule #2b.
+`studio character add-to <name> seed <files>` for material, and — only once you
+have looked at it, per hard rule #2b — a copy into the character's tree followed
+by `studio describe <node> --tag default`. The tag is what makes an image
+identity; the copy is what makes it this character's, because ownership is the
+tree.
 
 ## How it goes wrong
 

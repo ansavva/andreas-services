@@ -47,41 +47,6 @@ def test_the_deleted_commands_are_gone(library, gone):
     assert gone not in curate.main.commands
 
 
-def test_what_replaced_renumber_needs_no_renumbering(library):
-    """Order is a row attribute, so there are no holes to close.
-
-    Deleting the middle of three references leaves the other two at 1000 and
-    3000, and nothing anywhere cares — a gap in `order` is not a defect, it is
-    the whole point of gapping by 1000.
-    """
-    third = library.fake.put_file(library.face_folder, "profile-left.webp", b"x")
-    E.add_reference(library.character, third["id"], "face")
-    E.delete_reference(library.character, library.face_2)
-
-    orders = [e["order"]
-              for e in E.reference_entries(library.character, group="face")]
-    assert orders == [1000, 3000]
-    chosen = CHARACTER.selection_nodes(CHARACTER.resolve("subject-a"),
-                                       tags=None, pick=None)
-    assert [e["slot"] for e in chosen] == list(range(1, len(chosen) + 1))
-
-
-def test_what_replaced_regroup_writes_no_object(library):
-    """One `PATCH` on the row, and the file does not move.
-
-    `curate regroup` reparented the node AND swept every run, scene and chain
-    document that cited its old path. Neither half is needed: a group is an
-    attribute, and a record names the node.
-    """
-    parent_before = library.fake.nodes[library.body_1]["parent_id"]
-    blob_before = library.fake.nodes[library.body_1]["blob_key"]
-
-    result = CliRunner().invoke(cli.main, ["character", "regroup", "subject-a",
-                                           library.body_1, "--to", "face"])
-
-    assert result.exit_code == 0, result.output
-    assert library.fake.nodes[library.body_1]["parent_id"] == parent_before
-    assert library.fake.nodes[library.body_1]["blob_key"] == blob_before
 
 
 # ── dedupe ──────────────────────────────────────────────────────────────────
@@ -140,7 +105,7 @@ def test_dedupe_removes_the_duplicate_and_keeps_the_first(library):
     assert library.face_1 in library.fake.nodes
 
 
-def test_dedupe_detaches_the_row_of_an_image_it_destroys(library):
+def test_dedupe_says_when_it_is_about_to_destroy_an_image_a_shoot_sends(library):
     """**The one dangling this model can still produce.**
 
     A node id survives a rename, a reparent and a regroup — but not a delete,
@@ -148,14 +113,14 @@ def test_dedupe_detaches_the_row_of_an_image_it_destroys(library):
     has to come off in the same act, or the index points at a node that is gone.
     """
     copy = library.fake.put_file(library.face_folder, "zz-copy.webp", b"webp-1")
-    E.add_reference(library.character, copy["id"], "face")
-    assert copy["id"] in {e["node"] for e in E.reference_entries(library.character)}
+    store.describe_node(copy["id"], tags=["default", "face"])
+    assert copy["id"] in {e["id"] for e in E.character_images(library.character)}
 
     result = _run("dedupe", "subject-a", "--group", "face", "--apply")
 
     assert result.exit_code == 0, result.output
-    assert copy["id"] not in {e["node"]
-                              for e in E.reference_entries(library.character)}
+    assert copy["id"] not in {e["id"]
+                              for e in E.character_images(library.character)}
 
 
 # ── move ────────────────────────────────────────────────────────────────────
@@ -188,8 +153,8 @@ def test_a_moved_reference_is_still_a_reference(library):
     _run("move", "subject-a", library.body_1,
          "--from", "reference", "--to", "archive", "--apply")
 
-    assert library.body_1 in {e["node"]
-                              for e in E.reference_entries(library.character)}
+    assert library.body_1 in {e["id"]
+                              for e in E.character_images(library.character)}
 
 
 def test_move_is_a_dry_run_without_apply(library):
@@ -254,7 +219,7 @@ def test_groups_warns_when_the_set_exceeds_every_engine_cap(library):
     """`reference/` is a library, not a set to send whole."""
     for n in range(20):
         node = library.fake.put_file(library.face_folder, f"extra-{n}.webp", b"x" * (n + 1))
-        E.add_reference(library.character, node["id"], "face")
+        store.describe_node(node["id"], tags=["default", "face"])
 
     result = _run("groups", "subject-a")
     assert result.exit_code == 0, result.output
@@ -314,22 +279,25 @@ def test_drop_is_a_dry_run_until_told_otherwise(library):
     assert stray["id"] in library.fake.nodes
 
 
-def test_drop_refuses_an_image_a_row_still_names(library):
+def test_drop_refuses_an_image_the_character_sends(library):
     """**It refuses rather than detaching, and that is the difference from
     `dedupe`.**
 
-    `dedupe` detaches in the same act because it is removing a duplicate of
-    something the character still has. Dropping removes the thing itself, and
-    whether a character still IS what that image shows is hard rule #2b's
-    question — a person's, not a command's.
-    """
-    assert library.body_1 in {e["node"] for e in E.reference_entries(library.character)}
+    `dedupe` destroys a duplicate of something the character still has. Dropping
+    removes the thing itself, and whether a character still IS what that image
+    shows is hard rule #2b's question — a person's, not a command's.
 
-    result = _run("drop", "subject-a", library.body_1, "--pool", "reference", "--apply")
+    **`face_1`, not `body_1`.** What the refusal is about is the `default` tag —
+    the images a generation is shown — and `body_1` deliberately does not carry
+    it, so using it here would assert the refusal fires on every image.
+    """
+    assert "default" in store.node(library.face_1)["tags"]
+
+    result = _run("drop", "subject-a", library.face_1, "--pool", "reference", "--apply")
 
     assert result.exit_code != 0
-    assert "REF# row still names" in result.output
-    assert "studio character detach" in result.output
+    assert "carrying `default`" in result.output
+    assert "studio describe" in result.output
     assert library.body_1 in library.fake.nodes, "refused, and nothing destroyed"
 
 

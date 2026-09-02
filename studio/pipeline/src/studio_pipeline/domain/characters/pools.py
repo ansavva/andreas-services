@@ -93,9 +93,12 @@ def cmd_pool(name, pool, group, json_, presign, unreferenced):
     record = resolve(name)
     entries = pool_nodes(record, pool, group)
     if unreferenced:
-        # The index names NODE IDS, so this is a set difference and not a
-        # filename comparison — which is the whole reason it is reliable.
-        named = {entry["node"] for entry in entities.reference_entries(record["id"])}
+        # **Files nothing sends.** A set difference on node ids rather than a
+        # filename comparison, which is what makes it reliable; what changed is
+        # where the answer comes from — the `default` tag on each image, rather
+        # than a `REF#` row pointing at it.
+        named = {entry["id"] for entry in
+                 entities.character_images(record["id"], tags=["default"])}
         entries = [e for e in entries if e["id"] not in named]
     where = f"{pool}/{group}" if group else f"{pool}/"
     if not entries:

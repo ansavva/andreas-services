@@ -376,23 +376,6 @@ def test_there_is_no_flag_that_approves_spending():
 
 
 
-def test_promoting_a_run_output_is_a_separate_command(library):
-    """`add-refs --from-run` is the second gate, and it copies rather than moves."""
-    from studio_pipeline.adapters import entities as E
-
-    before = {e["node"] for e in E.reference_entries(library.character)}
-    result = CliRunner().invoke(cli.main, [
-        "character", "add-refs", "subject-a", "--to", "face",
-        "--from-run", "porch-teaser/latest#1"])
-    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
-
-    added = {e["node"] for e in E.reference_entries(library.character)} - before
-    assert len(added) == 1, added
-    # A copy, not a move: the run still owns its output, and the promoted node
-    # is a different one. Every record that cited the run's output still does.
-    assert added != {library.run_output}
-    assert E.get_run(library.run)["outputs"][0]["node"] == library.run_output
-
 
 def test_pick_and_seed_pick_combine_into_one_identity_set(library):
     """Naming references used to silence --seed-pick outright.
@@ -423,40 +406,6 @@ def test_combining_pools_still_respects_the_cap(library):
 
 
 
-
-
-
-def test_promoting_a_run_that_was_not_shot_leaves_it_undescribed(library):
-    """Provenance is a bonus, never a requirement: a run with no angle recorded
-    must still promote, and must not borrow some other angle's description."""
-    from studio_pipeline.adapters import entities as E
-
-    before = {e["node"] for e in E.reference_entries(library.character)}
-    result = CliRunner().invoke(cli.main, [
-        "character", "add-refs", "subject-a", "--to", "face",
-        "--from-run", "porch-teaser/latest#1"])
-    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
-    added = [e for e in E.reference_entries(library.character) if e["node"] not in before]
-    assert added and not (added[-1].get("description") or "").strip()
-
-
-
-
-def test_add_refs_with_nothing_to_add_says_so(library):
-    result = CliRunner().invoke(cli.main, ["character", "add-refs", "subject-a", "--to", "face"])
-    assert result.exit_code != 0
-    assert "--from-run" in result.output
-
-
-# --- style comes from the character, not from this repo --------------------
-
-
-
-
-
-
-
-# --- seeing what is sent ---------------------------------------------------
 
 
 
@@ -684,29 +633,4 @@ def test_malformed_extra_is_refused_before_anything_is_asked_for(library):
     assert not library.fake.turnarounds
 
 
-def test_promotion_reads_its_description_from_the_spec_the_api_serves(library):
-    """`add-refs --from-run` still writes the angle's own words onto the image.
 
-    It read them out of the packaged YAML. The file is gone and the reasoning is
-    not: those fields sat unread once before and every promotion retyped them by
-    hand, fourteen at a time.
-    """
-    _spec_in(library.fake)
-    library.fake.runs[library.run].setdefault("extra", {})["reference_angle"] = "face_front"
-    from studio_pipeline.domain.characters import refs as REFS
-
-    described, tags = REFS._angle_description(library.fake.runs[library.run])
-    assert described == "Head and shoulders."
-    assert tags == ["face"]
-
-
-def test_a_library_with_no_spec_promotes_undescribed_rather_than_failing(library):
-    """Provenance is a bonus on a write somebody is already doing.
-
-    A promotion refused over a missing description would block the work the
-    description was only ever meant to save typing on.
-    """
-    library.fake.runs[library.run].setdefault("extra", {})["reference_angle"] = "face_front"
-    from studio_pipeline.domain.characters import refs as REFS
-
-    assert REFS._angle_description(library.fake.runs[library.run]) == (None, None)

@@ -25,7 +25,7 @@ import re
 
 import pytest
 
-from studio_pipeline.adapters import api, entities as E
+from studio_pipeline.adapters import api, entities as E, store as S
 
 ADAPTERS = pathlib.Path(E.__file__).parent
 
@@ -62,9 +62,6 @@ WIRE_SURFACE = {
     "/api/characters",
     "/api/characters/<id>",
     "/api/characters/<id>/profile",
-    "/api/characters/<id>/references",
-    "/api/characters/<id>/references/<id>",
-    "/api/characters/<id>/default-set",
     "/api/characters/<id>/selection",
     "/api/characters/<id>/textblock",
     "/api/characters/<id>/runs",
@@ -227,7 +224,6 @@ def test_creating_a_character_creates_its_starting_layout(library):
     children = {c["name"] for c in library.fake._children(record["root"])}
     assert children == {"reference", "corpus", "seed", "archive"}
     assert record["rev"] == 1
-    assert record["default_set"] == []
 
 
 def test_a_taken_slug_is_a_conflict(library):
@@ -245,8 +241,10 @@ def test_a_rename_is_one_patch_and_moves_the_root_folder(library):
     after = E.patch_character(record["id"], record["rev"], slug="subject-z")
     assert after["slug"] == "subject-z"
     assert library.fake.nodes[record["root"]]["name"] == "subject-z"
-    # Every reference still names the same node, untouched by the rename.
-    assert {e["node"] for e in E.reference_entries(record["id"])} == {
+    # Every image is still the same node, untouched by the rename — and so
+    # are its tags: they are attributes of it, not a second record that had
+    # to be re-pointed.
+    assert {e["id"] for e in E.character_images(record["id"])} == {
         library.face_1, library.face_2, library.body_1}
 
 
@@ -271,91 +269,116 @@ def test_patching_the_profile_merges_one_section(library):
     assert profile["face"]  # untouched
 
 
-# ── references ──────────────────────────────────────────────────────────────
-
-def test_order_is_gapped_so_an_insert_touches_no_neighbour(library):
-    entries = {e["node"]: e["order"]
-               for e in E.reference_entries(library.character, group="face")}
-    assert sorted(entries.values()) == [1000, 2000]
-
-    inserted = library.fake.put_file(library.face_folder, "profile-left.webp", b"x")
-    E.add_reference(library.character, inserted["id"], "face", after=library.face_1)
-    after = {e["node"]: e["order"]
-             for e in E.reference_entries(library.character, group="face")}
-    assert after[inserted["id"]] == 1500
-    assert after[library.face_1] == 1000 and after[library.face_2] == 2000
+# ── identity, which is tags ─────────────────────────────────────────────────
 
 
-def test_regrouping_is_one_write_and_no_object_moves(library):
-    """`curate regroup` was a reparent plus a records sweep. It is an attribute."""
-    before = library.fake.nodes[library.body_1]["parent_id"]
-    E.patch_reference(library.character, library.body_1, group="face")
-    assert library.fake.nodes[library.body_1]["parent_id"] == before
-    assert {e["node"] for e in E.reference_entries(library.character, group="face")} == {
+def test_a_characters_images_are_its_whole_branch_not_an_index(library):
+    """**Wider than the reference index ever was, on purpose.**
+
+    That listed the pictures somebody had filed a row for, so an image dropped
+    into the tree by hand was invisible to it — which is how twelve files in the
+    production library ended up with no description anywhere. This is every image
+    under the character; the tags say which are identity.
+    """
+    found = E.character_images(library.character)
+
+    assert {entry["id"] for entry in found} == {
         library.face_1, library.face_2, library.body_1}
 
 
-def test_a_bulk_describe_is_one_transaction(library):
-    E.put_references(library.character, [
-        {"node": library.face_1, "description": "first"},
-        {"node": library.body_1, "description": "second", "tags": ["body", "wide"]},
-    ])
-    by_node = {e["node"]: e for e in E.reference_entries(library.character)}
-    assert by_node[library.face_1]["description"] == "first"
-    assert by_node[library.body_1]["tags"] == ["body", "wide"]
+def test_images_filter_on_every_named_tag(library):
+    """ALL of them, not any."""
+    assert [e["id"] for e in E.character_images(library.character, ["default", "face"])] == [
+        library.face_1, library.face_2]
+    assert E.character_images(library.character, ["default", "body"]) == []
 
 
-def test_describing_something_that_is_not_a_reference_is_refused(library):
-    with pytest.raises(api.NotFound):
-        E.put_references(library.character, [{"node": library.input_1,
-                                              "description": "nope"}])
+def test_tagging_is_the_whole_write_path(library):
+    """One `PATCH` on the file. No attach, no row, no second record to drift.
+
+    `add_reference`, `put_references`, `delete_reference` and `put_default_set`
+    are gone; `store.describe_node` is what remains, and it was already the place
+    a description lived.
+    """
+    S.describe_node(library.body_1, tags=["default", "body"])
+
+    # By NAME: front-neutral, full-length, three-quarter. Order stopped meaning
+    # anything about a character, so the listing needs one that is stable rather
+    # than one that is meaningful.
+    assert [e["id"] for e in E.character_images(library.character, ["default"])] == [
+        library.face_1, library.body_1, library.face_2]
 
 
-def test_detaching_a_reference_leaves_the_file_alone(library):
-    E.delete_reference(library.character, library.body_1)
-    assert library.body_1 in library.fake.nodes
-    assert library.body_1 not in {e["node"]
-                                 for e in E.reference_entries(library.character)}
+def test_untagging_takes_an_image_out_without_touching_the_file(library):
+    """What `detach` was. The bytes and the node id are untouched either way."""
+    S.describe_node(library.face_1, tags=["face"])
 
-
-def test_attaching_the_same_node_twice_is_refused(library):
-    with pytest.raises(api.Conflict):
-        E.add_reference(library.character, library.face_1, "face")
+    assert library.face_1 not in {
+        e["id"] for e in E.character_images(library.character, ["default"])}
+    assert S.node(library.face_1)["name"] == "front-neutral.webp"
 
 
 # ── selection ───────────────────────────────────────────────────────────────
 
-def test_selection_falls_back_to_the_default_set(library):
+
+def test_selection_falls_back_to_the_default_tag(library):
+    """No `pick` and no `tag` is the character's `default` images.
+
+    That is what `default_set` said, moved onto the pictures — so there is no
+    list on the record that can name a node nothing points at any more.
+    """
     found = E.selection(library.character)
-    assert found["source"] == "default_set"
-    assert [s["node"] for s in found["selection"]] == [library.face_1, library.face_2]
-    assert [s["slot"] for s in found["selection"]] == [1, 2]
+
+    assert found["source"] == "default"
+    assert [entry["node"] for entry in found["selection"]] == [
+        library.face_1, library.face_2]
 
 
 def test_selection_by_tag_requires_every_tag(library):
-    found = E.selection(library.character, tag=["face", "profile"])
-    assert [s["node"] for s in found["selection"]] == [library.face_2]
+    """`?tag=default,face` — the face images this character sends."""
+    found = E.selection(library.character, tag=["default", "face"])
+
+    assert found["source"] == "tag"
+    assert [entry["node"] for entry in found["selection"]] == [
+        library.face_1, library.face_2]
 
 
 def test_a_tag_nothing_carries_says_which_tags_are_in_use(library):
-    with pytest.raises(api.NotFound, match="Tags in use"):
-        E.selection(library.character, tag=["nonexistent"])
+    """A filter matching nothing is refused, and the refusal is useful.
+
+    Being handed no images is a typo, not a selection, and what runs next spends
+    money on it — so it comes back as an error naming the tags that exist.
+    """
+    with pytest.raises(api.ApiError) as caught:
+        E.selection(library.character, tag=["wardrobe"])
+
+    assert "wardrobe" in str(caught.value)
+    assert "face" in str(caught.value)
 
 
 def test_over_cap_is_refused_rather_than_truncated(library):
-    """**Which images a generation saw must not be decided by a listing.**
+    """**Refused, never truncated**, and refused as `Conflict` so callers act.
 
     The refusal used to live in `engine/refs.py`, where only the CLI passed
-    through it. It is one route now, so the SPA cannot disagree with the CLI
-    about what a model was shown.
+    through it. It is the route's now, so the SPA cannot be lenient where the
+    CLI is strict.
     """
-    with pytest.raises(api.Conflict, match="accepts 1"):
+    with pytest.raises(api.Conflict):
         E.selection(library.character, limit=1)
 
 
 def test_selection_by_pick_accepts_a_filename_a_person_read_off_a_listing(library):
+    """An id is the real address; a name is what is on the screen."""
     found = E.selection(library.character, pick=["full-length.webp"])
-    assert [s["node"] for s in found["selection"]] == [library.body_1]
+
+    assert [entry["node"] for entry in found["selection"]] == [library.body_1]
+
+
+def test_pick_does_not_require_the_image_to_be_tagged(library):
+    """Naming a picture IS the decision; a tag is the way to not have to."""
+    found = E.selection(library.character, pick=[library.body_1])
+
+    assert [entry["node"] for entry in found["selection"]] == [library.body_1]
 
 
 # ── phrasebook ──────────────────────────────────────────────────────────────

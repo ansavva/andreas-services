@@ -274,29 +274,24 @@ def cmd_show(name, json_, profile_):
     if json_:
         print(json.dumps(record, indent=2))
         return
-    index = entities.references(record["id"])
-    counts = index.get("counts") or {}
-    # **Drift, named rather than left to be counted.** A `default_set` member
-    # with no `REF#` row is an image a turnaround will not send, and the only symptom
-    # used to be a generation that saw fewer references than somebody chose.
-    attached = {entry["node"]
-                for entries in (index.get("groups") or {}).values()
-                for entry in entries}
-    stale = [node for node in (record.get("default_set") or []) if node not in attached]
+    # **There is no drift to report here any more, and that is the change.**
+    # This block used to name `default_set` members with no `REF#` row — an image
+    # a turnaround would not send, whose only other symptom was a generation that
+    # saw fewer pictures than somebody chose. Two records with an invariant
+    # between them became one tag on one file, so the failure has no way to
+    # happen and nothing to report.
+    images = entities.character_images(record["id"])
+    counts: dict[str, int] = {}
+    for entry in images:
+        for tag in entry.get("tags") or []:
+            counts[tag] = counts.get(tag, 0) + 1
     folders = [f"{n['name']}/" for n in store.children_of(record["root"])
                if n.get("kind") == "folder"]
     print(f"{record['slug']}  ({record['id']})  rev {record.get('rev')}")
     print(f"  display   {record.get('display_name') or '—'}")
-    print(f"  refs      {' · '.join(f'{g} {n}' for g, n in sorted(counts.items())) or '—'}"
-          f"      default set: {len(record.get('default_set') or [])}"
-          f"{f' ({len(stale)} STALE)' if stale else ''}")
-    if stale:
-        print(f"  {len(stale)} of the default set are not references any more — a default "
-              f"turnaround is refused until they are re-pointed:", file=sys.stderr)
-        for node in stale:
-            print(f"    {node}", file=sys.stderr)
-        print(f"  fix with: studio character default-set {record['slug']} <node> …",
-              file=sys.stderr)
+    print(f"  images    {len(images)}"
+          f"      sent by default: {counts.get('default', 0)}")
+    print(f"  tags      {' · '.join(f'{t} {n}' for t, n in sorted(counts.items())) or '—'}")
     print(f"  root      {record['root']}   {' '.join(folders) or '(no folders)'}")
 
 
@@ -422,9 +417,9 @@ def cmd_rename(name, new):
         after = entities.patch_character(record["id"], record["rev"], slug=new)
     except api.Conflict as exc:
         die(str(exc))
-    refs = len(entities.reference_entries(record["id"]))
+    images = len(entities.character_images(record["id"]))
     print(f"renamed {record['slug']} → {after['slug']}")
-    print(f"  0 objects copied · 0 records rewritten · {refs} references untouched")
+    print(f"  0 objects copied · 0 records rewritten · {images} image(s) untouched")
 
 
 @click.command("textblock")

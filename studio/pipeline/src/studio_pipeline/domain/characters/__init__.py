@@ -2,8 +2,8 @@
 
 One 1,235-line module until #305, then five, and now four: `base` (the record,
 its pools, its node helpers), `profile` (the bible and its local round trip),
-`refs` (the `REF#` index) and `pools` (corpus/seed/archive). `cli` assembles the
-command group.
+`refs` (what a model gets shown, which is tags) and `pools` (corpus/seed/
+archive). `cli` assembles the command group.
 
 **`rename.py` is gone.** It listed four pools, `PATCH`ed every basename carrying
 the slug, rewrote the bible's index to match, and then swept every run document
@@ -51,19 +51,16 @@ from studio_pipeline.domain.characters.profile import (
     unified,
 )
 from studio_pipeline.domain.characters.refs import (
+    DEFAULT_TAG,
     REFERENCE_POOL,
-    UNSORTED,
-    entry_node,
-    reference_entries,
     selection_nodes,
 )
 
 __all__ = [
-    "IMG_EXTS", "LOCAL_DIR", "NAME_RE", "POOLS", "PROFILE_KEYS", "REFERENCE_POOL",
-    "TEMPLATE", "UNSORTED", "check_name", "check_profile", "die", "do_pull", "do_push",
-    "document", "entry_node", "fetch_profile", "load_profile", "local_paths", "main",
+    "DEFAULT_TAG", "IMG_EXTS", "LOCAL_DIR", "NAME_RE", "POOLS", "PROFILE_KEYS",
+    "REFERENCE_POOL", "TEMPLATE", "check_name", "check_profile", "die", "do_pull",
+    "do_push", "document", "fetch_profile", "load_profile", "local_paths", "main",
     "parse_profile", "pool_folder", "pool_nodes", "pool_tree_nodes", "read_text",
-    "reference_entries",
     "remote_rev", "resolve", "save_profile", "selection_nodes", "split_document",
     "unified", "upload_file", "write_text",
 ]

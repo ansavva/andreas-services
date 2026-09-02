@@ -66,6 +66,7 @@ import click
 
 from studio_pipeline.adapters import api, entities, store
 from studio_pipeline.domain.characters import (
+    DEFAULT_TAG,
     IMG_EXTS,
     pool_folder,
     pool_nodes,
@@ -133,15 +134,18 @@ def duplicate_pairs(entries: list[dict]) -> list[tuple[dict, dict]]:
     return dupes
 
 
-def reference_nodes(record: dict) -> set[str]:
-    """The node ids this character's `REF#` rows point at.
+def identity_nodes(record: dict) -> set[str]:
+    """The node ids this character's generations are shown.
 
-    Read before anything is deleted, so `dedupe` can detach the row of an image
-    it is about to destroy. A row naming a node that no longer exists is the one
-    dangling this model can still produce, and it is produced by deleting bytes
-    rather than by moving them.
+    **Read so `dedupe` can WARN before destroying one, not so it can clean up
+    after itself.** There is no row to detach any more: the tag is on the file,
+    so deleting the file takes it with it and nothing is left dangling. What
+    survives is the reason a person wants to know — deleting a duplicate that is
+    one of the seven images a shoot sends is a different act from deleting a
+    duplicate nothing points at, and only one of them needs a second look.
     """
-    return {entry["node"] for entry in entities.reference_entries(record["id"])}
+    return {entry["id"] for entry in entities.character_images(record["id"],
+                                                              tags=[DEFAULT_TAG])}
 
 
 def find_in_pool(record: dict, pool: str, token: str) -> dict:
@@ -205,17 +209,16 @@ def cmd_dedupe(name, apply, group, pool):
     if not dupes:
         print(f"no exact duplicates in {pool}/ ({len(entries)} image(s))")
         return
-    attached = reference_nodes(record)
+    attached = identity_nodes(record)
     print(f"DELETE {len(dupes)} exact duplicate(s) from {pool}/:")
     for entry, keeper in dupes:
-        mark = "  [is a reference — its row is detached too]" if entry["id"] in attached else ""
+        mark = "  [carries `default` — a shoot sends this]" if entry["id"] in attached else ""
         print(f"    {entry['name']:<40} (identical to {keeper['name']}){mark}")
     if not apply:
         print("\nDRY RUN — nothing changed")
         return
-    for entry, _keeper in dupes:
-        if entry["id"] in attached:
-            entities.delete_reference(record["id"], entry["id"])
+    # No detach step: the tag is an attribute of the file, so deleting the file
+    # deletes it. What used to be two writes that could half-happen is one.
     store.delete_nodes([entry["id"] for entry, _ in dupes])
     print("\nAPPLIED")
 
@@ -241,11 +244,11 @@ def cmd_drop(name, files, apply, pool):
     hatch, and it is deliberately awkward — every file named explicitly, a dry
     run by default, and no globbing.
 
-    **It refuses a reference rather than detaching one.** `dedupe` detaches in
-    the same act because it is removing a duplicate of something the character
-    still has; dropping is removing the thing itself, and whether a character
-    still IS what that image shows is a separate decision that hard rule #2b
-    puts in a person's hands. `studio character detach` first, then drop.
+    **It refuses an image the character SENDS.** `dedupe` destroys a duplicate of
+    something the character still has; dropping is removing the thing itself, and
+    whether a character still IS what that image shows is a separate decision
+    that hard rule #2b puts in a person's hands. Take the tag off first, then
+    drop — two acts, because they are two decisions.
 
     The prod bucket is versioned and neither the API role nor a developer's own
     commands hold `s3:DeleteObjectVersion`, so what this destroys there is a
@@ -254,13 +257,14 @@ def cmd_drop(name, files, apply, pool):
     """
     record = resolve(name)
     entries = [find_in_pool(record, pool, token) for token in files]
-    attached = reference_nodes(record)
+    attached = identity_nodes(record)
     blocked = [e for e in entries if e["id"] in attached]
     if blocked:
-        die("refusing to destroy image(s) a REF# row still names:\n"
+        die(f"refusing to destroy image(s) carrying `{DEFAULT_TAG}` — a generation "
+            "is shown these:\n"
             + "\n".join(f"      {e['name']}  ({e['id']})" for e in blocked)
-            + f"\n       Detach first: studio character detach {record['slug']} "
-            + " ".join(e["id"] for e in blocked))
+            + "\n       Untag first: "
+            + "; ".join(f"studio describe {e['id']} --clear-tags" for e in blocked[:2]))
 
     print(f"DESTROY {len(entries)} file(s) from {pool}/:")
     for entry in entries:
@@ -328,13 +332,13 @@ def cmd_move(name, file, apply, src_pool, dst_pool, dst_group):
     if duplicate:
         print(f"    a byte-identical copy is already in {where}/ — only removing the source")
 
-    if entry["id"] in reference_nodes(record):
-        if duplicate:
-            print("    NOTE: it is a reference and its bytes are about to go. Its REF# row "
-                  f"would name a missing node — detach it first:\n"
-                  f"      studio character detach {record['slug']} {entry['id']}")
-        else:
-            print("    it is a reference; the REF# row names the node and follows it")
+    if entry["id"] in identity_nodes(record):
+        # **No detach step to warn about any more.** The tag is on the file, so
+        # it goes when the bytes go and follows when the node moves. What is
+        # still worth saying is that this is one of the images a shoot sends.
+        print(f"    it carries `{DEFAULT_TAG}` — a generation is shown this image"
+              + (" and its bytes are about to go" if duplicate else
+                 "; the tag moves with it"))
 
     if not apply:
         print("\nDRY RUN — nothing changed")
@@ -351,22 +355,26 @@ def cmd_move(name, file, apply, src_pool, dst_pool, dst_group):
 def cmd_groups(name):
     """What the reference index holds, group by group, against the engine caps.
 
-    **Off `GET /api/characters/<id>/references`'s `counts`, not off the tree.**
+    **Off the tags on the character's images.**
     It used to list the subfolders of `reference/` and count the files in each,
     which made a group a folder and a folder a group — so an image filed in the
     wrong place was in the wrong group, and one filed loose was in no group at
-    all. A group is an attribute of a row; the folders are just folders.
+    all. A group is a TAG now, and the folders are just folders.
     """
     record = resolve(name)
-    counts = entities.references(record["id"]).get("counts") or {}
+    counts: dict[str, int] = {}
+    for entry in entities.character_images(record["id"]):
+        for tag in entry.get("tags") or []:
+            counts[tag] = counts.get(tag, 0) + 1
     for group, number in sorted(counts.items()):
         print(f"{group:<16} {number:>4}")
-    total = sum(counts.values())
+    total = len(entities.character_images(record["id"], tags=[DEFAULT_TAG]))
     print(f"{'TOTAL':<16} {total:>4}")
     lowest = min(ENGINE_CAPS.values())
     if total > lowest:
-        print(f"\nthis character has more references than any model takes at once "
+        print(f"\nthis character sends more images than some models take at once "
               f"({', '.join(f'{e} {c}' for e, c in sorted(ENGINE_CAPS.items()))}).\n"
-              f"That is expected — pick a subset:\n"
-              f"  studio character refs {record['slug']}\n"
-              f"  studio character default-set {record['slug']} <node> <node> …", file=sys.stderr)
+              f"That is expected — narrow it with a group tag, or take `{DEFAULT_TAG}` "
+              f"off the ones you do not want sent:\n"
+              f"  studio character images {record['slug']}\n"
+              f"  studio describe <node> --tag face", file=sys.stderr)

@@ -26,7 +26,7 @@ from studio_pipeline import cli
 READ_ONLY = [
     (["character", "list"], "subject-a"),
     (["character", "show", "subject-a"], "subject-a"),
-    (["character", "refs", "subject-a"], "front-neutral.webp"),
+    (["character", "images", "subject-a"], "front-neutral.webp"),
     (["character", "textblock", "subject-a"], "placeholder identity"),
     (["curate", "groups", "subject-a"], "face"),
     (["projects", "list"], "porch-teaser"),

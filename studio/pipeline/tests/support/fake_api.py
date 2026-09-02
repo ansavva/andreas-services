@@ -236,7 +236,6 @@ class FakeApi:
         self.scenes: dict[str, dict] = {}
         self.movies: dict[str, dict] = {}
         #: char_id -> [entry], each naming a node id. The `REF#` rows.
-        self.refs: dict[str, list[dict]] = {}
         #: scene_id -> [shot]. The `SHOT#` rows.
         self.shots: dict[str, list[dict]] = {}
         self.terms: list[dict] = []
@@ -598,9 +597,6 @@ class FakeApi:
             (r"/api/nodes/([^/]+)/owner", self._r_node_owner),
             (r"/api/nodes/([^/]+)", self._r_node),
             (r"/api/characters", self._r_characters),
-            (r"/api/characters/([^/]+)/references", self._r_references),
-            (r"/api/characters/([^/]+)/references/([^/]+)", self._r_reference),
-            (r"/api/characters/([^/]+)/default-set", self._r_default_set),
             (r"/api/characters/([^/]+)/selection", self._r_selection),
             (r"/api/characters/([^/]+)/textblock", self._r_textblock),
             (r"/api/characters/([^/]+)/profile", self._r_profile),
@@ -890,10 +886,12 @@ class FakeApi:
     # ── characters ──────────────────────────────────────────────────────────
 
     def _char_view(self, record: dict) -> dict:
-        counts = {"references": len(self.refs.get(record["id"], [])),
-                  "files": sum(1 for n in self.nodes.values()
-                               if n["kind"] == "file"
-                               and (self._owner(n["id"]) or {}).get("id") == record["id"])}
+        files = [n for n in self.nodes.values()
+                 if n["kind"] == "file"
+                 and (self._owner(n["id"]) or {}).get("id") == record["id"]]
+        counts = {"files": len(files),
+                  "default": sum(1 for n in files
+                                 if "default" in (n.get("tags") or []))}
         return {**{k: v for k, v in record.items() if k != "_"}, "counts": counts}
 
     def _r_characters(self, method, body, params):
@@ -913,10 +911,9 @@ class FakeApi:
                   "display_name": body.get("display_name") or slug,
                   "schema_version": 2, "rev": 1,
                   "created": _now(), "updated": _now(),
-                  "root": root["id"], "hero": None, "default_set": [],
+                  "root": root["id"], "hero": None,
                   "profile": self._clean_profile(body.get("profile"))}
         self.characters[char_id] = record
-        self.refs[char_id] = []
         return self._char_view(record)
 
     def _r_character(self, method, body, params, ref):
@@ -939,7 +936,6 @@ class FakeApi:
             else:
                 self.characters.pop(record["id"])
                 self.nodes[record["root"]].pop("entity", None)
-            self.refs.pop(record["id"], None)
             return {"deleted": record["id"]}
         raise FakeError(405, method)
 
@@ -1012,178 +1008,86 @@ class FakeApi:
             else:
                 node.pop("tags", None)
 
-    def _ref_entry(self, record: dict, entry: dict) -> dict:
-        node = self.nodes.get(entry["node"]) or {}
-        return {**entry,
-                "description": node.get("description"),
+    def _character_images(self, record: dict, tags=()) -> list[dict]:
+        """The character's images carrying every one of `tags`, by name.
+
+        **The whole of what identity is now.** There is no reference index and no
+        default set: an image is one the character sends because it carries
+        `default`, and what it shows is a tag beside it. Mirrors the route, which
+        is one branch listing with a tag filter.
+        """
+        wanted = set(tags)
+        found = [
+            node for node in self.nodes.values()
+            if node["kind"] != "folder"
+            and self._entry_kind(node) == "image"
+            and self._under(node["id"], record["root"])
+            and wanted <= set(node.get("tags") or [])
+        ]
+        return sorted(found, key=lambda node: node["name"])
+
+    def _under(self, node_id: str, root: str) -> bool:
+        """Whether a node sits anywhere beneath a root. Ownership IS the tree."""
+        walk = self.nodes.get(node_id)
+        while walk is not None and walk.get("parent_id"):
+            if walk["parent_id"] == root:
+                return True
+            walk = self.nodes.get(walk["parent_id"])
+        return False
+
+    def _selected(self, node: dict, slot: int) -> dict:
+        return {"slot": slot, "node": node["id"], "name": node["name"],
                 "tags": list(node.get("tags") or []),
-                "default": entry["node"] in (record.get("default_set") or []),
-                "file": self._ref_file(entry)}
-
-    def _r_references(self, method, body, params, ref):
-        record = self._entity(self.characters, ref, "character")
-        entries = self.refs.setdefault(record["id"], [])
-        if method == "GET":
-            wanted = params.get("group")
-            groups: dict[str, list] = {}
-            for entry in sorted(entries, key=lambda e: (e["group"], e["order"])):
-                if wanted and entry["group"] != wanted:
-                    continue
-                groups.setdefault(entry["group"], []).append(
-                    self._ref_entry(record, entry))
-            counts: dict[str, int] = {}
-            for entry in entries:
-                counts[entry["group"]] = counts.get(entry["group"], 0) + 1
-            return {"groups": groups, "counts": counts}
-        if method == "POST":
-            if body["node"] not in self.nodes:
-                raise FakeError(404, f"no such node: {body['node']}")
-            if any(e["node"] == body["node"] for e in entries):
-                raise FakeError(409, "already a reference")
-            entry = {"node": body["node"], "group": body["group"],
-                     "order": self._order(entries, body["group"], body.get("after")),
-                     "created": _now()}
-            entries.append(entry)
-            self._describe(body["node"], body)
-            return self._ref_entry(record, entry)
-        if method == "PATCH":
-            by_node = {e["node"]: e for e in entries}
-            unknown = [e["node"] for e in body["entries"] if e["node"] not in by_node]
-            if unknown:
-                raise FakeError(404, f"not references: {', '.join(unknown[:8])}")
-            for spec in body["entries"]:
-                entry = by_node[spec["node"]]
-                if "group" in spec:
-                    entry["group"] = spec["group"]
-                self._describe(spec["node"], spec)
-            return {"described": len(body["entries"])}
-        raise FakeError(405, method)
-
-    def _order(self, entries: list[dict], group: str, after: str | None) -> int:
-        """Gapped by 1000; `after` takes the midpoint. One write, no neighbours."""
-        in_group = sorted((e for e in entries if e["group"] == group),
-                          key=lambda e: e["order"])
-        if after:
-            for index, entry in enumerate(in_group):
-                if entry["node"] == after:
-                    following = in_group[index + 1]["order"] if index + 1 < len(in_group) \
-                        else entry["order"] + 2 * ORDER_GAP
-                    return (entry["order"] + following) // 2
-            raise FakeError(404, f"no reference {after}")
-        return (in_group[-1]["order"] + ORDER_GAP) if in_group else ORDER_GAP
-
-    def _r_reference(self, method, body, params, ref, node_id):
-        record = self._entity(self.characters, ref, "character")
-        entries = self.refs.setdefault(record["id"], [])
-        entry = next((e for e in entries if e["node"] == node_id), None)
-        if entry is None:
-            raise FakeError(404, f"{node_id} is not a reference of {record['slug']}")
-        if method == "DELETE":
-            entries.remove(entry)
-            # **And out of the default set, in the same act** — as the service
-            # does. Detaching used to leave the id sitting there, where the
-            # selection route filtered it out silently; production carried four
-            # of those on one character before anyone counted.
-            before = record.get("default_set") or []
-            after = [each for each in before if each != node_id]
-            answer = {"detached": node_id, "node": node_id}
-            if len(after) != len(before):
-                record["default_set"] = after
-                answer["default_set"] = after
-            return answer
-        if method != "PATCH":
-            raise FakeError(405, method)
-        if "group" in body:
-            entry["group"] = body["group"]
-            entry["order"] = self._order([e for e in entries if e is not entry],
-                                         body["group"], None)
-        self._describe(node_id, body)
-        if body.get("after"):
-            entry["order"] = self._order([e for e in entries if e is not entry],
-                                         entry["group"], body["after"])
-        return self._ref_entry(record, entry)
-
-    def _r_default_set(self, method, body, params, ref):
-        record = self._entity(self.characters, ref, "character")
-        if method == "PATCH" and isinstance(body.get("nodes"), list):
-            # The route compare-and-swaps the record like every other write on
-            # it, and the adapter did not send `rev` — which only became visible
-            # once the verb fix let the request reach the API.
-            self._bump(record, body.get("rev"))
-            attached = {e["node"] for e in self.refs.get(record["id"], [])}
-            stray = [n for n in body["nodes"] if n not in attached]
-            if stray:
-                raise FakeError(400, f"{stray[0]} is not a reference of {record['slug']}")
-        known = {e["node"] for e in self.refs.get(record["id"], [])}
-        unknown = [n for n in body["nodes"] if n not in known]
-        if unknown:
-            raise FakeError(404, f"not references: {', '.join(unknown)}")
-        record["default_set"] = list(body["nodes"])
-        return {"default_set": record["default_set"]}
+                "description": node.get("description"),
+                "url": f"memory://{node.get('blob_key')}"}
 
     def _r_selection(self, method, body, params, ref):
-        """Resolution order: pick > tag > default_set > everything.
+        """Two sources: `pick` names images, anything else is tags, none is `default`.
 
         The refusal is the interesting half: over-cap comes back 409 with the
-        index in the body rather than truncated, because which images a
+        candidates in the body rather than truncated, because which images a
         generation saw must not be decided by whatever a listing returned.
         """
         record = self._entity(self.characters, ref, "character")
-        # Folded with the FILE's description and tags before anything filters on
-        # them, exactly as the route does: `?tag=` selects on tags and tags are
-        # the file's, so the files have to be in hand first.
-        entries = [
-            {**entry,
-             "description": (self.nodes.get(entry["node"]) or {}).get("description"),
-             "tags": list((self.nodes.get(entry["node"]) or {}).get("tags") or [])}
-            for entry in sorted(self.refs.get(record["id"], []),
-                                key=lambda e: (e["group"], e["order"]))
-        ]
-        by_node = {e["node"]: e for e in entries}
         pick = [p for p in (params.get("pick") or "").split(",") if p]
         tags = [t for t in (params.get("tag") or "").split(",") if t]
-        if pick:
-            chosen, source = [], "pick"
-            for want in pick:
-                hit = by_node.get(want) or next(
-                    (e for e in entries
-                     if self.nodes.get(e["node"], {}).get("name") == want), None)
-                if hit is None:
-                    raise FakeError(404, f"{record['slug']} has no reference {want!r}")
-                chosen.append(hit)
-        elif tags:
-            wanted = set(tags)
-            chosen = [e for e in entries if wanted <= set(e["tags"])]
-            source = "tag"
-            if not chosen:
-                have = sorted({t for e in entries for t in e["tags"]})
-                raise FakeError(404, f"no reference of {record['slug']} carries all of "
-                                     f"{sorted(wanted)}. Tags in use: {have or '(none)'}")
-        elif record.get("default_set"):
-            # Refused, never filtered — as the route does. A generation shown
-            # three of the seven images somebody chose is a result nobody can
-            # explain, which is the same rule the cap refusal already follows.
-            stale = [n for n in record["default_set"] if n not in by_node]
-            if stale:
-                raise FakeError(409, f"{len(stale)} of {len(record['default_set'])} in "
-                                     f"{record['slug']}'s default set are not references "
-                                     f"any more: {', '.join(stale[:4])}")
-            chosen = [by_node[n] for n in record["default_set"]]
-            source = "default_set"
-        else:
-            chosen, source = list(entries), "all"
 
-        limit = params.get("limit")
-        if limit is not None and len(chosen) > int(limit):
-            raise FakeError(409,
-                            f"{len(chosen)} references match; this model accepts {limit}")
-        return {"selection": [
-            {"slot": n, "node": e["node"], "group": e["group"],
-             "description": e["description"], "tags": e["tags"],
-             "name": self.nodes.get(e["node"], {}).get("name"),
-             "url": f"memory://{self.nodes.get(e['node'], {}).get('blob_key')}"}
-            for n, e in enumerate(chosen, 1)],
-            "cap": limit, "source": source}
+        if pick:
+            source = "pick"
+            everything = self._character_images(record)
+            by_id = {node["id"]: node for node in everything}
+            by_name = {}
+            for node in everything:
+                by_name.setdefault(node["name"], node)
+                by_name.setdefault(node["name"].rsplit(".", 1)[0], node)
+            chosen = []
+            for want in pick:
+                hit = by_id.get(want) or by_name.get(want) or by_name.get(
+                    want.rsplit(".", 1)[0])
+                if hit is None:
+                    raise FakeError(400, f"{record['slug']} has no image called {want!r}")
+                chosen.append(hit)
+        else:
+            asked = tags or ["default"]
+            source = "tag" if tags else "default"
+            chosen = self._character_images(record, asked)
+            if not chosen:
+                have = sorted({t for n in self._character_images(record)
+                               for t in (n.get("tags") or [])})
+                raise FakeError(400, f"no image of {record['slug']} carries "
+                                     f"{' + '.join(asked)}. Tags in use: {have or '(none)'}")
+
+        cap = params.get("limit")
+        cap = int(cap) if cap not in (None, "") else None
+        if cap is not None and len(chosen) > cap:
+            raise FakeError(409, f"{len(chosen)} images match; the cap is {cap}")
+
+        return {
+            "selection": [self._selected(node, slot)
+                          for slot, node in enumerate(chosen, start=1)],
+            "cap": cap,
+            "source": source,
+        }
 
     def _r_textblock(self, method, body, params, ref):
         record = self._entity(self.characters, ref, "character")

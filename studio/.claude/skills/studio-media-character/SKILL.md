@@ -72,10 +72,10 @@ may be called whatever it was called when it arrived. Slot N is position N in
 the resolved selection, exactly as before — but it is `order` on the row that
 decides where an image lands, not a trailing digit in its name.
 
-That is what retired `curate renumber` and `curate regroup`: there are no holes
-to close, and moving an image between groups writes one row and no object. Use
-`studio character order` to move an entry and `studio character regroup` to
-change its group.
+That is what retired `curate renumber` and `curate regroup`, and then retired
+their replacements too: a group is a tag, so changing one is
+`studio describe <node> --tag default --tag body` and there is no order left to
+maintain.
 
 The project's `input/` pool is a **separate thing entirely** — working material
 for a piece of work, not anything about a character. Frames pulled off a clip
@@ -83,56 +83,68 @@ for chaining go there (`studio frames last --add-input`), never into `reference/
 an extracted frame is model output, and promoting it into identity feeds
 generated pixels back in as identity and compounds drift.
 
-### `reference/` is a library, and the bible says which part to send
+### A character is a library, and TAGS say which part to send
 
 The engines cap reference images hard — **Kling 7, Seedance 9, Nano Banana 14** —
-and they are sent *in full*. `reference/` holds far more than that, so something
-has to choose. That something is the bible:
+and they are sent *in full*. A character holds far more than that, so something
+has to choose. That something is a tag on the file:
 
-```yaml
-references:
-  - file: face/<name>_4.jpg          # path relative to reference/
-    description: Head and shoulders, front on, looking straight down the lens,
-                 grey studio backdrop.
-    tags: [face, front, neutral, studio]
-default_set:                          # sent when --character is given alone
-  - face/<name>_4.jpg
-  - body/<name>_8.png
-```
+    default     this is one of the images a generation is shown
+    face body   what the picture is — a group, and any word you like
 
-**`--character` no longer means "send everything".** It used to, which worked
-only while the folder was kept small enough to fit the smallest cap. Now a
-selection is either named or comes from `default_set`, and an over-cap selection
-is **refused** with the index printed — because which images a generation saw
-should not be decided by whatever a folder listing happened to return.
+**Both are ordinary node tags**, edited the way any file's are, and they travel
+with the picture through a rename, a move and a copy because they are attributes
+of it. Nothing else says an image is identity: not the folder it sits in, and no
+longer a row in a table beside it.
+
+**What that replaced was two records with an invariant between them.** A `REF#`
+row said an image was a character's third face reference; `default_set` on the
+record said which handful to actually send. The two could disagree, and did —
+one production character carried four ids in `default_set` that named no row at
+all, so a default shoot sent three images where seven were meant and nothing
+anywhere said so. One tag on one file cannot drift from anything.
 
 ```bash
-studio character refs <name> --describe            # what every image shows, and its tags
-studio character refs <name> --pick-tag face --keys
-studio character refs <name> --pick face/<name>_4.jpg,body/<name>_8.png --presign
-studio character default-set <name> --set face/<name>_4.jpg --set body/<name>_8.png
+studio character images <name>                     # every image, and how it is tagged
+studio character images <name> --tag default,face  # ALL the tags named, not any
+studio describe <node> --tag default --tag face    # this is what makes it identity
+studio describe <node> --tag face                  # …and this takes it back out
+```
+
+**`--character` does not mean "send everything".** It used to, which worked only
+while the folder was kept small enough to fit the smallest cap. A selection is
+either named or is the `default` images, and an over-cap selection is **refused**
+with the candidates printed — because which images a generation saw should not be
+decided by whatever a folder listing happened to return.
+
+```bash
+studio character selection <name>                       # the `default` images
+studio character selection <name> --tag default,face    # narrowed to a group
+studio character selection <name> --pick <node>,<file>  # named outright
+studio character selection <name> --limit 7 --presign   # what a model would see
 ```
 
 The same selectors exist on the runner: `--pick`, `--pick-tag`, and `--slots`
 (positions **within the resolved selection** — slot N is the Nth image actually
 sent, which is what `[ImageN]` refers to).
 
-**Describe every image you add.** An undescribed image cannot be picked by tag
-and is invisible to whoever chooses the set — so it may as well not be there.
+**Order is gone, and nothing replaced it.** A `REF#` row carried one, maintained
+by `curate renumber` before that and by filename numbering before that. A
+selection comes back in name order — stable, so two calls agree, which is all a
+payload needs from it.
+
+**Describe every image you add.** An undescribed image is invisible to whoever
+chooses the set, so it may as well not be there:
 
 ```bash
-studio character add-refs <name> /tmp/new/*.png --to face    # NAME first, then files
-studio character set-ref-desc <name> <node> \
-  "Three-quarter right, looking off camera." --tags face,three-quarter
-studio character describe-refs <name> --from-json batch.json   # a whole pass, atomically
-studio character order <name> <node> --after <node>            # move it in the group
-studio character selection <name> --tag face --limit 7         # what a model would see
+studio describe <node> --text "Three-quarter right, looking off camera." \
+  --tag default --tag face --tag three-quarter
 ```
 
 **`sync-refs` is gone and cannot come back.** It reconciled the bible's index
-against what was actually in the folder, which was a job only because the two
-were separate things that could disagree. A reference *is* a row about a node:
-there is no folder listing to drift from.
+against what was in the folder, which was a job only because the two were
+separate things that could disagree. There is one place a picture says what it
+is, and it is the picture.
 
 ### Curating the pools
 
@@ -154,8 +166,8 @@ a move is a row write; nothing that cited the image stops resolving, so there is
 nothing to reconcile and no `rewrite` command to run.
 
 `set-refs` is gone. It physically rebuilt `reference/` because the folder *was*
-the set being sent; `default_set` is now, so choosing is a description change,
-not a file move.
+the set being sent; the `default` tag is now, so choosing is a tag edit and not
+a file move.
 
 ## The bible is structured YAML — one schema, every character
 
@@ -214,10 +226,10 @@ studio character show <name>                           # the record: bible, refs
 studio character create <name> --from-profile /tmp/<name>.yaml   # new character record
 studio character set-profile <name> /tmp/<name>.yaml     # replace the bible
 studio character edit <name>                           # pull the bible to edit locally; re-run to upload
-studio character add-refs <name> /tmp/*.png --to face  # add refs into a purpose group
-studio character refs <name> --describe                # what every image shows
-studio character refs <name> --presign --json          # generation-time: ordered signed URLs
-studio character refs <name> --pick-tag body --keys    # a named selection, as keys
+studio character images <name>                         # every image, and how it is tagged
+studio describe <node> --tag default --tag face        # what makes one identity
+studio character selection <name> --presign --json     # generation-time: ordered signed URLs
+studio character selection <name> --tag default,body   # a named selection
 studio character pool <name> corpus                    # material, not identity
 studio character add-to <name> seed photo.jpg          # founding source photos
 studio character rename <old> <new>                    # a new slug, records and all
@@ -296,8 +308,8 @@ position N in the resolved selection, which is what a model actually receives.
 2. **Choose the reference subset.** Read what is available, then pick — the
    library is bigger than any cap:
    ```bash
-   studio character refs <name> --describe
-   studio character refs <name> --pick-tag face --presign --json > refs.json
+   studio character images <name>
+   studio character selection <name> --tag default,face --presign --json > refs.json
    # -> [{ "node": "node-…", "name": "<file>.jpg", "url": "https://..." }, ...]
    ```
    Pass the `.url` values as `reference_images` (Seedance accepts up to 9) and
@@ -350,9 +362,8 @@ better than prose can, and a long identity paragraph fights it — see
 3. `studio character add-to <source photos…> <name> seed` — the founding images.
 4. **`studio character turnaround <name> --project <project>`** — the standard face and
    body set, described and indexed in one pass. See below.
-5. `studio character add-refs <stills…> <name> --to wardrobe` for anything the
-   standard set does not cover, then **describe them**: `describe-refs
-   --from-json` for a batch, `set-ref-desc` for one.
+5. Upload anything the standard set does not cover into the character, then
+   **describe and tag it**: `studio describe <node> --tag default --tag wardrobe`.
 
 ## THE TWO HUMAN GATES
 
@@ -452,9 +463,9 @@ Promoting a keeper, once a person has seen it and said so:
 
 ```bash
 studio runs outputs <project>/latest --presign          # look at it first
-studio character add-refs <name> --to face --from-run <project>/latest#1
-studio character set-ref-desc face/<file> <name> --description "…" --tags face,front
-studio character default-set <name> --set …             # under the Kling cap of 7
+studio download <project>/latest#1 --dest /tmp/promote   # take a copy…
+studio upload /tmp/promote/<file> <name>/reference/face  # …into the CHARACTER's tree
+studio describe <node> --tag default --tag face          # …and that is the promotion
 ```
 
 `studio character create <name> --from-profile <bible> --turnaround --project <p>`
@@ -527,8 +538,8 @@ one command shows the difference.**
 
 ```bash
 studio character pool <name> reference --group face      # what is IN the folder
-studio character pool <name> reference --unreferenced    # …that no REF# row names
-studio character refs <name>                             # what the INDEX holds
+studio character pool <name> reference --unreferenced    # …that nothing sends
+studio character images <name>                           # every image, and its tags
 studio character pool <name> seed --group current        # any pool, any subfolder
 ```
 
@@ -563,7 +574,7 @@ globbing. It exists because there was previously no way to remove a mistaken
 upload at all — a file could be moved between pools forever and never
 destroyed, so `archive/` slowly became where things went to not be deleted.
 
-**It refuses a reference rather than detaching one.** `dedupe` detaches in the
-same act because it is removing a duplicate of something the character still
-has; dropping removes the thing itself, and whether a character still IS what
-that image shows is hard rule #2b's question. `studio character detach` first.
+**It refuses an image the character sends.** `dedupe` destroys a duplicate of
+something the character still has; dropping removes the thing itself, and
+whether a character still IS what that image shows is hard rule #2b's question.
+Take the `default` tag off first — `studio describe <node> --clear-tags`.

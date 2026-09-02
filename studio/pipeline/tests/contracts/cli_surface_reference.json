@@ -66,127 +66,6 @@
   "character": {
     "arguments": {},
     "commands": {
-      "add-refs": {
-        "arguments": {
-          "files": {
-            "choices": null,
-            "default": null,
-            "dest": "files",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": "*",
-            "required": false,
-            "type": "str"
-          },
-          "name": {
-            "choices": null,
-            "default": null,
-            "dest": "name",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {
-          "after": {
-            "choices": null,
-            "default": null,
-            "dest": "after",
-            "flag": false,
-            "flags": [
-              "--after"
-            ],
-            "help": "Place the new entry after this node, rather than last.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "description": {
-            "choices": null,
-            "default": null,
-            "dest": "description",
-            "flag": false,
-            "flags": [
-              "--description"
-            ],
-            "help": "What the image shows. An undescribed image cannot be picked by tag.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "from_run": {
-            "choices": null,
-            "default": null,
-            "dest": "from_run",
-            "flag": false,
-            "flags": [
-              "--from-run"
-            ],
-            "help": "Promote a RUN's output instead of a local file. Repeatable; takes a runref like <project>/latest#1.",
-            "hidden": false,
-            "multiple": true,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "project": {
-            "choices": null,
-            "default": null,
-            "dest": "project",
-            "flag": false,
-            "flags": [
-              "--project"
-            ],
-            "help": "Default project for a bare runref given to --from-run.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "tags": {
-            "choices": null,
-            "default": null,
-            "dest": "tags",
-            "flag": false,
-            "flags": [
-              "--tags"
-            ],
-            "help": "Comma-separated tags for the new entry(ies).",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "to": {
-            "choices": null,
-            "default": "unsorted",
-            "dest": "group",
-            "flag": false,
-            "flags": [
-              "--to"
-            ],
-            "help": "The reference group: face, body, wardrobe, frame, … (default: unsorted).",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          }
-        }
-      },
       "add-to": {
         "arguments": {
           "files": {
@@ -342,36 +221,6 @@
           }
         }
       },
-      "default-set": {
-        "arguments": {
-          "name": {
-            "choices": null,
-            "default": null,
-            "dest": "name",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          },
-          "nodes": {
-            "choices": null,
-            "default": null,
-            "dest": "nodes",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": "*",
-            "required": false,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {}
-      },
       "delete": {
         "arguments": {
           "name": {
@@ -423,70 +272,6 @@
             "type": "bool"
           }
         }
-      },
-      "describe-refs": {
-        "arguments": {
-          "name": {
-            "choices": null,
-            "default": null,
-            "dest": "name",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {
-          "from": {
-            "choices": null,
-            "default": null,
-            "dest": "from_json",
-            "flag": false,
-            "flags": [
-              "--from"
-            ],
-            "help": "JSON object: {node: {group?, description, tags}}.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          }
-        }
-      },
-      "detach": {
-        "arguments": {
-          "name": {
-            "choices": null,
-            "default": null,
-            "dest": "name",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          },
-          "nodes": {
-            "choices": null,
-            "default": null,
-            "dest": "nodes",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": "+",
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {}
       },
       "edit": {
         "arguments": {
@@ -597,6 +382,55 @@
           }
         }
       },
+      "images": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "json": {
+            "choices": null,
+            "default": false,
+            "dest": "json_",
+            "flag": true,
+            "flags": [
+              "--json"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "tag": {
+            "choices": null,
+            "default": null,
+            "dest": "tags",
+            "flag": false,
+            "flags": [
+              "--tag"
+            ],
+            "help": "Comma-separated; an image must carry ALL of them.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
       "list": {
         "arguments": {},
         "commands": {},
@@ -615,67 +449,6 @@
             "nargs": 0,
             "required": false,
             "type": "bool"
-          }
-        }
-      },
-      "order": {
-        "arguments": {
-          "name": {
-            "choices": null,
-            "default": null,
-            "dest": "name",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          },
-          "nodes": {
-            "choices": null,
-            "default": null,
-            "dest": "nodes",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": "+",
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {
-          "after": {
-            "choices": null,
-            "default": null,
-            "dest": "after",
-            "flag": false,
-            "flags": [
-              "--after"
-            ],
-            "help": "Place the first node after this one. Omit to keep it where it is.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "group": {
-            "choices": null,
-            "default": null,
-            "dest": "group",
-            "flag": false,
-            "flags": [
-              "--group"
-            ],
-            "help": "The group being ordered.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
           }
         }
       },
@@ -772,101 +545,6 @@
             "nargs": 0,
             "required": false,
             "type": "bool"
-          }
-        }
-      },
-      "refs": {
-        "arguments": {
-          "name": {
-            "choices": null,
-            "default": null,
-            "dest": "name",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {
-          "group": {
-            "choices": null,
-            "default": null,
-            "dest": "group",
-            "flag": false,
-            "flags": [
-              "--group"
-            ],
-            "help": "Only this group (face, body, wardrobe, frame, …).",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "json": {
-            "choices": null,
-            "default": false,
-            "dest": "json_",
-            "flag": true,
-            "flags": [
-              "--json"
-            ],
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 0,
-            "required": false,
-            "type": "bool"
-          }
-        }
-      },
-      "regroup": {
-        "arguments": {
-          "name": {
-            "choices": null,
-            "default": null,
-            "dest": "name",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          },
-          "nodes": {
-            "choices": null,
-            "default": null,
-            "dest": "nodes",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": "+",
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {
-          "to": {
-            "choices": null,
-            "default": null,
-            "dest": "group",
-            "flag": false,
-            "flags": [
-              "--to"
-            ],
-            "help": "The group to move them into.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
           }
         }
       },
@@ -970,7 +648,7 @@
             "flags": [
               "--pick"
             ],
-            "help": "Comma-separated node ids or filenames from the index.",
+            "help": "Comma-separated node ids or filenames.",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -1053,64 +731,6 @@
         },
         "commands": {},
         "options": {}
-      },
-      "set-ref-desc": {
-        "arguments": {
-          "description": {
-            "choices": null,
-            "default": null,
-            "dest": "description",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "name": {
-            "choices": null,
-            "default": null,
-            "dest": "name",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          },
-          "node": {
-            "choices": null,
-            "default": null,
-            "dest": "node",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {
-          "tags": {
-            "choices": null,
-            "default": null,
-            "dest": "tags",
-            "flag": false,
-            "flags": [
-              "--tags"
-            ],
-            "help": "Comma-separated, replacing the existing tags.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          }
-        }
       },
       "show": {
         "arguments": {

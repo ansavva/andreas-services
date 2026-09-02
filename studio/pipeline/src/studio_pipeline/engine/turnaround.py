@@ -50,7 +50,8 @@ TWO HUMAN GATES, AND WHY THEY ARE SEPARATE
    on its own. The turnaround leaves every result in its run and stops. Promoting one
    into a character's identity is a second, deliberate act:
 
-       studio character add-refs <name> --to <group> --from-run <runref>
+       studio objects copy <runref> --to <name>/reference/
+       studio describe <node> --tag default --tag face
 
    These are different decisions. "Yes, spend a few dollars seeing what this
    looks like" is not "yes, this image is now part of who this character is",
