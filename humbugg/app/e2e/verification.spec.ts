@@ -182,9 +182,15 @@ test('every Plus capability offers Plus on a Free exchange instead of failing', 
   await page.goto(`/organize/${group.group_id}`);
   await expect(page.getByText('Sending and tracking invitations is part of Plus.')).toBeVisible();
   await expect(page.getByText('Automatic reminders are part of Plus.')).toBeVisible();
+  await expect(
+    page.getByText('Your own greeting, instructions and colours are part of Plus.'),
+  ).toBeVisible();
+  await expect(page.getByText('Saving a setup as a template is part of Plus.')).toBeVisible();
   // No dead forms behind the notices.
   await expect(page.getByLabel('Email addresses')).toBeHidden();
   await expect(page.getByLabel('How often, in days')).toBeHidden();
+  await expect(page.getByLabel('Greeting')).toBeHidden();
+  await expect(page.getByLabel('Save this exchange as a template')).toBeHidden();
 
   // One purchase, one place to make it. A locked notice that carried its own checkout button would
   // put several on this page — which is how `billing.spec.ts` caught the first attempt.

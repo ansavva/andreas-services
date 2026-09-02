@@ -26,9 +26,9 @@ Live at `https://www.humbugg.com` (product app at `app.humbugg.com`, API at `api
 |---|---|---|---|
 | Foundation | 13 | 0 | Complete |
 | Free | 13 | 0 | **Complete.** #138 closed 2026-09-02 |
-| Plus | 9 | 0 | **Closed, and not finished.** Read the next section before believing it |
+| Plus | 10 | 0 | **Complete, and now reachable.** #574 closed the gap the nine left |
 | Work | 0 | 10 | Deliberately untouched |
-| Launch | 3 | 10 | Free no longer gates it; the Plus screens below do |
+| Launch | 3 | 10 | No longer gated — Free is complete and Plus is reachable |
 
 ### How it got out of order, and why that matters
 
@@ -67,14 +67,43 @@ Do not read the Plus milestone being closed as "Plus is done".
 The four issues this section used to list — #133, #141, #130→#131→#132, #129 — are three done and
 one deliberately deferred. What replaced them, in order:
 
-### 1. Wire the Plus capabilities to a screen ← **the keystone, and it has no issue**
+### 1. Wire the Plus capabilities to a screen — **done**, as #574
 
-Six shipped capabilities that nobody can reach, listed above. `/organize/{groupId}` is the surface
-they were always meant to live on and it now exists; what is missing is the wiring, which no issue
-covers because every Plus issue described a backend that was genuinely delivered.
+Six shipped capabilities that nobody could reach. `/organize/{groupId}` was the surface they were
+always meant to live on, and the wiring is now there — three PRs, one per pair.
 
-This blocks Launch more than anything else on this list: #160 (the payment and email matrix) and
-#162 (the beta) both assume a purchaser can use what they bought.
+**It was fifteen client methods with no caller, not the nine first counted.** `saveTemplate`,
+`deleteTemplate` and `sendReminder` were missed on the first pass, which is worth remembering: the
+gap was found by grepping for callers of `api.*`, and the same grep is the only honest way to check
+it has not reopened. Every one of the fifteen has exactly one caller today.
+
+Three things that came out of the wiring rather than the plan:
+
+**A capability's Plus refusal must not carry its own checkout button.** The first attempt rendered
+`PlusRefusalCard` on the organizer dashboard, which put two checkout buttons for one purchase on
+the page; `billing.spec.ts` caught it as `getByText('$12 once, for this exchange')` matching twice.
+`PlusLockedNote` names what is locked and points at the single billing panel — and tells a
+co-organizer whose decision it is, since `GET .../billing/plus` is owner-only and there is no panel
+to send them to.
+
+**"Not loaded yet" and "failed to load" are different states.** Every capability panel holds its
+content back until the first read lands, because an empty list and an unread one look identical.
+A failed read is also "not landed", so the catch set an error and the guard under it returned null —
+the panel was simply absent, error and all. That shipped once, in the invitations panel.
+`PanelLoadFailure` is the third state, and every panel has it now.
+
+**A capability with no GET is refused on save, which is too late.** Customization is a PUT only, so
+a Free organizer would get a whole form that can only fail. It reads `group.plan` upfront — the
+server's word carried on the group, not a re-derivation — and keeps the 402 handler underneath.
+
+What each capability's screen owes, recorded because it is the part that is not obvious from the
+endpoint: reminders must say **in one sentence** what will be sent and to whom, from the saved
+settings and again from the draft; their hours are UTC and are shown as UTC, because converting
+them would read as a fact while being wrong for anyone with participants elsewhere. Applying a
+template **rewrites** the exchange and sends invitations, so the panel says what it replaces before
+the button and ticks nobody by default. A late participant moves matches people may already have
+acted on, so the count comes before the commit and a stale proposal drops back to the preview
+rather than retrying a dead `proposal_id`.
 
 ### 2. #138 — mobile and assistive-technology verification — **done**
 

@@ -114,7 +114,15 @@ export function InvitationsPanel({
     }
   }
 
-  async function act(invitation: ManagedInvitation, what: 'resend' | 'revoke') {
+  /**
+   * Resend, withdraw, or nudge.
+   *
+   * "Nudge" is `sendReminder`, which is a different thing from `resendInvitation` even though both
+   * put mail in the same inbox: a resend sends the invitation again, a nudge sends a reminder
+   * ABOUT it, and it is counted against the reminder schedule. It refuses when reminders were never
+   * configured, and that refusal is shown as it comes — it names the fix.
+   */
+  async function act(invitation: ManagedInvitation, what: 'resend' | 'revoke' | 'nudge') {
     setBusy(invitation.invitation_id);
     setError(null);
     setSent(null);
@@ -123,6 +131,9 @@ export function InvitationsPanel({
       if (what === 'resend') {
         await api.resendInvitation(token, group.group_id, invitation.invitation_id);
         setSent(`Sent again to ${invitation.email}.`);
+      } else if (what === 'nudge') {
+        await api.sendReminder(token, group.group_id, invitation.invitation_id, 'unaccepted_invitation');
+        setSent(`Reminded ${invitation.email}.`);
       } else {
         await api.revokeInvitation(token, group.group_id, invitation.invitation_id);
       }
@@ -214,6 +225,14 @@ export function InvitationsPanel({
                     onPress={() => void act(invitation, 'resend')}
                   >
                     Send again
+                  </Button>
+                  <Button
+                    intent="secondary"
+                    size="sm"
+                    disabled={busy !== null}
+                    onPress={() => void act(invitation, 'nudge')}
+                  >
+                    Nudge
                   </Button>
                   <Button
                     intent="secondary"

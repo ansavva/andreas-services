@@ -16,8 +16,10 @@ import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { api, ApiError } from '../api/client';
 import { CustomizationPanel } from '../components/customization';
 import { InvitationsPanel } from '../components/invitations';
+import { LateParticipantPanel } from '../components/late-participant';
 import { isPlusRequired, PlusBillingPanel, PlusLockedNote } from '../components/plus';
 import { RemindersPanel } from '../components/reminders';
+import { TemplatesPanel } from '../components/templates';
 import { Card, LoadingPanel, Shell } from '../components/shell';
 import { StatusMessage } from '../components/status-message';
 import { useAuth } from '../context/auth-context';
@@ -56,6 +58,8 @@ export default function OrganizeScreen({
   const [error, setError] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [rolesNeedPlus, setRolesNeedPlus] = useState(false);
+  const [lateNeedsPlus, setLateNeedsPlus] = useState(false);
+  const [addingLate, setAddingLate] = useState<ParticipantReadiness | null>(null);
 
   /**
    * `quiet` re-reads without the full-screen loading state.
@@ -192,7 +196,28 @@ export default function OrganizeScreen({
           group={group}
           onRoleChanged={() => void load(true)}
           onNeedsPlus={() => setRolesNeedPlus(true)}
+          onAddLate={setAddingLate}
         />
+
+        {/* The late-participant flow, which is a decision rather than a control: it moves matches
+            people may already have acted on, so it gets a panel of its own with the count in it. */}
+        {addingLate ? (
+          <LateParticipantPanel
+            groupId={groupId}
+            person={addingLate}
+            onCancel={() => setAddingLate(null)}
+            onAdded={() => { setAddingLate(null); void load(true); }}
+            onNeedsPlus={() => { setAddingLate(null); setLateNeedsPlus(true); }}
+          />
+        ) : null}
+
+        {lateNeedsPlus ? (
+          <PlusLockedNote
+            reason="Adding somebody after the draw is part of Plus."
+            action="fit a late arrival in, changing as few matches as possible"
+            isOwner={group.is_owner}
+          />
+        ) : null}
 
         {/*
           The roster's own "Make organizer" refusal. It is a whole card, so it cannot live inside a
@@ -214,6 +239,8 @@ export default function OrganizeScreen({
         <RemindersPanel group={group} />
 
         <CustomizationPanel group={group} onSaved={setGroup} />
+
+        <TemplatesPanel group={group} onApplied={(next) => { setGroup(next); void load(true); }} />
 
         <GiftProgressPanel readiness={readiness} />
 
@@ -388,11 +415,13 @@ function RosterPanel({
   group,
   onRoleChanged,
   onNeedsPlus,
+  onAddLate,
 }: {
   readiness: GroupReadiness;
   group: GroupDetail;
   onRoleChanged(): void;
   onNeedsPlus(): void;
+  onAddLate(person: ParticipantReadiness): void;
 }) {
   const auth = useAuth();
   const { width } = useWindowDimensions();
@@ -497,6 +526,13 @@ function RosterPanel({
                   onPress={() => void setRole(person, person.role !== 'co_organizer')}
                 >
                   {person.role === 'co_organizer' ? 'Remove as organizer' : 'Make organizer'}
+                </Button>
+              ) : null}
+              {/* A late participant is a member who is NOT participating — the backend's own
+                  definition — so the sitting-out rows after a draw are exactly the candidates. */}
+              {readiness.status === 'drawn' && !person.is_participating ? (
+                <Button intent="secondary" size="sm" onPress={() => onAddLate(person)}>
+                  Add to the draw
                 </Button>
               ) : null}
             </View>
