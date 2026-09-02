@@ -6,6 +6,7 @@ const legacy = (path: string, id: string) => route(path, 'routes/legacy-redirect
 
 export default [
   index('routes/_index.tsx'),
+  route('pricing', 'routes/pricing.tsx'),
   route('terms', 'routes/terms.tsx'),
   route('privacy', 'routes/privacy.tsx'),
   route('billing', 'routes/billing.tsx'),

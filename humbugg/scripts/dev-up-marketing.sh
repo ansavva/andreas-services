@@ -21,18 +21,19 @@ done
 
 require_command npm
 
-web_env="$HUMBUGG_DIR/web/.env.local"
-[[ -f "$web_env" ]] ||
+marketing_env="$HUMBUGG_DIR/marketing/.env.local"
+[[ -f "$marketing_env" ]] ||
   die "Missing $web_env. Run ./humbugg/scripts/dev-aws-setup.sh first."
 
-# The marketing site does not authenticate anyone — sign-in lives in the product
-# app — so the only value it needs is where to send people who want to sign in.
-for key in VITE_APP_ORIGIN; do
-  grep -Eq "^${key}=.+" "$web_env" ||
+# The marketing site does not authenticate anyone — sign-in lives in the product app — so it needs
+# only where to send somebody who wants to sign in, and where to read the plan catalogue for the
+# pricing page.
+for key in VITE_APP_ORIGIN VITE_API_BASE_URL; do
+  grep -Eq "^${key}=.+" "$marketing_env" ||
     die "Missing $key in $web_env. Run ./humbugg/scripts/dev-aws-setup.sh again."
 done
 
-[[ -d "$HUMBUGG_DIR/web/node_modules" ]] ||
+[[ -d "$HUMBUGG_DIR/marketing/node_modules" ]] ||
   die "Marketing site dependencies are not installed. Run npm install in humbugg/marketing first."
 
-exec npm --prefix "$HUMBUGG_DIR/web" run dev -- "${dev_args[@]}"
+exec npm --prefix "$HUMBUGG_DIR/marketing" run dev -- "${dev_args[@]}"

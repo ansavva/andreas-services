@@ -22,6 +22,8 @@ export function Shell({ children, compact = false }: { children: ReactNode; comp
           {/* The product lives on another origin, so these are plain anchors —
               a react-router <Link> would try to resolve them as marketing routes. */}
           <nav className="flex items-center gap-2" aria-label="Primary navigation">
+            {/* Pricing IS a marketing route, so it is the one nav item that is a <Link>. */}
+            <Link className="nav-link hidden sm:inline-flex" to="/pricing">Pricing</Link>
             <a className="nav-link hidden sm:inline-flex" href={appUrl('/login')}>Sign in</a>
             <a className={buttonClass()} href={appUrl('/signup')}>Start a group</a>
           </nav>
