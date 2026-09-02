@@ -553,6 +553,33 @@ public sealed record UpdateWishRequest(
     string? Details);
 
 public sealed record ReorderWishesRequest(IReadOnlyList<string>? WishIds);
+
+// A pasted product link, and what could be read from it (#129).
+public sealed record WishPreviewRequest(string? Url);
+
+/// <summary>
+/// What a product page offered, all of it editable and none of it trusted.
+/// </summary>
+/// <remarks>
+/// <see cref="Fetched"/> is false whenever nothing usable came back — a timeout, a hostile page, a
+/// PDF, an address that turned out not to be public. It is deliberately the SAME answer in every one
+/// of those cases: the difference between "blocked because it is internal" and "nothing answered"
+/// is a port scanner, so the reply does not carry it.
+///
+/// <see cref="Host"/> is always present, because the app shows whose page this came from and a
+/// preview whose source is not obvious is a way to make a stranger's words look like Humbugg's.
+/// </remarks>
+public sealed record WishPreview(
+    string Host,
+    bool Fetched,
+    string? Title,
+    string? ImageUrl,
+    string? CanonicalUrl,
+    long? PriceCents,
+    string? Currency)
+{
+    public static WishPreview Unavailable(Uri uri) => new(uri.Host, false, null, null, uri.ToString(), null, null);
+}
 // Quantity is optional and defaults to the whole wish: "I am getting this" is the common case, and
 // making a giver state a number to claim a quantity-1 item is friction for nothing.
 public sealed record SetWishClaimRequest(string? State, int? Quantity);

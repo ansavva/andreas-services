@@ -10,6 +10,7 @@ import type {
   Membership,
   Wish,
   WishClaimState,
+  WishPreview,
   CreateWishInput,
   UpdateWishInput,
   ManagedInvitation,
@@ -159,6 +160,11 @@ export const api = {
   deleteGroup: (token: string, id: string) => request<void>(`/groups/${id}`, token, json('DELETE')),
   rotateInvite: (token: string, id: string) => request<{ invite_url: string }>(`/groups/${id}/invite`, token, json('POST')),
   listWishes: (token: string, id: string) => request<Wish[]>(`/groups/${id}/members/me/wishes`, token),
+  // Reading a pasted product link (#129). A POST, because it makes Humbugg's servers fetch a page
+  // somebody else chose — and because a URL in a body is not written to an access log the way a
+  // query string is.
+  previewWishUrl: (token: string, id: string, url: string) =>
+    request<WishPreview>(`/groups/${id}/members/me/wishes/preview`, token, json('POST', { url })),
   createWish: (token: string, id: string, wish: CreateWishInput) =>
     request<Wish>(`/groups/${id}/members/me/wishes`, token, json('POST', wish)),
   updateWish: (token: string, id: string, wishId: string, changes: UpdateWishInput) =>

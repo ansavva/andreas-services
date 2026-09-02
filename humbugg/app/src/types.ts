@@ -182,6 +182,26 @@ export interface CheckoutResponse {
 // `kindLabel[wish.kind]` lookup missed and rendered an empty badge, and `priority !== 'Normal'` was
 // always true, so every wish also carried a second empty one. Writes were unaffected (the backend
 // parses case-insensitively), which is why it survived: only the read was wrong.
+/**
+ * What a pasted product link offered (#129).
+ *
+ * `fetched` is false whenever nothing usable came back, and it is deliberately the SAME answer for a
+ * timeout, a hostile page and an address that turned out to be private — the difference between
+ * "blocked because internal" and "nothing answered" is a port scanner.
+ *
+ * Every field is editable. Nothing here is trusted: it is text a stranger's server wrote.
+ */
+export interface WishPreview {
+  /** Always present — the app shows whose page this came from. */
+  host: string;
+  fetched: boolean;
+  title?: string | null;
+  image_url?: string | null;
+  canonical_url?: string | null;
+  price_cents?: number | null;
+  currency?: string | null;
+}
+
 export type WishKind = 'product' | 'custom' | 'experience' | 'charity';
 export type WishPriority = 'low' | 'normal' | 'high';
 

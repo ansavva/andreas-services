@@ -155,6 +155,9 @@ export function WishListPanel({ groupId }: { groupId: string }) {
             heading="Add a wish"
             initial={emptyWishForm}
             busy={busy}
+            // Only the ADD form reads links. Editing an existing wish is for correcting what is
+            // there, and re-fetching a page to overwrite it is the opposite of that.
+            groupId={groupId}
             submitLabel="Add to my list"
             onCancel={() => setAdding(false)}
             onSubmit={async (values) => {
@@ -286,6 +289,7 @@ function WishForm({
   submitLabel,
   onSubmit,
   onCancel,
+  groupId,
 }: {
   heading: string;
   initial: WishFormValues;
@@ -293,11 +297,51 @@ function WishForm({
   submitLabel: string;
   onSubmit(values: WishFormValues): void;
   onCancel(): void;
+  /** Absent on the edit form: reading a link is for turning a paste into a new wish. */
+  groupId?: string;
 }) {
+  const auth = useAuth();
   const [values, setValues] = useState<WishFormValues>(initial);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [reading, setReading] = useState(false);
+  // The host the fields came from, once they have. Shown because a title somebody else's server
+  // wrote should not sit in this form looking like something the owner typed.
+  const [source, setSource] = useState<string | null>(null);
   const set = <K extends keyof WishFormValues>(key: K, value: WishFormValues[K]) =>
     setValues((current) => ({ ...current, [key]: value }));
+
+  /**
+   * Fills what the page offered and leaves everything editable (#129).
+   *
+   * Only ever fills a field the owner has not already filled — a preview that overwrites a title
+   * somebody typed is a preview that loses their work. And a failure is not an error: the form was
+   * a manual form a moment ago and still is.
+   */
+  async function readLink() {
+    if (!groupId || values.url.trim().length === 0) return;
+    setReading(true);
+    setValidationError(null);
+    try {
+      const preview = await api.previewWishUrl(await auth.accessToken(), groupId, values.url.trim());
+      setSource(preview.host);
+      setValues((current) => ({
+        ...current,
+        title: current.title.trim() === '' ? preview.title ?? '' : current.title,
+        imageUrl: current.imageUrl.trim() === '' ? preview.image_url ?? '' : current.imageUrl,
+        url: preview.canonical_url ?? current.url,
+        price:
+          current.price.trim() === '' && preview.price_cents != null
+            ? (preview.price_cents / 100).toFixed(2)
+            : current.price,
+      }));
+    } catch (err) {
+      // A refusal the server could decide from the URL alone is worth showing — the owner typed it
+      // and can fix it. Anything else already came back as an empty preview.
+      setValidationError(err instanceof Error ? err.message : 'That link could not be read.');
+    } finally {
+      setReading(false);
+    }
+  }
 
   return (
     <View style={local.form}>
@@ -337,6 +381,24 @@ function WishForm({
             placeholder="https://…"
           />
         </FieldLabel>
+        {groupId ? (
+          <View style={{ alignSelf: 'flex-start', gap: 6 }}>
+            <Button
+              intent="secondary"
+              size="sm"
+              disabled={reading || busy || values.url.trim().length === 0}
+              onPress={() => void readLink()}
+            >
+              {reading ? 'Reading…' : 'Fill from the link'}
+            </Button>
+            {source ? (
+              // Whose page this came from, said plainly. The fields below are a stranger's words
+              // until the owner edits them, and a preview whose source is invisible is a way to make
+              // them look like Humbugg's.
+              <Text style={styles.tiny}>Filled from {source}. Change anything you like.</Text>
+            ) : null}
+          </View>
+        ) : null}
         <FieldLabel label="Image link" hint="(optional)">
           <Input
             aria-label="Image link"
