@@ -708,7 +708,7 @@ def delete_nodes(ids: list[str]) -> dict:
 def node_owner(node_id: str) -> dict | None:
     """Which entity a node belongs to, derived from its ancestry.
 
-    `{kind, id, slug}` or None. Derived rather than stored, so a move that
+    `{kind, id, name}` or None. Derived rather than stored, so a move that
     changes the owner is visible immediately even though the blob key it was
     stamped with is not rewritten — see the spec's note on key drift and
     `catalog reseat`.

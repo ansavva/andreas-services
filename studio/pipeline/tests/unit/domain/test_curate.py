@@ -22,6 +22,8 @@ model can still produce.
 
 from __future__ import annotations
 
+from studio_pipeline.domain import paths as P
+
 import pytest
 from click.testing import CliRunner
 
@@ -335,7 +337,7 @@ def test_dedupe_compares_served_hashes_rather_than_downloading(library, monkeypa
     library.fake.put_file(library.face_folder, "zz-copy.webp", b"webp-1")
     monkeypatch.setattr(store, "read_node", explode)
 
-    record = E.resolve_character("subject-a")
+    record = E.get_character(P.by_name(E.list_characters(), "subject-a", "character")["id"])
     pairs = curate.duplicate_pairs(curate.images(record, "reference", "face"))
     assert len(pairs) == 1
 
@@ -347,7 +349,7 @@ def test_a_node_written_before_the_checksum_is_still_compared(library, monkeypat
     duplicates" over a pool that is full of them.
     """
     library.fake.put_file(library.face_folder, "zz-copy.webp", b"webp-1")
-    record = E.resolve_character("subject-a")
+    record = E.get_character(P.by_name(E.list_characters(), "subject-a", "character")["id"])
     entries = curate.images(record, "reference", "face")
     for entry in entries:
         entry.pop("checksum", None)

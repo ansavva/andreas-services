@@ -19,6 +19,8 @@ allowed to guess which.
 
 from __future__ import annotations
 
+from studio_pipeline.domain import paths as P
+
 import ast
 import pathlib
 import re
@@ -219,27 +221,35 @@ def test_no_route_string_lives_outside_the_adapters():
 # ── characters ──────────────────────────────────────────────────────────────
 
 def test_creating_a_character_creates_its_starting_layout(library):
-    record = E.create_character("subject-c", display_name="Subject C")
+    record = E.create_character("subject-c")
     children = {c["name"] for c in library.fake._children(record["root"])}
     assert children == {"reference", "corpus", "seed", "archive"}
     assert record["rev"] == 1
 
 
-def test_a_taken_slug_is_a_conflict(library):
-    with pytest.raises(api.Conflict):
-        E.create_character("subject-a")
+def test_a_name_another_character_has_is_not_a_conflict(library):
+    """It was: a slug was claimed by a conditional write. A name is a label."""
+    assert E.create_character("subject-a")["id"] != library.character
 
 
-def test_slug_addressing_is_the_one_place_a_name_is_accepted(library):
-    assert E.resolve_character("subject-a")["id"] == library.character
-    assert E.address("subject-a") == "slug:subject-a"
+def test_every_wrapper_addresses_an_id(library):
+    """**`slug:<slug>` is gone**, and with it the one place a name went on the wire.
+
+    A name is resolved on THIS side now — a listing and a match — because two
+    characters may share one and the API will not choose between them.
+    """
+    found = P.by_name(E.list_characters(), "subject-a", "character")
+
+    assert found["id"] == library.character
+    assert E.get_character(found["id"])["id"] == library.character
 
 
-def test_a_rename_is_one_patch_and_moves_the_root_folder(library):
-    record = E.resolve_character("subject-a")
-    after = E.patch_character(record["id"], record["rev"], slug="subject-z")
-    assert after["slug"] == "subject-z"
-    assert library.fake.nodes[record["root"]]["name"] == "subject-z"
+def test_a_rename_is_one_patch_and_moves_NOTHING_else(library):
+    """The root folder used to move with the name; it is named by the id now."""
+    record = E.get_character(library.character)
+    after = E.patch_character(record["id"], record["rev"], name="subject-z")
+    assert after["name"] == "subject-z"
+    assert library.fake.nodes[record["root"]]["name"] == library.character
     # Every image is still the same node, untouched by the rename — and so
     # are its tags: they are attributes of it, not a second record that had
     # to be re-pointed.
@@ -248,20 +258,20 @@ def test_a_rename_is_one_patch_and_moves_the_root_folder(library):
 
 
 def test_a_stale_rev_is_refused(library):
-    record = E.resolve_character("subject-a")
-    E.patch_character(record["id"], record["rev"], display_name="moved on")
+    record = E.get_character(library.character)
+    E.patch_character(record["id"], record["rev"], name="moved on")
     with pytest.raises(api.Conflict, match="rev"):
-        E.patch_character(record["id"], record["rev"], display_name="stale")
+        E.patch_character(record["id"], record["rev"], name="stale")
 
 
 def test_the_profile_is_a_record_field(library):
-    record = E.resolve_character("subject-a")
+    record = E.get_character(library.character)
     E.put_profile(record["id"], {"identity": {"build": "new"}}, record["rev"])
     assert E.get_character(record["id"])["profile"] == {"identity": {"build": "new"}}
 
 
 def test_patching_the_profile_merges_one_section(library):
-    record = E.resolve_character("subject-a")
+    record = E.get_character(library.character)
     E.patch_profile(record["id"], {"voice": {"accent": "changed"}}, record["rev"])
     profile = E.get_character(record["id"])["profile"]
     assert profile["voice"] == {"accent": "changed"}

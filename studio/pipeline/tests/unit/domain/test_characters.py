@@ -23,6 +23,8 @@ inside a group folder has nothing left to find.
 
 from __future__ import annotations
 
+from studio_pipeline.domain import paths as P
+
 
 import pytest
 import yaml
@@ -47,7 +49,7 @@ def test_creating_a_character_makes_its_layout_in_one_act(library):
     character could exist with no `seed/` — and `add-to <name> seed` was the
     command that found out.
     """
-    result = _run("create", "subject-c", "--display-name", "Subject C")
+    result = _run("create", "subject-c")
     assert result.exit_code == 0, result.output
     record = CHARACTER.resolve("subject-c")
     assert {c["name"] for c in library.fake._children(record["root"])} == {
@@ -56,13 +58,21 @@ def test_creating_a_character_makes_its_layout_in_one_act(library):
         assert f"{pool}/" in result.output
 
 
-def test_a_taken_slug_is_refused(library):
-    result = _run("create", "subject-a")
-    assert result.exit_code == 1
-    assert "already exists" in result.output
+def test_a_name_another_character_has_is_allowed(library):
+    """It was refused: a slug was claimed, so a create could collide.
+
+    A name is a label now. Two characters called `subject-a` are two rows that
+    look alike in a list, and `resolve` refuses the AMBIGUOUS LOOKUP rather than
+    the create — which is the right place for the question, because it is asked
+    by somebody who can answer it.
+    """
+    assert _run("create", "subject-a").exit_code == 0
+
+    with pytest.raises(api.NotFound, match="not unique"):
+        CHARACTER.resolve("subject-a")
 
 
-def test_resolving_a_slug_returns_the_whole_record(library):
+def test_resolving_a_name_returns_the_whole_record(library):
     record = CHARACTER.resolve("subject-a")
     assert record["id"] == library.character
     assert record["root"] == library.character_root
@@ -94,14 +104,14 @@ def test_show_lists_the_folders_the_character_actually_has(library):
 def test_the_bible_reads_as_one_map_with_the_promoted_fields_merged_back(library):
     """`load_profile` is the reader every engine uses, and its shape is pinned.
 
-    `name` and `display_name` were promoted OUT of the document onto the
-    record. `engine/shoot.py` and `domain/prompt.py` read them by those names,
-    so the reader merges them back in rather than making four modules learn
-    where each one lives now.
+    `name` was promoted OUT of the document onto the record — `domain/prompt.py`
+    reads it by that name, so the reader merges it back in rather than making
+    four modules learn where it lives now. There were TWO: the record carried a
+    claimed `slug` beside a `display_name` for prose, and both are one `name`.
     """
     data = CHARACTER.load_profile("subject-a")
     assert data["name"] == "subject-a"
-    assert data["display_name"] == "Subject A"
+    assert "display_name" not in data
     assert data["consistency"]["must"] == ["<…>"]
 
 
@@ -184,6 +194,10 @@ def test_a_rename_is_one_write_and_strands_nothing(library):
     bible's index to match, and a sweep over every run document in every project
     rewriting the paths they had recorded. It is one conditional write, and the
     references, the runs and the default set all still name the same nodes.
+
+    **The root folder does not move either**, which it used to: it was named by
+    the slug, and a rename carried it along so a person browsing the tree saw
+    the new name. Entity roots are named by their id now.
     """
     result = _run("rename", "subject-a", "subject-z")
     assert result.exit_code == 0, result.output
@@ -191,20 +205,27 @@ def test_a_rename_is_one_write_and_strands_nothing(library):
 
     record = CHARACTER.resolve("subject-z")
     assert record["id"] == library.character
-    assert library.fake.nodes[library.character_root]["name"] == "subject-z"
+    assert library.fake.nodes[library.character_root]["name"] == library.character
     assert {e["id"] for e in E.character_images(record["id"])} == {
         library.face_1, library.face_2, library.body_1}
     # And the tags are where they were: a rename touches the record and the root
     # folder's name, and nothing a picture says about itself.
     assert "default" in store.node(library.face_1)["tags"]
     # The run recorded the character by id, so it is still that character's run.
-    assert E.query_runs(character=E.address("subject-z"))["runs"]
+    assert E.query_runs(character=P.by_name(E.list_characters(), "subject-z", "character")["id"])["runs"]
 
 
-def test_renaming_onto_a_taken_slug_is_refused(library):
-    result = _run("rename", "subject-a", "subject-b")
-    assert result.exit_code == 1
-    assert "already exists" in result.output
+def test_renaming_onto_a_name_another_character_has_is_allowed(library):
+    """Refused while the slug was claimed; ordinary now.
+
+    What it costs is that `resolve` can no longer answer for either of them —
+    which is a question asked by a person who can pick, not a write that has to
+    be stopped.
+    """
+    assert _run("rename", "subject-a", "subject-b").exit_code == 0
+
+    with pytest.raises(api.NotFound, match="not unique"):
+        CHARACTER.resolve("subject-b")
 
 
 # ── identity, which is tags ─────────────────────────────────────────────────

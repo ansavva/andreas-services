@@ -6,9 +6,9 @@ storyboards, the plan those runs are made from.
 
 WHAT A SCENE IS NOW
 -------------------
-A **row**, `scene-<uuid>`, addressed by id and labelled by a slug:
+A **row**, `scene-<uuid>`, addressed by id and labelled by a free-text name:
 
-    the row      id, project, slug, title, setting, defaults, status,
+    the row      id, project, name, setting, defaults, status,
                  characters, folder, output, stitch, assembled
     SHOT# rows   one per planned shot — order, prompt, run, panel, and the
                  panels and motion the plan authored
@@ -20,10 +20,10 @@ A **row**, `scene-<uuid>`, addressed by id and labelled by a slug:
 
 **`scene.json` is gone.** It was the plan *and* the record in one document in the
 bucket, which meant nothing could query a scene, `latest` had to be found by
-reading every manifest in the project, and the slug in the folder name was the
+reading every manifest in the project, and the label in the folder name was the
 primary key — so a rename was a tree rewrite. All three go together: a scene is
 listed by `GET /api/scenes?project=`, ordered by `created` on the row, and its
-folder is named by `folder` rather than derived from its slug.
+folder is named by `folder` rather than derived from any label.
 
 **Every image a scene holds is a node id.** Panels, handoff frames, the copied
 shots and the cut itself. A key was invalidated by any rename of the file it
@@ -53,8 +53,8 @@ goes. So the copy is real — two blobs, two independent lifetimes.
 
 RE-CUTTING KEEPS THE ONE BEFORE IT
 ---------------------------------
-Each cut is its own node: the first is `<slug>.mp4` and later ones take a
-suffix, `<slug>-2.mp4` and up. `output` names the newest and `cuts` lists the
+Each cut is its own node: the first is `<name>.mp4` and later ones take a
+suffix, `<name>-2.mp4` and up. `output` names the newest and `cuts` lists the
 rest, newest first.
 
 **This reverses an earlier decision and is worth saying why.** The cut used to
@@ -110,11 +110,11 @@ Two things the old argument got right, kept:
 
 CLI
 ---
-    studio scenes new <project> --slug <slug> --from-json plan.json
-    studio scenes plan <project>/<slug>
-    studio scenes sheet <project>/<slug>            # the board, as one image
-    studio scenes handoff <project>/<slug> --shot N
-    studio scenes assemble <project>/<slug>
+    studio scenes new <project> --name <name> --from-json plan.json
+    studio scenes plan <project>/<name>
+    studio scenes sheet <project>/<name>            # the board, as one image
+    studio scenes handoff <project>/<name> --shot N
+    studio scenes assemble <project>/<name>
     studio scenes list <project>
     studio scenes show <project>/latest
     studio scenes outputs <project>/latest --presign
@@ -133,7 +133,7 @@ from studio_pipeline.adapters import api, entities, store  # noqa: E402
 from studio_pipeline.errors import die  # noqa: E402
 from studio_pipeline import errors  # noqa: E402
 from studio_pipeline.domain import frames as FRAMES  # noqa: E402  — the pool and the grab
-from studio_pipeline.domain import paths as P  # noqa: E402  — the slug rule
+from studio_pipeline.domain import paths as P  # noqa: E402  — the name lookup
 from studio_pipeline.domain import renders as RENDER  # noqa: E402  — the encode lives there now
 from studio_pipeline.domain import projects as PROJECTS  # noqa: E402
 from studio_pipeline.domain import (
@@ -163,7 +163,7 @@ STORYBOARD_FOLDER = "storyboard"
 # ── addressing ──────────────────────────────────────────────────────────────
 
 def resolve_scene(ref: str, default_project: str | None = None) -> dict:
-    """'<project>/<slug>' | '<project>/latest' | '<slug>' | 'scene-<uuid>' -> the RECORD.
+    """'<project>/<name>' | '<project>/latest' | '<name>' | 'scene-<uuid>' -> the RECORD.
 
     Returns the **record**, not a `(project, id)` pair, exactly as
     `runs.resolve_run` does and for the same reason: every caller went straight
@@ -176,7 +176,7 @@ def resolve_scene(ref: str, default_project: str | None = None) -> dict:
 
     **`latest` is now `created` on the row.** It used to read every manifest in
     the project and take the newest, because a lexical sort over folder names
-    put every slug after every timestamp and `latest` would otherwise have
+    put every name after every timestamp and `latest` would otherwise have
     quietly meant "alphabetically last" — the exact caller that would have got
     it wrong being `movies new --scene <project>/latest`. The row carries the
     timestamp, so there is nothing left to re-derive.
@@ -191,34 +191,38 @@ def resolve_scene(ref: str, default_project: str | None = None) -> dict:
         except api.NotFound:
             die(f"no scene {sid}")
     if not project:
-        die(f"cannot resolve scene {ref!r}: no project given (use <project>/<slug>)")
+        die(f"cannot resolve scene {ref!r}: no project given (use <project>/<name>)")
 
     record = PROJECTS.require_project(project)
     found = list_scenes(record)
     if not found:
-        die(f"project {record['slug']} has no scenes")
+        die(f"project {record['name']} has no scenes")
     if sid in ("latest", "last"):
         return with_project(entities.get_scene(found[0]["id"]))
-    # `.get`, not `[...]`: the listing projection did not carry `slug` until the
-    # API started writing it, so every row created before then has none. Reading
+    # `.get`, not `[...]`: the listing projection did not carry a label until the
+    # API started writing one, so every row created before then has none. Reading
     # it as a required key turned "this scene predates the fix" into a traceback
     # on every command that addresses a scene by name.
-    hits = [s for s in found if s.get("slug") == sid]
+    #
+    # **A name is not unique.** It was a slug, and one exact match was the normal
+    # case; a duplicate is ordinary now, so the ambiguity branch below is an
+    # answer rather than a corner nobody reaches.
+    hits = [s for s in found if s.get("name") == sid]
     if not hits:
-        hits = [s for s in found if sid in (s.get("slug") or "")]
+        hits = [s for s in found if sid in (s.get("name") or "")]
     if len(hits) == 1:
         return with_project(entities.get_scene(hits[0]["id"]))
     if not hits:
-        die(f"no scene matching {sid!r} in project {record['slug']}")
-    die(f"{sid!r} is ambiguous in project {record['slug']}: "
-        + ", ".join(f"{s['id']} ({s.get('slug') or '-'})" for s in hits[:5]))
+        die(f"no scene matching {sid!r} in project {record['name']}")
+    die(f"{sid!r} is ambiguous in project {record['name']}: "
+        + ", ".join(f"{s['id']} ({s.get('name') or '-'})" for s in hits[:5]))
 
 
 def with_project(record: dict) -> dict:
-    """A scene record carrying `project_slug` and `label`, for printing.
+    """A scene record carrying `project_name` and `label`, for printing.
 
     **Two display fields, added once, because a record holds ids and a person
-    reads names.** The old manifest carried `scene: "<project>/<slug>"` as a
+    reads names.** The old manifest carried `scene: "<project>/<label>"` as a
     stored string, which is exactly the coupling the entity model removes — it
     went stale the moment either was renamed. These are derived on read instead,
     so they are always current and nothing writes them anywhere.
@@ -227,10 +231,11 @@ def with_project(record: dict) -> dict:
     actually needs to print something. `resolve_scene` does it because every one
     of its callers does.
     """
-    if record.get("project_slug"):
+    if record.get("project_name"):
         return record
-    slug = PROJECTS.resolve(record["project"])["slug"]
-    return {**record, "project_slug": slug, "label": f"{slug}/{record['slug']}"}
+    name = PROJECTS.resolve(record["project"])["name"]
+    return {**record, "project_name": name,
+            "label": f"{name}/{record.get('name') or record['id']}"}
 
 
 def list_scenes(project: dict) -> list[dict]:
@@ -252,7 +257,7 @@ def scene_shots(record: dict) -> list[dict]:
     `order` already decides — storing it would be a second answer to one question
     and would go stale the first time a plan was reordered. `storyboard.normalise`
     sets it while building a plan from JSON, and everything downstream (`--shot 3`,
-    the handoff hint, panel slugs) reads it; a scene read back from the API had
+    the handoff hint, panel labels) reads it; a scene read back from the API had
     never been through `normalise`, so those rows arrived without it and the
     first thing to reach for one raised `KeyError: 'n'`.
     """
@@ -309,8 +314,8 @@ def save_shots(record: dict, shots: list[dict]) -> dict:
 
 # ── starting a scene ────────────────────────────────────────────────────────
 
-def new_scene(project: dict, slug: str, plan_path: str | None,
-              title: str = "", force: bool = False) -> dict:
+def new_scene(project: dict, name: str, plan_path: str | None,
+              force: bool = False) -> dict:
     """Ingest a plan into a scene row and its shot rows. Nothing renders, nothing bills.
 
     Re-ingesting is how a plan is revised, and it must not orphan work already
@@ -318,10 +323,8 @@ def new_scene(project: dict, slug: str, plan_path: str | None,
     which merges by shot id server-side — panels included, since the panel-level
     merge moved there too. Nothing is carried across by hand here any more.
     """
-    SB.check_scene_slug(slug)
+    name = SB.check_scene_name(name)
     plan = SB.load_plan(plan_path) if plan_path else {"shots": []}
-    if title:
-        plan["title"] = title
 
     # **The plan is sent as authored.** Normalising, validating and deriving
     # status are the API's, so a plan editor in the SPA gets the same treatment
@@ -331,7 +334,7 @@ def new_scene(project: dict, slug: str, plan_path: str | None,
     # file they called finished wants to hear about it.
     shots = list(plan.get("shots") or [])
     envelope = {
-        "title": plan.get("title") or slug,
+        "name": name,
         "setting": plan.get("setting") or "",
         "defaults": plan.get("defaults") or {},
         "logline": plan.get("logline") or "",
@@ -341,10 +344,10 @@ def new_scene(project: dict, slug: str, plan_path: str | None,
     if plan_path:
         _warn_unrenderable(shots)
 
-    existing = next((s for s in list_scenes(project) if s.get("slug") == slug), None)
+    existing = next((s for s in list_scenes(project) if s.get("name") == name), None)
     if existing:
         if not force:
-            die(f"{project['slug']}/{slug} already exists "
+            die(f"{project['name']}/{name} already exists "
                 f"({existing.get('status', 'unknown')}).\n"
                 f"       Revising a scene means re-ingesting it: pass --force, and "
                 f"every run, panel and cut it already has is carried across.")
@@ -354,7 +357,7 @@ def new_scene(project: dict, slug: str, plan_path: str | None,
 
     try:
         record = entities.create_scene(
-            project=project["id"], slug=slug, title=envelope["title"],
+            project=project["id"], name=name,
             shots=shots, setting=envelope["setting"], defaults=envelope["defaults"])
     except api.Conflict as exc:
         die(str(exc))
@@ -431,14 +434,14 @@ def assemble(record: dict, refs: tuple[str, ...] = (),
                       "run": run["id"], "node": RENDER.one_video(nodes, ref)})
 
     if not shots:
-        die(f"{record['slug']} has no shots — plan some, or pass --shot <runref>")
+        die(f"{record['name']} has no shots — plan some, or pass --shot <runref>")
 
     unrendered = [s.get("id") or f"shot {s.get('n')}" for s in shots if not s.get("run")]
     if unrendered:
         die(f"{len(unrendered)} shot(s) have not been rendered: {', '.join(unrendered)}\n"
-            f"       studio scenes render {record['slug']} --shot <n>")
+            f"       studio scenes render {record['name']} --shot <n>")
 
-    print(f"scene {record['slug']}  ({record['id']})")
+    print(f"scene {record['name']}  ({record['id']})")
     parts = []
     for n, shot in enumerate(shots, 1):
         # Resolved HERE, not in the worker. A shot that recorded no node has to
@@ -496,13 +499,13 @@ def handoff(record: dict, n: int, from_run: str | None = None) -> dict:
     by_n = {shot.get("n") or i: shot for i, shot in enumerate(shots, 1)}
     shot, previous = by_n.get(n), by_n.get(n - 1)
     if not shot:
-        die(f"{record['slug']} has no shot {n} (it has {sorted(by_n)})")
+        die(f"{record['name']} has no shot {n} (it has {sorted(by_n)})")
     if not previous:
         die(f"shot {n} is the first shot — there is nothing before it to hand off from")
     ref = from_run or previous.get("runref") or previous.get("run")
     if not ref:
         die(f"shot {previous.get('id')} has not been rendered, so it has no last frame\n"
-            f"       studio scenes render {record['slug']} --shot {n - 1}")
+            f"       studio scenes render {record['name']} --shot {n - 1}")
 
     run, video = FRAMES.resolve_video(ref, record["project"])
     project = PROJECTS.resolve(record["project"])
@@ -525,7 +528,7 @@ def handoff(record: dict, n: int, from_run: str | None = None) -> dict:
     print(f"shot {n} ({shot.get('id')}) now opens on the last frame of "
           f"{previous.get('id')}")
     # Served on the scene now — derived from the plan rather than from a
-    # `chains/<slug>.json` kept in step by hand.
+    # `chains/<scene>.json` kept in step by hand.
     print(f"the scene's own frames are now: "
           f"{len(record.get('frames') or [])}", flush=True)
     return record
@@ -564,9 +567,9 @@ def plan_prompts(record: dict) -> list[str]:
 
 def plan_table(record: dict) -> list[str]:
     """The plan as lines you can scan — `show` stays raw JSON for machines."""
-    out = [f"{record['slug']}  ({record['id']})  [{record.get('status', '?')}]"]
-    if record.get("title"):
-        out.append(f"  {record['title']}")
+    out = [f"{record['name']}  ({record['id']})  [{record.get('status', '?')}]"]
+    if record.get("logline"):
+        out.append(f"  {record['logline']}")
     for shot in scene_shots(record):
         roles = SB.panel_roles(shot)
         panels = shot.get("panels") or []
@@ -600,22 +603,21 @@ def main():
               help="the plan: shots, panels and the motion that carries them")
 @click.option("--part", hidden=True, multiple=True)
 @click.option("--shot", hidden=True, multiple=True)
-@click.option("--slug", required=True)
-@click.option("--title", default="")
+@click.option("--name", required=True)
 @errors.reports(SB.PlanError, P.PathError, api.ApiError)
-def do_new(project, force, from_json, part, shot, slug, title):
+def do_new(project, force, from_json, part, shot, name):
     """Start a scene from a plan."""
     # `--shot`/`--part` used to assemble a cut here. They are kept visible to
     # the parser and answered with a redirect, because a silent "unknown
     # option" on a command that still exists reads as a broken install.
     if shot or part:
         die("`scenes new` starts a scene from a plan; it no longer assembles one.\n"
-            f"       studio scenes new {project} --slug {slug}\n"
-            f"       studio scenes assemble {project}/{slug} "
+            f"       studio scenes new {project} --name {name}\n"
+            f"       studio scenes assemble {project}/{name} "
             + " ".join(f"--shot {r}" for r in (*shot, *part)))
-    record = new_scene(PROJECTS.require_project(project), slug, from_json, title, force)
+    record = new_scene(PROJECTS.require_project(project), name, from_json, force)
     print("\n".join(plan_table(record)))
-    print(f"\nnext: studio scenes check {project}/{record['slug']}")
+    print(f"\nnext: studio scenes check {project}/{record['name']}")
 
 
 @main.command("assemble")
@@ -624,12 +626,12 @@ def do_new(project, force, from_json, part, shot, slug, title):
 @click.option("--project")
 @click.option("--shot", multiple=True,
               help=("a run output to append, in cut order. Repeatable. Accepts "
-                    "<project>/<slug>, a run id, a unique slug fragment, or #N."))
+                    "<project>/<name>, a run id, a unique name fragment, or #N."))
 @errors.reports(R.RunError, api.ApiError, RENDER.RenderError)
 def do_assemble(ref, dest, project, shot):
     """Cut a scene's rendered shots into one continuous take."""
     record = assemble(resolve_scene(ref, project), shot, dest)
-    print(json.dumps({"scene": record["id"], "slug": record["slug"],
+    print(json.dumps({"scene": record["id"], "name": record.get("name"),
                       "output": record.get("output"),
                       "stitch": record.get("stitch")}, indent=2))
 
@@ -677,7 +679,7 @@ def do_sheet(ref, cols, cell, out, project):
     record = resolve_scene(ref, project)
     captions = SB.sheet_captions(record)
     if not captions:
-        die(f"{record['slug']} has no panels yet — studio scenes board "
+        die(f"{record['name']} has no panels yet — studio scenes board "
             f"{record['id']}")
 
     # **Captions are given, so the order is authoritative.** A board's tiles read
@@ -706,7 +708,7 @@ def do_list(project):
     if not found:
         print(f"project {project} has no scenes")
     for scene in found:
-        print(f"{scene['id']}  {(scene.get('slug') or '-'):<24} "
+        print(f"{scene['id']}  {(scene.get('name') or '-'):<24} "
               f"{scene.get('status', '?'):<10} "
               f"{(scene.get('created') or '')[:16]}")
 

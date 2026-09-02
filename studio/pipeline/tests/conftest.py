@@ -349,7 +349,7 @@ def library(fake_api):
 
     lib = Library(fake_api)
 
-    subject_a = E.create_character("subject-a", display_name="Subject A",
+    subject_a = E.create_character("subject-a",
                                    profile=copy.deepcopy(PROFILE))
     lib.character = subject_a["id"]
     root = subject_a["root"]
@@ -376,7 +376,7 @@ def library(fake_api):
 
     # A second character, so "the wrong one" is a real possibility in any test
     # about selection, linking or listing.
-    subject_b = E.create_character("subject-b", display_name="Subject B",
+    subject_b = E.create_character("subject-b",
                                    profile=copy.deepcopy(PROFILE))
     lib.character_b = subject_b["id"]
     b_face = fake_api._create_node(
@@ -384,7 +384,7 @@ def library(fake_api):
     lib.b_face_1 = fake_api.put_file(b_face["id"], "front.jpeg", b"jpeg-b")["id"]
     S.describe_node(lib.b_face_1, description="front", tags=["default", "face"])
 
-    project = E.create_project("porch-teaser", title="Porch teaser",
+    project = E.create_project("porch-teaser",
                                characters=[lib.character])
     lib.project = project["id"]
     lib.project_root = project["root"]

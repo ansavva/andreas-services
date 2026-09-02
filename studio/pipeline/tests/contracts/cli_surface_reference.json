@@ -129,21 +129,6 @@
         },
         "commands": {},
         "options": {
-          "display_name": {
-            "choices": null,
-            "default": null,
-            "dest": "display_name",
-            "flag": false,
-            "flags": [
-              "--display-name"
-            ],
-            "help": "How the character is written in prose.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
           "dry_run": {
             "choices": null,
             "default": false,
@@ -494,7 +479,7 @@
             "flags": [
               "--group"
             ],
-            "help": "",
+            "help": "A subfolder of the pool (e.g. seed/current, reference/face).",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -539,7 +524,7 @@
             "flags": [
               "--unreferenced"
             ],
-            "help": "",
+            "help": "Only files no REF# row names — what is sitting in a folder without being identity.",
             "hidden": false,
             "multiple": false,
             "nargs": 0,
@@ -2074,6 +2059,21 @@
             "required": false,
             "type": "str"
           },
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "flags": [
+              "--name"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
           "scene": {
             "choices": null,
             "default": null,
@@ -2082,24 +2082,9 @@
             "flags": [
               "--scene"
             ],
-            "help": "a scene, in cut order. Repeatable. Accepts <project>/<slug>, a scene id, latest, or a unique fragment.",
+            "help": "a scene, in cut order. Repeatable. Accepts <project>/<name>, a scene id, latest, or a unique fragment.",
             "hidden": false,
             "multiple": true,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          },
-          "slug": {
-            "choices": null,
-            "default": null,
-            "dest": "slug",
-            "flag": false,
-            "flags": [
-              "--slug"
-            ],
-            "help": "",
-            "hidden": false,
-            "multiple": false,
             "nargs": 1,
             "required": true,
             "type": "str"
@@ -2798,21 +2783,6 @@
             "flag": false,
             "flags": [
               "--description"
-            ],
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "title": {
-            "choices": null,
-            "default": "",
-            "dest": "title",
-            "flag": false,
-            "flags": [
-              "--title"
             ],
             "help": "",
             "hidden": false,
@@ -4344,7 +4314,7 @@
             "flags": [
               "--shot"
             ],
-            "help": "a run output to append, in cut order. Repeatable. Accepts <project>/<slug>, a run id, a unique slug fragment, or #N.",
+            "help": "a run output to append, in cut order. Repeatable. Accepts <project>/<name>, a run id, a unique name fragment, or #N.",
             "hidden": false,
             "multiple": true,
             "nargs": 1,
@@ -4764,6 +4734,21 @@
             "required": false,
             "type": "str"
           },
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "flags": [
+              "--name"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
           "part": {
             "choices": null,
             "default": null,
@@ -4790,36 +4775,6 @@
             "help": "",
             "hidden": true,
             "multiple": true,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "slug": {
-            "choices": null,
-            "default": null,
-            "dest": "slug",
-            "flag": false,
-            "flags": [
-              "--slug"
-            ],
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          },
-          "title": {
-            "choices": null,
-            "default": "",
-            "dest": "title",
-            "flag": false,
-            "flags": [
-              "--title"
-            ],
-            "help": "",
-            "hidden": false,
-            "multiple": false,
             "nargs": 1,
             "required": false,
             "type": "str"

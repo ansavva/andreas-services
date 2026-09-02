@@ -14,17 +14,18 @@ layer up: the pipeline held seventy-one boto3 calls before that module existed,
 and the migration was only reviewable because the vocabulary stayed put while
 the thing underneath it moved.
 
-## Ids, and the one place a slug is still allowed
+## Ids, and nothing but ids
 
-Every route below takes an **id**. `slug:<slug>` addressing exists for exactly
-one reason — a person types a name on a command line — and it is confined to
-`GET /api/characters/<id>` and `GET /api/projects/<id>`. Build one with
-`address()`; do not concatenate it by hand, because the prefix is the API's
-convention and not a string this package owns.
+Every route below takes an **id**. There used to be a second address,
+`slug:<slug>`, for exactly one reason — a person types a name on a command
+line — confined to `GET /api/characters/<id>` and `GET /api/projects/<id>`, with
+`address()` to build it and `resolve_*` to turn one into a record in a single
+call.
 
-Resolving a slug is therefore one call, not a listing plus a search. `resolve_*`
-returns the record, so a caller that resolved a slug already has everything and
-does not go back for it.
+**It went with slugs.** A name is a free-text label now: two characters may be
+called the same thing, so resolving one would mean picking between them, which
+is not something an address may do. `list_characters` is how a person finds an
+id; every wrapper here takes one.
 
 ## What is deliberately not here
 
@@ -63,7 +64,7 @@ now. If the API adopts PUT, this file changes with it and nothing else does.
 
 ## Errors
 
-Untouched. `api.Conflict` is a taken slug or a stale `rev`, `api.NotFound` is a
+Untouched. `api.Conflict` is a stale `rev`, `api.NotFound` is a
 missing entity, and both are what a caller catches. Nothing here converts an
 HTTP failure into a domain one — the domain modules own their own vocabulary
 and would each convert it differently.
@@ -74,15 +75,6 @@ from __future__ import annotations
 import uuid
 
 from studio_pipeline.adapters import api
-
-
-def address(slug: str) -> str:
-    """`slug:<slug>` — the one id-shaped thing that is not an id.
-
-    The prefix is the API's, so it is spelled once. A caller that has an id
-    passes the id; a caller that has what a person typed passes this.
-    """
-    return f"slug:{slug}"
 
 
 def _clean(**fields) -> dict:
@@ -100,46 +92,39 @@ def _clean(**fields) -> dict:
 # ── characters ──────────────────────────────────────────────────────────────
 
 def list_characters(query: str | None = None) -> list[dict]:
-    """Every character in the library: id, slug, display name, hero, counts."""
+    """Every character in the library: id, name, hero, counts."""
     found = api.get("/api/characters", q=query)
     return found if isinstance(found, list) else []
 
 
-def create_character(slug: str, display_name: str = "",
-                     profile: dict | None = None) -> dict:
+def create_character(name: str, profile: dict | None = None) -> dict:
     """Create a character and its starting folder layout in one transaction.
 
     The four pool folders come back already made — they are part of the create,
-    not something the first write lazily discovers. `api.Conflict` means the
-    slug is taken.
+    not something the first write lazily discovers. **There is no conflict to
+    raise**: a name is a label, so two characters may share one.
     """
-    body = {"slug": slug, "display_name": display_name}
+    body = {"name": name}
     if profile is not None:
         body["profile"] = profile
     return api.post("/api/characters", body)
 
 
-def get_character(char: str) -> dict:
-    """One character's full record, `profile` included. `char` may be `slug:…`."""
-    return api.get(f"/api/characters/{char}")
+def get_character(char_id: str) -> dict:
+    """One character's full record, `profile` included."""
+    return api.get(f"/api/characters/{char_id}")
 
 
-def resolve_character(slug: str) -> dict:
-    """The record for a slug a person typed. One call, not a listing plus a scan."""
-    return get_character(address(slug))
-
-
-def patch_character(char_id: str, rev: int, *, slug: str | None = None,
-                    display_name: str | None = None,
+def patch_character(char_id: str, rev: int, *, name: str | None = None,
                     hero: str | None = None) -> dict:
     """Change the record. **This is what a rename is** — one conditional write.
 
     `rev` is compare-and-swap, not check-then-write: a stale value is refused by
     the API's condition expression rather than by a read this side of the wire.
-    `api.Conflict` is both "someone else wrote" and "that slug is taken", and
-    the message distinguishes them.
+    `api.Conflict` means somebody else wrote — it used to mean "that slug is
+    taken" as well, and there is no claim left to take.
     """
-    body = _clean(slug=slug, display_name=display_name, hero=hero)
+    body = _clean(name=name, hero=hero)
     body["rev"] = rev
     return api.patch(f"/api/characters/{char_id}", body)
 
@@ -231,28 +216,24 @@ def list_projects() -> list[dict]:
     return _as_list(api.get("/api/projects"))
 
 
-def create_project(slug: str, *, title: str = "", description: str = "",
+def create_project(name: str, *, description: str = "",
                    characters: list[str] | None = None) -> dict:
     """Create a project, its root and its five starting subfolders."""
-    body = {"slug": slug, "title": title, "description": description}
+    body = {"name": name, "description": description}
     if characters:
         body["characters"] = list(characters)
     return api.post("/api/projects", body)
 
 
 def get_project(project: str) -> dict:
-    """One project's record. `project` may be `slug:…`."""
+    """One project's record, by id."""
     return api.get(f"/api/projects/{project}")
 
 
-def resolve_project(slug: str) -> dict:
-    return get_project(address(slug))
-
-
-def patch_project(proj_id: str, rev: int, *, slug: str | None = None,
-                  title: str | None = None, description: str | None = None,
+def patch_project(proj_id: str, rev: int, *, name: str | None = None,
+                  description: str | None = None,
                   hero: str | None = None) -> dict:
-    body = _clean(slug=slug, title=title, description=description, hero=hero)
+    body = _clean(name=name, description=description, hero=hero)
     body["rev"] = rev
     return api.patch(f"/api/projects/{proj_id}", body)
 
@@ -487,10 +468,10 @@ def delete_run(run_id: str, *, files: str = "keep") -> dict:
 
 # ── scenes ──────────────────────────────────────────────────────────────────
 
-def create_scene(*, project: str, slug: str, title: str = "",
+def create_scene(*, project: str, name: str,
                  shots: list[dict] | None = None, setting: str = "",
                  defaults: dict | None = None) -> dict:
-    body = {"project": project, "slug": slug, "title": title,
+    body = {"project": project, "name": name,
             "shots": shots or [], "setting": setting}
     body.update(_clean(defaults=defaults))
     return api.post("/api/scenes", body)
@@ -506,7 +487,7 @@ def get_scene(scene_id: str) -> dict:
 
 
 def patch_scene(scene_id: str, **fields) -> dict:
-    """Whatever moved: `title`, `setting`, `status`, `output`, `stitch`, `characters`."""
+    """Whatever moved: `name`, `setting`, `status`, `output`, `stitch`, `characters`."""
     return api.patch(f"/api/scenes/{scene_id}", _clean(**fields))
 
 
@@ -530,10 +511,10 @@ def patch_shot(scene_id: str, shot_id: str, **fields) -> dict:
 
 # ── movies ──────────────────────────────────────────────────────────────────
 
-def create_movie(*, project: str, slug: str, title: str = "",
+def create_movie(*, project: str, name: str,
                  scenes: list[str] | None = None) -> dict:
-    return api.post("/api/movies", {"project": project, "slug": slug,
-                                    "title": title, "scenes": list(scenes or [])})
+    return api.post("/api/movies", {"project": project, "name": name,
+                                    "scenes": list(scenes or [])})
 
 
 def query_movies(*, project: str | None = None, cursor: str | None = None) -> dict:

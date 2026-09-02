@@ -5,7 +5,7 @@ The fourth pool, `reference/`, is not here: what makes an image a reference is a
 ordinary files, and that is the whole of what they are.
 
 **They stopped being addressed by name path.** `pool_folder` returned
-`characters/<slug>/corpus` and every command here composed keys under it, so a
+`characters/<name>/corpus` and every command here composed keys under it, so a
 rename moved four folders' worth of objects. It returns a **node** now, resolved
 under the record's `root` and created if it is not there — so these commands
 work on a character whose `archive/` somebody deleted, and keep working on one
@@ -60,7 +60,7 @@ def cmd_add_to_pool(name, pool, files):
     for local in files:
         node = upload_file(folder["id"], local)
         print(f"  {node['id']}  {node['name']}", file=sys.stderr)
-    print(f"added {len(files)} file(s) to {record['slug']}/{pool}/", file=sys.stderr)
+    print(f"added {len(files)} file(s) to {record['name']}/{pool}/", file=sys.stderr)
 
 
 @click.command("pool")
@@ -103,7 +103,7 @@ def cmd_pool(name, pool, group, json_, presign, unreferenced):
     where = f"{pool}/{group}" if group else f"{pool}/"
     if not entries:
         which = "unreferenced files" if unreferenced else "nothing"
-        print(f"({record['slug']} has {which} in {where})", file=sys.stderr)
+        print(f"({record['name']} has {which} in {where})", file=sys.stderr)
         return
     if presign:
         urls = [store.presign_node(entry["id"]) for entry in entries]

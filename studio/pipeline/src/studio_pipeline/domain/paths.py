@@ -93,18 +93,32 @@ class PathError(Exception):
     pass
 
 
-def check_slug(s: str, what: str = "name") -> str:
-    """Characters, projects and scenes share one slug rule.
+def by_name(records: list[dict], wanted: str, what: str) -> dict:
+    """One record out of a listing, matched on its `name`. **Client-side.**
 
-    **It is a legibility rule now, not a filesystem one.** A slug used to become
-    a path segment, so the character set was about what S3 and a shell would
-    tolerate. A slug is an attribute on a row today and could be anything; the
-    rule is kept because a name that a person types, greps and pastes into a
-    command still wants to be lowercase, unambiguous and free of spaces.
+    There was a `check_slug` here, and a `slug:<slug>` address on the API to go
+    with it: a slug was library-unique, so a name resolved to exactly one row
+    server-side in two reads. Both are gone. A name is a free-text label now, so
+    resolving one is a listing plus a match, and it can find more than one.
+
+    **Ambiguity is refused with the ids listed**, never guessed. Picking the
+    first would make which record a command touched depend on sort order, which
+    is the kind of thing nobody notices until it has written to the wrong one.
+
+    It lives on the client because it is a convenience for a person typing, not
+    an address: every wire call this package makes still passes an id.
     """
-    if not s or not NAME_RE.match(s):
-        raise PathError(f"invalid {what} {s!r}; use lowercase [a-z0-9_-] starting alphanumeric")
-    return s
+    wanted_folded = " ".join((wanted or "").split()).lower()
+    found = [record for record in records
+             if " ".join((record.get("name") or "").split()).lower() == wanted_folded]
+    if not found:
+        raise PathError(f"no {what} called {wanted!r}")
+    if len(found) > 1:
+        listed = "\n".join(f"         {record['id']}" for record in found)
+        raise PathError(
+            f"{len(found)} {what}s are called {wanted!r} — names are not unique.\n"
+            f"       pass one of these ids instead:\n{listed}")
+    return found[0]
 
 
 def join(*parts: str) -> str:

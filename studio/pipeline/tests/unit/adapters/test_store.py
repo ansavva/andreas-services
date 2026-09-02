@@ -466,7 +466,7 @@ def test_a_nodes_owner_is_derived_from_its_ancestry(library):
     `catalog reseat` exists to clean up out of band.
     """
     assert store.node_owner(library.face_1) == {
-        "kind": "character", "id": library.character, "slug": "subject-a"}
+        "kind": "character", "id": library.character, "name": "subject-a"}
     assert store.node_owner(library.run_output)["kind"] == "project"
 
 

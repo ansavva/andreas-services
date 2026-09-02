@@ -93,7 +93,7 @@ def test_latest_reads_created_off_the_row(library, scene, tmp_path):
     project = PROJECTS.resolve("porch-teaser")
     newer = SC.new_scene(project, "aaa-later", _plan(tmp_path))
     assert SC.resolve_scene("porch-teaser/latest")["id"] == newer["id"]
-    assert newer["slug"] < scene["slug"], "and it sorts FIRST alphabetically"
+    assert newer["name"] < scene["name"], "and it sorts FIRST alphabetically"
 
 
 def test_a_scene_that_is_not_there_is_a_clean_refusal(library):
@@ -153,12 +153,12 @@ def test_a_slug_shaped_like_a_run_id_is_accepted_now(library, tmp_path):
     project = PROJECTS.resolve("porch-teaser")
     record = SC.new_scene(project, "2026-08-16_07-40-22_the-encounter",
                           _plan(tmp_path))
-    assert SC.resolve_scene(record["id"])["slug"] == \
+    assert SC.resolve_scene(record["id"])["name"] == \
         "2026-08-16_07-40-22_the-encounter"
 
 
 def test_new_refuses_to_overwrite_and_says_how_to_revise(library, scene, tmp_path):
-    result = _run("new", "porch-teaser", "--slug", "the-encounter",
+    result = _run("new", "porch-teaser", "--name", "the-encounter",
                   "--from-json", _plan(tmp_path))
     assert result.exit_code == 1
     assert "--force" in result.output
@@ -184,7 +184,7 @@ def test_revising_carries_recorded_work_across(library, scene, tmp_path):
         {"id": "shot-02", "beat": "two", "panels": [{"prompt": "b"}],
          "motion": {"prompt": "m2"}},
     ])
-    result = _run("new", "porch-teaser", "--slug", "the-encounter",
+    result = _run("new", "porch-teaser", "--name", "the-encounter",
                   "--from-json", revised, "--force")
     assert result.exit_code == 0, result.output
 
@@ -198,7 +198,7 @@ def test_revising_carries_recorded_work_across(library, scene, tmp_path):
 def test_new_redirects_the_old_assembling_spelling(library):
     """`--shot` used to assemble here. A silent "unknown option" on a command
     that still exists reads as a broken install, so it is answered."""
-    result = _run("new", "porch-teaser", "--slug", "x", "--shot", "some/run")
+    result = _run("new", "porch-teaser", "--name", "x", "--shot", "some/run")
     assert result.exit_code == 1
     assert "scenes assemble" in result.output
 

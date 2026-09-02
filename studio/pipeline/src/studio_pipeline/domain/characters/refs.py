@@ -64,7 +64,7 @@ REFERENCE_POOL = "reference"
 
 
 def _record(character) -> dict:
-    """A record, an id or a slug -> the record. Callers pass whichever they hold."""
+    """A record, an id or a name -> the record. Callers pass whichever they hold."""
     return character if isinstance(character, dict) else resolve(character)
 
 
@@ -120,7 +120,7 @@ def cmd_images(name, json_, tags):
         print(json.dumps(found, indent=2))
         return
     if not found:
-        print(f"{record['slug']} has no images"
+        print(f"{record['name']} has no images"
               + (f" tagged {tags}" if tags else ""), file=sys.stderr)
         return
     for entry in found:
@@ -163,7 +163,7 @@ def cmd_selection(name, dest, json_, limit, pick, presign, slots, tags):
     except api.NotFound as exc:
         die(str(exc))
     if not chosen:
-        die(f"no images resolved for {record['slug']}")
+        die(f"no images resolved for {record['name']}")
 
     if dest:
         os.makedirs(dest, exist_ok=True)
@@ -179,7 +179,7 @@ def cmd_selection(name, dest, json_, limit, pick, presign, slots, tags):
     if presign:
         urls = [store.presign_node(entry["node"]) for entry in chosen]
         print(json.dumps(urls, indent=2) if json_ else "\n".join(urls))
-        print(f"presigned {len(urls)} image(s) for {record['slug']}. "
+        print(f"presigned {len(urls)} image(s) for {record['name']}. "
               "Slot N is position N in THIS list; cite as [Image1]…", file=sys.stderr)
         return
     if json_:

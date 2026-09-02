@@ -29,7 +29,7 @@ from studio_pipeline.engine import submit as SUB
 
 @pytest.fixture
 def a_project(library):
-    return entities.create_project("dupes", title="Dupes")
+    return entities.create_project("dupes")
 
 
 def _draft(project, *, prompt="a wave", model="openai/gpt-image-2") -> dict:
@@ -104,7 +104,7 @@ def test_the_same_payload_in_another_project_is_not_a_duplicate(a_project, libra
     Rendering the same prompt into a second project is a deliberate act, and
     refusing it would make the guard wrong far more often than it is right.
     """
-    other = entities.create_project("elsewhere", title="Elsewhere")
+    other = entities.create_project("elsewhere")
     first = _draft(a_project)
     entities.approve_run(first["id"], first["plan_digest"])
     entities.patch_run(first["id"], status="succeeded")

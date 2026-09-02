@@ -1,6 +1,6 @@
 """`studio projects` — a PROJECT is the unit of production, and this manages them.
 
-A project is a row with a UUID and a slug, and a folder node hanging off it:
+A project is a row with a UUID and a free-text name, and a folder node hanging off it:
 
     <project>/            ← the folder the record names as `root`
         runs/  scenes/  movies/  chains/  input/
@@ -63,16 +63,18 @@ IMG_EXTS = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".bmp"}
 # ── the record ──────────────────────────────────────────────────────────────
 
 def resolve(project: str) -> dict:
-    """A slug or an id -> the project record. One call.
+    """An id, or a name matched client-side -> the project record.
 
-    Slug resolution is `GET /api/projects/slug:<slug>` — two reads server-side
-    against a claim row, where it used to be a folder listing plus a document
-    fetch. The caller gets the whole record, so nothing goes back for it.
+    **An id is one call; a name is two.** A slug was library-unique, so
+    `GET /api/projects/slug:<slug>` resolved one server-side against a claim row.
+    A name is a free-text label: two projects may share one, so the API will not
+    resolve it and this lists and matches instead — refusing an ambiguous name
+    with the ids rather than picking one.
     """
     if project and project.startswith("proj-"):
         return entities.get_project(project)
-    P.check_slug(project, "project name")
-    return entities.get_project(entities.address(project))
+    found = P.by_name(entities.list_projects(), project, "project")
+    return entities.get_project(found["id"])
 
 
 def require_project(project: str | None) -> dict:
@@ -82,7 +84,7 @@ def require_project(project: str | None) -> dict:
     set of real options, not the name of the flag that was left out.
     """
     if not project:
-        have = [p["slug"] for p in entities.list_projects()]
+        have = [p["name"] for p in entities.list_projects()]
         die("no project given. Every generating command needs --project.\n"
             f"       existing projects: {', '.join(have) or '(none yet)'}\n"
             "       create one with: studio projects new <project>")
@@ -91,7 +93,10 @@ def require_project(project: str | None) -> dict:
     except api.NotFound:
         die(f"no project {project!r} (see `studio projects list`)")
     except P.PathError as exc:
-        die(str(exc))
+        # `by_name` says both "no such name" and "that name is ambiguous, here
+        # are the ids" — the second is the one that needs its own words, so the
+        # message is passed through rather than replaced.
+        die(f"{exc}\n       see `studio projects list`")
 
 
 # ── the input pool ──────────────────────────────────────────────────────────
@@ -113,7 +118,7 @@ def input_nodes(record: dict, numbers: list[int]) -> list[str]:
                    for n, entry in enumerate(pool, 1)}
     missing = [n for n in numbers if n not in by_position]
     if missing:
-        raise KeyError(f"not in project {record['slug']}'s input pool: {missing} "
+        raise KeyError(f"not in project {record['name']}'s input pool: {missing} "
                        f"(it holds {len(pool)})")
     return [by_position[n] for n in numbers]
 
@@ -159,10 +164,13 @@ def main():
 def _character_ids(names) -> list[str]:
     ids = []
     for name in names:
+        if name.startswith("char-"):
+            ids.append(name)
+            continue
         try:
-            ids.append(entities.resolve_character(name)["id"])
-        except api.NotFound:
-            die(f"no character {name!r} (see `studio character list`)")
+            ids.append(P.by_name(entities.list_characters(), name, "character")["id"])
+        except P.PathError as exc:
+            die(f"{exc} (see `studio character list`)")
     return ids
 
 
@@ -174,7 +182,7 @@ def do_list(json_):
     **No characters column, because the route does not send one.** It printed
     one for as long as it has existed and the value was always `—`: the CLI read
     `character_slugs`, a field nothing has ever returned. `GET /api/projects` is
-    deliberately a summary — id, slug, title, hero, counts, updated — and adding
+    deliberately a summary — id, name, hero, counts, updated — and adding
     involvement to it would be a `links()` read per project, an N+1 on the one
     call that exists to avoid one. `studio projects show <project>` has it.
     """
@@ -184,7 +192,7 @@ def do_list(json_):
     elif found:
         for record in found:
             counts = record.get("counts") or {}
-            print(f"{record['slug']:<20} {record.get('title', ''):<24} "
+            print(f"{record['name']:<28} "
                   f"runs {counts.get('runs', 0)}  scenes {counts.get('scenes', 0)}  "
                   f"movies {counts.get('movies', 0)}")
     else:
@@ -197,24 +205,18 @@ def do_list(json_):
 @click.option("--character", "characters", multiple=True,
               help="A character this project involves. Repeatable.")
 @click.option("--description", default='')
-@click.option("--title", default='')
-def do_new(project, characters, description, title):
-    """Create a project: the record, its slug claim, its root and five subfolders.
+def do_new(project, characters, description):
+    """Create a project: the record, its index row, its root and five subfolders.
 
     All of it in one transaction — either the project exists completely or it
     does not exist at all. The subfolders used to appear lazily, on whatever
     write happened to need one first, so a project could exist with no `runs/`.
+
+    **No conflict to catch.** The name was a claimed slug; it is a label now.
     """
-    try:
-        P.check_slug(project, "project name")
-        record = entities.create_project(
-            project, title=title, description=description,
-            characters=_character_ids(characters))
-    except P.PathError as exc:
-        die(str(exc))
-    except api.Conflict:
-        die(f"project {project!r} already exists")
-    print(f"created project {record['slug']}  ({record['id']})")
+    record = entities.create_project(
+        project, description=description, characters=_character_ids(characters))
+    print(f"created project {record['name']}  ({record['id']})")
     print("  " + "  ".join(f"{d}/" for d in P.PROJECT_DIRS))
 
 
@@ -229,11 +231,10 @@ def do_show(project, json_):
     if json_:
         print(json.dumps({**record, "counts": counts}, indent=2))
         return
-    print(f"{record['slug']}  ({record['id']})  rev {record.get('rev')}")
-    print(f"  title       {record.get('title') or '—'}")
-    # `characters` is a list of `{id, slug, display_name}` — the slug is what a
-    # person types, so it is the slug that is printed.
-    linked = ", ".join(c["slug"] for c in record.get("characters") or []) or "—"
+    print(f"{record['name']}  ({record['id']})  rev {record.get('rev')}")
+    print(f"  description {record.get('description') or '—'}")
+    # `characters` is a list of `{id, name}`.
+    linked = ", ".join(c["name"] for c in record.get("characters") or []) or "—"
     print(f"  characters  {linked}")
     print(f"  runs {counts.get('runs', 0)} · scenes {counts.get('scenes', 0)} · "
           f"movies {counts.get('movies', 0)}")
@@ -244,29 +245,27 @@ def do_show(project, json_):
 @click.argument("project", required=True)
 @click.argument("new", required=True)
 def do_rename(project, new):
-    """Give a project a new slug. **New, and trivial — it was impossible before.**
+    """Give a project a new name. **New, and trivial — it was impossible before.**
 
-    One `PATCH`: the old claim goes, the new one is written under
-    `attribute_not_exists`, the record updates and the root folder is renamed,
-    atomically. No object is copied and no record anywhere is rewritten, because
-    every run, scene and movie names the project by **id**.
+    One `PATCH` of one field. It was briefly four writes — the old slug claim
+    dropped, the new one taken under `attribute_not_exists`, the record updated
+    and the root folder renamed — and before that it was impossible, because the
+    name was the primary key. No object is copied and no record anywhere is
+    rewritten, because every run, scene and movie names the project by **id**.
     """
     record = require_project(project)
     try:
-        P.check_slug(new, "project name")
-        after = entities.patch_project(record["id"], record["rev"], slug=new)
-    except P.PathError as exc:
-        die(str(exc))
+        after = entities.patch_project(record["id"], record["rev"], name=new)
     except api.Conflict as exc:
         die(str(exc))
-    print(f"renamed {record['slug']} → {after['slug']}")
+    print(f"renamed {record['name']} → {after['name']}")
     print("  0 objects copied · 0 records rewritten")
 
 
 def _linked_ids(record: dict) -> list[str]:
     """The ids of the characters a project involves.
 
-    `GET /api/projects/<id>` resolves involvement to `{id, slug, display_name}`
+    `GET /api/projects/<id>` resolves involvement to `{id, name}`
     objects, while `PUT …/characters` replaces the set by **id** — so the two
     ends of a link/unlink speak different languages and this is the translation.
     Reading the field as ids, which is what this did, made `unlink` answer "not
@@ -290,10 +289,10 @@ def do_link(project, character):
     char = _character_ids([character])[0]
     current = _linked_ids(record)
     if char in current:
-        print(f"{character} is already linked to {record['slug']}", file=sys.stderr)
+        print(f"{character} is already linked to {record['name']}", file=sys.stderr)
         return
     entities.put_project_characters(record["id"], current + [char])
-    print(f"linked {character} → {record['slug']}")
+    print(f"linked {character} → {record['name']}")
 
 
 @main.command("unlink")
@@ -305,10 +304,10 @@ def do_unlink(project, character):
     char = _character_ids([character])[0]
     current = _linked_ids(record)
     if char not in current:
-        die(f"{character} is not linked to {record['slug']}")
+        die(f"{character} is not linked to {record['name']}")
     entities.put_project_characters(record["id"],
                                     [c for c in current if c != char])
-    print(f"unlinked {character} from {record['slug']}")
+    print(f"unlinked {character} from {record['name']}")
 
 
 @main.command("delete")
@@ -341,7 +340,7 @@ def do_delete(project, files, cascade, force):
         die(f"{exc}\n       pass --cascade to delete them with it")
     removed = (result or {}).get("removed") or {}
     detail = ", ".join(f"{n} {k}(s)" for k, n in sorted(removed.items()))
-    print(f"deleted project {record['slug']} (files: {files})"
+    print(f"deleted project {record['name']} (files: {files})"
           + (f" and {detail}" if detail else ""))
 
 
@@ -376,7 +375,7 @@ def do_inputs(project, json_, presign):
     record = require_project(project)
     pool = input_pool(record)
     if not pool:
-        print(f"(project {record['slug']} has no input pool yet)", file=sys.stderr)
+        print(f"(project {record['name']} has no input pool yet)", file=sys.stderr)
         return
     if presign:
         urls = [store.presign_node(entry["id"]) for entry in pool]

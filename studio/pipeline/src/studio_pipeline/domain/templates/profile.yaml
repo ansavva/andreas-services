@@ -10,8 +10,7 @@
 
 schema_version: 1
 
-name: <name>                    # the S3 folder / slug, lowercase [a-z0-9_-]
-display_name: <Name>            # how the character is written in prose
+name: <name>                    # what the character is called; free text
 
 # --- the card: short phrases, one line each -----------------------------------
 identity:

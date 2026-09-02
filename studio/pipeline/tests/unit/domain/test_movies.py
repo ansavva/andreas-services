@@ -73,7 +73,7 @@ def _clip(tmp_path, slug):
 def test_a_movie_resolves_by_id_by_slug_and_by_fragment(library):
     """Three spellings, one record. The id needs no project at all — a movie
     names its scenes by id, so nothing has to remember which project it is in."""
-    record = E.create_movie(project=library.project, slug="the-cut")
+    record = E.create_movie(project=library.project, name="the-cut")
 
     assert MV.resolve_movie(record["id"])["id"] == record["id"]
     assert MV.resolve_movie("porch-teaser/the-cut")["id"] == record["id"]
@@ -84,8 +84,8 @@ def test_a_movie_resolves_by_id_by_slug_and_by_fragment(library):
 def test_latest_reads_created_off_the_row(library):
     """It used to be `ids[-1]` over folder names, which was only chronological
     because every id happened to start with a timestamp."""
-    E.create_movie(project=library.project, slug="first")
-    second = E.create_movie(project=library.project, slug="second")
+    E.create_movie(project=library.project, name="first")
+    second = E.create_movie(project=library.project, name="second")
 
     assert MV.resolve_movie("porch-teaser/latest")["id"] == second["id"]
     assert MV.resolve_movie("porch-teaser/last")["id"] == second["id"]
@@ -100,8 +100,8 @@ def test_a_bare_slug_with_no_project_is_a_clean_refusal(library):
 def test_an_ambiguous_fragment_names_the_candidates(library):
     """Rather than picking one. Both would be a plausible answer, which is
     exactly when guessing is worst."""
-    E.create_movie(project=library.project, slug="cut-one")
-    E.create_movie(project=library.project, slug="cut-two")
+    E.create_movie(project=library.project, name="cut-one")
+    E.create_movie(project=library.project, name="cut-two")
 
     with pytest.raises(SystemExit):
         MV.resolve_movie("porch-teaser/cut-")
@@ -130,7 +130,7 @@ def test_scene_characters_is_read_off_the_row_and_never_recomputed(library):
 
 def test_a_movie_folder_is_named_by_the_row_not_derived_from_the_slug(library):
     """So renaming a movie strands nothing."""
-    record = E.create_movie(project=library.project, slug="the-cut")
+    record = E.create_movie(project=library.project, name="the-cut")
     inner = MV.movie_folder(record, "scenes")
 
     assert store.node(inner)["name"] == "scenes"
@@ -150,7 +150,7 @@ def test_every_unassembled_scene_is_reported_at_once(library, tmp_path):
     SC.new_scene(project, "one", _plan(tmp_path, "one.json"))
     SC.new_scene(project, "two", _plan(tmp_path, "two.json"))
 
-    result = _run("new", "porch-teaser", "--slug", "the-cut",
+    result = _run("new", "porch-teaser", "--name", "the-cut",
                   "--scene", "porch-teaser/one", "--scene", "porch-teaser/two")
 
     assert result.exit_code == 1
@@ -164,7 +164,7 @@ def test_nothing_is_created_when_a_scene_is_not_cut(library, tmp_path):
     project = PROJECTS.resolve("porch-teaser")
     SC.new_scene(project, "one", _plan(tmp_path, "one.json"))
 
-    _run("new", "porch-teaser", "--slug", "the-cut", "--scene", "porch-teaser/one")
+    _run("new", "porch-teaser", "--name", "the-cut", "--scene", "porch-teaser/one")
 
     assert MV.list_movies(PROJECTS.resolve("porch-teaser")) == []
 
@@ -274,8 +274,8 @@ def test_list_says_so_when_a_project_has_no_movies(library):
 
 
 def test_list_shows_every_movie_newest_first(library):
-    E.create_movie(project=library.project, slug="first")
-    E.create_movie(project=library.project, slug="second")
+    E.create_movie(project=library.project, name="first")
+    E.create_movie(project=library.project, name="second")
 
     result = _run("list", "porch-teaser")
 

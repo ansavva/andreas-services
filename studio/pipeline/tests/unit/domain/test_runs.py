@@ -9,6 +9,8 @@ or a field spelling that drifted from the backend fails here.
 
 from __future__ import annotations
 
+from studio_pipeline.domain import paths as P
+
 import json
 
 import pytest
@@ -254,12 +256,12 @@ def test_finding_by_character_is_one_query(library):
     per run and grep. The link is a row, so this is a single query — and it
     finds the fixture run, which named the character explicitly.
     """
-    assert [r["id"] for r in R.find_runs(character=E.address("subject-a"))] == [
+    assert [r["id"] for r in R.find_runs(character=P.by_name(E.list_characters(), "subject-a", "character")["id"])] == [
         library.run]
 
 
 def test_a_character_that_was_not_used_finds_nothing(library):
-    assert R.find_runs(character=E.address("subject-b")) == []
+    assert R.find_runs(character=P.by_name(E.list_characters(), "subject-b", "character")["id"]) == []
 
 
 def test_listing_filters_on_model_and_status(library):
@@ -271,7 +273,7 @@ def test_listing_filters_on_model_and_status(library):
 
 
 def test_listing_accepts_a_slug_a_person_typed(library):
-    assert R.list_runs(E.address("porch-teaser"))
+    assert R.list_runs(P.by_name(E.list_projects(), "porch-teaser", "project")["id"])
 
 
 # ── runrefs ─────────────────────────────────────────────────────────────────
@@ -320,7 +322,7 @@ def test_a_draft_can_be_asked_for_explicitly(library):
     """`include=drafts`, the same opt-in `GET /api/runs` already takes."""
     draft = R.record_request(library.project, kind="image", engine="e",
                              model="m", input={}, bindings={})
-    found = E.resolve_run("porch-teaser/latest", include="drafts")
+    found = E.resolve_run(f"{library.project}/latest", include="drafts")
     assert found["id"] == draft["id"]
 
 

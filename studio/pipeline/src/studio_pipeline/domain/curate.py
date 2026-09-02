@@ -24,7 +24,7 @@ MOVING AN IMAGE NO LONGER MOVES ANYTHING ELSE
 **This section used to be headed "MOVING AN IMAGE STILL MOVES ITS RECORDS", and
 it was the largest unfinished thing in the pipeline.** It said, correctly at the
 time, that a record did not name a node — it named a **path** — so renaming
-`face/<slug>_3.png` left every run that cited it pointing at a path that no
+`face/<name>_3.png` left every run that cited it pointing at a path that no
 longer resolved. `domain/rewrite.py` existed to sweep those documents, every
 command here called `rewrite.apply_moves`, and skipping that step is what once
 left 69 records pointing at reference images that no longer existed.
@@ -165,7 +165,7 @@ def find_in_pool(record: dict, pool: str, token: str) -> dict:
     if folder:
         found = next((e for e in images(record, pool, folder) if e["name"] == name), None)
         if found is None:
-            die(f"{token!r} is not in {record['slug']}/{pool}/")
+            die(f"{token!r} is not in {record['name']}/{pool}/")
         return found
 
     hits = [e for e in images(record, pool) if e["name"] == name]
@@ -376,5 +376,5 @@ def cmd_groups(name):
               f"({', '.join(f'{e} {c}' for e, c in sorted(ENGINE_CAPS.items()))}).\n"
               f"That is expected — narrow it with a group tag, or take `{DEFAULT_TAG}` "
               f"off the ones you do not want sent:\n"
-              f"  studio character images {record['slug']}\n"
+              f"  studio character images {record['name']}\n"
               f"  studio describe <node> --tag face", file=sys.stderr)

@@ -18,10 +18,11 @@ which is the seam the backend is on the other side of, and the shapes here are
 
 **Real.** Node ids are `node-<uuid4>`, entity ids are `<kind>-<uuid4>`, and
 nothing derives one from anything. A name is unique among a folder's children and
-a duplicate is a 409. A slug is unique per entity kind per library and a duplicate
-is a 409. `rev` is compare-and-swap and a stale one is a 409. Reference `order`
-is gapped by 1000 and `after` takes the midpoint. Deleting a node that is an
-entity's `root` is refused.
+a duplicate is a 409 — that one is real, because a path segment resolves through
+it. An entity's `name` is NOT unique and a duplicate is allowed, which is the
+half a fake would be tempted to get wrong. `rev` is compare-and-swap and a stale
+one is a 409. Reference `order` is gapped by 1000 and `after` takes the midpoint.
+Deleting a node that is an entity's `root` is refused.
 
 **Not real.** There is no authorisation, no library membership check, no
 pagination and no cursor. Every one of those is the backend's to enforce and the
@@ -317,7 +318,7 @@ class FakeApi:
                                     ("project", self.projects)):
                     if entity in table:
                         return {"kind": kind, "id": entity,
-                                "slug": table[entity]["slug"]}
+                                "name": table[entity]["name"]}
             node_id = node["parent_id"]
         return None
 
@@ -473,7 +474,7 @@ class FakeApi:
                 if entity.get("root") == node_id:
                     raise FakeError(
                         409,
-                        f"{node['name']!r} is {entity['slug']}'s root folder; "
+                        f"{node['name']!r} is {entity['name']}'s root folder; "
                         "delete the entity instead")
         removed = 0
         for child in list(self._children(node_id)):
@@ -487,17 +488,15 @@ class FakeApi:
 
     def _entity(self, table: dict, ref: str, what: str) -> dict:
         if ref.startswith("slug:"):
-            slug = ref[len("slug:"):]
-            found = next((e for e in table.values() if e["slug"] == slug), None)
+            # **Refused, not resolved.** `slug:<slug>` was a real address; a name
+            # is a free-text label now and two entities may share one, so the
+            # service 400s here and so does this.
+            raise FakeError(400, f"{ref!r} is not an id")
         else:
             found = table.get(ref)
         if found is None:
             raise FakeError(404, f"no such {what}: {ref}")
         return found
-
-    def _claim(self, table: dict, slug: str, what: str) -> None:
-        if any(e["slug"] == slug for e in table.values()):
-            raise FakeError(409, f"a {what} called {slug!r} already exists")
 
     def _bump(self, record: dict, rev: int | None) -> None:
         """Compare-and-swap on `rev`, which is what closed the `updated_at` window."""
@@ -891,17 +890,18 @@ class FakeApi:
         if method == "GET":
             query = params.get("q")
             return [self._char_view(c) for c in self.characters.values()
-                    if not query or query in c["slug"]]
+                    if not query or query in (c.get("name") or "").lower()]
         if method != "POST":
             raise FakeError(405, method)
-        slug = body["slug"]
-        self._claim(self.characters, slug, "character")
-        root = self._create_node(self.root["id"], slug, "folder")
+        name = body["name"]
         char_id = "char-" + str(uuid.uuid4())
+        # **The root folder is named by the ID**, as the service names it. It took
+        # the slug once; a folder name is unique among its siblings, so naming it
+        # by a free-text label would refuse the second character called `Anna`.
+        root = self._create_node(self.root["id"], char_id, "folder")
         root["entity"] = char_id
         self._layout(root["id"], ("reference", "corpus", "seed", "archive"))
-        record = {"id": char_id, "lib": self.lib, "slug": slug,
-                  "display_name": body.get("display_name") or slug,
+        record = {"id": char_id, "lib": self.lib, "name": name,
                   "schema_version": 2, "rev": 1,
                   "created": _now(), "updated": _now(),
                   "root": root["id"], "hero": None,
@@ -914,11 +914,8 @@ class FakeApi:
         if method == "GET":
             return self._char_view(record)
         if method == "PATCH":
-            if "slug" in body and body["slug"] != record["slug"]:
-                self._claim(self.characters, body["slug"], "character")
-                self.nodes[record["root"]]["name"] = body["slug"]
             self._bump(record, body.get("rev"))
-            for field in ("slug", "display_name", "hero"):
+            for field in ("name", "hero"):
                 if field in body:
                     record[field] = body[field]
             return self._char_view(record)
@@ -1058,7 +1055,7 @@ class FakeApi:
                 hit = by_id.get(want) or by_name.get(want) or by_name.get(
                     want.rsplit(".", 1)[0])
                 if hit is None:
-                    raise FakeError(400, f"{record['slug']} has no image called {want!r}")
+                    raise FakeError(400, f"{record['name']} has no image called {want!r}")
                 chosen.append(hit)
         else:
             asked = tags or ["default"]
@@ -1067,7 +1064,7 @@ class FakeApi:
             if not chosen:
                 have = sorted({t for n in self._character_images(record)
                                for t in (n.get("tags") or [])})
-                raise FakeError(400, f"no image of {record['slug']} carries "
+                raise FakeError(400, f"no image of {record['name']} carries "
                                      f"{' + '.join(asked)}. Tags in use: {have or '(none)'}")
 
         cap = params.get("limit")
@@ -1116,7 +1113,7 @@ class FakeApi:
             "movies": sum(1 for m in self.movies.values() if m["project"] == record["id"]),
         }
         # `characters` EXPANDED, exactly as `GET /api/projects/<id>` answers —
-        # `{id, slug, display_name}` per link. This used to invent a
+        # `{id, name}` per link. This used to invent a
         # `character_slugs` list of bare slugs, which the real API has never
         # returned; the CLI read it, printed `—` for every project in
         # production, and the suite passed because the double agreed with the
@@ -1124,8 +1121,7 @@ class FakeApi:
         return {**record, "counts": counts,
                 "characters": [
                     {"id": c,
-                     "slug": self.characters[c]["slug"],
-                     "display_name": self.characters[c].get("display_name")}
+                     "name": self.characters[c]["name"]}
                     for c in record.get("characters") or []
                     if c in self.characters
                 ]}
@@ -1135,14 +1131,12 @@ class FakeApi:
             return [self._project_view(p) for p in self.projects.values()]
         if method != "POST":
             raise FakeError(405, method)
-        slug = body["slug"]
-        self._claim(self.projects, slug, "project")
-        root = self._create_node(self.root["id"], slug, "folder")
+        name = body["name"]
         proj_id = "proj-" + str(uuid.uuid4())
+        root = self._create_node(self.root["id"], proj_id, "folder")
         root["entity"] = proj_id
         self._layout(root["id"], ("runs", "scenes", "movies", "chains", "input"))
-        record = {"id": proj_id, "lib": self.lib, "slug": slug,
-                  "title": body.get("title") or "", "rev": 1,
+        record = {"id": proj_id, "lib": self.lib, "name": name, "rev": 1,
                   "description": body.get("description") or "",
                   "created": _now(), "updated": _now(), "root": root["id"],
                   "hero": None, "characters": list(body.get("characters") or [])}
@@ -1154,11 +1148,8 @@ class FakeApi:
         if method == "GET":
             return self._project_view(record)
         if method == "PATCH":
-            if "slug" in body and body["slug"] != record["slug"]:
-                self._claim(self.projects, body["slug"], "project")
-                self.nodes[record["root"]]["name"] = body["slug"]
             self._bump(record, body.get("rev"))
-            for field in ("slug", "title", "description", "hero"):
+            for field in ("name", "description", "hero"):
                 if field in body:
                     record[field] = body[field]
             return self._project_view(record)
@@ -1170,7 +1161,7 @@ class FakeApi:
             holds = [r for r in self.runs.values() if r["project"] == record["id"]]
             cascade = params.get("cascade") in ("1", 1, "true", True)
             if holds and not cascade and not params.get("force"):
-                raise FakeError(409, f"{record['slug']} holds {len(holds)} run(s) — "
+                raise FakeError(409, f"{record['name']} holds {len(holds)} run(s) — "
                                      "pass ?cascade=1 to delete them with it")
             removed = {}
             if cascade:
@@ -1259,9 +1250,9 @@ class FakeApi:
         kept three real bugs hidden behind 1000 passing tests.
         """
         return sorted(
-            ({"id": h["id"], "slug": h.get("slug"), "title": h.get("title")}
+            ({"id": h["id"], "name": h.get("name")}
              for h in holders.values() if matches(h)),
-            key=lambda entry: entry.get("slug") or "",
+            key=lambda entry: ((entry["name"] or "").lower(), entry["id"]),
         )
 
     def _run_view(self, record: dict) -> dict:
@@ -1324,9 +1315,10 @@ class FakeApi:
                 raise FakeError(400, f"runref {ref!r} has no project and none was supplied")
             if run_ref not in ("latest", "last"):
                 raise FakeError(400, f"{run_ref!r} is not a runref")
-            addressed = (project_ref if project_ref.startswith("proj-")
-                         else f"slug:{project_ref}")
-            project = self._entity(self.projects, addressed, "project")
+            # **An id.** It took a bare slug and turned it into `slug:<slug>`,
+            # because that is what a person typed; the service resolves ids only
+            # now, and so does this.
+            project = self._entity(self.projects, project_ref, "project")
             # `HIDDEN_RUN_STATUSES`, not `UNSUBMITTED`: an APPROVED run is
             # visible in a listing and only `draft` and `discarded` are not.
             hidden = (frozenset() if params.get("include") == "drafts"
@@ -1669,14 +1661,14 @@ class FakeApi:
         if method != "POST":
             raise FakeError(405, method)
         project = self._entity(self.projects, body["project"], "project")
-        if any(s["project"] == project["id"] and s["slug"] == body["slug"]
+        if any(s["project"] == project["id"] and s["name"] == body["name"]
                for s in self.scenes.values()):
-            raise FakeError(409, f"scene {body['slug']!r} already exists")
+            raise FakeError(409, f"scene {body['name']!r} already exists")
         scenes_folder = self._folder_under(project["root"], "scenes")
-        folder = self._create_node(scenes_folder["id"], body["slug"], "folder")
+        folder = self._create_node(scenes_folder["id"], body["name"], "folder")
         scene_id = "scene-" + str(uuid.uuid4())
         record = {"id": scene_id, "lib": self.lib, "project": project["id"],
-                  "slug": body["slug"], "title": body.get("title") or "",
+                  "name": body["name"], "title": body.get("title") or "",
                   "setting": body.get("setting") or "",
                   "defaults": body.get("defaults") or {},
                   "status": "planned", "created": _now(), "updated": _now(),
@@ -1703,7 +1695,7 @@ class FakeApi:
         doc = SB.normalise(
             {**{k: envelope.get(k, scene.get(k)) for k in ("setting", "defaults")},
              "shots": shots},
-            scene.get("slug") or scene_id,
+            scene.get("name") or scene_id,
         )
         SB.validate(doc)
 
@@ -1807,7 +1799,7 @@ class FakeApi:
                 drawable = {"node": node,
                             "name": self.nodes.get(node, {}).get("name"),
                             "url": f"memory://{self.nodes.get(node, {}).get('blob_key')}"}
-            rows.append({"id": scene_id, "slug": scene.get("slug"),
+            rows.append({"id": scene_id, "name": scene.get("name"),
                          "title": scene.get("title"), "status": scene.get("status"),
                          "output": drawable, "thumb": drawable})
         return {**record, "scenes": rows}
@@ -1826,10 +1818,10 @@ class FakeApi:
         project = self._entity(self.projects, body["project"], "project")
         movies_folder = self._folder_under(project["root"], "movies")
         folder = self._create_node(movies_folder["id"], _unique(
-            self, movies_folder["id"], body["slug"]), "folder")
+            self, movies_folder["id"], body["name"]), "folder")
         movie_id = "movie-" + str(uuid.uuid4())
         record = {"id": movie_id, "lib": self.lib, "project": project["id"],
-                  "slug": body["slug"], "title": body.get("title") or "",
+                  "name": body["name"], "title": body.get("title") or "",
                   "status": "planned", "created": _now(), "updated": _now(),
                   "folder": folder["id"], "scenes": list(body.get("scenes") or []),
                   "characters": [], "output": None, "stitch": None}
@@ -1948,7 +1940,7 @@ class FakeApi:
                           **{k: p[k] for k in ("run", "scene", "shot", "slug") if k in p}}
                          for p in parts]}
 
-        slug = record.get("slug") or record["id"]
+        slug = record.get("name") or record["id"]
         was = record.get("output")
         was_node = was.get("node") if isinstance(was, dict) else was
         take = len(record.get("cuts") or []) + (1 if was_node else 0) + 1

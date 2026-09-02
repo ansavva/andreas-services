@@ -80,6 +80,7 @@ import sys
 import click
 
 from studio_pipeline.adapters import api, entities, store
+from studio_pipeline.domain import paths as P
 from studio_pipeline.errors import reports
 
 SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -342,9 +343,17 @@ def resolve_run(ref: str, default_project: str | None = None) -> dict:
     Returns the **record**, not a `(project, id)` pair. Every caller went
     straight on to read the run, and returning a pair meant a second round trip
     plus two more strings to keep in step.
+
+    **The project segment is turned into an id here**, which it was not: the
+    route took a bare slug, precisely because that is what a person types. A name
+    is a free-text label now and the route resolves nothing but ids, so a name
+    costs one listing on this side before the ref is sent.
     """
+    project, sep, tail = ref.partition("/")
+    if sep and not project.startswith("proj-"):
+        ref = f"{_project_id(project)}/{tail}"
     try:
-        return entities.resolve_run(ref, default_project)
+        return entities.resolve_run(ref, _address(default_project))
     except api.NotFound as exc:
         raise RunError(str(exc)) from exc
     except api.ApiError as exc:
@@ -354,9 +363,26 @@ def resolve_run(ref: str, default_project: str | None = None) -> dict:
         raise RunError(str(exc)) from exc
 
 
-def _address(project: str) -> str:
-    """A project id passed through; anything else read as a slug a person typed."""
-    return project if project.startswith("proj-") else entities.address(project)
+def _address(project: str | None) -> str | None:
+    """A project id passed through; a name matched client-side.
+
+    It used to be `slug:<name>` — one string, no round trip, resolved by the API
+    against a claim row. A name is a free-text label now and the API will not
+    resolve one, so this costs a listing and can refuse an ambiguous name.
+    """
+    if not project or project.startswith("proj-"):
+        return project
+    return _project_id(project)
+
+
+def _character_address(character: str | None) -> str | None:
+    """The same, for a character."""
+    if not character or character.startswith("char-"):
+        return character
+    try:
+        return P.by_name(entities.list_characters(), character, "character")["id"]
+    except P.PathError as exc:
+        raise RunError(str(exc)) from exc
 
 
 def resolve_output_nodes(ref: str, default_project: str | None = None,
@@ -478,7 +504,7 @@ def do_list(project, character, json_, model, since, status):
     """A project's runs, newest first. Every filter is one query, not a walk."""
     found = list_runs(
         _address(project),
-        character=entities.address(character) if character else None,
+        character=_character_address(character),
         model=model, status=status, since=since)
     if json_:
         print(json.dumps(found, indent=2))
@@ -498,7 +524,7 @@ def do_find(character, json_, project):
     and read three documents per run to grep for a name. `--project` is now a
     filter applied to that query rather than the loop it used to drive.
     """
-    address = entities.address(character)
+    address = _character_address(character)
     if project:
         hits = [r for p in project for r in find_runs(character=address,
                                                       project=_address(p))]
@@ -943,10 +969,14 @@ def do_adopt(project, key):
 
 
 def _project_id(project: str) -> str:
-    """A project slug or id -> its id. One call; `RunError` if there is no such one."""
+    """A project name or id -> its id. `RunError` if there is no such one.
+
+    An id passes through; a name is a listing and a match, because a name is a
+    label that two projects may share and the API refuses to resolve one.
+    """
     if project.startswith("proj-"):
         return project
     try:
-        return entities.resolve_project(project)["id"]
-    except api.NotFound as exc:
-        raise RunError(f"no project {project!r} (see `studio projects list`)") from exc
+        return P.by_name(entities.list_projects(), project, "project")["id"]
+    except P.PathError as exc:
+        raise RunError(f"{exc} (see `studio projects list`)") from exc

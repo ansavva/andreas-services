@@ -752,7 +752,7 @@ def submit(entry: dict, record: dict, payload: dict, bindings: dict,
     d = defaults(kind)
     project = args.project          # the project record, resolved by the caller
     run_id = record["id"]
-    print(f"run {run_id}  (in {project['slug']})", file=sys.stderr)
+    print(f"run {run_id}  (in {project['name']})", file=sys.stderr)
 
     try:
         sent = entities.submit_run(run_id)

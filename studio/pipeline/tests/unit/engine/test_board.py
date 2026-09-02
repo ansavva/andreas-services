@@ -261,7 +261,7 @@ def test_the_scenes_own_frames_come_from_the_plan_not_a_second_document(
     """
     chains = store.ensure_child_folder(library.project_root, "chains")
     library.fake.put_file(chains["id"], f"{PLANNED}.json", json.dumps({
-        "slug": PLANNED, "seed": library.input_1, "frames": [library.input_2],
+        "name": PLANNED, "seed": library.input_1, "frames": [library.input_2],
     }).encode())
 
     m = board_ready(library, scene)
