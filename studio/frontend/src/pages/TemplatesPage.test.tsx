@@ -18,6 +18,7 @@ import {
   deleteBlock,
   getTemplates,
   saveBlock,
+  saveTemplate,
 } from "../apis/studio";
 import { TemplatesPage } from "./TemplatesPage";
 
@@ -29,7 +30,8 @@ const SPEC: TemplateLibrary = {
   blocks: { face_only: "THE FACE COMES FROM THE REFERENCE IMAGES." },
   templates: [
     {
-    name: "Face, front",
+      id: "template-face-front",
+      name: "Face, front",
       prompt: "A studio portrait, front on. {face_only} {top}",
       description: "Head and shoulders, front on.",
       tags: ["face", "front"],
@@ -67,8 +69,8 @@ it("keeps the blocks on their OWN tab, and previews them beside the prompt", asy
    */
   read.mockResolvedValue(SPEC);
   show();
-  // By NAME. The id is the row's key and the route's address; nothing points at
-  // a template, so it is generated, never shown and never typed.
+  // By NAME. The id is the row's key and the route's address — minted for a
+  // create, never shown and never typed.
   expect(await screen.findByText(/Face, front/)).toBeTruthy();
 
   // The prose is on screen — expanded into the preview, not as an editor.
@@ -257,5 +259,33 @@ it("deletes a block, and says how many templates it will break first", async () 
   await waitFor(() => expect(removeBlock).toHaveBeenCalledWith("face_only"));
   await waitFor(() =>
     expect(screen.queryByRole("button", { name: /\{face_only\}/ })).toBeNull(),
+  );
+});
+
+
+it("renames a template by its ID, not by the name it had", async () => {
+  /**
+   * **The key does not move.** A rename used to write the new key and drop the
+   * old, because the name WAS the key — so the row a run might one day point at
+   * disappeared every time somebody fixed a typo. The name is a field now, and
+   * this is the assertion that keeps it one: the address is the id, and the new
+   * name rides in the body.
+   */
+  read.mockResolvedValue(SPEC);
+  vi.mocked(saveTemplate).mockResolvedValue({
+    ...SPEC.templates[0],
+    name: "Face, straight on",
+  });
+  show();
+
+  const box = await screen.findByDisplayValue("Face, front");
+  fireEvent.change(box, { target: { value: "Face, straight on" } });
+  fireEvent.click(screen.getAllByRole("button", { name: /^Save/ })[0]);
+
+  await waitFor(() =>
+    expect(saveTemplate).toHaveBeenCalledWith(
+      "template-face-front",
+      expect.objectContaining({ name: "Face, straight on" }),
+    ),
   );
 });

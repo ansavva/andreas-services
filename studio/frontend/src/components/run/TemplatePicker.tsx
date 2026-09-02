@@ -107,7 +107,7 @@ export function TemplatePicker({ onPick, cast }: Props) {
                 const short = needs > cast;
                 return (
                   <button
-                    key={entry.name}
+                    key={entry.id}
                     type="button"
                     onClick={() => {
                       onPick(entry.prompt);

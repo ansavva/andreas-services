@@ -1290,16 +1290,14 @@ def test_confirming_in_another_library_is_403(catalog_table, media_bucket, signe
 # that puts the attribute there, and those are the two halves that have to agree.
 
 
-def _character(slug="subject-a"):
-    body = _post(
-        "/api/characters", {"slug": slug, "display_name": "Subject"}
-    )
+def _character(name="subject-a"):
+    body = _post("/api/characters", {"name": name})
     assert body.status_code == 201, body.get_data(as_text=True)
     return body.get_json()
 
 
-def _project(slug="rooftop-teaser"):
-    body = _post("/api/projects", {"slug": slug})
+def _project(name="rooftop-teaser"):
+    body = _post("/api/projects", {"name": name})
     assert body.status_code == 201, body.get_data(as_text=True)
     return body.get_json()
 
@@ -1310,7 +1308,7 @@ def _child(parent_id, name):
 
 
 def test_a_node_view_carries_the_entity_it_belongs_to(catalog_table, signed_in):
-    """What the SPA draws as "in <slug>", and what stamps the blob prefix.
+    """What the SPA draws as "in <name>", and what stamps the blob prefix.
 
     On the listing rather than only on the single-node read, because the listing
     is where it would be tempting to leave it out: resolving it per row would be
@@ -1328,7 +1326,7 @@ def test_a_node_view_carries_the_entity_it_belongs_to(catalog_table, signed_in):
         assert entry["owner"] == {
             "kind": "character",
             "id": character["id"],
-            "slug": "subject-a",
+            "name": "subject-a",
         }
 
 
@@ -1387,20 +1385,21 @@ def test_the_deepest_entity_wins(catalog_table, signed_in):
     assert _get(f"/api/nodes/{output_folder['node_id']}/owner").get_json()["owner"] == {
         "kind": "run",
         "id": run["id"],
-        "slug": None,
+        "name": None,
     }
 
 
 def test_resolve_reports_the_owner_too(catalog_table, signed_in):
-    """The CLI's address turns into an id *and* the entity holding it in one call.
+    """A name path turns into an id *and* the entity holding it in one call.
 
-    `<slug>/reference/face/<file>` is what a person types; the answer has to say
-    which character that resolved inside, or the CLI needs a second round trip to
-    find out what it just addressed.
+    The answer has to say which character the path resolved inside, or a caller
+    needs a second round trip to find out what it just addressed. The first
+    segment is the entity's ROOT FOLDER, which is named by the entity id — the
+    slug it used to take could not survive two characters sharing a name.
     """
     character = _character()
 
-    resolved = _get("/api/resolve?path=subject-a/reference").get_json()
+    resolved = _get(f"/api/resolve?path={character['id']}/reference").get_json()
 
     assert resolved["owner"]["id"] == character["id"]
 

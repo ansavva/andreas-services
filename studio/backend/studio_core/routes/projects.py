@@ -1,9 +1,11 @@
 """Projects: a unit of production, and everything filed under one.
 
 A project used to be a folder name. It is a row now — `PROJ#<proj_id>` / `META`
-with a `LIB#<lib>` / `PROJSLUG#<slug>` claim — and it can therefore be renamed,
-which was simply impossible before: the slug was the primary key, so a rename was
-a tree rewrite and every run that had recorded a path was stranded by it.
+with a `LIB#<lib>` / `PROJ#<proj_id>` index row beside it — and it can therefore
+be renamed, which was simply impossible before: the name was the primary key, so
+a rename was a tree rewrite and every run that had recorded a path was stranded
+by it. A rename is one field on one row now: the index is keyed on the id, the
+root folder is named by the id, and `name` is a free-text label nothing resolves.
 
 **Characters involved are rows, not a list on the record.** `PROJ#<id>` /
 `CHAR#<id>`, read forwards for "who is in this project" and backwards on `by-sk`
@@ -33,7 +35,7 @@ KIND = catalog.ENTITY_PROJECT
 
 
 def project_at(addressed: str, held: dict) -> dict:
-    """One project by id or `slug:<slug>`, membership-checked.
+    """One project by id, membership-checked.
 
     Public because `routes/runs`, `routes/scenes` and `routes/movies` all resolve
     a project the same way and must not each grow their own version of it — three
@@ -61,11 +63,11 @@ def list_projects():
 
 
 def summary_rows(records: list[dict]) -> list[dict]:
-    """A project as every listing spells it — slug-ascending.
+    """A project as every listing spells it — name-ascending.
 
     **One builder, because there was more than one listing.**
     `GET /api/characters/<id>/projects` answered the same conceptual thing —
-    a project summary — with `{id, slug, title}` and nothing else, so the SPA
+    a project summary — with `{id, name}` and nothing else, so the SPA
     drew it with the card it draws every other project list with and threw on
     `project.counts.runs`. Two routes returning "a project summary" in two
     shapes is the same defect as one relationship spelled two ways, one level
@@ -78,26 +80,26 @@ def summary_rows(records: list[dict]) -> list[dict]:
     rows = [
         {
             "id": record["id"],
-            "slug": record["slug"],
-            "title": record.get("title"),
+            "name": record.get("name"),
             "hero": _hero(record, heroes),
             "counts": record.get("counts") or {},
             "updated": record.get("updated"),
         }
         for record in records
     ]
-    rows.sort(key=lambda entry: entry["slug"])
+    # By name, then by id, so the order is STABLE now that two projects may
+    # share a name — a sort on the name alone lets rows swap between reads.
+    rows.sort(key=lambda entry: ((entry["name"] or "").lower(), entry["id"]))
     return rows
 
 
 @bp.post("/projects")
 def create_project():
-    """A project, its claim, its root, its five subfolders and its involvements."""
+    """A project, its index row, its root, its five subfolders and its involvements."""
     body = support.body()
     held = support.memberships()
     support.member_of(g.library, held)
 
-    slug = keys.clean_slug(body.get("slug"))
     characters = body.get("characters") or []
     if not isinstance(characters, list):
         raise ValidationError("characters must be a list")
@@ -107,19 +109,14 @@ def create_project():
         support.entity_at(catalog.ENTITY_CHARACTER, g.library, char_id, held)
 
     root = catalog.library(g.library)["root_node"]
-    try:
-        record = catalog.create_project(
-            g.library,
-            root,
-            slug=slug,
-            title=body.get("title"),
-            description=body.get("description"),
-            characters=characters,
-            layout=layout.PROJECT_LAYOUT,
-        )
-    except ConflictError as conflict:
-        return support.structured("conflict", str(conflict), 409)
-
+    record = catalog.create_project(
+        g.library,
+        root,
+        name=keys.clean_label(body.get("name")),
+        description=body.get("description"),
+        characters=characters,
+        layout=layout.PROJECT_LAYOUT,
+    )
     return jsonify({**record, "characters": _characters(record)}), 201, {
         "Location": f"/api/projects/{record['id']}"
     }
@@ -127,7 +124,7 @@ def create_project():
 
 @bp.get("/projects/<addressed>")
 def get_project(addressed: str):
-    """The record, with the characters it involves resolved to slugs."""
+    """The record, with the characters it involves resolved to names."""
     held = support.memberships()
     record = project_at(addressed, held)
     return jsonify({**record, "characters": _characters(record)}), 200
@@ -137,29 +134,26 @@ def _characters(record: dict) -> list[dict]:
     ids = catalog.links(record["id"], catalog.ENTITY_CHARACTER)
     found = catalog.entities_by_id(catalog.ENTITY_CHARACTER, ids)
     return [
-        {
-            "id": character["id"],
-            "slug": character["slug"],
-            "display_name": character.get("display_name"),
-        }
+        {"id": character["id"], "name": character.get("name")}
         for character in found.values()
     ]
 
 
 @bp.patch("/projects/<addressed>")
 def update_project(addressed: str):
-    """Rename, retitle, re-hero — under a `rev`. **Zero objects are copied.**"""
+    """Rename, redescribe, re-hero — under a `rev`. **Zero objects are copied.**"""
     body = support.body()
     held = support.memberships()
     record = project_at(addressed, held)
     rev = support.revision(body, record)
 
     assignments = {}
-    for field in ("title", "description"):
-        if field in body:
-            if not isinstance(body[field], str):
-                raise ValidationError(f"{field} must be a string")
-            assignments[field] = body[field]
+    if "name" in body:
+        assignments["name"] = keys.clean_label(body["name"])
+    if "description" in body:
+        if not isinstance(body["description"], str):
+            raise ValidationError("description must be a string")
+        assignments["description"] = body["description"]
     if "hero" in body:
         if body["hero"]:
             node = catalog.node(body["hero"])
@@ -169,9 +163,8 @@ def update_project(addressed: str):
         else:
             assignments["hero"] = None
 
-    slug = keys.clean_slug(body["slug"]) if body.get("slug") else None
     try:
-        updated = catalog.update_entity(KIND, record, rev, assignments, slug=slug)
+        updated = catalog.update_entity(KIND, record, rev, assignments)
     except ConflictError as conflict:
         return support.structured("conflict", str(conflict), 409)
     return jsonify(updated), 200

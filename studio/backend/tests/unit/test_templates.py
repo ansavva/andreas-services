@@ -19,6 +19,7 @@ from tests.conftest import CATALOG_LIBRARY
 BLOCK = "THE FACE COMES FROM THE REFERENCE IMAGES. Study the nose."
 
 TEMPLATE = {
+    "name": "Face, front",
     "prompt": "A studio portrait, front on. {block.face_only} {character.1.top}",
     "description": "Head and shoulders, front on.",
     "tags": ["face", "front"],
@@ -39,9 +40,14 @@ def _item(client, pk, sk):
     ).get("Item")
 
 
+#: The id a test addresses. Minted by the caller, as the SPA does — the route
+#: takes it in the path and the name is a claim beside it.
+FACE = "template-face-front"
+
+
 def _library(api):
     api.patch("/api/templates/blocks/face_only", json={"text": BLOCK})
-    return api.patch("/api/templates/Face, front", json=TEMPLATE)
+    return api.patch(f"/api/templates/{FACE}", json=TEMPLATE)
 
 
 # ───────────────────────────── the rows ─────────────────────────────
@@ -90,8 +96,8 @@ def test_a_name_holding_the_key_separator_is_refused(empty_api):
 
 
 def test_templates_come_back_by_name(empty_api):
-    empty_api.patch("/api/templates/Body, front", json=TEMPLATE)
-    empty_api.patch("/api/templates/Face, front", json=TEMPLATE)
+    empty_api.patch("/api/templates/template-body", json={**TEMPLATE, "name": "Body, front"})
+    empty_api.patch(f"/api/templates/{FACE}", json=TEMPLATE)
     got = empty_api.get("/api/templates").get_json()
     assert [a["name"] for a in got["templates"]] == ["Body, front", "Face, front"]
 
@@ -372,28 +378,27 @@ def test_a_bible_FIELD_is_still_flattened():
 # ────────────────────── the name IS the key ──────────────────────
 
 
-def test_a_template_is_addressed_by_its_name(empty_api):
-    """**No id, and none generated.**
+def test_a_template_has_an_id_and_a_name(empty_api):
+    """**A UUID record with the name as an ordinary field**, like every entity here.
 
-    Every character, project and run carries a UUID because a rename would
-    otherwise strand every row that named it. A run copies a template's WORDS
-    rather than pointing at the row, so there is nothing to strand — and a
-    generated id would be a second name that can drift from the first. This is
-    the arrangement a block already has, for the same reason.
+    Keying on the name was briefly tried, on the grounds that nothing points at
+    a template so a rename strands nothing. That is a judgement about a fact
+    that changes: "which template did this run start from" is an obvious field,
+    and the day it exists a name key strands it.
     """
     _library(empty_api)
 
     got = empty_api.get("/api/templates").get_json()["templates"][0]
 
+    assert got["id"] == FACE
     assert got["name"] == "Face, front"
-    assert "id" not in got
 
 
-def test_renaming_writes_the_new_key_and_drops_the_old(empty_api):
-    """One transaction, so the library can never hold the template twice."""
+def test_renaming_keeps_the_id(empty_api):
+    """A rename is a field write. The key does not move, so nothing points at a hole."""
     _library(empty_api)
 
-    resp = empty_api.patch("/api/templates/Face, front",
+    resp = empty_api.patch(f"/api/templates/{FACE}",
                            json={**TEMPLATE, "name": "Face, straight on"})
 
     assert resp.status_code == 200
@@ -404,7 +409,7 @@ def test_renaming_writes_the_new_key_and_drops_the_old(empty_api):
 def test_a_rename_keeps_the_prompt_it_was_given(empty_api):
     _library(empty_api)
 
-    empty_api.patch("/api/templates/Face, front",
+    empty_api.patch(f"/api/templates/{FACE}",
                     json={**TEMPLATE, "name": "Renamed", "prompt": "{block.face_only} only"})
 
     (kept,) = empty_api.get("/api/templates").get_json()["templates"]
@@ -413,7 +418,7 @@ def test_a_rename_keeps_the_prompt_it_was_given(empty_api):
 
 def test_a_name_carrying_the_key_separator_is_refused(empty_api):
     """`#` separates every key segment in this table, so it cannot be in one."""
-    resp = empty_api.patch("/api/templates/Face, front",
+    resp = empty_api.patch(f"/api/templates/{FACE}",
                            json={**TEMPLATE, "name": "face#front"})
 
     assert resp.status_code == 400
@@ -421,14 +426,15 @@ def test_a_name_carrying_the_key_separator_is_refused(empty_api):
 
 
 def test_a_blank_name_is_refused_rather_than_stored(empty_api):
-    resp = empty_api.patch("/api/templates/Face, front", json={**TEMPLATE, "name": "   "})
+    resp = empty_api.patch(f"/api/templates/{FACE}", json={**TEMPLATE, "name": "   "})
 
     assert resp.status_code == 400
 
 
 def test_a_name_is_whitespace_folded_the_way_it_is_displayed(empty_api):
-    """`  Face,   front ` and `Face, front` are one template, not two keys."""
-    empty_api.patch("/api/templates/  Face,   front ", json=TEMPLATE)
+    """`  Face,   front ` and `Face, front` are one name, not two."""
+    empty_api.patch(f"/api/templates/{FACE}",
+                    json={**TEMPLATE, "name": "  Face,   front "})
 
     assert [t["name"] for t in empty_api.get("/api/templates").get_json()["templates"]] == [
         "Face, front"]
@@ -444,7 +450,7 @@ def test_a_rename_needs_only_the_new_name(empty_api):
     """
     _library(empty_api)
 
-    resp = empty_api.patch("/api/templates/Face, front", json={"name": "Renamed"})
+    resp = empty_api.patch(f"/api/templates/{FACE}", json={"name": "Renamed"})
 
     assert resp.status_code == 200, resp.get_data(as_text=True)
     (kept,) = empty_api.get("/api/templates").get_json()["templates"]
@@ -455,4 +461,20 @@ def test_a_rename_needs_only_the_new_name(empty_api):
 
 def test_a_new_template_still_has_to_say_what_it_is(empty_api):
     """The fallback is what is STORED, so a create has nothing to fall back to."""
-    assert empty_api.patch("/api/templates/Brand new", json={}).status_code == 400
+    assert empty_api.patch("/api/templates/template-new", json={}).status_code == 400
+
+
+def test_two_templates_may_share_a_name(empty_api):
+    """**A name identifies nothing here**, so there is nothing to collide.
+
+    This briefly took a `TPLNAME#` claim and answered 409. The claim went with
+    every other name claim in this table: identity is the id, nothing resolves a
+    template by name, and a duplicate is a display problem a person fixes by
+    renaming one.
+    """
+    _library(empty_api)
+
+    resp = empty_api.patch("/api/templates/template-other", json=TEMPLATE)
+
+    assert resp.status_code == 200
+    assert len(empty_api.get("/api/templates").get_json()["templates"]) == 2

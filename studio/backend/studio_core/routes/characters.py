@@ -1,14 +1,15 @@
 """Characters: who a subject is, and which images say so.
 
 A character used to be a folder with a YAML file in it. It is a row now — `CHAR#
-<char_id>` / `META`, with a `LIB#<lib>` / `CHARSLUG#<slug>` claim beside it — and
-the four consequences of that are the whole reason this module exists:
+<char_id>` / `META`, with a `LIB#<lib>` / `CHAR#<char_id>` index row beside it —
+and the four consequences of that are the whole reason this module exists:
 
-* **A rename is one `PATCH`.** Four writes in one transaction: drop the old
-  claim, take the new one, bump the record, rename the root folder. Zero objects
-  copied, zero records rewritten, every reference untouched. It used to be a
-  `PATCH` per slugged basename across four pools plus a rewrite pass over every
-  run document that had cited the old path.
+* **A rename is one field on one row.** It used to be a `PATCH` per slugged
+  basename across four pools plus a rewrite pass over every run document that
+  had cited the old path. Then, briefly, four writes in one transaction: drop the
+  old slug claim, take the new one, bump the record, rename the root folder.
+  Slugs are gone and so is all of that — the name is a free-text label, the index
+  row is keyed on the id, and the root folder is named by the id.
 * **Reference order and group are attributes**, so `curate renumber` has nothing
   to maintain and `curate regroup` moves no bytes.
 * **Descriptions are rows**, so writing twelve of them is one transaction rather
@@ -19,8 +20,8 @@ the four consequences of that are the whole reason this module exists:
 ## The two things this module decides rather than stores
 
 **The profile schema.** `profile` is the whole of the old `profile.yaml` minus
-the two fields promoted to real columns (`name` → `slug` and `display_name`)
-and the two that became tags on the files themselves — `references:` and
+the field promoted to a real column (`name`) and the two that became tags on the
+files themselves — `references:` and
 `default_set`, which are both "which of this character's pictures does a
 generation get shown" and are both answered by `default` and a group tag on the
 node now. The sections are validated here — nowhere else in the service has an
@@ -39,7 +40,8 @@ this module's uploads produce: an identity image is
 `characters/<char_id>/<node_id>.<ext>`, so a listing of the media bucket is a
 list of UUIDs. The old layout wrote the slug into every key, which made a bucket
 listing a list of character names — the rule broken in the one place nobody was
-reading.
+reading. **The catalog's own folder tree now says nothing either**: a character's
+root folder is named by its id, so the names live on one row each.
 """
 
 import logging
@@ -210,15 +212,15 @@ def _file_counts(records: list[dict]) -> dict[str, dict[str, int]]:
 def list_characters():
     """Every character in the library, newest edit first when `?q=` is absent.
 
-    **One query for the claims, one batched read for the records, one batched
+    **One query for the index rows, one batched read for the records, one batched
     read for the heroes and one for the roots.** Both counts come out of ONE
     branch query per character — `counts.default` is the files under it carrying
     the `default` tag, which the walk that counts files already has in hand. It
     used to be a second query for the `REF#` rows, and there are none.
 
-    `?q=` filters on slug and display name, in memory. A library holds tens of
-    characters, not thousands; an index for this would be a second thing to keep
-    correct for a substring match a client could do itself.
+    `?q=` filters on the name, in memory. A library holds tens of characters, not
+    thousands; an index for this would be a second thing to keep correct for a
+    substring match a client could do itself.
     """
     held = support.memberships()
     support.member_of(g.library, held)
@@ -226,70 +228,59 @@ def list_characters():
     records = catalog.entities_in(g.library, KIND)
     query = (request.args.get("q") or "").strip().lower()
     if query:
-        records = [
-            record
-            for record in records
-            if query in record["slug"].lower()
-            or query in (record.get("display_name") or "").lower()
-        ]
+        records = [record for record in records
+                   if query in (record.get("name") or "").lower()]
 
     heroes = catalog.records([record["hero"] for record in records if record.get("hero")])
     files = _file_counts(records)
     listed = [
         {
             "id": record["id"],
-            "slug": record["slug"],
-            "display_name": record.get("display_name"),
+            "name": record.get("name"),
             "hero": _hero(record, heroes),
             "counts": files.get(record["id"], {"files": 0, "default": 0}),
             "updated": record.get("updated"),
         }
         for record in records
     ]
-    listed.sort(key=lambda entry: entry["slug"])
+    # By name, then by id — which is what makes the order STABLE now that two
+    # characters may share a name. A sort on the name alone would let two rows
+    # swap places between reads for no reason a person could see.
+    listed.sort(key=lambda entry: ((entry["name"] or "").lower(), entry["id"]))
     return jsonify(listed), 200
 
 
 @bp.post("/characters")
 def create_character():
-    """A character, its claim, its root folder and its four pools — one write.
+    """A character, its index row, its root folder and its four pools — one write.
 
     **201, and the whole of it exists or none of it does.** Twelve items in one
     `TransactWriteItems`; a create that timed out is a create a person can simply
     repeat.
 
-    A slug already claimed is **409** carrying the machine-readable code, because
-    the client has to act on it — offer a different slug — and matching on prose
-    is how that stops working.
+    **There is no 409 any more.** A slug already claimed used to be one, carrying
+    a machine-readable code so the client could offer a different slug. A name is
+    a free-text label now and both keys are minted UUIDs, so nothing here can
+    collide and there is nothing for a client to recover from.
     """
     body = support.body()
     held = support.memberships()
     support.member_of(g.library, held)
 
-    slug = keys.clean_slug(body.get("slug"))
-    display_name = body.get("display_name")
-    if display_name is not None and not isinstance(display_name, str):
-        raise ValidationError("display_name must be a string")
-
     root = catalog.library(g.library)["root_node"]
-    try:
-        record = catalog.create_character(
-            g.library,
-            root,
-            slug=slug,
-            display_name=display_name,
-            profile=clean_profile(body.get("profile")),
-            layout=layout.CHARACTER_LAYOUT,
-        )
-    except ConflictError as conflict:
-        return support.structured("conflict", str(conflict), 409)
-
+    record = catalog.create_character(
+        g.library,
+        root,
+        name=keys.clean_label(body.get("name")),
+        profile=clean_profile(body.get("profile")),
+        layout=layout.CHARACTER_LAYOUT,
+    )
     return jsonify(record), 201, {"Location": f"/api/characters/{record['id']}"}
 
 
 @bp.get("/characters/<addressed>")
 def get_character(addressed: str):
-    """The full record, `profile` included. `<id>` may be `slug:<slug>`."""
+    """The full record, `profile` included. Addressed by id."""
     held = support.memberships()
     record = _character(addressed, held)
     heroes = catalog.records([record["hero"]] if record.get("hero") else [])
@@ -304,16 +295,17 @@ def get_character(addressed: str):
 
 @bp.patch("/characters/<addressed>")
 def update_character(addressed: str):
-    """Rename, retitle, re-hero — under a `rev`.
+    """Rename or re-hero — under a `rev`.
 
     **A stale `rev` is a 409 and never a silent overwrite**, which closes a window
     that was genuinely open: the old `write_profile` re-read the node's
     `updated_at` and refused if it had moved, and that is a check and a write with
     a gap between them.
 
-    A slug change is four more writes in the same transaction, so a rename that
-    collides leaves the display name unchanged too — the request either happened
-    or did not.
+    **A rename is now just one of the assignments.** It used to be four more
+    writes riding in the same transaction — the old slug claim dropped, the new
+    one taken, the root folder moved — so that a collision left the request
+    entirely undone. There is no claim to collide with.
     """
     body = support.body()
     held = support.memberships()
@@ -321,18 +313,15 @@ def update_character(addressed: str):
     rev = support.revision(body, record)
 
     assignments = {}
-    if "display_name" in body:
-        if not isinstance(body["display_name"], str) or not body["display_name"]:
-            raise ValidationError("display_name must be a non-empty string")
-        assignments["display_name"] = body["display_name"]
+    if "name" in body:
+        assignments["name"] = keys.clean_label(body["name"])
     if "hero" in body:
         assignments["hero"] = (
             _node_in(record, body["hero"], "hero")["node_id"] if body["hero"] else None
         )
 
-    slug = keys.clean_slug(body["slug"]) if body.get("slug") else None
     try:
-        updated = catalog.update_entity(KIND, record, rev, assignments, slug=slug)
+        updated = catalog.update_entity(KIND, record, rev, assignments)
     except ConflictError as conflict:
         return support.structured("conflict", str(conflict), 409)
     return jsonify(updated), 200
@@ -507,8 +496,8 @@ def _picked(record: dict, tokens: list[str]) -> list[dict]:
             chosen.append(found)
     if missing:
         raise ValidationError(
-            f"{record['slug']} has no image called {missing[0]!r}. "
-            f"See what it has: studio character images {record['slug']}")
+            f"{record['name']} has no image called {missing[0]!r}. "
+            f"See what it has: studio character images {record['id']}")
     return chosen
 
 
@@ -530,8 +519,8 @@ def _must_match(chosen: list, record: dict, asked: str) -> None:
     """
     if not chosen:
         raise ValidationError(
-            f"no image of {record['slug']} carries {asked}. "
-            f"See what it has: studio character images {record['slug']}"
+            f"no image of {record['name']} carries {asked}. "
+            f"See what it has: studio character images {record['id']}"
         )
 
 
@@ -555,13 +544,12 @@ def reference_nodes(refs: dict, held: dict) -> list[str]:
     """
     found: list[str] = []
     for named in refs.get("characters") or []:
-        # **A plan names a character by SLUG, and `entity_at` reads a bare string
-        # as an ID.** Without the prefix every lookup raised `NotFoundError`,
-        # which the tolerance below then swallowed — so the board asked for its
-        # references, was told nothing, and drew nothing, silently.
-        addressed = named if str(named).startswith(f"{KIND}-") else f"slug:{named}"
+        # **A plan names a character by ID.** It used to accept a slug too, and
+        # `entity_at` read a bare string as an id — so every slug lookup raised
+        # `NotFoundError`, which the tolerance below swallowed, and the board drew
+        # nothing, silently. There is one address now and this is it.
         try:
-            record = _character(addressed, held)
+            record = _character(str(named), held)
             pick, tags = _csv(refs.get("pick")), _csv(refs.get("pick_tag"))
             # The same two sources the selection route resolves, in the same
             # order, so a board draws what a submission would send.
@@ -730,8 +718,8 @@ def character_runs(addressed: str):
 def character_projects(addressed: str):
     """Every project that involves this character — a question with no answer before.
 
-    **The same rows `GET /api/projects` sends.** This answered `{id, slug,
-    title}` and nothing else, so the SPA drew them with the card it draws every
+    **The same rows `GET /api/projects` sends.** This answered `{id, name}` and
+    nothing else, so the SPA drew them with the card it draws every
     other project list with and threw on `project.counts.runs` — the tab was a
     blank error page. One builder now, in `routes/projects.py`.
     """

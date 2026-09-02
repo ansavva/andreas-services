@@ -329,7 +329,7 @@ def test_the_root_reel_never_enumerates_an_entity_row(catalog_tree, empty_api):
     the grid cannot draw, consuming a slot that a picture wanted.
     """
     empty_api.post(
-        "/api/characters", json={"slug": "subject-a"}
+        "/api/characters", json={"name": "subject-a"}
     )
 
     for item in _media(CATALOG_LIBRARY)["entries"]:

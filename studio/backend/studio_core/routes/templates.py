@@ -89,19 +89,19 @@ def put_block(name: str):
     return jsonify(catalog.put_spec_block(g.library, name, text)), 200
 
 
-@bp.patch("/templates/<path:name>")
-def put_template(name: str):
-    """Write one template: its prompt, and how its output is described.
+@bp.patch("/templates/<template_id>")
+def put_template(template_id: str):
+    """Write one template: its name, prompt, and how its output is described.
 
-    **A template IS its name, and there is no id.** Nothing points at a template
-    — a run copies its words rather than naming the row — so the reason every
-    other entity carries a UUID does not apply, and a generated one would be a
-    second name that can drift from the first. This is the arrangement a block
-    already has, for the same reason.
+    **Keyed on a UUID, with the name as an ordinary field**, which is what every
+    entity in this table does. It was briefly keyed on the name, on the grounds
+    that nothing points at a template so a rename strands nothing — a judgement
+    about a fact that changes, since "which template did this run start from" is
+    an obvious field a name key would strand.
 
-    Renaming is therefore addressed as this row and given a new name in the
-    body: one transaction that writes the new key and drops the old, so the
-    library can never hold the template twice.
+    A rename is therefore a field write and nothing else. Names are not unique
+    and are not claimed: identity is the id, so two templates called the same
+    thing are a display problem rather than an ambiguity.
 
     **`group` is not a field any more.** It had to be `face` or `body`, because
     it selected which angles a `--group` turnaround rendered and it chose the
@@ -113,8 +113,8 @@ def put_template(name: str):
     held = support.memberships()
     support.member_of(g.library, held)
 
-    # A body may rename this template; omitting `name` keeps the one addressed.
-    wanted = catalog.clean_template_name(body.get("name") or name)
+    if "#" in template_id or "/" in template_id:
+        raise ValidationError("a template id may not contain '#' or '/'")
 
     # **A PATCH may carry one field.** It required all of them, which made a
     # rename impossible to send on its own — the caller had to re-state the
@@ -125,9 +125,10 @@ def put_template(name: str):
     #
     # So the fields fall back to what is stored, and they are required only when
     # there is nothing stored to fall back to — which is exactly a create.
-    held = next((each for each in catalog.templates(g.library)["templates"]
-                 if each["name"] == name), None)
-    body = {**(held or {}), **body}
+    stored = next((each for each in catalog.templates(g.library)["templates"]
+                   if each["id"] == template_id), None)
+    body = {**(stored or {}), **body}
+    body["name"] = catalog.clean_template_name(body.get("name"))
 
     prompt = body.get("prompt")
     if not isinstance(prompt, str) or not prompt.strip():
@@ -145,15 +146,15 @@ def put_template(name: str):
             isinstance(tag, str) and tag for tag in tags):
         raise ValidationError("tags must be a non-empty list of strings")
 
-    return jsonify(catalog.put_template(g.library, wanted, body, was=name)), 200
+    return jsonify(catalog.put_template(g.library, template_id, body)), 200
 
 
-@bp.delete("/templates/<path:name>")
-def delete_template(name: str):
+@bp.delete("/templates/<template_id>")
+def delete_template(template_id: str):
     held = support.memberships()
     support.member_of(g.library, held)
-    catalog.delete_template(g.library, name)
-    return jsonify({"name": name, "deleted": True}), 200
+    catalog.delete_template(g.library, template_id)
+    return jsonify({"id": template_id, "deleted": True}), 200
 
 
 @bp.delete("/templates/blocks/<name>")

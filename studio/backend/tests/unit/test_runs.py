@@ -1,6 +1,6 @@
 """Runs: the envelope studio owns, the payload it does not, and hard rule #3.
 
-A run used to be a folder named `<ts>_<slug>` holding three JSON documents nobody
+A run used to be a folder named `<ts>_<hint>` holding three JSON documents nobody
 was allowed to parse. Two things followed, and both are what these tests are
 about:
 
@@ -33,12 +33,12 @@ def _item(client, pk, sk):
     return response.get("Item")
 
 
-def _project(api, slug="rooftop-teaser", **body):
-    return api.post("/api/projects", json={"slug": slug, **body}).get_json()
+def _project(api, name="rooftop-teaser", **body):
+    return api.post("/api/projects", json={"name": name, **body}).get_json()
 
 
-def _character(api, slug="subject-a"):
-    return api.post("/api/characters", json={"slug": slug}).get_json()
+def _character(api, name="subject-a"):
+    return api.post("/api/characters", json={"name": name}).get_json()
 
 
 def _uploaded(api, parent_id, name, body=b"webp-bytes"):
@@ -125,7 +125,7 @@ def test_creating_a_run_writes_envelope_listing_row_folder_and_output(empty_api,
     # the folder's node id either way, which is what stops a rename above it
     # stranding anything. The label it used to carry was `<timestamp>_<hint>` —
     # unique only by embedding `created`, a column the row already has.
-    assert "slug" not in envelope, "a run envelope carries no slug"
+    assert "name" not in envelope, "a run envelope carries no slug"
     folder = catalog.node(run["folder"])
     assert folder["name"] == run["id"]
     assert folder["entity"] == run["id"]
@@ -137,7 +137,7 @@ def test_the_listing_row_is_the_one_deliberate_projection(empty_api):
 
     There is nothing left to keep in step, and the runs grid would otherwise need
     a `BatchGetItem` over hundreds of envelopes to draw thumbnails. Do not copy
-    this reasoning onto a slug claim, where the opposite is true.
+    this reasoning onto a name claim, where the opposite is true.
     """
     project = _project(empty_api)
     _create(empty_api, project)
@@ -181,7 +181,7 @@ def test_the_listing_row_carries_every_field_the_spa_declares(empty_api):
     assert not missing, (
         f"the runs listing row is missing {sorted(missing)}, which RunSummary "
         "declares required — the SPA renders them and the CLI indexes them")
-    assert "slug" not in rows[0], "a run has no slug; nothing may render one"
+    assert "name" not in rows[0], "a run has no slug; nothing may render one"
 
 
 def test_the_character_usage_rows_are_written_in_the_same_transaction(empty_api, catalog_table):
@@ -211,7 +211,7 @@ def test_the_run_folder_is_resolved_by_name_and_made_if_absent(empty_api):
     runs_folder = _child(project["root"], layout.RUN_PARENT)
     empty_api.patch(f"/api/nodes/{runs_folder['node_id']}", json={"name": "old-runs"})
 
-    second = _create(empty_api, project, slug="second-portrait")
+    second = _create(empty_api, project)
 
     remade = _child(project["root"], layout.RUN_PARENT)
     assert remade["node_id"] != runs_folder["node_id"]
@@ -249,7 +249,7 @@ def test_a_url_shaped_binding_is_refused(empty_api, binding):
         "/api/runs",
         json={
             "project": project["id"],
-            "slug": "rooftop-portrait",
+            "name": "rooftop-portrait",
             "kind": "image",
             "model": "google/nano-banana-pro",
             "bindings": {"image_input": [binding]},
@@ -272,7 +272,7 @@ def test_a_refused_binding_writes_nothing(empty_api):
         "/api/runs",
         json={
             "project": project["id"],
-            "slug": "rooftop-portrait",
+            "name": "rooftop-portrait",
             "kind": "image",
             "model": "google/nano-banana-pro",
             "bindings": {"image_input": ["https://example.com/x.png"]},
@@ -296,7 +296,7 @@ def test_a_binding_naming_no_node_is_refused(empty_api):
         "/api/runs",
         json={
             "project": project["id"],
-            "slug": "rooftop-portrait",
+            "name": "rooftop-portrait",
             "kind": "image",
             "model": "google/nano-banana-pro",
             "bindings": {"image_input": ["node-nobody"]},
@@ -588,7 +588,7 @@ def test_runs_by_character_is_one_reverse_query(empty_api):
     other = _character(empty_api, "subject-b")
     project = _project(empty_api)
     mine = _submitted(empty_api, project, characters=[character["id"]])
-    _submitted(empty_api, project, slug="other-portrait", characters=[other["id"]])
+    _submitted(empty_api, project, characters=[other["id"]])
 
     body = empty_api.get(f"/api/runs?character={character['id']}").get_json()
 
@@ -604,7 +604,7 @@ def test_runs_filter_on_status_model_and_since(empty_api):
     project = _project(empty_api)
     succeeded = _submitted(empty_api, project)
     empty_api.patch(f"/api/runs/{succeeded['id']}", json={"status": "succeeded"})
-    _submitted(empty_api, project, slug="pending-portrait")
+    _submitted(empty_api, project)
 
     body = empty_api.get(
         f"/api/runs?project={project['id']}&status=succeeded"
@@ -626,8 +626,8 @@ def test_a_projects_runs_come_back_newest_first(empty_api):
     the id follows so two runs created in the same microsecond are still two rows.
     """
     project = _project(empty_api)
-    first = _create(empty_api, project, slug="first-portrait")
-    second = _create(empty_api, project, slug="second-portrait")
+    first = _create(empty_api, project)
+    second = _create(empty_api, project)
 
     body = empty_api.get(f"/api/projects/{project['id']}/runs").get_json()
 
@@ -667,7 +667,7 @@ def test_a_run_in_another_library_is_403(empty_api, catalog_table):
             "sk": {"S": "META"},
             "id": {"S": "run-elsewhere"},
             "lib": {"S": "lib-0002"},
-            "slug": {"S": "borrowed"},
+            "name": {"S": "borrowed"},
         },
     )
 
@@ -889,7 +889,7 @@ def test_drafts_are_hidden_from_a_listing_and_askable_for(empty_api):
     """
     project = _project(empty_api)
     submitted = _submitted(empty_api, project)
-    draft = _create(empty_api, project, slug="unsubmitted")
+    draft = _create(empty_api, project)
 
     listed = empty_api.get(f"/api/runs?project={project['id']}").get_json()["runs"]
     assert [run["id"] for run in listed] == [submitted["id"]]
@@ -1082,7 +1082,7 @@ def test_the_gate_is_on_leaving_the_draft_states_not_on_reaching_pending(empty_a
     project = _project(empty_api)
 
     for status in ("running", "succeeded", "failed"):
-        run = _create(empty_api, project, slug=f"unapproved-{status}")
+        run = _create(empty_api, project)
         resp = empty_api.patch(f"/api/runs/{run['id']}", json={"status": status})
         assert resp.status_code == 409, f"{status} slipped past the gate"
         assert resp.get_json()["error"] == "not_approved"
@@ -1168,7 +1168,7 @@ def test_a_send_chained_off_an_earlier_run_names_that_run(empty_api):
         json={"name": "frame.webp", "size": 4, "content_type": "image/webp"},
     ).get_json()
 
-    run = _create(empty_api, project, slug="chained",
+    run = _create(empty_api, project,
                   bindings={"image_input": [frame["node"]]})
 
     (send,) = empty_api.get(f"/api/runs/{run['id']}").get_json()["sends"]
@@ -1285,7 +1285,7 @@ def test_latest_resolves_to_the_newest_submitted_run(empty_api):
     empty_api.patch(f"/api/runs/{first['id']}", json={"status": "succeeded"})
 
     found = empty_api.get(
-        f"/api/runs/resolve?ref={project['slug']}/latest").get_json()
+        f"/api/runs/resolve?ref={project['id']}/latest").get_json()
     assert found["id"] == first["id"]
 
 
@@ -1301,25 +1301,29 @@ def test_latest_skips_a_draft_unless_it_is_asked_for(empty_api):
     empty_api.patch(f"/api/runs/{submitted['id']}", json={"status": "succeeded"})
     draft = _create(empty_api, project, plan={"params": {}, "prompt": "two"})
 
-    ref = f"{project['slug']}/latest"
+    ref = f"{project['id']}/latest"
     assert empty_api.get(f"/api/runs/resolve?ref={ref}").get_json()["id"] == submitted["id"]
     assert empty_api.get(
         f"/api/runs/resolve?ref={ref}&include=drafts").get_json()["id"] == draft["id"]
 
 
-def test_the_project_segment_is_a_bare_slug(empty_api):
-    """What a person types. Every other route wants `slug:<slug>` or an id.
+def test_the_project_segment_is_an_id(empty_api):
+    """**It took a bare slug, and slugs are gone.**
 
-    Requiring the prefix would mean typing `slug:porch-teaser/latest`, which
-    nobody does and no skill documents — and this route exists precisely to take
-    the human spelling.
+    The argument for the bare form was that it is what a person types — every
+    other route wanted `slug:<slug>` or an id, and requiring the prefix here
+    would have meant typing `slug:porch-teaser/latest`. A name is a free-text
+    label now and two projects may share one, so there is nothing to resolve.
     """
-    project = _project(empty_api, slug="porch-teaser")
+    project = _project(empty_api, name="porch-teaser")
     run = _create(empty_api, project)
     _approve(empty_api, run)
     empty_api.patch(f"/api/runs/{run['id']}", json={"status": "succeeded"})
+
     assert empty_api.get(
-        "/api/runs/resolve?ref=porch-teaser/latest").status_code == 200
+        f"/api/runs/resolve?ref={project['id']}/latest").status_code == 200
+    assert empty_api.get(
+        "/api/runs/resolve?ref=porch-teaser/latest").status_code == 400
 
 
 def test_an_index_is_reported_and_not_applied(empty_api):
@@ -1351,9 +1355,9 @@ def test_a_malformed_runref_is_refused_saying_why(empty_api, ref, reason):
 
 
 def test_a_name_is_not_a_runref(empty_api):
-    """A run has no name. Its slug read `<timestamp>_<hint>` and 29 collapsed to 19."""
+    """A run has no label at all. Its slug read `<timestamp>_<hint>` — 29 collapsed to 19."""
     project = _project(empty_api)
-    resp = empty_api.get(f"/api/runs/resolve?ref={project['slug']}/my-nice-run")
+    resp = empty_api.get(f"/api/runs/resolve?ref={project['id']}/my-nice-run")
     assert resp.status_code == 400
     assert "not a runref" in resp.get_json()["error"]
 
@@ -1363,11 +1367,11 @@ def test_a_name_is_not_a_runref(empty_api):
 
 def _run_with_cast(api, count=1):
     """A draft bound to `count` character(s), each with a wardrobe."""
-    project = api.post("/api/projects", json={"slug": "cast"}).get_json()
+    project = api.post("/api/projects", json={"name": "cast"}).get_json()
     ids = []
     for n, top in enumerate(("crew-neck tee", "work jacket")[:count]):
         made = api.post("/api/characters", json={
-            "slug": f"subject-{'ab'[n]}",
+            "name": f"subject-{'ab'[n]}",
             "profile": {"wardrobe": {"tops": [{"item": top, "colour": "charcoal"}]},
                         "rendering": {"default_style": "Realistic"}},
         }).get_json()
@@ -1458,9 +1462,9 @@ def test_a_run_that_records_no_character_still_has_a_CAST(api):
     reference image belongs to a character by its ancestry, which `owner_of`
     already resolves for every listing, so the answer is there to be read.
     """
-    project = api.post("/api/projects", json={"slug": "cast-derived"}).get_json()
+    project = api.post("/api/projects", json={"name": "cast-derived"}).get_json()
     made = api.post("/api/characters", json={
-        "slug": "subject-a",
+        "name": "subject-a",
         "profile": {"wardrobe": {"tops": [{"item": "crew-neck tee", "colour": "charcoal"}]},
                     "rendering": {"default_style": "Realistic"}},
     }).get_json()
@@ -1489,8 +1493,8 @@ def test_a_run_that_records_no_character_still_has_a_CAST(api):
 def test_the_records_OWN_characters_win_when_it_has_them(api):
     """Deriving is the fallback, not the rule: a run that says who it is about
     is answering the question itself."""
-    project = api.post("/api/projects", json={"slug": "cast-named"}).get_json()
-    named = api.post("/api/characters", json={"slug": "subject-a"}).get_json()
+    project = api.post("/api/projects", json={"name": "cast-named"}).get_json()
+    named = api.post("/api/characters", json={"name": "subject-a"}).get_json()
     run = _create(api, project, characters=[named["id"]],
                   plan={"version": 1, "origin": "authored", "prompt": "x", "params": {}})
     assert api.get(f"/api/runs/{run['id']}").get_json()["cast"] == [named["id"]]

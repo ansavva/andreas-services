@@ -273,22 +273,18 @@ def structured(code: str, message: str, status: int, **extra):
 
 
 def entity_at(kind: str, lib: str, addressed: str, held: dict[str, str]) -> dict:
-    """One entity by id, or by `slug:<slug>` — membership-checked either way.
+    """One entity by id, membership-checked.
 
-    **`slug:` addressing exists for the CLI**, where a person types a name and
-    the alternative is asking them to paste a UUID. The SPA always holds an id.
-    Prefixing rather than a separate route keeps `<id>` one path segment, so
-    every entity route reads the same and none of them has a second handler that
-    could drift.
+    **There was a second address, `slug:<slug>`, and it is gone with slugs.** It
+    existed for the CLI, where a person typed a name rather than pasting a UUID.
+    A name is a free-text label now and two entities may share one, so resolving
+    a name would mean picking between them — which is not something an address
+    may do.
 
-    A slug is resolved inside the library the request already resolved, which is
-    the only library it could mean; an id is resolved globally and then checked,
-    because an id is shareable and a caller may hold one that is not theirs.
+    An id is resolved globally and then checked, because an id is shareable and a
+    caller may hold one that is not theirs. `lib` is what that check is against.
     """
-    if addressed and addressed.startswith("slug:"):
-        record = catalog.entity_by_slug(lib, kind, addressed[len("slug:") :])
-    else:
-        record = catalog.entity(kind, addressed)
+    record = catalog.entity(kind, addressed)
     member_of(record["lib"], held)
     return record
 
@@ -340,11 +336,12 @@ def holders(entity_id: str, holder_kind: str) -> list[dict]:
     shot's attribute and the scenes lived in a JSON list, and no index can see
     into either.
 
-    Deliberately thin — id, slug and title are what a link needs to be drawn.
+    Deliberately thin — an id and a name are what a link needs to be drawn. It
+    carried a `slug` and a `title`, which were two names for one thing.
     """
     found = catalog.entities_by_id(holder_kind, catalog.linked(entity_id, holder_kind))
     return sorted(
-        ({"id": record["id"], "slug": record.get("slug"), "title": record.get("title")}
-         for record in found.values()),
-        key=lambda entry: entry.get("slug") or "",
+        ({"id": record["id"], "name": record.get("name")} for record in found.values()),
+        # By name, then by id — stable, because two may now share a name.
+        key=lambda entry: ((entry["name"] or "").lower(), entry["id"]),
     )

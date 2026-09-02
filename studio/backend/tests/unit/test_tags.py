@@ -8,8 +8,8 @@ which is a vocabulary everybody spells differently.
 from studio_core.services import catalog
 
 
-def _create(api, slug="subject-a"):
-    resp = api.post("/api/characters", json={"slug": slug, "display_name": "Subject"})
+def _create(api, name="subject-a"):
+    resp = api.post("/api/characters", json={"name": "Subject"})
     assert resp.status_code == 201, resp.get_data(as_text=True)
     return resp.get_json()
 

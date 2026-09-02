@@ -49,11 +49,37 @@ def test_compare_sorts_rows_into_new_same_and_differing():
     assert [(k, n) for k, n, _w, _h in differing] == [("block", "b")]
 
 
+def _by_name(library) -> dict:
+    """The stack's templates keyed the way the FILE names them.
+
+    The document is names and the rows are UUIDs, which is the whole shape of a
+    push: it reads the destination, matches names to the ids already there, and
+    mints one only for a name that is new.
+    """
+    return {each["name"]: each for each in library.fake.templates.values()}
+
+
 def test_a_push_writes_rows_the_destination_does_not_have(library, tmp_path):
     result = _push(_doc(tmp_path))
     assert result.exit_code == 0, result.output
     assert library.fake.spec_blocks["face_only"] == "Take the face from the images."
-    assert library.fake.templates["Face, front"]["prompt"]
+    assert _by_name(library)["Face, front"]["prompt"]
+
+
+def test_a_push_writes_a_known_name_to_the_id_it_already_has(library, tmp_path):
+    """**Not a second row.** A name-keyed document must not fork an entity.
+
+    The id is what a future `started_from` would point at, so a push that minted
+    a fresh one for a name already there would leave two templates where the
+    file says one. Nothing would refuse it — names are not unique here — so this
+    assertion is the only thing standing between a push and a silent fork.
+    """
+    library.fake.templates["template-held"] = {"id": "template-held", **TEMPLATE}
+
+    result = _push(_doc(tmp_path), "--force")
+
+    assert result.exit_code == 0, result.output
+    assert list(library.fake.templates) == ["template-held"]
 
 
 def test_a_push_refuses_a_row_that_differs_and_writes_NOTHING(library, tmp_path):
@@ -73,7 +99,7 @@ def test_a_push_refuses_a_row_that_differs_and_writes_NOTHING(library, tmp_path)
     assert "--force" in result.output
     # The block is untouched, AND the template that had no conflict was not written.
     assert library.fake.spec_blocks["face_only"] == "A FIX SOMEBODY MADE HERE."
-    assert "Face, front" not in library.fake.templates
+    assert "Face, front" not in _by_name(library)
 
 
 def test_force_overwrites_the_row_that_differed(library, tmp_path):
@@ -97,15 +123,16 @@ def test_a_push_never_deletes_a_row_the_file_does_not_mention(library, tmp_path)
     the same reason `config sync` never deletes an angle image the repo has
     dropped.
     """
-    library.fake.templates["Body, front"] = {"name": "Body, front"}
+    library.fake.templates["template-body"] = {"id": "template-body",
+                                               "name": "Body, front"}
     result = _push(_doc(tmp_path))
     assert result.exit_code == 0, result.output
-    assert "Body, front" in library.fake.templates
+    assert "Body, front" in _by_name(library)
 
 
 def test_pull_writes_what_the_stack_holds(library, tmp_path):
     library.fake.spec_blocks["face_only"] = "held text"
-    library.fake.templates["Face, front"] = dict(TEMPLATE)
+    library.fake.templates["template-face"] = {"id": "template-face", **TEMPLATE}
     path = tmp_path / "out.yaml"
     result = CliRunner().invoke(cli.main, ["templates", "pull", "--path", str(path)])
     assert result.exit_code == 0, result.output

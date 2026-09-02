@@ -227,7 +227,7 @@ def test_the_receiver_refuses_an_oversized_body(queue, monkeypatch):
 
 
 def _running_run(api):
-    project = api.post("/api/projects", json={"slug": "rooftop-teaser"}).get_json()
+    project = api.post("/api/projects", json={"name": "rooftop-teaser"}).get_json()
     run = api.post("/api/runs", json={
         "project": project["id"], "kind": "image", "engine": "nano-banana-pro",
         "model": "google/nano-banana-pro",

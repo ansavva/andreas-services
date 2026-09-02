@@ -98,7 +98,7 @@ def _inherit(defaults: dict, own: dict | None, *keys: str) -> dict:
     return out
 
 
-def normalise(plan: dict, slug: str) -> dict:
+def normalise(plan: dict, name: str) -> dict:
     """A plan as authored -> the body `POST /api/scenes` takes, nothing implicit.
 
     Numbering, ids, inherited defaults and derived status are all filled in here
@@ -165,11 +165,10 @@ def normalise(plan: dict, slug: str) -> dict:
         shots.append(shot)
 
     plan_doc = {
-        "slug": slug,
+        "name": name,
         "version": VERSION,
         "status": "planned",
         "characters": sorted(plan.get("characters") or []),
-        "title": plan.get("title") or "",
         "logline": plan.get("logline") or "",
         # Prepended byte-identical to every panel prompt. Panels also inherit
         # each other so they converge on one look, but that is an image
@@ -261,7 +260,7 @@ def _normalise_opens(raw: dict, n: int) -> dict:
 def scene_frames(record: dict, max_n: int | None = None) -> list[str]:
     """The scene's OWN images as NODE IDS, in order — a shot's references.
 
-    Derived, not stored. It used to live in a separate `chains/<slug>.json`,
+    Derived, not stored. It used to live in a separate `chains/<scene>.json`,
     written alongside the scene and kept in sync by hand — which is the shape of
     every bug this repo has had to write a migrator for. A planned scene already
     records both halves: shot 1's opening panel is the seed, and every later

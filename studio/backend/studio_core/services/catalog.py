@@ -29,9 +29,9 @@ One node type. A folder is a node with no blob; a file is a node with one.
 | Node — by parent | `NODE#<parent_id>` | `NAME#<name>` | list-by-parent, unique names |
 | Node — by id | `NODE#<node_id>` | `META` | the record |
 | Character | `CHAR#<char_id>` | `META` | the record |
-| Character slug claim | `LIB#<lib>` | `CHARSLUG#<slug>` | uniqueness, and the listing |
+| Character index | `LIB#<lib>` | `CHAR#<char_id>` | the listing |
 | Project | `PROJ#<proj_id>` | `META` | the record |
-| Project slug claim | `LIB#<lib>` | `PROJSLUG#<slug>` | uniqueness, and the listing |
+| Project index | `LIB#<lib>` | `PROJ#<proj_id>` | the listing |
 | Project ↔ character | `PROJ#<proj_id>` | `CHAR#<char_id>` | involvement; reverse-queryable |
 | Run | `RUN#<run_id>` | `META` | the envelope |
 | Run in project | `PROJ#<proj_id>` | `RUN#<created>#<run_id>` | newest first, paginated |
@@ -40,11 +40,13 @@ One node type. A folder is a node with no blob; a file is a node with one.
 | Scene / Movie in project | `PROJ#<proj_id>` | `SCENE#<created>#<id>` | |
 | Shot | `SCENE#<scene_id>` | `SHOT#<shot_id>` | one row per planned shot |
 | Phrasebook term | `LIB#<lib>` | `TERM#<model>#<avoid>` | the wording lists |
-| Template library | `LIB#<lib>` | `SPEC#BLOCK#<name>` / `SPEC#TEMPLATE#<name>` | how a prompt is written |
+| Block | `LIB#<lib>` | `SPEC#BLOCK#<name>` | shared prose, cited BY NAME in a prompt |
+| Template | `LIB#<lib>` | `SPEC#TEMPLATE#<template_id>` | the record |
 | Sweep | `LIB#<lib>` | `SWEEP#<opened>#<id>#<n>` | blobs a delete is about to strand |
 
-**An id is the identity; a slug is a label.** Every entity has a `v4` UUID that
-never changes, and the slug is a mutable, library-unique attribute. A rename is
+**An id is the identity; a name is a label.** Every entity has a `v4` UUID that
+never changes, and the name is a mutable free-text attribute — not unique, not
+claimed, and nothing resolves an entity by it. A rename is
 one conditional write plus a folder rename and touches nothing else, ever — no
 object is copied, no record anywhere is rewritten, and every node keeps its id.
 That is the single largest simplification the entity model buys, and it is why
@@ -205,10 +207,10 @@ ENTITY_KEYS = {
 }
 _KIND_BY_ID_PREFIX = {prefix: kind for kind, (prefix, _) in ENTITY_KEYS.items()}
 
-# The two kinds whose slug is unique in a library, and the claim that makes it
-# so. A run, a scene and a movie have a slug too — it is a human label, several
-# of them may read the same, and nothing addresses one by it.
-CLAIM_PREFIX = {ENTITY_CHARACTER: "CHARSLUG#", ENTITY_PROJECT: "PROJSLUG#"}
+#: Which entity kinds a library lists. The sort key is the entity's own pk —
+#: `CHAR#<char_id>` under `LIB#<lib>` — so the index row and the record it points
+#: at are spelled the same way and `_member_sk` is `_entity_pk`.
+LISTED_KINDS = (ENTITY_CHARACTER, ENTITY_PROJECT)
 
 # The three kinds a project lists, and the folder each one's tree hangs under.
 # `services.layout` owns the folder *names*; this is only the set.
@@ -694,7 +696,7 @@ def recent(lib: str, limit: int) -> tuple[list[dict], bool]:
 
     **Every row this returns is already something the reel can show**, which it
     was not before. `by-recent` is hashed on the sparse `reel` attribute, so a
-    folder, an entity record and a slug claim are absent from the index rather
+    folder, an entity record and a library index row are absent from it rather
     than read and discarded — and the `limit` above is therefore spent on media
     instead of on whatever the tree happened to hold.
 
@@ -1016,7 +1018,7 @@ def entity_chain(record: dict) -> list[str]:
 
 
 def owner_of(record: dict) -> dict | None:
-    """The entity a node belongs to, as `{kind, id, slug}`, or `None`.
+    """The entity a node belongs to, as `{kind, id, name}`, or `None`.
 
     What the SPA shows as "in <project>", and what `GET /api/nodes/<id>/owner`
     answers. A node directly under the library root belongs to nobody in
@@ -1911,39 +1913,36 @@ def set_blob(
 #
 # ## Why an entity is two items
 #
-# The same two reasons a node is two items, and it is worth stating rather than
-# inheriting silently. DynamoDB enforces uniqueness on **one thing only: the
-# primary key**, and the two properties an entity needs pull in opposite
-# directions:
+# The record is keyed on the **id**, because the id is what every other row
+# points at and it must never change: `CHAR#<char_id>` / `META`. That answers
+# "read this character" and answers nothing about "every character in this
+# library" — this table must never be scanned — so a second item exists purely
+# as the **list index**: `LIB#<lib>` / `CHAR#<char_id>`, one query per library.
 #
-# * The record must be keyed on the **id**, because the id is what every other
-#   row points at and it must never change. `CHAR#<char_id>` / `META`.
-# * The slug must be **unique in the library**, and the only way to say that to
-#   DynamoDB is to make the slug part of a key. `LIB#<lib>` / `CHARSLUG#<slug>`,
-#   written under `attribute_not_exists(pk)`.
+# ## The second item used to claim a NAME, and no longer does
 #
-# One item cannot be keyed both ways, so there are two — and the claim item then
-# earns its keep a second time as the **list index**: "every character in this
-# library" is one query on `LIB#<lib>` rather than the `Scan` this table must
-# never have.
+# It was `LIB#<lib>` / `CHARSLUG#<slug>`, written under
+# `attribute_not_exists(pk)`, and its job was uniqueness as much as listing: a
+# slug was a library-unique handle a person typed, so two characters could not
+# share one.
 #
-# **A GSI does not substitute for it.** An index hashed on `lib` and ranged on
-# `slug` would give the listing and enforce nothing: two records with the same
-# slug both land in it, silently. Uniqueness has to be a condition expression on
-# a real key.
+# **Slugs are gone and so is the uniqueness.** A character has one free-text
+# `name`, it is a LABEL, and nothing resolves an entity by it — the SPA routes on
+# `char-<uuid>`, the API addresses ids, and an edge stores an id. So a duplicate
+# name is two rows that look alike in a list, which a person fixes by renaming
+# one, and it is not worth a condition expression, a second failure mode and a
+# 409 the client has to handle.
 #
-# **Keying the character on its slug instead** — `LIB#<lib>` / `CHAR#<slug>` —
-# collapses it to one item and reintroduces the disease the whole model removes:
-# a rename becomes delete-and-recreate, and every run link and
-# binding pointing at it is pointing at a key that no longer exists.
+# The item that remains is keyed on the id it points at, which means a rename
+# touches exactly one row: the record. Nothing to keep in step, nothing to move
+# in a transaction, nothing to half-happen.
 #
-# ## The claim is a pointer, never a projection
+# ## The index is a pointer, never a projection
 #
-# It carries the entity id and a timestamp and nothing else. Putting
-# `display_name` on it would put a mutable copy on a second item that every
-# rename has to keep in step — the trap `GET /api/nodes` already avoids by
-# pairing a query with a `BatchGetItem`, and the listing here is the same shape
-# for the same reason.
+# It carries the entity id and a timestamp and nothing else. Putting the `name`
+# on it would put a mutable copy on a second item that every rename has to keep
+# in step — the trap `GET /api/nodes` already avoids by pairing a query with a
+# `BatchGetItem`, and the listing here is the same shape for the same reason.
 #
 # **The run listing row is the one deliberate exception**, and it is deliberate
 # because a run is immutable once it completes: there is nothing left to keep in
@@ -1986,8 +1985,14 @@ def _mint(kind: str) -> str:
     return f"{ENTITY_KEYS[kind][0]}-{uuid.uuid4()}"
 
 
-def _claim_sk(kind: str, slug: str) -> str:
-    return f"{CLAIM_PREFIX[kind]}{slug}"
+def _member_sk(kind: str, entity_id: str) -> str:
+    """Where a library records that it holds this entity.
+
+    Deliberately the same string as the entity's own partition key: the row says
+    "this library holds `CHAR#<id>`", and spelling it any other way would be a
+    second encoding of the same fact to get wrong.
+    """
+    return _entity_pk(kind, entity_id)
 
 
 #: Turn every `Decimal` a read hands back into an int or a float — `jsonify`
@@ -2042,24 +2047,24 @@ def entity(kind: str, entity_id: str) -> dict:
 
 
 def entity_summary(entity_id: str) -> dict:
-    """`{kind, id, slug}` for one entity — what a node's `owner` reports.
+    """`{kind, id, name}` for one entity — what a node's `owner` reports.
 
     Deliberately three fields. A listing that drew the whole record per file
     would fetch a profile per thumbnail, and the SPA needs exactly enough to
-    write "in <slug>" and link it.
+    write "in <name>" and link it.
     """
     kind = entity_kind(entity_id)
     record = entity(kind, entity_id)
-    return {"kind": kind, "id": record["id"], "slug": record.get("slug")}
+    return {"kind": kind, "id": record["id"], "name": record.get("name")}
 
 
-def _claims(lib: str, kind: str) -> list[dict]:
+def _members(lib: str, kind: str) -> list[dict]:
     items = _query(
         TableName=config.catalog_table(),
-        KeyConditionExpression="pk = :pk AND begins_with(sk, :claim)",
+        KeyConditionExpression="pk = :pk AND begins_with(sk, :member)",
         ExpressionAttributeValues={
             ":pk": {"S": _lib_pk(lib)},
-            ":claim": {"S": CLAIM_PREFIX[kind]},
+            ":member": {"S": ENTITY_KEYS[kind][1]},
         },
     )
     return [_entity(item) for item in items]
@@ -2093,44 +2098,31 @@ def entities_by_id(kind: str, entity_ids: list[str]) -> dict[str, dict]:
 def entities_in(lib: str, kind: str) -> list[dict]:
     """Every character, or every project, in one library.
 
-    **One query plus a batched read** — the claim rows say which ids exist and
+    **One query plus a batched read** — the index rows say which ids exist and
     `BatchGetItem` fetches the records. The same shape `GET /api/nodes` uses, for
-    the same reason: the claim stays a pointer rather than a projection somebody
+    the same reason: the index stays a pointer rather than a projection somebody
     has to keep in step.
 
-    A claim naming a record that is not there is logged and dropped rather than
-    raised. Every create and delete here is one transaction over both items, so
-    one without the other means a row was written by hand — and a listing that
+    An index row naming a record that is not there is logged and dropped rather
+    than raised. Every create and delete here is one transaction over both items,
+    so one without the other means a row was written by hand — and a listing that
     500s over it is a library nobody can open.
+
+    **There is no `entity_by_name`**, and that is the point of the change that
+    removed slugs: a name is a label, so resolving one would have to pick between
+    duplicates. Every caller addresses an id.
     """
-    claims = _claims(lib, kind)
-    found = entities_by_id(kind, [claim["entity"] for claim in claims])
+    members = _members(lib, kind)
+    found = entities_by_id(kind, [member["entity"] for member in members])
 
     listed = []
-    for claim in claims:
-        record = found.get(claim["entity"])
+    for member in members:
+        record = found.get(member["entity"])
         if record is None:
-            logger.warning("Library %s claims a missing %s: %s", lib, kind, claim["entity"])
+            logger.warning("Library %s lists a missing %s: %s", lib, kind, member["entity"])
             continue
         listed.append(record)
     return listed
-
-
-def entity_by_slug(lib: str, kind: str, slug: str) -> dict:
-    """One entity by the label a person types. Two reads, no scan."""
-    try:
-        response = dynamodb.client().get_item(
-            TableName=config.catalog_table(),
-            Key={"pk": {"S": _lib_pk(lib)}, "sk": {"S": _claim_sk(kind, slug)}},
-        )
-    except ClientError as exc:
-        logger.warning("GetItem failed for %s '%s': %s", kind, slug, exc)
-        raise UpstreamError("Could not read the catalog") from exc
-
-    item = response.get("Item")
-    if not item:
-        raise NotFoundError(slug)
-    return entity(kind, _entity(item)["entity"])
 
 
 def linked(entity_id: str, holder_kind: str) -> list[str]:
@@ -2339,7 +2331,7 @@ def _bump_counts(project_id: str, field: str, delta: int) -> dict:
     }
 
 
-def _tree_steps(parent: dict, slug: str, entity_id: str, layout: tuple) -> tuple[dict, list]:
+def _tree_steps(parent: dict, entity_id: str, layout: tuple) -> tuple[dict, list]:
     """The root folder an entity owns, plus its starting layout, as one write.
 
     Returns the root record and the steps that create it and its children. The
@@ -2348,8 +2340,21 @@ def _tree_steps(parent: dict, slug: str, entity_id: str, layout: tuple) -> tuple
     what `GET /api/nodes/<id>/owner` walks up to. The forward pointer is `root`
     on the record. One field in each direction, and no map of folder names in
     either.
+
+    **The folder is NAMED by the entity id**, which it was not: it used to take
+    the slug, and a rename moved it so that somebody browsing the tree saw the
+    name they had just chosen. That cannot survive free-text names. A folder's
+    name is unique among its siblings — genuinely, because `child_by_name`
+    resolves a path segment — so naming entity roots by their display name would
+    refuse the second character called `Anna` from the tree, which is exactly the
+    uniqueness that dropping slugs was meant to remove, arriving by a side door
+    and with a worse message.
+
+    So the id is the folder's name here, the way it is already the S3 key's, and
+    the display name lives on the record alone. A listing hands back `owner` for
+    an entity root, which is where a client gets a name to draw.
     """
-    root = _new_node(parent, slug, KIND_FOLDER, entity=entity_id)
+    root = _new_node(parent, entity_id, KIND_FOLDER, entity=entity_id)
     steps = _node_steps(root)
     for name in layout:
         steps += _node_steps(_new_node(root, name, KIND_FOLDER))
@@ -2360,15 +2365,14 @@ def create_character(
     lib: str,
     parent_id: str,
     *,
-    slug: str,
-    display_name: str | None,
+    name: str,
     profile: dict,
     layout: tuple,
 ) -> dict:
-    """A character, its slug claim, its root folder and its pools — one write.
+    """A character, its library index row, its root folder and its pools — one write.
 
-    **Twelve items in one `TransactWriteItems`**: the record, the claim, and two
-    each for the root and the four starting pools. Either all of it exists or
+    **Twelve items in one `TransactWriteItems`**: the record, the index row, and
+    two each for the root and the four starting pools. Either all of it exists or
     none of it does, which is the property that makes "creating a character"
     something a person can retry after a timeout without inspecting what
     survived.
@@ -2379,11 +2383,10 @@ def create_character(
     operations, and none of them breaks anything, because an image is identity
     when it carries the `default` tag and not because of the folder it sits in.
 
-    A slug already claimed and a folder name already taken are two different
-    condition failures with two different messages, and `_write` is what keeps
-    them apart — the claim says "a character called X already exists", the folder
-    says "X already exists here", and the second can happen without the first
-    when somebody made an ordinary folder by that name.
+    **Nothing here can collide.** It used to claim the slug, and a second
+    character wanting that name was a 409. A name is a free-text label now and
+    the root folder is named by the id, so both keys are minted UUIDs and the
+    only conflict left is one that cannot happen.
     """
     parent = _folder_node(parent_id)
     if parent["lib"] != lib:
@@ -2391,13 +2394,12 @@ def create_character(
 
     char_id = _mint(ENTITY_CHARACTER)
     now = _now()
-    root, tree = _tree_steps(parent, slug, char_id, layout)
+    root, tree = _tree_steps(parent, char_id, layout)
 
     record = {
         "id": char_id,
         "lib": lib,
-        "slug": slug,
-        "display_name": display_name or slug,
+        "name": name,
         "schema_version": PROFILE_SCHEMA_VERSION,
         "rev": 1,
         "created": now,
@@ -2410,14 +2412,11 @@ def create_character(
     _write(
         [
             (
-                _put(_lib_pk(lib), _claim_sk(ENTITY_CHARACTER, slug),
-                     {"entity": char_id, "created": now}, unique=True),
-                ConflictError(f"a character called '{slug}' already exists"),
+                _put(_lib_pk(lib), _member_sk(ENTITY_CHARACTER, char_id),
+                     {"entity": char_id, "created": now}),
+                None,
             ),
-            (
-                _put(_entity_pk(ENTITY_CHARACTER, char_id), META, record, unique=True),
-                ConflictError(f"a character called '{slug}' already exists"),
-            ),
+            (_put(_entity_pk(ENTITY_CHARACTER, char_id), META, record), None),
             *tree,
         ]
     )
@@ -2430,13 +2429,12 @@ def create_project(
     lib: str,
     parent_id: str,
     *,
-    slug: str,
-    title: str | None,
+    name: str,
     description: str | None,
     characters: list[str],
     layout: tuple,
 ) -> dict:
-    """A project, its claim, its root, its five subfolders and its involvements.
+    """A project, its index row, its root, its five subfolders and its involvements.
 
     `characters` are written as `PROJ#<id>` / `CHAR#<id>` rows rather than as a
     list on the record, which is what makes the reverse question answerable: read
@@ -2450,13 +2448,12 @@ def create_project(
 
     proj_id = _mint(ENTITY_PROJECT)
     now = _now()
-    root, tree = _tree_steps(parent, slug, proj_id, layout)
+    root, tree = _tree_steps(parent, proj_id, layout)
 
     record = {
         "id": proj_id,
         "lib": lib,
-        "slug": slug,
-        "title": title or slug,
+        "name": name,
         "description": description or "",
         "rev": 1,
         "created": now,
@@ -2466,15 +2463,14 @@ def create_project(
         "counts": {"runs": 0, "scenes": 0, "movies": 0},
     }
 
-    taken = ConflictError(f"a project called '{slug}' already exists")
     _write(
         [
             (
-                _put(_lib_pk(lib), _claim_sk(ENTITY_PROJECT, slug),
-                     {"entity": proj_id, "created": now}, unique=True),
-                taken,
+                _put(_lib_pk(lib), _member_sk(ENTITY_PROJECT, proj_id),
+                     {"entity": proj_id, "created": now}),
+                None,
             ),
-            (_put(_entity_pk(ENTITY_PROJECT, proj_id), META, record, unique=True), taken),
+            (_put(_entity_pk(ENTITY_PROJECT, proj_id), META, record), None),
             *tree,
             *[
                 (
@@ -2492,63 +2488,24 @@ def create_project(
     return record
 
 
-def rename_steps(kind: str, record: dict, slug: str, now: str) -> list:
-    """Drop the old claim, take the new one, and rename the root folder.
-
-    **Four writes and zero objects.** No record anywhere is rewritten, every node
-    keeps its id, and the run bindings and the tags that
-    all name node ids are untouched — which is the single largest simplification
-    the entity model buys and the reason `domain/rewrite.py` stops existing.
-
-    The root folder is renamed too, because a person browsing the tree should see
-    the name they just chose. That it is *only* a display name is the point: the
-    character is `char-…` and always was.
-    """
-    root = node(record["root"])
-    renamed = {**root, "name": slug, "updated_at": now}
-    return [
-        (_delete(_lib_pk(record["lib"]), _claim_sk(kind, record["slug"])), None),
-        (
-            _put(_lib_pk(record["lib"]), _claim_sk(kind, slug),
-                 {"entity": record["id"], "created": now}, unique=True),
-            ConflictError(f"a {kind} called '{slug}' already exists"),
-        ),
-        (_delete_name(parent_id=root["parent_id"], name=root["name"]), None),
-        (
-            _put_name(renamed, parent_id=root["parent_id"], name=slug),
-            ConflictError(f"'{slug}' already exists here"),
-        ),
-        (
-            _update_meta(root["node_id"], {"name": slug, "updated_at": now}),
-            NotFoundError(root["node_id"]),
-        ),
-    ]
-
-
-def update_entity(
-    kind: str, record: dict, rev: int, assignments: dict, *, slug: str | None = None
-) -> dict:
-    """Change an entity's attributes, and its slug, under one `rev`.
+def update_entity(kind: str, record: dict, rev: int, assignments: dict) -> dict:
+    """Change an entity's attributes under one `rev`.
 
     **A stale `rev` is a 409 and never a silent overwrite.** Two people editing
     one profile is the case this exists for: the second save is refused with the
     numbers in the message, and the client re-reads rather than losing the
     first's work.
 
-    A slug change rides in the same transaction as the attribute change, so a
-    rename that collides leaves the display name unchanged too — the request
-    either happened or did not.
+    **A rename is an assignment like any other**, which it was not. Renaming used
+    to be four extra writes — drop the old slug claim, take the new one under
+    `attribute_not_exists`, and move the root folder — riding in this same
+    transaction so that a collision left the whole request undone. All of it is
+    gone with slugs: the name is a label on this row, the index row is keyed on
+    the id, and the root folder is named by the id. One item changes.
     """
     now = _now()
     assignments = {**assignments, "rev": rev + 1, "updated": now}
-    if slug is not None and slug != record["slug"]:
-        assignments["slug"] = slug
-
-    steps = [(_revised(kind, record["id"], assignments, rev), _stale(kind, rev))]
-    if slug is not None and slug != record["slug"]:
-        steps += rename_steps(kind, record, slug, now)
-
-    _write(steps)
+    _write([(_revised(kind, record["id"], assignments, rev), _stale(kind, rev))])
     return {**record, **{k: v for k, v in assignments.items() if v is not None}}
 
 
@@ -2622,8 +2579,9 @@ def delete_entity(kind: str, record: dict, *, delete_files: bool) -> dict:
     steps: list[tuple[dict, Exception | None]] = [
         (_delete(_attributes(row)["pk"], _attributes(row)["sk"]), None) for row in rows
     ]
-    if kind in CLAIM_PREFIX:
-        steps.append((_delete(_lib_pk(record["lib"]), _claim_sk(kind, record["slug"])), None))
+    if kind in LISTED_KINDS:
+        steps.append(
+            (_delete(_lib_pk(record["lib"]), _member_sk(kind, record["id"])), None))
     for holder in (ENTITY_PROJECT, ENTITY_RUN):
         for holder_id in linked(record["id"], holder):
             steps.append(
@@ -2790,7 +2748,6 @@ def create_project_entity(
     project_id: str,
     parent_id: str,
     *,
-    slug: str | None,
     attributes: dict,
     listing: dict,
     subfolders: tuple = (),
@@ -2798,20 +2755,18 @@ def create_project_entity(
 ) -> dict:
     """A run, a scene or a movie: envelope, listing row, folder — one write.
 
-    **Its folder is named for the slug and its record names the folder's node
+    **Its folder is named for its id and its record names the folder's node
     id**, which is why renaming or moving that folder afterwards strands nothing.
     That is the property the timestamp-slug folder name used to carry and could
     not keep: a run that recorded a path was stranded by the first rename above
     it, and `domain/rewrite.py` existed for exactly that.
 
-    **`slug=None` means the entity has no label, and its folder is named for its
-    id.** That is a RUN. A scene and a movie are things a person plans and comes
-    back to, so both keep a slug and a title; a run is a machine event and has
-    neither. Its old slug was `<timestamp>_<hint>`, which made it unique only by
-    embedding `created` — a column already on the row and already what sorting
-    and `--since` read — while the hint alone collided across runs. Nothing keyed
-    on it, no claim row enforced it, and resolving one needed an exact match, a
-    substring fallback and an ambiguity error to prop it up.
+    The folder used to take a slug where the entity had one — a scene and a movie
+    did, a run did not. Slugs are gone: a scene and a movie carry a free-text
+    `name` on the record and their folder is named by the id, like a run's always
+    was and like a character's is now. A folder name is unique among its siblings,
+    so naming these by a label would refuse the second scene called `Opening` from
+    the tree, which is the uniqueness dropping slugs was meant to remove.
 
     **`count=False` creates the entity without counting it, and a RUN uses it.**
     A run is created as a `draft` now — when it is planned, not when it is
@@ -2833,7 +2788,7 @@ def create_project_entity(
     entity_id = _mint(kind)
     now = _now()
 
-    folder = _new_node(parent, slug or entity_id, KIND_FOLDER, entity=entity_id)
+    folder = _new_node(parent, entity_id, KIND_FOLDER, entity=entity_id)
     steps = _node_steps(folder)
     for name in subfolders:
         steps += _node_steps(_new_node(folder, name, KIND_FOLDER))
@@ -2842,7 +2797,6 @@ def create_project_entity(
         "id": entity_id,
         "lib": lib,
         "project": project_id,
-        **({"slug": slug} if slug else {}),
         "rev": 1,
         "created": now,
         "updated": now,
@@ -3396,26 +3350,29 @@ TEMPLATE_PREFIX = f"{SPEC_PREFIX}TEMPLATE#"
 #: `description` and `tags` are read at PROMOTION rather than at render — they
 #: are what somebody starts from when the image this makes becomes identity — so
 #: they belong to the template and not to the prompt.
-TEMPLATE_FIELDS = ("prompt", "description", "tags")
+TEMPLATE_FIELDS = ("name", "prompt", "description", "tags")
 
-#: The longest a template may be called. Names are keys here, and a sort key has
-#: a size limit worth staying well inside.
+#: The longest a template may be called.
 MAX_TEMPLATE_NAME = 120
 
 
 def clean_template_name(raw: str | None) -> str:
-    """A template's name, which is also its key.
+    """A template's name — a LABEL, not its key.
 
-    **A template IS its name**, exactly as a block is — and for the same reason
-    a block is: nothing points at either. The entity model gives every character,
-    project and run a UUID because a rename would otherwise strand every row
-    that named it; a run copies a template's WORDS rather than pointing at the
-    row, so there is nothing to strand and nothing for a second identifier to
-    protect. A generated id would be a second name that can drift from the first.
+    **The record is keyed on a UUID**, which is now the rule rather than a
+    choice: this table holds no name claims at all, so a name here identifies
+    nothing and is not unique. It was briefly keyed on the name, on the grounds
+    that nothing points at a template — but that is a judgement about a fact
+    that CHANGES, and "which template did this run start from" is an obvious
+    field that a name key would strand.
 
-    `#` is refused rather than escaped because it separates the segments of every
-    key in this table; the rest is left alone, so a template may be called
-    `Body, back` and read like the thing it is.
+    A block is the one exception left, and has the reason a template lacks: it
+    is cited by name IN PROSE, `{block.face_only}`, so a UUID there would name
+    something no template could write.
+
+    So this only folds whitespace. `#` is refused rather than escaped because it
+    separates the segments of every key in this table; the rest is left alone,
+    so a template may be called `Body, back` and read like the thing it is.
     """
     name = " ".join((raw or "").split())
     if not name:
@@ -3453,7 +3410,8 @@ def templates(lib: str) -> dict:
             blocks[sk.removeprefix(BLOCK_PREFIX)] = record.get("text") or ""
         elif sk.startswith(TEMPLATE_PREFIX):
             found.append({
-                "name": sk.removeprefix(TEMPLATE_PREFIX),
+                "id": sk.removeprefix(TEMPLATE_PREFIX),
+                "name": record.get("name") or "",
                 **{k: record.get(k) for k in TEMPLATE_FIELDS if record.get(k) is not None},
             })
     found.sort(key=lambda entry: entry["name"].lower())
@@ -3467,30 +3425,28 @@ def put_spec_block(lib: str, name: str, text: str) -> dict:
     return record
 
 
-def put_template(lib: str, name: str, fields: dict, was: str | None = None) -> dict:
-    """Write one template, keyed on its name. Unknown keys are dropped.
+def put_template(lib: str, template_id: str, fields: dict) -> dict:
+    """Write one template. Unknown keys are dropped rather than stored.
 
     Dropping rather than refusing: a caller that round-trips `templates` hands
-    back `name` and whatever the read added, and rejecting those would make the
+    back `id` and whatever the read added, and rejecting those would make the
     obvious edit-then-save flow fail on fields it produced itself.
 
-    **A rename is a key change, so it is a delete and a put in ONE
-    transaction.** `was` names the row being replaced. Two writes that could
-    half-happen would leave the library holding the template twice under two
-    names — which is the shape of drift this whole change has been removing, and
-    it is avoidable here for the price of naming the old key.
+    **One row, and a rename is a field write.** This briefly also took a
+    `TPLNAME#` claim, so that two templates could not share a name. The claim is
+    gone with every other name claim in this table: a name is a LABEL here now,
+    and identity is the id. Nothing resolves a template by name, so a duplicate
+    is a display problem rather than an ambiguity, and it costs a person nothing
+    they cannot fix by renaming one.
     """
     record = {k: v for k, v in fields.items() if k in TEMPLATE_FIELDS}
     record["updated"] = _now()
-    steps = [(_put(_lib_pk(lib), f"{TEMPLATE_PREFIX}{name}", record), None)]
-    if was and was != name:
-        steps.append((_delete(_lib_pk(lib), f"{TEMPLATE_PREFIX}{was}"), None))
-    _write(steps)
-    return {"name": name, **record}
+    _write([(_put(_lib_pk(lib), f"{TEMPLATE_PREFIX}{template_id}", record), None)])
+    return {"id": template_id, **record}
 
 
-def delete_template(lib: str, name: str) -> None:
-    _write([(_delete(_lib_pk(lib), f"{TEMPLATE_PREFIX}{name}"), None)])
+def delete_template(lib: str, template_id: str) -> None:
+    _write([(_delete(_lib_pk(lib), f"{TEMPLATE_PREFIX}{template_id}"), None)])
 
 
 def delete_spec_block(lib: str, name: str) -> None:

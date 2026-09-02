@@ -179,13 +179,21 @@ def render_conflicts(differing: list) -> str:
 
 
 def apply(library: dict, rows: list) -> int:
-    """Write the named rows. Returns how many were written."""
+    """Write the named rows. Returns how many were written.
+
+    **The file names templates; the stack keys them on ids**, so a row already
+    there is written to the id it already has and a row that is new gets one
+    minted. `library` is the destination as it was read — which is where those
+    ids come from, and why this takes it.
+    """
+    held = {each["name"]: each.get("id") for each in library["templates"]}
     written = 0
     for kind, name, payload, _held in rows:
         if kind == "block":
             E.put_block(name, payload)
         else:
-            E.put_template(name, payload)
+            E.put_template(held.get(name) or E.new_template_id(),
+                           {**payload, "name": name})
         written += 1
     return written
 

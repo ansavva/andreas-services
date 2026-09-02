@@ -53,7 +53,7 @@ belong in front of the person rather than at the far end of a queue where they
 arrive as a failed job twenty seconds later. The CLI already does that
 resolution and is tested for it.
 
-**It appends to no chain and patches no shot.** `frames last --chain <slug>` and
+**It appends to no chain and patches no shot.** `frames last --chain <scene>` and
 `scenes handoff` are catalog writes on a node id, so the caller makes them once
 the job hands the node back. The worker's contract is: bytes in, one node out —
 except for `assemble`, which owns the record it is cutting, because a cut that
@@ -75,7 +75,7 @@ from studio_core.clients.aws import s3, sqs
 from studio_core.errors import ConfigError, NotFoundError, UpstreamError, ValidationError
 from studio_core.media import sheet as sheets
 from studio_core.media import workspace
-from studio_core.services import catalog, storyboard
+from studio_core.services import catalog, generate, storyboard
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +160,7 @@ def _validated(kind: str, params: dict, lib: str) -> dict:
         if not isinstance(target, str):
             raise ValidationError("assemble needs a `target` scene or movie id")
         # The kind first, then the read. `entity_kind` refuses anything that is
-        # not an entity id at all (`node-…`, a slug) with a 400 naming it, and
+        # not an entity id at all (`node-…`, a name) with a 400 naming it, and
         # asking a run for a cut is a 400 rather than a wasted catalog read.
         kind = catalog.entity_kind(target)
         if kind not in (catalog.ENTITY_SCENE, catalog.ENTITY_MOVIE):
@@ -429,8 +429,8 @@ def _assemble(lib: str, params: dict) -> dict:
             part["n"] = n
             part["copy"] = copied["node"]
 
-        slug = record.get("slug") or record["id"]
-        out_local = space.at("cut", f"{slug}.mp4")
+        stem = generate.slugify(record.get("name") or "") or record["id"]
+        out_local = space.at("cut", f"{stem}.mp4")
         info = ffmpeg.stitch(local, out_local, label=label)
         for part, probe in zip(parts, info.pop("probes")):
             part["duration"] = probe["duration"]
@@ -441,14 +441,14 @@ def _assemble(lib: str, params: dict) -> dict:
         # able to renumber a history that does not include it.
         superseded = storyboard.output_node(record)
         take = len(record.get("cuts") or []) + (1 if superseded else 0) + 1
-        name = f"{slug}.mp4" if take == 1 else f"{slug}-{take}.mp4"
+        name = f"{stem}.mp4" if take == 1 else f"{stem}-{take}.mp4"
         output = _store(_child_folder(record["folder"], "output")["node_id"],
                         name, out_local)
         probe = ffmpeg.probe(out_local)
 
     info["cuts"] = [{"n": part["n"], "node": part["copy"],
                      "duration": part.get("duration"),
-                     **{k: part[k] for k in ("run", "scene", "shot", "slug") if k in part}}
+                     **{k: part[k] for k in ("run", "scene", "shot", "name") if k in part}}
                     for part in parts]
 
     assignments = {

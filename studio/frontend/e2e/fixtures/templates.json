@@ -1,29 +1,30 @@
 {
   "blocks": {
-    "age_intro": "RENDER THE PERSON AT THIS AGE, which the reference images do not all agree on \u2014 they were made across a span of years and some show them noticeably older or younger. Take face shape, features, colouring and proportions from the references, but take the AGE from here, including how grey the hair and stubble are and how deep the lines read:",
+    "age_intro": "RENDER THE PERSON AT THIS AGE, which the reference images do not all agree on — they were made across a span of years and some show them noticeably older or younger. Take face shape, features, colouring and proportions from the references, but take the AGE from here, including how grey the hair and stubble are and how deep the lines read:",
     "backdrop_body": "White seamless studio backdrop with a soft contact shadow at the feet, no floor line, no props, no text.",
     "backdrop_face": "Flat mid-grey seamless studio backdrop, no floor line, no props, no text.",
-    "build_intro": "THE BUILD IS THE PERSON'S, NOT THE GUIDE FIGURE'S \u2014 and unlike the face, the reference images may barely show it, since a reference pool is mostly head-and-shoulders. So take the build from THIS DESCRIPTION first, never from the pose guide, and do not reshape it toward the guide in any direction \u2014 not thinner, not thicker, not taller, not shorter. NOTHING in this description governs the FACE: where it mentions hair it means BODY hair, and it must not change the facial hair, its length or its style \u2014 those come from the reference images and the identity cues below:",
-    "face_intro": "THE FACE COMES FROM THE REFERENCE IMAGES. They show this person's real face: match its bone structure, the WIDTH of the jaw and chin, the set and spacing of the eyes, the nose, the hairline and the shape of the skull to them. The identity cues listed further down are a checklist to verify against those images, not a replacement for looking at them \u2014 where a written cue and an image disagree about the FACE, the images win.",
+    "build_intro": "THE BUILD IS THE PERSON'S, NOT THE GUIDE FIGURE'S — and unlike the face, the reference images may barely show it, since a reference pool is mostly head-and-shoulders. So take the build from THIS DESCRIPTION first, never from the pose guide, and do not reshape it toward the guide in any direction — not thinner, not thicker, not taller, not shorter. NOTHING in this description governs the FACE: where it mentions hair it means BODY hair, and it must not change the facial hair, its length or its style — those come from the reference images and the identity cues below:",
+    "face_intro": "THE FACE COMES FROM THE REFERENCE IMAGES. They show this person's real face: match its bone structure, the WIDTH of the jaw and chin, the set and spacing of the eyes, the nose, the hairline and the shape of the skull to them. The identity cues listed further down are a checklist to verify against those images, not a replacement for looking at them — where a written cue and an image disagree about the FACE, the images win.",
     "face_only": "THE FACE COMES FROM THE REFERENCE IMAGES. They show this person's real face: match its bone structure, the WIDTH of the jaw and chin, the set and spacing of the eyes, the nose, the hairline and the shape of the skull to them. Study the nose closely, and preserve the person's ethnicity exactly as the images show it.",
-    "guide": "is a POSE GUIDE ONLY. Match its stance, the direction the body and head face, and its framing. Take nothing else from it \u2014 not its build, proportions, skin, head, face or hair, and do not blend it into the person.",
-    "guide_torso": "is a SECOND POSE GUIDE, for the TORSO ONLY. Copy the angle of its shoulders and chest relative to the camera, and nothing else \u2014 not its framing, crop, head, face, hair, build, proportions or clothing. Do not blend it into the person and do not draw the whole figure it shows.",
+    "guide": "is a POSE GUIDE ONLY. Match its stance, the direction the body and head face, and its framing. Take nothing else from it — not its build, proportions, skin, head, face or hair, and do not blend it into the person.",
+    "guide_torso": "is a SECOND POSE GUIDE, for the TORSO ONLY. Copy the angle of its shoulders and chest relative to the camera, and nothing else — not its framing, crop, head, face, hair, build, proportions or clothing. Do not blend it into the person and do not draw the whole figure it shows.",
     "light": "Soft frontal key with gentle falloff, even and near-shadowless on the subject, no hard shadow edges, no colour cast.",
     "minimal": "Wearing plain, close-fitting, unbranded dark shorts and nothing else, so the build, proportions and posture read clearly",
-    "must_intro_body": "Preserve these identity cues exactly \u2014 but the wardrobe named above governs this angle image, so ignore any clothing rule among them:",
+    "must_intro_body": "Preserve these identity cues exactly — but the wardrobe named above governs this angle image, so ignore any clothing rule among them:",
     "must_intro_face": "Preserve these identity cues exactly:",
     "quality": "Clean and sharp, evenly lit, the whole subject in frame and in focus, no filter, no vignette, no added grain, no border.",
     "scale_face": "SCALE, held constant across the whole set: the crown of the head sits just below the top edge of the frame with only a small margin above it, and the head occupies roughly the upper third of the image. Do not zoom in closer on some angles than others.",
     "style_fallback": "whatever medium the reference images are in",
-    "style_intro": "Render in the SAME MEDIUM and visual style as the reference images of the person \u2014 do not convert them into another medium. Their style is",
-    "turn_check": "A TRUE forty-five degrees, not a slight turn: the far cheek is partly hidden behind the bridge of the nose, the far ear is out of view, and the near ear is fully visible. BOTH eyes look directly into the lens \u2014 the gaze does not drift off camera.",
+    "style_intro": "Render in the SAME MEDIUM and visual style as the reference images of the person — do not convert them into another medium. Their style is",
+    "turn_check": "A TRUE forty-five degrees, not a slight turn: the far cheek is partly hidden behind the bridge of the nose, the far ear is out of view, and the near ear is fully visible. BOTH eyes look directly into the lens — the gaze does not drift off camera.",
     "turn_check_face": "A TRUE forty-five degrees, not a slight turn: the far cheek is partly hidden behind the bridge of the nose, the far ear is out of view, and the near ear is fully visible."
   },
   "templates": [
     {
+      "id": "template-face-front",
       "description": "Head and shoulders, front on, looking straight down the lens, neutral expression, grey studio backdrop.",
       "name": "Face, front",
-      "prompt": "A studio portrait of the person, front on, squared to the camera, looking straight down the lens. Neutral expression, mouth closed. CROPPED AT MID-CHEST \u2014 head and shoulders only, with no waist, no hips and no legs anywhere in the frame.\n\n{block.scale_face}\n\n{block.face_only}\n\n{character.top}. {block.backdrop_face} {block.light} {character.style} {block.quality}",
+      "prompt": "A studio portrait of the person, front on, squared to the camera, looking straight down the lens. Neutral expression, mouth closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist, no hips and no legs anywhere in the frame.\n\n{block.scale_face}\n\n{block.face_only}\n\n{character.top}. {block.backdrop_face} {block.light} {character.style} {block.quality}",
       "tags": [
         "face",
         "front",
@@ -32,9 +33,10 @@
       ]
     },
     {
+      "id": "template-face-three-quarter-right",
       "description": "Head and shoulders, face turned toward the right edge of frame, grey studio backdrop.",
       "name": "Face, three-quarter right",
-      "prompt": "A studio portrait of the person, turned about 45 degrees so the nose points toward the RIGHT edge of the frame. {block.turn_check_face} Neutral expression, mouth closed. CROPPED AT MID-CHEST \u2014 head and shoulders only, with no waist, no hips and no legs anywhere in the frame.\n\n{block.scale_face}\n\n{block.face_only}\n\n{character.top}. {block.backdrop_face} {block.light} {character.style} {block.quality}",
+      "prompt": "A studio portrait of the person, turned about 45 degrees so the nose points toward the RIGHT edge of the frame. {block.turn_check_face} Neutral expression, mouth closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist, no hips and no legs anywhere in the frame.\n\n{block.scale_face}\n\n{block.face_only}\n\n{character.top}. {block.backdrop_face} {block.light} {character.style} {block.quality}",
       "tags": [
         "face",
         "three-quarter",
@@ -43,9 +45,10 @@
       ]
     },
     {
+      "id": "template-face-profile-right",
       "description": "Head and shoulders in full profile, face toward the right edge of frame, grey studio backdrop.",
       "name": "Face, profile right",
-      "prompt": "A studio portrait of the person, in FULL PROFILE, turned 90 degrees so the nose points directly at the RIGHT edge of the frame, gaze level and straight ahead. Neutral expression, mouth closed. CROPPED AT MID-CHEST \u2014 head and shoulders only, with no waist, no hips and no legs anywhere in the frame.\n\n{block.scale_face}\n\n{block.face_only}\n\n{character.top}. {block.backdrop_face} {block.light} {character.style} {block.quality}",
+      "prompt": "A studio portrait of the person, in FULL PROFILE, turned 90 degrees so the nose points directly at the RIGHT edge of the frame, gaze level and straight ahead. Neutral expression, mouth closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist, no hips and no legs anywhere in the frame.\n\n{block.scale_face}\n\n{block.face_only}\n\n{character.top}. {block.backdrop_face} {block.light} {character.style} {block.quality}",
       "tags": [
         "face",
         "profile",
@@ -54,9 +57,10 @@
       ]
     },
     {
+      "id": "template-face-three-quarter-back-right",
       "description": "Head and shoulders from behind at three-quarters, head and shoulders turned together, a sliver of the face at the right edge of the head, grey studio backdrop.",
       "name": "Face, three-quarter back right",
-      "prompt": "A studio portrait of the person seen FROM BEHIND at three-quarters \u2014 the head AND THE SHOULDERS TOGETHER turned about 135 degrees away from the lens, so the back of the head fills most of the frame. THE SHOULDERS ARE ANGLED, NOT SQUARE: the near shoulder is clearly closer to the lens and sits LOWER IN THE FRAME than the far one, the far side of the chest is turning out of view, and the line across the top of the shoulders runs DIAGONALLY rather than straight across. Only a NARROW SLIVER of the face breaks the silhouette on the side toward the RIGHT edge of the frame \u2014 the brow, the cheekbone and the tip of the nose, and no more. NOT A PROFILE: the eye, the mouth and the front of the chin must not be visible. Neutral expression, mouth closed. CROPPED AT MID-CHEST \u2014 head and shoulders only, with no waist, no hips and no legs anywhere in the frame.\n\n{block.scale_face}\n\n{block.face_only}\n\n{character.top}. {block.backdrop_face} {block.light} {character.style} {block.quality}",
+      "prompt": "A studio portrait of the person seen FROM BEHIND at three-quarters — the head AND THE SHOULDERS TOGETHER turned about 135 degrees away from the lens, so the back of the head fills most of the frame. THE SHOULDERS ARE ANGLED, NOT SQUARE: the near shoulder is clearly closer to the lens and sits LOWER IN THE FRAME than the far one, the far side of the chest is turning out of view, and the line across the top of the shoulders runs DIAGONALLY rather than straight across. Only a NARROW SLIVER of the face breaks the silhouette on the side toward the RIGHT edge of the frame — the brow, the cheekbone and the tip of the nose, and no more. NOT A PROFILE: the eye, the mouth and the front of the chin must not be visible. Neutral expression, mouth closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist, no hips and no legs anywhere in the frame.\n\n{block.scale_face}\n\n{block.face_only}\n\n{character.top}. {block.backdrop_face} {block.light} {character.style} {block.quality}",
       "tags": [
         "face",
         "three-quarter",
@@ -66,9 +70,10 @@
       ]
     },
     {
+      "id": "template-face-back",
       "description": "Head and shoulders straight from behind, the back of the head to the lens, grey studio backdrop.",
       "name": "Face, back",
-      "prompt": "A studio portrait of the person, directly away from the camera, the back of the head to the lens. Neutral expression, mouth closed. CROPPED AT MID-CHEST \u2014 head and shoulders only, with no waist, no hips and no legs anywhere in the frame.\n\n{block.scale_face}\n\n{block.face_only}\n\n{character.top}. {block.backdrop_face} {block.light} {character.style} {block.quality}",
+      "prompt": "A studio portrait of the person, directly away from the camera, the back of the head to the lens. Neutral expression, mouth closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist, no hips and no legs anywhere in the frame.\n\n{block.scale_face}\n\n{block.face_only}\n\n{character.top}. {block.backdrop_face} {block.light} {character.style} {block.quality}",
       "tags": [
         "face",
         "back",
@@ -76,9 +81,10 @@
       ]
     },
     {
+      "id": "template-face-three-quarter-back-left",
       "description": "Head and shoulders from behind at three-quarters, head and shoulders turned together, a sliver of the face at the left edge of the head, grey studio backdrop.",
       "name": "Face, three-quarter back left",
-      "prompt": "A studio portrait of the person seen FROM BEHIND at three-quarters \u2014 the head AND THE SHOULDERS TOGETHER turned about 135 degrees away from the lens, so the back of the head fills most of the frame. THE SHOULDERS ARE ANGLED, NOT SQUARE: the near shoulder is clearly closer to the lens and sits LOWER IN THE FRAME than the far one, the far side of the chest is turning out of view, and the line across the top of the shoulders runs DIAGONALLY rather than straight across. Only a NARROW SLIVER of the face breaks the silhouette on the side toward the LEFT edge of the frame \u2014 the brow, the cheekbone and the tip of the nose, and no more. NOT A PROFILE: the eye, the mouth and the front of the chin must not be visible. Neutral expression, mouth closed. CROPPED AT MID-CHEST \u2014 head and shoulders only, with no waist, no hips and no legs anywhere in the frame.\n\n{block.scale_face}\n\n{block.face_only}\n\n{character.top}. {block.backdrop_face} {block.light} {character.style} {block.quality}",
+      "prompt": "A studio portrait of the person seen FROM BEHIND at three-quarters — the head AND THE SHOULDERS TOGETHER turned about 135 degrees away from the lens, so the back of the head fills most of the frame. THE SHOULDERS ARE ANGLED, NOT SQUARE: the near shoulder is clearly closer to the lens and sits LOWER IN THE FRAME than the far one, the far side of the chest is turning out of view, and the line across the top of the shoulders runs DIAGONALLY rather than straight across. Only a NARROW SLIVER of the face breaks the silhouette on the side toward the LEFT edge of the frame — the brow, the cheekbone and the tip of the nose, and no more. NOT A PROFILE: the eye, the mouth and the front of the chin must not be visible. Neutral expression, mouth closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist, no hips and no legs anywhere in the frame.\n\n{block.scale_face}\n\n{block.face_only}\n\n{character.top}. {block.backdrop_face} {block.light} {character.style} {block.quality}",
       "tags": [
         "face",
         "three-quarter",
@@ -88,9 +94,10 @@
       ]
     },
     {
+      "id": "template-face-profile-left",
       "description": "Head and shoulders in full profile, face toward the left edge of frame, grey studio backdrop.",
       "name": "Face, profile left",
-      "prompt": "A studio portrait of the person, in FULL PROFILE, turned 90 degrees so the nose points directly at the LEFT edge of the frame, gaze level and straight ahead. Neutral expression, mouth closed. CROPPED AT MID-CHEST \u2014 head and shoulders only, with no waist, no hips and no legs anywhere in the frame.\n\n{block.scale_face}\n\n{block.face_only}\n\n{character.top}. {block.backdrop_face} {block.light} {character.style} {block.quality}",
+      "prompt": "A studio portrait of the person, in FULL PROFILE, turned 90 degrees so the nose points directly at the LEFT edge of the frame, gaze level and straight ahead. Neutral expression, mouth closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist, no hips and no legs anywhere in the frame.\n\n{block.scale_face}\n\n{block.face_only}\n\n{character.top}. {block.backdrop_face} {block.light} {character.style} {block.quality}",
       "tags": [
         "face",
         "profile",
@@ -99,9 +106,10 @@
       ]
     },
     {
+      "id": "template-face-three-quarter-left",
       "description": "Head and shoulders, face turned toward the left edge of frame, grey studio backdrop.",
       "name": "Face, three-quarter left",
-      "prompt": "A studio portrait of the person, turned about 45 degrees so the nose points toward the LEFT edge of the frame. {block.turn_check_face} Neutral expression, mouth closed. CROPPED AT MID-CHEST \u2014 head and shoulders only, with no waist, no hips and no legs anywhere in the frame.\n\n{block.scale_face}\n\n{block.face_only}\n\n{character.top}. {block.backdrop_face} {block.light} {character.style} {block.quality}",
+      "prompt": "A studio portrait of the person, turned about 45 degrees so the nose points toward the LEFT edge of the frame. {block.turn_check_face} Neutral expression, mouth closed. CROPPED AT MID-CHEST — head and shoulders only, with no waist, no hips and no legs anywhere in the frame.\n\n{block.scale_face}\n\n{block.face_only}\n\n{character.top}. {block.backdrop_face} {block.light} {character.style} {block.quality}",
       "tags": [
         "face",
         "three-quarter",
@@ -110,6 +118,7 @@
       ]
     },
     {
+      "id": "template-body-front",
       "angle_image": "config/angle/body/front.png",
       "description": "Full body head to feet, front on, arms relaxed at the sides, white seamless backdrop.",
       "name": "Body, front",
@@ -123,6 +132,7 @@
       ]
     },
     {
+      "id": "template-body-profile-right",
       "angle_image": "config/angle/body/profile-right.png",
       "description": "Full body head to feet in side profile facing the right edge of frame, white seamless backdrop.",
       "name": "Body, profile right",
@@ -136,10 +146,11 @@
       ]
     },
     {
+      "id": "template-body-three-quarter-back-right",
       "angle_image": "config/angle/body/three-quarter-back-right.png",
       "description": "Full body head to feet from behind at three-quarters, body angled not square, a sliver of the face at the right edge of the head, white seamless backdrop.",
       "name": "Body, three-quarter back right",
-      "prompt": "{slot.identity} show the person. {slot.angle} {block.guide} A full-length studio angle image of the person, THE WHOLE FIGURE FROM HEAD TO FEET IN FRAME including both feet, seen FROM BEHIND at three-quarters \u2014 the head AND THE SHOULDERS TOGETHER turned about 135 degrees away from the lens, so the back of the figure faces the camera. THE SHOULDERS ARE ANGLED, NOT SQUARE: one shoulder is clearly nearer the camera than the other and the far side of the chest is turning out of view. Only a NARROW SLIVER of the face breaks the silhouette on the side toward the RIGHT edge of the frame \u2014 the brow, the cheekbone and the tip of the nose, and no more. NOT A PROFILE: the eye, the mouth and the front of the chin must not be visible. Weight even on both legs, arms relaxed at the sides and clear of the body. {block.face_intro} {block.build_intro} {character.build} {block.age_intro} {character.age}. {block.minimal}. {block.backdrop_body} {block.light} {character.style} {block.quality} {character.must}",
+      "prompt": "{slot.identity} show the person. {slot.angle} {block.guide} A full-length studio angle image of the person, THE WHOLE FIGURE FROM HEAD TO FEET IN FRAME including both feet, seen FROM BEHIND at three-quarters — the head AND THE SHOULDERS TOGETHER turned about 135 degrees away from the lens, so the back of the figure faces the camera. THE SHOULDERS ARE ANGLED, NOT SQUARE: one shoulder is clearly nearer the camera than the other and the far side of the chest is turning out of view. Only a NARROW SLIVER of the face breaks the silhouette on the side toward the RIGHT edge of the frame — the brow, the cheekbone and the tip of the nose, and no more. NOT A PROFILE: the eye, the mouth and the front of the chin must not be visible. Weight even on both legs, arms relaxed at the sides and clear of the body. {block.face_intro} {block.build_intro} {character.build} {block.age_intro} {character.age}. {block.minimal}. {block.backdrop_body} {block.light} {character.style} {block.quality} {character.must}",
       "tags": [
         "body",
         "three-quarter",
@@ -150,6 +161,7 @@
       ]
     },
     {
+      "id": "template-body-back",
       "angle_image": "config/angle/body/back.png",
       "description": "Full body head to feet, straight from behind, white seamless backdrop.",
       "name": "Body, back",
@@ -162,10 +174,11 @@
       ]
     },
     {
+      "id": "template-body-three-quarter-back-left",
       "angle_image": "config/angle/body/three-quarter-back-left.png",
       "description": "Full body head to feet from behind at three-quarters, body angled not square, a sliver of the face at the left edge of the head, white seamless backdrop.",
       "name": "Body, three-quarter back left",
-      "prompt": "{slot.identity} show the person. {slot.angle} {block.guide} A full-length studio angle image of the person, THE WHOLE FIGURE FROM HEAD TO FEET IN FRAME including both feet, seen FROM BEHIND at three-quarters \u2014 the head AND THE SHOULDERS TOGETHER turned about 135 degrees away from the lens, so the back of the figure faces the camera. THE SHOULDERS ARE ANGLED, NOT SQUARE: one shoulder is clearly nearer the camera than the other and the far side of the chest is turning out of view. Only a NARROW SLIVER of the face breaks the silhouette on the side toward the LEFT edge of the frame \u2014 the brow, the cheekbone and the tip of the nose, and no more. NOT A PROFILE: the eye, the mouth and the front of the chin must not be visible. Weight even on both legs, arms relaxed at the sides and clear of the body. {block.face_intro} {block.build_intro} {character.build} {block.age_intro} {character.age}. {block.minimal}. {block.backdrop_body} {block.light} {character.style} {block.quality} {character.must}",
+      "prompt": "{slot.identity} show the person. {slot.angle} {block.guide} A full-length studio angle image of the person, THE WHOLE FIGURE FROM HEAD TO FEET IN FRAME including both feet, seen FROM BEHIND at three-quarters — the head AND THE SHOULDERS TOGETHER turned about 135 degrees away from the lens, so the back of the figure faces the camera. THE SHOULDERS ARE ANGLED, NOT SQUARE: one shoulder is clearly nearer the camera than the other and the far side of the chest is turning out of view. Only a NARROW SLIVER of the face breaks the silhouette on the side toward the LEFT edge of the frame — the brow, the cheekbone and the tip of the nose, and no more. NOT A PROFILE: the eye, the mouth and the front of the chin must not be visible. Weight even on both legs, arms relaxed at the sides and clear of the body. {block.face_intro} {block.build_intro} {character.build} {block.age_intro} {character.age}. {block.minimal}. {block.backdrop_body} {block.light} {character.style} {block.quality} {character.must}",
       "tags": [
         "body",
         "three-quarter",
@@ -176,6 +189,7 @@
       ]
     },
     {
+      "id": "template-body-profile-left",
       "angle_image": "config/angle/body/profile-left.png",
       "description": "Full body head to feet in side profile facing the left edge of frame, white seamless backdrop.",
       "name": "Body, profile left",

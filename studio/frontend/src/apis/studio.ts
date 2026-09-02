@@ -599,22 +599,34 @@ export function saveBlock(name: string, text: string) {
 }
 
 /**
- * Write one template, addressed by the name it currently has.
+ * Write one template, addressed by its id. A `name` in the body renames it.
  *
- * A `name` in the body renames it — the key changes, so the route writes the
- * new row and drops the old in one transaction rather than leaving the library
- * holding the template twice.
+ * The id is minted here for a create, which is why there is no separate POST:
+ * a create and an update are the same call with the same shape, and the caller
+ * already knows which it is doing.
  */
-export function saveTemplate(was: string, body: TemplateBody) {
-  return apiSend<PromptTemplate>("PATCH", `/api/templates/${encodeURIComponent(was)}`, body);
+export function saveTemplate(templateId: string, body: TemplateBody) {
+  return apiSend<PromptTemplate>(
+    "PATCH",
+    `/api/templates/${encodeURIComponent(templateId)}`,
+    body,
+  );
+}
+
+/** A UUID for a template about to be created. */
+export function newTemplateId() {
+  return `template-${crypto.randomUUID()}`;
 }
 
 export function deleteBlock(name: string) {
   return apiSend<{ name: string }>("DELETE", `/api/templates/blocks/${encodeURIComponent(name)}`);
 }
 
-export function deleteTemplate(name: string) {
-  return apiSend<{ name: string }>("DELETE", `/api/templates/${encodeURIComponent(name)}`);
+export function deleteTemplate(templateId: string) {
+  return apiSend<{ id: string }>(
+    "DELETE",
+    `/api/templates/${encodeURIComponent(templateId)}`,
+  );
 }
 
 /**

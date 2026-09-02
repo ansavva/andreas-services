@@ -1,6 +1,6 @@
 """Runs: one submission to a model, as an envelope studio owns and a blob it does not.
 
-A run used to be a folder named `<ts>_<slug>` holding three JSON documents nobody
+A run used to be a folder named `<ts>_<hint>` holding three JSON documents nobody
 was allowed to parse. The consequence was that the app could show a run as a
 folder and nothing else, and that `runs find --character` meant listing every
 project, listing every run in each, reading `request.json` for each, and
@@ -393,10 +393,6 @@ def create_draft(body: dict, held) -> dict:
         project["lib"],
         project["id"],
         parent["node_id"],
-        # A run has no slug. Its folder is named for its id — see
-        # `create_project_entity`, which spells out why the old
-        # `<timestamp>_<hint>` label was a worse copy of `created`.
-        slug=None,
         attributes={
             "status": "draft",
             "kind": kind,
@@ -620,6 +616,10 @@ def resolve_run():
     only by embedding `created` — which is what sorting already reads. Strip the
     timestamp and 29 runs collapsed to 19 labels. So a run is found by `latest`,
     by its id, or by the filters on `GET /api/runs`.
+
+    **The project segment is an id too.** It used to accept a bare slug, because
+    that is what a person typed; slugs are gone, and a free-text name is not
+    something an address may resolve when two projects may share one.
     """
     held = support.memberships()
     support.member_of(g.library, held)
@@ -652,14 +652,7 @@ def resolve_run():
             raise ValidationError(
                 f"{run_ref!r} is not a runref. A run has no name to address it "
                 "by — use 'latest', or its id.")
-        # **A bare slug, because that is what a person types.** Every other
-        # route takes an id or an explicit `slug:<slug>`; a runref's project
-        # segment is neither, and requiring the prefix would mean typing
-        # `slug:porch-teaser/latest` — which nobody does and no skill documents.
-        # This route exists precisely to accept the human spelling.
-        addressed = (project_ref if project_ref.startswith("proj-")
-                     else f"slug:{project_ref}")
-        project = project_routes.project_at(addressed, held)
+        project = project_routes.project_at(project_ref, held)
         # **Drafts are skipped unless asked for**, exactly as `GET /api/runs`
         # skips them, and for the same reason: `latest` is overwhelmingly asked
         # in order to chain off something — `--start-run <project>/latest` — and

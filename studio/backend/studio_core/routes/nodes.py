@@ -9,7 +9,7 @@ the second addressing scheme rather than staying as a file a reader had to work
 out the address convention of.
 
 `GET /api/resolve?path=` survives that and is the reason it can: it turns a name
-path into an id **once**, so `<slug>/reference/face/<file>` keeps working as an
+path into an id **once**, so `<folder>/reference/face/<file>` keeps working as an
 *address* on a command line while ceasing to be a key anywhere.
 
 ## Three rules hold across every route in this file
@@ -257,11 +257,10 @@ def update_node(node_id: str):
     which is what tells the UI to keep the rename field open rather than closing
     it and reporting success.
 
-    **Renaming an entity's root folder here does not rename the entity.** The
-    folder is a display name and the entity's slug is a claim; changing the slug
-    is `PATCH /api/characters/<id>`, which renames both in one transaction. This
-    route is deliberately not made to refuse the divergence — somebody may want a
-    folder called something else — but it is the reason the entity route exists.
+    **Renaming an entity's root folder here does not rename the entity**, and it
+    no longer has anything to do with it: an entity root is NAMED BY ITS ID, so
+    the two were separated entirely when slugs went. Changing what a character is
+    called is `PATCH /api/characters/<id>`, one field on one row.
     """
     body = support.body()
     name = body.get("name")

@@ -494,15 +494,15 @@ export interface SpecBlock {
  */
 export interface PromptTemplate {
   /**
-   * **The name is the key.** There is no id, and none is generated.
+   * **A UUID, like every entity here.** Minted by whoever creates the template.
    *
-   * Every character, project and run carries a UUID because a rename would
-   * otherwise strand every row that named it. A run copies a template's WORDS
-   * rather than pointing at the row, so there is nothing to strand — and a
-   * generated id would be a second name that can drift from the first. A block
-   * is keyed on its name for exactly this reason, and a template is a block
-   * with more fields.
+   * It was briefly keyed on the name, on the grounds that nothing points at a
+   * template so a rename strands nothing. That is a judgement about a fact that
+   * changes — "which template did this run start from" is an obvious field, and
+   * the day it exists a name key strands it.
    */
+  id: string;
+  /** A LABEL. Not unique, not claimed, and nothing resolves a template by it. */
   name: string;
   prompt: string;
   /** What a promotion starts from when this image becomes identity. Never sent. */
@@ -510,9 +510,10 @@ export interface PromptTemplate {
   tags: string[];
 }
 
-export type TemplateBody = PromptTemplate;
+/** What a PATCH sends. The id is in the path, so it is not in the body. */
+export type TemplateBody = Omit<PromptTemplate, "id">;
 
-/** `GET /api/templates` — blocks keyed by name, templates by name. */
+/** `GET /api/templates` — blocks keyed by name, templates as a list. */
 export interface TemplateLibrary {
   blocks: Record<string, string>;
   templates: PromptTemplate[];

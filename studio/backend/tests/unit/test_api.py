@@ -538,7 +538,7 @@ def test_lambda_body_reaches_every_write_verb(catalog_tree):
         {"content": "greeting: hi\n"},
     )[0] == 200
     assert _invoke(
-        "POST", "/api/characters", {"slug": "subject-c"}
+        "POST", "/api/characters", {"name": "subject-c"}
     )[0] == 201
     assert _invoke(
         "DELETE",
@@ -563,7 +563,7 @@ def test_the_entity_replace_routes_are_reachable_as_patch(catalog_tree):
     whole-collection replace. This pins that a body reaches one of them through
     the real Lambda path, which is the half that was broken before.
     """
-    created = _invoke("POST", "/api/characters", {"slug": "subject-d"})[1]
+    created = _invoke("POST", "/api/characters", {"name": "subject-d"})[1]
 
     # `/default-set` was the one this used to drive; `default` is a tag on the
     # file now, so the profile replace is the surviving whole-collection PATCH.

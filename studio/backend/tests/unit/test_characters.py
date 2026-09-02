@@ -37,11 +37,8 @@ def _item(client, pk, sk):
     return response.get("Item")
 
 
-def _create(api, slug="subject-a", **body):
-    resp = api.post(
-        "/api/characters",
-        json={"slug": slug, "display_name": "Subject", **body},
-    )
+def _create(api, name="subject-a", **body):
+    resp = api.post("/api/characters", json={"name": name, **body})
     assert resp.status_code == 201, resp.get_data(as_text=True)
     return resp.get_json()
 
@@ -72,8 +69,8 @@ def _child(parent_id, name):
 def test_creating_a_character_writes_every_item_in_one_transaction(empty_api, catalog_table):
     """**Twelve items, or none of them.**
 
-    The record, the slug claim, and two each for the root and the four starting
-    pools. That atomicity is what makes "create a character" something a person
+    The record, the library index row, and two each for the root and the four
+    starting pools. That atomicity is what makes "create a character" something a person
     can retry after a timeout without inspecting what survived — which is the
     whole argument for one table rather than three.
 
@@ -83,16 +80,19 @@ def test_creating_a_character_writes_every_item_in_one_transaction(empty_api, ca
     character = _create(empty_api)
 
     record = _item(catalog_table, f"CHAR#{character['id']}", "META")
-    assert record["slug"]["S"] == "subject-a"
+    assert record["name"]["S"] == "subject-a"
     assert record["lib"]["S"] == CATALOG_LIBRARY
     assert int(record["rev"]["N"]) == 1
     assert record["root"]["S"] == character["root"]
 
-    claim = _item(catalog_table, f"LIB#{CATALOG_LIBRARY}", "CHARSLUG#subject-a")
-    assert claim["entity"]["S"] == character["id"]
-    # A pointer, never a projection. `display_name` here would be a mutable copy
-    # on a second item that every rename has to keep in step.
-    assert "display_name" not in claim
+    # **Keyed on the id, not on the name.** It was `CHARSLUG#<slug>` and its job
+    # was uniqueness as much as listing; the name is a free-text label now, so
+    # the row that remains is a pure list index and a rename never touches it.
+    index = _item(catalog_table, f"LIB#{CATALOG_LIBRARY}", f"CHAR#{character['id']}")
+    assert index["entity"]["S"] == character["id"]
+    # A pointer, never a projection. The `name` here would be a mutable copy on a
+    # second item that every rename has to keep in step.
+    assert "name" not in index
 
     root = _item(catalog_table, f"NODE#{character['root']}", "META")
     assert root["kind"]["S"] == "folder"
@@ -100,7 +100,12 @@ def test_creating_a_character_writes_every_item_in_one_transaction(empty_api, ca
     # The reverse pointer: one attribute, written once, never changed.
     assert root["entity"]["S"] == character["id"]
 
-    assert _item(catalog_table, f"NODE#{CATALOG_ROOT}", "NAME#subject-a") is not None
+    # **The root folder is named by the ID.** It took the slug once, so that
+    # somebody browsing the tree saw the name they chose — which cannot survive
+    # free-text names, because a folder name IS unique among its siblings and the
+    # second character called `Anna` would be refused by the tree.
+    assert _item(catalog_table, f"NODE#{CATALOG_ROOT}",
+                 f"NAME#{character['id']}") is not None
 
     assert sorted(
         entry["name"] for entry in catalog.children(character["root"])
@@ -131,45 +136,55 @@ def test_the_starting_pools_are_a_layout_and_not_a_schema(empty_api):
     assert "folders" not in fetched
 
 
-def test_a_taken_slug_is_409_and_leaves_nothing_behind(empty_api, catalog_table):
-    """The claim is a conditional put, so a collision is never a read-then-write.
+def test_two_characters_may_share_a_name(empty_api, catalog_table):
+    """**There is nothing left to collide.**
 
-    The 409 carries a machine-readable code because the client has to act on it —
-    offer a different slug — and matching on prose is how that stops working.
+    A slug was library-unique, claimed by a conditional put, and a second
+    character wanting it was a 409 carrying a machine-readable code so the client
+    could offer a different one. A name is a free-text label now: it identifies
+    nothing, nothing resolves an entity by it, and two rows that look alike in a
+    list are fixed by renaming one.
 
-    The second half matters as much: a failed transaction must not leave a root
-    folder called `subject-a` behind, or the retry would then fail on the *folder*
-    name and say something else entirely.
+    Both root folders exist too, which is the half that would break quietly: they
+    are named by their ids, so the tree's own name uniqueness — which is real, a
+    path segment resolves through it — has nothing to say about them.
     """
-    _create(empty_api)
+    first = _create(empty_api)
 
-    resp = empty_api.post("/api/characters", json={"slug": "subject-a"})
+    resp = empty_api.post("/api/characters", json={"name": "subject-a"})
 
-    assert resp.status_code == 409
-    assert resp.get_json()["error"] == "conflict"
-    assert "subject-a" in resp.get_json()["message"]
-    assert len(catalog.children(CATALOG_ROOT)) == 1
+    assert resp.status_code == 201
+    second = resp.get_json()
+    assert second["id"] != first["id"]
+    assert {entry["name"] for entry in catalog.children(CATALOG_ROOT)} == {
+        first["id"], second["id"]}
 
 
-def test_a_slug_is_refused_rather_than_repaired(empty_api):
-    """It becomes half a primary key, so the string sent is the string claimed."""
-    assert empty_api.post(
-        "/api/characters", json={"slug": "Subject A"}
-    ).status_code == 400
+def test_a_name_is_folded_rather_than_refused(empty_api):
+    """`  Subject   A ` and `Subject A` are one label, not two claims on one key.
+
+    A slug was refused rather than repaired precisely because it became half a
+    primary key. Nothing is keyed on this, so folding is safe and means what a
+    person sees is what is stored.
+    """
+    created = empty_api.post("/api/characters", json={"name": "  Subject   A "})
+    assert created.status_code == 201
+    assert created.get_json()["name"] == "Subject A"
 
 
 # ──────────────────────────── read and address ────────────────────────────
 
 
-def test_a_character_is_addressable_by_slug_for_the_cli(empty_api):
-    """`slug:` exists because a person types a name, not a UUID.
+def test_a_character_is_addressed_only_by_its_id(empty_api):
+    """**`slug:<slug>` is gone with slugs.**
 
-    Prefixing rather than a second route keeps `<id>` one path segment, so every
-    entity route reads the same and none of them has a second handler to drift.
+    It existed for the CLI, where a person typed a name rather than pasting a
+    UUID. Two characters may share a name now, so resolving one would mean
+    picking between them — which is not something an address may do.
     """
-    character = _create(empty_api)
+    _create(empty_api)
 
-    assert empty_api.get("/api/characters/slug:subject-a").get_json()["id"] == character["id"]
+    assert empty_api.get("/api/characters/slug:subject-a").status_code == 400
 
 
 def test_asking_for_a_character_by_a_project_id_is_404(empty_api):
@@ -179,7 +194,7 @@ def test_asking_for_a_character_by_a_project_id_is_404(empty_api):
     miss, and 404 anyway — but a route that *did* find something would be
     answering a question nobody asked.
     """
-    project = empty_api.post("/api/projects", json={"slug": "rooftop-teaser"}).get_json()
+    project = empty_api.post("/api/projects", json={"name": "rooftop-teaser"}).get_json()
 
     assert empty_api.get(f"/api/characters/{project['id']}").status_code == 404
 
@@ -198,7 +213,7 @@ def test_a_character_in_another_library_is_403(empty_api, catalog_table):
             "sk": {"S": "META"},
             "id": {"S": "char-elsewhere"},
             "lib": {"S": "lib-0002"},
-            "slug": {"S": "subject-b"},
+            "name": {"S": "subject-b"},
             "rev": {"N": "1"},
         },
     )
@@ -220,18 +235,18 @@ def test_a_stale_rev_is_409_rather_than_a_silent_overwrite(empty_api):
     """
     character = _create(empty_api)
     assert empty_api.patch(
-        f"/api/characters/{character['id']}", json={"display_name": "First", "rev": 1}
+        f"/api/characters/{character['id']}", json={"name": "First", "rev": 1}
     ).status_code == 200
 
     resp = empty_api.patch(
-        f"/api/characters/{character['id']}", json={"display_name": "Second", "rev": 1}
+        f"/api/characters/{character['id']}", json={"name": "Second", "rev": 1}
     )
 
     assert resp.status_code == 409
     assert resp.get_json()["error"] == "conflict"
     assert "rev 1 → 2" in resp.get_json()["message"]
     assert empty_api.get(f"/api/characters/{character['id']}").get_json()[
-        "display_name"
+        "name"
     ] == "First"
 
 
@@ -245,7 +260,7 @@ def test_a_missing_rev_is_400_rather_than_the_current_one(empty_api):
     character = _create(empty_api)
 
     resp = empty_api.patch(
-        f"/api/characters/{character['id']}", json={"display_name": "Nope"}
+        f"/api/characters/{character['id']}", json={"name": "Nope"}
     )
 
     assert resp.status_code == 400
@@ -255,7 +270,7 @@ def test_a_missing_rev_is_400_rather_than_the_current_one(empty_api):
 @pytest.mark.parametrize(
     "path,body",
     [
-        ("", {"display_name": "x"}),
+        ("", {"name": "x"}),
         ("/profile", {"profile": {}}),
         ("/profile", {"patch": {"face": {}}}),
     ],
@@ -279,11 +294,12 @@ def test_every_mutating_character_route_carries_a_rev(empty_api, path, body):
 def test_a_rename_moves_no_objects_and_rewrites_no_records(empty_api, catalog_table):
     """**The single largest simplification the entity model buys.**
 
-    Four writes in one transaction: drop the old claim, take the new one, bump
-    the record, rename the root folder node. Today this was a `PATCH` per slugged
-    basename across four pools plus a rewrite pass over every run document that
-    had cited the old path — which is the whole reason `domain/rewrite.py`
-    existed and why #420 was open.
+    One field on one row. It was a `PATCH` per slugged basename across four pools
+    plus a rewrite pass over every run document that had cited the old path —
+    which is the whole reason `domain/rewrite.py` existed and why #420 was open.
+    Then, briefly, four writes in one transaction: drop the old slug claim, take
+    the new one, bump the record, rename the root folder node. Slugs took all of
+    that with them.
 
     So the assertion is about what did *not* change: every node id, every blob
     key, and everything the files say about themselves.
@@ -301,11 +317,11 @@ def test_a_rename_moves_no_objects_and_rewrites_no_records(empty_api, catalog_ta
     }
 
     resp = empty_api.patch(
-        f"/api/characters/{character['id']}", json={"slug": "subject-b", "rev": 1}
+        f"/api/characters/{character['id']}", json={"name": "subject-b", "rev": 1}
     )
 
     assert resp.status_code == 200
-    assert resp.get_json()["slug"] == "subject-b"
+    assert resp.get_json()["name"] == "subject-b"
     after = {
         node["node_id"]: node.get("blob_key")
         for node in catalog.branch(CATALOG_LIBRARY, "/", 100)[0]
@@ -319,31 +335,41 @@ def test_a_rename_moves_no_objects_and_rewrites_no_records(empty_api, catalog_ta
     assert catalog.node(picture["node_id"])["description"] == "front"
 
 
-def test_a_rename_swaps_the_claim_and_the_folder_name_together(empty_api, catalog_table):
-    """The old claim must go, or the slug stays taken forever.
+def test_a_rename_touches_neither_the_index_row_nor_the_folder(empty_api, catalog_table):
+    """**One item changes, and it is the record.**
 
-    Both halves in one transaction, so a rename that collides leaves the folder
-    name alone too — the request either happened or did not.
+    It used to be four: the old `CHARSLUG#` claim dropped, the new one taken
+    under `attribute_not_exists`, the record bumped, and the root folder renamed
+    so a person browsing the tree saw the name they chose. The index row is keyed
+    on the id and the folder is named by the id, so neither has anything to say
+    about what a character is called.
     """
     character = _create(empty_api)
+    index_sk = f"CHAR#{character['id']}"
+    before = _item(catalog_table, f"LIB#{CATALOG_LIBRARY}", index_sk)
 
-    empty_api.patch(f"/api/characters/{character['id']}", json={"slug": "subject-b", "rev": 1})
+    empty_api.patch(f"/api/characters/{character['id']}", json={"name": "subject-b", "rev": 1})
 
-    assert _item(catalog_table, f"LIB#{CATALOG_LIBRARY}", "CHARSLUG#subject-a") is None
-    assert _item(catalog_table, f"LIB#{CATALOG_LIBRARY}", "CHARSLUG#subject-b") is not None
-    assert catalog.node(character["root"])["name"] == "subject-b"
+    assert _item(catalog_table, f"LIB#{CATALOG_LIBRARY}", index_sk) == before
+    assert catalog.node(character["root"])["name"] == character["id"]
 
 
-def test_renaming_onto_a_taken_slug_is_409(empty_api):
+def test_renaming_onto_a_name_another_character_has_is_allowed(empty_api):
+    """A duplicate is two rows that look alike, not an error.
+
+    This was a 409 while the slug was claimed. Nothing resolves a character by
+    name, so the only cost is a list a person may want to tidy — and renaming one
+    is how they tidy it.
+    """
     _create(empty_api, "subject-a")
     other = _create(empty_api, "subject-b")
 
     resp = empty_api.patch(
-        f"/api/characters/{other['id']}", json={"slug": "subject-a", "rev": 1}
+        f"/api/characters/{other['id']}", json={"name": "subject-a", "rev": 1}
     )
 
-    assert resp.status_code == 409
-    assert empty_api.get(f"/api/characters/{other['id']}").get_json()["slug"] == "subject-b"
+    assert resp.status_code == 200
+    assert empty_api.get(f"/api/characters/{other['id']}").get_json()["name"] == "subject-a"
 
 
 # ──────────────────── identity, which is now tags ────────────────────
@@ -412,8 +438,8 @@ def test_a_file_outside_the_character_is_not_its_identity(empty_api):
     business. The old attach route checked only the LIBRARY, so a reference
     could point anywhere; the branch query cannot.
     """
-    mine = _create(empty_api, slug="subject-a")
-    theirs = _create(empty_api, slug="subject-b")
+    mine = _create(empty_api, "subject-a")
+    theirs = _create(empty_api, "subject-b")
     _tagged(empty_api, theirs, "a.webp", ["default", "face"])
 
     resp = empty_api.get(f"/api/characters/{mine['id']}/selection")
@@ -808,13 +834,13 @@ def test_deleting_refuses_while_a_project_or_a_run_names_it(empty_api):
     """
     character = _create(empty_api)
     project = empty_api.post(
-        "/api/projects", json={"slug": "rooftop-teaser", "characters": [character["id"]]}
+        "/api/projects", json={"name": "rooftop-teaser", "characters": [character["id"]]}
     ).get_json()
     empty_api.post(
         "/api/runs",
         json={
             "project": project["id"],
-            "slug": "rooftop-portrait",
+            "name": "rooftop-portrait",
             "kind": "image",
             "model": "google/nano-banana-pro",
             "characters": [character["id"]],
@@ -904,13 +930,13 @@ def test_which_projects_involve_this_character(empty_api):
     """
     character = _create(empty_api)
     project = empty_api.post(
-        "/api/projects", json={"slug": "rooftop-teaser", "characters": [character["id"]]}
+        "/api/projects", json={"name": "rooftop-teaser", "characters": [character["id"]]}
     ).get_json()
 
     body = empty_api.get(f"/api/characters/{character['id']}/projects").get_json()
 
     assert [entry["id"] for entry in body] == [project["id"]]
-    assert body[0]["slug"] == "rooftop-teaser"
+    assert body[0]["name"] == "rooftop-teaser"
 
 
 def test_the_listing_counts_identity_without_a_counter_on_the_record(empty_api):
@@ -958,10 +984,25 @@ def test_a_character_with_no_files_counts_zero(empty_api):
     assert listed[0]["counts"] == {"default": 0, "files": 0}
 
 
-def test_the_listing_filters_on_slug_and_display_name(empty_api):
-    _create(empty_api, "subject-a", display_name="Alpha")
-    _create(empty_api, "subject-b", display_name="Beta")
+def test_the_listing_filters_on_the_name(empty_api):
+    """One field to search now. It was two — the slug and the display name."""
+    _create(empty_api, "Alpha")
+    _create(empty_api, "Beta")
 
-    assert [entry["slug"] for entry in empty_api.get("/api/characters?q=beta").get_json()] == [
-        "subject-b"
-    ]
+    found = empty_api.get("/api/characters?q=beta").get_json()
+
+    assert [entry["name"] for entry in found] == ["Beta"]
+
+
+def test_the_listing_orders_by_name_then_id_so_duplicates_do_not_swap(empty_api):
+    """**Stable, which a sort on the name alone would not be.**
+
+    Two characters may share a name, and rows that trade places between reads for
+    no reason a person can see is how a list stops being trustworthy.
+    """
+    first = _create(empty_api, "Anna")
+    second = _create(empty_api, "Anna")
+
+    found = empty_api.get("/api/characters").get_json()
+
+    assert [entry["id"] for entry in found] == sorted([first["id"], second["id"]])

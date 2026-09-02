@@ -71,6 +71,8 @@ and would each convert it differently.
 
 from __future__ import annotations
 
+import uuid
+
 from studio_pipeline.adapters import api
 
 
@@ -579,14 +581,26 @@ def put_block(name: str, text: str) -> dict:
     return api.patch(f"/api/templates/blocks/{_segment(name)}", {"text": text})
 
 
-def put_template(name: str, fields: dict) -> dict:
-    """Write one template. **Its name is its key**, as a block's is.
+def put_template(template_id: str, fields: dict) -> dict:
+    """Write one template, addressed by its id, with its name in the body.
 
-    Nothing points at a template — a run copies its words — so there is no id to
-    protect a rename, and a generated one would be a second name that can drift
-    from the first.
+    **A document keyed on names writes rows keyed on ids**, and the resolution is
+    the caller's — `domain/templates.py` matches the file against the stack it
+    just read, so it knows the id of every name already there and mints one only
+    for a name that is new. A block is different and is still keyed on its name:
+    prose cites it as `{block.face_only}`, so its name is load-bearing in a way a
+    template's is not.
     """
-    return api.patch(f"/api/templates/{_segment(name)}", fields)
+    return api.patch(f"/api/templates/{_segment(template_id)}", fields)
+
+
+def new_template_id() -> str:
+    """A UUID for a template a push is creating.
+
+    Minted here rather than by the API, so a create and an update are one call
+    with one shape — the same reason a node id is minted by whoever asks for one.
+    """
+    return f"template-{uuid.uuid4()}"
 
 
 # There are deliberately no `delete_*` wrappers, and #553 is why: a wrapper

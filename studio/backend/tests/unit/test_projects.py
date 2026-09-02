@@ -27,24 +27,24 @@ def _item(client, pk, sk):
     return response.get("Item")
 
 
-def _project(api, slug="rooftop-teaser", **body):
-    resp = api.post("/api/projects", json={"slug": slug, **body})
+def _project(api, name="rooftop-teaser", **body):
+    resp = api.post("/api/projects", json={"name": name, **body})
     assert resp.status_code == 201, resp.get_data(as_text=True)
     return resp.get_json()
 
 
-def _character(api, slug="subject-a"):
+def _character(api, name="subject-a"):
     return api.post(
-        "/api/characters", json={"slug": slug}
+        "/api/characters", json={"name": name}
     ).get_json()
 
 
-def _run(api, project, slug="rooftop-portrait"):
+def _run(api, project, name="rooftop-portrait"):
     resp = api.post(
         "/api/runs",
         json={
             "project": project["id"],
-            "slug": slug,
+            "name": name,
             "kind": "image",
             "model": "google/nano-banana-pro",
         },
@@ -73,16 +73,19 @@ def _child(parent_id, name):
 
 
 def test_creating_a_project_writes_the_record_claim_root_and_subfolders(empty_api, catalog_table):
-    """Record, claim, root and the five `PROJECT_LAYOUT` folders, or none of them."""
+    """Record, index row, root and the five `PROJECT_LAYOUT` folders, or none of them."""
     project = _project(empty_api)
 
     record = _item(catalog_table, f"PROJ#{project['id']}", "META")
-    assert record["slug"]["S"] == "rooftop-teaser"
+    assert record["name"]["S"] == "rooftop-teaser"
     assert int(record["rev"]["N"]) == 1
     assert record["counts"]["M"]["runs"]["N"] == "0"
 
-    claim = _item(catalog_table, f"LIB#{CATALOG_LIBRARY}", "PROJSLUG#rooftop-teaser")
-    assert claim["entity"]["S"] == project["id"]
+    # **Keyed on the id.** It was `PROJSLUG#<slug>` and enforced uniqueness as
+    # much as it listed; a name is a free-text label now, so what remains is a
+    # pure list index that a rename never touches.
+    index = _item(catalog_table, f"LIB#{CATALOG_LIBRARY}", f"PROJ#{project['id']}")
+    assert index["entity"]["S"] == project["id"]
 
     root = _item(catalog_table, f"NODE#{project['root']}", "META")
     assert root["entity"]["S"] == project["id"]
@@ -107,22 +110,28 @@ def test_involvement_is_rows_and_not_a_list_on_the_record(empty_api, catalog_tab
     assert "characters" not in _item(catalog_table, f"PROJ#{project['id']}", "META")
 
     fetched = empty_api.get(f"/api/projects/{project['id']}").get_json()
-    assert [entry["slug"] for entry in fetched["characters"]] == ["subject-a"]
+    assert [entry["name"] for entry in fetched["characters"]] == ["subject-a"]
 
 
-def test_a_taken_project_slug_is_409(empty_api):
-    _project(empty_api)
+def test_two_projects_may_share_a_name(empty_api):
+    """A duplicate is two rows that look alike, not an error.
 
-    resp = empty_api.post("/api/projects", json={"slug": "rooftop-teaser"})
+    The slug was claimed, so this was a 409. Nothing resolves a project by name —
+    the SPA routes on `proj-<uuid>` and every API address is an id — so the only
+    cost is a list somebody may want to tidy.
+    """
+    first = _project(empty_api)
 
-    assert resp.status_code == 409
-    assert resp.get_json()["error"] == "conflict"
+    resp = empty_api.post("/api/projects", json={"name": "rooftop-teaser"})
+
+    assert resp.status_code == 201
+    assert resp.get_json()["id"] != first["id"]
 
 
 def test_creating_with_a_character_that_does_not_exist_is_404(empty_api):
     """A link to a missing character would answer the reverse query forever."""
     assert empty_api.post(
-        "/api/projects", json={"slug": "rooftop-teaser", "characters": ["char-nobody"]}
+        "/api/projects", json={"name": "rooftop-teaser", "characters": ["char-nobody"]}
     ).status_code == 404
 
 
@@ -130,11 +139,12 @@ def test_creating_with_a_character_that_does_not_exist_is_404(empty_api):
 
 
 def test_renaming_a_project_was_impossible_and_is_now_one_write(empty_api, catalog_table):
-    """The slug was the primary key, so this could not be done at all.
+    """The name was the primary key once, so this could not be done at all.
 
     Zero objects copied, every node id kept, and the run recorded inside it still
     reachable — because a run record names its own folder node id rather than a
-    path.
+    path. One item changes: the record. The index row is keyed on the id and the
+    root folder is named by the id, so neither knows what the project is called.
     """
     project = _project(empty_api)
     run = _run(empty_api, project)
@@ -144,7 +154,7 @@ def test_renaming_a_project_was_impossible_and_is_now_one_write(empty_api, catal
     }
 
     resp = empty_api.patch(
-        f"/api/projects/{project['id']}", json={"slug": "launch-teaser", "rev": 1}
+        f"/api/projects/{project['id']}", json={"name": "launch-teaser", "rev": 1}
     )
 
     assert resp.status_code == 200
@@ -153,14 +163,15 @@ def test_renaming_a_project_was_impossible_and_is_now_one_write(empty_api, catal
         for node in catalog.branch(CATALOG_LIBRARY, "/", 100)[0]
     }
     assert after == before
-    assert catalog.node(project["root"])["name"] == "launch-teaser"
-    assert _item(catalog_table, f"LIB#{CATALOG_LIBRARY}", "PROJSLUG#rooftop-teaser") is None
+    # The folder did NOT move — it is named by the id, and always was.
+    assert catalog.node(project["root"])["name"] == project["id"]
+    assert empty_api.get(f"/api/projects/{project['id']}").get_json()["name"] == "launch-teaser"
     assert empty_api.get(f"/api/runs/{run['id']}").status_code == 200
 
 
 def test_a_stale_project_rev_is_409(empty_api):
     project = _project(empty_api)
-    empty_api.patch(f"/api/projects/{project['id']}", json={"title": "First", "rev": 1})
+    empty_api.patch(f"/api/projects/{project['id']}", json={"name": "First", "rev": 1})
 
     resp = empty_api.patch(
         f"/api/projects/{project['id']}", json={"title": "Second", "rev": 1}
@@ -253,7 +264,7 @@ def test_counts_move_with_the_transaction_that_creates_and_deletes(empty_api):
 
     run = _run(empty_api, project)
     empty_api.post(
-        "/api/scenes", json={"project": project["id"], "slug": "stadium", "title": "S"}
+        "/api/scenes", json={"project": project["id"], "name": "S"}
     )
 
     # **A run is created as a DRAFT and a draft is not counted.** The count says
@@ -319,7 +330,8 @@ def test_deleting_an_empty_project_keeps_its_files_by_default(empty_api, catalog
 
     assert _item(catalog_table, f"PROJ#{project['id']}", "META") is None
     assert "entity" not in catalog.node(project["root"])
-    assert [entry["name"] for entry in catalog.children(CATALOG_ROOT)] == ["rooftop-teaser"]
+    # The folder survives the entity, under the name it has always had — its id.
+    assert [entry["name"] for entry in catalog.children(CATALOG_ROOT)] == [project["id"]]
 
 
 def test_cascade_deletes_the_children_before_the_project(empty_api, catalog_table):
