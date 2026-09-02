@@ -56,7 +56,7 @@ after three billed calls.
       "identity_from": "reference set (6 images)",
       "prompt": { "…the image prompt as JSON…" },
       "input": { "…the Replicate input…" },
-      "output": "run {project}/{ts}_{slug} -> output/{slug}.jpg",
+      "output": "run {project}/{run_id} -> output/{name}.jpg",
       "gate": "approve payload; then eyeball the frame against the bible `consistency`"
     },
     {
@@ -74,7 +74,7 @@ after three billed calls.
       "start_frame": "the run output from step 1",
       "prompt": { "…the studio-media-prompt JSON…" },
       "input": { "…the Replicate input…" },
-      "output": "run {project}/{ts}_{slug} -> output/{slug}.mp4",
+      "output": "run {project}/{run_id} -> output/{name}.mp4",
       "gate": "approve payload (two-document review)"
     }
   ]
@@ -167,8 +167,8 @@ anything.
 A **chain of runs**, not loose files:
 
 ```
-projects/{project}/runs/{ts}_{slug}-frame/     request.json  prompt.json  result.json  output/frame.jpg
-projects/{project}/runs/{ts}_{slug}/           request.json  prompt.json  result.json  output/clip.mp4
+projects/{project}/runs/{run_id}/             request.json  prompt.json  result.json  output/frame.jpg
+projects/{project}/runs/{run_id}/             request.json  prompt.json  result.json  output/clip.mp4
                                           ^ request.json binds start_image to the frame's S3 KEY
 ```
 

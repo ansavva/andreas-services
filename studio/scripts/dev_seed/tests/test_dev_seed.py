@@ -1137,3 +1137,34 @@ def test_a_fixture_published_before_settings_existed_still_loads():
     items = ds.rows(catalog, {"objects": {}}, "studio-dev-abc-media-us-east-1",
                       "lib-dest", "user-1")
     assert not [i for i in items if i["sk"].startswith(("SPEC#", "TERM#"))]
+
+
+def test_an_entity_NAME_is_checked_against_the_dev_subjects(dev_stack):
+    """**The half of hard rule #1's guard that entity ids made necessary.**
+
+    It read path segments alone, which was sound while an entity's root folder
+    was named by its slug — the name was IN the path. Roots are named by their
+    ids now, so a fixture published from a modern stack has `char-<uuid>` as its
+    first segment: the guard would inspect UUIDs, find nothing, and let
+    `catalog.json` carry the real name into git in its `name` field.
+    """
+    library = ds.read_library(dev_stack["ddb"])
+    paths = ds.name_paths(library)
+    library["records"][f"CHAR#{CHAR_ID}"]["name"] = "Somebody Real"
+
+    found = ds.name_problems(paths, library)
+
+    assert any("Somebody Real" in problem for problem in found), found
+
+
+def test_a_placeholder_name_is_not_a_name(dev_stack):
+    """`<Name>` and `<Title>` are what hard rule #1 tells you to write.
+
+    A record still carrying one is a record nobody has named, so refusing it
+    would refuse the blank template — the same mistake the Title-Case check made
+    before an allowlist replaced it.
+    """
+    library = ds.read_library(dev_stack["ddb"])
+    paths = ds.name_paths(library)
+
+    assert ds.name_problems(paths, library) == []

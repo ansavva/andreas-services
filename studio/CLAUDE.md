@@ -8,8 +8,8 @@ identity. Everything else in this file is an index.
 through one character and one project in
 [docs/ENTITY_MODEL_EXAMPLE.md](docs/ENTITY_MODEL_EXAMPLE.md). Characters,
 projects, runs, scenes and movies are rows with UUIDs; the folder tree hangs off
-them; S3 keys carry ids and never names. Read it before assuming a slug is a
-path or that a document defines anything.
+them; S3 keys carry ids and never names, and so do entity root folders. Read it
+before assuming a name is an address or that a document defines anything.
 
 **A run now has an authored half too — [docs/RUN_PLAN.md](docs/RUN_PLAN.md).** It
 is created as a `draft` when it is PLANNED rather than when it is submitted, so
@@ -72,14 +72,15 @@ back to it. Full statements and reasoning in
 No production character's name appears in this repository — ever. Not in code,
 docstrings, `SKILL.md` files, examples, comments, tests, fixtures, commit
 messages, branch names, or PR titles and bodies. Characters are **data**: a row
-in the catalog whose `slug` is the name, and a folder of nodes hanging off it.
+in the catalog whose `name` is the name, and a folder of nodes hanging off it.
 The repo describes the machinery that operates on any character; use the
-`<name>` / `<project>` / `<slug>` placeholders.
+`<name>` / `<project>` placeholders.
 
-The entity model made this cheaper to keep. A slug is an attribute rather than
-a path segment and an S3 key is built from ids, so a bucket listing no longer
-spells out every character in the library — which it did, for as long as the
-key was `characters/<name>/…`.
+The entity model made this cheaper to keep, and dropping slugs made it cheaper
+again. A name is an attribute rather than a path segment, an S3 key is built
+from ids, and an entity's root folder is named by its id — so neither a bucket
+listing nor the catalog's own tree spells out any character in the library.
+The name lives on one row.
 
 **This rule used to be absolute — "never name a character anywhere" — and it was
 narrowed in August 2026 rather than dropped.** A **dev subject** lives only in a
@@ -399,7 +400,9 @@ when you are unsure a command exists.
 
 **Ask which project before generating anything.** A run belongs to a project and
 records which characters it used; guessing puts runs somewhere nobody looks
-again. `--project` takes a slug or a project id and is never inferred.
+again. `--project` takes a project id, or a name the CLI matches over the
+listing — an ambiguous name is refused with the ids rather than guessed. It is
+never inferred.
 
 ---
 

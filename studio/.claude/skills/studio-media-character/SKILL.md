@@ -27,9 +27,10 @@ character is an S3 record managed by this one skill, used by the video pipeline
 ## Where a character lives (S3)
 
 **A character is a record, not a folder.** It has an id that never changes, a
-`slug` you type, a bible held as structured fields, and a set of described
-references — all of it queryable. It also owns a folder, `<name>/`, where its
-images actually live. The generic **`studio-media-s3`** skill is the storage
+free-text `name` that is a LABEL and nothing else, a bible held as structured
+fields, and described images — all of it queryable. It also owns a folder, named
+by its id, where its images actually live. Two characters may share a name;
+every address is the id. The generic **`studio-media-s3`** skill is the storage
 layer; `studio login` is the auth.
 
 ```
@@ -179,7 +180,7 @@ headings out of prose:
 
 | Key | Holds |
 |---|---|
-| `schema_version` `name` `display_name` | the record's identity |
+| `schema_version` `name` | the record's identity |
 | `identity` | the card — age, build, height read, `signature_features[]`, home turf, register, speech |
 | `face` | structure, skin, eyes, eyebrows, nose, mouth/jaw, facial hair, hair, ears |
 | `body` | silhouette, arms, chest/shoulders, neck, lower body/hands, body hair, posture |
@@ -232,38 +233,34 @@ studio character selection <name> --presign --json     # generation-time: ordere
 studio character selection <name> --tag default,body   # a named selection
 studio character pool <name> corpus                    # material, not identity
 studio character add-to <name> seed photo.jpg          # founding source photos
-studio character rename <old> <new>                    # a new slug, records and all
+studio character rename <old> <new>                    # one field on one row
 ```
 
 ### Renaming a character
 
-A slug is a path segment, so a new one is not an edit — it is a move of every
-object in the record, plus a rewrite of everything that named the old one. Doing
-those separately is how a record ends up half-renamed:
-
 ```bash
-studio character rename <old> <new>            # DRY RUN: the whole plan
-studio character rename <old> <new> --apply
-studio character rename <old> <new> --display-name "Some Name" --apply
+studio character rename <old> <new>
 ```
 
-**One conditional write, and nothing moves.** The slug is an attribute on the
-character's row, not a path segment, so a rename swaps the slug claim, updates
-the record and renames the character's root folder — four operations in one
-transaction. No object is copied, no record is rewritten, and every reference,
-run and binding still resolves, because all of them name node ids.
+**One conditional write, and nothing else changes at all.** The name is a plain
+attribute on the character's row: not a path segment, not claimed, and not
+something anything resolves. No object is copied, no record is rewritten, the
+root folder does not move — it is named by the character's id — and every
+image, run and binding still resolves, because all of them name node ids.
 
 That is the whole of what this used to be. It moved objects whose basenames
 carried the slug, rewrote the bible's paths, and patched every run, scene,
 movie and project record that cited one of those keys — and a `--dry-run` was
-worth having because the plan was large enough to want reading first.
+worth having because the plan was large enough to want reading first. Then,
+briefly, it was four writes in one transaction, because the slug was claimed.
 
-Two things it deliberately leaves alone. A **project** that happens to share the
-character's name is not renamed, and neither is a slug written into prose — a
-prompt that names the character still says the old one — text is text, and
+**It does NOT refuse a destination another character already uses**, and it used
+to. Two characters called the same thing are two rows that look alike in a list;
+what it costs is that `<name>` stops resolving for either of them, and the CLI
+says so with both ids rather than picking one. Pass an id.
+
+A prompt that names the character still says the old name — text is text, and
 nothing rewrites prose.
-
-It refuses a destination that already exists rather than merging into it.
 
 ### Editing a bible by hand (`edit`)
 
@@ -437,7 +434,7 @@ studio templates push --path t.yaml      # file  -> stack (refuses a conflict)
   rows, the app edits them, and `studio templates pull` / `push` move them
   between stacks — so a wording fix is not a release.
 - **A template names its cast by POSITION.** `{character.1.top}` is the first
-  character the run binds — the same number `[Image1]` counts. A slug would be
+  character the run binds — the same number `[Image1]` counts. A name would be
   wrong the moment somebody renamed the character.
 - **`build` and `must` name a variant**: `{character.1.build.face}`. The bible
   answers both differently for a face than for a body, and citing the bare name

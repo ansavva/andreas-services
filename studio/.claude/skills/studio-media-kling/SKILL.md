@@ -147,7 +147,7 @@ Parsing note: Replicate's `logs` field can contain raw control characters, so
 
 ### Output — the run owns it
 
-Every submission is a run under `<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/`,
+Every submission is a run under `<project>/runs/<run_id>/`,
 holding `request.json` (inputs as S3 **keys**), `result.json`, and `output/` with
 the video. `--poll` archives it automatically — download-then-upload, so bytes
 never pass through the agent context. Replicate output URLs are not permanent.
@@ -258,7 +258,7 @@ Third-party Kling guides are overwhelmingly written against API 1.x:
 | Claimed | Reality |
 |---|---|
 | JWT signed from AccessKey + SecretKey | Plain `Authorization: Bearer <key>` |
-| `model_name` in the body | Model is in the path / the Replicate model slug |
+| `model_name` in the body | Model is in the path / the Replicate model id |
 | `cfg_scale`, `mode: std\|pro` | Not present (Replicate's `mode` is resolution) |
 | `duration: "5"\|"10"` as a string | Integer, 3–15 |
 | `negative_prompt` field | Not present |

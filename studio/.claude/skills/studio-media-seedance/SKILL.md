@@ -138,7 +138,7 @@ Generated videos are stored in the media library, never in git, and every
 submission is a **run** under the **project**:
 
 ```
-<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/
+<project>/runs/<run_id>/
     request.json    what we sent — references as paths, never signed URLs
     prompt.json     the studio-media-prompt source, when one was used
     result.json     prediction id, status, media types, output keys

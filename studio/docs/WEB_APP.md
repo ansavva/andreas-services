@@ -398,7 +398,7 @@ the bucket itself (`media_root_prefix = ""`).
 <project>/                      # a project's folder
 ├── runs/<run id>/              # request.json, result.json, sometimes prompt.json
 │   └── output/                 # the generated .jpeg / .webp / .mp4
-├── scenes/<slug>/              # storyboard/ + shots/ + output/
+├── scenes/<scene_id>/          # storyboard/ + shots/ + output/
 ├── chains/<name>.json          # a scene's shot-to-shot plan
 └── input/                      # the working pool
 config/angle/                    # the angle images; source of truth is the repo
@@ -968,12 +968,16 @@ step (#309). `UnprocessedKeys` comes back on a **200**, so botocore's retries
 never see it — `catalog.records` retries it explicitly and raises rather than
 answering with a short listing.
 
-**Two addressing schemes, and which one a route uses is the fastest thing to
-check about it — and there is only one left.** Every route takes a **node id**,
-or an entity id where the resource is an entity. `GET /api/resolve?path=` is the
-single translation from the slash-joined name path a person types into the id
-everything else wants, and `slug:<slug>` addressing on an entity route is the
-same courtesy for a name a person types.
+**One addressing scheme.** Every route takes a **node id**, or an entity id
+where the resource is an entity. `GET /api/resolve?path=` is the single
+translation from a slash-joined name path into the id everything else wants.
+
+There was a second, `slug:<slug>` on an entity route, as a courtesy to a person
+typing a name. It went with slugs: an entity's name is free text and two may
+share one, so resolving a name would mean the API picking between them. The CLI
+matches a name over a listing instead, and refuses an ambiguous one with the ids.
+Note that a name path's FIRST segment is an entity's root folder, which is named
+by the entity's id.
 
 The name-path *writes* are gone with `routes/manage.py`, and so is the raw-key
 read: `?prefix=`, `?key=`, `/api/folder`, `/api/object(s)` and `/api/text?key=`
@@ -995,7 +999,7 @@ nothing accepts one back.
 | `POST /api/nodes/<id>/upload-url` | `{size, content_type}` → a presigned PUT for `blobs/<id>`. Signed length and type |
 | `POST /api/nodes/<id>/confirm-upload` | `HeadObject`s the blob and writes `size`/`content_type` onto the row |
 | `POST /api/runs` | Records a run: folder, documents inline, and an upload URL per output |
-| `GET /api/nodes/<id>/owner` | Which entity a node belongs to, derived from its ancestry — `{kind, id, slug}` or null |
+| `GET /api/nodes/<id>/owner` | Which entity a node belongs to, derived from its ancestry — `{kind, id, name}` or null |
 | `POST /api/nodes/move` | `{ids: [...], destination}` → moves 1..N nodes, names kept. 409 if taken |
 | `POST /api/nodes/copy` | `{ids: [...], destination}` → copies 1..N nodes, sources kept. Names numbered if taken |
 | `DELETE /api/nodes` | `{ids: [...]}` → deletes 1..N nodes and their subtrees. Rows first, then blobs |
@@ -1007,8 +1011,8 @@ nothing accepts one back.
 
 | Route | Returns |
 |---|---|
-| `GET \| POST /api/characters` | List, or create — record, slug claim, root folder and the starting pools in one transaction. **409** on a taken slug |
-| `GET \| PATCH \| DELETE /api/characters/<id>` | One character. `<id>` may be `slug:<slug>`. `PATCH` carries `rev` and **409**s if it has moved |
+| `GET \| POST /api/characters` | List, or create — record, library index row, root folder and the starting pools in one transaction. **No 409**: a name is a label, so nothing here can collide |
+| `GET \| PATCH \| DELETE /api/characters/<id>` | One character, addressed by id. `PATCH` carries `rev` and **409**s if it has moved |
 | `PATCH /api/characters/<id>/profile` | `{profile, rev}` — the bible, validated |
 | `PATCH /api/nodes/<id>` | `{description, tags}` → what a picture IS and what it is FOR. `default` plus a group tag is the whole of what a `REF#` row and a `default_set` entry used to say between them |
 | `PATCH \| DELETE /api/characters/<id>/references/<node>` | Change one entry's group, description, tags or order; or detach it, leaving the file |

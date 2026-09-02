@@ -78,9 +78,16 @@ to decide anything.
 
 ## Principles
 
-1. **An id is the identity. A slug is a label.** Every entity has a `v4` UUID
-   that never changes. The slug is a mutable, library-unique attribute. Renaming
-   is one conditional write and touches nothing else, ever.
+1. **An id is the identity. A name is a label.** Every entity has a `v4` UUID
+   that never changes. The name is a mutable free-text attribute: **not unique,
+   not claimed, and nothing resolves an entity by it.** Renaming is one
+   conditional write on one row and touches nothing else, ever.
+
+   This principle used to read "a slug is a label" and then contradict itself:
+   a slug was library-unique, claimed by a conditional write, and an address the
+   API resolved — which is not what a label is. Slugs are gone, `display_name`
+   and a project's `title` collapsed into the same `name`, and every address is
+   an id.
 2. **No NAME in any S3 key, and no key is ever parsed.** A key is
    `<owner_kind>/<owner_id>/<node_id><ext>` and stops there — three segments, so
    a listing names no character, no project and no file. It is stamped once at
@@ -210,10 +217,10 @@ parses it.
 | Node — by parent | `NODE#<parent_id>` | `NAME#<name>` | exists |
 | Node — by id | `NODE#<node_id>` | `META` | exists |
 | **Character** | `CHAR#<char_id>` | `META` | the record |
-| **Character slug claim** | `LIB#<lib>` | `CHARSLUG#<slug>` | uniqueness, and the list-characters query |
+| **Character index** | `LIB#<lib>` | `CHAR#<char_id>` | the list-characters query |
 | ~~**Reference entry**~~ | ~~`CHAR#<char_id>`~~ | ~~`REF#<node_id>`~~ | **superseded** — identity is `default` + a group tag on the node |
 | **Project** | `PROJ#<proj_id>` | `META` | the record |
-| **Project slug claim** | `LIB#<lib>` | `PROJSLUG#<slug>` | uniqueness, and the list-projects query |
+| **Project index** | `LIB#<lib>` | `PROJ#<proj_id>` | the list-projects query |
 | **Project ↔ character** | `PROJ#<proj_id>` | `CHAR#<char_id>` | involvement; reverse-queryable |
 | **Run** | `RUN#<run_id>` | `META` | the envelope |
 | **Run in project** | `PROJ#<proj_id>` | `RUN#<created>#<run_id>` | list a project's runs, newest first, paginated |
@@ -268,16 +275,16 @@ stale one; both went with the `maintenance/` layer. Every writer maintains its
 own edges — `catalog.put_shots` and its siblings — so the backfill has nothing
 left to do.
 
-**Two items per entity, for the same reason a node is two items.** The `META`
-row is the record; the claim / membership row is what makes the entity listable
-and its slug unique. Every create, rename and delete is one
-`TransactWriteItems`, and a slug collision is a condition failure on
-`attribute_not_exists(pk)` — never a read-then-write.
+**Two items per entity.** The `META` row is the record; the second is the
+**library index** — `LIB#<lib>` / `CHAR#<char_id>` — which is what makes the
+entity listable. It used to be `CHARSLUG#<slug>` and did two jobs, listing and
+claiming the name; the claim is gone with slugs, so a create and a delete write
+both rows in one `TransactWriteItems` and a **rename touches only the record.**
 
 **No new GSI is required.** Listing a library's characters is
-`query(pk=LIB#<lib>, begins_with(sk, "CHARSLUG#"))` followed by a
+`query(pk=LIB#<lib>, begins_with(sk, "CHAR#"))` followed by a
 `BatchGetItem` over the `CHAR#…/META` rows — the exact shape `GET /api/nodes`
-already uses, and for the same reason: the claim row stays a pointer rather than
+already uses, and for the same reason: the index row stays a pointer rather than
 a projection nobody has to keep in step. `by-sk` answers the reverse questions
 (`sk = CHAR#<id> AND begins_with(pk, "RUN#")` is "every run using this
 character"), which is why that index stops having one script as its only
@@ -285,33 +292,36 @@ consumer.
 
 ### Why an entity is two items
 
-The same two reasons a node is two items, and it is worth stating rather than
-inheriting silently.
+The record is keyed on the **id**, because the id is what every other row points
+at and it must never change: `CHAR#<char_id>` / `META`. That answers "read this
+character" and answers nothing about "every character in this library" — and
+this table must never be scanned — so a second item exists purely as the **list
+index**: `LIB#<lib>` / `CHAR#<char_id>`, one query per library.
 
-DynamoDB enforces uniqueness on **one thing only: the primary key**. So the two
-properties an entity needs pull in opposite directions:
+#### The second item used to claim a NAME, and no longer does
 
-- The record must be keyed on the **id**, because the id is what every other row
-  points at and it must never change. `CHAR#<char_id>` / `META`.
-- The slug must be **unique in the library**, and the only way to say that to
-  DynamoDB is to make the slug part of a key. `LIB#<lib>` / `CHARSLUG#<slug>`,
-  written under `attribute_not_exists(pk)`.
+It was `LIB#<lib>` / `CHARSLUG#<slug>`, written under
+`attribute_not_exists(pk)`, and its job was uniqueness as much as listing. The
+argument for it was sound as far as it went: DynamoDB enforces uniqueness on one
+thing only, the primary key, so making a slug unique meant making it part of a
+key — and a GSI would not have done, because two records with the same slug both
+land in an index, silently.
 
-One item cannot be keyed both ways, so there are two. The claim item then earns
-its keep a second time: it is also the **list index**. `every character in this
-library` is `query(pk = LIB#<lib>, begins_with(sk, "CHARSLUG#"))` — one query.
-Without it, that question is a `Scan` with a filter, which is the one access
-pattern this table must never have.
+**What changed is that the uniqueness stopped being wanted.** A character has one
+free-text `name`, it is a LABEL, and nothing resolves an entity by it: the SPA
+routes on `char-<uuid>`, the API addresses ids, an edge stores an id. So a
+duplicate name is two rows that look alike in a list — which a person fixes by
+renaming one — and it is not worth a condition expression, a second failure mode
+and a 409 every client has to handle.
 
-**A GSI does not substitute for it.** An index hashed on `lib` and ranged on
-`slug` would give the listing, but a GSI enforces nothing: two records with the
-same slug both land in it, silently. Uniqueness has to be a condition
-expression on a real key.
+The item that remains is keyed on the id it points at, which means a rename
+touches exactly one row: the record. Nothing to keep in step, nothing to move in
+a transaction, nothing to half-happen.
 
-**Keying the character on its slug instead** — `LIB#<lib>` / `CHAR#<slug>` —
-collapses it to one item and reintroduces exactly the disease: renaming becomes
-delete-and-recreate, and every `REF#` row, run link and binding that pointed at
-it is pointing at a key that no longer exists.
+**Keying the character on its name instead** — `LIB#<lib>` / `CHAR#<name>` —
+would collapse it to one item and reintroduce exactly the disease: renaming
+becomes delete-and-recreate, and every run link and binding that pointed at it is
+pointing at a key that no longer exists.
 
 So: two items, one transaction, and the create/rename/delete paths are the same
 shape as the node writes beside them. A rename is: delete the old claim, put the
@@ -373,6 +383,15 @@ fails, and it never guesses.
 be deleted while the entity exists. `DELETE /api/nodes` refuses it and says which
 entity to delete instead.
 
+**An entity's root folder is NAMED BY THE ENTITY ID.** It took the slug, so that
+somebody browsing the tree saw the name they had chosen — which cannot survive a
+free-text name, because a folder's name is unique among its siblings (genuinely:
+`child_by_name` resolves a path segment through it) and the second character
+called `Anna` would be refused by the tree. That is the uniqueness dropping slugs
+was meant to remove, arriving by a side door and with a worse message. So the id
+is the folder's name, the way it is already the S3 key's, and a listing hands
+back `owner` for an entity root — which is where a client gets a name to draw.
+
 **The reverse pointer.** The root folder node carries `entity: "char-9f3c…"`,
 written once in the create transaction and never changed. It is what lets a
 listing draw a character card instead of a folder icon, and what
@@ -385,8 +404,7 @@ in either.
 {
   "id": "char-<uuid>",
   "lib": "lib-<uuid>",
-  "slug": "<slug>",                 // library-unique, mutable, [a-z0-9_-]
-  "display_name": "<Name>",
+  "name": "<Name>",                 // a LABEL: free text, mutable, NOT unique
   "rev": 7,                         // optimistic concurrency; see below
   "created": "…", "updated": "…",
   "root": "node-…",                 // the ONE pointer into the tree
@@ -395,8 +413,8 @@ in either.
 }
 ```
 
-`profile` is the whole of today's `profile.yaml` minus `name` and
-`display_name`, which are promoted to real fields, and minus `references:` and
+`profile` is the whole of today's `profile.yaml` minus `name`, which is promoted
+to a real field, and minus `references:` and
 `default_set:` — both of which are now tags on the files themselves. The remaining sections — `identity`, `face`,
 `body`, `wardrobe`, `voice`, `rendering`, `consistency`, `text_identity_block` —
 are stored as nested maps and validated against a schema the API owns.
@@ -436,7 +454,7 @@ about what a model was shown.
 ```jsonc
 {
   "id": "proj-<uuid>", "lib": "lib-<uuid>",
-  "slug": "<slug>", "title": "…", "description": "…",
+  "name": "…", "description": "…",
   "rev": 3, "created": "…", "updated": "…",
   "root": "node-…",
   "hero": "node-…",
@@ -453,7 +471,6 @@ what points at it.
 ```jsonc
 {
   "id": "run-<uuid>", "lib": "…", "project": "proj-…",
-  "slug": "<slug>",                 // human label; no longer an id
   "status": "pending|running|succeeded|failed|cancelled",
   "kind": "image|video",
   "engine": "…", "model": "google/nano-banana-pro",
@@ -536,7 +553,7 @@ catalog's and always was:
 <character>/                 ← a folder node the character record names
 ├── reference/  corpus/  seed/  archive/
 <project>/                   ← a folder node the project record names
-├── runs/<run id>/           ← the run record names this folder; a run has no slug
+├── runs/<run id>/           ← the run record names this folder; every entity folder is named by its id
 │   ├── request.json  result.json  prompt.json    ← payload blobs
 │   └── output/
 ├── scenes/  movies/  chains/  input/
@@ -575,8 +592,11 @@ used for before it was deleted.
 ## API
 
 Every route is library-scoped by `X-Studio-Library` exactly as today, and every
-entity response is membership-checked against the entity's own `lib`. Slugs are
-accepted only where noted; everything else takes ids.
+entity response is membership-checked against the entity's own `lib`. **Every
+route takes an id.** There was one other address, `slug:<slug>`, accepted on the
+two read routes because a person types a name on a command line; it went with
+slugs, because two entities may share a name and resolving one would mean
+picking between them.
 
 **Every whole-collection replace is `PATCH`, not `PUT`.** Six routes here
 replace rather than merge — the profile, the reference index, the default set, a
@@ -596,10 +616,10 @@ moves with it.
 
 | Route | Body / params → result |
 |---|---|
-| `GET /api/characters` | `?q=` → `[{id, slug, display_name, hero, counts, updated}]` |
-| `POST /api/characters` | `{slug, display_name, profile?}` → **201** the record. Creates entity + slug claim + root + four pool folders in one transaction. **409** on slug |
-| `GET /api/characters/<id>` | the full record, `profile` included. `<id>` may be `slug:<slug>` |
-| `PATCH /api/characters/<id>` | `{slug?, display_name?, hero?, rev}` → **409** on a stale `rev`, **409** on a taken slug |
+| `GET /api/characters` | `?q=` → `[{id, name, hero, counts, updated}]`, name-then-id ascending so duplicates never swap between reads |
+| `POST /api/characters` | `{name, profile?}` → **201** the record. Creates entity + library index row + root + four pool folders in one transaction. **No 409** — nothing here can collide |
+| `GET /api/characters/<id>` | the full record, `profile` included |
+| `PATCH /api/characters/<id>` | `{name?, hero?, rev}` → **409** on a stale `rev`, and on nothing else |
 | `PATCH /api/characters/<id>/profile` | `{profile, rev}` → whole-bible replace, validated. The `edit` round trip |
 | `PATCH /api/characters/<id>/profile` | `{patch, rev}` → merge one section |
 | `DELETE /api/characters/<id>` | `?files=keep\|delete` — refuses while a project or run still links it, unless `?force=1` |
@@ -618,10 +638,10 @@ moves with it.
 
 | Route | Body / params → result |
 |---|---|
-| `GET /api/projects` | `[{id, slug, title, hero, counts, updated}]` |
-| `POST /api/projects` | `{slug, title?, description?, characters?}` → **201**. Creates entity + claim + root + five subfolders |
-| `GET /api/projects/<id>` | record; `<id>` may be `slug:<slug>` |
-| `PATCH /api/projects/<id>` | `{slug?, title?, description?, hero?, rev}` |
+| `GET /api/projects` | `[{id, name, hero, counts, updated}]` |
+| `POST /api/projects` | `{name, description?, characters?}` → **201**. Creates entity + library index row + root + five subfolders |
+| `GET /api/projects/<id>` | the record |
+| `PATCH /api/projects/<id>` | `{name?, description?, hero?, rev}` |
 | `DELETE /api/projects/<id>` | `?files=keep\|delete`; refuses while it holds runs unless `?force=1` |
 | `PATCH /api/projects/<id>/characters` | `{characters: [id, …]}` → replaces the involvement links |
 | `GET /api/projects/<id>/inputs` | the working pool, name-ascending natural sort. **Position in this list is `--input N`** |
@@ -632,14 +652,14 @@ moves with it.
 
 | Route | Body / params → result |
 |---|---|
-| `POST /api/runs` | `{project, kind, engine, model, slug, input, bindings, characters?, prompt?}` → **201** `{id, folder, payload}`. Creates run + project link + character links + folder + payload blobs. **Refuses a URL-shaped binding** |
+| `POST /api/runs` | `{project, kind, engine, model, input, bindings, characters?, prompt?}` → **201** `{id, folder, payload}`. Creates run + project link + character links + folder + payload blobs. **Refuses a URL-shaped binding** |
 | `GET /api/runs` | `?project=&character=&model=&status=&since=&cursor=` — the query that replaces `runs find` |
 | `GET /api/runs/<id>` | envelope + output nodes + the scenes that bound it |
 | `PATCH /api/runs/<id>` | `{status, prediction_id?, error?, cost?, completed?}` |
 | `POST /api/runs/<id>/outputs` | `{name, size, content_type}` → a node under the run's `output/` and a presigned PUT |
 | `POST /api/runs/<id>/response` | `{body}` → stores the provider response as a payload blob |
 | `DELETE /api/runs/<id>` | `?files=keep\|delete` |
-| `POST /api/scenes` | `{project, slug, title, shots: [...]}` → **201** |
+| `POST /api/scenes` | `{project, name, shots: [...]}` → **201** |
 | `GET /api/scenes` · `GET /api/scenes/<id>` · `PATCH` · `DELETE` | as above |
 | `PATCH /api/scenes/<id>/shots` | `{shots: [...]}` → the plan revision; merges onto rendered work rather than replacing it |
 | `PATCH /api/scenes/<id>/shots/<shot_id>` | `{run?, panel?, prompt?, order?}` |
@@ -675,21 +695,20 @@ Kept, with the name-path routes removed and the bulk verbs moved onto ids.
 | `GET /api/nodes?under=&depth=&kind=&tag=` | one listing; `prefix=` dropped, and `/api/tree` + `/api/reel` folded in |
 | `GET /api/nodes/<id>/owner` | which entity a node belongs to, derived from its ancestry — what the SPA shows as "in project …" |
 
-**A node view gains `owner`**: `{kind, id, slug}` or null. It still never carries
+**A node view gains `owner`**: `{kind, id, name}` or null. It still never carries
 `blob_key` or `path`.
 
 ---
 
 ## CLI
 
-The command surface stays recognisable — the same verbs, taking slugs, calling
-the API. What changes is that nothing composes a path and nothing writes a
-document.
+The command surface stays recognisable — the same verbs, calling the API. What
+changes is that nothing composes a path and nothing writes a document.
 
 ```
 session     login · logout · whoami                                unchanged
 
-generate    run · models · add-model                               --project takes a slug or an id
+generate    run · models · add-model                               --project takes an id, or a name matched client-side
             run now records bindings as node ids
 
 records     runs      list · show · find · outputs · adopt         list/find are one API query
@@ -717,10 +736,10 @@ maintenance catalog (plan · migrate · verify · gc · reseat) · dev-seed
 
 | Command | Change |
 |---|---|
-| `character create <slug>` | `POST /api/characters`. Creates the pools as part of the transaction rather than lazily on first write |
-| `character rename <slug> <new>` | one `PATCH`. **No objects move, no records are rewritten, nothing can be stranded.** Today this is a per-basename `PATCH` sweep plus a record rewrite |
+| `character create <name>` | `POST /api/characters`. Creates the pools as part of the transaction rather than lazily on first write |
+| `character rename <name> <new>` | one `PATCH` of one field. **No objects move, no records are rewritten, the root folder does not even move.** Today this is a per-basename `PATCH` sweep plus a record rewrite |
 | `character set-ref-desc` / `describe-refs` | one row write each, or one bulk `PUT`. No whole-bible rewrite, no `updated_at` conflict dance |
-| `character order <slug> --group face <node>…` | **new** — explicit reference ordering, replacing filename numbering |
+| `character order <name> --group face <node>…` | **new** — explicit reference ordering, replacing filename numbering |
 | `character regroup` (was `curate regroup`) | one `PATCH` per entry; no object moves |
 | `curate renumber` | **deleted** — nothing to renumber |
 | `curate move` | a node move, unchanged in meaning |
@@ -736,13 +755,21 @@ maintenance catalog (plan · migrate · verify · gc · reseat) · dev-seed
 | `upload` / `download` / `presign` | take a node id or a `<entity>/<path>` address that the API resolves |
 | `catalog verify` / `reseat` | **deleted** with the rest of `maintenance/`. Their subject was the migration below, which is over |
 
-**Addressing on the command line.** A slug is still what a person types.
-`<slug>/reference/face/<file>` resolves through
-`GET /api/resolve?path=` against the character's root — so the strings in every
-`SKILL.md` keep working as *addresses* while ceasing to be *keys*. Ambiguity
-between a character and a project called the same thing is settled by the
-command: `studio character …` resolves in characters, `studio projects …` in
-projects, and `--project` never looks at characters.
+**Addressing on the command line.** **An id, or a name the CLI matches itself.**
+This used to say a slug was what a person types and that `<slug>/reference/…`
+resolved server-side through `GET /api/resolve?path=` — and it did, against a
+claim row, in one call. There is no claim: the API resolves ids only, so a name
+is a listing plus a match on the client (`paths.by_name`), and an ambiguous name
+is **refused with the ids** rather than resolved to whichever sorted first.
+
+A name path still resolves through `GET /api/resolve?path=`, but its first
+segment is an entity's root folder — which is named by the entity's **id**, so a
+path is `<char-uuid>/reference/face/<file>`. The strings in every `SKILL.md`
+that spelled that segment as a name have been updated.
+
+Ambiguity between a character and a project called the same thing is still
+settled by the command: `studio character …` matches characters, `studio
+projects …` matches projects, and `--project` never looks at characters.
 
 ---
 

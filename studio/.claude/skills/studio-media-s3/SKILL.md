@@ -69,7 +69,7 @@ entity is found by asking for it, not by listing a folder that groups it.
 
 <project>/                  a project's folder
     runs/<run_id>/          one submission: its payload documents + output/
-    chains/<slug>.json      a scene's own frames, in order
+    chains/<scene>.json      a scene's own frames, in order
     scenes/<scene_id>/      runs cut into one continuous take: storyboard/ shots/ output/
     movies/<movie_id>/      scenes cut into one piece: scenes/ + output/
     input/                  the project working pool
@@ -88,7 +88,7 @@ resolves them by name when it needs one, creating what is absent. Rename `runs/`
 and the next run makes a new one; existing runs stay reachable because each names
 its own folder node.
 
-`<run_id>` is `YYYY-MM-DD_HH-MM-SS_<slug>`, so runs sort chronologically when
+`<run_id>` is `run-<uuid>`. Runs do NOT sort chronologically by name; `created` on the row is what orders them, which is why
 browsed — it is a name, not an id. The **run owns its output** — medium is an
 attribute, never a folder name, so one video and ten images take the same shape.
 
@@ -198,9 +198,9 @@ studio frames last <project>/latest --add-input   # -> <project>/input/
 studio frames at   <project>/latest --time 6.5
 
 # Chains: a scene's own frames, which are its reference set for later shots
-studio frames chain <project>/<slug> --seed <project>/input/<file>.png
-studio frames last  <project>/latest --add-input --chain <slug>
-studio frames chain <project>/<slug> --args --max 7    # -> --key … --key …
+studio frames chain <project>/<name> --seed <project>/input/<file>.png
+studio frames last  <project>/latest --add-input --chain <scene>
+studio frames chain <project>/<name> --args --max 7    # -> --key … --key …
 
 # Phrasebook: per-model wording lists (shared material — see above)
 studio phrasebook check --model <model key> --text "<draft prompt>"
@@ -208,14 +208,14 @@ studio phrasebook show --model <model key>
 
 # Scenes: a piece planned, shot and cut. `new` starts one from a plan;
 # `assemble` does the cutting, and takes runrefs directly when there is no plan.
-studio scenes new <project> --slug <slug> --from-json plan.json
-studio scenes assemble <project>/<slug> \
+studio scenes new <project> --name <name> --from-json plan.json
+studio scenes assemble <project>/<name> \
   --shot <project>/<run_id>#1 --shot <project>/latest#1
 studio scenes list <project>
 studio scenes show <project>/latest
 
 # Movies: cut scenes into one piece
-studio movies new <project> --slug <slug> \
+studio movies new <project> --name <name> \
   --scene <project>/<scene_id> --scene <project>/latest
 studio movies show <project>/latest
 ```
@@ -228,7 +228,7 @@ ref — copying never loses lineage.
 
 ### Runrefs and scenerefs
 
-A run is addressed as `<project>/<run_id>`, `<project>/latest`, a unique slug
+A run is addressed as `<project>/<run_id>`, `<project>/latest`, a unique name
 fragment, or a bare run id when the project is supplied out of band. Append `#N`
 to pick the Nth output (1-based); the default is every output. This is what the
 engine skills' `--ref-run` / `--start-run` / `--image-run` flags accept.

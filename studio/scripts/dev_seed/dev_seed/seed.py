@@ -472,11 +472,23 @@ def name_positions(paths: dict[str, str]) -> dict[str, list[str]]:
     return {tree: sorted(names) for tree, names in found.items()}
 
 
-def name_problems(all_paths: dict[str, str]) -> list[str]:
+def name_problems(all_paths: dict[str, str], library: dict | None = None) -> list[str]:
     """Every reason this promotion may not be published, one per line.
 
-    **WHAT IT CHECKS.** One thing: every segment in a name position anywhere in
-    the source library is in `DEV_SUBJECTS`. **The whole stack, not just the
+    **WHAT IT CHECKS.** Two things: every segment in a name position anywhere in
+    the source library, and every ENTITY RECORD'S `name`, is in `DEV_SUBJECTS`.
+
+    **The second one is new and it is what keeps this guard working.** It read
+    path segments alone, which was sound while an entity's root folder was named
+    by its slug — the name was IN the path. Entity roots are named by their ids
+    now, so a fixture published from a modern stack has `char-<uuid>` as its
+    first segment and the guard would inspect UUIDs and find nothing, while
+    `catalog.json` carried the real name in its `name` field straight into git.
+    That is hard rule #1 broken in the one place nobody was reading, which is
+    exactly the sentence this rule already carries about S3 keys.
+
+    Path positions are still checked as well, because a stack seeded or driven
+    before that change has slug-named roots and the names are still there. **The whole stack, not just the
     selection** — #284 is explicit that generating naturally and sanitising
     afterwards is the wrong order, because by then the name is already in the
     bucket, the run JSON and the keys. So the property is "this stack was
@@ -510,17 +522,28 @@ def name_problems(all_paths: dict[str, str]) -> list[str]:
     * **The attestation itself.** `--dev-subjects-only` is a flag. Nothing
       verifies it, and nothing can.
     """
+    advice = ("not a dev subject this repo publishes. A fixture is promoted from "
+              "a stack DRIVEN with listed subjects, not from one sanitised "
+              "afterwards; this is the whole stack, not just what you selected. "
+              "Add the name to DEV_SUBJECTS in dev_seed.py if it belongs there, "
+              "or rename it in the dev stack.")
     problems = []
     for tree, names in sorted(name_positions(all_paths).items()):
         bad = [n for n in names if n not in DEV_SUBJECTS]
         if bad:
             problems.append(
-                f"{tree}/ holds {', '.join(repr(n) for n in bad)} — not a dev "
-                "subject this repo publishes. A fixture is promoted from a "
-                "stack DRIVEN with listed subjects, not from one sanitised "
-                "afterwards; this is the whole stack, not just what you "
-                "selected. Add the name to DEV_SUBJECTS in dev_seed.py if it "
-                "belongs there, or rename it in the dev stack.")
+                f"{tree}/ holds {', '.join(repr(n) for n in bad)} — {advice}")
+
+    for record in sorted((library or {}).get("records", {}).values(),
+                         key=lambda r: r.get("name") or ""):
+        name = record.get("name")
+        # `<Name>` and `<Title>` are the repo's own placeholders — hard rule #1
+        # prescribes them by name — so a record still carrying one is a record
+        # nobody has named yet. Refusing those would refuse the blank template.
+        if name.startswith("<") and name.endswith(">"):
+            continue
+        if name and name not in DEV_SUBJECTS:
+            problems.append(f"a {record.get('kind')} is called {name!r} — {advice}")
     return problems
 
 
@@ -1287,7 +1310,7 @@ def cmd_publish(wanted, paths_from, fixture_version, seed_bucket, library,
                 "`studio catalog verify` reports on it.")
         blobs[node_id] = s3.get_object(Bucket=bucket, Key=key)["Body"].read()
 
-    problems = name_problems(paths)
+    problems = name_problems(paths, lib)
     tokens = text_tokens({paths[nid]: body for nid, body in blobs.items()})
 
     catalog, manifest = build(lib, paths, picked["all"], blobs, fixture_version)
