@@ -49,6 +49,19 @@ export async function stubApi(page: Page): Promise<void> {
     // hit, which is exactly what happened when the join screen finally started calling it (#134).
     if (p === `/api/groups/${group.group_id}/invitation`)
       return route.fulfill(json(fixture('invitation')));
+    // Managed invitations (#574). The captured group is on Free, so 402 is what the real API
+    // answers here — the same body shape `ApiError` reads its code and message out of. There is
+    // deliberately no Plus fixture: inventing one would assert against data the backend never
+    // produced, and the Plus path is covered by the jest suite where the seam is a mock and says
+    // so. `e2e:capture` cannot reach it either, because its seed exchange is Free.
+    if (p === `/api/groups/${group.group_id}/invitations`)
+      return route.fulfill({
+        status: 402,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: { code: 'plus_required', message: 'This exchange is on the Free plan.' },
+        }),
+      });
 
     return route.fulfill({
       status: 501,

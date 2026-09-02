@@ -305,6 +305,42 @@ export function PlusRefusalCard({
   );
 }
 
+/**
+ * A locked capability on a screen that already carries the billing panel.
+ *
+ * `PlusRefusalCard` is the right answer where there is nowhere else to buy — the group screen. On
+ * the organizer dashboard it is the wrong one: the billing panel is a few hundred pixels down the
+ * same page, so a second upgrade offer is two checkout buttons for one purchase, and the e2e caught
+ * it as a literal ambiguity — `getByText('$12 once, for this exchange')` matched twice.
+ *
+ * So this says what is locked and points at the one place that unlocks it. Who that place belongs
+ * to matters: `GET .../billing/plus` is owner-only, so a co-organizer has no panel to be sent to
+ * and is told whose decision it is instead of being sent looking for a control they do not have.
+ */
+export function PlusLockedNote({
+  reason,
+  action,
+  isOwner,
+}: {
+  reason: string;
+  /** Phrased to follow "Plus would let you …". */
+  action: string;
+  isOwner: boolean;
+}) {
+  return (
+    <Card>
+      <Text style={styles.eyebrow}>Part of Plus</Text>
+      <Text style={[styles.heading, { marginTop: 4 }]}>{reason}</Text>
+      <Text style={[styles.smallMuted, { marginTop: 8 }]}>
+        Plus would let you {action}.{' '}
+        {isOwner
+          ? 'You can turn it on for this exchange further down this page.'
+          : 'Only the person who created this exchange can turn it on.'}
+      </Text>
+    </Card>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // The organizer's billing area
 // ---------------------------------------------------------------------------
