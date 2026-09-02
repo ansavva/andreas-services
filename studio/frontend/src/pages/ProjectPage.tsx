@@ -188,7 +188,7 @@ export function ProjectPage() {
         </Tabs.Panel>
 
         <Tabs.Panel value="files">
-          <FolderTab rootId={record.root} />
+          <FolderTab rootId={record.root} label={record.name} />
         </Tabs.Panel>
       </Tabs.Root>
     </>

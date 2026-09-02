@@ -227,7 +227,7 @@ export function CharacterPage() {
           {/* The raw browser at the character's root, with the root's own
               subfolders as chips above it: create, upload, rename, move, copy,
               delete, exactly as anywhere else. */}
-          <FolderTab rootId={record.root} />
+          <FolderTab rootId={record.root} label={record.name} />
         </Tabs.Panel>
       </Tabs.Root>
     </>

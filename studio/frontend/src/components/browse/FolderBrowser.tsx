@@ -84,6 +84,20 @@ interface Props {
    * by this.
    */
   boundary?: FolderId;
+  /**
+   * What to call the boundary crumb, when its stored name is not worth showing.
+   *
+   * An entity's root folder is **named by the entity id** — `char-<uuid>` — so
+   * that two characters called the same thing do not collide on the folder
+   * tree's own name uniqueness. That is the right stored name and the wrong
+   * label: a Files tab drew a 41-character UUID as the first crumb, which
+   * wrapped onto two lines at 390px and named nothing a person recognises.
+   *
+   * Display only, and only the first crumb. `prefix` — what Copy prefix yields
+   * and what `GET /api/resolve` takes — is still built from stored names, so
+   * the address does not change because the label did.
+   */
+  boundaryLabel?: string;
 }
 
 /**
@@ -128,7 +142,7 @@ type PickerTarget = {
  * name-path routes it used to call took a slash-joined path that a rename
  * invalidated mid-flight.
  */
-export function FolderBrowser({ nav, boundary = null }: Props) {
+export function FolderBrowser({ nav, boundary = null, boundaryLabel }: Props) {
   const { folder, sort } = nav;
 
   const [actionError, setActionError] = useState<string | null>(null);
@@ -482,7 +496,13 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
                   );
                 }}
               >
-                {crumb.name}
+                {/* See `boundaryLabel`: the entity's name in place of the id
+                    its root folder is stored under. Only the first crumb, and
+                    only inside a scoped browser — the standalone one's first
+                    crumb is `/`. */}
+                {index === 0 && boundary !== null && boundaryLabel
+                  ? boundaryLabel
+                  : crumb.name}
               </Breadcrumbs.Item>
             ))}
           </Breadcrumbs.Root>

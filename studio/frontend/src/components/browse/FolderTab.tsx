@@ -85,12 +85,19 @@ export function useLocalBrowserNav(rootId: string): BrowserNav {
  * wrapped into three rows of underline. They are shortcuts now — one scrolling
  * row of a fixed shape, with the browser still the only place a folder opens.
  */
-export function FolderTab({ rootId }: { rootId: string }) {
+export function FolderTab({
+  rootId,
+  label,
+}: {
+  rootId: string;
+  /** The entity's name, for the boundary crumb — see `FolderBrowser`. */
+  label?: string;
+}) {
   const nav = useLocalBrowserNav(rootId);
   return (
     <div className="flex w-full flex-col gap-4">
       <FolderShortcuts rootId={rootId} nav={nav} />
-      <FolderBrowser nav={nav} boundary={rootId} />
+      <FolderBrowser nav={nav} boundary={rootId} boundaryLabel={label} />
     </div>
   );
 }

@@ -18,6 +18,9 @@ const SEED = fixture<{
   entries: Array<{ name: string; content_type: string }>;
 }>("seed-folder").entries;
 
+/** The character's own label — not the id its root FOLDER is named after. */
+const CHARACTER_NAME = fixture<{ name: string }>("character").name;
+
 const LIVE = process.env.E2E_LIVE === "1";
 
 test.beforeEach(async ({ page }) => {
@@ -124,6 +127,33 @@ test("nothing 5xxs, so no fixture is missing", async ({ page }) => {
 test("the character page opens its seed pool", async ({ page }) => {
   await page.goto(`/c/${CHARACTER}`);
   await expect(page.getByText("jason").first()).toBeVisible();
+});
+
+/**
+ * **An entity's root folder is stored under the entity id**, on purpose: two
+ * characters called the same thing would otherwise collide on the folder tree's
+ * own name uniqueness. So its crumb had a stored name nobody recognises — a
+ * 41-character UUID that wrapped onto two lines at 390px — and the Files tab
+ * passes the character's name down to draw in its place.
+ *
+ * Display only. `prefix` — what Copy prefix yields and what `GET /api/resolve`
+ * takes — is still built from stored names, so this changed the label and not
+ * the address.
+ *
+ * **The fixture carries the id-shaped folder name for this reason.** It was
+ * captured before slugs were removed and still said `jason`, against which this
+ * spec passes even with the label wired to nothing at all.
+ */
+test("the Files tab names its boundary crumb after the character", async ({
+  page,
+}) => {
+  stubOnly("the captured tree is what makes the crumb deterministic");
+  await page.goto(`/c/${CHARACTER}?tab=files`);
+
+  // The LAST one: `PageBar` draws a breadcrumb of its own above the tabs.
+  const crumbs = page.getByRole("navigation", { name: "Breadcrumb" }).last();
+  await expect(crumbs).toHaveText(CHARACTER_NAME);
+  await expect(crumbs).not.toContainText(CHARACTER);
 });
 
 test("the captured listing still says 49 jpeg and 5 png", async ({ page }) => {
