@@ -68,7 +68,9 @@ it("keeps the blocks on their OWN tab, and previews them beside the prompt", asy
    */
   read.mockResolvedValue(SPEC);
   show();
-  expect(await screen.findByText(/face_front/)).toBeTruthy();
+  // By NAME. The id is the row's key and the route's address; nothing points at
+  // a template, so it is generated, never shown and never typed.
+  expect(await screen.findByText(/Face, front/)).toBeTruthy();
 
   // The prose is on screen — expanded into the preview, not as an editor.
   expect(screen.getByLabelText("Assembled preview").textContent).toContain(

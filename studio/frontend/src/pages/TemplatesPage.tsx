@@ -444,27 +444,30 @@ function BlockEditor({
  * meant a YAML file and a CLI, for prose whose whole nature is that it is tuned
  * in front of the thing it produces.
  *
- * The id is typed rather than generated: it is what the CLI addresses a template
- * by and what a pushed file keys on, so a UUID here would make the two halves
- * unable to talk about the same row.
+ * The id is generated and never shown. It keys the row and addresses the route,
+ * and nothing points at a template — a run copies its words — so it is an
+ * address rather than an identity anybody needs to choose. `studio templates
+ * pull` writes it into the file and `push` sends it back, so the round trip is
+ * unaffected by nobody ever reading it.
  */
 function NewTemplate({ setData }: { setData: SetData }) {
   const [open, setOpen] = useState(false);
-  const [id, setId] = useState("");
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
-
-  const problem = id && !/^[a-z0-9_]+$/.test(id)
-    ? "lowercase letters, digits and underscores"
-    : null;
 
   const create = useCallback(async () => {
     setSaving(true);
     setFailed(null);
     try {
-      const saved = await saveTemplate(id, {
-        name: name || id,
+      // **Generated, and never shown.** The id is the row's key and the
+      // address `PATCH`/`DELETE` use, and NOTHING references a template by it —
+      // a run copies the prompt text rather than pointing at the template. So
+      // it is an address, not an identity somebody has to invent: asking for
+      // one alongside a name was asking the same question twice, and the answer
+      // people gave was the name with underscores in it.
+      const saved = await saveTemplate(`template-${crypto.randomUUID()}`, {
+        name,
         // A prompt is required by the route, so a new one starts as the thing
         // every template here has in common rather than as an empty box the
         // save would refuse.
@@ -476,14 +479,13 @@ function NewTemplate({ setData }: { setData: SetData }) {
         current ? { ...current, templates: [...current.templates, saved] } : current,
       );
       setOpen(false);
-      setId("");
       setName("");
     } catch (problem_) {
       setFailed(problem_ instanceof Error ? problem_.message : String(problem_));
     } finally {
       setSaving(false);
     }
-  }, [id, name, setData]);
+  }, [name, setData]);
 
   if (!open) {
     return (
@@ -499,17 +501,9 @@ function NewTemplate({ setData }: { setData: SetData }) {
 
   return (
     <div className="flex flex-col gap-2 rounded border border-line p-3">
-      <Field.Root name="new-template-id" invalid={problem !== null}>
-        <Field.Label>Id</Field.Label>
-        <Field.Description>
-          What the CLI addresses it by — <code>studio templates push</code> keys on it.
-        </Field.Description>
-        <Input value={id} onValueChange={setId} className="font-mono" />
-        {problem ? <Field.Error>{problem}</Field.Error> : null}
-      </Field.Root>
       <Field.Root name="new-template-name">
         <Field.Label>Name</Field.Label>
-        <Field.Description>What a person picks it by. Defaults to the id.</Field.Description>
+        <Field.Description>What you will pick it by.</Field.Description>
         <Input value={name} onValueChange={setName} />
       </Field.Root>
       {failed ? (
@@ -518,7 +512,7 @@ function NewTemplate({ setData }: { setData: SetData }) {
         </Alert.Root>
       ) : null}
       <div className="flex gap-2">
-        <Button size="sm" disabled={!id || problem !== null || saving} onClick={() => void create()}>
+        <Button size="sm" disabled={!name.trim() || saving} onClick={() => void create()}>
           {saving ? "Creating…" : "Create"}
         </Button>
         <Button size="sm" intent="secondary" disabled={saving} onClick={() => setOpen(false)}>
@@ -638,7 +632,7 @@ function TemplateEditor({
       <div className="flex items-start gap-3">
         <div className="flex flex-1 flex-col gap-2">
           <Card.Title>
-            {name || template.id} <Badge size="sm">{template.id}</Badge>
+            {name || "Untitled template"}
           </Card.Title>
           <div className="grid gap-2 sm:grid-cols-2">
             <Field.Root name={`template-name-${template.id}`}>
