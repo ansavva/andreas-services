@@ -4,6 +4,7 @@ using Humbugg.Api.Data;
 using Humbugg.Api.Models;
 using Humbugg.Api.Services;
 using Humbugg.Api.Services.Email.Core;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Humbugg.Api.Tests;
@@ -211,11 +212,13 @@ public sealed class LateParticipantServiceTests
             Email = new FakeEmail();
             Audit = new FakeAudit();
             User = new FakeUser();
+            Directory = new FakeAccountDirectory();
             Subject = new LateParticipantService(
                 User,
                 Groups,
                 Members,
                 Invitations,
+                Directory,
                 new MatchingService(),
                 new PlanCatalog(new()),
                 new TransactionalEmailTemplates(),
@@ -229,6 +232,7 @@ public sealed class LateParticipantServiceTests
         public FakeUser User { get; }
         public FakeMembers Members { get; }
         public FakeInvitations Invitations { get; }
+        public FakeAccountDirectory Directory { get; }
         public FakeEmail Email { get; }
         public FakeAudit Audit { get; }
         public LateParticipantService Subject { get; }
@@ -253,6 +257,10 @@ public sealed class LateParticipantServiceTests
             new PlanCatalog(new()),
             Audit,
             new FakeAnalytics(),
+            Directory,
+            new NoopEmail(),
+            new TransactionalEmailTemplates(),
+            NullLogger<GroupService>.Instance,
             Settings);
     }
 

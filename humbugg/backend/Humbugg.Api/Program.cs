@@ -104,6 +104,16 @@ builder.Services.AddSingleton<IAmazonDynamoDB>(_ =>
     }
     return new AmazonDynamoDBClient(config);
 });
+// The verified email address behind an account (#137). Humbugg stores none of its own; Cognito is
+// the only place a verified one exists, and the directory below is the only thing that reads it.
+builder.Services.AddSingleton<Amazon.CognitoIdentityProvider.IAmazonCognitoIdentityProvider>(_ =>
+    new Amazon.CognitoIdentityProvider.AmazonCognitoIdentityProviderClient(
+        new Amazon.CognitoIdentityProvider.AmazonCognitoIdentityProviderConfig
+        {
+            RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(settings.CognitoRegion),
+        }));
+builder.Services.AddScoped<IAccountDirectory, CognitoAccountDirectory>();
+
 // Avatar object storage. When an application bucket is configured the backend writes to S3 and
 // CloudFront serves production objects read-only. With no bucket configured (unit tests), an
 // in-process store keeps the upload flow working without any AWS dependency.

@@ -3,6 +3,8 @@ using Humbugg.Api;
 using Humbugg.Api.Data;
 using Humbugg.Api.Models;
 using Humbugg.Api.Services;
+using Humbugg.Api.Services.Email.Core;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Humbugg.Api.Tests;
@@ -413,7 +415,7 @@ public sealed class GroupReadinessTests
         // Built lazily so a test can swap the wish repository in after seeding its roster.
         public GroupService Subject => subject ??= new GroupService(
             user, new FakeProfiles(), Groups, Members, Wishes, new FakeQuestions(), Invitations, new MatchingService(),
-            new PlanCatalog(new()), new NoopAudit(), new NoopAnalytics(),
+            new PlanCatalog(new()), new NoopAudit(), new NoopAnalytics(), new FakeAccountDirectory(), new NoopEmail(), new TransactionalEmailTemplates(), NullLogger<GroupService>.Instance,
             new HumbuggSettings("us-east-1", "us-east-1", "pool", "client", ["http://localhost:5173"],
                 "http://localhost:5173", null, "profiles", "groups", "members", "draws", "audit", "analytics"));
 

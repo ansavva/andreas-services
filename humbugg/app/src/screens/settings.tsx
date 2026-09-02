@@ -217,6 +217,17 @@ function NotificationsSection({ profile, onSaved }: { profile: Profile; onSaved(
             Essential emails — sign-in and account security, invitations, and “your assignment is
             ready” — always send.
           </Text>
+          {/*
+            The fallback, said out loud (#137). Turning mail off — or having an address that bounces
+            — must not mean missing the exchange, and the reason it does not is that email has never
+            been the only copy: every notification is a link to a page that already holds the same
+            thing. Someone deciding whether to switch this off deserves to know that before they do,
+            not after they have missed a draw.
+          */}
+          <Text style={[styles.tiny, { marginTop: 8 }]}>
+            Nothing is only in an email. Whatever we send, the exchange page shows it too — so if
+            mail stops reaching you, sign in and it is all still there.
+          </Text>
         </View>
         {/*
           A Switch rather than the web app's checkbox: this is a preference that

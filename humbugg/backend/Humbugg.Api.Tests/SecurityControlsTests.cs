@@ -3,6 +3,8 @@ using Humbugg.Api;
 using Humbugg.Api.Data;
 using Humbugg.Api.Models;
 using Humbugg.Api.Services;
+using Humbugg.Api.Services.Email.Core;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Humbugg.Api.Tests;
@@ -114,7 +116,7 @@ public sealed class SecurityControlsTests
             Groups = new FakeGroups(Group(drawn, member?.IsOrganizer == true ? "user" : "owner"), drawn);
             Subject = new GroupService(
                 new FakeUser(), new FakeProfiles(), Groups, new FakeMembers(members), new FakeWishes(),
-                new FakeQuestions(), new FakeInvitations(), new MatchingService(), new PlanCatalog(new()), Audit, new FakeProductAnalytics(),
+                new FakeQuestions(), new FakeInvitations(), new MatchingService(), new PlanCatalog(new()), Audit, new FakeProductAnalytics(), new FakeAccountDirectory(), new NoopEmail(), new TransactionalEmailTemplates(), NullLogger<GroupService>.Instance,
                 new HumbuggSettings(
                     "us-east-1", "us-east-1", "pool", "client", ["https://humbugg.example"], "https://humbugg.example", null,
                     "profiles", "groups", "members", "draws", "audit", "analytics"));

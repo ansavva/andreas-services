@@ -3,6 +3,8 @@ using Humbugg.Api;
 using Humbugg.Api.Data;
 using Humbugg.Api.Models;
 using Humbugg.Api.Services;
+using Humbugg.Api.Services.Email.Core;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Humbugg.Api.Tests;
@@ -208,7 +210,7 @@ public sealed class AccountDeletionTests
         public World()
         {
             Deletion = new AccountDeletionService(User, Profiles, Groups, Members, Wishes, Questions, Audit, Anonymizer);
-            GroupService = new GroupService(User, Profiles, Groups, Members, Wishes, Questions, new FakeInvitations(), new MatchingService(), new PlanCatalog(new()), Audit, new NoopAnalytics(),
+            GroupService = new GroupService(User, Profiles, Groups, Members, Wishes, Questions, new FakeInvitations(), new MatchingService(), new PlanCatalog(new()), Audit, new NoopAnalytics(), new FakeAccountDirectory(), new NoopEmail(), new TransactionalEmailTemplates(), NullLogger<GroupService>.Instance,
                 new HumbuggSettings("us-east-1", "us-east-1", "pool", "client", ["http://localhost:5173"], "http://localhost:5173", null,
                     "profiles", "groups", "members", "draws", "audit", "analytics"));
         }

@@ -29,7 +29,7 @@ What it does:
 | Marketing (`web/`) | React Router v7 SSR on a Docker Lambda + CloudFront; hashed assets on S3. Vite, Tailwind v4, the design system's **web** leaves |
 | Product app (`app/`) | Expo + Expo Router; `expo export -p web` → S3 + CloudFront. Metro, **no Tailwind**, the design system's **native** leaves rendered through react-native-web |
 | Auth | AWS Cognito (User Pool + secretless App Client). Sign-in **and sign-up** are hosted **Managed Login** pages at `auth.humbugg.com`; the app runs authorization code + PKCE through `expo-auth-session` and holds one screen, a button. Refresh-token rotation is on, which is why `ALLOW_REFRESH_TOKEN_AUTH` must never return to the client. The API still validates **access** tokens, unchanged. See [`docs/auth-managed-login.md`](docs/auth-managed-login.md) |
-| Data | DynamoDB — profiles, groups, groupmembers, private draws, reveal audit events, and email delivery IDs |
+| Data | DynamoDB — profiles, groups, groupmembers, private draws, reveal audit events, and email delivery IDs. **No email address**: Humbugg stores none, and reads a verified one back from Cognito at send time (`IAccountDirectory`, #137) |
 | Infra | Terraform in `humbugg/infra/` (`modules/` + `envs/prod`) |
 
 ## Directory Structure

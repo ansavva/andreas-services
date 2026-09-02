@@ -14,6 +14,11 @@ variable "dynamodb_table_arns" {
   default     = {}
 }
 
+variable "cognito_user_pool_arn" {
+  description = "Cognito User Pool ARN the API may read verified email addresses from"
+  type        = string
+}
+
 variable "cognito_user_pool_id" {
   description = "Cognito user pool used to authorize API requests"
   type        = string

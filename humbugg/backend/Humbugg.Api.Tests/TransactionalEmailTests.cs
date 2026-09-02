@@ -179,4 +179,34 @@ public sealed class TransactionalEmailTests
 
         public Task MarkFailedAsync(string messageId, CancellationToken cancellationToken) => Task.CompletedTask;
     }
+
+    /// <summary>
+    /// Every message says where to write for help, and that this address is not it (#137).
+    /// </summary>
+    /// <remarks>
+    /// The From address is a send-only SES identity: a reply to it goes nowhere and nobody is told.
+    /// The line is added in the one place every template renders through, so a message cannot be
+    /// written without it — which is why this asserts across all five rather than one.
+    /// </remarks>
+    [Fact]
+    public void EverySupportedMessageNamesTheSupportInboxAndDisownsTheFromAddress()
+    {
+        var templates = new TransactionalEmailTemplates();
+        var url = new Uri("https://app.humbugg.com/groups/group-1");
+        var rendered = new[]
+        {
+            templates.Invitation(new("e", "to@example.test", "Ana", "Bo", "Exchange", url)),
+            templates.Reminder(new("e", "to@example.test", "Ana", "Exchange", "Add your list", url)),
+            templates.DrawCompleted(new("e", "to@example.test", "Ana", "Exchange", url)),
+            templates.AssignmentAvailable(new("e", "to@example.test", "Ana", "Exchange", url)),
+            templates.AccountExchangeEvent(new("e", "to@example.test", "Ana", "Exchange", "Something happened", "Open", url)),
+        };
+
+        Assert.All(rendered, message =>
+        {
+            Assert.Contains("support@humbugg.com", message.TextBody, StringComparison.Ordinal);
+            Assert.Contains("support@humbugg.com", message.HtmlBody, StringComparison.Ordinal);
+            Assert.Contains("not monitored", message.TextBody, StringComparison.Ordinal);
+        });
+    }
 }

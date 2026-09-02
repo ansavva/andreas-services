@@ -1,6 +1,7 @@
 using Amazon.DynamoDBv2.Model;
 using Humbugg.Api.Data;
 using Humbugg.Api.Models;
+using Humbugg.Api.Services.Email.Core;
 using Microsoft.AspNetCore.WebUtilities;
 using System.Security.Cryptography;
 using System.Text;
@@ -50,6 +51,10 @@ internal sealed class GroupService(
     IPlanCatalog plans,
     IAuditTrail audit,
     IProductAnalytics analytics,
+    IAccountDirectory directory,
+    ITransactionalEmailService email,
+    ITransactionalEmailTemplates emailTemplates,
+    ILogger<GroupService> logger,
     HumbuggSettings settings) : IGroupService
 {
     public async Task<IReadOnlyList<GroupSummary>> ListAsync(CancellationToken cancellationToken = default)
@@ -512,7 +517,53 @@ internal sealed class GroupService(
                 ["participant_count"] = assignments.Count.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 ["days_to_draw"] = DaysSince(group.CreatedAt).ToString(System.Globalization.CultureInfo.InvariantCulture)
             }, cancellationToken);
+        await NotifyDrawCompletedAsync(group, assignments.Keys, cancellationToken);
         return await GetAssignmentAsync(groupId, cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Tells everyone in the draw that their assignment is ready (#137).
+    /// </summary>
+    /// <remarks>
+    /// Essential mail, so it is not suppressed by the non-essential opt-out — this is the one message
+    /// without which the exchange does not work. It carries no recipient name: the whole point of the
+    /// link is that the name is behind a sign-in, and putting it in an inbox would undo that.
+    ///
+    /// Best-effort in every direction. The draw has already been written and audited by the time this
+    /// runs, so a mail failure must not fail it, and one address that cannot be resolved must not
+    /// stop the other forty-nine.
+    /// </remarks>
+    private async Task NotifyDrawCompletedAsync(
+        GroupRecord group,
+        IEnumerable<string> memberIds,
+        CancellationToken cancellationToken)
+    {
+        var roster = (await memberships.GetByGroupAsync(group.GroupId, cancellationToken))
+            .ToDictionary(member => member.MemberId, StringComparer.Ordinal);
+        foreach (var memberId in memberIds)
+        {
+            if (!roster.TryGetValue(memberId, out var member)) continue;
+            try
+            {
+                var address = await directory.VerifiedEmailAsync(member.UserId, cancellationToken);
+                if (string.IsNullOrWhiteSpace(address)) continue;
+                await email.SendAsync(
+                    emailTemplates.DrawCompleted(new DrawCompletedEmail(
+                        // One id per member per draw, so a retried draw notification is de-duplicated
+                        // by the message ledger rather than sent twice.
+                        $"draw:{group.GroupId}:{memberId}",
+                        address,
+                        member.DisplayName,
+                        group.Name,
+                        new Uri($"{settings.AppBaseUrl}/groups/{group.GroupId}"),
+                        group.Customization)),
+                    cancellationToken);
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception, "Could not send a draw notification to a participant.");
+            }
+        }
     }
 
     public async Task<GroupDetail> ResetAsync(string groupId, CancellationToken cancellationToken = default)

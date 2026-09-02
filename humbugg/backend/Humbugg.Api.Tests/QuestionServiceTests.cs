@@ -329,6 +329,7 @@ public sealed class QuestionServiceTests
         public FakeQuestions Questions { get; } = new();
         public DrawableGroups Groups { get; }
         public RecordingEmail Email { get; } = new();
+        public FakeAccountDirectory Directory { get; } = new();
         private readonly FakeMembers members;
         private readonly FakeInvitations invitations;
 
@@ -340,7 +341,7 @@ public sealed class QuestionServiceTests
         }
 
         public IQuestionService For(string userId) => new QuestionService(
-            new StubUser(userId), Groups, members, invitations, Questions, Email,
+            new StubUser(userId), Groups, members, invitations, Directory, Questions, Email,
             new TransactionalEmailTemplates(),
             new HumbuggSettings(
                 "us-east-1", "us-east-1", "pool", "client", ["http://localhost:5173"],

@@ -19,7 +19,7 @@ Live at `https://www.humbugg.com` (product app at `app.humbugg.com`, API at `api
 | Milestone | Closed | Open | State |
 |---|---|---|---|
 | Foundation | 13 | 0 | Complete |
-| Free | 6 | 7 | The active milestone |
+| Free | 7 | 6 | The active milestone |
 | Plus | 8 | 1 | Backend complete and deployed; the purchase UI (#141) is **built**, awaiting review |
 | Work | 0 | 10 | Deliberately untouched |
 | Launch | 2 | 11 | Gated on Free |
@@ -169,9 +169,20 @@ degrades *quietly* to signed-out when its pool configuration resolves empty. Par
 
 ## Then, in order
 
-**Finish Free** — #134, #135, #137 are each partly delivered; their issues carry a comment recording
-exactly what exists and what remains, so read that before estimating. #136 (repeat an exchange) and
-#138 (mobile and assistive-technology verification) close the milestone.
+**Finish Free** — #137 is **built**; #134 and #135 are each partly delivered and their issues carry
+a comment recording exactly what exists and what remains, so read that before estimating. #136
+(repeat an exchange) and #138 (mobile and assistive-technology verification) close the milestone.
+#129 is deliberately last — see the critical path above.
+
+**#137 turned on a capability the whole service was missing: a verified email address for any
+account.** Humbugg stores none of its own, and until now the only reachable address was on an
+accepted managed invitation — a Plus capability — so a Free exchange could not be notified at all.
+That is why `DrawCompleted` had a template and no caller for months. `IAccountDirectory` reads a
+**verified** address back from Cognito at send time; `email_verified` is the difference between an
+address somebody proved they control and a string they typed, and sending to the latter would let
+anyone who can sign up point Humbugg's mail at a stranger. The IAM grant is `AdminGetUser` on the
+pool ARN alone: the admin API family also contains `AdminDeleteUser`, so a wildcard there would let
+a compromised API delete the pool to send an email.
 
 **Launch** — live Stripe mode (#159), the payment and email matrix (#160), runbooks (#161), the beta
 (#162), the checklist (#163), pricing pages (#158), and the three GDPR obligations (#190, #191,
