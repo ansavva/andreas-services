@@ -30,7 +30,6 @@ One node type. A folder is a node with no blob; a file is a node with one.
 | Node — by id | `NODE#<node_id>` | `META` | the record |
 | Character | `CHAR#<char_id>` | `META` | the record |
 | Character slug claim | `LIB#<lib>` | `CHARSLUG#<slug>` | uniqueness, and the listing |
-| Reference entry | `CHAR#<char_id>` | `REF#<node_id>` | one row per reference image |
 | Project | `PROJ#<proj_id>` | `META` | the record |
 | Project slug claim | `LIB#<lib>` | `PROJSLUG#<slug>` | uniqueness, and the listing |
 | Project ↔ character | `PROJ#<proj_id>` | `CHAR#<char_id>` | involvement; reverse-queryable |
@@ -1292,13 +1291,13 @@ def clean_tags(raw) -> list[str]:
 def describe_node(node_id: str, *, description=..., tags=...) -> dict:
     """What a file SHOWS, on the file — one row, no objects, no bytes.
 
-    **This is on the node rather than on a `REF#` row, and that was a decision
-    rather than an obvious place.** A description used to live on the reference
-    entry, so the same image described as a character's identity carried its
-    description in a row belonging to the character-image *relationship*. That is
-    the right home for `group` and `order`, which are facts about the set. It is
-    the wrong home for "head and shoulders in full profile" — which is a fact
-    about the picture, true whether or not anybody ever made it a reference.
+    **This is the whole write path for what a picture is now.** A description
+    used to live on a `CHAR#`/`REF#` row, so the same image described as a
+    character's identity carried its description in a row belonging to the
+    character-image *relationship* — the wrong home for "head and shoulders in
+    full profile", which is true of the picture whether or not anybody ever made
+    it identity. The rows are gone entirely and `tags` joined `description` here,
+    so what a picture IS and what it is FOR are both attributes of the file.
 
     The cost of the old home was visible in this library: twelve files sat in
     `reference/` folders with no row and therefore no description anywhere, and a
@@ -1322,11 +1321,9 @@ def describe_node(node_id: str, *, description=..., tags=...) -> dict:
 def describe_assignments(description=..., tags=...) -> dict:
     """The validated attributes a describe writes, shared by both writers.
 
-    The reference routes still take `description` and `tags` — a person editing a
-    caption in the reference grid should not have to know that the caption is
-    stored somewhere else — so they compose these onto a node update in the same
-    transaction as the `REF#` row. One validator, so a tag typed in the grid and
-    a tag typed in the file browser are folded the same way.
+    One validator, wherever a tag is typed: the file browser, the picker's
+    filter and the CLI all fold the same way, so `Face` and `face ` are the tag
+    `face` and a filter matches what a person believes they wrote.
     """
     assignments: dict = {}
     if description is not ...:
@@ -1340,21 +1337,6 @@ def describe_assignments(description=..., tags=...) -> dict:
     if tags is not ...:
         assignments["tags"] = clean_tags(tags) or None
     return assignments
-
-
-def _describe_step(node_id: str, entry: dict, now: str):
-    """The node half of a reference write, or nothing if it says nothing.
-
-    Returns `None` when the caller mentioned neither field, so an attach that
-    only sets a group does not touch the node's row at all.
-    """
-    assignments = describe_assignments(
-        entry.get("description", ...), entry.get("tags", ...)
-    )
-    if not assignments:
-        return None
-    assignments["updated_at"] = now
-    return (_update_meta(node_id, assignments), None)
 
 
 def rename_node(node_id: str, raw_name: str | None) -> dict:
@@ -1952,7 +1934,7 @@ def set_blob(
 #
 # **Keying the character on its slug instead** — `LIB#<lib>` / `CHAR#<slug>` —
 # collapses it to one item and reintroduces the disease the whole model removes:
-# a rename becomes delete-and-recreate, and every `REF#` row, run link and
+# a rename becomes delete-and-recreate, and every run link and
 # binding pointing at it is pointing at a key that no longer exists.
 #
 # ## The claim is a pointer, never a projection
@@ -2204,7 +2186,7 @@ def links(entity_id: str, target_kind: str) -> list[str]:
 # |---|---|---|
 # | **edge** | `<B>#<b_id>` | set membership, readable from both ends |
 # | **listing** | `<KIND>#<created>#<id>` | chronological pagination — `project_entities` |
-# | **ordered child** | `SHOT#<n>`, `REF#<node>` | a positional entity carrying payload |
+# | **ordered child** | `SHOT#<n>` | a positional entity carrying payload |
 #
 # A listing row embeds a timestamp so a project's runs paginate newest-first,
 # which costs it a reverse query it does not need — a run records its `project`
@@ -2394,8 +2376,8 @@ def create_character(
     **The four pools are a starting layout, not a schema.** They exist because an
     empty character is unhelpful; nothing afterwards requires them. Rename
     `reference/`, delete `archive/`, add one of your own — all ordinary file
-    operations, and none of them breaks anything, because an image is a reference
-    when a `REF#` row says so and not because of the folder it sits in.
+    operations, and none of them breaks anything, because an image is identity
+    when it carries the `default` tag and not because of the folder it sits in.
 
     A slug already claimed and a folder name already taken are two different
     condition failures with two different messages, and `_write` is what keeps
@@ -2422,7 +2404,6 @@ def create_character(
         "updated": now,
         "root": root["node_id"],
         "hero": None,
-        "default_set": [],
         "profile": profile,
     }
 
@@ -2515,7 +2496,7 @@ def rename_steps(kind: str, record: dict, slug: str, now: str) -> list:
     """Drop the old claim, take the new one, and rename the root folder.
 
     **Four writes and zero objects.** No record anywhere is rewritten, every node
-    keeps its id, and the `REF#` rows, the run bindings and the `default_set` that
+    keeps its id, and the run bindings and the tags that
     all name node ids are untouched — which is the single largest simplification
     the entity model buys and the reason `domain/rewrite.py` stops existing.
 
@@ -2727,228 +2708,23 @@ def _orphan(node_id: str, lib: str) -> None:
 # **This is what kills filename magic.** Order is an attribute, not a trailing
 # number in a basename, so `curate renumber` has nothing left to maintain. Group
 # is an attribute, so `curate regroup` is one write and moves no objects. A
-# description is one row, so two descriptions written at once stop fighting over
-# one YAML document. A reference image can be called anything, and renaming it
-# changes nothing here, because the row names its **node id**.
-
-# `order` is gapped so that inserting between two entries is one write and a
-# reorder never touches its neighbours. A thousand leaves ten insertions between
-# any adjacent pair before the midpoints run out, and the arithmetic below falls
-# back to appending when they do.
-ORDER_GAP = 1000
-
-REFERENCE_PREFIX = "REF#"
-
-
-def references(char_id: str) -> list[dict]:
-    """Every reference entry for one character, in `(group, order)` order.
-
-    One query on `CHAR#<id>` — the whole reference index, which used to be a
-    listing of four folders plus a parse of the bible's `references:` map, and
-    which went out of step with itself whenever the two were written apart.
-    """
-    items = _query(
-        TableName=config.catalog_table(),
-        KeyConditionExpression="pk = :pk AND begins_with(sk, :ref)",
-        ExpressionAttributeValues={
-            ":pk": {"S": _entity_pk(ENTITY_CHARACTER, char_id)},
-            ":ref": {"S": REFERENCE_PREFIX},
-        },
-    )
-    entries = []
-    for item in items:
-        entry = _entity(item)
-        entry["node"] = _deserialize(item["sk"])[len(REFERENCE_PREFIX) :]
-        entries.append(entry)
-    entries.sort(key=lambda entry: (entry.get("group") or "", entry.get("order") or 0))
-    return entries
-
-
-def _order_after(entries: list[dict], group: str, after: str | None) -> int:
-    """Where a new entry lands: after one neighbour, or at the end of its group.
-
-    `after` picks the midpoint between the named entry and the one following it
-    in the same group, so one write places an image between two others and the
-    neighbours are not touched. With no room left between them — ten insertions
-    into one gap — it falls through to appending, which is a visible reordering
-    rather than a silent collision on one `order` value.
-    """
-    in_group = [entry for entry in entries if entry.get("group") == group]
-    orders = [entry.get("order") or 0 for entry in in_group]
-
-    if after:
-        for index, entry in enumerate(in_group):
-            if entry["node"] != after:
-                continue
-            low = entry.get("order") or 0
-            high = orders[index + 1] if index + 1 < len(orders) else low + 2 * ORDER_GAP
-            midpoint = (low + high) // 2
-            if midpoint > low:
-                return midpoint
-            break
-
-    return (max(orders) if orders else 0) + ORDER_GAP
-
-
-def _reference_item(char_id: str, lib: str, node_id: str, entry: dict, now: str) -> dict:
-    return _put(
-        _entity_pk(ENTITY_CHARACTER, char_id),
-        f"{REFERENCE_PREFIX}{node_id}",
-        {
-            "lib": lib,
-            "group": entry.get("group"),
-            "order": entry.get("order"),
-            "description": entry.get("description"),
-            "tags": entry.get("tags"),
-            "created": entry.get("created") or now,
-        },
-    )
-
-
-def attach_reference(
-    char_id: str,
-    lib: str,
-    node_id: str,
-    *,
-    group: str,
-    description: str | None,
-    tags: list | None,
-    after: str | None,
-) -> dict:
-    """Mark one existing node as identity. One row, no bytes, no move.
-
-    **The node is not copied and is not required to live anywhere in
-    particular.** Reference-ness is this row and nothing else — which is the
-    coupling the whole entity model removes, and the reason `reference/` stopped
-    being load-bearing.
-
-    Already-attached is a 409 rather than an overwrite, because "attach" and
-    "describe" are different requests: the second is `PATCH` on the same address
-    and does not reset a group somebody has already chosen.
-    """
-    existing = references(char_id)
-    if any(entry["node"] == node_id for entry in existing):
-        raise ConflictError(f"{node_id} is already a reference")
-
-    now = _now()
-    entry = {
-        "node": node_id,
-        "group": group,
-        "order": _order_after(existing, group, after),
-        "created": now,
-    }
-    # The row is the relationship; the words are the picture's. Both in one
-    # transaction so an attach that came with a caption never half-lands.
-    steps = [(_reference_item(char_id, lib, node_id, entry, now), None)]
-    described = _describe_step(node_id, {"description": description, "tags": tags}, now)
-    if described:
-        steps.append(described)
-    _write(steps)
-    return entry
-
-
-def update_reference(char_id: str, lib: str, node_id: str, changes: dict) -> dict:
-    """Regroup, redescribe, retag or reorder one entry. One write, no objects.
-
-    Read-then-write rather than a bare update, because `after` is a position
-    relative to entries this row does not know about — and because the merge has
-    to preserve the fields the request left out. The read is one query the caller
-    would have made anyway to render the result.
-    """
-    existing = references(char_id)
-    entry = next((item for item in existing if item["node"] == node_id), None)
-    if entry is None:
-        raise NotFoundError(node_id)
-
-    merged = {**entry}
-    if "group" in changes:
-        merged["group"] = changes["group"]
-    if "order" in changes:
-        merged["order"] = changes["order"]
-    if changes.get("after") is not None or ("group" in changes and "order" not in changes):
-        merged["order"] = _order_after(
-            [item for item in existing if item["node"] != node_id],
-            merged.get("group"),
-            changes.get("after"),
-        )
-
-    now = _now()
-    steps = [(_reference_item(char_id, lib, node_id, merged, now), None)]
-    described = _describe_step(node_id, changes, now)
-    if described:
-        steps.append(described)
-    _write(steps)
-    return merged
-
-
-def put_references(char_id: str, lib: str, entries: list[dict]) -> list[dict]:
-    """Describe or reorder many entries in one transaction.
-
-    This is `describe-refs` and `sync-refs`, and the transaction is the point:
-    twelve descriptions used to be twelve rewrites of one YAML document, each
-    reading an `updated_at` and refusing if it had moved, so writing them
-    concurrently was a conflict dance rather than a write.
-
-    Order defaults to declaration order within a group, gapped, so a caller that
-    sends a list gets that list back in that order without computing anything.
-    """
-    now = _now()
-    counters: dict[str, int] = {}
-    written = []
-    steps = []
-    for entry in entries:
-        group = entry.get("group")
-        counters[group] = counters.get(group, 0) + ORDER_GAP
-        merged = {"node": entry["node"], "group": group,
-                  "order": entry.get("order") or counters[group], "created": now}
-        written.append(merged)
-        steps.append((_reference_item(char_id, lib, entry["node"], merged, now), None))
-        # Two rows per entry now — the set's half and the picture's — so a
-        # twelve-image describe is 24 items and still one transaction per chunk.
-        described = _describe_step(entry["node"], entry, now)
-        if described:
-            steps.append(described)
-
-    for start in range(0, len(steps), TRANSACTION_ITEMS):
-        _write(steps[start : start + TRANSACTION_ITEMS])
-    return written
-
-
-def detach_reference(char_id: str, node_id: str, record: dict | None = None) -> dict | None:
-    """Stop calling a node identity. **The file stays exactly where it is.**
-
-    **And it leaves the default set, in the same transaction.** That is the whole
-    of this change and it is repairing a real failure: `default_set` is a list of
-    node ids on the record, detaching only deleted the `REF#` row, and the
-    selection route then filtered the survivors — so a re-shot reference left a
-    stale id behind and a default shoot silently sent five images where seven
-    were meant. Measured on the production library: four of one character's seven
-    were ids nothing pointed at any more, and nothing anywhere said so.
-
-    Two writes rather than one, and they have to be atomic: a detach that removed
-    the row and failed to update the record would leave exactly the state this
-    exists to prevent.
-
-    Returns the record with the pruned list when it pruned one, so the caller can
-    report it, and `None` when the set did not mention the node.
-    """
-    steps = [(_delete(_entity_pk(ENTITY_CHARACTER, char_id), f"{REFERENCE_PREFIX}{node_id}"), None)]
-
-    record = record or entity(ENTITY_CHARACTER, char_id)
-    current = record.get("default_set") or []
-    pruned = [each for each in current if each != node_id]
-    if len(pruned) != len(current):
-        # `rev` is deliberately NOT bumped and NOT compared. This is a
-        # consequence of a delete rather than an edit somebody made against a
-        # revision they had read, and refusing the detach because a form was open
-        # elsewhere would leave the row gone and the set stale — the worse half.
-        steps.append((_update(
-            {"pk": {"S": _entity_pk(ENTITY_CHARACTER, char_id)}, "sk": {"S": META}},
-            {"default_set": pruned, "updated": _now()},
-        ), None))
-
-    _write(steps)
-    return {**record, "default_set": pruned} if len(pruned) != len(current) else None
+# **The `REF#` rows are gone, and nothing replaced them here.**
+#
+# One row per reference image said which of a character's pictures were its
+# identity, in which group and in which order. All three are tags on the node
+# now — `default` for the handful a generation is shown, `face` or `body` for
+# what the picture is — so this module stores nothing about it and
+# `services/browse.entries` answers the question with a tag filter over the
+# character's branch.
+#
+# What that deletes is not the rows but the invariant between them and the
+# record: `default_set` was a list of node ids that had to name live `REF#`
+# rows, and it drifted — one production character carried four ids that named
+# nothing, and a default shoot silently sent three images where seven were
+# meant. A tag cannot drift from the file it is written on.
+#
+# `describe_node` above is the whole of the write path now. It was already the
+# place a description lived (#483); the tags joined it.
 
 
 def set_project_characters(project_id: str, lib: str, characters: list[str]) -> list[str]:
@@ -3424,18 +3200,12 @@ def source_of(record: dict) -> dict:
 
     kind = entity_kind(owner)
     if kind == ENTITY_CHARACTER:
-        source = {"kind": "character", "character": owner}
-        # The `REF#` row is what makes an image identity rather than merely a
-        # file in a character's folder, so the group belongs here — it is the
-        # difference between "a picture of them" and "the face reference".
-        entry = next(
-            (ref for ref in references(owner) if ref["node"] == record["node_id"]),
-            None,
-        )
-        if entry:
-            source["group"] = entry.get("group")
-            source["order"] = entry.get("order")
-        return source
+        # **No group, and no order.** A `REF#` row used to say an image was this
+        # character's third face reference, and provenance repeated it. What the
+        # picture is is on the picture now — its own `tags`, which every listing
+        # already carries — so saying it a second time here would be a second
+        # copy of a fact that has one home.
+        return {"kind": "character", "character": owner}
 
     if kind == ENTITY_RUN:
         source = {"kind": "run", "run": owner}

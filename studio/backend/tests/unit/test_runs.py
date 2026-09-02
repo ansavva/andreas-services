@@ -972,12 +972,12 @@ def test_a_send_records_why_the_image_was_sent(empty_api):
         empty_api, project,
         sends=[{"field": "image_input", "role": "reference", "node": picture["node_id"],
                 "source": {"kind": "character", "character": character["id"],
-                           "group": "face"}}],
+                           }}],
     )
 
     (send,) = empty_api.get(f"/api/runs/{run['id']}").get_json()["sends"]
     assert send["role"] == "reference"
-    assert send["source"]["group"] == "face"
+    assert send["source"]["kind"] == "character"
     assert send["name"] == "front.webp", "a send expands into something drawable"
 
 
@@ -1128,9 +1128,8 @@ def test_a_send_learns_where_its_image_came_from_without_being_told(empty_api):
     character = _character(empty_api)
     project = _project(empty_api)
     picture = _uploaded(empty_api, _child(character["root"], "reference")["node_id"], "a.webp")
-    empty_api.post(
-        f"/api/characters/{character['id']}/references",
-        json={"node": picture["node_id"], "group": "face"},
+    empty_api.patch(
+        f"/api/nodes/{picture['node_id']}", json={"tags": ["default", "face"]}
     )
 
     run = _create(empty_api, project, bindings={"image_input": [picture["node_id"]]})
@@ -1138,7 +1137,10 @@ def test_a_send_learns_where_its_image_came_from_without_being_told(empty_api):
     (send,) = empty_api.get(f"/api/runs/{run['id']}").get_json()["sends"]
     assert send["source"]["kind"] == "character"
     assert send["source"]["character"] == character["id"]
-    assert send["source"]["group"] == "face", "the REF# row is what makes it identity"
+    # **No group.** What the picture IS is on the picture — `tags` on the node,
+    # which every listing already carries — so provenance saying it a second time
+    # would be a second copy of a fact with one home.
+    assert "group" not in send["source"]
 
 
 def test_a_send_from_the_input_pool_records_its_position(empty_api):
@@ -1245,9 +1247,8 @@ def test_a_send_with_no_recorded_source_gets_one_derived_on_read(empty_api, cata
     character = _character(empty_api)
     project = _project(empty_api)
     picture = _uploaded(empty_api, _child(character["root"], "reference")["node_id"], "a.webp")
-    empty_api.post(
-        f"/api/characters/{character['id']}/references",
-        json={"node": picture["node_id"], "group": "body"},
+    empty_api.patch(
+        f"/api/nodes/{picture['node_id']}", json={"tags": ["default", "body"]}
     )
     run = _create(empty_api, project, bindings={"image_input": [picture["node_id"]]})
 
@@ -1263,7 +1264,7 @@ def test_a_send_with_no_recorded_source_gets_one_derived_on_read(empty_api, cata
     (send,) = empty_api.get(f"/api/runs/{run['id']}").get_json()["sends"]
 
     assert send["source"]["kind"] == "character"
-    assert send["source"]["group"] == "body"
+    assert "group" not in send["source"]
 
 
 # ── the runref resolver ─────────────────────────────────────────────────────

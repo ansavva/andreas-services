@@ -435,18 +435,18 @@ def test_a_plans_reference_block_comes_back_as_images(empty_api):
     )
     assert made.status_code == 201, made.get_data(as_text=True)
     character = made.get_json()
-    run = empty_api.post(
-        "/api/runs",
-        json={"project": project["id"], "kind": "image",
-              "engine": "gpt-image-2", "model": "openai/gpt-image-2"},
+    # **Under the character, not under the run.** A run output is the run's; what
+    # makes an image a character's identity is that it sits in the character's
+    # tree carrying `default`. Promoting one is a copy into the tree, which is
+    # what `add-refs --from-run` always did — it copied and then attached.
+    pool = catalog.child_by_name(character["root"], "reference")["node_id"]
+    made_node = empty_api.post(
+        "/api/nodes", json={"parent": pool, "name": "plate_front.png", "kind": "file"},
     ).get_json()
-    node = empty_api.post(
-        f"/api/runs/{run['id']}/outputs",
-        json={"name": "plate_front.png", "size": 10, "content_type": "image/png"},
-    ).get_json()["node"]
-    empty_api.post(
-        f"/api/characters/{character['id']}/references",
-        json={"node": node, "group": "face", "tags": ["face"]},
+    record = catalog.node(made_node["id"])
+    catalog.set_blob(made_node["id"], record["blob_key"], size=10, content_type="image/png")
+    empty_api.patch(
+        f"/api/nodes/{made_node['id']}", json={"tags": ["default", "face"]},
     )
 
     scene = _scene(

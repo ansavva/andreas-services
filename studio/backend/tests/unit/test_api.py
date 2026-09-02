@@ -565,14 +565,16 @@ def test_the_entity_replace_routes_are_reachable_as_patch(catalog_tree):
     """
     created = _invoke("POST", "/api/characters", {"slug": "subject-d"})[1]
 
+    # `/default-set` was the one this used to drive; `default` is a tag on the
+    # file now, so the profile replace is the surviving whole-collection PATCH.
     status, body = _invoke(
         "PATCH",
-        f"/api/characters/{created['id']}/default-set",
-        {"nodes": [], "rev": created["rev"]},
+        f"/api/characters/{created['id']}/profile",
+        {"patch": {"identity": {"apparent_age": "30s"}}, "rev": created["rev"]},
     )
 
     assert status == 200, body
-    assert body["default_set"] == []
+    assert body["profile"]["identity"]["apparent_age"] == "30s"
 
 
 def test_lambda_still_reports_a_genuinely_empty_body(catalog_tree):

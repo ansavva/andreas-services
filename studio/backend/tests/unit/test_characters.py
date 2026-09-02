@@ -258,7 +258,6 @@ def test_a_missing_rev_is_400_rather_than_the_current_one(empty_api):
         ("", {"display_name": "x"}),
         ("/profile", {"profile": {}}),
         ("/profile", {"patch": {"face": {}}}),
-        ("/default-set", {"nodes": []}),
     ],
 )
 def test_every_mutating_character_route_carries_a_rev(empty_api, path, body):
@@ -287,14 +286,14 @@ def test_a_rename_moves_no_objects_and_rewrites_no_records(empty_api, catalog_ta
     existed and why #420 was open.
 
     So the assertion is about what did *not* change: every node id, every blob
-    key, and every `REF#` row.
+    key, and everything the files say about themselves.
     """
     character = _create(empty_api)
     reference = _child(character["root"], "reference")
     picture = _uploaded(empty_api, reference["node_id"], "front.webp")
-    empty_api.post(
-        f"/api/characters/{character['id']}/references",
-        json={"node": picture["node_id"], "group": "face", "description": "front"},
+    empty_api.patch(
+        f"/api/nodes/{picture['node_id']}",
+        json={"tags": ["default", "face"], "description": "front"},
     )
     before = {
         node["node_id"]: node.get("blob_key")
@@ -313,8 +312,8 @@ def test_a_rename_moves_no_objects_and_rewrites_no_records(empty_api, catalog_ta
     }
     assert after == before
 
-    entries = catalog.references(character["id"])
-    assert [entry["node"] for entry in entries] == [picture["node_id"]]
+    # The tag went nowhere: it is on the picture, and a rename touched the record.
+    assert "default" in catalog.node(picture["node_id"])["tags"]
     # The caption is the file's now, not the row's — a rename must not disturb
     # either, which is what this test is about.
     assert catalog.node(picture["node_id"])["description"] == "front"
@@ -347,455 +346,228 @@ def test_renaming_onto_a_taken_slug_is_409(empty_api):
     assert empty_api.get(f"/api/characters/{other['id']}").get_json()["slug"] == "subject-b"
 
 
-# ──────────────────────── the reference index ────────────────────────
-
-
-def test_attaching_a_reference_writes_a_row_and_moves_no_bytes(empty_api, catalog_table):
-    """**Reference-ness is a row and nothing else.**
-
-    That is the coupling the whole entity model removes: an image is identity
-    because a row says so, not because of which folder it sits in. So the file is
-    not copied, not moved, and not required to live in `reference/` at all.
-    """
-    character = _create(empty_api)
-    picture = _uploaded(empty_api, _child(character["root"], "corpus")["node_id"], "front.webp")
-
-    resp = empty_api.post(
-        f"/api/characters/{character['id']}/references",
-        json={"node": picture["node_id"], "group": "face", "tags": ["face", "daylight"]},
-    )
-
-    assert resp.status_code == 201
-    row = _item(catalog_table, f"CHAR#{character['id']}", f"REF#{picture['node_id']}")
-    assert row["group"]["S"] == "face"
-    assert int(row["order"]["N"]) == 1000
-    # Still in `corpus/`, still one node, still one blob.
-    assert catalog.node(picture["node_id"])["parent_id"] == \
-        _child(character["root"], "corpus")["node_id"]
-
-
-def test_order_is_gapped_so_an_insert_touches_no_neighbour(empty_api):
-    """**This is what kills filename magic.**
-
-    Order was the trailing number in `<slug>_<group>_<n>.png`, so inserting
-    between two references meant renaming a run of files — which is what
-    `curate renumber` existed to do, and what made the bible's `references:` map
-    go out of step with the folder.
-
-    `after` takes the midpoint of two `order` values, so an insert is one write.
-    """
-    character = _create(empty_api)
-    pool = _child(character["root"], "reference")["node_id"]
-    first = _uploaded(empty_api, pool, "a.webp")
-    second = _uploaded(empty_api, pool, "b.webp")
-    middle = _uploaded(empty_api, pool, "c.webp")
-
-    for node in (first, second):
-        empty_api.post(
-            f"/api/characters/{character['id']}/references",
-            json={"node": node["node_id"], "group": "face"},
-        )
-    empty_api.post(
-        f"/api/characters/{character['id']}/references",
-        json={"node": middle["node_id"], "group": "face", "after": first["node_id"]},
-    )
-
-    entries = catalog.references(character["id"])
-    assert [entry["node"] for entry in entries] == [
-        first["node_id"],
-        middle["node_id"],
-        second["node_id"],
-    ]
-    assert [entry["order"] for entry in entries] == [1000, 1500, 2000]
-
-
-def test_regrouping_is_one_write_and_moves_no_object(empty_api):
-    """`curate regroup` used to move files between four pool folders.
-
-    It is a `PATCH` on one row now, and the file does not move — which is the
-    same claim as `attach`, made about the operation that used to be the most
-    expensive one.
-    """
-    character = _create(empty_api)
-    picture = _uploaded(empty_api, _child(character["root"], "reference")["node_id"], "a.webp")
-    empty_api.post(
-        f"/api/characters/{character['id']}/references",
-        json={"node": picture["node_id"], "group": "face"},
-    )
-    before = catalog.node(picture["node_id"])
-
-    resp = empty_api.patch(
-        f"/api/characters/{character['id']}/references/{picture['node_id']}",
-        json={"group": "body"},
-    )
-
-    assert resp.status_code == 200
-    assert catalog.references(character["id"])[0]["group"] == "body"
-    assert catalog.node(picture["node_id"]) == before
-
-
-def test_describing_many_references_is_one_transaction(empty_api):
-    """`describe-refs` was twelve rewrites of one YAML document.
-
-    Each one re-read an `updated_at` and refused if it had moved, so writing them
-    concurrently was a conflict dance rather than a write. Now it is one
-    transaction over twelve rows and two descriptions cannot fight.
-    """
-    character = _create(empty_api)
-    pool = _child(character["root"], "reference")["node_id"]
-    nodes = [_uploaded(empty_api, pool, f"{index}.webp") for index in range(3)]
-
-    resp = empty_api.patch(
-        f"/api/characters/{character['id']}/references",
-        json={
-            "entries": [
-                {"node": node["node_id"], "group": "face", "description": f"shot {index}"}
-                for index, node in enumerate(nodes)
-            ]
-        },
-    )
-
-    assert resp.status_code == 200
-    # Two rows per entry — the set's `REF#` half and the file's own — written in
-    # the same transaction, so the descriptions land on the nodes.
-    assert [entry["description"] for entry in resp.get_json()["entries"]] == [
-        "shot 0",
-        "shot 1",
-        "shot 2",
-    ]
-    assert [
-        catalog.node(entry["node"])["description"]
-        for entry in catalog.references(character["id"])
-    ] == ["shot 0", "shot 1", "shot 2"]
-
-
-def test_detaching_takes_the_node_out_of_the_default_set(empty_api):
-    """The root cause of a set that names images nothing points at.
-
-    Detaching only deleted the `REF#` row. The id stayed in `default_set`, where
-    the selection route filtered it out without a word — so a re-shot reference
-    left a stale id behind and a default shoot sent fewer images than somebody
-    chose. Production carried four of these on one character.
-    """
-    character = _create(empty_api)
-    pool = _child(character["root"], "reference")["node_id"]
-    kept = _uploaded(empty_api, pool, "kept.webp")
-    dropped = _uploaded(empty_api, pool, "dropped.webp")
-    for node in (kept, dropped):
-        empty_api.post(
-            f"/api/characters/{character['id']}/references",
-            json={"node": node["node_id"], "group": "face"},
-        )
-    empty_api.patch(
-        f"/api/characters/{character['id']}/default-set",
-        json={"nodes": [kept["node_id"], dropped["node_id"]], "rev": 1},
-    )
-
-    resp = empty_api.delete(
-        f"/api/characters/{character['id']}/references/{dropped['node_id']}"
-    )
-
-    assert resp.status_code == 200
-    assert resp.get_json()["default_set"] == [kept["node_id"]]
-    assert catalog.entity(catalog.ENTITY_CHARACTER, character["id"])["default_set"] == [
-        kept["node_id"]
-    ]
-
-
-def test_detaching_something_the_default_set_never_named_says_nothing(empty_api):
-    """The key is present only when it changed, so a client need not diff."""
-    character = _create(empty_api)
-    pool = _child(character["root"], "reference")["node_id"]
-    picture = _uploaded(empty_api, pool, "loose.webp")
-    empty_api.post(
-        f"/api/characters/{character['id']}/references",
-        json={"node": picture["node_id"], "group": "face"},
-    )
-
-    resp = empty_api.delete(
-        f"/api/characters/{character['id']}/references/{picture['node_id']}"
-    )
-
-    assert resp.status_code == 200
-    assert "default_set" not in resp.get_json()
-
-
-def test_the_default_set_refuses_a_node_that_is_not_a_reference(empty_api):
-    """The check that was missing is the one that would have caught the drift.
-
-    The set names what a generation is SHOWN. A member with no `REF#` row is an
-    image the selection route drops, so accepting one here is accepting a set
-    that does not mean what it says.
-    """
-    character = _create(empty_api)
-    pool = _child(character["root"], "reference")["node_id"]
-    loose = _uploaded(empty_api, pool, "loose.webp")
-
-    resp = empty_api.patch(
-        f"/api/characters/{character['id']}/default-set",
-        json={"nodes": [loose["node_id"]], "rev": 1},
-    )
-
-    assert resp.status_code == 400
-    assert "not a reference" in resp.get_data(as_text=True)
-
-
-def test_a_stale_default_set_is_refused_rather_than_quietly_shortened(empty_api):
-    """Same rule as the cap refusal, and the same reason.
-
-    Handing a model three of the seven images somebody chose is a result nobody
-    can explain afterwards. The refusal names which ids went stale so the set can
-    be re-pointed rather than guessed at.
-    """
-    character = _create(empty_api)
-    pool = _child(character["root"], "reference")["node_id"]
-    nodes = [_uploaded(empty_api, pool, f"{index}.webp") for index in range(2)]
-    for node in nodes:
-        empty_api.post(
-            f"/api/characters/{character['id']}/references",
-            json={"node": node["node_id"], "group": "face"},
-        )
-    empty_api.patch(
-        f"/api/characters/{character['id']}/default-set",
-        json={"nodes": [node["node_id"] for node in nodes], "rev": 1},
-    )
-    # Straight to the catalog: the route now refuses to CREATE this state, which
-    # is the point — what is being tested is the read path over a library that
-    # already carries it.
-    record = catalog.entity(catalog.ENTITY_CHARACTER, character["id"])
-    catalog.update_entity(
-        catalog.ENTITY_CHARACTER, record, record["rev"],
-        {"default_set": [nodes[0]["node_id"], "node-vanished"]},
-    )
-
-    resp = empty_api.get(f"/api/characters/{character['id']}/selection")
-
-    assert resp.status_code == 409
-    body = resp.get_json()
-    assert body["error"] == "stale_default_set"
-    assert [entry["node"] for entry in body["stale"]] == ["node-vanished"]
-
-
-def test_a_tag_written_on_the_file_selects_it_as_a_reference(empty_api):
-    """One store, two doors.
-
-    Tags are the file's, so tagging a picture in the browser and tagging it in
-    the reference grid have to be the same act — otherwise `--pick-tag` answers
-    one of them and a person cannot tell which. This writes through the node
-    route and selects through the character route.
-    """
-    character = _create(empty_api)
-    pool = _child(character["root"], "reference")["node_id"]
-    picture = _uploaded(empty_api, pool, "plate.webp")
-    empty_api.post(
-        f"/api/characters/{character['id']}/references",
-        json={"node": picture["node_id"], "group": "face"},
-    )
-
-    empty_api.patch(f"/api/nodes/{picture['node_id']}", json={"tags": ["Poolside"]})
-
-    body = empty_api.get(
-        f"/api/characters/{character['id']}/selection?tag=poolside"
-    ).get_json()
-    assert [entry["node"] for entry in body["selection"]] == [picture["node_id"]]
-
-
-def test_attaching_the_same_node_twice_is_409(empty_api):
-    """"Attach" and "describe" are different requests.
-
-    The second is a `PATCH` on the same address and does not reset a group
-    somebody has already chosen, so an overwrite here would silently undo it.
-    """
-    character = _create(empty_api)
-    picture = _uploaded(empty_api, _child(character["root"], "reference")["node_id"], "a.webp")
-    body = {"node": picture["node_id"], "group": "face"}
-    empty_api.post(f"/api/characters/{character['id']}/references", json=body)
-
-    resp = empty_api.post(f"/api/characters/{character['id']}/references", json=body)
-
-    assert resp.status_code == 409
-
-
-def test_detaching_leaves_the_file_where_it_is(empty_api):
-    """Detach removes an opinion about a file, not the file."""
-    character = _create(empty_api)
-    picture = _uploaded(empty_api, _child(character["root"], "reference")["node_id"], "a.webp")
-    empty_api.post(
-        f"/api/characters/{character['id']}/references",
-        json={"node": picture["node_id"], "group": "face"},
-    )
-
-    assert empty_api.delete(
-        f"/api/characters/{character['id']}/references/{picture['node_id']}"
-    ).status_code == 200
-
-    assert catalog.references(character["id"]) == []
-    assert catalog.node(picture["node_id"])["name"] == "a.webp"
-
-
-def test_a_folder_cannot_be_a_reference(empty_api):
-    character = _create(empty_api)
-
-    resp = empty_api.post(
-        f"/api/characters/{character['id']}/references",
-        json={"node": _child(character["root"], "seed")["node_id"], "group": "face"},
-    )
-
-    assert resp.status_code == 400
-
-
-def test_a_reference_survives_renaming_the_file_it_names(empty_api):
-    """**The row names the node id, so the file can be called anything.**
-
-    `<slug>_face_1.png` is dead: group and order are attributes and the
-    description is a row, so a rename changes one name and nothing else.
-    """
-    character = _create(empty_api)
-    picture = _uploaded(empty_api, _child(character["root"], "reference")["node_id"], "a.webp")
-    empty_api.post(
-        f"/api/characters/{character['id']}/references",
-        json={"node": picture["node_id"], "group": "face", "description": "kept"},
-    )
-
-    empty_api.patch(f"/api/nodes/{picture['node_id']}", json={"name": "anything-at-all.webp"})
-
-    entries = catalog.references(character["id"])
-    assert entries[0]["node"] == picture["node_id"]
-    assert catalog.node(picture["node_id"])["description"] == "kept"
-
-
-# ──────────────────────────── selection ────────────────────────────
-
-
-def _with_references(empty_api, count, group="face", tags=("face",)):
-    character = _create(empty_api)
-    pool = _child(character["root"], "reference")["node_id"]
+# ──────────────────── identity, which is now tags ────────────────────
+#
+# There is no reference index and no `default_set`. Both answered "which of this
+# character's pictures does a generation get shown", and both answered it
+# somewhere other than on the picture — so the same fact lived twice with an
+# invariant between them, and the invariant drifted. It is `default` on the file
+# now, with a group tag like `face` beside it.
+
+
+def _tagged(api, character, name, tags, folder="reference"):
+    """One image under the character, carrying tags. No row, no attach step."""
+    pool = _child(character["root"], folder)["node_id"]
+    node = _uploaded(api, pool, name)
+    api.patch(f"/api/nodes/{node['node_id']}", json={"tags": list(tags)})
+    return node
+
+
+def _with_identity(api, count, tags=("default", "face")):
+    character = _create(api)
     for index in range(count):
-        node = _uploaded(empty_api, pool, f"{index}.webp")
-        empty_api.post(
-            f"/api/characters/{character['id']}/references",
-            json={"node": node["node_id"], "group": group, "tags": list(tags)},
-        )
+        _tagged(api, character, f"{index}.webp", tags)
     return character
 
 
-def test_selection_numbers_slots_from_one(empty_api):
-    """Slot N still means "position N in the resolved selection".
+def test_a_tag_is_the_whole_of_making_an_image_identity(empty_api):
+    """No attach, no row, no move. One `PATCH` on the file, and it is in.
 
-    The definition did not change; the resolving moved into the API so the CLI
-    and the SPA cannot disagree about what a model was shown.
+    What this deletes is the second step: bytes arrived, then a person filed a
+    `REF#` row saying they were identity. The row could name a node that had been
+    deleted, and the record could name a node with no row — two ways to drift
+    that a tag on the file does not have.
     """
-    character = _with_references(empty_api, 3)
-
-    body = empty_api.get(f"/api/characters/{character['id']}/selection?tag=face").get_json()
-
-    assert [entry["slot"] for entry in body["selection"]] == [1, 2, 3]
-    assert body["source"] == "tag"
-
-
-def test_an_over_cap_selection_is_refused_with_the_index_in_the_body(empty_api):
-    """**Refused, never truncated**, and that is the behaviour being centralised.
-
-    Silently handing a model the first seven of eighteen references is a shoot
-    whose result nobody can explain afterwards. The refusal carries every
-    candidate so the caller can choose rather than guess, and it carries a
-    machine-readable code because the UI has to render a chooser rather than a
-    sentence.
-    """
-    character = _with_references(empty_api, 3)
-
-    resp = empty_api.get(f"/api/characters/{character['id']}/selection?tag=face&limit=2")
-
-    assert resp.status_code == 409
-    body = resp.get_json()
-    assert body["error"] == "over_cap"
-    assert len(body["index"]) == 3
-    assert {entry["group"] for entry in body["index"]} == {"face"}
-
-
-def test_an_engine_resolves_its_own_cap(empty_api):
-    """The caps are a property of the engine family, not of one model id.
-
-    The registry spells a family several ways — `nano-banana-pro`,
-    `nano-banana-2` — and matching on a prefix is what keeps a new member of a
-    family from silently losing its cap.
-    """
-    character = _with_references(empty_api, 8)
-
-    assert empty_api.get(
-        f"/api/characters/{character['id']}/selection?tag=face&engine=kling"
-    ).status_code == 409
-    assert empty_api.get(
-        f"/api/characters/{character['id']}/selection?tag=face&engine=nano-banana-pro"
-    ).status_code == 200
-
-
-def test_a_selection_with_no_cap_named_cannot_be_refused(empty_api):
-    """A caller that did not say what it was feeding cannot be told it fed too much."""
-    character = _with_references(empty_api, 30)
-
-    assert empty_api.get(
-        f"/api/characters/{character['id']}/selection?tag=face"
-    ).status_code == 200
-
-
-def test_the_default_set_is_the_source_when_nothing_is_filtered(empty_api):
-    """Small, **ordered**, and read on every generation — three properties a set
-    of flags spread over forty rows has none of, which is why it is on the record.
-    """
-    character = _with_references(empty_api, 3)
-    entries = catalog.references(character["id"])
-    chosen = [entries[2]["node"], entries[0]["node"]]
-
-    empty_api.patch(
-        f"/api/characters/{character['id']}/default-set", json={"nodes": chosen, "rev": 1}
-    )
+    character = _create(empty_api)
+    node = _tagged(empty_api, character, "a.webp", ["default", "face"])
 
     body = empty_api.get(f"/api/characters/{character['id']}/selection").get_json()
+
+    assert [entry["node"] for entry in body["selection"]] == [node["node_id"]]
     assert body["source"] == "default"
-    assert [entry["node"] for entry in body["selection"]] == chosen
+
+
+def test_identity_survives_renaming_and_moving_the_file(empty_api):
+    """The property the whole change is for: the tag travels with the picture.
+
+    A `REF#` row survived a rename because it named a node id. A tag survives a
+    rename, a MOVE and a copy, because it is not a separate thing that has to
+    keep pointing at anything.
+    """
+    character = _create(empty_api)
+    node = _tagged(empty_api, character, "a.webp", ["default", "face"])
+    corpus = _child(character["root"], "corpus")["node_id"]
+
+    empty_api.patch(f"/api/nodes/{node['node_id']}", json={"name": "renamed.webp"})
+    empty_api.post("/api/nodes/move", json={"ids": [node["node_id"]], "destination": corpus})
+
+    body = empty_api.get(f"/api/characters/{character['id']}/selection").get_json()
+    assert [entry["name"] for entry in body["selection"]] == ["renamed.webp"]
+
+
+def test_a_file_outside_the_character_is_not_its_identity(empty_api):
+    """Ownership is the tree, and it is the only thing scoping a tag.
+
+    `default` on a file in another character's folder is that character's
+    business. The old attach route checked only the LIBRARY, so a reference
+    could point anywhere; the branch query cannot.
+    """
+    mine = _create(empty_api, slug="subject-a")
+    theirs = _create(empty_api, slug="subject-b")
+    _tagged(empty_api, theirs, "a.webp", ["default", "face"])
+
+    resp = empty_api.get(f"/api/characters/{mine['id']}/selection")
+
+    assert resp.status_code == 400
+    assert "no image" in resp.get_json()["error"]
+
+
+def test_a_group_is_a_tag_and_narrows_the_default_set(empty_api):
+    """`?tag=default,face` is what nothing could previously express.
+
+    `group` was a column on the row and `default_set` was a list on the record,
+    so "the face images this character sends" needed both and could be asked of
+    neither. Two tags, one filter.
+    """
+    character = _create(empty_api)
+    face = _tagged(empty_api, character, "face.webp", ["default", "face"])
+    _tagged(empty_api, character, "body.webp", ["default", "body"])
+    _tagged(empty_api, character, "spare.webp", ["face"])
+
+    both = empty_api.get(
+        f"/api/characters/{character['id']}/selection?tag=default,face"
+    ).get_json()
+
+    assert [entry["node"] for entry in both["selection"]] == [face["node_id"]]
+    assert both["source"] == "tag"
+
+
+def test_every_named_tag_has_to_be_present(empty_api):
+    """ALL of them, not any — the promise `--pick-tag` always made."""
+    character = _create(empty_api)
+    _tagged(empty_api, character, "a.webp", ["default", "face"])
+
+    assert empty_api.get(
+        f"/api/characters/{character['id']}/selection?tag=default,face"
+    ).status_code == 200
+    assert empty_api.get(
+        f"/api/characters/{character['id']}/selection?tag=default,face,wardrobe"
+    ).status_code == 400
+
+
+def test_a_filter_matching_nothing_is_refused_not_answered_empty(empty_api):
+    """Being handed no images is a typo, not a selection, and what runs next spends."""
+    character = _with_identity(empty_api, 2)
+
+    resp = empty_api.get(f"/api/characters/{character['id']}/selection?tag=nonsense")
+
+    assert resp.status_code == 400
+    assert "nonsense" in resp.get_json()["error"]
+
+
+def test_only_images_are_selectable(empty_api):
+    """A `.json` beside them carrying the same tag is not something to send."""
+    character = _create(empty_api)
+    picture = _tagged(empty_api, character, "a.webp", ["default"])
+    pool = _child(character["root"], "reference")["node_id"]
+    notes = _uploaded(empty_api, pool, "notes.json")
+    empty_api.patch(f"/api/nodes/{notes['node_id']}", json={"tags": ["default"]})
+
+    body = empty_api.get(f"/api/characters/{character['id']}/selection").get_json()
+
+    assert [entry["node"] for entry in body["selection"]] == [picture["node_id"]]
+
+
+def test_selection_numbers_slots_from_one(empty_api):
+    """Slot N is position N in the resolved selection — unchanged in meaning."""
+    character = _with_identity(empty_api, 3)
+
+    body = empty_api.get(f"/api/characters/{character['id']}/selection").get_json()
+
+    assert [entry["slot"] for entry in body["selection"]] == [1, 2, 3]
+
+
+def test_a_selection_is_ordered_by_name_so_it_is_the_same_twice(empty_api):
+    """**Order stopped meaning anything about a character and still has to exist.**
+
+    A payload hands a model `[Image1]` and `[Image2]`, so a selection needs *an*
+    order and it has to be the same one on two calls. Name is the only property
+    that does not move when a file is re-tagged or re-uploaded; `newest` would
+    reshuffle a shoot for a reason that has nothing to do with the shoot.
+    """
+    character = _create(empty_api)
+    for name in ("c.webp", "a.webp", "b.webp"):
+        _tagged(empty_api, character, name, ["default"])
+
+    twice = [
+        [entry["name"] for entry in empty_api.get(
+            f"/api/characters/{character['id']}/selection").get_json()["selection"]]
+        for _ in range(2)
+    ]
+
+    assert twice[0] == ["a.webp", "b.webp", "c.webp"]
+    assert twice[0] == twice[1]
+
+
+def test_a_selection_says_which_picture_each_slot_is(empty_api):
+    """A person reviewing a payload has to know which picture is `[Image3]`."""
+    character = _create(empty_api)
+    node = _tagged(empty_api, character, "a.webp", ["default", "face"])
+    empty_api.patch(f"/api/nodes/{node['node_id']}", json={"description": "head on"})
+
+    entry = empty_api.get(
+        f"/api/characters/{character['id']}/selection"
+    ).get_json()["selection"][0]
+
+    assert entry["name"] == "a.webp"
+    assert entry["description"] == "head on"
+    assert "face" in entry["tags"]
+    assert entry["url"]
 
 
 def test_pick_names_files_and_keeps_the_order_they_were_named_in(empty_api):
-    """**`pick` names FILES.**
-
-    It was matched against `group`, with `==`, against a single value — while its
-    only caller sent a comma-separated list of filenames. So `--pick a,b` matched
-    nothing, silently, and the generation went out with no references at all.
-
-    Order is the caller's, because `--pick` means "send these" and which one is
-    `[Image1]` is part of that.
-    """
-    character = _with_references(empty_api, 3)
+    """`pick` is the escape hatch from the tags, and position is the payload."""
+    character = _create(empty_api)
+    first = _tagged(empty_api, character, "a.webp", ["default"])
+    second = _tagged(empty_api, character, "b.webp", ["default"])
 
     body = empty_api.get(
-        f"/api/characters/{character['id']}/selection?pick=2.webp,0.webp"
+        f"/api/characters/{character['id']}/selection"
+        f"?pick={second['node_id']},{first['node_id']}"
     ).get_json()
 
+    assert [entry["node"] for entry in body["selection"]] == [
+        second["node_id"], first["node_id"]]
     assert body["source"] == "pick"
-    assert [entry["name"] for entry in body["selection"]] == ["2.webp", "0.webp"]
 
 
 def test_pick_accepts_a_stem_or_a_node_id(empty_api):
-    """The three things a person actually has: a name, a name without its
-    extension, and — in a script — the id."""
-    character = _with_references(empty_api, 2)
-    node = catalog.references(character["id"])[1]["node"]
+    """The three things somebody has in hand while looking at a listing."""
+    character = _create(empty_api)
+    node = _tagged(empty_api, character, "a.webp", ["default"])
 
-    by_stem = empty_api.get(f"/api/characters/{character['id']}/selection?pick=1").get_json()
-    by_id = empty_api.get(f"/api/characters/{character['id']}/selection?pick={node}").get_json()
+    for token in (node["node_id"], "a.webp", "a"):
+        body = empty_api.get(
+            f"/api/characters/{character['id']}/selection?pick={token}"
+        ).get_json()
+        assert [entry["node"] for entry in body["selection"]] == [node["node_id"]]
 
-    assert [entry["node"] for entry in by_stem["selection"]] == [node]
-    assert [entry["node"] for entry in by_id["selection"]] == [node]
+
+def test_pick_need_not_be_tagged_at_all(empty_api):
+    """Naming a picture IS the decision; a tag is the way to not have to."""
+    character = _create(empty_api)
+    plain = _tagged(empty_api, character, "plain.webp", [])
+
+    body = empty_api.get(
+        f"/api/characters/{character['id']}/selection?pick=plain.webp"
+    ).get_json()
+
+    assert [entry["node"] for entry in body["selection"]] == [plain["node_id"]]
 
 
-def test_pick_refuses_a_name_that_matches_nothing(empty_api):
-    """**The property whose absence cost a debugging session.**
-
-    Asking for images by name and being handed none is not a selection, it is a
-    typo — and the next thing down the pipe spends money on it.
-    """
-    character = _with_references(empty_api, 2)
+def test_pick_refuses_a_token_that_names_nothing(empty_api):
+    """Asking by name and being handed fewer is a typo, and the refusal says which."""
+    character = _with_identity(empty_api, 1)
 
     resp = empty_api.get(f"/api/characters/{character['id']}/selection?pick=nope.webp")
 
@@ -803,78 +575,62 @@ def test_pick_refuses_a_name_that_matches_nothing(empty_api):
     assert "nope.webp" in resp.get_json()["error"]
 
 
-def test_pick_reports_an_ambiguous_stem_rather_than_choosing(empty_api):
-    """Two files sharing a stem in different groups is a real state, and picking
-    one silently is how a shoot carries a reference nobody chose."""
+def test_an_over_cap_selection_is_refused_with_the_candidates_in_the_body(empty_api):
+    """**Refused, never truncated.**
+
+    Silently handing a model the first seven of eighteen is a shoot whose result
+    nobody can explain afterwards. The refusal carries every candidate so the
+    caller can choose rather than guess, and a machine-readable code because the
+    UI renders a chooser rather than a sentence.
+    """
+    character = _with_identity(empty_api, 3)
+
+    resp = empty_api.get(f"/api/characters/{character['id']}/selection?limit=2")
+
+    assert resp.status_code == 409
+    body = resp.get_json()
+    assert body["error"] == "over_cap"
+    assert len(body["index"]) == 3
+    assert all("face" in entry["tags"] for entry in body["index"])
+
+
+def test_an_engine_resolves_its_own_cap(empty_api):
+    """The caps are a property of the engine family, not of one model id."""
+    character = _with_identity(empty_api, 8)
+
+    assert empty_api.get(
+        f"/api/characters/{character['id']}/selection?engine=kling"
+    ).status_code == 409
+    assert empty_api.get(
+        f"/api/characters/{character['id']}/selection?engine=nano-banana-pro"
+    ).status_code == 200
+
+
+def test_a_selection_with_no_cap_named_cannot_be_refused(empty_api):
+    """A caller that did not say what it was feeding cannot be told it fed too much."""
+    character = _with_identity(empty_api, 30)
+
+    assert empty_api.get(
+        f"/api/characters/{character['id']}/selection"
+    ).status_code == 200
+
+
+def test_there_is_no_stale_default_set_to_refuse(empty_api):
+    """The failure class this change removes, pinned so it cannot come back.
+
+    `default_set` was node ids on the record, and deleting a file left the id
+    behind — one production character carried four such, and a default shoot
+    sent three images where seven were meant. Deleting a tagged file removes the
+    tag with it, because they are the same row.
+    """
     character = _create(empty_api)
-    pool = _child(character["root"], "reference")["node_id"]
-    for group, name in (("face", "plate.webp"), ("body", "plate.png")):
-        node = _uploaded(empty_api, pool, name)
-        empty_api.post(
-            f"/api/characters/{character['id']}/references",
-            json={"node": node["node_id"], "group": group, "tags": [group]},
-        )
+    kept = _tagged(empty_api, character, "a.webp", ["default"])
+    doomed = _tagged(empty_api, character, "b.webp", ["default"])
 
-    resp = empty_api.get(f"/api/characters/{character['id']}/selection?pick=plate")
+    empty_api.delete("/api/nodes", json={"ids": [doomed["node_id"]]})
 
-    assert resp.status_code == 400
-    assert "matches 2" in resp.get_json()["error"]
-
-
-def test_every_named_tag_has_to_be_present(empty_api):
-    """`--pick-tag` has always promised AND. The route compared the whole
-    comma-joined string against one tag, so one tag worked and two never did."""
-    character = _create(empty_api)
-    pool = _child(character["root"], "reference")["node_id"]
-    for name, tags in (("a.webp", ["face", "front"]), ("b.webp", ["face", "profile"])):
-        node = _uploaded(empty_api, pool, name)
-        empty_api.post(
-            f"/api/characters/{character['id']}/references",
-            json={"node": node["node_id"], "group": "face", "tags": tags},
-        )
-
-    both = empty_api.get(
-        f"/api/characters/{character['id']}/selection?tag=face,front"
-    ).get_json()
-
-    assert [entry["name"] for entry in both["selection"]] == ["a.webp"]
-
-
-def test_a_tag_that_matches_nothing_is_refused(empty_api):
-    character = _with_references(empty_api, 2)
-
-    resp = empty_api.get(f"/api/characters/{character['id']}/selection?tag=face,poolside")
-
-    assert resp.status_code == 400
-
-
-def test_group_is_its_own_filter_now_that_pick_is_not(empty_api):
-    """`pick` used to fall back to `group`, which is what made the two mean the
-    same thing. They are separate parameters, so both can be honest."""
-    character = _create(empty_api)
-    pool = _child(character["root"], "reference")["node_id"]
-    for name, group in (("a.webp", "face"), ("b.webp", "body")):
-        node = _uploaded(empty_api, pool, name)
-        empty_api.post(
-            f"/api/characters/{character['id']}/references",
-            json={"node": node["node_id"], "group": group, "tags": [group]},
-        )
-
-    body = empty_api.get(f"/api/characters/{character['id']}/selection?group=body").get_json()
-
-    assert body["source"] == "group"
-    assert [entry["name"] for entry in body["selection"]] == ["b.webp"]
-
-
-def test_a_selection_says_which_picture_each_slot_is(empty_api):
-    """A person reviewing a payload has to know which image is `[Image3]`, and a
-    node id does not say. The CLI documented this field for as long as the route
-    did not send it."""
-    character = _with_references(empty_api, 2)
-
-    body = empty_api.get(f"/api/characters/{character['id']}/selection?tag=face").get_json()
-
-    assert [entry["name"] for entry in body["selection"]] == ["0.webp", "1.webp"]
+    body = empty_api.get(f"/api/characters/{character['id']}/selection").get_json()
+    assert [entry["node"] for entry in body["selection"]] == [kept["node_id"]]
 
 
 # ──────────────────────────── the profile ────────────────────────────
@@ -1113,22 +869,28 @@ def test_deleting_with_files_delete_takes_the_tree_and_the_blobs(empty_api, medi
     ).get("KeyCount") == 0
 
 
-def test_deleting_a_character_removes_its_reference_rows(empty_api, catalog_table):
+def test_a_deleted_character_leaves_nothing_in_its_own_partition(empty_api, catalog_table):
     """Everything in the entity's own partition goes with it.
 
-    A `REF#` row outliving its character is a row nothing can reach and nothing
-    collects — and it would come back to life if the id were ever reused.
+    This used to be about `REF#` rows: one outliving its character was a row
+    nothing could reach and nothing collected, and it would come back to life if
+    the id were ever reused. **There are no such rows now** — identity is a tag on
+    a file in the character's tree, and the tree is what the delete walks. The
+    assertion is kept and widened, because "the partition is empty afterwards" is
+    the property, and a future row class added to it should have to face this.
     """
     character = _create(empty_api)
     picture = _uploaded(empty_api, _child(character["root"], "reference")["node_id"], "a.webp")
-    empty_api.post(
-        f"/api/characters/{character['id']}/references",
-        json={"node": picture["node_id"], "group": "face"},
-    )
+    empty_api.patch(f"/api/nodes/{picture['node_id']}", json={"tags": ["default", "face"]})
 
     empty_api.delete(f"/api/characters/{character['id']}")
 
-    assert _item(catalog_table, f"CHAR#{character['id']}", f"REF#{picture['node_id']}") is None
+    left = catalog_table.query(
+        TableName=config.catalog_table(),
+        KeyConditionExpression="pk = :pk",
+        ExpressionAttributeValues={":pk": {"S": f"CHAR#{character['id']}"}},
+    )["Items"]
+    assert left == []
 
 
 # ──────────────────── the questions that had no answer ────────────────────
@@ -1151,18 +913,19 @@ def test_which_projects_involve_this_character(empty_api):
     assert body[0]["slug"] == "rooftop-teaser"
 
 
-def test_the_listing_counts_references_without_a_counter_on_the_record(empty_api):
-    """One query per character, which is the honest cost of showing it.
+def test_the_listing_counts_identity_without_a_counter_on_the_record(empty_api):
+    """One branch query per character, and BOTH counts come out of it.
 
-    The alternative is a counter every attach and detach has to keep in step,
-    which is the class of drift the claim rows deliberately avoid.
+    `counts.references` was a second query for the `REF#` rows. There are none,
+    and the walk that counts files already holds the tags, so counting the ones
+    carrying `default` is free.
     """
-    character = _with_references(empty_api, 2)
+    character = _with_identity(empty_api, 2)
 
     listed = empty_api.get("/api/characters").get_json()
 
     assert [entry["id"] for entry in listed] == [character["id"]]
-    assert listed[0]["counts"]["references"] == 2
+    assert listed[0]["counts"]["default"] == 2
 
 
 def test_the_listing_counts_files_under_the_character(empty_api):
@@ -1177,7 +940,7 @@ def test_the_listing_counts_files_under_the_character(empty_api):
     name means "how much material is under this character", and a file in
     `corpus/` is material as much as one in `reference/`.
     """
-    character = _with_references(empty_api, 2)
+    character = _with_identity(empty_api, 2)
     corpus = _child(character["root"], "corpus")["node_id"]
     _uploaded(empty_api, corpus, "extra.webp")
 
@@ -1192,7 +955,7 @@ def test_a_character_with_no_files_counts_zero(empty_api):
     """The reading that made the bug invisible, asserted so it stays honest."""
     _create(empty_api)
     listed = empty_api.get("/api/characters").get_json()
-    assert listed[0]["counts"] == {"references": 0, "files": 0}
+    assert listed[0]["counts"] == {"default": 0, "files": 0}
 
 
 def test_the_listing_filters_on_slug_and_display_name(empty_api):

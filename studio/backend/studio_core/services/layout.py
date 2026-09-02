@@ -20,10 +20,12 @@ wrong on three counts, and the third is the one that keeps mattering:
 
 **What replaced the map is that pools stopped being structural.** `reference/`
 used to be load-bearing because reference-ness was *inferred from the path*. It
-is a `CHAR#<id>` / `REF#<node>` row now, so an image is identity because a row
-says so and **not because of which folder it sits in**. `corpus/`, `seed/` and
-`archive/` were never anything but folders with conventions attached, and they
-are now exactly that.
+became a `CHAR#`/`REF#` row, and is now a **tag on the file**: an image is
+identity because it carries `default`, and what it shows is `face` or `body`
+beside it. Neither the folder nor a row says so, which means a move, a copy or a
+rename cannot change what a picture is. `corpus/`, `seed/` and `archive/` were
+never anything but folders with conventions attached, and they are now exactly
+that.
 
 ## Resolution is by name, at write time, and self-healing
 
