@@ -1,4 +1,4 @@
-"""The reference spec: how a turnaround's prompts are written, as data.
+"""The template library: how a prompt is written, as data.
 
 It was `domain/templates/reference_angles.yaml` in the pipeline package, which
 meant a wording change was a code change, a review and a release — for prose
@@ -10,12 +10,17 @@ That is the same argument `POST /api/prompt` already won one tier down for video
 prompts, so this is the same answer: the words live in the catalog, both halves
 of studio read them from here, and there is one of them.
 
-**Blocks and angles are separate rows on purpose.** A block is shared prose an
-angle template cites by name; an angle is one orientation's template plus the
-`description` and `tags` that `add-refs --from-run` writes onto a promoted
-image. Editing one of either is a single row write, so two people editing
-different angles do not overwrite each other and a broken edit breaks one angle
-rather than all fourteen.
+**Blocks and templates are separate rows on purpose.** A block is shared prose a
+template cites by name; a template is a prompt plus the `description` and `tags`
+a person starts from when the image it makes becomes identity. Editing either is
+a single row write, so two people editing two templates do not overwrite each
+other and a broken edit breaks one rather than all fourteen.
+
+**These were reference ANGLES**, and the narrowing was the problem: they held one
+orientation of one character's standard set, they carried a `group` that had to
+be `face` or `body`, and only a turnaround could use one. A template is a prompt
+a person wrote, picked for a run — which is what every one of those angles
+already was, with a fourteen-at-a-time fan-out on top of it.
 
 Hard rule #2 is untouched by everything here. This is what a payload would SAY;
 nothing on these routes creates a run, and the approval gate is still on the run
@@ -34,20 +39,15 @@ from studio_core.services import catalog
 
 logger = logging.getLogger(__name__)
 
-bp = Blueprint("reference_spec", __name__, url_prefix="/api")
-
-#: The groups an angle may belong to. The same two the turnaround shoots in, and
-#: the reason this is checked at all is that `group` selects which angles
-#: `--group` renders — a typo produces an angle nothing can ever shoot.
-GROUPS = ("face", "body")
+bp = Blueprint("templates", __name__, url_prefix="/api")
 
 
-@bp.get("/reference-spec")
-def read_spec():
-    """Every block and every angle, in shooting order."""
+@bp.get("/templates")
+def read_templates():
+    """Every block and every template, by name."""
     held = support.memberships()
     support.member_of(g.library, held)
-    return jsonify(catalog.reference_spec(g.library)), 200
+    return jsonify(catalog.templates(g.library)), 200
 
 
 #: What a block may be called. The same rule a Python identifier follows,
@@ -55,7 +55,7 @@ def read_spec():
 BLOCK_NAME = re.compile(r"[a-z_][a-z0-9_]*")
 
 
-@bp.patch("/reference-spec/blocks/<name>")
+@bp.patch("/templates/blocks/<name>")
 def put_block(name: str):
     """Write one shared block.
 
@@ -89,26 +89,30 @@ def put_block(name: str):
     return jsonify(catalog.put_spec_block(g.library, name, text)), 200
 
 
-@bp.patch("/reference-spec/angles/<angle_id>")
-def put_angle(angle_id: str):
-    """Write one angle: its group, its prompt template, and how it is described."""
+@bp.patch("/templates/<template_id>")
+def put_template(template_id: str):
+    """Write one template: its name, its prompt, and how its output is described.
+
+    **`group` is not a field any more.** It had to be `face` or `body`, because
+    it selected which angles a `--group` turnaround rendered and it chose the
+    variant of `build` and `must` the fill used. Nothing shoots a set, and the
+    variant is named in the prompt — `{character.1.build.face}` — so the column
+    was a second place to say something the template already says.
+    """
     body = support.body()
     held = support.memberships()
     support.member_of(g.library, held)
 
-    if "#" in angle_id:
-        raise ValidationError("an angle id may not contain '#'")
-    group = body.get("group")
-    if group not in GROUPS:
-        raise ValidationError(f"group must be one of {list(GROUPS)}")
+    if "#" in template_id:
+        raise ValidationError("a template id may not contain '#'")
     prompt = body.get("prompt")
     if not isinstance(prompt, str) or not prompt.strip():
         raise ValidationError("prompt is required")
     # `description` and `tags` are not optional, and that is deliberate: they are
-    # what `add-refs --from-run` writes onto a promoted image, so an angle
-    # missing them promotes undescribed — which is the state the described index
-    # exists to prevent, and one nobody notices until a selection by tag comes
-    # back short.
+    # what a promotion starts from when the image this makes becomes identity, so
+    # a template missing them promotes undescribed — and an undescribed image is
+    # invisible to whoever picks a set, which nobody notices until a selection by
+    # tag comes back short.
     description = body.get("description")
     if not isinstance(description, str) or not description.strip():
         raise ValidationError("description is required")
@@ -117,18 +121,18 @@ def put_angle(angle_id: str):
             isinstance(tag, str) and tag for tag in tags):
         raise ValidationError("tags must be a non-empty list of strings")
 
-    return jsonify(catalog.put_spec_angle(g.library, angle_id, body)), 200
+    return jsonify(catalog.put_template(g.library, template_id, body)), 200
 
 
-@bp.delete("/reference-spec/angles/<angle_id>")
-def delete_angle(angle_id: str):
+@bp.delete("/templates/<template_id>")
+def delete_template(template_id: str):
     held = support.memberships()
     support.member_of(g.library, held)
-    catalog.delete_spec_angle(g.library, angle_id)
-    return jsonify({"id": angle_id, "deleted": True}), 200
+    catalog.delete_template(g.library, template_id)
+    return jsonify({"id": template_id, "deleted": True}), 200
 
 
-@bp.delete("/reference-spec/blocks/<name>")
+@bp.delete("/templates/blocks/<name>")
 def delete_block(name: str):
     """Drop a block.
 

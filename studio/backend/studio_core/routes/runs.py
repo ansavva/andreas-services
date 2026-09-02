@@ -75,7 +75,8 @@ from studio_core.errors import (
 )
 from studio_core.routes import projects as project_routes
 from studio_core.routes import support
-from studio_core.services import catalog, generate, layout, manage, reference
+from studio_core.services import catalog, generate, layout, manage
+from studio_core.services import template as templating
 
 logger = logging.getLogger(__name__)
 
@@ -931,8 +932,8 @@ def _expanded(plan: dict, record: dict) -> dict:
         return plan
     if not isinstance(template, str):
         raise ValidationError("plan.template must be a string")
-    blocks = catalog.reference_spec(record["lib"])["blocks"]
-    return {**plan, "prompt": reference.expand_cast(template, _profiles(record), blocks)}
+    blocks = catalog.templates(record["lib"])["blocks"]
+    return {**plan, "prompt": templating.expand(template, _profiles(record), blocks)}
 
 
 @bp.post("/runs/<run_id>/plan/preview")
@@ -951,8 +952,8 @@ def preview_plan(run_id: str):
     template = body.get("template")
     if not isinstance(template, str):
         raise ValidationError("template must be a string")
-    blocks = catalog.reference_spec(record["lib"])["blocks"]
-    prompt, spans = reference.expand_cast_parts(template, _profiles(record), blocks)
+    blocks = catalog.templates(record["lib"])["blocks"]
+    prompt, spans = templating.expand_parts(template, _profiles(record), blocks)
     # The spans say WHERE each citation landed. An expanded prompt is a wall of
     # prose in which nothing marks which words came from which citation, and
     # that is the one question a reader of it has.

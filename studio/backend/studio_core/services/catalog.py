@@ -3389,7 +3389,7 @@ def put_sends(run_id: str, entries: list[dict]) -> list[dict]:
 
 SPEC_PREFIX = "SPEC#"
 BLOCK_PREFIX = f"{SPEC_PREFIX}BLOCK#"
-ANGLE_PREFIX = f"{SPEC_PREFIX}ANGLE#"
+TEMPLATE_PREFIX = f"{SPEC_PREFIX}TEMPLATE#"
 
 #: What an angle row carries besides its template. `description` and `tags` are
 #: read at PROMOTION rather than at render — `add-refs --from-run` writes them
@@ -3401,37 +3401,39 @@ ANGLE_PREFIX = f"{SPEC_PREFIX}ANGLE#"
 #: production renders were compared and not one had bound a plate. The picture
 #: is still the clearest statement of what an orientation IS, so it survives as
 #: a diagram, on a field that cannot reach a payload.
-ANGLE_FIELDS = ("group", "prompt", "description", "tags", "illustration")
+TEMPLATE_FIELDS = ("name", "prompt", "description", "tags", "illustration")
 
 
-def reference_spec(lib: str) -> dict:
-    """The whole spec: `{"blocks": {name: text}, "angles": [angle, ...]}`.
+def templates(lib: str) -> dict:
+    """The whole library: `{"blocks": {name: text}, "templates": [template, ...]}`.
 
     One query. Blocks come back as a mapping because that is what a template
-    fills from, and angles as a list because their ORDER is the order a
-    turnaround shoots in — the face turn and then the body turn, each going
-    round the same way.
+    fills from, and templates as a list, sorted by name.
+
+    **There is no `order` any more.** It existed because these were reference
+    ANGLES and their order was the order a turnaround shot them in — the face
+    turn and then the body turn, each going round the same way. Nothing shoots a
+    set now: a template is picked for one run, so the only order that matters is
+    the one a person reads a list in, and that is alphabetical.
     """
     items = _query(
         TableName=config.catalog_table(),
         KeyConditionExpression="pk = :pk AND begins_with(sk, :spec)",
         ExpressionAttributeValues={":pk": {"S": _lib_pk(lib)}, ":spec": {"S": SPEC_PREFIX}},
     )
-    blocks, angles = {}, []
+    blocks, found = {}, []
     for item in items:
         record = _entity(item)
         sk = item["sk"]["S"]
         if sk.startswith(BLOCK_PREFIX):
             blocks[sk.removeprefix(BLOCK_PREFIX)] = record.get("text") or ""
-        else:
-            angles.append({"id": sk.removeprefix(ANGLE_PREFIX),
-                           **{k: record.get(k) for k in ANGLE_FIELDS if record.get(k) is not None},
-                           "order": record.get("order")})
-    # `order` is an attribute, gapped by 1000, exactly as a reference's is — so an
-    # angle can be moved without renumbering its neighbours. Ties fall back to the
-    # id so the list is stable rather than arbitrary.
-    angles.sort(key=lambda a: (a.get("order") if a.get("order") is not None else 0, a["id"]))
-    return {"blocks": blocks, "angles": angles}
+        elif sk.startswith(TEMPLATE_PREFIX):
+            found.append({
+                "id": sk.removeprefix(TEMPLATE_PREFIX),
+                **{k: record.get(k) for k in TEMPLATE_FIELDS if record.get(k) is not None},
+            })
+    found.sort(key=lambda entry: (entry.get("name") or entry["id"]).lower())
+    return {"blocks": blocks, "templates": found}
 
 
 def put_spec_block(lib: str, name: str, text: str) -> dict:
@@ -3441,22 +3443,21 @@ def put_spec_block(lib: str, name: str, text: str) -> dict:
     return record
 
 
-def put_spec_angle(lib: str, angle_id: str, fields: dict) -> dict:
-    """Write one angle. Unknown keys are dropped rather than stored.
+def put_template(lib: str, template_id: str, fields: dict) -> dict:
+    """Write one template. Unknown keys are dropped rather than stored.
 
-    Dropping rather than refusing: a caller that round-trips `reference_spec`
-    hands back `id` and whatever the read added, and rejecting those would make
-    the obvious edit-then-save flow fail on fields it produced itself.
+    Dropping rather than refusing: a caller that round-trips `templates` hands
+    back `id` and whatever the read added, and rejecting those would make the
+    obvious edit-then-save flow fail on fields it produced itself.
     """
-    record = {k: v for k, v in fields.items() if k in ANGLE_FIELDS}
-    record["order"] = fields.get("order")
+    record = {k: v for k, v in fields.items() if k in TEMPLATE_FIELDS}
     record["updated"] = _now()
-    _write([(_put(_lib_pk(lib), f"{ANGLE_PREFIX}{angle_id}", record), None)])
-    return {"id": angle_id, **record}
+    _write([(_put(_lib_pk(lib), f"{TEMPLATE_PREFIX}{template_id}", record), None)])
+    return {"id": template_id, **record}
 
 
-def delete_spec_angle(lib: str, angle_id: str) -> None:
-    _write([(_delete(_lib_pk(lib), f"{ANGLE_PREFIX}{angle_id}"), None)])
+def delete_template(lib: str, template_id: str) -> None:
+    _write([(_delete(_lib_pk(lib), f"{TEMPLATE_PREFIX}{template_id}"), None)])
 
 
 def delete_spec_block(lib: str, name: str) -> None:
