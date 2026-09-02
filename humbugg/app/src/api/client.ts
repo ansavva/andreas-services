@@ -63,6 +63,29 @@ async function request<T>(path: string, token: string, init: RequestInit = {}): 
   return response.json() as Promise<T>;
 }
 
+/**
+ * A signed-out GET carrying an invite secret.
+ *
+ * Separate from `request` because that one demands an access token, and the whole point of an
+ * invitation preview is that it is read by somebody who does not have one yet. The secret goes in a
+ * header rather than the URL: `X-Humbugg-Invite` is not written to an access log, and a query string
+ * is.
+ */
+async function anonymous<T>(path: string, inviteToken: string): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: { 'X-Humbugg-Invite': inviteToken },
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new ApiError(
+      response.status,
+      body?.error?.code ?? 'request_failed',
+      body?.error?.message ?? 'This invitation is invalid or has expired.',
+    );
+  }
+  return response.json() as Promise<T>;
+}
+
 const json = (method: string, data?: unknown): RequestInit => ({
   method,
   body: data === undefined ? undefined : JSON.stringify(data),
@@ -121,16 +144,18 @@ export const api = {
   removeMember: (token: string, id: string, memberId: string) =>
     request<void>(`/groups/${id}/members/${memberId}`, token, json('DELETE')),
   updateCustomization: (token: string, id: string, data: Record<string, unknown>) => request<GroupDetail>(`/groups/${id}/customization`, token, json('PUT', data)),
-  getInvitation: async (id: string, invite_token: string) => {
-    const response = await fetch(`/api/groups/${id}/invitation?invite_token=${encodeURIComponent(invite_token)}`);
-    if (!response.ok) throw new Error('This invitation is invalid or has expired.');
-    return response.json() as Promise<InvitationPreview>;
-  },
-  getManagedInvitation: async (id: string, invitationId: string, token: string) => {
-    const response = await fetch(`/api/groups/${id}/invitations/${invitationId}/preview?token=${encodeURIComponent(token)}`);
-    if (!response.ok) throw new Error('This invitation is invalid or has expired.');
-    return response.json() as Promise<InvitationPreview>;
-  },
+  // Both previews are signed OUT — somebody deciding whether to join does not have an account yet —
+  // and both carry the invite secret in a header (#134).
+  //
+  // They used to `fetch('/api/…')` with the secret in the query string, and both halves of that were
+  // wrong. The relative path assumed the app was served same-origin behind the marketing
+  // distribution, which stopped being true when it moved to app.humbugg.com — so the request hit the
+  // SPA fallback, got index.html back and threw on `response.json()`. And a query string is logged
+  // by API Gateway and CloudFront, which is the exact leak the URL fragment exists to avoid.
+  getInvitation: (id: string, inviteToken: string) =>
+    anonymous<InvitationPreview>(`/groups/${id}/invitation`, inviteToken),
+  getManagedInvitation: (id: string, invitationId: string, token: string) =>
+    anonymous<InvitationPreview>(`/groups/${id}/invitations/${invitationId}/preview`, token),
   deleteGroup: (token: string, id: string) => request<void>(`/groups/${id}`, token, json('DELETE')),
   rotateInvite: (token: string, id: string) => request<{ invite_url: string }>(`/groups/${id}/invite`, token, json('POST')),
   listWishes: (token: string, id: string) => request<Wish[]>(`/groups/${id}/members/me/wishes`, token),

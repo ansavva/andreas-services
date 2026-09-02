@@ -1015,6 +1015,58 @@ public sealed class GroupServiceSecurityTests
         Assert.Equal(403, error.StatusCode);
     }
 
+    // ── Free invitation joining (#134) ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// A would-be joiner is told the exchange is closed, not told to reset a draw.
+    /// </summary>
+    /// <remarks>
+    /// `RequireOpen`'s message is written for an organizer changing the roster — "reset the draw
+    /// before changing the roster" — and a person following an invitation link has no power to reset
+    /// anything. The refusal is the same; what they are told about it is not.
+    /// </remarks>
+    [Fact]
+    public async Task JoiningAfterTheDrawSaysTheExchangeIsClosed()
+    {
+        var fixture = new Fixture(member: Fixture.Member("actor", organizer: true), exclusions: []);
+        fixture.Members.Items.Add(Fixture.Member("other", organizer: false));
+        await fixture.Subject.DrawAsync("group", TestContext.Current.CancellationToken);
+
+        // A caller who is NOT a member — the newcomer this refusal is written for.
+        var newcomer = new Fixture(
+            member: Fixture.Member("actor", organizer: true), exclusions: [], callerUserId: "newcomer");
+        newcomer.Groups.Draw();
+
+        var error = await Assert.ThrowsAsync<ApiException>(() => newcomer.Subject.JoinAsync(
+            "group", new JoinGroupRequest("anything"), TestContext.Current.CancellationToken));
+
+        Assert.Equal(409, error.StatusCode);
+        Assert.Contains("closed to new members", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("reset", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Somebody already in the exchange following their link again lands back on it.
+    /// </summary>
+    /// <remarks>
+    /// Checked before the draw check on purpose: a member re-opening an old invitation after the
+    /// draw is not joining anything, and refusing them would lock an existing participant out of
+    /// their own exchange over a stale bookmark.
+    /// </remarks>
+    [Fact]
+    public async Task AnExistingMemberFollowingTheirLinkAgainIsNotRefused()
+    {
+        var fixture = new Fixture(member: Fixture.Member("actor", organizer: true), exclusions: []);
+        fixture.Members.Items.Add(Fixture.Member("other", organizer: false));
+        await fixture.Subject.DrawAsync("group", TestContext.Current.CancellationToken);
+
+        // The caller IS "actor", who is already a member — even with no secret at all.
+        var detail = await fixture.Subject.JoinAsync(
+            "group", new JoinGroupRequest(null), TestContext.Current.CancellationToken);
+
+        Assert.Equal("group", detail.GroupId);
+    }
+
     private sealed class FakeUser(string userId = "user") : ICurrentUser { public string UserId => userId; }
     private sealed class FakeProfiles : IProfileRepository
     {
@@ -1044,6 +1096,13 @@ public sealed class GroupServiceSecurityTests
         }
         /// <summary>The exclusions the last update wrote, for the pruning tests.</summary>
         public IReadOnlyList<string[]>? LastExclusions { get; private set; }
+
+        /// <summary>Marks the exchange drawn without going through the matcher.</summary>
+        public void Draw()
+        {
+            group = group with { Status = GroupStatus.Drawn };
+            draw = new(group.GroupId, "draw-1", new Dictionary<string, string>(), "now", "user");
+        }
 
         /// <summary>Simulates somebody else writing: the row's `updated_at` moves on.</summary>
         public void Touch() => group = group with { UpdatedAt = $"touched-{++touches}" };

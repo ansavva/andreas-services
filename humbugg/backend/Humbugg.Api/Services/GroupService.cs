@@ -465,9 +465,17 @@ internal sealed class GroupService(
 
     public async Task<GroupDetail> JoinAsync(string groupId, JoinGroupRequest request, CancellationToken cancellationToken = default)
     {
-        var group = await RequireGroupAsync(groupId, cancellationToken); RequireOpen(group);
+        var group = await RequireGroupAsync(groupId, cancellationToken);
+        // Somebody already in the exchange following their link again is not an error — they land
+        // back on the exchange. Checked BEFORE the draw check, so a member returning to an invite
+        // after the draw is let through to the exchange they are already part of.
         if (await memberships.GetByUserAndGroupAsync(user.UserId, groupId, cancellationToken) is not null)
             return await GetAsync(groupId, cancellationToken);
+        // `RequireOpen`'s message is written for an organizer changing the roster and tells a
+        // would-be joiner to reset a draw they have no power over. The refusal is the same; what
+        // they are told about it is not.
+        if (group.Status != GroupStatus.Open)
+            throw ApiException.Conflict("This exchange has already been drawn, so it is closed to new members.");
         var profile = await profiles.GetAsync(user.UserId, cancellationToken)
             ?? throw ApiException.Conflict("Complete your profile before joining a group.");
         var inviteToken = Validation.InviteToken(request.InviteToken);

@@ -26,7 +26,7 @@ this document specifies the invariant/limit that the feature must ship with.
 
 | Asset | Sensitivity | Where it lives |
 |---|---|---|
-| Invite secret (32 random bytes, base64url) | High — grants group join | Returned once to organizer; only its SHA-256 hash is stored (`humbugg-prod-groups.invite_hash`) |
+| Invite secret (32 random bytes, base64url) | High — grants group join | Returned once to organizer; only its SHA-256 hash is stored (`humbugg-prod-groups.invite_hash`). Travels in the link's **fragment** and, to the API, in the `X-Humbugg-Invite` **header** — never a query string, which API Gateway and CloudFront both write to an access log |
 | Assignment (giver → recipient map) | High — spoils the exchange | `humbugg-prod-draws`, server-side only |
 | Wishlist / avoidances / mailing address | High — personal data | `humbugg-prod-groupmembers`, private to the member |
 | Purchase claims (planned / bought) | High — spoils the exchange, and implies the assignment | `humbugg-prod-groupmembers`, on the **claimant's** row, private to them |
