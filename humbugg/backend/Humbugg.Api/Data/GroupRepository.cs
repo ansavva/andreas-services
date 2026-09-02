@@ -8,7 +8,7 @@ internal interface IGroupRepository
 {
     Task<GroupRecord?> GetAsync(string groupId, CancellationToken cancellationToken = default);
     Task<GroupRecord> CreateAsync(GroupRecord group, CancellationToken cancellationToken = default);
-    Task<GroupRecord> UpdateAsync(string groupId, IReadOnlyDictionary<string, AttributeValue> fields, GroupStatus? expectedStatus = null, CancellationToken cancellationToken = default);
+    Task<GroupRecord> UpdateAsync(string groupId, IReadOnlyDictionary<string, AttributeValue> fields, GroupStatus? expectedStatus = null, string? expectedUpdatedAt = null, CancellationToken cancellationToken = default);
     Task DeleteAsync(string groupId, CancellationToken cancellationToken = default);
     Task CreateDrawAsync(string groupId, IReadOnlyDictionary<string, string> assignments, string actorUserId, CancellationToken cancellationToken = default);
     Task<DrawRecord?> GetDrawAsync(string groupId, CancellationToken cancellationToken = default);
@@ -51,7 +51,7 @@ internal sealed class GroupRepository(IAmazonDynamoDB db, HumbuggSettings settin
         return group;
     }
 
-    public async Task<GroupRecord> UpdateAsync(string groupId, IReadOnlyDictionary<string, AttributeValue> fields, GroupStatus? expectedStatus = null, CancellationToken cancellationToken = default)
+    public async Task<GroupRecord> UpdateAsync(string groupId, IReadOnlyDictionary<string, AttributeValue> fields, GroupStatus? expectedStatus = null, string? expectedUpdatedAt = null, CancellationToken cancellationToken = default)
     {
         var names = new Dictionary<string, string>();
         var values = new Dictionary<string, AttributeValue>();
@@ -83,6 +83,16 @@ internal sealed class GroupRepository(IAmazonDynamoDB db, HumbuggSettings settin
             names["#status"] = "status";
             values[":expected"] = DynamoValues.S(Status(expectedStatus.Value));
             request.ConditionExpression += " AND #status = :expected";
+        }
+        // Optimistic concurrency, on the timestamp the row already carries rather than a version
+        // attribute nobody would remember to bump. The caller sends back the `updated_at` it read;
+        // if somebody else has written since, the condition fails and the caller is told to reload
+        // instead of silently flattening the other edit. Absent means "I did not read first", which
+        // is correct for the internal callers that set one field from a value they just computed.
+        if (expectedUpdatedAt is not null)
+        {
+            values[":expectedUpdatedAt"] = DynamoValues.S(expectedUpdatedAt);
+            request.ConditionExpression += " AND #updated = :expectedUpdatedAt";
         }
         var response = await db.UpdateItemAsync(request, cancellationToken);
         return Read(response.Attributes);
@@ -319,7 +329,9 @@ internal sealed class GroupRepository(IAmazonDynamoDB db, HumbuggSettings settin
         ["spending_limit_cents"] = group.SpendingLimitCents is null ? new AttributeValue { NULL = true } : DynamoValues.N(group.SpendingLimitCents.Value)
         ,
         ["customization"] = CustomizationValue(group.Customization),
-        ["requires_address"] = DynamoValues.B(group.RequiresAddress)
+        ["requires_address"] = DynamoValues.B(group.RequiresAddress),
+        // The group's own instructions (#135), not the customization's — see GroupRecord.
+        ["instructions"] = DynamoValues.S(group.Instructions)
     };
 
     private static GroupRecord Read(IReadOnlyDictionary<string, AttributeValue> item) => new(
@@ -328,7 +340,7 @@ internal sealed class GroupRepository(IAmazonDynamoDB db, HumbuggSettings settin
         item.String("currency", "USD"), ReadPlan(item.String("plan")), EmptyToNull(item.String("entitlement_id")),
         ReadStatus(item.String("status")), item.String("invite_hash"), item.Exclusions(),
         item.String("created_at"), item.String("updated_at"), ReadCustomization(item),
-        item.Bool("requires_address"));
+        item.Bool("requires_address"), item.String("instructions"));
     private static AttributeValue CustomizationValue(ExchangeCustomization? value) => value is null
         ? new AttributeValue { NULL = true }
         : new AttributeValue

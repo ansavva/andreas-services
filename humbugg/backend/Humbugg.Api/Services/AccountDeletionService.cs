@@ -151,7 +151,7 @@ internal sealed class AccountDeletionService(
         {
             await groups.UpdateAsync(group.GroupId,
                 new Dictionary<string, AttributeValue> { ["exclusions"] = DynamoValues.ExclusionsValue(remaining) },
-                GroupStatus.Open, cancellationToken);
+                GroupStatus.Open, cancellationToken: cancellationToken);
         }
         catch (ConditionalCheckFailedException)
         {

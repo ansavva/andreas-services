@@ -78,6 +78,15 @@ public sealed record Membership(
     bool IsOwner = false,
     bool IsReady = false);
 
+/// <summary>
+/// Plus branding for the INVITATION: what somebody sees while deciding whether to join.
+/// </summary>
+/// <remarks>
+/// <see cref="Instructions"/> is not the same field as <c>GroupRecord.Instructions</c> and merging
+/// them would be wrong in both directions. This one is invitation copy for people who are not
+/// members yet, Plus-gated alongside the colours and the image it is written to sit with; that one
+/// is how the exchange works, Free, and read by people who have already joined.
+/// </remarks>
 public sealed record ExchangeCustomization(
     string Greeting = "",
     string Instructions = "",
@@ -136,7 +145,9 @@ public sealed record GroupDetail(
     IReadOnlyList<Membership> Members,
     string? InviteUrl = null,
     ExchangeCustomization? Customization = null,
-    bool RequiresAddress = false);
+    bool RequiresAddress = false,
+    /// <summary>How this exchange works, shown to people who have joined. See GroupRecord.</summary>
+    string Instructions = "");
 
 // ─── Organizer readiness (#133) ─────────────────────────────────────────────────────────────────
 //
@@ -481,7 +492,12 @@ public sealed record UpdateGroupRequest(
     string? EventDate,
     string? SignupDeadline,
     decimal? SpendingLimit,
-    bool? RequiresAddress = null);
+    bool? RequiresAddress = null,
+    string? Instructions = null,
+    // The `updated_at` the client read before editing. Sent back so a save that would flatten
+    // somebody else's change is refused instead. Optional: a caller flipping one switch from a value
+    // it just computed has nothing to conflict with.
+    string? ExpectedUpdatedAt = null);
 public sealed record UpdateCustomizationRequest(
     string? Greeting, string? Instructions, string? PrimaryColor, string? AccentColor, string? Image);
 public sealed record JoinGroupRequest(string? InviteToken);
@@ -546,7 +562,15 @@ internal sealed record GroupRecord(
     string CreatedAt,
     string UpdatedAt,
     ExchangeCustomization? Customization = null,
-    bool RequiresAddress = false);
+    bool RequiresAddress = false,
+    // How this exchange works, in the organizer's own words, shown to people who have JOINED (#135).
+    //
+    // Distinct from ExchangeCustomization.Instructions, and the two must not be merged however
+    // similar the names look. That one is INVITATION copy — read by somebody deciding whether to
+    // join — and it is Plus-gated because it sits alongside the branding it is written for. This one
+    // is Free and ungated, because an exchange that cannot tell its own participants where to bring
+    // the gift does not work at any price.
+    string Instructions = "");
 internal sealed record MembershipRecord(
     string MemberId,
     string GroupId,

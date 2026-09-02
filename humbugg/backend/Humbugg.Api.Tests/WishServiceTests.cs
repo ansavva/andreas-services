@@ -301,7 +301,7 @@ public sealed class WishServiceTests
                 "group", "owner", "Exchange", "", null, null, null, currency,
                 PlanCode.Free, null, GroupStatus.Open, "hash", [], "now", "now"));
         public Task<GroupRecord> CreateAsync(GroupRecord record, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<GroupRecord> UpdateAsync(string groupId, IReadOnlyDictionary<string, Amazon.DynamoDBv2.Model.AttributeValue> fields, GroupStatus? expected, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<GroupRecord> UpdateAsync(string groupId, IReadOnlyDictionary<string, Amazon.DynamoDBv2.Model.AttributeValue> fields, GroupStatus? expected, string? expectedUpdatedAt = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task DeleteAsync(string groupId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task CreateDrawAsync(string groupId, IReadOnlyDictionary<string, string> assignments, string createdBy, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<DrawRecord?> GetDrawAsync(string groupId, CancellationToken cancellationToken = default) => Task.FromResult<DrawRecord?>(null);

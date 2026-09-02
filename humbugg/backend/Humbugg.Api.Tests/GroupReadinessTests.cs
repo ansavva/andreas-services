@@ -491,7 +491,7 @@ public sealed class GroupReadinessTests
 
         public Task<GroupRecord?> GetAsync(string groupId, CancellationToken cancellationToken = default) =>
             Task.FromResult<GroupRecord?>(group);
-        public Task<GroupRecord> UpdateAsync(string groupId, IReadOnlyDictionary<string, AttributeValue> fields, GroupStatus? expectedStatus = null, CancellationToken cancellationToken = default) =>
+        public Task<GroupRecord> UpdateAsync(string groupId, IReadOnlyDictionary<string, AttributeValue> fields, GroupStatus? expectedStatus = null, string? expectedUpdatedAt = null, CancellationToken cancellationToken = default) =>
             Task.FromResult(group);
         public Task CreateDrawAsync(string groupId, IReadOnlyDictionary<string, string> assignments, string actorUserId, CancellationToken cancellationToken = default)
         {

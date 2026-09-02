@@ -112,6 +112,13 @@ export interface GroupSummary {
 
 export interface GroupDetail extends GroupSummary {
   description: string;
+  /**
+   * How the exchange works, in the organizer's own words, for people who have joined (#135).
+   *
+   * NOT `customization.instructions`, which is invitation copy shown to people deciding whether to
+   * join and is Plus-gated. Different audiences, so both exist; merging them is the mistake.
+   */
+  instructions?: string;
   signup_deadline?: string | null;
   exclusions: ExclusionPair[];
   members: Membership[];

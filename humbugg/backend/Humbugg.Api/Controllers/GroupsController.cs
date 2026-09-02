@@ -67,6 +67,16 @@ public sealed class GroupsController(IGroupService groups) : ControllerBase
     public Task<Membership> ClearPrivateData(string groupId, CancellationToken cancellationToken) =>
         groups.ClearMyPrivateDataAsync(groupId, cancellationToken);
 
+    // The organizer removes somebody, before the draw (#135). Under `members/{memberId}` rather than
+    // `members/me`, which is the participant's own way out — the two are different actions with
+    // different authorization and are deliberately different routes.
+    [HttpDelete("{groupId}/members/{memberId}")]
+    public async Task<IActionResult> RemoveMember(string groupId, string memberId, CancellationToken cancellationToken)
+    {
+        await groups.RemoveMemberAsync(groupId, memberId, cancellationToken);
+        return NoContent();
+    }
+
     [HttpPatch("{groupId}/members/{memberId}/participation")]
     public Task<Membership> Participation(string groupId, string memberId, [FromBody] ParticipationRequest request, CancellationToken cancellationToken) =>
         groups.UpdateParticipationAsync(groupId, memberId, request, cancellationToken);

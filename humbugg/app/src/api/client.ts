@@ -109,7 +109,12 @@ export const api = {
   // same Checkout Session rather than opening a second payable one.
   createPlusCheckout: (token: string, id: string) =>
     request<CheckoutResponse>(`/groups/${id}/billing/plus/checkout`, token, json('POST')),
+  // `expected_updated_at` is optimistic concurrency (#135): send back the `updated_at` you read and
+  // a save that would flatten somebody else's edit is refused instead. Omit it for a one-field flip
+  // computed from a value you already hold — there is nothing to conflict with.
   updateGroup: (token: string, id: string, data: Record<string, unknown>) => request<GroupDetail>(`/groups/${id}`, token, json('PATCH', data)),
+  removeMember: (token: string, id: string, memberId: string) =>
+    request<void>(`/groups/${id}/members/${memberId}`, token, json('DELETE')),
   updateCustomization: (token: string, id: string, data: Record<string, unknown>) => request<GroupDetail>(`/groups/${id}/customization`, token, json('PUT', data)),
   getInvitation: async (id: string, invite_token: string) => {
     const response = await fetch(`/api/groups/${id}/invitation?invite_token=${encodeURIComponent(invite_token)}`);

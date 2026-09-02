@@ -136,7 +136,7 @@ public sealed class SecurityControlsTests
     private sealed class FakeGroups(GroupRecord group, bool drawn) : IGroupRepository
     {
         public Task<GroupRecord?> GetAsync(string groupId, CancellationToken cancellationToken = default) => Task.FromResult<GroupRecord?>(group);
-        public Task<GroupRecord> UpdateAsync(string groupId, IReadOnlyDictionary<string, AttributeValue> fields, GroupStatus? expectedStatus = null, CancellationToken cancellationToken = default) => Task.FromResult(group);
+        public Task<GroupRecord> UpdateAsync(string groupId, IReadOnlyDictionary<string, AttributeValue> fields, GroupStatus? expectedStatus = null, string? expectedUpdatedAt = null, CancellationToken cancellationToken = default) => Task.FromResult(group);
         public Task<DrawRecord?> GetDrawAsync(string groupId, CancellationToken cancellationToken = default) => Task.FromResult<DrawRecord?>(
             drawn ? new DrawRecord("group", "draw", new Dictionary<string, string> { ["actor"] = "other", ["other"] = "actor" }, "now", "user") : null);
         public Task<GroupRecord> CreateAsync(GroupRecord value, CancellationToken cancellationToken = default) => throw new NotImplementedException();

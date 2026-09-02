@@ -19,7 +19,7 @@ Live at `https://www.humbugg.com` (product app at `app.humbugg.com`, API at `api
 | Milestone | Closed | Open | State |
 |---|---|---|---|
 | Foundation | 13 | 0 | Complete |
-| Free | 7 | 6 | The active milestone |
+| Free | 8 | 5 | The active milestone |
 | Plus | 8 | 1 | Backend complete and deployed; the purchase UI (#141) is **built**, awaiting review |
 | Work | 0 | 10 | Deliberately untouched |
 | Launch | 2 | 11 | Gated on Free |
@@ -169,10 +169,20 @@ degrades *quietly* to signed-out when its pool configuration resolves empty. Par
 
 ## Then, in order
 
-**Finish Free** — #137 is **built**; #134 and #135 are each partly delivered and their issues carry
-a comment recording exactly what exists and what remains, so read that before estimating. #136
-(repeat an exchange) and #138 (mobile and assistive-technology verification) close the milestone.
-#129 is deliberately last — see the critical path above.
+**Finish Free** — #135 and #137 are **built**; #134 is partly delivered and its issue carries a
+comment recording exactly what exists and what remains, so read that before estimating. #136 (repeat
+an exchange) and #138 (mobile and assistive-technology verification) close the milestone. #129 is
+deliberately last — see the critical path above.
+
+**#135's headline was not what its issue said.** The comment on it listed the edit endpoint as
+already built, and it is — but nothing called it: `api.updateGroup` was invoked from exactly one
+place in the whole app, the readiness dashboard's address switch. So an exchange's name, dates and
+spending limit were set at creation and then unchangeable, through an API that had always accepted
+the change. **When an issue says a capability exists, check the caller, not the endpoint.**
+
+It also carries the concurrency answer the rest of the service will want: `PATCH /groups/{id}`
+accepts the `updated_at` the client read and refuses a save that would flatten somebody else's, on
+the timestamp the row already has rather than a version attribute somebody would forget to bump.
 
 **#137 turned on a capability the whole service was missing: a verified email address for any
 account.** Humbugg stores none of its own, and until now the only reachable address was on an
@@ -272,9 +282,12 @@ and `skipped` is not a failure. A dropped infra deploy therefore surfaces two me
 `humbugg-prod.yaml` with `run_infra: true` and check the tables and Lambdas exist.*
 
 **`aria-label` on a control inside `FieldLabel` has no effect.** `FieldLabel` wraps
-`DsField.Root`, which supplies the accessible name via `aria-labelledby` from the label text. Put
-"(optional)" in the `hint` prop, not the label string — the name should read "Rough price, optional".
-`group.tsx` and `settings.tsx` still pass ineffective `aria-label`s; harmless, but misleading.
+`DsField.Root`, which supplies the accessible name via `aria-labelledby` from the label text, so an
+`aria-label` on the control inside is silently ignored — and a test that queries by it fails with
+"unable to find an element", naming a label that is right there on screen. Fold "(optional)" into
+the label string, the way `wishlist.tsx` does with "Link (optional)"; that is what the accessible
+name will be. `group.tsx` and `settings.tsx` still pass ineffective `aria-label`s; harmless, but
+misleading, and they are what makes this look like the working pattern.
 
 **A green Expo build proves nothing about which design-system leaf resolved.** Metro considers
 `.web.tsx` then `.tsx` for web and never `.native`; an unconfigured export silently takes the *web*
