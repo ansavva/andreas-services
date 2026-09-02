@@ -128,9 +128,20 @@ export function ObjectPage() {
   }, []);
 
   const items = feed.items;
+  const { exhausted, loadMore } = feed;
   const found = items.findIndex((item) => item.id === nodeId);
   const index = found < 0 ? 0 : found;
-  const current: FileEntry | undefined = items[index];
+
+  /**
+   * The address names a file this feed has not produced — *yet*.
+   *
+   * A recursive context is paged, so page one holding no match means "keep
+   * looking", not "dead link". Until the walk runs out, this screen is still
+   * loading: substituting `items[0]` here is what turns one wrong guess into a
+   * rewritten address and a file nobody asked for on screen.
+   */
+  const searching = found < 0 && nodeId !== "" && !exhausted;
+  const current: FileEntry | undefined = searching ? undefined : items[index];
 
   /**
    * Where "out" goes.
@@ -169,9 +180,16 @@ export function ObjectPage() {
    * The address adopts the file actually on screen.
    *
    * Two cases reach here and they want the same answer. `/o?in=…` is "play this
-   * feed from the start" and carries no id at all until the first page lands. And an id the feed does not hold is a dead link, which
-   * opens on the first file rather than on nothing. Either way the URL has to
-   * name what is being shown, or Back and a copied link both lie.
+   * feed from the start" and carries no id at all until the first page lands.
+   * And an id the *exhausted* feed does not hold is a dead link, which opens on
+   * the first file rather than on nothing. Either way the URL has to name what
+   * is being shown, or Back and a copied link both lie.
+   *
+   * **Exhausted is the load-bearing word**, and leaving it out is the bug this
+   * carries: a paged feed whose first page happens not to hold the file is not a
+   * dead link, and adopting `items[0]` there rewrote the address to a file
+   * nobody clicked. `searching` is that state, and it leaves `current`
+   * undefined, so this cannot fire during it.
    */
   useEffect(() => {
     if (current && current.id !== nodeId) setCurrent(current);
@@ -180,10 +198,14 @@ export function ObjectPage() {
   // Page ahead before the strip runs out, the way the reel did from its scroll
   // position. Only the recursive feed pages at all; the rest are exhausted on
   // arrival and `loadMore` is undefined.
-  const { exhausted, loadMore } = feed;
+  //
+  // `searching` pages for a different reason: the file the address names is
+  // somewhere further into the walk, and every page is one more chance to reach
+  // it. It terminates either way — at the match, or at the end of the branch.
   useEffect(() => {
-    if (!exhausted && index >= items.length - PREFETCH_MARGIN) loadMore?.();
-  }, [exhausted, index, items.length, loadMore]);
+    if (exhausted) return;
+    if (searching || index >= items.length - PREFETCH_MARGIN) loadMore?.();
+  }, [exhausted, index, items.length, loadMore, searching]);
 
   const describe = useCallback(
     async (file: FileEntry, changes: { description?: string | null; tags?: string[] | null }) => {
@@ -268,7 +290,11 @@ export function ObjectPage() {
   if (!current) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-        {feed.loading ? (
+        {/* `searching` as well as `loading`: between two pages of a walk that
+            has not found the file yet, nothing is in flight and the feed is not
+            empty — saying "no images or videos here" there would be a verdict
+            delivered mid-search. */}
+        {feed.loading || searching ? (
           <ApertureSpinner size="lg" label="Loading media" />
         ) : (
           <>

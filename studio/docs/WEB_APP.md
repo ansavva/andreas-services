@@ -837,6 +837,18 @@ that breaks every time the pipeline ships.
   A project draws two browsers, so their view and folder ride in named query keys
   (`view`/`folder`, `runsView`/`runsFolder`) — one key between them would carry a
   folder id from one subtree into the other on a tab switch.
+- **A deep listing addresses its tiles `in=recursive:`, and that is a fix.**
+  `?in=f:<folder>` makes the viewer re-read that folder one level down to find
+  the neighbours, which is right for a readdir and wrong for both listings that
+  search the branch — Media view and the tag filter. A tile in either is usually
+  a file in some *sub*folder, so the feed came back without it and the viewer
+  either said "No images or videos here" or silently opened whatever the folder
+  itself held first. `FolderBrowser` reads `data.depth` — what the server says it
+  did, so it cannot drift from the listing — and hands it to `openFile` /
+  `fileHref`, which both nav implementations encode. Two halves, because either
+  alone still misleads: the viewer also no longer adopts `items[0]` for an id it
+  has not reached, since a paged walk that has not found the file yet is still
+  searching rather than holding a dead link.
 - **There is no "Play reel" button, no Identity tab and no Inputs tab.** All
   three were removed in September 2026, and for the same reason: each was a
   second way of looking at a listing the page already showed. Identity was a

@@ -82,26 +82,41 @@ export function BrowsePage() {
       // The sort rides along into the viewer so its sequence is the order the
       // grid was showing. Anything else means clicking the third tile and
       // arriving somewhere else in the reel.
-      openFile: (file: FileEntry) => {
-        const search = new URLSearchParams({
-          in: sourceParam({ in: "f", id: folder }),
+      //
+      // `deep` says whether the listing was a readdir or a search of the branch,
+      // which decides which of the two the viewer re-reads — see
+      // `BrowserNav.openFile`.
+      openFile: (file: FileEntry, deep = false) => {
+        navigate({
+          pathname: objectPath(file.id),
+          search: viewerSearch(folder, sort, deep),
         });
-        if (sort !== DEFAULT_SORT) search.set("sort", sort);
-        navigate({ pathname: objectPath(file.id), search: search.toString() });
       },
       // The same address `openFile` navigates to, spelled out — an `href` is
       // what makes command-click work, and it has to agree with the handler or
-      // the two gestures land in different places.
-      fileHref: (file: FileEntry) => {
-        const search = new URLSearchParams({
-          in: sourceParam({ in: "f", id: folder }),
-        });
-        if (sort !== DEFAULT_SORT) search.set("sort", sort);
-        return `${objectPath(file.id)}?${search.toString()}`;
-      },
+      // the two gestures land in different places. One builder, so they cannot
+      // disagree.
+      fileHref: (file: FileEntry, deep = false) =>
+        `${objectPath(file.id)}?${viewerSearch(folder, sort, deep)}`,
     }),
     [folder, goToFolder, navigate, sort, setSort],
   );
 
   return <FolderBrowser nav={nav} />;
+}
+
+/**
+ * The viewer's query string: what it is scrolling through, and in what order.
+ *
+ * `recursive:` when the listing that was on screen searched the branch — the
+ * Media view, or a tag filter — because that is the walk holding the file that
+ * was clicked. `f:` is the readdir, and a deep tile addressed with it named a
+ * folder that mostly does not contain it.
+ */
+function viewerSearch(folder: FolderId, sort: SortOrder, deep: boolean): string {
+  const search = new URLSearchParams({
+    in: sourceParam({ in: deep ? "recursive" : "f", id: folder }),
+  });
+  if (sort !== DEFAULT_SORT) search.set("sort", sort);
+  return search.toString();
 }

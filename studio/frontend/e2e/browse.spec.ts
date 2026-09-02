@@ -197,6 +197,42 @@ test("Media shows the whole subtree's pictures, and Folders comes back", async (
   await expect(media).toHaveCount(0);
 });
 
+/**
+ * **A Media tile has to OPEN**, and it did not.
+ *
+ * The listing behind the view searches the branch, so the tile is usually a
+ * file in some subfolder — while the address the tile carried said `in=f:<this
+ * folder>`, which makes the viewer re-read that one folder, one level deep, to
+ * find the neighbours. The file was not in it. What a person got for clicking a
+ * picture was "No images or videos here", and where the folder did hold media
+ * of its own, something else opened instead.
+ *
+ * A deep listing addresses its tiles `in=recursive:` now — the same walk that
+ * produced them. This spec is worth its length because both halves are silent:
+ * the message is a plausible empty state, and the wrong-file case looks like a
+ * click that landed badly.
+ */
+test("a tile in Media opens the file it shows", async ({ page }) => {
+  stubOnly("the captured tree is what puts the media below this folder");
+  await page.goto(`/c/${CHARACTER}?tab=files`);
+
+  await page.getByRole("button", { name: "Media", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /Photos & video/ })).toBeVisible();
+
+  // The context is the branch walk, not the folder — which is the fix, and it
+  // is checked on the href as well as by clicking so a regression names itself.
+  const tile = page.locator('main a[href*="/o/"]').first();
+  await expect(tile).toHaveAttribute("href", /in=recursive/);
+
+  await tile.click();
+  await expect(page).toHaveURL(/\/o\/node-/);
+  // The viewer, on a file: the neighbours strip and the details region only
+  // render once there is something to draw.
+  await expect(page.getByLabel("Neighbours")).toBeVisible();
+  await expect(page.getByRole("region", { name: "File details" })).toBeVisible();
+  await expect(page.getByText("No images or videos here.")).toHaveCount(0);
+});
+
 test("the captured listing still says 49 jpeg and 5 png", async ({ page }) => {
   // **The reason the seed images were normalised at all.** Five of the 54
   // arrived as PNG bytes behind a `.jpg` name, and content type is derived from

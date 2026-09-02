@@ -63,10 +63,14 @@ export function useLocalBrowserNav(rootId: string, param = "folder"): BrowserNav
       // mean the one thing in this app most worth sending someone was the one
       // thing with no link. Back returns to the tab, at the folder it was on —
       // which is the half `?folder=` bought.
-      openFile: (file: FileEntry) =>
-        navigate(objectPath(file.id, { in: "f", id: folder })),
-      fileHref: (file: FileEntry) =>
-        objectPath(file.id, { in: "f", id: folder }),
+      //
+      // `deep` picks which listing the viewer re-reads to find the neighbours —
+      // see `BrowserNav.openFile`. It is the whole fix for a Media tile that
+      // opened onto "No images or videos here".
+      openFile: (file: FileEntry, deep = false) =>
+        navigate(objectPath(file.id, { in: deep ? "recursive" : "f", id: folder })),
+      fileHref: (file: FileEntry, deep = false) =>
+        objectPath(file.id, { in: deep ? "recursive" : "f", id: folder }),
     }),
     [folder, navigate, rootId, setFolderParam, sort],
   );
