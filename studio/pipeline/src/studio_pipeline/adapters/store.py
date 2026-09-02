@@ -75,6 +75,11 @@ from pathlib import Path
 
 from studio_pipeline.adapters import api
 
+#: One page of `GET /api/nodes`. The route caps it at 1,000; asking for the cap
+#: makes an ordinary folder one request, and `_paged` follows the cursor when a
+#: pool is bigger than that rather than stopping at the first page.
+PAGE = 1000
+
 TIMEOUT_SECONDS = 300
 
 
@@ -111,6 +116,39 @@ def resolve(path: str) -> dict:
     return api.get("/api/resolve", path=path.strip("/"))
 
 
+def _listing(**params) -> list[dict]:
+    """One page of `GET /api/nodes`, as the bare list every caller here wants.
+
+    **`under`, where this said `parent`.** The three listing routes became one
+    (`?under=&depth=&kind=&tag=&sort=&cursor=`), so the answer is an object with
+    an `entries` array rather than a bare list, and the order is `newest` unless
+    a caller says otherwise. Every caller in this module documented
+    name-ascending, so that is asked for here rather than left to the default.
+    """
+    return _paged(sort="name", **params)
+
+
+def _paged(**params) -> list[dict]:
+    """Every page of one listing, followed to the end.
+
+    **Followed rather than capped, because a short answer here is silent.** The
+    listing pages now — it did not when it was three endpoints and this one
+    returned a folder whole — so a caller taking the first page of a pool of
+    1,200 would bind the wrong images and nothing would say so. `next_cursor` is
+    null on the last page, which is the only stop condition needed.
+    """
+    found: list[dict] = []
+    cursor = None
+    while True:
+        page = api.get("/api/nodes", limit=PAGE, cursor=cursor, **params)
+        if not isinstance(page, dict):
+            return found
+        found += page.get("entries") or []
+        cursor = page.get("next_cursor")
+        if not cursor:
+            return found
+
+
 def children(path: str) -> list:
     """The direct children of a folder, name-ascending.
 
@@ -119,8 +157,7 @@ def children(path: str) -> list:
     end — walk with `resolve` on the path you actually mean.
     """
     node = resolve(path)
-    listed = api.get("/api/nodes", parent=node["id"])
-    return listed if isinstance(listed, list) else []
+    return _listing(under=node["id"])
 
 
 def children_or_empty(path: str) -> list:
@@ -186,7 +223,7 @@ def files(path: str) -> list[dict]:
     """
     entries = children_or_empty(path)
     return sorted(
-        (entry for entry in entries if entry.get("kind") == "file" and entry.get("name")),
+        (entry for entry in entries if _is_file(entry)),
         key=lambda entry: natural_key(entry["name"]),
     )
 
@@ -426,8 +463,7 @@ def children_of(node_id: str) -> list[dict]:
     positional `[Image1]..[ImageN]` mapping — and a caller wanting folders
     usually wants them alphabetically.
     """
-    listed = api.get("/api/nodes", parent=node_id)
-    return listed if isinstance(listed, list) else []
+    return _listing(under=node_id)
 
 
 def files_of(node_id: str) -> list[dict]:
@@ -439,8 +475,7 @@ def files_of(node_id: str) -> list[dict]:
     name.
     """
     return sorted(
-        (entry for entry in children_of(node_id)
-         if entry.get("kind") == "file" and entry.get("name")),
+        (entry for entry in children_of(node_id) if _is_file(entry)),
         key=lambda entry: natural_key(entry["name"]),
     )
 
@@ -464,21 +499,46 @@ def walk_files_of(node_id: str) -> list[dict]:
     prefix scan. A pool is a handful of folders, so that is a handful of
     requests; anything reading ONE folder should use `files_of`.
     """
-    found: list[dict] = []
+    base = _prefix_of(node_id)
+    found = [
+        # `key` is the name path from the library root; the response reports the
+        # prefix of the node asked about, so the difference is the path relative
+        # to it — which is what a caller printing two same-named files needs.
+        {**entry, "path": entry["key"][len(base):]}
+        for entry in _paged(under=node_id, depth="all")
+        if _is_file(entry) and entry.get("key")
+    ]
+    return sorted(found, key=_depth_first)
 
-    def descend(parent: str, prefix: str) -> None:
-        entries = children_of(parent)
-        for entry in sorted((e for e in entries
-                             if e.get("kind") == "file" and e.get("name")),
-                            key=lambda e: natural_key(e["name"])):
-            found.append({**entry, "path": prefix + entry["name"]})
-        for entry in sorted((e for e in entries
-                             if e.get("kind") == "folder" and e.get("name")),
-                            key=lambda e: natural_key(e["name"])):
-            descend(entry["id"], f"{prefix}{entry['name']}/")
 
-    descend(node_id, "")
-    return found
+def _prefix_of(node_id: str) -> str:
+    """The name path of one node — what its descendants' `key`s are relative to."""
+    page = api.get("/api/nodes", under=node_id, limit=1)
+    return (page.get("prefix") or "") if isinstance(page, dict) else ""
+
+
+def _is_file(entry: dict) -> bool:
+    """Whether a listing entry is a file.
+
+    **The negative, because `kind` stopped being the storage vocabulary.** One
+    listing endpoint serves the app and this package now, and what the app needs
+    from `kind` is what the file HOLDS — `image`, `video`, `text`, `other` — so
+    `== "file"` matched nothing and every pool read back empty.
+    """
+    return bool(entry.get("name")) and entry.get("kind") != "folder"
+
+
+def _depth_first(entry: dict) -> tuple:
+    """Files before the subfolders beside them, natural order at every level.
+
+    What the per-folder recursion produced when this walked one folder at a
+    time. A file directly in the walked node has no folder segments at all, and
+    an empty tuple sorts before every non-empty one — so the root's own images
+    still come first, which is the property the caller depends on: they are the
+    ones somebody named without knowing there were subfolders.
+    """
+    segments = entry["path"].split("/")
+    return (tuple(natural_key(part) for part in segments[:-1]), natural_key(segments[-1]))
 
 
 def child(parent_id: str, name: str) -> dict | None:
@@ -648,7 +708,7 @@ def delete_nodes(ids: list[str]) -> dict:
 def node_owner(node_id: str) -> dict | None:
     """Which entity a node belongs to, derived from its ancestry.
 
-    `{kind, id, slug}` or None. Derived rather than stored, so a move that
+    `{kind, id, name}` or None. Derived rather than stored, so a move that
     changes the owner is visible immediately even though the blob key it was
     stamped with is not rewritten — see the spec's note on key drift and
     `catalog reseat`.

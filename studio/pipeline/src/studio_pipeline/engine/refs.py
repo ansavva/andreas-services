@@ -106,7 +106,7 @@ def _reason(what: str):
 
 
 def character_record(character: str) -> dict:
-    """A character slug (or id) -> its record, with `die`/404 turned into RefError."""
+    """A character name (or id) -> its record, with `die`/404 turned into RefError."""
     with _reason(f"character {character}"):
         return CHARACTER.resolve(character)
 
@@ -202,7 +202,7 @@ def character_pool_nodes(character: str, pool: str, *,
 def project_input_nodes(project: dict, numbers: list[int]) -> list[str]:
     """Resolve input-pool POSITIONS to node ids, in the order asked for.
 
-    `project` is the project record, not a slug: every caller has already
+    `project` is the project record, not a name: every caller has already
     resolved one (`--project` is required and never inferred), and re-resolving
     it here would be a second round trip to learn something the caller holds.
 

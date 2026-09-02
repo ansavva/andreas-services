@@ -41,7 +41,7 @@ from pathlib import Path
 
 
 from studio_pipeline import STUDIO_DIR
-from studio_pipeline.adapters import entities, store
+from studio_pipeline.adapters import api, entities, store
 from studio_pipeline.domain import TEMPLATES_DIR
 from studio_pipeline.domain import paths as P
 from studio_pipeline.errors import die
@@ -82,25 +82,15 @@ IMG_EXTS = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".bmp"}
 POOLS = P.CHAR_POOLS
 
 
-def check_name(name: str) -> None:
-    """Characters and projects share one slug rule.
-
-    **It is a legibility rule now, not a filesystem one** — a slug is an
-    attribute on a row and no longer a path segment. See `paths.check_slug`.
-    """
-    try:
-        P.check_slug(name, "character name")
-    except P.PathError as exc:
-        die(str(exc))
-
-
 def resolve(character: str) -> dict:
-    """A slug or an id -> the character record. **One call.**
+    """An id, or a name matched client-side -> the character record.
 
-    Slug resolution is `GET /api/characters/slug:<slug>`: two reads server-side
-    against a claim row, where it used to be a folder listing plus a fetch of a
-    YAML document. The caller gets the whole record — id, `rev`, `root`,
-    `default_set` and the bible — so nothing goes back for any of it.
+    **An id is one call; a name is two**, and that is the cost of dropping
+    slugs. A slug was library-unique, so `GET /api/characters/slug:<slug>`
+    resolved one server-side against a claim row. A name is a free-text label:
+    it identifies nothing, two characters may share one, and the API will not
+    resolve it — so this lists and matches, and refuses an ambiguous name with
+    the ids rather than picking one.
 
     Raises `api.NotFound` rather than dying, because every caller has a better
     message than this one does: `character list` for a person, `RefError` for
@@ -108,8 +98,11 @@ def resolve(character: str) -> dict:
     """
     if character and character.startswith("char-"):
         return entities.get_character(character)
-    check_name(character)
-    return entities.get_character(entities.address(character))
+    try:
+        found = P.by_name(entities.list_characters(), character, "character")
+    except P.PathError as exc:
+        raise api.NotFound(str(exc), 404) from exc
+    return entities.get_character(found["id"])
 
 
 def pool_folder(record: dict, pool: str) -> dict:
@@ -199,7 +192,7 @@ def write_text(path: str, text: str) -> None:
 
 
 __all__ = [
-    "IMG_EXTS", "LOCAL_DIR", "NAME_RE", "POOLS", "TEMPLATE", "check_name", "die",
+    "IMG_EXTS", "LOCAL_DIR", "NAME_RE", "POOLS", "TEMPLATE", "die",
     "pool_folder", "pool_nodes", "read_text", "resolve", "upload_file",
     "write_text",
 ]

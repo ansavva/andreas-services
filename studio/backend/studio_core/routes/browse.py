@@ -1,10 +1,12 @@
-"""The rendering read surface: a folder ready to draw, and the reel over it.
+"""What is left of the rendering read surface: one node's bytes, and health.
 
-Distinct from `routes/nodes.py`, which is the catalog's *record* surface. Both
-read the same rows; the difference is what they hand back. `GET /api/nodes`
-returns bare records — no URLs, no sort, no breadcrumbs, no counts — because it
-answers "what is this node". These answer "draw this folder", which needs all
-four.
+**The listings moved to `GET /api/nodes`.** `GET /api/tree` and `GET /api/reel`
+were two of the three answers this API gave to "what is under this node" — the
+third being `GET /api/nodes?parent=`, which the pipeline used — and they were
+split by which client asked rather than by what was being asked. Depth, kind and
+paging are arguments now, so there is one listing and `services/browse.entries`
+is it. The names went with the endpoints: `reel` described how the SPA drew a
+result, which is not a thing a route should be named after.
 
 **Every route here takes `?node=<id>` and nothing else.** `?prefix=` is gone,
 and so is the raw S3 key `/api/asset` used to accept. The name path survived
@@ -18,7 +20,7 @@ the angle images nodes answered the second. One addressing scheme, no exceptions
 directions of one operation sit on one address.
 """
 
-from flask import Blueprint, g, jsonify, request
+from flask import Blueprint, jsonify, request
 
 from studio_core.routes import support
 from studio_core.services import browse
@@ -29,28 +31,6 @@ bp = Blueprint("browse", __name__, url_prefix="/api")
 @bp.get("/health")
 def health():
     return jsonify({"status": "ok"}), 200
-
-
-@bp.get("/tree")
-def tree():
-    """Immediate contents of one folder."""
-    return jsonify(
-        browse.list_folder(g.library, request.args.get("node"), request.args.get("sort"))
-    ), 200
-
-
-@bp.get("/reel")
-def reel():
-    """Images and videos beneath a folder, recursively and paginated."""
-    return jsonify(
-        browse.reel_items(
-            g.library,
-            request.args.get("node"),
-            request.args.get("cursor"),
-            request.args.get("page_size"),
-            request.args.get("sort"),
-        )
-    ), 200
 
 
 @bp.get("/asset")

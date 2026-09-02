@@ -45,7 +45,6 @@ from __future__ import annotations
 
 import json
 
-from studio_pipeline.domain import paths as P
 
 # The plan shape. Bumped when a field changes meaning, not when one is added.
 # v3 is the entity model: every image is a node id, and the fields the scene
@@ -95,20 +94,20 @@ def load_plan(path: str) -> dict:
     return plan
 
 
-def check_scene_slug(slug: str) -> str:
-    """A scene slug: a label a person types, and the name of the scene's folder.
+def check_scene_name(name: str) -> str:
+    """A scene's name: a label, and nothing more.
 
-    **The timestamp check is gone.** This also refused anything shaped like a
-    run id, because a scene folder was once `<timestamp>_<slug>` and a new scene
-    named that way would have been indistinguishable from one of them. A scene
-    is a row with a UUID now and its slug is an attribute of it, so there is
-    nothing left for a timestamp-shaped name to collide with — the check would
-    only refuse a legal name for a reason that stopped being true.
+    **Two rules died here.** It refused anything shaped like a run id, because a
+    scene folder was once `<timestamp>_<slug>` and a new scene named that way
+    would have been indistinguishable from one of them; and it enforced the slug
+    character class, because the name became a path segment. A scene is a row
+    with a UUID, its folder is named by that id, and its name is a free-text
+    label — so the only thing left worth refusing is an empty one.
     """
-    try:
-        return P.check_slug(slug, "scene slug")
-    except P.PathError as exc:
-        raise PlanError(str(exc)) from exc
+    folded = " ".join((name or "").split())
+    if not folded:
+        raise PlanError("a scene needs a name")
+    return folded
 
 
 # --------------------------------------------------------------------------

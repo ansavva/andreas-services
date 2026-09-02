@@ -27,9 +27,10 @@ character is an S3 record managed by this one skill, used by the video pipeline
 ## Where a character lives (S3)
 
 **A character is a record, not a folder.** It has an id that never changes, a
-`slug` you type, a bible held as structured fields, and a set of described
-references — all of it queryable. It also owns a folder, `<name>/`, where its
-images actually live. The generic **`studio-media-s3`** skill is the storage
+free-text `name` that is a LABEL and nothing else, a bible held as structured
+fields, and described images — all of it queryable. It also owns a folder, named
+by its id, where its images actually live. Two characters may share a name;
+every address is the id. The generic **`studio-media-s3`** skill is the storage
 layer; `studio login` is the auth.
 
 ```
@@ -72,10 +73,10 @@ may be called whatever it was called when it arrived. Slot N is position N in
 the resolved selection, exactly as before — but it is `order` on the row that
 decides where an image lands, not a trailing digit in its name.
 
-That is what retired `curate renumber` and `curate regroup`: there are no holes
-to close, and moving an image between groups writes one row and no object. Use
-`studio character order` to move an entry and `studio character regroup` to
-change its group.
+That is what retired `curate renumber` and `curate regroup`, and then retired
+their replacements too: a group is a tag, so changing one is
+`studio describe <node> --tag default --tag body` and there is no order left to
+maintain.
 
 The project's `input/` pool is a **separate thing entirely** — working material
 for a piece of work, not anything about a character. Frames pulled off a clip
@@ -83,56 +84,68 @@ for chaining go there (`studio frames last --add-input`), never into `reference/
 an extracted frame is model output, and promoting it into identity feeds
 generated pixels back in as identity and compounds drift.
 
-### `reference/` is a library, and the bible says which part to send
+### A character is a library, and TAGS say which part to send
 
 The engines cap reference images hard — **Kling 7, Seedance 9, Nano Banana 14** —
-and they are sent *in full*. `reference/` holds far more than that, so something
-has to choose. That something is the bible:
+and they are sent *in full*. A character holds far more than that, so something
+has to choose. That something is a tag on the file:
 
-```yaml
-references:
-  - file: face/<name>_4.jpg          # path relative to reference/
-    description: Head and shoulders, front on, looking straight down the lens,
-                 grey studio backdrop.
-    tags: [face, front, neutral, studio]
-default_set:                          # sent when --character is given alone
-  - face/<name>_4.jpg
-  - body/<name>_8.png
-```
+    default     this is one of the images a generation is shown
+    face body   what the picture is — a group, and any word you like
 
-**`--character` no longer means "send everything".** It used to, which worked
-only while the folder was kept small enough to fit the smallest cap. Now a
-selection is either named or comes from `default_set`, and an over-cap selection
-is **refused** with the index printed — because which images a generation saw
-should not be decided by whatever a folder listing happened to return.
+**Both are ordinary node tags**, edited the way any file's are, and they travel
+with the picture through a rename, a move and a copy because they are attributes
+of it. Nothing else says an image is identity: not the folder it sits in, and no
+longer a row in a table beside it.
+
+**What that replaced was two records with an invariant between them.** A `REF#`
+row said an image was a character's third face reference; `default_set` on the
+record said which handful to actually send. The two could disagree, and did —
+one production character carried four ids in `default_set` that named no row at
+all, so a default shoot sent three images where seven were meant and nothing
+anywhere said so. One tag on one file cannot drift from anything.
 
 ```bash
-studio character refs <name> --describe            # what every image shows, and its tags
-studio character refs <name> --pick-tag face --keys
-studio character refs <name> --pick face/<name>_4.jpg,body/<name>_8.png --presign
-studio character default-set <name> --set face/<name>_4.jpg --set body/<name>_8.png
+studio character images <name>                     # every image, and how it is tagged
+studio character images <name> --tag default,face  # ALL the tags named, not any
+studio describe <node> --tag default --tag face    # this is what makes it identity
+studio describe <node> --tag face                  # …and this takes it back out
+```
+
+**`--character` does not mean "send everything".** It used to, which worked only
+while the folder was kept small enough to fit the smallest cap. A selection is
+either named or is the `default` images, and an over-cap selection is **refused**
+with the candidates printed — because which images a generation saw should not be
+decided by whatever a folder listing happened to return.
+
+```bash
+studio character selection <name>                       # the `default` images
+studio character selection <name> --tag default,face    # narrowed to a group
+studio character selection <name> --pick <node>,<file>  # named outright
+studio character selection <name> --limit 7 --presign   # what a model would see
 ```
 
 The same selectors exist on the runner: `--pick`, `--pick-tag`, and `--slots`
 (positions **within the resolved selection** — slot N is the Nth image actually
 sent, which is what `[ImageN]` refers to).
 
-**Describe every image you add.** An undescribed image cannot be picked by tag
-and is invisible to whoever chooses the set — so it may as well not be there.
+**Order is gone, and nothing replaced it.** A `REF#` row carried one, maintained
+by `curate renumber` before that and by filename numbering before that. A
+selection comes back in name order — stable, so two calls agree, which is all a
+payload needs from it.
+
+**Describe every image you add.** An undescribed image is invisible to whoever
+chooses the set, so it may as well not be there:
 
 ```bash
-studio character add-refs <name> /tmp/new/*.png --to face    # NAME first, then files
-studio character set-ref-desc <name> <node> \
-  "Three-quarter right, looking off camera." --tags face,three-quarter
-studio character describe-refs <name> --from-json batch.json   # a whole pass, atomically
-studio character order <name> <node> --after <node>            # move it in the group
-studio character selection <name> --tag face --limit 7         # what a model would see
+studio describe <node> --text "Three-quarter right, looking off camera." \
+  --tag default --tag face --tag three-quarter
 ```
 
 **`sync-refs` is gone and cannot come back.** It reconciled the bible's index
-against what was actually in the folder, which was a job only because the two
-were separate things that could disagree. A reference *is* a row about a node:
-there is no folder listing to drift from.
+against what was in the folder, which was a job only because the two were
+separate things that could disagree. There is one place a picture says what it
+is, and it is the picture.
 
 ### Curating the pools
 
@@ -154,8 +167,8 @@ a move is a row write; nothing that cited the image stops resolving, so there is
 nothing to reconcile and no `rewrite` command to run.
 
 `set-refs` is gone. It physically rebuilt `reference/` because the folder *was*
-the set being sent; `default_set` is now, so choosing is a description change,
-not a file move.
+the set being sent; the `default` tag is now, so choosing is a tag edit and not
+a file move.
 
 ## The bible is structured YAML — one schema, every character
 
@@ -167,7 +180,7 @@ headings out of prose:
 
 | Key | Holds |
 |---|---|
-| `schema_version` `name` `display_name` | the record's identity |
+| `schema_version` `name` | the record's identity |
 | `identity` | the card — age, build, height read, `signature_features[]`, home turf, register, speech |
 | `face` | structure, skin, eyes, eyebrows, nose, mouth/jaw, facial hair, hair, ears |
 | `body` | silhouette, arms, chest/shoulders, neck, lower body/hands, body hair, posture |
@@ -214,44 +227,40 @@ studio character show <name>                           # the record: bible, refs
 studio character create <name> --from-profile /tmp/<name>.yaml   # new character record
 studio character set-profile <name> /tmp/<name>.yaml     # replace the bible
 studio character edit <name>                           # pull the bible to edit locally; re-run to upload
-studio character add-refs <name> /tmp/*.png --to face  # add refs into a purpose group
-studio character refs <name> --describe                # what every image shows
-studio character refs <name> --presign --json          # generation-time: ordered signed URLs
-studio character refs <name> --pick-tag body --keys    # a named selection, as keys
+studio character images <name>                         # every image, and how it is tagged
+studio describe <node> --tag default --tag face        # what makes one identity
+studio character selection <name> --presign --json     # generation-time: ordered signed URLs
+studio character selection <name> --tag default,body   # a named selection
 studio character pool <name> corpus                    # material, not identity
 studio character add-to <name> seed photo.jpg          # founding source photos
-studio character rename <old> <new>                    # a new slug, records and all
+studio character rename <old> <new>                    # one field on one row
 ```
 
 ### Renaming a character
 
-A slug is a path segment, so a new one is not an edit — it is a move of every
-object in the record, plus a rewrite of everything that named the old one. Doing
-those separately is how a record ends up half-renamed:
-
 ```bash
-studio character rename <old> <new>            # DRY RUN: the whole plan
-studio character rename <old> <new> --apply
-studio character rename <old> <new> --display-name "Some Name" --apply
+studio character rename <old> <new>
 ```
 
-**One conditional write, and nothing moves.** The slug is an attribute on the
-character's row, not a path segment, so a rename swaps the slug claim, updates
-the record and renames the character's root folder — four operations in one
-transaction. No object is copied, no record is rewritten, and every reference,
-run and binding still resolves, because all of them name node ids.
+**One conditional write, and nothing else changes at all.** The name is a plain
+attribute on the character's row: not a path segment, not claimed, and not
+something anything resolves. No object is copied, no record is rewritten, the
+root folder does not move — it is named by the character's id — and every
+image, run and binding still resolves, because all of them name node ids.
 
 That is the whole of what this used to be. It moved objects whose basenames
 carried the slug, rewrote the bible's paths, and patched every run, scene,
 movie and project record that cited one of those keys — and a `--dry-run` was
-worth having because the plan was large enough to want reading first.
+worth having because the plan was large enough to want reading first. Then,
+briefly, it was four writes in one transaction, because the slug was claimed.
 
-Two things it deliberately leaves alone. A **project** that happens to share the
-character's name is not renamed, and neither is a slug written into prose — a
-prompt that names the character still says the old one — text is text, and
+**It does NOT refuse a destination another character already uses**, and it used
+to. Two characters called the same thing are two rows that look alike in a list;
+what it costs is that `<name>` stops resolving for either of them, and the CLI
+says so with both ids rather than picking one. Pass an id.
+
+A prompt that names the character still says the old name — text is text, and
 nothing rewrites prose.
-
-It refuses a destination that already exists rather than merging into it.
 
 ### Editing a bible by hand (`edit`)
 
@@ -296,8 +305,8 @@ position N in the resolved selection, which is what a model actually receives.
 2. **Choose the reference subset.** Read what is available, then pick — the
    library is bigger than any cap:
    ```bash
-   studio character refs <name> --describe
-   studio character refs <name> --pick-tag face --presign --json > refs.json
+   studio character images <name>
+   studio character selection <name> --tag default,face --presign --json > refs.json
    # -> [{ "node": "node-…", "name": "<file>.jpg", "url": "https://..." }, ...]
    ```
    Pass the `.url` values as `reference_images` (Seedance accepts up to 9) and
@@ -348,11 +357,10 @@ better than prose can, and a long identity paragraph fights it — see
    `create` refuses a bible missing any of them.
 2. `studio character create <name> --from-profile <your-bible.yaml>`.
 3. `studio character add-to <source photos…> <name> seed` — the founding images.
-4. **`studio character turnaround <name> --project <project>`** — the standard face and
-   body set, described and indexed in one pass. See below.
-5. `studio character add-refs <stills…> <name> --to wardrobe` for anything the
-   standard set does not cover, then **describe them**: `describe-refs
-   --from-json` for a batch, `set-ref-desc` for one.
+4. **Run the standard set** — a run per template, from the fourteen the library
+   holds. `studio templates show` lists them. See below.
+5. Upload anything the standard set does not cover into the character, then
+   **describe and tag it**: `studio describe <node> --tag default --tag wardrobe`.
 
 ## THE TWO HUMAN GATES
 
@@ -378,21 +386,21 @@ Both of these have been broken in practice, in the same session:
 - its result was then written straight into a character's face group, which
   nobody had agreed to.
 
-The tools now enforce what they can. `shoot` has no approval flag and asks
-interactively, and it **never files its own output** — results stay in their run
-until someone promotes them with `add-refs --from-run`. What the tools cannot
+The tools now enforce what they can. Nothing that spends has an approval flag,
+and nothing **files its own output** — results stay in their run until somebody
+copies one into a character and tags it. What the tools cannot
 enforce is an agent deciding a previous message counted as approval. It does not.
 When in doubt, render the payload into the conversation and stop.
 
-## The standard set (`shoot`)
+## The standard set, which is now fourteen TEMPLATES
 
-A reference library is chosen from **by tag**, so an angle nobody shot is an angle
-nobody can pick. `shoot` renders the fourteen every character should have —
-eight `face` and six `body`. Face is a full turn: front, three-quarter and
-profile to each side, both three-quarter-backs, and back. Body is the same turn
-**without the two front three-quarters**, whose angle image is refused as
-sensitive content by every model that has tried it. Face angles are cropped at
-mid-chest; body angles are the whole figure, head to feet.
+A character is chosen from **by tag**, so a picture nobody made is a picture
+nobody can pick. The standard set is the fourteen every character should have —
+eight face and six body. Face is a full turn: front, three-quarter and profile to
+each side, both three-quarter-backs, and back. Body is the same turn **without
+the two front three-quarters**, whose angle image is refused as sensitive content
+by every model that has tried it. Face templates crop at mid-chest; body ones are
+the whole figure, head to feet.
 
 **Direction is always the edge of frame the face points toward**, never the
 subject's own left or right. `three_quarter_left` means the nose points at the
@@ -400,69 +408,41 @@ left edge. This is not pedantry: the wording it replaced said "turned to THEIR
 LEFT so the viewer sees the LEFT side of the face", which instructs two opposite
 rotations at once, and both three-quarters duly came back facing the same way.
 
-Each is one recorded run built from three things: a **angle image** (a generic,
-anonymous, untextured figure that says only how to stand), the character's **seed
-photographs** (who it is), and a prompt filled from the character's own bible —
-its usual top, and every cue in `consistency.must`.
+**The one-command turnaround is gone, and it is worth knowing what went with
+it.** It rendered all fourteen at once, each one chained off an ANCHOR —
+the first render — with every later prompt told in prose to take its wardrobe and
+background from it. That chaining was the only thing holding those two constant
+across a set, and it is gone: a template is picked for **one** run now, and
+holding a set consistent is done by looking at the results and re-running the
+ones that drifted.
+
+Each render is one recorded run built from three things: a **angle image** (a
+generic, anonymous, untextured figure that says only how to stand), the
+character's **identity images** (who it is), and a template filled from the
+character's own bible — its usual top, and every cue in `consistency.must`.
 
 ```bash
-studio character turnaround <name> --project <project> --dry-run   # assemble, record nothing
-studio character turnaround <name> --project <project>             # one DRAFT per angle
-studio character turnaround <name> --project <project> --group face
-studio character turnaround <name> --project <project> --angle body_back   # re-shoot one
-studio spec show                                                   # what the angles are
+studio templates show                    # what templates this stack holds
+studio templates pull --path t.yaml      # stack -> file
+studio templates push --path t.yaml      # file  -> stack (refuses a conflict)
 ```
 
-- **Nothing bills, and nothing is even approved.** Every angle becomes an
-  unapproved DRAFT with an address you can open; `--dry-run` stops one step
-  earlier and records nothing at all. Approving and sending are `runs approve`
-  and `runs submit`, which is where they already were.
-- **The prompts are DATA, not part of this package.** They live in the library
-  as rows, the app edits them, and `studio spec pull` / `studio spec push` move them
-  between stacks — so a wording fix is not a release. `studio spec show` lists what a
-  stack holds. A library with no spec has no angles and cannot shoot at all.
-- **Nothing enters the character.** Results stay in their runs; the shoot prints
-  the `add-refs --from-run` line for each. Look before promoting:
+- **Nothing bills, and nothing is even approved.** A run made from a template is
+  an unapproved DRAFT with an address you can open. Approving and sending are
+  `runs approve` and `runs submit`, which is where they already were.
+- **The prompts are DATA, not part of this package.** They live in the library as
+  rows, the app edits them, and `studio templates pull` / `push` move them
+  between stacks — so a wording fix is not a release.
+- **A template names its cast by POSITION.** `{character.1.top}` is the first
+  character the run binds — the same number `[Image1]` counts. A name would be
+  wrong the moment somebody renamed the character.
+- **`build` and `must` name a variant**: `{character.1.build.face}`. The bible
+  answers both differently for a face than for a body, and citing the bare name
+  is refused rather than defaulted, because a face template silently filled with
+  body proportions is wrong in a way the finished prose does not show.
+- **Nothing enters the character.** Results stay in their runs; promoting one is
+  a copy into the character's tree and then a tag. Look before promoting:
   `studio runs outputs <project>/latest --presign`.
-- **`--project` is required**, as it is for any generating command.
-- **Identity comes from `seed/`** when it has any, because driving a shoot off
-  already-generated references feeds model output back in as identity and
-  compounds drift. `--identity refs` / `--pick` / `--pick-tag` override that.
-- **`seed/` is read as a TREE, subfolders and all**, so `--seed-pick` names a
-  filed photograph as `<folder>/<file>` — a bare name works too while only one
-  file answers to it, and is refused rather than guessed when two folders share
-  it. A tidied pool is usually far bigger than the four an angle sends, so
-  expect to be asked which; the refusal lists them by the same path you type
-  back.
-- **The medium comes from the character**, not from the spec — an angle renders in
-  whatever `rendering.default_style` says, and is told to match the medium of
-  the reference images it is given. A character drawn in ink is not turned into a
-  photograph.
-- **`--model` overrides the engine** for every angle; the spec's defaults are
-  chosen so any registered image model accepts them. A dry run preflights the
-  override, so a model that would refuse it costs nothing to find out.
-- **`--review-sheet DIR` shows the images each payload sends**, captioned
-  `[ImageN]` in the order the model receives them. A key is a name; a name is not
-  a look, and the mistakes that matter here are visual.
-- The angle images live in the repo under `studio/config/` and are copied to the
-  bucket by `studio/scripts/dev-setup.sh`. If a shoot says one is missing, re-run
-  that script.
-
-Promoting a keeper, once a person has seen it and said so:
-
-```bash
-studio runs outputs <project>/latest --presign          # look at it first
-studio character add-refs <name> --to face --from-run <project>/latest#1
-studio character set-ref-desc face/<file> <name> --description "…" --tags face,front
-studio character default-set <name> --set …             # under the Kling cap of 7
-```
-
-`studio character create <name> --from-profile <bible> --turnaround --project <p>`
-creates and shoots in one command, through the same two gates.
-
-No new skill directory — ever. The character is now usable by the whole pipeline.
-Names are lowercase `[a-z0-9_-]`. There is no reserved-name list: characters live
-under `characters/`, so a project named `misc` simply is not one.
 
 ### When an angle image comes back wrong, read the bible before rewriting the prompt
 
@@ -527,8 +507,8 @@ one command shows the difference.**
 
 ```bash
 studio character pool <name> reference --group face      # what is IN the folder
-studio character pool <name> reference --unreferenced    # …that no REF# row names
-studio character refs <name>                             # what the INDEX holds
+studio character pool <name> reference --unreferenced    # …that nothing sends
+studio character images <name>                           # every image, and its tags
 studio character pool <name> seed --group current        # any pool, any subfolder
 ```
 
@@ -563,7 +543,7 @@ globbing. It exists because there was previously no way to remove a mistaken
 upload at all — a file could be moved between pools forever and never
 destroyed, so `archive/` slowly became where things went to not be deleted.
 
-**It refuses a reference rather than detaching one.** `dedupe` detaches in the
-same act because it is removing a duplicate of something the character still
-has; dropping removes the thing itself, and whether a character still IS what
-that image shows is hard rule #2b's question. `studio character detach` first.
+**It refuses an image the character sends.** `dedupe` destroys a duplicate of
+something the character still has; dropping removes the thing itself, and
+whether a character still IS what that image shows is hard rule #2b's question.
+Take the `default` tag off first — `studio describe <node> --clear-tags`.

@@ -46,7 +46,7 @@ def args(**over):
                 aspect_ratio=None, key=(), character=(), ref_run=(), slots=None,
                 pick=None, pick_tag=None, image_run=None, input_=None,
                 start_run=None, start_key=None, end_run=None, end_key=None,
-                project={"id": "proj-1", "slug": "p"})
+                project={"id": "proj-1", "name": "p"})
     return SimpleNamespace(**{**base, **over})
 
 

@@ -24,8 +24,7 @@ vi.mock("../apis/studio", () => ({
   // the editor rather than the crumb that asks for the name.
   getProject: vi.fn().mockResolvedValue({
     id: "proj-1",
-    slug: "a-project",
-    title: "A project",
+    name: "A project",
     characters: [],
   }),
   getCharacters: vi.fn().mockResolvedValue([]),
@@ -38,6 +37,12 @@ vi.mock("../apis/studio", () => ({
   // a complete stand-in for the module — a missing name is `undefined` and
   // fails at the call, which reads as a bug in the page.
   approveRun: vi.fn(),
+  // The cast editor and the template picker, both mounted by `RunPlanEditor`.
+  // Unmocked they are `undefined` at the first render, and a `useResource`
+  // handed `undefined` never settles — which does not fail the suite, it hangs
+  // it and then the runner is killed.
+  setRunCharacters: vi.fn().mockResolvedValue({}),
+  getTemplates: vi.fn().mockResolvedValue({ blocks: {}, templates: [] }),
   submitRun: vi.fn(),
   reconcileRun: vi.fn(),
   patchRunPlan: vi.fn(),
@@ -51,11 +56,9 @@ vi.mock("../apis/studio", () => ({
   // above: an accessed name that is not on the factory is a vitest error about
   // the mock, which reads as a bug in the page.
   getCharacter: vi.fn(),
-  getReferences: vi.fn().mockResolvedValue({ groups: {}, counts: {} }),
-  getTree: vi.fn(),
+  getFolder: vi.fn(),
   createNode: vi.fn(),
   copyNodes: vi.fn(),
-  addReference: vi.fn(),
 }));
 
 import { deleteRun, getRun, getRuns } from "../apis/studio";
@@ -191,7 +194,7 @@ it("names the project in the trail", async () => {
 it("names the scene that used this run, and goes there", async () => {
   read.mockResolvedValue(
     record({
-      scenes: [{ id: "scene-9", slug: "a-scene", title: "A scene" }],
+      scenes: [{ id: "scene-9", name: "A scene" }],
     } as Partial<RunRecord>),
   );
   await open();

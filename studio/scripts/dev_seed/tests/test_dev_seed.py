@@ -134,28 +134,29 @@ def _rows(tree=TREE, lib=LIB):
             row["blob_key"] = f"blobs/{_node_id(path)}"
             row["size"] = len(body)
             row["content_type"] = CONTENT_TYPES[name]
+        # Identity is a tag on the file. It was a `REF#` row beside the
+        # character plus a `default_set` on its record — two places saying which
+        # pictures a generation is shown, with an invariant between them.
+        if path == FACE:
+            row["tags"] = ["default", "face"]
         items.append(row)
 
-    # The entity rows. Six of them for two entities, because a record is
-    # useless without its slug claim and a project's cast is rows rather than a
-    # list on the record — see `services/catalog.py`. `publish` reads all of
-    # these off the SAME scan that read the nodes above.
+    # The entity rows. Five for two entities: a record, a LIBRARY INDEX row —
+    # keyed on the id, where it was `CHARSLUG#<slug>` and claimed the name as
+    # well — and a project's cast as rows rather than a list on the record. See
+    # `services/catalog.py`. `publish` reads all of these off the SAME scan that
+    # read the nodes above.
     items += [
-        {"pk": f"LIB#{lib}", "sk": "CHARSLUG#subject-b",
+        {"pk": f"LIB#{lib}", "sk": f"CHAR#{CHAR_ID}",
          "entity": CHAR_ID, "created": stamp.format(90)},
         {"pk": f"CHAR#{CHAR_ID}", "sk": "META", "id": CHAR_ID, "lib": lib,
-         "slug": "subject-b", "display_name": "<Name>",
-         "schema_version": 2, "rev": 1,
+         "name": "<Name>", "schema_version": 2, "rev": 1,
          "created": stamp.format(90), "updated": stamp.format(90),
-         "root": _node_id("subject-b"), "hero": None,
-         "default_set": [_node_id(FACE)], "profile": PROFILE},
-        {"pk": f"CHAR#{CHAR_ID}", "sk": f"REF#{_node_id(FACE)}", "lib": lib,
-         "group": "face", "order": 1000, "description": "front, neutral",
-         "tags": ["face"], "created": stamp.format(91)},
-        {"pk": f"LIB#{lib}", "sk": "PROJSLUG#subject-a",
+         "root": _node_id("subject-b"), "hero": None, "profile": PROFILE},
+        {"pk": f"LIB#{lib}", "sk": f"PROJ#{PROJ_ID}",
          "entity": PROJ_ID, "created": stamp.format(92)},
         {"pk": f"PROJ#{PROJ_ID}", "sk": "META", "id": PROJ_ID, "lib": lib,
-         "slug": "subject-a", "title": "<Title>", "description": "", "rev": 1,
+         "name": "<Title>", "description": "", "rev": 1,
          "created": stamp.format(92), "updated": stamp.format(92),
          "root": _node_id("subject-a"), "hero": None,
          "counts": {"runs": 1, "scenes": 0, "movies": 0}},
@@ -609,26 +610,31 @@ def test_tree_lists_the_stack_by_path(dev_stack):
 
 
 def _entities(dev_stack, *paths):
-    """Publish `paths` and return `{slug: entity}` out of the bucket copy."""
+    """Publish `paths` and return `{root: entity}` out of the bucket copy.
+
+    Keyed on the ROOT rather than on the name: a name is a label two entities
+    may share, and a root path is unique by construction.
+    """
     assert _apply(*sum((["--path", p] for p in paths), [])).exit_code == 0
     catalog, _ = _documents(dev_stack)
-    assert catalog["version"] == 2
-    return {entity["slug"]: entity for entity in catalog["entities"]}
+    assert catalog["version"] == 3
+    return {entity["root"]: entity for entity in catalog["entities"]}
 
 
-def test_a_character_is_promoted_with_its_references(dev_stack):
-    """Root, references and `default_set` — all of them as PATHS, not ids."""
+def test_a_character_is_promoted_with_its_identity_TAGS(dev_stack):
+    """**Root and name on the entity; identity on the file.**
+
+    This emitted a `references` list and a `default_set`, both as PATHS. Both
+    are gone: they said which of a character's pictures a generation is shown,
+    in a second place, with an invariant between them. The tag rides on the node
+    entry, which is where the picture is.
+    """
     character = _entities(dev_stack, "subject-b")["subject-b"]
 
     assert character["kind"] == "character"
     assert character["root"] == "subject-b"
-    assert character["display_name"] == "<Name>"
-    assert character["references"] == [
-        {"node": FACE, "group": "face", "order": 1000,
-         "description": "front, neutral", "tags": ["face"],
-         "created": "2026-08-19T09:12:44.000091+00:00"},
-    ]
-    assert character["default_set"] == [FACE]
+    assert character["name"] == "<Name>"
+    assert "references" not in character and "default_set" not in character
 
 
 def test_a_nested_bible_survives_the_promotion(dev_stack):
@@ -648,15 +654,17 @@ def test_a_nested_bible_survives_the_promotion(dev_stack):
     assert isinstance(character["profile"]["schema_version"], int)
 
 
-def test_a_project_carries_its_cast_by_slug(dev_stack):
-    """`characters` is `PROJ#`/`CHAR#` rows on the way in and slugs on the way out.
+def test_a_project_carries_its_cast_by_ROOT_PATH(dev_stack):
+    """`characters` is `PROJ#`/`CHAR#` rows in, and root paths out.
 
-    Slugs rather than ids for the same reason as everything else here, and the
-    loader cross-checks them against the characters the fixture itself carries.
+    **It used to be slugs**, which worked because a slug was library-unique. A
+    name is a label two characters may share, so a fixture naming an involvement
+    by one could not say which — and a fixture carries no ids. A root path is
+    unique by construction and is already how a fixture names an entity.
     """
     promoted = _entities(dev_stack, "subject-a", "subject-b")
     assert promoted["subject-a"]["kind"] == "project"
-    assert promoted["subject-a"]["title"] == "<Title>"
+    assert promoted["subject-a"]["name"] == "<Title>"
     assert promoted["subject-a"]["characters"] == ["subject-b"]
     assert promoted["subject-a"]["counts"] == {"runs": 1, "scenes": 0, "movies": 0}
 
@@ -705,25 +713,29 @@ def test_entities_is_written_even_when_there_are_none(dev_stack):
     assert ds.entities(library, paths, set(paths)) == []
 
     catalog, _manifest = ds.build(library, paths, set(), {}, "v1")
-    assert catalog["version"] == 2
+    # **3**, which is what dropping slugs made necessary: one `name` where there
+    # was a `slug` plus a `display_name` or a `title`, involvement by root path,
+    # and identity as a tag on the file rather than a `REF#` row. The loader
+    # still reads 2 — `v1` is published and cannot be rewritten.
+    assert catalog["version"] == 3
     assert catalog["entities"] == []
 
 
-def test_a_default_set_entry_with_no_reference_row_is_dropped(dev_stack):
-    """`default_set` must be a SUBSET of `references` or the loader refuses the
-    whole fixture — so a record that disagrees with its own rows is filtered
-    here rather than published and rejected on somebody's machine."""
+def test_a_tag_on_an_unpromoted_FILE_simply_does_not_travel(dev_stack):
+    """**What replaced the `default_set` filter, and it needs no filter at all.**
+
+    A `default_set` had to be a SUBSET of `references` or the loader refused the
+    whole fixture, so the publisher filtered a record that disagreed with its own
+    rows. Identity is a tag on the file: a file that was not promoted carries its
+    tag nowhere, because the tag has no existence apart from the node.
+    """
     library = ds.read_library(dev_stack["ddb"])
     paths = ds.name_paths(library)
-    library["records"][f"CHAR#{CHAR_ID}"]["default_set"] = [
-        _node_id(FACE), _node_id("subject-b/reference"),
-    ]
-    selected = {node_id for node_id, path in paths.items()
-                if path == "subject-b" or path.startswith("subject-b/")}
+    selected = {node_id for node_id, path in paths.items() if path == "subject-b"}
 
     character, = [e for e in ds.entities(library, paths, selected)
-                  if e["slug"] == "subject-b"]
-    assert character["default_set"] == [FACE]
+                  if e["root"] == "subject-b"]
+    assert "default_set" not in character and "references" not in character
 
 
 # ── the loader ──────────────────────────────────────────────────────────────
@@ -803,14 +815,25 @@ def test_a_well_formed_fixture_has_no_problems():
     (lambda c, m: c["entities"][0].update(root="not-a-folder"),
      "is not a folder node"),
     (lambda c, m: c["entities"][0].update(kind="sculpture"), "kind must be"),
-    (lambda c, m: c["entities"][1].update(slug="Porch Teaser"),
-     "slug must be lowercase"),
-    (lambda c, m: c["entities"][1].update(slug="subject-a"),
-     "two entities claim the slug"),
+    # **`slug must be lowercase` and `two entities claim the slug` are gone.**
+    # A slug was library-unique and became half a primary key, so its character
+    # class and its uniqueness were both load-bearing. A name is a label: the
+    # loader writes no claim row and nothing resolves an entity by one, so the
+    # only thing left to refuse is a name that cannot be a name at all.
+    # Stated against a version-3 entity, because a version-2 one always has a
+    # `slug` to fall back to and so can never arrive without a name.
+    (lambda c, m: (c.update(version=3),
+                   c["entities"].__setitem__(1, {"kind": "project", "root": "porch-teaser"})),
+     "name is required"),
+    (lambda c, m: (c.update(version=3),
+                   c["entities"].__setitem__(
+                       1, {"kind": "project", "root": "porch-teaser", "name": "Porch#Teaser"})),
+     "may not contain"),
     (lambda c, m: c["entities"][0]["references"][0].update(node="subject-a/gone.png"),
      "is not a node in catalog.json"),
     (lambda c, m: c["entities"][0].update(default_set=["subject-a/gone.png"]),
      "default_set names"),
+    # By ROOT PATH, because a name is a label two characters may share.
     (lambda c, m: c["entities"][1].update(characters=["subject-z"]),
      "which is not a character in this fixture"),
     (lambda c, m: c["entities"][0].update(root="subject-a/reference"),
@@ -942,47 +965,68 @@ def test_only_images_and_videos_carry_the_reel_key():
     assert "blob_key" not in folder and "size" not in folder
 
 
-def test_an_entity_is_a_record_and_a_claim():
-    """Each is useless without the other: a record with no claim is unlistable,
-    a claim with no record points at nothing."""
+def test_an_entity_is_a_record_and_a_library_index_row():
+    """Each is useless without the other: a record with no index row is
+    unlistable, an index row with no record points at nothing.
+
+    **The index row is keyed on the ID.** It was `CHARSLUG#<slug>` and claimed
+    the name as well as listing the entity — and the listing queries
+    `begins_with(sk, "CHAR#")`, which `CHARSLUG#…` does not match. A stack
+    seeded with the old row came up holding no characters at all.
+    """
     items = _loaded()
     root = ds.node_id(BUCKET, "subject-a")
     eid = CM.entity_id("character", root)
 
     record = _find(items, f"CHAR#{eid}", "META")
-    assert record["slug"] == "subject-a" and record["root"] == root
+    assert record["name"] == "<Name>" and record["root"] == root
     # `id` on the record as well as in the pk. Leaving it out answered every
     # read with `KeyError: 'id'` — see the shell builder this replaced.
     assert record["id"] == eid
-    claim = _find(items, f"LIB#{ds.library_id(BUCKET)}", "CHARSLUG#subject-a")
-    assert claim["entity"] == eid
+    assert "slug" not in record
+    index = _find(items, f"LIB#{ds.library_id(BUCKET)}", f"CHAR#{eid}")
+    assert index["entity"] == eid
 
 
-def test_a_project_claims_its_slug_in_a_different_namespace():
-    """`CHARSLUG#` and `PROJSLUG#`, so a project and a character may share a slug
-    without either claim refusing the other."""
+def test_a_project_is_indexed_under_its_own_prefix():
+    """`CHAR#` and `PROJ#`, so the two listings never see each other's rows."""
     items = _loaded()
     lib = ds.library_id(BUCKET)
-    assert _find(items, f"LIB#{lib}", "PROJSLUG#porch-teaser") is not None
-    assert _find(items, f"LIB#{lib}", "CHARSLUG#porch-teaser") is None
+    eid = CM.entity_id("project", ds.node_id(BUCKET, "porch-teaser"))
+    assert _find(items, f"LIB#{lib}", f"PROJ#{eid}") is not None
+    assert _find(items, f"LIB#{lib}", f"CHAR#{eid}") is None
 
 
-def test_reference_rows_are_gapped_by_a_thousand():
-    """So an insert between two entries is one write and never touches a
-    neighbour."""
-    eid = CM.entity_id("character", ds.node_id(BUCKET, "subject-a"))
+def test_an_entity_root_folder_is_named_by_its_id():
+    """**Not by the label**, which it used to be.
+
+    A folder's name is unique among its siblings — genuinely, a path segment
+    resolves through it — so naming entity roots by a free-text name would
+    refuse the second character called `Anna` from the tree.
+    """
+    items = _loaded()
+    root = ds.node_id(BUCKET, "subject-a")
+    eid = CM.entity_id("character", root)
+
+    assert _find(items, f"NODE#{root}", "META")["name"] == eid
+    assert _find(items, f"NODE#{ds.node_id(BUCKET, '')}", f"NAME#{eid}") is not None
+
+
+def test_a_version_2_reference_becomes_TAGS_on_the_file():
+    """**The whole of the fold, on the one document that is already published.**
+
+    `v1` carries `references` and `default_set`, and neither exists any more:
+    both said which of a character's pictures a generation is shown, in a second
+    place, with an invariant between them that drifted. A reference's `group`
+    and its membership of the default set are `face` and `default` on the FILE.
+    """
+    items = _loaded()
     node = ds.node_id(BUCKET, "subject-a/reference/a.PNG")
-    row = _find(_loaded(), f"CHAR#{eid}", f"REF#{node}")
-    assert row["order"] == 1000
-    assert row["group"] == "face" and row["tags"] == ["face"]
-
-
-def test_a_default_set_is_stored_as_node_ids():
-    """The fixture names it by PATH because it carries no ids; the record names
-    it by the id this stack derived."""
     eid = CM.entity_id("character", ds.node_id(BUCKET, "subject-a"))
-    record = _find(_loaded(), f"CHAR#{eid}", "META")
-    assert record["default_set"] == [ds.node_id(BUCKET, "subject-a/reference/a.PNG")]
+
+    assert _find(items, f"NODE#{node}", "META")["tags"] == ["default", "face"]
+    assert _find(items, f"CHAR#{eid}", f"REF#{node}") is None
+    assert "default_set" not in _find(items, f"CHAR#{eid}", "META")
 
 
 def test_every_row_survives_the_dynamodb_marshaller():
@@ -1093,3 +1137,34 @@ def test_a_fixture_published_before_settings_existed_still_loads():
     items = ds.rows(catalog, {"objects": {}}, "studio-dev-abc-media-us-east-1",
                       "lib-dest", "user-1")
     assert not [i for i in items if i["sk"].startswith(("SPEC#", "TERM#"))]
+
+
+def test_an_entity_NAME_is_checked_against_the_dev_subjects(dev_stack):
+    """**The half of hard rule #1's guard that entity ids made necessary.**
+
+    It read path segments alone, which was sound while an entity's root folder
+    was named by its slug — the name was IN the path. Roots are named by their
+    ids now, so a fixture published from a modern stack has `char-<uuid>` as its
+    first segment: the guard would inspect UUIDs, find nothing, and let
+    `catalog.json` carry the real name into git in its `name` field.
+    """
+    library = ds.read_library(dev_stack["ddb"])
+    paths = ds.name_paths(library)
+    library["records"][f"CHAR#{CHAR_ID}"]["name"] = "Somebody Real"
+
+    found = ds.name_problems(paths, library)
+
+    assert any("Somebody Real" in problem for problem in found), found
+
+
+def test_a_placeholder_name_is_not_a_name(dev_stack):
+    """`<Name>` and `<Title>` are what hard rule #1 tells you to write.
+
+    A record still carrying one is a record nobody has named, so refusing it
+    would refuse the blank template — the same mistake the Title-Case check made
+    before an allowlist replaced it.
+    """
+    library = ds.read_library(dev_stack["ddb"])
+    paths = ds.name_paths(library)
+
+    assert ds.name_problems(paths, library) == []

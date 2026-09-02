@@ -57,7 +57,7 @@ def _shot(n, panels, **over):
 def plan(**over):
     """A two-shot scene record: one panel on the first shot, three on the second."""
     base = {
-        "slug": "my-scene", "version": SB.VERSION, "status": "planned",
+        "name": "my-scene", "version": SB.VERSION, "status": "planned",
         "setting": "", "logline": "", "title": "", "characters": [],
         "defaults": {"model": "kling", "panel_model": "nano-banana-pro", "duration": 5},
         "shots": [_shot(1, ["a"]), _shot(2, ["b", "c", "d"])],
@@ -158,27 +158,33 @@ def test_continues_false_forces_the_panel_back():
 
 # --- defaults --------------------------------------------------------------
 
-def test_a_slug_shaped_like_a_run_id_is_now_allowed():
+def test_a_name_shaped_like_a_run_id_is_allowed():
     """**This asserted the opposite, and the reason it did has expired.**
 
     A scene folder was once `<timestamp>_<slug>`, so a scene NAMED that way
     would have been indistinguishable from one of them and the resolver would
     have gone to the wrong directory. A scene is a row with a UUID now and its
-    slug is an attribute; there is nothing left for a timestamp-shaped name to
-    collide with, and refusing one would refuse a legal name for a reason that
-    stopped being true.
-
-    The ordinary slug rule still applies — see the test below — so this is a
-    narrowing of the check rather than its removal.
+    folder is named by that id; there is nothing left for a timestamp-shaped
+    name to collide with.
     """
-    assert SB.check_scene_slug("2026-08-16_07-40-22_the-encounter") == \
+    assert SB.check_scene_name("2026-08-16_07-40-22_the-encounter") == \
         "2026-08-16_07-40-22_the-encounter"
-    assert SB.check_scene_slug("the-encounter") == "the-encounter"
+    assert SB.check_scene_name("the-encounter") == "the-encounter"
 
 
-def test_an_ordinary_bad_slug_is_still_refused():
+def test_a_name_with_spaces_and_capitals_is_accepted_and_folded():
+    """**The slug character class went with slugs.**
+
+    `Not A Slug` was refused, because the name became a path segment and was
+    claimed. A scene's folder is named by its id and its name is a label, so the
+    only thing left worth refusing is an empty one.
+    """
+    assert SB.check_scene_name("  Not   A Slug ") == "Not A Slug"
+
+
+def test_a_scene_still_needs_some_name():
     with pytest.raises(SB.PlanError):
-        SB.check_scene_slug("Not A Slug")
+        SB.check_scene_name("   ")
 
 
 def test_load_plan_names_the_file_that_is_wrong(tmp_path):

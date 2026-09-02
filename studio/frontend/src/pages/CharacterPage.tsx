@@ -10,8 +10,6 @@ import { FolderTab } from "../components/browse/FolderTab";
 import { PageBar } from "../components/layout/PageBar";
 import { CharacterProjects, CharacterRuns } from "../components/character/CharacterWork";
 import { ProfileForm } from "../components/character/ProfileForm";
-import { TurnaroundPanel } from "../components/character/TurnaroundPanel";
-import { ReferencesGrid } from "../components/character/ReferencesGrid";
 import { useResource } from "../hooks/useResource";
 import { CHARACTERS_PATH } from "../utils/location";
 import type { CharacterIdentity, CharacterProfile, CharacterRecord } from "../types";
@@ -166,13 +164,13 @@ export function CharacterPage() {
         actions={
           <ConfirmDestroyDialog
             label="Delete"
-            title={`Delete ${record.slug}?`}
+            title={`Delete ${record.name}?`}
             summary={
               "The character, its profile and its whole reference library go. " +
               "Runs that used it stay — a run really did use this subject, and " +
               "deleting the character is not a reason to delete the work."
             }
-            confirmWord={record.slug}
+            confirmWord={record.name}
             onConfirm={async () => {
               await deleteCharacter(record.id, "delete", true);
               navigate(CHARACTERS_PATH);
@@ -180,10 +178,10 @@ export function CharacterPage() {
           />
         }
       >
-        <Text variant="display">{record.display_name}</Text>
+        <Text variant="display">{record.name}</Text>
         {/* The slug is what a `studio` command is given, so it is mono. */}
         <Text variant="caption" tone="muted" className="font-mono">
-          {record.slug}
+          {record.name}
         </Text>
       </PageBar>
 
@@ -197,12 +195,11 @@ export function CharacterPage() {
             reads as two strips. */}
         <Tabs.List className="overflow-x-auto border-b border-line">
           <Tabs.Tab value="profile">Profile</Tabs.Tab>
-          <Tabs.Tab value="references">References</Tabs.Tab>
-          {/* Making them, as opposed to reading them. It sits beside
-              References because that is what it produces, and the two
-              questions — what does this character look like, and shoot the
-              set that says so — are one step apart. */}
-          <Tabs.Tab value="shoot">Shoot</Tabs.Tab>
+          {/* **Its files, opened already narrowed to `default`.** There is no
+              reference index to draw — what a `REF#` row said is a tag on the
+              picture — so the tab that drew one is the browser with the filter
+              pre-filled, and everything the browser can do works here. */}
+          <Tabs.Tab value="identity">Identity</Tabs.Tab>
           <Tabs.Tab value="files">Files</Tabs.Tab>
           {/* The reverse questions. Both routes existed with no caller, so a
               character was a dead end: who it is, what it looks like, and
@@ -217,10 +214,7 @@ export function CharacterPage() {
             // succeeded leaves the form holding what the API returned rather
             // than a draft it has to be reconciled against.
             key={record.rev}
-            identity={{
-              slug: record.slug,
-              display_name: record.display_name,
-            }}
+            identity={{ name: record.name }}
             profile={record.profile}
             rev={record.rev}
             onSave={saveCharacter}
@@ -229,22 +223,8 @@ export function CharacterPage() {
           />
         </Tabs.Panel>
 
-        <Tabs.Panel value="references">
-          <ReferencesGrid
-            characterId={record.id}
-            rootId={record.root}
-            defaultSet={record.default_set}
-            // The set is written against the revision, and the route answers
-            // with `{id, default_set, rev}` — an acknowledgement, not a record.
-            // So it is MERGED. Swapping it in wholesale is what briefly left
-            // this character nameless on screen.
-            rev={record.rev}
-            onSaved={(ack) =>
-              character.setData((current) =>
-                current ? { ...current, default_set: ack.default_set, rev: ack.rev } : current,
-              )
-            }
-          />
+        <Tabs.Panel value="identity">
+          <FolderTab rootId={record.root} initialTags={["default"]} />
         </Tabs.Panel>
 
         <Tabs.Panel value="runs">
@@ -253,10 +233,6 @@ export function CharacterPage() {
 
         <Tabs.Panel value="projects">
           <CharacterProjects characterId={record.id} />
-        </Tabs.Panel>
-
-        <Tabs.Panel value="shoot">
-          <TurnaroundPanel record={record} />
         </Tabs.Panel>
 
         <Tabs.Panel value="files">

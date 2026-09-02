@@ -81,22 +81,22 @@ export interface NodeRecord {
 }
 
 /**
- * The entity a node belongs to: what the app renders as "in <slug>".
+ * The entity a node belongs to: what the app renders as "in <name>".
  *
- * A `slug` and not a display name, because the slug is the address a person
- * types at the CLI and the two must read as the same thing. It is mutable — a
- * rename moves it — which is exactly why nothing here stores it: it is re-read
- * with the node every time.
+ * A `name`, which is the only label an entity has. It was a `slug` beside a
+ * display name; both collapsed into this. It is mutable — a rename moves it —
+ * which is exactly why nothing here stores it: it is re-read with the node
+ * every time.
  *
  * **The owner is the DEEPEST entity, which is often a run**, and a run has no
- * slug — so `slug` is null there and the id is all there is to show. This
+ * name — so `name` is null there and the id is all there is to show. This
  * declared only `character | project` while the API has always answered with
  * whichever entity is nearest; the union now says what is actually returned.
  */
 export interface NodeOwner {
   kind: "character" | "project" | "run" | "scene" | "movie";
   id: string;
-  slug: string | null;
+  name: string | null;
 }
 
 /**
@@ -156,9 +156,14 @@ export interface FileEntry {
 
 export interface FolderEntry {
   id: string;
+  kind: "folder";
   prefix: string;
   name: string;
   last_modified: string | null;
+  parent_id?: string;
+  /** The entity whose root this is, when it is one. Draws a card, not an icon. */
+  entity?: string;
+  owner?: NodeOwner | null;
 }
 
 export interface Crumb {
@@ -168,23 +173,82 @@ export interface Crumb {
   prefix: string;
 }
 
-export interface TreeResponse {
+/**
+ * One folder's contents, split — what `getFolder` makes of a listing.
+ *
+ * Not a wire shape. `GET /api/nodes` answers with one array; splitting it is the
+ * client's job, and this is the result of doing it.
+ */
+export interface FolderListing {
   prefix: string;
   sort: SortOrder;
+  /** `all` when a tag filter is on — a tag search is a search of the branch. */
+  depth: Depth;
   breadcrumbs: Crumb[];
   folders: FolderEntry[];
   files: FileEntry[];
-  counts: { folders: number; files: number; media: number };
+  tags: Record<string, number>;
 }
 
-export interface ReelResponse {
+/** One page of media beneath a folder — what `getMedia` makes of a listing. */
+export interface MediaListing {
   prefix: string;
   sort: SortOrder;
+  tags: Record<string, number>;
   items: FileEntry[];
   total: number;
-  /** True when the recursive walk hit its cap — there is more than this shows. */
   truncated: boolean;
-  /** An offset into the sorted result, not an S3 continuation token. */
+  next_cursor: string | null;
+}
+
+/**
+ * Which vocabulary a tag belongs to.
+ *
+ * **`face` on a picture and `face` on a template are different things** — one
+ * says what a photograph shows, the other what a prompt is for — so the two
+ * lists are separate and nothing offers one while editing the other.
+ */
+export type TagScope = "file" | "template";
+
+/** One tag, and how many things carry it. `GET /api/tags?scope=`. */
+export interface TagInUse {
+  name: string;
+  count: number;
+}
+
+/** `PROPFIND`'s `Depth`, minus the `0` — one node is `GET /api/nodes/<id>`. */
+export type Depth = "1" | "all";
+
+/** What `?kind=` filters on, and what an entry reports. */
+export type EntryKind = "folder" | MediaKind;
+
+/**
+ * `GET /api/nodes` — the one listing route.
+ *
+ * **One array, discriminated by `kind`**, where `/api/tree` handed back folders
+ * and files in separate fields. A caller wanting them apart splits in a line
+ * (`getFolder` does); a caller wanting them in one order — anything recursive —
+ * could not have put them back together.
+ */
+export interface NodeListing {
+  prefix: string;
+  sort: SortOrder;
+  depth: Depth;
+  breadcrumbs: Crumb[];
+  entries: (FileEntry | FolderEntry)[];
+  /** Keyed by kind, over everything the filters admitted — not over the page. */
+  counts: Partial<Record<EntryKind, number>>;
+  /**
+   * The tags present in this result and how many entries carry each, commonest
+   * first. A facet over what was listed — **not a vocabulary of the library**,
+   * which nothing stores. Computed after the filters, so narrowing by one tag
+   * leaves exactly the tags worth narrowing by next.
+   */
+  tags: Record<string, number>;
+  total: number;
+  /** True when the enumeration hit its cap — there is more than this shows. */
+  truncated: boolean;
+  /** An offset into the sorted result, not a DynamoDB continuation token. */
   next_cursor: string | null;
 }
 
@@ -290,9 +354,10 @@ export interface UploadGrant {
 // a folder name plus a document inside it. Two consequences shape every type
 // below and neither is cosmetic:
 //
-// * **The id is the identity and the slug is a label.** Nothing here is keyed
-//   on a slug, so a rename is one write and no link, binding or reference goes
-//   stale. `slug` is present because it is what a person types at the CLI.
+// * **The id is the identity and the name is a label.** Nothing here is keyed
+//   on a name, so a rename is one write and no link, binding or reference goes
+//   stale. A name is NOT unique: two characters may be called the same thing,
+//   which is why every address in this file is an id and none is a name.
 // * **Studio owns the envelope; the provider owns the payload.** A run's status,
 //   model, bindings and outputs are fields because studio validates them. The
 //   request and response bodies are *node ids* — the app fetches them as text
@@ -315,10 +380,14 @@ export interface HeroImage {
 /** One row of `GET /api/characters`. */
 export interface CharacterSummary {
   id: string;
-  slug: string;
-  display_name: string;
+  name: string;
   hero: HeroImage | null;
-  counts: { references: number; files: number };
+  /**
+   * `default` is how many of its images a generation is shown — what
+   * `counts.references` was, counted off the tag rather than off a row class
+   * that no longer exists. Both come out of one branch walk.
+   */
+  counts: { default: number; files: number };
   updated: string;
 }
 
@@ -371,22 +440,19 @@ export type CharacterProfile = Record<string, ProfileValue>;
  * the body's key rather than by the verb. One form edits both; see `ProfileForm`.
  */
 export interface CharacterIdentity {
-  slug: string;
-  display_name: string;
+  name: string;
 }
 
 export interface CharacterRecord {
   id: string;
   lib: string;
-  slug: string;
-  display_name: string;
+  name: string;
   rev: number;
   created: string;
   updated: string;
   root: string;
   /** A node id, not a signed URL — see `HeroImage`. */
   hero: string | null;
-  default_set: string[];
   profile: CharacterProfile;
   schema_version?: number;
 }
@@ -397,7 +463,7 @@ export interface CharacterRecord {
  * `order` is an attribute gapped by 1000, so inserting between two entries is
  * one write and touches neither neighbour. `group` is an attribute, so
  * regrouping copies no bytes. Both used to be encoded in the filename
- * (`<slug>_<group>_<n>.png`), which is why the file this names can now be called
+ * (`<name>_<group>_<n>.png`), which is why the file this names can now be called
  * anything and renamed freely: the row names its **node id**.
  */
 /**
@@ -413,72 +479,42 @@ export interface SpecBlock {
   updated?: string;
 }
 
-/** One orientation: its template, and how a promoted image gets described. */
-export interface SpecAngle {
-  id: string;
-  group: "face" | "body";
-  prompt: string;
-  /** Written onto the image by `add-refs --from-run`, never sent to a model. */
-  description: string;
-  tags: string[];
-  order?: number | null;
-  /**
-   * A picture of what this orientation IS, shown to a person and never sent.
-   *
-   * **All that is left of the pose plates.** An angle could bind one as a first
-   * image, and it distorted the very thing it existed to record — the face
-   * angles stopped sending theirs, and the body angles followed once eleven
-   * hand-authored production renders were compared and not one had bound a
-   * plate. The picture is still the clearest statement of what an orientation
-   * is, so it survives on a field that cannot reach a payload.
-   */
-  illustration?: string | null;
-}
-
-export type SpecAngleBody = Omit<SpecAngle, "id">;
-
-/** `GET /api/reference-spec` — blocks keyed by name, angles in shooting order. */
-export interface ReferenceSpec {
-  blocks: Record<string, string>;
-  angles: SpecAngle[];
-}
-
 /**
- * What `POST /api/characters/<id>/turnaround` answers.
+ * A prompt somebody wrote, picked for a run.
  *
- * `drafted` when it wrote runs, `preview` when it was asked not to — separate
- * keys on purpose, so a caller cannot mistake one for the other and go looking
- * for run ids that were never minted. `failed` is per angle: one bad angle does
- * not cancel the rest.
+ * **This was a reference ANGLE.** It held one orientation of one character's
+ * standard set, carried a `group` that had to be `face` or `body`, and only a
+ * turnaround could use one. `group` chose which prose `build` and `must`
+ * produced, and a template names that itself now —
+ * `{character.1.build.face}` — so the column was a second place to say
+ * something the prompt already says. `order` was the shooting order, and
+ * nothing shoots a set.
  */
-export interface TurnaroundResult {
-  drafted?: Array<{ angle: string; id: string; status: string }>;
-  preview?: Array<{ angle: string; model: string; plan: { prompt: string; params: Record<string, unknown> }; sends: Array<{ node: string; field: string }> }>;
-  failed: Array<{ angle: string; error: string }>;
-}
-
-export interface ReferenceEntry {
-  node: string;
-  /** Absent inside a grouped listing, where the key already says it. */
-  group?: string;
-  order: number;
+export interface PromptTemplate {
+  /**
+   * **A UUID, like every entity here.** Minted by whoever creates the template.
+   *
+   * It was briefly keyed on the name, on the grounds that nothing points at a
+   * template so a rename strands nothing. That is a judgement about a fact that
+   * changes — "which template did this run start from" is an obvious field, and
+   * the day it exists a name key strands it.
+   */
+  id: string;
+  /** A LABEL. Not unique, not claimed, and nothing resolves a template by it. */
+  name: string;
+  prompt: string;
+  /** What a promotion starts from when this image becomes identity. Never sent. */
   description: string;
   tags: string[];
-  /** True when the node is in the character's `default_set`. */
-  default?: boolean;
-  file: {
-    name: string;
-    size?: number;
-    content_type?: string | null;
-    /** Presigned inline GET, short-lived like every other URL in this app. */
-    url: string;
-  };
 }
 
-/** `GET /api/characters/<id>/references`, grouped and in `order` within a group. */
-export interface ReferenceIndex {
-  groups: Record<string, ReferenceEntry[]>;
-  counts: Record<string, number>;
+/** What a PATCH sends. The id is in the path, so it is not in the body. */
+export type TemplateBody = Omit<PromptTemplate, "id">;
+
+/** `GET /api/templates` — blocks keyed by name, templates as a list. */
+export interface TemplateLibrary {
+  blocks: Record<string, string>;
+  templates: PromptTemplate[];
 }
 
 /**
@@ -534,8 +570,7 @@ export const ENGINE_CAPS: ReadonlyArray<{ engine: string; cap: number }> = [
 /** One row of `GET /api/projects`. */
 export interface ProjectSummary {
   id: string;
-  slug: string;
-  title: string;
+  name: string;
   hero: HeroImage | null;
   counts: ProjectCounts;
   updated: string;
@@ -558,8 +593,7 @@ export interface ProjectCounts {
 export interface ProjectRecord {
   id: string;
   lib: string;
-  slug: string;
-  title: string;
+  name: string;
   description: string;
   rev: number;
   created: string;
@@ -567,7 +601,7 @@ export interface ProjectRecord {
   root: string;
   hero: string | null;
   counts: ProjectCounts;
-  characters: Array<{ id: string; slug: string; display_name: string }>;
+  characters: Array<{ id: string; name: string }>;
 }
 
 /**
@@ -679,7 +713,7 @@ export interface RunCost {
  * **Every field here must be one the API actually writes into the listing row.**
  * This declared `slug` and the row never carried one — the CLI's equivalent
  * formatter crashed on it and this table rendered an empty column. A run has no
- * slug at all now: it is a machine event, addressed by its id or by `latest`.
+ * label at all: it is a machine event, addressed by its id or by `latest`.
  */
 export interface RunSummary {
   id: string;
@@ -1219,8 +1253,7 @@ export interface Take {
 export interface SceneSummary {
   id: string;
   project: string;
-  slug: string;
-  title: string;
+  name: string;
   status: string;
   created: string;
   thumb?: HeroImage | null;
@@ -1228,7 +1261,7 @@ export interface SceneSummary {
 
 /**
  * A link back UP the tree — which scene used this run, which movie cut this
- * scene. Thin on purpose: id, slug and title are what a link needs to be drawn.
+ * scene. Thin on purpose: an id and a name are what a link needs to be drawn.
  *
  * These are answered off `by-sk` edge rows, and until those existed the
  * questions had no answer at any price: a run lived in a shot's attribute and a
@@ -1236,8 +1269,7 @@ export interface SceneSummary {
  */
 export interface Backlink {
   id: string;
-  slug: string | null;
-  title: string | null;
+  name: string | null;
 }
 
 export interface SceneRecord extends SceneSummary {
@@ -1269,8 +1301,7 @@ export interface SceneRecord extends SceneSummary {
 export interface MovieSummary {
   id: string;
   project: string;
-  slug: string;
-  title: string;
+  name: string;
   status: string;
   created: string;
   thumb?: HeroImage | null;

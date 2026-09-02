@@ -468,7 +468,7 @@ studio runs discard run-<uuid>              # a draft that will not be submitted
 - **`runs discard` deletes the folder by default**, the opposite of `runs delete`.
   A submitted run's folder holds media somebody paid for; a draft's holds two
   payload documents and an empty `output/`.
-- `scenes board` and `character turnaround` needed no change: their single confirm
+- `scenes board` needed no change: its single confirm
   still gates the batch, and each submission now leaves an approval behind it.
 
 ---
@@ -512,8 +512,8 @@ them differently is what would need justifying.
   should not be the first thing on the screen.
 - **An image output can be promoted into a character from here**, inline: pick a
   character and a group, and the output is **copied** into
-  `reference/<group>/` and the copy gets the `REF#` row. That is
-  `character add-refs --from-run` performed step for step, and hard rule #2b is
+  `reference/` and the copy gets the `default` tag. That is what promoting has
+  always been, performed step for step, and hard rule #2b is
   satisfied by the press — a person choosing the character and the group is the
   separate decision the rule asks for. The run keeps its own output; the two are
   independent blobs from then on.

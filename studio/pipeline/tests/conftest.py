@@ -332,18 +332,24 @@ class Library:
 
 @pytest.fixture
 def library(fake_api):
-    """One character with a described reference index, one project, one run.
+    """One character with three described, tagged images, one project, one run.
 
     Deliberately small. The old fixture was a wall of S3 keys because the tree
     *was* the model; the model is rows now, and a test that needs a second
-    character or a fifth reference builds it in three lines through the API it
-    is testing.
+    character or a fourth image builds it in two lines through the API it is
+    testing.
+
+    **Two of the three carry `default`.** That is what the `default_set` used to
+    say, and saying it on the pictures is the whole of this change — so a
+    fixture that tagged all three would make every selection test agree with
+    itself by accident.
     """
     from studio_pipeline.adapters import entities as E
+    from studio_pipeline.adapters import store as S
 
     lib = Library(fake_api)
 
-    subject_a = E.create_character("subject-a", display_name="Subject A",
+    subject_a = E.create_character("subject-a",
                                    profile=copy.deepcopy(PROFILE))
     lib.character = subject_a["id"]
     root = subject_a["root"]
@@ -363,26 +369,22 @@ def library(fake_api):
     lib.face_2 = fake_api.put_file(face["id"], "three-quarter.webp", b"webp-22")["id"]
     lib.body_1 = fake_api.put_file(body["id"], "full-length.webp", b"webp-333")["id"]
 
-    E.add_reference(lib.character, lib.face_1, "face",
-                    description="front, neutral", tags=["face"])
-    E.add_reference(lib.character, lib.face_2, "face",
-                    description="three-quarter", tags=["face", "profile"])
-    E.add_reference(lib.character, lib.body_1, "body",
-                    description="full length", tags=["body"])
-    E.put_default_set(lib.character, [lib.face_1, lib.face_2],
-                      E.get_character(lib.character)["rev"])
+    S.describe_node(lib.face_1, description="front, neutral", tags=["default", "face"])
+    S.describe_node(lib.face_2, description="three-quarter",
+                    tags=["default", "face", "profile"])
+    S.describe_node(lib.body_1, description="full length", tags=["body"])
 
     # A second character, so "the wrong one" is a real possibility in any test
     # about selection, linking or listing.
-    subject_b = E.create_character("subject-b", display_name="Subject B",
+    subject_b = E.create_character("subject-b",
                                    profile=copy.deepcopy(PROFILE))
     lib.character_b = subject_b["id"]
     b_face = fake_api._create_node(
         fake_api._child(subject_b["root"], "reference")["id"], "face", "folder")
     lib.b_face_1 = fake_api.put_file(b_face["id"], "front.jpeg", b"jpeg-b")["id"]
-    E.add_reference(lib.character_b, lib.b_face_1, "face", description="front")
+    S.describe_node(lib.b_face_1, description="front", tags=["default", "face"])
 
-    project = E.create_project("porch-teaser", title="Porch teaser",
+    project = E.create_project("porch-teaser",
                                characters=[lib.character])
     lib.project = project["id"]
     lib.project_root = project["root"]

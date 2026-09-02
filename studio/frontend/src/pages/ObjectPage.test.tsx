@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { FileEntry, RunRecord, TreeResponse } from "../types";
+import type { FileEntry, RunRecord, FolderListing } from "../types";
 import { TestProviders } from "../test-providers";
 
 /**
@@ -19,10 +19,9 @@ import { TestProviders } from "../test-providers";
  * position within it and the address rewriting are none of it.
  */
 vi.mock("../apis/studio", () => ({
-  getTree: vi.fn(),
+  getFolder: vi.fn(),
   getRun: vi.fn(),
   getScene: vi.fn(),
-  getReferences: vi.fn(),
   getNode: vi.fn(),
   getAsset: vi.fn(),
   getNodeOwner: vi.fn().mockResolvedValue(null),
@@ -31,10 +30,10 @@ vi.mock("../apis/studio", () => ({
   renameNode: vi.fn(),
 }));
 
-import { getAsset, getNode, getRun, getTree } from "../apis/studio";
+import { getAsset, getNode, getRun, getFolder } from "../apis/studio";
 import { ObjectPage } from "./ObjectPage";
 
-const tree = vi.mocked(getTree);
+const tree = vi.mocked(getFolder);
 const run = vi.mocked(getRun);
 const node = vi.mocked(getNode);
 const asset = vi.mocked(getAsset);
@@ -56,14 +55,15 @@ function file(id: string, name: string, over: Partial<FileEntry> = {}): FileEntr
   };
 }
 
-function listing(files: FileEntry[]): TreeResponse {
+function listing(files: FileEntry[]): FolderListing {
   return {
     prefix: "",
     sort: "newest",
+    depth: "1" as const,
+    tags: {},
     breadcrumbs: [],
     folders: [],
     files,
-    counts: { folders: 0, files: files.length, media: files.length },
   };
 }
 
@@ -93,7 +93,9 @@ describe("which sequence the address names", () => {
     // "2 of 3" is the whole assertion: the folder is the source, and the open
     // node's position in it is what the page opened on rather than the top.
     await waitFor(() => expect(screen.getByText(/2 of 3/)).toBeTruthy());
-    expect(tree).toHaveBeenCalledWith({ node: FOLDER }, "newest");
+    // The third argument is the tag filter, empty here — a folder walk asks for
+    // the folder, not for a search.
+    expect(tree).toHaveBeenCalledWith({ node: FOLDER }, "newest", { tag: [] });
   });
 
   it("walks a RUN's frames, and never asks for a folder", async () => {

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { getTree } from "../../apis/studio";
+import { getFolder } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
 import { useSearchParamState } from "../../hooks/useSearchParamState";
 import type { FileEntry, SortOrder } from "../../types";
@@ -86,12 +86,19 @@ export function useLocalBrowserNav(rootId: string): BrowserNav {
  * wrapped into three rows of underline. They are shortcuts now — one scrolling
  * row of a fixed shape, with the browser still the only place a folder opens.
  */
-export function FolderTab({ rootId }: { rootId: string }) {
+export function FolderTab({
+  rootId,
+  initialTags = [],
+}: {
+  rootId: string;
+  /** Tags the browser opens narrowed to — see `FolderBrowser`. */
+  initialTags?: string[];
+}) {
   const nav = useLocalBrowserNav(rootId);
   return (
     <div className="flex w-full flex-col gap-4">
       <FolderShortcuts rootId={rootId} nav={nav} />
-      <FolderBrowser nav={nav} boundary={rootId} />
+      <FolderBrowser nav={nav} boundary={rootId} initialTags={initialTags} />
     </div>
   );
 }
@@ -109,7 +116,7 @@ export function FolderTab({ rootId }: { rootId: string }) {
  * too, so the two rows cannot drift apart.
  */
 function FolderShortcuts({ rootId, nav }: { rootId: string; nav: BrowserNav }) {
-  const load = useCallback(() => getTree({ node: rootId }, "name"), [rootId]);
+  const load = useCallback(() => getFolder({ node: rootId }, "name"), [rootId]);
   const { data } = useResource(["folder-shortcuts", rootId], load);
 
   const folders = data?.folders ?? [];

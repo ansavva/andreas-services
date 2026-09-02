@@ -273,7 +273,7 @@ def _refuse_a_duplicate(record: dict, args) -> None:
     earlier = SUB.already_submitted(record)
     if not earlier:
         return
-    die(f"this exact payload was already submitted to {args.project['slug']} as "
+    die(f"this exact payload was already submitted to {args.project['name']} as "
         f"{earlier['id']} ({earlier.get('status')}, {earlier.get('created')}).\n"
         f"       Nothing has been sent. This attempt is draft {record['id']}.\n"
         "       To generate it again anyway: --again")
@@ -341,9 +341,9 @@ def cmd_run(**options):
     # name and then to a pseudo-character called `misc`, which is how output
     # ended up in three different places for one piece of work. Ask instead.
     #
-    # `args.project` is the project RECORD from here down, not the slug a person
+    # `args.project` is the project RECORD from here down, not the name a person
     # typed. Everything below wants the id — a runref defaults against it and the
-    # run row stores it — and resolving the slug once here is what stops four
+    # run row stores it — and resolving the name once here is what stops four
     # call sites doing it four times and disagreeing about which of two projects
     # sharing a name they meant.
     args.project = PROJ.require_project(args.project)

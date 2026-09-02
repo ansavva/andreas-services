@@ -134,7 +134,7 @@ is the "re-approve after any edit" sentence below, made mechanical. See
 answer to a multiple-choice question, or a payload shown earlier in the
 conversation is not approval of the request about to be sent. Show it again and
 wait. **There is deliberately no `--yes`-style flag on any generating command** —
-`run`, `character turnaround` and `scenes board` all ask, and an approval flag
+`run` and `scenes board` both ask, and an approval flag
 there is precisely the door an agent walks through while believing some earlier
 exchange counted as approval. If one appears on a command that spends, it is a
 bug.
@@ -151,20 +151,20 @@ confirm — and produced a row that overstated what had happened. See
 Runs are append-only history and descriptions can be rewritten, but a
 character's **references** are who the character is — every later render is
 verified against them, and every future generation may be driven by them.
-Attaching, describing, regrouping or detaching one, or changing `default_set`,
+Tagging one `default`, or taking the tag off,
 is a decision that belongs to the user and is **separate** from having agreed to
 spend money on a render.
 
 So a successful generation does not become identity by itself.
-`studio character turnaround` leaves every result in its run and prints the promotion
+A run leaves its result where it is and prints the promotion
 line; a person looks, and then:
 
 ```bash
 studio runs outputs <project>/latest --presign            # look first
-studio character add-refs <name> --to <group> --from-run <runref>
+studio upload <file> <name>/reference && studio describe <node> --tag default
 ```
 
-`add-refs` copies inside the bucket, so the run keeps its own output and no
+The promotion copies inside the bucket, so the run keeps its own output and no
 record ends up naming a key that moved.
 
 Both this rule and the one above were broken in a single session — a shoot
@@ -227,13 +227,12 @@ studio/pipeline/
         │   ├── characters/       base.py profile.py refs.py pools.py cli.py
         │   ├── curate.py  contact_sheet.py
         │   ├── phrasebook.py  prompt.py
-        │   ├── spec.py            move the reference spec between stacks
+        │   ├── templates.py       move the template library between stacks
         │   └── templates/profile.yaml
         │
         ├── engine/                MODEL INVOCATION
         │   ├── resubmit.py        send a draft somebody already approved
         │   ├── runner.py          `studio run` / `studio models`
-        │   ├── turnaround.py           `studio character turnaround` — the standard set
         │   ├── board.py           `studio scenes board` / `render` / `check`
         │   ├── registry.py  schema.py  submit.py  refs.py  add_model.py
         │   │                     submit.py keeps the AUTHORING half; the half
@@ -424,7 +423,8 @@ querying the table, not by listing a folder.
 
 ```
 <character>/        a folder node the character's `root` names
-    reference/      the images its REF# rows point at, in purpose subfolders
+    reference/      where identity images conventionally sit — a convention,
+                    not a rule: the `default` tag is what makes one identity
         face/  body/  wardrobe/  frame/ …
     corpus/         collected material — uploads, keeper clips
     seed/           the founding real-world source photos
@@ -438,7 +438,7 @@ querying the table, not by listing a folder.
     input/          the project working pool
 
 config/             the angle images, shared by the library and owned by no entity
-    angle/body/*.png    how to stand, for a turnaround
+    angle/body/*.png    how to stand, cited by a template's illustration
     angle/face/*.png     head-angle images
 ```
 
@@ -628,19 +628,19 @@ a walk over every project's every run folder.
 The folder name still starts with a timestamp, which is convenient when browsing
 and is not an id: the run's id is a UUID and nothing derives one from the other.
 
-A **scene is keyed by its slug** and created before anything renders — it is
+A **scene is a row with a UUID** and created before anything renders — it is
 the plan as much as the record. A **movie** still takes the run id shape,
 because a movie is only ever a finished cut:
 
 ```
-<project>/scenes/<slug>/
+<project>/scenes/<scene_id>/
     storyboard/     the panels: shot-<NN>-p<M>.png
     shots/          each source clip, copied in, numbered in cut order
-    output/         the stitched scene — <slug>.mp4
+    output/         the stitched scene — <name>.mp4
 
-<project>/movies/<YYYY-MM-DD_HH-MM-SS>_<slug>/
+<project>/movies/<movie_id>/
     scenes/         each scene's output, copied in, numbered in cut order
-    output/         the finished movie — <slug>.mp4
+    output/         the finished movie — <name>.mp4
 ```
 
 `scene.json` and `movie.json` are gone the way `profile.yaml` went: a scene is
@@ -670,10 +670,10 @@ API image with Pillow and no ffmpeg.
 ### Identity vs working material — never conflate them
 
 A character's **reference set** is a library of generated character imagery,
-grouped by purpose and described one `REF#` row at a time.
+found by tag, and described one file at a time.
 The engines cap what they accept (Kling 7, Seedance 9, Nano Banana 14) and send
 it in full, so a *subset* is chosen deliberately — `--pick`, `--pick-tag`, or
-the character's `default_set`. An over-cap selection is **refused**, with the
+the character's `default` images. An over-cap selection is **refused**, with the
 index printed, rather than truncated: which images a generation saw should not be
 decided by whatever a folder listing returned. The API resolves the selection
 (`GET /api/characters/<id>/selection`), so the CLI and the app cannot disagree
@@ -739,8 +739,8 @@ about before.
 | `studio-media-veo-3-1`   | `google/veo-3.1` — the control-oriented engine, and the only one with a repeatable **seed** and a real `negative_prompt`. Reference images work only at 16:9 and 8 seconds; durations are a 4/6/8s enum |
 | `studio-media-grok-imagine-video` | `xai/grok-imagine-video` — animates one approved still, any integer 1–15s, and is the only registered model that **edits an existing clip**. No reference images, so not for holding a character on-model |
 | `studio-media-prompt`    | Author prompts as structured JSON for either engine (`--engine seedance\|kling-replicate`); validates rules and routes technical fields + the negative prompt where each engine takes them |
-| `studio-media-character` | Manage on-model characters (create/update/list/curate/load) whose bible is a field on the character's row and whose reference library is `REF#` rows; characters are data, not skills |
-| `studio-media-s3`               | Address the media store through the API by name path (list, upload, download, presign) — the asset store holding **characters** and **projects**, plus the shared **run store** (`runs.py`), **scene store** (`scenes.py`) and **movie store** (`movies.py`), the project registry (`projects.py`) and the slug/address helper (`paths.py`). Storage only; model invocation lives in `studio-media-core` |
+| `studio-media-character` | Manage on-model characters (create/update/list/curate/load) whose bible is a field on the character's row and whose identity images are files carrying `default`; characters are data, not skills |
+| `studio-media-s3`               | Address the media store through the API by name path (list, upload, download, presign) — the asset store holding **characters** and **projects**, plus the shared **run store** (`runs.py`), **scene store** (`scenes.py`) and **movie store** (`movies.py`), the project registry (`projects.py`) and the name/address helper (`paths.py`). Storage only; model invocation lives in `studio-media-core` |
 | `studio-code-pipeline` | **The other family, and the only member of it.** Changing the pipeline's own code — a subcommand, a module move, the registry's machinery, a wiring failure, a test. Not for making media |
 
 ---
@@ -867,16 +867,16 @@ into a config file by a person.
 
 | Module | Purpose |
 |---|---|
-| `paths.py` | **Slug rules, the starting layout names, and address joining — and nothing else.** It was 334 lines of key construction whose only job was making twelve modules spell `characters/<slug>/…` identically, and it is a name checker now. An entity record names its own nodes, so nothing builds a path to assert where something must be. |
-| `projects.py` | Project CRUD through the entity routes, plus the **input pool**. `require_project()` turns a missing `--project` into an error that lists the real options. Creating a project is one call: the API writes the record, the slug claim, the root folder and the starting subfolders in one transaction, so there is no half-made project to recover from. |
+| `paths.py` | **The starting layout names, address joining, and `by_name` — and nothing else.** It was 334 lines of key construction whose only job was making twelve modules spell `characters/<slug>/…` identically. `check_slug` went with slugs; what replaced it is `by_name`, which matches a name over a listing CLIENT-SIDE and refuses an ambiguous one with the ids, because the API resolves ids only. An entity record names its own nodes, so nothing builds a path to assert where something must be. |
+| `projects.py` | Project CRUD through the entity routes, plus the **input pool**. `require_project()` turns a missing `--project` into an error that lists the real options. Creating a project is one call: the API writes the record, the library index row, the root folder and the starting subfolders in one transaction, so there is no half-made project to recover from. |
 | `runs.py` | The shared **run store** every engine records into: the envelope, output uploads, runref resolution for chaining, `find --character` across projects — which is one API query now rather than a walk over every project's every run folder. It refuses a URL-shaped binding, and so does the API; keeping the check here as well is what makes a `--dry-run` refuse before anything is sent. |
 | `scenes.py` | The **scene store**: a piece planned, shot and cut. Owns the shot rows, the read-only half of the CLI, and the resolution `assemble` and `handoff` do before they hand off — both are render jobs now, so what is on this side is turning `latest`, `#N` and "that scene is not cut yet" into node ids and a refusal a person can act on. `new_scene` writes a scene that has never existed; the catalog has no folder until something asks for one. |
-| `storyboard.py` | **What is left of the plan document on this side.** Normalising an authored plan, validating it, merging a revision onto rendered work and deriving every status are `backend/studio_core/services/storyboard.py` — they were derivations run on one client and stored, so anything else writing a shot left the SPA drawing a stale answer. What stays: reading a plan off local disk, refusing a `<project>/<slug>` before a request is spent on it, and the role and frame helpers `engine/board.py` needs **on material it has just built and not yet written** — the one case a served derivation cannot answer. Those follow `board.py` if it ever moves, and not before. |
+| `storyboard.py` | **What is left of the plan document on this side.** Normalising an authored plan, validating it, merging a revision onto rendered work and deriving every status are `backend/studio_core/services/storyboard.py` — they were derivations run on one client and stored, so anything else writing a shot left the SPA drawing a stale answer. What stays: reading a plan off local disk, refusing a nameless scene before a request is spent on it, and the role and frame helpers `engine/board.py` needs **on material it has just built and not yet written** — the one case a served derivation cannot answer. Those follow `board.py` if it ever moves, and not before. |
 | `movies.py` | The **movie store**: scenes cut into one piece. The same shape one tier up, including the folders a cut needs. Copying a scene in is a read plus a write rather than a server-side `CopyObject`; see `store.copy` for why one blob under two rows is not on offer. |
 | `frames.py` | Stills out of a run's video — the handoff frame, and the contact grid that lets a clip be looked at before more money is spent on it. It resolves a runref to one video **node** and enqueues a render job; the clip is never downloaded here. Its `chain` store is for a sequence with no scene behind it; a planned scene derives its own frames from its shot rows. |
 | `renders.py` | **Asking the service to encode something, and waiting for it.** Enqueue, poll the `render-<uuid>` row, fetch the node it produced. `Ctrl-C` abandons a wait rather than the work, exactly as `engine/submit.wait_for` does — the job is being done elsewhere and the row is still there to read. Resolution stays on this side deliberately: `latest`, `#N`, "this run produced three videos, say which" are refusals with an action in them, and they belong in front of a person rather than at the far end of a queue. |
-| `characters/` | The character record, in four modules. `base` — names, pools, node helpers. `profile` — the bible: schema, and the `edit` local round trip whose conflict check is a `rev` sent with the write, so the API refuses a stale push itself. That was the S3 ETag, then the node's `updated_at`, and both were check-then-write with a gap; `rev` is compare-and-swap and closes it. `refs` — the `REF#` rows: attach, describe, order, regroup, detach, and the selection the API resolves. `pools` — corpus/seed/archive, material rather than identity. `cli` assembles the group; commands are `@click.command` and registered there, which is what keeps the package acyclic. **`rename.py` is gone** — a rename is one `PATCH`, because the slug is an attribute rather than a path segment. |
-| `curate.py` | The pool operations that go wrong by hand — `dedupe`, `groups`, `move`. **`renumber` and `regroup` are deleted**: order and group are attributes on a `REF#` row, so there are no holes to close and regrouping writes no object. `move` is the one worth knowing — when a byte-identical copy is already in the destination it deletes the source instead, which is the one path here that removes an image. **`digest` is a dictionary read**: the API records the MD5 of every object when it confirms the upload (S3 hands it back as the ETag of a single PUT), so comparing two images is comparing two served values. It used to download each same-size candidate over HTTPS, which made hashing a forty-image pool to find nothing forty downloads. |
+| `characters/` | The character record, in four modules. `base` — names, pools, node helpers. `profile` — the bible: schema, and the `edit` local round trip whose conflict check is a `rev` sent with the write, so the API refuses a stale push itself. That was the S3 ETag, then the node's `updated_at`, and both were check-then-write with a gap; `rev` is compare-and-swap and closes it. `refs` — what a model gets shown: `images` lists the branch with its tags, `selection` is resolved by the API. `pools` — corpus/seed/archive, material rather than identity. `cli` assembles the group; commands are `@click.command` and registered there, which is what keeps the package acyclic. **`rename.py` is gone** — a rename is one `PATCH` of one field, because the name is a plain attribute: not a path segment, not claimed, and not something anything resolves. |
+| `curate.py` | The pool operations that go wrong by hand — `dedupe`, `groups`, `move`. **`renumber` and `regroup` are deleted**: there is no order to maintain and a group is a tag, so regrouping is `studio describe` and writes no object. `move` is the one worth knowing — when a byte-identical copy is already in the destination it deletes the source instead, which is the one path here that removes an image. **`digest` is a dictionary read**: the API records the MD5 of every object when it confirms the upload (S3 hands it back as the ETag of a single PUT), so comparing two images is comparing two served values. It used to download each same-size candidate over HTTPS, which made hashing a forty-image pool to find nothing forty downloads. |
 | `prompt.py` | **Reading the object and printing the answer, and nothing else.** The rules — one camera move per shot, no bare "fast", no camera verbs in the action, the beat budget, the start-frame redundancy warning — are `backend/studio_core/services/prompt.py` and reachable at `POST /api/prompt`. They needed the registry and the phrasebook, both of which are the API's, and while they lived here nothing but `studio prompt` could run one of them: the SPA could offer no checking at all. 690 lines → 157. |
 | `phrasebook.py` | Per-model wording lists, as `LIB#`/`TERM#` rows. It was a YAML document in the bucket with no catalog node, which is why it was read by raw key and written by an overwrite that could not invent the file — so `phrasebook add` failed outright on a library that had never held one. A row has no such state: the first `add` writes the first term. |
 | `contact_sheet.py` | Labeled thumbnail grids over a character pool. It walks the pool **recursively**, like `characters/refs`: `reference` is the default and holds group folders rather than images, so a one-level listing would report the commonest invocation as an empty pool. Each tile's caption carries its group, because `face/<name>_1` and `body/<name>_1` share a basename. **The layout is a render job** — Pillow left this wheel with ffmpeg — and it is on the queue rather than being a synchronous route like `convert`, because what is unbounded here is N downloads where N is a character pool. `--src` is refused: a worker cannot see this machine's disk. |
@@ -920,14 +920,13 @@ next identical payload look like a duplicate.
 | Module | Purpose |
 |---|---|
 | `registry.py` | **Reads the registry, over the wire.** `GET /api/models` via `adapters/entities.models`, memoised once per process. The file itself is `backend/studio_core/models.json` — it moved so the API and the SPA could measure a reference selection against the same entries the CLI does, which `ENGINE_CAPS` (three families of nine) had been standing in for. |
-| `registry.py`'s `defaults` | **What studio sets when a caller does not.** An authored `defaults` block on an entry, applied by `build_payload` **under** everything a caller asked for — so `--extra`, an `--input-file` and `character turnaround`'s `per_model` block all still win. Not to be confused with `snapshot.<field>.default` sitting beside it, which records what the PROVIDER does and is rewritten wholesale by `models refresh`; a studio decision parked there would be reverted by the next refresh. It exists because `quality` was costing money by accident — a `gpt-image-2` image at `high` is ~$0.198 and at `medium` about a third of that. Per-model, because the fields are not shared: `quality` and `moderation` are the two OpenAI models' and `nano-banana-pro` spells the same idea `safety_filter_level`. |
+| `registry.py`'s `defaults` | **What studio sets when a caller does not.** An authored `defaults` block on an entry, applied by `build_payload` **under** everything a caller asked for — so `--extra`, an `--input-file` and an explicit `per_model` block all still win. Not to be confused with `snapshot.<field>.default` sitting beside it, which records what the PROVIDER does and is rewritten wholesale by `models refresh`; a studio decision parked there would be reverted by the next refresh. It exists because `quality` was costing money by accident — a `gpt-image-2` image at `high` is ~$0.198 and at `medium` about a third of that. Per-model, because the fields are not shared: `quality` and `moderation` are the two OpenAI models' and `nano-banana-pro` spells the same idea `safety_filter_level`. |
 | `registry_file.py` | **Writes it.** The repo file, for the only two commands that edit it — `add-model` and `models refresh`, both of which are really asking the API to ask Replicate what a model accepts. Separate from the reader on purpose: reading works against any environment, writing is a reviewed repo change that reaches production on deploy. |
 | `runner.py` | `studio run` — builds the payload and invokes *any* registered model. |
 | `submit.py` | **The AUTHORING half of the submit lifecycle**, image and video alike: gather every image input as node ids, preflight, render the two documents hard rule #2 asks a person to read, and record the draft. The billing half — presign, create the prediction, upload the output, close the run — is `POST /api/runs/<id>/submit` and a callback (#536). `wait_for` is what is left of `poll`, and the difference is the point: it watches the run *row*, so `Ctrl-C` abandons a wait rather than a generation. |
 | `schema.py` | Validates fields, enums, ranges and `denied` — off a schema fetched through `GET /api/models/<name>/schema` rather than from Replicate directly, which is what removed the provider token from this package. The API runs its own copy of the check at submit time, because the SPA also submits and never passes through here; that one is the gate and this one is the better message. |
 | `refs.py` | Character reference selection and project input pool → **node ids**. Selection itself is `GET /api/characters/<id>/selection`, so the CLI and the SPA cannot disagree about which images a generation saw; what is left here is the translation, and the over-cap refusal that names the commands which narrow a set. Nothing walks `reference/` any more. |
 | `resubmit.py` | Send a draft somebody has already approved — `studio runs submit`, and the retry path. It is separate from `runner.py` because there is nothing to author: the plan, the sends and the approval are on the row, so this is a status check and one `POST`. |
-| `turnaround.py` | `studio character turnaround` — the STANDARD reference set, one DRAFT per angle. Resolves which images carry identity (`--seed-pick`, the seed-tree walk, the oversized-pool refusal) and hands them to `POST /api/characters/<id>/turnaround`, which assembles the prompt and writes the drafts. **The spec and the bible filling are no longer here**: they were `domain/templates/reference_angles.yaml` plus this module, and both moved to the API so the app can read and edit a reference prompt — see `studio spec`. |
 | `board.py` | `studio scenes board` / `render` / `check` — the two commands that spend money in a scene's life, plus the free one that says whether they would work. Turns the plan's roles into bindings and hands them to the same lifecycle `runner.py` drives. Every cap, exclusion and format rule stays in `submit.py`; a copy here is the one that drifts. |
 | `add_model.py` | Onboarding: fetch schema + README **through the API**, infer an entry, append it to the registry. The inference stays here because what it produces is a repo file somebody reviews; the fetch does not, because it was one of the last three reasons a developer's machine held a Replicate token. It writes no documentation — see `studio-media-add-model`. |
 

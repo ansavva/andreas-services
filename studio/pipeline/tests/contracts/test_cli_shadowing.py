@@ -9,7 +9,7 @@ with two meanings for one word inside one scope — and the parameter always win
     studio projects inputs --presign   latent, same shape
     studio scenes outputs --presign    latent, same shape
     studio movies outputs --presign    latent, same shape
-    studio character refs              `keys = resolve_selection(...)` assigned
+    studio character images            `keys = resolve_selection(...)` assigned
                                        over the `--keys` flag, so `if keys:`
                                        tested the list. The download branch was
                                        unreachable and had been for its whole life.
@@ -123,7 +123,8 @@ def _retyped_names(node: ast.AST) -> set[str]:
     What is caught is a flag rebound to a value of another kind: a list, a
     string, anything with its own truthiness. After that a later `if flag:`
     reads like a question about the option and is a question about the new
-    value, which is how `character refs` lost its download branch.
+    value, which is how `character refs` lost its download branch (that command
+    is `character images` now, and the download branch is on `selection`).
     """
     found = set()
     for child in ast.walk(node):
@@ -173,7 +174,7 @@ def test_the_whole_command_tree_was_actually_analysed():
     # Named explicitly because these are the five the checks below exist for. A
     # resolver change that drops them would otherwise leave a green file.
     assert {"runs outputs", "projects inputs", "scenes outputs", "movies outputs",
-            "character refs"} <= resolved
+            "character images"} <= resolved
 
 
 @pytest.mark.parametrize("label", [entry[0] for entry in ANALYSED])

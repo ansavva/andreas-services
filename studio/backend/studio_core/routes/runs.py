@@ -1,6 +1,6 @@
 """Runs: one submission to a model, as an envelope studio owns and a blob it does not.
 
-A run used to be a folder named `<ts>_<slug>` holding three JSON documents nobody
+A run used to be a folder named `<ts>_<hint>` holding three JSON documents nobody
 was allowed to parse. The consequence was that the app could show a run as a
 folder and nothing else, and that `runs find --character` meant listing every
 project, listing every run in each, reading `request.json` for each, and
@@ -75,7 +75,8 @@ from studio_core.errors import (
 )
 from studio_core.routes import projects as project_routes
 from studio_core.routes import support
-from studio_core.services import catalog, generate, layout, manage, reference
+from studio_core.services import catalog, generate, layout, manage
+from studio_core.services import template as templating
 
 logger = logging.getLogger(__name__)
 
@@ -392,10 +393,6 @@ def create_draft(body: dict, held) -> dict:
         project["lib"],
         project["id"],
         parent["node_id"],
-        # A run has no slug. Its folder is named for its id — see
-        # `create_project_entity`, which spells out why the old
-        # `<timestamp>_<hint>` label was a worse copy of `created`.
-        slug=None,
         attributes={
             "status": "draft",
             "kind": kind,
@@ -619,6 +616,10 @@ def resolve_run():
     only by embedding `created` — which is what sorting already reads. Strip the
     timestamp and 29 runs collapsed to 19 labels. So a run is found by `latest`,
     by its id, or by the filters on `GET /api/runs`.
+
+    **The project segment is an id too.** It used to accept a bare slug, because
+    that is what a person typed; slugs are gone, and a free-text name is not
+    something an address may resolve when two projects may share one.
     """
     held = support.memberships()
     support.member_of(g.library, held)
@@ -651,14 +652,7 @@ def resolve_run():
             raise ValidationError(
                 f"{run_ref!r} is not a runref. A run has no name to address it "
                 "by — use 'latest', or its id.")
-        # **A bare slug, because that is what a person types.** Every other
-        # route takes an id or an explicit `slug:<slug>`; a runref's project
-        # segment is neither, and requiring the prefix would mean typing
-        # `slug:porch-teaser/latest` — which nobody does and no skill documents.
-        # This route exists precisely to accept the human spelling.
-        addressed = (project_ref if project_ref.startswith("proj-")
-                     else f"slug:{project_ref}")
-        project = project_routes.project_at(addressed, held)
+        project = project_routes.project_at(project_ref, held)
         # **Drafts are skipped unless asked for**, exactly as `GET /api/runs`
         # skips them, and for the same reason: `latest` is overwhelmingly asked
         # in order to chain off something — `--start-run <project>/latest` — and
@@ -931,8 +925,8 @@ def _expanded(plan: dict, record: dict) -> dict:
         return plan
     if not isinstance(template, str):
         raise ValidationError("plan.template must be a string")
-    blocks = catalog.reference_spec(record["lib"])["blocks"]
-    return {**plan, "prompt": reference.expand_cast(template, _profiles(record), blocks)}
+    blocks = catalog.templates(record["lib"])["blocks"]
+    return {**plan, "prompt": templating.expand(template, _profiles(record), blocks)}
 
 
 @bp.post("/runs/<run_id>/plan/preview")
@@ -951,8 +945,8 @@ def preview_plan(run_id: str):
     template = body.get("template")
     if not isinstance(template, str):
         raise ValidationError("template must be a string")
-    blocks = catalog.reference_spec(record["lib"])["blocks"]
-    prompt, spans = reference.expand_cast_parts(template, _profiles(record), blocks)
+    blocks = catalog.templates(record["lib"])["blocks"]
+    prompt, spans = templating.expand_parts(template, _profiles(record), blocks)
     # The spans say WHERE each citation landed. An expanded prompt is a wall of
     # prose in which nothing marks which words came from which citation, and
     # that is the one question a reader of it has.
@@ -1121,12 +1115,39 @@ def update_run(run_id: str):
         if field in body:
             assignments[field] = body[field]
 
+    # **The cast, which could only be set at creation and now cannot be.**
+    #
+    # A run's characters are edges — `RUN#<id>` / `CHAR#<id>` — and `POST /runs`
+    # was the only thing that wrote them. That made a run created without any
+    # permanently uncitable: a prompt names its cast by position, so a template
+    # citing `{character.1.top}` had nothing to fill from and no way to be given
+    # it. The app never sent the field at all, so EVERY run it made was in that
+    # state.
+    #
+    # A replace, like every other edge set here, and no `rev`: this is the same
+    # class of write as the rest of this route.
+    edges = None
+    if "characters" in body:
+        cast = body["characters"] or []
+        if not isinstance(cast, list):
+            raise ValidationError("characters must be a list")
+        for char_id in cast:
+            support.entity_at(catalog.ENTITY_CHARACTER, g.library, char_id, held)
+        # **Both halves, in one transaction.** The cast is a field on the record
+        # — what a run reports and what `{character.N}` counts — AND a set of
+        # `RUN#<id>` / `CHAR#<id>` edges, which is what makes "every run that
+        # used this character" answerable. Writing one without the other is the
+        # class of drift the whole of this change removed elsewhere; `edges` is
+        # the argument that keeps them together.
+        assignments["characters"] = cast
+        edges = {catalog.ENTITY_CHARACTER: cast}
+
     if not assignments:
         raise ValidationError("nothing to change")
 
     return jsonify(
         catalog.update_project_entity(KIND, record, assignments, listing,
-                                      bump_count=bump_count)
+                                      edges=edges, bump_count=bump_count)
     ), 200
 
 

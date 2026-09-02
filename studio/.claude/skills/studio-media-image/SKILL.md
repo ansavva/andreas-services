@@ -118,7 +118,7 @@ The full mechanism — `denied`, cross-field rules, the live schema pass — liv
 Writes through the shared run store:
 
 ```
-<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/
+<project>/runs/<run_id>/
     request.json    what we sent — references as S3 KEYS
     prompt.json     the studio-media-prompt source, when one was used
     result.json     prediction id, status, media types, output keys
@@ -138,7 +138,7 @@ studio runs outputs <project>/latest --presign
 ## Chaining — feeding a run into the next one
 
 Runs are addressed by **runref**: `<project>/<run_id>`, `<project>/latest`, a unique
-slug fragment, or a bare run id when the project is supplied out of band
+name fragment, or a bare run id when the project is supplied out of band
 (`--project`). Append
 `#N` to pick the Nth output (1-based); the default is every output.
 
@@ -177,7 +177,7 @@ prompt inside the payload double-escapes it into one unreadable line:
 
 ===== 2/2  INPUT — the parameters this model receives =====
 {
-  "run": "<name>/2026-01-31_09-15-00_<slug>",
+  "run": "run-<uuid>",
   "model": "google/nano-banana-pro",
   "endpoint": "https://api.replicate.com/v1/models/google/nano-banana-pro/predictions",
   "input": {
@@ -260,4 +260,4 @@ Note that a generated frame promoted into a character's `reference/` is model
 output re-entering as identity input, which compounds drift. A frame pulled off
 a run belongs in the **project's** input pool; promoting one into a character is
 a deliberate curation decision, and it should be described in the bible when it
-happens (`studio character set-ref-desc`).
+happens — copy it into the character and tag it (`studio describe <node> --tag default --tag face`).

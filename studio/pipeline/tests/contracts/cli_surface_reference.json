@@ -66,127 +66,6 @@
   "character": {
     "arguments": {},
     "commands": {
-      "add-refs": {
-        "arguments": {
-          "files": {
-            "choices": null,
-            "default": null,
-            "dest": "files",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": "*",
-            "required": false,
-            "type": "str"
-          },
-          "name": {
-            "choices": null,
-            "default": null,
-            "dest": "name",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {
-          "after": {
-            "choices": null,
-            "default": null,
-            "dest": "after",
-            "flag": false,
-            "flags": [
-              "--after"
-            ],
-            "help": "Place the new entry after this node, rather than last.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "description": {
-            "choices": null,
-            "default": null,
-            "dest": "description",
-            "flag": false,
-            "flags": [
-              "--description"
-            ],
-            "help": "What the image shows. An undescribed image cannot be picked by tag.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "from_run": {
-            "choices": null,
-            "default": null,
-            "dest": "from_run",
-            "flag": false,
-            "flags": [
-              "--from-run"
-            ],
-            "help": "Promote a RUN's output instead of a local file. Repeatable; takes a runref like <project>/latest#1.",
-            "hidden": false,
-            "multiple": true,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "project": {
-            "choices": null,
-            "default": null,
-            "dest": "project",
-            "flag": false,
-            "flags": [
-              "--project"
-            ],
-            "help": "Default project for a bare runref given to --from-run.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "tags": {
-            "choices": null,
-            "default": null,
-            "dest": "tags",
-            "flag": false,
-            "flags": [
-              "--tags"
-            ],
-            "help": "Comma-separated tags for the new entry(ies).",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "to": {
-            "choices": null,
-            "default": "unsorted",
-            "dest": "group",
-            "flag": false,
-            "flags": [
-              "--to"
-            ],
-            "help": "The reference group: face, body, wardrobe, frame, … (default: unsorted).",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          }
-        }
-      },
       "add-to": {
         "arguments": {
           "files": {
@@ -250,21 +129,6 @@
         },
         "commands": {},
         "options": {
-          "display_name": {
-            "choices": null,
-            "default": null,
-            "dest": "display_name",
-            "flag": false,
-            "flags": [
-              "--display-name"
-            ],
-            "help": "How the character is written in prose.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
           "dry_run": {
             "choices": null,
             "default": false,
@@ -342,36 +206,6 @@
           }
         }
       },
-      "default-set": {
-        "arguments": {
-          "name": {
-            "choices": null,
-            "default": null,
-            "dest": "name",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          },
-          "nodes": {
-            "choices": null,
-            "default": null,
-            "dest": "nodes",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": "*",
-            "required": false,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {}
-      },
       "delete": {
         "arguments": {
           "name": {
@@ -423,70 +257,6 @@
             "type": "bool"
           }
         }
-      },
-      "describe-refs": {
-        "arguments": {
-          "name": {
-            "choices": null,
-            "default": null,
-            "dest": "name",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {
-          "from": {
-            "choices": null,
-            "default": null,
-            "dest": "from_json",
-            "flag": false,
-            "flags": [
-              "--from"
-            ],
-            "help": "JSON object: {node: {group?, description, tags}}.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          }
-        }
-      },
-      "detach": {
-        "arguments": {
-          "name": {
-            "choices": null,
-            "default": null,
-            "dest": "name",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          },
-          "nodes": {
-            "choices": null,
-            "default": null,
-            "dest": "nodes",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": "+",
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {}
       },
       "edit": {
         "arguments": {
@@ -597,6 +367,55 @@
           }
         }
       },
+      "images": {
+        "arguments": {
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "json": {
+            "choices": null,
+            "default": false,
+            "dest": "json_",
+            "flag": true,
+            "flags": [
+              "--json"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          },
+          "tag": {
+            "choices": null,
+            "default": null,
+            "dest": "tags",
+            "flag": false,
+            "flags": [
+              "--tag"
+            ],
+            "help": "Comma-separated; an image must carry ALL of them.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
       "list": {
         "arguments": {},
         "commands": {},
@@ -615,67 +434,6 @@
             "nargs": 0,
             "required": false,
             "type": "bool"
-          }
-        }
-      },
-      "order": {
-        "arguments": {
-          "name": {
-            "choices": null,
-            "default": null,
-            "dest": "name",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          },
-          "nodes": {
-            "choices": null,
-            "default": null,
-            "dest": "nodes",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": "+",
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {
-          "after": {
-            "choices": null,
-            "default": null,
-            "dest": "after",
-            "flag": false,
-            "flags": [
-              "--after"
-            ],
-            "help": "Place the first node after this one. Omit to keep it where it is.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "group": {
-            "choices": null,
-            "default": null,
-            "dest": "group",
-            "flag": false,
-            "flags": [
-              "--group"
-            ],
-            "help": "The group being ordered.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
           }
         }
       },
@@ -721,7 +479,7 @@
             "flags": [
               "--group"
             ],
-            "help": "",
+            "help": "A subfolder of the pool (e.g. seed/current, reference/face).",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -766,107 +524,12 @@
             "flags": [
               "--unreferenced"
             ],
-            "help": "",
+            "help": "Only files no REF# row names — what is sitting in a folder without being identity.",
             "hidden": false,
             "multiple": false,
             "nargs": 0,
             "required": false,
             "type": "bool"
-          }
-        }
-      },
-      "refs": {
-        "arguments": {
-          "name": {
-            "choices": null,
-            "default": null,
-            "dest": "name",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {
-          "group": {
-            "choices": null,
-            "default": null,
-            "dest": "group",
-            "flag": false,
-            "flags": [
-              "--group"
-            ],
-            "help": "Only this group (face, body, wardrobe, frame, …).",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "json": {
-            "choices": null,
-            "default": false,
-            "dest": "json_",
-            "flag": true,
-            "flags": [
-              "--json"
-            ],
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 0,
-            "required": false,
-            "type": "bool"
-          }
-        }
-      },
-      "regroup": {
-        "arguments": {
-          "name": {
-            "choices": null,
-            "default": null,
-            "dest": "name",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          },
-          "nodes": {
-            "choices": null,
-            "default": null,
-            "dest": "nodes",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": "+",
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {
-          "to": {
-            "choices": null,
-            "default": null,
-            "dest": "group",
-            "flag": false,
-            "flags": [
-              "--to"
-            ],
-            "help": "The group to move them into.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
           }
         }
       },
@@ -970,7 +633,7 @@
             "flags": [
               "--pick"
             ],
-            "help": "Comma-separated node ids or filenames from the index.",
+            "help": "Comma-separated node ids or filenames.",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -1054,64 +717,6 @@
         "commands": {},
         "options": {}
       },
-      "set-ref-desc": {
-        "arguments": {
-          "description": {
-            "choices": null,
-            "default": null,
-            "dest": "description",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "name": {
-            "choices": null,
-            "default": null,
-            "dest": "name",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          },
-          "node": {
-            "choices": null,
-            "default": null,
-            "dest": "node",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {
-          "tags": {
-            "choices": null,
-            "default": null,
-            "dest": "tags",
-            "flag": false,
-            "flags": [
-              "--tags"
-            ],
-            "help": "Comma-separated, replacing the existing tags.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          }
-        }
-      },
       "show": {
         "arguments": {
           "name": {
@@ -1178,228 +783,6 @@
         },
         "commands": {},
         "options": {}
-      },
-      "turnaround": {
-        "arguments": {
-          "name": {
-            "choices": null,
-            "default": null,
-            "dest": "name",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {
-          "angle": {
-            "choices": null,
-            "default": null,
-            "dest": "angle",
-            "flag": false,
-            "flags": [
-              "--angle"
-            ],
-            "help": "Render only this angle id. Repeatable — `studio spec show` lists them.",
-            "hidden": false,
-            "multiple": true,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "aspect_ratio": {
-            "choices": null,
-            "default": null,
-            "dest": "aspect_ratio",
-            "flag": false,
-            "flags": [
-              "--aspect-ratio"
-            ],
-            "help": "Override the aspect ratio for every angle.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "dry_run": {
-            "choices": null,
-            "default": false,
-            "dest": "dry_run",
-            "flag": true,
-            "flags": [
-              "--dry-run"
-            ],
-            "help": "Assemble every payload and record nothing. Without it each angle becomes an unapproved draft.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 0,
-            "required": false,
-            "type": "bool"
-          },
-          "extra": {
-            "choices": null,
-            "default": null,
-            "dest": "extra",
-            "flag": false,
-            "flags": [
-              "--extra"
-            ],
-            "help": "JSON object merged into every angle's model inputs.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "group": {
-            "choices": [
-              "all",
-              "body",
-              "face"
-            ],
-            "default": "all",
-            "dest": "group",
-            "flag": false,
-            "flags": [
-              "--group"
-            ],
-            "help": "Render only this group of angles (default: all).",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "identity": {
-            "choices": [
-              "auto",
-              "refs",
-              "seed"
-            ],
-            "default": "auto",
-            "dest": "identity",
-            "flag": false,
-            "flags": [
-              "--identity"
-            ],
-            "help": "Where identity comes from: seed photos, the reference index, or auto (seed when it has any).",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "identity_max": {
-            "choices": null,
-            "default": 4,
-            "dest": "identity_max",
-            "flag": false,
-            "flags": [
-              "--identity-max"
-            ],
-            "help": "How many identity images to send per angle (default 4).",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "int"
-          },
-          "model": {
-            "choices": null,
-            "default": null,
-            "dest": "model",
-            "flag": false,
-            "flags": [
-              "--model"
-            ],
-            "help": "Override the model for every angle. See `models`.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "pick": {
-            "choices": null,
-            "default": null,
-            "dest": "pick",
-            "flag": false,
-            "flags": [
-              "--pick"
-            ],
-            "help": "Comma-separated reference files to carry identity, instead of seed/.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "pick_tag": {
-            "choices": null,
-            "default": null,
-            "dest": "pick_tag",
-            "flag": false,
-            "flags": [
-              "--pick-tag"
-            ],
-            "help": "Identity from references carrying ALL these tags.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "project": {
-            "choices": null,
-            "default": null,
-            "dest": "project",
-            "flag": false,
-            "flags": [
-              "--project"
-            ],
-            "help": "REQUIRED. The project these runs belong to.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "review_sheet": {
-            "choices": null,
-            "default": null,
-            "dest": "review_sheet",
-            "flag": false,
-            "flags": [
-              "--review-sheet"
-            ],
-            "help": "Write a labelled contact sheet per angle showing the images that payload sends, captioned [ImageN] in the order the model gets them.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "seed_pick": {
-            "choices": null,
-            "default": null,
-            "dest": "seed_pick",
-            "flag": false,
-            "flags": [
-              "--seed-pick"
-            ],
-            "help": "Comma-separated seed files to carry identity, when seed/ holds more than one angle sends. A file in a subfolder is named <folder>/<file>.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          }
-        }
       }
     },
     "options": {}
@@ -2676,6 +2059,21 @@
             "required": false,
             "type": "str"
           },
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "flags": [
+              "--name"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
           "scene": {
             "choices": null,
             "default": null,
@@ -2684,24 +2082,9 @@
             "flags": [
               "--scene"
             ],
-            "help": "a scene, in cut order. Repeatable. Accepts <project>/<slug>, a scene id, latest, or a unique fragment.",
+            "help": "a scene, in cut order. Repeatable. Accepts <project>/<name>, a scene id, latest, or a unique fragment.",
             "hidden": false,
             "multiple": true,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          },
-          "slug": {
-            "choices": null,
-            "default": null,
-            "dest": "slug",
-            "flag": false,
-            "flags": [
-              "--slug"
-            ],
-            "help": "",
-            "hidden": false,
-            "multiple": false,
             "nargs": 1,
             "required": true,
             "type": "str"
@@ -3400,21 +2783,6 @@
             "flag": false,
             "flags": [
               "--description"
-            ],
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "title": {
-            "choices": null,
-            "default": "",
-            "dest": "title",
-            "flag": false,
-            "flags": [
-              "--title"
             ],
             "help": "",
             "hidden": false,
@@ -4946,7 +4314,7 @@
             "flags": [
               "--shot"
             ],
-            "help": "a run output to append, in cut order. Repeatable. Accepts <project>/<slug>, a run id, a unique slug fragment, or #N.",
+            "help": "a run output to append, in cut order. Repeatable. Accepts <project>/<name>, a run id, a unique name fragment, or #N.",
             "hidden": false,
             "multiple": true,
             "nargs": 1,
@@ -5366,6 +4734,21 @@
             "required": false,
             "type": "str"
           },
+          "name": {
+            "choices": null,
+            "default": null,
+            "dest": "name",
+            "flag": false,
+            "flags": [
+              "--name"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
           "part": {
             "choices": null,
             "default": null,
@@ -5392,36 +4775,6 @@
             "help": "",
             "hidden": true,
             "multiple": true,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "slug": {
-            "choices": null,
-            "default": null,
-            "dest": "slug",
-            "flag": false,
-            "flags": [
-              "--slug"
-            ],
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          },
-          "title": {
-            "choices": null,
-            "default": "",
-            "dest": "title",
-            "flag": false,
-            "flags": [
-              "--title"
-            ],
-            "help": "",
-            "hidden": false,
-            "multiple": false,
             "nargs": 1,
             "required": false,
             "type": "str"

@@ -14,17 +14,18 @@ layer up: the pipeline held seventy-one boto3 calls before that module existed,
 and the migration was only reviewable because the vocabulary stayed put while
 the thing underneath it moved.
 
-## Ids, and the one place a slug is still allowed
+## Ids, and nothing but ids
 
-Every route below takes an **id**. `slug:<slug>` addressing exists for exactly
-one reason — a person types a name on a command line — and it is confined to
-`GET /api/characters/<id>` and `GET /api/projects/<id>`. Build one with
-`address()`; do not concatenate it by hand, because the prefix is the API's
-convention and not a string this package owns.
+Every route below takes an **id**. There used to be a second address,
+`slug:<slug>`, for exactly one reason — a person types a name on a command
+line — confined to `GET /api/characters/<id>` and `GET /api/projects/<id>`, with
+`address()` to build it and `resolve_*` to turn one into a record in a single
+call.
 
-Resolving a slug is therefore one call, not a listing plus a search. `resolve_*`
-returns the record, so a caller that resolved a slug already has everything and
-does not go back for it.
+**It went with slugs.** A name is a free-text label now: two characters may be
+called the same thing, so resolving one would mean picking between them, which
+is not something an address may do. `list_characters` is how a person finds an
+id; every wrapper here takes one.
 
 ## What is deliberately not here
 
@@ -63,7 +64,7 @@ now. If the API adopts PUT, this file changes with it and nothing else does.
 
 ## Errors
 
-Untouched. `api.Conflict` is a taken slug or a stale `rev`, `api.NotFound` is a
+Untouched. `api.Conflict` is a stale `rev`, `api.NotFound` is a
 missing entity, and both are what a caller catches. Nothing here converts an
 HTTP failure into a domain one — the domain modules own their own vocabulary
 and would each convert it differently.
@@ -71,16 +72,9 @@ and would each convert it differently.
 
 from __future__ import annotations
 
+import uuid
+
 from studio_pipeline.adapters import api
-
-
-def address(slug: str) -> str:
-    """`slug:<slug>` — the one id-shaped thing that is not an id.
-
-    The prefix is the API's, so it is spelled once. A caller that has an id
-    passes the id; a caller that has what a person typed passes this.
-    """
-    return f"slug:{slug}"
 
 
 def _clean(**fields) -> dict:
@@ -98,46 +92,39 @@ def _clean(**fields) -> dict:
 # ── characters ──────────────────────────────────────────────────────────────
 
 def list_characters(query: str | None = None) -> list[dict]:
-    """Every character in the library: id, slug, display name, hero, counts."""
+    """Every character in the library: id, name, hero, counts."""
     found = api.get("/api/characters", q=query)
     return found if isinstance(found, list) else []
 
 
-def create_character(slug: str, display_name: str = "",
-                     profile: dict | None = None) -> dict:
+def create_character(name: str, profile: dict | None = None) -> dict:
     """Create a character and its starting folder layout in one transaction.
 
     The four pool folders come back already made — they are part of the create,
-    not something the first write lazily discovers. `api.Conflict` means the
-    slug is taken.
+    not something the first write lazily discovers. **There is no conflict to
+    raise**: a name is a label, so two characters may share one.
     """
-    body = {"slug": slug, "display_name": display_name}
+    body = {"name": name}
     if profile is not None:
         body["profile"] = profile
     return api.post("/api/characters", body)
 
 
-def get_character(char: str) -> dict:
-    """One character's full record, `profile` included. `char` may be `slug:…`."""
-    return api.get(f"/api/characters/{char}")
+def get_character(char_id: str) -> dict:
+    """One character's full record, `profile` included."""
+    return api.get(f"/api/characters/{char_id}")
 
 
-def resolve_character(slug: str) -> dict:
-    """The record for a slug a person typed. One call, not a listing plus a scan."""
-    return get_character(address(slug))
-
-
-def patch_character(char_id: str, rev: int, *, slug: str | None = None,
-                    display_name: str | None = None,
+def patch_character(char_id: str, rev: int, *, name: str | None = None,
                     hero: str | None = None) -> dict:
     """Change the record. **This is what a rename is** — one conditional write.
 
     `rev` is compare-and-swap, not check-then-write: a stale value is refused by
     the API's condition expression rather than by a read this side of the wire.
-    `api.Conflict` is both "someone else wrote" and "that slug is taken", and
-    the message distinguishes them.
+    `api.Conflict` means somebody else wrote — it used to mean "that slug is
+    taken" as well, and there is no claim left to take.
     """
-    body = _clean(slug=slug, display_name=display_name, hero=hero)
+    body = _clean(name=name, hero=hero)
     body["rev"] = rev
     return api.patch(f"/api/characters/{char_id}", body)
 
@@ -169,87 +156,24 @@ def delete_character(char_id: str, *, files: str = "keep", force: bool = False) 
                       force=1 if force else None)
 
 
-# ── references ──────────────────────────────────────────────────────────────
+# ── identity, which is tags on the files ────────────────────────────────────
 
-def references(char_id: str, group: str | None = None) -> dict:
-    """The described index: `{"groups": {<group>: [entry, …]}, "counts": {…}}`.
+def character_images(char_id: str, tags: list[str] | None = None) -> list[dict]:
+    """Every image under a character, with what each one says about itself.
 
-    Entries arrive in `(group, order)` order with their file and a presigned
-    URL, so a caller never sorts and never presigns a second time.
+    **The reference index is gone and this is not a replacement for it.** That
+    listed the pictures somebody had filed a `REF#` row for, so an image dropped
+    into the tree by hand was invisible — which is how twelve files in this
+    library ended up with no description anywhere. This is the character's whole
+    branch, filtered to images, and the tags on each say which are identity.
+
+    One listing call: `?under=<root>&depth=all&kind=image`, which is the same
+    route the file browser and the picker use.
     """
-    return api.get(f"/api/characters/{char_id}/references", group=group)
-
-
-def reference_entries(char_id: str, group: str | None = None) -> list[dict]:
-    """`references()` flattened, order preserved, each entry carrying its group.
-
-    Almost every caller wants one list — the grouping is a presentation fact and
-    the API returns it because the SPA draws sections. Flattening here rather
-    than in five domain modules keeps the group key's spelling in one file.
-    """
-    found = references(char_id, group)
-    out: list[dict] = []
-    for name, entries in (found.get("groups") or {}).items():
-        for entry in entries:
-            out.append({**entry, "group": entry.get("group") or name})
-    return out
-
-
-def add_reference(char_id: str, node: str, group: str, *,
-                  description: str | None = None, tags: list[str] | None = None,
-                  after: str | None = None) -> dict:
-    """Attach an existing node as a reference. **The bytes are already there.**
-
-    Two steps and always have been: the image arrives, then a person decides it
-    is identity (hard rule #2b). `after` places the entry between two existing
-    ones by taking the midpoint of their `order`, so a reorder is one write and
-    never touches a neighbour.
-    """
-    body = {"node": node, "group": group}
-    body.update(_clean(description=description, tags=tags, after=after))
-    return api.post(f"/api/characters/{char_id}/references", body)
-
-
-def patch_reference(char_id: str, node: str, *, group: str | None = None,
-                    description: str | None = None, tags: list[str] | None = None,
-                    after: str | None = None) -> dict:
-    """One row's write. `group` here is `regroup`; `after` here is `order`.
-
-    Both used to move objects — a regroup was a reparent plus a records sweep, a
-    reorder was a rename per file. Neither writes a byte now, because both are
-    attributes of a row that names a node id.
-    """
-    return api.patch(f"/api/characters/{char_id}/references/{node}",
-                     _clean(group=group, description=description, tags=tags, after=after))
-
-
-def put_references(char_id: str, entries: list[dict]) -> dict:
-    """Describe or reorder many references in ONE transaction.
-
-    `describe-refs` is this call. Describing a forty-image library one write at a
-    time is forty round trips and forty chances to stop halfway with the index
-    half-written; the whole pass lands or none of it does.
-    """
-    return api.request("PATCH", f"/api/characters/{char_id}/references",
-                       {"entries": entries})
-
-
-def delete_reference(char_id: str, node: str) -> dict:
-    """Detach a reference. **The file stays exactly where it is.**"""
-    return api.delete(f"/api/characters/{char_id}/references/{node}")
-
-
-def put_default_set(char_id: str, nodes: list[str], rev: int) -> dict:
-    """Name the nodes sent when `--character` is given with no selector.
-
-    **`rev` is required and was not being sent.** The route compare-and-swaps it
-    like every other write on the record, so this failed `rev is required — the
-    record is at rev N`. It never surfaced because the request died one layer
-    earlier on an unregistered verb until #479 — the same way `edit --push`
-    hid a `schema_version` it should not have sent.
-    """
-    return api.request("PATCH", f"/api/characters/{char_id}/default-set",
-                       {"nodes": list(nodes), "rev": rev})
+    record = get_character(char_id)
+    found = api.get("/api/nodes", under=record["root"], depth="all", kind="image",
+                    sort="name", tag=",".join(tags) if tags else None)
+    return found.get("entries") or []
 
 
 def selection(char_id: str, *, pick: list[str] | None = None,
@@ -292,28 +216,24 @@ def list_projects() -> list[dict]:
     return _as_list(api.get("/api/projects"))
 
 
-def create_project(slug: str, *, title: str = "", description: str = "",
+def create_project(name: str, *, description: str = "",
                    characters: list[str] | None = None) -> dict:
     """Create a project, its root and its five starting subfolders."""
-    body = {"slug": slug, "title": title, "description": description}
+    body = {"name": name, "description": description}
     if characters:
         body["characters"] = list(characters)
     return api.post("/api/projects", body)
 
 
 def get_project(project: str) -> dict:
-    """One project's record. `project` may be `slug:…`."""
+    """One project's record, by id."""
     return api.get(f"/api/projects/{project}")
 
 
-def resolve_project(slug: str) -> dict:
-    return get_project(address(slug))
-
-
-def patch_project(proj_id: str, rev: int, *, slug: str | None = None,
-                  title: str | None = None, description: str | None = None,
+def patch_project(proj_id: str, rev: int, *, name: str | None = None,
+                  description: str | None = None,
                   hero: str | None = None) -> dict:
-    body = _clean(slug=slug, title=title, description=description, hero=hero)
+    body = _clean(name=name, description=description, hero=hero)
     body["rev"] = rev
     return api.patch(f"/api/projects/{proj_id}", body)
 
@@ -548,10 +468,10 @@ def delete_run(run_id: str, *, files: str = "keep") -> dict:
 
 # ── scenes ──────────────────────────────────────────────────────────────────
 
-def create_scene(*, project: str, slug: str, title: str = "",
+def create_scene(*, project: str, name: str,
                  shots: list[dict] | None = None, setting: str = "",
                  defaults: dict | None = None) -> dict:
-    body = {"project": project, "slug": slug, "title": title,
+    body = {"project": project, "name": name,
             "shots": shots or [], "setting": setting}
     body.update(_clean(defaults=defaults))
     return api.post("/api/scenes", body)
@@ -567,7 +487,7 @@ def get_scene(scene_id: str) -> dict:
 
 
 def patch_scene(scene_id: str, **fields) -> dict:
-    """Whatever moved: `title`, `setting`, `status`, `output`, `stitch`, `characters`."""
+    """Whatever moved: `name`, `setting`, `status`, `output`, `stitch`, `characters`."""
     return api.patch(f"/api/scenes/{scene_id}", _clean(**fields))
 
 
@@ -591,10 +511,10 @@ def patch_shot(scene_id: str, shot_id: str, **fields) -> dict:
 
 # ── movies ──────────────────────────────────────────────────────────────────
 
-def create_movie(*, project: str, slug: str, title: str = "",
+def create_movie(*, project: str, name: str,
                  scenes: list[str] | None = None) -> dict:
-    return api.post("/api/movies", {"project": project, "slug": slug,
-                                    "title": title, "scenes": list(scenes or [])})
+    return api.post("/api/movies", {"project": project, "name": name,
+                                    "scenes": list(scenes or [])})
 
 
 def query_movies(*, project: str | None = None, cursor: str | None = None) -> dict:
@@ -618,64 +538,58 @@ def put_movie_scenes(movie_id: str, scenes: list[str]) -> dict:
     return api.request("PATCH", f"/api/movies/{movie_id}/scenes", {"scenes": scenes})
 
 
-# ── the reference spec ──────────────────────────────────────────────────────
+# ── the template library ────────────────────────────────────────────────────
 
-def reference_spec() -> dict:
-    """The blocks and angles a turnaround fills. `{"blocks": {...}, "angles": [...]}`.
+def templates() -> dict:
+    """The blocks and templates a prompt is built from.
+
+    `{"blocks": {...}, "templates": [...]}`.
 
     Wrapped, like `/api/phrasebook` and unlike the bare-array listings — and the
     shape is normalised here rather than at the call site, because the last
     module that let a wrapped answer reach `_as_list` reported every library's
     phrasebook as empty for the whole life of a migration.
     """
-    found = api.get("/api/reference-spec")
+    found = api.get("/api/templates")
     if not isinstance(found, dict):
-        return {"blocks": {}, "angles": []}
+        return {"blocks": {}, "templates": []}
     return {"blocks": found.get("blocks") or {},
-            "angles": _as_list(found.get("angles"))}
+            "templates": _as_list(found.get("templates"))}
 
 
-def put_spec_block(name: str, text: str) -> dict:
+def put_block(name: str, text: str) -> dict:
     """Write one shared block. An overwrite: a block IS its name."""
-    return api.patch(f"/api/reference-spec/blocks/{_segment(name)}", {"text": text})
+    return api.patch(f"/api/templates/blocks/{_segment(name)}", {"text": text})
 
 
-def put_spec_angle(angle_id: str, fields: dict) -> dict:
-    """Write one angle — its group, template, description and tags."""
-    return api.patch(f"/api/reference-spec/angles/{_segment(angle_id)}", fields)
+def put_template(template_id: str, fields: dict) -> dict:
+    """Write one template, addressed by its id, with its name in the body.
+
+    **A document keyed on names writes rows keyed on ids**, and the resolution is
+    the caller's — `domain/templates.py` matches the file against the stack it
+    just read, so it knows the id of every name already there and mints one only
+    for a name that is new. A block is different and is still keyed on its name:
+    prose cites it as `{block.face_only}`, so its name is load-bearing in a way a
+    template's is not.
+    """
+    return api.patch(f"/api/templates/{_segment(template_id)}", fields)
 
 
-# There are deliberately no `delete_spec_*` wrappers, and #553 is why: a wrapper
+def new_template_id() -> str:
+    """A UUID for a template a push is creating.
+
+    Minted here rather than by the API, so a create and an update are one call
+    with one shape — the same reason a node id is minted by whoever asks for one.
+    """
+    return f"template-{uuid.uuid4()}"
+
+
+# There are deliberately no `delete_*` wrappers, and #553 is why: a wrapper
 # with no caller is a claim about the wire surface that nothing checks, and it
 # deleted five of them for that reason on the day this was written. `studio spec`
 # never removes a row — a push states what a file contains, not that nothing else
 # exists — so nothing here would call them. The API serves both DELETEs for the
 # app, which is the same footing `/api/runs/<id>/response` is on.
-
-def draft_turnaround(character_id: str, *, project: str, identity: list[str],
-                     group: str | None = None, angles: list[str] | None = None,
-                     model: str | None = None, extra: dict | None = None,
-                     preview: bool = False) -> dict:
-    """Draft a character's reference angles, or preview what they would say.
-
-    **The assembly is the API's**, and this is the whole of what the CLI does
-    about it now. The bible filling and the slot arithmetic used to live in
-    `engine/turnaround.py`; two implementations of that would be two opinions
-    about what a run was told to render, and a run records the outcome rather
-    than the reasoning, so the disagreement would be undetectable afterwards.
-
-    `preview` stops before the write and answers `preview` rather than `drafted`.
-    """
-    body = {"project": project, "identity": identity}
-    body.update(_clean(group=group, model=model))
-    if angles:
-        body["angles"] = angles
-    if extra:
-        body["extra"] = extra
-    if preview:
-        body["preview"] = True
-    got = api.post(f"/api/characters/{_segment(character_id)}/turnaround", body)
-    return got if isinstance(got, dict) else {"drafted": [], "failed": []}
 
 
 def _segment(value: str) -> str:

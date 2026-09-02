@@ -24,7 +24,7 @@ interface Props {
 /**
  * A project's own fields, and who is in it.
  *
- * **The Overview tab was read-only.** A project's title and description could be
+ * **The Overview tab was read-only.** A project's name and description could be
  * set at creation and never changed from the app, and involvement — which is
  * rows, and the thing that makes "which projects is this character in"
  * answerable — could not be edited at all. Both routes existed.
@@ -40,13 +40,13 @@ interface Props {
  * route answered with.
  */
 export function ProjectDetails({ record, onSaved }: Props) {
-  const [title, setTitle] = useState(record.title ?? "");
+  const [name, setName] = useState(record.name ?? "");
   const [description, setDescription] = useState(record.description ?? "");
   const [busy, setBusy] = useState(false);
   const [conflict, setConflict] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const dirty = title !== (record.title ?? "") || description !== (record.description ?? "");
+  const dirty = name !== (record.name ?? "") || description !== (record.description ?? "");
 
   const save = useCallback(async () => {
     setBusy(true);
@@ -56,7 +56,7 @@ export function ProjectDetails({ record, onSaved }: Props) {
       onSaved(
         await patchProject(record.id, {
           rev: record.rev,
-          title: title.trim(),
+          name: name.trim(),
           description: description.trim(),
         }),
       );
@@ -68,7 +68,7 @@ export function ProjectDetails({ record, onSaved }: Props) {
     } finally {
       setBusy(false);
     }
-  }, [description, onSaved, record.id, record.rev, title]);
+  }, [description, name, onSaved, record.id, record.rev]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -85,10 +85,9 @@ export function ProjectDetails({ record, onSaved }: Props) {
         </Alert.Root>
       )}
 
-      <Field.Root name="title">
-        <Field.Label>Title</Field.Label>
-        <Input value={title} onValueChange={setTitle} placeholder={record.slug} />
-        <Field.Description>The slug is used when this is empty.</Field.Description>
+      <Field.Root name="name">
+        <Field.Label>Name</Field.Label>
+        <Input value={name} onValueChange={setName} placeholder={record.name} />
       </Field.Root>
 
       <Field.Root name="description">
@@ -110,7 +109,7 @@ export function ProjectDetails({ record, onSaved }: Props) {
             intent="secondary"
             size="sm"
             onClick={() => {
-              setTitle(record.title ?? "");
+              setName(record.name ?? "");
               setDescription(record.description ?? "");
             }}
           >
@@ -204,7 +203,7 @@ function Involvement({ record, onSaved }: Props) {
                                 : "border-line text-muted hover:bg-surface-alt hover:text-ink"
                             }`}
               >
-                {character.display_name || character.slug}
+                {character.name}
               </button>
             );
           })}

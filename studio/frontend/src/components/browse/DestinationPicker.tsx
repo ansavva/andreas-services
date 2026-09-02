@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Alert, Breadcrumbs, Button, Dialog, Text } from "@ansavva/design-system";
 
 import { ApertureSpinner } from "../common/Aperture";
-import { getTree } from "../../apis/studio";
+import { getFolder } from "../../apis/studio";
 import type { Crumb, FolderEntry } from "../../types";
 import type { FolderId } from "../../utils/location";
 import { ArrowUpIcon, FolderIcon } from "../common/icons";
@@ -43,7 +43,7 @@ interface Props {
  * A typed address was the obvious alternative and is worse: the whole point of a
  * move is that you are looking at a library whose folder names are timestamps,
  * and nobody types a run folder's name correctly. So this walks the same
- * `/api/tree` the page behind it does, showing folders only — the files in a
+ * `GET /api/nodes` the page behind it does, showing folders only — the files in a
  * destination are not a thing you are choosing between.
  *
  * **It browses and submits node ids**, which is the one thing that changed here
@@ -82,7 +82,7 @@ export function DestinationPicker({
 
     // Always by name: this is a folder chooser, and "newest first" is an answer
     // to a question nobody asks while looking for somewhere to put something.
-    getTree(folderId === null ? {} : { node: folderId }, "name")
+    getFolder(folderId === null ? {} : { node: folderId }, "name")
       .then((result) => {
         if (cancelled) return;
         setFolders(result.folders);

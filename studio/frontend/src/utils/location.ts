@@ -52,7 +52,7 @@ export const PROJECTS_PATH = "/projects";
  * angles describes every character in it. So it is a section, beside the two
  * listings, rather than a tab on a character page.
  */
-export const REFERENCE_SPEC_PATH = "/reference-spec";
+export const TEMPLATES_PATH = "/templates";
 
 /** A folder node id, or `null` for the library root. */
 export type FolderId = string | null;
@@ -66,7 +66,7 @@ export type Target = { kind: "folder"; id: FolderId } | { kind: "object"; id: st
  * fixing: its id is not knowable before the first request — `/api/libraries`
  * returns the library, not its root node — so an app that insisted on
  * `/f/<id>` would have to resolve before it could draw anything, and
- * `GET /api/tree` with no address is already that folder.
+ * `GET /api/nodes` with no `under` is already that folder.
  */
 export function folderPath(id: FolderId): string {
   return id === null ? "/f" : `/f/${id}`;

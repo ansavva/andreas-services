@@ -396,8 +396,8 @@ def do_chain(ref, add_key, args, max_, seed):
     """
     if "/" not in ref:
         die("chain ref must be <project>/<slug>")
-    project_slug, slug = ref.split("/", 1)
-    record = PROJECTS.require_project(project_slug)
+    project_ref, slug = ref.split("/", 1)
+    record = PROJECTS.require_project(project_ref)
     doc = load_chain(record, slug)
     for given in (*add_key, *([seed] if seed else [])):
         if not given.startswith("node-"):

@@ -185,7 +185,7 @@ def test_an_entity_delete_carries_its_sweep_too(empty_api, catalog_table, media_
     s3.delete(...)` — the line the sweep replaces — so a fix that only covered
     `/api/nodes` would leave the majority of deletes producing orphans.
     """
-    created = empty_api.post("/api/characters", json={"slug": "sweepable"})
+    created = empty_api.post("/api/characters", json={"name": "sweepable"})
     assert created.status_code == 201
     char = created.get_json()
 

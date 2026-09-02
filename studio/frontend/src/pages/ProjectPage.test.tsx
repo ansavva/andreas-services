@@ -36,8 +36,7 @@ function record(over: Partial<ProjectRecord> = {}): ProjectRecord {
   return {
     id: ID,
     lib: "lib-0001",
-    slug: "a-project",
-    title: "A project",
+    name: "A project",
     description: "",
     rev: 3,
     created: "2026-08-01T00:00:00Z",
@@ -109,10 +108,10 @@ it("offers the run composer on the Runs tab and nowhere else", async () => {
  *
  * A project takes its runs, scenes and movies with it, and the armed-button
  * shape — press twice in the same spot — is exactly the gesture a mis-click
- * produces. So the slug has to be typed, and the sentence above it says what
+ * produces. So the name has to be typed, and the sentence above it says what
  * goes.
  */
-it("will not delete until the slug is typed, and says what goes with it", async () => {
+it("will not delete until the name is typed, and says what goes with it", async () => {
   await open();
 
   fireEvent.click(screen.getByRole("button", { name: "Delete" }));
@@ -126,7 +125,7 @@ it("will not delete until the slug is typed, and says what goes with it", async 
   expect(within(dialog).getByText(/29 run\(s\), 3 scene\(s\) and 1 movie\(s\)/)).toBeTruthy();
   expect(destroy).not.toHaveBeenCalled();
 
-  fireEvent.change(within(dialog).getByLabelText("Confirm"), { target: { value: "a-project" } });
+  fireEvent.change(within(dialog).getByLabelText("Confirm"), { target: { value: "A project" } });
   await waitFor(() => expect(action.disabled).toBe(false));
 });
 
@@ -143,11 +142,11 @@ it("will not delete until the slug is typed, and says what goes with it", async 
 it("merges the involvement answer without refetching the project", async () => {
   const { getCharacters } = await import("../apis/studio");
   vi.mocked(getCharacters).mockResolvedValue([
-    { id: "char-1", slug: "someone", display_name: "Someone", hero: null, counts: { references: 0, files: 0 } },
+    { id: "char-1", name: "Someone", hero: null, counts: { references: 0, files: 0 } },
   ] as never);
   setCharacters.mockResolvedValue({
     id: ID,
-    characters: [{ id: "char-1", slug: "someone", display_name: "Someone" }],
+    characters: [{ id: "char-1", name: "Someone" }],
   });
 
   await open();

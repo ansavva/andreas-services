@@ -718,20 +718,15 @@ function RecordFields({
 }) {
   return (
     <>
-      <Field.Root name="slug">
-        <Field.Label>Slug</Field.Label>
-        <Input value={value.slug} onValueChange={(slug) => onChange({ ...value, slug })} />
-        <Field.Description>
-          Library-unique, and the address a person types. Changing it copies no objects.
-        </Field.Description>
-      </Field.Root>
-
-      <Field.Root name="display_name">
-        <Field.Label>Display name</Field.Label>
-        <Input
-          value={value.display_name}
-          onValueChange={(displayName) => onChange({ ...value, display_name: displayName })}
-        />
+      {/* **One field, where there were two.** A character carried a `slug` —
+          library-unique, the address a person typed — beside a display name for
+          prose, and keeping them in step was the reader's problem. Identity is a
+          UUID and this is a label: not unique, not an address, and renaming it
+          copies no objects and strands nothing. */}
+      <Field.Root name="name">
+        <Field.Label>Name</Field.Label>
+        <Input value={value.name} onValueChange={(name) => onChange({ ...value, name })} />
+        <Field.Description>What this character is called. Renaming copies no objects.</Field.Description>
       </Field.Root>
     </>
   );

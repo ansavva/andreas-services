@@ -22,16 +22,22 @@ can be written and then never referenced from a URL again, and 255 UTF-8 bytes
 because a name is one segment. It refuses rather than strips — a silently
 altered name is a rename nobody asked for.
 
-**`clean_slug` is the same argument one level up.** A slug is a label on an
-entity rather than a segment of a path, and it is library-unique, so it is
-narrower still: lowercase, digits, `-` and `_`. It is not an id and nothing is
-addressed by it — `PATCH /api/characters/<id>` changes one attribute and one
-folder name — but it is what a person types, so it has to be a string a person
-can type twice the same way.
+**`clean_label` replaced `clean_slug`, and is far weaker on purpose.** A slug was
+lowercase, digits, `-` and `_`, refused rather than repaired, because it was
+library-unique: it was claimed by a conditional write, so silently lowercasing
+`Subject-A` would let two people believe they held two different names for one
+claim. None of that survives. An entity's `name` is a free-text label, nothing is
+unique, and nothing resolves an entity by it — so the only things worth refusing
+are the two that would break something downstream: an empty name, and `#`, which
+separates every segment of a key in the catalog table.
+
+Whitespace is folded rather than refused, which is the one repair here and is
+safe for the same reason: `Anna  Smith` and `Anna Smith` are not two claims on
+one name any more, they are two ways of typing a label, and collapsing them
+means what a person sees is what is stored.
 """
 
 import posixpath
-import re
 
 from studio_core.errors import ValidationError
 
@@ -92,37 +98,32 @@ def clean_name(raw: str | None) -> str:
 
 # A slug: lowercase letters, digits, `-` and `_`. Anchored, so the whole string
 # has to match rather than some part of it.
-SLUG = re.compile(r"^[a-z0-9_-]+$")
-
-# Long enough for a descriptive label, short enough that it stays a label. The
-# ceiling matters because a slug is also a folder name — `clean_name`'s 255-byte
-# bound would let a slug be longer than anything a listing can draw.
-MAX_SLUG_LENGTH = 64
+# Long enough for a descriptive label, short enough that it stays a label —
+# a listing draws these in a card, and nothing can draw 255 bytes of them.
+MAX_LABEL_LENGTH = 120
 
 
-def clean_slug(raw: str | None, label: str = "slug") -> str:
-    """Validate a library-unique entity label.
+def clean_label(raw: str | None, label: str = "name") -> str:
+    """Fold and check the free-text name of an entity.
 
-    **Refused, never repaired**, for `clean_name`'s reason and one more of its
-    own: a slug is claimed by a conditional write on `LIB#<lib>` /
-    `CHARSLUG#<slug>`, so silently lowercasing `Subject-A` would let two people
-    believe they hold two different names for one claim. What comes back is
-    exactly what was sent or nothing at all.
+    Two refusals, and they are the only two that break something: an empty name,
+    and `#`, which separates the segments of every key in the catalog table.
+    Everything else is allowed, so a character may be called `Anna Smith` and a
+    project `Winter '26 — reshoots`.
 
-    The character class is narrower than a name's because a slug is typed on a
-    command line, appears in a URL and becomes a folder name — three places
-    where a space, a quote or a non-ASCII letter is a different kind of nuisance
-    each time.
+    **Not unique, and nothing checks.** This replaced `clean_slug`, whose whole
+    severity came from being a claim: it refused rather than repaired because
+    silently lowercasing a slug would let two people believe they held two names
+    for one claim. There is no claim, so there is nothing to protect.
     """
-    if raw is None or not raw.strip():
+    name = " ".join((raw or "").split())
+    if not name:
         raise ValidationError(f"{label} is required")
-
-    slug = raw.strip()
-    if not SLUG.match(slug):
-        raise ValidationError(f"{label} may only hold a-z, 0-9, '-' and '_'")
-    if len(slug) > MAX_SLUG_LENGTH:
-        raise ValidationError(f"{label} may be at most {MAX_SLUG_LENGTH} characters")
-    return slug
+    if "#" in name:
+        raise ValidationError(f"{label} may not contain '#'")
+    if len(name) > MAX_LABEL_LENGTH:
+        raise ValidationError(f"{label} may be at most {MAX_LABEL_LENGTH} characters")
+    return name
 
 
 # How many `name (n).ext` variants one name may spawn in one folder before the

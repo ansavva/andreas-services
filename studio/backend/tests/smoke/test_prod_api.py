@@ -101,16 +101,16 @@ def test_the_lambda_can_read_the_provider_token(api):
 
 
 def test_the_root_folder_lists(api, root_node, scratch):
-    """`GET /api/tree` on the library's own root, with something in it.
+    """`GET /api/nodes` on the library's own root, with something in it.
 
     `scratch` is requested so the root is not empty — see this module's header:
     an empty listing takes the one code path that would have survived the outage
     this file exists to detect.
     """
-    listing = api.get("/api/tree", node=root_node)
+    listing = api.get("/api/nodes", under=root_node)
 
-    assert listing["counts"]["folders"] >= 1
-    assert scratch in {folder["id"] for folder in listing["folders"]}
+    assert listing["counts"].get("folder", 0) >= 1
+    assert scratch in {entry["id"] for entry in listing["entries"]}
     assert listing["breadcrumbs"], "a listing always names where it is"
 
 
@@ -126,13 +126,13 @@ def test_a_new_folder_appears_in_its_parents_listing(api, scratch):
         "/api/nodes", {"parent": scratch, "name": "listing", "kind": "folder"}, expect=201
     )
 
-    listing = api.get("/api/tree", node=scratch)
+    listing = api.get("/api/nodes", under=scratch)
 
-    assert created["id"] in {folder["id"] for folder in listing["folders"]}
+    assert created["id"] in {entry["id"] for entry in listing["entries"]}
     # A count, not an exact one: what this test needs is a listing with a child
     # in it, and pinning the number would make it fail for a later test's
     # leftovers rather than for anything it is about.
-    assert listing["counts"]["folders"] >= 1
+    assert listing["counts"].get("folder", 0) >= 1
 
 
 def test_a_file_uploads_in_four_calls_and_the_bytes_come_back(api, scratch):
@@ -178,8 +178,8 @@ def test_a_file_uploads_in_four_calls_and_the_bytes_come_back(api, scratch):
     with urllib.request.urlopen(download["url"], timeout=60) as response:  # noqa: S310
         assert response.read() == BODY
 
-    listing = api.get("/api/tree", node=scratch)
-    uploaded = next(entry for entry in listing["files"] if entry["id"] == node["id"])
+    listing = api.get("/api/nodes", under=scratch)
+    uploaded = next(entry for entry in listing["entries"] if entry["id"] == node["id"])
     assert uploaded["size"] == len(BODY)
     # A listing presigns every file it returns, and that URL is signed by the
     # Lambda's credentials on a code path `download-url` does not share.
@@ -234,5 +234,5 @@ def test_deleting_takes_the_rows_and_then_the_bytes(api, scratch):
     assert refused.value.code in (403, 404)
 
     api.delete(f"/api/nodes/{folder['id']}")
-    listing = api.get("/api/tree", node=scratch)
-    assert folder["id"] not in {entry["id"] for entry in listing["folders"]}
+    listing = api.get("/api/nodes", under=scratch)
+    assert folder["id"] not in {entry["id"] for entry in listing["entries"]}

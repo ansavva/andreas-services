@@ -25,8 +25,8 @@ test.beforeEach(async ({ page }) => {
 
 /** The first angle's prompt box, with the caret put at the end of its first paragraph. */
 async function prompt(page: import("@playwright/test").Page) {
-  await page.goto("/reference-spec");
-  const box = page.getByLabel("Prompt for face_front");
+  await page.goto("/templates");
+  const box = page.getByLabel("Prompt for Face, front");
   await expect(box).toBeVisible();
   await box.click();
   // `ControlOrMeta+ArrowDown` would leave the paragraph; End is the end of the
@@ -76,10 +76,15 @@ test("`{` opens the menu and NARROWS it as the name is typed", async ({ page }) 
   await expect(menu).toBeVisible();
   const all = await menu.getByRole("option").count();
 
-  await page.keyboard.type("face");
+  // **A query narrow enough to beat the menu's own cap.** `face` used to be
+  // one: it is not any more, because a template may cite three cast positions
+  // and `build`/`must` each name a variant, so the tokens matching `face` alone
+  // overflow the list and the filtered count equals the unfiltered one. That
+  // asserts nothing — it passed while the filter did nothing at all.
+  await page.keyboard.type("turn_check");
   await expect(menu.getByRole("option")).not.toHaveCount(all);
   for (const name of await menu.getByRole("option").allTextContents()) {
-    expect(name).toContain("face");
+    expect(name).toContain("turn_check");
   }
 });
 
@@ -131,7 +136,7 @@ test("dismissing the menu leaves what was typed, rather than eating it", async (
 });
 
 test("the preview writes each block out and says which block it was", async ({ page }) => {
-  await page.goto("/reference-spec");
+  await page.goto("/templates");
   const preview = page.getByLabel("Assembled preview").first();
   await expect(preview).toBeVisible();
   // The prose of a block the template only CITES.
@@ -140,14 +145,14 @@ test("the preview writes each block out and says which block it was", async ({ p
 });
 
 test("the blocks live on their own tab", async ({ page }) => {
-  await page.goto("/reference-spec");
+  await page.goto("/templates");
   await expect(page.getByRole("button", { name: /\{scale_face\}/ })).toHaveCount(0);
   await page.getByRole("tab", { name: /Blocks/ }).click();
   await expect(page.getByRole("button", { name: /\{scale_face\}/ })).toHaveCount(1);
 });
 
 test("a block can be closed again after it is opened", async ({ page }) => {
-  await page.goto("/reference-spec");
+  await page.goto("/templates");
   await page.getByRole("tab", { name: /Blocks/ }).click();
   // By `aria-expanded`, not by name: the delete control inside an opened block
   // names the block too, so a name match is ambiguous the moment it opens.
@@ -164,7 +169,7 @@ test("a block can be closed again after it is opened", async ({ page }) => {
 });
 
 test("Close and Escape both get you out of an opened block", async ({ page }) => {
-  await page.goto("/reference-spec");
+  await page.goto("/templates");
   await page.getByRole("tab", { name: /Blocks/ }).click();
   // By `aria-expanded`, not by name: the delete control inside an opened block
   // names the block too, so a name match is ambiguous the moment it opens.

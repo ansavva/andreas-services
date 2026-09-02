@@ -2,26 +2,30 @@
 
 THE BIBLE IS A FIELD ON A ROW, NOT A DOCUMENT IN A BUCKET
 ---------------------------------------------------------
-`characters/<slug>/profile.yaml` is gone. The bible is `profile` on the
-character record — a validated map the API owns — and two of its keys were
-promoted out of it into real fields, because they are not description, they are
+`characters/<name>/profile.yaml` is gone. The bible is `profile` on the
+character record — a validated map the API owns — and one of its keys was
+promoted out of it into a real field, because it is not description, it is
 identity:
 
-    name          -> the record's `slug`, library-unique and mutable
-    display_name  -> a field, so a listing can draw a card without parsing YAML
+    name          -> the record's `name`, a free-text label
+
+There were TWO. The record carried a `slug` — library-unique, claimed, the thing
+a person typed — beside a `display_name` for prose. Both are one `name` now, so
+this document's `name:` key means what it always did and there is no second
+label to keep in step.
 
 Two more keys became rows rather than fields: `references:` is one `REF#` row
 per image and `default_set:` is an ordered list of node ids on the record. So
 nothing in the bible names a file any more, and a rename cannot strand a
 description.
 
-**`load_profile` merges the two promoted fields back in**, and that is a
-compatibility seam with a reason rather than a courtesy: `engine/turnaround.py` and
-`domain/prompt.py` read a bible as one map and index it by key —
-`profile["wardrobe"]`, `profile["consistency"]`, and `name` / `display_name`
-where a prompt has to write the character into prose. Handing them a map with
-two keys silently missing would not fail; it would render slightly worse
-prompts, which is the failure that does not get noticed.
+**`load_profile` merges the promoted field back in**, and that is a
+compatibility seam with a reason rather than a courtesy: `domain/prompt.py`
+reads a bible as one map and indexes it by key — `profile["wardrobe"]`,
+`profile["consistency"]`, and `name` where a prompt has to write the character
+into prose. Handing it a map with a key silently missing would not fail; it
+would render slightly worse prompts, which is the failure that does not get
+noticed.
 
 `rev` CLOSED THE WINDOW THAT `updated_at` LEFT OPEN
 ---------------------------------------------------
@@ -59,7 +63,6 @@ from studio_pipeline.domain.characters.base import (
     LOCAL_DIR,
     POOLS,
     TEMPLATE,
-    check_name,
     die,
     read_text,
     resolve,
@@ -74,7 +77,6 @@ from studio_pipeline.domain.characters.base import (
 PROFILE_KEYS = (
     "schema_version",
     "name",
-    "display_name",
     "identity",
     "face",
     "body",
@@ -84,8 +86,8 @@ PROFILE_KEYS = (
     "consistency",
     "text_identity_block",
 )
-#: The two that live on the record rather than inside `profile`.
-PROMOTED = ("name", "display_name")
+#: The one that lives on the record rather than inside `profile`.
+PROMOTED = ("name",)
 
 
 def parse_profile(text: str, where: str) -> dict:
@@ -132,15 +134,16 @@ def check_profile(data: dict, where: str, name: str | None = None) -> None:
 def document(record: dict) -> dict:
     """The record as the one map every reader of a bible expects.
 
-    `name` is the slug, deliberately: the bible's `name:` key WAS the slug and
-    every downstream reader spells it `name`. Rewriting them all to say `slug`
-    would be a rename of a concept that did not change.
+    `name` is the record's `name`, which is now the only one it has: the bible's
+    `name:` key was the slug and every downstream reader spells it `name`, and
+    the record's `slug` and `display_name` collapsed into one field of that name.
+    See the module docstring.
+    Two spellings became one without either side moving.
     """
     profile = dict(record.get("profile") or {})
     merged = {
         "schema_version": profile.pop("schema_version", None) or record.get("schema_version"),
-        "name": record["slug"],
-        "display_name": record.get("display_name") or record["slug"],
+        "name": record["name"],
     }
     merged.update(profile)
     return merged
@@ -149,10 +152,9 @@ def document(record: dict) -> dict:
 def load_profile(name: str) -> dict:
     """The bible of one character, as one map. **The reader every engine uses.**
 
-    Returns the record's `profile` with `name` (= the slug) and `display_name`
-    merged back in — see the module docstring for why those two are fields and
-    why they are put back here. One API call; there is no document to fetch and
-    no YAML to parse.
+    Returns the record's `profile` with `name` merged back in — see the module
+    docstring for why it is a field and why it is put back here. One API call;
+    there is no document to fetch and no YAML to parse.
     """
     try:
         return document(resolve(name))
@@ -161,12 +163,11 @@ def load_profile(name: str) -> dict:
 
 
 def split_document(data: dict) -> tuple[dict, str]:
-    """A document -> (the `profile` map, display_name).
+    """A document -> the `profile` map.
 
-    The inverse of `document`. `name` is dropped rather than written: the slug
-    is claimed by a row and a rename is `PATCH /api/characters/<id>`, so a
-    bible that disagrees with the record cannot rename anything and must not
-    look as though it could.
+    The inverse of `document`. `name` is dropped rather than written: a rename
+    is `PATCH /api/characters/<id>`, so a bible that disagrees with the record
+    cannot rename anything and must not look as though it could.
 
     **`schema_version` is dropped for a different reason: the API stamps it.**
     A replace sets it from `catalog.PROFILE_SCHEMA_VERSION`, and `clean_profile`
@@ -179,13 +180,9 @@ def split_document(data: dict) -> tuple[dict, str]:
     `create --from-profile` sent it, and the request died on an unregistered
     `PUT` before anything looked at the body.
     """
-    profile = {k: v for k, v in data.items()
-               if k not in PROMOTED
-               and k not in ("references", "default_set", "schema_version")}
-    display = str(data.get("display_name") or "").strip()
-    if display.startswith("<"):  # the unfilled template placeholder
-        display = ""
-    return profile, display
+    return {k: v for k, v in data.items()
+            if k not in PROMOTED
+            and k not in ("references", "default_set", "schema_version")}
 
 
 def save_profile(record: dict, data: dict, rev: int | None = None) -> dict:
@@ -195,23 +192,18 @@ def save_profile(record: dict, data: dict, rev: int | None = None) -> dict:
     the record's own for an explicit file. The API refuses a stale one, which is
     the whole of the conflict story now; nothing here re-reads and compares.
 
-    `display_name` rides on the record rather than in `profile`, so a document
-    that changes it costs a second call. It is done second and with the bumped
-    `rev`, so a failure leaves the bible written and the label stale — the
-    recoverable half, and re-running fixes it.
+    **It used to be two writes.** `display_name` rode on the record rather than
+    inside `profile`, so a document that changed it cost a second call — done
+    second and with the bumped `rev`, so a failure left the bible written and the
+    label stale. There is no second label, so there is no second write and no
+    half-state to recover from.
     """
-    char_id = record["id"]
-    profile, display = split_document(data)
     try:
-        after = entities.put_profile(char_id, profile,
-                                     record["rev"] if rev is None else rev)
+        return entities.put_profile(record["id"], split_document(data),
+                                    record["rev"] if rev is None else rev)
     except api.Conflict as exc:
-        die(f"{exc}\n       {record['slug']}'s bible was written by someone else since "
+        die(f"{exc}\n       {record['name']}'s bible was written by someone else since "
             "you read it — re-run `edit` to pick it up rather than overwriting.")
-    if display and display != after.get("display_name"):
-        after = entities.patch_character(char_id, after["rev"],
-                                         display_name=display or None)
-    return after
 
 
 def remote_rev(name: str) -> int | None:
@@ -246,7 +238,7 @@ def cmd_list(json_):
     elif found:
         for record in found:
             counts = record.get("counts") or {}
-            print(f"{record['slug']:<20} {record.get('display_name', ''):<24} "
+            print(f"{record['name']:<20} "
                   f"refs {counts.get('references', 0):<5} files {counts.get('files', 0):<5} "
                   f"updated {str(record.get('updated', ''))[:10]}")
     else:
@@ -274,50 +266,42 @@ def cmd_show(name, json_, profile_):
     if json_:
         print(json.dumps(record, indent=2))
         return
-    index = entities.references(record["id"])
-    counts = index.get("counts") or {}
-    # **Drift, named rather than left to be counted.** A `default_set` member
-    # with no `REF#` row is an image a turnaround will not send, and the only symptom
-    # used to be a generation that saw fewer references than somebody chose.
-    attached = {entry["node"]
-                for entries in (index.get("groups") or {}).values()
-                for entry in entries}
-    stale = [node for node in (record.get("default_set") or []) if node not in attached]
+    # **There is no drift to report here any more, and that is the change.**
+    # This block used to name `default_set` members with no `REF#` row — an image
+    # a turnaround would not send, whose only other symptom was a generation that
+    # saw fewer pictures than somebody chose. Two records with an invariant
+    # between them became one tag on one file, so the failure has no way to
+    # happen and nothing to report.
+    images = entities.character_images(record["id"])
+    counts: dict[str, int] = {}
+    for entry in images:
+        for tag in entry.get("tags") or []:
+            counts[tag] = counts.get(tag, 0) + 1
     folders = [f"{n['name']}/" for n in store.children_of(record["root"])
                if n.get("kind") == "folder"]
-    print(f"{record['slug']}  ({record['id']})  rev {record.get('rev')}")
-    print(f"  display   {record.get('display_name') or '—'}")
-    print(f"  refs      {' · '.join(f'{g} {n}' for g, n in sorted(counts.items())) or '—'}"
-          f"      default set: {len(record.get('default_set') or [])}"
-          f"{f' ({len(stale)} STALE)' if stale else ''}")
-    if stale:
-        print(f"  {len(stale)} of the default set are not references any more — a default "
-              f"turnaround is refused until they are re-pointed:", file=sys.stderr)
-        for node in stale:
-            print(f"    {node}", file=sys.stderr)
-        print(f"  fix with: studio character default-set {record['slug']} <node> …",
-              file=sys.stderr)
+    print(f"{record['name']}  ({record['id']})  rev {record.get('rev')}")
+    print(f"  images    {len(images)}"
+          f"      sent by default: {counts.get('default', 0)}")
+    print(f"  tags      {' · '.join(f'{t} {n}' for t, n in sorted(counts.items())) or '—'}")
     print(f"  root      {record['root']}   {' '.join(folders) or '(no folders)'}")
 
 
 @click.command("create")
 @click.argument("name", required=True)
-@click.option("--display-name", "display_name", help="How the character is written in prose.")
 @click.option("--dry-run", is_flag=True, help="With --turnaround: render the payloads, submit nothing.")
 @click.option("--from-profile", help="Local profile.yaml to seed with (default: blank template).")
 @click.option("--model", help="With --turnaround: override the angle spec's model.")
 @click.option("--project", help="With --turnaround: REQUIRED. The project the runs belong to.")
 @click.option("--turnaround", is_flag=True,
               help="Go straight into the standard reference set (asks before it bills).")
-def cmd_create(name, display_name, dry_run, from_profile, model, project, turnaround):
-    """Create a character: the record, its slug claim, its root and four pools.
+def cmd_create(name, dry_run, from_profile, model, project, turnaround):
+    """Create a character: the record, its library index row, its root and four pools.
 
     **One transaction.** The pools used to appear lazily, on whatever write
     happened to need one first, so a character could exist with no `reference/`
     and the first `add-refs` would invent it. Either the whole character exists
     or none of it does.
     """
-    check_name(name)
     src = from_profile or TEMPLATE
     if not os.path.isfile(src):
         die(f"profile source not found: {src}")
@@ -328,15 +312,12 @@ def cmd_create(name, display_name, dry_run, from_profile, model, project, turnar
         die("--turnaround needs a real bible: the blank template has no wardrobe or consistency "
             "block to build a prompt from. Pass --from-profile.")
 
-    profile, from_file = split_document(data)
-    try:
-        record = entities.create_character(name, display_name=display_name or from_file or name,
-                                           profile=profile)
-    except api.Conflict:
-        die(f"character {name!r} already exists")
+    # **No conflict to catch.** A name was a claimed slug, so a create could be
+    # refused; a name is a label now and two characters may share one.
+    record = entities.create_character(name, profile=split_document(data))
     made = [f"{n['name']}/" for n in store.children_of(record["root"])
             if n.get("kind") == "folder"]
-    print(f"created character {record['slug']}  ({record['id']})")
+    print(f"created character {record['name']}  ({record['id']})")
     print("  " + "  ".join(made or [f"{p}/" for p in POOLS]))
     if src == TEMPLATE:
         print("  (blank template — fill it in with `edit`, then `set-profile`.)",
@@ -394,14 +375,14 @@ def cmd_delete(name, files, force):
         entities.delete_character(record["id"], files=files, force=force)
     except api.Conflict as exc:
         die(f"{exc}\n       pass --force to drop those links and delete it anyway")
-    print(f"deleted character {record['slug']} (files: {files})")
+    print(f"deleted character {record['name']} (files: {files})")
 
 
 @click.command("rename")
 @click.argument("name", required=True)
 @click.argument("new", required=True)
 def cmd_rename(name, new):
-    """Give a character a new slug. **ONE conditional write.**
+    """Give a character a new name. **ONE conditional write.**
 
     Four operations inside one transaction: the old claim goes, the new one is
     written under `attribute_not_exists`, the record updates, and the root
@@ -409,7 +390,7 @@ def cmd_rename(name, new):
 
     This was the worst command in the pipeline and it is worth saying what it
     did. `rename.py` listed all four pools, `PATCH`ed every basename that
-    carried the slug, rewrote the bible's `references:` map to match the new
+    carried the name, rewrote the bible's `references:` map to match the new
     basenames, then swept every run document in every project rewriting the
     paths they had recorded — and was a dry run by default because getting it
     wrong stranded records. `domain/rewrite.py` existed for that sweep. Every
@@ -417,14 +398,13 @@ def cmd_rename(name, new):
     rename by construction.
     """
     record = _require(name)
-    check_name(new)
     try:
-        after = entities.patch_character(record["id"], record["rev"], slug=new)
+        after = entities.patch_character(record["id"], record["rev"], name=new)
     except api.Conflict as exc:
         die(str(exc))
-    refs = len(entities.reference_entries(record["id"]))
-    print(f"renamed {record['slug']} → {after['slug']}")
-    print(f"  0 objects copied · 0 records rewritten · {refs} references untouched")
+    images = len(entities.character_images(record["id"]))
+    print(f"renamed {record['name']} → {after['name']}")
+    print(f"  0 objects copied · 0 records rewritten · {images} image(s) untouched")
 
 
 @click.command("textblock")
@@ -449,17 +429,17 @@ def cmd_textblock(name):
     # this printed `{}` and told you to compress it.
     if authored:
         print(authored)
-        print(f"\n(authored block from {record['slug']}'s bible)", file=sys.stderr)
+        print(f"\n(authored block from {record['name']}'s bible)", file=sys.stderr)
         return
 
     sys.stdout.write(yaml.safe_dump(found.get("raw") or {}, sort_keys=False,
                                     allow_unicode=True, width=88))
     print(
-        f"\nNo authored `text_identity_block` in {record['slug']}'s bible — the above is raw "
+        f"\nNo authored `text_identity_block` in {record['name']}'s bible — the above is raw "
         "material.\nCompress it into ONE paragraph of ~50-70 words covering only what a "
         "text-only engine\ncannot infer: build proportion, hair, face landmarks, skin, and "
         "signature accessories.\nThen save it back into the bible under `text_identity_block:` "
-        f"(`studio character edit {record['slug']}`)\nso it is written once and reused.\n"
+        f"(`studio character edit {record['name']}`)\nso it is written once and reused.\n"
         "\nNOTE: with a start frame supplied, keep the pasted block SHORT — the frame carries\n"
         "appearance better than prose, and a long block fights it (see studio-media-kling).",
         file=sys.stderr,
@@ -479,13 +459,13 @@ def cmd_set_profile(name, file):
     """
     record = _require(name)
     if file is None:
-        local, base, revf = local_paths(record["slug"])
-        do_push(record["slug"], False, local, base, revf)
+        local, base, revf = local_paths(record["name"])
+        do_push(record["name"], False, local, base, revf)
         return
     if not os.path.isfile(file):
         die(f"profile file not found: {file}")
     data = parse_profile(read_text(file), file)
-    check_profile(data, file, record["slug"])
+    check_profile(data, file, record["name"])
     after = save_profile(record, data)
     print(f"profile updated (rev {record['rev']} → {after['rev']})", file=sys.stderr)
 
@@ -610,7 +590,6 @@ def cmd_edit(name, diff, discard, force, path, pull, push):
     `profile.yaml` in the bucket any more — and pushed back as
     `PATCH …/profile {profile, rev}`.
     """
-    check_name(name)
     local, base, revf = local_paths(name, path)
 
     if discard:

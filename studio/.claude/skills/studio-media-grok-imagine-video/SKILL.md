@@ -109,7 +109,7 @@ reaches the model as a short-lived presigned URL, which is the rule. But note
 what it costs: `--extra` is merged into the payload verbatim, so the clip is
 **not** recorded in `request.json` as an S3 key the way a bound image is. The run
 will not tell you which object it edited. Until a binding flag exists, note the
-source key in the slug or keep the pairing yourself.
+source key in the output name or keep the pairing yourself.
 
 Output inherits the input's duration, ratio and resolution, so `duration`,
 `resolution` and `aspect_ratio` are all ignored in this mode.
@@ -121,7 +121,7 @@ the setting to autumn"*.
 ### Output — the run owns it
 
 Every submission is a run under
-`<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/`, holding `request.json`
+`<project>/runs/<run_id>/`, holding `request.json`
 (inputs as S3 **keys**), `result.json`, and `output/` with the video. `--poll`
 archives it automatically. Replicate output URLs are not permanent.
 

@@ -31,7 +31,7 @@ stands in for cannot drift without somebody re-running this.
 
 SCRUBBING IS NOT OPTIONAL AND IT IS WHY THIS IS A SCRIPT
 --------------------------------------------------------
-`/api/reel` answers with PRESIGNED S3 URLs, and a presigned URL carries the
+`GET /api/nodes` answers with PRESIGNED S3 URLs, and a presigned URL carries the
 signing key's ACCESS KEY ID in `X-Amz-Credential` along with a signature. Those
 are not things to commit, and a `curl > fixture.json` puts them straight into
 git — which is exactly what the first capture did. The signature expires in
@@ -98,7 +98,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 STUDIO = HERE.parents[2]
 API = os.environ.get("STUDIO_E2E_API", "http://localhost:8000")
 
-#: The project to take the run fixtures from — a slug or an id. The first one
+#: The project to take the run fixtures from — a name or an id. The first one
 #: the library holds, when nothing says otherwise.
 PROJECT = os.environ.get("STUDIO_E2E_PROJECT")
 #: Whose live input schema `SchemaParams` is exercised against.
@@ -241,7 +241,7 @@ def authoring(bearer: str, library: str, character: dict) -> None:
     projects = get("/api/projects", bearer, library)
     wanted = PROJECT
     project_row = next(
-        (row for row in projects if wanted in (row["id"], row["slug"])), None
+        (row for row in projects if wanted in (row["id"], row.get("name"))), None
     ) if wanted else (projects[0] if projects else None)
     if project_row is None:
         raise SystemExit(
@@ -282,10 +282,14 @@ def authoring(bearer: str, library: str, character: dict) -> None:
     # the character's own root, then the `reference` pool inside it.
     tree = write(
         "character-tree",
-        get(f"/api/tree?node={character['root']}&sort=name", bearer, library),
+        get(f"/api/nodes?under={character['root']}&sort=name", bearer, library),
     )
-    pool = next(folder for folder in tree["folders"] if folder["name"] == "reference")
-    write("reference-tree", get(f"/api/tree?node={pool['id']}&sort=name", bearer, library))
+    # One array, discriminated by `kind` — `folders` and `files` stopped being
+    # separate fields when the three listing routes became one.
+    pool = next(e for e in tree["entries"]
+                if e["kind"] == "folder" and e["name"] == "reference")
+    write("reference-tree",
+          get(f"/api/nodes?under={pool['id']}&sort=name", bearer, library))
 
     created(bearer, library, project["id"], entry)
 
@@ -343,17 +347,19 @@ def seed_group(bearer: str, library: str) -> dict:
     character = get(f"/api/characters/{characters[0]['id']}", bearer, library)
     write("character", character)
 
-    root = get(f"/api/nodes?parent={character['root']}", bearer, library)
+    root = get(f"/api/nodes?under={character['root']}&sort=name", bearer, library)
     write("character-root", root)
-    seed = next(node["id"] for node in root if node["name"] == "seed")
-    write("seed-folder", get(f"/api/nodes?parent={seed}", bearer, library))
+    seed = next(e["id"] for e in root["entries"] if e["name"] == "seed")
+    write("seed-folder", get(f"/api/nodes?under={seed}&sort=name", bearer, library))
 
     write("projects", get("/api/projects", bearer, library))
-    write("reel", get("/api/reel?sort=newest", bearer, library))
-    # The reference spec seeds with the library, so it belongs to this group
+    # The recursive media listing: `depth=all` with the media kinds asked for.
+    write("reel", get("/api/nodes?depth=all&kind=image,video&sort=newest",
+                      bearer, library))
+    # The template library seeds with the library, so it belongs to this group
     # rather than the authoring one — no run has to have happened for it to
     # exist.
-    write("reference-spec", get("/api/reference-spec", bearer, library))
+    write("templates", get("/api/templates", bearer, library))
     return character
 
 

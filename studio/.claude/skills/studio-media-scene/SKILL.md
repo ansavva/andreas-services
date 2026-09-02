@@ -210,26 +210,26 @@ Per shot, and only two steps bill.
 
 ```bash
 # 1. write the plan, then ingest it  (free)
-studio scenes new <project> --slug <slug> --from-json plan.json
-studio scenes plan <project>/<slug>          # read it back as a table
-studio scenes check <project>/<slug>         # would every payload be accepted?
+studio scenes new <project> --name <name> --from-json plan.json
+studio scenes plan <project>/<name>          # read it back as a table
+studio scenes check <project>/<name>         # would every payload be accepted?
 
 # 2. render the panels  (APPROVAL GATE — bills, cents each)
-studio scenes board <project>/<slug> --dry-run --review-sheet /tmp/board
-studio scenes board <project>/<slug>
+studio scenes board <project>/<name> --dry-run --review-sheet /tmp/board
+studio scenes board <project>/<name>
 
 # 3. LOOK AT THE BOARD — a sheet can be read, a plan cannot
-studio scenes sheet <project>/<slug> --out /tmp/board
+studio scenes sheet <project>/<name> --out /tmp/board
 
 # 4. render one shot  (APPROVAL GATE — bills, dollars)
-studio scenes render <project>/<slug> --shot 1
+studio scenes render <project>/<name> --shot 1
 
 # 5. look at the clip, then carry its last frame into the next shot
 studio frames grid <project>/latest --count 4 --dest /tmp/check
-studio scenes handoff <project>/<slug> --shot 2
+studio scenes handoff <project>/<name> --shot 2
 
 # …repeat 4 and 5 for each shot, then cut
-studio scenes assemble <project>/<slug>
+studio scenes assemble <project>/<name>
 ```
 
 **Step 3 is not optional.** Each panel becomes the input to the next, and each
@@ -247,10 +247,10 @@ payload that scrolls away, so the thing hard rule #2 asks a person to read has a
 address: it can be opened in the app, linked to, and approved later.
 
 ```bash
-studio scenes render <project>/<slug> --shot 1 --dry-run   # -> draft run-…
+studio scenes render <project>/<name> --shot 1 --dry-run   # -> draft run-…
 studio runs approve run-…                                  # read it, say yes
 studio runs submit run-…                                   # bills
-studio scenes attach <project>/<slug> --shot 1 --run run-… # tell the scene
+studio scenes attach <project>/<name> --shot 1 --run run-… # tell the scene
 ```
 
 **That last line is not optional and is easy to miss.** `scenes render` without
@@ -364,7 +364,7 @@ both ends are kept and the middle gives way.
 
 > **A sequence with no scene behind it** — clips you are chaining ad hoc, with no
 > plan — still has `studio frames chain`, which keeps its own list in
-> `<project>/chains/<slug>.json`. Use it only when there is no scene; for
+> `<project>/chains/<scene>.json`. Use it only when there is no scene; for
 > anything planned, the scene already knows.
 
 ## `reference_video` is not continuation — don't reach for it
@@ -386,20 +386,20 @@ It is the wrong tool for *"and then…"*.
 ## Assembly
 
 ```bash
-studio scenes assemble <project>/<slug>
+studio scenes assemble <project>/<name>
 ```
 
 Shot order is cut order, taken from the plan. The scene lands at
-`<project>/scenes/<slug>/` with the source clips copied
+`<project>/scenes/<scene_id>/` with the source clips copied
 into `shots/`, and the stitched video in `output/`.
 
 Re-cutting **keeps the cut it displaces.** Each cut is its own file: the first is
-`output/<slug>.mp4` and later ones take a suffix, `<slug>-2.mp4` and up. The
+`output/<name>.mp4` and later ones take a suffix, `<name>-2.mp4` and up. The
 scene's `output` names the newest and `cuts` lists the rest, newest first — so
 two takes of one scene can be put side by side, which is the thing re-cutting is
 for.
 
-**This page said the opposite, and told you to keep a cut under its own slug
+**This page said the opposite, and told you to keep a cut under its own name
 before re-cutting.** That was true of an earlier scheme where the cut replaced
 the file in `output/`: the folder always showed current state, and a superseded
 cut survived only as an S3 object version — recoverable in production, gone in a
@@ -407,10 +407,10 @@ dev stack, and invisible in both, because a version has nothing listing it,
 drawing it or linking to it. Nothing is replaced now, so the advice is retired
 and the behaviour is identical in every environment.
 
-What that costs is accumulation: `studio scenes outputs <project>/<slug>` lists
+What that costs is accumulation: `studio scenes outputs <project>/<name>` lists
 every cut, and one not worth keeping is deletable like any other file.
 
-No storyboard? `studio scenes assemble <project>/<slug> --shot <runref> --shot
+No storyboard? `studio scenes assemble <project>/<name> --shot <runref> --shot
 <runref>` appends runs directly, so "just stitch these three clips" is still one
 command and a board stays optional.
 

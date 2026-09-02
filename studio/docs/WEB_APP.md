@@ -392,13 +392,13 @@ the bucket itself (`media_root_prefix = ""`).
 <subject>/                      # a character's folder; its record names it `root`
 ├── seed/                       # source photos (.webp, .jpg, .jpeg, .JPG, .heic)
 ├── corpus/                     # the wider photo set
-├── reference/                  # the images its REF# rows point at,
+├── reference/                  # where its identity images conventionally sit,
 │   └── <face|body|frame|wardrobe>/   #   grouped by purpose
 └── archive/                    # superseded output kept around
 <project>/                      # a project's folder
 ├── runs/<run id>/              # request.json, result.json, sometimes prompt.json
 │   └── output/                 # the generated .jpeg / .webp / .mp4
-├── scenes/<slug>/              # storyboard/ + shots/ + output/
+├── scenes/<scene_id>/          # storyboard/ + shots/ + output/
 ├── chains/<name>.json          # a scene's shot-to-shot plan
 └── input/                      # the working pool
 config/angle/                    # the angle images; source of truth is the repo
@@ -537,9 +537,9 @@ that breaks every time the pipeline ships.
   carries a `Promote…` control beside it — a **sibling** of `OutputPanel`, never
   inside it, because the panel's caption is a real `<a href>` and its player is
   full of buttons. Pressing it expands a panel under the outputs grid, scoped to
-  that output. It is the CLI's `character add-refs --from-run` performed step for
+  that output. It is what promoting has always been, performed step for
   step: a **real copy** into the character's `reference/<group>/` folder, then a
-  `REF#` row on the **copy**, so the run keeps its own output and every record
+  the `default` tag on the **copy**, so the run keeps its own output and every record
   citing it stays correct. Hard rule #2b is satisfied by the press itself — the
   person choosing the character and the group IS the approval — and the panel
   states plainly what it will do before it happens. Video outputs get no control:
@@ -700,7 +700,7 @@ that breaks every time the pipeline ships.
   object URL after browsing elsewhere would keep a folder the file is not in.
 - **Names and paths come off the breadcrumbs.** The folder's own name, its
   parent and whether it is the root were string arithmetic on the URL and are
-  now read from the trail `GET /api/tree` returns, which the server built by
+  now read from the trail `GET /api/nodes` returns, which the server built by
   walking `parent_id`. Rebuilding any of it client-side would be a second,
   guessing implementation — and a path↔id translation layer in the SPA is
   exactly what #313 exists to avoid.
@@ -951,6 +951,13 @@ more than one member. A node that does not exist is 404 before that check can
 run, which is safe for the same reason — an id nobody was given cannot be
 reached.
 
+**`GET /api/tree` and `GET /api/reel` are gone.** They were two of three answers
+this API gave to "what is under this node" — the third being `GET /api/nodes?parent=`,
+which the CLI used — split by which client asked rather than by what was being
+asked. Depth, kind and paging are arguments now, and `reel` was named after how
+the SPA drew a result rather than after what the route returned. One route, one
+shape, and a tag filter neither of the three could offer.
+
 **`GET /api/nodes` is one query plus `ceil(n / 100)` batched reads, and that is
 the shape to keep.** The by-parent item carries the index projection only
 (`node_id, lib, kind, path, created_at`), so `size` and `content_type` come from
@@ -961,12 +968,16 @@ step (#309). `UnprocessedKeys` comes back on a **200**, so botocore's retries
 never see it — `catalog.records` retries it explicitly and raises rather than
 answering with a short listing.
 
-**Two addressing schemes, and which one a route uses is the fastest thing to
-check about it — and there is only one left.** Every route takes a **node id**,
-or an entity id where the resource is an entity. `GET /api/resolve?path=` is the
-single translation from the slash-joined name path a person types into the id
-everything else wants, and `slug:<slug>` addressing on an entity route is the
-same courtesy for a name a person types.
+**One addressing scheme.** Every route takes a **node id**, or an entity id
+where the resource is an entity. `GET /api/resolve?path=` is the single
+translation from a slash-joined name path into the id everything else wants.
+
+There was a second, `slug:<slug>` on an entity route, as a courtesy to a person
+typing a name. It went with slugs: an entity's name is free text and two may
+share one, so resolving a name would mean the API picking between them. The CLI
+matches a name over a listing instead, and refuses an ambiguous one with the ids.
+Note that a name path's FIRST segment is an entity's root folder, which is named
+by the entity's id.
 
 The name-path *writes* are gone with `routes/manage.py`, and so is the raw-key
 read: `?prefix=`, `?key=`, `/api/folder`, `/api/object(s)` and `/api/text?key=`
@@ -977,7 +988,7 @@ nothing accepts one back.
 |---|---|
 | `GET /api/health` | `{"status": "ok"}` — liveness, touches neither store |
 | `GET /api/libraries` | `[{id, name, role}]` — the caller's libraries. Authenticated, **not** library-scoped |
-| `GET /api/nodes?parent=` | The children of one folder, name-ascending. 404 unknown parent, 403 another library |
+| `GET /api/nodes?under=&depth=&kind=&tag=&sort=&cursor=&limit=` | **The one listing.** Everything under a node — `depth=1` (default) for a folder, `depth=all` for the branch; `kind=` and `tag=` filter; paged. One `entries` array discriminated by `kind`, plus `breadcrumbs`, per-kind `counts`, `total`, `truncated`, `next_cursor`. Omit `under` for the library root |
 | `GET /api/nodes/<id>` | One node. 404 unknown id, 403 another library |
 | `GET /api/resolve?path=` | A slash-joined name path → the node it names. An empty path is the library root |
 | `POST /api/nodes` | `{parent, name, kind, blob_key?, on_conflict?}` → creates a folder or a file. **201.** 409 if the name is taken, unless `on_conflict: "number"` |
@@ -988,24 +999,22 @@ nothing accepts one back.
 | `POST /api/nodes/<id>/upload-url` | `{size, content_type}` → a presigned PUT for `blobs/<id>`. Signed length and type |
 | `POST /api/nodes/<id>/confirm-upload` | `HeadObject`s the blob and writes `size`/`content_type` onto the row |
 | `POST /api/runs` | Records a run: folder, documents inline, and an upload URL per output |
-| `GET /api/nodes/<id>/owner` | Which entity a node belongs to, derived from its ancestry — `{kind, id, slug}` or null |
+| `GET /api/nodes/<id>/owner` | Which entity a node belongs to, derived from its ancestry — `{kind, id, name}` or null |
 | `POST /api/nodes/move` | `{ids: [...], destination}` → moves 1..N nodes, names kept. 409 if taken |
 | `POST /api/nodes/copy` | `{ids: [...], destination}` → copies 1..N nodes, sources kept. Names numbered if taken |
 | `DELETE /api/nodes` | `{ids: [...]}` → deletes 1..N nodes and their subtrees. Rows first, then blobs |
 | `GET /api/nodes/<id>/text` | A `.json` / `.md` / `.txt` node's contents, capped at 1 MB |
 | `PATCH /api/nodes/<id>/text` | `{content}` → overwrites a text node's bytes and restamps its row |
-| `GET /api/tree?node=&sort=` | One folder ready to draw: `folders`, `files` (each presigned), `breadcrumbs`, `counts` |
-| `GET /api/reel?node=&cursor=&page_size=&sort=` | Images and video beneath a folder, recursively, paginated |
 | `GET /api/asset?node=&disposition=` | A fresh presigned URL for one node's bytes — what the SPA calls on an expired tile |
 
 ### The entity routes
 
 | Route | Returns |
 |---|---|
-| `GET \| POST /api/characters` | List, or create — record, slug claim, root folder and the starting pools in one transaction. **409** on a taken slug |
-| `GET \| PATCH \| DELETE /api/characters/<id>` | One character. `<id>` may be `slug:<slug>`. `PATCH` carries `rev` and **409**s if it has moved |
+| `GET \| POST /api/characters` | List, or create — record, library index row, root folder and the starting pools in one transaction. **No 409**: a name is a label, so nothing here can collide |
+| `GET \| PATCH \| DELETE /api/characters/<id>` | One character, addressed by id. `PATCH` carries `rev` and **409**s if it has moved |
 | `PATCH /api/characters/<id>/profile` | `{profile, rev}` — the bible, validated |
-| `GET \| POST \| PATCH /api/characters/<id>/references` | The `REF#` rows: read grouped and ordered, attach one, or describe/reorder many in one transaction |
+| `PATCH /api/nodes/<id>` | `{description, tags}` → what a picture IS and what it is FOR. `default` plus a group tag is the whole of what a `REF#` row and a `default_set` entry used to say between them |
 | `PATCH \| DELETE /api/characters/<id>/references/<node>` | Change one entry's group, description, tags or order; or detach it, leaving the file |
 | `PATCH /api/characters/<id>/default-set` | `{nodes: [...]}` |
 | `GET /api/characters/<id>/selection` | `?pick=&tag=&limit=` → the ordered nodes a model would be shown. **Refuses** an over-cap selection with the index in the body |

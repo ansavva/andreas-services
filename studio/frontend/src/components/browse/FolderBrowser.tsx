@@ -16,7 +16,7 @@ import {
   renameNode,
 } from "../../apis/studio";
 import { ApertureSpinner } from "../common/Aperture";
-import { useTree } from "../../hooks/useTree";
+import { useFolder } from "../../hooks/useFolder";
 import { useSelection } from "../../hooks/useSelection";
 import { useUploads } from "../../hooks/useUploads";
 import type { FileEntry, SortOrder } from "../../types";
@@ -33,6 +33,7 @@ import {
 import { FolderCard } from "./FolderCard";
 import { MediaTile } from "./MediaTile";
 import { SortControl } from "./SortControl";
+import { TagFilter } from "./TagFilter";
 import { UploadButton } from "./UploadButton";
 import { UploadStatus } from "./UploadStatus";
 import { CopyIcon, FolderIntoIcon, FolderPlusIcon } from "../common/icons";
@@ -85,6 +86,14 @@ interface Props {
    * by this.
    */
   boundary?: FolderId;
+  /**
+   * Tags the browser opens already narrowed to.
+   *
+   * What the References tab is: a character's Files, filtered to the images it
+   * sends. There is no reference index to draw any more — identity is a tag —
+   * so the tab that drew one is this browser with `default` already typed in.
+   */
+  initialTags?: string[];
 }
 
 /**
@@ -129,12 +138,21 @@ type PickerTarget = {
  * name-path routes it used to call took a slash-joined path that a rename
  * invalidated mid-flight.
  */
-export function FolderBrowser({ nav, boundary = null }: Props) {
+export function FolderBrowser({ nav, boundary = null, initialTags = [] }: Props) {
   const { folder, sort } = nav;
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [newFolder, setNewFolder] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
+  /**
+   * The tags narrowing the listing — a SERVER filter, unlike `filter` above.
+   *
+   * The name filter hides rows the listing already returned; a tag filter
+   * changes what is asked for, and changes the scope with it: one tag turns the
+   * request into a search of everything under this folder. They compose, and the
+   * order is the honest one — the server narrows, then the typed name hides.
+   */
+  const [tags, setTags] = useState<string[]>(initialTags);
   const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
 
   /**
@@ -145,7 +163,7 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
    * viewer is its own screen now, so this only ever shows a folder and the
    * resolution — and the request it cost on every cold link — is gone with it.
    */
-  const { data, loading, error, reload } = useTree(folder, sort);
+  const { data, loading, error, reload } = useFolder(folder, sort, tags);
   const folderId = folder;
 
   /**
@@ -481,7 +499,7 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-y border-line py-2">
+      <div className="flex flex-wrap items-center gap-2 border-t border-line py-2">
         <SortControl value={sort} onChange={nav.setSort} />
         <FilterControl
           value={filter}
@@ -564,6 +582,10 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
         </Button>
       </div>
 
+      <div className="border-b border-line pb-2">
+        <TagFilter value={tags} onChange={setTags} searching={data?.depth === "all"} />
+      </div>
+
       {newFolder !== null && (
         <form
           onSubmit={(event) => {
@@ -628,9 +650,18 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
         </Alert.Root>
       )}
 
-      {isEmpty && (
+      {isEmpty && tags.length === 0 && (
         <Text variant="body" tone="muted">
           This folder is empty.
+        </Text>
+      )}
+
+      {/* Empty because of the TAGS is a third sentence, and it has to name the
+          scope: "nothing here" would be wrong when the search covered the whole
+          branch and still found nothing. */}
+      {isEmpty && tags.length > 0 && (
+        <Text variant="body" tone="muted">
+          Nothing under this folder is tagged {tags.join(" + ")}.
         </Text>
       )}
 

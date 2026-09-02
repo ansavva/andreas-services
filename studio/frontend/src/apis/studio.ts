@@ -19,9 +19,13 @@ import type {
   ProjectInput,
   ProjectRecord,
   ProjectSummary,
-  ReferenceEntry,
-  ReferenceIndex,
-  ReelResponse,
+  EntryKind,
+  Depth,
+  NodeListing,
+  FolderListing,
+  MediaListing,
+  FileEntry,
+  FolderEntry,
   RunPage,
   RunPlan,
   RunRecord,
@@ -32,14 +36,14 @@ import type {
   SceneSummary,
   SortOrder,
   TextResponse,
-  TreeResponse,
   UploadGrant,
   NodeView,
-  ReferenceSpec,
-  SpecAngle,
-  SpecAngleBody,
+  TemplateLibrary,
+  TagInUse,
+  TagScope,
+  PromptTemplate,
+  TemplateBody,
   SpecBlock,
-  TurnaroundResult,
 } from "../types";
 import { apiGet, apiSend } from "./client";
 
@@ -54,6 +58,14 @@ import { apiGet, apiSend } from "./client";
  */
 export type FolderRef = { node?: string };
 
+/** What every listing filter can narrow on. Both readers below accept them. */
+export interface ListFilter {
+  /** An entry must carry ALL of these. */
+  tag?: string[];
+  /** `folder`, `image`, `video`, `text`, `other`. Omit for everything. */
+  kind?: EntryKind[];
+}
+
 /**
  * The libraries the signed-in caller is in.
  *
@@ -66,25 +78,91 @@ export function getLibraries() {
   return apiGet<Library[]>("/api/libraries");
 }
 
-/** Immediate contents of one folder. */
-export function getTree(where: FolderRef, sort: SortOrder) {
-  return apiGet<TreeResponse>("/api/tree", { ...where, sort });
+/**
+ * The one listing route: everything under a node, at a depth, filtered.
+ *
+ * **`GET /api/tree` and `GET /api/reel` were folded into it.** They were two of
+ * three answers this API gave to "what is under this node" — the third being the
+ * one the CLI used — and they differed in depth, in which kinds they admitted
+ * and in whether they paged. Those are arguments, so there is one route and the
+ * two readers below are conveniences over it rather than two endpoints.
+ */
+export function listNodes(
+  where: FolderRef,
+  opts: ListFilter & {
+    depth?: Depth;
+    sort?: SortOrder;
+    cursor?: string;
+    limit?: number;
+  } = {},
+) {
+  return apiGet<NodeListing>("/api/nodes", {
+    under: where.node,
+    depth: opts.depth,
+    sort: opts.sort,
+    cursor: opts.cursor,
+    kind: opts.kind?.length ? opts.kind.join(",") : undefined,
+    tag: opts.tag?.length ? opts.tag.join(",") : undefined,
+    // `apiGet` builds a query string, so the number goes over as one.
+    limit: opts.limit === undefined ? undefined : String(opts.limit),
+  });
+}
+
+/**
+ * Immediate contents of one folder, split into folders and files.
+ *
+ * **The split is the client's job now**, which is what makes one array on the
+ * wire the right shape: a caller wanting them apart does this, and a caller
+ * wanting them in one order — every recursive listing — cannot put them back
+ * together once the server has separated them.
+ */
+export async function getFolder(
+  where: FolderRef,
+  sort: SortOrder,
+  filter: ListFilter = {},
+): Promise<FolderListing> {
+  // **A tag filter searches the BRANCH.** Not knowing which folder a tagged
+  // image is in is the whole reason for asking by tag, so a filter that only
+  // looked in the folder you happen to be standing in would answer the question
+  // nobody has.
+  const depth = filter.tag?.length ? "all" : "1";
+  const listing = await listNodes(where, { ...filter, sort, depth });
+  return {
+    prefix: listing.prefix,
+    sort: listing.sort,
+    depth: listing.depth,
+    tags: listing.tags,
+    breadcrumbs: listing.breadcrumbs,
+    folders: listing.entries.filter((e): e is FolderEntry => e.kind === "folder"),
+    files: listing.entries.filter((e): e is FileEntry => e.kind !== "folder"),
+  };
 }
 
 /** One page of images and videos beneath a folder, recursively. */
-export function getReel(
+export async function getMedia(
   where: FolderRef,
   sort: SortOrder,
   cursor?: string,
   pageSize?: number,
-) {
-  return apiGet<ReelResponse>("/api/reel", {
-    ...where,
+  filter: ListFilter = {},
+): Promise<MediaListing> {
+  const listing = await listNodes(where, {
+    ...filter,
     sort,
     cursor,
-    // `apiGet` builds a query string, so the number goes over as one.
-    page_size: pageSize === undefined ? undefined : String(pageSize),
+    depth: "all",
+    kind: filter.kind ?? ["image", "video"],
+    limit: pageSize,
   });
+  return {
+    prefix: listing.prefix,
+    sort: listing.sort,
+    tags: listing.tags,
+    items: listing.entries as FileEntry[],
+    total: listing.total,
+    truncated: listing.truncated,
+    next_cursor: listing.next_cursor,
+  };
 }
 
 /** One node's record, by id. The SPA reads it for `parent_id`. */
@@ -332,7 +410,7 @@ export function deleteNode(id: string) {
 // Characters, projects, runs, scenes and movies — rows with ids, queried rather
 // than walked. Three things hold for every call below:
 //
-// * **Ids, never slugs.** The API accepts `slug:<slug>` on the read routes for
+// * **Ids, and there is no other address.** The API accepted `slug:<slug>` for
 //   the CLI, where a person types a name; the SPA always holds an id and never
 //   sends one, so a rename cannot invalidate anything it is holding.
 // * **`rev` on every record write.** The caller sends the `rev` it read and a
@@ -353,26 +431,25 @@ export function getCharacter(id: string) {
 }
 
 export function createCharacter(body: {
-  slug: string;
-  display_name: string;
+  name: string;
   profile?: CharacterProfile;
 }) {
   return apiSend<CharacterRecord>("POST", "/api/characters", body);
 }
 
 /**
- * Rename, retitle, or re-hero a character.
+ * Rename or re-hero a character.
  *
  * **A rename here moves nothing.** No object is copied, no run document is
  * rewritten, and every reference, binding and default-set entry keeps pointing
- * at the same node ids — the slug is a label on one row and the root folder's
- * name changes in the same transaction. It used to be a `PATCH` per slugged
+ * at the same node ids — the name is a label on one row and nothing else moves,
+ * the root folder included, because it is named by the id. It used to be a `PATCH` per slugged
  * basename across four pools plus a rewrite pass over every run that cited the
  * old path.
  */
 export function patchCharacter(
   id: string,
-  body: { rev: number; slug?: string; display_name?: string; hero?: string },
+  body: { rev: number; name?: string; hero?: string },
 ) {
   return apiSend<EntityPatch<CharacterRecord>>(
     "PATCH",
@@ -462,8 +539,7 @@ export function deleteCharacter(
  * One name path to the node it names.
  *
  * The address a person types, resolved once — the same route the CLI has always
- * used. Here it turns an angle's `illustration` path into something showable
- * without the app ever composing a path of its own.
+ * used, without the app ever composing a path of its own.
  *
  * **It answers a NODE VIEW, not a file entry, and the difference is a crash.**
  * `support.view` reports the node's own fields; it carries no presigned `url`,
@@ -476,39 +552,82 @@ export function resolvePath(path: string) {
   return apiGet<NodeView>("/api/resolve", { path });
 }
 
-export function getReferenceSpec() {
-  return apiGet<ReferenceSpec>("/api/reference-spec");
+/**
+ * One tag vocabulary, by name, with how many things carry each tag.
+ *
+ * **Derived from what is in use rather than stored**, which is what makes the
+ * deletion rule true by construction: a tag exists exactly while something
+ * carries it, so there is no list that can fall out of step with the things.
+ */
+export function getTags(scope: TagScope) {
+  return apiGet<{ scope: TagScope; tags: TagInUse[] }>("/api/tags", { scope });
 }
 
-export function saveSpecBlock(name: string, text: string) {
-  return apiSend<SpecBlock>("PATCH", `/api/reference-spec/blocks/${encodeURIComponent(name)}`, {
+/**
+ * Rename one tag everywhere in its scope.
+ *
+ * A bulk write behind a single-item address, and that is the honest shape: the
+ * name IS the identity — a filter passes it, the CLI passes it, a stored row
+ * holds it — so renaming half the carriers would leave two tags where somebody
+ * believes there is one.
+ */
+export function renameTag(scope: TagScope, name: string, next: string) {
+  return apiSend<{ name: string; changed: number }>(
+    "PATCH",
+    `/api/tags/${encodeURIComponent(name)}?scope=${scope}`,
+    { name: next },
+  );
+}
+
+/** Take one tag off everything in its scope, which is what deleting it IS. */
+export function deleteTag(scope: TagScope, name: string) {
+  return apiSend<{ name: string; changed: number }>(
+    "DELETE",
+    `/api/tags/${encodeURIComponent(name)}?scope=${scope}`,
+  );
+}
+
+export function getTemplates() {
+  return apiGet<TemplateLibrary>("/api/templates");
+}
+
+export function saveBlock(name: string, text: string) {
+  return apiSend<SpecBlock>("PATCH", `/api/templates/blocks/${encodeURIComponent(name)}`, {
     text,
   });
 }
 
-export function saveSpecAngle(id: string, body: SpecAngleBody) {
-  return apiSend<SpecAngle>("PATCH", `/api/reference-spec/angles/${encodeURIComponent(id)}`, body);
-}
-
-export function deleteSpecBlock(name: string) {
-  return apiSend<{ name: string }>("DELETE", `/api/reference-spec/blocks/${encodeURIComponent(name)}`);
-}
-
-export function deleteSpecAngle(id: string) {
-  return apiSend<{ id: string }>("DELETE", `/api/reference-spec/angles/${encodeURIComponent(id)}`);
-}
-
 /**
- * Draft a character's reference angles, or preview what they would say.
+ * Write one template, addressed by its id. A `name` in the body renames it.
  *
- * `preview` stops before the write and answers 200 rather than 201, so it is
- * safe to call while somebody is still typing. Without it every angle becomes
- * an unapproved `draft` — nothing is approved and nothing bills, which is hard
- * rule #2 left exactly where it was.
- *
- * `identity` is required and is never inferred: which photographs say who
- * somebody is is the judgement a reference library is built out of.
+ * The id is minted here for a create, which is why there is no separate POST:
+ * a create and an update are the same call with the same shape, and the caller
+ * already knows which it is doing.
  */
+export function saveTemplate(templateId: string, body: TemplateBody) {
+  return apiSend<PromptTemplate>(
+    "PATCH",
+    `/api/templates/${encodeURIComponent(templateId)}`,
+    body,
+  );
+}
+
+/** A UUID for a template about to be created. */
+export function newTemplateId() {
+  return `template-${crypto.randomUUID()}`;
+}
+
+export function deleteBlock(name: string) {
+  return apiSend<{ name: string }>("DELETE", `/api/templates/blocks/${encodeURIComponent(name)}`);
+}
+
+export function deleteTemplate(templateId: string) {
+  return apiSend<{ id: string }>(
+    "DELETE",
+    `/api/templates/${encodeURIComponent(templateId)}`,
+  );
+}
+
 /**
  * What a run plan's template would become, expanded against this run's cast.
  *
@@ -529,136 +648,15 @@ export function previewPlanPrompt(runId: string, template: string) {
   );
 }
 
-export function draftTurnaround(
-  characterId: string,
-  body: {
-    /** Required to DRAFT. A preview writes nothing, so it needs no project. */
-    project?: string;
-    /** The fallback, for a caller that means one set for every angle. */
-    identity: string[];
-    /** Per angle, and it beats the fallback. See the route's own note. */
-    identity_by_angle?: Record<string, string[]>;
-    /**
-     * An earlier render every angle in this pass is chained off.
-     *
-     * Bound FIRST for each of them and named `[Image1]` by the `anchor` block,
-     * which is how the wardrobe and the background stay constant across a set —
-     * shooting the angles independently is what produced fourteen different
-     * shirts.
-     */
-    anchor?: string;
-    group?: "face" | "body";
-    angles?: string[];
-    model?: string;
-    extra?: Record<string, unknown>;
-    preview?: boolean;
-  },
-) {
-  return apiSend<TurnaroundResult>(
-    "POST",
-    `/api/characters/${encodeURIComponent(characterId)}/turnaround`,
-    body,
-  );
-}
-
-export function getReferences(id: string, group?: string) {
-  return apiGet<ReferenceIndex>(
-    `/api/characters/${encodeURIComponent(id)}/references`,
-    { group },
-  );
-}
-
 /**
- * Attach an existing node as a reference.
+ * A write answers with LESS than a read does.
  *
- * Two steps, and always has been: the bytes arrive, then a person decides the
- * image is identity. `after` places the entry between two existing ones by
- * taking the midpoint of their `order` values — one write, neither neighbour
- * touched.
- */
-export function addReference(
-  id: string,
-  body: {
-    node: string;
-    group: string;
-    description?: string;
-    tags?: string[];
-    after?: string;
-  },
-) {
-  return apiSend<ReferenceEntry>(
-    "POST",
-    `/api/characters/${encodeURIComponent(id)}/references`,
-    body,
-  );
-}
-
-/**
- * Change one entry's group, description, tags or position.
- *
- * Each of those used to be something else entirely: the group was the folder the
- * file sat in, the position was a number in its filename, and the description
- * was a key in the bible that every write rewrote whole. All three are one row's
- * write now, so two people describing two references stop fighting over one
- * document.
- */
-export function patchReference(
-  id: string,
-  node: string,
-  body: {
-    group?: string;
-    description?: string;
-    tags?: string[];
-    after?: string;
-  },
-) {
-  return apiSend<ReferenceEntry>(
-    "PATCH",
-    `/api/characters/${encodeURIComponent(id)}/references/${encodeURIComponent(node)}`,
-    body,
-  );
-}
-
-/** Detach an entry. The file stays exactly where it is. */
-export function deleteReference(id: string, node: string) {
-  return apiSend<{ node: string }>(
-    "DELETE",
-    `/api/characters/${encodeURIComponent(id)}/references/${encodeURIComponent(node)}`,
-  );
-}
-
-/**
- * The ordered handful a generation reaches for when nothing else is asked.
- *
- * **`rev` is required**, and this did not send it — the route compare-and-swaps
- * the record like every other write on it. Nothing in the app calls this yet, so
- * the omission had no symptom; the CLI's copy of the same mistake failed with
- * `rev is required` the moment #479 let the request reach the API at all.
- *
- * Every member must already be a reference. The API refuses a node with no
- * `REF#` row rather than accepting a set that names an image a shoot cannot send.
- */
-/**
- * The acknowledgement this route answers with — **not** a character record.
- *
- * It used to be typed `CharacterRecord`, which was simply false: the route
- * returns `{id, default_set, rev}` and nothing else. Nothing read the result
- * until the grid learned to write the set, and the first caller to trust the
- * type fed three fields into the page's record — so the character lost its
- * name, its slug and its root folder. The data was never touched; only the
- * screen was wrong, which is the worst way for a type to be a lie.
- */
-/**
- * What a WRITE to an entity answers with — never as much as a `GET`.
- *
- * **This is a whole class of bug, not one route.** `GET /characters/<id>` adds
- * `hero_url` and `counts` on top of the stored record; `GET /projects/<id>`
  * adds the expanded `characters`. Every `PATCH` returns `jsonify(updated)` —
  * the record as stored, without any of it — and the wrappers here all claimed
  * the full type.
  *
  * It bit twice before being named. Feeding a default-set acknowledgement into
- * the page's record left a character with no name, no slug and no root folder;
+ * the page's record left a character with no name and no root folder;
  * feeding a `PATCH /characters` reply in crashed the project page on
  * `record.counts.runs`.
  *
@@ -668,23 +666,6 @@ export function deleteReference(id: string, node: string) {
  * something new.
  */
 export type EntityPatch<T> = Partial<T> & { id: string; rev: number };
-
-export interface DefaultSetAck {
-  id: string;
-  default_set: string[];
-  rev: number;
-}
-
-export function setDefaultSet(id: string, nodes: string[], rev: number) {
-  return apiSend<DefaultSetAck>(
-    "PATCH",
-    `/api/characters/${encodeURIComponent(id)}/default-set`,
-    {
-      nodes,
-      rev,
-    },
-  );
-}
 
 /**
  * Revise one shot of a storyboard.
@@ -710,16 +691,18 @@ export function patchShot(
  * The ordered images a model would actually be shown, and the cap they face.
  *
  * **A route rather than a function in each half of studio**, so the CLI and this
- * app cannot disagree about what slot 3 was. `pick` names files, `tag` names
- * tags, `group` names a group; each takes a comma-joined list, and the first one
- * given wins in that order. None given falls through to the `default_set`.
+ * app cannot disagree about what slot 3 was. `pick` names files and `tag` names
+ * tags, both comma-joined; `pick` wins, and neither given means the `default`
+ * images. `group` is gone as a parameter because a group IS a tag.
  *
- * **Two refusals a caller has to surface rather than work around**, both 409:
- * `over_cap` when more references match than the model will take, carrying every
- * candidate so a person can choose, and `stale_default_set` when the set names a
- * node that is no longer a reference. Neither is truncated or filtered, because
- * a generation shown seven of eighteen images silently is a result nobody can
- * explain afterwards.
+ * **One refusal a caller has to surface rather than work around**, a 409:
+ * `over_cap`, when more images match than the model will take, carrying every
+ * candidate so a person can choose. Never truncated, because a generation shown
+ * seven of eighteen images silently is a result nobody can explain afterwards.
+ *
+ * `stale_default_set` was the other one, and it cannot happen: it fired when the
+ * set on the record named a node that was no longer a reference, and there is no
+ * list and no row — a tag cannot outlive the file it is written on.
  *
  * **`ApiError.message` is the CODE on those two, not the sentence.** The API's
  * ordinary errors put their prose in `error` and a structured one puts the code
@@ -766,8 +749,7 @@ export function getProject(id: string) {
 }
 
 export function createProject(body: {
-  slug: string;
-  title?: string;
+  name?: string;
   description?: string;
   characters?: string[];
 }) {
@@ -778,8 +760,7 @@ export function patchProject(
   id: string,
   body: {
     rev: number;
-    slug?: string;
-    title?: string;
+    name?: string;
     description?: string;
     hero?: string;
   },
@@ -821,7 +802,7 @@ export function deleteProject(
  *
  * It was not, and the asymmetry cost three bugs: the route answered with the id
  * strings it had been handed while a `GET` expands the same field into
- * `{id, slug, display_name}` objects. Merging replaced objects with strings, so
+ * `{id, name}` objects. Merging replaced objects with strings, so
  * `characters.map(c => c.id)` became a list of `undefined` and every chip read
  * unselected while the write itself had succeeded — a failure no type could
  * catch, because the type was an assertion about a shape nobody had checked.
@@ -940,6 +921,24 @@ export function createRun(body: CreateRunBody) {
  * runs only, which is a decision about what to put a button on rather than
  * something this call enforces.
  */
+/**
+ * Replace which characters a run is about.
+ *
+ * **A run's cast could only be set at creation, and the app never set it.** The
+ * characters are edges — `RUN#<id>` / `CHAR#<id>` — and `POST /api/runs` was
+ * the only writer, so every run the app made bound nobody and could not cite
+ * one: a prompt names its cast by position, and `{character.1.top}` had nothing
+ * to fill from with no way to supply it.
+ *
+ * A replace, like every other edge set: a client that sent a difference and got
+ * it wrong would accumulate links nothing removes.
+ */
+export function setRunCharacters(id: string, characters: string[]) {
+  return apiSend<RunRecord>("PATCH", `/api/runs/${encodeURIComponent(id)}`, {
+    characters,
+  });
+}
+
 export function deleteRun(id: string, files: "keep" | "delete" = "keep") {
   return apiSend<{ id: string; files: string }>(
     "DELETE",
@@ -1139,7 +1138,7 @@ export function getScene(id: string) {
 }
 
 /**
- * Change a scene's own fields — its setting, its title, its status.
+ * Change a scene's own fields — its setting, its name, its status.
  *
  * `setting` is the one a person edits: it is prepended byte-identically to
  * every panel prompt, so it is the single lever that keeps separately rendered

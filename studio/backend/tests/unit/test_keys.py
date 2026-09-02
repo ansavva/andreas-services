@@ -18,7 +18,8 @@ Its tests go with it in the same change, because a test asserting behaviour
 nothing calls is how a deleted rule looks like a live one.
 
 `clean_name` kept every refusal it has — none of them was ever about S3 — and
-`clean_slug` is the same argument one level up.
+`clean_label` replaced `clean_slug` with something far weaker, because the
+severity was the claim rather than the string.
 """
 
 import pytest
@@ -124,59 +125,47 @@ def test_numbered_name(name, index, expected):
 
 
 # ---------------------------------------------------------------------------
-# Slugs — the label a person types, claimed by a conditional write.
+# clean_label — the free-text name an entity carries.
 #
-# Narrower than a name because a slug is three things at once: a segment of a
-# URL, a word on a command line, and the folder name an entity's root takes.
+# It replaced `clean_slug`, which was lowercase/digits/`-`/`_`, refused rather
+# than repaired, and capped at 64. All of that severity came from the slug being
+# a CLAIM: the validated string became half a primary key, so folding
+# `Subject-A` quietly would let two people believe they held two names for one
+# claim. There is no claim, so there is nothing to protect and almost nothing
+# left to refuse.
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "slug", ["subject-a", "subject_b", "rooftop-teaser", "shot01", "a", "9-lives"]
-)
-def test_clean_slug_accepts(slug):
-    assert keys.clean_slug(slug) == slug
+@pytest.mark.parametrize("name", [
+    "Anna Smith",
+    "subject-a",
+    "Winter '26 — reshoots",
+    "café",
+    "9 lives",
+])
+def test_clean_label_accepts_what_a_person_would_type(name):
+    """Case, spaces, punctuation and non-ASCII all survive. A name is a label."""
+    assert keys.clean_label(name) == name
 
 
-@pytest.mark.parametrize(
-    "slug",
-    [
-        None,
-        "",
-        "   ",
-        "Subject-A",  # uppercase
-        "subject a",  # space
-        "subject/a",  # a slug is not a path
-        "subject.a",  # a slug is not a filename
-        "subject!",
-        "café",
-        "x" * (keys.MAX_SLUG_LENGTH + 1),
-    ],
-)
-def test_clean_slug_rejects(slug):
-    with pytest.raises(ValidationError):
-        keys.clean_slug(slug)
+def test_clean_label_folds_whitespace_rather_than_refusing_it():
+    """**The one repair, and it is safe because there is no claim.**
 
-
-def test_clean_slug_refuses_rather_than_repairs():
-    """**It never lowercases for you, and that is the whole point.**
-
-    A slug is claimed by a conditional put on `LIB#<lib>` / `CHARSLUG#<slug>`, so
-    the string that is validated is the string that becomes half a primary key.
-    Quietly folding `Subject-A` to `subject-a` would let two people believe they
-    hold two different names for one claim, and the second would then find their
-    character under a name they never typed.
+    `Anna  Smith` and `Anna Smith` were two attempts on one claim once, which is
+    why folding was forbidden. They are two ways of typing a label now, and
+    collapsing them means what a person sees is what is stored.
     """
+    assert keys.clean_label("  Anna   Smith ") == "Anna Smith"
+
+
+@pytest.mark.parametrize("name", ["", "   ", None, "a#b", "x" * (keys.MAX_LABEL_LENGTH + 1)])
+def test_clean_label_rejects(name):
+    """Empty, over-long, and `#` — which separates every key segment in the table."""
     with pytest.raises(ValidationError):
-        keys.clean_slug("Subject-A")
+        keys.clean_label(name)
 
 
-def test_clean_slug_names_the_field_it_was_given():
-    """The message has to say which field, because two of them are slugs.
-
-    `POST /api/runs` validates a run slug and resolves a project by one in the
-    same request; a refusal reading "slug may only hold..." would leave the
-    caller guessing which.
-    """
+def test_clean_label_names_the_field_it_was_given():
+    """The message has to say which field when a request carries more than one."""
     with pytest.raises(ValidationError, match="title"):
-        keys.clean_slug("Not A Slug", "title")
+        keys.clean_label("", "title")

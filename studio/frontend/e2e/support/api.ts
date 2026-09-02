@@ -43,7 +43,7 @@ interface Node {
   content_type?: string;
   created_at: string;
   updated_at?: string;
-  owner?: { kind: string; id: string; slug: string | null } | null;
+  owner?: { kind: string; id: string; name: string | null } | null;
 }
 
 /** A pane in the recursive walk — a different shape from a node row. */
@@ -58,41 +58,42 @@ interface Item {
   url: string;
 }
 
-interface Reel {
+/**
+ * A listing, as `GET /api/nodes` answers it — at any depth, filtered or not.
+ *
+ * **One shape where there were three.** `/api/tree` split folders from files,
+ * `/api/reel` returned `items`, and the CLI-shaped `/api/nodes?parent=` returned
+ * a bare array. They were the same question at different depths, so they are one
+ * route with `depth`, `kind` and `tag` arguments, and one shape comes back.
+ */
+interface Listing<T> {
   prefix: string;
   sort: string;
-  items: Item[];
+  depth: string;
+  breadcrumbs: unknown[];
+  entries: T[];
+  counts: Record<string, number>;
   total: number;
   truncated: boolean;
   next_cursor: string | null;
 }
 
-/** A folder listing, as `GET /api/tree` answers it. */
-interface Tree {
-  prefix: string;
-  sort: string;
-  breadcrumbs: unknown[];
-  folders: Array<{ id: string; name: string }>;
-  files: unknown[];
-  counts: { folders: number; files: number; media: number };
-}
-
 /** A run envelope. Left as a bag: this file dispatches on it, never reads it. */
 type Run = Record<string, unknown> & { id: string };
 
-const characterRoot = fixture<Node[]>("character-root");
+const characterRoot = fixture<Listing<Node>>("character-root");
 const character = fixture<{ root: string }>("character");
 const characters = fixture<Array<{ id: string }>>("characters");
 const libraries = fixture<Array<{ id: string }>>("libraries");
 const projects = fixture<unknown>("projects");
-const seedFolder = fixture<Node[]>("seed-folder");
-const reel = fixture<Reel>("reel");
-const referenceSpec = fixture<unknown>("reference-spec");
+const seedFolder = fixture<Listing<Node>>("seed-folder");
+const reel = fixture<Listing<Item>>("reel");
+const templates = fixture<unknown>("templates");
 
 export const LIBRARY = libraries[0].id;
 export const CHARACTER = characters[0].id;
 export const CHARACTER_ROOT = character.root;
-export const SEED_FOLDER = characterRoot.find(
+export const SEED_FOLDER = characterRoot.entries.find(
   (node) => node.name === "seed",
 )!.id;
 
@@ -132,12 +133,8 @@ const models = fixture<{
   models: Record<string, { key: string; model: string; kind: string }>;
 }>("models");
 const modelSchema = fixture<{ model: string }>("model-schema");
-const references = fixture<{
-  counts: Record<string, number>;
-  groups: Record<string, Array<Record<string, unknown>>>;
-}>("references");
-const characterTree = fixture<Tree>("character-tree");
-const referenceTree = fixture<Tree>("reference-tree");
+const characterTree = fixture<Listing<Node>>("character-tree");
+const referenceTree = fixture<Listing<Node>>("reference-tree");
 
 export const PROJECT = project.id;
 /** An unsubmitted run — the one the editor and the run bar are exercised on. */
@@ -149,7 +146,7 @@ export const CREATED_RUN = createdRun.id;
 /** The output tile the promote panel is opened from. */
 export const OUTPUT = imageRun.outputs[0]!;
 /** The character's `reference/` pool, which a promotion finds rather than makes. */
-export const REFERENCE_POOL = characterTree.folders.find(
+export const REFERENCE_POOL = characterTree.entries.find(
   (folder) => folder.name === "reference",
 )!.id;
 
@@ -157,11 +154,13 @@ export const REFERENCE_POOL = characterTree.folders.find(
  * The two nodes a promotion CREATES, which is why they are synthesised.
  *
  * Everything else here was captured; these cannot be, because they do not exist
- * until the run under test makes them. The group folder is `unsorted` — absent
- * from the captured `reference/` listing on purpose, so the spec walks the
- * branch that creates one rather than the branch that finds one.
+ * until the run under test makes them.
+ *
+ * `MADE_FOLDER` is what the stub answers any folder creation with. A promotion
+ * creates one only when `reference/` itself is missing — the `<group>/` folder
+ * it used to make as well is gone, because a group is a tag rather than a place.
  */
-export const GROUP_FOLDER = "node-e2e00000-0000-0000-0000-000000009rup";
+export const MADE_FOLDER = "node-e2e00000-0000-0000-0000-000000009rup";
 export const COPY = "node-e2e00000-0000-0000-0000-0000000000c0";
 
 /** A 1x1 PNG, so an `<img>` that reaches a stub actually decodes. */
@@ -200,10 +199,10 @@ const CLIP_PATH = "/e2e-asset.mp4";
  * SHAPE is still the API's, and a field the API stops sending disappears from
  * here on the next capture the same way it disappears everywhere else.
  */
-const STILL_ITEM = reel.items[0]!;
+const STILL_ITEM = reel.entries[0]!;
 
 /** The captured node the cold-link specs open, owner and all. */
-export const STILL = seedFolder[0]!;
+export const STILL = seedFolder.entries[0]!;
 
 export const CLIP_ITEM: Item = {
   ...STILL_ITEM,
@@ -249,7 +248,7 @@ export const SCENE_ID = "scene-e2e0-0000-0000-0000-0000000scene";
 export const SCENE: Record<string, unknown> = {
   id: SCENE_ID,
   project: RUN_PROJECT,
-  slug: "e2e-scene",
+  name: "e2e-scene",
   title: "An end-to-end scene",
   status: "assembled",
   movies: [],
@@ -347,7 +346,7 @@ export const TEXT_BODY = '{\n  "shot": "e2e",\n  "seconds": 5\n}\n';
 
 /** Every node `GET /api/nodes/<id>` can answer for. */
 const NODES = new Map<string, Node>(
-  [...characterRoot, ...seedFolder, TEXT_NODE].map((node) => [node.id, node]),
+  [...characterRoot.entries, ...seedFolder.entries, TEXT_NODE].map((node) => [node.id, node]),
 );
 
 function json(route: Route, body: unknown, status = 200) {
@@ -388,7 +387,7 @@ function runIdIn(path: string): string {
  *
  * Every flow this suite covers POSTs to a path that also has a GET: `/api/runs`
  * is the listing and the create, `/api/nodes` is the browse and the mkdir,
- * `/api/characters/<id>/references` is the library and the attach. Dispatching
+ * `/api/characters/<id>` and the node routes carry it. Dispatching
  * on the path alone answered each of those with the other one's body — a create
  * that returned a listing, an attach that returned a character — which is a
  * green test against a stub doing the opposite of the thing under test.
@@ -434,7 +433,7 @@ async function written(
       route,
       {
         ...STILL,
-        id: GROUP_FOLDER,
+        id: MADE_FOLDER,
         parent_id: String(body.parent ?? ""),
         name: String(body.name ?? ""),
         kind: "folder",
@@ -455,10 +454,12 @@ async function written(
     });
     return true;
   }
-  if (method === "POST" && path.endsWith("/references")) {
-    // The captured row for this character, pointed at whatever was attached.
-    const row = Object.values(references.groups)[0]?.[0] ?? {};
-    await json(route, { ...row, node: body.node, group: body.group }, 201);
+  // **The promotion's second half is a describe now.** It was a POST to
+  // `/references` writing a row; identity is a tag on the file, so the copy is
+  // tagged and the route is the ordinary node describe.
+  if (method === "PATCH" && /\/api\/nodes\/[^/]+$/.test(path)) {
+    await json(route, { id: path.split("/").pop(), tags: body.tags ?? [],
+                        description: body.description ?? null });
     return true;
   }
 
@@ -501,11 +502,10 @@ export async function stubApi(page: Page): Promise<void> {
     if (path.endsWith("/api/libraries")) return json(route, libraries);
     // Before `/api/characters`, which does not match it, but keeping the spec
     // next to the listings it is a sibling of.
-    if (path.endsWith("/api/reference-spec")) return json(route, referenceSpec);
+    if (path.endsWith("/api/templates")) return json(route, templates);
     if (path.endsWith("/api/characters")) return json(route, characters);
     // Before the character itself, which would otherwise swallow it — the old
     // dispatch answered a reference library with a character record.
-    if (path.endsWith("/references")) return json(route, references);
     if (path.includes("/api/characters/")) return json(route, character);
     if (path.endsWith("/api/projects")) return json(route, projects);
     // The record only. `/api/projects/<id>/scenes` and its siblings keep
@@ -527,17 +527,6 @@ export async function stubApi(page: Page): Promise<void> {
         ? json(route, entry)
         : json(route, { error: `e2e: no fixture for model ${name}` }, 501);
     }
-    if (path.endsWith("/api/tree")) {
-      const node = url.searchParams.get("node");
-      if (node === CHARACTER_ROOT) return json(route, characterTree);
-      if (node === REFERENCE_POOL) return json(route, referenceTree);
-      return json(route, {
-        ...referenceTree,
-        folders: [],
-        files: [],
-        counts: { folders: 0, files: 0, media: 0 },
-      });
-    }
     // The listing. `fingerprint` is filtered rather than ignored: it is the
     // duplicate-payload question, and a stub that answered it with the whole
     // project would put a "this has been run before" banner on every draft.
@@ -557,20 +546,25 @@ export async function stubApi(page: Page): Promise<void> {
     }
     if (path.includes("/api/runs/")) return json(route, runFor(runIdIn(path)));
     if (path.includes("/api/scenes/")) return json(route, SCENE);
-    // The clip leads the walk, so `/o?in=recursive` opens on it. The seed
-    // carries no video and a library does, so a reel that is stills all the way
-    // down is the less faithful answer of the two.
-    if (path.endsWith("/api/reel")) {
-      return json(route, {
-        ...reel,
-        items: [CLIP_ITEM, ...reel.items],
-        total: reel.total + 1,
-      });
-    }
+    // **The one listing.** `/api/tree`, `/api/reel` and the CLI-shaped
+    // `/api/nodes?parent=` were folded into it, so this stub dispatches on the
+    // arguments that told them apart rather than on three paths.
     if (path.endsWith("/api/nodes")) {
-      if (parent === CHARACTER_ROOT) return json(route, characterRoot);
-      if (parent === SEED_FOLDER) return json(route, seedFolder);
-      return json(route, []);
+      const under = url.searchParams.get("under");
+      // Recursive: the clip leads the walk, so `/o?in=recursive` opens on it.
+      // The seed carries no video and a library does, so a reel that is stills
+      // all the way down is the less faithful answer of the two.
+      if (url.searchParams.get("depth") === "all") {
+        return json(route, {
+          ...reel,
+          entries: [CLIP_ITEM, ...reel.entries],
+          total: reel.total + 1,
+        });
+      }
+      if (under === CHARACTER_ROOT) return json(route, characterTree);
+      if (under === REFERENCE_POOL) return json(route, referenceTree);
+      if (under === SEED_FOLDER) return json(route, seedFolder);
+      return json(route, { ...referenceTree, entries: [], counts: {}, total: 0 });
     }
 
     // One node, its words, or what owns it — the three routes a `/o/<id>` link

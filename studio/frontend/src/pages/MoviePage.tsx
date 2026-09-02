@@ -53,7 +53,7 @@ export function MoviePage() {
   return (
     <>
       <PageBar crumbs={crumbs}>
-        <Text variant="display">{data.title || data.slug}</Text>
+        <Text variant="display">{data.name}</Text>
         <Badge intent="neutral" className="font-mono">
           {data.status}
         </Badge>
@@ -101,8 +101,8 @@ export function MoviePage() {
               <EntityRow
                 key={scene.id}
                 index={index + 1}
-                title={scene.title || scene.slug}
-                subtitle={scene.slug}
+                title={scene.name}
+                subtitle={scene.name}
                 status={scene.status}
                 thumb={scene.thumb ?? null}
                 onOpen={() => navigate(scenePath(scene.id))}

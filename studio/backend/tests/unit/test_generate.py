@@ -29,8 +29,8 @@ from studio_core.clients import replicate
 from studio_core.services import catalog, generate
 
 
-def _project(api, slug="rooftop-teaser"):
-    return api.post("/api/projects", json={"slug": slug}).get_json()
+def _project(api, name="rooftop-teaser"):
+    return api.post("/api/projects", json={"name": name}).get_json()
 
 
 def _draft(api, project, **body):

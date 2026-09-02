@@ -1,11 +1,11 @@
 import { useCallback, useMemo } from "react";
 
-import { getAsset, getNode, getReferences, getRun, getScene } from "../apis/studio";
+import { getAsset, getCharacter, getNode, getRun, getScene, listNodes } from "../apis/studio";
 import type { FileEntry, RunAsset, Shot, SortOrder } from "../types";
 import type { ViewerSource } from "../utils/location";
-import { useReel } from "./useReel";
+import { useMedia } from "./useMedia";
 import { useResource } from "./useResource";
-import { useTree } from "./useTree";
+import { useFolder } from "./useFolder";
 
 /**
  * A pointer, as a listing entry.
@@ -107,7 +107,7 @@ export interface ViewerFeed {
  *
  * All four sources are subscribed on every render and three of them are idle,
  * because hooks cannot be called conditionally. Each is off unless its kind is
- * selected — `useTree` fetches nothing for an `undefined` folder, `useReel`
+ * selected — `useFolder` fetches nothing for an `undefined` folder, `useMedia`
  * takes an `enabled`, and `useResource` takes a null loader — so an idle source
  * costs a closure and no request.
  */
@@ -118,8 +118,8 @@ export function useViewerFeed(
 ): ViewerFeed {
   const kind = source?.in ?? "alone";
 
-  const tree = useTree(kind === "f" && source ? (source.id as string | null) : undefined, sort);
-  const reel = useReel(
+  const tree = useFolder(kind === "f" && source ? (source.id as string | null) : undefined, sort);
+  const reel = useMedia(
     kind === "recursive" && source ? (source.id as string | null) : null,
     sort,
     kind === "recursive",
@@ -173,15 +173,23 @@ export function useViewerFeed(
     }
 
     if (source.in === "refs") {
-      // The character's reference pool, in group and then in board order, which
-      // is the order a shoot would send them in. A `REF#` row carries the node
-      // id beside the file, so the two halves are joined here rather than in
-      // the adapter — `entry.file` alone does not know which node it is.
-      const grouped = await getReferences(source.id);
+      // **The character's `default` images, by name.** It used to be the
+      // reference index in group-then-order order, which was "the order a shoot
+      // would send them in" — a real fact while a `REF#` row carried an order.
+      // Nothing carries one now, and a selection comes back by name for the same
+      // reason this does: stable beats meaningful when the only requirement is
+      // that two reads agree.
+      const record = await getCharacter(source.id);
+      const listed = await listNodes(
+        { node: record.root },
+        { depth: "all", kind: ["image"], tag: ["default"], sort: "name" },
+      );
       return dedupe(
-        Object.values(grouped.groups).flatMap((entries) =>
-          entries.map((entry) => fromAsset({ node: entry.node, ...entry.file })),
-        ),
+        listed.entries
+          // `kind: ["image"]` already excludes them; narrowed here so the type
+          // says so too, since one array carries both shapes.
+          .filter((entry): entry is FileEntry => entry.kind !== "folder")
+          .map((entry) => fromAsset({ ...entry, node: entry.id })),
       );
     }
 

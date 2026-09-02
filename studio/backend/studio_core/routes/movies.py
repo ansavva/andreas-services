@@ -44,7 +44,7 @@ def create_movie():
     held = support.memberships()
 
     project = project_routes.project_at(body.get("project") or "", held)
-    slug = keys.clean_slug(body.get("slug"))
+    name = keys.clean_label(body.get("name"))
     scenes = body.get("scenes") or []
     if not isinstance(scenes, list):
         raise ValidationError("scenes must be a list")
@@ -55,17 +55,16 @@ def create_movie():
         project["lib"],
         project["id"],
         parent["node_id"],
-        slug=slug,
         attributes={
-            "title": body.get("title") or slug,
+            "name": name,
             "status": "planned",
             "scenes": scenes,
             "output": None,
         },
-        # `slug` is in the projection because a row without one cannot be
-        # addressed by name, and `<project>/<slug>` is how a person names a
-        # movie. `scenes.py` carries the same field for the same reason.
-        listing={"status": "planned", "title": body.get("title") or slug, "slug": slug},
+        # `name` is in the projection because a row without one cannot be
+        # DRAWN, and a list of UUIDs is a list nobody can read. It used to carry
+        # `slug` as well, for addressing; the only address is the id now.
+        listing={"status": "planned", "name": name},
     )
     # Expanded, because `GET` expands. A create that answered with the raw id
     # list made this the fourth endpoint in the service to spell one
@@ -93,7 +92,7 @@ def list_movies():
 
 @bp.get("/movies/<movie_id>")
 def get_movie(movie_id: str):
-    """The record, with the scenes it names resolved to slugs and status."""
+    """The record, with the scenes it names resolved to names and status."""
     held = support.memberships()
     record = _movie(movie_id, held)
 
@@ -133,7 +132,7 @@ def _scene_row(scene_id: str, scene: dict, node: str | None, nodes: dict) -> dic
     """A scene as a movie lists it — enough to draw a row, not the whole record.
 
     **`title` and `thumb` are here because a row without them cannot be drawn.**
-    They were not, so the SPA's cut list showed every scene by its slug behind an
+    They were not, so the SPA's cut list showed every scene by its id behind an
     empty square. A scene's thumbnail is its own cut, which is why `thumb` is
     derived from `output` rather than read off a listing row: the listing row is
     the project's, and this query goes to the scene records.
@@ -141,8 +140,7 @@ def _scene_row(scene_id: str, scene: dict, node: str | None, nodes: dict) -> dic
     drawable = support.asset(node, nodes.get(node)) if node else None
     return {
         "id": scene_id,
-        "slug": scene.get("slug"),
-        "title": scene.get("title"),
+                "name": scene.get("name"),
         "status": scene.get("status"),
         "output": drawable,
         "thumb": drawable,
@@ -152,10 +150,10 @@ def _scene_row(scene_id: str, scene: dict, node: str | None, nodes: dict) -> dic
 # What a PATCH may write. `characters`, `stitch` and `assembled` are what
 # `assemble` sends and what this route silently dropped — `output` was accepted,
 # so a movie recorded its cut while losing the report of how it was made.
-MOVIE_FIELDS = ("title", "status", "output", "characters", "stitch", "assembled")
+MOVIE_FIELDS = ("name", "status", "output", "characters", "stitch", "assembled")
 
 # The projection the listing row carries. A grid draws a movie from these.
-MOVIE_LISTED = ("title", "status")
+MOVIE_LISTED = ("name", "status")
 
 
 @bp.patch("/movies/<movie_id>")

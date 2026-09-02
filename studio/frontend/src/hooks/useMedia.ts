@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { getReel } from "../apis/studio";
+import { getMedia } from "../apis/studio";
 import type { FolderId } from "../utils/location";
 import type { FileEntry, SortOrder } from "../types";
 
@@ -14,7 +14,7 @@ import type { FileEntry, SortOrder } from "../types";
  * DynamoDB `LastEvaluatedKey` — sorting by date means the whole branch has to be
  * known before any page can be cut from it. See `browse.reel_items`.
  */
-export function useReel(
+export function useMedia(
   folderId: FolderId,
   sort: SortOrder,
   enabled: boolean,
@@ -53,7 +53,7 @@ export function useReel(
     const { folderId: forFolder, sort: forSort } = query.current;
 
     try {
-      const page = await getReel(
+      const page = await getMedia(
         forFolder === null ? {} : { node: forFolder },
         forSort,
         next ?? undefined,

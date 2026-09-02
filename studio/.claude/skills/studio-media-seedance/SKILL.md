@@ -138,7 +138,7 @@ Generated videos are stored in the media library, never in git, and every
 submission is a **run** under the **project**:
 
 ```
-<project>/runs/<YYYY-MM-DD_HH-MM-SS>_<slug>/
+<project>/runs/<run_id>/
     request.json    what we sent — references as paths, never signed URLs
     prompt.json     the studio-media-prompt source, when one was used
     result.json     prediction id, status, media types, output keys
@@ -203,13 +203,14 @@ Normally you never do this by hand: `--character <name>` on the runner resolves
 the selection and presigns it. To look at what a selection resolves to first:
 
 ```bash
-studio character refs <name> --describe
-studio character refs <name> --pick-tag face --presign --json > refs.json
+studio character images <name>
+studio character selection <name> --tag default,face --presign --json > refs.json
 # -> [{ "node": "node-…", "name": "<file>.jpg", "url": "…" }, …]
 ```
 
-`refs` resolves the **bible's index** — which is why the index exists. Do not
-substitute a folder listing for it: `reference/` holds purpose subfolders
+`selection` resolves what a model is actually shown, and the API resolves it —
+so this and the SPA cannot disagree. Do not substitute a folder listing for it:
+`reference/` holds purpose subfolders
 (`face/`, `body/`, `wardrobe/` …), listings are one folder deep, and the folder
 does not say what any image shows. `studio presign --folder` is for a folder of
 files you already know, e.g.:

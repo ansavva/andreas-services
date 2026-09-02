@@ -55,7 +55,7 @@ function stubOnly(): void {
 /** The feed `?in=recursive` walks, in the order `stubApi` serves it. */
 const FEED = [
   CLIP_ITEM,
-  ...fixture<{ items: Array<{ id: string; name: string }> }>("reel").items,
+  ...fixture<{ entries: Array<{ id: string; name: string }> }>("reel").entries,
 ];
 
 const at = (id: string) => `/o/${id}?in=recursive`;
@@ -240,7 +240,7 @@ test("a cold link with no context shows the file and says what it belongs to", a
   // owner walk instead of a neighbour.
   await expect(page.getByLabel("Neighbours")).toHaveCount(0);
 
-  const owner = page.getByRole("button", { name: `in ${STILL.owner!.slug}` });
+  const owner = page.getByRole("button", { name: `in ${STILL.owner!.name}` });
   await expect(owner).toBeVisible();
   await owner.click();
   await expect(page).toHaveURL(`/c/${CHARACTER}`);

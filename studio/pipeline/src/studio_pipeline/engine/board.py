@@ -10,10 +10,10 @@ They live in `engine/` and not beside the rest of `scenes` for the reason
 arrow `cli → domain → adapters` stays intact, and the commands are attached onto
 the `scenes` group from `cli.py`, so `domain/scenes.py` never imports `engine`.
 
-    studio scenes check <p>/<slug>              # would this plan fly? free
-    studio scenes board <p>/<slug> --dry-run    # every panel payload, no spend
-    studio scenes board <p>/<slug>              # the panels
-    studio scenes render <p>/<slug> --shot 2    # one shot's video
+    studio scenes check <p>/<name>              # would this plan fly? free
+    studio scenes board <p>/<name> --dry-run    # every panel payload, no spend
+    studio scenes board <p>/<name>              # the panels
+    studio scenes render <p>/<name> --shot 2    # one shot's video
 
 WHY PANELS ARE CHAINED TO EACH OTHER
 ------------------------------------
@@ -124,7 +124,7 @@ def _trim(keys: list[str], budget: int | None) -> list[str]:
 # --------------------------------------------------------------------------
 
 def panel_slug(manifest: dict, shot: dict, panel: dict) -> str:
-    return f"{manifest['slug']}-{shot['id']}-p{panel['n']}"
+    return f"{manifest['name']}-{shot['id']}-p{panel['n']}"
 
 
 def panel_storyboard_name(shot: dict, panel: dict, ext: str) -> str:
@@ -203,14 +203,14 @@ def _project(manifest: dict) -> dict:
     """The project RECORD this scene belongs to.
 
     **`submit` documents `args.project` as the record and both builders here
-    passed the slug**, which no dry run could catch: `gather` reads `project["id"]`
+    passed the name**, which no dry run could catch: `gather` reads `project["id"]`
     only on a binding path a dry run does not take, and `execute` — which always
     reads it — is never reached without a submit. So `scenes board` and `scenes
     render` validated clean and died with `TypeError: string indices must be
     integers` the moment they were run for real, after the approval prompt and
     before any spend.
 
-    Resolved from `project` on the scene row rather than from `project_slug`: the
+    Resolved from `project` on the scene row rather than from `project_name`: the
     id is what the record carries and what cannot go stale under a rename.
     """
     return PROJECTS.require_project(manifest["project"])
@@ -393,7 +393,7 @@ def shot_args(manifest: dict, shot: dict, entry: dict, opts) -> SimpleNamespace:
     return SimpleNamespace(
         model=entry["key"],
         project=project,
-        slug=f"{manifest['slug']}-{shot['id']}",
+        slug=f"{manifest['name']}-{shot['id']}",
         prompt=motion.get("prompt"),
         prompt_file=None, prompt_json=None, input_file=None,
         extra=json.dumps(extra) if extra else None,
@@ -623,7 +623,7 @@ def run_check(ref: str, opts) -> int:
 
 def run_board(ref: str, opts) -> int:
     manifest = _resolve(ref, opts.project)
-    owner = manifest['project_slug']
+    owner = manifest['project_name']
     shots = select_shots(manifest, tuple(opts.shot or ()))
 
     wanted = []
@@ -782,7 +782,7 @@ def run_board(ref: str, opts) -> int:
 
 def run_render(ref: str, opts) -> int:
     manifest = _resolve(ref, opts.project)
-    owner = manifest['project_slug']
+    owner = manifest['project_name']
     shots = select_shots(manifest, tuple(opts.shot))
 
     prepared, notes = [], []
@@ -963,7 +963,7 @@ def run_attach(ref: str, opts) -> int:
     shot = shots[0]
 
     try:
-        record = R.resolve_run(opts.run, manifest["project_slug"])
+        record = R.resolve_run(opts.run, manifest["project"])
     except R.RunError as exc:
         raise BoardError(str(exc))
     if record.get("status") != "succeeded":

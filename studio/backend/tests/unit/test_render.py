@@ -53,18 +53,18 @@ def queue(monkeypatch):
         sqs.reset_client()
 
 
-def _project(api, slug="rooftop-teaser"):
-    return api.post("/api/projects", json={"slug": slug}).get_json()
+def _project(api, name="rooftop-teaser"):
+    return api.post("/api/projects", json={"name": name}).get_json()
 
 
-def _scene(api, project, slug="stadium-encounter", shots=None):
+def _scene(api, project, name="stadium-encounter", shots=None):
     return api.post("/api/scenes", json={
-        "project": project["id"], "slug": slug, "shots": shots or []}).get_json()
+        "project": project["id"], "name": name, "shots": shots or []}).get_json()
 
 
-def _movie(api, project, slug="launch-cut"):
+def _movie(api, project, name="launch-cut"):
     return api.post("/api/movies", json={
-        "project": project["id"], "slug": slug}).get_json()
+        "project": project["id"], "name": name}).get_json()
 
 
 def _clip(api, project, name="shot-01.mp4"):

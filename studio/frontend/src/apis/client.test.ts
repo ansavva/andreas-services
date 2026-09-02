@@ -37,7 +37,7 @@ describe("the library header", () => {
     const fetcher = stubFetch();
     setLibrary("lib-0001");
 
-    await apiGet("/api/tree");
+    await apiGet("/api/nodes");
 
     expect(headersOf(fetcher)["X-Studio-Library"]).toBe("lib-0001");
   });
@@ -57,7 +57,7 @@ describe("the library header", () => {
     setLibrary("lib-0001");
     setLibrary("lib-0002");
 
-    await apiGet("/api/tree");
+    await apiGet("/api/nodes");
 
     expect(headersOf(fetcher)["X-Studio-Library"]).toBe("lib-0002");
   });
@@ -119,7 +119,7 @@ describe("a structured failure", () => {
       }),
     );
 
-    const failure = await failureOf(apiGet("/api/tree"));
+    const failure = await failureOf(apiGet("/api/nodes"));
 
     expect(failure.message).toBe("Forbidden");
     expect(failure.status).toBe(403);

@@ -38,6 +38,8 @@ import type {
   SelectionEntry,
 } from "../../types";
 import { AutoTextarea } from "../common/AutoTextarea";
+import { RunCast } from "./RunCast";
+import { TemplatePicker } from "./TemplatePicker";
 import { TokenizedPromptEditor } from "../common/TokenizedPromptEditor";
 import type { PromptToken } from "../common/TokenizedPromptEditor";
 import { Filled, PreviewBox } from "../common/PromptPreview";
@@ -123,16 +125,45 @@ function Expanded({
 //: What a run plan may cite off a character. The same six values a reference
 //: angle fills from a bible — `reference.character_values` is the one thing
 //: that produces them, on both surfaces.
-const CHARACTER_FIELDS = ["top", "style", "must", "build", "age", "identity_block"];
+/**
+ * What `{character.N.…}` may cite.
+ *
+ * **`build` and `must` name a VARIANT and the bare form is refused**, because
+ * the bible answers both differently for a face than for a body — a face crops
+ * at mid-chest, so the proportions below it are noise, and the checklist gets a
+ * different intro. That used to be decided by a `group` column on the template;
+ * defaulting silently is how a face prompt ends up describing legs.
+ */
+const CHARACTER_FIELDS = [
+  "top",
+  "style",
+  "age",
+  "identity_block",
+  "build.face",
+  "build.body",
+  "must.face",
+  "must.body",
+];
 
 export function RunPlanEditor({
   run,
   onSaved,
+  onChanged,
   onCancel,
 }: {
   run: RunRecord;
   /** The updated run, straight off the response — the page swaps it in. */
+  /** The plan was saved. The editor is done and the page closes it. */
   onSaved: (updated: RunRecord) => void;
+  /**
+   * The record changed under the editor, which stays open.
+   *
+   * **Separate from `onSaved`, and it has to be.** Editing the cast is a write
+   * on the run, but it is not finishing the plan — routing it through `onSaved`
+   * closed the editor mid-edit and threw away the prompt in the box, which is
+   * the opposite of what pressing a character chip means.
+   */
+  onChanged: (updated: RunRecord) => void;
   onCancel: () => void;
 }) {
   /**
@@ -417,15 +448,29 @@ export function RunPlanEditor({
     prompt: string;
     spans: Array<{ name: string; start: number; end: number }>;
   } | null>(null);
+  /**
+   * Why the preview did not expand, when it did not.
+   *
+   * **A refusal used to be swallowed** — caught, dropped, and the unexpanded
+   * text shown in its place — so a prompt citing a character the run does not
+   * bind looked like a prompt that simply had not expanded yet, and the only
+   * account of it arrived on save. That is the one thing a person needs told
+   * here: the API's message names the citation and the range, which is exactly
+   * the fix.
+   */
+  const [unfilled, setUnfilled] = useState<string | null>(null);
   useEffect(() => {
-    if (structured || cast === 0) return;
+    if (structured) return;
     const timer = setTimeout(() => {
       void previewPlanPrompt(run.id, prompt)
-        .then((got) => setExpanded({ prompt: got.prompt, spans: got.spans }))
-        // A refusal is a real answer — a citation the run cannot fill — and the
-        // save says so properly. Showing the unexpanded text meanwhile beats
-        // replacing the panel with a red box on every keystroke.
-        .catch(() => setExpanded(null));
+        .then((got) => {
+          setExpanded({ prompt: got.prompt, spans: got.spans });
+          setUnfilled(null);
+        })
+        .catch((problem: Error) => {
+          setExpanded(null);
+          setUnfilled(problem.message);
+        });
     }, 250);
     return () => clearTimeout(timer);
   }, [cast, prompt, run.id, structured]);
@@ -560,8 +605,8 @@ export function RunPlanEditor({
         ? project.characters
         : (library ?? []).map((each) => ({
             id: each.id,
-            slug: each.slug,
-            display_name: each.display_name,
+            slug: each.name,
+            name: each.name,
           })),
     [project, library],
   );
@@ -709,6 +754,23 @@ export function RunPlanEditor({
               : "Saved as the sentence it is. This run binds no character to cite."}
           </Field.Description>
           {/*
+            **Picking a template fills the box and stops.**
+
+            It is what the turnaround was, minus the fan-out: an angle was a
+            prompt plus a description plus tags, and the only thing that could
+            use one rendered all fourteen at once. Choosing here does not save
+            and does not submit — the prompt lands as text a person reads,
+            changes and approves, which is where hard rule #2 has always put
+            the decision.
+
+            Offered whatever this run binds. Whether a template needs a cast is
+            a property of its prose — one built from blocks alone needs none —
+            so the picker says it per template rather than hiding the list.
+          */}
+          <div className="pb-1">
+            <TemplatePicker onPick={setPrompt} cast={cast} />
+          </div>
+          {/*
             **The tokenized editor only when there is a cast to cite.**
 
             It is the same editor the reference spec uses — a run's prompt was a
@@ -754,6 +816,26 @@ export function RunPlanEditor({
           nextPrompt
         )}
       </PreviewBox>
+
+      {/* **Named, and fixable in the same place.** A citation the run cannot
+          fill is the commonest thing wrong with a prompt started from a
+          template, and the commonest cause is a cast that has not been chosen
+          — so the message and the control that answers it sit together. */}
+      {!structured && unfilled && (
+        <Alert.Root intent="warning">
+          <Alert.Title>This will not expand yet</Alert.Title>
+          <Alert.Description>{unfilled}</Alert.Description>
+        </Alert.Root>
+      )}
+
+      {!structured && (
+        <RunCast
+          runId={run.id}
+          projectId={run.project}
+          value={run.characters ?? []}
+          onSaved={onChanged}
+        />
+      )}
       </div>
 
       <div className="flex flex-col gap-3">
@@ -1169,7 +1251,7 @@ function CharacterRefs({
   room,
   onAppend,
 }: {
-  choices: Array<{ id: string; slug: string; display_name: string }>;
+  choices: Array<{ id: string; name: string }>;
   /** Room left under the model's reference cap; `null` where it has none. */
   room: number | null;
   onAppend: (selection: SelectionEntry[]) => void;
@@ -1230,7 +1312,7 @@ function CharacterRefs({
           <Select
             options={choices.map((each) => ({
               value: each.id,
-              label: each.display_name || each.slug,
+              label: each.name,
             }))}
             value={who}
             onValueChange={setPicked}

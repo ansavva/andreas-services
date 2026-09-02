@@ -23,22 +23,22 @@ def _item(client, pk, sk):
     return response.get("Item")
 
 
-def _project(api, slug="rooftop-teaser"):
-    return api.post("/api/projects", json={"slug": slug}).get_json()
+def _project(api, name="rooftop-teaser"):
+    return api.post("/api/projects", json={"name": name}).get_json()
 
 
-def _scene(api, project, slug="stadium-encounter", shots=None):
+def _scene(api, project, name="stadium-encounter", shots=None):
     resp = api.post(
         "/api/scenes",
-        json={"project": project["id"], "slug": slug, "title": "Stadium",
+        json={"project": project["id"], "name": "Stadium",
               "shots": shots or []},
     )
     assert resp.status_code == 201, resp.get_data(as_text=True)
     return resp.get_json()
 
 
-def _movie(api, project, slug="launch-cut", **body):
-    resp = api.post("/api/movies", json={"project": project["id"], "slug": slug, **body})
+def _movie(api, project, name="launch-cut", **body):
+    resp = api.post("/api/movies", json={"project": project["id"], "name": name, **body})
     assert resp.status_code == 201, resp.get_data(as_text=True)
     return resp.get_json()
 
@@ -58,8 +58,7 @@ def test_a_movie_resolves_the_scenes_it_names(empty_api):
     assert body["scenes"] == [
         {
             "id": scene["id"],
-            "slug": "stadium-encounter",
-            "title": "Stadium",
+            "name": "Stadium",
             "status": "planned",
             "output": None,
             "thumb": None,
@@ -84,7 +83,7 @@ def test_a_movies_scene_rows_carry_what_it_takes_to_draw_one(empty_api):
 
     row = empty_api.get(f"/api/movies/{movie['id']}").get_json()["scenes"][0]
 
-    assert row["title"] == "Stadium"
+    assert row["name"] == "Stadium"
     assert row["thumb"]["node"] == node
     assert row["thumb"]["url"]
 
@@ -201,7 +200,7 @@ def test_listing_without_a_project_walks_every_project_newest_first(empty_api):
 
     body = empty_api.get("/api/movies").get_json()
 
-    slugs = [row["slug"] for row in body["movies"]]
+    slugs = [row["name"] for row in body["movies"]]
     assert slugs == ["later-cut", "early-cut"]
     assert body["cursor"] is None
 
@@ -214,7 +213,7 @@ def test_listing_by_project_returns_only_that_projects_movies(empty_api):
 
     body = empty_api.get(f"/api/movies?project={first['id']}").get_json()
 
-    assert [row["slug"] for row in body["movies"]] == ["early-cut"]
+    assert [row["name"] for row in body["movies"]] == ["early-cut"]
 
 
 def test_scenes_must_be_a_list_rather_than_whatever_was_sent(empty_api):
@@ -222,7 +221,7 @@ def test_scenes_must_be_a_list_rather_than_whatever_was_sent(empty_api):
     characters and creates a movie naming twelve scenes that do not exist."""
     project = _project(empty_api)
     resp = empty_api.post("/api/movies",
-                          json={"project": project["id"], "slug": "bad-cut",
+                          json={"project": project["id"], "name": "bad-cut",
                                 "scenes": "scene-1"})
     assert resp.status_code == 400
     assert "must be a list" in resp.get_data(as_text=True)

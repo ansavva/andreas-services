@@ -115,10 +115,9 @@ export function CharactersSection({ action }: { action?: ReactNode }) {
         {(data ?? []).map((character) => (
           <EntityCard
             key={character.id}
-            title={character.display_name}
-            slug={character.slug}
+            name={character.name}
             hero={character.hero}
-            counts={`${character.counts.references} references · ${character.counts.files} files`}
+            counts={`${character.counts.default} sent · ${character.counts.files} files`}
             onOpen={() => navigate(characterPath(character.id))}
           />
         ))}
@@ -149,8 +148,7 @@ export function ProjectsSection({ action }: { action?: ReactNode }) {
         {(data ?? []).map((project) => (
           <EntityCard
             key={project.id}
-            title={project.title || project.slug}
-            slug={project.slug}
+            name={project.name}
             hero={project.hero}
             counts={`${project.counts.runs} runs · ${project.counts.scenes} scenes · ${project.counts.movies} movies`}
             onOpen={() => navigate(projectPath(project.id))}

@@ -1,5 +1,10 @@
 {
-  "items": [
+  "breadcrumbs": [],
+  "counts": {
+    "image": 70
+  },
+  "depth": "all",
+  "entries": [
     {
       "content_type": "image/png",
       "id": "node-0a2c7551-17c0-4a72-970e-6f7f807f9d0a",

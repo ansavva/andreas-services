@@ -58,8 +58,7 @@ JSON; the table stores DynamoDB's typed form).
   "pk": "CHAR#char-9f3c1e57-2a44-4d81-b6e0-77c21f8a4d15",
   "sk": "META",
   "lib": "lib-6c2f4a91-8e3d-4b17-9f02-1a5c7d3e9b44",
-  "slug": "subject-a",
-  "display_name": "Subject A",
+  "name": "Subject A",
   "schema_version": 2,
   "rev": 4,
   "created": "2026-03-02T11:04:18.442119+00:00",
@@ -122,13 +121,15 @@ JSON; the table stores DynamoDB's typed form).
 ```
 
 Everything that was `profile.yaml` is here except two things that were
-promoted to real fields (`name` → `slug`, `display_name`) and two
+promoted to a real field (`name`) and two
 that became rows (`references:`, `default_set:` — the latter stays on the record
 as an ordered list of node ids because it is small, ordered and read on every
 generation).
 
-**The slug claim.** `pk = LIB#…`, `sk = CHARSLUG#<slug>`. This is what makes a
-slug unique in a library and what `GET /api/characters` queries.
+**The library index row.** `pk = LIB#…`, `sk = CHAR#<char_id>`. This is what
+`GET /api/characters` queries. It was `CHARSLUG#<slug>` and did two jobs — the
+listing, and making a slug unique in the library. The claim went with slugs; a
+name is a label and nothing resolves an entity by one.
 
 ```jsonc
 {
@@ -139,7 +140,7 @@ slug unique in a library and what `GET /api/characters` queries.
 }
 ```
 
-A pointer, not a projection — deliberately. Putting `display_name` here would
+A pointer, not a projection — deliberately. Putting the `name` here would
 put a mutable copy on a second item that every rename has to keep in step, which
 is the trap `GET /api/nodes` already avoids by pairing a query with a
 `BatchGetItem`.
@@ -175,7 +176,7 @@ Query `pk = CHAR#… AND begins_with(sk, "REF#")` is the whole reference index.
   "pk": "PROJ#proj-4a10b8d2-5c93-47ae-8f61-0d51e6b7c2a9",
   "sk": "META",
   "lib": "lib-6c2f4a91-8e3d-4b17-9f02-1a5c7d3e9b44",
-  "slug": "rooftop-teaser",
+  "name": "rooftop-teaser",
   "title": "Rooftop teaser",
   "description": "Short vertical cut for the launch post.",
   "rev": 2,
@@ -189,7 +190,7 @@ Query `pk = CHAR#… AND begins_with(sk, "REF#")` is the whole reference index.
 }
 ```
 
-**The slug claim.**
+**The library index row.**
 
 ```jsonc
 {
@@ -226,7 +227,7 @@ character" — a question that has no answer today at any price.
   "sk": "META",
   "lib": "lib-6c2f4a91-8e3d-4b17-9f02-1a5c7d3e9b44",
   "project": "proj-4a10b8d2-5c93-47ae-8f61-0d51e6b7c2a9",
-  "slug": "rooftop-portrait",
+  "name": "rooftop-portrait",
   "status": "succeeded",
   "kind": "image",
   "engine": "nano-banana-pro",
@@ -279,7 +280,7 @@ and never decodes.
 ```
 
 This one **is** a small projection, and that is a deliberate exception to the
-rule the slug claims follow: a run is immutable once it completes, so there is
+rule the index rows follow: a run is immutable once it completes, so there is
 nothing to keep in step, and the runs list is the screen that would otherwise
 need a `BatchGetItem` over hundreds of envelopes to draw a grid.
 
@@ -362,7 +363,7 @@ says "character"; the character record names it.
 
 Three things to notice:
 
-- **`name` carries no slug, no group and no number.** `<slug>_face_1.png` is
+- **`name` carries no label, no group and no number.** `<slug>_face_1.png` is
   dead. Group and order are on the `REF#` row.
 - **`blob_key` carries the character's id and the node's id, and nothing else.**
   A bucket listing leaks no names.
@@ -395,8 +396,8 @@ Three things to notice:
 
 ```
 LIB#lib-6c2f…          META                                    the library
-LIB#lib-6c2f…          CHARSLUG#subject-a                      slug claim
-LIB#lib-6c2f…          PROJSLUG#rooftop-teaser                 slug claim
+LIB#lib-6c2f…          CHAR#char-9f3c1e57-…                    library index
+LIB#lib-6c2f…          PROJ#proj-4a10b8d2-…                    library index
 LIB#lib-6c2f…          TERM#google/nano-banana-pro#<avoid>     phrasebook
 USER#<cognito sub>     LIB#lib-6c2f…                           membership
 
@@ -422,7 +423,7 @@ NODE#node-3b9d…        NAME#reference                          …and so on
 | Question | Query | Cost |
 |---|---|---|
 | Every character in the library | `pk = LIB#…, begins_with(sk, "CHARSLUG#")` + `BatchGetItem` | 1 query + ⌈n/100⌉ reads |
-| One character by slug | `GetItem(LIB#…, CHARSLUG#<slug>)` then `GetItem(CHAR#…, META)` | 2 reads |
+| One character by name | **not a read at all** — the API resolves ids only, and the CLI matches a name over the listing | — |
 | Its reference index | `pk = CHAR#…, begins_with(sk, "REF#")` | 1 query |
 | Its `reference/face/` folder listing | `pk = NODE#<face folder>` | 1 query |
 | Every project involving it | `by-sk`: `sk = CHAR#…, begins_with(pk, "PROJ#")` | 1 query |
@@ -449,8 +450,7 @@ POST /api/characters
 Content-Type: application/json
 
 {
-  "slug": "subject-a",
-  "display_name": "Subject A"
+  "name": "Subject A",
 }
 ```
 
@@ -461,8 +461,7 @@ Location: /api/characters/char-9f3c1e57-2a44-4d81-b6e0-77c21f8a4d15
 {
   "id": "char-9f3c1e57-2a44-4d81-b6e0-77c21f8a4d15",
   "lib": "lib-6c2f4a91-8e3d-4b17-9f02-1a5c7d3e9b44",
-  "slug": "subject-a",
-  "display_name": "Subject A",
+  "name": "Subject A",
   "rev": 1,
   "created": "2026-03-02T11:04:18.442119+00:00",
   "updated": "2026-03-02T11:04:18.442119+00:00",
@@ -473,7 +472,7 @@ Location: /api/characters/char-9f3c1e57-2a44-4d81-b6e0-77c21f8a4d15
 }
 ```
 
-Twelve items in one `TransactWriteItems`: the record, the slug claim, and two
+Twelve items in one `TransactWriteItems`: the record, the library index row, and two
 items each for the root folder and the four starting pool folders. Either all of
 it exists or none of it does.
 
@@ -499,8 +498,7 @@ GET /api/characters
 [
   {
     "id": "char-9f3c1e57-…",
-    "slug": "subject-a",
-    "display_name": "Subject A",
+    "name": "Subject A",
     "hero": { "node": "node-9a06d3c5-…", "url": "https://…presigned…" },
     "counts": { "references": 41, "files": 62 },
     "updated": "2026-08-19T09:41:02.883740+00:00"
@@ -509,28 +507,38 @@ GET /api/characters
 ```
 
 ```http
-GET /api/characters/slug:subject-a
+GET /api/characters/char-9f3c1e57-…
 ```
 
-Returns the full record from §1.1, with `profile` inline. `slug:` addressing
-exists for the CLI, where a person types a name; the SPA always holds an id.
+Returns the full record from §1.1, with `profile` inline. **An id, and there is
+no other address.** `slug:<slug>` existed for the CLI, where a person types a
+name; two characters may share a name now, so resolving one would mean picking
+between them — the CLI matches over the listing and refuses an ambiguous name
+with both ids.
 
 ### 2.3 Rename
 
 ```http
 PATCH /api/characters/char-9f3c1e57-…
-{ "slug": "subject-b", "rev": 4 }
+{ "name": "subject-b", "rev": 4 }
 ```
 ```json
-{ "id": "char-9f3c1e57-…", "slug": "subject-b", "rev": 5, "updated": "…" }
+{ "id": "char-9f3c1e57-…", "name": "subject-b", "rev": 5, "updated": "…" }
 ```
 
-Four writes in one transaction: delete the old slug claim, put the new one under
-`attribute_not_exists(pk)`, update the record, rename the root folder node. **No
-object is copied. No record anywhere is rewritten. Every node keeps its id.**
+**ONE write, of one field.** It was four in a transaction — delete the old slug
+claim, put the new one under `attribute_not_exists(pk)`, update the record,
+rename the root folder node — because a slug was claimed and the root folder was
+named by it. The claim is gone and the folder is named by the character's id, so
+neither has anything to say about what the character is called.
 
-Today this is a `PATCH` per slugged basename in four pools, plus a rewrite pass
-over every run document that cited the old path.
+**No object is copied. No record anywhere is rewritten. Every node keeps its id,
+and the root folder does not move.** Before the entity model this was a `PATCH`
+per slugged basename in four pools, plus a rewrite pass over every run document
+that cited the old path.
+
+There is no 409 for a name another character already has. A duplicate is two rows
+that look alike in a list.
 
 ```http
 409 Conflict
@@ -636,17 +644,16 @@ behaviour, moved somewhere both callers share:
 
 ```http
 POST /api/projects
-{ "slug": "rooftop-teaser", "title": "Rooftop teaser",
+{ "name": "Rooftop teaser",
   "description": "Short vertical cut for the launch post.",
   "characters": ["char-9f3c1e57-…"] }
 ```
 ```json
 {
-  "id": "proj-4a10b8d2-…", "slug": "rooftop-teaser",
+  "id": "proj-4a10b8d2-…", "name": "rooftop-teaser",
   "title": "Rooftop teaser", "rev": 1,
   "root": "node-e51b7d28-…",
-  "characters": [ { "id": "char-9f3c1e57-…", "slug": "subject-a",
-                    "display_name": "Subject A" } ],
+  "characters": [ { "id": "char-9f3c1e57-…", "name": "Subject A", } ],
   "counts": { "runs": 0, "scenes": 0, "movies": 0 }
 }
 ```
@@ -661,7 +668,7 @@ calls.
 POST /api/runs
 {
   "project": "proj-4a10b8d2-…",
-  "slug": "rooftop-portrait",
+  "name": "rooftop-portrait",
   "kind": "image",
   "engine": "nano-banana-pro",
   "model": "google/nano-banana-pro",
@@ -728,7 +735,7 @@ GET /api/runs?character=char-9f3c1e57-…&status=succeeded&model=google/nano-ban
 {
   "runs": [
     { "id": "run-77c2f0a8-…", "project": "proj-4a10b8d2-…",
-      "slug": "rooftop-portrait", "status": "succeeded", "kind": "image",
+      "name": "rooftop-portrait", "status": "succeeded", "kind": "image",
       "model": "google/nano-banana-pro",
       "created": "2026-08-19T09:40:12.664201+00:00",
       "cost": { "currency": "USD", "amount": 0.032 },
@@ -756,7 +763,7 @@ GET /api/nodes?parent=node-7c48b0f9-…
   { "id": "node-9a06d3c5-…", "name": "three-quarter-left.png", "kind": "file",
     "size": 2214809, "content_type": "image/png",
     "created_at": "…", "updated_at": "…",
-    "owner": { "kind": "character", "id": "char-9f3c1e57-…", "slug": "subject-a" } }
+    "owner": { "kind": "character", "id": "char-9f3c1e57-…", "name": "Subject A" } }
 ]
 ```
 
@@ -796,7 +803,7 @@ created character subject-a  (char-9f3c1e57-…)
 # POST /api/characters
 
 $ studio character edit subject-a
-# GET /api/characters/slug:subject-a → local/characters/subject-a.yaml → $EDITOR
+# GET /api/characters/char-9f3c1e57-… → local/characters/subject-a.yaml → $EDITOR
 wrote local/characters/subject-a.yaml — edit, then: studio character set-profile subject-a
 
 $ studio character set-profile subject-a
@@ -861,7 +868,7 @@ slot 2  node-9a06d3c5-…  face  Three-quarter left, neutral expression…
 $ studio character rename subject-a subject-b
 renamed subject-a → subject-b
   0 objects copied · 0 records rewritten · 41 references untouched
-# PATCH /api/characters/<id>  {slug, rev}
+# PATCH /api/characters/<id>  {name, rev}
 ```
 
 ### 3.2 The project
@@ -905,7 +912,7 @@ $ studio projects inputs rooftop-teaser
 $ studio run --project rooftop-teaser --model nano-banana-pro \
              --character subject-a --pick-tag face \
              --prompt "…" --aspect 9:16 --resolution 4k --dry-run
-# GET /api/characters/slug:subject-a → /selection?tag=face
+# GET /api/characters/char-9f3c1e57-… → /selection?tag=face
 # renders PROMPT and INPUT for approval. Nothing is submitted. (hard rule #2)
 
 $ studio run --project rooftop-teaser --model nano-banana-pro \

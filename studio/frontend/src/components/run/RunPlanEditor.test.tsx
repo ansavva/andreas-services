@@ -29,16 +29,16 @@ const getModel = vi.fn();
 const getModelSchema = vi.fn();
 const getCharacterSelection = vi.fn();
 const getProject = vi.fn();
-const getTree = vi.fn();
+const getFolder = vi.fn();
 
 vi.mock("../../apis/studio", () => ({
   patchRunPlan: (...args: unknown[]) => patchRunPlan(...args),
   previewPlanPrompt: (...args: unknown[]) => previewPrompt(...args),
   patchRunSends: (...args: unknown[]) => patchRunSends(...args),
   // The picker's listing call. Named here because the mock replaces the whole
-  // module, and an unmocked `getTree` would be `undefined` the moment the dialog
+  // module, and an unmocked `getFolder` would be `undefined` the moment the dialog
   // opens rather than at import.
-  getTree: (...args: unknown[]) => getTree(...args),
+  getFolder: (...args: unknown[]) => getFolder(...args),
   getAsset: vi.fn(() =>
     Promise.resolve({ url: "https://example.test/re-signed" }),
   ),
@@ -49,6 +49,17 @@ vi.mock("../../apis/studio", () => ({
   getModel: (...args: unknown[]) => getModel(...args),
   getModelSchema: (...args: unknown[]) => getModelSchema(...args),
   getCharacterSelection: (...args: unknown[]) => getCharacterSelection(...args),
+  // The cast editor's two calls. The module mock replaces everything, so an
+  // unnamed one is `undefined` at the first render rather than at import — and
+  // a `useResource` handed `undefined` never settles, which hangs the suite
+  // rather than failing it.
+  getTemplates: vi.fn(() => Promise.resolve({ blocks: {}, templates: [] })),
+  // The tag vocabulary, read by every `TagSelect` the moment its list opens.
+  getTags: vi.fn(() => Promise.resolve({ scope: "file", tags: [] })),
+  renameTag: vi.fn(() => Promise.resolve({ name: "", changed: 0 })),
+  deleteTag: vi.fn(() => Promise.resolve({ name: "", changed: 0 })),
+  setRunCharacters: vi.fn(() => Promise.resolve({})),
+  getRun: vi.fn(() => Promise.resolve({})),
 }));
 
 /** The registry entry for a model that takes references and a start frame. */
@@ -72,11 +83,13 @@ beforeEach(() => {
   getModelSchema.mockReset();
   getCharacterSelection.mockReset();
   getProject.mockReset();
-  getTree.mockReset();
-  getTree.mockResolvedValue({
+  getFolder.mockReset();
+  getFolder.mockResolvedValue({
     folders: [],
     files: [],
     breadcrumbs: [],
+    depth: "1",
+    tags: {},
     sort: "name",
   });
   // The registry and the schema are unreachable unless a case says otherwise —
@@ -88,7 +101,7 @@ beforeEach(() => {
     id: "proj-1",
     root: "node-project",
     characters: [
-      { id: "char-1", slug: "placeholder", display_name: "Placeholder" },
+      { id: "char-1", name: "Placeholder" },
     ],
   });
 });
@@ -150,7 +163,7 @@ function sendsSent(): { field: string; role: string | null; node: string }[] {
 function editor(run = draft(), onSaved = vi.fn()) {
   render(
     <TestProviders>
-      <RunPlanEditor run={run} onSaved={onSaved} onCancel={vi.fn()} />
+      <RunPlanEditor run={run} onSaved={onSaved} onChanged={vi.fn()} onCancel={vi.fn()} />
     </TestProviders>,
   );
   return onSaved;
@@ -386,7 +399,9 @@ describe("which model input a new image binds to", () => {
     // The frame-first workflow: an empty video run gaining an image is a still
     // being handed over to be animated, and `image_input` there submits nowhere.
     getModel.mockResolvedValue(entry({ kind: "video" }));
-    getTree.mockResolvedValue({
+    getFolder.mockResolvedValue({
+      depth: "1",
+      tags: {},
       folders: [],
       files: [
         {

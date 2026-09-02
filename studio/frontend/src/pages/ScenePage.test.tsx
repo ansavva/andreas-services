@@ -57,8 +57,7 @@ function record(over: Partial<SceneRecord> = {}): SceneRecord {
   return {
     id: ID,
     project: "proj-0001",
-    slug: "light-flex",
-    title: "Light flex",
+    name: "Light flex",
     status: "planned",
     movies: [],
     created: "2026-08-25T00:00:00Z",
@@ -82,8 +81,7 @@ function draw(scene: SceneRecord) {
   read.mockResolvedValue(scene);
   project.mockResolvedValue({
     id: "proj-0001",
-    slug: "a-project",
-    title: "A project",
+    name: "A project",
   } as never);
   landed = "";
   return render(
@@ -510,7 +508,7 @@ it("shows an End row only when the scene brackets its shots", async () => {
 });
 
 it("draws a reference the plan names as a thumbnail, not as a filename", async () => {
-  // "plus peter" said nothing about which pictures are going, and which pictures
+  // "plus <name>" said nothing about which pictures are going, and which pictures
   // are going is the whole question. The API resolves the block to images.
   draw(
     record({
@@ -592,7 +590,7 @@ it("does not offer a viewer for a frame that has not been rendered", async () =>
  */
 it("names the movie that cut this scene", async () => {
   draw(
-    record({ movies: [{ id: "movie-3", slug: "the-cut", title: "The cut" }] }),
+    record({ movies: [{ id: "movie-3", name: "The cut" }] }),
   );
 
   expect(await screen.findByText("Cut into")).toBeTruthy();

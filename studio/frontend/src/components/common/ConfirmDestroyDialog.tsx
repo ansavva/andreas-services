@@ -12,7 +12,7 @@ interface Props {
   /**
    * What has to be typed before the action is live.
    *
-   * A slug for an entity, a count for a selection — something the person has to
+   * A name for an entity, a count for a selection — something the person has to
    * *read the dialog* to know. "yes" would be muscle memory.
    */
   confirmWord: string;

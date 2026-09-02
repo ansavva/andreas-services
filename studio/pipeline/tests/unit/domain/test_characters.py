@@ -23,7 +23,8 @@ inside a group folder has nothing left to find.
 
 from __future__ import annotations
 
-import json
+from studio_pipeline.domain import paths as P
+
 
 import pytest
 import yaml
@@ -48,7 +49,7 @@ def test_creating_a_character_makes_its_layout_in_one_act(library):
     character could exist with no `seed/` — and `add-to <name> seed` was the
     command that found out.
     """
-    result = _run("create", "subject-c", "--display-name", "Subject C")
+    result = _run("create", "subject-c")
     assert result.exit_code == 0, result.output
     record = CHARACTER.resolve("subject-c")
     assert {c["name"] for c in library.fake._children(record["root"])} == {
@@ -57,20 +58,27 @@ def test_creating_a_character_makes_its_layout_in_one_act(library):
         assert f"{pool}/" in result.output
 
 
-def test_a_taken_slug_is_refused(library):
-    result = _run("create", "subject-a")
-    assert result.exit_code == 1
-    assert "already exists" in result.output
+def test_a_name_another_character_has_is_allowed(library):
+    """It was refused: a slug was claimed, so a create could collide.
+
+    A name is a label now. Two characters called `subject-a` are two rows that
+    look alike in a list, and `resolve` refuses the AMBIGUOUS LOOKUP rather than
+    the create — which is the right place for the question, because it is asked
+    by somebody who can answer it.
+    """
+    assert _run("create", "subject-a").exit_code == 0
+
+    with pytest.raises(api.NotFound, match="not unique"):
+        CHARACTER.resolve("subject-a")
 
 
-def test_resolving_a_slug_returns_the_whole_record(library):
+def test_resolving_a_name_returns_the_whole_record(library):
     record = CHARACTER.resolve("subject-a")
     assert record["id"] == library.character
     assert record["root"] == library.character_root
-    # 2, not 1: seeding the library sets a default set, and that is a write on
-    # the record like any other. It only started counting once the adapter began
-    # sending the `rev` the route has always compare-and-swapped.
-    assert record["rev"] == 2
+    # 1: the fixture tags the FILES, and tagging a file is not a write on the
+    # character's record. The `default_set` write that used to bump this is gone.
+    assert record["rev"] == 1
 
 
 def test_an_unknown_character_is_a_clean_refusal(library):
@@ -96,14 +104,14 @@ def test_show_lists_the_folders_the_character_actually_has(library):
 def test_the_bible_reads_as_one_map_with_the_promoted_fields_merged_back(library):
     """`load_profile` is the reader every engine uses, and its shape is pinned.
 
-    `name` and `display_name` were promoted OUT of the document onto the
-    record. `engine/shoot.py` and `domain/prompt.py` read them by those names,
-    so the reader merges them back in rather than making four modules learn
-    where each one lives now.
+    `name` was promoted OUT of the document onto the record — `domain/prompt.py`
+    reads it by that name, so the reader merges it back in rather than making
+    four modules learn where it lives now. There were TWO: the record carried a
+    claimed `slug` beside a `display_name` for prose, and both are one `name`.
     """
     data = CHARACTER.load_profile("subject-a")
     assert data["name"] == "subject-a"
-    assert data["display_name"] == "Subject A"
+    assert "display_name" not in data
     assert data["consistency"]["must"] == ["<…>"]
 
 
@@ -150,7 +158,7 @@ def test_no_rev_means_the_records_own_rather_than_no_check(library):
 def test_the_rev_of_a_character_that_is_not_there_is_none(library):
     """None, and only for a 404. A refusal is a different fact."""
     assert PROFILE.remote_rev("nobody") is None
-    assert PROFILE.remote_rev("subject-a") == 2  # the fixture's default-set write
+    assert PROFILE.remote_rev("subject-a") == 1
 
 
 def test_a_refusal_is_not_a_missing_character(library, monkeypatch):
@@ -186,6 +194,10 @@ def test_a_rename_is_one_write_and_strands_nothing(library):
     bible's index to match, and a sweep over every run document in every project
     rewriting the paths they had recorded. It is one conditional write, and the
     references, the runs and the default set all still name the same nodes.
+
+    **The root folder does not move either**, which it used to: it was named by
+    the slug, and a rename carried it along so a person browsing the tree saw
+    the new name. Entity roots are named by their id now.
     """
     result = _run("rename", "subject-a", "subject-z")
     assert result.exit_code == 0, result.output
@@ -193,153 +205,76 @@ def test_a_rename_is_one_write_and_strands_nothing(library):
 
     record = CHARACTER.resolve("subject-z")
     assert record["id"] == library.character
-    assert library.fake.nodes[library.character_root]["name"] == "subject-z"
-    assert {e["node"] for e in E.reference_entries(record["id"])} == {
+    assert library.fake.nodes[library.character_root]["name"] == library.character
+    assert {e["id"] for e in E.character_images(record["id"])} == {
         library.face_1, library.face_2, library.body_1}
-    assert record["default_set"] == [library.face_1, library.face_2]
+    # And the tags are where they were: a rename touches the record and the root
+    # folder's name, and nothing a picture says about itself.
+    assert "default" in store.node(library.face_1)["tags"]
     # The run recorded the character by id, so it is still that character's run.
-    assert E.query_runs(character=E.address("subject-z"))["runs"]
+    assert E.query_runs(character=P.by_name(E.list_characters(), "subject-z", "character")["id"])["runs"]
 
 
-def test_renaming_onto_a_taken_slug_is_refused(library):
-    result = _run("rename", "subject-a", "subject-b")
-    assert result.exit_code == 1
-    assert "already exists" in result.output
+def test_renaming_onto_a_name_another_character_has_is_allowed(library):
+    """Refused while the slug was claimed; ordinary now.
 
-
-# ── the reference index ─────────────────────────────────────────────────────
-
-def test_the_index_is_rows_and_not_a_walk_of_the_folders(library):
-    """**The listing that had to stay recursive has nothing left to recurse.**
-
-    `references:` keyed entries on `face/<name>_1.png`, so reading the index
-    meant walking every group folder — and a one-level listing found no images
-    at all and reported an empty library for a character whose whole reference
-    set was there. A `REF#` row names a node id, so the query is flat and the
-    folders are irrelevant to it.
+    What it costs is that `resolve` can no longer answer for either of them —
+    which is a question asked by a person who can pick, not a write that has to
+    be stopped.
     """
-    entries = E.reference_entries(library.character)
-    assert {e["node"] for e in entries} == {library.face_1, library.face_2,
-                                            library.body_1}
-    assert {e["group"] for e in entries} == {"face", "body"}
+    assert _run("rename", "subject-a", "subject-b").exit_code == 0
+
+    with pytest.raises(api.NotFound, match="not unique"):
+        CHARACTER.resolve("subject-b")
 
 
-def test_an_image_is_a_reference_because_a_row_says_so(library):
-    """Not because of the folder it sits in — which is the coupling that went.
+# ── identity, which is tags ─────────────────────────────────────────────────
 
-    The file is moved out of `reference/` entirely and stays a reference.
+
+def test_images_lists_the_whole_branch_not_an_index(library):
+    """**Wider than `refs` ever was, on purpose.**
+
+    `character refs` listed the images somebody had filed a `REF#` row for, so a
+    picture dropped into the tree by hand was invisible to it — which is how
+    twelve files in the production library ended up with no description
+    anywhere. Every image under the character is here.
     """
-    from studio_pipeline.adapters import store
+    result = _run("images", "subject-a")
 
-    store.move_nodes([library.face_1], library.input_pool)
-    assert library.face_1 in {e["node"]
-                             for e in E.reference_entries(library.character)}
-
-
-def test_refs_prints_the_index_grouped_and_ordered(library):
-    result = _run("refs", "subject-a")
     assert result.exit_code == 0, result.output
-    assert "front-neutral.webp" in result.output
-    assert "three-quarter.webp" in result.output
+    for node in (library.face_1, library.face_2, library.body_1):
+        assert node in result.output
 
 
-def test_refs_can_be_narrowed_to_one_group(library):
-    result = _run("refs", "subject-a", "--group", "body")
-    assert result.exit_code == 0, result.output
-    assert "full-length.webp" in result.output
-    assert "front-neutral.webp" not in result.output
+def test_images_marks_the_ones_a_generation_is_shown(library):
+    """The `default` tag is the whole distinction, and the listing says so."""
+    result = _run("images", "subject-a")
+
+    marked = [line for line in result.output.splitlines() if line.startswith("*")]
+    assert len(marked) == 2
+    assert library.body_1 not in "".join(marked)
 
 
-def test_describing_one_reference_is_one_row_write(library):
-    """**No whole-bible rewrite, and no `updated_at` conflict dance.**
+def test_images_filters_on_every_named_tag(library):
+    """ALL of them, which is what the filter promises everywhere else."""
+    result = _run("images", "subject-a", "--tag", "default,face")
 
-    Two descriptions written at once used to fight over one document; each is
-    its own row now, so they cannot.
+    assert library.face_1 in result.output
+    assert library.body_1 not in result.output
+
+
+def test_tagging_an_image_is_what_makes_it_identity(library):
+    """`studio describe` is the only way in, and it already existed.
+
+    Eight commands wrote to the index — `add-refs`, `set-ref-desc`,
+    `describe-refs`, `order`, `regroup`, `detach`, `default-set` — and all of
+    them are gone. What is left is a tag on a file.
     """
-    result = _run("set-ref-desc", "subject-a", library.body_1, "full length, flat light")
-    assert result.exit_code == 0, result.output
-    by_node = {e["node"]: e for e in E.reference_entries(library.character)}
-    assert by_node[library.body_1]["description"] == "full length, flat light"
-    # Untouched, because it is a different row.
-    assert by_node[library.face_1]["description"] == "front, neutral"
+    store.describe_node(library.body_1, tags=["default", "body"])
 
+    chosen = CHARACTER.selection_nodes(CHARACTER.resolve("subject-a"))
 
-def test_describe_refs_applies_a_whole_pass_atomically(library, tmp_path):
-    """Forty descriptions is one transaction, not forty chances to stop halfway."""
-    batch = tmp_path / "descriptions.json"
-    batch.write_text(json.dumps({
-        library.face_1: {"description": "first", "tags": ["face", "neutral"]},
-        library.body_1: {"description": "second"},
-    }))
-    result = _run("describe-refs", "subject-a", "--from", str(batch))
-    assert result.exit_code == 0, result.output
-    by_node = {e["node"]: e for e in E.reference_entries(library.character)}
-    assert by_node[library.face_1]["tags"] == ["face", "neutral"]
-    assert by_node[library.body_1]["description"] == "second"
-
-
-def test_describing_something_that_is_not_a_reference_is_refused(library):
-    result = _run("set-ref-desc", "subject-a", library.input_1, "nope")
-    assert result.exit_code == 1
-
-
-def test_order_places_an_entry_without_touching_its_neighbours(library):
-    """**New — explicit ordering, replacing filename numbering.**
-
-    `order` is gapped by 1000 and `--after` takes the midpoint, so a reorder is
-    one write. `curate renumber` existed to close holes in a numbering scheme
-    that no longer exists.
-    """
-    third = library.fake.put_file(library.face_folder, "profile-left.webp", b"x")
-    E.add_reference(library.character, third["id"], "face")
-    before = {e["node"]: e["order"]
-              for e in E.reference_entries(library.character, group="face")}
-    assert before == {library.face_1: 1000, library.face_2: 2000, third["id"]: 3000}
-
-    result = _run("order", "subject-a", third["id"], "--group", "face",
-                  "--after", library.face_1)
-    assert result.exit_code == 0, result.output
-    assert "no object was written" in result.output
-
-    after = {e["node"]: e["order"]
-             for e in E.reference_entries(library.character, group="face")}
-    # The midpoint of its two new neighbours, and NEITHER of them moved.
-    assert after[third["id"]] == 1500
-    assert after[library.face_1] == 1000 and after[library.face_2] == 2000
-
-
-def test_regroup_writes_no_object(library):
-    """`curate regroup` was a reparent plus a sweep over every citing record.
-
-    It is one attribute on one row, and the file does not move — which is the
-    single largest simplification in the change.
-    """
-    before = library.fake.nodes[library.body_1]["parent_id"]
-    result = _run("regroup", "subject-a", library.body_1, "--to", "face")
-    assert result.exit_code == 0, result.output
-    assert library.fake.nodes[library.body_1]["parent_id"] == before
-    assert {e["node"] for e in
-            E.reference_entries(library.character, group="face")} == {
-        library.face_1, library.face_2, library.body_1}
-
-
-def test_detaching_a_reference_leaves_the_file_where_it_is(library):
-    result = _run("detach", "subject-a", library.body_1)
-    assert result.exit_code == 0, result.output
-    assert library.body_1 in library.fake.nodes
-    assert library.body_1 not in {e["node"]
-                                  for e in E.reference_entries(library.character)}
-
-
-def test_default_set_names_what_is_sent_when_nobody_picks(library):
-    result = _run("default-set", "subject-a", library.body_1)
-    assert result.exit_code == 0, result.output
-    assert CHARACTER.resolve("subject-a")["default_set"] == [library.body_1]
-
-
-def test_a_default_set_may_only_name_references(library):
-    result = _run("default-set", "subject-a", library.input_1)
-    assert result.exit_code == 1
+    assert library.body_1 in [entry["node"] for entry in chosen]
 
 
 # ── selection ───────────────────────────────────────────────────────────────
@@ -352,6 +287,16 @@ def test_selection_resolves_server_side(library):
     assert [e["slot"] for e in chosen] == [1, 2]
 
 
+def test_selection_with_no_filter_is_the_default_tag(library):
+    """What `default_set` used to be, said on the pictures instead."""
+    record = CHARACTER.resolve("subject-a")
+
+    assert [e["node"] for e in CHARACTER.selection_nodes(record)] == [
+        library.face_1, library.face_2]
+    assert library.body_1 not in [
+        e["node"] for e in CHARACTER.selection_nodes(record)]
+
+
 def test_slots_pick_positions_within_the_resolved_selection(library):
     """Slot N is position N in THIS list — not a trailing file number."""
     record = CHARACTER.resolve("subject-a")
@@ -360,9 +305,10 @@ def test_slots_pick_positions_within_the_resolved_selection(library):
 
 
 def test_an_over_cap_selection_is_refused_with_a_way_to_narrow_it(library):
+    """Refused, never truncated, and the message says what to do about it."""
     result = _run("selection", "subject-a", "--limit", "1")
     assert result.exit_code == 1
-    assert "--pick" in result.output or "default-set" in result.output
+    assert "--pick" in result.output or "describe" in result.output
 
 
 def test_selection_can_presign(library):
@@ -487,62 +433,6 @@ def test_textblock_treats_the_unfilled_template_as_no_block(library):
     assert "silhouette" in result.output
 
 
-def test_detaching_a_reference_takes_it_out_of_the_default_set(library):
-    """The drift this closes was found in production, not imagined.
-
-    One character's set named seven nodes and three of them were references; the
-    selection route filtered the rest out without a word, so a default shoot sent
-    three images where somebody had chosen seven.
-    """
-    E.put_default_set(library.character, [library.face_1, library.face_2],
-                      CHARACTER.resolve("subject-a")["rev"])
-
-    E.delete_reference(library.character, library.face_2)
-
-    record = CHARACTER.resolve("subject-a")
-    assert record["default_set"] == [library.face_1]
 
 
-def test_a_default_shoot_is_refused_while_the_set_names_a_non_reference(library):
-    """Refused, never quietly shortened — the cap refusal's rule.
 
-    Reached by writing the stale state directly, because the routes now refuse to
-    create it: what is under test is the read path over a library that already
-    carries one.
-    """
-    E.put_default_set(library.character, [library.face_1],
-                      CHARACTER.resolve("subject-a")["rev"])
-    library.fake.characters[library.character]["default_set"] = [
-        library.face_1, "node-vanished",
-    ]
-
-    with pytest.raises(api.Conflict) as refused:
-        CHARACTER.selection_nodes(CHARACTER.resolve("subject-a"))
-
-    assert "not references any more" in str(refused.value)
-
-
-def test_setting_the_default_set_sends_the_revision_it_read(library):
-    """A write on the record, compare-and-swapped like every other one.
-
-    The adapter did not send `rev` at all, which the API refuses outright. It
-    never surfaced because the request died one layer earlier on an unregistered
-    verb until #479 — the same shape as the `schema_version` that `edit --push`
-    was sending back.
-    """
-    before = CHARACTER.resolve("subject-a")["rev"]
-
-    E.put_default_set(library.character, [library.face_1], before)
-
-    after = CHARACTER.resolve("subject-a")
-    assert after["default_set"] == [library.face_1]
-    assert after["rev"] == before + 1
-
-
-def test_a_default_set_written_against_a_stale_revision_is_refused(library):
-    """Somebody else wrote the record between the read and this write."""
-    stale = CHARACTER.resolve("subject-a")["rev"]
-    E.put_default_set(library.character, [library.face_1], stale)
-
-    with pytest.raises(api.Conflict):
-        E.put_default_set(library.character, [library.face_2], stale)

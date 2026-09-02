@@ -1,27 +1,26 @@
 {
   "counts": {
-    "files": 54,
-    "references": 0
+    "default": 0,
+    "files": 54
   },
   "created": "2026-08-27T02:19:24.255341+00:00",
-  "default_set": [],
-  "display_name": "jason",
+  "name": "jason",
   "hero_url": null,
   "id": "char-57399438-f54b-5b36-8d84-3fd4dcbf34cc",
   "lib": "lib-160af8b7-bf45-5fd0-b4d1-8bd7e52fac07",
   "profile": {
     "body": {
       "arms": "<>",
-      "back": "<taper, lats, blades, spinal furrow \u2014 the body plate shot from behind has nothing else to check itself against>",
-      "body_hair": "<state it explicitly if it matters \u2014 generators default to smooth>",
+      "back": "<taper, lats, blades, spinal furrow — the body plate shot from behind has nothing else to check itself against>",
+      "body_hair": "<state it explicitly if it matters — generators default to smooth>",
       "chest_and_shoulders": "<>",
       "feet": "<>",
       "hands": "<palm and finger shape, nails, veins, hair; which wrist wears what>",
       "lower_body": "<thighs, calves, hips; the shape, not just the size>",
-      "midsection": "<how defined, honestly \u2014 \"trim\" and \"shredded\" are not the same>",
+      "midsection": "<how defined, honestly — \"trim\" and \"shredded\" are not the same>",
       "neck": "<thickness AND length, the muscles that show, where facial hair stops>",
       "posture": "<how they sit, stand, gesture>",
-      "silhouette": "<proportion \u2014 usually the single most reliable on-model cue>"
+      "silhouette": "<proportion — usually the single most reliable on-model cue>"
     },
     "consistency": {
       "drift_modes": [
@@ -95,6 +94,5 @@
   "rev": 1,
   "root": "node-43fbd3f9-35f7-540c-b1c7-68b35c15b25d",
   "schema_version": 2,
-  "slug": "jason",
   "updated": "2026-08-27T02:19:24.255341+00:00"
 }

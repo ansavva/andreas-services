@@ -62,7 +62,7 @@ def _scene(scene_id: str, held: dict) -> dict:
     return support.entity_at(KIND, g.library, scene_id, held)
 
 
-def _planned(body: dict, slug: str) -> tuple[dict, list[dict]]:
+def _planned(body: dict, name: str) -> tuple[dict, list[dict]]:
     """Normalise and validate an authored plan. **The write gate.**
 
     This route used to take whatever `shots` it was handed — a list of objects,
@@ -93,7 +93,7 @@ def _planned(body: dict, slug: str) -> tuple[dict, list[dict]]:
 
     plan = {field: body[field] for field in SCENE_PLAN if field in body}
     try:
-        doc = storyboard.normalise({**plan, "shots": raw}, slug)
+        doc = storyboard.normalise({**plan, "shots": raw}, name)
         storyboard.validate(doc)
     except storyboard.PlanError as refusal:
         raise ValidationError(str(refusal)) from None
@@ -107,8 +107,8 @@ def create_scene():
     held = support.memberships()
 
     project = project_routes.project_at(body.get("project") or "", held)
-    slug = keys.clean_slug(body.get("slug"))
-    doc, shots = _planned(body, slug)
+    name = keys.clean_label(body.get("name"))
+    doc, shots = _planned(body, name)
 
     parent = project_routes.folder_for(project, layout.SCENE_PARENT)
     record = catalog.create_project_entity(
@@ -116,20 +116,19 @@ def create_scene():
         project["lib"],
         project["id"],
         parent["node_id"],
-        slug=slug,
         attributes={
-            "title": body.get("title") or slug,
+            "name": name,
             "status": doc.get("status") or "planned",
             "output": None,
             "error": None,
             **{field: body[field] for field in SCENE_PLAN if field in body},
         },
-        # `slug` belongs in the projection because a row without one cannot be
-        # addressed by name. `GET /api/scenes` omitted it, so every caller that
-        # resolved `<project>/<slug>` — which is every scene command in the CLI —
-        # raised `KeyError: 'slug'` against a row it had just been handed.
-        listing={"status": doc.get("status") or "planned",
-                 "title": body.get("title") or slug, "slug": slug},
+        # `name` belongs in the projection because a row without one cannot be
+        # DRAWN. It used to carry `slug` too, for addressing — `GET /api/scenes`
+        # omitted it and every caller resolving `<project>/<slug>` raised
+        # `KeyError: 'slug'` against a row it had just been handed. The only
+        # address is the id now, so there is nothing left to omit.
+        listing={"status": doc.get("status") or "planned", "name": name},
     )
 
     written = catalog.put_shots(record["id"], record["lib"], shots) if shots else []
@@ -221,7 +220,7 @@ def _drawable(entries: list[dict], held: dict) -> list[dict]:
 
     **One batched read for the whole scene.** The pointers and the resolved
     reference nodes are collected across every shot first, then expanded
-    together; a character's index is read once per slug rather than once per
+    together; a character's index is read once per character rather than once per
     shot.
 
     Expansions sit beside the pointers rather than replacing them (`panel.node`
@@ -313,7 +312,7 @@ def get_scene(scene_id: str):
                     "status": storyboard.scene_status({**record, "shots": shots}),
                     # The frames this scene has produced, in order — shot 1's
                     # opening panel and every later shot's handoff. It used to
-                    # be a `chains/<slug>.json` kept in step by hand, which is
+                    # be a `chains/<scene>.json` kept in step by hand, which is
                     # the shape of every bug this repo has written a migrator for.
                     "frames": storyboard.scene_frames({**record, "shots": shots}),
                     "shots": shots,
@@ -341,7 +340,7 @@ def get_scene(scene_id: str):
 # revised by re-ingesting its plan, and a revision that could not move `setting`
 # or `defaults` would leave the envelope describing the plan before last.
 SCENE_FIELDS = (
-    "title", "status", "error", "characters", "stitch", "output", "assembled",
+    "name", "status", "error", "characters", "stitch", "output", "assembled",
     # Written by `support.keep_cut` on the two routes that set `output`, never
     # by a client — see `SHOT_FIELDS`' `takes` for the same argument.
     "cuts",
@@ -350,7 +349,7 @@ SCENE_FIELDS = (
 
 # The projection the listing row carries, and the only fields worth a second
 # write. A grid draws a scene from these.
-SCENE_LISTED = ("title", "status")
+SCENE_LISTED = ("name", "status")
 
 
 @bp.patch("/scenes/<scene_id>")
@@ -404,7 +403,7 @@ def replace_shots(scene_id: str):
     record = _scene(scene_id, held)
 
     _, shots = _planned({**body, **{f: record.get(f) for f in SCENE_PLAN}},
-                        record.get("slug") or record["id"])
+                        record.get("name") or record["id"])
     written = catalog.put_shots(record["id"], record["lib"], shots)
     _restate(record, written)
     return jsonify({"shots": written}), 200

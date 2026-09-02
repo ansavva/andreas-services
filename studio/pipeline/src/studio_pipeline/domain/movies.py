@@ -8,18 +8,18 @@ The hierarchy, each tier built from the one below it:
     scene           shots stitched into one continuous take    (scenes.py)
     movie           scenes cut together into one piece         (this)
 
-A movie is a **row**, `movie-<uuid>`, addressed by id and labelled by a slug:
+A movie is a **row**, `movie-<uuid>`, addressed by id and labelled by a free-text name:
 
-    the row      id, project, slug, title, status, scenes (SCENE IDS, in cut
+    the row      id, project, name, status, scenes (SCENE IDS, in cut
                  order), characters, folder, output, stitch
     the folder   the tree the record names as `folder`:
                      scenes/   each scene's output, copied in, in cut order
                      output/   the finished movie
 
-**`movie.json` is gone**, and so is the `<timestamp>_<slug>` folder name that
+**`movie.json` is gone**, and so is the `<timestamp>_<label>` folder name that
 was its id. A movie is listed by `GET /api/movies?project=` and ordered by
 `created` on the row; its folder is named by `folder` rather than derived from a
-slug, so renaming it strands nothing.
+name, so renaming it strands nothing.
 
 DERIVED, NEVER A SOURCE OF TRUTH
 --------------------------------
@@ -59,7 +59,7 @@ points are hard cuts, so put them where a hard cut belongs.
 
 CLI
 ---
-    studio movies new <project> --slug <slug> --scene <ref> --scene <ref> …
+    studio movies new <project> --name <name> --scene <ref> --scene <ref> …
     studio movies list <project>
     studio movies show <project>/latest
     studio movies outputs <project>/latest --presign
@@ -104,7 +104,7 @@ def list_movies(project: dict) -> list[dict]:
 
 
 def resolve_movie(ref: str, default_project: str | None = None) -> dict:
-    """'<project>/<slug>' | '<project>/latest' | '<slug>' | 'movie-<uuid>' -> the RECORD.
+    """'<project>/<name>' | '<project>/latest' | '<name>' | 'movie-<uuid>' -> the RECORD.
 
     The **record**, not a `(project, id)` pair — same shape as
     `runs.resolve_run` and `scenes.resolve_scene`, and for the same reason:
@@ -123,25 +123,26 @@ def resolve_movie(ref: str, default_project: str | None = None) -> dict:
         except api.NotFound:
             die(f"no movie {mid}")
     if not project:
-        die(f"cannot resolve movie {ref!r}: no project given (use <project>/<slug>)")
+        die(f"cannot resolve movie {ref!r}: no project given (use <project>/<name>)")
 
     record = PROJECTS.require_project(project)
     found = list_movies(record)
     if not found:
-        die(f"project {record['slug']} has no movies")
+        die(f"project {record['name']} has no movies")
     if mid in ("latest", "last"):
         return entities.get_movie(found[0]["id"])
     # `.get`, for the reason `scenes.resolve_scene` spells out: rows written
-    # before the listing projection carried `slug` do not have one.
-    hits = [m for m in found if m.get("slug") == mid]
+    # before the listing projection carried a label do not have one. A name is
+    # not unique either, so the ambiguity branch is an ordinary answer now.
+    hits = [m for m in found if m.get("name") == mid]
     if not hits:
-        hits = [m for m in found if mid in (m.get("slug") or "")]
+        hits = [m for m in found if mid in (m.get("name") or "")]
     if len(hits) == 1:
         return entities.get_movie(hits[0]["id"])
     if not hits:
-        die(f"no movie matching {mid!r} in project {record['slug']}")
-    die(f"{mid!r} is ambiguous in project {record['slug']}: "
-        + ", ".join(f"{m['id']} ({m.get('slug') or '-'})" for m in hits[:5]))
+        die(f"no movie matching {mid!r} in project {record['name']}")
+    die(f"{mid!r} is ambiguous in project {record['name']}: "
+        + ", ".join(f"{m['id']} ({m.get('name') or '-'})" for m in hits[:5]))
 
 
 def movie_folder(record: dict, *names: str) -> str:
@@ -163,7 +164,7 @@ def scene_characters(record: dict) -> list[str]:
     return list(record.get("characters") or [])
 
 
-def create(project: dict, slug: str, refs: list[str],
+def create(project: dict, name: str, refs: list[str],
            dest_dir: str | None = None) -> dict:
     """Resolve scenerefs -> create the movie -> ask the service to cut it.
 
@@ -190,22 +191,22 @@ def create(project: dict, slug: str, refs: list[str],
         scene = SC.resolve_scene(ref, project["id"])
         node = SC.scene_output_node(scene)
         if not node:
-            planned.append(f"{scene['slug']} ({scene['id']})")
+            planned.append(f"{scene.get('name') or scene['id']} ({scene['id']})")
             continue
         characters.update(scene_characters(scene))
         resolved.append({"sceneref": ref, "scene": scene["id"],
-                         "slug": scene["slug"], "source_node": node})
+                         "name": scene.get("name"), "source_node": node})
     if planned:
         die(f"{len(planned)} scene(s) are planned but not assembled:\n  "
             + "\n  ".join(planned)
             + "\n       assemble each one first: "
               f"studio scenes assemble {planned[0].split(' ')[0]}")
 
-    record = entities.create_movie(project=project["id"], slug=R.slugify(slug),
+    record = entities.create_movie(project=project["id"], name=name,
                                    scenes=[s["scene"] for s in resolved])
-    print(f"movie {record['slug']}  ({record['id']})")
+    print(f"movie {record['name']}  ({record['id']})")
     for n, scene in enumerate(resolved, 1):
-        print(f"  scene {n}: {scene['slug']}  ({scene['scene']})")
+        print(f"  scene {n}: {scene.get('name') or scene['scene']}  ({scene['scene']})")
 
     # **Scene IDS on the edge rows, the per-cut detail in the stitch report.**
     # `put_movie_scenes` validates every entry as an id, and sending the resolved
@@ -217,7 +218,7 @@ def create(project: dict, slug: str, refs: list[str],
     result = RENDER.submit("assemble", {
         "target": record["id"],
         "parts": [RENDER.part(scene["source_node"], scene=scene["scene"],
-                              slug=scene["slug"]) for scene in resolved],
+                              name=scene.get("name")) for scene in resolved],
         "characters": sorted(characters),
     }, what="the cut")
 
@@ -241,16 +242,16 @@ def main():
 @click.option("--dest", help="also keep the finished file locally")
 @click.option("--scene", multiple=True, required=True,
               help=("a scene, in cut order. Repeatable. Accepts "
-                    "<project>/<slug>, a scene id, latest, or a unique fragment."))
-@click.option("--slug", required=True)
+                    "<project>/<name>, a scene id, latest, or a unique fragment."))
+@click.option("--name", required=True)
 @errors.reports(R.RunError, api.ApiError, RENDER.RenderError)
-def do_new(project, dest, scene, slug):
+def do_new(project, dest, scene, name):
     """Cut a project's scenes into one movie."""
     if len(scene) < 2:
         print("note: a one-scene movie is just that scene — cutting it copies the "
               "file for no gain.", file=sys.stderr)
-    record = create(PROJECTS.require_project(project), slug, list(scene), dest)
-    print(json.dumps({"movie": record["id"], "slug": record["slug"],
+    record = create(PROJECTS.require_project(project), name, list(scene), dest)
+    print(json.dumps({"movie": record["id"], "name": record.get("name"),
                       "output": record.get("output"),
                       "stitch": record.get("stitch")}, indent=2))
 
@@ -264,7 +265,7 @@ def do_list(project):
     if not found:
         print(f"project {project} has no movies")
     for movie in found:
-        print(f"{movie['id']}  {(movie.get('slug') or '-'):<24} "
+        print(f"{movie['id']}  {(movie.get('name') or '-'):<24} "
               f"{movie.get('status', '?'):<10} "
               f"{(movie.get('created') or '')[:16]}")
 

@@ -369,10 +369,75 @@ DEV_SUBJECTS = frozenset({
     "flex-study",
 })
 
-#: A slug the API would accept: lowercase, starting alphanumeric. The same rule
-#: `domain/paths.check_slug` applies, restated here because the loader validates
-#: a document rather than a live record.
-SLUG = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+#: Fixture formats this loader reads.
+#:
+#: **2 is published and cannot be rewritten**, so it is translated on the way in
+#: rather than refused: its entities carry a `slug` plus a `display_name` or a
+#: `title`, and a character carries `references` and `default_set`. All four
+#: became one `name` and a tag on the file, so `_modernise` folds them.
+FIXTURE_VERSIONS = (2, 3)
+
+
+def _modernise(catalog: dict) -> dict:
+    """A version-2 fixture read as a version-3 one. **Translated, not refused.**
+
+    `v1` is published, `dev-aws-seed.sh` fetches it by default, and a fixture is
+    data this repo cannot rewrite — so the loader is what absorbs the change,
+    which is the ordinary shape of a migration.
+
+    Four fields became two things:
+
+        slug + display_name / title   ->  one free-text `name`
+        references + default_set      ->  tags on the FILE
+
+    A reference's `group` was the second half of what made an image identity —
+    `default` said it was sent and the group said what it showed — so a promoted
+    reference becomes `default` plus its group, on the node. That is the same
+    fold the live migration did, restated here for documents.
+
+    A version-3 catalog passes through untouched.
+    """
+    if int(catalog.get("version") or 0) >= 3:
+        return catalog
+
+    # A version-2 project named the characters it involves by SLUG, which was
+    # library-unique. Names are not, so version 3 names them by ROOT PATH — the
+    # identifier a fixture already uses for an entity, and unique by
+    # construction because a path is.
+    root_of = {entity.get("slug"): entity.get("root")
+               for entity in catalog.get("entities") or []}
+
+    tags: dict[str, set[str]] = collections.defaultdict(set)
+    entities = []
+    for entity in catalog.get("entities") or []:
+        modern = {k: v for k, v in entity.items()
+                  if k not in ("slug", "display_name", "title",
+                               "references", "default_set")}
+        modern["name"] = (entity.get("display_name") or entity.get("title")
+                          or entity.get("slug") or "")
+        if entity.get("characters"):
+            modern["characters"] = [root_of.get(each, each)
+                                    for each in entity["characters"]]
+        default = set(entity.get("default_set") or [])
+        for ref in entity.get("references") or []:
+            node = ref.get("node")
+            if not node:
+                continue
+            tags[node].update(t for t in (ref.get("tags") or []) if t)
+            group = ref.get("group")
+            if group and group != "unsorted":
+                tags[node].add(group)
+            if node in default:
+                tags[node].add("default")
+        entities.append(modern)
+
+    nodes = []
+    for node in catalog.get("nodes") or []:
+        extra = tags.get(node.get("path") or "")
+        nodes.append({**node, "tags": sorted(set(node.get("tags") or []) | extra)}
+                     if extra else node)
+
+    return {**catalog, "version": 3, "entities": entities, "nodes": nodes}
 
 #: Any capitalised word of three letters or more, for the report. Not a refusal
 #: — see `name_problems` on why.
@@ -407,11 +472,23 @@ def name_positions(paths: dict[str, str]) -> dict[str, list[str]]:
     return {tree: sorted(names) for tree, names in found.items()}
 
 
-def name_problems(all_paths: dict[str, str]) -> list[str]:
+def name_problems(all_paths: dict[str, str], library: dict | None = None) -> list[str]:
     """Every reason this promotion may not be published, one per line.
 
-    **WHAT IT CHECKS.** One thing: every segment in a name position anywhere in
-    the source library is in `DEV_SUBJECTS`. **The whole stack, not just the
+    **WHAT IT CHECKS.** Two things: every segment in a name position anywhere in
+    the source library, and every ENTITY RECORD'S `name`, is in `DEV_SUBJECTS`.
+
+    **The second one is new and it is what keeps this guard working.** It read
+    path segments alone, which was sound while an entity's root folder was named
+    by its slug — the name was IN the path. Entity roots are named by their ids
+    now, so a fixture published from a modern stack has `char-<uuid>` as its
+    first segment and the guard would inspect UUIDs and find nothing, while
+    `catalog.json` carried the real name in its `name` field straight into git.
+    That is hard rule #1 broken in the one place nobody was reading, which is
+    exactly the sentence this rule already carries about S3 keys.
+
+    Path positions are still checked as well, because a stack seeded or driven
+    before that change has slug-named roots and the names are still there. **The whole stack, not just the
     selection** — #284 is explicit that generating naturally and sanitising
     afterwards is the wrong order, because by then the name is already in the
     bucket, the run JSON and the keys. So the property is "this stack was
@@ -445,17 +522,28 @@ def name_problems(all_paths: dict[str, str]) -> list[str]:
     * **The attestation itself.** `--dev-subjects-only` is a flag. Nothing
       verifies it, and nothing can.
     """
+    advice = ("not a dev subject this repo publishes. A fixture is promoted from "
+              "a stack DRIVEN with listed subjects, not from one sanitised "
+              "afterwards; this is the whole stack, not just what you selected. "
+              "Add the name to DEV_SUBJECTS in dev_seed.py if it belongs there, "
+              "or rename it in the dev stack.")
     problems = []
     for tree, names in sorted(name_positions(all_paths).items()):
         bad = [n for n in names if n not in DEV_SUBJECTS]
         if bad:
             problems.append(
-                f"{tree}/ holds {', '.join(repr(n) for n in bad)} — not a dev "
-                "subject this repo publishes. A fixture is promoted from a "
-                "stack DRIVEN with listed subjects, not from one sanitised "
-                "afterwards; this is the whole stack, not just what you "
-                "selected. Add the name to DEV_SUBJECTS in dev_seed.py if it "
-                "belongs there, or rename it in the dev stack.")
+                f"{tree}/ holds {', '.join(repr(n) for n in bad)} — {advice}")
+
+    for record in sorted((library or {}).get("records", {}).values(),
+                         key=lambda r: r.get("name") or ""):
+        name = record.get("name")
+        # `<Name>` and `<Title>` are the repo's own placeholders — hard rule #1
+        # prescribes them by name — so a record still carrying one is a record
+        # nobody has named yet. Refusing those would refuse the blank template.
+        if name.startswith("<") and name.endswith(">"):
+            continue
+        if name and name not in DEV_SUBJECTS:
+            problems.append(f"a {record.get('kind')} is called {name!r} — {advice}")
     return problems
 
 
@@ -511,47 +599,32 @@ def entities(library: dict, paths: dict[str, str],
         return path if path in promoted else None
 
     out = []
-    for pk, row in sorted(library["records"].items(), key=lambda kv: kv[1]["slug"]):
+    for pk, row in sorted(library["records"].items(),
+                          key=lambda kv: ((kv[1].get("name") or "").lower(), kv[0])):
         root = path_of(row.get("root"))
         if root is None:
             continue
-        entity = {"kind": row["kind"], "slug": row["slug"], "root": root}
+        # **One label, and no reference index.** This emitted `slug` plus a
+        # `display_name` or a `title`, and for a character a `references` list
+        # and a `default_set` — four fields that became one `name` and a tag on
+        # the file. `_modernise` reads the old shape back; nothing writes it.
+        entity = {"kind": row["kind"], "name": row.get("name") or "", "root": root}
 
         if row["kind"] == "character":
-            kept = [entry for entry in library["refs"].get(pk, [])
-                    if path_of(entry["node"])]
-            kept.sort(key=lambda e: (e.get("group") or "", e.get("order") or 0))
-            references = [{"node": paths[entry["node"]],
-                           "group": entry.get("group") or "unsorted",
-                           "order": entry.get("order"),
-                           "description": entry.get("description") or "",
-                           "tags": entry.get("tags") or [],
-                           "created": entry.get("created")}
-                          for entry in kept]
-            # `default_set` must be a SUBSET of `references` or the loader
-            # refuses the whole fixture. Filtered here rather than trusted: a
-            # node sits in the set with its `REF#` row filtered out above only
-            # when the two disagree in the source stack, which is a thing
-            # `catalog verify` reports on and not a thing to publish.
-            named = {ref["node"] for ref in references}
             entity.update(
-                display_name=row.get("display_name") or row["slug"],
                 schema_version=row.get("schema_version"),
                 hero=path_of(row.get("hero")),
-                default_set=[p for p in (path_of(n)
-                                         for n in row.get("default_set") or [])
-                             if p in named],
                 profile=row.get("profile") or {},
-                references=references,
             )
         else:
             entity.update(
-                title=row.get("title") or row["slug"],
                 description=row.get("description") or "",
                 hero=path_of(row.get("hero")),
                 counts=row.get("counts") or {},
+                # By ROOT PATH, because a name is a label two characters may
+                # share and a fixture carries no ids.
                 characters=sorted(
-                    library["records"][sk]["slug"]
+                    path_of(library["records"][sk].get("root"))
                     for sk in library["involves"].get(pk, [])
                     if sk in library["records"]
                     and path_of(library["records"][sk].get("root"))),
@@ -580,16 +653,28 @@ def build(library: dict, paths: dict[str, str], selected: set[str],
     manifest is what the loader will verify a download against, so the manifest
     has to describe the object rather than the record of it.
 
-    **`version` is 2 and `entities` is always present**, even when it is empty.
+    **`version` is 3 and `entities` is always present**, even when it is empty.
     An empty list and a missing key load identically, so writing the key anyway
     is what makes "this fixture describes no entities" a statement rather than
     an omission. This document used to say `1` and carry no entities at all —
     see `read_library`.
+
+    **Version 3 is what dropping slugs made necessary**, and the loader still
+    reads 2: an entity carries one free-text `name` where it carried a `slug`
+    plus a `display_name` or a `title`, a project names its characters by ROOT
+    PATH rather than by slug, and a character carries no `references` and no
+    `default_set` — identity is a tag on the file, so it travels on the node.
     """
     nodes, objects = [], {}
     for node_id in sorted(selected, key=lambda n: paths[n]):
         row, path = library["nodes"][node_id], paths[node_id]
         node = {"path": path, "kind": row["kind"], "created_at": row["created_at"]}
+        # **Identity travels here now.** It was a `REF#` row beside the character
+        # and a `default_set` on its record; both said which pictures a
+        # generation is shown, and both said it somewhere other than on the
+        # picture.
+        if row.get("tags"):
+            node["tags"] = sorted(set(row["tags"]))
         if row["kind"] == "file":
             key = source_key(version, path)
             body = blobs[node_id]
@@ -604,7 +689,7 @@ def build(library: dict, paths: dict[str, str], selected: set[str],
     # phrasebook. Verbatim apart from the keys, because unlike a node they name
     # nothing that gets a new id in the destination: a block's name and a term's
     # model/avoid pair ARE its identity, in every stack.
-    catalog = {"version": 2, "library_name": library["name"],
+    catalog = {"version": 3, "library_name": library["name"],
                "entities": entities(library, paths, selected),
                "settings": settings_of(library), "nodes": nodes}
     manifest = {"version": version, "object_count": len(objects),
@@ -838,44 +923,53 @@ def problems(catalog: dict, manifest: dict) -> list[str]:
     # `entities` is OPTIONAL — a fixture of loose material under the library
     # root is a real library — but anything it DOES say has to resolve, or the
     # loader would write a record pointing at a folder that is not there.
-    entities = catalog.get("entities") or []
-    slugs = [entity.get("slug") for entity in entities]
-    for slug, count in collections.Counter(slugs).items():
-        if count > 1:
-            found.append(f"two entities claim the slug: {slug}")
-    characters = {entity.get("slug") for entity in entities
-                  if entity.get("kind") == "character"}
+    entities = _modernise(catalog).get("entities") or []
+    # **Duplicate names are NOT a problem**, and it used to be the first thing
+    # checked here: a slug was library-unique, so two entities claiming one was
+    # a fixture that could not load. A name is a label — the loader writes no
+    # claim row and nothing resolves an entity by it.
+    # Keyed on the ROOT, not the name: a name is a label and two characters may
+    # share one, so a fixture that named an involvement by it could not say
+    # which. A root is a path, and a path is unique.
+    character_roots = {entity.get("root") for entity in entities
+                       if entity.get("kind") == "character"}
     for entity in entities:
-        slug, root = entity.get("slug"), entity.get("root")
+        name, root = entity.get("name"), entity.get("root")
         if entity.get("kind") not in ("character", "project"):
-            found.append(f"entity {json.dumps(slug)}: kind must be `character` or `project`")
-        if not slug or not SLUG.match(slug):
-            found.append(f"entity root {json.dumps(root)}: slug must be lowercase "
-                         "[a-z0-9_-] starting alphanumeric")
+            found.append(f"entity {json.dumps(name)}: kind must be `character` or `project`")
+        if not name or "#" in name:
+            found.append(f"entity root {json.dumps(root)}: name is required and "
+                         "may not contain '#'")
         if not root or root not in folders:
-            found.append(f"entity {json.dumps(slug)}: its root {json.dumps(root)} "
+            found.append(f"entity {json.dumps(name)}: its root {json.dumps(root)} "
                          "is not a folder node")
         elif "/" in root:
             # A root has to be a TOP-LEVEL folder, because that is where the
             # owner of a blob key is read from. An entity rooted deeper would
             # own bytes the key scheme cannot express.
-            found.append(f"entity {json.dumps(slug)}: its root must be a folder at "
+            found.append(f"entity {json.dumps(name)}: its root must be a folder at "
                          f"the library root, not {json.dumps(root)}")
-        if entity.get("kind") == "character":
-            named = {ref.get("node") for ref in entity.get("references") or []}
-            for ref in entity.get("references") or []:
-                if ref.get("node") not in paths:
-                    found.append(f"{slug}: reference {json.dumps(ref.get('node'))} "
-                                 "is not a node in catalog.json")
-            for want in entity.get("default_set") or []:
-                if want not in named:
-                    found.append(f"{slug}: default_set names {json.dumps(want)}, "
-                                 "which is not one of its references")
-        else:
+        if entity.get("kind") == "project":
             for involved in entity.get("characters") or []:
-                if involved not in characters:
-                    found.append(f"{slug}: involves {json.dumps(involved)}, which is "
+                if involved not in character_roots:
+                    found.append(f"{name}: involves {json.dumps(involved)}, which is "
                                  "not a character in this fixture")
+
+    # **The version-2 halves are still checked, on the RAW document.** They are
+    # folded away by `_modernise` and so are invisible above — but a fixture
+    # naming a node that is not there is exactly what this exists to catch, and
+    # `_modernise` would drop the tag in silence.
+    for entity in catalog.get("entities") or []:
+        label = json.dumps(entity.get("slug") or entity.get("name"))
+        named = {ref.get("node") for ref in entity.get("references") or []}
+        for ref in entity.get("references") or []:
+            if ref.get("node") not in paths:
+                found.append(f"{label}: reference {json.dumps(ref.get('node'))} "
+                             "is not a node in catalog.json")
+        for want in entity.get("default_set") or []:
+            if want not in named:
+                found.append(f"{label}: default_set names {json.dumps(want)}, "
+                             "which is not one of its references")
 
     declared = manifest.get("object_count", -1)
     if declared != len(objects):
@@ -907,10 +1001,22 @@ def rows(catalog: dict, manifest: dict, bucket: str, lib: str,
     two items — which is real, but it is atomicity between two rows that this
     function writes from one source in one pass, so nothing can observe the gap
     on a stack being seeded from empty. It cost 2.5 seconds against 0.1.
+
+    A version-2 fixture is translated on the way in — see `_modernise`.
     """
+    catalog = _modernise(catalog)
     born = min(node["created_at"] for node in catalog["nodes"])
     root = node_id(bucket, "")
     owners = owner_of(catalog)
+    # **An entity's root folder is NAMED BY THE ENTITY ID**, so this is needed
+    # before the node loop rather than during the entity loop below. It used to
+    # take the slug; a folder name is unique among its siblings, so naming
+    # entity roots by a free-text label would refuse the second character called
+    # `Anna` — the uniqueness dropping slugs was meant to remove, by a side door.
+    entity_roots = {
+        entity["root"]: CM.entity_id(entity["kind"], node_id(bucket, entity["root"]))
+        for entity in catalog.get("entities") or [] if entity.get("root")
+    }
     items = [
         {"pk": f"LIB#{lib}", "sk": "META", "name": catalog.get("library_name") or "Studio",
          "root_node": root, "created_at": born},
@@ -927,6 +1033,7 @@ def rows(catalog: dict, manifest: dict, bucket: str, lib: str,
     for node in catalog["nodes"]:
         path, kind = node["path"], node["kind"]
         parent, _, name = path.rpartition("/")
+        name = entity_roots.get(path, name)
         nid = node_id(bucket, path)
         pid = node_id(bucket, parent) if parent else root
         where = materialised(bucket, parent)
@@ -935,6 +1042,11 @@ def rows(catalog: dict, manifest: dict, bucket: str, lib: str,
         meta = {"pk": f"NODE#{nid}", "sk": "META", "node_id": nid, "parent_id": pid,
                 "lib": lib, "name": name, "kind": kind, "path": where,
                 "created_at": node["created_at"], "updated_at": node["created_at"]}
+        # **Identity is a tag on the file.** A `REF#` row and a `default_set`
+        # said the same thing somewhere else; `_modernise` folded both into
+        # `default` plus a group tag, and this is where they land.
+        if node.get("tags"):
+            meta["tags"] = sorted(set(node["tags"]))
         if kind == "file":
             meta["blob_key"] = blob_key(bucket, nid, path, owner_kind, owner_root)
             meta["content_type"] = node["content_type"]
@@ -951,38 +1063,35 @@ def rows(catalog: dict, manifest: dict, bucket: str, lib: str,
                       "created_at": node["created_at"]})
 
     for entity in catalog.get("entities") or []:
-        kind, slug = entity["kind"], entity["slug"]
+        kind, name = entity["kind"], entity["name"]
         root_node = node_id(bucket, entity["root"])
         eid = CM.entity_id(kind, root_node)
-        claim = "CHARSLUG" if kind == "character" else "PROJSLUG"
-        record = {"pk": f"{'CHAR' if kind == 'character' else 'PROJ'}#{eid}",
-                  "sk": "META", "id": eid, "lib": lib, "slug": slug, "rev": 1,
-                  "created": entity.get("created") or "", "updated": entity.get("created") or "",
-                  "root": root_node}
+        prefix = "CHAR" if kind == "character" else "PROJ"
         stamp = min(node["created_at"] for node in catalog["nodes"])
-        record["created"] = record["updated"] = stamp
+        record = {"pk": f"{prefix}#{eid}", "sk": "META", "id": eid, "lib": lib,
+                  "name": name, "rev": 1,
+                  "created": stamp, "updated": stamp, "root": root_node}
         if kind == "character":
+            # **No `REF#` rows and no `default_set`.** Both said which of a
+            # character's pictures a generation is shown, in a second place, with
+            # an invariant between them that drifted. `_modernise` folded them
+            # into `default` plus a group tag on the file itself.
             record.update(
-                display_name=entity.get("display_name") or slug,
                 schema_version=entity.get("schema_version") or 2,
                 hero=node_id(bucket, entity["hero"]) if entity.get("hero") else None,
-                default_set=[node_id(bucket, p) for p in entity.get("default_set") or []],
                 profile=entity.get("profile") or {})
-            for index, ref in enumerate(entity.get("references") or []):
-                items.append({"pk": f"CHAR#{eid}", "sk": f"REF#{node_id(bucket, ref['node'])}",
-                              "lib": lib, "group": ref.get("group") or "unsorted",
-                              "order": ref.get("order") or (index + 1) * 1000,
-                              "description": ref.get("description") or "",
-                              "tags": ref.get("tags") or [],
-                              "created": ref.get("created") or stamp})
         else:
             record.update(
-                title=entity.get("title") or slug,
                 description=entity.get("description") or "",
                 hero=node_id(bucket, entity["hero"]) if entity.get("hero") else None,
                 counts=entity.get("counts") or {})
         items.append({k: v for k, v in record.items() if v is not None})
-        items.append({"pk": f"LIB#{lib}", "sk": f"{claim}#{slug}",
+        # **The library index row, keyed on the ID.** It was `CHARSLUG#<slug>`
+        # and it claimed the name as well as listing the entity; a name is a
+        # label now, so what remains is a pure list index — and the listing
+        # queries `begins_with(sk, "CHAR#")`, which a `CHARSLUG#` row does not
+        # match. A stack seeded with the old row lists nothing at all.
+        items.append({"pk": f"LIB#{lib}", "sk": f"{prefix}#{eid}",
                       "entity": eid, "created": stamp})
 
     # The library-scoped rows, re-keyed onto the destination library and
@@ -1201,7 +1310,7 @@ def cmd_publish(wanted, paths_from, fixture_version, seed_bucket, library,
                 "`studio catalog verify` reports on it.")
         blobs[node_id] = s3.get_object(Bucket=bucket, Key=key)["Body"].read()
 
-    problems = name_problems(paths)
+    problems = name_problems(paths, lib)
     tokens = text_tokens({paths[nid]: body for nid, body in blobs.items()})
 
     catalog, manifest = build(lib, paths, picked["all"], blobs, fixture_version)

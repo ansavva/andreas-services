@@ -21,26 +21,25 @@ three bugs on `projects`, and `movies` was one caller away from the same thing.
 from studio_core.services import catalog
 
 
-def _project(api, slug="rooftop-teaser", **body):
-    return api.post("/api/projects", json={"slug": slug, **body}).get_json()
+def _project(api, name="rooftop-teaser", **body):
+    return api.post("/api/projects", json={"name": name, **body}).get_json()
 
 
-def _character(api, slug="subject-a"):
-    return api.post("/api/characters", json={"slug": slug}).get_json()
+def _character(api, name="subject-a"):
+    return api.post("/api/characters", json={"name": name}).get_json()
 
 
-def _scene(api, project, slug="stadium-encounter", shots=None):
+def _scene(api, project, name="stadium-encounter", shots=None):
     resp = api.post(
         "/api/scenes",
-        json={"project": project["id"], "slug": slug, "title": "Stadium",
-              "shots": shots or []},
+        json={"project": project["id"], "name": name, "shots": shots or []},
     )
     assert resp.status_code == 201, resp.get_data(as_text=True)
     return resp.get_json()
 
 
-def _movie(api, project, slug="launch-cut", **body):
-    resp = api.post("/api/movies", json={"project": project["id"], "slug": slug, **body})
+def _movie(api, project, name="launch-cut", **body):
+    resp = api.post("/api/movies", json={"project": project["id"], "name": name, **body})
     assert resp.status_code == 201, resp.get_data(as_text=True)
     return resp.get_json()
 
@@ -67,7 +66,7 @@ def test_a_scene_names_the_movies_that_cut_it(empty_api):
     body = empty_api.get(f"/api/scenes/{scene['id']}").get_json()
 
     assert [entry["id"] for entry in body["movies"]] == [movie["id"]]
-    assert body["movies"][0]["slug"] == "launch-cut"
+    assert body["movies"][0]["name"] == "launch-cut"
 
 
 def test_a_scene_cut_into_nothing_says_so_rather_than_omitting_the_field(empty_api):
@@ -80,8 +79,8 @@ def test_a_scene_cut_into_nothing_says_so_rather_than_omitting_the_field(empty_a
 def test_dropping_a_scene_from_a_movie_drops_the_edge(empty_api):
     """A replace has to delete, or the reverse accumulates links nothing removes."""
     project = _project(empty_api)
-    kept = _scene(empty_api, project, slug="kept")
-    dropped = _scene(empty_api, project, slug="dropped")
+    kept = _scene(empty_api, project, "kept")
+    dropped = _scene(empty_api, project, "dropped")
     movie = _movie(empty_api, project, scenes=[kept["id"], dropped["id"]])
 
     empty_api.patch(f"/api/movies/{movie['id']}/scenes", json={"scenes": [kept["id"]]})
@@ -180,7 +179,7 @@ def test_setting_a_projects_characters_answers_in_the_read_shape(empty_api):
     assert written["characters"] == read["characters"]
     # The regression in full: ids here, objects there, and a client that merged
     # the two put strings where a record holds objects.
-    assert written["characters"][0]["slug"] == "subject-a"
+    assert written["characters"][0]["name"] == "subject-a"
 
 
 def test_creating_a_project_answers_in_the_read_shape(empty_api):

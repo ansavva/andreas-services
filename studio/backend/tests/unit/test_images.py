@@ -17,8 +17,8 @@ from PIL import Image
 from studio_core.services import catalog, layout
 
 
-def _project(api, slug="rooftop-teaser"):
-    return api.post("/api/projects", json={"slug": slug}).get_json()
+def _project(api, name="rooftop-teaser"):
+    return api.post("/api/projects", json={"name": name}).get_json()
 
 
 def _image(api, project, name="wide.png", width=400, height=600, mode="RGB"):

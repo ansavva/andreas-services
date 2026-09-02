@@ -18,10 +18,11 @@ which is the seam the backend is on the other side of, and the shapes here are
 
 **Real.** Node ids are `node-<uuid4>`, entity ids are `<kind>-<uuid4>`, and
 nothing derives one from anything. A name is unique among a folder's children and
-a duplicate is a 409. A slug is unique per entity kind per library and a duplicate
-is a 409. `rev` is compare-and-swap and a stale one is a 409. Reference `order`
-is gapped by 1000 and `after` takes the midpoint. Deleting a node that is an
-entity's `root` is refused.
+a duplicate is a 409 — that one is real, because a path segment resolves through
+it. An entity's `name` is NOT unique and a duplicate is allowed, which is the
+half a fake would be tempted to get wrong. `rev` is compare-and-swap and a stale
+one is a 409. Reference `order` is gapped by 1000 and `after` takes the midpoint.
+Deleting a node that is an entity's `root` is refused.
 
 **Not real.** There is no authorisation, no library membership check, no
 pagination and no cursor. Every one of those is the backend's to enforce and the
@@ -133,6 +134,10 @@ def _committed_registry() -> dict:
     return {key: {**entry, "key": key} for key, entry in models.items()}
 
 
+def _csv(raw) -> list[str]:
+    return [part.strip().lower() for part in str(raw or "").split(",") if part.strip()]
+
+
 class FakeError(Exception):
     """Raised with an HTTP status so `_dispatch` can turn it into an api error."""
 
@@ -232,19 +237,12 @@ class FakeApi:
         self.scenes: dict[str, dict] = {}
         self.movies: dict[str, dict] = {}
         #: char_id -> [entry], each naming a node id. The `REF#` rows.
-        self.refs: dict[str, list[dict]] = {}
         #: scene_id -> [shot]. The `SHOT#` rows.
         self.shots: dict[str, list[dict]] = {}
         self.terms: list[dict] = []
-        #: The reference spec, as the two row classes the catalog keeps it in.
+        #: The template library, as the two row classes the catalog keeps it in.
         self.spec_blocks: dict[str, str] = {}
-        self.spec_angles: dict[str, dict] = {}
-        #: Every turnaround body this fake was asked for, newest last, and
-        #: what to answer `failed` with. A test asserts on the REQUEST here
-        #: rather than on a prompt: assembling is the service's job, and the
-        #: seam worth checking is what the CLI decided to send.
-        self.turnarounds: list[dict] = []
-        self.turnaround_failures: list[dict] = []
+        self.templates: dict[str, dict] = {}
         #: render-<uuid> -> the job row. The `RENDER#` rows.
         self.renders: dict[str, dict] = {}
         #: Set it and `POST /api/renders` refuses. The seam that proves a dry
@@ -277,7 +275,7 @@ class FakeApi:
         self.callback = "poll"
 
         #: **"Nothing may submit", which is stronger than "nothing may bill".**
-        #: `test_board` and `test_turnaround` assert that a dry run does not
+        #: `test_board` asserts that a dry run does not
         #: reach the provider AT ALL — the fake would answer a submission
         #: perfectly happily, and a board that submitted on a dry run would pass
         #: every other check in those files.
@@ -320,7 +318,7 @@ class FakeApi:
                                     ("project", self.projects)):
                     if entity in table:
                         return {"kind": kind, "id": entity,
-                                "slug": table[entity]["slug"]}
+                                "name": table[entity]["name"]}
             node_id = node["parent_id"]
         return None
 
@@ -331,6 +329,106 @@ class FakeApi:
         else:
             prefix = f"{'characters' if owner['kind'] == 'character' else 'projects'}/{owner['id']}"
         return f"{prefix}/{node['id']}{_ext(node['name'])}"
+
+    #: The one listing. `GET /api/tree` and `GET /api/reel` were folded into it
+    #: — depth, kind and paging are arguments now — so this answers all three
+    #: shapes the CLI and the app used to ask for separately.
+    MEDIA_KINDS = ("image", "video")
+
+    def _listing(self, params) -> dict:
+        under = params.get("under") or self.root["id"]
+        if under not in self.nodes:
+            raise FakeError(404, f"no such node: {under}")
+        depth = params.get("depth") or "1"
+        if depth not in ("1", "all"):
+            raise FakeError(400, f"depth must be one of 1, all: {depth}")
+
+        base = self._name_path(under)
+        rows = (
+            [(base, node) for node in self._children(under)]
+            if depth == "1"
+            else self._descendants(under, base)
+        )
+
+        kinds = _csv(params.get("kind"))
+        tags = set(_csv(params.get("tag")))
+        kept = [
+            (prefix, node) for prefix, node in rows
+            if (not kinds or self._entry_kind(node) in kinds)
+            and (not tags or tags <= set(node.get("tags") or []))
+        ]
+
+        sort = params.get("sort") or "newest"
+        if sort == "name":
+            kept.sort(key=lambda row: row[1]["name"].lower())
+        elif sort == "name_desc":
+            kept.sort(key=lambda row: row[1]["name"].lower(), reverse=True)
+        else:
+            kept.sort(key=lambda row: row[1]["created_at"], reverse=sort == "newest")
+
+        offset = int(params.get("cursor") or 0)
+        limit = int(params.get("limit") or 200)
+        window = kept[offset : offset + limit]
+        nxt = offset + len(window)
+
+        counts: dict[str, int] = {}
+        for _, node in kept:
+            kind = self._entry_kind(node)
+            counts[kind] = counts.get(kind, 0) + 1
+
+        return {
+            "prefix": base,
+            "sort": sort,
+            "depth": depth,
+            "entries": [self._entry(node, prefix, depth) for prefix, node in window],
+            "counts": counts,
+            "total": len(kept),
+            "truncated": False,
+            "next_cursor": str(nxt) if nxt < len(kept) else None,
+        }
+
+    def _descendants(self, node_id: str, prefix: str) -> list[tuple[str, dict]]:
+        found = []
+        for node in self._children(node_id):
+            found.append((prefix, node))
+            if node["kind"] == "folder":
+                found += self._descendants(node["id"], f"{prefix}{node['name']}/")
+        return found
+
+    def _name_path(self, node_id: str) -> str:
+        """The prefix a node's children carry — names, root first, empty at the top."""
+        parts = []
+        walk = self.nodes.get(node_id)
+        while walk is not None and walk["parent_id"]:
+            parts.append(walk["name"])
+            walk = self.nodes.get(walk["parent_id"])
+        return "".join(f"{part}/" for part in reversed(parts))
+
+    def _entry_kind(self, node: dict) -> str:
+        """`folder`, or what the extension says the file holds. Mirrors `browse`."""
+        if node["kind"] == "folder":
+            return "folder"
+        ext = node["name"].rsplit(".", 1)[-1].lower() if "." in node["name"] else ""
+        if ext in ("png", "jpg", "jpeg", "webp", "gif"):
+            return "image"
+        if ext in ("mp4", "mov", "webm"):
+            return "video"
+        if ext in ("txt", "json", "yaml", "yml", "md"):
+            return "text"
+        return "other"
+
+    def _entry(self, node: dict, prefix: str, depth: str) -> dict:
+        """One listing entry: the view, plus what a listing adds to it."""
+        entry = {**self._view(node), "kind": self._entry_kind(node)}
+        if node["kind"] == "folder":
+            entry["prefix"] = f"{prefix}{node['name']}/"
+        else:
+            entry["key"] = f"{prefix}{node['name']}"
+        if depth != "1":
+            # Resolved once from the parent at one level, and not at all for a
+            # branch — two rows a hundred nodes apart share no ancestor.
+            entry.pop("owner", None)
+        return entry
 
     def _view(self, node: dict) -> dict:
         """What a node route returns. **No `blob_key`, no `path`** — as today."""
@@ -376,7 +474,7 @@ class FakeApi:
                 if entity.get("root") == node_id:
                     raise FakeError(
                         409,
-                        f"{node['name']!r} is {entity['slug']}'s root folder; "
+                        f"{node['name']!r} is {entity['name']}'s root folder; "
                         "delete the entity instead")
         removed = 0
         for child in list(self._children(node_id)):
@@ -390,17 +488,15 @@ class FakeApi:
 
     def _entity(self, table: dict, ref: str, what: str) -> dict:
         if ref.startswith("slug:"):
-            slug = ref[len("slug:"):]
-            found = next((e for e in table.values() if e["slug"] == slug), None)
+            # **Refused, not resolved.** `slug:<slug>` was a real address; a name
+            # is a free-text label now and two entities may share one, so the
+            # service 400s here and so does this.
+            raise FakeError(400, f"{ref!r} is not an id")
         else:
             found = table.get(ref)
         if found is None:
             raise FakeError(404, f"no such {what}: {ref}")
         return found
-
-    def _claim(self, table: dict, slug: str, what: str) -> None:
-        if any(e["slug"] == slug for e in table.values()):
-            raise FakeError(409, f"a {what} called {slug!r} already exists")
 
     def _bump(self, record: dict, rev: int | None) -> None:
         """Compare-and-swap on `rev`, which is what closed the `updated_at` window."""
@@ -494,9 +590,6 @@ class FakeApi:
             (r"/api/nodes/([^/]+)/owner", self._r_node_owner),
             (r"/api/nodes/([^/]+)", self._r_node),
             (r"/api/characters", self._r_characters),
-            (r"/api/characters/([^/]+)/references", self._r_references),
-            (r"/api/characters/([^/]+)/references/([^/]+)", self._r_reference),
-            (r"/api/characters/([^/]+)/default-set", self._r_default_set),
             (r"/api/characters/([^/]+)/selection", self._r_selection),
             (r"/api/characters/([^/]+)/textblock", self._r_textblock),
             (r"/api/characters/([^/]+)/profile", self._r_profile),
@@ -535,10 +628,9 @@ class FakeApi:
             (r"/api/images/crop", self._r_image_crop),
             (r"/api/phrasebook", self._r_phrasebook),
             (r"/api/phrasebook/([^/]+)/([^/]+)", self._r_phrasebook_term),
-            (r"/api/characters/([^/]+)/turnaround", self._r_turnaround),
-            (r"/api/reference-spec", self._r_reference_spec),
-            (r"/api/reference-spec/blocks/([^/]+)", self._r_spec_block),
-            (r"/api/reference-spec/angles/([^/]+)", self._r_spec_angle),
+            (r"/api/templates", self._r_templates),
+            (r"/api/templates/blocks/([^/]+)", self._r_block),
+            (r"/api/templates/([^/]+)", self._r_template),
         ]
 
     # ── node routes ─────────────────────────────────────────────────────────
@@ -627,10 +719,7 @@ class FakeApi:
 
     def _r_nodes(self, method, body, params):
         if method == "GET":
-            parent = params.get("parent") or self.root["id"]
-            if parent not in self.nodes:
-                raise FakeError(404, f"no such node: {parent}")
-            return [self._view(n) for n in self._children(parent)]
+            return self._listing(params)
         if method == "POST":
             return self._view(self._create_node(body["parent"], body["name"],
                                                 body.get("kind", "file")))
@@ -789,33 +878,35 @@ class FakeApi:
     # ── characters ──────────────────────────────────────────────────────────
 
     def _char_view(self, record: dict) -> dict:
-        counts = {"references": len(self.refs.get(record["id"], [])),
-                  "files": sum(1 for n in self.nodes.values()
-                               if n["kind"] == "file"
-                               and (self._owner(n["id"]) or {}).get("id") == record["id"])}
+        files = [n for n in self.nodes.values()
+                 if n["kind"] == "file"
+                 and (self._owner(n["id"]) or {}).get("id") == record["id"]]
+        counts = {"files": len(files),
+                  "default": sum(1 for n in files
+                                 if "default" in (n.get("tags") or []))}
         return {**{k: v for k, v in record.items() if k != "_"}, "counts": counts}
 
     def _r_characters(self, method, body, params):
         if method == "GET":
             query = params.get("q")
             return [self._char_view(c) for c in self.characters.values()
-                    if not query or query in c["slug"]]
+                    if not query or query in (c.get("name") or "").lower()]
         if method != "POST":
             raise FakeError(405, method)
-        slug = body["slug"]
-        self._claim(self.characters, slug, "character")
-        root = self._create_node(self.root["id"], slug, "folder")
+        name = body["name"]
         char_id = "char-" + str(uuid.uuid4())
+        # **The root folder is named by the ID**, as the service names it. It took
+        # the slug once; a folder name is unique among its siblings, so naming it
+        # by a free-text label would refuse the second character called `Anna`.
+        root = self._create_node(self.root["id"], char_id, "folder")
         root["entity"] = char_id
         self._layout(root["id"], ("reference", "corpus", "seed", "archive"))
-        record = {"id": char_id, "lib": self.lib, "slug": slug,
-                  "display_name": body.get("display_name") or slug,
+        record = {"id": char_id, "lib": self.lib, "name": name,
                   "schema_version": 2, "rev": 1,
                   "created": _now(), "updated": _now(),
-                  "root": root["id"], "hero": None, "default_set": [],
+                  "root": root["id"], "hero": None,
                   "profile": self._clean_profile(body.get("profile"))}
         self.characters[char_id] = record
-        self.refs[char_id] = []
         return self._char_view(record)
 
     def _r_character(self, method, body, params, ref):
@@ -823,11 +914,8 @@ class FakeApi:
         if method == "GET":
             return self._char_view(record)
         if method == "PATCH":
-            if "slug" in body and body["slug"] != record["slug"]:
-                self._claim(self.characters, body["slug"], "character")
-                self.nodes[record["root"]]["name"] = body["slug"]
             self._bump(record, body.get("rev"))
-            for field in ("slug", "display_name", "hero"):
+            for field in ("name", "hero"):
                 if field in body:
                     record[field] = body[field]
             return self._char_view(record)
@@ -838,7 +926,6 @@ class FakeApi:
             else:
                 self.characters.pop(record["id"])
                 self.nodes[record["root"]].pop("entity", None)
-            self.refs.pop(record["id"], None)
             return {"deleted": record["id"]}
         raise FakeError(405, method)
 
@@ -911,178 +998,86 @@ class FakeApi:
             else:
                 node.pop("tags", None)
 
-    def _ref_entry(self, record: dict, entry: dict) -> dict:
-        node = self.nodes.get(entry["node"]) or {}
-        return {**entry,
-                "description": node.get("description"),
+    def _character_images(self, record: dict, tags=()) -> list[dict]:
+        """The character's images carrying every one of `tags`, by name.
+
+        **The whole of what identity is now.** There is no reference index and no
+        default set: an image is one the character sends because it carries
+        `default`, and what it shows is a tag beside it. Mirrors the route, which
+        is one branch listing with a tag filter.
+        """
+        wanted = set(tags)
+        found = [
+            node for node in self.nodes.values()
+            if node["kind"] != "folder"
+            and self._entry_kind(node) == "image"
+            and self._under(node["id"], record["root"])
+            and wanted <= set(node.get("tags") or [])
+        ]
+        return sorted(found, key=lambda node: node["name"])
+
+    def _under(self, node_id: str, root: str) -> bool:
+        """Whether a node sits anywhere beneath a root. Ownership IS the tree."""
+        walk = self.nodes.get(node_id)
+        while walk is not None and walk.get("parent_id"):
+            if walk["parent_id"] == root:
+                return True
+            walk = self.nodes.get(walk["parent_id"])
+        return False
+
+    def _selected(self, node: dict, slot: int) -> dict:
+        return {"slot": slot, "node": node["id"], "name": node["name"],
                 "tags": list(node.get("tags") or []),
-                "default": entry["node"] in (record.get("default_set") or []),
-                "file": self._ref_file(entry)}
-
-    def _r_references(self, method, body, params, ref):
-        record = self._entity(self.characters, ref, "character")
-        entries = self.refs.setdefault(record["id"], [])
-        if method == "GET":
-            wanted = params.get("group")
-            groups: dict[str, list] = {}
-            for entry in sorted(entries, key=lambda e: (e["group"], e["order"])):
-                if wanted and entry["group"] != wanted:
-                    continue
-                groups.setdefault(entry["group"], []).append(
-                    self._ref_entry(record, entry))
-            counts: dict[str, int] = {}
-            for entry in entries:
-                counts[entry["group"]] = counts.get(entry["group"], 0) + 1
-            return {"groups": groups, "counts": counts}
-        if method == "POST":
-            if body["node"] not in self.nodes:
-                raise FakeError(404, f"no such node: {body['node']}")
-            if any(e["node"] == body["node"] for e in entries):
-                raise FakeError(409, "already a reference")
-            entry = {"node": body["node"], "group": body["group"],
-                     "order": self._order(entries, body["group"], body.get("after")),
-                     "created": _now()}
-            entries.append(entry)
-            self._describe(body["node"], body)
-            return self._ref_entry(record, entry)
-        if method == "PATCH":
-            by_node = {e["node"]: e for e in entries}
-            unknown = [e["node"] for e in body["entries"] if e["node"] not in by_node]
-            if unknown:
-                raise FakeError(404, f"not references: {', '.join(unknown[:8])}")
-            for spec in body["entries"]:
-                entry = by_node[spec["node"]]
-                if "group" in spec:
-                    entry["group"] = spec["group"]
-                self._describe(spec["node"], spec)
-            return {"described": len(body["entries"])}
-        raise FakeError(405, method)
-
-    def _order(self, entries: list[dict], group: str, after: str | None) -> int:
-        """Gapped by 1000; `after` takes the midpoint. One write, no neighbours."""
-        in_group = sorted((e for e in entries if e["group"] == group),
-                          key=lambda e: e["order"])
-        if after:
-            for index, entry in enumerate(in_group):
-                if entry["node"] == after:
-                    following = in_group[index + 1]["order"] if index + 1 < len(in_group) \
-                        else entry["order"] + 2 * ORDER_GAP
-                    return (entry["order"] + following) // 2
-            raise FakeError(404, f"no reference {after}")
-        return (in_group[-1]["order"] + ORDER_GAP) if in_group else ORDER_GAP
-
-    def _r_reference(self, method, body, params, ref, node_id):
-        record = self._entity(self.characters, ref, "character")
-        entries = self.refs.setdefault(record["id"], [])
-        entry = next((e for e in entries if e["node"] == node_id), None)
-        if entry is None:
-            raise FakeError(404, f"{node_id} is not a reference of {record['slug']}")
-        if method == "DELETE":
-            entries.remove(entry)
-            # **And out of the default set, in the same act** — as the service
-            # does. Detaching used to leave the id sitting there, where the
-            # selection route filtered it out silently; production carried four
-            # of those on one character before anyone counted.
-            before = record.get("default_set") or []
-            after = [each for each in before if each != node_id]
-            answer = {"detached": node_id, "node": node_id}
-            if len(after) != len(before):
-                record["default_set"] = after
-                answer["default_set"] = after
-            return answer
-        if method != "PATCH":
-            raise FakeError(405, method)
-        if "group" in body:
-            entry["group"] = body["group"]
-            entry["order"] = self._order([e for e in entries if e is not entry],
-                                         body["group"], None)
-        self._describe(node_id, body)
-        if body.get("after"):
-            entry["order"] = self._order([e for e in entries if e is not entry],
-                                         entry["group"], body["after"])
-        return self._ref_entry(record, entry)
-
-    def _r_default_set(self, method, body, params, ref):
-        record = self._entity(self.characters, ref, "character")
-        if method == "PATCH" and isinstance(body.get("nodes"), list):
-            # The route compare-and-swaps the record like every other write on
-            # it, and the adapter did not send `rev` — which only became visible
-            # once the verb fix let the request reach the API.
-            self._bump(record, body.get("rev"))
-            attached = {e["node"] for e in self.refs.get(record["id"], [])}
-            stray = [n for n in body["nodes"] if n not in attached]
-            if stray:
-                raise FakeError(400, f"{stray[0]} is not a reference of {record['slug']}")
-        known = {e["node"] for e in self.refs.get(record["id"], [])}
-        unknown = [n for n in body["nodes"] if n not in known]
-        if unknown:
-            raise FakeError(404, f"not references: {', '.join(unknown)}")
-        record["default_set"] = list(body["nodes"])
-        return {"default_set": record["default_set"]}
+                "description": node.get("description"),
+                "url": f"memory://{node.get('blob_key')}"}
 
     def _r_selection(self, method, body, params, ref):
-        """Resolution order: pick > tag > default_set > everything.
+        """Two sources: `pick` names images, anything else is tags, none is `default`.
 
         The refusal is the interesting half: over-cap comes back 409 with the
-        index in the body rather than truncated, because which images a
+        candidates in the body rather than truncated, because which images a
         generation saw must not be decided by whatever a listing returned.
         """
         record = self._entity(self.characters, ref, "character")
-        # Folded with the FILE's description and tags before anything filters on
-        # them, exactly as the route does: `?tag=` selects on tags and tags are
-        # the file's, so the files have to be in hand first.
-        entries = [
-            {**entry,
-             "description": (self.nodes.get(entry["node"]) or {}).get("description"),
-             "tags": list((self.nodes.get(entry["node"]) or {}).get("tags") or [])}
-            for entry in sorted(self.refs.get(record["id"], []),
-                                key=lambda e: (e["group"], e["order"]))
-        ]
-        by_node = {e["node"]: e for e in entries}
         pick = [p for p in (params.get("pick") or "").split(",") if p]
         tags = [t for t in (params.get("tag") or "").split(",") if t]
-        if pick:
-            chosen, source = [], "pick"
-            for want in pick:
-                hit = by_node.get(want) or next(
-                    (e for e in entries
-                     if self.nodes.get(e["node"], {}).get("name") == want), None)
-                if hit is None:
-                    raise FakeError(404, f"{record['slug']} has no reference {want!r}")
-                chosen.append(hit)
-        elif tags:
-            wanted = set(tags)
-            chosen = [e for e in entries if wanted <= set(e["tags"])]
-            source = "tag"
-            if not chosen:
-                have = sorted({t for e in entries for t in e["tags"]})
-                raise FakeError(404, f"no reference of {record['slug']} carries all of "
-                                     f"{sorted(wanted)}. Tags in use: {have or '(none)'}")
-        elif record.get("default_set"):
-            # Refused, never filtered — as the route does. A generation shown
-            # three of the seven images somebody chose is a result nobody can
-            # explain, which is the same rule the cap refusal already follows.
-            stale = [n for n in record["default_set"] if n not in by_node]
-            if stale:
-                raise FakeError(409, f"{len(stale)} of {len(record['default_set'])} in "
-                                     f"{record['slug']}'s default set are not references "
-                                     f"any more: {', '.join(stale[:4])}")
-            chosen = [by_node[n] for n in record["default_set"]]
-            source = "default_set"
-        else:
-            chosen, source = list(entries), "all"
 
-        limit = params.get("limit")
-        if limit is not None and len(chosen) > int(limit):
-            raise FakeError(409,
-                            f"{len(chosen)} references match; this model accepts {limit}")
-        return {"selection": [
-            {"slot": n, "node": e["node"], "group": e["group"],
-             "description": e["description"], "tags": e["tags"],
-             "name": self.nodes.get(e["node"], {}).get("name"),
-             "url": f"memory://{self.nodes.get(e['node'], {}).get('blob_key')}"}
-            for n, e in enumerate(chosen, 1)],
-            "cap": limit, "source": source}
+        if pick:
+            source = "pick"
+            everything = self._character_images(record)
+            by_id = {node["id"]: node for node in everything}
+            by_name = {}
+            for node in everything:
+                by_name.setdefault(node["name"], node)
+                by_name.setdefault(node["name"].rsplit(".", 1)[0], node)
+            chosen = []
+            for want in pick:
+                hit = by_id.get(want) or by_name.get(want) or by_name.get(
+                    want.rsplit(".", 1)[0])
+                if hit is None:
+                    raise FakeError(400, f"{record['name']} has no image called {want!r}")
+                chosen.append(hit)
+        else:
+            asked = tags or ["default"]
+            source = "tag" if tags else "default"
+            chosen = self._character_images(record, asked)
+            if not chosen:
+                have = sorted({t for n in self._character_images(record)
+                               for t in (n.get("tags") or [])})
+                raise FakeError(400, f"no image of {record['name']} carries "
+                                     f"{' + '.join(asked)}. Tags in use: {have or '(none)'}")
+
+        cap = params.get("limit")
+        cap = int(cap) if cap not in (None, "") else None
+        if cap is not None and len(chosen) > cap:
+            raise FakeError(409, f"{len(chosen)} images match; the cap is {cap}")
+
+        return {
+            "selection": [self._selected(node, slot)
+                          for slot, node in enumerate(chosen, start=1)],
+            "cap": cap,
+            "source": source,
+        }
 
     def _r_textblock(self, method, body, params, ref):
         record = self._entity(self.characters, ref, "character")
@@ -1118,7 +1113,7 @@ class FakeApi:
             "movies": sum(1 for m in self.movies.values() if m["project"] == record["id"]),
         }
         # `characters` EXPANDED, exactly as `GET /api/projects/<id>` answers —
-        # `{id, slug, display_name}` per link. This used to invent a
+        # `{id, name}` per link. This used to invent a
         # `character_slugs` list of bare slugs, which the real API has never
         # returned; the CLI read it, printed `—` for every project in
         # production, and the suite passed because the double agreed with the
@@ -1126,8 +1121,7 @@ class FakeApi:
         return {**record, "counts": counts,
                 "characters": [
                     {"id": c,
-                     "slug": self.characters[c]["slug"],
-                     "display_name": self.characters[c].get("display_name")}
+                     "name": self.characters[c]["name"]}
                     for c in record.get("characters") or []
                     if c in self.characters
                 ]}
@@ -1137,14 +1131,12 @@ class FakeApi:
             return [self._project_view(p) for p in self.projects.values()]
         if method != "POST":
             raise FakeError(405, method)
-        slug = body["slug"]
-        self._claim(self.projects, slug, "project")
-        root = self._create_node(self.root["id"], slug, "folder")
+        name = body["name"]
         proj_id = "proj-" + str(uuid.uuid4())
+        root = self._create_node(self.root["id"], proj_id, "folder")
         root["entity"] = proj_id
         self._layout(root["id"], ("runs", "scenes", "movies", "chains", "input"))
-        record = {"id": proj_id, "lib": self.lib, "slug": slug,
-                  "title": body.get("title") or "", "rev": 1,
+        record = {"id": proj_id, "lib": self.lib, "name": name, "rev": 1,
                   "description": body.get("description") or "",
                   "created": _now(), "updated": _now(), "root": root["id"],
                   "hero": None, "characters": list(body.get("characters") or [])}
@@ -1156,11 +1148,8 @@ class FakeApi:
         if method == "GET":
             return self._project_view(record)
         if method == "PATCH":
-            if "slug" in body and body["slug"] != record["slug"]:
-                self._claim(self.projects, body["slug"], "project")
-                self.nodes[record["root"]]["name"] = body["slug"]
             self._bump(record, body.get("rev"))
-            for field in ("slug", "title", "description", "hero"):
+            for field in ("name", "description", "hero"):
                 if field in body:
                     record[field] = body[field]
             return self._project_view(record)
@@ -1172,7 +1161,7 @@ class FakeApi:
             holds = [r for r in self.runs.values() if r["project"] == record["id"]]
             cascade = params.get("cascade") in ("1", 1, "true", True)
             if holds and not cascade and not params.get("force"):
-                raise FakeError(409, f"{record['slug']} holds {len(holds)} run(s) — "
+                raise FakeError(409, f"{record['name']} holds {len(holds)} run(s) — "
                                      "pass ?cascade=1 to delete them with it")
             removed = {}
             if cascade:
@@ -1261,9 +1250,9 @@ class FakeApi:
         kept three real bugs hidden behind 1000 passing tests.
         """
         return sorted(
-            ({"id": h["id"], "slug": h.get("slug"), "title": h.get("title")}
+            ({"id": h["id"], "name": h.get("name")}
              for h in holders.values() if matches(h)),
-            key=lambda entry: entry.get("slug") or "",
+            key=lambda entry: ((entry["name"] or "").lower(), entry["id"]),
         )
 
     def _run_view(self, record: dict) -> dict:
@@ -1326,9 +1315,10 @@ class FakeApi:
                 raise FakeError(400, f"runref {ref!r} has no project and none was supplied")
             if run_ref not in ("latest", "last"):
                 raise FakeError(400, f"{run_ref!r} is not a runref")
-            addressed = (project_ref if project_ref.startswith("proj-")
-                         else f"slug:{project_ref}")
-            project = self._entity(self.projects, addressed, "project")
+            # **An id.** It took a bare slug and turned it into `slug:<slug>`,
+            # because that is what a person typed; the service resolves ids only
+            # now, and so does this.
+            project = self._entity(self.projects, project_ref, "project")
             # `HIDDEN_RUN_STATUSES`, not `UNSUBMITTED`: an APPROVED run is
             # visible in a listing and only `draft` and `discarded` are not.
             hidden = (frozenset() if params.get("include") == "drafts"
@@ -1671,14 +1661,14 @@ class FakeApi:
         if method != "POST":
             raise FakeError(405, method)
         project = self._entity(self.projects, body["project"], "project")
-        if any(s["project"] == project["id"] and s["slug"] == body["slug"]
+        if any(s["project"] == project["id"] and s["name"] == body["name"]
                for s in self.scenes.values()):
-            raise FakeError(409, f"scene {body['slug']!r} already exists")
+            raise FakeError(409, f"scene {body['name']!r} already exists")
         scenes_folder = self._folder_under(project["root"], "scenes")
-        folder = self._create_node(scenes_folder["id"], body["slug"], "folder")
+        folder = self._create_node(scenes_folder["id"], body["name"], "folder")
         scene_id = "scene-" + str(uuid.uuid4())
         record = {"id": scene_id, "lib": self.lib, "project": project["id"],
-                  "slug": body["slug"], "title": body.get("title") or "",
+                  "name": body["name"], "title": body.get("title") or "",
                   "setting": body.get("setting") or "",
                   "defaults": body.get("defaults") or {},
                   "status": "planned", "created": _now(), "updated": _now(),
@@ -1705,7 +1695,7 @@ class FakeApi:
         doc = SB.normalise(
             {**{k: envelope.get(k, scene.get(k)) for k in ("setting", "defaults")},
              "shots": shots},
-            scene.get("slug") or scene_id,
+            scene.get("name") or scene_id,
         )
         SB.validate(doc)
 
@@ -1809,7 +1799,7 @@ class FakeApi:
                 drawable = {"node": node,
                             "name": self.nodes.get(node, {}).get("name"),
                             "url": f"memory://{self.nodes.get(node, {}).get('blob_key')}"}
-            rows.append({"id": scene_id, "slug": scene.get("slug"),
+            rows.append({"id": scene_id, "name": scene.get("name"),
                          "title": scene.get("title"), "status": scene.get("status"),
                          "output": drawable, "thumb": drawable})
         return {**record, "scenes": rows}
@@ -1828,10 +1818,10 @@ class FakeApi:
         project = self._entity(self.projects, body["project"], "project")
         movies_folder = self._folder_under(project["root"], "movies")
         folder = self._create_node(movies_folder["id"], _unique(
-            self, movies_folder["id"], body["slug"]), "folder")
+            self, movies_folder["id"], body["name"]), "folder")
         movie_id = "movie-" + str(uuid.uuid4())
         record = {"id": movie_id, "lib": self.lib, "project": project["id"],
-                  "slug": body["slug"], "title": body.get("title") or "",
+                  "name": body["name"], "title": body.get("title") or "",
                   "status": "planned", "created": _now(), "updated": _now(),
                   "folder": folder["id"], "scenes": list(body.get("scenes") or []),
                   "characters": [], "output": None, "stitch": None}
@@ -1950,7 +1940,7 @@ class FakeApi:
                           **{k: p[k] for k in ("run", "scene", "shot", "slug") if k in p}}
                          for p in parts]}
 
-        slug = record.get("slug") or record["id"]
+        slug = record.get("name") or record["id"]
         was = record.get("output")
         was_node = was.get("node") if isinstance(was, dict) else was
         take = len(record.get("cuts") or []) + (1 if was_node else 0) + 1
@@ -2182,66 +2172,22 @@ class FakeApi:
         self.terms.remove(term)
         return {"deleted": avoid}
 
-    # ── drafting a turnaround ───────────────────────────────────────────────
 
-    def _r_turnaround(self, method, body, params, character_id):
-        if method != "POST":
-            raise FakeError(405, method)
-        self.turnarounds.append(body)
-        angles = [a for a in self.spec_angles.values()
-                  if not body.get("group") or a.get("group") == body["group"]]
-        if body.get("angles"):
-            angles = [a for a in angles if a["id"] in body["angles"]]
-
-        made = []
-        for angle in angles:
-            # **The BACKEND's assembler, loaded rather than restated** — the same
-            # arrangement `digest` is on, and for the reason this file's own
-            # cautionary note gives: a fake that approximates the answer lets the
-            # CLI's tests pass against words the real service does not produce.
-            # `services/reference.py` imports `string` and `errors`, nothing else.
-            character = self._entity(self.characters, character_id, "character")
-            prompt = _backend_service("reference").assemble(
-                angle, self.spec_blocks, character.get("profile") or {},
-                identity_positions=list(range(1, len(body.get("identity") or []) + 1)))
-            plan = {"version": 1, "origin": "authored", "prompt": prompt,
-                    "params": {"aspect_ratio": "2:3", **(body.get("extra") or {})}}
-            entry = {"angle": angle["id"], "plan": plan,
-                     "model": body.get("model") or "openai/gpt-image-2",
-                     "sends": [{"field": "input_images", "role": "reference", "node": n}
-                               for n in body.get("identity") or []]}
-            if not body.get("preview"):
-                # Through the fake's own run creation rather than a second copy
-                # of it, exactly as the route goes through `create_draft`: the
-                # thing worth checking is that a turnaround makes ORDINARY
-                # drafts, and a bespoke shortcut here would hide it if it did not.
-                run = self._r_runs("POST", {
-                    "project": body.get("project"), "kind": "image",
-                    "engine": "studio-media-gpt-image-2",
-                    "model": entry["model"], "plan": plan,
-                    "sends": entry["sends"],
-                }, {})
-                entry.update(id=run["id"], status="draft")
-            made.append(entry)
-
-        key = "preview" if body.get("preview") else "drafted"
-        return {key: made, "failed": list(self.turnaround_failures)}
-
-    # ── the reference spec ──────────────────────────────────────────────────
+    # ── the template library ────────────────────────────────────────────────
     #
-    # `{"blocks": {...}, "angles": [...]}`, which is the shape the route returns.
+    # `{"blocks": {...}, "templates": [...]}`, the shape the route returns.
     # Answering a bare list here is the exact mistake the phrasebook handler
     # above records: the fake was more forgiving than the service, so the suite
     # passed while the CLI read nothing.
 
-    def _r_reference_spec(self, method, body, params):
+    def _r_templates(self, method, body, params):
         if method != "GET":
             raise FakeError(405, method)
-        angles = sorted(self.spec_angles.values(),
-                        key=lambda a: (a.get("order") or 0, a["id"]))
-        return {"blocks": dict(self.spec_blocks), "angles": angles}
+        found = sorted(self.templates.values(),
+                       key=lambda t: (t.get("name") or t["id"]).lower())
+        return {"blocks": dict(self.spec_blocks), "templates": found}
 
-    def _r_spec_block(self, method, body, params, name):
+    def _r_block(self, method, body, params, name):
         name = urllib.parse.unquote(name)
         if method == "PATCH":
             self.spec_blocks[name] = body["text"]
@@ -2251,15 +2197,15 @@ class FakeApi:
             return {"name": name, "deleted": True}
         raise FakeError(405, method)
 
-    def _r_spec_angle(self, method, body, params, angle_id):
-        angle_id = urllib.parse.unquote(angle_id)
+    def _r_template(self, method, body, params, template_id):
+        template_id = urllib.parse.unquote(template_id)
         if method == "PATCH":
             record = {k: v for k, v in body.items() if k != "id"}
-            self.spec_angles[angle_id] = {"id": angle_id, **record}
-            return self.spec_angles[angle_id]
+            self.templates[template_id] = {"id": template_id, **record}
+            return self.templates[template_id]
         if method == "DELETE":
-            self.spec_angles.pop(angle_id, None)
-            return {"id": angle_id, "deleted": True}
+            self.templates.pop(template_id, None)
+            return {"id": template_id, "deleted": True}
         raise FakeError(405, method)
 
     # ── seeding ─────────────────────────────────────────────────────────────

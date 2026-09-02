@@ -62,7 +62,7 @@ as a scene, then cut those scenes into a movie.
 ```bash
 studio scenes list <project>          # what there is to cut
 
-studio movies new <project> --slug <slug> \
+studio movies new <project> --name <name> \
   --scene <project>/<scene_id> \
   --scene <project>/<scene_id> \
   --scene <project>/latest
@@ -82,10 +82,10 @@ CLAUDE.md.)
 ## What it leaves behind
 
 ```
-<project>/movies/<YYYY-MM-DD_HH-MM-SS>_<slug>/
+<project>/movies/<movie_id>/
     scenes/         each scene's output, copied in, numbered in cut order
     scenes/         each scene's output, copied in, numbered in cut order
-    output/<slug>.mp4
+    output/<name>.mp4
 ```
 
 Same id shape as a run and a scene, so it sorts the same way.

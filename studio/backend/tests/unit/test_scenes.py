@@ -37,21 +37,21 @@ def _item(client, pk, sk):
     return response.get("Item")
 
 
-def _project(api, slug="rooftop-teaser"):
-    return api.post("/api/projects", json={"slug": slug}).get_json()
+def _project(api, name="rooftop-teaser"):
+    return api.post("/api/projects", json={"name": name}).get_json()
 
 
-def _scene(api, project, slug="stadium-encounter", shots=None):
+def _scene(api, project, name="stadium-encounter", shots=None):
     resp = api.post(
         "/api/scenes",
-        json={"project": project["id"], "slug": slug, "title": "Stadium", "shots": shots or []},
+        json={"project": project["id"], "name": name, "shots": shots or []},
     )
     assert resp.status_code == 201, resp.get_data(as_text=True)
     return resp.get_json()
 
 
-def _movie(api, project, slug="launch-cut", **body):
-    resp = api.post("/api/movies", json={"project": project["id"], "slug": slug, **body})
+def _movie(api, project, name="launch-cut", **body):
+    resp = api.post("/api/movies", json={"project": project["id"], "name": name, **body})
     assert resp.status_code == 201, resp.get_data(as_text=True)
     return resp.get_json()
 
@@ -321,7 +321,7 @@ def test_a_scene_stores_the_setting_and_defaults_every_shot_inherits(empty_api):
     resp = empty_api.post(
         "/api/scenes",
         json={
-            "project": project["id"], "slug": "light-flex", "title": "Light flex",
+            "project": project["id"], "name": "Light flex",
             "logline": "an inventory, front to back",
             "setting": "A plain mid-grey seamless studio cyclorama.",
             "defaults": {"model": "kling", "panel_model": "gpt-image-2",
@@ -419,34 +419,36 @@ def test_an_unboarded_panel_is_reported_without_an_image(empty_api):
 def test_a_plans_reference_block_comes_back_as_images(empty_api):
     """**A board draws pictures; a plan names them.**
 
-    `references` says "this character, these plates" — a slug and some filenames.
+    `references` says "this character, these images" — an id and some filenames.
     Answering with that is answering with a filename, so the route resolves the
     block into drawable assets.
 
-    The bug this pins: `entity_at` reads a bare string as an ID and resolves a
-    slug only when prefixed `slug:`. A plan holds slugs, so every lookup raised
-    `NotFoundError`, the tolerance swallowed it, and the board asked for its
-    plates and drew none — silently, and only visible in production.
+    The bug this pins: a plan used to hold SLUGS while `entity_at` read a bare
+    string as an id and resolved a slug only when prefixed `slug:`, so every
+    lookup raised `NotFoundError`, the tolerance swallowed it, and the board
+    asked for its images and drew none — silently, and only visible in
+    production. There is one address now, which is why the plan below holds an
+    id: the two spellings that could disagree are one.
     """
     project = _project(empty_api)
     made = empty_api.post(
         "/api/characters",
-        json={"slug": "subject-a", "display_name": "Subject A"},
+        json={"name": "Subject A"},
     )
     assert made.status_code == 201, made.get_data(as_text=True)
     character = made.get_json()
-    run = empty_api.post(
-        "/api/runs",
-        json={"project": project["id"], "kind": "image",
-              "engine": "gpt-image-2", "model": "openai/gpt-image-2"},
+    # **Under the character, not under the run.** A run output is the run's; what
+    # makes an image a character's identity is that it sits in the character's
+    # tree carrying `default`. Promoting one is a copy into the tree, which is
+    # what `add-refs --from-run` always did — it copied and then attached.
+    pool = catalog.child_by_name(character["root"], "reference")["node_id"]
+    made_node = empty_api.post(
+        "/api/nodes", json={"parent": pool, "name": "plate_front.png", "kind": "file"},
     ).get_json()
-    node = empty_api.post(
-        f"/api/runs/{run['id']}/outputs",
-        json={"name": "plate_front.png", "size": 10, "content_type": "image/png"},
-    ).get_json()["node"]
-    empty_api.post(
-        f"/api/characters/{character['id']}/references",
-        json={"node": node, "group": "face", "tags": ["face"]},
+    record = catalog.node(made_node["id"])
+    catalog.set_blob(made_node["id"], record["blob_key"], size=10, content_type="image/png")
+    empty_api.patch(
+        f"/api/nodes/{made_node['id']}", json={"tags": ["default", "face"]},
     )
 
     scene = _scene(
@@ -454,9 +456,10 @@ def test_a_plans_reference_block_comes_back_as_images(empty_api):
         shots=[{
             "id": "shot-01",
             "motion": {"prompt": "x",
-                       "references": {"characters": ["subject-a"], "pick": "plate_front.png"}},
+                       "references": {"characters": [character["id"]],
+                                      "pick": "plate_front.png"}},
             "panels": [{"n": 1, "role": "start", "prompt": "p",
-                        "references": {"characters": ["subject-a"]}}],
+                        "references": {"characters": [character["id"]]}}],
         }],
     )
 
@@ -468,17 +471,20 @@ def test_a_plans_reference_block_comes_back_as_images(empty_api):
     assert [a["name"] for a in shot["panels"][0]["reference_assets"]] == ["plate_front.png"]
 
 
-def test_a_scene_listing_row_carries_its_slug(empty_api):
-    """`<project>/<slug>` is how a person names a scene, so a row without one
-    cannot be resolved. Every scene command in the CLI reads it off this row, and
-    read it as a required key — so its absence was a traceback rather than a miss.
+def test_a_scene_listing_row_carries_its_name(empty_api):
+    """A row without one cannot be DRAWN, and a list of UUIDs is unreadable.
+
+    It used to carry a `slug` for addressing too — `<project>/<slug>` was how a
+    person named a scene, every scene command read it off this row as a required
+    key, and its absence was a traceback rather than a miss. The only address is
+    the id now, so what is left is the label.
     """
     project = _project(empty_api)
-    _scene(empty_api, project, slug="stadium-encounter")
+    _scene(empty_api, project, "stadium-encounter")
 
     rows = empty_api.get(f"/api/scenes?project={project['id']}").get_json()["scenes"]
 
-    assert [row["slug"] for row in rows] == ["stadium-encounter"]
+    assert [row["name"] for row in rows] == ["stadium-encounter"]
 
 
 def test_deleting_a_scene_removes_its_shots(empty_api, catalog_table):

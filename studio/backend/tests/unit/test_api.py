@@ -53,14 +53,14 @@ def test_health():
 
 
 def test_options_preflight():
-    resp = _client().options("/api/tree")
+    resp = _client().options("/api/nodes")
     assert resp.status_code == 204
     assert "Access-Control-Allow-Origin" in resp.headers
 
 
 def test_stage_prefixed_path_still_routes(catalog_tree):
     """A direct stage invoke arrives as /prod/api/... — the middleware strips it."""
-    resp = _client().get(f"/prod/api/tree?node={_id('characters')}")
+    resp = _client().get(f"/prod/api/nodes?under={_id('characters')}")
     assert resp.status_code == 200
 
 
@@ -72,19 +72,19 @@ def test_tree_with_no_node_opens_on_the_library_root(catalog_tree):
     dropping `?prefix=` did not also drop "no address at all" — the empty prefix
     meant the root, and no `node` still does.
     """
-    resp = _client().get("/api/tree")
+    resp = _client().get("/api/nodes")
     assert resp.status_code == 200
     body = resp.get_json()
     assert body["prefix"] == ""
     # Newest-first, on the folders' own `created_at` — a folder is a row now and
     # is stamped like anything else.
-    assert [f["name"] for f in body["folders"]] == ["projects", "phrasebook", "characters"]
+    assert [f["name"] for f in body["entries"]] == ["projects", "phrasebook", "characters"]
 
 
 def test_tree(catalog_tree):
-    resp = _client().get(f"/api/tree?node={_id('characters/subject-a/seed')}")
+    resp = _client().get(f"/api/nodes?under={_id('characters/subject-a/seed')}")
     assert resp.status_code == 200
-    assert len(resp.get_json()["files"]) == 2
+    assert len(resp.get_json()["entries"]) == 2
 
 
 def test_tree_reports_the_prefix_it_composed_not_one_it_was_sent(catalog_tree):
@@ -95,7 +95,7 @@ def test_tree_reports_the_prefix_it_composed_not_one_it_was_sent(catalog_tree):
     There is no spelling to echo any more, and the walk still has to produce the
     same string — that is what every crumb in the SPA is drawn from.
     """
-    body = _client().get(f"/api/tree?node={_id('characters/subject-a/seed')}").get_json()
+    body = _client().get(f"/api/nodes?under={_id('characters/subject-a/seed')}").get_json()
 
     assert body["prefix"] == "characters/subject-a/seed/"
     assert [crumb["name"] for crumb in body["breadcrumbs"]] == [
@@ -107,10 +107,10 @@ def test_tree_reports_the_prefix_it_composed_not_one_it_was_sent(catalog_tree):
 
 
 def test_reel_takes_a_node_id_too(catalog_tree):
-    resp = _client().get(f"/api/reel?node={_id('characters/subject-a')}")
+    resp = _client().get(f"/api/nodes?depth=all&kind=image,video&under={_id('characters/subject-a')}")
 
     assert resp.status_code == 200
-    assert all(item["kind"] in ("image", "video") for item in resp.get_json()["items"])
+    assert all(item["kind"] in ("image", "video") for item in resp.get_json()["entries"])
 
 
 def test_tree_on_a_node_that_names_nothing_is_404(catalog_tree):
@@ -122,7 +122,7 @@ def test_tree_on_a_node_that_names_nothing_is_404(catalog_tree):
     `/api/resolve`, where `keys.clean_name` has already made `..` a name nothing
     is called.
     """
-    resp = _client().get("/api/tree?node=node-nowhere")
+    resp = _client().get("/api/nodes?under=node-nowhere")
     assert resp.status_code == 404
     assert "error" in resp.get_json()
 
@@ -155,9 +155,12 @@ def test_resolve_names_the_first_segment_that_is_missing(catalog_tree):
 
 
 def test_asset_takes_a_node_id(catalog_tree):
-    node_id = _client().get(
-        f"/api/tree?node={_id('characters/subject-a')}"
-    ).get_json()["files"][0]["id"]
+    # By name, not by position: the listing's default order is `newest`, and
+    # which file that puts first is not what this test is about.
+    listed = _client().get(
+        f"/api/nodes?under={_id('characters/subject-a')}"
+    ).get_json()["entries"]
+    node_id = next(e["id"] for e in listed if e["name"] == "profile.yaml")
 
     body = _client().get(f"/api/asset?node={node_id}").get_json()
 
@@ -207,13 +210,13 @@ def test_unknown_route_is_404():
 
 
 def test_tree_accepts_a_sort(catalog_tree):
-    resp = _client().get(f"/api/tree?node={_id('characters/subject-a/seed')}&sort=name_desc")
+    resp = _client().get(f"/api/nodes?under={_id('characters/subject-a/seed')}&sort=name_desc")
     assert resp.status_code == 200
-    assert [f["name"] for f in resp.get_json()["files"]] == ["subject-a_2.webp", "subject-a_1.webp"]
+    assert [f["name"] for f in resp.get_json()["entries"]] == ["subject-a_2.webp", "subject-a_1.webp"]
 
 
 def test_tree_rejects_an_unknown_sort(catalog_tree):
-    assert _client().get("/api/tree?sort=sideways").status_code == 400
+    assert _client().get("/api/nodes?sort=sideways").status_code == 400
 
 
 # ---------------------------------------------------------------------------
@@ -287,8 +290,8 @@ def test_rename_a_folder_moves_nothing_beneath_it(catalog_tree):
 
     assert resp.status_code == 200
     assert resp.get_json()["name"] == "wave-porch-final"
-    listing = _client().get(f"/api/tree?node={_id(f'{RUN}/output')}").get_json()
-    assert [f["name"] for f in listing["files"]] == ["wave-porch.jpeg"]
+    listing = _client().get(f"/api/nodes?under={_id(f'{RUN}/output')}").get_json()
+    assert [f["name"] for f in listing["entries"]] == ["wave-porch.jpeg"]
 
 
 def test_move_nodes(catalog_tree):
@@ -535,7 +538,7 @@ def test_lambda_body_reaches_every_write_verb(catalog_tree):
         {"content": "greeting: hi\n"},
     )[0] == 200
     assert _invoke(
-        "POST", "/api/characters", {"slug": "subject-c"}
+        "POST", "/api/characters", {"name": "subject-c"}
     )[0] == 201
     assert _invoke(
         "DELETE",
@@ -560,16 +563,18 @@ def test_the_entity_replace_routes_are_reachable_as_patch(catalog_tree):
     whole-collection replace. This pins that a body reaches one of them through
     the real Lambda path, which is the half that was broken before.
     """
-    created = _invoke("POST", "/api/characters", {"slug": "subject-d"})[1]
+    created = _invoke("POST", "/api/characters", {"name": "subject-d"})[1]
 
+    # `/default-set` was the one this used to drive; `default` is a tag on the
+    # file now, so the profile replace is the surviving whole-collection PATCH.
     status, body = _invoke(
         "PATCH",
-        f"/api/characters/{created['id']}/default-set",
-        {"nodes": [], "rev": created["rev"]},
+        f"/api/characters/{created['id']}/profile",
+        {"patch": {"identity": {"apparent_age": "30s"}}, "rev": created["rev"]},
     )
 
     assert status == 200, body
-    assert body["default_set"] == []
+    assert body["profile"]["identity"]["apparent_age"] == "30s"
 
 
 def test_lambda_still_reports_a_genuinely_empty_body(catalog_tree):
@@ -583,6 +588,6 @@ def test_lambda_still_reports_a_genuinely_empty_body(catalog_tree):
 
 def test_lambda_get_needs_no_body(catalog_tree):
     """A bodyless request must not acquire a phantom length."""
-    status, body = _invoke("GET", "/api/tree")
+    status, body = _invoke("GET", "/api/nodes")
     assert status == 200
     assert body["prefix"] == ""

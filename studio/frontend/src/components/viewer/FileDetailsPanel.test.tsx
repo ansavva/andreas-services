@@ -219,26 +219,18 @@ describe("the dismissal guard", () => {
 
 describe("the tags", () => {
   it("adds one that has never been used before", async () => {
-    // Free-form is the whole point: there is no vocabulary to pick from, so the
-    // input is the only way a tag is ever created.
+    // **Creating a tag IS tagging something.** The vocabulary is derived from
+    // what is carried, so there is no create that leaves one existing and
+    // unused — typing a word nobody has used and pressing Enter is the create.
     const { onSave, onRename } = show({ tags: ["poolside"] });
 
     fireEvent.change(screen.getByLabelText("Add a tag"), { target: { value: "whistle" } });
-    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    fireEvent.keyDown(screen.getByLabelText("Add a tag"), { key: "Enter" });
 
     await waitFor(() =>
       expect(onSave).toHaveBeenCalledWith({ tags: ["poolside", "whistle"] }),
     );
     expect(onRename).not.toHaveBeenCalled();
-  });
-
-  it("adds on Enter without submitting anything behind it", async () => {
-    const { onSave } = show();
-
-    fireEvent.change(screen.getByLabelText("Add a tag"), { target: { value: "bleachers" } });
-    fireEvent.keyDown(screen.getByLabelText("Add a tag"), { key: "Enter" });
-
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ tags: ["bleachers"] }));
   });
 
   it("removes one, and names which in the label", async () => {
@@ -249,16 +241,24 @@ describe("the tags", () => {
     await waitFor(() => expect(onSave).toHaveBeenCalledWith({ tags: ["shirtless"] }));
   });
 
-  it("leaves the case to the API rather than folding it here", async () => {
-    // Whitespace is trimmed on the way out because the empty check needs it
-    // anyway. Case is not: folding in two places is two implementations of one
-    // rule, and the one that drifts is the one `--pick-tag` does not consult.
+  it("folds a typed tag the way the API folds it", async () => {
+    /**
+     * **It used to leave the case alone on purpose**, on the grounds that
+     * folding in two places is two implementations of one rule. That held while
+     * a tag was free text: whatever came back was what the API had decided.
+     *
+     * It stops holding once the box offers a LIST. `Poolside` typed here and
+     * `poolside` in the list are the same tag, and a control that shows both
+     * while the API stores one is showing a vocabulary that does not exist. So
+     * the fold is here as well, matched to the API's, and the list is what makes
+     * a drift between them visible immediately.
+     */
     const { onSave } = show();
 
     fireEvent.change(screen.getByLabelText("Add a tag"), { target: { value: " Poolside " } });
-    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    fireEvent.keyDown(screen.getByLabelText("Add a tag"), { key: "Enter" });
 
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ tags: ["Poolside"] }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ tags: ["poolside"] }));
   });
 
   it("does nothing on an empty add", () => {
@@ -267,6 +267,5 @@ describe("the tags", () => {
     fireEvent.keyDown(screen.getByLabelText("Add a tag"), { key: "Enter" });
 
     expect(onSave).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Add" }).hasAttribute("disabled")).toBe(true);
   });
 });
