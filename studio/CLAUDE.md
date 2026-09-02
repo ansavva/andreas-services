@@ -137,20 +137,26 @@ formality; the mechanism only stops the yes drifting from what it was for. See
 
 ### 2b. NEVER put an image into a character without approval
 
-A character's **references** are who it IS, and every later render is checked
-against them. A reference is a `REF#` row naming a node, so adding, describing,
-regrouping or detaching one — or changing `default_set` — is a **separate**
-decision from having agreed to spend money rendering something. Show the result,
-wait for a yes, then promote it:
+A character's **identity images** are who it IS, and every later render is
+checked against them. An image is one when it carries the `default` tag, so
+tagging one — or taking the tag off — is a **separate** decision from having
+agreed to spend money rendering something. Show the result, wait for a yes, then
+promote it: copy it into the character's tree, then tag the copy.
 
 ```bash
-studio character add-refs <name> --to <group> --from-run <runref>
+studio download <project>/latest#1 --dest /tmp/promote
+studio upload /tmp/promote/<file> <name>/reference
+studio describe <node> --tag default --tag face
 ```
 
-`studio character turnaround` therefore leaves its results in their runs and files
-nothing on its own. Both of these rules were broken in one session — a shoot
-submitted off a menu answer, its output then written into a character's face
-group unasked — which is why they are stated separately here.
+**The copy is not optional.** Ownership is the tree: a run's output carrying
+`default` is a file in the run's folder with a tag on it, and it is not this
+character's identity, because nothing outside the character's branch is.
+
+A run therefore leaves its results where they are and files nothing on its own.
+Both of these rules were broken in one session — a shoot submitted off a menu
+answer, its output then written into a character's face group unasked — which is
+why they are stated separately here.
 
 ### 3. S3 is the only origin
 

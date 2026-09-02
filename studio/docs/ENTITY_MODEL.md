@@ -5,6 +5,22 @@
 > kept, because a spec that says "nothing here is built" over a model the whole
 > service now runs on is worse than no status at all.
 
+> **ONE PART OF IT IS SUPERSEDED: the reference entry.** This document
+> introduced `CHAR#<id>` / `REF#<node>` — one row per reference image, carrying
+> `group` and `order` — and argued for it well: reference-ness stopped being
+> inferred from a path, which is what let a file be renamed and moved without
+> changing what it is. What it did not fix is that the fact still lived *beside*
+> the picture rather than *on* it, and `default_set` on the record made two
+> homes for one question. The invariant between them drifted: one production
+> character carried four ids in `default_set` naming no row, and a default shoot
+> sent three images where seven were meant.
+>
+> **It is a tag on the file now** — `default` for the images a generation is
+> shown, `face` or `body` for what the picture is — and the rows are deleted.
+> Every `REF#` and `default_set` passage below is history: the reasoning is
+> worth keeping because the second half of it is what tags finish, and rewriting
+> it would erase why the row existed at all.
+
 Read [What was wrong](#what-was-wrong-and-what-this-replaced) for the shape
 this replaced, then go to [The data model](#the-data-model). The five decisions
 it turned on are settled and recorded in
@@ -195,7 +211,7 @@ parses it.
 | Node — by id | `NODE#<node_id>` | `META` | exists |
 | **Character** | `CHAR#<char_id>` | `META` | the record |
 | **Character slug claim** | `LIB#<lib>` | `CHARSLUG#<slug>` | uniqueness, and the list-characters query |
-| **Reference entry** | `CHAR#<char_id>` | `REF#<node_id>` | one row per reference image |
+| ~~**Reference entry**~~ | ~~`CHAR#<char_id>`~~ | ~~`REF#<node_id>`~~ | **superseded** — identity is `default` + a group tag on the node |
 | **Project** | `PROJ#<proj_id>` | `META` | the record |
 | **Project slug claim** | `LIB#<lib>` | `PROJSLUG#<slug>` | uniqueness, and the list-projects query |
 | **Project ↔ character** | `PROJ#<proj_id>` | `CHAR#<char_id>` | involvement; reverse-queryable |
@@ -221,7 +237,7 @@ decides whether a question has an answer at all, and getting it wrong is silent.
 |---|---|---|---|
 | **Edge** | `<TARGET>#<target_id>` | set membership | **free** — `by-sk` |
 | **Listing** | `<KIND>#<created>#<id>` | chronological pagination | none, and none needed |
-| **Ordered child** | `SHOT#<n>`, `REF#<node_id>` | a positional entity with payload | varies |
+| **Ordered child** | `SHOT#<n>` | a positional entity with payload | varies |
 
 **An edge puts the target's id in the SORT KEY, and that is the whole rule.** In
 `by-sk` the sort key becomes the hash key, and a hash key takes an exact value
@@ -375,14 +391,13 @@ in either.
   "created": "…", "updated": "…",
   "root": "node-…",                 // the ONE pointer into the tree
   "hero": "node-…",                 // the card image; any reference node
-  "default_set": ["node-…", "node-…"],
   "profile": { … }                  // the bible, as a validated map
 }
 ```
 
 `profile` is the whole of today's `profile.yaml` minus `name` and
 `display_name`, which are promoted to real fields, and minus `references:` and
-`default_set:`, which become rows. The remaining sections — `identity`, `face`,
+`default_set:` — both of which are now tags on the files themselves. The remaining sections — `identity`, `face`,
 `body`, `wardrobe`, `voice`, `rendering`, `consistency`, `text_identity_block` —
 are stored as nested maps and validated against a schema the API owns.
 `schema_version` moves onto the record.

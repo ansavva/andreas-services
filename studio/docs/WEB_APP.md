@@ -392,7 +392,7 @@ the bucket itself (`media_root_prefix = ""`).
 <subject>/                      # a character's folder; its record names it `root`
 ├── seed/                       # source photos (.webp, .jpg, .jpeg, .JPG, .heic)
 ├── corpus/                     # the wider photo set
-├── reference/                  # the images its REF# rows point at,
+├── reference/                  # where its identity images conventionally sit,
 │   └── <face|body|frame|wardrobe>/   #   grouped by purpose
 └── archive/                    # superseded output kept around
 <project>/                      # a project's folder
@@ -537,9 +537,9 @@ that breaks every time the pipeline ships.
   carries a `Promote…` control beside it — a **sibling** of `OutputPanel`, never
   inside it, because the panel's caption is a real `<a href>` and its player is
   full of buttons. Pressing it expands a panel under the outputs grid, scoped to
-  that output. It is the CLI's `character add-refs --from-run` performed step for
+  that output. It is what promoting has always been, performed step for
   step: a **real copy** into the character's `reference/<group>/` folder, then a
-  `REF#` row on the **copy**, so the run keeps its own output and every record
+  the `default` tag on the **copy**, so the run keeps its own output and every record
   citing it stays correct. Hard rule #2b is satisfied by the press itself — the
   person choosing the character and the group IS the approval — and the panel
   states plainly what it will do before it happens. Video outputs get no control:
@@ -1010,7 +1010,7 @@ nothing accepts one back.
 | `GET \| POST /api/characters` | List, or create — record, slug claim, root folder and the starting pools in one transaction. **409** on a taken slug |
 | `GET \| PATCH \| DELETE /api/characters/<id>` | One character. `<id>` may be `slug:<slug>`. `PATCH` carries `rev` and **409**s if it has moved |
 | `PATCH /api/characters/<id>/profile` | `{profile, rev}` — the bible, validated |
-| `GET \| POST \| PATCH /api/characters/<id>/references` | The `REF#` rows: read grouped and ordered, attach one, or describe/reorder many in one transaction |
+| `PATCH /api/nodes/<id>` | `{description, tags}` → what a picture IS and what it is FOR. `default` plus a group tag is the whole of what a `REF#` row and a `default_set` entry used to say between them |
 | `PATCH \| DELETE /api/characters/<id>/references/<node>` | Change one entry's group, description, tags or order; or detach it, leaving the file |
 | `PATCH /api/characters/<id>/default-set` | `{nodes: [...]}` |
 | `GET /api/characters/<id>/selection` | `?pick=&tag=&limit=` → the ordered nodes a model would be shown. **Refuses** an over-cap selection with the index in the body |
