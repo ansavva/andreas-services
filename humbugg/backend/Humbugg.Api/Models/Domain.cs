@@ -498,6 +498,27 @@ public sealed record UpdateGroupRequest(
     // somebody else's change is refused instead. Optional: a caller flipping one switch from a value
     // it just computed has nothing to conflict with.
     string? ExpectedUpdatedAt = null);
+/// <summary>Repeating an exchange (#136): what to carry over, and what the new one is called.</summary>
+public sealed record RepeatExchangeRequest(
+    string? Name,
+    string? EventDate,
+    string? SignupDeadline,
+    bool CopyDetails = true,
+    bool CopyExclusions = false);
+
+/// <summary>
+/// The new exchange, its one-time invitation link, and who was in the one it came from.
+/// </summary>
+/// <remarks>
+/// <see cref="PriorParticipants"/> is a reminder of who to send the link to, not a guest list the
+/// server acts on. Nobody is enrolled by repeating: they join with the link like anybody else, which
+/// is what keeps last year's roster from silently becoming this year's.
+/// </remarks>
+public sealed record RepeatedExchange(
+    GroupDetail Group,
+    string InviteUrl,
+    IReadOnlyList<string> PriorParticipants);
+
 public sealed record UpdateCustomizationRequest(
     string? Greeting, string? Instructions, string? PrimaryColor, string? AccentColor, string? Image);
 public sealed record JoinGroupRequest(string? InviteToken);

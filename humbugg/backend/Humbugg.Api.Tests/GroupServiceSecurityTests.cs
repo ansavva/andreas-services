@@ -858,6 +858,163 @@ public sealed class GroupServiceSecurityTests
         Assert.Contains(fixture.Members.Items, member => member.MemberId == "other");
     }
 
+    // ── Repeating an exchange (#136) ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The privacy guarantee, and it is structural: the new exchange has nowhere to put last year's
+    /// private data because it has no memberships except the organizer's.
+    /// </summary>
+    [Fact]
+    public async Task RepeatingCarriesTheOrganizersWordsAndNothingPrivate()
+    {
+        var wish = new WishRecord(
+            "other", "wish-1", "group", "user-other", WishKind.Product, "A book",
+            "", "", null, "USD", 1, WishPriority.Normal, "", 0, "now", "now");
+        var fixture = new Fixture(
+            member: Fixture.Member("actor", organizer: true), ownerUserId: "user", exclusions: [],
+            wishes: [wish]);
+        fixture.Members.Items.Add(Fixture.Member("other", organizer: false));
+
+        var repeated = await fixture.Subject.RepeatAsync(
+            "group", new RepeatExchangeRequest("Next year", "2027-12-19", null),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("Next year", repeated.Group.Name);
+        Assert.NotEqual("group", repeated.Group.GroupId);
+        // Only the organizer is in it. Everything private belongs to a membership, so there is
+        // nowhere for a wishlist, an address, a claim, a conversation or a gift stage to land.
+        var member = Assert.Single(repeated.Group.Members);
+        Assert.True(member.IsOrganizer);
+        // The prior roster comes back as names to send the link to, never as members.
+        Assert.Equal(["other"], repeated.PriorParticipants);
+        Assert.Contains("#invite=", repeated.InviteUrl, StringComparison.Ordinal);
+    }
+
+    /// <summary>The source is read and never touched: last year stays exactly as it was.</summary>
+    [Fact]
+    public async Task RepeatingLeavesTheExchangeItCameFromAlone()
+    {
+        var fixture = new Fixture(
+            member: Fixture.Member("actor", organizer: true), ownerUserId: "user",
+            exclusions: [["actor", "other"]]);
+        fixture.Members.Items.Add(Fixture.Member("other", organizer: false));
+        var before = await fixture.Subject.GetAsync("group", TestContext.Current.CancellationToken);
+
+        await fixture.Subject.RepeatAsync(
+            "group", new RepeatExchangeRequest(null, null, null), TestContext.Current.CancellationToken);
+
+        var after = await fixture.Subject.GetAsync("group", TestContext.Current.CancellationToken);
+        Assert.Equal(before.Name, after.Name);
+        Assert.Equal(before.Exclusions.Count, after.Exclusions.Count);
+        Assert.Equal(before.Members.Count, after.Members.Count);
+    }
+
+    /// <summary>
+    /// Exclusions are translated into the new exchange's member ids, not copied.
+    /// </summary>
+    /// <remarks>
+    /// A member id is <c>sha256(groupId:userId)</c>, so a literal copy would name ids belonging to
+    /// last year's group and quietly constrain nobody. Translating them is only possible because the
+    /// id is derived rather than random.
+    /// </remarks>
+    [Fact]
+    public async Task CopiedExclusionsAreRewrittenForTheNewExchange()
+    {
+        var fixture = new Fixture(
+            member: Fixture.Member("actor", organizer: true), ownerUserId: "user",
+            exclusions: [["actor", "other"]]);
+        fixture.Members.Items.Add(Fixture.Member("other", organizer: false));
+
+        var repeated = await fixture.Subject.RepeatAsync(
+            "group", new RepeatExchangeRequest(null, null, null, CopyExclusions: true),
+            TestContext.Current.CancellationToken);
+
+        var pair = Assert.Single(repeated.Group.Exclusions);
+        // Not the old ids — the new ones, which each person will have the moment they join.
+        Assert.DoesNotContain("actor", pair);
+        Assert.DoesNotContain("other", pair);
+        // BOTH sides sorted. A member id is a hash, so which of the two sorts first depends on the
+        // randomly generated group id — comparing a fixed order against a sorted one passes or fails
+        // by coin flip, which is exactly how this test behaved before the Order() on the left.
+        Assert.Equal(
+            new[]
+            {
+                Humbugg.Api.Data.MembershipRepository.MemberId(repeated.Group.GroupId, "user"),
+                Humbugg.Api.Data.MembershipRepository.MemberId(repeated.Group.GroupId, "user-other"),
+            }.Order(StringComparer.Ordinal),
+            pair.Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// A pair naming somebody who is no longer resolvable is dropped rather than translated.
+    /// </summary>
+    /// <remarks>
+    /// A deleted account leaves a membership row that has been anonymized, or none at all. Carrying
+    /// their pair forward would put a constraint on next year's draw that names nobody and that no
+    /// organizer could explain, let alone remove.
+    /// </remarks>
+    [Fact]
+    public async Task AnExclusionNamingSomebodyWhoIsGoneIsNotCarriedForward()
+    {
+        var fixture = new Fixture(
+            member: Fixture.Member("actor", organizer: true), ownerUserId: "user",
+            exclusions: [["actor", "departed"], ["actor", "other"]]);
+        fixture.Members.Items.Add(Fixture.Member("other", organizer: false));
+        // "departed" is named by an exclusion and is not on the roster.
+
+        var repeated = await fixture.Subject.RepeatAsync(
+            "group", new RepeatExchangeRequest(null, null, null, CopyExclusions: true),
+            TestContext.Current.CancellationToken);
+
+        Assert.Single(repeated.Group.Exclusions);
+    }
+
+    [Fact]
+    public async Task DetailsAndExclusionsAreOptIn()
+    {
+        var fixture = new Fixture(
+            member: Fixture.Member("actor", organizer: true), ownerUserId: "user",
+            exclusions: [["actor", "other"]]);
+        fixture.Members.Items.Add(Fixture.Member("other", organizer: false));
+
+        var bare = await fixture.Subject.RepeatAsync(
+            "group", new RepeatExchangeRequest(null, null, null, CopyDetails: false),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("", bare.Group.Description);
+        Assert.Null(bare.Group.SpendingLimit);
+        // Exclusions default to off: last year's "these two are a couple" may not be true any more,
+        // and a constraint nobody asked for is worse than one they have to re-add.
+        Assert.Empty(bare.Group.Exclusions);
+    }
+
+    /// <summary>Plus does not travel: it is bought per exchange, and repeating is not a way round that.</summary>
+    [Fact]
+    public async Task ARepeatedExchangeIsAlwaysFree()
+    {
+        var fixture = new Fixture(
+            member: Fixture.Member("actor", organizer: true), ownerUserId: "user", exclusions: [],
+            plan: PlanCode.Plus, entitlementId: "plus:group");
+
+        var repeated = await fixture.Subject.RepeatAsync(
+            "group", new RepeatExchangeRequest(null, null, null), TestContext.Current.CancellationToken);
+
+        Assert.Equal(PlanCode.Free, repeated.Group.Plan);
+        Assert.Null(repeated.Group.Customization);
+    }
+
+    [Fact]
+    public async Task OnlyTheOwnerRepeatsAnExchange()
+    {
+        var coOrganizer = new Fixture(
+            member: Fixture.Member("actor", organizer: true), ownerUserId: "somebody-else");
+
+        var error = await Assert.ThrowsAsync<ApiException>(() => coOrganizer.Subject.RepeatAsync(
+            "group", new RepeatExchangeRequest(null, null, null), TestContext.Current.CancellationToken));
+
+        Assert.Equal(403, error.StatusCode);
+    }
+
     private sealed class FakeUser(string userId = "user") : ICurrentUser { public string UserId => userId; }
     private sealed class FakeProfiles : IProfileRepository
     {
@@ -870,11 +1027,21 @@ public sealed class GroupServiceSecurityTests
     private sealed class FakeGroups(GroupRecord group) : IGroupRepository
     {
         private GroupRecord group = group;
+        // Repeating an exchange (#136) creates a SECOND one, so the fake can no longer be a single
+        // record. The original stays in `group` because everything else addresses it by name.
+        private readonly Dictionary<string, GroupRecord> extra = new(StringComparer.Ordinal);
         private DrawRecord? draw;
         public int UpdateCount { get; private set; }
         public int CreateDrawCount { get; private set; }
         public int ResetDrawCount { get; private set; }
-        public Task<GroupRecord?> GetAsync(string groupId, CancellationToken cancellationToken = default) => Task.FromResult<GroupRecord?>(group);
+        public Task<GroupRecord?> GetAsync(string groupId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(groupId == group.GroupId ? group : extra.GetValueOrDefault(groupId));
+
+        public Task<GroupRecord> CreateAsync(GroupRecord value, CancellationToken cancellationToken = default)
+        {
+            extra[value.GroupId] = value;
+            return Task.FromResult(value);
+        }
         /// <summary>The exclusions the last update wrote, for the pruning tests.</summary>
         public IReadOnlyList<string[]>? LastExclusions { get; private set; }
 
@@ -893,6 +1060,8 @@ public sealed class GroupServiceSecurityTests
                 LastExclusions = exclusions.L?
                     .Select(pair => pair.L?.Select(entry => entry.S ?? "").ToArray() ?? [])
                     .ToList();
+            if (groupId != group.GroupId && extra.TryGetValue(groupId, out var other))
+                return Task.FromResult(extra[groupId] = Apply(other, fields));
             group = Apply(group, fields);
             return Task.FromResult(group);
         }
@@ -918,7 +1087,6 @@ public sealed class GroupServiceSecurityTests
             draw = new(groupId, $"draw-{CreateDrawCount}", assignments, "now", actorUserId);
             return Task.CompletedTask;
         }
-        public Task<GroupRecord> CreateAsync(GroupRecord value, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task DeleteAsync(string groupId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<DrawRecord?> GetDrawAsync(string groupId, CancellationToken cancellationToken = default) => Task.FromResult(draw);
         public Task ResetDrawAsync(string groupId, CancellationToken cancellationToken = default)
@@ -1035,7 +1203,12 @@ public sealed class GroupServiceSecurityTests
         public Task<IReadOnlyList<MembershipRecord>> GetByGroupAsync(string groupId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<MembershipRecord>>(Items.Where(item => item.GroupId == groupId).ToList());
         public Task<IReadOnlyList<MembershipRecord>> GetByUserAsync(string userId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<MembershipRecord>>(Items.Where(item => item.UserId == userId).ToList());
         public Task<MembershipRecord?> GetAsync(string memberId, CancellationToken cancellationToken = default) => Task.FromResult(Items.FirstOrDefault(item => item.MemberId == memberId));
-        public Task<MembershipRecord> CreateAsync(string groupId, string userId, string displayName, bool organizer, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<MembershipRecord> CreateAsync(string groupId, string userId, string displayName, bool organizer, CancellationToken cancellationToken = default)
+        {
+            var record = MembershipRepository.NewRecord(groupId, userId, displayName, organizer);
+            Items.Add(record);
+            return Task.FromResult(record);
+        }
         public Task<MembershipRecord> UpdatePrivateAsync(string memberId, string wishlist, string avoidances, Address address, CancellationToken cancellationToken = default)
         {
             var index = Items.FindIndex(item => item.MemberId == memberId);

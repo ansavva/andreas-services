@@ -445,6 +445,15 @@ internal sealed class MembershipRepository(IAmazonDynamoDB db, HumbuggSettings s
             now);
     }
 
-    private static string MemberId(string groupId, string userId) =>
+    /// <summary>
+    /// A membership's id: a hash of the group and the account, so it is the same value every time.
+    /// </summary>
+    /// <remarks>
+    /// Internal rather than private because repeating an exchange (#136) needs it: exclusions are
+    /// keyed by member id, and the ids in a NEW exchange do not exist until people join. Because the
+    /// value is derived rather than random, the pairs can be translated up front and simply lie
+    /// inert until both people are there.
+    /// </remarks>
+    internal static string MemberId(string groupId, string userId) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{groupId}:{userId}"))).ToLowerInvariant()[..32];
 }

@@ -19,7 +19,7 @@ Live at `https://www.humbugg.com` (product app at `app.humbugg.com`, API at `api
 | Milestone | Closed | Open | State |
 |---|---|---|---|
 | Foundation | 13 | 0 | Complete |
-| Free | 8 | 5 | The active milestone |
+| Free | 9 | 4 | The active milestone |
 | Plus | 8 | 1 | Backend complete and deployed; the purchase UI (#141) is **built**, awaiting review |
 | Work | 0 | 10 | Deliberately untouched |
 | Launch | 2 | 11 | Gated on Free |
@@ -169,10 +169,29 @@ degrades *quietly* to signed-out when its pool configuration resolves empty. Par
 
 ## Then, in order
 
-**Finish Free** — #135 and #137 are **built**; #134 is partly delivered and its issue carries a
-comment recording exactly what exists and what remains, so read that before estimating. #136 (repeat
-an exchange) and #138 (mobile and assistive-technology verification) close the milestone. #129 is
-deliberately last — see the critical path above.
+**Finish Free** — #135, #136 and #137 are **built**; #134 is partly delivered and its issue carries
+a comment recording exactly what exists and what remains, so read that before estimating (though see
+the warning below — that comment is stale in at least one place). #138 (mobile and
+assistive-technology verification) closes the milestone. #129 is deliberately last — see the
+critical path above.
+
+**#136 hinged on one fact about member ids.** Exclusions are keyed by member id, and a new exchange
+has no members, so a literal copy would name last year's ids and constrain nobody. It works because
+`MembershipRepository.MemberId` is `sha256(groupId:userId)` — *derived*, not random — so what
+somebody's id will be in the new exchange is known before they join. The pairs are translated up
+front and lie inert until both people are there. If that id ever becomes random, repeating loses its
+exclusions and this is where to look.
+
+Repeating deliberately invites nobody. The prior roster comes back as a list of NAMES for the
+organizer to send the link to; enrolling last year's participants would put people in a draw they
+never agreed to.
+
+**Twice now an issue comment has described a capability as built when only its endpoint was.**
+#135's said the edit endpoint existed — it did; nothing called it. #137's whole premise was that
+notifications were partly delivered, and `DrawCompleted` had a template with no caller. #134's
+comment says invitation rotation "is not implemented"; the group screen has a "Create a fresh link"
+button that calls `rotateInvite`, which rewrites `invite_hash`, so the previous secret does stop
+working. **Check the caller and the screen, not the endpoint.**
 
 **#135's headline was not what its issue said.** The comment on it listed the edit endpoint as
 already built, and it is — but nothing called it: `api.updateGroup` was invoked from exactly one

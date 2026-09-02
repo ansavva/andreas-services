@@ -126,6 +126,18 @@ export interface GroupDetail extends GroupSummary {
   customization?: ExchangeCustomization | null;
 }
 
+/**
+ * A new exchange started from a previous one (#136).
+ *
+ * `prior_participants` is a list of NAMES so the organizer knows who to send the link to — nobody is
+ * enrolled by repeating, and the server does not act on it.
+ */
+export interface RepeatedExchange {
+  group: GroupDetail;
+  invite_url: string;
+  prior_participants: string[];
+}
+
 export interface PlusPurchaseStatus {
   group_id: string;
   status?: PaymentStatus | null;

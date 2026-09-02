@@ -70,6 +70,15 @@ public sealed class GroupsController(IGroupService groups) : ControllerBase
     // The organizer removes somebody, before the draw (#135). Under `members/{memberId}` rather than
     // `members/me`, which is the participant's own way out — the two are different actions with
     // different authorization and are deliberately different routes.
+    // Repeat an exchange (#136). A POST on the SOURCE, because that is what the caller has and what
+    // authorizes the copy; the new exchange comes back in the response along with its one-time link.
+    [HttpPost("{groupId}/repeat")]
+    public Task<RepeatedExchange> Repeat(
+        string groupId,
+        [FromBody] RepeatExchangeRequest request,
+        CancellationToken cancellationToken) =>
+        groups.RepeatAsync(groupId, request, cancellationToken);
+
     [HttpDelete("{groupId}/members/{memberId}")]
     public async Task<IActionResult> RemoveMember(string groupId, string memberId, CancellationToken cancellationToken)
     {
