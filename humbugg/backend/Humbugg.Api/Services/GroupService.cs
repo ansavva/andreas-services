@@ -41,6 +41,7 @@ internal sealed class GroupService(
     IGroupRepository groups,
     IMembershipRepository memberships,
     IWishRepository wishes,
+    IQuestionRepository questions,
     IInvitationRepository invitations,
     IMatchingService matching,
     IPlanCatalog plans,
@@ -281,6 +282,9 @@ internal sealed class GroupService(
     {
         var (group, _) = await RequireMembershipAsync(groupId, cancellationToken);
         RequireOwner(group);
+        // Conversations first: they are keyed by group and draw, so once the group row is gone
+        // nothing can enumerate them again. Two people's words, and neither is the organizer's.
+        await questions.DeleteByGroupAsync(groupId, cancellationToken);
         await memberships.DeleteByGroupAsync(groupId, cancellationToken);
         await groups.DeleteAsync(groupId, cancellationToken);
         await audit.RecordAsync(AuditAction.GroupDeleted, groupId, AuditTarget.Group(groupId), cancellationToken: cancellationToken);
@@ -363,6 +367,11 @@ internal sealed class GroupService(
         // The claims are the caller's own data too — notes they authored about their own shopping —
         // and the control says "clear everything I saved". Leaving them would make it a lie.
         await memberships.ClearWishClaimsAsync(membership.MemberId, cancellationToken);
+        // And the conversations they are party to, on both sides: the thread about their own list,
+        // and the one they opened with the person they were assigned.
+        await questions.DeleteForMemberAsync(
+            groupId, membership.MemberId, await ThreadsGivenByAsync(groupId, membership.MemberId, cancellationToken),
+            cancellationToken);
         var cleared = await memberships.UpdatePrivateAsync(membership.MemberId, "", "", new Address(), cancellationToken);
         await audit.RecordAsync(AuditAction.ParticipantDataCleared, groupId, AuditTarget.Member(membership.MemberId), cancellationToken: cancellationToken);
         return Private(cleared);
@@ -375,6 +384,9 @@ internal sealed class GroupService(
         // Before the membership row goes: member_id is the only key these rows have, so deleting the
         // membership first would strand them with nothing able to address them again.
         await wishes.DeleteByMemberAsync(membership.MemberId, cancellationToken);
+        await questions.DeleteForMemberAsync(
+            groupId, membership.MemberId, await ThreadsGivenByAsync(groupId, membership.MemberId, cancellationToken),
+            cancellationToken);
         await memberships.DeleteAsync(membership.MemberId, cancellationToken);
         await audit.RecordAsync(AuditAction.ParticipantLeft, groupId, AuditTarget.Member(membership.MemberId), cancellationToken: cancellationToken);
         var remaining = group.Exclusions.Where(pair => !pair.Contains(membership.MemberId, StringComparer.Ordinal)).ToList();
@@ -622,6 +634,27 @@ internal sealed class GroupService(
                 Assignment(recipient, await wishes.GetByMemberAsync(recipient.MemberId, cancellationToken))));
         }
         return new RevealResponse(revealed);
+    }
+
+    /// <summary>
+    /// The thread ids this member is the GIVER on, in the draw currently in force.
+    /// </summary>
+    /// <remarks>
+    /// A thread is keyed by its recipient, so the recipient's side is found by the member id alone.
+    /// The giver's side is not on any row — that is the feature — so the only way to find the
+    /// conversation somebody opened is to invert the draw, which is what this does. Both halves are
+    /// needed on every removal path: a departing participant's own words are theirs whichever end of
+    /// the conversation they wrote from.
+    /// </remarks>
+    private async Task<IReadOnlyCollection<string>> ThreadsGivenByAsync(
+        string groupId,
+        string memberId,
+        CancellationToken cancellationToken)
+    {
+        var draw = await groups.GetDrawAsync(groupId, cancellationToken);
+        return draw is not null && draw.Assignments.TryGetValue(memberId, out var recipientId)
+            ? [QuestionRepository.ThreadId(groupId, draw.DrawId, recipientId)]
+            : [];
     }
 
     private async Task<GroupRecord> RequireGroupAsync(string groupId, CancellationToken cancellationToken) =>

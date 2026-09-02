@@ -281,6 +281,12 @@ Group `humbugg-prod` with `cancel-in-progress: false` — queued pushes wait for
 - `humbugg-prod-draws` — private giver → recipient maps, separate from ordinary group responses
 - `humbugg-prod-audit-events` — standard append-only audit trail for sensitive exchange actions (creation/deletion, participant/exclusion/role/entitlement/reminder changes, draws, resets, reveals, self-service data clears, membership anonymization, and account deletion); see `infra/README.md`. Account deletion never erases audit records — it anonymizes only the `actor_user_id` via the narrow `IAuditActorAnonymizer` seam. Retention/deletion policy is documented in `docs/data-retention-deletion.md`.
 - `humbugg-prod-analytics-events` — privacy-safe product-analytics funnel events (plan + aggregate counts only; no wishlist/address/email/token/assignment). Deduped by `idempotency_key`; disable via `HUMBUGG_ANALYTICS_ENABLED=false`; see `docs/analytics.md`
+- `humbugg-prod-questions` — anonymous giver↔recipient question threads (#131), keyed
+  `({groupId}:{drawId}:{recipientMemberId}, message_id)`. **No row stores the giver.** A message
+  records which SIDE wrote it and the API re-derives who the giver is from the draw on every
+  request, so there is no field to project, no id for a URL to carry, and nothing for a later
+  endpoint to leak by returning a whole record. The `group_id` index exists for deletion, not
+  reading, and projects only the keys plus `recipient_member_id`
 - `humbugg-prod-email-messages` — stable transactional message IDs and delivery state
 
 Profile photos are **not** in DynamoDB: the `humbugg-prod-profiles` row stores only an `avatar_key`

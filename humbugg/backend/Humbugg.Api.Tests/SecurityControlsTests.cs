@@ -114,7 +114,7 @@ public sealed class SecurityControlsTests
             Groups = new FakeGroups(Group(drawn, member?.IsOrganizer == true ? "user" : "owner"), drawn);
             Subject = new GroupService(
                 new FakeUser(), new FakeProfiles(), Groups, new FakeMembers(members), new FakeWishes(),
-                new FakeInvitations(), new MatchingService(), new PlanCatalog(new()), Audit, new FakeProductAnalytics(),
+                new FakeQuestions(), new FakeInvitations(), new MatchingService(), new PlanCatalog(new()), Audit, new FakeProductAnalytics(),
                 new HumbuggSettings(
                     "us-east-1", "us-east-1", "pool", "client", ["https://humbugg.example"], "https://humbugg.example", null,
                     "profiles", "groups", "members", "draws", "audit", "analytics"));

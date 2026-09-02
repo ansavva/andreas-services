@@ -30,6 +30,7 @@ this document specifies the invariant/limit that the feature must ship with.
 | Assignment (giver → recipient map) | High — spoils the exchange | `humbugg-prod-draws`, server-side only |
 | Wishlist / avoidances / mailing address | High — personal data | `humbugg-prod-groupmembers`, private to the member |
 | Purchase claims (planned / bought) | High — spoils the exchange, and implies the assignment | `humbugg-prod-groupmembers`, on the **claimant's** row, private to them |
+| Anonymous question threads | High — the bodies are personal data, and the asker's identity is the exchange | `humbugg-prod-questions`; the body is stored, the **giver is not** |
 | Emergency-reveal audit events | High — accountability record | `humbugg-prod-audit-events`, append-only |
 | Cognito identity / access token | High — authentication | Cognito; access token validated per request |
 | Plan / entitlement | Medium — controls quota | `humbugg-prod-groups.plan` / `entitlement_id` |

@@ -37,6 +37,7 @@ internal sealed class AccountDeletionService(
     IGroupRepository groups,
     IMembershipRepository memberships,
     IWishRepository wishes,
+    IQuestionRepository questions,
     IAuditTrail audit,
     IAuditActorAnonymizer auditAnonymizer) : IAccountDeletionService
 {
@@ -82,11 +83,26 @@ internal sealed class AccountDeletionService(
         await auditAnonymizer.AnonymizeActorAsync(userId, pseudonym, cancellationToken);
     }
 
+    /// <summary>The thread ids this member is the giver on, in the draw currently in force.</summary>
+    /// <remarks>A thread is keyed by its recipient and stores no giver, so the only way to find the
+    /// conversation somebody opened is to invert the draw.</remarks>
+    private async Task<IReadOnlyCollection<string>> ThreadsGivenByAsync(
+        string groupId,
+        string memberId,
+        CancellationToken cancellationToken)
+    {
+        var draw = await groups.GetDrawAsync(groupId, cancellationToken);
+        return draw is not null && draw.Assignments.TryGetValue(memberId, out var recipientId)
+            ? [Data.QuestionRepository.ThreadId(groupId, draw.DrawId, recipientId)]
+            : [];
+    }
+
     private async Task DeleteOrganizedGroupAsync(GroupRecord group, string userId, CancellationToken cancellationToken)
     {
         // Deleting a whole group the caller organized: every member's wishes go with it.
         foreach (var member in await memberships.GetByGroupAsync(group.GroupId, cancellationToken))
             await wishes.DeleteByMemberAsync(member.MemberId, cancellationToken);
+        await questions.DeleteByGroupAsync(group.GroupId, cancellationToken);
         await memberships.DeleteByGroupAsync(group.GroupId, cancellationToken);
         await groups.DeleteAsync(group.GroupId, cancellationToken);
         await audit.RecordAsync(AuditAction.GroupDeleted, group.GroupId, AuditTarget.Group(group.GroupId),
@@ -99,6 +115,15 @@ internal sealed class AccountDeletionService(
         // because a draw references it, but the wishes are authored personal data with nothing
         // referencing them, so leaving them behind would defeat the anonymization.
         await wishes.DeleteByMemberAsync(membership.MemberId, cancellationToken);
+        // Both ends of any conversation they are party to. This matters MOST on the anonymize path
+        // below: the membership row survives because a draw references it, but a question thread is
+        // two people's own words with nothing referencing it, so leaving it would defeat the
+        // anonymization exactly the way leaving the wishes would.
+        await questions.DeleteForMemberAsync(
+            group.GroupId,
+            membership.MemberId,
+            await ThreadsGivenByAsync(group.GroupId, membership.MemberId, cancellationToken),
+            cancellationToken);
 
         if (group.Status == GroupStatus.Drawn)
         {

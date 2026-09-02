@@ -27,6 +27,7 @@ output "dynamodb_table_arns" {
     invitations      = aws_dynamodb_table.invitations.arn
     reminders        = aws_dynamodb_table.reminders.arn
     templates        = aws_dynamodb_table.templates.arn
+    questions        = aws_dynamodb_table.questions.arn
   }
 }
 

@@ -257,6 +257,72 @@ public sealed record RecipientAssignment(
     IReadOnlyList<RecipientWish> Wishes);
 
 public sealed record RevealAssignment(Membership Giver, RecipientAssignment Recipient);
+
+// ─── Anonymous questions (#131) ──────────────────────────────────────────────────────────────────
+//
+// A giver may ask their recipient about a gift without revealing who is asking. The anonymity is
+// STRUCTURAL rather than a filter: no row anywhere in this feature stores the giver's member id.
+// A message records which SIDE wrote it, and every request re-derives who the giver is from the
+// draw. There is therefore no field to accidentally project, no id to leak through a URL, and
+// nothing for a future endpoint to expose by returning "the whole row".
+public enum QuestionAuthor
+{
+    /// <summary>The person giving the gift. Which person that is, is never stored.</summary>
+    Giver,
+
+    /// <summary>The person whose list it is. They own the thread and can end it.</summary>
+    Recipient,
+}
+
+public sealed record QuestionMessage(
+    string MessageId,
+    QuestionAuthor Author,
+    string Body,
+    string CreatedAt);
+
+/// <summary>
+/// One conversation, as either side sees it. Identical for both — which is the point: if the two
+/// projections differed, one of them would eventually differ by an identity.
+/// </summary>
+public sealed record QuestionThread(
+    IReadOnlyList<QuestionMessage> Messages,
+    /// <summary>The recipient has ended the conversation. Only they can lift it.</summary>
+    bool Blocked,
+    /// <summary>Whether THIS caller may send right now, with <see cref="BlockedReason"/> saying why not.</summary>
+    bool CanSend,
+    string? BlockedReason,
+    int MessageLimit);
+
+public sealed record SendQuestionRequest(string? Body);
+public sealed record BlockQuestionsRequest(bool Blocked);
+
+// Stored rows. `ThreadId` is `{groupId}:{drawId}:{recipientMemberId}` — deterministic, so a thread
+// is addressed without a lookup, and self-invalidating, because a reset or a late-participant
+// reassignment mints a new draw id and therefore a new, empty thread. The old conversation becomes
+// unreachable by every route at once, which is the defined behaviour a reset needs: after it you may
+// be buying for somebody else entirely.
+//
+// `MessageId` is an ISO-8601 UTC timestamp followed by a short random suffix, so the sort key orders
+// chronologically without a second attribute and two messages in the same tick cannot collide.
+//
+// There is deliberately NO giver member id on this record.
+internal sealed record QuestionMessageRecord(
+    string ThreadId,
+    string MessageId,
+    string GroupId,
+    string DrawId,
+    string RecipientMemberId,
+    QuestionAuthor Author,
+    string Body,
+    string CreatedAt);
+
+/// <summary>The thread's own control row: whether the recipient has ended it.</summary>
+internal sealed record QuestionThreadRecord(
+    string ThreadId,
+    string GroupId,
+    string RecipientMemberId,
+    bool Blocked,
+    string UpdatedAt);
 public sealed record RevealResponse(IReadOnlyList<RevealAssignment> Assignments);
 public sealed record LateParticipantPreview(
     string ProposalId,

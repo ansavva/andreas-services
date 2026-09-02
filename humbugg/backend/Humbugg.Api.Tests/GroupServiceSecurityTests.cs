@@ -190,6 +190,7 @@ public sealed class GroupServiceSecurityTests
         public FakeMembers Members { get; }
         public FakeAuditTrail Audit { get; }
         public FakeWishes Wishes { get; }
+        public FakeQuestions Questions { get; }
         public GroupService Subject { get; }
 
         public Fixture(
@@ -205,7 +206,8 @@ public sealed class GroupServiceSecurityTests
             Members = new FakeMembers(member is null ? [] : [member]);
             Audit = new FakeAuditTrail();
             Wishes = new FakeWishes(wishes ?? []);
-            Subject = new GroupService(new FakeUser(callerUserId), new FakeProfiles(), Groups, Members, Wishes, new FakeInvitations(), new MatchingService(), new PlanCatalog(new()), Audit, new FakeProductAnalytics(), new HumbuggSettings(
+            Questions = new FakeQuestions();
+            Subject = new GroupService(new FakeUser(callerUserId), new FakeProfiles(), Groups, Members, Wishes, Questions, new FakeInvitations(), new MatchingService(), new PlanCatalog(new()), Audit, new FakeProductAnalytics(), new HumbuggSettings(
                 "us-east-1", "us-east-1", "pool", "client", ["http://localhost:5173"], "http://localhost:5173", null,
                 "profiles", "groups", "members", "draws", "audit", "analytics"));
         }

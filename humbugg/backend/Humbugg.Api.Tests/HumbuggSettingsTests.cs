@@ -23,6 +23,7 @@ public class HumbuggSettingsTests
         "HUMBUGG_INVITATIONS_TABLE",
         "HUMBUGG_REMINDERS_TABLE",
         "HUMBUGG_TEMPLATES_TABLE",
+        "HUMBUGG_QUESTIONS_TABLE",
     ];
 
     [Fact]
@@ -44,6 +45,7 @@ public class HumbuggSettingsTests
             Assert.Equal("set-HUMBUGG_INVITATIONS_TABLE", settings.InvitationsTable);
             Assert.Equal("set-HUMBUGG_REMINDERS_TABLE", settings.RemindersTable);
             Assert.Equal("set-HUMBUGG_TEMPLATES_TABLE", settings.TemplatesTable);
+            Assert.Equal("set-HUMBUGG_QUESTIONS_TABLE", settings.QuestionsTable);
         });
     }
 
@@ -60,6 +62,7 @@ public class HumbuggSettingsTests
     [InlineData("HUMBUGG_INVITATIONS_TABLE")]
     [InlineData("HUMBUGG_REMINDERS_TABLE")]
     [InlineData("HUMBUGG_TEMPLATES_TABLE")]
+    [InlineData("HUMBUGG_QUESTIONS_TABLE")]
     public void ThrowsWhenATableVariableIsMissing(string missing)
     {
         WithTablesSet(() =>

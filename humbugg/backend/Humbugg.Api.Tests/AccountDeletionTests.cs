@@ -201,13 +201,14 @@ public sealed class AccountDeletionTests
         public CapturingAudit Audit { get; } = new();
         public FakeAnonymizer Anonymizer { get; } = new();
         public FakeWishes Wishes { get; } = new();
+        public FakeQuestions Questions { get; } = new();
         public AccountDeletionService Deletion { get; }
         public GroupService GroupService { get; }
 
         public World()
         {
-            Deletion = new AccountDeletionService(User, Profiles, Groups, Members, Wishes, Audit, Anonymizer);
-            GroupService = new GroupService(User, Profiles, Groups, Members, Wishes, new FakeInvitations(), new MatchingService(), new PlanCatalog(new()), Audit, new NoopAnalytics(),
+            Deletion = new AccountDeletionService(User, Profiles, Groups, Members, Wishes, Questions, Audit, Anonymizer);
+            GroupService = new GroupService(User, Profiles, Groups, Members, Wishes, Questions, new FakeInvitations(), new MatchingService(), new PlanCatalog(new()), Audit, new NoopAnalytics(),
                 new HumbuggSettings("us-east-1", "us-east-1", "pool", "client", ["http://localhost:5173"], "http://localhost:5173", null,
                     "profiles", "groups", "members", "draws", "audit", "analytics"));
         }
@@ -246,7 +247,10 @@ public sealed class AccountDeletionTests
         public Task DeleteAsync(string groupId, CancellationToken cancellationToken = default) { groups.Remove(groupId); Deleted.Add(groupId); return Task.CompletedTask; }
         public Task<GroupRecord> CreateAsync(GroupRecord group, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task CreateDrawAsync(string groupId, IReadOnlyDictionary<string, string> assignments, string actorUserId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<DrawRecord?> GetDrawAsync(string groupId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        // Real, and null: these groups are never drawn, so the giver half of the question sweep has
+        // no thread to find. Throwing here would only mean "this fake predates questions".
+        public Task<DrawRecord?> GetDrawAsync(string groupId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<DrawRecord?>(null);
         public Task ResetDrawAsync(string groupId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 
