@@ -14,7 +14,6 @@ import {
 import {
   deleteProject,
   getProject,
-  getProjectInputs,
   getProjectMovies,
   getProjectScenes,
 } from "../apis/studio";
@@ -22,14 +21,13 @@ import { ApertureSpinner } from "../components/common/Aperture";
 import { FolderTab } from "../components/browse/FolderTab";
 import { PageBar } from "../components/layout/PageBar";
 import { EntityRow } from "../components/entity/EntityRow";
-import { MediaThumb } from "../components/media/MediaThumb";
 import { ProjectDetails } from "../components/project/ProjectDetails";
 import { RunsGrid } from "../components/project/RunsGrid";
 import { RunsTable } from "../components/project/RunsTable";
 import { NewRunStrip } from "../components/run/NewRunStrip";
 import { useResource } from "../hooks/useResource";
 import type { ProjectRecord } from "../types";
-import { formatBytes, formatDate } from "../utils/format";
+import { formatDate } from "../utils/format";
 import { PROJECTS_PATH, moviePath, runPath, scenePath } from "../utils/location";
 import { useSearchParamState } from "../hooks/useSearchParamState";
 import { LoadError } from "../components/common/LoadError";
@@ -38,13 +36,24 @@ import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog"
 /**
  * One project: what it is, what has been run in it, and everything under it.
  *
- * The six tabs are fixed here where a character's are not, and the difference is
- * real rather than an inconsistency. A character's tabs after References are
+ * The five tabs are fixed here where a character's are not, and the difference
+ * is real rather than an inconsistency. A character's tabs after References are
  * *folders*, which people make and rename freely. A project's are **entity
  * listings** — runs, scenes, movies are rows queried by project id — plus its
- * input pool and its files. The five starting folders (`runs/`, `scenes/`,
- * `movies/`, `chains/`, `input/`) are still only a convention, and they show up
- * where all folders do: inside Files.
+ * files. The five starting folders (`runs/`, `scenes/`, `movies/`, `chains/`,
+ * `input/`) are still only a convention, and they show up where all folders do:
+ * inside Files.
+ *
+ * ## There is no Inputs tab, and there should not be one
+ *
+ * There was: `input/` got a tab of its own, drawing the same nodes Files draws
+ * one tab over, in a numbered list. That is the folder-tab mistake the character
+ * page already made and undid — a tab whose whole content is one folder of the
+ * browser beside it — and the numbering did not save it. `--input N` is a
+ * *position in a name-ascending listing*, which nothing stores, so the numbers
+ * were derived from the same order Files shows under `name` sort. Reading them
+ * off the pool is the CLI's job, and `studio projects inputs <project>` prints
+ * each position beside its node.
  */
 const RUNS_LIST = "list";
 const RUNS_GRID = "grid";
@@ -127,15 +136,15 @@ export function ProjectPage() {
           when controlled: it seeds `useControllableState`, and Tabs does not
           introspect its List to guess a first tab. */}
       <Tabs.Root value={tab} defaultValue="overview" onValueChange={setTab}>
-        {/* Scrolls rather than wraps, like the character page's. Six labels
-            wrapped to two rows on a phone, and a tab strip that grows a second
-            row draws a second underline — which reads as two strips. */}
+        {/* Scrolls rather than wraps, like the character page's: a tab strip
+            that grows a second row draws a second underline, which reads as two
+            strips. Six of these wrapped at 390px, and five is not far enough
+            under that to change the rule. */}
         <Tabs.List className="overflow-x-auto border-b border-line">
           <Tabs.Tab value="overview">Overview</Tabs.Tab>
           <Tabs.Tab value="runs">Runs</Tabs.Tab>
           <Tabs.Tab value="scenes">Scenes</Tabs.Tab>
           <Tabs.Tab value="movies">Movies</Tabs.Tab>
-          <Tabs.Tab value="inputs">Inputs</Tabs.Tab>
           <Tabs.Tab value="files">Files</Tabs.Tab>
         </Tabs.List>
 
@@ -229,10 +238,6 @@ export function ProjectPage() {
           <MoviesTab projectId={record.id} />
         </Tabs.Panel>
 
-        <Tabs.Panel value="inputs">
-          <InputsTab projectId={record.id} />
-        </Tabs.Panel>
-
         <Tabs.Panel value="files">
           <FolderTab rootId={record.root} label={record.name} />
         </Tabs.Panel>
@@ -296,61 +301,6 @@ function MoviesTab({ projectId }: { projectId: string }) {
           thumb={movie.thumb ?? null}
           onOpen={() => navigate(moviePath(movie.id))}
         />
-      ))}
-    </div>
-  );
-}
-
-/**
- * The working pool, numbered.
- *
- * **The number is the whole point.** `--input N` is a *position* in this list,
- * which the API sorts name-ascending — nothing stores it, so renaming a file
- * renumbers the pool. Showing the positions is what stops that being a surprise
- * the first time a turnaround picks the wrong angle image.
- */
-function InputsTab({ projectId }: { projectId: string }) {
-  const load = useCallback(() => getProjectInputs(projectId), [projectId]);
-  const { data, loading, error, reload } = useResource(["project-inputs", projectId], load);
-
-  if (loading) return <ApertureSpinner size="md" label="Loading inputs" />;
-  if (error) return <LoadError what="inputs" message={error} onRetry={reload} />;
-  if (!data || data.length === 0)
-    return (
-      <Text variant="body" tone="muted">
-        The input pool is empty.
-      </Text>
-    );
-
-  return (
-    <div className="flex flex-col">
-      <Text variant="caption" tone="muted" className="block pb-2">
-        The number is what <code className="font-mono">--input N</code> means. It is a position in this order, not
-        anything stored — renaming a file renumbers the pool.
-      </Text>
-      {data.map((input, index) => (
-        <div key={input.id} className="flex items-center gap-3 border-t border-line py-2">
-          <Text variant="body" family="mono" className="w-8 shrink-0 text-right tabular-nums">
-            {index + 1}
-          </Text>
-          <MediaThumb
-            nodeId={input.id}
-            url={input.url}
-            name={input.name}
-            aspect="auto"
-            className="size-12 shrink-0 rounded-none border border-line"
-          />
-          <div className="min-w-0 flex-1">
-            <Text variant="body" className="truncate">
-              {input.name}
-            </Text>
-            {input.size !== undefined && (
-              <Text variant="caption" tone="muted" className="font-mono tabular-nums">
-                {formatBytes(input.size)}
-              </Text>
-            )}
-          </div>
-        </div>
       ))}
     </div>
   );

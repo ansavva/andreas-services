@@ -62,8 +62,19 @@ export interface BrowserNav {
   setSort: (next: SortOrder) => void;
   /** `replace` is for the one move that is not a journey — leaving a deleted folder. */
   goToFolder: (id: FolderId, options?: { replace?: boolean }) => void;
-  /** Opens the viewer at this file, with this browser as its context. */
-  openFile: (file: FileEntry) => void;
+  /**
+   * Opens the viewer at this file, with this browser as its context.
+   *
+   * **`deep` is what the listing on screen actually was, and it is not
+   * cosmetic.** A context of `f:<folder>` makes the viewer re-read that folder
+   * one level down to find the file's neighbours — which is right for a readdir
+   * and wrong for every listing that searched the branch. A tile in the Media
+   * view, or under a tag filter, is usually in some *sub*folder, so the feed
+   * came back without it: the viewer showed "No images or videos here", or
+   * silently opened whatever was first in the folder instead. Deep listings say
+   * so, and the nav encodes the recursive context that holds them.
+   */
+  openFile: (file: FileEntry, deep?: boolean) => void;
   /**
    * The same destination as `openFile`, as an address rather than an act.
    *
@@ -71,7 +82,7 @@ export interface BrowserNav {
    * its own new-tab, new-window and copy-address gestures, and a handler so a
    * plain click stays a client-side navigation instead of a page load.
    */
-  fileHref: (file: FileEntry) => string;
+  fileHref: (file: FileEntry, deep?: boolean) => string;
 }
 
 interface Props {
@@ -227,6 +238,17 @@ export function FolderBrowser({
     view === VIEW_MEDIA ? MEDIA_VIEW : [],
   );
   const folderId = folder;
+
+  /**
+   * Whether what is on screen is a branch search rather than a readdir.
+   *
+   * **Read off the answer, not off the request.** `data.depth` is what the
+   * server says it did, so this cannot drift from the listing the way a
+   * `view === VIEW_MEDIA || tags.length > 0` recomputation here would — and it
+   * covers both ways of going deep with one expression. It is what a tile hands
+   * `openFile`; see `BrowserNav`.
+   */
+  const deep = data?.depth === "all";
 
   /**
    * The listing's own breadcrumbs are where every *path* on this page comes from.
@@ -891,8 +913,8 @@ export function FolderBrowser({
                 file={file}
                 selected={selection.selected.has(file.id)}
                 selectionActive={selection.count > 0}
-                onOpen={() => nav.openFile(file)}
-                to={nav.fileHref(file)}
+                onOpen={() => nav.openFile(file, deep)}
+                to={nav.fileHref(file, deep)}
                 onToggleSelect={(extend) =>
                   selection.toggleAt(indexOf.get(file.id) ?? 0, extend)
                 }
@@ -915,8 +937,8 @@ export function FolderBrowser({
                 onToggleSelect={(extend) =>
                   selection.toggleAt(indexOf.get(file.id) ?? 0, extend)
                 }
-                onOpen={() => nav.openFile(file)}
-                to={nav.fileHref(file)}
+                onOpen={() => nav.openFile(file, deep)}
+                to={nav.fileHref(file, deep)}
                 onRename={(name) => run(renameNode(file.id, name))}
                 onMove={() =>
                   setPickerTarget({

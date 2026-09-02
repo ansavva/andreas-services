@@ -20,6 +20,7 @@ import { TestProviders } from "../test-providers";
  */
 vi.mock("../apis/studio", () => ({
   getFolder: vi.fn(),
+  getMedia: vi.fn(),
   getRun: vi.fn(),
   getScene: vi.fn(),
   getNode: vi.fn(),
@@ -30,10 +31,11 @@ vi.mock("../apis/studio", () => ({
   renameNode: vi.fn(),
 }));
 
-import { getAsset, getNode, getRun, getFolder } from "../apis/studio";
+import { getAsset, getMedia, getNode, getRun, getFolder } from "../apis/studio";
 import { ObjectPage } from "./ObjectPage";
 
 const tree = vi.mocked(getFolder);
+const walk = vi.mocked(getMedia);
 const run = vi.mocked(getRun);
 const node = vi.mocked(getNode);
 const asset = vi.mocked(getAsset);
@@ -135,6 +137,42 @@ describe("which sequence the address names", () => {
     await waitFor(() => expect(node).toHaveBeenCalledWith("node-lone"));
     expect(tree).not.toHaveBeenCalled();
     expect(run).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A file further into a PAGED walk is not a dead link.
+   *
+   * The recursive feed arrives one page at a time, and a file the first page
+   * does not hold used to be read as "the feed does not have this" — so the page
+   * adopted the first frame instead and rewrote the address to it. Silent in
+   * both directions: the wrong picture is still a picture, and the URL that now
+   * names it looks like the one that was clicked.
+   *
+   * Every listing the browser's Media view and its tag filter produce is deep
+   * and therefore paged, which is how a tile on a big folder reached it.
+   */
+  it("keeps paging a walk until it reaches the file the address names", async () => {
+    walk
+      .mockResolvedValueOnce({
+        items: [file("node-a", "a.png"), file("node-b", "b.png")],
+        total: 3,
+        truncated: false,
+        next_cursor: "2",
+      } as never)
+      .mockResolvedValueOnce({
+        items: [file("node-far", "far.png")],
+        total: 3,
+        truncated: false,
+        next_cursor: null,
+      } as never);
+
+    open(`/o/node-far?in=${encodeURIComponent(`recursive:${FOLDER}`)}`);
+
+    // Third of three: the walk was followed to the end and the file that was
+    // asked for is the one on screen — not `node-a`, which page one led with.
+    await waitFor(() => expect(screen.getByText(/3 of 3/)).toBeTruthy());
+    expect(walk).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText("No images or videos here.")).toBeNull();
   });
 
   it("opens a feed at its first frame when the address carries no id", async () => {

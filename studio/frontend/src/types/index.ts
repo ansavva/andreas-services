@@ -604,33 +604,6 @@ export interface ProjectRecord {
   characters: Array<{ id: string; name: string }>;
 }
 
-/**
- * One file in a project's input pool.
- *
- * **Position in this list is what `--input N` means**, which is why the app
- * numbers the rows: the pool is sorted name-ascending by the API and the number
- * a person passes on the command line is an index into that order, not anything
- * stored. Renaming a file therefore renumbers the pool, and showing the numbers
- * is how that stops being a surprise.
- */
-/**
- * One file in the pool.
- *
- * **`id`, not `node`.** `support.assets` draws the line: a pointer a record
- * holds says `node`, and a node reported by its own id says `id`. The pool is
- * a listing of the `input/` folder's children, so it is the second — and this
- * said `node`, which is `undefined` against the route and left every thumbnail
- * in the tab blank. The same divergence cost every tile on the run page once,
- * in the other direction.
- */
-export interface ProjectInput {
-  id: string;
-  name: string;
-  size?: number;
-  content_type?: string | null;
-  url: string;
-}
-
 export type RunStatus =
   // Before anything is submitted. A run is created when it is PLANNED now, so
   // the row no longer says that anything happened — see `RunRecord.plan`.

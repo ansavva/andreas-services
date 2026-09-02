@@ -837,12 +837,28 @@ that breaks every time the pipeline ships.
   A project draws two browsers, so their view and folder ride in named query keys
   (`view`/`folder`, `runsView`/`runsFolder`) — one key between them would carry a
   folder id from one subtree into the other on a tab switch.
-- **There is no "Play reel" button, and no Identity tab.** Both were removed in
-  September 2026, and for the same reason: each was a second way of looking at a
-  listing the page already showed. Identity was a character's Files with
-  `default` pre-filled in the tag filter — identity is a *tag*, so that is a
-  preset of the tab beside it rather than a place of its own — and Play reel
-  opened the viewer on a recursive walk of the folder on screen. The viewer
+- **A deep listing addresses its tiles `in=recursive:`, and that is a fix.**
+  `?in=f:<folder>` makes the viewer re-read that folder one level down to find
+  the neighbours, which is right for a readdir and wrong for both listings that
+  search the branch — Media view and the tag filter. A tile in either is usually
+  a file in some *sub*folder, so the feed came back without it and the viewer
+  either said "No images or videos here" or silently opened whatever the folder
+  itself held first. `FolderBrowser` reads `data.depth` — what the server says it
+  did, so it cannot drift from the listing — and hands it to `openFile` /
+  `fileHref`, which both nav implementations encode. Two halves, because either
+  alone still misleads: the viewer also no longer adopts `items[0]` for an id it
+  has not reached, since a paged walk that has not found the file yet is still
+  searching rather than holding a dead link.
+- **There is no "Play reel" button, no Identity tab and no Inputs tab.** All
+  three were removed in September 2026, and for the same reason: each was a
+  second way of looking at a listing the page already showed. Identity was a
+  character's Files with `default` pre-filled in the tag filter — identity is a
+  *tag*, so that is a preset of the tab beside it rather than a place of its own.
+  Inputs was a project's `input/` folder, numbered, drawn one tab over from the
+  Files that already holds it; `--input N` is a position in a name-ascending
+  listing that nothing stores, and `studio projects inputs <project>` is what
+  prints those positions. Play reel opened the viewer on a recursive walk of the
+  folder on screen. The viewer
   still plays a feed: opening any tile from Home's Recent grid scrolls the same
   recursive walk (`/o/<id>?in=recursive`). What went is the button that made it
   look like a separate mode. `/o` with **no** id still resolves for old links,
