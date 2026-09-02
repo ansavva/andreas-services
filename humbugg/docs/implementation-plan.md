@@ -4,9 +4,15 @@ What is built, what is next, and the order it has to happen in. Written for whoe
 agent — picks this up next.
 
 **Issues are the source of truth for scope; this file is the source of truth for *order*.** A
-GitHub issue says what a thing is. It does not say that #133 must exist before five other things
-have anywhere to render, or that #365 gets more expensive every week it waits. That is what this
-file holds. When they disagree about scope, the issue wins and this file should be corrected.
+GitHub issue says what a thing is. It does not say that a purchase flow is worthless until the
+capabilities it sells are reachable, or that #365 gets more expensive every week it waits. That is
+what this file holds. When they disagree about scope, the issue wins and this file should be
+corrected.
+
+**A closed milestone is not evidence.** Three separate issue comments in this repo have described a
+capability as delivered when only its endpoint was, and the Plus milestone currently reads zero open
+while six of its capabilities have no screen. Check the caller and the screen before you believe
+either.
 
 Last reconciled against the repo on 2026-09-02.
 
@@ -19,10 +25,10 @@ Live at `https://www.humbugg.com` (product app at `app.humbugg.com`, API at `api
 | Milestone | Closed | Open | State |
 |---|---|---|---|
 | Foundation | 13 | 0 | Complete |
-| Free | 9 | 4 | The active milestone |
-| Plus | 8 | 1 | Backend complete and deployed; the purchase UI (#141) is **built**, awaiting review |
+| Free | 10 | 3 | The active milestone — #129, #134, #138 remain |
+| Plus | 9 | 0 | **Closed, and not finished.** Read the next section before believing it |
 | Work | 0 | 10 | Deliberately untouched |
-| Launch | 2 | 11 | Gated on Free |
+| Launch | 3 | 10 | Gated on Free |
 
 ### How it got out of order, and why that matters
 
@@ -31,121 +37,105 @@ existed**. Six PRs of Plus backend — managed invitations, scheduled reminders,
 customization, reusable templates, post-draw late-participant reassignment — sat unmergeable for
 five weeks, then merged on 2026-08-27 along with the first two pieces of Free.
 
-The consequence is still live and is the single most important thing to understand about this
-codebase today: **most of Plus has no user interface.** The backend is complete, tested and
-deployed. Almost none of it is reachable, because the organizer surface it would live on (#133) does
-not exist and the purchase flow that would sell it (#141) was written against a deleted directory.
+Half of that is now fixed and half is not, and the difference is the single most important thing to
+understand about this codebase today.
 
-Do not read the Plus milestone being nearly closed as "Plus is done".
+**Fixed:** the organizer surface exists (#133, at `/organize/{groupId}`) and Plus can be bought
+(#141). Both landed on 2026-09-02.
+
+**Not fixed: every Plus capability is still unreachable.** Managed invitations, scheduled reminders,
+co-organizers, exchange customization, reusable templates and late-participant reassignment are all
+built, tested, deployed — and rendered by no screen. `humbugg/app/src/api/client.ts` has a working
+client method for each; grep the `src/` tree for any of them and you get one hit, the client itself:
+
+```
+listInvitations  createInvitations  getReminders   updateReminders
+setOrganizerRole listTemplates      applyTemplate  previewLateParticipant
+updateCustomization
+```
+
+So somebody can now pay $12 for six capabilities they cannot use. **That is the most urgent thing
+in this file**, and it has no issue: the Plus milestone reads 0 open because every issue in it
+described a backend that was in fact delivered. Opening one is step one for whoever picks this up.
+
+Do not read the Plus milestone being closed as "Plus is done".
 
 ---
 
 ## Critical path
 
-Four issues, in this order. Everything else queues behind them.
+The four issues this section used to list — #133, #141, #130→#131→#132, #129 — are three done and
+one deliberately deferred. What replaced them, in order:
 
-### 1. #133 — organizer readiness dashboard ← **the keystone** · **built**
+### 1. Wire the Plus capabilities to a screen ← **the keystone, and it has no issue**
 
-`GET /api/groups/{id}/readiness`, organizer-only and ungated by plan, rendered at
-**`/organize/{groupId}`** in the app. The organizer surface the other five things needed now exists;
-the invitation list, reminder settings, co-organizer management and the template picker have
-somewhere to render, and wiring them there is what stops the Plus backend being dark. That wiring is
-**not** done — #133's own acceptance criteria did not cover it.
+Six shipped capabilities that nobody can reach, listed above. `/organize/{groupId}` is the surface
+they were always meant to live on and it now exists; what is missing is the wiring, which no issue
+covers because every Plus issue described a backend that was genuinely delivered.
 
-What the dashboard reports: joined and participating counts, wishlist readiness, address readiness,
-whether each participant has opened their match since the draw, and one nudge list combining
-outstanding participants with unaccepted invitations. Every state is decided by the server and the
-app only renders its label, so "ready" cannot come to mean two things.
+This blocks Launch more than anything else on this list: #160 (the payment and email matrix) and
+#162 (the beta) both assume a purchaser can use what they bought.
 
-Two acceptance criteria are **not** met, both deliberately:
+### 2. #134 — Free invitation sharing and account-based joining
 
-- **Purchased / sent / received.** That is #132's data. The API sends `gift_progress: null` and the
-  panel says "not tracked yet" rather than reporting three zeroes, which would be a false claim
-  rather than a missing one. The contract and the panel are in place for #132 to fill.
-- **"Works for each Work exchange."** It is not plan-gated and works for a Work exchange that
-  exists, but see the Work note under "Seams" — the wish roll-up is O(participants) queries, which
-  is nothing at 6 or 50 and far too much at 10,000.
+**Its issue comment is stale — re-scope before estimating.** It says invitation rotation "is not
+implemented"; the group screen has a "Create a fresh link" control that calls `rotateInvite`, which
+rewrites `invite_hash`, so the previous secret does stop working. Check the rest of that comment the
+same way. What does look genuinely missing is native share, preserving the intended group across
+sign-in, and distinct copy for the invalid / rotated / expired / already-joined states.
 
-### 2. #141 — Plus upgrade and purchase experience · **built**
+### 3. #129 — product metadata from wishlist URLs
 
-Plus can now be bought. `humbugg/app/src/components/plus.tsx` holds the offer, the checkout round
-trip and the organizer's billing area, rendered at **`/organize/{groupId}`** under the readiness
-dashboard, plus a reusable `PlusRefusalCard` the group screen raises the moment any action is
-refused with `plus_required`.
+Deliberately last, and still is. Today a pasted URL is stored as typed, validated as absolute
+http(s) and **never fetched**. #129 is the issue that introduces fetching, and with it an SSRF
+surface: it needs the blocklist, redirect/size/time limits and sanitisation its acceptance criteria
+describe. Nothing else is blocked on it, so there is no reason to take that risk early.
 
-Three things about it are decisions rather than details:
+### 4. #138 — mobile and assistive-technology verification
 
-- **No price is stated in the app.** Everything numeric — the amount, the currency, the Free and
-  Plus ceilings — comes from `GET /api/plans`, which reads the same configuration Stripe charges
-  against. A hardcoded "$12" would go on rendering after a price change.
-- **"Plus is active" means the ENTITLEMENT exists, never `status: paid`.** The webhook writes the
-  entitlement and the group's plan in one transaction and `PlanCatalog.HasCapability` reads the
-  entitlement, so a paid row without one is a purchase Stripe has taken money for and Humbugg has
-  not applied. The screen says that, rather than promising a capability the next request 402s.
-- **Native does not use a return URL.** An `https://` success URL cannot re-enter the app, so
-  Checkout opens in the system browser and closing it is the whole signal to re-read the purchase.
-  The API is the source of truth on both platforms; `?checkout=` is a hint about what Stripe told
-  the browser.
-
-PR #200 was closed rather than rebased — it targeted the deleted `humbugg/frontend/` — and the
-branch `Codex/humbugg-plus-purchase-ux-141` was kept for its specification, which this follows.
-
-*Not covered here:* live Stripe mode is still blocked (#159), so an environment whose Plus plan
-carries no `price_id` gets "Plus is not on sale yet" instead of a button whose only outcome is a
-409.
-
-### 3. #130 → #131 → #132 — the rest of the wishlist spine · **complete**
-
-All three hang off the wish model added in #127. Claims and questions are independent of each other
-but both inform what #132 has to display, and #133 renders all three. All three are built, and the
-readiness dashboard's gift-progress panel is filled in — as counts, never as names.
-
-**#132 is two facts about one gift, owned by two people, and that shape is the decision.** The
-giver's stage (`choosing`/`purchased`/`sent`) lives on their own row; the recipient's "it arrived"
-lives on the **giver's** row, written there by inverting the draw so the recipient never learns whose
-row it was. A single four-state enum would either refuse the gift handed over at a party — which is
-never marked sent — or let a recipient overwrite the giver's record of what they actually did. The
-only ordering rule enforced is the one that is actually true: a gift somebody has confirmed
-receiving was obviously bought, so the giver cannot walk the stage back afterwards.
-
-Unlike a purchase claim, gift progress **is** audited — safely, because every row targets the ACTOR
-and carries a stage. A row naming the other party would be the draw assignment, in the one table an
-organizer may read.
-
-**#131's anonymity is structural, and that is the thing to preserve.** No row in
-`humbugg-prod-questions` stores the giver: a message records which SIDE wrote it, and every request
-re-derives who the giver is from the draw. So there is no field for a projection to leak, no id for
-a URL to carry, and nothing for a later endpoint to expose by returning a whole record. Both parties
-also receive the byte-identical payload — if the two views were separate projections, one of them
-would eventually differ by an identity. The notification names neither party and quotes no body, for
-the same reason `AssignmentAvailable` refuses to carry a recipient's name.
-
-*One honest limit:* a notification only sends when an address is on file, which today means the
-person joined through a managed (Plus) invitation. Humbugg stores no email on the profile and the
-access token carries one only for the caller, who is not the other side of the conversation. On a
-Free exchange the thread works and the mail usually does not go — the app shows it either way.
-
-**#130 is built, and its privacy rule turned out to decide the storage.** A purchase claim is
-visible to the assigned giver and *never* to the wishlist owner. It is stored on the **claimant's
-own membership row**, keyed by wish id and scoped to a draw id, rather than on the wish: a wishlist
-owner never reads another member's private membership fields, so there is no projection to get
-wrong and no future endpoint to forget. `Wish` and `RecipientWish` are no longer identical —
-`RecipientWish` carries `Claim` and `Wish` must never grow it.
-
-Confirmed with the maintainer on 2026-09-02: **a wishlist is visible to the assigned giver and
-nobody else.** So "other authorized gift viewers can see that an item is claimed" is satisfied
-trivially — there is exactly one such viewer per recipient per draw — and the feature's real value
-is the giver's own tracking plus the substrate #132 aggregates. Broadening who may read a wishlist
-would be a separate product change, not part of #130.
-
-### 4. #129 — product metadata from wishlist URLs
-
-Deliberately last of the wishlist group. Today a pasted URL is stored as typed, validated as
-absolute http(s) and **never fetched**. #129 is the issue that introduces fetching, and with it an
-SSRF surface: it needs the blocklist, redirect/size/time limits and sanitisation its acceptance
-criteria describe. Nothing else is blocked on it, so there is no reason to take that risk early.
+A review pass over everything above, and it closes Free. Worth doing last on purpose, and worth
+doing by somebody who did not write the six features merged on 2026-09-02.
 
 ---
+
+### What the four old critical-path items left behind
+
+Kept because the reasoning still governs the code, not because the work is outstanding.
+
+**#133 — the readiness dashboard.** Every state is decided by the server and the app renders its
+label, so "ready" cannot come to mean two things. Its gift-progress panel is filled in by #132 now;
+it reports counts and never a name. One acceptance criterion is still deliberately unmet — "works
+for each Work exchange" — because the wish roll-up is O(participants) queries, which is nothing at 6
+or 50 and far too much at 10,000. See the Work note under "Seams".
+
+**#141 — buying Plus.** No price is stated in the app: the amount, the currency and both participant
+ceilings come from `GET /api/plans`, which reads what Stripe charges against. "Plus is active" means
+the ENTITLEMENT exists, never `status: paid` — the webhook writes the entitlement and the plan in one
+transaction and `HasCapability` reads the entitlement, so a paid row without one is money taken and
+not yet applied. Native uses no return URL: an `https://` success URL cannot re-enter the app, so
+Checkout opens in the system browser and closing it re-reads the purchase. Live Stripe mode is still
+blocked (#159), so an environment whose Plus plan carries no `price_id` shows "Plus is not on sale
+yet" rather than a button whose only outcome is a 409.
+
+**#130, #131, #132 — the wishlist spine, and one privacy pattern three times.** Each stores the
+sensitive fact where it cannot leak, rather than filtering it on the way out:
+
+- A **purchase claim** lives on the claimant's own membership row, so a wishlist owner — who never
+  reads another member's private membership fields — has no read path to it at all.
+- A **question thread** stores no giver anywhere; a message records which SIDE wrote it and every
+  request re-derives the giver from the draw. Both parties receive the byte-identical payload, so a
+  leak would have to be visible in the one type they share.
+- **Gift progress** is two facts owned by two people: the giver's stage on their own row, the
+  recipient's "it arrived" on the giver's row, written by inverting the draw so the recipient never
+  learns whose row it was.
+
+In all three the test asserts the SCHEMA, not the endpoint — a field that does not exist cannot be
+returned by an endpoint written next year. All three are draw-scoped, so a reset invalidates them
+together. Claims and questions are never audited (an audit row carries actor and target, which for
+either would be the assignment); gift progress is, because its rows name only the actor and a stage.
+
+Confirmed with the maintainer on 2026-09-02: **a wishlist is visible to the assigned giver and
+nobody else.** Broadening that would be a separate product change.
 
 ## Running alongside
 
@@ -169,11 +159,8 @@ degrades *quietly* to signed-out when its pool configuration resolves empty. Par
 
 ## Then, in order
 
-**Finish Free** — #135, #136 and #137 are **built**; #134 is partly delivered and its issue carries
-a comment recording exactly what exists and what remains, so read that before estimating (though see
-the warning below — that comment is stale in at least one place). #138 (mobile and
-assistive-technology verification) closes the milestone. #129 is deliberately last — see the
-critical path above.
+The order is in "Critical path" above. What follows is the reasoning behind work already done that
+the code still depends on, plus the milestones beyond Free.
 
 **#136 hinged on one fact about member ids.** Exclusions are keyed by member id, and a new exchange
 has no members, so a literal copy would name last year's ids and constrain nobody. It works because
@@ -186,22 +173,20 @@ Repeating deliberately invites nobody. The prior roster comes back as a list of 
 organizer to send the link to; enrolling last year's participants would put people in a draw they
 never agreed to.
 
-**Twice now an issue comment has described a capability as built when only its endpoint was.**
-#135's said the edit endpoint existed — it did; nothing called it. #137's whole premise was that
-notifications were partly delivered, and `DrawCompleted` had a template with no caller. #134's
+**Three times now an issue comment has described a capability as built when only its endpoint was.**
+#135's said the edit endpoint existed — it did, and `api.updateGroup` was called from exactly one
+place in the app, the readiness dashboard's address switch, so an exchange's name, dates and
+spending limit were unchangeable through an API that had always accepted the change. #137's whole
+premise was that notifications were partly delivered, and `DrawCompleted` had a template with no
+caller. #134's
 comment says invitation rotation "is not implemented"; the group screen has a "Create a fresh link"
 button that calls `rotateInvite`, which rewrites `invite_hash`, so the previous secret does stop
 working. **Check the caller and the screen, not the endpoint.**
 
-**#135's headline was not what its issue said.** The comment on it listed the edit endpoint as
-already built, and it is — but nothing called it: `api.updateGroup` was invoked from exactly one
-place in the whole app, the readiness dashboard's address switch. So an exchange's name, dates and
-spending limit were set at creation and then unchangeable, through an API that had always accepted
-the change. **When an issue says a capability exists, check the caller, not the endpoint.**
-
-It also carries the concurrency answer the rest of the service will want: `PATCH /groups/{id}`
+**#135 carries the concurrency answer the rest of the service will want.** `PATCH /groups/{id}`
 accepts the `updated_at` the client read and refuses a save that would flatten somebody else's, on
 the timestamp the row already has rather than a version attribute somebody would forget to bump.
+Last-write-wins is the wrong default whenever the loser is never told, which is most of the time.
 
 **#137 turned on a capability the whole service was missing: a verified email address for any
 account.** Humbugg stores none of its own, and until now the only reachable address was on an
