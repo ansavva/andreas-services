@@ -170,7 +170,7 @@ internal sealed class LateParticipantService(
                 target.Email,
                 target.DisplayName,
                 group.Name,
-                new Uri($"{settings.AppBaseUrl}/app/groups/{group.GroupId}?assignment_version={Uri.EscapeDataString(drawVersion)}")));
+                new Uri($"{settings.AppBaseUrl}/groups/{group.GroupId}?assignment_version={Uri.EscapeDataString(drawVersion)}")));
             await email.SendAsync(message, cancellationToken);
         }
     }

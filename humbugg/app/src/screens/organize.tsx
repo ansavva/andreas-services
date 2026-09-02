@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { api, ApiError } from '../api/client';
+import { PlusBillingPanel } from '../components/plus';
 import { Card, LoadingPanel, Shell } from '../components/shell';
 import { StatusMessage } from '../components/status-message';
 import { useAuth } from '../context/auth-context';
@@ -35,7 +36,14 @@ const TONE: Record<ReadinessState, 'success' | 'warning' | 'neutral'> = {
   not_applicable: 'neutral',
 };
 
-export default function OrganizeScreen({ groupId }: { groupId: string }) {
+export default function OrganizeScreen({
+  groupId,
+  checkout,
+}: {
+  groupId: string;
+  /** Stripe's `?checkout=` return value on the web. Native returns by closing the browser instead. */
+  checkout?: string | null;
+}) {
   const auth = useAuth();
   const router = useRouter();
   const [group, setGroup] = useState<GroupDetail | null>(null);
@@ -45,8 +53,16 @@ export default function OrganizeScreen({ groupId }: { groupId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
 
-  async function load() {
-    setLoading(true);
+  /**
+   * `quiet` re-reads without the full-screen loading state.
+   *
+   * It exists for the billing panel. A loud reload swaps the whole screen for `LoadingPanel`,
+   * which UNMOUNTS that panel — and since Stripe's `?checkout=success` is still in the URL, the
+   * remounted panel starts confirming again, reaches the same entitlement, and asks for another
+   * reload. That is a loop, and it was one until this argument existed.
+   */
+  async function load(quiet = false) {
+    if (!quiet) setLoading(true);
     setError(null);
     try {
       const token = await auth.accessToken();
@@ -61,7 +77,7 @@ export default function OrganizeScreen({ groupId }: { groupId: string }) {
       if (err instanceof ApiError && err.status === 403) setForbidden(true);
       else setError(err instanceof Error ? err.message : 'Unable to load the dashboard.');
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }
 
@@ -170,6 +186,14 @@ export default function OrganizeScreen({ groupId }: { groupId: string }) {
         <RosterPanel readiness={readiness} />
 
         <GiftProgressPanel readiness={readiness} />
+
+        {/*
+          The organizer's billing area (#141). Owner-only: `GET .../billing/plus` refuses a
+          co-organizer, so a co-organizer would get a panel that could only show its own error.
+        */}
+        {group.is_owner ? (
+          <PlusBillingPanel group={group} checkout={checkout} onEntitled={() => void load(true)} />
+        ) : null}
 
         <Card>
           <Text style={styles.eyebrow}>Exchange setting</Text>

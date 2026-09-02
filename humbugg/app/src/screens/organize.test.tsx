@@ -4,13 +4,15 @@
 // re-derives readiness (it renders the state the API sent, even an unexpected one), that a
 // participant who follows the URL is told why they cannot see it, that a long roster stays
 // complete, and that each row carries one sentence for a screen reader instead of three loose chips.
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 const mocks = {
   push: jest.fn(),
   getGroup: jest.fn(),
   getReadiness: jest.fn(),
   updateGroup: jest.fn(),
+  listPlans: jest.fn(),
+  getPlusPurchaseStatus: jest.fn(),
   width: 1280,
 };
 
@@ -41,6 +43,8 @@ jest.mock('../api/client', () => {
       getGroup: (...args: unknown[]) => mocks.getGroup(...args),
       getReadiness: (...args: unknown[]) => mocks.getReadiness(...args),
       updateGroup: (...args: unknown[]) => mocks.updateGroup(...args),
+      listPlans: (...args: unknown[]) => mocks.listPlans(...args),
+      getPlusPurchaseStatus: (...args: unknown[]) => mocks.getPlusPurchaseStatus(...args),
     },
     ApiError,
   };
@@ -125,6 +129,11 @@ beforeEach(() => {
   mocks.getGroup.mockResolvedValue({ group_id: 'group-1', name: 'Office Secret Santa' });
   mocks.getReadiness.mockResolvedValue(readiness());
   mocks.updateGroup.mockResolvedValue({});
+  mocks.listPlans.mockResolvedValue([
+    { code: 'free', name: 'Free', participant_limit: 6, marketed_as_unlimited: false, price_cents: 0, currency: 'USD', billing_cadence: 'free' },
+    { code: 'plus', name: 'Plus', participant_limit: 50, marketed_as_unlimited: false, price_cents: 1_200, currency: 'USD', billing_cadence: 'one_time', price_id: 'price_plus' },
+  ]);
+  mocks.getPlusPurchaseStatus.mockResolvedValue({ group_id: 'group-1' });
 });
 
 describe('loading and failure', () => {
@@ -464,5 +473,59 @@ describe('mobile and assistive technology', () => {
     render(<OrganizeScreen groupId="group-1" />);
 
     await waitFor(() => expect(screen.getByLabelText('Wishlists: 1 of 2')).toBeOnTheScreen());
+  });
+});
+
+// The billing area (#141) belongs to the person who can actually be charged. `GET
+// .../billing/plus` refuses anyone but the owner, so rendering it for a co-organizer would show a
+// panel whose only possible content is its own 403.
+describe('the billing area', () => {
+  const owned = {
+    group_id: 'group-1',
+    name: 'Office Secret Santa',
+    plan: 'free',
+    participant_limit: 6,
+    is_owner: true,
+    is_organizer: true,
+    members: [{ member_id: 'm1', display_name: 'Ana', is_organizer: true, is_participating: true }],
+  };
+
+  it('offers Plus to the owner', async () => {
+    mocks.getGroup.mockResolvedValue(owned);
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() => expect(screen.getByText('This exchange is on Free')).toBeTruthy());
+    expect(screen.getByText('Upgrade this exchange — $12')).toBeTruthy();
+  });
+
+  // A confirmed purchase re-reads the group so the plan chip follows — QUIETLY. A loud reload
+  // swaps this screen for its loading panel, which unmounts the billing panel; Stripe's
+  // `?checkout=success` is still in the URL, so the remount confirms again, entitles again and
+  // reloads again. This asserts the reload is bounded.
+  it('does not reload itself in a loop when a paid return lands', async () => {
+    mocks.getGroup.mockResolvedValue(owned);
+    mocks.getPlusPurchaseStatus.mockResolvedValue({
+      group_id: 'group-1',
+      status: 'paid',
+      entitlement_id: 'plus:group-1',
+    });
+
+    render(<OrganizeScreen groupId="group-1" checkout="success" />);
+
+    await waitFor(() => expect(screen.getByText('Plus is on for this exchange')).toBeTruthy());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    // One mount read, one after the entitlement. Anything more is the loop.
+    expect(mocks.getGroup.mock.calls.length).toBeLessThanOrEqual(2);
+  });
+
+  it('shows a co-organizer nothing about billing', async () => {
+    mocks.getGroup.mockResolvedValue({ ...owned, is_owner: false });
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() => expect(screen.getByText('Who is ready')).toBeTruthy());
+    expect(screen.queryByText('This exchange is on Free')).toBeNull();
+    expect(mocks.getPlusPurchaseStatus).not.toHaveBeenCalled();
   });
 });

@@ -28,6 +28,22 @@ public sealed class BillingServiceTests
         Assert.Contains("checkout=canceled", world.Stripe.Request.CancelUrl);
     }
 
+    // Both returns land on the product app's organizer billing area. Pinned because the previous
+    // shape — `{APP_BASE_URL}/app/groups/{id}` — was left over from the app being served under
+    // www.humbugg.com/app: only the marketing origin 301s that, and APP_BASE_URL is the app's own
+    // origin, so every paid return went to the not-found screen and the purchase looked lost.
+    [Fact]
+    public async Task CheckoutReturnsToTheOrganizerBillingArea()
+    {
+        var world = World();
+
+        await world.Subject.CreatePlusCheckoutAsync("group-1", TestContext.Current.CancellationToken);
+
+        Assert.StartsWith("https://humbugg.test/organize/group-1?", world.Stripe.Request!.SuccessUrl);
+        Assert.Equal("https://humbugg.test/organize/group-1?checkout=canceled", world.Stripe.Request.CancelUrl);
+        Assert.DoesNotContain("/app/", world.Stripe.Request.SuccessUrl);
+    }
+
     [Fact]
     public async Task CheckoutRejectsNonOwnerAndExistingEntitlement()
     {

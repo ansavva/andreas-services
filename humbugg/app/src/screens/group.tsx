@@ -9,6 +9,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { api, ApiError } from '../api/client';
 import { DangerButton } from '../components/danger-button';
+import { isPlusRequired, PlusRefusalCard } from '../components/plus';
 import { FieldLabel } from '../components/field';
 import { Card, LoadingPanel, Shell } from '../components/shell';
 import { StatusMessage } from '../components/status-message';
@@ -38,6 +39,9 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
   const [success, setSuccess] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState(() => sessionStore.get(sessionKeys.invite(groupId)) ?? '');
   const [reveal, setReveal] = useState<RevealAssignment[] | null>(null);
+  // A 402 is not an error the organizer made; it is a price. Kept apart from `error` so it renders
+  // as an offer with a way forward rather than a red bar with a dead end.
+  const [plusRefusal, setPlusRefusal] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -70,13 +74,15 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
     setBusy(true);
     setError(null);
     setSuccess(null);
+    setPlusRefusal(null);
     try {
       await work(await auth.accessToken());
       if (message) setSuccess(message);
       await load();
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'The action could not be completed.');
+      if (isPlusRequired(err)) setPlusRefusal((err as Error).message);
+      else setError(err instanceof Error ? err.message : 'The action could not be completed.');
       return false;
     } finally {
       setBusy(false);
@@ -132,6 +138,15 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
         </View>
         <StatusMessage message={error} />
         <StatusMessage message={success} tone="success" />
+
+        {plusRefusal ? (
+          <PlusRefusalCard
+            groupId={groupId}
+            reason={plusRefusal}
+            action="do what this exchange just asked for"
+            onNavigate={(path) => router.push(path as '/')}
+          />
+        ) : null}
 
         {assignment ? <AssignmentCard assignment={assignment} /> : null}
 

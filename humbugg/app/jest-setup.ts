@@ -27,6 +27,8 @@ jest.mock('expo-secure-store', () => ({
 
 jest.mock('expo-web-browser', () => ({
   openAuthSessionAsync: jest.fn().mockResolvedValue({ type: 'dismiss' }),
+  // Stripe Checkout on native: opened, not intercepted — closing it is the whole return signal.
+  openBrowserAsync: jest.fn().mockResolvedValue({ type: 'dismiss' }),
   maybeCompleteAuthSession: jest.fn(),
 }));
 

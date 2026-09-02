@@ -5,6 +5,8 @@ import type {
   GroupSummary,
   InvitationPreview,
   ExchangeTemplate,
+  CheckoutResponse,
+  PlanDefinition,
   Membership,
   Wish,
   CreateWishInput,
@@ -93,8 +95,16 @@ export const api = {
   getGroup: (token: string, id: string) => request<GroupDetail>(`/groups/${id}`, token),
   // Organizer-only. Every state in the response is computed server-side; see types.ts.
   getReadiness: (token: string, id: string) => request<GroupReadiness>(`/groups/${id}/readiness`, token),
+  // Every plan's price, limit and cadence, as the server defines them. The app never states a
+  // price of its own: the amount is Stripe/SSM configuration and a hardcoded "$12" would go stale
+  // silently, on the one screen where being wrong about the price matters most.
+  listPlans: (token: string) => request<PlanDefinition[]>('/plans', token),
   getPlusPurchaseStatus: (token: string, id: string) =>
     request<PlusPurchaseStatus>(`/groups/${id}/billing/plus`, token),
+  // Owner-only, and idempotent per pending purchase: a second call while one is unpaid returns the
+  // same Checkout Session rather than opening a second payable one.
+  createPlusCheckout: (token: string, id: string) =>
+    request<CheckoutResponse>(`/groups/${id}/billing/plus/checkout`, token, json('POST')),
   updateGroup: (token: string, id: string, data: Record<string, unknown>) => request<GroupDetail>(`/groups/${id}`, token, json('PATCH', data)),
   updateCustomization: (token: string, id: string, data: Record<string, unknown>) => request<GroupDetail>(`/groups/${id}/customization`, token, json('PUT', data)),
   getInvitation: async (id: string, invite_token: string) => {

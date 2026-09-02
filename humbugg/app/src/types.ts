@@ -125,8 +125,36 @@ export interface PlusPurchaseStatus {
   checkout_session_id?: string | null;
   checkout_url?: string | null;
   receipt_url?: string | null;
+  /**
+   * Set the moment the webhook applies a paid purchase — the group's plan and this field are
+   * written in one transaction. It, not `status`, is what the backend's `HasCapability` reads, so
+   * it is what "Plus is active" means here too: a `paid` row with no entitlement is a purchase
+   * still being applied, and the screen says so rather than promising a capability that would 402.
+   */
   entitlement_id?: string | null;
   updated_at?: string | null;
+}
+
+export type BillingCadence = 'free' | 'one_time' | 'annual';
+
+/** A plan as the server defines it. The price is configuration, never a constant in this app. */
+export interface PlanDefinition {
+  code: PlanCode;
+  name: string;
+  participant_limit: number;
+  marketed_as_unlimited: boolean;
+  price_cents: number;
+  currency: string;
+  billing_cadence: BillingCadence;
+  product_id?: string | null;
+  price_id?: string | null;
+}
+
+/** A freshly opened Stripe Checkout Session. `status` is always `pending` at this point. */
+export interface CheckoutResponse {
+  checkout_url: string;
+  session_id: string;
+  status: PaymentStatus;
 }
 
 export type WishKind = 'Product' | 'Custom' | 'Experience' | 'Charity';

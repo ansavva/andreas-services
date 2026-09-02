@@ -11,7 +11,7 @@ namespace Humbugg.Api.Tests;
 
 public sealed class EmailPreferenceTests
 {
-    private static readonly Uri ActionUrl = new("https://humbugg.com/app/groups/group-1");
+    private static readonly Uri ActionUrl = new("https://app.humbugg.com/groups/group-1");
     private static readonly ITransactionalEmailTemplates Templates = new TransactionalEmailTemplates();
 
     [Theory]
