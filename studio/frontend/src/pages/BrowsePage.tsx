@@ -12,7 +12,6 @@ import {
   type SortOrder,
 } from "../types";
 import {
-  feedPath,
   folderPath,
   objectPath,
   sourceParam,
@@ -100,7 +99,6 @@ export function BrowsePage() {
         if (sort !== DEFAULT_SORT) search.set("sort", sort);
         return `${objectPath(file.id)}?${search.toString()}`;
       },
-      playReel: () => navigate(feedPath({ in: "recursive", id: folder })),
     }),
     [folder, goToFolder, navigate, sort, setSort],
   );

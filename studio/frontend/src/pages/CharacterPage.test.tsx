@@ -86,11 +86,13 @@ describe("the tab strip", () => {
     await open();
 
     const tabs = screen.getAllByRole("tab").map((tab) => tab.textContent);
-    // `Identity` where `References` was: there is no reference index to draw,
-    // so the tab is the file browser with `default` already in its tag filter.
-    // `Shoot` went with the turnaround: it rendered fourteen angles at once,
-    // and a template is picked for one run from the plan editor.
-    expect(tabs).toEqual(["Profile", "Identity", "Files", "Runs", "Projects"]);
+    // No `Identity`, and that is the point of this assertion as much as the
+    // folder names below it: it was Files with `default` pre-filled, which is a
+    // preset of the tab beside it rather than a place of its own. `Shoot` went
+    // with the turnaround — it rendered fourteen angles at once, and a template
+    // is picked for one run from the plan editor.
+    expect(tabs).toEqual(["Profile", "Files", "Runs", "Projects"]);
+    expect(tabs).not.toContain("Identity");
     expect(tabs).not.toContain("reference");
     expect(tabs).not.toContain("seed");
   });

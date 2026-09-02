@@ -5,7 +5,7 @@ import { getFolder } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
 import { useSearchParamState } from "../../hooks/useSearchParamState";
 import type { FileEntry, SortOrder } from "../../types";
-import { feedPath, objectPath, type FolderId } from "../../utils/location";
+import { objectPath, type FolderId } from "../../utils/location";
 import { ChipRow } from "../common/ChipRow";
 import { FolderBrowser, type BrowserNav } from "./FolderBrowser";
 
@@ -33,9 +33,14 @@ import { FolderBrowser, type BrowserNav } from "./FolderBrowser";
  * right trade in one direction only, and it is why `/f/<id>` still exists and the
  * tab does not replace it: a *link* to a folder is a link to the browser.
  */
-export function useLocalBrowserNav(rootId: string): BrowserNav {
+export function useLocalBrowserNav(rootId: string, param = "folder"): BrowserNav {
   const navigate = useNavigate();
-  const [folderParam, setFolderParam] = useSearchParamState("folder", "");
+  // **Which query key, because a project draws TWO of these** — Files, and the
+  // Runs tab's Grid. One key between them would carry a folder id from one
+  // subtree into the other on a tab switch, leaving a browser standing
+  // somewhere it cannot show. The default is the name Files has always used,
+  // so its links still work.
+  const [folderParam, setFolderParam] = useSearchParamState(param, "");
   const [sort, setSort] = useState<SortOrder>("newest");
 
   // The entity's own root is the default, so it is written as absence — a
@@ -62,7 +67,6 @@ export function useLocalBrowserNav(rootId: string): BrowserNav {
         navigate(objectPath(file.id, { in: "f", id: folder })),
       fileHref: (file: FileEntry) =>
         objectPath(file.id, { in: "f", id: folder }),
-      playReel: () => navigate(feedPath({ in: "recursive", id: folder })),
     }),
     [folder, navigate, rootId, setFolderParam, sort],
   );
@@ -88,17 +92,17 @@ export function useLocalBrowserNav(rootId: string): BrowserNav {
  */
 export function FolderTab({
   rootId,
-  initialTags = [],
+  label,
 }: {
   rootId: string;
-  /** Tags the browser opens narrowed to — see `FolderBrowser`. */
-  initialTags?: string[];
+  /** The entity's name, for the boundary crumb — see `FolderBrowser`. */
+  label?: string;
 }) {
   const nav = useLocalBrowserNav(rootId);
   return (
     <div className="flex w-full flex-col gap-4">
       <FolderShortcuts rootId={rootId} nav={nav} />
-      <FolderBrowser nav={nav} boundary={rootId} initialTags={initialTags} />
+      <FolderBrowser nav={nav} boundary={rootId} boundaryLabel={label} />
     </div>
   );
 }

@@ -121,20 +121,6 @@ export function objectPath(id: string, from?: ViewerSource | null): string {
   return from ? `/o/${id}?in=${encodeURIComponent(sourceParam(from))}` : `/o/${id}`;
 }
 
-/**
- * The viewer opened on a *feed* rather than on a file — "play this from the
- * start".
- *
- * `/o` with no id, which the route table allows deliberately. The alternative
- * was for "Play reel" to fetch a page, read the first item's id and navigate to
- * that, which is a request made solely to build a URL that the viewer is about
- * to make again. The viewer opens on the first pane and rewrites the address to
- * it, so the id appears a moment later without anybody waiting for it.
- */
-export function feedPath(from: ViewerSource): string {
-  return `/o?in=${encodeURIComponent(sourceParam(from))}`;
-}
-
 export function characterPath(id: string): string {
   return `/c/${id}`;
 }

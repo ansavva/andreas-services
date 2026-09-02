@@ -6,6 +6,8 @@ import {
   Button,
   Input,
   Text,
+  Toggle,
+  ToggleGroup,
 } from "@ansavva/design-system";
 
 import {
@@ -17,9 +19,10 @@ import {
 } from "../../apis/studio";
 import { ApertureSpinner } from "../common/Aperture";
 import { useFolder } from "../../hooks/useFolder";
+import { useSearchParamState } from "../../hooks/useSearchParamState";
 import { useSelection } from "../../hooks/useSelection";
 import { useUploads } from "../../hooks/useUploads";
-import type { FileEntry, SortOrder } from "../../types";
+import type { EntryKind, FileEntry, SortOrder } from "../../types";
 import type { FolderId } from "../../utils/location";
 import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { CopyKeyButton } from "../common/CopyKeyButton";
@@ -69,8 +72,6 @@ export interface BrowserNav {
    * plain click stays a client-side navigation instead of a page load.
    */
   fileHref: (file: FileEntry) => string;
-  /** Opens the viewer on everything beneath the folder on screen. */
-  playReel: () => void;
 }
 
 interface Props {
@@ -87,13 +88,37 @@ interface Props {
    */
   boundary?: FolderId;
   /**
-   * Tags the browser opens already narrowed to.
+   * What to call the boundary crumb, when its stored name is not worth showing.
    *
-   * What the References tab is: a character's Files, filtered to the images it
-   * sends. There is no reference index to draw any more — identity is a tag —
-   * so the tab that drew one is this browser with `default` already typed in.
+   * An entity's root folder is **named by the entity id** — `char-<uuid>` — so
+   * that two characters called the same thing do not collide on the folder
+   * tree's own name uniqueness. That is the right stored name and the wrong
+   * label: a Files tab drew a 41-character UUID as the first crumb, which
+   * wrapped onto two lines at 390px and named nothing a person recognises.
+   *
+   * Display only, and only the first crumb. `prefix` — what Copy prefix yields
+   * and what `GET /api/resolve` takes — is still built from stored names, so
+   * the address does not change because the label did.
    */
-  initialTags?: string[];
+  boundaryLabel?: string;
+  /**
+   * Which view this browser opens on — see `MEDIA_VIEW`.
+   *
+   * `folders` everywhere a person is browsing *files*. `media` where the whole
+   * point of the screen is the pictures: a project's Runs tab in Grid, which is
+   * this browser scoped to `runs/`.
+   */
+  defaultView?: string;
+  /**
+   * The query parameter the view rides in, and the one `folder` rides in beside
+   * it (`<viewParam>Folder`).
+   *
+   * **Both are named because two browsers can share a page.** A project draws
+   * one under Files and another under Runs, and with one key between them
+   * switching tabs would carry a folder id from one subtree into the other —
+   * a browser standing somewhere it cannot show.
+   */
+  viewParam?: string;
 }
 
 /**
@@ -119,6 +144,24 @@ interface Props {
  */
 const BULK_GATE = 5;
 
+const VIEW_FOLDERS = "folders";
+const VIEW_MEDIA = "media";
+
+/**
+ * What the Media view asks the listing for.
+ *
+ * `image,video` — which, because `getFolder` sends any `kind` filter with
+ * `depth=all`, is also what turns this from a readdir into a search of the whole
+ * subtree. That is the point of it: "every picture of this character" is not a
+ * question about the folder you happen to be standing in, and answering it by
+ * walking `reference/`, `corpus/`, `seed/` and `archive/` in turn is the thing
+ * the view exists to stop.
+ *
+ * Folders and text drop out of the result, so the two sections that draw them
+ * render nothing on their own — there is no `view` branch anywhere below.
+ */
+const MEDIA_VIEW: EntryKind[] = ["image", "video"];
+
 type PickerTarget = {
   verb: "move" | "copy";
   ids: string[];
@@ -128,7 +171,7 @@ type PickerTarget = {
 };
 
 /**
- * The file layer, whole: listing, selection, upload, reel, text page, and every
+ * The file layer, whole: listing, selection, upload, text page, and every
  * write a person can make.
  *
  * This was the body of `BrowsePage` and is a component so that a character's and
@@ -138,7 +181,13 @@ type PickerTarget = {
  * name-path routes it used to call took a slash-joined path that a rename
  * invalidated mid-flight.
  */
-export function FolderBrowser({ nav, boundary = null, initialTags = [] }: Props) {
+export function FolderBrowser({
+  nav,
+  boundary = null,
+  boundaryLabel,
+  defaultView = VIEW_FOLDERS,
+  viewParam = "view",
+}: Props) {
   const { folder, sort } = nav;
 
   const [actionError, setActionError] = useState<string | null>(null);
@@ -152,7 +201,15 @@ export function FolderBrowser({ nav, boundary = null, initialTags = [] }: Props)
    * request into a search of everything under this folder. They compose, and the
    * order is the honest one — the server narrows, then the typed name hides.
    */
-  const [tags, setTags] = useState<string[]>(initialTags);
+  const [tags, setTags] = useState<string[]>([]);
+  /**
+   * Folders, or every picture and clip beneath here — see `MEDIA_VIEW`.
+   *
+   * In the URL rather than in component state, so it is linkable and so it
+   * survives leaving a Files tab and coming back. It rides beside `?folder=`,
+   * which means the two compose: a chip narrows *where*, this narrows *what*.
+   */
+  const [view, setView] = useSearchParamState(viewParam, defaultView);
   const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
 
   /**
@@ -163,7 +220,12 @@ export function FolderBrowser({ nav, boundary = null, initialTags = [] }: Props)
    * viewer is its own screen now, so this only ever shows a folder and the
    * resolution — and the request it cost on every cold link — is gone with it.
    */
-  const { data, loading, error, reload } = useFolder(folder, sort, tags);
+  const { data, loading, error, reload } = useFolder(
+    folder,
+    sort,
+    tags,
+    view === VIEW_MEDIA ? MEDIA_VIEW : [],
+  );
   const folderId = folder;
 
   /**
@@ -492,7 +554,13 @@ export function FolderBrowser({ nav, boundary = null, initialTags = [] }: Props)
                   );
                 }}
               >
-                {crumb.name}
+                {/* See `boundaryLabel`: the entity's name in place of the id
+                    its root folder is stored under. Only the first crumb, and
+                    only inside a scoped browser — the standalone one's first
+                    crumb is `/`. */}
+                {index === 0 && boundary !== null && boundaryLabel
+                  ? boundaryLabel
+                  : crumb.name}
               </Breadcrumbs.Item>
             ))}
           </Breadcrumbs.Root>
@@ -500,6 +568,29 @@ export function FolderBrowser({ nav, boundary = null, initialTags = [] }: Props)
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-t border-line py-2">
+        {/*
+          **Two views of one folder, and the pair is the whole control.**
+
+          Folders is the readdir this has always been. Media is every image and
+          clip *beneath* here, flat and newest-first — the same shape the tag
+          filter already produces, which is why it needed no second component to
+          draw it.
+
+          Single-select, and empty is refused: `ToggleGroup` lets the pressed
+          member be unpressed, and a browser showing neither view is not a
+          state — it is the listing gone blank with no way to say why.
+        */}
+        <ToggleGroup.Root
+          aria-label="View"
+          value={[view === VIEW_MEDIA ? VIEW_MEDIA : VIEW_FOLDERS]}
+          onValueChange={(next) => {
+            if (next.length > 0) setView(next[0]!);
+          }}
+        >
+          <Toggle value={VIEW_FOLDERS}>Folders</Toggle>
+          <Toggle value={VIEW_MEDIA}>Media</Toggle>
+        </ToggleGroup.Root>
+
         <SortControl value={sort} onChange={nav.setSort} />
         <FilterControl
           value={filter}
@@ -514,10 +605,11 @@ export function FolderBrowser({ nav, boundary = null, initialTags = [] }: Props)
 
           All three act on the folder you are in — copy its prefix, delete it,
           make one inside it — so they read as a set. The divider is doing real
-          work rather than decorating: `Play reel` is the only filled button here,
-          and a delete sitting flush against it is a mis-click with no undo, so
-          the destructive icon stays in the middle of its own cluster and a rule
-          separates the cluster from the primary. Do not close that gap.
+          work rather than decorating: Upload is the one button on the far side
+          of it, and a delete sitting flush against a control a person arrives
+          looking for is a mis-click with no undo, so the destructive icon stays
+          in the middle of its own cluster and a rule separates the two. Do not
+          close that gap.
         */}
         <div className="flex shrink-0 items-center gap-0.5">
           {/* Still the *name path*, and still worth copying even though nothing
@@ -562,9 +654,6 @@ export function FolderBrowser({ nav, boundary = null, initialTags = [] }: Props)
         */}
         <UploadButton onFiles={uploads.start} disabled={hereId === null} />
 
-        {/* A navigation now, not a piece of state this component holds open.
-            It goes to the viewer with `?in=recursive:<folder>`, which is what
-            makes a reel a place you can link to and press back out of. */}
         {files.length > 0 && (
           <Button
             intent="secondary"
@@ -576,10 +665,6 @@ export function FolderBrowser({ nav, boundary = null, initialTags = [] }: Props)
             {selection.count > 0 ? "Select none" : "Select all"}
           </Button>
         )}
-
-        <Button size="sm" onClick={nav.playReel}>
-          Play reel
-        </Button>
       </div>
 
       <div className="border-b border-line pb-2">

@@ -73,7 +73,7 @@ describe("the route table", () => {
     // is exactly the coupling the rework removed: opening a file meant
     // rendering the folder tree with the file laid over it.
     ["/o/node-3610c8b4-5d92-4e07-83f1-6c24a9b1e7d5", "object"],
-    // No id, which is "play this feed from the start" — see `feedPath`.
+    // No id, which is "play this feed from the start".
     ["/o", "object"],
     // Above the catch-all, or Cognito's `?code=` is redirected away and the
     // hosted page loops.

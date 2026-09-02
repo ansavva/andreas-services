@@ -2,13 +2,15 @@ import { useCallback, useEffect, useState } from "react";
 
 import { getFolder } from "../apis/studio";
 import type { FolderId } from "../utils/location";
-import type { SortOrder, FolderListing } from "../types";
+import type { EntryKind, SortOrder, FolderListing } from "../types";
 
 /**
  * One folder's listing, by node id.
  *
- * A non-empty `tags` turns this into a search of the whole branch beneath the
- * folder — see `getFolder`. The listing that comes back says which it did, in
+ * A non-empty `tags` or `kinds` turns this into a search of the whole branch
+ * beneath the folder — see `getFolder`. `kinds` is what the browser's Media view
+ * asks with: `image,video` and no folders, which is a question about a subtree
+ * rather than about one directory. The listing that comes back says which it did, in
  * `depth`, so a caller can tell a folder from a result set.
  *
  * `null` is the library root, whose id is not knowable before the first request
@@ -21,11 +23,13 @@ export function useFolder(
   folderId: FolderId | undefined,
   sort: SortOrder,
   tags: string[] = [],
+  kinds: EntryKind[] = [],
 ) {
   // **The dependency, extracted and stable.** `tags` is a fresh array on every
   // render at every call site, so depending on it directly re-fetches forever;
-  // the joined string is the value that actually changed.
+  // the joined string is the value that actually changed. Same for `kinds`.
   const asked = tags.join(",");
+  const wanted = kinds.join(",");
   const [data, setData] = useState<FolderListing | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +43,7 @@ export function useFolder(
 
     getFolder(folderId === null ? {} : { node: folderId }, sort, {
       tag: asked ? asked.split(",") : [],
+      kind: wanted ? (wanted.split(",") as EntryKind[]) : [],
     })
       .then((result) => {
         if (!cancelled) setData(result);
@@ -53,7 +58,7 @@ export function useFolder(
     return () => {
       cancelled = true;
     };
-  }, [folderId, sort, asked]);
+  }, [folderId, sort, asked, wanted]);
 
   useEffect(load, [load]);
 

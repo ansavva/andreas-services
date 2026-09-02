@@ -121,11 +121,13 @@ export async function getFolder(
   sort: SortOrder,
   filter: ListFilter = {},
 ): Promise<FolderListing> {
-  // **A tag filter searches the BRANCH.** Not knowing which folder a tagged
-  // image is in is the whole reason for asking by tag, so a filter that only
-  // looked in the folder you happen to be standing in would answer the question
-  // nobody has.
-  const depth = filter.tag?.length ? "all" : "1";
+  // **Narrowing searches the BRANCH.** Not knowing which folder a tagged image
+  // is in is the whole reason for asking by tag, so a filter that only looked in
+  // the folder you happen to be standing in would answer the question nobody
+  // has. A `kind` filter is the same question in the other vocabulary — "every
+  // picture under this character" is not a request about one folder — so both
+  // go deep, and an unfiltered listing stays the one-level readdir it was.
+  const depth = filter.tag?.length || filter.kind?.length ? "all" : "1";
   const listing = await listNodes(where, { ...filter, sort, depth });
   return {
     prefix: listing.prefix,

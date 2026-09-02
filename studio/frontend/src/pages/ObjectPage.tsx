@@ -169,8 +169,7 @@ export function ObjectPage() {
    * The address adopts the file actually on screen.
    *
    * Two cases reach here and they want the same answer. `/o?in=…` is "play this
-   * feed from the start" — see `feedPath` — and carries no id at all until the
-   * first page lands. And an id the feed does not hold is a dead link, which
+   * feed from the start" and carries no id at all until the first page lands. And an id the feed does not hold is a dead link, which
    * opens on the first file rather than on nothing. Either way the URL has to
    * name what is being shown, or Back and a copied link both lie.
    */

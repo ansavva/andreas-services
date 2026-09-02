@@ -184,6 +184,41 @@ test("the composer strip makes a draft and lands in its editor", async ({
  * The one act: arm, then run
  * ---------------------------------------------------------------------- */
 
+/**
+ * **Two readings of the same runs, and the unit is what differs.**
+ *
+ * List's unit is the RUN — status, model, cost, the plan behind it — and it is
+ * filterable on each, because those are fields on the listing row. Grid's unit
+ * is the OUTPUT: the file browser scoped to the project's `runs/` folder, in
+ * Media view, since a run's outputs are ordinary nodes under it.
+ *
+ * So the assertion is not "the grid renders". It is that each view answers a
+ * question the other cannot: the status filter exists only in List, and the
+ * media heading only in Grid.
+ *
+ * `?runs=` so a grid is a link.
+ */
+test("Runs offers a Grid of outputs beside the list, and both come back", async ({
+  page,
+}) => {
+  await page.goto(`/p/${PROJECT}?tab=runs`);
+
+  const status = page.getByLabel("Status");
+  const media = page.getByRole("heading", { name: /Photos & video/ });
+  await expect(status).toBeVisible();
+
+  await page.getByRole("button", { name: "Grid", exact: true }).click();
+  await expect(media).toBeVisible();
+  // The run FILTERS are the list's, not the tab's — a grid of frames has
+  // nothing to apply a model filter to.
+  await expect(status).toHaveCount(0);
+  await expect(page).toHaveURL(/runs=grid/);
+
+  await page.getByRole("button", { name: "List", exact: true }).click();
+  await expect(status).toBeVisible();
+  await expect(media).toHaveCount(0);
+});
+
 test("one press on Run arms it and approves nothing", async ({ page }) => {
   stubOnly("the second press would submit a real generation");
   const calls = log(page);
