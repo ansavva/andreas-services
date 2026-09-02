@@ -397,7 +397,7 @@ public sealed class QuestionServiceTests
             Task.FromResult(draw);
 
         public Task<GroupRecord> CreateAsync(GroupRecord value, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<GroupRecord> UpdateAsync(string groupId, IReadOnlyDictionary<string, Amazon.DynamoDBv2.Model.AttributeValue> fields, GroupStatus? expectedStatus = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<GroupRecord> UpdateAsync(string groupId, IReadOnlyDictionary<string, Amazon.DynamoDBv2.Model.AttributeValue> fields, GroupStatus? expectedStatus = null, string? expectedUpdatedAt = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task DeleteAsync(string groupId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task CreateDrawAsync(string groupId, IReadOnlyDictionary<string, string> assignments, string actorUserId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task ResetDrawAsync(string groupId, CancellationToken cancellationToken = default) => throw new NotImplementedException();

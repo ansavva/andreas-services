@@ -24,6 +24,7 @@ public interface IGroupService
     Task<Membership> UpdateMyMembershipAsync(string groupId, UpdateMembershipRequest request, CancellationToken cancellationToken = default);
     Task<Membership> ClearMyPrivateDataAsync(string groupId, CancellationToken cancellationToken = default);
     Task LeaveAsync(string groupId, CancellationToken cancellationToken = default);
+    Task RemoveMemberAsync(string groupId, string memberId, CancellationToken cancellationToken = default);
     Task<Membership> UpdateParticipationAsync(string groupId, string memberId, ParticipationRequest request, CancellationToken cancellationToken = default);
     Task<Membership> UpdateOrganizerRoleAsync(string groupId, string memberId, OrganizerRoleRequest request, CancellationToken cancellationToken = default);
     Task<GroupDetail> SetExclusionsAsync(string groupId, ExclusionsRequest request, CancellationToken cancellationToken = default);
@@ -268,9 +269,26 @@ internal sealed class GroupService(
         // Allowed after the draw as well as before it. Turning it on late is exactly what an
         // organizer does when the plan changes from "we'll swap at the party" to "post them".
         if (request.RequiresAddress is not null) fields["requires_address"] = DynamoValues.B(request.RequiresAddress.Value);
+        // How the exchange works, for people who have already joined (#135). Free and ungated — an
+        // exchange that cannot tell its participants where to bring the gift does not work at any
+        // price. NOT the customization's instructions, which are invitation copy; see GroupRecord.
+        if (request.Instructions is not null)
+            fields["instructions"] = DynamoValues.S(Validation.Optional(request.Instructions, 2000));
         if (fields.Count > 0)
         {
-            await groups.UpdateAsync(groupId, fields, cancellationToken: cancellationToken);
+            try
+            {
+                await groups.UpdateAsync(
+                    groupId, fields, expectedUpdatedAt: request.ExpectedUpdatedAt, cancellationToken: cancellationToken);
+            }
+            catch (ConditionalCheckFailedException)
+            {
+                // Two organizers editing at once. Refusing is the only honest answer: a last-write
+                // wins would silently discard whatever the other one just saved, and neither of them
+                // would ever know it happened.
+                throw ApiException.Conflict(
+                    "Somebody else changed this exchange while you were editing. Reload and try again.");
+            }
             await audit.RecordAsync(AuditAction.GroupUpdated, groupId, AuditTarget.Group(groupId),
                 new Dictionary<string, string> { ["fields"] = string.Join(",", fields.Keys.Order(StringComparer.Ordinal)) }, cancellationToken: cancellationToken);
         }
@@ -328,7 +346,7 @@ internal sealed class GroupService(
         RequireOrganizer(membership); RequireOpen(group);
         var secret = NewSecret();
         await ConditionalGroupUpdate(() => groups.UpdateAsync(groupId,
-            new Dictionary<string, AttributeValue> { ["invite_hash"] = DynamoValues.S(Hash(secret)) }, GroupStatus.Open, cancellationToken));
+            new Dictionary<string, AttributeValue> { ["invite_hash"] = DynamoValues.S(Hash(secret)) }, GroupStatus.Open, cancellationToken: cancellationToken));
         await audit.RecordAsync(AuditAction.InviteRotated, groupId, AuditTarget.Invite(groupId), cancellationToken: cancellationToken);
         // Deduped per group: a group has "an invite" whether it was rotated once or many times.
         await analytics.TrackAsync(AnalyticsEventType.InviteSent, group.Plan, groupId,
@@ -417,19 +435,85 @@ internal sealed class GroupService(
     {
         var (group, membership) = await RequireMembershipAsync(groupId, cancellationToken); RequireOpen(group);
         if (membership.IsOrganizer) throw ApiException.Conflict("The organizer must delete the group instead of leaving it.");
+        await RemoveMembershipAsync(group, membership, AuditAction.ParticipantLeft, cancellationToken);
+    }
+
+    /// <summary>
+    /// An organizer removes somebody else, before the draw (#135).
+    /// </summary>
+    /// <remarks>
+    /// Only the owner. A co-organizer helps run the exchange; deciding who is in it is the sort of
+    /// thing #205 kept for the owner, and this follows that precedent rather than inventing another.
+    ///
+    /// The organizer cannot remove themselves through this route — they would be deleting the
+    /// exchange out from under everybody, and there is a control for that which says so.
+    /// </remarks>
+    public async Task RemoveMemberAsync(string groupId, string memberId, CancellationToken cancellationToken = default)
+    {
+        var (group, actor) = await RequireMembershipAsync(groupId, cancellationToken);
+        RequireOrganizer(actor);
+        RequireOwner(group);
+        // Before the draw only. Afterwards a completed draw references the member row, and removing
+        // it would leave somebody buying for a person who is no longer there — reset first.
+        RequireOpen(group);
+        if (memberId == actor.MemberId)
+            throw ApiException.Conflict("Delete the exchange instead of removing yourself from it.");
+        var member = await memberships.GetAsync(memberId, cancellationToken);
+        if (member is null || member.GroupId != groupId)
+            throw ApiException.NotFound("That participant is not in this exchange.");
+
+        await RemoveMembershipAsync(group, member, AuditAction.ParticipantRemoved, cancellationToken);
+    }
+
+    /// <summary>
+    /// Everything that has to go when somebody stops being a member, in one place.
+    /// </summary>
+    /// <remarks>
+    /// There are three ways out of an exchange — leaving, being removed, and deleting your account —
+    /// and what they have to sweep has grown every release: wishes (#127), purchase claims (#130),
+    /// question threads at both ends (#131), gift progress on two rows (#132). Three copies of that
+    /// list would drift, and the one that drifted would leave somebody's words behind.
+    /// <see cref="AccountDeletionService"/> keeps its own because it also anonymizes rather than
+    /// deletes; the two are checked against each other by test rather than shared, because their
+    /// endings genuinely differ.
+    /// </remarks>
+    private async Task RemoveMembershipAsync(
+        GroupRecord group,
+        MembershipRecord member,
+        AuditAction action,
+        CancellationToken cancellationToken)
+    {
         // Before the membership row goes: member_id is the only key these rows have, so deleting the
         // membership first would strand them with nothing able to address them again.
-        await wishes.DeleteByMemberAsync(membership.MemberId, cancellationToken);
+        await wishes.DeleteByMemberAsync(member.MemberId, cancellationToken);
         await questions.DeleteForMemberAsync(
-            groupId, membership.MemberId, await ThreadsGivenByAsync(groupId, membership.MemberId, cancellationToken),
+            group.GroupId, member.MemberId,
+            await ThreadsGivenByAsync(group.GroupId, member.MemberId, cancellationToken),
             cancellationToken);
-        await memberships.DeleteAsync(membership.MemberId, cancellationToken);
-        await audit.RecordAsync(AuditAction.ParticipantLeft, groupId, AuditTarget.Member(membership.MemberId), cancellationToken: cancellationToken);
-        var remaining = group.Exclusions.Where(pair => !pair.Contains(membership.MemberId, StringComparer.Ordinal)).ToList();
-        if (remaining.Count != group.Exclusions.Count)
-            await ConditionalGroupUpdate(() => groups.UpdateAsync(groupId,
-                new Dictionary<string, AttributeValue> { ["exclusions"] = DynamoValues.ExclusionsValue(remaining) },
-                GroupStatus.Open, cancellationToken));
+        await ClearGiftProgressBothWaysAsync(group.GroupId, member.MemberId, cancellationToken);
+        await memberships.DeleteAsync(member.MemberId, cancellationToken);
+        await audit.RecordAsync(action, group.GroupId, AuditTarget.Member(member.MemberId), cancellationToken: cancellationToken);
+        await PruneExclusionsAsync(group, member.MemberId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Drops every pair naming a member who is no longer here.
+    /// </summary>
+    /// <remarks>
+    /// A stale pair is not inert. The matcher reads exclusions as constraints, so one naming a member
+    /// id that no longer exists narrows the search for no reason and, on a small roster, can make an
+    /// otherwise solvable draw impossible — with an error message about the draw rather than about
+    /// the person who left three weeks earlier.
+    /// </remarks>
+    private async Task PruneExclusionsAsync(GroupRecord group, string memberId, CancellationToken cancellationToken)
+    {
+        var remaining = group.Exclusions
+            .Where(pair => !pair.Contains(memberId, StringComparer.Ordinal))
+            .ToList();
+        if (remaining.Count == group.Exclusions.Count) return;
+        await ConditionalGroupUpdate(() => groups.UpdateAsync(group.GroupId,
+            new Dictionary<string, AttributeValue> { ["exclusions"] = DynamoValues.ExclusionsValue(remaining) },
+            GroupStatus.Open, cancellationToken: cancellationToken));
     }
 
     public async Task<Membership> UpdateParticipationAsync(string groupId, string memberId, ParticipationRequest request, CancellationToken cancellationToken = default)
@@ -495,7 +579,7 @@ internal sealed class GroupService(
             if (seen.Add($"{ordered[0]}\0{ordered[1]}")) normalized.Add(ordered);
         }
         await ConditionalGroupUpdate(() => groups.UpdateAsync(groupId,
-            new Dictionary<string, AttributeValue> { ["exclusions"] = DynamoValues.ExclusionsValue(normalized) }, GroupStatus.Open, cancellationToken));
+            new Dictionary<string, AttributeValue> { ["exclusions"] = DynamoValues.ExclusionsValue(normalized) }, GroupStatus.Open, cancellationToken: cancellationToken));
         await audit.RecordAsync(AuditAction.ExclusionsChanged, groupId, AuditTarget.Group(groupId),
             new Dictionary<string, string> { ["exclusion_count"] = normalized.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) }, cancellationToken: cancellationToken);
         return await GetAsync(groupId, cancellationToken);
@@ -901,7 +985,8 @@ internal sealed class GroupService(
         group.GroupId, group.Name, group.Status, group.EventDate, Amount(group.SpendingLimitCents), group.Currency,
         group.Plan, plans.Get(group.Plan).ParticipantLimit, member.IsOrganizer, member.UserId == group.OwnerUserId, group.CreatedAt, group.UpdatedAt, group.Description, group.SignupDeadline,
         member.IsOrganizer ? group.Exclusions : [], all.Select(item => Public(item, group)).ToList(),
-        Customization: group.Customization, RequiresAddress: group.RequiresAddress);
+        Customization: group.Customization, RequiresAddress: group.RequiresAddress,
+        Instructions: group.Instructions);
     private GroupSummary Summary(GroupRecord group, MembershipRecord member) => new(
         group.GroupId, group.Name, group.Status, group.EventDate, Amount(group.SpendingLimitCents), group.Currency,
         group.Plan, plans.Get(group.Plan).ParticipantLimit, member.IsOrganizer, member.UserId == group.OwnerUserId,

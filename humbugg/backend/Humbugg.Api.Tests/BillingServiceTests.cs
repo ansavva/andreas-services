@@ -259,6 +259,7 @@ public sealed class BillingServiceTests
             string groupId,
             IReadOnlyDictionary<string, AttributeValue> fields,
             GroupStatus? expectedStatus = null,
+            string? expectedUpdatedAt = null,
             CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task DeleteAsync(string groupId, CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();

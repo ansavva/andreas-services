@@ -9,6 +9,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { api, ApiError } from '../api/client';
 import { DangerButton } from '../components/danger-button';
+import { ExchangeInstructions, ExchangeSettingsPanel } from '../components/exchange-settings';
 import { isPlusRequired, PlusRefusalCard } from '../components/plus';
 import { GiftReceivedPanel, GiftStagePanel } from '../components/gift-progress';
 import { QuestionsPanel } from '../components/questions';
@@ -207,6 +208,15 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
           </>
         ) : null}
 
+        <ExchangeInstructions instructions={group.instructions} />
+
+        {/* The organizer's edit form (#135). Before the draw only — nothing here changes the
+            matching, but a roster that can still move is the mental model, and settling the details
+            after everybody has their assignment is a different (and rarer) job. */}
+        {group.is_organizer && group.status === 'open' ? (
+          <ExchangeSettingsPanel group={group} onSaved={setGroup} />
+        ) : null}
+
         <Card>
           <Text style={styles.eyebrow}>Participants</Text>
           <Text style={[styles.heading, { marginTop: 4 }]}>The exchange circle</Text>
@@ -242,6 +252,21 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
                       <Checkbox.Indicator />
                     </Checkbox.Root>
                     <Text style={styles.smallMuted}>Include</Text>
+                    {/* Owner-only, and armed before it commits, like every other destructive
+                        control here. Removing somebody takes their wishlist, their claims, their
+                        conversations and their gift progress with them; a stray tap must not. */}
+                    {group.is_owner ? (
+                      <RemoveMemberButton
+                        name={member.display_name}
+                        busy={busy}
+                        onRemove={() =>
+                          void action(
+                            (token) => api.removeMember(token, groupId, member.member_id),
+                            `${member.display_name} was removed.`,
+                          )
+                        }
+                      />
+                    ) : null}
                   </View>
                 ) : null}
               </View>
@@ -303,6 +328,46 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
         ) : null}
       </View>
     </Shell>
+  );
+}
+
+/**
+ * Arm, then commit — the same shape the delete and clear controls use.
+ *
+ * The armed state expires, so a removal cannot sit primed behind a scrolled-away button, and the
+ * label says whose removal is armed rather than a bare "Confirm".
+ */
+function RemoveMemberButton({
+  name,
+  busy,
+  onRemove,
+}: {
+  name: string;
+  busy: boolean;
+  onRemove(): void;
+}) {
+  const [armed, setArmed] = useState(false);
+
+  useEffect(() => {
+    if (!armed) return;
+    const timeout = setTimeout(() => setArmed(false), 5000);
+    return () => clearTimeout(timeout);
+  }, [armed]);
+
+  return (
+    <DangerButton
+      size="sm"
+      disabled={busy}
+      accessibilityLabel={armed ? `Confirm removing ${name}` : `Remove ${name}`}
+      accessibilityLiveRegion="polite"
+      onPress={() => {
+        if (!armed) { setArmed(true); return; }
+        setArmed(false);
+        onRemove();
+      }}
+    >
+      {armed ? 'Tap to confirm' : 'Remove'}
+    </DangerButton>
   );
 }
 

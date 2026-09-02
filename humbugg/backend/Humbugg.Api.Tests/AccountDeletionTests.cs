@@ -236,7 +236,7 @@ public sealed class AccountDeletionTests
         public GroupRecord Get(string groupId) => groups[groupId];
         public Task<GroupRecord?> GetAsync(string groupId, CancellationToken cancellationToken = default) =>
             Task.FromResult(groups.TryGetValue(groupId, out var group) ? group : null);
-        public Task<GroupRecord> UpdateAsync(string groupId, IReadOnlyDictionary<string, AttributeValue> fields, GroupStatus? expectedStatus = null, CancellationToken cancellationToken = default)
+        public Task<GroupRecord> UpdateAsync(string groupId, IReadOnlyDictionary<string, AttributeValue> fields, GroupStatus? expectedStatus = null, string? expectedUpdatedAt = null, CancellationToken cancellationToken = default)
         {
             var group = groups[groupId];
             if (expectedStatus is not null && group.Status != expectedStatus.Value)

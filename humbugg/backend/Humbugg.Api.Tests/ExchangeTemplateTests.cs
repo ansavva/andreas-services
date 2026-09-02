@@ -97,7 +97,7 @@ public sealed class ExchangeTemplateTests
     {
         public Task<GroupRecord?> GetAsync(string id, CancellationToken ct = default) => Task.FromResult<GroupRecord?>(id == target.GroupId ? target : null);
         public Task<GroupRecord> CreateAsync(GroupRecord value, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<GroupRecord> UpdateAsync(string id, IReadOnlyDictionary<string, AttributeValue> fields, GroupStatus? expectedStatus = null, CancellationToken ct = default) => throw new NotImplementedException();
+        public Task<GroupRecord> UpdateAsync(string id, IReadOnlyDictionary<string, AttributeValue> fields, GroupStatus? expectedStatus = null, string? expectedUpdatedAt = null, CancellationToken ct = default) => throw new NotImplementedException();
         public Task DeleteAsync(string id, CancellationToken ct = default) => throw new NotImplementedException();
         public Task CreateDrawAsync(string id, IReadOnlyDictionary<string, string> assignments, string actor, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<DrawRecord?> GetDrawAsync(string id, CancellationToken ct = default) => throw new NotImplementedException();

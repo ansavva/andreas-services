@@ -706,6 +706,158 @@ public sealed class GroupServiceSecurityTests
         Assert.Equal(1, fixture.Groups.CreateDrawCount);
     }
 
+    // ── Organizer editing and roster management (#135) ───────────────────────────────────────────
+
+    /// <summary>
+    /// Two organizers editing at once: the second save is refused rather than silently winning.
+    /// </summary>
+    /// <remarks>
+    /// Last-write-wins is the default and it is the wrong default here, because the loser is never
+    /// told. Somebody rewrites the description, somebody else changes the date from a page loaded ten
+    /// minutes earlier, and the description quietly reverts with nobody the wiser. The precondition
+    /// is the `updated_at` the row already carries, so no version attribute exists to forget to bump.
+    /// </remarks>
+    [Fact]
+    public async Task AnEditAgainstAStaleReadIsRefusedRatherThanFlatteningTheOtherOne()
+    {
+        var fixture = new Fixture(member: Fixture.Member("actor", organizer: true));
+        var loaded = await fixture.Subject.GetAsync("group", TestContext.Current.CancellationToken);
+
+        await fixture.Subject.UpdateAsync(
+            "group",
+            new UpdateGroupRequest("Renamed", null, null, null, null, ExpectedUpdatedAt: loaded.UpdatedAt),
+            TestContext.Current.CancellationToken);
+
+        // Somebody else has written since; the same `updated_at` is now stale.
+        fixture.Groups.Touch();
+        var error = await Assert.ThrowsAsync<ApiException>(() => fixture.Subject.UpdateAsync(
+            "group",
+            new UpdateGroupRequest(null, "A new description", null, null, null, ExpectedUpdatedAt: loaded.UpdatedAt),
+            TestContext.Current.CancellationToken));
+
+        Assert.Equal(409, error.StatusCode);
+        Assert.Contains("Reload", error.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>An edit that sends no expectation is not conflict-checked, and still works.</summary>
+    /// <remarks>The readiness dashboard's address switch flips one field from a value it just
+    /// computed; there is nothing for it to conflict with, and demanding a token would be ceremony.</remarks>
+    [Fact]
+    public async Task AnEditWithNoExpectationIsUnaffected()
+    {
+        var fixture = new Fixture(member: Fixture.Member("actor", organizer: true));
+        fixture.Groups.Touch();
+
+        var updated = await fixture.Subject.UpdateAsync(
+            "group", new UpdateGroupRequest(null, null, null, null, null, RequiresAddress: true),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(updated.RequiresAddress);
+    }
+
+    /// <summary>
+    /// Instructions are Free, and are not the customization's instructions.
+    /// </summary>
+    [Fact]
+    public async Task InstructionsAreEditableWithoutPlus()
+    {
+        var fixture = new Fixture(member: Fixture.Member("actor", organizer: true), plan: PlanCode.Free);
+
+        var updated = await fixture.Subject.UpdateAsync(
+            "group",
+            new UpdateGroupRequest(null, null, null, null, null, Instructions: "  Bring it wrapped to the office.  "),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("Bring it wrapped to the office.", updated.Instructions);
+        // Untouched: the two fields are different things for different audiences.
+        Assert.Null(updated.Customization);
+    }
+
+    [Fact]
+    public async Task OnlyTheOwnerRemovesSomebody_AndNeverThemselves()
+    {
+        var coOrganizer = new Fixture(member: Fixture.Member("actor", organizer: true), ownerUserId: "somebody-else");
+        coOrganizer.Members.Items.Add(Fixture.Member("other", organizer: false));
+        Assert.Equal(403, (await Assert.ThrowsAsync<ApiException>(() =>
+            coOrganizer.Subject.RemoveMemberAsync("group", "other", TestContext.Current.CancellationToken))).StatusCode);
+
+        var participant = new Fixture(member: Fixture.Member("actor", organizer: false));
+        participant.Members.Items.Add(Fixture.Member("other", organizer: false));
+        Assert.Equal(403, (await Assert.ThrowsAsync<ApiException>(() =>
+            participant.Subject.RemoveMemberAsync("group", "other", TestContext.Current.CancellationToken))).StatusCode);
+
+        var owner = new Fixture(member: Fixture.Member("actor", organizer: true), ownerUserId: "user");
+        Assert.Equal(409, (await Assert.ThrowsAsync<ApiException>(() =>
+            owner.Subject.RemoveMemberAsync("group", "actor", TestContext.Current.CancellationToken))).StatusCode);
+    }
+
+    /// <summary>
+    /// Removal takes everything the departing member authored — the same list leaving does.
+    /// </summary>
+    /// <remarks>
+    /// What has to be swept has grown every release: wishes, purchase claims, question threads at
+    /// both ends, gift progress on two rows. Removal and leaving share one method precisely so the
+    /// list cannot be right in one and stale in the other.
+    /// </remarks>
+    [Fact]
+    public async Task RemovingSomebodyTakesEverythingTheyAuthored()
+    {
+        var wish = new WishRecord(
+            "other", "wish-1", "group", "user-other", WishKind.Product, "A book",
+            "", "", null, "USD", 1, WishPriority.Normal, "", 0, "now", "now");
+        var fixture = new Fixture(
+            member: Fixture.Member("actor", organizer: true), ownerUserId: "user",
+            exclusions: [["actor", "other"]], wishes: [wish]);
+        fixture.Members.Items.Add(Fixture.Member("other", organizer: false));
+
+        await fixture.Subject.RemoveMemberAsync("group", "other", TestContext.Current.CancellationToken);
+
+        Assert.DoesNotContain(fixture.Members.Items, member => member.MemberId == "other");
+        Assert.Empty(fixture.Wishes.All);
+        Assert.Contains("other", fixture.Questions.DeletedForMembers);
+        Assert.Contains(AuditAction.ParticipantRemoved, fixture.Audit.Actions);
+    }
+
+    /// <summary>
+    /// A pair naming somebody who has gone is dropped, not left to poison the draw.
+    /// </summary>
+    /// <remarks>
+    /// A stale exclusion is not inert: the matcher reads it as a constraint, so on a small roster it
+    /// can make an otherwise solvable draw impossible — and the error blames the draw rather than the
+    /// person who left three weeks earlier.
+    /// </remarks>
+    [Fact]
+    public async Task RemovingSomebodyPrunesTheExclusionsNamingThem()
+    {
+        var fixture = new Fixture(
+            member: Fixture.Member("actor", organizer: true), ownerUserId: "user",
+            exclusions: [["actor", "other"], ["actor", "third"]]);
+        fixture.Members.Items.Add(Fixture.Member("other", organizer: false));
+        fixture.Members.Items.Add(Fixture.Member("third", organizer: false));
+
+        await fixture.Subject.RemoveMemberAsync("group", "other", TestContext.Current.CancellationToken);
+
+        var remaining = fixture.Groups.LastExclusions;
+        Assert.NotNull(remaining);
+        Assert.Equal([["actor", "third"]], remaining);
+    }
+
+    /// <summary>After a draw, removal is refused: reset first, or somebody buys for a ghost.</summary>
+    [Fact]
+    public async Task RemovingSomebodyAfterTheDrawIsRefused()
+    {
+        var fixture = new Fixture(
+            member: Fixture.Member("actor", organizer: true), ownerUserId: "user", exclusions: []);
+        fixture.Members.Items.Add(Fixture.Member("other", organizer: false));
+        await fixture.Subject.DrawAsync("group", TestContext.Current.CancellationToken);
+
+        var error = await Assert.ThrowsAsync<ApiException>(() =>
+            fixture.Subject.RemoveMemberAsync("group", "other", TestContext.Current.CancellationToken));
+
+        Assert.Equal(409, error.StatusCode);
+        Assert.Contains(fixture.Members.Items, member => member.MemberId == "other");
+    }
+
     private sealed class FakeUser(string userId = "user") : ICurrentUser { public string UserId => userId; }
     private sealed class FakeProfiles : IProfileRepository
     {
@@ -723,7 +875,42 @@ public sealed class GroupServiceSecurityTests
         public int CreateDrawCount { get; private set; }
         public int ResetDrawCount { get; private set; }
         public Task<GroupRecord?> GetAsync(string groupId, CancellationToken cancellationToken = default) => Task.FromResult<GroupRecord?>(group);
-        public Task<GroupRecord> UpdateAsync(string groupId, IReadOnlyDictionary<string, AttributeValue> fields, GroupStatus? expectedStatus = null, CancellationToken cancellationToken = default) { UpdateCount++; return Task.FromResult(group); }
+        /// <summary>The exclusions the last update wrote, for the pruning tests.</summary>
+        public IReadOnlyList<string[]>? LastExclusions { get; private set; }
+
+        /// <summary>Simulates somebody else writing: the row's `updated_at` moves on.</summary>
+        public void Touch() => group = group with { UpdatedAt = $"touched-{++touches}" };
+        private int touches;
+
+        public Task<GroupRecord> UpdateAsync(string groupId, IReadOnlyDictionary<string, AttributeValue> fields, GroupStatus? expectedStatus = null, string? expectedUpdatedAt = null, CancellationToken cancellationToken = default)
+        {
+            UpdateCount++;
+            // The real repository enforces this with a DynamoDB condition; the fake enforces the same
+            // rule so a test can tell a refusal from a silent overwrite.
+            if (expectedUpdatedAt is not null && expectedUpdatedAt != group.UpdatedAt)
+                throw new ConditionalCheckFailedException("stale");
+            if (fields.TryGetValue("exclusions", out var exclusions))
+                LastExclusions = exclusions.L?
+                    .Select(pair => pair.L?.Select(entry => entry.S ?? "").ToArray() ?? [])
+                    .ToList();
+            group = Apply(group, fields);
+            return Task.FromResult(group);
+        }
+
+        /// <summary>Applies the fields the tests actually read back, so a save is observable.</summary>
+        private static GroupRecord Apply(GroupRecord current, IReadOnlyDictionary<string, AttributeValue> fields)
+        {
+            foreach (var (field, value) in fields)
+                current = field switch
+                {
+                    "name" => current with { Name = value.S },
+                    "description" => current with { Description = value.S },
+                    "instructions" => current with { Instructions = value.S },
+                    "requires_address" => current with { RequiresAddress = value.BOOL == true },
+                    _ => current,
+                };
+            return current with { UpdatedAt = $"{current.UpdatedAt}+" };
+        }
         public Task CreateDrawAsync(string groupId, IReadOnlyDictionary<string, string> assignments, string actorUserId, CancellationToken cancellationToken = default)
         {
             CreateDrawCount++;
@@ -870,7 +1057,11 @@ public sealed class GroupServiceSecurityTests
             Items[index] = updated;
             return Task.FromResult(updated);
         }
-        public Task DeleteAsync(string memberId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task DeleteAsync(string memberId, CancellationToken cancellationToken = default)
+        {
+            Items.RemoveAll(item => item.MemberId == memberId);
+            return Task.CompletedTask;
+        }
         public Task DeleteByGroupAsync(string groupId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task AnonymizeAsync(string memberId, string pseudonym, string displayName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
