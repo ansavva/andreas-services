@@ -167,7 +167,7 @@ export function ProjectPage() {
           {/* Top-right, above the list it adds to — where "make one of these"
               sits on every listing that has one. */}
           <div className="flex justify-end">
-            <NewRunStrip projectId={record.id} />
+            <NewRunStrip projectId={record.id} characters={record.characters} />
           </div>
           <RunsTable
             projectId={record.id}

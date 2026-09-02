@@ -14,8 +14,24 @@ interface Props {
    * than the end of one.
    */
   onPick: (prompt: string) => void;
-  /** True while this run has no cast — a template would have nothing to fill from. */
-  disabled?: boolean;
+  /** How many characters this run binds. `{character.1.…}` is the first of them. */
+  cast: number;
+}
+
+/**
+ * The highest `{character.N.…}` a template cites, or 0 if it cites none.
+ *
+ * **Not every template needs a character**, which is why this is a number rather
+ * than a flag: one built entirely from `{block.…}` fills against a run that
+ * binds nobody, and a picker that hid every template until a cast existed would
+ * hide exactly the ones that never needed one.
+ */
+export function castNeededBy(prompt: string): number {
+  let most = 0;
+  for (const [, digits] of prompt.matchAll(/\{character\.(\d+)\./g)) {
+    most = Math.max(most, Number(digits));
+  }
+  return most;
 }
 
 /**
@@ -34,25 +50,30 @@ interface Props {
  * has always put the decision. A picker that saved would make "look at a
  * template" and "commit to it" the same gesture.
  *
+ * ## Nothing here is blocked
+ *
+ * A template built from `{block.…}` alone fills against a run that binds
+ * nobody, so gating the list on a cast would hide exactly the templates that
+ * never needed one. And gating the ROWS is barely better: a person who wants a
+ * template that cites a character they have not added yet wants to add the
+ * character, not to be told they may not look. So every row is pickable, a row
+ * that needs more cast than the run has says so, and the editor names the
+ * citation that did not expand and offers the fix beside it.
+ *
  * ## What it does NOT copy
  *
  * The template's `description` and `tags` describe the image it makes, not the
  * run that makes it, so they belong to a promotion rather than to a plan. They
  * stay on the template until somebody promotes an output into a character.
  */
-export function TemplatePicker({ onPick, disabled }: Props) {
+export function TemplatePicker({ onPick, cast }: Props) {
   const [open, setOpen] = useState(false);
   const load = useCallback(() => getTemplates(), []);
   const library = useResource(open ? ["templates"] : null, open ? load : null);
 
   return (
     <>
-      <Button
-        size="sm"
-        intent="secondary"
-        disabled={disabled}
-        onClick={() => setOpen(true)}
-      >
+      <Button size="sm" intent="secondary" onClick={() => setOpen(true)}>
         Start from a template
       </Button>
 
@@ -81,28 +102,43 @@ export function TemplatePicker({ onPick, disabled }: Props) {
             )}
 
             <div className="flex flex-col gap-2 overflow-auto">
-              {(library.data?.templates ?? []).map((entry) => (
-                <button
-                  key={entry.id}
-                  type="button"
-                  onClick={() => {
-                    onPick(entry.prompt);
-                    setOpen(false);
-                  }}
-                  className="flex flex-col gap-1 rounded border border-line p-3 text-left
-                             transition-colors hover:bg-surface-alt
-                             focus-visible:outline-2 focus-visible:-outline-offset-2
-                             focus-visible:outline-primary"
-                >
-                  <Text variant="body">{entry.name || entry.id}</Text>
-                  {/* The first line only. A template is a wall of prose and a
-                      list of walls is unreadable; what a person is choosing
-                      between is which template, not which paragraph. */}
-                  <Text variant="caption" tone="muted">
-                    {entry.prompt.trim().split("\n")[0]}
-                  </Text>
-                </button>
-              ))}
+              {(library.data?.templates ?? []).map((entry) => {
+                const needs = castNeededBy(entry.prompt);
+                const short = needs > cast;
+                return (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    onClick={() => {
+                      onPick(entry.prompt);
+                      setOpen(false);
+                    }}
+                    className="flex flex-col gap-1 rounded border border-line p-3 text-left
+                               transition-colors hover:bg-surface-alt
+                               focus-visible:outline-2 focus-visible:-outline-offset-2
+                               focus-visible:outline-primary"
+                  >
+                    <Text variant="body">{entry.name || entry.id}</Text>
+                    {/* The first line only. A template is a wall of prose and a
+                        list of walls is unreadable; what a person is choosing
+                        between is which template, not which paragraph. */}
+                    <Text variant="caption" tone="muted">
+                      {entry.prompt.trim().split("\n")[0]}
+                    </Text>
+                    {/* **Said, not enforced.** Every template is pickable: it
+                        lands in the box, the preview names the citation that
+                        will not expand, and the cast is editable right there.
+                        Blocking the pick instead would be this screen deciding
+                        which of its own problems a person is allowed to see. */}
+                    {short && (
+                      <Text variant="caption" tone="muted">
+                        Cites character {needs}; this run binds{" "}
+                        {cast === 0 ? "none" : cast} — add one after picking.
+                      </Text>
+                    )}
+                  </button>
+                );
+              })}
             </div>
 
             <div className="flex justify-end">

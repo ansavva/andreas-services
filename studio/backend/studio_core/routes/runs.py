@@ -1122,12 +1122,39 @@ def update_run(run_id: str):
         if field in body:
             assignments[field] = body[field]
 
+    # **The cast, which could only be set at creation and now cannot be.**
+    #
+    # A run's characters are edges — `RUN#<id>` / `CHAR#<id>` — and `POST /runs`
+    # was the only thing that wrote them. That made a run created without any
+    # permanently uncitable: a prompt names its cast by position, so a template
+    # citing `{character.1.top}` had nothing to fill from and no way to be given
+    # it. The app never sent the field at all, so EVERY run it made was in that
+    # state.
+    #
+    # A replace, like every other edge set here, and no `rev`: this is the same
+    # class of write as the rest of this route.
+    edges = None
+    if "characters" in body:
+        cast = body["characters"] or []
+        if not isinstance(cast, list):
+            raise ValidationError("characters must be a list")
+        for char_id in cast:
+            support.entity_at(catalog.ENTITY_CHARACTER, g.library, char_id, held)
+        # **Both halves, in one transaction.** The cast is a field on the record
+        # — what a run reports and what `{character.N}` counts — AND a set of
+        # `RUN#<id>` / `CHAR#<id>` edges, which is what makes "every run that
+        # used this character" answerable. Writing one without the other is the
+        # class of drift the whole of this change removed elsewhere; `edges` is
+        # the argument that keeps them together.
+        assignments["characters"] = cast
+        edges = {catalog.ENTITY_CHARACTER: cast}
+
     if not assignments:
         raise ValidationError("nothing to change")
 
     return jsonify(
         catalog.update_project_entity(KIND, record, assignments, listing,
-                                      bump_count=bump_count)
+                                      edges=edges, bump_count=bump_count)
     ), 200
 
 

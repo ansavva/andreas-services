@@ -1,4 +1,4 @@
-import { useCallback, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -82,6 +82,16 @@ export function seedPlan(entry: ModelEntry): RunPlan {
 
 interface Props {
   projectId: string;
+  /**
+   * The project's cast, offered as this run's.
+   *
+   * **A run's characters are set HERE or never.** `POST /api/runs` takes them
+   * and no route changes them afterwards, so a run created without any can
+   * never cite one — and every template does, by position. The strip did not
+   * offer them at all, which made every run the app created uncitable and the
+   * template picker permanently disabled.
+   */
+  characters?: Array<{ id: string; slug: string; display_name?: string }>;
 }
 
 /**
@@ -104,7 +114,7 @@ interface Props {
  * Nothing here spends. A draft is hidden from listings until it is submitted and
  * is discardable from its own page, so an abandoned one costs a row.
  */
-export function NewRunStrip({ projectId }: Props) {
+export function NewRunStrip({ projectId, characters = [] }: Props) {
   const navigate = useNavigate();
   const kindLabel = useId();
 
@@ -117,6 +127,36 @@ export function NewRunStrip({ projectId }: Props) {
   const [kind, setKind] = useState<RunKind>("image");
   const [modelKey, setModelKey] = useState<string | null>(null);
   const [name, setName] = useState("");
+  /**
+   * Who this run is about, in the order a prompt counts them.
+   *
+   * `{character.1.…}` is the first of these, so the ORDER is the payload and
+   * this is an array rather than a set — the same reason a run's sends are.
+   */
+  const [cast, setCast] = useState<string[]>([]);
+
+  /**
+   * **The project's cast is the run's, until somebody says otherwise.**
+   *
+   * A run in a project about one person is almost always about that person, and
+   * making somebody re-state it every time is the kind of default that gets
+   * skipped and then produces a run nothing can cite. Deselecting is one click;
+   * remembering to select is not.
+   *
+   * Seeded when the strip opens rather than held: closing it and opening it
+   * again is a fresh start, which is what Cancel means everywhere else here.
+   */
+  /**
+   * **Keyed on the ids, not the array.** `characters` defaults to `[]`, which is
+   * a NEW array on every render, so an effect depending on it re-ran forever —
+   * set state, re-render, fresh default, set state. It did not fail the suite;
+   * it exhausted memory and the runner was killed, which reads as a hang rather
+   * than as a bug in this file.
+   */
+  const castKey = characters.map((each) => each.id).join(",");
+  useEffect(() => {
+    if (open) setCast(castKey ? castKey.split(",") : []);
+  }, [open, castKey]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -147,6 +187,7 @@ export function NewRunStrip({ projectId }: Props) {
         model: entry.model,
         engine: entry.skill,
         ...(stem ? { name: stem } : {}),
+        ...(cast.length ? { characters: cast } : {}),
         plan: seedPlan(entry),
       });
       // `editing` rather than a query parameter: it is a one-shot instruction to
@@ -268,6 +309,41 @@ export function NewRunStrip({ projectId }: Props) {
             />
           </Field.Root>
         </div>
+
+        {/* **Offered only when the project has a cast to offer.** A project
+            with no characters is a real thing — a plate, a title card — and a
+            control with nothing in it is worse than no control. */}
+        {characters.length > 0 && (
+          <div className="min-w-56">
+            <Field.Root name="run-characters">
+              <Field.Label>Characters</Field.Label>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {characters.map((each) => {
+                  const at = cast.indexOf(each.id);
+                  return (
+                    <Button
+                      key={each.id}
+                      size="sm"
+                      intent={at >= 0 ? "primary" : "secondary"}
+                      onClick={() =>
+                        setCast((current) =>
+                          at >= 0
+                            ? current.filter((id) => id !== each.id)
+                            : [...current, each.id],
+                        )
+                      }
+                    >
+                      {/* The position, because it is what a prompt cites:
+                          `{character.1.top}` is whichever of these is first. */}
+                      {at >= 0 ? `${at + 1}. ` : ""}
+                      {each.display_name || each.slug}
+                    </Button>
+                  );
+                })}
+              </div>
+            </Field.Root>
+          </div>
+        )}
 
         <div className="min-w-48 flex-1">
           <Field.Root name="output-name">

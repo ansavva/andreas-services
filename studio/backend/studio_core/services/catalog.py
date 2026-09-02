@@ -3391,17 +3391,11 @@ SPEC_PREFIX = "SPEC#"
 BLOCK_PREFIX = f"{SPEC_PREFIX}BLOCK#"
 TEMPLATE_PREFIX = f"{SPEC_PREFIX}TEMPLATE#"
 
-#: What an angle row carries besides its template. `description` and `tags` are
-#: read at PROMOTION rather than at render — `add-refs --from-run` writes them
-#: onto the image — so they belong to the angle and not to the prompt.
-#: `illustration` is shown to a PERSON and never sent to a model. It is what is
-#: left of the pose plates: an angle could bind one as a first image, and it
-#: distorted the very thing it existed to record — the face angles stopped
-#: sending theirs, and the body angles followed once eleven hand-authored
-#: production renders were compared and not one had bound a plate. The picture
-#: is still the clearest statement of what an orientation IS, so it survives as
-#: a diagram, on a field that cannot reach a payload.
-TEMPLATE_FIELDS = ("name", "prompt", "description", "tags", "illustration")
+#: What a template row carries besides its prompt. `description` and `tags` are
+#: read at PROMOTION rather than at render — they are what somebody starts from
+#: when the image this makes becomes identity — so they belong to the template
+#: and not to the prompt.
+TEMPLATE_FIELDS = ("name", "prompt", "description", "tags")
 
 
 def templates(lib: str) -> dict:

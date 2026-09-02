@@ -13,6 +13,7 @@ import {
 
 import {
   deleteBlock,
+  deleteTemplate,
   getTemplates,
   saveTemplate,
   saveBlock,
@@ -22,7 +23,6 @@ import { AutoTextarea } from "../components/common/AutoTextarea";
 import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
 import { TokenizedPromptEditor } from "../components/common/TokenizedPromptEditor";
 import type { PromptToken } from "../components/common/TokenizedPromptEditor";
-import { AnglePlate } from "../components/common/AnglePlate";
 import { PromptPreview } from "../components/common/PromptPreview";
 import { PageBar } from "../components/layout/PageBar";
 import { useResource } from "../hooks/useResource";
@@ -112,6 +112,7 @@ function LibraryTabs({ library, setData }: { library: TemplateLibrary; setData: 
         {library.templates.map((template) => (
           <TemplateEditor key={template.id} template={template} library={library} setData={setData} />
         ))}
+        <NewTemplate setData={setData} />
       </Tabs.Panel>
 
       <Tabs.Panel value="blocks">
@@ -170,17 +171,28 @@ function citations(prompt: string): string[] {
  * word: a block called `top` lost to the character's bible every time, and one
  * called `angle_slot` won or lost depending on whether the template bound a plate.
  */
-const CHARACTER = ["top", "style", "must", "build", "age", "identity_block"];
-//: `angle` and `torso` were the pose plates and are gone — they distorted the
-//: thing they existed to record. `anchor` is the sentence a chained shoot
-//: carries, empty when there is no anchor.
-const SLOT = ["identity", "anchor"];
+/**
+ * What `{character.N.…}` may cite, positionally.
+ *
+ * **`build` and `must` name a VARIANT.** The bible answers both differently for
+ * a face than for a body — a face crops at mid-chest, so the proportions below
+ * it are noise — and citing the bare name is refused rather than defaulted,
+ * because a face template silently filled with body proportions is wrong in a
+ * way the finished prose does not show.
+ *
+ * **How many positions to offer.** A template is written before anybody knows
+ * which run will use it, so there is no cast to count — three is what a
+ * multi-character prompt has ever needed, and a fourth is typed by hand.
+ */
+const CHARACTER_FIELDS = [
+  "top", "style", "age", "identity_block",
+  "build.face", "build.body", "must.face", "must.body",
+];
+const POSITIONS = [1, 2, 3];
 
-/** The bare spelling, which still resolves — see the editor's note on `legacy`. */
-const LEGACY = new Set([
-  ...CHARACTER,
-  "identity_slots",
-]);
+//: `angle` and `torso` were the pose plates and are gone — they distorted the
+//: thing they existed to record. `anchor` went with the chaining it described.
+const SLOT = ["identity"];
 
 /** The block a citation names, whichever way it is spelled. */
 function blockNamed(cited: string): string | null {
@@ -423,6 +435,100 @@ function BlockEditor({
   );
 }
 
+/**
+ * Write a template that does not exist yet.
+ *
+ * **The page could edit and delete and not create**, which made the library
+ * something only `studio templates push` could add to — so writing a new prompt
+ * meant a YAML file and a CLI, for prose whose whole nature is that it is tuned
+ * in front of the thing it produces.
+ *
+ * The id is typed rather than generated: it is what the CLI addresses a template
+ * by and what a pushed file keys on, so a UUID here would make the two halves
+ * unable to talk about the same row.
+ */
+function NewTemplate({ setData }: { setData: SetData }) {
+  const [open, setOpen] = useState(false);
+  const [id, setId] = useState("");
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+
+  const problem = id && !/^[a-z0-9_]+$/.test(id)
+    ? "lowercase letters, digits and underscores"
+    : null;
+
+  const create = useCallback(async () => {
+    setSaving(true);
+    setFailed(null);
+    try {
+      const saved = await saveTemplate(id, {
+        name: name || id,
+        // A prompt is required by the route, so a new one starts as the thing
+        // every template here has in common rather than as an empty box the
+        // save would refuse.
+        prompt: "{block.quality}",
+        description: "What the image this makes shows.",
+        tags: ["untagged"],
+      });
+      setData((current) =>
+        current ? { ...current, templates: [...current.templates, saved] } : current,
+      );
+      setOpen(false);
+      setId("");
+      setName("");
+    } catch (problem_) {
+      setFailed(problem_ instanceof Error ? problem_.message : String(problem_));
+    } finally {
+      setSaving(false);
+    }
+  }, [id, name, setData]);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex min-h-16 w-full items-center justify-center rounded border border-dashed border-line px-2 py-1.5 text-sm text-muted hover:bg-surface-alt"
+      >
+        + New template
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded border border-line p-3">
+      <Field.Root name="new-template-id" invalid={problem !== null}>
+        <Field.Label>Id</Field.Label>
+        <Field.Description>
+          What the CLI addresses it by — <code>studio templates push</code> keys on it.
+        </Field.Description>
+        <Input value={id} onValueChange={setId} className="font-mono" />
+        {problem ? <Field.Error>{problem}</Field.Error> : null}
+      </Field.Root>
+      <Field.Root name="new-template-name">
+        <Field.Label>Name</Field.Label>
+        <Field.Description>What a person picks it by. Defaults to the id.</Field.Description>
+        <Input value={name} onValueChange={setName} />
+      </Field.Root>
+      {failed ? (
+        <Alert.Root intent="danger">
+          <Alert.Description>{failed}</Alert.Description>
+        </Alert.Root>
+      ) : null}
+      <div className="flex gap-2">
+        <Button size="sm" disabled={!id || problem !== null || saving} onClick={() => void create()}>
+          {saving ? "Creating…" : "Create"}
+        </Button>
+        <Button size="sm" intent="secondary" disabled={saving} onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+
 function TemplateEditor({
   template,
   library,
@@ -433,6 +539,16 @@ function TemplateEditor({
   setData: SetData;
 }) {
   const [prompt, setPrompt] = useState(template.prompt);
+  /**
+   * **Editable, which they were not.**
+   *
+   * The editor saved `prompt` and `description` and passed `name` and `tags`
+   * straight back through, so the only way to rename a template or change what
+   * its output gets tagged was a YAML file and `studio templates push`. Both are
+   * things a person changes while looking at the prompt they belong to.
+   */
+  const [name, setName] = useState(template.name ?? "");
+  const [tags, setTags] = useState((template.tags ?? []).join(", "));
   const [description, setDescription] = useState(template.description);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -450,22 +566,35 @@ function TemplateEditor({
         kind: "block" as const,
         hint: text.slice(0, 60),
       })),
-      ...CHARACTER.map((name) => ({ name: `character.${name}`, kind: "computed" as const })),
+      ...POSITIONS.flatMap((at) =>
+        CHARACTER_FIELDS.map((field) => ({
+          name: `character.${at}.${field}`,
+          kind: "computed" as const,
+          hint: `character ${at}`,
+        })),
+      ),
       ...SLOT.map((name) => ({ name: `slot.${name}`, kind: "computed" as const })),
       // Not offered, still drawn — every template written before the namespaces
       // uses the bare spelling and has to keep looking like what it is.
       ...blocks.map(([name]) => ({ name, kind: "block" as const, legacy: true })),
-      ...[...LEGACY].map((name) => ({ name, kind: "computed" as const, legacy: true })),
     ];
   }, [library.blocks]);
   const unknown = useMemo(
     () =>
       cited.filter((name) => {
         const block = blockNamed(name);
-        if (block !== null) return !(block in library.blocks) && !LEGACY.has(block);
-        const [space, member] = name.split(".");
-        if (space === "character") return !CHARACTER.includes(member ?? "");
-        if (space === "slot") return !SLOT.includes(member ?? "");
+        if (block !== null) return !(block in library.blocks);
+        const [space, ...rest] = name.split(".");
+        if (space === "character") {
+          // `{character.N.<field>}` — the position first, then the field, which
+          // may itself name a variant (`build.face`). A bare `{character.top}`
+          // has no position and is exactly what the fill refuses, so it lands
+          // here as unknown, which is the right answer.
+          const [at, ...field] = rest;
+          if (!/^\d+$/.test(at ?? "")) return true;
+          return !CHARACTER_FIELDS.includes(field.join("."));
+        }
+        if (space === "slot") return !SLOT.includes(rest.join(".") || "");
         return true;
       }),
     [cited, library.blocks],
@@ -476,10 +605,16 @@ function TemplateEditor({
     setFailed(null);
     try {
       const saved = await saveTemplate(template.id, {
-        name: template.name,
+        name: name || template.id,
         prompt,
         description,
-        tags: template.tags,
+        // Comma-separated, folded the way every other tag box in the app folds
+        // them — a tag typed here and one typed in the file browser are the
+        // same tag or the filter that finds one will not find the other.
+        tags: tags
+          .split(",")
+          .map((tag) => tag.trim().toLowerCase())
+          .filter(Boolean),
       });
       setData((current) =>
         current
@@ -496,19 +631,53 @@ function TemplateEditor({
     } finally {
       setSaving(false);
     }
-  }, [template, description, prompt, setData]);
+  }, [template, description, name, prompt, tags, setData]);
 
   return (
     <Card.Root>
-      {/* The illustration, here too. This screen is where a template's words
-          are actually written, and it showed the id and nothing else — so what
-          the template MAKES was only visible somewhere else. */}
+      {/* **No plate.** A template used to carry an `illustration` — a picture
+          of the orientation it shot — because every template WAS an orientation
+          of a standard set. A template is any prompt somebody wrote now, and
+          most will never have such a picture; a field that only fourteen rows
+          could fill is a field that reads as missing on everything else. */}
       <div className="flex items-start gap-3">
-        <AnglePlate path={template.illustration} name={template.id} className="w-16 shrink-0" />
-        <Card.Title>
-          {template.name || template.id}{" "}
-          {template.name ? <Badge size="sm">{template.id}</Badge> : null}
-        </Card.Title>
+        <div className="flex flex-1 flex-col gap-2">
+          <Card.Title>
+            {name || template.id} <Badge size="sm">{template.id}</Badge>
+          </Card.Title>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Field.Root name={`template-name-${template.id}`}>
+              <Field.Label>Name</Field.Label>
+              <Field.Description>What a person picks it by.</Field.Description>
+              <Input value={name} onValueChange={setName} />
+            </Field.Root>
+            <Field.Root name={`template-tags-${template.id}`}>
+              <Field.Label>Tags</Field.Label>
+              <Field.Description>
+                Comma-separated. What its output is tagged with when it is promoted.
+              </Field.Description>
+              <Input value={tags} onValueChange={setTags} className="font-mono" />
+            </Field.Root>
+          </div>
+        </div>
+        {/* A template is prose somebody wrote, so it can be thrown away like
+            one. Nothing cites a template by name — a run copies its words — so
+            unlike a block there is no count to warn about. */}
+        <ConfirmDeleteButton
+          noun={template.name || template.id}
+          disabled={saving}
+          onConfirm={async () => {
+            await deleteTemplate(template.id);
+            setData((current) =>
+              current
+                ? {
+                    ...current,
+                    templates: current.templates.filter((each) => each.id !== template.id),
+                  }
+                : current,
+            );
+          }}
+        />
       </div>
       <div className="flex flex-col gap-2">
         {/*

@@ -43,8 +43,16 @@ export interface PromptToken {
   legacy?: boolean;
 }
 
-//: A placeholder name: `scale_face`, or a namespaced `block.scale_face`.
-const PLACEHOLDER = /\{[a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*\}/g;
+//: A placeholder name: `block.scale_face`, `slot.identity`, or a positional
+//: `character.1.build.face`.
+//:
+//: **Every segment after the first may be digits**, and requiring a leading
+//: letter on all of them is what stopped `{character.1.top}` from ever drawing
+//: as a pill. It looked like a rendering bug and read like a broken citation
+//: sitting between block pills that worked — a prompt written entirely in the
+//: one spelling the fill accepts showed none of it as recognised. The first
+//: segment is still a namespace, so it keeps its letter.
+const PLACEHOLDER = /\{[a-z_][a-z0-9_]*(?:\.[a-z0-9_]+)*\}/g;
 
 /**
  * `{` plus the name being typed, immediately before the caret.

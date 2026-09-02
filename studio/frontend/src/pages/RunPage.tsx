@@ -424,6 +424,9 @@ export function RunPage() {
                       setData(updated);
                       setEditing(false);
                     }}
+                    // The record moved and the edit is not finished — the cast
+                    // is the one thing changed from inside the editor.
+                    onChanged={setData}
                     onCancel={() => setEditing(false)}
                   />
                 ) : (

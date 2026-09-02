@@ -76,10 +76,15 @@ test("`{` opens the menu and NARROWS it as the name is typed", async ({ page }) 
   await expect(menu).toBeVisible();
   const all = await menu.getByRole("option").count();
 
-  await page.keyboard.type("face");
+  // **A query narrow enough to beat the menu's own cap.** `face` used to be
+  // one: it is not any more, because a template may cite three cast positions
+  // and `build`/`must` each name a variant, so the tokens matching `face` alone
+  // overflow the list and the filtered count equals the unfiltered one. That
+  // asserts nothing — it passed while the filter did nothing at all.
+  await page.keyboard.type("turn_check");
   await expect(menu.getByRole("option")).not.toHaveCount(all);
   for (const name of await menu.getByRole("option").allTextContents()) {
-    expect(name).toContain("face");
+    expect(name).toContain("turn_check");
   }
 });
 

@@ -538,8 +538,7 @@ export function deleteCharacter(
  * One name path to the node it names.
  *
  * The address a person types, resolved once — the same route the CLI has always
- * used. Here it turns an angle's `illustration` path into something showable
- * without the app ever composing a path of its own.
+ * used, without the app ever composing a path of its own.
  *
  * **It answers a NODE VIEW, not a file entry, and the difference is a crash.**
  * `support.view` reports the node's own fields; it carries no presigned `url`,
@@ -869,6 +868,24 @@ export function createRun(body: CreateRunBody) {
  * runs only, which is a decision about what to put a button on rather than
  * something this call enforces.
  */
+/**
+ * Replace which characters a run is about.
+ *
+ * **A run's cast could only be set at creation, and the app never set it.** The
+ * characters are edges — `RUN#<id>` / `CHAR#<id>` — and `POST /api/runs` was
+ * the only writer, so every run the app made bound nobody and could not cite
+ * one: a prompt names its cast by position, and `{character.1.top}` had nothing
+ * to fill from with no way to supply it.
+ *
+ * A replace, like every other edge set: a client that sent a difference and got
+ * it wrong would accumulate links nothing removes.
+ */
+export function setRunCharacters(id: string, characters: string[]) {
+  return apiSend<RunRecord>("PATCH", `/api/runs/${encodeURIComponent(id)}`, {
+    characters,
+  });
+}
+
 export function deleteRun(id: string, files: "keep" | "delete" = "keep") {
   return apiSend<{ id: string; files: string }>(
     "DELETE",

@@ -11,14 +11,12 @@ vi.mock("../apis/studio", () => ({
   saveBlock: vi.fn(),
   saveTemplate: vi.fn(),
   // The plate beside each template: a node view, then its presigned url.
-  resolvePath: vi.fn().mockResolvedValue({ id: "node-plate", name: "front.png", kind: "file" }),
   getAsset: vi.fn().mockResolvedValue({ url: "https://signed/plate.png" }),
 }));
 
 import {
   deleteBlock,
   getTemplates,
-  resolvePath,
   saveBlock,
 } from "../apis/studio";
 import { TemplatesPage } from "./TemplatesPage";
@@ -36,7 +34,6 @@ const SPEC: TemplateLibrary = {
       prompt: "A studio portrait, front on. {face_only} {top}",
       description: "Head and shoulders, front on.",
       tags: ["face", "front"],
-      illustration: "config/template/face/front.png",
     },
   ],
 };
@@ -136,7 +133,15 @@ it("names a placeholder no block provides, while it is still being typed", async
    */
   read.mockResolvedValue({
     blocks: SPEC.blocks,
-    templates: [{ ...SPEC.templates[0]!, prompt: "{face_only} {top} {no_such_block}" }],
+    templates: [
+      {
+        ...SPEC.templates[0]!,
+        // `{face_only}` is the bare spelling and no longer resolves at all, so
+        // it is flagged like any other unknown name — `{block.face_only}` is
+        // the one that works.
+        prompt: "{block.face_only} {character.1.top} {block.no_such_block}",
+      },
+    ],
   });
   show();
 
@@ -144,9 +149,9 @@ it("names a placeholder no block provides, while it is still being typed", async
   // red-vs-grey pill would have carried the warning on hue alone.
   expect(await screen.findByText(/No block provides this name/i)).toBeTruthy();
   expect(screen.getByText(/no_such_block —/)).toBeTruthy();
-  // `{top}` is computed by the assembler, not read off a row: flagging it would
-  // make the warning noise nobody reads.
-  expect(screen.queryByText(/top —/)).toBeNull();
+  // `{character.1.top}` is computed from the bible rather than read off a row,
+  // so flagging it would make the warning noise nobody reads.
+  expect(screen.queryByText(/character\.1\.top —/)).toBeNull();
 });
 
 it("saves one block without refetching the whole spec", async () => {
@@ -175,17 +180,6 @@ it("does not offer to save until something has changed", async () => {
   expect(save.disabled).toBe(true);
 });
 
-it("shows the template's PLATE, which is what the orientation means", async () => {
-  /**
-   * This screen is where an template's words are written, and it showed the id and
-   * nothing else — so what `face_three_quarter_back_right` actually means was
-   * only visible on the tab you shoot from.
-   */
-  read.mockResolvedValue(SPEC);
-  show();
-  await screen.findByText(/face_front/);
-  await waitFor(() => expect(resolvePath).toHaveBeenCalledWith("config/template/face/front.png"));
-});
 
 it("creates a block, which is the same call as editing one", async () => {
   /**

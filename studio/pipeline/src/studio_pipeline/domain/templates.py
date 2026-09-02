@@ -51,7 +51,7 @@ from studio_pipeline.errors import die
 #: The fields a pushed template carries. Anything else in the file is dropped
 #: rather than sent — a pulled file round-trips whatever the API added, and
 #: refusing those would make edit-then-push fail on fields it produced itself.
-TEMPLATE_FIELDS = ("name", "prompt", "description", "tags", "illustration")
+TEMPLATE_FIELDS = ("name", "prompt", "description", "tags")
 
 
 class LibraryError(RuntimeError):

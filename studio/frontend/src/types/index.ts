@@ -485,17 +485,6 @@ export interface PromptTemplate {
   /** What a promotion starts from when this image becomes identity. Never sent. */
   description: string;
   tags: string[];
-  /**
-   * A picture of what this template MAKES, shown to a person and never sent.
-   *
-   * **All that is left of the pose plates.** A template could bind one as a
-   * first image, and it distorted the very thing it existed to record — the
-   * face angles stopped sending theirs, and the body angles followed once
-   * eleven hand-authored production renders were compared and not one had
-   * bound a plate. The picture is still the clearest statement of what a
-   * template produces, so it survives on a field that cannot reach a payload.
-   */
-  illustration?: string | null;
 }
 
 export type TemplateBody = Omit<PromptTemplate, "id">;

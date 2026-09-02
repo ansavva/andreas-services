@@ -49,6 +49,13 @@ vi.mock("../../apis/studio", () => ({
   getModel: (...args: unknown[]) => getModel(...args),
   getModelSchema: (...args: unknown[]) => getModelSchema(...args),
   getCharacterSelection: (...args: unknown[]) => getCharacterSelection(...args),
+  // The cast editor's two calls. The module mock replaces everything, so an
+  // unnamed one is `undefined` at the first render rather than at import — and
+  // a `useResource` handed `undefined` never settles, which hangs the suite
+  // rather than failing it.
+  getTemplates: vi.fn(() => Promise.resolve({ blocks: {}, templates: [] })),
+  setRunCharacters: vi.fn(() => Promise.resolve({})),
+  getRun: vi.fn(() => Promise.resolve({})),
 }));
 
 /** The registry entry for a model that takes references and a start frame. */
@@ -152,7 +159,7 @@ function sendsSent(): { field: string; role: string | null; node: string }[] {
 function editor(run = draft(), onSaved = vi.fn()) {
   render(
     <TestProviders>
-      <RunPlanEditor run={run} onSaved={onSaved} onCancel={vi.fn()} />
+      <RunPlanEditor run={run} onSaved={onSaved} onChanged={vi.fn()} onCancel={vi.fn()} />
     </TestProviders>,
   );
   return onSaved;
