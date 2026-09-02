@@ -12,7 +12,6 @@ vi.mock("../apis/studio", () => ({
   getProject: vi.fn(),
   getProjectScenes: vi.fn().mockResolvedValue([]),
   getProjectMovies: vi.fn().mockResolvedValue([]),
-  getProjectInputs: vi.fn().mockResolvedValue([]),
   getCharacters: vi.fn().mockResolvedValue([]),
   // The Runs tab's composer strip reads the registry. Answering with nothing
   // keeps this file about the page: the strip has its own suite.
@@ -71,7 +70,7 @@ async function open(path = `/p/${ID}`) {
  * The tab is in the address.
  *
  * Uncontrolled tabs could not be linked to, did not survive a refresh, and were
- * not what back went to — on a page with six of them.
+ * not what back went to — on a page with five of them.
  */
 it("opens the tab the address names", async () => {
   await open(`/p/${ID}?tab=scenes`);
@@ -83,6 +82,22 @@ it("opens the tab the address names", async () => {
 it("opens Overview when the address names no tab", async () => {
   await open();
   expect(screen.getByRole("tab", { name: "Overview" }).getAttribute("aria-selected")).toBe("true");
+});
+
+/**
+ * Five tabs, and Inputs is not one of them.
+ *
+ * It was: `input/` had a tab drawing the same nodes Files draws one tab over,
+ * numbered. Asserted by name because the removal is the point — a strip built
+ * from a listing is what the character page already undid, and this is the same
+ * mistake in the one place it survived.
+ */
+it("names its tabs, and offers no Inputs tab", async () => {
+  await open();
+
+  const tabs = screen.getAllByRole("tab").map((tab) => tab.textContent);
+  expect(tabs).toEqual(["Overview", "Runs", "Scenes", "Movies", "Files"]);
+  expect(tabs).not.toContain("Inputs");
 });
 
 /**
