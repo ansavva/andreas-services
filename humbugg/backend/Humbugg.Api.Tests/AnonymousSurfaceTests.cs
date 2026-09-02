@@ -49,6 +49,23 @@ public sealed class AnonymousSurfaceTests
         "StripeWebhookController.Webhook",
     ];
 
+    /// <summary>
+    /// The same endpoints, as the API Gateway route keys that let a request reach them at all.
+    /// </summary>
+    /// <remarks>
+    /// `ANY /api/{proxy+}` carries the Cognito authorizer, so an `[AllowAnonymous]` attribute
+    /// governs only a request that arrives — and without a route of its own, an anonymous request
+    /// never does. It is answered `{"message":"Unauthorized"}` by the gateway and the Lambda is
+    /// never invoked.
+    /// </remarks>
+    private static readonly string[] ExpectedRoutes =
+    [
+        "GET /api/groups/{groupId}/invitation",
+        "GET /api/groups/{groupId}/invitations/{invitationId}/preview",
+        "GET /api/plans",
+        "POST /api/billing/stripe/webhook",
+    ];
+
     [Fact]
     public void OnlyTheseEndpointsAreReachableWithoutTheAuthorizer()
     {
@@ -71,5 +88,63 @@ public sealed class AnonymousSurfaceTests
         }
 
         Assert.Equal(Expected, found.Order(StringComparer.Ordinal).ToArray());
+    }
+
+    /// <summary>
+    /// Every anonymous endpoint has an API Gateway route that reaches it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the half that was missing, and its absence was live in production. The signed-out
+    /// invitation preview — the screen somebody sees after following an invite link, before they
+    /// have an account — was 401ed by the gateway from the day it shipped. The public price list
+    /// joined it. Neither is a code defect: both controllers are correct, and neither was ever
+    /// reached.
+    /// </para>
+    /// <para>
+    /// Nothing else could have caught it. The browser suite answers `/api/**` from committed
+    /// fixtures, so it never crosses a gateway; the unit suite calls services directly; the app
+    /// falls back or shows an error rather than crashing. It took a curl against prod.
+    /// </para>
+    /// <para>
+    /// Asserted against the Terraform text, in the spirit of
+    /// <see cref="CiSmokeEnvironmentTests"/> — the failure then arrives in the unit suite naming
+    /// the missing route, rather than as a 401 somebody hits months later.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void EveryAnonymousEndpointHasAGatewayRouteThatReachesIt()
+    {
+        var terraform = File.ReadAllText(ComputeModule());
+
+        var missing = ExpectedRoutes
+            .Where(route => !terraform.Contains($"route_key = \"{route}\"", StringComparison.Ordinal))
+            .ToArray();
+
+        Assert.Empty(missing);
+    }
+
+    /// <summary>
+    /// The two lists are the same length, so neither can quietly grow past the other.
+    /// </summary>
+    [Fact]
+    public void TheRouteListCoversExactlyTheAnonymousEndpoints()
+    {
+        Assert.Equal(Expected.Length, ExpectedRoutes.Length);
+    }
+
+    /// <summary>
+    /// Walks up to the repository root rather than assuming the test's working directory.
+    /// </summary>
+    private static string ComputeModule()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var candidate = Path.Combine(directory.FullName, "infra", "modules", "compute", "main.tf");
+            if (File.Exists(candidate)) return candidate;
+            directory = directory.Parent;
+        }
+        throw new FileNotFoundException("Could not find humbugg/infra/modules/compute/main.tf.");
     }
 }

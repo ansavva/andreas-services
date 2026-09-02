@@ -455,6 +455,40 @@ resource "aws_apigatewayv2_route" "stripe_webhook" {
   target    = "integrations/${aws_apigatewayv2_integration.api.id}"
 }
 
+# The signed-out invitation preview, and the public price list.
+#
+# `[AllowAnonymous]` in ASP.NET is not enough on its own and never was: the `ANY /api/{proxy+}`
+# route above carries the Cognito authorizer, so the gateway answers `{"message":"Unauthorized"}`
+# and the Lambda is never invoked. The attribute governs a request that arrives; these routes are
+# what let it arrive.
+#
+# Both of these were broken in production. The invitation preview — the screen a person sees after
+# following an invite link, before they have an account — had been 401ing since it shipped, and
+# nothing caught it: the browser suite answers `/api/**` from fixtures, so it never crosses a
+# gateway. `AnonymousSurfaceTests` now asserts this file lists every `[AllowAnonymous]` endpoint,
+# so the two halves cannot disagree again.
+#
+# Each is exact and method-specific, like the Stripe webhook: a wildcard here would hand the whole
+# API to anybody. The application still authorizes every one of them — the invitation routes verify
+# the invite secret, and the price list has nothing to authorize.
+resource "aws_apigatewayv2_route" "invitation_preview" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "GET /api/groups/{groupId}/invitation"
+  target    = "integrations/${aws_apigatewayv2_integration.api.id}"
+}
+
+resource "aws_apigatewayv2_route" "managed_invitation_preview" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "GET /api/groups/{groupId}/invitations/{invitationId}/preview"
+  target    = "integrations/${aws_apigatewayv2_integration.api.id}"
+}
+
+resource "aws_apigatewayv2_route" "plans" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "GET /api/plans"
+  target    = "integrations/${aws_apigatewayv2_integration.api.id}"
+}
+
 resource "aws_apigatewayv2_route" "health" {
   api_id    = aws_apigatewayv2_api.api.id
   route_key = "GET /health"
