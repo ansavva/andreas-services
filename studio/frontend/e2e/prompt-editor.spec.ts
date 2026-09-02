@@ -25,7 +25,7 @@ test.beforeEach(async ({ page }) => {
 
 /** The first angle's prompt box, with the caret put at the end of its first paragraph. */
 async function prompt(page: import("@playwright/test").Page) {
-  await page.goto("/reference-spec");
+  await page.goto("/templates");
   const box = page.getByLabel("Prompt for face_front");
   await expect(box).toBeVisible();
   await box.click();
@@ -131,7 +131,7 @@ test("dismissing the menu leaves what was typed, rather than eating it", async (
 });
 
 test("the preview writes each block out and says which block it was", async ({ page }) => {
-  await page.goto("/reference-spec");
+  await page.goto("/templates");
   const preview = page.getByLabel("Assembled preview").first();
   await expect(preview).toBeVisible();
   // The prose of a block the template only CITES.
@@ -140,14 +140,14 @@ test("the preview writes each block out and says which block it was", async ({ p
 });
 
 test("the blocks live on their own tab", async ({ page }) => {
-  await page.goto("/reference-spec");
+  await page.goto("/templates");
   await expect(page.getByRole("button", { name: /\{scale_face\}/ })).toHaveCount(0);
   await page.getByRole("tab", { name: /Blocks/ }).click();
   await expect(page.getByRole("button", { name: /\{scale_face\}/ })).toHaveCount(1);
 });
 
 test("a block can be closed again after it is opened", async ({ page }) => {
-  await page.goto("/reference-spec");
+  await page.goto("/templates");
   await page.getByRole("tab", { name: /Blocks/ }).click();
   // By `aria-expanded`, not by name: the delete control inside an opened block
   // names the block too, so a name match is ambiguous the moment it opens.
@@ -164,7 +164,7 @@ test("a block can be closed again after it is opened", async ({ page }) => {
 });
 
 test("Close and Escape both get you out of an opened block", async ({ page }) => {
-  await page.goto("/reference-spec");
+  await page.goto("/templates");
   await page.getByRole("tab", { name: /Blocks/ }).click();
   // By `aria-expanded`, not by name: the delete control inside an opened block
   // names the block too, so a name match is ambiguous the moment it opens.

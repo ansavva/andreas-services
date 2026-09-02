@@ -12,10 +12,10 @@ import {
 } from "@ansavva/design-system";
 
 import {
-  deleteSpecBlock,
-  getReferenceSpec,
-  saveSpecAngle,
-  saveSpecBlock,
+  deleteBlock,
+  getTemplates,
+  saveTemplate,
+  saveBlock,
 } from "../apis/studio";
 import { ApertureSpinner } from "../components/common/Aperture";
 import { AutoTextarea } from "../components/common/AutoTextarea";
@@ -27,10 +27,10 @@ import { PromptPreview } from "../components/common/PromptPreview";
 import { PageBar } from "../components/layout/PageBar";
 import { useResource } from "../hooks/useResource";
 import { useSearchParamState } from "../hooks/useSearchParamState";
-import type { ReferenceSpec, SpecAngle } from "../types";
+import type { TemplateLibrary, PromptTemplate } from "../types";
 
 /**
- * The reference spec: the prose every reference render is assembled from.
+ * The template library: the prose every prompt is assembled from.
  *
  * **This screen is the point of the whole change.** The words lived in
  * `reference_angles.yaml` in the pipeline package, so tuning one — which is the
@@ -39,78 +39,78 @@ import type { ReferenceSpec, SpecAngle } from "../types";
  * checkout could not read it, let alone fix it.
  *
  * Two tabs, because there are two row classes and they answer different
- * questions. A **block** is shared prose an angle cites by name; an **angle** is
+ * questions. A **block** is shared prose a template cites by name; a **template** is
  * one orientation's template plus the description and tags that get written onto
  * a promoted image. Editing either is one row's write, so two people working on
- * two angles do not overwrite each other — the property the phrasebook gained by
+ * two templates do not overwrite each other — the property the phrasebook gained by
  * becoming rows, for the same reasons.
  *
- * **The blocks were inlined under each angle for a while, and are not any more.**
+ * **The blocks were inlined under each template for a while, and are not any more.**
  * The argument for inlining was that a template is mostly citations, so a prompt
  * read without its blocks is a third of a prompt. That argument is now answered
  * by `PromptPreview`, which writes every block out beside the box as you type —
- * so the inline copies were the same prose a second time, pushing the next angle
+ * so the inline copies were the same prose a second time, pushing the next template
  * off the screen. Reading is the preview's job; editing is this tab's.
  *
  * **Saving here changes what every future reference render says, and nothing
  * else.** No run is touched: a run records the prompt it was given, so work
  * already drafted or shot keeps the words it was made with. That is deliberate
  * and it is what makes editing safe — but it also means a bad edit is invisible
- * until the next draft, which is why the angle editor shows which blocks each
+ * until the next draft, which is why the template editor shows which blocks each
  * template cites.
  */
-export function ReferenceSpecPage() {
-  const load = useCallback(() => getReferenceSpec(), []);
-  const { data, loading, error, setData } = useResource(["reference-spec"], load);
+export function TemplatesPage() {
+  const load = useCallback(() => getTemplates(), []);
+  const { data, loading, error, setData } = useResource(["templates"], load);
 
   if (loading) return <ApertureSpinner />;
   if (error)
     return (
       <Alert.Root intent="danger">
-        <Alert.Title>Could not read the reference spec</Alert.Title>
+        <Alert.Title>Could not read the templates</Alert.Title>
         <Alert.Description>{error}</Alert.Description>
       </Alert.Root>
     );
   if (!data) return null;
 
-  const empty = Object.keys(data.blocks).length === 0 && data.angles.length === 0;
+  const empty = Object.keys(data.blocks).length === 0 && data.templates.length === 0;
 
   return (
     <>
-      <PageBar crumbs={[{ label: "Reference spec", to: "/reference-spec" }]} />
+      <PageBar crumbs={[{ label: "Templates", to: "/templates" }]} />
       {empty ? (
         <Alert.Root intent="info">
-          <Alert.Title>This library holds no reference spec</Alert.Title>
+          <Alert.Title>This library holds no templates</Alert.Title>
           <Alert.Description>
-            A turnaround has no angles to shoot until it does. Push one with{" "}
-            <code>studio spec push --path &lt;file&gt;</code>.
+            A run has no prompt to start from until it does. Push some with{" "}
+            <code>studio templates push --path &lt;file&gt;</code>.
           </Alert.Description>
         </Alert.Root>
       ) : (
         <>
-          <SpecTabs spec={data} setData={setData} />
+          <LibraryTabs library={data} setData={setData} />
         </>
       )}
     </>
   );
 }
 
-function SpecTabs({ spec, setData }: { spec: ReferenceSpec; setData: SetData }) {
+function LibraryTabs({ library, setData }: { library: TemplateLibrary; setData: SetData }) {
   // A query parameter, not `defaultValue`: a tab with no address cannot be
   // sent to anyone, does not survive a refresh and is not what back goes to.
-  const [tab, setTab] = useSearchParamState("tab", "angles");
-  const names = useMemo(() => Object.keys(spec.blocks).sort(), [spec.blocks]);
+  const [tab, setTab] = useSearchParamState("tab", "templates");
+  const names = useMemo(() => Object.keys(library.blocks).sort(), [library.blocks]);
 
   return (
-    <Tabs.Root value={tab} defaultValue="angles" onValueChange={setTab}>
+    <Tabs.Root value={tab} defaultValue="templates" onValueChange={setTab}>
       <Tabs.List className="overflow-x-auto border-b border-line">
-        <Tabs.Tab value="angles">Angles ({spec.angles.length})</Tabs.Tab>
+        <Tabs.Tab value="templates">Templates ({library.templates.length})</Tabs.Tab>
         <Tabs.Tab value="blocks">Blocks ({names.length})</Tabs.Tab>
       </Tabs.List>
 
-      <Tabs.Panel value="angles">
-        {spec.angles.map((angle) => (
-          <AngleEditor key={angle.id} angle={angle} spec={spec} setData={setData} />
+      <Tabs.Panel value="templates">
+        {library.templates.map((template) => (
+          <TemplateEditor key={template.id} template={template} library={library} setData={setData} />
         ))}
       </Tabs.Panel>
 
@@ -129,10 +129,10 @@ function SpecTabs({ spec, setData }: { spec: ReferenceSpec; setData: SetData }) 
             <BlockEditor
               key={name}
               name={name}
-              text={spec.blocks[name] ?? ""}
+              text={library.blocks[name] ?? ""}
               setData={setData}
               usedBy={
-                spec.angles.filter((a) =>
+                library.templates.filter((a) =>
                   citations(a.prompt).some((c) => blockNamed(c) === name),
                 ).length
               }
@@ -145,15 +145,15 @@ function SpecTabs({ spec, setData }: { spec: ReferenceSpec; setData: SetData }) 
 }
 
 type SetData = (
-  next: ReferenceSpec | null | ((current: ReferenceSpec | null) => ReferenceSpec | null),
+  next: TemplateLibrary | null | ((current: TemplateLibrary | null) => TemplateLibrary | null),
 ) => void;
 
 /**
  * Which `{placeholders}` a template cites, in the order it cites them.
  *
- * Shown next to every angle because a template naming a block nobody wrote is
+ * Shown next to every template because one naming a block nobody wrote is
  * the failure this screen makes possible: deleting a block is one click, and the
- * angle that cited it does not break until somebody drafts. Listing them turns
+ * template that cited it does not break until somebody drafts. Listing them turns
  * that into something visible now rather than a refusal later.
  */
 function citations(prompt: string): string[] {
@@ -168,7 +168,7 @@ function citations(prompt: string): string[] {
  * the whole reason the dotted spelling exists. A bare name said nothing about
  * where to go and change it, and worse, two of them could answer to the same
  * word: a block called `top` lost to the character's bible every time, and one
- * called `angle_slot` won or lost depending on whether the angle bound a plate.
+ * called `angle_slot` won or lost depending on whether the template bound a plate.
  */
 const CHARACTER = ["top", "style", "must", "build", "age", "identity_block"];
 //: `angle` and `torso` were the pose plates and are gone — they distorted the
@@ -220,7 +220,7 @@ function NewBlock({ taken, setData }: { taken: string[]; setData: SetData }) {
     setSaving(true);
     setFailed(null);
     try {
-      const saved = await saveSpecBlock(name, text);
+      const saved = await saveBlock(name, text);
       setData((current) =>
         current ? { ...current, blocks: { ...current.blocks, [name]: saved.text } } : current,
       );
@@ -287,7 +287,7 @@ function BlockEditor({
   name: string;
   text: string;
   setData: SetData;
-  /** How many angles cite this block. Shown BEFORE the box, not after a save. */
+  /** How many templates cite this block. Shown BEFORE the box, not after a save. */
   usedBy: number;
 }) {
   const [open, setOpen] = useState(false);
@@ -300,9 +300,9 @@ function BlockEditor({
     setSaving(true);
     setFailed(null);
     try {
-      const saved = await saveSpecBlock(name, draft);
+      const saved = await saveBlock(name, draft);
       // The row we just wrote, swapped in — rather than refetching the whole
-      // spec to show one paragraph somebody is still reading.
+      // library to show one paragraph somebody is still reading.
       setData((current) =>
         current ? { ...current, blocks: { ...current.blocks, [name]: saved.text } } : current,
       );
@@ -317,7 +317,7 @@ function BlockEditor({
     setSaving(true);
     setFailed(null);
     try {
-      await deleteSpecBlock(name);
+      await deleteBlock(name);
       setData((current) => {
         if (!current) return current;
         const blocks = { ...current.blocks };
@@ -352,7 +352,7 @@ function BlockEditor({
           <span className="flex shrink-0 items-center gap-2">
             {dirty ? <Badge size="sm">unsaved</Badge> : null}
             <span className="text-xs text-muted">
-              {usedBy === 1 ? "1 angle" : `${usedBy} angles`}
+              {usedBy === 1 ? "1 template" : `${usedBy} templates`}
             </span>
           </span>
         </span>
@@ -376,7 +376,7 @@ function BlockEditor({
               too late. */}
           {usedBy > 1 ? (
             <Text tone="muted">
-              Shared — editing this changes {usedBy} angles.
+              Shared — editing this changes {usedBy} templates.
             </Text>
           ) : null}
           <Field.Root name={`block-${name}`}>
@@ -403,15 +403,15 @@ function BlockEditor({
               Close
             </Button>
             {/*
-              **Nothing checks whether an angle still cites it, and that is the
+              **Nothing checks whether a template still cites it, and that is the
               route's deliberate position** — a template names its blocks in
-              prose, so the only honest check is to assemble every angle and see
+              prose, so the only honest check is to assemble every template and see
               what fails, which the assembly does loudly. What this screen CAN do
               is say the count before the press, because it already knows it.
             */}
             <ConfirmDeleteButton
               noun={usedBy > 0
-                ? `{${name}} — ${usedBy} angle(s) cite it and will refuse to draft`
+                ? `{${name}} — ${usedBy} template(s) cite it and will refuse to draft`
                 : `{${name}}`}
               onConfirm={remove}
               disabled={saving}
@@ -423,27 +423,27 @@ function BlockEditor({
   );
 }
 
-function AngleEditor({
-  angle,
-  spec,
+function TemplateEditor({
+  template,
+  library,
   setData,
 }: {
-  angle: SpecAngle;
-  spec: ReferenceSpec;
+  template: PromptTemplate;
+  library: TemplateLibrary;
   setData: SetData;
 }) {
-  const [prompt, setPrompt] = useState(angle.prompt);
-  const [description, setDescription] = useState(angle.description);
+  const [prompt, setPrompt] = useState(template.prompt);
+  const [description, setDescription] = useState(template.description);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
-  const dirty = prompt !== angle.prompt || description !== angle.description;
+  const dirty = prompt !== template.prompt || description !== template.description;
 
   const cited = useMemo(() => citations(prompt), [prompt]);
   // What `+` offers: this library's blocks, then the values the assembler fills
   // from the character. Both are placeholders in the template and only one of
   // them is editable, which is why the pill says which it is.
   const promptTokens = useMemo<PromptToken[]>(() => {
-    const blocks = Object.entries(spec.blocks).sort(([a], [b]) => a.localeCompare(b));
+    const blocks = Object.entries(library.blocks).sort(([a], [b]) => a.localeCompare(b));
     return [
       ...blocks.map(([name, text]) => ({
         name: `block.${name}`,
@@ -457,36 +457,37 @@ function AngleEditor({
       ...blocks.map(([name]) => ({ name, kind: "block" as const, legacy: true })),
       ...[...LEGACY].map((name) => ({ name, kind: "computed" as const, legacy: true })),
     ];
-  }, [spec.blocks]);
+  }, [library.blocks]);
   const unknown = useMemo(
     () =>
       cited.filter((name) => {
         const block = blockNamed(name);
-        if (block !== null) return !(block in spec.blocks) && !LEGACY.has(block);
+        if (block !== null) return !(block in library.blocks) && !LEGACY.has(block);
         const [space, member] = name.split(".");
         if (space === "character") return !CHARACTER.includes(member ?? "");
         if (space === "slot") return !SLOT.includes(member ?? "");
         return true;
       }),
-    [cited, spec.blocks],
+    [cited, library.blocks],
   );
 
   const save = useCallback(async () => {
     setSaving(true);
     setFailed(null);
     try {
-      const saved = await saveSpecAngle(angle.id, {
-        group: angle.group,
+      const saved = await saveTemplate(template.id, {
+        name: template.name,
         prompt,
         description,
-        tags: angle.tags,
-        order: angle.order,
+        tags: template.tags,
       });
       setData((current) =>
         current
           ? {
               ...current,
-              angles: current.angles.map((a) => (a.id === saved.id ? { ...a, ...saved } : a)),
+              templates: current.templates.map((each) =>
+                each.id === saved.id ? { ...each, ...saved } : each,
+              ),
             }
           : current,
       );
@@ -495,17 +496,18 @@ function AngleEditor({
     } finally {
       setSaving(false);
     }
-  }, [angle, description, prompt, setData]);
+  }, [template, description, prompt, setData]);
 
   return (
     <Card.Root>
-      {/* The plate, here too. This screen is where an angle's words are
-          actually written, and it showed the id and nothing else — so what the
-          orientation MEANS was only visible on the tab you shoot from. */}
+      {/* The illustration, here too. This screen is where a template's words
+          are actually written, and it showed the id and nothing else — so what
+          the template MAKES was only visible somewhere else. */}
       <div className="flex items-start gap-3">
-        <AnglePlate path={angle.illustration} name={angle.id} className="w-16 shrink-0" />
+        <AnglePlate path={template.illustration} name={template.id} className="w-16 shrink-0" />
         <Card.Title>
-          {angle.id} <Badge size="sm">{angle.group}</Badge>
+          {template.name || template.id}{" "}
+          {template.name ? <Badge size="sm">{template.id}</Badge> : null}
         </Card.Title>
       </div>
       <div className="flex flex-col gap-2">
@@ -518,7 +520,7 @@ function AngleEditor({
           of monospace are worse than one.
         */}
         <div className="grid gap-3 xl:grid-cols-2">
-          <Field.Root name={`prompt-${angle.id}`}>
+          <Field.Root name={`prompt-${template.id}`}>
             <Field.Label>Prompt</Field.Label>
             {/* A description here as well as on the preview, so both columns'
                 headers are the same height and the two boxes line up. */}
@@ -527,7 +529,7 @@ function AngleEditor({
             </Field.Description>
             {/* Pills, not characters. A template is text with named holes, and
                 typed by hand a mistyped `{face_onl}` looked exactly like a
-                correct one and did not fail until the angle was drafted and
+                correct one and did not fail until the template was drafted and
                 refused. Typed or taken from the `{` menu, it becomes a pill
                 only if it names something.
 
@@ -537,10 +539,10 @@ function AngleEditor({
               value={prompt}
               onValueChange={setPrompt}
               tokens={promptTokens}
-              ariaLabel={`Prompt for ${angle.id}`}
+              ariaLabel={`Prompt for ${template.id}`}
             />
           </Field.Root>
-          <PromptPreview prompt={prompt} blocks={spec.blocks} />
+          <PromptPreview prompt={prompt} blocks={library.blocks} />
         </div>
 
         {/*
@@ -561,13 +563,13 @@ function AngleEditor({
               No block provides {unknown.length === 1 ? "this name" : "these names"}
             </Alert.Title>
             <Alert.Description>
-              {unknown.join(", ")} — drafting this angle will be refused until the
+              {unknown.join(", ")} — drafting this template will be refused until the
               block exists or the template stops citing it.
             </Alert.Description>
           </Alert.Root>
         ) : null}
 
-        <Field.Root name={`description-${angle.id}`}>
+        <Field.Root name={`description-${template.id}`}>
           <Field.Label>Description</Field.Label>
           <AutoTextarea minRows={2} value={description} onValueChange={setDescription} />
         </Field.Root>
@@ -584,8 +586,8 @@ function AngleEditor({
           <Button
             intent="ghost"
             onClick={() => {
-              setPrompt(angle.prompt);
-              setDescription(angle.description);
+              setPrompt(template.prompt);
+              setDescription(template.description);
             }}
             disabled={saving}
           >

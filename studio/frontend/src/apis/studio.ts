@@ -38,11 +38,10 @@ import type {
   TextResponse,
   UploadGrant,
   NodeView,
-  ReferenceSpec,
-  SpecAngle,
-  SpecAngleBody,
+  TemplateLibrary,
+  PromptTemplate,
+  TemplateBody,
   SpecBlock,
-  TurnaroundResult,
 } from "../types";
 import { apiGet, apiSend } from "./client";
 
@@ -553,39 +552,28 @@ export function resolvePath(path: string) {
   return apiGet<NodeView>("/api/resolve", { path });
 }
 
-export function getReferenceSpec() {
-  return apiGet<ReferenceSpec>("/api/reference-spec");
+export function getTemplates() {
+  return apiGet<TemplateLibrary>("/api/templates");
 }
 
-export function saveSpecBlock(name: string, text: string) {
-  return apiSend<SpecBlock>("PATCH", `/api/reference-spec/blocks/${encodeURIComponent(name)}`, {
+export function saveBlock(name: string, text: string) {
+  return apiSend<SpecBlock>("PATCH", `/api/templates/blocks/${encodeURIComponent(name)}`, {
     text,
   });
 }
 
-export function saveSpecAngle(id: string, body: SpecAngleBody) {
-  return apiSend<SpecAngle>("PATCH", `/api/reference-spec/angles/${encodeURIComponent(id)}`, body);
+export function saveTemplate(id: string, body: TemplateBody) {
+  return apiSend<PromptTemplate>("PATCH", `/api/templates/${encodeURIComponent(id)}`, body);
 }
 
-export function deleteSpecBlock(name: string) {
-  return apiSend<{ name: string }>("DELETE", `/api/reference-spec/blocks/${encodeURIComponent(name)}`);
+export function deleteBlock(name: string) {
+  return apiSend<{ name: string }>("DELETE", `/api/templates/blocks/${encodeURIComponent(name)}`);
 }
 
-export function deleteSpecAngle(id: string) {
-  return apiSend<{ id: string }>("DELETE", `/api/reference-spec/angles/${encodeURIComponent(id)}`);
+export function deleteTemplate(id: string) {
+  return apiSend<{ id: string }>("DELETE", `/api/templates/${encodeURIComponent(id)}`);
 }
 
-/**
- * Draft a character's reference angles, or preview what they would say.
- *
- * `preview` stops before the write and answers 200 rather than 201, so it is
- * safe to call while somebody is still typing. Without it every angle becomes
- * an unapproved `draft` — nothing is approved and nothing bills, which is hard
- * rule #2 left exactly where it was.
- *
- * `identity` is required and is never inferred: which photographs say who
- * somebody is is the judgement a reference library is built out of.
- */
 /**
  * What a run plan's template would become, expanded against this run's cast.
  *
@@ -603,38 +591,6 @@ export function previewPlanPrompt(runId: string, template: string) {
     "POST",
     `/api/runs/${encodeURIComponent(runId)}/plan/preview`,
     { template },
-  );
-}
-
-export function draftTurnaround(
-  characterId: string,
-  body: {
-    /** Required to DRAFT. A preview writes nothing, so it needs no project. */
-    project?: string;
-    /** The fallback, for a caller that means one set for every angle. */
-    identity: string[];
-    /** Per angle, and it beats the fallback. See the route's own note. */
-    identity_by_angle?: Record<string, string[]>;
-    /**
-     * An earlier render every angle in this pass is chained off.
-     *
-     * Bound FIRST for each of them and named `[Image1]` by the `anchor` block,
-     * which is how the wardrobe and the background stay constant across a set —
-     * shooting the angles independently is what produced fourteen different
-     * shirts.
-     */
-    anchor?: string;
-    group?: "face" | "body";
-    angles?: string[];
-    model?: string;
-    extra?: Record<string, unknown>;
-    preview?: boolean;
-  },
-) {
-  return apiSend<TurnaroundResult>(
-    "POST",
-    `/api/characters/${encodeURIComponent(characterId)}/turnaround`,
-    body,
   );
 }
 

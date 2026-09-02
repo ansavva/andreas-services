@@ -89,7 +89,9 @@ describe("the tab strip", () => {
     const tabs = screen.getAllByRole("tab").map((tab) => tab.textContent);
     // `Identity` where `References` was: there is no reference index to draw,
     // so the tab is the file browser with `default` already in its tag filter.
-    expect(tabs).toEqual(["Profile", "Identity", "Shoot", "Files", "Runs", "Projects"]);
+    // `Shoot` went with the turnaround: it rendered fourteen angles at once,
+    // and a template is picked for one run from the plan editor.
+    expect(tabs).toEqual(["Profile", "Identity", "Files", "Runs", "Projects"]);
     expect(tabs).not.toContain("reference");
     expect(tabs).not.toContain("seed");
   });

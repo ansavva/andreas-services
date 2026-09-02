@@ -356,10 +356,10 @@ def seed_group(bearer: str, library: str) -> dict:
     # The recursive media listing: `depth=all` with the media kinds asked for.
     write("reel", get("/api/nodes?depth=all&kind=image,video&sort=newest",
                       bearer, library))
-    # The reference spec seeds with the library, so it belongs to this group
+    # The template library seeds with the library, so it belongs to this group
     # rather than the authoring one — no run has to have happened for it to
     # exist.
-    write("reference-spec", get("/api/reference-spec", bearer, library))
+    write("templates", get("/api/templates", bearer, library))
     return character
 
 

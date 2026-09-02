@@ -10,7 +10,6 @@ import { FolderTab } from "../components/browse/FolderTab";
 import { PageBar } from "../components/layout/PageBar";
 import { CharacterProjects, CharacterRuns } from "../components/character/CharacterWork";
 import { ProfileForm } from "../components/character/ProfileForm";
-import { TurnaroundPanel } from "../components/character/TurnaroundPanel";
 import { useResource } from "../hooks/useResource";
 import { CHARACTERS_PATH } from "../utils/location";
 import type { CharacterIdentity, CharacterProfile, CharacterRecord } from "../types";
@@ -201,11 +200,6 @@ export function CharacterPage() {
               picture — so the tab that drew one is the browser with the filter
               pre-filled, and everything the browser can do works here. */}
           <Tabs.Tab value="identity">Identity</Tabs.Tab>
-          {/* Making them, as opposed to reading them. It sits beside
-              References because that is what it produces, and the two
-              questions — what does this character look like, and shoot the
-              set that says so — are one step apart. */}
-          <Tabs.Tab value="shoot">Shoot</Tabs.Tab>
           <Tabs.Tab value="files">Files</Tabs.Tab>
           {/* The reverse questions. Both routes existed with no caller, so a
               character was a dead end: who it is, what it looks like, and
@@ -242,10 +236,6 @@ export function CharacterPage() {
 
         <Tabs.Panel value="projects">
           <CharacterProjects characterId={record.id} />
-        </Tabs.Panel>
-
-        <Tabs.Panel value="shoot">
-          <TurnaroundPanel record={record} />
         </Tabs.Panel>
 
         <Tabs.Panel value="files">

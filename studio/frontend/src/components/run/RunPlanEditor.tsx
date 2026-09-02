@@ -38,6 +38,7 @@ import type {
   SelectionEntry,
 } from "../../types";
 import { AutoTextarea } from "../common/AutoTextarea";
+import { TemplatePicker } from "./TemplatePicker";
 import { TokenizedPromptEditor } from "../common/TokenizedPromptEditor";
 import type { PromptToken } from "../common/TokenizedPromptEditor";
 import { Filled, PreviewBox } from "../common/PromptPreview";
@@ -123,7 +124,25 @@ function Expanded({
 //: What a run plan may cite off a character. The same six values a reference
 //: angle fills from a bible — `reference.character_values` is the one thing
 //: that produces them, on both surfaces.
-const CHARACTER_FIELDS = ["top", "style", "must", "build", "age", "identity_block"];
+/**
+ * What `{character.N.…}` may cite.
+ *
+ * **`build` and `must` name a VARIANT and the bare form is refused**, because
+ * the bible answers both differently for a face than for a body — a face crops
+ * at mid-chest, so the proportions below it are noise, and the checklist gets a
+ * different intro. That used to be decided by a `group` column on the template;
+ * defaulting silently is how a face prompt ends up describing legs.
+ */
+const CHARACTER_FIELDS = [
+  "top",
+  "style",
+  "age",
+  "identity_block",
+  "build.face",
+  "build.body",
+  "must.face",
+  "must.body",
+];
 
 export function RunPlanEditor({
   run,
@@ -708,6 +727,23 @@ export function RunPlanEditor({
               ? `Type { to cite one of this run's ${cast} character(s). Expanded when you save.`
               : "Saved as the sentence it is. This run binds no character to cite."}
           </Field.Description>
+          {/*
+            **Picking a template fills the box and stops.**
+
+            It is what the turnaround was, minus the fan-out: an angle was a
+            prompt plus a description plus tags, and the only thing that could
+            use one rendered all fourteen at once. Choosing here does not save
+            and does not submit — the prompt lands as text a person reads,
+            changes and approves, which is where hard rule #2 has always put
+            the decision.
+
+            Offered only with a cast, for the reason the tokenized editor is:
+            every template cites `{character.N.…}`, and one filled against no
+            characters is a refusal rather than a prompt.
+          */}
+          <div className="pb-1">
+            <TemplatePicker onPick={setPrompt} disabled={cast === 0} />
+          </div>
           {/*
             **The tokenized editor only when there is a cast to cite.**
 

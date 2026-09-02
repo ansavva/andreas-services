@@ -466,48 +466,44 @@ export interface SpecBlock {
   updated?: string;
 }
 
-/** One orientation: its template, and how a promoted image gets described. */
-export interface SpecAngle {
+/**
+ * A prompt somebody wrote, picked for a run.
+ *
+ * **This was a reference ANGLE.** It held one orientation of one character's
+ * standard set, carried a `group` that had to be `face` or `body`, and only a
+ * turnaround could use one. `group` chose which prose `build` and `must`
+ * produced, and a template names that itself now —
+ * `{character.1.build.face}` — so the column was a second place to say
+ * something the prompt already says. `order` was the shooting order, and
+ * nothing shoots a set.
+ */
+export interface PromptTemplate {
   id: string;
-  group: "face" | "body";
+  /** What a person picks it by. */
+  name?: string;
   prompt: string;
-  /** Written onto the image by `add-refs --from-run`, never sent to a model. */
+  /** What a promotion starts from when this image becomes identity. Never sent. */
   description: string;
   tags: string[];
-  order?: number | null;
   /**
-   * A picture of what this orientation IS, shown to a person and never sent.
+   * A picture of what this template MAKES, shown to a person and never sent.
    *
-   * **All that is left of the pose plates.** An angle could bind one as a first
-   * image, and it distorted the very thing it existed to record — the face
-   * angles stopped sending theirs, and the body angles followed once eleven
-   * hand-authored production renders were compared and not one had bound a
-   * plate. The picture is still the clearest statement of what an orientation
-   * is, so it survives on a field that cannot reach a payload.
+   * **All that is left of the pose plates.** A template could bind one as a
+   * first image, and it distorted the very thing it existed to record — the
+   * face angles stopped sending theirs, and the body angles followed once
+   * eleven hand-authored production renders were compared and not one had
+   * bound a plate. The picture is still the clearest statement of what a
+   * template produces, so it survives on a field that cannot reach a payload.
    */
   illustration?: string | null;
 }
 
-export type SpecAngleBody = Omit<SpecAngle, "id">;
+export type TemplateBody = Omit<PromptTemplate, "id">;
 
-/** `GET /api/reference-spec` — blocks keyed by name, angles in shooting order. */
-export interface ReferenceSpec {
+/** `GET /api/templates` — blocks keyed by name, templates by name. */
+export interface TemplateLibrary {
   blocks: Record<string, string>;
-  angles: SpecAngle[];
-}
-
-/**
- * What `POST /api/characters/<id>/turnaround` answers.
- *
- * `drafted` when it wrote runs, `preview` when it was asked not to — separate
- * keys on purpose, so a caller cannot mistake one for the other and go looking
- * for run ids that were never minted. `failed` is per angle: one bad angle does
- * not cancel the rest.
- */
-export interface TurnaroundResult {
-  drafted?: Array<{ angle: string; id: string; status: string }>;
-  preview?: Array<{ angle: string; model: string; plan: { prompt: string; params: Record<string, unknown> }; sends: Array<{ node: string; field: string }> }>;
-  failed: Array<{ angle: string; error: string }>;
+  templates: PromptTemplate[];
 }
 
 /**

@@ -10,7 +10,7 @@ import { HomePage } from "./pages/HomePage";
 import { MoviePage } from "./pages/MoviePage";
 import { ProjectPage } from "./pages/ProjectPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
-import { ReferenceSpecPage } from "./pages/ReferenceSpecPage";
+import { TemplatesPage } from "./pages/TemplatesPage";
 import { RunPage } from "./pages/RunPage";
 import { ScenePage } from "./pages/ScenePage";
 import { ObjectPage } from "./pages/ObjectPage";
@@ -77,7 +77,7 @@ export function StudioRoutes() {
           set of angles describes every character in it. So it sits beside
           the two listings rather than under a character id.
         */}
-        <Route path="/reference-spec" element={<ReferenceSpecPage />} />
+        <Route path="/templates" element={<TemplatesPage />} />
 
         <Route path="/c/:characterId" element={<CharacterPage />} />
         <Route path="/p/:projectId" element={<ProjectPage />} />
