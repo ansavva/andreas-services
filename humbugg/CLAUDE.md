@@ -116,7 +116,7 @@ All commands run from the repository root:
 | `humbugg/scripts/dev-aws-setup.sh` | Lower-level AWS provision/check command called by canonical setup; accepts `--profile`, `--region`, `--yes`, `--check` |
 | `humbugg/scripts/dev-up.sh` | Preferred full local startup; accepts `--profile`, `--region`, `--forward-to` |
 | `humbugg/scripts/dev-up-backend.sh` | Backend-only startup; exports temporary AWS credentials into Docker Compose without writing them to disk |
-| `humbugg/scripts/dev-up-marketing.sh` | Marketing-site-only startup; validates `web/.env.local` and installed dependencies first |
+| `humbugg/scripts/dev-up-marketing.sh` | Marketing-site-only startup; validates `marketing/.env.local` and installed dependencies first |
 | `humbugg/scripts/dev-up-app.sh` | Product-app-only startup; defaults to `--web`, pass `--ios`/`--android` for a simulator |
 | `humbugg/scripts/dev-up-stripe.sh` | Stripe-only listener for the billing webhook's exact event allowlist; copy its `whsec_...` value into `backend/.env` and restart the backend when running components separately |
 | `humbugg/scripts/dev-logs-backend.sh` | Follow the backend container logs; accepts Docker Compose log options such as `--tail 200` |
@@ -159,13 +159,19 @@ See [`scripts/README.md`](../scripts/README.md) for the setup scripts and GitHub
 the bundlers do (Vite exposes `VITE_*`, Metro inlines `EXPO_PUBLIC_*`). Do not
 create shared or committed values manually.
 
-`web/.env.local` — no Cognito values, because the marketing site no longer
+`marketing/.env.local` — no Cognito values, because the marketing site no longer
 authenticates anyone:
 
 ```
 VITE_APP_BASE_URL=http://localhost:5173
 VITE_APP_ORIGIN=http://localhost:8081
+VITE_API_BASE_URL=http://127.0.0.1:5001
 ```
+
+`VITE_API_BASE_URL` is read only by the pricing page, which loads the plan
+catalogue from `GET /api/plans` server-side rather than restating prices (#158).
+Production sets nothing: `src/config/site.ts` defaults to `api.humbugg.com`, the
+same way it defaults `APP_ORIGIN`.
 
 `app/.env.local`:
 
