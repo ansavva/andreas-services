@@ -1,0 +1,344 @@
+name: Classroom · Deploy · Prod
+
+# Combined prod deploy for classroom.
+#
+# DAG (the image is a prerequisite of Terraform's Lambda creation, so
+# build-and-push runs before deploy-infra to eliminate the chicken-and-egg of
+# an empty ECR repo on a first deploy):
+#
+#   detect-changes ─► build-and-push (when infra OR backend changes)
+#                          │
+#                          ▼
+#                     deploy-infra (terraform apply)
+#                          │
+#                          ├─► update-lambda   (env vars + pin the image to :sha)
+#                          └─► deploy-frontend (build, sync, invalidate)
+#
+# classroom-pr.yml validates pull requests and never writes to AWS.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'classroom/infra/**'
+      - 'classroom/backend/**'
+      - 'classroom/frontend/**'
+      - '.github/workflows/classroom-prod.yaml'
+  workflow_dispatch:
+    inputs:
+      run_infra:
+        description: 'Run the deploy-infra job'
+        type: boolean
+        default: true
+      run_app:
+        description: 'Run update-lambda and deploy-frontend'
+        type: boolean
+        default: true
+  workflow_run:
+    workflows: ["Shared infra · Terraform apply · Prod"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: classroom-prod
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO: classroom-prod-api
+  LAMBDA_FN: classroom-prod-api
+
+jobs:
+  detect-changes:
+    name: Detect Changes
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      infra: ${{ steps.filter.outputs.infra }}
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v7
+        if: github.event_name == 'push'
+      - uses: dorny/paths-filter@v4
+        if: github.event_name == 'push'
+        id: filter
+        with:
+          filters: |
+            infra:
+              - 'classroom/infra/**'
+              - '.github/workflows/classroom-prod.yaml'
+            backend:
+              - 'classroom/backend/**'
+              - '.github/workflows/classroom-prod.yaml'
+            frontend:
+              - 'classroom/frontend/**'
+              - '.github/workflows/classroom-prod.yaml'
+
+  # ---------------------------------------------------------------------------
+  # Build the API image and push to ECR. Runs BEFORE deploy-infra so the
+  # image_uri the Lambda references always exists.
+  # ---------------------------------------------------------------------------
+  build-and-push:
+    name: Build & Push API Image
+    needs: detect-changes
+    if: |
+      !cancelled()
+      && (
+        (github.event_name == 'push'
+         && (needs.detect-changes.outputs.infra == 'true'
+             || needs.detect-changes.outputs.backend == 'true'))
+        || (github.event_name == 'workflow_dispatch'
+            && (inputs.run_infra || inputs.run_app))
+        || github.event_name == 'workflow_run'
+      )
+    runs-on: ubuntu-latest
+    environment: classroom-production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set ECR registry
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "ECR_REGISTRY=${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> "$GITHUB_ENV"
+
+      - name: Ensure ECR repository exists
+        run: |
+          aws ecr describe-repositories --repository-names "${{ env.ECR_REPO }}" \
+            --region "${{ env.AWS_REGION }}" >/dev/null 2>&1 || \
+          aws ecr create-repository \
+            --repository-name "${{ env.ECR_REPO }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --image-scanning-configuration scanOnPush=true \
+            --tags Key=Project,Value=classroom
+
+      - name: Build & push API image
+        run: |
+          IMAGE="${ECR_REGISTRY}/${{ env.ECR_REPO }}"
+          cd classroom/backend
+          docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" .
+          docker push "${IMAGE}:${{ github.sha }}"
+          docker push "${IMAGE}:latest"
+
+  # ---------------------------------------------------------------------------
+  # Apply Terraform. By the time we get here :latest exists in ECR, so Lambda
+  # creation works even on a fresh AWS account.
+  # ---------------------------------------------------------------------------
+  deploy-infra:
+    name: Terraform Apply
+    needs: [detect-changes, build-and-push]
+    if: |
+      !cancelled()
+      && needs.build-and-push.result != 'failure'
+      && (
+        (github.event_name == 'push' && needs.detect-changes.outputs.infra == 'true')
+        || (github.event_name == 'workflow_dispatch' && inputs.run_infra)
+        || github.event_name == 'workflow_run'
+      )
+    runs-on: ubuntu-latest
+    environment: classroom-production
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform init
+        run: terraform -chdir=classroom/infra/envs/prod init -input=false
+
+      # build-and-push creates the ECR repository so that :latest exists before
+      # Terraform creates a Lambda referencing it. Terraform would then try to
+      # create a repository AWS already has, so adopt it into state instead.
+      - name: Adopt bootstrap-created ECR repository
+        run: |
+          set -euo pipefail
+          TF_DIR=classroom/infra/envs/prod
+          ADDR='module.compute.aws_ecr_repository.api[0]'
+          if terraform -chdir="$TF_DIR" state show "$ADDR" >/dev/null 2>&1; then
+            echo "already tracked: $ADDR"
+            exit 0
+          fi
+          if ! aws ecr describe-repositories --repository-names "${{ env.ECR_REPO }}" \
+                 --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
+            echo "not in AWS, Terraform will create it"
+            exit 0
+          fi
+          echo "importing ${{ env.ECR_REPO }} -> $ADDR"
+          terraform -chdir="$TF_DIR" import -input=false "$ADDR" "${{ env.ECR_REPO }}"
+
+      - name: Terraform apply
+        run: terraform -chdir=classroom/infra/envs/prod apply -auto-approve -input=false
+
+  # ---------------------------------------------------------------------------
+  # Pin the function to this commit's image and set its env vars. Terraform
+  # ignores both (lifecycle.ignore_changes), so this job owns them.
+  # ---------------------------------------------------------------------------
+  update-lambda:
+    name: Update Lambda
+    needs: [detect-changes, build-and-push, deploy-infra]
+    if: |
+      !cancelled()
+      && needs.build-and-push.result == 'success'
+      && needs.deploy-infra.result != 'failure'
+      && (
+        (github.event_name == 'workflow_dispatch' && inputs.run_app)
+        || (github.event_name == 'push'
+            && (needs.detect-changes.outputs.backend == 'true'
+                || needs.deploy-infra.result == 'success'))
+        || (github.event_name == 'workflow_run'
+            && needs.deploy-infra.result == 'success')
+      )
+    runs-on: ubuntu-latest
+    environment: classroom-production
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set ECR registry
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "ECR_REGISTRY=${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> "$GITHUB_ENV"
+
+      - name: Update Lambda env vars
+        run: |
+          set -euo pipefail
+          aws lambda update-function-configuration \
+            --function-name "${{ env.LAMBDA_FN }}" \
+            --environment "Variables={CLASSROOM_PAGES_TABLE=classroom-prod-pages,CLASSROOM_PUBLIC_SITE_URL=https://classroom.andreas.services}" \
+            --region "${{ env.AWS_REGION }}" >/dev/null
+          aws lambda wait function-updated \
+            --function-name "${{ env.LAMBDA_FN }}" --region "${{ env.AWS_REGION }}"
+
+      # Pinned to the commit sha rather than :latest so the running code is
+      # always traceable to a commit.
+      - name: Pin Lambda to this commit's image
+        run: |
+          set -euo pipefail
+          aws lambda update-function-code \
+            --function-name "${{ env.LAMBDA_FN }}" \
+            --image-uri "${ECR_REGISTRY}/${{ env.ECR_REPO }}:${{ github.sha }}" \
+            --region "${{ env.AWS_REGION }}" >/dev/null
+          aws lambda wait function-updated \
+            --function-name "${{ env.LAMBDA_FN }}" --region "${{ env.AWS_REGION }}"
+
+  # ---------------------------------------------------------------------------
+  # Build the SPA against the resolved infrastructure values and publish it.
+  # ---------------------------------------------------------------------------
+  deploy-frontend:
+    name: Deploy Frontend
+    needs: [detect-changes, deploy-infra]
+    if: |
+      !cancelled()
+      && needs.deploy-infra.result != 'failure'
+      && ((github.event_name == 'workflow_dispatch' && inputs.run_app)
+          || (github.event_name == 'push'
+              && (needs.detect-changes.outputs.frontend == 'true'
+                  || needs.deploy-infra.result == 'success'))
+          || (github.event_name == 'workflow_run'
+              && needs.deploy-infra.result == 'success'))
+    runs-on: ubuntu-latest
+    environment: classroom-production
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: classroom/frontend/package-lock.json
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Read infrastructure values from SSM
+        run: |
+          # Assign, check, then export. `echo "X=$(get …)" >> "$GITHUB_ENV"`
+          # takes its exit status from `echo`, not the substitution, so a
+          # failed or renamed parameter writes an EMPTY STRING and the step
+          # goes green under `bash -e`. `None` is what `--output text` prints
+          # for a null value, so it is an empty read wearing a name.
+          put() {
+            local value
+            value="$(aws ssm get-parameter --name "$2" \
+              --query Parameter.Value --output text)" || exit 1
+            [ -n "$value" ] && [ "$value" != "None" ] ||
+              { echo "::error::$2 resolved empty; refusing to continue." >&2; exit 1; }
+            echo "$1=$value" >> "$GITHUB_ENV"
+          }
+
+          put S3_BUCKET   /classroom/prod/frontend-bucket
+          put CF_DIST_ID  /classroom/prod/distribution-id
+          # Vite inlines these three; an empty value ships an SPA whose sign-in
+          # or API calls can never succeed.
+          put VITE_API_URL           /classroom/prod/api-url
+          put VITE_COGNITO_CLIENT_ID /classroom/prod/cognito-client-id
+          put VITE_COGNITO_DOMAIN    /classroom/prod/cognito-domain
+
+      - name: Install dependencies
+        run: cd classroom/frontend && npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build frontend
+        run: cd classroom/frontend && npm run build
+
+      - name: Sync hashed assets (long cache)
+        run: |
+          aws s3 sync classroom/frontend/dist/ "s3://${S3_BUCKET}/" \
+            --region "${{ env.AWS_REGION }}" \
+            --delete \
+            --cache-control "public,max-age=31536000,immutable" \
+            --exclude "*.html"
+
+      - name: Sync HTML (never cached)
+        run: |
+          aws s3 sync classroom/frontend/dist/ "s3://${S3_BUCKET}/" \
+            --region "${{ env.AWS_REGION }}" \
+            --exclude "*" --include "*.html" \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${CF_DIST_ID}" --paths "/*" >/dev/null

@@ -1,0 +1,128 @@
+name: Classroom · PR
+
+# Combined PR workflow for classroom. Validates only — lint, unit tests,
+# frontend build and Terraform validate. It never writes to AWS.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'classroom/**'
+      - '.github/workflows/classroom-pr.yml'
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Backend: lint + unit tests + prove the Lambda image still builds.
+  # ---------------------------------------------------------------------------
+  backend:
+    name: Backend Lint, Tests & Image
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Lint Python (ruff)
+        run: |
+          pip install --quiet ruff==0.15.8
+          ruff check classroom
+
+      - name: Install Poetry
+        run: pip install --quiet poetry==2.2.1
+
+      - name: Install backend test deps
+        run: |
+          cd classroom/backend
+          poetry install --with dev --no-root --no-interaction --no-ansi
+
+      # The sanitizer suite is the one that must never be allowed to go red:
+      # it is the XSS boundary for pages students load in a browser.
+      - name: Run backend unit tests
+        run: |
+          cd classroom/backend
+          poetry run pytest tests/ -v
+
+      - name: Build API image (verify only)
+        run: cd classroom/backend && docker build -t classroom-api:ci-verify .
+
+  # ---------------------------------------------------------------------------
+  # Frontend: lint, typecheck, tests, build.
+  # ---------------------------------------------------------------------------
+  frontend:
+    name: Frontend Lint, Tests & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: classroom/frontend/package-lock.json
+
+      # @ansavva/design-system lives on GitHub Packages, which requires a token
+      # for every read — there is no anonymous install.
+      - name: Install dependencies
+        run: cd classroom/frontend && npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lint
+        run: cd classroom/frontend && npm run lint
+
+      - name: Type-check
+        # Through the script so it covers vite.config.ts too, and so the
+        # design system's `.web` leaf resolution is exercised by tsc.
+        run: cd classroom/frontend && npm run typecheck
+
+      # Chiefly the PKCE test: Cognito has no server-side "require PKCE"
+      # toggle, so nothing but this suite stops the code challenge from
+      # silently vanishing from the authorize URL.
+      - name: Test
+        run: cd classroom/frontend && npm test
+
+      - name: Build
+        run: cd classroom/frontend && npx vite build
+
+  # ---------------------------------------------------------------------------
+  # Terraform: fmt, validate, tflint across every classroom environment.
+  # ---------------------------------------------------------------------------
+  validate-terraform:
+    name: Validate Terraform
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+
+      - name: Setup tflint
+        uses: terraform-linters/setup-tflint@v6
+        with:
+          tflint_version: v0.63.1
+
+      - name: Terraform fmt check
+        run: terraform -chdir=classroom/infra/envs/prod fmt -check -recursive ../../
+
+      - name: Terraform validate (all classroom envs)
+        run: |
+          for env in prod; do
+            terraform -chdir=classroom/infra/envs/$env init -backend=false -input=false
+            terraform -chdir=classroom/infra/envs/$env validate
+          done
+
+      - name: Install tflint AWS plugin
+        run: bash .github/scripts/install-tflint-aws-plugin.sh
+
+      - name: tflint
+        run: tflint --recursive --chdir=classroom/infra --config "$(pwd)/.tflint.hcl"

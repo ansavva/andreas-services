@@ -338,6 +338,7 @@ data "aws_iam_policy_document" "github_actions_permissions" {
       "arn:aws:ssm:*:*:parameter/mailer/*",
       "arn:aws:ssm:*:*:parameter/website/*",
       "arn:aws:ssm:*:*:parameter/studio/*",
+      "arn:aws:ssm:*:*:parameter/classroom/*",
     ]
   }
 
