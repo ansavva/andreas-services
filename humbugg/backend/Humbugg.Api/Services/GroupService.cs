@@ -33,6 +33,9 @@ public interface IGroupService
     Task<RevealResponse> RevealAsync(string groupId, RevealRequest request, CancellationToken cancellationToken = default);
     Task<RecipientAssignment> SetWishClaimAsync(string groupId, string wishId, SetWishClaimRequest request, CancellationToken cancellationToken = default);
     Task<RecipientAssignment> ReleaseWishClaimAsync(string groupId, string wishId, CancellationToken cancellationToken = default);
+    Task<RecipientAssignment> SetGiftStageAsync(string groupId, SetGiftStageRequest request, CancellationToken cancellationToken = default);
+    Task<GiftReceipt> GetGiftReceiptAsync(string groupId, CancellationToken cancellationToken = default);
+    Task<GiftReceipt> SetGiftReceivedAsync(string groupId, SetGiftReceivedRequest request, CancellationToken cancellationToken = default);
 }
 
 internal sealed class GroupService(
@@ -136,9 +139,33 @@ internal sealed class GroupService(
 
         return new GroupReadiness(
             group.GroupId, group.Status, group.Plan, group.RequiresAddress, counts, participants, pending,
-            // #132 owns purchased / sent / received. Until it lands there is nothing to aggregate, and
-            // null says exactly that — see GiftProgress on why this is not three zeroes.
-            GiftProgress: null);
+            // Counts only, and only after a draw. Before one there is nothing to aggregate and null
+            // says exactly that — see GiftProgress on why this is not three zeroes.
+            draw is null ? null : Progress(members, draw.DrawId));
+    }
+
+    /// <summary>
+    /// The organizer's gift roll-up (#132): three cumulative counts over the participating roster.
+    /// </summary>
+    /// <remarks>
+    /// Cumulative, because the stages are a journey rather than buckets: a gift already sent still
+    /// counts as purchased, and one confirmed received counts as both — an organizer reading
+    /// "4 purchased, 1 sent" would otherwise conclude four gifts are sitting in hallways when three
+    /// are in the post.
+    ///
+    /// Counts only. Not a name, not a pairing, not a wish — this is the same response that refuses
+    /// to say what is on anybody's list.
+    /// </remarks>
+    private static GiftProgress Progress(IReadOnlyList<MembershipRecord> members, string drawId)
+    {
+        var participating = members.Where(member => member.IsParticipating).ToList();
+        var current = participating.Where(member => member.GiftProgressDrawId == drawId).ToList();
+        var received = current.Count(member => member.GiftReceivedAt is not null);
+        var sent = current.Count(member =>
+            member.GiftStage == GiftStage.Sent || member.GiftReceivedAt is not null);
+        var purchased = current.Count(member =>
+            member.GiftStage is GiftStage.Purchased or GiftStage.Sent || member.GiftReceivedAt is not null);
+        return new GiftProgress(purchased, sent, received, participating.Count);
     }
 
     private static ParticipantReadiness Readiness(MembershipRecord member, GroupRecord group, DrawRecord? draw, int wishCount)
@@ -367,6 +394,10 @@ internal sealed class GroupService(
         // The claims are the caller's own data too — notes they authored about their own shopping —
         // and the control says "clear everything I saved". Leaving them would make it a lie.
         await memberships.ClearWishClaimsAsync(membership.MemberId, cancellationToken);
+        // Both halves of their gift progress: the stage they set on their own gift, and the "it
+        // arrived" they put on their giver's row. The second lives somewhere else by design, so
+        // "clear everything I saved" has to go and find it.
+        await ClearGiftProgressBothWaysAsync(groupId, membership.MemberId, cancellationToken);
         // And the conversations they are party to, on both sides: the thread about their own list,
         // and the one they opened with the person they were assigned.
         await questions.DeleteForMemberAsync(
@@ -520,7 +551,8 @@ internal sealed class GroupService(
         return Assignment(
             recipient,
             await wishes.GetByMemberAsync(recipient.MemberId, cancellationToken),
-            ClaimsFor(membership, draw.DrawId));
+            ClaimsFor(membership, draw.DrawId),
+            StatusFor(membership, draw.DrawId));
     }
 
     /// <summary>
@@ -576,6 +608,126 @@ internal sealed class GroupService(
         var (membership, draw, _) = await RequireAssignmentAsync(groupId, cancellationToken);
         await memberships.RemoveWishClaimAsync(membership.MemberId, draw.DrawId, wishId, cancellationToken);
         return await GetAssignmentAsync(groupId, cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// The giver moves their own gift along: choosing, purchased, sent (#132).
+    /// </summary>
+    /// <remarks>
+    /// Three stages, not four. "Received" is the recipient's, and lives in its own field — a single
+    /// ordered enum would either refuse the gift handed over at a party (never marked sent) or let
+    /// the recipient overwrite the giver's record of what they actually did.
+    /// </remarks>
+    public async Task<RecipientAssignment> SetGiftStageAsync(
+        string groupId,
+        SetGiftStageRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var (membership, draw, _) = await RequireAssignmentAsync(groupId, cancellationToken);
+        var stage = request.Stage?.Trim().ToLowerInvariant() switch
+        {
+            "choosing" => GiftStage.Choosing,
+            "purchased" => GiftStage.Purchased,
+            "sent" => GiftStage.Sent,
+            _ => throw ApiException.BadRequest("stage must be 'choosing', 'purchased' or 'sent'."),
+        };
+
+        // The one ordering rule that is actually true: a gift somebody has confirmed receiving was
+        // obviously bought, so the giver cannot walk it back to "still choosing". Everything else is
+        // a legitimate correction — a returned item really does go back to choosing.
+        if (Received(membership, draw.DrawId))
+            throw ApiException.Conflict("They have already said this arrived, so it cannot move back.");
+
+        await memberships.SetGiftStageAsync(membership.MemberId, draw.DrawId, stage, cancellationToken);
+        // Audited, unlike a purchase claim — and safely, because the target is the ACTOR's own member
+        // id and the metadata is a stage. Nothing here names the other party, so the trail an
+        // organizer may read still cannot be turned into the draw.
+        await audit.RecordAsync(
+            AuditAction.GiftProgressChanged,
+            groupId,
+            AuditTarget.Member(membership.MemberId),
+            new Dictionary<string, string> { ["stage"] = stage.ToString().ToLowerInvariant() },
+            cancellationToken: cancellationToken);
+        return await GetAssignmentAsync(groupId, cancellationToken: cancellationToken);
+    }
+
+    public async Task<GiftReceipt> GetGiftReceiptAsync(string groupId, CancellationToken cancellationToken = default)
+    {
+        var (giver, draw) = await RequireGiverOfCallerAsync(groupId, cancellationToken);
+        return Receipt(giver, draw.DrawId);
+    }
+
+    /// <summary>
+    /// The recipient says the gift arrived — or takes it back.
+    /// </summary>
+    /// <remarks>
+    /// Written onto the GIVER's row, whose id is resolved by inverting the draw. The recipient never
+    /// learns whose row that was: they send a boolean to <c>members/me</c> and the server does the
+    /// rest. Deliberately not ordered after "sent": a gift handed over in person may never have been
+    /// marked sent, and refusing the confirmation would make the roll-up wrong to protect a sequence
+    /// nobody promised.
+    /// </remarks>
+    public async Task<GiftReceipt> SetGiftReceivedAsync(
+        string groupId,
+        SetGiftReceivedRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var (giver, draw) = await RequireGiverOfCallerAsync(groupId, cancellationToken);
+        await memberships.SetGiftReceivedAsync(giver.MemberId, draw.DrawId, request.Received, cancellationToken);
+        // The actor is the recipient and the target is the recipient. The giver is not named, which
+        // is what keeps this row from being the assignment.
+        var (_, actor) = await RequireMembershipAsync(groupId, cancellationToken);
+        await audit.RecordAsync(
+            AuditAction.GiftProgressChanged,
+            groupId,
+            AuditTarget.Member(actor.MemberId),
+            new Dictionary<string, string> { ["received"] = request.Received ? "true" : "false" },
+            cancellationToken: cancellationToken);
+        var updated = await memberships.GetAsync(giver.MemberId, cancellationToken);
+        return updated is null ? new GiftReceipt(false, null) : Receipt(updated, draw.DrawId);
+    }
+
+    /// <summary>The membership row of whoever is giving TO the caller, plus the current draw.</summary>
+    /// <remarks>Inverting the draw is the only way to reach it, and the id never leaves this method.</remarks>
+    private async Task<(MembershipRecord Giver, DrawRecord Draw)> RequireGiverOfCallerAsync(
+        string groupId,
+        CancellationToken cancellationToken)
+    {
+        var (group, membership) = await RequireMembershipAsync(groupId, cancellationToken);
+        if (group.Status != GroupStatus.Drawn)
+            throw ApiException.Conflict("Assignments have not been created yet.");
+        var draw = await groups.GetDrawAsync(groupId, cancellationToken)
+            ?? throw ApiException.NotFound("This exchange has no draw.");
+        var giverId = draw.Assignments.FirstOrDefault(pair => pair.Value == membership.MemberId).Key;
+        if (string.IsNullOrEmpty(giverId))
+            throw ApiException.NotFound("Nobody is assigned to you in this draw.");
+        return (await memberships.GetAsync(giverId, cancellationToken)
+            ?? throw ApiException.NotFound("Your giver could not be found."), draw);
+    }
+
+    private static bool Received(MembershipRecord member, string drawId) =>
+        member.GiftProgressDrawId == drawId && member.GiftReceivedAt is not null;
+
+    private static GiftReceipt Receipt(MembershipRecord giver, string drawId) =>
+        new(Received(giver, drawId), Received(giver, drawId) ? giver.GiftReceivedAt : null);
+
+    /// <summary>
+    /// The caller's own gift status, but only for the draw now in force.
+    /// </summary>
+    /// <remarks>
+    /// Same self-invalidation as the claims and the question threads: after a reset the gift you were
+    /// preparing may be for somebody else, so the stage starts again at "choosing".
+    /// </remarks>
+    private static GiftStatus StatusFor(MembershipRecord member, string drawId)
+    {
+        var current = member.GiftProgressDrawId == drawId;
+        var received = Received(member, drawId);
+        return new GiftStatus(
+            current ? member.GiftStage ?? GiftStage.Choosing : GiftStage.Choosing,
+            current ? member.GiftStageAt : null,
+            received,
+            received ? member.GiftReceivedAt : null,
+            !received);
     }
 
     /// <summary>The caller's membership, the current draw, and the recipient that draw gives them.</summary>
@@ -634,6 +786,26 @@ internal sealed class GroupService(
                 Assignment(recipient, await wishes.GetByMemberAsync(recipient.MemberId, cancellationToken))));
         }
         return new RevealResponse(revealed);
+    }
+
+    /// <summary>
+    /// Clears this member's own gift stage AND the receipt they left on their giver's row.
+    /// </summary>
+    /// <remarks>
+    /// Gift progress is two facts owned by two people about one gift, so removing a member's own
+    /// contribution means touching two rows. Their giver's row is reached by inverting the draw —
+    /// the same inversion the confirmation itself used, and the only way to find it.
+    /// </remarks>
+    private async Task ClearGiftProgressBothWaysAsync(
+        string groupId,
+        string memberId,
+        CancellationToken cancellationToken)
+    {
+        await memberships.ClearGiftProgressAsync(memberId, cancellationToken);
+        var draw = await groups.GetDrawAsync(groupId, cancellationToken);
+        var giverId = draw?.Assignments.FirstOrDefault(pair => pair.Value == memberId).Key;
+        if (!string.IsNullOrEmpty(giverId) && draw is not null)
+            await memberships.SetGiftReceivedAsync(giverId, draw.DrawId, false, cancellationToken);
     }
 
     /// <summary>
@@ -707,9 +879,13 @@ internal sealed class GroupService(
         // The CALLER's claims, keyed by wish id. Defaulted to none so every caller that has no
         // business showing claims — the emergency reveal — gets none by omission rather than by
         // remembering to strip them.
-        IReadOnlyDictionary<string, WishClaimRecord>? claims = null) => new(
+        IReadOnlyDictionary<string, WishClaimRecord>? claims = null,
+        // The caller's own gift status. Defaulted to null for the same reason the claims are: the
+        // emergency reveal gets none by omission rather than by remembering to strip them.
+        GiftStatus? gift = null) => new(
         member.MemberId, member.DisplayName, member.Wishlist, member.Avoidances, member.Address,
-        wishes.Select(record => RecipientWishOf(record, claims)).ToList());
+        wishes.Select(record => RecipientWishOf(record, claims)).ToList(),
+        gift);
     private static RecipientWish RecipientWishOf(
         WishRecord record,
         IReadOnlyDictionary<string, WishClaimRecord>? claims) => new(

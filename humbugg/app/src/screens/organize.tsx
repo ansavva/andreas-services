@@ -455,14 +455,14 @@ function GiftProgressPanel({ readiness }: { readiness: GroupReadiness }) {
       ) : (
         <View style={[styles.emptyPanel, { marginTop: 24 }]}>
           {/*
-            Deliberately not three zeroes. The API sends no gift progress at all until participants
-            can mark a gift bought, sent or received (#132); "0 of 5 purchased" would be a claim
-            about the world, and this one would be false.
+            Deliberately not three zeroes. Before a draw nobody has been asked to buy anything, so
+            the API sends no progress at all; "0 of 5 purchased" would be a claim about the world,
+            and this one would be false.
           */}
-          <Text style={styles.bodyMuted}>Not tracked yet.</Text>
+          <Text style={styles.bodyMuted}>Nothing to track yet.</Text>
           <Text style={[styles.tiny, { marginTop: 8, textAlign: 'center' }]}>
-            Once givers can mark a gift bought, sent and received, the totals appear here — as counts
-            only, so they never reveal who is giving to whom.
+            Once the draw is done and givers start marking gifts bought, sent and received, the
+            totals appear here — as counts only, so they never reveal who is giving to whom.
           </Text>
         </View>
       )}

@@ -184,6 +184,31 @@ export type WishClaimState = 'planned' | 'purchased';
  */
 export type QuestionAuthor = 'giver' | 'recipient';
 
+/**
+ * How far along the gift itself is (#132) — as distinct from any one wish on the list.
+ *
+ * Three stages, and "received" is deliberately NOT a fourth: it is the recipient's fact about the
+ * same gift, in its own field. A single ordered enum would either refuse the gift handed over at a
+ * party — never marked sent — or let a recipient overwrite the giver's record of what they did.
+ */
+export type GiftStage = 'choosing' | 'purchased' | 'sent';
+
+/** The CALLER's own gift status for their assignment. Never their recipient's opinion of it. */
+export interface GiftStatus {
+  stage: GiftStage;
+  stage_at?: string | null;
+  received: boolean;
+  received_at?: string | null;
+  /** False once the recipient has confirmed receipt — the giver can no longer walk it back. */
+  can_change_stage: boolean;
+}
+
+/** What the RECIPIENT sees and controls: whether they have said it arrived. */
+export interface GiftReceipt {
+  received: boolean;
+  received_at?: string | null;
+}
+
 export interface QuestionMessage {
   message_id: string;
   author: QuestionAuthor;
@@ -257,6 +282,8 @@ export interface RecipientAssignment {
   avoidances: string;
   address: Address;
   wishes: RecipientWish[];
+  /** The CALLER's own gift status (#132). Absent on any read that is not the giver's own. */
+  gift?: GiftStatus | null;
 }
 
 export interface CreateWishInput {

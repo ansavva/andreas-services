@@ -374,7 +374,7 @@ describe('gift progress', () => {
   it('says gift progress is not tracked rather than reporting zero of everything', async () => {
     render(<OrganizeScreen groupId="group-1" />);
 
-    await waitFor(() => expect(screen.getByText('Not tracked yet.')).toBeOnTheScreen());
+    await waitFor(() => expect(screen.getByText('Nothing to track yet.')).toBeOnTheScreen());
     expect(screen.queryByText('0 of 1')).toBeNull();
   });
 
@@ -388,7 +388,7 @@ describe('gift progress', () => {
     await waitFor(() => expect(screen.getByText('4 of 5')).toBeOnTheScreen());
     expect(screen.getByText('2 of 5')).toBeOnTheScreen();
     expect(screen.getByText('1 of 5')).toBeOnTheScreen();
-    expect(screen.queryByText('Not tracked yet.')).toBeNull();
+    expect(screen.queryByText('Nothing to track yet.')).toBeNull();
   });
 });
 

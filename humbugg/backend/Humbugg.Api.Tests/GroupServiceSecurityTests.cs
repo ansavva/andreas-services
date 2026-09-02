@@ -432,6 +432,181 @@ public sealed class GroupServiceSecurityTests
         Assert.Null(giver.WishClaimsDrawId);
     }
 
+    // ── Gift progress (#132) ─────────────────────────────────────────────────────────────────────
+    //
+    // Two facts about one gift, owned by two people: the giver's stage, and the recipient's "it
+    // arrived". Keeping them as separate fields rather than one four-state enum is what lets a gift
+    // handed over at a party be marked received without ever having been marked sent, and what stops
+    // a recipient overwriting the giver's own record of what they did.
+
+    [Fact]
+    public async Task AGiverMovesTheirOwnGiftThroughTheThreeStages()
+    {
+        var fixture = await DrawnWithWishAsync();
+
+        foreach (var stage in new[] { "choosing", "purchased", "sent" })
+        {
+            var assignment = await fixture.Subject.SetGiftStageAsync(
+                "group", new SetGiftStageRequest(stage), TestContext.Current.CancellationToken);
+            Assert.Equal(stage, assignment.Gift!.Stage.ToString().ToLowerInvariant());
+            Assert.NotNull(assignment.Gift.StageAt);
+        }
+
+        // A returned item really does go back to choosing — corrections are legitimate, and the only
+        // ordering rule enforced is the one below.
+        var back = await fixture.Subject.SetGiftStageAsync(
+            "group", new SetGiftStageRequest("choosing"), TestContext.Current.CancellationToken);
+        Assert.Equal(GiftStage.Choosing, back.Gift!.Stage);
+    }
+
+    [Fact]
+    public async Task AnUnknownStageIsRefused()
+    {
+        var fixture = await DrawnWithWishAsync();
+        foreach (var bad in new[] { null, "", "received", "posted" })
+        {
+            var error = await Assert.ThrowsAsync<ApiException>(() => fixture.Subject.SetGiftStageAsync(
+                "group", new SetGiftStageRequest(bad), TestContext.Current.CancellationToken));
+            Assert.Equal(400, error.StatusCode);
+        }
+    }
+
+    /// <summary>
+    /// The recipient's confirmation lands on the GIVER's row, and they never learn whose it was.
+    /// </summary>
+    [Fact]
+    public async Task TheRecipientConfirmsReceiptOnToTheGiversRow()
+    {
+        var fixture = await DrawnWithWishAsync();
+        await fixture.Subject.SetGiftStageAsync(
+            "group", new SetGiftStageRequest("sent"), TestContext.Current.CancellationToken);
+
+        // "other" gives to "actor" in a two-person draw, so the caller confirming receipt writes on
+        // to "other"'s row — resolved server-side by inverting the draw.
+        var receipt = await fixture.Subject.SetGiftReceivedAsync(
+            "group", new SetGiftReceivedRequest(true), TestContext.Current.CancellationToken);
+
+        Assert.True(receipt.Received);
+        Assert.NotNull(receipt.ReceivedAt);
+        Assert.NotNull(fixture.Members.Items.Single(member => member.MemberId == "other").GiftReceivedAt);
+        // And not on their own row: the two facts belong to two different gifts.
+        Assert.Null(fixture.Members.Items.Single(member => member.MemberId == "actor").GiftReceivedAt);
+    }
+
+    /// <summary>
+    /// The one ordering rule that is actually true: a gift somebody has confirmed receiving was
+    /// obviously bought, so the giver cannot walk the stage back afterwards.
+    /// </summary>
+    [Fact]
+    public async Task AGiverCannotMoveAGiftTheRecipientHasAlreadyConfirmed()
+    {
+        var fixture = await DrawnWithWishAsync();
+        await fixture.Subject.SetGiftStageAsync(
+            "group", new SetGiftStageRequest("sent"), TestContext.Current.CancellationToken);
+        var drawId = (await fixture.Groups.GetDrawAsync("group", TestContext.Current.CancellationToken))!.DrawId;
+
+        // Staged on the row directly rather than through the recipient's endpoint: in a two-person
+        // draw the caller's own giver is also their recipient, and routing through the API would
+        // land the receipt on the OTHER row — which is correct behaviour and the wrong setup for
+        // this test. What is under test is the guard on the caller's own gift.
+        var index = fixture.Members.Items.FindIndex(member => member.MemberId == "actor");
+        fixture.Members.Items[index] = fixture.Members.Items[index] with
+        {
+            GiftReceivedAt = "now",
+            GiftProgressDrawId = drawId,
+        };
+
+        var error = await Assert.ThrowsAsync<ApiException>(() => fixture.Subject.SetGiftStageAsync(
+            "group", new SetGiftStageRequest("choosing"), TestContext.Current.CancellationToken));
+        Assert.Equal(409, error.StatusCode);
+    }
+
+    [Fact]
+    public async Task ReceiptCanBeTakenBack()
+    {
+        var fixture = await DrawnWithWishAsync();
+        await fixture.Subject.SetGiftReceivedAsync(
+            "group", new SetGiftReceivedRequest(true), TestContext.Current.CancellationToken);
+
+        var cleared = await fixture.Subject.SetGiftReceivedAsync(
+            "group", new SetGiftReceivedRequest(false), TestContext.Current.CancellationToken);
+
+        Assert.False(cleared.Received);
+        Assert.Null(cleared.ReceivedAt);
+    }
+
+    /// <summary>
+    /// Progress is audited — unlike a purchase claim — and safely, because every row names only the
+    /// actor and a stage.
+    /// </summary>
+    [Fact]
+    public async Task EveryTransitionIsAuditedWithoutNamingTheOtherParty()
+    {
+        var fixture = await DrawnWithWishAsync();
+        fixture.Audit.Actions.Clear();
+        fixture.Audit.Targets.Clear();
+
+        await fixture.Subject.SetGiftStageAsync(
+            "group", new SetGiftStageRequest("purchased"), TestContext.Current.CancellationToken);
+        await fixture.Subject.SetGiftReceivedAsync(
+            "group", new SetGiftReceivedRequest(true), TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            [AuditAction.GiftProgressChanged, AuditAction.GiftProgressChanged],
+            fixture.Audit.Actions);
+        // Both rows target the ACTOR. A row naming the other party would be the draw assignment, in
+        // the one table an organizer is allowed to read.
+        Assert.All(fixture.Audit.Targets, target => Assert.Equal("actor", target.Id));
+    }
+
+    /// <summary>A reset starts the gift again, because it may now be for somebody else.</summary>
+    [Fact]
+    public async Task GiftProgressDoesNotSurviveTheDrawItWasMadeUnder()
+    {
+        var fixture = await DrawnWithWishAsync();
+        await fixture.Subject.SetGiftStageAsync(
+            "group", new SetGiftStageRequest("sent"), TestContext.Current.CancellationToken);
+
+        await fixture.Subject.ResetAsync("group", TestContext.Current.CancellationToken);
+        await fixture.Subject.DrawAsync("group", TestContext.Current.CancellationToken);
+
+        var assignment = await fixture.Subject.GetAssignmentAsync("group", TestContext.Current.CancellationToken);
+        Assert.Equal(GiftStage.Choosing, assignment.Gift!.Stage);
+        Assert.Null(assignment.Gift.StageAt);
+        Assert.False(assignment.Gift.Received);
+    }
+
+    [Fact]
+    public async Task TheEmergencyRevealCarriesNoGiftStatus()
+    {
+        var fixture = await DrawnWithWishAsync();
+        await fixture.Subject.SetGiftStageAsync(
+            "group", new SetGiftStageRequest("sent"), TestContext.Current.CancellationToken);
+
+        var revealed = await fixture.Subject.RevealAsync(
+            "group", new RevealRequest("A participant lost their link."), TestContext.Current.CancellationToken);
+
+        Assert.All(revealed.Assignments, pair => Assert.Null(pair.Recipient.Gift));
+    }
+
+    [Fact]
+    public async Task ClearingMyOwnExchangeDataAlsoClearsBothHalvesOfMyGiftProgress()
+    {
+        var fixture = await DrawnWithWishAsync();
+        await fixture.Subject.SetGiftStageAsync(
+            "group", new SetGiftStageRequest("sent"), TestContext.Current.CancellationToken);
+        await fixture.Subject.SetGiftReceivedAsync(
+            "group", new SetGiftReceivedRequest(true), TestContext.Current.CancellationToken);
+
+        await fixture.Subject.ClearMyPrivateDataAsync("group", TestContext.Current.CancellationToken);
+
+        var mine = fixture.Members.Items.Single(member => member.MemberId == "actor");
+        Assert.Null(mine.GiftStage);
+        Assert.Null(mine.GiftProgressDrawId);
+        // And the receipt they left on their giver's row, which lives somewhere else by design.
+        Assert.Null(fixture.Members.Items.Single(member => member.MemberId == "other").GiftReceivedAt);
+    }
+
     private sealed class FakeUser(string userId = "user") : ICurrentUser { public string UserId => userId; }
     private sealed class FakeProfiles : IProfileRepository
     {
@@ -472,10 +647,14 @@ public sealed class GroupServiceSecurityTests
     private sealed class FakeAuditTrail : IAuditTrail
     {
         public List<AuditAction> Actions { get; } = [];
+        // Kept as well as the action, because for gift progress WHAT is targeted is the privacy
+        // property under test: a row naming the other party would be the draw assignment.
+        public List<AuditTarget> Targets { get; } = [];
         public Task RecordAsync(AuditAction action, string groupId, AuditTarget target,
             IReadOnlyDictionary<string, string>? metadata = null, string? organizationId = null, CancellationToken cancellationToken = default)
         {
             Actions.Add(action);
+            Targets.Add(target);
             return Task.CompletedTask;
         }
     }
@@ -491,6 +670,45 @@ public sealed class GroupServiceSecurityTests
         public List<MembershipRecord> Items { get; } = items.ToList();
         // Real behaviour, not a counter: the readiness dashboard reads this field back, so a fake
         // that swallowed the write would let a test pass on a value production never stores.
+        public Task SetGiftStageAsync(string memberId, string drawId, GiftStage stage, CancellationToken cancellationToken = default)
+        {
+            var index = Items.FindIndex(item => item.MemberId == memberId);
+            // Mirrors the repository, receipt clear included: moving the stage is only allowed while
+            // nobody has confirmed receipt, so the write always leaves that unset.
+            if (index >= 0)
+                Items[index] = Items[index] with
+                {
+                    GiftStage = stage,
+                    GiftStageAt = "now",
+                    GiftReceivedAt = null,
+                    GiftProgressDrawId = drawId,
+                };
+            return Task.CompletedTask;
+        }
+        public Task SetGiftReceivedAsync(string memberId, string drawId, bool received, CancellationToken cancellationToken = default)
+        {
+            var index = Items.FindIndex(item => item.MemberId == memberId);
+            if (index >= 0)
+                Items[index] = Items[index] with
+                {
+                    GiftReceivedAt = received ? "now" : null,
+                    GiftProgressDrawId = drawId,
+                };
+            return Task.CompletedTask;
+        }
+        public Task ClearGiftProgressAsync(string memberId, CancellationToken cancellationToken = default)
+        {
+            var index = Items.FindIndex(item => item.MemberId == memberId);
+            if (index >= 0)
+                Items[index] = Items[index] with
+                {
+                    GiftStage = null,
+                    GiftStageAt = null,
+                    GiftReceivedAt = null,
+                    GiftProgressDrawId = null,
+                };
+            return Task.CompletedTask;
+        }
         public Task SetWishClaimAsync(string memberId, string drawId, string wishId, WishClaimRecord claim, CancellationToken cancellationToken = default)
         {
             var index = Items.FindIndex(item => item.MemberId == memberId);

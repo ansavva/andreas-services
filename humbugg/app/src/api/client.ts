@@ -15,6 +15,8 @@ import type {
   ManagedInvitation,
   LateParticipantPreview,
   LateParticipantResult,
+  GiftReceipt,
+  GiftStage,
   PolicyConsent,
   QuestionThread,
   PlusPurchaseStatus,
@@ -162,6 +164,15 @@ export const api = {
     ),
   releaseWishClaim: (token: string, id: string, wishId: string) =>
     request<RecipientAssignment>(`/groups/${id}/assignment/wishes/${wishId}/claim`, token, json('DELETE')),
+  // Gift progress (#132). The giver's three stages, and the recipient's confirmation — two facts
+  // about one gift, owned by two people, so two routes. The recipient's PUT lands on their giver's
+  // row, whose id the server resolves by inverting the draw and never returns.
+  setGiftStage: (token: string, id: string, stage: GiftStage) =>
+    request<RecipientAssignment>(`/groups/${id}/assignment/gift`, token, json('PUT', { stage })),
+  getGiftReceipt: (token: string, id: string) =>
+    request<GiftReceipt>(`/groups/${id}/members/me/gift`, token),
+  setGiftReceived: (token: string, id: string, received: boolean) =>
+    request<GiftReceipt>(`/groups/${id}/members/me/gift`, token, json('PUT', { received })),
   // Anonymous questions (#131). Two routes, one shape: the giver's hangs off `assignment` because
   // the assignment is the authorization, the recipient's off `members/me` because the only member a
   // caller can address is themselves. Neither URL carries a member id — a URL is one of the surfaces

@@ -273,7 +273,11 @@ Group `humbugg-prod` with `cancel-in-progress: false` — queued pushes wait for
 
 - `humbugg-prod-profiles` — per-user profile and wish-list data
 - `humbugg-prod-groups` — group metadata (owner, name, member list)
-- `humbugg-prod-groupmembers` — group ↔ member relationship + assignment results. Also holds each
+- `humbugg-prod-groupmembers` — group ↔ member relationship + assignment results. Also holds gift
+  progress (#132): the giver's own stage (`choosing`/`purchased`/`sent`) on their row, and the
+  recipient's "it arrived" written onto their **giver's** row, resolved by inverting the draw — so
+  the recipient never learns whose row they wrote to and the giver's record of what they did stays
+  theirs. Both are draw-scoped. Also holds each
   member's **purchase claims** (#130): which wishes on their assigned recipient's list they have
   marked planned or bought. They live on the CLAIMANT's row rather than on the wish, which is the
   whole privacy design — a wishlist owner never reads another member's private membership fields, so

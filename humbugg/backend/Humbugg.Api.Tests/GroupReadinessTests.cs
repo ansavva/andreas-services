@@ -296,18 +296,91 @@ public sealed class GroupReadinessTests
         Assert.DoesNotContain("recipient", rendered, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Before a draw there is no gift to be making progress on, and null says so.
+    /// </summary>
+    /// <remarks>
+    /// A zeroed record would read as "nobody has bought anything", which is a claim about the world
+    /// rather than a missing one — and it would be wrong, because nobody has been asked to buy
+    /// anything yet.
+    /// </remarks>
     [Fact]
-    public async Task GiftProgressIsAbsentRatherThanZeroUntilGiftTrackingExists()
+    public async Task GiftProgressIsAbsentBeforeADraw()
+    {
+        var fixture = new Fixture();
+        fixture.Members.Items.Add(Fixture.Member("other"));
+
+        var readiness = await fixture.Subject.GetReadinessAsync("group", TestContext.Current.CancellationToken);
+
+        Assert.Null(readiness.GiftProgress);
+    }
+
+    /// <summary>
+    /// The roll-up is cumulative: a gift already sent still counts as purchased (#132).
+    /// </summary>
+    /// <remarks>
+    /// An organizer reading "4 purchased, 1 sent" off non-cumulative counts would conclude four
+    /// gifts are sitting in hallways when three are in the post.
+    /// </remarks>
+    [Fact]
+    public async Task GiftProgressCountsCumulativelyAndOnlyForThisDraw()
+    {
+        var fixture = new Fixture();
+        fixture.Members.Items.Add(Fixture.Member("choosing"));
+        fixture.Members.Items.Add(Fixture.Member("bought"));
+        fixture.Members.Items.Add(Fixture.Member("posted"));
+        fixture.Members.Items.Add(Fixture.Member("arrived"));
+        fixture.Members.Items.Add(Fixture.Member("stale"));
+        await fixture.Subject.DrawAsync("group", TestContext.Current.CancellationToken);
+        var drawId = (await fixture.Groups.GetDrawAsync("group", TestContext.Current.CancellationToken))!.DrawId;
+
+        Stage("bought", GiftStage.Purchased, drawId);
+        Stage("posted", GiftStage.Sent, drawId);
+        Stage("arrived", GiftStage.Sent, drawId, received: true);
+        // From an earlier draw, so it counts for nothing: after a reset you may be buying for
+        // somebody else entirely.
+        Stage("stale", GiftStage.Sent, "an-older-draw");
+
+        var progress = (await fixture.Subject.GetReadinessAsync("group", TestContext.Current.CancellationToken)).GiftProgress;
+
+        Assert.NotNull(progress);
+        Assert.Equal(6, progress.Total);      // actor + five
+        Assert.Equal(3, progress.Purchased);  // bought, posted, arrived
+        Assert.Equal(2, progress.Sent);       // posted, arrived
+        Assert.Equal(1, progress.Received);   // arrived
+
+        void Stage(string memberId, GiftStage stage, string draw, bool received = false)
+        {
+            var index = fixture.Members.Items.FindIndex(item => item.MemberId == memberId);
+            fixture.Members.Items[index] = fixture.Members.Items[index] with
+            {
+                GiftStage = stage,
+                GiftStageAt = "now",
+                GiftReceivedAt = received ? "now" : null,
+                GiftProgressDrawId = draw,
+            };
+        }
+    }
+
+    /// <summary>The roll-up is counts. It never says whose gift is where, or what it is.</summary>
+    [Fact]
+    public async Task GiftProgressNamesNobody()
     {
         var fixture = new Fixture();
         fixture.Members.Items.Add(Fixture.Member("other"));
         await fixture.Subject.DrawAsync("group", TestContext.Current.CancellationToken);
+        var drawId = (await fixture.Groups.GetDrawAsync("group", TestContext.Current.CancellationToken))!.DrawId;
+        var index = fixture.Members.Items.FindIndex(item => item.MemberId == "other");
+        fixture.Members.Items[index] = fixture.Members.Items[index] with
+        {
+            GiftStage = GiftStage.Sent,
+            GiftStageAt = "now",
+            GiftProgressDrawId = drawId,
+        };
 
-        var readiness = await fixture.Subject.GetReadinessAsync("group", TestContext.Current.CancellationToken);
+        var progress = (await fixture.Subject.GetReadinessAsync("group", TestContext.Current.CancellationToken)).GiftProgress;
 
-        // #132 fills this in. Null is "not tracked"; a zeroed record would be "nobody has bought
-        // anything", which is a claim this codebase currently has no way to make.
-        Assert.Null(readiness.GiftProgress);
+        Assert.DoesNotContain("other", System.Text.Json.JsonSerializer.Serialize(progress), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -450,6 +523,45 @@ public sealed class GroupReadinessTests
             Task.FromResult<IReadOnlyList<MembershipRecord>>(Items.Where(item => item.GroupId == groupId).ToList());
         public Task<MembershipRecord?> GetByUserAndGroupAsync(string userId, string groupId, CancellationToken cancellationToken = default) =>
             Task.FromResult(Items.FirstOrDefault(item => item.UserId == userId && item.GroupId == groupId));
+        public Task SetGiftStageAsync(string memberId, string drawId, GiftStage stage, CancellationToken cancellationToken = default)
+        {
+            var index = Items.FindIndex(item => item.MemberId == memberId);
+            // Mirrors the repository, receipt clear included: moving the stage is only allowed while
+            // nobody has confirmed receipt, so the write always leaves that unset.
+            if (index >= 0)
+                Items[index] = Items[index] with
+                {
+                    GiftStage = stage,
+                    GiftStageAt = "now",
+                    GiftReceivedAt = null,
+                    GiftProgressDrawId = drawId,
+                };
+            return Task.CompletedTask;
+        }
+        public Task SetGiftReceivedAsync(string memberId, string drawId, bool received, CancellationToken cancellationToken = default)
+        {
+            var index = Items.FindIndex(item => item.MemberId == memberId);
+            if (index >= 0)
+                Items[index] = Items[index] with
+                {
+                    GiftReceivedAt = received ? "now" : null,
+                    GiftProgressDrawId = drawId,
+                };
+            return Task.CompletedTask;
+        }
+        public Task ClearGiftProgressAsync(string memberId, CancellationToken cancellationToken = default)
+        {
+            var index = Items.FindIndex(item => item.MemberId == memberId);
+            if (index >= 0)
+                Items[index] = Items[index] with
+                {
+                    GiftStage = null,
+                    GiftStageAt = null,
+                    GiftReceivedAt = null,
+                    GiftProgressDrawId = null,
+                };
+            return Task.CompletedTask;
+        }
         public Task SetWishClaimAsync(string memberId, string drawId, string wishId, WishClaimRecord claim, CancellationToken cancellationToken = default)
         {
             var index = Items.FindIndex(item => item.MemberId == memberId);

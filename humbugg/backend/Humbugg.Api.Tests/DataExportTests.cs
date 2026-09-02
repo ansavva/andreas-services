@@ -208,6 +208,45 @@ public sealed class DataExportTests
         private readonly List<MembershipRecord> items = [];
         // Real behaviour, not a counter: the readiness dashboard reads this field back, so a fake
         // that swallowed the write would let a test pass on a value production never stores.
+        public Task SetGiftStageAsync(string memberId, string drawId, GiftStage stage, CancellationToken cancellationToken = default)
+        {
+            var index = items.FindIndex(item => item.MemberId == memberId);
+            // Mirrors the repository, receipt clear included: moving the stage is only allowed while
+            // nobody has confirmed receipt, so the write always leaves that unset.
+            if (index >= 0)
+                items[index] = items[index] with
+                {
+                    GiftStage = stage,
+                    GiftStageAt = "now",
+                    GiftReceivedAt = null,
+                    GiftProgressDrawId = drawId,
+                };
+            return Task.CompletedTask;
+        }
+        public Task SetGiftReceivedAsync(string memberId, string drawId, bool received, CancellationToken cancellationToken = default)
+        {
+            var index = items.FindIndex(item => item.MemberId == memberId);
+            if (index >= 0)
+                items[index] = items[index] with
+                {
+                    GiftReceivedAt = received ? "now" : null,
+                    GiftProgressDrawId = drawId,
+                };
+            return Task.CompletedTask;
+        }
+        public Task ClearGiftProgressAsync(string memberId, CancellationToken cancellationToken = default)
+        {
+            var index = items.FindIndex(item => item.MemberId == memberId);
+            if (index >= 0)
+                items[index] = items[index] with
+                {
+                    GiftStage = null,
+                    GiftStageAt = null,
+                    GiftReceivedAt = null,
+                    GiftProgressDrawId = null,
+                };
+            return Task.CompletedTask;
+        }
         public Task SetWishClaimAsync(string memberId, string drawId, string wishId, WishClaimRecord claim, CancellationToken cancellationToken = default)
         {
             var index = items.FindIndex(item => item.MemberId == memberId);

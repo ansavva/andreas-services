@@ -52,15 +52,16 @@ test('a deep link to the dashboard renders the roll-up and the roster', async ({
 });
 
 test('gift progress reads as untracked rather than as zero', async ({ page }) => {
-  stubOnly('the live dev stack has no gift tracking either, but its copy is not pinned here');
+  stubOnly('the live dev stack’s own progress is not the fixture’s to predict');
   await stubApi(page);
   await signIn(page);
   const group = fixture<Group>('group');
 
   await page.goto(`/organize/${group.group_id}`);
 
-  // #132 has not landed; the dashboard must say so rather than report zero purchases.
-  await expect(page.getByText('Not tracked yet.')).toBeVisible();
+  // The fixture exchange is open, so nobody has been asked to buy anything. The dashboard says so
+  // rather than reporting zero purchases, which would be a claim about the world.
+  await expect(page.getByText('Nothing to track yet.')).toBeVisible();
 });
 
 test('the dashboard survives a 390px phone viewport', async ({ page }) => {
