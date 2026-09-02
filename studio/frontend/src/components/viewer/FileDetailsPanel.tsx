@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Alert, Button, Input, Text } from "@ansavva/design-system";
 
 import { AutoTextarea } from "../common/AutoTextarea";
+import { TagSelect } from "../common/TagSelect";
 import type { FileEntry } from "../../types";
 
 interface Props {
@@ -100,10 +101,8 @@ export function FileDetailsPanel({
 }: Props) {
   const [name, setName] = useState(file.name);
   const [draft, setDraft] = useState(file.description ?? "");
-  const [tag, setTag] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const tagInput = useRef<HTMLInputElement>(null);
 
   /**
    * What the server is believed to hold: the file as it arrived, and then
@@ -139,7 +138,6 @@ export function FileDetailsPanel({
     setName(file.name);
     setDraft(file.description ?? "");
     setSaved({ name: file.name, description: file.description ?? "" });
-    setTag("");
     setError(null);
   }, [file.id, file.name, file.description]);
 
@@ -158,17 +156,6 @@ export function FileDetailsPanel({
     [onSave],
   );
 
-  const addTag = useCallback(async () => {
-    const wanted = tag.trim();
-    if (!wanted) return;
-    setTag("");
-    // Trimmed here because the empty check needs it anyway; the CASE is left to
-    // the API, which folds and answers with the folded list. That answer is what
-    // this renders, so a duplicate the fold catches disappears rather than
-    // appearing twice.
-    await save({ tags: [...tags, wanted] });
-    tagInput.current?.focus();
-  }, [save, tag, tags]);
 
   const wantedName = name.trim();
   const renaming = wantedName !== "" && wantedName !== saved.name;
@@ -322,56 +309,22 @@ export function FileDetailsPanel({
         <Text variant="caption" tone="muted">
           Tags
         </Text>
-        <div className="flex flex-wrap items-center gap-2">
-          {tags.map((each) => (
-            <span
-              key={each}
-              className="flex items-center gap-1 rounded-xs bg-neutral-a3 py-1 ps-2 pe-1
-                         font-mono text-xs text-ink"
-            >
-              {each}
-              <button
-                type="button"
-                aria-label={`Remove ${each}`}
-                disabled={busy}
-                className="rounded-xs px-1.5 text-muted hover:bg-neutral-a5 hover:text-ink"
-                onClick={() => void save({ tags: tags.filter((keep) => keep !== each) })}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-          {tags.length === 0 && (
-            <Text variant="caption" tone="muted">
-              No tags yet.
-            </Text>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <Input
-            ref={tagInput}
-            value={tag}
-            onValueChange={setTag}
-            placeholder="Add a tag…"
-            aria-label="Add a tag"
-            // Enter adds rather than submitting anything: this panel is not a
-            // form, and the page behind it binds single keys.
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void addTag();
-              }
-              // Stopped here so typing a tag with an `m` or an `f` in it does
-              // not mute the clip or go fullscreen behind the panel.
-              // `useKeyboardNav` ignores INPUT targets as well; this is the belt
-              // to that braces, and it costs one line.
-              event.stopPropagation();
-            }}
-          />
-          <Button size="sm" disabled={!tag.trim() || busy} onClick={() => void addTag()}>
-            Add
-          </Button>
-        </div>
+        {/*
+          **The vocabulary, not a text box.** This was a free-text input with an
+          Add button, so the words already on other files were invisible while
+          typing one — and a vocabulary nobody can see is one everybody spells
+          differently. `three-quarter` on Monday and `three quarter` on Tuesday
+          are two tags, and a filter that finds one finds none of the other.
+
+          Every change saves immediately, as the box did: this panel is not a
+          form and has no submit.
+        */}
+        <TagSelect
+          scope="file"
+          value={tags}
+          onChange={(next) => void save({ tags: next })}
+          manage
+        />
       </div>
 
       {error && (

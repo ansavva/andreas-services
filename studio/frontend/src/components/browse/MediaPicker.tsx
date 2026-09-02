@@ -62,7 +62,6 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
   // Extracted and stable: `tags` is a new array every render, so the listing
   // effect would re-run forever if it depended on the array itself.
   const asked = tags.join(",");
-  const [facet, setFacet] = useState<Record<string, number>>({});
   const [searching, setSearching] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -95,7 +94,6 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
         setFolders(result.depth === "all" ? [] : result.folders);
         setFiles(result.files.filter((file) => file.kind === "image" || file.kind === "video"));
         setCrumbs(result.breadcrumbs);
-        setFacet(result.tags ?? {});
         setSearching(result.depth === "all");
       })
       .catch((err: Error) => {
@@ -153,7 +151,7 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
           ))}
         </Breadcrumbs.Root>
 
-        <TagFilter value={tags} onChange={setTags} facet={facet} searching={searching} />
+        <TagFilter value={tags} onChange={setTags} searching={searching} />
 
         <div className="min-h-48 flex-1 overflow-auto rounded-none border border-line">
           {loading && (

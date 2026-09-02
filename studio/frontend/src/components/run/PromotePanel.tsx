@@ -14,6 +14,7 @@ import {
   listNodes,
 } from "../../apis/studio";
 import { MediaThumb } from "../media/MediaThumb";
+import { TagSelect } from "../common/TagSelect";
 import { useResource } from "../../hooks/useResource";
 import type { RunAsset } from "../../types";
 import { characterPath, objectPath } from "../../utils/location";
@@ -46,14 +47,6 @@ export const CONVENTIONAL_GROUPS = ["face", "body", "frame", "wardrobe"];
 
 /** The pool folder a character's references live under. `REFERENCE_POOL`. */
 const REFERENCE_POOL = "reference";
-
-/** Comma-separated tags, as the CLI's `--tags` splits them. */
-export function splitTags(raw: string): string[] {
-  return raw
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter(Boolean);
-}
 
 /** What landed, once a promotion has finished. */
 export interface Promoted {
@@ -269,12 +262,12 @@ export function PromotePanel({
 
   const [group, setGroup] = useState(UNSORTED);
   const [description, setDescription] = useState("");
-  const [tags, setTags] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
 
   // The character is not counted: it is preselected for most runs, so it is
   // not something a person typed and losing it costs nothing.
   const dirty =
-    group !== UNSORTED || description.trim() !== "" || tags.trim() !== "";
+    group !== UNSORTED || description.trim() !== "" || tags.length > 0;
   /**
    * Reported through a ref, and depending on `dirty` ALONE.
    *
@@ -340,7 +333,7 @@ export function PromotePanel({
           node: asset.node,
           group: target,
           description: description.trim(),
-          tags: splitTags(tags),
+          tags,
         }),
       );
     } catch (err) {
@@ -582,11 +575,10 @@ export function PromotePanel({
         <div className="min-w-48 flex-1">
           <Field.Root name="promote-tags">
             <Field.Label>Tags</Field.Label>
-            <Input
-              value={tags}
-              onValueChange={setTags}
-              placeholder="Optional — comma separated"
-            />
+            <Field.Description>
+              What the copy shows. Picked from the tags this library already uses.
+            </Field.Description>
+            <TagSelect scope="file" value={tags} onChange={setTags} />
           </Field.Root>
         </div>
       </div>

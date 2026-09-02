@@ -1,19 +1,11 @@
-import { useState } from "react";
-import type { KeyboardEvent } from "react";
+import { Text } from "@ansavva/design-system";
 
-import { Badge, Button, Input, Text } from "@ansavva/design-system";
-
-import { ChipRow } from "../common/ChipRow";
+import { TagSelect } from "../common/TagSelect";
 
 interface Props {
   /** The tags currently narrowing the listing. Every entry carries ALL of them. */
   value: string[];
   onChange: (tags: string[]) => void;
-  /**
-   * The facet the last listing came back with — tag to how many entries carry
-   * it, commonest first. Empty when nothing in reach is tagged.
-   */
-  facet: Record<string, number>;
   /** True once a tag is on, so the caller can say the scope changed. */
   searching: boolean;
 }
@@ -43,86 +35,26 @@ interface Props {
  * A filter you can only use by remembering what you typed last time is a filter
  * nobody uses.
  */
-export function TagFilter({ value, onChange, facet, searching }: Props) {
-  const [draft, setDraft] = useState("");
-
-  const add = (typed: string) => {
-    // Folded the way the API folds them, so a chip and a typed word are the
-    // same tag: lowercased, inner whitespace collapsed. Commas split, because
-    // `default,face` is how the filter reads on the wire and in the CLI, and
-    // typing it should not produce one tag with a comma in it.
-    const clean = typed
-      .split(",")
-      .map((part) => part.trim().toLowerCase().split(/\s+/).join(" "))
-      .filter((part) => part && !value.includes(part));
-    if (clean.length) onChange([...value, ...clean]);
-    setDraft("");
-  };
-
-  /**
-   * Enter commits, Backspace on an empty box drops the last tag.
-   *
-   * **A key handler rather than a `<form>`.** Implicit submission is a browser
-   * behaviour conditional on the form having exactly one field and no submit
-   * button, and it did not fire here — which fails silently in the worst way:
-   * the word sits in the box looking applied while the listing is unchanged.
-   */
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      add(draft);
-    } else if (event.key === "Backspace" && !draft && value.length) {
-      onChange(value.slice(0, -1));
-    }
-  };
-
-  // Already-chosen tags are dropped from the chips: their count is the whole
-  // result, so offering them again would narrow nothing.
-  const offered = Object.entries(facet).filter(([tag]) => !value.includes(tag));
-
+export function TagFilter({ value, onChange, searching }: Props) {
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="min-w-40 sm:max-w-56">
-          <Input
-            value={draft}
-            onValueChange={setDraft}
-            onKeyDown={onKeyDown}
-            placeholder="Filter by tag…"
-            aria-label="Filter by tag"
-          />
-        </div>
+      <div className="max-w-md">
+        {/*
+          **The vocabulary, not a text box.** This was a comma-separated input
+          and a row of chips built from whatever came back — so narrowing by a
+          tag meant remembering how it was spelled, and a filter you can only
+          use by remembering is a filter nobody uses.
 
-        {value.map((tag) => (
-          <Button
-            key={tag}
-            size="sm"
-            intent="secondary"
-            onClick={() => onChange(value.filter((each) => each !== tag))}
-            aria-label={`Remove tag ${tag}`}
-          >
-            {tag} ✕
-          </Button>
-        ))}
-
-        {value.length > 0 && (
-          <Button size="sm" intent="secondary" onClick={() => onChange([])}>
-            Clear
-          </Button>
-        )}
+          `manage` is off: narrowing a listing and rewriting every file in the
+          library are not two operations to put one keystroke apart.
+        */}
+        <TagSelect
+          scope="file"
+          value={value}
+          onChange={onChange}
+          placeholder="Filter by tag…"
+        />
       </div>
-
-      {offered.length > 0 && (
-        <ChipRow aria-label="Tags in these results">
-          {offered.map(([tag, count]) => (
-            <button key={tag} type="button" onClick={() => add(tag)} className="snap-start">
-              <Badge>
-                {tag} {count}
-              </Badge>
-            </button>
-          ))}
-        </ChipRow>
-      )}
 
       {searching && (
         <Text variant="caption" tone="muted">

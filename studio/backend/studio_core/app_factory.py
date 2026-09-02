@@ -24,6 +24,7 @@ from studio_core.routes.models import bp as models_bp
 from studio_core.routes.movies import bp as movies_bp
 from studio_core.routes.nodes import bp as nodes_bp
 from studio_core.routes.phrasebook import bp as phrasebook_bp
+from studio_core.routes.tags import bp as tags_bp
 from studio_core.routes.templates import bp as templates_bp
 from studio_core.routes.projects import bp as projects_bp
 from studio_core.routes.prompt import bp as prompt_bp
@@ -259,6 +260,7 @@ def create_app() -> Flask:
     # How a reference prompt is written, as rows. Its own blueprint rather
     # than part of `characters` because the spec belongs to the LIBRARY: one
     # set of angles describes every character in it.
+    app.register_blueprint(tags_bp)
     app.register_blueprint(templates_bp)
     # Drafting a character's reference angles. It writes RUNS, so it could
     # live in `runs`; it is here because what it is ABOUT is a character's

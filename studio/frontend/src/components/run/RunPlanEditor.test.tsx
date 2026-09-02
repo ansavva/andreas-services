@@ -54,6 +54,10 @@ vi.mock("../../apis/studio", () => ({
   // a `useResource` handed `undefined` never settles, which hangs the suite
   // rather than failing it.
   getTemplates: vi.fn(() => Promise.resolve({ blocks: {}, templates: [] })),
+  // The tag vocabulary, read by every `TagSelect` the moment its list opens.
+  getTags: vi.fn(() => Promise.resolve({ scope: "file", tags: [] })),
+  renameTag: vi.fn(() => Promise.resolve({ name: "", changed: 0 })),
+  deleteTag: vi.fn(() => Promise.resolve({ name: "", changed: 0 })),
   setRunCharacters: vi.fn(() => Promise.resolve({})),
   getRun: vi.fn(() => Promise.resolve({})),
 }));

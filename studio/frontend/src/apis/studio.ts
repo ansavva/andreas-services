@@ -39,6 +39,8 @@ import type {
   UploadGrant,
   NodeView,
   TemplateLibrary,
+  TagInUse,
+  TagScope,
   PromptTemplate,
   TemplateBody,
   SpecBlock,
@@ -549,6 +551,41 @@ export function deleteCharacter(
  */
 export function resolvePath(path: string) {
   return apiGet<NodeView>("/api/resolve", { path });
+}
+
+/**
+ * One tag vocabulary, by name, with how many things carry each tag.
+ *
+ * **Derived from what is in use rather than stored**, which is what makes the
+ * deletion rule true by construction: a tag exists exactly while something
+ * carries it, so there is no list that can fall out of step with the things.
+ */
+export function getTags(scope: TagScope) {
+  return apiGet<{ scope: TagScope; tags: TagInUse[] }>("/api/tags", { scope });
+}
+
+/**
+ * Rename one tag everywhere in its scope.
+ *
+ * A bulk write behind a single-item address, and that is the honest shape: the
+ * name IS the identity — a filter passes it, the CLI passes it, a stored row
+ * holds it — so renaming half the carriers would leave two tags where somebody
+ * believes there is one.
+ */
+export function renameTag(scope: TagScope, name: string, next: string) {
+  return apiSend<{ name: string; changed: number }>(
+    "PATCH",
+    `/api/tags/${encodeURIComponent(name)}?scope=${scope}`,
+    { name: next },
+  );
+}
+
+/** Take one tag off everything in its scope, which is what deleting it IS. */
+export function deleteTag(scope: TagScope, name: string) {
+  return apiSend<{ name: string; changed: number }>(
+    "DELETE",
+    `/api/tags/${encodeURIComponent(name)}?scope=${scope}`,
+  );
 }
 
 export function getTemplates() {

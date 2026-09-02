@@ -201,6 +201,21 @@ export interface MediaListing {
   next_cursor: string | null;
 }
 
+/**
+ * Which vocabulary a tag belongs to.
+ *
+ * **`face` on a picture and `face` on a template are different things** — one
+ * says what a photograph shows, the other what a prompt is for — so the two
+ * lists are separate and nothing offers one while editing the other.
+ */
+export type TagScope = "file" | "template";
+
+/** One tag, and how many things carry it. `GET /api/tags?scope=`. */
+export interface TagInUse {
+  name: string;
+  count: number;
+}
+
 /** `PROPFIND`'s `Depth`, minus the `0` — one node is `GET /api/nodes/<id>`. */
 export type Depth = "1" | "all";
 

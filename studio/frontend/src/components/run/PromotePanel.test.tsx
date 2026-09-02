@@ -28,7 +28,7 @@ import {
   listNodes,
   getFolder,
 } from "../../apis/studio";
-import { PromotePanel, promoteToReference, splitTags } from "./PromotePanel";
+import { PromotePanel, promoteToReference } from "./PromotePanel";
 import { TestProviders } from "../../test-providers";
 import type {
   CopiedNodes,
@@ -214,16 +214,6 @@ describe("promoteToReference", () => {
   });
 });
 
-describe("splitTags", () => {
-  it("splits on commas and drops the blanks", () => {
-    expect(splitTags(" face, neutral ,, three-quarter ")).toEqual([
-      "face",
-      "neutral",
-      "three-quarter",
-    ]);
-    expect(splitTags("")).toEqual([]);
-  });
-});
 
 describe("the panel", () => {
   function open(runCharacters: string[] = [CHAR]) {

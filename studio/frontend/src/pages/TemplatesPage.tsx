@@ -21,6 +21,7 @@ import {
 import { ApertureSpinner } from "../components/common/Aperture";
 import { AutoTextarea } from "../components/common/AutoTextarea";
 import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
+import { TagSelect } from "../components/common/TagSelect";
 import { TokenizedPromptEditor } from "../components/common/TokenizedPromptEditor";
 import type { PromptToken } from "../components/common/TokenizedPromptEditor";
 import { PromptPreview } from "../components/common/PromptPreview";
@@ -548,7 +549,7 @@ function TemplateEditor({
    * things a person changes while looking at the prompt they belong to.
    */
   const [name, setName] = useState(template.name ?? "");
-  const [tags, setTags] = useState((template.tags ?? []).join(", "));
+  const [tags, setTags] = useState<string[]>(template.tags ?? []);
   const [description, setDescription] = useState(template.description);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -608,13 +609,7 @@ function TemplateEditor({
         name: name || template.id,
         prompt,
         description,
-        // Comma-separated, folded the way every other tag box in the app folds
-        // them — a tag typed here and one typed in the file browser are the
-        // same tag or the filter that finds one will not find the other.
-        tags: tags
-          .split(",")
-          .map((tag) => tag.trim().toLowerCase())
-          .filter(Boolean),
+        tags,
       });
       setData((current) =>
         current
@@ -654,9 +649,10 @@ function TemplateEditor({
             <Field.Root name={`template-tags-${template.id}`}>
               <Field.Label>Tags</Field.Label>
               <Field.Description>
-                Comma-separated. What its output is tagged with when it is promoted.
+                What its output is tagged with when it is promoted. Templates keep
+                their own list — a file&rsquo;s tags are a different vocabulary.
               </Field.Description>
-              <Input value={tags} onValueChange={setTags} className="font-mono" />
+              <TagSelect scope="template" value={tags} onChange={setTags} manage />
             </Field.Root>
           </div>
         </div>

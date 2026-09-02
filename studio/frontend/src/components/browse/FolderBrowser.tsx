@@ -583,12 +583,7 @@ export function FolderBrowser({ nav, boundary = null, initialTags = [] }: Props)
       </div>
 
       <div className="border-b border-line pb-2">
-        <TagFilter
-          value={tags}
-          onChange={setTags}
-          facet={data?.tags ?? {}}
-          searching={data?.depth === "all"}
-        />
+        <TagFilter value={tags} onChange={setTags} searching={data?.depth === "all"} />
       </div>
 
       {newFolder !== null && (
