@@ -885,3 +885,30 @@ jobs:
             -H 'Access-Control-Request-Headers: authorization,content-type' \
             https://api.humbugg.com/api/groups)
           test "$allow" = "https://app.humbugg.com"
+
+          # --- The endpoints that must answer WITHOUT a token ---
+          #
+          # Same failure as the preflight above, and it had actually happened: an
+          # `[AllowAnonymous]` attribute governs a request that arrives, and the
+          # `ANY /api/{proxy+}` authorizer stops an anonymous one arriving at all.
+          # The signed-out invitation preview was 401ed by the gateway from the day
+          # it shipped, and nothing noticed — the browser suite answers /api/** from
+          # fixtures, so it never crosses a gateway.
+          #
+          # `test != 401` rather than `= 200`: what matters is that the request
+          # REACHED the application. The gateway's refusal is a bare 401; the
+          # application's own answer to a bad invite secret is a 403, and to a good
+          # one a 200. Either proves the route exists.
+          plans=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            https://api.humbugg.com/api/plans)
+          test "$plans" = "200"
+
+          invitation=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            -H 'X-Humbugg-Invite: smoke-test-not-a-real-token' \
+            https://api.humbugg.com/api/groups/00000000-0000-0000-0000-000000000000/invitation)
+          test "$invitation" != "401"
+
+          managed=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            -H 'X-Humbugg-Invite: smoke-test-not-a-real-token' \
+            https://api.humbugg.com/api/groups/00000000-0000-0000-0000-000000000000/invitations/00000000/preview)
+          test "$managed" != "401"
