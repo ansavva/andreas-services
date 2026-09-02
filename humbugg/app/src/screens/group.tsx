@@ -10,6 +10,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { api, ApiError } from '../api/client';
 import { DangerButton } from '../components/danger-button';
 import { isPlusRequired, PlusRefusalCard } from '../components/plus';
+import { QuestionsPanel } from '../components/questions';
 import { FieldLabel } from '../components/field';
 import { Card, LoadingPanel, Shell } from '../components/shell';
 import { StatusMessage } from '../components/status-message';
@@ -178,6 +179,19 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
               void claimAction((token) => api.releaseWishClaim(token, groupId, wishId))
             }
           />
+        ) : null}
+
+        {/*
+          Anonymous questions (#131), both ends. Rendered only after the draw and only for someone
+          taking part — before that neither thread exists. Two panels rather than one because they
+          are two different conversations: the one you opened about the gift you are buying, and the
+          one somebody opened about the gift you are getting.
+        */}
+        {group.status === 'drawn' && me.is_participating ? (
+          <>
+            <QuestionsPanel groupId={groupId} side="giver" />
+            <QuestionsPanel groupId={groupId} side="recipient" />
+          </>
         ) : null}
 
         <Card>

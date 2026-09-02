@@ -94,10 +94,25 @@ branch `Codex/humbugg-plus-purchase-ux-141` was kept for its specification, whic
 carries no `price_id` gets "Plus is not on sale yet" instead of a button whose only outcome is a
 409.
 
-### 3. #130 → #131 → #132 — the rest of the wishlist spine · **#130 built**
+### 3. #130 → #131 → #132 — the rest of the wishlist spine · **#130 and #131 built**
 
-All three hang off the wish model added in #127. Take them in that order: claims and questions are
-independent of each other but both inform what #132 has to display, and #133 renders all three.
+All three hang off the wish model added in #127. Claims and questions are independent of each other
+but both inform what #132 has to display, and #133 renders all three. **#132 is what is left**, and
+it now has its substrate: the readiness dashboard's "Not tracked yet." panel counts the claims #130
+stores, without ever naming who set them.
+
+**#131's anonymity is structural, and that is the thing to preserve.** No row in
+`humbugg-prod-questions` stores the giver: a message records which SIDE wrote it, and every request
+re-derives who the giver is from the draw. So there is no field for a projection to leak, no id for
+a URL to carry, and nothing for a later endpoint to expose by returning a whole record. Both parties
+also receive the byte-identical payload — if the two views were separate projections, one of them
+would eventually differ by an identity. The notification names neither party and quotes no body, for
+the same reason `AssignmentAvailable` refuses to carry a recipient's name.
+
+*One honest limit:* a notification only sends when an address is on file, which today means the
+person joined through a managed (Plus) invitation. Humbugg stores no email on the profile and the
+access token carries one only for the caller, who is not the other side of the conversation. On a
+Free exchange the thread works and the mail usually does not go — the app shows it either way.
 
 **#130 is built, and its privacy rule turned out to decide the storage.** A purchase claim is
 visible to the assigned giver and *never* to the wishlist owner. It is stored on the **claimant's
@@ -173,10 +188,11 @@ your giver has already bought. #132's gift progress lands on the same side. Proj
 audiences through one type makes that leak a one-line mistake. `RecipientWish` also deliberately
 drops `CreatedAt`/`UpdatedAt`: when someone last edited their list is their own business.
 
-**A purchase claim is never audited.** Every other sensitive action is. An audit row carries the
+**Neither a purchase claim nor a question is ever audited.** Every other sensitive action is. An audit row carries the
 actor and the target, so recording "this member claimed a wish belonging to that member" would write
-the draw assignment into the one table an organizer is allowed to read. Auditing is never gated on a
-plan, and it is also never allowed to be the thing that spoils the exchange.
+the draw assignment into the one table an organizer is allowed to read — and for a question it would
+write the giver's identity into it, which the whole feature exists to withhold. Auditing is never
+gated on a plan, and it is also never allowed to be the thing that spoils the exchange.
 
 **The free-text `wishlist` field was not replaced.** #127 added structured wishes *alongside* it, and
 it now carries general preferences ("Likes, sizes and hobbies"). That is why there was no data

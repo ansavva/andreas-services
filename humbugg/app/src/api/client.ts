@@ -16,6 +16,7 @@ import type {
   LateParticipantPreview,
   LateParticipantResult,
   PolicyConsent,
+  QuestionThread,
   PlusPurchaseStatus,
   Profile,
   RecipientAssignment,
@@ -161,6 +162,20 @@ export const api = {
     ),
   releaseWishClaim: (token: string, id: string, wishId: string) =>
     request<RecipientAssignment>(`/groups/${id}/assignment/wishes/${wishId}/claim`, token, json('DELETE')),
+  // Anonymous questions (#131). Two routes, one shape: the giver's hangs off `assignment` because
+  // the assignment is the authorization, the recipient's off `members/me` because the only member a
+  // caller can address is themselves. Neither URL carries a member id — a URL is one of the surfaces
+  // the identity could leak through, and the way to keep it out is to have no id to put there.
+  getGiverQuestions: (token: string, id: string) =>
+    request<QuestionThread>(`/groups/${id}/assignment/questions`, token),
+  askQuestion: (token: string, id: string, body: string) =>
+    request<QuestionThread>(`/groups/${id}/assignment/questions`, token, json('POST', { body })),
+  getRecipientQuestions: (token: string, id: string) =>
+    request<QuestionThread>(`/groups/${id}/members/me/questions`, token),
+  replyToQuestion: (token: string, id: string, body: string) =>
+    request<QuestionThread>(`/groups/${id}/members/me/questions`, token, json('POST', { body })),
+  setQuestionsBlocked: (token: string, id: string, blocked: boolean) =>
+    request<QuestionThread>(`/groups/${id}/members/me/questions/blocked`, token, json('PUT', { blocked })),
   reveal: (token: string, id: string, reason: string) => request<{ assignments: RevealAssignment[] }>(`/groups/${id}/assignment/reveal`, token, json('POST', { reason })),
   previewLateParticipant: (token: string, id: string, memberId: string) =>
     request<LateParticipantPreview>(`/groups/${id}/late-participants/${memberId}/preview`, token, json('POST')),

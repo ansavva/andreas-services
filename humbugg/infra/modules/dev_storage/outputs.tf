@@ -13,6 +13,7 @@ output "table_names" {
     invitations      = aws_dynamodb_table.invitations.name
     reminders        = aws_dynamodb_table.reminders.name
     templates        = aws_dynamodb_table.templates.name
+    questions        = aws_dynamodb_table.questions.name
   }
 }
 

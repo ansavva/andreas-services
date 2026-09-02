@@ -246,3 +246,48 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "app" {
     }
   }
 }
+
+# Anonymous question threads (#131). One partition per thread, keyed
+# ({groupId}:{drawId}:{recipientMemberId}, message_id) — the control row sorts as "#thread" and every
+# message as a timestamp-prefixed id, so reading a conversation is one Query on a known key and the
+# messages come back in order without a second attribute.
+#
+# There is NO giver on any row here, by design: a message records which SIDE wrote it and the API
+# re-derives who the giver is from the draw on every request. Nothing in this table can leak an
+# identity because no identity is stored.
+#
+# The group_id index exists for DELETION, not reading — a deleted group, a departing participant and
+# an erased account all have to take these rows with them and none of them knows which draw ids ever
+# existed. It projects only the keys plus recipient_member_id: nothing that deletes a conversation
+# should be able to read one.
+resource "aws_dynamodb_table" "questions" {
+  name         = "${var.resource_prefix}-questions"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "thread_id"
+  range_key    = "message_id"
+
+  attribute {
+    name = "thread_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "message_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "group_id"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name               = "group_id-index"
+    hash_key           = "group_id"
+    projection_type    = "INCLUDE"
+    non_key_attributes = ["recipient_member_id"]
+  }
+
+  server_side_encryption { enabled = true }
+  tags = var.tags
+}

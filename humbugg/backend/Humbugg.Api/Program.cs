@@ -182,6 +182,7 @@ builder.Services.AddScoped<IGroupRepository, GroupRepository>();
 builder.Services.AddScoped<ITemplateRepository, TemplateRepository>();
 builder.Services.AddScoped<IMembershipRepository, MembershipRepository>();
 builder.Services.AddScoped<IWishRepository, WishRepository>();
+builder.Services.AddScoped<IQuestionRepository, QuestionRepository>();
 builder.Services.AddScoped<IInvitationRepository, InvitationRepository>();
 builder.Services.AddScoped<IReminderRepository, ReminderRepository>();
 builder.Services.AddScoped<IAuditRepository, AuditRepository>();
@@ -195,6 +196,7 @@ builder.Services.AddScoped<IProductAnalytics, ProductAnalytics>();
 builder.Services.AddScoped<IProfileService, ProfileService>();
 builder.Services.AddScoped<IGroupService, GroupService>();
 builder.Services.AddScoped<IWishService, WishService>();
+builder.Services.AddScoped<IQuestionService, QuestionService>();
 builder.Services.AddScoped<IInvitationService, InvitationService>();
 builder.Services.AddScoped<ILateParticipantService, LateParticipantService>();
 builder.Services.AddScoped<ReminderService>();
@@ -250,7 +252,8 @@ public sealed record HumbuggSettings(
     string WishesTable = "humbugg-wishes",
     string InvitationsTable = "humbugg-invitations",
     string RemindersTable = "humbugg-reminders",
-    string TemplatesTable = "humbugg-templates")
+    string TemplatesTable = "humbugg-templates",
+    string QuestionsTable = "humbugg-questions")
 {
     public static HumbuggSettings FromEnvironment()
     {
@@ -282,7 +285,8 @@ public sealed record HumbuggSettings(
             RequiredTable("HUMBUGG_WISHES_TABLE"),
             RequiredTable("HUMBUGG_INVITATIONS_TABLE"),
             RequiredTable("HUMBUGG_REMINDERS_TABLE"),
-            RequiredTable("HUMBUGG_TEMPLATES_TABLE"));
+            RequiredTable("HUMBUGG_TEMPLATES_TABLE"),
+            RequiredTable("HUMBUGG_QUESTIONS_TABLE"));
     }
 
     // Table names are per-environment and carry no safe default: prod, each
@@ -293,7 +297,7 @@ public sealed record HumbuggSettings(
     // fall back to (humbugg-audit-events, humbugg-billing) were pre-rename
     // tables that have since been deleted outright.
     //
-    // The deploy workflow sets all eleven; dev-aws-setup.sh writes all eleven
+    // The deploy workflow sets all twelve; dev-aws-setup.sh writes all twelve
     // into humbugg/backend/.env from Terraform outputs. A missing one means the
     // environment is genuinely misconfigured, so fail at startup and say which.
     private static string RequiredTable(string variable) =>

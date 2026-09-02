@@ -175,6 +175,32 @@ export type WishPriority = 'low' | 'normal' | 'high';
  */
 export type WishClaimState = 'planned' | 'purchased';
 
+/**
+ * Which SIDE of an anonymous question thread wrote a message (#131).
+ *
+ * A side, never a person — and that is the whole feature. The server stores no giver on any row and
+ * both parties receive this identical shape, so there is no id here for the app to render by
+ * accident and none for a future screen to start showing.
+ */
+export type QuestionAuthor = 'giver' | 'recipient';
+
+export interface QuestionMessage {
+  message_id: string;
+  author: QuestionAuthor;
+  body: string;
+  created_at: string;
+}
+
+export interface QuestionThread {
+  messages: QuestionMessage[];
+  /** The recipient has ended the conversation. Only they can lift it. */
+  blocked: boolean;
+  /** Whether the caller may send right now; `blocked_reason` says why not. */
+  can_send: boolean;
+  blocked_reason?: string | null;
+  message_limit: number;
+}
+
 /** The GIVER's own claim on a wish. Never the wishlist owner's — they are never sent one. */
 export interface WishClaim {
   state: WishClaimState;

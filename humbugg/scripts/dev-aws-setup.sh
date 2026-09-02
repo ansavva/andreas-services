@@ -118,6 +118,7 @@ upsert_env "$backend_env" HUMBUGG_BILLING_TABLE "$(jq -r '.table_names.value.bil
 upsert_env "$backend_env" HUMBUGG_INVITATIONS_TABLE "$(jq -r '.table_names.value.invitations' <<<"$outputs")"
 upsert_env "$backend_env" HUMBUGG_REMINDERS_TABLE "$(jq -r '.table_names.value.reminders' <<<"$outputs")"
 upsert_env "$backend_env" HUMBUGG_TEMPLATES_TABLE "$(jq -r '.table_names.value.templates' <<<"$outputs")"
+upsert_env "$backend_env" HUMBUGG_QUESTIONS_TABLE "$(jq -r '.table_names.value.questions' <<<"$outputs")"
 remove_env "$backend_env" COGNITO_ENDPOINT_URL
 remove_env "$backend_env" COGNITO_ISSUER_URL
 

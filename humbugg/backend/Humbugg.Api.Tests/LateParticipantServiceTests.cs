@@ -247,6 +247,7 @@ public sealed class LateParticipantServiceTests
             Groups,
             Members,
             new FakeWishes(),
+            new FakeQuestions(),
             new FakeInvitations(),
             new MatchingService(),
             new PlanCatalog(new()),

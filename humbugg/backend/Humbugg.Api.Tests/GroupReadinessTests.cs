@@ -339,7 +339,7 @@ public sealed class GroupReadinessTests
 
         // Built lazily so a test can swap the wish repository in after seeding its roster.
         public GroupService Subject => subject ??= new GroupService(
-            user, new FakeProfiles(), Groups, Members, Wishes, Invitations, new MatchingService(),
+            user, new FakeProfiles(), Groups, Members, Wishes, new FakeQuestions(), Invitations, new MatchingService(),
             new PlanCatalog(new()), new NoopAudit(), new NoopAnalytics(),
             new HumbuggSettings("us-east-1", "us-east-1", "pool", "client", ["http://localhost:5173"],
                 "http://localhost:5173", null, "profiles", "groups", "members", "draws", "audit", "analytics"));

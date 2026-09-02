@@ -383,6 +383,7 @@ jobs:
             --arg analytics_events_table "humbugg-prod-analytics-events" \
             --arg billing_table "humbugg-prod-billing" \
             --arg templates_table "humbugg-prod-templates" \
+            --arg questions_table "humbugg-prod-questions" \
             --arg analytics_enabled "${{ vars.HUMBUGG_ANALYTICS_ENABLED || 'true' }}" \
             --arg email_messages_table "humbugg-prod-email-messages" \
             --arg app_bucket "humbugg-prod-app-files-us-east-1" \
@@ -417,6 +418,7 @@ jobs:
               HUMBUGG_ANALYTICS_EVENTS_TABLE: $analytics_events_table,
               HUMBUGG_BILLING_TABLE: $billing_table,
               HUMBUGG_TEMPLATES_TABLE: $templates_table,
+              HUMBUGG_QUESTIONS_TABLE: $questions_table,
               HUMBUGG_ANALYTICS_ENABLED: $analytics_enabled,
               HUMBUGG_EMAIL_MESSAGES_TABLE: $email_messages_table,
               HUMBUGG_APP_BUCKET: $app_bucket,

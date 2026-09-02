@@ -19,6 +19,7 @@ internal sealed class DynamoDbBootstrap(IAmazonDynamoDB db, HumbuggSettings sett
         await EnsureAsync(settings.RemindersTable, "group_id", cancellationToken, "record_key");
         await EnsureBillingAsync(cancellationToken);
         await EnsureAsync(settings.TemplatesTable, "user_id", cancellationToken, "template_id");
+        await EnsureQuestionsAsync(cancellationToken);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
@@ -97,6 +98,41 @@ internal sealed class DynamoDbBootstrap(IAmazonDynamoDB db, HumbuggSettings sett
             ],
         }, cancellationToken);
         logger.LogInformation("Created local DynamoDB table {Table}", settings.BillingRecordsTable);
+    }
+
+    private async Task EnsureQuestionsAsync(CancellationToken cancellationToken)
+    {
+        if (await ExistsAsync(settings.QuestionsTable, cancellationToken)) return;
+        await db.CreateTableAsync(new CreateTableRequest
+        {
+            TableName = settings.QuestionsTable,
+            BillingMode = BillingMode.PAY_PER_REQUEST,
+            AttributeDefinitions =
+            [
+                new("thread_id", ScalarAttributeType.S),
+                new("message_id", ScalarAttributeType.S),
+                new("group_id", ScalarAttributeType.S),
+            ],
+            KeySchema = [new("thread_id", KeyType.HASH), new("message_id", KeyType.RANGE)],
+            // For deletion, not for reading: a group that is deleted and a participant who is removed
+            // both have to take these rows with them, and neither knows which draw ids ever existed.
+            GlobalSecondaryIndexes =
+            [
+                new()
+                {
+                    IndexName = "group_id-index",
+                    KeySchema = [new("group_id", KeyType.HASH)],
+                    // The table keys plus the one attribute the member sweep filters on. Never the
+                    // bodies: nothing that deletes a conversation should be able to read one.
+                    Projection = new Projection
+                    {
+                        ProjectionType = ProjectionType.INCLUDE,
+                        NonKeyAttributes = ["recipient_member_id"],
+                    },
+                },
+            ],
+        }, cancellationToken);
+        logger.LogInformation("Created local DynamoDB table {Table}", settings.QuestionsTable);
     }
 
     private async Task<bool> ExistsAsync(string table, CancellationToken cancellationToken)
