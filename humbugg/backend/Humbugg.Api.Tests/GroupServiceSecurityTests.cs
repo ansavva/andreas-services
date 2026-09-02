@@ -3,6 +3,8 @@ using Humbugg.Api;
 using Humbugg.Api.Data;
 using Humbugg.Api.Models;
 using Humbugg.Api.Services;
+using Humbugg.Api.Services.Email.Core;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Humbugg.Api.Tests;
@@ -191,6 +193,8 @@ public sealed class GroupServiceSecurityTests
         public FakeAuditTrail Audit { get; }
         public FakeWishes Wishes { get; }
         public FakeQuestions Questions { get; }
+        public FakeAccountDirectory Directory { get; } = new();
+        public NoopEmail Email { get; }
         public GroupService Subject { get; }
 
         public Fixture(
@@ -200,14 +204,16 @@ public sealed class GroupServiceSecurityTests
             PlanCode plan = PlanCode.Free,
             string? entitlementId = null,
             WishRecord[]? wishes = null,
-            string callerUserId = "user")
+            string callerUserId = "user",
+            bool failMail = false)
         {
+            Email = new NoopEmail { Throw = failMail };
             Groups = new FakeGroups(Group(exclusions ?? [["actor", "other"]], ownerUserId, plan, entitlementId));
             Members = new FakeMembers(member is null ? [] : [member]);
             Audit = new FakeAuditTrail();
             Wishes = new FakeWishes(wishes ?? []);
             Questions = new FakeQuestions();
-            Subject = new GroupService(new FakeUser(callerUserId), new FakeProfiles(), Groups, Members, Wishes, Questions, new FakeInvitations(), new MatchingService(), new PlanCatalog(new()), Audit, new FakeProductAnalytics(), new HumbuggSettings(
+            Subject = new GroupService(new FakeUser(callerUserId), new FakeProfiles(), Groups, Members, Wishes, Questions, new FakeInvitations(), new MatchingService(), new PlanCatalog(new()), Audit, new FakeProductAnalytics(), Directory, Email, new TransactionalEmailTemplates(), NullLogger<GroupService>.Instance, new HumbuggSettings(
                 "us-east-1", "us-east-1", "pool", "client", ["http://localhost:5173"], "http://localhost:5173", null,
                 "profiles", "groups", "members", "draws", "audit", "analytics"));
         }
@@ -605,6 +611,99 @@ public sealed class GroupServiceSecurityTests
         Assert.Null(mine.GiftProgressDrawId);
         // And the receipt they left on their giver's row, which lives somewhere else by design.
         Assert.Null(fixture.Members.Items.Single(member => member.MemberId == "other").GiftReceivedAt);
+    }
+
+    // ── Draw notifications (#137) ────────────────────────────────────────────────────────────────
+    //
+    // The one message without which the exchange does not work. Until #137 it was never sent: the
+    // template existed and nothing called it, and the only address Humbugg could reach was on an
+    // accepted managed invitation — a Plus capability, so a Free exchange could not be told at all.
+
+    [Fact]
+    public async Task ADrawTellsEveryParticipantWithAVerifiedAddress()
+    {
+        var fixture = new Fixture(member: Fixture.Member("actor", organizer: true), exclusions: []);
+        fixture.Members.Items.Add(Fixture.Member("other", organizer: false));
+        fixture.Directory.Emails["user"] = "actor@example.test";
+        fixture.Directory.Emails["user-other"] = "other@example.test";
+
+        await fixture.Subject.DrawAsync("group", TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, fixture.Email.Sent.Count);
+        Assert.Equal(
+            ["actor@example.test", "other@example.test"],
+            fixture.Email.Sent.Select(message => message.ToAddress).Order(StringComparer.Ordinal));
+        Assert.All(fixture.Email.Sent, message =>
+            Assert.Equal(Humbugg.Api.Services.Email.Core.EmailCategory.DrawCompleted, message.Category));
+    }
+
+    /// <summary>
+    /// An account with no verified address is sent nothing, and everybody else still is.
+    /// </summary>
+    /// <remarks>
+    /// Both halves matter. Skipping the unverified one is the safety rule; carrying on afterwards is
+    /// what stops one unconfirmed signup silently costing forty-nine other people their notification.
+    /// </remarks>
+    [Fact]
+    public async Task AnUnreachableParticipantDoesNotStopTheOthersBeingTold()
+    {
+        var fixture = new Fixture(member: Fixture.Member("actor", organizer: true), exclusions: []);
+        fixture.Members.Items.Add(Fixture.Member("other", organizer: false));
+        fixture.Directory.Emails["user-other"] = "other@example.test";
+
+        await fixture.Subject.DrawAsync("group", TestContext.Current.CancellationToken);
+
+        Assert.Equal("other@example.test", Assert.Single(fixture.Email.Sent).ToAddress);
+    }
+
+    /// <summary>
+    /// The notification never carries the recipient's name.
+    /// </summary>
+    /// <remarks>
+    /// The whole point of the link is that the name is behind a sign-in. Putting it in an inbox would
+    /// hand the assignment to anybody who reads over a shoulder — and it is a claim the template
+    /// itself makes, so it is worth pinning rather than trusting.
+    /// </remarks>
+    [Fact]
+    public async Task ADrawNotificationNamesNobodysRecipient()
+    {
+        var fixture = new Fixture(member: Fixture.Member("actor", organizer: true), exclusions: []);
+        fixture.Members.Items.Add(Fixture.Member("other", organizer: false));
+        fixture.Directory.Emails["user"] = "actor@example.test";
+        fixture.Directory.Emails["user-other"] = "other@example.test";
+
+        await fixture.Subject.DrawAsync("group", TestContext.Current.CancellationToken);
+
+        foreach (var message in fixture.Email.Sent)
+        {
+            var whole = $"{message.Subject} {message.HtmlBody} {message.TextBody}";
+            // Each person is greeted by name; nobody is told whose name they drew. With a two-person
+            // draw the only way to satisfy both is to name only the addressee.
+            var other = message.ToAddress.StartsWith("actor", StringComparison.Ordinal) ? "other" : "actor";
+            Assert.DoesNotContain(other, whole, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    /// <summary>
+    /// A draw is not undone by a mail failure.
+    /// </summary>
+    /// <remarks>
+    /// The assignments are written and audited before any notification is attempted, so a failure
+    /// here has to be swallowed — otherwise a Cognito hiccup would surface to the organizer as a
+    /// draw that "failed" after it had already happened.
+    /// </remarks>
+    [Fact]
+    public async Task ADrawSurvivesAFailingMailer()
+    {
+        var fixture = new Fixture(
+            member: Fixture.Member("actor", organizer: true), exclusions: [], failMail: true);
+        fixture.Members.Items.Add(Fixture.Member("other", organizer: false));
+        fixture.Directory.Emails["user"] = "actor@example.test";
+
+        var assignment = await fixture.Subject.DrawAsync("group", TestContext.Current.CancellationToken);
+
+        Assert.Equal("other", assignment.MemberId);
+        Assert.Equal(1, fixture.Groups.CreateDrawCount);
     }
 
     private sealed class FakeUser(string userId = "user") : ICurrentUser { public string UserId => userId; }

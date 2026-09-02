@@ -163,6 +163,29 @@ resource "aws_iam_role_policy" "api_email_messages" {
   })
 }
 
+# The verified email address behind an account (#137). Humbugg stores none of its own, so this is
+# the only way to reach a participant who did not arrive through a managed (Plus) invitation — which
+# is what "keep account holders informed on every plan" requires.
+#
+# AdminGetUser and nothing else: reading one user's attributes is the whole need. The admin API
+# family also contains AdminDeleteUser, AdminSetUserPassword and AdminUpdateUserAttributes, so a
+# wildcard here would let a compromised API delete the pool's accounts to send an email.
+#
+# The reminders Lambda shares this role, which is why one statement covers both.
+resource "aws_iam_role_policy" "api_cognito_directory" {
+  name = "${var.project}-${var.environment}-api-cognito-directory"
+  role = aws_iam_role.api.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["cognito-idp:AdminGetUser"]
+      Resource = var.cognito_user_pool_arn
+    }]
+  })
+}
+
 resource "aws_iam_role" "email_status" {
   name = "${var.project}-${var.environment}-email-status-role"
 

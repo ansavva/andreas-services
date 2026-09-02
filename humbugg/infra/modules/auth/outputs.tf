@@ -19,3 +19,8 @@ output "auth_domain" {
     : "${aws_cognito_user_pool_domain.main.domain}.auth.${data.aws_region.current.region}.amazoncognito.com"
   )
 }
+
+output "user_pool_arn" {
+  description = "Cognito User Pool ARN, for the least-privilege AdminGetUser grant the API needs"
+  value       = aws_cognito_user_pool.main.arn
+}

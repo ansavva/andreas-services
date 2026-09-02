@@ -26,6 +26,38 @@ switch — nowhere else — to reclassify a category.
 | `Reminder` | Non-essential | Yes |
 | `AccountExchangeEvent` (group-activity / question-and-reply) | Non-essential | Yes |
 
+## Where the address comes from (#137)
+
+Humbugg **stores no email address of its own.** The profile row has none, and the
+access token the API validates carries one only for the caller — who is never the
+other side of a notification. The address is read back from Cognito at send time
+through `IAccountDirectory` (`AdminGetUser`, granted on the pool ARN alone in
+`infra/modules/compute`).
+
+**Only a verified address is ever used.** `email_verified` is the difference
+between an address the person proved they control and a string they typed;
+sending to the latter would let anyone who can sign up direct Humbugg's mail at a
+stranger. An unverified address reads as *no* address and nothing is sent.
+
+Before this, the only reachable address was on an accepted **managed invitation**
+— a Plus capability — so a Free exchange could not be notified at all. That is
+why `DrawCompleted` had a template and no caller for months.
+
+Nothing is cached. A draw notifies at most fifty people once, and a cached
+address is a stale one on the day somebody changes theirs, which is exactly when
+"your assignment is ready" going to the old one matters most.
+
+A notification is always best-effort: it happens after the action it announces
+has been written and audited, so a Cognito or Mailer failure is logged and
+swallowed rather than failing a draw that already happened.
+
+## The in-app fallback
+
+Every notification is a link to a page that already holds the same thing, so a
+suppressed, bounced or opted-out address never means missing the exchange.
+**Settings → Email notifications** says so in as many words, before somebody
+switches mail off rather than after they have missed a draw.
+
 Cognito security/account mail (sign-up, resend-confirmation, forgot-password)
 originates in Cognito, never passes through this service, and is always
 essential.

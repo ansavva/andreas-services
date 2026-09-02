@@ -41,6 +41,7 @@ internal sealed class QuestionService(
     IGroupRepository groups,
     IMembershipRepository memberships,
     IInvitationRepository invitations,
+    IAccountDirectory directory,
     IQuestionRepository questions,
     ITransactionalEmailService email,
     ITransactionalEmailTemplates templates,
@@ -173,11 +174,9 @@ internal sealed class QuestionService(
     /// suppressed for anyone who has turned non-essential mail off. A failure to send must not undo
     /// a message that is already stored, so this never throws.
     ///
-    /// An address is only ever on file when the person joined through a managed invitation, which is
-    /// a Plus capability — Humbugg stores no email on the profile, the access token carries one only
-    /// for the caller, and neither is the other side of this conversation. So on a Free exchange
-    /// this usually sends nothing, and that is the honest outcome rather than a gap: the app shows
-    /// the thread either way, and inventing an address to notify is not available.
+    /// The address comes from Cognito's verified record for the account (#137), so this works on
+    /// every plan. An accepted managed invitation is kept as a fallback for the case Cognito cannot
+    /// answer for — a pool record that has gone while the membership row survives.
     /// </remarks>
     private async Task NotifyAsync(ThreadContext context, QuestionAuthor author, CancellationToken cancellationToken)
     {
@@ -186,11 +185,12 @@ internal sealed class QuestionService(
             var toMemberId = author == QuestionAuthor.Giver ? context.RecipientMemberId : context.GiverMemberId;
             var member = await memberships.GetAsync(toMemberId, cancellationToken);
             if (member is null) return;
-            var address = (await invitations.GetByGroupAsync(context.GroupId, cancellationToken))
-                .Where(item => item.Status == "accepted" && item.AcceptedUserId == member.UserId)
-                .OrderByDescending(item => item.AcceptedAt, StringComparer.Ordinal)
-                .Select(item => item.Email)
-                .FirstOrDefault();
+            var address = await directory.VerifiedEmailAsync(member.UserId, cancellationToken)
+                ?? (await invitations.GetByGroupAsync(context.GroupId, cancellationToken))
+                    .Where(item => item.Status == "accepted" && item.AcceptedUserId == member.UserId)
+                    .OrderByDescending(item => item.AcceptedAt, StringComparer.Ordinal)
+                    .Select(item => item.Email)
+                    .FirstOrDefault();
             if (string.IsNullOrWhiteSpace(address)) return;
 
             var summary = author == QuestionAuthor.Giver

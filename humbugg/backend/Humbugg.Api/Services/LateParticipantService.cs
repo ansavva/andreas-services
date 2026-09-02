@@ -16,6 +16,7 @@ internal sealed class LateParticipantService(
     IGroupRepository groups,
     IMembershipRepository members,
     IInvitationRepository invitations,
+    IAccountDirectory directory,
     IMatchingService matching,
     IPlanCatalog plans,
     ITransactionalEmailTemplates templates,
@@ -190,7 +191,12 @@ internal sealed class LateParticipantService(
         {
             if (!roster.TryGetValue(memberId, out var member))
                 throw ApiException.Conflict("An affected participant is no longer in this exchange. Preview the change again.");
-            if (!contacts.TryGetValue(member.UserId, out var address))
+            // Cognito's verified record first (#137), so this no longer depends on the participant
+            // having arrived through a managed invitation. The invitation address stays as a
+            // fallback for a pool record that has gone while the membership row survives.
+            var address = await directory.VerifiedEmailAsync(member.UserId, cancellationToken)
+                ?? contacts.GetValueOrDefault(member.UserId);
+            if (string.IsNullOrWhiteSpace(address))
                 throw ApiException.Conflict(
                     "Every affected participant must have a verified notification address before the draw can change.");
             targets[memberId] = new(member.DisplayName, address);

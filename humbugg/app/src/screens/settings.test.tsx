@@ -137,3 +137,17 @@ describe('account deletion', () => {
     await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith('/login'));
   });
 });
+
+/**
+ * The in-app fallback (#137), said before somebody switches mail off rather than after they have
+ * missed a draw. Email is never the only copy — every notification is a link to a page that already
+ * holds the same thing — and a person deciding about their inbox deserves to know that.
+ */
+it('tells you that turning email off does not mean missing anything', async () => {
+  render(<SettingsScreen />);
+
+  await waitFor(() => expect(screen.getByText('Email notifications')).toBeTruthy());
+  expect(screen.getByText(/Nothing is only in an email/)).toBeTruthy();
+  expect(screen.getByText(/the exchange page shows it too/)).toBeTruthy();
+});
+

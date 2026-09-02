@@ -202,6 +202,10 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
         var safeLabel = HtmlEncoder.Default.Encode(actionLabel);
         var safeUrl = HtmlEncoder.Default.Encode(actionUrl.AbsoluteUri);
         var safeReason = HtmlEncoder.Default.Encode(reason);
+        // Said once, in the one place every template renders through, so no message can be written
+        // without it. The From address is no-reply@humbugg.com and nobody reads it — telling people
+        // where to write instead is the difference between a dead end and a support channel.
+        var safeSupport = HtmlEncoder.Default.Encode(SupportLine);
         var primary = customization?.PrimaryColor is { Length: 7 } color && color[0] == '#' ? color : "#7C2D12";
         var customCopy = string.Join(" ", new[] { customization?.Greeting, customization?.Instructions }
             .Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => Text(value!)));
@@ -222,12 +226,13 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
                   <p>{{safeIntro}}</p>
                   <p><a href="{{safeUrl}}">{{safeLabel}}</a></p>
                   <p>{{safeReason}}</p>
+                  <p>{{safeSupport}}</p>
                   <p>— Humbugg</p>
                 </main>
               </body>
             </html>
             """;
-        var text = $"{subject}\n\nHello {recipientName},\n\n{(customCopy.Length == 0 ? "" : customCopy + "\n\n")}{intro}\n\n{actionLabel}: {actionUrl.AbsoluteUri}\n\n{reason}\n\n— Humbugg";
+        var text = $"{subject}\n\nHello {recipientName},\n\n{(customCopy.Length == 0 ? "" : customCopy + "\n\n")}{intro}\n\n{actionLabel}: {actionUrl.AbsoluteUri}\n\n{reason}\n\n{SupportLine}\n\n— Humbugg";
 
         return new TransactionalEmail(
             EmailMessageId.Create(category, eventId, toAddress),
@@ -238,6 +243,18 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
             text,
             string.IsNullOrWhiteSpace(recipientUserId) ? null : recipientUserId.Trim());
     }
+
+    /// <summary>
+    /// Where to write for help, and where not to.
+    /// </summary>
+    /// <remarks>
+    /// Every Humbugg message is sent from <c>no-reply@humbugg.com</c>, which is a send-only SES
+    /// identity — a reply to it goes nowhere and nobody is told. Naming the real inbox is what stops
+    /// somebody's question disappearing into it. Inbound mail for support@ is Google Workspace; see
+    /// docs/support-email.md.
+    /// </remarks>
+    internal const string SupportLine =
+        "This address is not monitored. Email support@humbugg.com if you need help.";
 
     /// <summary>
     /// Normalizes user-controlled display text so it cannot inject email headers or lines.
