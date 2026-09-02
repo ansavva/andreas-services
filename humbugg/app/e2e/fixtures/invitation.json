@@ -1,0 +1,11 @@
+{
+  "group_id": "816a5733-da9d-4da7-b4f2-6c0bc36ef718",
+  "exchange_name": "E2E Fixture Exchange",
+  "customization": {
+    "greeting": "",
+    "instructions": "",
+    "primary_color": "#7C2D12",
+    "accent_color": "#F59E0B",
+    "image_data_url": null
+  }
+}

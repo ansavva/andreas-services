@@ -31,9 +31,21 @@ public sealed class GroupsController(IGroupService groups) : ControllerBase
     public Task<GroupDetail> Customize(string groupId, [FromBody] UpdateCustomizationRequest request, CancellationToken cancellationToken) =>
         groups.UpdateCustomizationAsync(groupId, request, cancellationToken);
 
+    // The invite secret arrives in a HEADER, never the query string (#134).
+    //
+    // The whole reason the link carries it in a URL fragment is that a fragment never reaches a
+    // server, an access log or a Referer. Accepting it as `?invite_token=` handed it straight back
+    // to every one of those: API Gateway and CloudFront log the path and query, and neither logs
+    // request headers. The design was right and this endpoint was quietly undoing it.
     [AllowAnonymous, HttpGet("{groupId}/invitation")]
-    public Task<InvitationPreview> Invitation(string groupId, [FromQuery(Name = "invite_token")] string? inviteToken, CancellationToken cancellationToken) =>
+    public Task<InvitationPreview> Invitation(
+        string groupId,
+        [FromHeader(Name = InviteHeader)] string? inviteToken,
+        CancellationToken cancellationToken) =>
         groups.GetInvitationAsync(groupId, inviteToken, cancellationToken);
+
+    /// <summary>The header an invitation secret travels in. See <see cref="Invitation"/>.</summary>
+    public const string InviteHeader = "X-Humbugg-Invite";
 
     [HttpDelete("{groupId}")]
     public async Task<IActionResult> Delete(string groupId, CancellationToken cancellationToken)

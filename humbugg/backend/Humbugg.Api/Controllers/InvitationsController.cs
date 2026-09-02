@@ -12,5 +12,12 @@ public sealed class InvitationsController(IInvitationService service) : Controll
     [HttpPost("{invitationId}/resend")] public Task<ManagedInvitation> Resend(string groupId, string invitationId, CancellationToken ct) => service.ResendAsync(groupId, invitationId, ct);
     [HttpPost("{invitationId}/revoke")] public async Task<IActionResult> Revoke(string groupId, string invitationId, CancellationToken ct) { await service.RevokeAsync(groupId, invitationId, ct); return NoContent(); }
     [HttpPost("{invitationId}/accept")] public Task<AcceptInvitationResponse> Accept(string groupId, string invitationId, AcceptInvitationRequest request, CancellationToken ct) => service.AcceptAsync(groupId, invitationId, request, ct);
-    [AllowAnonymous, HttpGet("{invitationId}/preview")] public Task<InvitationPreview> Preview(string groupId, string invitationId, [FromQuery] string? token, CancellationToken ct) => service.PreviewAsync(groupId, invitationId, token, ct);
+    // Header, not query — a managed invitation's token is as loggable as a manual one. See
+    // GroupsController.Invitation for why.
+    [AllowAnonymous, HttpGet("{invitationId}/preview")]
+    public Task<InvitationPreview> Preview(
+        string groupId,
+        string invitationId,
+        [FromHeader(Name = GroupsController.InviteHeader)] string? token,
+        CancellationToken ct) => service.PreviewAsync(groupId, invitationId, token, ct);
 }

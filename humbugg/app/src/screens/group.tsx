@@ -5,7 +5,7 @@ import { Button, Checkbox, Input, Select, Textarea } from '@ansavva/design-syste
 import * as Clipboard from 'expo-clipboard';
 import { Link, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 
 import { api, ApiError } from '../api/client';
 import { DangerButton } from '../components/danger-button';
@@ -677,8 +677,8 @@ function OrganizerPanel(props: OrganizerProps) {
               Links are shown once. Rotating invalidates the previous link.
             </Text>
             {props.inviteUrl ? (
-              <View style={{ marginTop: 12, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                <View style={{ flex: 1 }}>
+              <View style={{ marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                <View style={{ flex: 1, minWidth: 200 }}>
                   <Input aria-label="Invitation link" value={props.inviteUrl} disabled />
                 </View>
                 <Button
@@ -690,6 +690,25 @@ function OrganizerPanel(props: OrganizerProps) {
                 >
                   {copied ? 'Copied' : 'Copy'}
                 </Button>
+                {/*
+                  Native sharing (#134), where the platform has it. `Share` is a real sheet on iOS
+                  and Android and the Web Share API in a browser that supports it — and nothing at
+                  all in one that does not, which is why this renders only when `Share.share` exists
+                  rather than showing a button that does nothing on desktop Safari.
+                */}
+                {Share.share ? (
+                  <Button
+                    intent="secondary"
+                    accessibilityLabel="Share the invitation link"
+                    onPress={() => {
+                      // The message IS the link. Anything prepended ends up quoted in a chat app
+                      // ahead of the URL, and some of them then fail to linkify it.
+                      void Share.share({ message: props.inviteUrl }).catch(() => undefined);
+                    }}
+                  >
+                    Share
+                  </Button>
+                ) : null}
               </View>
             ) : (
               <View style={{ marginTop: 12, alignSelf: 'flex-start' }}>

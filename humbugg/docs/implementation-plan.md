@@ -25,7 +25,7 @@ Live at `https://www.humbugg.com` (product app at `app.humbugg.com`, API at `api
 | Milestone | Closed | Open | State |
 |---|---|---|---|
 | Foundation | 13 | 0 | Complete |
-| Free | 10 | 3 | The active milestone — #129, #134, #138 remain |
+| Free | 11 | 2 | The active milestone — #129 and #138 remain |
 | Plus | 9 | 0 | **Closed, and not finished.** Read the next section before believing it |
 | Work | 0 | 10 | Deliberately untouched |
 | Launch | 3 | 10 | Gated on Free |
@@ -76,22 +76,14 @@ covers because every Plus issue described a backend that was genuinely delivered
 This blocks Launch more than anything else on this list: #160 (the payment and email matrix) and
 #162 (the beta) both assume a purchaser can use what they bought.
 
-### 2. #134 — Free invitation sharing and account-based joining
-
-**Its issue comment is stale — re-scope before estimating.** It says invitation rotation "is not
-implemented"; the group screen has a "Create a fresh link" control that calls `rotateInvite`, which
-rewrites `invite_hash`, so the previous secret does stop working. Check the rest of that comment the
-same way. What does look genuinely missing is native share, preserving the intended group across
-sign-in, and distinct copy for the invalid / rotated / expired / already-joined states.
-
-### 3. #129 — product metadata from wishlist URLs
+### 2. #129 — product metadata from wishlist URLs
 
 Deliberately last, and still is. Today a pasted URL is stored as typed, validated as absolute
 http(s) and **never fetched**. #129 is the issue that introduces fetching, and with it an SSRF
 surface: it needs the blocklist, redirect/size/time limits and sanitisation its acceptance criteria
 describe. Nothing else is blocked on it, so there is no reason to take that risk early.
 
-### 4. #138 — mobile and assistive-technology verification
+### 3. #138 — mobile and assistive-technology verification
 
 A review pass over everything above, and it closes Free. Worth doing last on purpose, and worth
 doing by somebody who did not write the six features merged on 2026-09-02.
@@ -178,10 +170,16 @@ never agreed to.
 place in the app, the readiness dashboard's address switch, so an exchange's name, dates and
 spending limit were unchangeable through an API that had always accepted the change. #137's whole
 premise was that notifications were partly delivered, and `DrawCompleted` had a template with no
-caller. #134's
-comment says invitation rotation "is not implemented"; the group screen has a "Create a fresh link"
-button that calls `rotateInvite`, which rewrites `invite_hash`, so the previous secret does stop
-working. **Check the caller and the screen, not the endpoint.**
+caller. #134's said invitation rotation was "not implemented" — it works — while the two things
+genuinely broken were not mentioned at all. **Check the caller and the screen, not the endpoint.**
+
+**#134 is the sharpest example, because the dead code was also wrong code.**
+`api.getInvitation` existed, was called by nothing, and would have failed if it had been: it fetched
+a relative `/api/…` path from a time the app was served same-origin behind the marketing
+distribution, and it put the invite secret in a **query string** — which API Gateway and CloudFront
+both write to an access log, and which is the exact leak the URL fragment exists to prevent. The
+e2e stub even had a route for the endpoint pointing at a fixture nobody had ever captured; it threw
+ENOENT the first time the screen actually called it. Nothing that is never run is known to work.
 
 **#135 carries the concurrency answer the rest of the service will want.** `PATCH /groups/{id}`
 accepts the `updated_at` the client read and refuses a save that would flatten somebody else's, on

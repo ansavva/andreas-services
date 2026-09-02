@@ -44,6 +44,9 @@ export async function stubApi(page: Page): Promise<void> {
     if (p === '/api/plans') return route.fulfill(json(fixture('plans')));
     if (p === `/api/groups/${group.group_id}/billing/plus`)
       return route.fulfill(json(fixture('billing-plus')));
+    // The signed-out invitation preview. Its fixture went uncaptured for months because nothing
+    // called the endpoint — the stub had the route and would have thrown ENOENT the moment it was
+    // hit, which is exactly what happened when the join screen finally started calling it (#134).
     if (p === `/api/groups/${group.group_id}/invitation`)
       return route.fulfill(json(fixture('invitation')));
 
