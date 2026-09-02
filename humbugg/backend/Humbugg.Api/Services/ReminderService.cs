@@ -222,7 +222,7 @@ internal sealed class ReminderService(
             "there",
             group.Name,
             reminder,
-            new Uri($"{settings.AppBaseUrl}/app/groups/{group.GroupId}"),
+            new Uri($"{settings.AppBaseUrl}/groups/{group.GroupId}"),
             recipientUserId,
             group.Customization));
         var result = await email.SendAsync(rendered, cancellationToken);

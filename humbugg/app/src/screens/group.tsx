@@ -9,6 +9,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { api, ApiError } from '../api/client';
 import { DangerButton } from '../components/danger-button';
+import { isPlusRequired, PlusRefusalCard } from '../components/plus';
 import { FieldLabel } from '../components/field';
 import { Card, LoadingPanel, Shell } from '../components/shell';
 import { StatusMessage } from '../components/status-message';
@@ -22,6 +23,7 @@ import type {
   Membership,
   RecipientAssignment,
   RevealAssignment,
+  WishClaimState,
 } from '../types';
 import { sessionKeys, sessionStore } from '../utils/session-store';
 import { validateAddressForm } from '../utils/validation';
@@ -38,6 +40,9 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
   const [success, setSuccess] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState(() => sessionStore.get(sessionKeys.invite(groupId)) ?? '');
   const [reveal, setReveal] = useState<RevealAssignment[] | null>(null);
+  // A 402 is not an error the organizer made; it is a price. Kept apart from `error` so it renders
+  // as an offer with a way forward rather than a red bar with a dead end.
+  const [plusRefusal, setPlusRefusal] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -70,14 +75,31 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
     setBusy(true);
     setError(null);
     setSuccess(null);
+    setPlusRefusal(null);
     try {
       await work(await auth.accessToken());
       if (message) setSuccess(message);
       await load();
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'The action could not be completed.');
+      if (isPlusRequired(err)) setPlusRefusal((err as Error).message);
+      else setError(err instanceof Error ? err.message : 'The action could not be completed.');
       return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Claims are their own action rather than `action()`: that one reloads the entire group, and
+  // marking a gift bought is not a change to the roster, the draw or anyone's membership. It also
+  // must not clear the success banner from whatever the organizer just did.
+  async function claimAction(work: (token: string) => Promise<RecipientAssignment>) {
+    setBusy(true);
+    setError(null);
+    try {
+      setAssignment(await work(await auth.accessToken()));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'That could not be saved.');
     } finally {
       setBusy(false);
     }
@@ -133,7 +155,30 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
         <StatusMessage message={error} />
         <StatusMessage message={success} tone="success" />
 
-        {assignment ? <AssignmentCard assignment={assignment} /> : null}
+        {plusRefusal ? (
+          <PlusRefusalCard
+            groupId={groupId}
+            reason={plusRefusal}
+            action="do what this exchange just asked for"
+            onNavigate={(path) => router.push(path as '/')}
+          />
+        ) : null}
+
+        {assignment ? (
+          <AssignmentCard
+            assignment={assignment}
+            busy={busy}
+            // Both calls answer with the whole assignment, so the card re-renders from the server's
+            // view rather than a locally patched one — a wish the recipient deleted while the giver
+            // was deciding disappears instead of lingering with a claim attached to nothing.
+            onClaim={(wishId, state, quantity) =>
+              void claimAction((token) => api.setWishClaim(token, groupId, wishId, state, quantity))
+            }
+            onRelease={(wishId) =>
+              void claimAction((token) => api.releaseWishClaim(token, groupId, wishId))
+            }
+          />
+        ) : null}
 
         <Card>
           <Text style={styles.eyebrow}>Participants</Text>
@@ -242,7 +287,17 @@ function MetaChip({ children }: { children: React.ReactNode }) {
   );
 }
 
-function AssignmentCard({ assignment }: { assignment: RecipientAssignment }) {
+function AssignmentCard({
+  assignment,
+  busy,
+  onClaim,
+  onRelease,
+}: {
+  assignment: RecipientAssignment;
+  busy: boolean;
+  onClaim(wishId: string, state: WishClaimState, quantity: number): void;
+  onRelease(wishId: string): void;
+}) {
   const address = Object.values(assignment.address ?? {}).filter(Boolean).join(', ');
   return (
     <View style={styles.assignmentCard}>
@@ -254,7 +309,12 @@ function AssignmentCard({ assignment }: { assignment: RecipientAssignment }) {
         <View>
           <Text style={styles.assignmentLabel}>Their wishlist</Text>
           <View style={{ marginTop: 8 }}>
-            <RecipientWishList wishes={assignment.wishes ?? []} />
+            <RecipientWishList
+              wishes={assignment.wishes ?? []}
+              busy={busy}
+              onClaim={onClaim}
+              onRelease={onRelease}
+            />
           </View>
         </View>
         <View>

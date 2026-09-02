@@ -38,6 +38,12 @@ export async function stubApi(page: Page): Promise<void> {
       return route.fulfill(json(fixture('wishes')));
     if (p === `/api/groups/${group.group_id}/readiness`)
       return route.fulfill(json(fixture('readiness')));
+    // The plan catalogue and the exchange's purchase, which the organizer's billing area reads.
+    // `plans` is what stops the price on screen being a constant in the app, so the fixture is
+    // where the e2e's "$12" comes from too.
+    if (p === '/api/plans') return route.fulfill(json(fixture('plans')));
+    if (p === `/api/groups/${group.group_id}/billing/plus`)
+      return route.fulfill(json(fixture('billing-plus')));
     if (p === `/api/groups/${group.group_id}/invitation`)
       return route.fulfill(json(fixture('invitation')));
 

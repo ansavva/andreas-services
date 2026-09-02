@@ -1,0 +1,35 @@
+[
+  {
+    "code": "free",
+    "name": "Free",
+    "participant_limit": 6,
+    "marketed_as_unlimited": false,
+    "price_cents": 0,
+    "currency": "USD",
+    "billing_cadence": "free",
+    "product_id": null,
+    "price_id": null
+  },
+  {
+    "code": "plus",
+    "name": "Plus",
+    "participant_limit": 50,
+    "marketed_as_unlimited": false,
+    "price_cents": 1200,
+    "currency": "USD",
+    "billing_cadence": "one_time",
+    "product_id": "prod_e2e_plus",
+    "price_id": "price_e2e_plus"
+  },
+  {
+    "code": "work",
+    "name": "Work",
+    "participant_limit": 10000,
+    "marketed_as_unlimited": true,
+    "price_cents": 9900,
+    "currency": "USD",
+    "billing_cadence": "annual",
+    "product_id": null,
+    "price_id": null
+  }
+]

@@ -159,6 +159,12 @@ public sealed class InvitationServiceTests
     {
         public int CreateCalls { get; private set; }
         // Not exercised here: this fake's service never reads an assignment.
+        public Task SetWishClaimAsync(string memberId, string drawId, string wishId, WishClaimRecord claim, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+        public Task RemoveWishClaimAsync(string memberId, string drawId, string wishId, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+        public Task ClearWishClaimsAsync(string memberId, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
         public Task MarkAssignmentViewedAsync(string memberId, string drawId, CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
         public Task<IReadOnlyList<MembershipRecord>> GetByGroupAsync(string groupId, CancellationToken cancellationToken = default) =>

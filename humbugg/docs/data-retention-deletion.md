@@ -23,7 +23,7 @@ forced by an automated schedule.
 
 `DELETE /api/groups/{groupId}/members/me/private-data`
 
-Clears the caller's own wishlist, avoidances, and mailing address for that exchange. The membership
+Clears the caller's own wishlist, avoidances, mailing address and purchase claims for that exchange. The membership
 itself is kept (you remain in the group); only the product-profile content you entered is erased.
 Allowed whether the group is open or already drawn — it is your own data. The action is **idempotent**:
 clearing already-empty fields succeeds and changes nothing. It is audited as `participant_data_cleared`.
@@ -49,9 +49,10 @@ deletion request. The operation is **idempotent** and safe to retry.
 |---|---|
 | **Profile** (`humbugg-prod-profiles`) | **Deleted.** Display name and all profile fields are removed. |
 | **Product-profile content** (wishlist, avoidances, mailing address) | **Deleted / anonymized** together with the membership rows below. |
+| **Purchase claims** (which gifts you marked planned or bought, #130) | **Deleted / anonymized** with the membership row they live on — they are stored on the claimant's own row, so no separate sweep exists or is needed. Also cleared by the self-service control below. |
 | **Groups the user organizes** | **Deleted in full** — memberships, draw, and group record. Other members lose the group; this is the defined trade-off for organizer deletion (Humbugg does not auto-transfer ownership). |
 | **Memberships in groups the user only participates in — open group** | **Deleted.** The row is removed and any exclusion pair referencing it is cleaned up. |
-| **Memberships in groups the user only participates in — completed draw** | **Anonymized, not deleted.** The row is kept (its `member_id` is referenced by the completed draw) but `user_id` is repointed to an irreversible pseudonym and the display name, wishlist, avoidances, and address are erased. This preserves the integrity of a draw other people already rely on while removing the personal data behind it. |
+| **Memberships in groups the user only participates in — completed draw** | **Anonymized, not deleted.** The row is kept (its `member_id` is referenced by the completed draw) but `user_id` is repointed to an irreversible pseudonym and the display name, wishlist, avoidances, address and purchase claims are erased. This preserves the integrity of a draw other people already rely on while removing the personal data behind it. |
 | **Completed draws** (`humbugg-prod-draws`) | **Left intact** where the group survives (giver→recipient mapping stays valid against the anonymized membership row); **deleted** with the group when the deleting user was the organizer. |
 | **Audit trail** (`humbugg-prod-audit-events`) | **Never deleted.** The append-only trail (what happened, to what, when, correlation id, redacted metadata) is preserved. Only the **actor reference** is anonymized: `actor_user_id` is rewritten from the Cognito subject to the same irreversible pseudonym across every record the user authored. This is the single, deliberately narrow mutation allowed on audit records (`IAuditActorAnonymizer`); the append-only write path (`IAuditRepository`) is untouched. |
 | **Organizations / Work membership** | The user's link to any organization is severed by the membership handling above and by actor anonymization in the audit trail. Deletion does not require, and cannot be blocked by, an organization administrator. |

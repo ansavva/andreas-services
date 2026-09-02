@@ -309,6 +309,11 @@ studio/frontend/test-results/
 studio/frontend/playwright-report/
 studio/frontend/blob-report/
 
+# Microsoft.Testing.Platform writes a run directory next to the solution. `dotnet
+# test Humbugg.slnx` is the exact command CI runs, so anyone verifying locally the
+# way CI does produces this.
+humbugg/backend/test-results/
+
 # Terraform packages the callback receiver into a zip at plan time; the output
 # is a build artifact of `infra/modules/callbacks`, not source.
 .terraform-build/

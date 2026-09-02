@@ -8,7 +8,7 @@ GitHub issue says what a thing is. It does not say that #133 must exist before f
 have anywhere to render, or that #365 gets more expensive every week it waits. That is what this
 file holds. When they disagree about scope, the issue wins and this file should be corrected.
 
-Last reconciled against the repo on 2026-08-27.
+Last reconciled against the repo on 2026-09-02.
 
 ---
 
@@ -20,7 +20,7 @@ Live at `https://www.humbugg.com` (product app at `app.humbugg.com`, API at `api
 |---|---|---|---|
 | Foundation | 13 | 0 | Complete |
 | Free | 3 | 10 | The active milestone |
-| Plus | 8 | 1 | Backend complete and deployed; only the purchase UI (#141) remains |
+| Plus | 8 | 1 | Backend complete and deployed; the purchase UI (#141) is **built**, awaiting review |
 | Work | 0 | 10 | Deliberately untouched |
 | Launch | 2 | 11 | Gated on Free |
 
@@ -66,25 +66,51 @@ Two acceptance criteria are **not** met, both deliberately:
   exists, but see the Work note under "Seams" — the wish roll-up is O(participants) queries, which
   is nothing at 6 or 50 and far too much at 10,000.
 
-### 2. #141 — Plus upgrade and purchase experience
+### 2. #141 — Plus upgrade and purchase experience · **built**
 
-Until this exists **nobody can buy Plus**, so none of the shipped backend can earn anything. PR #200
-was closed rather than rebased: it targeted `humbugg/frontend/`, which no longer exists. Its intent
-is a good specification and the branch `Codex/humbugg-plus-purchase-ux-141` is retained — the
-upgrade offer on a `plus_required` refusal, the organizer billing card, and the four checkout-return
-states (canceled, paid, failed/expired/refunded, still-confirming).
+Plus can now be bought. `humbugg/app/src/components/plus.tsx` holds the offer, the checkout round
+trip and the organizer's billing area, rendered at **`/organize/{groupId}`** under the readiness
+dashboard, plus a reusable `PlusRefusalCard` the group screen raises the moment any action is
+refused with `plus_required`.
 
-Re-author for React Native: `StyleSheet` not Tailwind, `Linking`/`expo-web-browser` not
-`window.location.assign`, a persistent store not `sessionStorage` for the resume-intent key.
+Three things about it are decisions rather than details:
 
-### 3. #130 → #131 → #132 — the rest of the wishlist spine · **now has somewhere to land**
+- **No price is stated in the app.** Everything numeric — the amount, the currency, the Free and
+  Plus ceilings — comes from `GET /api/plans`, which reads the same configuration Stripe charges
+  against. A hardcoded "$12" would go on rendering after a price change.
+- **"Plus is active" means the ENTITLEMENT exists, never `status: paid`.** The webhook writes the
+  entitlement and the group's plan in one transaction and `PlanCatalog.HasCapability` reads the
+  entitlement, so a paid row without one is a purchase Stripe has taken money for and Humbugg has
+  not applied. The screen says that, rather than promising a capability the next request 402s.
+- **Native does not use a return URL.** An `https://` success URL cannot re-enter the app, so
+  Checkout opens in the system browser and closing it is the whole signal to re-read the purchase.
+  The API is the source of truth on both platforms; `?checkout=` is a hint about what Stripe told
+  the browser.
+
+PR #200 was closed rather than rebased — it targeted the deleted `humbugg/frontend/` — and the
+branch `Codex/humbugg-plus-purchase-ux-141` was kept for its specification, which this follows.
+
+*Not covered here:* live Stripe mode is still blocked (#159), so an environment whose Plus plan
+carries no `price_id` gets "Plus is not on sale yet" instead of a button whose only outcome is a
+409.
+
+### 3. #130 → #131 → #132 — the rest of the wishlist spine · **#130 built**
 
 All three hang off the wish model added in #127. Take them in that order: claims and questions are
 independent of each other but both inform what #132 has to display, and #133 renders all three.
 
-**#130 carries a privacy rule that the model was shaped around.** A purchase claim is visible to
-every gift viewer and *never* to the wishlist owner. That is why `Wish` and `RecipientWish` are
-separate types today despite carrying identical fields — see "Seams that exist for a reason" below.
+**#130 is built, and its privacy rule turned out to decide the storage.** A purchase claim is
+visible to the assigned giver and *never* to the wishlist owner. It is stored on the **claimant's
+own membership row**, keyed by wish id and scoped to a draw id, rather than on the wish: a wishlist
+owner never reads another member's private membership fields, so there is no projection to get
+wrong and no future endpoint to forget. `Wish` and `RecipientWish` are no longer identical —
+`RecipientWish` carries `Claim` and `Wish` must never grow it.
+
+Confirmed with the maintainer on 2026-09-02: **a wishlist is visible to the assigned giver and
+nobody else.** So "other authorized gift viewers can see that an item is claimed" is satisfied
+trivially — there is exactly one such viewer per recipient per draw — and the feature's real value
+is the giver's own tracking plus the substrate #132 aggregates. Broadening who may read a wishlist
+would be a separate product change, not part of #130.
 
 ### 4. #129 — product metadata from wishlist URLs
 
@@ -141,11 +167,16 @@ wishes.
 
 Things that look like redundancy and are not. Removing them is how the bug gets in.
 
-**`Wish` vs `RecipientWish`** (`Models/Domain.cs`). Identical fields today. They are separate
-because #130 adds purchase claims — visible to every gift viewer, never to the owner — and #132 adds
-gift progress. Projecting both audiences through one type makes that leak a one-line mistake.
-`RecipientWish` also deliberately drops `CreatedAt`/`UpdatedAt`: when someone last edited their list
-is their own business.
+**`Wish` vs `RecipientWish`** (`Models/Domain.cs`). No longer identical: `RecipientWish` carries
+`Claim` (#130) and `Wish` must never grow it, because a claim on your own list would tell you what
+your giver has already bought. #132's gift progress lands on the same side. Projecting both
+audiences through one type makes that leak a one-line mistake. `RecipientWish` also deliberately
+drops `CreatedAt`/`UpdatedAt`: when someone last edited their list is their own business.
+
+**A purchase claim is never audited.** Every other sensitive action is. An audit row carries the
+actor and the target, so recording "this member claimed a wish belonging to that member" would write
+the draw assignment into the one table an organizer is allowed to read. Auditing is never gated on a
+plan, and it is also never allowed to be the thing that spoils the exchange.
 
 **The free-text `wishlist` field was not replaced.** #127 added structured wishes *alongside* it, and
 it now carries general preferences ("Likes, sizes and hobbies"). That is why there was no data
@@ -219,6 +250,16 @@ leaves and the app renders entirely unstyled while compiling and passing every t
 demanding them. The product app's dev server refused to start on every machine, with an error telling
 you to re-run the setup script that had just deleted the keys. Fixed on 2026-08-28. If you add or
 retire an `EXPO_PUBLIC_*`, change both files in the same commit.
+
+**`/app/...` is a marketing-origin path, and three services were still building it.** The product
+app was once served under `www.humbugg.com/app`; when it moved to `app.humbugg.com` the marketing
+site kept 301ing the old shape and `APP_BASE_URL` became the app's own origin — so
+`{APP_BASE_URL}/app/groups/{id}`, which `BillingService`, `ReminderService` and
+`LateParticipantService` all built, resolved to `https://app.humbugg.com/app/groups/{id}`: a route
+Expo Router does not have. Every Stripe checkout return, every reminder email and every
+late-participant email pointed at the not-found screen. Fixed on 2026-09-02; a test now pins the
+checkout return. **If you build a link to the product app, its paths are `/groups/{id}`,
+`/organize/{id}`, `/join/{id}` and `/settings` — there is no `/app` prefix on that origin.**
 
 **Run the exact CI commands, not approximations.** `terraform validate` on the prod env only is not
 `tflint --recursive`; `dotnet build` is not `dotnet format --verify-no-changes`. Both have failed a

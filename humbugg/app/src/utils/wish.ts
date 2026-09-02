@@ -1,29 +1,29 @@
 import type { CreateWishInput, WishKind, WishPriority } from '../types';
 
 export const wishKinds: { value: WishKind; label: string }[] = [
-  { value: 'Product', label: 'Something to buy' },
-  { value: 'Custom', label: 'An idea, not a product' },
-  { value: 'Experience', label: 'An experience' },
-  { value: 'Charity', label: 'A donation' },
+  { value: 'product', label: 'Something to buy' },
+  { value: 'custom', label: 'An idea, not a product' },
+  { value: 'experience', label: 'An experience' },
+  { value: 'charity', label: 'A donation' },
 ];
 
 export const wishPriorities: { value: WishPriority; label: string }[] = [
-  { value: 'High', label: 'Would love it' },
-  { value: 'Normal', label: 'Happy either way' },
-  { value: 'Low', label: 'Only if it is easy' },
+  { value: 'high', label: 'Would love it' },
+  { value: 'normal', label: 'Happy either way' },
+  { value: 'low', label: 'Only if it is easy' },
 ];
 
 export const priorityLabel: Record<WishPriority, string> = {
-  High: 'Would love it',
-  Normal: 'Happy either way',
-  Low: 'Only if it is easy',
+  high: 'Would love it',
+  normal: 'Happy either way',
+  low: 'Only if it is easy',
 };
 
 export const kindLabel: Record<WishKind, string> = {
-  Product: 'To buy',
-  Custom: 'Idea',
-  Experience: 'Experience',
-  Charity: 'Donation',
+  product: 'To buy',
+  custom: 'Idea',
+  experience: 'Experience',
+  charity: 'Donation',
 };
 
 export interface WishFormValues {
@@ -39,12 +39,12 @@ export interface WishFormValues {
 
 export const emptyWishForm: WishFormValues = {
   title: '',
-  kind: 'Product',
+  kind: 'product',
   url: '',
   imageUrl: '',
   price: '',
   quantity: '1',
-  priority: 'Normal',
+  priority: 'normal',
   details: '',
 };
 

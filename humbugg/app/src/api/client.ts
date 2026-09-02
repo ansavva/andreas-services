@@ -5,8 +5,11 @@ import type {
   GroupSummary,
   InvitationPreview,
   ExchangeTemplate,
+  CheckoutResponse,
+  PlanDefinition,
   Membership,
   Wish,
+  WishClaimState,
   CreateWishInput,
   UpdateWishInput,
   ManagedInvitation,
@@ -93,8 +96,16 @@ export const api = {
   getGroup: (token: string, id: string) => request<GroupDetail>(`/groups/${id}`, token),
   // Organizer-only. Every state in the response is computed server-side; see types.ts.
   getReadiness: (token: string, id: string) => request<GroupReadiness>(`/groups/${id}/readiness`, token),
+  // Every plan's price, limit and cadence, as the server defines them. The app never states a
+  // price of its own: the amount is Stripe/SSM configuration and a hardcoded "$12" would go stale
+  // silently, on the one screen where being wrong about the price matters most.
+  listPlans: (token: string) => request<PlanDefinition[]>('/plans', token),
   getPlusPurchaseStatus: (token: string, id: string) =>
     request<PlusPurchaseStatus>(`/groups/${id}/billing/plus`, token),
+  // Owner-only, and idempotent per pending purchase: a second call while one is unpaid returns the
+  // same Checkout Session rather than opening a second payable one.
+  createPlusCheckout: (token: string, id: string) =>
+    request<CheckoutResponse>(`/groups/${id}/billing/plus/checkout`, token, json('POST')),
   updateGroup: (token: string, id: string, data: Record<string, unknown>) => request<GroupDetail>(`/groups/${id}`, token, json('PATCH', data)),
   updateCustomization: (token: string, id: string, data: Record<string, unknown>) => request<GroupDetail>(`/groups/${id}/customization`, token, json('PUT', data)),
   getInvitation: async (id: string, invite_token: string) => {
@@ -140,6 +151,16 @@ export const api = {
   draw: (token: string, id: string) => request<RecipientAssignment>(`/groups/${id}/draw`, token, json('POST')),
   reset: (token: string, id: string) => request<GroupDetail>(`/groups/${id}/reset`, token, json('POST')),
   getAssignment: (token: string, id: string, drawVersion?: string | null) => request<RecipientAssignment>(`/groups/${id}/assignment${drawVersion ? `?draw_version=${encodeURIComponent(drawVersion)}` : ''}`, token),
+  // Purchase claims (#130). Both return the whole assignment, so one round trip leaves the giver's
+  // view consistent — including a wish the owner deleted while the giver was deciding.
+  setWishClaim: (token: string, id: string, wishId: string, state: WishClaimState, quantity?: number) =>
+    request<RecipientAssignment>(
+      `/groups/${id}/assignment/wishes/${wishId}/claim`,
+      token,
+      json('PUT', quantity === undefined ? { state } : { state, quantity }),
+    ),
+  releaseWishClaim: (token: string, id: string, wishId: string) =>
+    request<RecipientAssignment>(`/groups/${id}/assignment/wishes/${wishId}/claim`, token, json('DELETE')),
   reveal: (token: string, id: string, reason: string) => request<{ assignments: RevealAssignment[] }>(`/groups/${id}/assignment/reveal`, token, json('POST', { reason })),
   previewLateParticipant: (token: string, id: string, memberId: string) =>
     request<LateParticipantPreview>(`/groups/${id}/late-participants/${memberId}/preview`, token, json('POST')),

@@ -31,6 +31,8 @@ public interface IGroupService
     Task<RecipientAssignment> GetAssignmentAsync(string groupId, CancellationToken cancellationToken = default);
     Task<RecipientAssignment> GetAssignmentAsync(string groupId, string? drawVersion, CancellationToken cancellationToken = default);
     Task<RevealResponse> RevealAsync(string groupId, RevealRequest request, CancellationToken cancellationToken = default);
+    Task<RecipientAssignment> SetWishClaimAsync(string groupId, string wishId, SetWishClaimRequest request, CancellationToken cancellationToken = default);
+    Task<RecipientAssignment> ReleaseWishClaimAsync(string groupId, string wishId, CancellationToken cancellationToken = default);
 }
 
 internal sealed class GroupService(
@@ -358,6 +360,9 @@ internal sealed class GroupService(
         // Structured wishes are the same category of data as the free-text list this control was
         // written for, so "erase my wishlist" has to mean both or the button quietly under-delivers.
         await wishes.DeleteByMemberAsync(membership.MemberId, cancellationToken);
+        // The claims are the caller's own data too — notes they authored about their own shopping —
+        // and the control says "clear everything I saved". Leaving them would make it a lie.
+        await memberships.ClearWishClaimsAsync(membership.MemberId, cancellationToken);
         var cleared = await memberships.UpdatePrivateAsync(membership.MemberId, "", "", new Address(), cancellationToken);
         await audit.RecordAsync(AuditAction.ParticipantDataCleared, groupId, AuditTarget.Member(membership.MemberId), cancellationToken: cancellationToken);
         return Private(cleared);
@@ -500,8 +505,94 @@ internal sealed class GroupService(
         // Written only on the first view of this draw, so re-reading an assignment is a pure read.
         if (membership.AssignmentViewedDrawId != draw.DrawId)
             await memberships.MarkAssignmentViewedAsync(membership.MemberId, draw.DrawId, cancellationToken);
-        return Assignment(recipient, await wishes.GetByMemberAsync(recipient.MemberId, cancellationToken));
+        return Assignment(
+            recipient,
+            await wishes.GetByMemberAsync(recipient.MemberId, cancellationToken),
+            ClaimsFor(membership, draw.DrawId));
     }
+
+    /// <summary>
+    /// Marks a wish on the caller's assigned list as planned or purchased (#130).
+    /// </summary>
+    /// <remarks>
+    /// The route hangs off <c>assignment</c> because the assignment IS the authorization: the only
+    /// list you may claim on is the one your draw entitles you to read, and every check below is
+    /// resolved from the caller's own membership rather than from anything the request names.
+    /// </remarks>
+    public async Task<RecipientAssignment> SetWishClaimAsync(
+        string groupId,
+        string wishId,
+        SetWishClaimRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var (membership, draw, recipient) = await RequireAssignmentAsync(groupId, cancellationToken);
+        var wish = await wishes.GetAsync(recipient.MemberId, wishId, cancellationToken)
+            ?? throw ApiException.NotFound("That wish is not on your recipient's list.");
+
+        var state = request.State?.Trim().ToLowerInvariant() switch
+        {
+            null or "" or "planned" => WishClaimState.Planned,
+            "purchased" => WishClaimState.Purchased,
+            _ => throw ApiException.BadRequest("state must be 'planned' or 'purchased'.")
+        };
+        // Defaults to the whole wish. Claiming more than was asked for is refused rather than
+        // clamped: a giver who typed 5 against a quantity of 2 has misread the list, and silently
+        // recording 2 would tell them they had done what they meant to.
+        var quantity = request.Quantity ?? wish.Quantity;
+        if (quantity < 1 || quantity > wish.Quantity)
+            throw ApiException.BadRequest(
+                $"quantity must be between 1 and {wish.Quantity}, the number asked for.");
+
+        await memberships.SetWishClaimAsync(
+            membership.MemberId,
+            draw.DrawId,
+            wishId,
+            new WishClaimRecord(state, quantity, DateTimeOffset.UtcNow.ToString("O")),
+            cancellationToken);
+        // Deliberately NOT audited. An audit row carries the actor and the target, so recording
+        // "this member claimed a wish belonging to that member" would write the draw assignment into
+        // the one table an organizer can read. Auditing is never gated on a plan, but it is also
+        // never allowed to be the thing that spoils the exchange.
+        return await GetAssignmentAsync(groupId, cancellationToken: cancellationToken);
+    }
+
+    public async Task<RecipientAssignment> ReleaseWishClaimAsync(
+        string groupId,
+        string wishId,
+        CancellationToken cancellationToken = default)
+    {
+        var (membership, draw, _) = await RequireAssignmentAsync(groupId, cancellationToken);
+        await memberships.RemoveWishClaimAsync(membership.MemberId, draw.DrawId, wishId, cancellationToken);
+        return await GetAssignmentAsync(groupId, cancellationToken: cancellationToken);
+    }
+
+    /// <summary>The caller's membership, the current draw, and the recipient that draw gives them.</summary>
+    private async Task<(MembershipRecord Membership, DrawRecord Draw, MembershipRecord Recipient)>
+        RequireAssignmentAsync(string groupId, CancellationToken cancellationToken)
+    {
+        var (group, membership) = await RequireMembershipAsync(groupId, cancellationToken);
+        if (group.Status != GroupStatus.Drawn)
+            throw ApiException.Conflict("Assignments have not been created yet.");
+        var draw = await groups.GetDrawAsync(groupId, cancellationToken);
+        if (draw is null || !draw.Assignments.TryGetValue(membership.MemberId, out var recipientId))
+            throw ApiException.NotFound("You do not have an assignment in this draw.");
+        var recipient = await memberships.GetAsync(recipientId, cancellationToken)
+            ?? throw ApiException.NotFound("Your assigned participant could not be found.");
+        return (membership, draw, recipient);
+    }
+
+    /// <summary>
+    /// The caller's claims, but only if they were made under the draw now in force.
+    /// </summary>
+    /// <remarks>
+    /// A reset or a late-participant reassignment mints a new draw id, and the person you are buying
+    /// for may have changed. Showing last draw's claims against this draw's list would mark items on
+    /// a stranger's wishlist as already bought.
+    /// </remarks>
+    private static IReadOnlyDictionary<string, WishClaimRecord> ClaimsFor(MembershipRecord member, string drawId) =>
+        member.WishClaimsDrawId == drawId && member.WishClaims is { } claims
+            ? claims
+            : new Dictionary<string, WishClaimRecord>(StringComparer.Ordinal);
 
     public Task<RecipientAssignment> GetAssignmentAsync(
         string groupId,
@@ -525,6 +616,9 @@ internal sealed class GroupService(
             var recipient = members[pair.Value];
             revealed.Add(new RevealAssignment(
                 Public(members[pair.Key]),
+                // No claims. The organizer is not the giver, and a claim is the giver's private note
+                // about their own shopping — an emergency reveal exists to unstick a draw, not to
+                // report what everyone has bought.
                 Assignment(recipient, await wishes.GetByMemberAsync(recipient.MemberId, cancellationToken))));
         }
         return new RevealResponse(revealed);
@@ -574,14 +668,25 @@ internal sealed class GroupService(
         IsReady: !string.IsNullOrWhiteSpace(member.Wishlist));
     // The giver's view of their recipient. Projected through RecipientWish rather than Wish so that
     // owner-only state added later (purchase claims, #130) cannot reach this path by default.
-    private static RecipientAssignment Assignment(MembershipRecord member, IReadOnlyList<WishRecord> wishes) => new(
+    private static RecipientAssignment Assignment(
+        MembershipRecord member,
+        IReadOnlyList<WishRecord> wishes,
+        // The CALLER's claims, keyed by wish id. Defaulted to none so every caller that has no
+        // business showing claims — the emergency reveal — gets none by omission rather than by
+        // remembering to strip them.
+        IReadOnlyDictionary<string, WishClaimRecord>? claims = null) => new(
         member.MemberId, member.DisplayName, member.Wishlist, member.Avoidances, member.Address,
-        wishes.Select(RecipientWishOf).ToList());
-    private static RecipientWish RecipientWishOf(WishRecord record) => new(
+        wishes.Select(record => RecipientWishOf(record, claims)).ToList());
+    private static RecipientWish RecipientWishOf(
+        WishRecord record,
+        IReadOnlyDictionary<string, WishClaimRecord>? claims) => new(
         record.WishId, record.Kind, record.Title,
         Empty(record.Url), Empty(record.ImageUrl), record.PriceCents,
         record.PriceCents is null ? null : Empty(record.Currency),
-        record.Quantity, record.Priority, Empty(record.Details), record.Position);
+        record.Quantity, record.Priority, Empty(record.Details), record.Position,
+        claims is not null && claims.TryGetValue(record.WishId, out var claim)
+            ? new WishClaim(claim.State, claim.Quantity, claim.UpdatedAt)
+            : null);
     private static string? Empty(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
     private static decimal? Amount(long? cents) => cents is null ? null : cents.Value / 100m;
     private static long DaysSince(string isoTimestamp) =>

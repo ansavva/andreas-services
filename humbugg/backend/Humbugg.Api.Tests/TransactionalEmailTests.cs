@@ -7,7 +7,7 @@ namespace Humbugg.Api.Tests;
 
 public sealed class TransactionalEmailTests
 {
-    private static readonly Uri ActionUrl = new("https://humbugg.com/app/groups/group-1");
+    private static readonly Uri ActionUrl = new("https://app.humbugg.com/groups/group-1");
 
     [Fact]
     public void MessageIdsAreStableByCategoryEventAndRecipient()
