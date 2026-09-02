@@ -89,9 +89,19 @@ def put_block(name: str):
     return jsonify(catalog.put_spec_block(g.library, name, text)), 200
 
 
-@bp.patch("/templates/<template_id>")
-def put_template(template_id: str):
-    """Write one template: its name, its prompt, and how its output is described.
+@bp.patch("/templates/<path:name>")
+def put_template(name: str):
+    """Write one template: its prompt, and how its output is described.
+
+    **A template IS its name, and there is no id.** Nothing points at a template
+    — a run copies its words rather than naming the row — so the reason every
+    other entity carries a UUID does not apply, and a generated one would be a
+    second name that can drift from the first. This is the arrangement a block
+    already has, for the same reason.
+
+    Renaming is therefore addressed as this row and given a new name in the
+    body: one transaction that writes the new key and drops the old, so the
+    library can never hold the template twice.
 
     **`group` is not a field any more.** It had to be `face` or `body`, because
     it selected which angles a `--group` turnaround rendered and it chose the
@@ -103,8 +113,22 @@ def put_template(template_id: str):
     held = support.memberships()
     support.member_of(g.library, held)
 
-    if "#" in template_id:
-        raise ValidationError("a template id may not contain '#'")
+    # A body may rename this template; omitting `name` keeps the one addressed.
+    wanted = catalog.clean_template_name(body.get("name") or name)
+
+    # **A PATCH may carry one field.** It required all of them, which made a
+    # rename impossible to send on its own — the caller had to re-state the
+    # prompt, the description and the tags to change the name, and a caller that
+    # sent only the name got a 400 and a row left as it was. Worse than the
+    # refusal: the obvious retry is to send the whole body, and a body assembled
+    # from memory overwrites the prose with whatever the caller last knew.
+    #
+    # So the fields fall back to what is stored, and they are required only when
+    # there is nothing stored to fall back to — which is exactly a create.
+    held = next((each for each in catalog.templates(g.library)["templates"]
+                 if each["name"] == name), None)
+    body = {**(held or {}), **body}
+
     prompt = body.get("prompt")
     if not isinstance(prompt, str) or not prompt.strip():
         raise ValidationError("prompt is required")
@@ -121,15 +145,15 @@ def put_template(template_id: str):
             isinstance(tag, str) and tag for tag in tags):
         raise ValidationError("tags must be a non-empty list of strings")
 
-    return jsonify(catalog.put_template(g.library, template_id, body)), 200
+    return jsonify(catalog.put_template(g.library, wanted, body, was=name)), 200
 
 
-@bp.delete("/templates/<template_id>")
-def delete_template(template_id: str):
+@bp.delete("/templates/<path:name>")
+def delete_template(name: str):
     held = support.memberships()
     support.member_of(g.library, held)
-    catalog.delete_template(g.library, template_id)
-    return jsonify({"id": template_id, "deleted": True}), 200
+    catalog.delete_template(g.library, name)
+    return jsonify({"name": name, "deleted": True}), 200
 
 
 @bp.delete("/templates/blocks/<name>")

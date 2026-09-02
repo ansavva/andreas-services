@@ -107,7 +107,7 @@ export function TemplatePicker({ onPick, cast }: Props) {
                 const short = needs > cast;
                 return (
                   <button
-                    key={entry.id}
+                    key={entry.name}
                     type="button"
                     onClick={() => {
                       onPick(entry.prompt);
@@ -118,7 +118,7 @@ export function TemplatePicker({ onPick, cast }: Props) {
                                focus-visible:outline-2 focus-visible:-outline-offset-2
                                focus-visible:outline-primary"
                   >
-                    <Text variant="body">{entry.name || entry.id}</Text>
+                    <Text variant="body">{entry.name}</Text>
                     {/* The first line only. A template is a wall of prose and a
                         list of walls is unreadable; what a person is choosing
                         between is which template, not which paragraph. */}

@@ -598,16 +598,23 @@ export function saveBlock(name: string, text: string) {
   });
 }
 
-export function saveTemplate(id: string, body: TemplateBody) {
-  return apiSend<PromptTemplate>("PATCH", `/api/templates/${encodeURIComponent(id)}`, body);
+/**
+ * Write one template, addressed by the name it currently has.
+ *
+ * A `name` in the body renames it — the key changes, so the route writes the
+ * new row and drops the old in one transaction rather than leaving the library
+ * holding the template twice.
+ */
+export function saveTemplate(was: string, body: TemplateBody) {
+  return apiSend<PromptTemplate>("PATCH", `/api/templates/${encodeURIComponent(was)}`, body);
 }
 
 export function deleteBlock(name: string) {
   return apiSend<{ name: string }>("DELETE", `/api/templates/blocks/${encodeURIComponent(name)}`);
 }
 
-export function deleteTemplate(id: string) {
-  return apiSend<{ id: string }>("DELETE", `/api/templates/${encodeURIComponent(id)}`);
+export function deleteTemplate(name: string) {
+  return apiSend<{ name: string }>("DELETE", `/api/templates/${encodeURIComponent(name)}`);
 }
 
 /**

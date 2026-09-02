@@ -111,7 +111,7 @@ function LibraryTabs({ library, setData }: { library: TemplateLibrary; setData: 
 
       <Tabs.Panel value="templates">
         {library.templates.map((template) => (
-          <TemplateEditor key={template.id} template={template} library={library} setData={setData} />
+          <TemplateEditor key={template.name} template={template} library={library} setData={setData} />
         ))}
         <NewTemplate setData={setData} />
       </Tabs.Panel>
@@ -444,11 +444,9 @@ function BlockEditor({
  * meant a YAML file and a CLI, for prose whose whole nature is that it is tuned
  * in front of the thing it produces.
  *
- * The id is generated and never shown. It keys the row and addresses the route,
- * and nothing points at a template — a run copies its words — so it is an
- * address rather than an identity anybody needs to choose. `studio templates
- * pull` writes it into the file and `push` sends it back, so the round trip is
- * unaffected by nobody ever reading it.
+ * **A name is all it needs**, because a name is its key. Nothing points at a
+ * template — a run copies its words — so there is no id to protect a rename,
+ * and one would be a second name that can drift from the first.
  */
 function NewTemplate({ setData }: { setData: SetData }) {
   const [open, setOpen] = useState(false);
@@ -466,7 +464,7 @@ function NewTemplate({ setData }: { setData: SetData }) {
       // it is an address, not an identity somebody has to invent: asking for
       // one alongside a name was asking the same question twice, and the answer
       // people gave was the name with underscores in it.
-      const saved = await saveTemplate(`template-${crypto.randomUUID()}`, {
+      const saved = await saveTemplate(name, {
         name,
         // A prompt is required by the route, so a new one starts as the thing
         // every template here has in common rather than as an empty box the
@@ -599,8 +597,9 @@ function TemplateEditor({
     setSaving(true);
     setFailed(null);
     try {
-      const saved = await saveTemplate(template.id, {
-        name: name || template.id,
+      // Addressed by the name it HAS; a new one in the body renames it.
+      const saved = await saveTemplate(template.name, {
+        name,
         prompt,
         description,
         tags,
@@ -610,7 +609,7 @@ function TemplateEditor({
           ? {
               ...current,
               templates: current.templates.map((each) =>
-                each.id === saved.id ? { ...each, ...saved } : each,
+                each.name === template.name ? { ...each, ...saved } : each,
               ),
             }
           : current,
@@ -632,15 +631,15 @@ function TemplateEditor({
       <div className="flex items-start gap-3">
         <div className="flex flex-1 flex-col gap-2">
           <Card.Title>
-            {name || "Untitled template"}
+            {name || template.name}
           </Card.Title>
           <div className="grid gap-2 sm:grid-cols-2">
-            <Field.Root name={`template-name-${template.id}`}>
+            <Field.Root name={`template-name-${template.name}`}>
               <Field.Label>Name</Field.Label>
               <Field.Description>What a person picks it by.</Field.Description>
               <Input value={name} onValueChange={setName} />
             </Field.Root>
-            <Field.Root name={`template-tags-${template.id}`}>
+            <Field.Root name={`template-tags-${template.name}`}>
               <Field.Label>Tags</Field.Label>
               <Field.Description>
                 What its output is tagged with when it is promoted. Templates keep
@@ -654,15 +653,15 @@ function TemplateEditor({
             one. Nothing cites a template by name — a run copies its words — so
             unlike a block there is no count to warn about. */}
         <ConfirmDeleteButton
-          noun={template.name || template.id}
+          noun={template.name}
           disabled={saving}
           onConfirm={async () => {
-            await deleteTemplate(template.id);
+            await deleteTemplate(template.name);
             setData((current) =>
               current
                 ? {
                     ...current,
-                    templates: current.templates.filter((each) => each.id !== template.id),
+                    templates: current.templates.filter((each) => each.name !== template.name),
                   }
                 : current,
             );
@@ -679,7 +678,7 @@ function TemplateEditor({
           of monospace are worse than one.
         */}
         <div className="grid gap-3 xl:grid-cols-2">
-          <Field.Root name={`prompt-${template.id}`}>
+          <Field.Root name={`prompt-${template.name}`}>
             <Field.Label>Prompt</Field.Label>
             {/* A description here as well as on the preview, so both columns'
                 headers are the same height and the two boxes line up. */}
@@ -698,7 +697,7 @@ function TemplateEditor({
               value={prompt}
               onValueChange={setPrompt}
               tokens={promptTokens}
-              ariaLabel={`Prompt for ${template.id}`}
+              ariaLabel={`Prompt for ${template.name}`}
             />
           </Field.Root>
           <PromptPreview prompt={prompt} blocks={library.blocks} />
@@ -728,7 +727,7 @@ function TemplateEditor({
           </Alert.Root>
         ) : null}
 
-        <Field.Root name={`description-${template.id}`}>
+        <Field.Root name={`description-${template.name}`}>
           <Field.Label>Description</Field.Label>
           <AutoTextarea minRows={2} value={description} onValueChange={setDescription} />
         </Field.Root>

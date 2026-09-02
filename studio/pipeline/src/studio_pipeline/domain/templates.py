@@ -51,7 +51,7 @@ from studio_pipeline.errors import die
 #: The fields a pushed template carries. Anything else in the file is dropped
 #: rather than sent — a pulled file round-trips whatever the API added, and
 #: refusing those would make edit-then-push fail on fields it produced itself.
-TEMPLATE_FIELDS = ("name", "prompt", "description", "tags")
+TEMPLATE_FIELDS = ("prompt", "description", "tags")
 
 
 class LibraryError(RuntimeError):
@@ -84,8 +84,8 @@ def read_file(path: str) -> dict:
     if not isinstance(templates, list):
         raise LibraryError(f"{path}: `templates` must be a list.")
     for template in templates:
-        if not isinstance(template, dict) or not template.get("id"):
-            raise LibraryError(f"{path}: every template needs an `id`.")
+        if not isinstance(template, dict) or not template.get("name"):
+            raise LibraryError(f"{path}: every template needs a `name`.")
     if not blocks and not templates:
         raise LibraryError(f"{path} holds no blocks and no templates — nothing to push.")
     return {"blocks": blocks, "templates": templates}
@@ -100,7 +100,7 @@ def document(library: dict) -> str:
     colon.
     """
     blocks = {name: _Literal(text) for name, text in sorted(library["blocks"].items())}
-    templates = [{"id": template["id"],
+    templates = [{"name": template["name"],
                **{k: template[k] for k in TEMPLATE_FIELDS if template.get(k) is not None}}
               for template in library["templates"]]
     for template in templates:
@@ -121,7 +121,7 @@ yaml.add_representer(
 )
 
 
-def _angle_payload(template: dict) -> dict:
+def _template_payload(template: dict) -> dict:
     return {k: template[k] for k in TEMPLATE_FIELDS if template.get(k) is not None}
 
 
@@ -133,7 +133,7 @@ def compare(wanted: dict, held: dict) -> tuple[list, list, list]:
     about blocks and then about templates.
     """
     held_blocks = held["blocks"]
-    held_angles = {a["id"]: a for a in held["templates"]}
+    held_templates = {each["name"]: each for each in held["templates"]}
     new, same, differing = [], [], []
 
     for name, text in sorted(wanted["blocks"].items()):
@@ -145,14 +145,14 @@ def compare(wanted: dict, held: dict) -> tuple[list, list, list]:
             differing.append(("block", name, text, held_blocks[name]))
 
     for template in wanted["templates"]:
-        payload = _angle_payload(template)
-        there = held_angles.get(template["id"])
+        payload = _template_payload(template)
+        there = held_templates.get(template["name"])
         if there is None:
-            new.append(("template", template["id"], payload, None))
-        elif _angle_payload(there) == payload:
-            same.append(("template", template["id"], payload, _angle_payload(there)))
+            new.append(("template", template["name"], payload, None))
+        elif _template_payload(there) == payload:
+            same.append(("template", template["name"], payload, _template_payload(there)))
         else:
-            differing.append(("template", template["id"], payload, _angle_payload(there)))
+            differing.append(("template", template["name"], payload, _template_payload(there)))
     return new, same, differing
 
 
@@ -218,7 +218,7 @@ def show():
         print(f"  {name:<20} {first[:70]}{'…' if len(first) > 70 else ''}")
     print(f"\ntemplates ({len(library['templates'])})")
     for template in library["templates"]:
-        print(f"  {template['id']:<32} {template.get('name') or ''}")
+        print(f"  {template['name']}")
     return 0
 
 

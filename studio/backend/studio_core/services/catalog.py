@@ -40,7 +40,7 @@ One node type. A folder is a node with no blob; a file is a node with one.
 | Scene / Movie in project | `PROJ#<proj_id>` | `SCENE#<created>#<id>` | |
 | Shot | `SCENE#<scene_id>` | `SHOT#<shot_id>` | one row per planned shot |
 | Phrasebook term | `LIB#<lib>` | `TERM#<model>#<avoid>` | the wording lists |
-| Reference spec | `LIB#<lib>` | `SPEC#BLOCK#<name>` / `SPEC#ANGLE#<id>` | how a reference prompt is written |
+| Template library | `LIB#<lib>` | `SPEC#BLOCK#<name>` / `SPEC#TEMPLATE#<name>` | how a prompt is written |
 | Sweep | `LIB#<lib>` | `SWEEP#<opened>#<id>#<n>` | blobs a delete is about to strand |
 
 **An id is the identity; a slug is a label.** Every entity has a `v4` UUID that
@@ -3391,11 +3391,41 @@ SPEC_PREFIX = "SPEC#"
 BLOCK_PREFIX = f"{SPEC_PREFIX}BLOCK#"
 TEMPLATE_PREFIX = f"{SPEC_PREFIX}TEMPLATE#"
 
-#: What a template row carries besides its prompt. `description` and `tags` are
-#: read at PROMOTION rather than at render — they are what somebody starts from
-#: when the image this makes becomes identity — so they belong to the template
-#: and not to the prompt.
-TEMPLATE_FIELDS = ("name", "prompt", "description", "tags")
+#: What a template row carries besides its NAME, which is its key.
+#:
+#: `description` and `tags` are read at PROMOTION rather than at render — they
+#: are what somebody starts from when the image this makes becomes identity — so
+#: they belong to the template and not to the prompt.
+TEMPLATE_FIELDS = ("prompt", "description", "tags")
+
+#: The longest a template may be called. Names are keys here, and a sort key has
+#: a size limit worth staying well inside.
+MAX_TEMPLATE_NAME = 120
+
+
+def clean_template_name(raw: str | None) -> str:
+    """A template's name, which is also its key.
+
+    **A template IS its name**, exactly as a block is — and for the same reason
+    a block is: nothing points at either. The entity model gives every character,
+    project and run a UUID because a rename would otherwise strand every row
+    that named it; a run copies a template's WORDS rather than pointing at the
+    row, so there is nothing to strand and nothing for a second identifier to
+    protect. A generated id would be a second name that can drift from the first.
+
+    `#` is refused rather than escaped because it separates the segments of every
+    key in this table; the rest is left alone, so a template may be called
+    `Body, back` and read like the thing it is.
+    """
+    name = " ".join((raw or "").split())
+    if not name:
+        raise ValidationError("a template needs a name")
+    if "#" in name:
+        raise ValidationError("a template name may not contain '#'")
+    if len(name) > MAX_TEMPLATE_NAME:
+        raise ValidationError(
+            f"a template name is at most {MAX_TEMPLATE_NAME} characters")
+    return name
 
 
 def templates(lib: str) -> dict:
@@ -3423,10 +3453,10 @@ def templates(lib: str) -> dict:
             blocks[sk.removeprefix(BLOCK_PREFIX)] = record.get("text") or ""
         elif sk.startswith(TEMPLATE_PREFIX):
             found.append({
-                "id": sk.removeprefix(TEMPLATE_PREFIX),
+                "name": sk.removeprefix(TEMPLATE_PREFIX),
                 **{k: record.get(k) for k in TEMPLATE_FIELDS if record.get(k) is not None},
             })
-    found.sort(key=lambda entry: (entry.get("name") or entry["id"]).lower())
+    found.sort(key=lambda entry: entry["name"].lower())
     return {"blocks": blocks, "templates": found}
 
 
@@ -3437,21 +3467,30 @@ def put_spec_block(lib: str, name: str, text: str) -> dict:
     return record
 
 
-def put_template(lib: str, template_id: str, fields: dict) -> dict:
-    """Write one template. Unknown keys are dropped rather than stored.
+def put_template(lib: str, name: str, fields: dict, was: str | None = None) -> dict:
+    """Write one template, keyed on its name. Unknown keys are dropped.
 
     Dropping rather than refusing: a caller that round-trips `templates` hands
-    back `id` and whatever the read added, and rejecting those would make the
+    back `name` and whatever the read added, and rejecting those would make the
     obvious edit-then-save flow fail on fields it produced itself.
+
+    **A rename is a key change, so it is a delete and a put in ONE
+    transaction.** `was` names the row being replaced. Two writes that could
+    half-happen would leave the library holding the template twice under two
+    names — which is the shape of drift this whole change has been removing, and
+    it is avoidable here for the price of naming the old key.
     """
     record = {k: v for k, v in fields.items() if k in TEMPLATE_FIELDS}
     record["updated"] = _now()
-    _write([(_put(_lib_pk(lib), f"{TEMPLATE_PREFIX}{template_id}", record), None)])
-    return {"id": template_id, **record}
+    steps = [(_put(_lib_pk(lib), f"{TEMPLATE_PREFIX}{name}", record), None)]
+    if was and was != name:
+        steps.append((_delete(_lib_pk(lib), f"{TEMPLATE_PREFIX}{was}"), None))
+    _write(steps)
+    return {"name": name, **record}
 
 
-def delete_template(lib: str, template_id: str) -> None:
-    _write([(_delete(_lib_pk(lib), f"{TEMPLATE_PREFIX}{template_id}"), None)])
+def delete_template(lib: str, name: str) -> None:
+    _write([(_delete(_lib_pk(lib), f"{TEMPLATE_PREFIX}{name}"), None)])
 
 
 def delete_spec_block(lib: str, name: str) -> None:

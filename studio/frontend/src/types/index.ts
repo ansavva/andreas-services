@@ -493,16 +493,24 @@ export interface SpecBlock {
  * nothing shoots a set.
  */
 export interface PromptTemplate {
-  id: string;
-  /** What a person picks it by. */
-  name?: string;
+  /**
+   * **The name is the key.** There is no id, and none is generated.
+   *
+   * Every character, project and run carries a UUID because a rename would
+   * otherwise strand every row that named it. A run copies a template's WORDS
+   * rather than pointing at the row, so there is nothing to strand — and a
+   * generated id would be a second name that can drift from the first. A block
+   * is keyed on its name for exactly this reason, and a template is a block
+   * with more fields.
+   */
+  name: string;
   prompt: string;
   /** What a promotion starts from when this image becomes identity. Never sent. */
   description: string;
   tags: string[];
 }
 
-export type TemplateBody = Omit<PromptTemplate, "id">;
+export type TemplateBody = PromptTemplate;
 
 /** `GET /api/templates` — blocks keyed by name, templates by name. */
 export interface TemplateLibrary {

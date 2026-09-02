@@ -105,7 +105,7 @@ def _rewrite(lib: str, scope: str, name: str, replacement: str | None) -> int:
         if scope == "file":
             catalog.describe_node(record["node_id"], tags=kept)
         else:
-            catalog.put_template(lib, record["id"], {**record, "tags": kept})
+            catalog.put_template(lib, record["name"], {**record, "tags": kept})
         changed += 1
     return changed
 

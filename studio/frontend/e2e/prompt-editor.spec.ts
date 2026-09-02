@@ -26,7 +26,7 @@ test.beforeEach(async ({ page }) => {
 /** The first angle's prompt box, with the caret put at the end of its first paragraph. */
 async function prompt(page: import("@playwright/test").Page) {
   await page.goto("/templates");
-  const box = page.getByLabel("Prompt for face_front");
+  const box = page.getByLabel("Prompt for Face, front");
   await expect(box).toBeVisible();
   await box.click();
   // `ControlOrMeta+ArrowDown` would leave the paragraph; End is the end of the

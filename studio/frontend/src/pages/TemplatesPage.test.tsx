@@ -29,7 +29,6 @@ const SPEC: TemplateLibrary = {
   blocks: { face_only: "THE FACE COMES FROM THE REFERENCE IMAGES." },
   templates: [
     {
-      id: "face_front",
     name: "Face, front",
       prompt: "A studio portrait, front on. {face_only} {top}",
       description: "Head and shoulders, front on.",
@@ -106,7 +105,7 @@ it("says how many templates a block reaches BEFORE it is edited", async () => {
     blocks: SPEC.blocks,
     templates: [
       SPEC.templates[0]!,
-      { ...SPEC.templates[0]!, id: "face_back", prompt: "Back. {face_only}" },
+      { ...SPEC.templates[0]!, name: "Face, back", prompt: "Back. {block.face_only}" },
     ],
   });
   show();

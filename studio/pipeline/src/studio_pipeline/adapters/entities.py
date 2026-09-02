@@ -579,9 +579,14 @@ def put_block(name: str, text: str) -> dict:
     return api.patch(f"/api/templates/blocks/{_segment(name)}", {"text": text})
 
 
-def put_template(template_id: str, fields: dict) -> dict:
-    """Write one template — its name, prompt, description and tags."""
-    return api.patch(f"/api/templates/{_segment(template_id)}", fields)
+def put_template(name: str, fields: dict) -> dict:
+    """Write one template. **Its name is its key**, as a block's is.
+
+    Nothing points at a template — a run copies its words — so there is no id to
+    protect a rename, and a generated one would be a second name that can drift
+    from the first.
+    """
+    return api.patch(f"/api/templates/{_segment(name)}", fields)
 
 
 # There are deliberately no `delete_*` wrappers, and #553 is why: a wrapper
