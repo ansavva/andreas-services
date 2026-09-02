@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { getTree } from "../apis/studio";
+import { getFolder } from "../apis/studio";
 import type { FolderId } from "../utils/location";
-import type { SortOrder, TreeResponse } from "../types";
+import type { SortOrder, FolderListing } from "../types";
 
 /**
  * One folder's listing, by node id.
@@ -13,8 +13,8 @@ import type { SortOrder, TreeResponse } from "../types";
  * until its parent has been asked for; nothing is fetched then, because the
  * alternative is a request for the root that the answer immediately discards.
  */
-export function useTree(folderId: FolderId | undefined, sort: SortOrder) {
-  const [data, setData] = useState<TreeResponse | null>(null);
+export function useFolder(folderId: FolderId | undefined, sort: SortOrder) {
+  const [data, setData] = useState<FolderListing | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,7 +25,7 @@ export function useTree(folderId: FolderId | undefined, sort: SortOrder) {
     setLoading(true);
     setError(null);
 
-    getTree(folderId === null ? {} : { node: folderId }, sort)
+    getFolder(folderId === null ? {} : { node: folderId }, sort)
       .then((result) => {
         if (!cancelled) setData(result);
       })

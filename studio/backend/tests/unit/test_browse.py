@@ -36,26 +36,51 @@ def _unsigned(value):
     return value
 
 
+def _folder(lib, node=None, sort=None):
+    """One level, every kind — what `GET /api/nodes?under=` answers by default."""
+    return browse.entries(lib, under=node, raw_sort=sort)
+
+
+def _media(lib, node=None, cursor=None, page_size=None, sort=None):
+    """The recursive media listing: `?depth=all&kind=image,video`.
+
+    What `reel_items` was. Spelled out here rather than given a service function
+    of its own, because "recursive, images and videos" is a caller's question now
+    and not a second endpoint.
+    """
+    return browse.entries(lib, under=node, depth="all", kinds="image,video",
+                          cursor=cursor, page_size=page_size, raw_sort=sort)
+
+
+def _files(result):
+    """The non-folder entries. One array comes back; splitting it is the caller's."""
+    return [entry for entry in result["entries"] if entry["kind"] != catalog.KIND_FOLDER]
+
+
+def _folders(result):
+    return [entry for entry in result["entries"] if entry["kind"] == catalog.KIND_FOLDER]
+
+
 def test_root_lists_the_top_level(catalog_tree):
-    result = browse.list_folder(CATALOG_LIBRARY)
+    result = _folder(CATALOG_LIBRARY)
     # The browsable root is the library's root node. It answers to the empty
     # prefix, which is what the SPA opens on.
     assert result["prefix"] == ""
     # Newest-first, and a folder now has a real timestamp to sort by: these were
     # created in fixture order, so newest is the reverse of it.
-    assert [f["name"] for f in result["folders"]] == ["projects", "phrasebook", "characters"]
+    assert [f["name"] for f in _folders(result)] == ["projects", "phrasebook", "characters"]
     assert result["sort"] == "newest"
-    assert result["files"] == []
+    assert _files(result) == []
 
 
 def test_subject_folder_lists_its_profile_and_subfolders(catalog_tree):
-    result = browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/"))
-    assert [f["name"] for f in result["files"]] == ["profile.yaml"]
+    result = _folder(CATALOG_LIBRARY, _node_id("characters/subject-a/"))
+    assert [f["name"] for f in _files(result)] == ["profile.yaml"]
     # **`reference` first, where the old listing put `seed` first.** A folder used
     # to have no date at all, so `newest` fell back to the name descending; the
     # fixture creates `seed` before `reference`, so a real timestamp reverses
     # them. This is the change #311 asks for, seen from the outside.
-    assert [f["name"] for f in result["folders"]] == ["reference", "seed"]
+    assert [f["name"] for f in _folders(result)] == ["reference", "seed"]
 
 
 def test_a_folder_marker_is_a_folder_and_never_a_file(catalog_tree):
@@ -65,11 +90,11 @@ def test_a_folder_marker_is_a_folder_and_never_a_file(catalog_tree):
     out by size. In the catalog there is nothing for it to be but the folder it
     was faking, so the filter — and `keys.is_folder_marker` with it — is gone.
     """
-    parent = browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/"))
-    assert "seed" in [f["name"] for f in parent["folders"]]
+    parent = _folder(CATALOG_LIBRARY, _node_id("characters/subject-a/"))
+    assert "seed" in [f["name"] for f in _folders(parent)]
 
-    result = browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"), "name")
-    assert [f["name"] for f in result["files"]] == ["subject-a_1.webp", "subject-a_2.webp"]
+    result = _folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"), "name")
+    assert [f["name"] for f in _files(result)] == ["subject-a_1.webp", "subject-a_2.webp"]
 
 
 def test_a_listing_carries_the_size_off_the_record(catalog_tree):
@@ -90,9 +115,9 @@ def test_a_listing_carries_the_size_off_the_record(catalog_tree):
 
 
 def test_listing_presigns_every_file(catalog_tree):
-    result = browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"))
-    assert all(f["kind"] == "image" for f in result["files"])
-    assert all("X-Amz-Signature" in f["url"] for f in result["files"])
+    result = _folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"))
+    assert all(f["kind"] == "image" for f in _files(result))
+    assert all("X-Amz-Signature" in f["url"] for f in _files(result))
 
 
 def test_a_file_row_with_no_blob_lists_without_a_url(catalog_tree, catalog_table):
@@ -125,7 +150,7 @@ def test_a_file_row_with_no_blob_lists_without_a_url(catalog_tree, catalog_table
 
     entry = next(
         f
-        for f in browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"))["files"]
+        for f in _files(_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/")))
         if f["name"] == "keyless.webp"
     )
     assert "url" not in entry
@@ -133,27 +158,28 @@ def test_a_file_row_with_no_blob_lists_without_a_url(catalog_tree, catalog_table
 
 
 def test_run_folder_mixes_media_and_metadata(catalog_tree):
-    result = browse.list_folder(
+    result = _folder(
         CATALOG_LIBRARY,
         _node_id("projects/subject-a/runs/2026-08-04_21-30-54_wave-porch-1x1/"),
     )
-    kinds = {f["name"]: f["kind"] for f in result["files"]}
+    kinds = {f["name"]: f["kind"] for f in _files(result)}
     assert kinds == {"request.json": "text", "result.json": "text"}
-    assert [f["name"] for f in result["folders"]] == ["output"]
+    assert [f["name"] for f in _folders(result)] == ["output"]
     # Text files carry a highlighting hint for the read-only viewer.
-    assert all(f["language"] == "json" for f in result["files"])
+    assert all(f["language"] == "json" for f in _files(result))
 
 
 def test_breadcrumbs_and_counts(catalog_tree):
-    result = browse.list_folder(CATALOG_LIBRARY, _node_id("projects/subject-b/"))
+    result = _folder(CATALOG_LIBRARY, _node_id("projects/subject-b/"))
     assert [b["name"] for b in result["breadcrumbs"]] == ["/", "projects", "subject-b"]
     assert [b["prefix"] for b in result["breadcrumbs"]] == [
         "",
         "projects/",
         "projects/subject-b/",
     ]
-    assert result["counts"]["folders"] == 2
-    assert result["counts"]["media"] == 0
+    # Keyed by kind, over everything the filters admitted. A folder with two
+    # subfolders and no media reports the one key and omits the rest.
+    assert result["counts"] == {"folder": 2}
 
 
 def test_breadcrumbs_are_walked_from_the_node_not_the_request(catalog_tree):
@@ -163,8 +189,8 @@ def test_breadcrumbs_are_walked_from_the_node_not_the_request(catalog_tree):
     there is no string to split.
     """
     scene = "projects/subject-b/scenes/2026-08-16_07-40-22_stadium-encounter/"
-    by_path = browse.list_folder(CATALOG_LIBRARY, _node_id(scene))
-    by_id = browse.list_folder(CATALOG_LIBRARY, _node_id(scene))
+    by_path = _folder(CATALOG_LIBRARY, _node_id(scene))
+    by_id = _folder(CATALOG_LIBRARY, _node_id(scene))
 
     # The whole body, not just the crumbs: `?node=` and `?prefix=` are two
     # addresses for one folder and must not be two answers.
@@ -181,14 +207,14 @@ def test_breadcrumbs_are_walked_from_the_node_not_the_request(catalog_tree):
 
 def test_the_reel_answers_to_either_address_too(catalog_tree):
     prefix = "characters/subject-a/"
-    assert _unsigned(browse.reel_items(CATALOG_LIBRARY, _node_id(prefix))) == _unsigned(
-        browse.reel_items(CATALOG_LIBRARY, _node_id(prefix))
+    assert _unsigned(_media(CATALOG_LIBRARY, _node_id(prefix))) == _unsigned(
+        _media(CATALOG_LIBRARY, _node_id(prefix))
     )
 
 
 def test_an_unknown_path_segment_is_a_404(catalog_tree):
     with pytest.raises(NotFoundError):
-        browse.list_folder(CATALOG_LIBRARY, _node_id("characters/nobody/"))
+        _folder(CATALOG_LIBRARY, _node_id("characters/nobody/"))
 
 
 def test_a_traversal_segment_is_just_a_name_nothing_is_called(catalog_tree):
@@ -199,7 +225,7 @@ def test_a_traversal_segment_is_just_a_name_nothing_is_called(catalog_tree):
     rule to the data.
     """
     with pytest.raises(NotFoundError):
-        browse.list_folder(CATALOG_LIBRARY, _node_id("../elsewhere"))
+        _folder(CATALOG_LIBRARY, _node_id("../elsewhere"))
 
 
 def test_a_node_in_another_library_is_refused(catalog_tree, catalog_table):
@@ -226,7 +252,7 @@ def test_a_node_in_another_library_is_refused(catalog_tree, catalog_table):
     )
 
     with pytest.raises(ForbiddenError):
-        browse.list_folder(CATALOG_LIBRARY, "node-elsewhere")
+        _folder(CATALOG_LIBRARY, "node-elsewhere")
 
 
 def test_no_node_at_all_is_the_library_root(catalog_tree):
@@ -241,17 +267,17 @@ def test_no_node_at_all_is_the_library_root(catalog_tree):
     cannot hold in advance, since `/api/libraries` reports id, name and role and
     deliberately not the root.
     """
-    assert _unsigned(browse.list_folder(CATALOG_LIBRARY)) == _unsigned(
-        browse.list_folder(CATALOG_LIBRARY, catalog.library(CATALOG_LIBRARY)["root_node"])
+    assert _unsigned(_folder(CATALOG_LIBRARY)) == _unsigned(
+        _folder(CATALOG_LIBRARY, catalog.library(CATALOG_LIBRARY)["root_node"])
     )
 
 
 def test_reel_walks_recursively(catalog_tree):
-    result = browse.reel_items(CATALOG_LIBRARY, _node_id("characters/subject-a/"))
+    result = _media(CATALOG_LIBRARY, _node_id("characters/subject-a/"))
     # One reference image and two seeds — the .txt caption, the profile YAML and
     # the folder marker's row are all excluded. Newest first, and the fixture
     # creates the seeds before the reference image, so the reference leads.
-    assert [item["key"] for item in result["items"]] == [
+    assert [item["key"] for item in result["entries"]] == [
         "characters/subject-a/reference/subject-a_1.webp",
         "characters/subject-a/seed/subject-a_2.webp",
         "characters/subject-a/seed/subject-a_1.webp",
@@ -262,12 +288,12 @@ def test_reel_walks_recursively(catalog_tree):
 
 
 def test_reel_from_root_spans_characters_and_projects(catalog_tree):
-    result = browse.reel_items(CATALOG_LIBRARY)
-    kinds = [item["kind"] for item in result["items"]]
+    result = _media(CATALOG_LIBRARY)
+    kinds = [item["kind"] for item in result["entries"]]
     assert set(kinds) == {"image", "video"}
-    assert any(item["name"] == "IMG_1966_Original.JPG" for item in result["items"])
-    assert any(item["name"] == "standing-flex.mp4" for item in result["items"])
-    assert any(item["name"] == "shot-01.mp4" for item in result["items"])
+    assert any(item["name"] == "IMG_1966_Original.JPG" for item in result["entries"])
+    assert any(item["name"] == "standing-flex.mp4" for item in result["entries"])
+    assert any(item["name"] == "shot-01.mp4" for item in result["entries"])
 
 
 def test_the_root_reel_spends_its_budget_on_media_and_not_on_folders(
@@ -287,10 +313,10 @@ def test_the_root_reel_spends_its_budget_on_media_and_not_on_folders(
     """
     monkeypatch.setenv("STUDIO_MAX_FOLDER_OBJECTS", "5")
 
-    result = browse.reel_items(CATALOG_LIBRARY)
+    result = _media(CATALOG_LIBRARY)
 
-    assert len(result["items"]) == 5
-    assert all(item["kind"] in ("image", "video") for item in result["items"])
+    assert len(result["entries"]) == 5
+    assert all(item["kind"] in ("image", "video") for item in result["entries"])
 
 
 def test_the_root_reel_never_enumerates_an_entity_row(catalog_tree, empty_api):
@@ -306,7 +332,7 @@ def test_the_root_reel_never_enumerates_an_entity_row(catalog_tree, empty_api):
         "/api/characters", json={"slug": "subject-a"}
     )
 
-    for item in browse.reel_items(CATALOG_LIBRARY)["items"]:
+    for item in _media(CATALOG_LIBRARY)["entries"]:
         assert item["kind"] in ("image", "video")
 
 
@@ -318,7 +344,7 @@ def test_reel_items_carry_their_full_name_path(catalog_tree):
     """
     item = next(
         i
-        for i in browse.reel_items(CATALOG_LIBRARY)["items"]
+        for i in _media(CATALOG_LIBRARY)["entries"]
         if i["name"] == "shot-01.mp4"
     )
     assert item["key"] == (
@@ -550,21 +576,21 @@ def test_reading_text_finds_what_saving_text_wrote(catalog_tree):
 
 
 def test_sort_by_name_and_name_desc(catalog_tree):
-    ascending = browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"), "name")
-    descending = browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"), "name_desc")
+    ascending = _folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"), "name")
+    descending = _folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"), "name_desc")
 
-    assert [f["name"] for f in ascending["files"]] == ["subject-a_1.webp", "subject-a_2.webp"]
-    assert [f["name"] for f in descending["files"]] == ["subject-a_2.webp", "subject-a_1.webp"]
-    assert [f["name"] for f in ascending["folders"]] == []
+    assert [f["name"] for f in _files(ascending)] == ["subject-a_1.webp", "subject-a_2.webp"]
+    assert [f["name"] for f in _files(descending)] == ["subject-a_2.webp", "subject-a_1.webp"]
+    assert [f["name"] for f in _folders(ascending)] == []
 
 
 def test_folders_follow_the_sort(catalog_tree):
-    assert [f["name"] for f in browse.list_folder(CATALOG_LIBRARY, None, "name")["folders"]] == [
+    assert [f["name"] for f in _folders(_folder(CATALOG_LIBRARY, None, "name"))] == [
         "characters",
         "phrasebook",
         "projects",
     ]
-    assert [f["name"] for f in browse.list_folder(CATALOG_LIBRARY, None, "oldest")["folders"]] == [
+    assert [f["name"] for f in _folders(_folder(CATALOG_LIBRARY, None, "oldest"))] == [
         "characters",
         "phrasebook",
         "projects",
@@ -581,21 +607,21 @@ def test_a_folder_date_sort_is_a_date_and_not_the_name(catalog_tree):
         catalog.library(CATALOG_LIBRARY)["root_node"], "aaa-newest", catalog.KIND_FOLDER
     )
 
-    newest = [f["name"] for f in browse.list_folder(CATALOG_LIBRARY, None, "newest")["folders"]]
-    by_name = [f["name"] for f in browse.list_folder(CATALOG_LIBRARY, None, "name")["folders"]]
+    newest = [f["name"] for f in _folders(_folder(CATALOG_LIBRARY, None, "newest"))]
+    by_name = [f["name"] for f in _folders(_folder(CATALOG_LIBRARY, None, "name"))]
 
     assert newest[0] == "aaa-newest"
     assert by_name[0] == "aaa-newest"
     assert by_name[-1] == "projects"
     # And the one that carries the weight: oldest-first puts it last, despite the
     # name that would have put it first.
-    oldest = [f["name"] for f in browse.list_folder(CATALOG_LIBRARY, None, "oldest")["folders"]]
+    oldest = [f["name"] for f in _folders(_folder(CATALOG_LIBRARY, None, "oldest"))]
     assert oldest[-1] == "aaa-newest"
 
 
 def test_sort_rejects_anything_else(catalog_tree):
     with pytest.raises(ValidationError):
-        browse.list_folder(CATALOG_LIBRARY, None, "sideways")
+        _folder(CATALOG_LIBRARY, None, "sideways")
 
 
 def test_newest_first_puts_a_later_write_first(catalog_tree):
@@ -606,8 +632,8 @@ def test_newest_first_puts_a_later_write_first(catalog_tree):
     second was indistinguishable from the first. `catalog._now` stamps
     microseconds.
     """
-    seed = browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/"), "name")
-    seed_id = next(f["id"] for f in seed["folders"] if f["name"] == "seed")
+    seed = _folder(CATALOG_LIBRARY, _node_id("characters/subject-a/"), "name")
+    seed_id = next(f["id"] for f in _folders(seed) if f["name"] == "seed")
     # Confirmed, not just created. `create_node` alone leaves a row naming bytes
     # that never arrived, which listings now hide (#442) — and this test is about
     # ordering, not about placeholders.
@@ -616,11 +642,11 @@ def test_newest_first_puts_a_later_write_first(catalog_tree):
 
     newest = [
         f["name"]
-        for f in browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"), "newest")["files"]
+        for f in _files(_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"), "newest"))
     ]
     oldest = [
         f["name"]
-        for f in browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"), "oldest")["files"]
+        for f in _files(_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"), "oldest"))
     ]
 
     # Name-ascending would have put it first anyway, so the assertion that
@@ -637,7 +663,7 @@ def test_the_reel_orders_by_the_timestamp_it_reports(catalog_tree):
     the case that told a key from a basename. There are no ties now: every row
     is a distinct instant, and the order is the one the entries display.
     """
-    items = browse.reel_items(CATALOG_LIBRARY, _node_id("characters/"))["items"]
+    items = _media(CATALOG_LIBRARY, _node_id("characters/"))["entries"]
 
     stamps = [item["last_modified"] for item in items]
     assert stamps == sorted(stamps, reverse=True)
@@ -645,31 +671,31 @@ def test_the_reel_orders_by_the_timestamp_it_reports(catalog_tree):
 
 
 def test_reel_cursor_is_an_offset(catalog_tree):
-    first = browse.reel_items(CATALOG_LIBRARY, None, None, 2)
-    assert len(first["items"]) == 2
+    first = _media(CATALOG_LIBRARY, None, None, 2)
+    assert len(first["entries"]) == 2
     assert first["next_cursor"] == "2"
 
-    second = browse.reel_items(CATALOG_LIBRARY, None, "2", 2)
+    second = _media(CATALOG_LIBRARY, None, "2", 2)
     assert first["total"] == second["total"]
     # No overlap: the window moved rather than being re-cut from the start.
-    assert not {i["key"] for i in first["items"]} & {i["key"] for i in second["items"]}
+    assert not {i["key"] for i in first["entries"]} & {i["key"] for i in second["entries"]}
 
 
 def test_reel_presigns_only_the_page_it_returns(catalog_tree):
-    page = browse.reel_items(CATALOG_LIBRARY, None, None, 1)
-    assert len(page["items"]) == 1
-    assert "X-Amz-Signature" in page["items"][0]["url"]
+    page = _media(CATALOG_LIBRARY, None, None, 1)
+    assert len(page["entries"]) == 1
+    assert "X-Amz-Signature" in page["entries"][0]["url"]
 
 
 def test_reel_rejects_a_bad_cursor(catalog_tree):
     with pytest.raises(ValidationError):
-        browse.reel_items(CATALOG_LIBRARY, None, "not-a-number")
+        _media(CATALOG_LIBRARY, None, "not-a-number")
 
 
 def test_reel_reports_a_truncated_enumeration(catalog_tree, monkeypatch):
     """The reel truncates where a move or a delete refuses, on the same number."""
     monkeypatch.setattr("studio_core.config.max_folder_objects", lambda: 2)
-    assert browse.reel_items(CATALOG_LIBRARY)["truncated"] is True
+    assert _media(CATALOG_LIBRARY)["truncated"] is True
 
 
 def test_a_truncated_reel_keeps_the_newest(catalog_tree, monkeypatch):
@@ -680,13 +706,13 @@ def test_a_truncated_reel_keeps_the_newest(catalog_tree, monkeypatch):
     number drops an arbitrary branch instead, which is why the library root does
     not use one.
     """
-    newest = browse.reel_items(CATALOG_LIBRARY)["items"][0]
+    newest = _media(CATALOG_LIBRARY)["entries"][0]
 
     monkeypatch.setattr("studio_core.config.max_folder_objects", lambda: 4)
-    cut = browse.reel_items(CATALOG_LIBRARY)
+    cut = _media(CATALOG_LIBRARY)
 
     assert cut["truncated"] is True
-    assert cut["items"][0]["key"] == newest["key"]
+    assert cut["entries"][0]["key"] == newest["key"]
 
 
 def test_a_truncated_reel_still_names_its_folders(catalog_tree, monkeypatch):
@@ -696,7 +722,7 @@ def test_a_truncated_reel_still_names_its_folders(catalog_tree, monkeypatch):
     enumeration, and this is the only case that reaches it.
     """
     monkeypatch.setattr("studio_core.config.max_folder_objects", lambda: 3)
-    items = browse.reel_items(CATALOG_LIBRARY)["items"]
+    items = _media(CATALOG_LIBRARY)["entries"]
 
     assert items
     for item in items:
@@ -710,7 +736,7 @@ def test_a_truncated_reel_still_names_its_folders(catalog_tree, monkeypatch):
 
 def _entry(prefix, name):
     return next(
-        f for f in browse.list_folder(CATALOG_LIBRARY, _node_id(prefix))["files"] if f["name"] == name
+        f for f in _files(_folder(CATALOG_LIBRARY, _node_id(prefix))) if f["name"] == name
     )
 
 
@@ -732,7 +758,7 @@ def test_the_reel_carries_no_favourites_fields_either(catalog_tree):
     A page is 200 items across however many projects, so that was one extra S3
     listing per project per page, spent on a question nothing asks any more.
     """
-    items = browse.reel_items(CATALOG_LIBRARY, _node_id("projects/subject-a/"))["items"]
+    items = _media(CATALOG_LIBRARY, _node_id("projects/subject-a/"))["entries"]
 
     assert items, "the reel still lists the media"
     assert all("favorites_prefix" not in item and "favorited" not in item for item in items)
@@ -744,10 +770,10 @@ def test_every_row_carries_its_node_id(catalog_tree):
     Files, folders and reel items alike — a listing that carried ids for two of
     the three would send the SPA back to `/api/resolve` for the third.
     """
-    listing = browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/"))
-    reel = browse.reel_items(CATALOG_LIBRARY)
+    listing = _folder(CATALOG_LIBRARY, _node_id("characters/subject-a/"))
+    reel = _media(CATALOG_LIBRARY)
 
-    rows = listing["files"] + listing["folders"] + reel["items"]
+    rows = _files(listing) + _folders(listing) + reel["entries"]
     assert rows
     for row in rows:
         assert row["id"].startswith("node-"), row
@@ -776,11 +802,11 @@ def test_no_browse_response_carries_a_blob_key_or_a_path(catalog_tree):
     this asserts over every shape `browse` returns rather than over one.
     """
     responses = [
-        browse.list_folder(CATALOG_LIBRARY),
-        browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/")),
-        browse.list_folder(CATALOG_LIBRARY, _node_id("projects/subject-b/")),
-        browse.reel_items(CATALOG_LIBRARY),
-        browse.reel_items(CATALOG_LIBRARY, _node_id("characters/")),
+        _folder(CATALOG_LIBRARY),
+        _folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/")),
+        _folder(CATALOG_LIBRARY, _node_id("projects/subject-b/")),
+        _media(CATALOG_LIBRARY),
+        _media(CATALOG_LIBRARY, _node_id("characters/")),
     ]
 
     for response in responses:
@@ -817,7 +843,7 @@ def test_an_upload_that_never_confirmed_is_not_listed(catalog_tree, media_bucket
 
     names = [
         f["name"]
-        for f in browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"))["files"]
+        for f in _files(_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/")))
     ]
 
     assert "never-arrived.webp" not in names
@@ -838,7 +864,7 @@ def test_a_confirmed_empty_file_is_listed(catalog_tree, media_bucket):
 
     names = [
         f["name"]
-        for f in browse.list_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/"))["files"]
+        for f in _files(_folder(CATALOG_LIBRARY, _node_id("characters/subject-a/seed/")))
     ]
 
     assert "genuinely-empty.webp" in names
@@ -848,6 +874,6 @@ def test_an_abandoned_upload_is_kept_out_of_the_reel_too(catalog_tree, media_buc
     """The reel signs its own window, so it needs the same filter as the listing."""
     _uploaded("characters/subject-a/seed/", "never-arrived-reel.webp")
 
-    names = [item["name"] for item in browse.reel_items(CATALOG_LIBRARY, None, None, None)["items"]]
+    names = [item["name"] for item in _media(CATALOG_LIBRARY, None, None, None)["entries"]]
 
     assert "never-arrived-reel.webp" not in names

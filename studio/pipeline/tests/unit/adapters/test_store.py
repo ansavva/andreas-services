@@ -160,10 +160,16 @@ def test_a_failed_fetch_does_not_echo_the_signed_url(apis, monkeypatch):
 def test_children_lists_one_level(apis):
     calls, table = apis
     table[("GET", "/api/resolve")] = {"id": "node-folder"}
-    table[("GET", "/api/nodes")] = [{"id": "node-a", "name": "a.png"}]
+    table[("GET", "/api/nodes")] = {
+        "entries": [{"id": "node-a", "name": "a.png", "kind": "image"}],
+        "next_cursor": None,
+    }
 
     assert store.children("characters/<name>/reference")[0]["name"] == "a.png"
-    assert calls[-1][2] == {"parent": "node-folder"}
+    # `under`, not `parent` — one listing route now, and it defaults to the
+    # library root rather than refusing a request that names no folder.
+    assert calls[-1][2] == {"sort": "name", "limit": store.PAGE,
+                            "cursor": None, "under": "node-folder"}
 
 
 def test_download_writes_to_disk_creating_parents(apis, monkeypatch, tmp_path):
@@ -313,15 +319,22 @@ def test_files_are_natural_sorted_and_folders_are_dropped(apis):
     The order is positional downstream (`[Image1]..[ImageN]`), and the catalog
     returns folders in the same list as files — where `list_objects_v2` put them
     in a separate field, so the filter used to be structural and is now explicit.
+
+    **The filter is the negative now.** One listing serves the app and this
+    package, and its `kind` says what a file HOLDS — `image`, `video`, `text` —
+    so "is it a file" is "is it not a folder".
     """
     calls, table = apis
     table[("GET", "/api/resolve")] = {"id": "node-folder", "kind": "folder"}
-    table[("GET", "/api/nodes")] = [
-        {"name": "shot-10.png", "kind": "file"},
-        {"name": "shot-2.png", "kind": "file"},
-        {"name": "shot-1.png", "kind": "file"},
-        {"name": "thumbs", "kind": "folder"},
-    ]
+    table[("GET", "/api/nodes")] = {
+        "entries": [
+            {"name": "shot-10.png", "kind": "image"},
+            {"name": "shot-2.png", "kind": "image"},
+            {"name": "shot-1.png", "kind": "image"},
+            {"name": "thumbs", "kind": "folder"},
+        ],
+        "next_cursor": None,
+    }
 
     assert [entry["name"] for entry in store.files("projects/<project>/input")] == [
         "shot-1.png", "shot-2.png", "shot-10.png",

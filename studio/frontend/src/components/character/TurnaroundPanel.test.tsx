@@ -9,9 +9,9 @@ vi.mock("../../apis/studio", () => ({
   draftTurnaround: vi.fn(),
   getProject: vi.fn(),
   getProjects: vi.fn(),
-  getReel: vi.fn(),
+  getMedia: vi.fn(),
   getReferenceSpec: vi.fn(),
-  getTree: vi.fn(),
+  getFolder: vi.fn(),
   resolvePath: vi.fn(),
   getAsset: vi.fn().mockResolvedValue({ url: "https://signed/plate.png" }),
 }));
@@ -20,16 +20,16 @@ import {
   draftTurnaround,
   getProject,
   getProjects,
-  getReel,
+  getMedia,
   getReferenceSpec,
-  getTree,
+  getFolder,
   resolvePath,
 } from "../../apis/studio";
 import { TurnaroundPanel } from "./TurnaroundPanel";
 
 const draft = vi.mocked(draftTurnaround);
-const tree = vi.mocked(getTree);
-const reel = vi.mocked(getReel);
+const tree = vi.mocked(getFolder);
+const reel = vi.mocked(getMedia);
 const projects = vi.mocked(getProjects);
 const projectRecord = vi.mocked(getProject);
 const spec = vi.mocked(getReferenceSpec);

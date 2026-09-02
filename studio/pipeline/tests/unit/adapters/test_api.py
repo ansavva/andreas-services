@@ -86,10 +86,10 @@ def test_the_library_header_is_sent_when_set(monkeypatch):
     monkeypatch.setenv("STUDIO_LIBRARY_ID", "lib-1")
     seen = _serve(monkeypatch, _Response(200, b"{}"))
 
-    api.get("/api/nodes", parent="node-root")
+    api.get("/api/nodes", under="node-root")
 
     assert seen[0].get_header(api.LIBRARY_HEADER.capitalize()) == "lib-1"
-    assert seen[0].full_url.endswith("?parent=node-root")
+    assert seen[0].full_url.endswith("?under=node-root")
 
 
 def test_a_401_refreshes_once_and_retries(monkeypatch, _signed_in):

@@ -503,7 +503,7 @@ than remembered. If a guard is in the way, the test belongs in a different tier.
   test invokes every leaf command. It deleted 391 lines of schema.
 - **Do not edit `cli_surface_reference.json` to make a test pass.** Regenerate it
   with `tests.contracts.update_cli_reference <command>`.
-- **Do not capture an API fixture with `curl`.** `/api/reel` answers with
+- **Do not capture an API fixture with `curl`.** `GET /api/nodes` answers with
   presigned URLs; `frontend/e2e/fixtures/capture.py` scrubs them. A hand-rolled
   capture put an AWS access key id into git.
 - **Do not skip a tree at module level.** A `pytest_collection_modifyitems` hook

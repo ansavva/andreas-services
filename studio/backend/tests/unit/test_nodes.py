@@ -113,6 +113,15 @@ def _folder(name, parent=CATALOG_ROOT):
 
 
 def _file(name, parent=CATALOG_ROOT, **kwargs):
+    """A file with bytes behind it.
+
+    **`size` is defaulted, and it has to be.** A row carrying a `blob_key` and no
+    `size` is a placeholder an upload never confirmed, and the one listing this
+    API has hides those rather than drawing a tile it cannot load — so a fixture
+    that omitted it would be testing the listing's ability to hide things.
+    Anything that wants a placeholder builds one explicitly; `test_browse` does.
+    """
+    kwargs.setdefault("size", 1024)
     return catalog.create_node(parent, name, catalog.KIND_FILE, blob_key=BLOB_KEY, **kwargs)
 
 
@@ -238,12 +247,15 @@ def test_listing_a_folder_returns_its_children(catalog_table, signed_in):
     _file("notes.txt")
     _folder("projects")
 
-    resp = _get(f"/api/nodes?parent={CATALOG_ROOT}")
+    resp = _get(f"/api/nodes?under={CATALOG_ROOT}&sort=name")
 
     assert resp.status_code == 200
-    assert [(entry["name"], entry["kind"]) for entry in resp.get_json()] == [
+    # `kind` is what the file HOLDS, not the storage vocabulary — `image`,
+    # `video`, `text`, `other`, or `folder`. A client deciding whether to draw a
+    # thumbnail cannot do anything with "file".
+    assert [(entry["name"], entry["kind"]) for entry in resp.get_json()["entries"]] == [
         ("characters", "folder"),
-        ("notes.txt", "file"),
+        ("notes.txt", "text"),
         ("projects", "folder"),
     ]
 
@@ -257,7 +269,7 @@ def test_listing_carries_size_and_content_type(catalog_table, signed_in):
     """
     _file("clip.mp4", size=4096, content_type="video/mp4")
 
-    entry = _get(f"/api/nodes?parent={CATALOG_ROOT}").get_json()[0]
+    entry = _get(f"/api/nodes?under={CATALOG_ROOT}").get_json()["entries"][0]
 
     assert entry["size"] == 4096
     assert entry["content_type"] == "video/mp4"
@@ -267,7 +279,7 @@ def test_a_folder_carries_no_size(catalog_table, signed_in):
     """Absent rather than null — a folder has no bytes, not zero bytes."""
     _folder("characters")
 
-    entry = _get(f"/api/nodes?parent={CATALOG_ROOT}").get_json()[0]
+    entry = _get(f"/api/nodes?under={CATALOG_ROOT}").get_json()["entries"][0]
 
     assert "size" not in entry
     assert "content_type" not in entry
@@ -277,17 +289,17 @@ def test_listing_never_returns_blob_key(catalog_table, signed_in):
     """The one field that must not leave, checked on the route that lists many."""
     _file("clip.mp4")
 
-    entry = _get(f"/api/nodes?parent={CATALOG_ROOT}").get_json()[0]
+    entry = _get(f"/api/nodes?under={CATALOG_ROOT}").get_json()["entries"][0]
 
     assert "blob_key" not in entry
-    assert BLOB_KEY not in _get(f"/api/nodes?parent={CATALOG_ROOT}").get_data(as_text=True)
+    assert BLOB_KEY not in _get(f"/api/nodes?under={CATALOG_ROOT}").get_data(as_text=True)
 
 
 def test_listing_never_returns_path(catalog_table, signed_in):
     """`path` is a rebuildable index; `parent_id` is the answer a client gets."""
     _folder("characters")
 
-    entry = _get(f"/api/nodes?parent={CATALOG_ROOT}").get_json()[0]
+    entry = _get(f"/api/nodes?under={CATALOG_ROOT}").get_json()["entries"][0]
 
     assert "path" not in entry
     assert entry["parent_id"] == CATALOG_ROOT
@@ -296,10 +308,10 @@ def test_listing_never_returns_path(catalog_table, signed_in):
 def test_listing_an_empty_folder_is_an_empty_list(catalog_table, signed_in):
     empty = _folder("characters")
 
-    resp = _get(f"/api/nodes?parent={empty['node_id']}")
+    resp = _get(f"/api/nodes?under={empty['node_id']}")
 
     assert resp.status_code == 200
-    assert resp.get_json() == []
+    assert resp.get_json()["entries"] == []
 
 
 def test_listing_more_children_than_one_batch(catalog_table, signed_in):
@@ -314,29 +326,39 @@ def test_listing_more_children_than_one_batch(catalog_table, signed_in):
     for index in range(101):
         _file(f"frame_{index:03d}.webp", parent=folder["node_id"], size=index)
 
-    entries = _get(f"/api/nodes?parent={folder['node_id']}").get_json()
+    entries = _get(f"/api/nodes?under={folder['node_id']}").get_json()["entries"]
 
     assert len(entries) == 101
     assert all("size" in entry for entry in entries)
 
 
 def test_listing_a_missing_parent_is_404(catalog_table, signed_in):
-    resp = _get("/api/nodes?parent=node-nope")
+    resp = _get("/api/nodes?under=node-nope")
 
     assert resp.status_code == 404
 
 
-def test_listing_without_a_parent_is_400(catalog_table, signed_in):
+def test_listing_without_an_under_opens_on_the_library_root(catalog_table, signed_in):
+    """It was a 400, and the root was the one address it could not express.
+
+    `?parent=` was required, so "open the library" needed a different route —
+    which is one of the reasons there were three listing endpoints. The root is
+    the default now, and `/api/libraries` still deliberately does not report a
+    root node id, so this is the request a client makes first.
+    """
+    _folder("characters")
+
     resp = _get("/api/nodes")
 
-    assert resp.status_code == 400
+    assert resp.status_code == 200
+    assert [entry["name"] for entry in resp.get_json()["entries"]] == ["characters"]
 
 
 def test_listing_another_callers_library_is_403(catalog_table, signed_in):
     """The parent is read for its `lib`, and the `lib` is what is checked."""
     _second_library(catalog_table)
 
-    resp = _get(f"/api/nodes?parent={OTHER_ROOT}")
+    resp = _get(f"/api/nodes?under={OTHER_ROOT}")
 
     assert resp.status_code == 403
 
@@ -1299,7 +1321,7 @@ def test_a_node_view_carries_the_entity_it_belongs_to(catalog_table, signed_in):
     """
     character = _character()
 
-    listing = _get(f"/api/nodes?parent={character['root']}").get_json()
+    listing = _get(f"/api/nodes?under={character['root']}&sort=name").get_json()["entries"]
 
     assert [entry["name"] for entry in listing] == ["archive", "corpus", "reference", "seed"]
     for entry in listing:
@@ -1336,7 +1358,7 @@ def test_an_entity_root_reports_itself_rather_than_its_parent(catalog_table, sig
     """
     character = _character()
 
-    listing = _get(f"/api/nodes?parent={CATALOG_ROOT}").get_json()
+    listing = _get(f"/api/nodes?under={CATALOG_ROOT}").get_json()["entries"]
     root = next(entry for entry in listing if entry["id"] == character["root"])
 
     assert root["entity"] == character["id"]

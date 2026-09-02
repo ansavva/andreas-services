@@ -327,14 +327,15 @@ test("promoting copies into the group folder and attaches the COPY", async ({
   expect(escaped(calls, page)).toEqual([]);
 
   const promotion = calls.filter((call) =>
-    /\/api\/(characters\/|tree$|nodes$|nodes\/copy$)/.test(call.path),
+    /\/api\/(characters\/|nodes$|nodes\/copy$)/.test(call.path),
   );
   expect(spell(promotion)).toEqual([
     // The character, for its root folder.
     `GET /api/characters/${CHARACTER}`,
-    // Then the two folders, ensured from the top down.
-    "GET /api/tree",
-    "GET /api/tree",
+    // Then the two folders, ensured from the top down. One listing route now,
+    // so what used to read as `tree` then `nodes` is the same call twice.
+    "GET /api/nodes",
+    "GET /api/nodes",
     "POST /api/nodes",
     // Only then the bytes, and only then the identity.
     "POST /api/nodes/copy",
@@ -343,8 +344,9 @@ test("promoting copies into the group folder and attaches the COPY", async ({
 
   // The root first, then the pool inside it — a promotion that listed the pool
   // without finding it under the root would be guessing at a path.
-  expect(promotion[1]!.query.get("node")).toBe(CHARACTER_ROOT);
-  expect(promotion[2]!.query.get("node")).toBe(REFERENCE_POOL);
+  // `under`, where the folder listing said `node` — one route, one parameter.
+  expect(promotion[1]!.query.get("under")).toBe(CHARACTER_ROOT);
+  expect(promotion[2]!.query.get("under")).toBe(REFERENCE_POOL);
   // `unsorted` is absent from the captured `reference/` listing, so this is the
   // branch that creates a group folder rather than the one that finds one.
   expect(promotion[3]!.body).toMatchObject({

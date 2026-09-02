@@ -3,9 +3,9 @@ import { useCallback, useMemo } from "react";
 import { getAsset, getNode, getReferences, getRun, getScene } from "../apis/studio";
 import type { FileEntry, RunAsset, Shot, SortOrder } from "../types";
 import type { ViewerSource } from "../utils/location";
-import { useReel } from "./useReel";
+import { useMedia } from "./useMedia";
 import { useResource } from "./useResource";
-import { useTree } from "./useTree";
+import { useFolder } from "./useFolder";
 
 /**
  * A pointer, as a listing entry.
@@ -107,7 +107,7 @@ export interface ViewerFeed {
  *
  * All four sources are subscribed on every render and three of them are idle,
  * because hooks cannot be called conditionally. Each is off unless its kind is
- * selected — `useTree` fetches nothing for an `undefined` folder, `useReel`
+ * selected — `useFolder` fetches nothing for an `undefined` folder, `useMedia`
  * takes an `enabled`, and `useResource` takes a null loader — so an idle source
  * costs a closure and no request.
  */
@@ -118,8 +118,8 @@ export function useViewerFeed(
 ): ViewerFeed {
   const kind = source?.in ?? "alone";
 
-  const tree = useTree(kind === "f" && source ? (source.id as string | null) : undefined, sort);
-  const reel = useReel(
+  const tree = useFolder(kind === "f" && source ? (source.id as string | null) : undefined, sort);
+  const reel = useMedia(
     kind === "recursive" && source ? (source.id as string | null) : null,
     sort,
     kind === "recursive",

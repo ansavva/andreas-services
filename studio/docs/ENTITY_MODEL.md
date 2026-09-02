@@ -657,7 +657,7 @@ Kept, with the name-path routes removed and the bulk verbs moved onto ids.
 | `DELETE /api/nodes` `{ids}` | replaces `/api/objects` and `/api/folder` |
 | `GET/PATCH /api/nodes/<id>/text` | replaces `/api/text` in both directions |
 | `GET /api/nodes/<id>/download-url` · `POST /api/nodes/<id>/upload-url` · `/confirm-upload` | unchanged |
-| `GET /api/tree?node=` · `GET /api/reel?node=` | `prefix=` dropped |
+| `GET /api/nodes?under=&depth=&kind=&tag=` | one listing; `prefix=` dropped, and `/api/tree` + `/api/reel` folded in |
 | `GET /api/nodes/<id>/owner` | which entity a node belongs to, derived from its ancestry — what the SPA shows as "in project …" |
 
 **A node view gains `owner`**: `{kind, id, slug}` or null. It still never carries

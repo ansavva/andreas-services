@@ -12,37 +12,42 @@
     }
   ],
   "counts": {
-    "files": 0,
-    "folders": 4,
-    "media": 0
+    "folder": 4
   },
-  "files": [],
-  "folders": [
+  "depth": "1",
+  "entries": [
     {
       "id": "node-5ab90c23-3802-53a9-9bdd-2356635ac5b2",
+      "kind": "folder",
       "last_modified": "2026-08-27T02:19:24.255448+00:00",
       "name": "archive",
       "prefix": "jason/archive/"
     },
     {
       "id": "node-f88aa9c5-d20f-5c8e-b168-ca37f6840013",
+      "kind": "folder",
       "last_modified": "2026-08-27T02:19:24.255406+00:00",
       "name": "corpus",
       "prefix": "jason/corpus/"
     },
     {
       "id": "node-50419549-a358-5e80-81cf-bb5546503ae6",
+      "kind": "folder",
       "last_modified": "2026-08-27T02:19:24.255381+00:00",
       "name": "reference",
       "prefix": "jason/reference/"
     },
     {
       "id": "node-4ec78d55-c7f6-5506-a300-c5f19d9c3f19",
+      "kind": "folder",
       "last_modified": "2026-08-27T02:19:24.255428+00:00",
       "name": "seed",
       "prefix": "jason/seed/"
     }
   ],
+  "next_cursor": null,
   "prefix": "jason/",
-  "sort": "name"
+  "sort": "name",
+  "total": 4,
+  "truncated": false
 }

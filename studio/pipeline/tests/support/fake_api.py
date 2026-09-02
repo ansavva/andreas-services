@@ -133,6 +133,10 @@ def _committed_registry() -> dict:
     return {key: {**entry, "key": key} for key, entry in models.items()}
 
 
+def _csv(raw) -> list[str]:
+    return [part.strip().lower() for part in str(raw or "").split(",") if part.strip()]
+
+
 class FakeError(Exception):
     """Raised with an HTTP status so `_dispatch` can turn it into an api error."""
 
@@ -331,6 +335,106 @@ class FakeApi:
         else:
             prefix = f"{'characters' if owner['kind'] == 'character' else 'projects'}/{owner['id']}"
         return f"{prefix}/{node['id']}{_ext(node['name'])}"
+
+    #: The one listing. `GET /api/tree` and `GET /api/reel` were folded into it
+    #: — depth, kind and paging are arguments now — so this answers all three
+    #: shapes the CLI and the app used to ask for separately.
+    MEDIA_KINDS = ("image", "video")
+
+    def _listing(self, params) -> dict:
+        under = params.get("under") or self.root["id"]
+        if under not in self.nodes:
+            raise FakeError(404, f"no such node: {under}")
+        depth = params.get("depth") or "1"
+        if depth not in ("1", "all"):
+            raise FakeError(400, f"depth must be one of 1, all: {depth}")
+
+        base = self._name_path(under)
+        rows = (
+            [(base, node) for node in self._children(under)]
+            if depth == "1"
+            else self._descendants(under, base)
+        )
+
+        kinds = _csv(params.get("kind"))
+        tags = set(_csv(params.get("tag")))
+        kept = [
+            (prefix, node) for prefix, node in rows
+            if (not kinds or self._entry_kind(node) in kinds)
+            and (not tags or tags <= set(node.get("tags") or []))
+        ]
+
+        sort = params.get("sort") or "newest"
+        if sort == "name":
+            kept.sort(key=lambda row: row[1]["name"].lower())
+        elif sort == "name_desc":
+            kept.sort(key=lambda row: row[1]["name"].lower(), reverse=True)
+        else:
+            kept.sort(key=lambda row: row[1]["created_at"], reverse=sort == "newest")
+
+        offset = int(params.get("cursor") or 0)
+        limit = int(params.get("limit") or 200)
+        window = kept[offset : offset + limit]
+        nxt = offset + len(window)
+
+        counts: dict[str, int] = {}
+        for _, node in kept:
+            kind = self._entry_kind(node)
+            counts[kind] = counts.get(kind, 0) + 1
+
+        return {
+            "prefix": base,
+            "sort": sort,
+            "depth": depth,
+            "entries": [self._entry(node, prefix, depth) for prefix, node in window],
+            "counts": counts,
+            "total": len(kept),
+            "truncated": False,
+            "next_cursor": str(nxt) if nxt < len(kept) else None,
+        }
+
+    def _descendants(self, node_id: str, prefix: str) -> list[tuple[str, dict]]:
+        found = []
+        for node in self._children(node_id):
+            found.append((prefix, node))
+            if node["kind"] == "folder":
+                found += self._descendants(node["id"], f"{prefix}{node['name']}/")
+        return found
+
+    def _name_path(self, node_id: str) -> str:
+        """The prefix a node's children carry — names, root first, empty at the top."""
+        parts = []
+        walk = self.nodes.get(node_id)
+        while walk is not None and walk["parent_id"]:
+            parts.append(walk["name"])
+            walk = self.nodes.get(walk["parent_id"])
+        return "".join(f"{part}/" for part in reversed(parts))
+
+    def _entry_kind(self, node: dict) -> str:
+        """`folder`, or what the extension says the file holds. Mirrors `browse`."""
+        if node["kind"] == "folder":
+            return "folder"
+        ext = node["name"].rsplit(".", 1)[-1].lower() if "." in node["name"] else ""
+        if ext in ("png", "jpg", "jpeg", "webp", "gif"):
+            return "image"
+        if ext in ("mp4", "mov", "webm"):
+            return "video"
+        if ext in ("txt", "json", "yaml", "yml", "md"):
+            return "text"
+        return "other"
+
+    def _entry(self, node: dict, prefix: str, depth: str) -> dict:
+        """One listing entry: the view, plus what a listing adds to it."""
+        entry = {**self._view(node), "kind": self._entry_kind(node)}
+        if node["kind"] == "folder":
+            entry["prefix"] = f"{prefix}{node['name']}/"
+        else:
+            entry["key"] = f"{prefix}{node['name']}"
+        if depth != "1":
+            # Resolved once from the parent at one level, and not at all for a
+            # branch — two rows a hundred nodes apart share no ancestor.
+            entry.pop("owner", None)
+        return entry
 
     def _view(self, node: dict) -> dict:
         """What a node route returns. **No `blob_key`, no `path`** — as today."""
@@ -627,10 +731,7 @@ class FakeApi:
 
     def _r_nodes(self, method, body, params):
         if method == "GET":
-            parent = params.get("parent") or self.root["id"]
-            if parent not in self.nodes:
-                raise FakeError(404, f"no such node: {parent}")
-            return [self._view(n) for n in self._children(parent)]
+            return self._listing(params)
         if method == "POST":
             return self._view(self._create_node(body["parent"], body["name"],
                                                 body.get("kind", "file")))

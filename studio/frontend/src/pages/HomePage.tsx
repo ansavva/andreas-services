@@ -8,7 +8,7 @@ import {
   CharactersSection,
   ProjectsSection,
 } from "../components/entity/EntitySections";
-import { useReel } from "../hooks/useReel";
+import { useMedia } from "../hooks/useMedia";
 import { feedPath, folderPath, objectPath } from "../utils/location";
 import { LoadError } from "../components/common/LoadError";
 
@@ -49,7 +49,7 @@ export function HomePage() {
    * pretending to be one.
    */
   const RECENT = 12;
-  const reel = useReel(null, "newest", true, RECENT);
+  const reel = useMedia(null, "newest", true, RECENT);
 
   const recent = reel.items.slice(0, RECENT);
 

@@ -52,7 +52,7 @@ vi.mock("../apis/studio", () => ({
   // the mock, which reads as a bug in the page.
   getCharacter: vi.fn(),
   getReferences: vi.fn().mockResolvedValue({ groups: {}, counts: {} }),
-  getTree: vi.fn(),
+  getFolder: vi.fn(),
   createNode: vi.fn(),
   copyNodes: vi.fn(),
   addReference: vi.fn(),

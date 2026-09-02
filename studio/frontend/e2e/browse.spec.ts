@@ -14,8 +14,9 @@ import { expect, test } from "@playwright/test";
 import { CHARACTER, LIBRARY, fixture, stubApi } from "./support/api";
 import { signIn } from "./support/session";
 
-const SEED =
-  fixture<Array<{ name: string; content_type: string }>>("seed-folder");
+const SEED = fixture<{
+  entries: Array<{ name: string; content_type: string }>;
+}>("seed-folder").entries;
 
 const LIVE = process.env.E2E_LIVE === "1";
 

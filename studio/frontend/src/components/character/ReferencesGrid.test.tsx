@@ -2,22 +2,22 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { FileEntry, ReferenceEntry, ReferenceIndex, TreeResponse } from "../../types";
+import type { FileEntry, ReferenceEntry, ReferenceIndex, FolderListing } from "../../types";
 
 // Three seams: where the entries come from, where a move goes, and the folder
 // listing behind the "not attached" section.
 vi.mock("../../apis/studio", () => ({
   getReferences: vi.fn(),
-  getTree: vi.fn(),
+  getFolder: vi.fn(),
   patchReference: vi.fn(),
 }));
 
-import { getReferences, getTree, patchReference } from "../../apis/studio";
+import { getReferences, getFolder, patchReference } from "../../apis/studio";
 import { ReferencesGrid } from "./ReferencesGrid";
 import { TestProviders } from "../../test-providers";
 
 const references = vi.mocked(getReferences);
-const tree = vi.mocked(getTree);
+const tree = vi.mocked(getFolder);
 const patch = vi.mocked(patchReference);
 
 const CHARACTER = "char-0001";
@@ -53,14 +53,13 @@ function file(id: string, name: string): FileEntry {
   };
 }
 
-function listing(over: Partial<TreeResponse>): TreeResponse {
+function listing(over: Partial<FolderListing>): FolderListing {
   return {
     prefix: "",
     sort: "name",
     breadcrumbs: [],
     folders: [],
     files: [],
-    counts: { folders: 0, files: 0, media: 0 },
     ...over,
   };
 }
@@ -162,6 +161,7 @@ describe("the images in reference/ that no row claims", () => {
             folders: [
               {
                 id: "node-ref",
+                kind: "folder" as const,
                 name: "reference",
                 prefix: "<name>/reference",
                 last_modified: null,

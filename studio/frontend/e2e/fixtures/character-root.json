@@ -1,58 +1,66 @@
-[
-  {
-    "created_at": "2026-08-27T02:19:24.255448+00:00",
-    "id": "node-5ab90c23-3802-53a9-9bdd-2356635ac5b2",
-    "kind": "folder",
-    "lib": "lib-160af8b7-bf45-5fd0-b4d1-8bd7e52fac07",
-    "name": "archive",
-    "owner": {
-      "id": "char-57399438-f54b-5b36-8d84-3fd4dcbf34cc",
-      "kind": "character",
-      "slug": "jason"
-    },
-    "parent_id": "node-43fbd3f9-35f7-540c-b1c7-68b35c15b25d",
-    "updated_at": "2026-08-27T02:19:24.255448+00:00"
+{
+  "breadcrumbs": [],
+  "counts": {
+    "folder": 4
   },
-  {
-    "created_at": "2026-08-27T02:19:24.255406+00:00",
-    "id": "node-f88aa9c5-d20f-5c8e-b168-ca37f6840013",
-    "kind": "folder",
-    "lib": "lib-160af8b7-bf45-5fd0-b4d1-8bd7e52fac07",
-    "name": "corpus",
-    "owner": {
-      "id": "char-57399438-f54b-5b36-8d84-3fd4dcbf34cc",
-      "kind": "character",
-      "slug": "jason"
+  "depth": "1",
+  "entries": [
+    {
+      "created_at": "2026-08-27T02:19:24.255448+00:00",
+      "id": "node-5ab90c23-3802-53a9-9bdd-2356635ac5b2",
+      "kind": "folder",
+      "name": "archive",
+      "owner": {
+        "id": "char-57399438-f54b-5b36-8d84-3fd4dcbf34cc",
+        "kind": "character",
+        "slug": "jason"
+      },
+      "parent_id": "node-43fbd3f9-35f7-540c-b1c7-68b35c15b25d",
+      "updated_at": "2026-08-27T02:19:24.255448+00:00"
     },
-    "parent_id": "node-43fbd3f9-35f7-540c-b1c7-68b35c15b25d",
-    "updated_at": "2026-08-27T02:19:24.255406+00:00"
-  },
-  {
-    "created_at": "2026-08-27T02:19:24.255381+00:00",
-    "id": "node-50419549-a358-5e80-81cf-bb5546503ae6",
-    "kind": "folder",
-    "lib": "lib-160af8b7-bf45-5fd0-b4d1-8bd7e52fac07",
-    "name": "reference",
-    "owner": {
-      "id": "char-57399438-f54b-5b36-8d84-3fd4dcbf34cc",
-      "kind": "character",
-      "slug": "jason"
+    {
+      "created_at": "2026-08-27T02:19:24.255406+00:00",
+      "id": "node-f88aa9c5-d20f-5c8e-b168-ca37f6840013",
+      "kind": "folder",
+      "name": "corpus",
+      "owner": {
+        "id": "char-57399438-f54b-5b36-8d84-3fd4dcbf34cc",
+        "kind": "character",
+        "slug": "jason"
+      },
+      "parent_id": "node-43fbd3f9-35f7-540c-b1c7-68b35c15b25d",
+      "updated_at": "2026-08-27T02:19:24.255406+00:00"
     },
-    "parent_id": "node-43fbd3f9-35f7-540c-b1c7-68b35c15b25d",
-    "updated_at": "2026-08-27T02:19:24.255381+00:00"
-  },
-  {
-    "created_at": "2026-08-27T02:19:24.255428+00:00",
-    "id": "node-4ec78d55-c7f6-5506-a300-c5f19d9c3f19",
-    "kind": "folder",
-    "lib": "lib-160af8b7-bf45-5fd0-b4d1-8bd7e52fac07",
-    "name": "seed",
-    "owner": {
-      "id": "char-57399438-f54b-5b36-8d84-3fd4dcbf34cc",
-      "kind": "character",
-      "slug": "jason"
+    {
+      "created_at": "2026-08-27T02:19:24.255381+00:00",
+      "id": "node-50419549-a358-5e80-81cf-bb5546503ae6",
+      "kind": "folder",
+      "name": "reference",
+      "owner": {
+        "id": "char-57399438-f54b-5b36-8d84-3fd4dcbf34cc",
+        "kind": "character",
+        "slug": "jason"
+      },
+      "parent_id": "node-43fbd3f9-35f7-540c-b1c7-68b35c15b25d",
+      "updated_at": "2026-08-27T02:19:24.255381+00:00"
     },
-    "parent_id": "node-43fbd3f9-35f7-540c-b1c7-68b35c15b25d",
-    "updated_at": "2026-08-27T02:19:24.255428+00:00"
-  }
-]
+    {
+      "created_at": "2026-08-27T02:19:24.255428+00:00",
+      "id": "node-4ec78d55-c7f6-5506-a300-c5f19d9c3f19",
+      "kind": "folder",
+      "name": "seed",
+      "owner": {
+        "id": "char-57399438-f54b-5b36-8d84-3fd4dcbf34cc",
+        "kind": "character",
+        "slug": "jason"
+      },
+      "parent_id": "node-43fbd3f9-35f7-540c-b1c7-68b35c15b25d",
+      "updated_at": "2026-08-27T02:19:24.255428+00:00"
+    }
+  ],
+  "next_cursor": null,
+  "prefix": "",
+  "sort": "name",
+  "total": 4,
+  "truncated": false
+}

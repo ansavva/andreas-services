@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { FileEntry, RunRecord, TreeResponse } from "../types";
+import type { FileEntry, RunRecord, FolderListing } from "../types";
 import { TestProviders } from "../test-providers";
 
 /**
@@ -19,7 +19,7 @@ import { TestProviders } from "../test-providers";
  * position within it and the address rewriting are none of it.
  */
 vi.mock("../apis/studio", () => ({
-  getTree: vi.fn(),
+  getFolder: vi.fn(),
   getRun: vi.fn(),
   getScene: vi.fn(),
   getReferences: vi.fn(),
@@ -31,10 +31,10 @@ vi.mock("../apis/studio", () => ({
   renameNode: vi.fn(),
 }));
 
-import { getAsset, getNode, getRun, getTree } from "../apis/studio";
+import { getAsset, getNode, getRun, getFolder } from "../apis/studio";
 import { ObjectPage } from "./ObjectPage";
 
-const tree = vi.mocked(getTree);
+const tree = vi.mocked(getFolder);
 const run = vi.mocked(getRun);
 const node = vi.mocked(getNode);
 const asset = vi.mocked(getAsset);
@@ -56,14 +56,13 @@ function file(id: string, name: string, over: Partial<FileEntry> = {}): FileEntr
   };
 }
 
-function listing(files: FileEntry[]): TreeResponse {
+function listing(files: FileEntry[]): FolderListing {
   return {
     prefix: "",
     sort: "newest",
     breadcrumbs: [],
     folders: [],
     files,
-    counts: { folders: 0, files: files.length, media: files.length },
   };
 }
 

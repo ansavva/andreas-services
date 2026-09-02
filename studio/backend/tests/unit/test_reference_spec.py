@@ -200,7 +200,7 @@ def _seed_node(api, character, name="seed-1.jpg"):
                     json={"parent": character["root"], "name": "seedpool",
                           "kind": "folder"}).get_json()
     seed = made if "id" in made else next(
-        n for n in api.get(f"/api/nodes?parent={character['root']}").get_json()
+        n for n in api.get(f"/api/nodes?under={character['root']}").get_json()["entries"]
         if n["name"] == "seedpool")
     node = api.post("/api/nodes",
                     json={"parent": seed["id"], "name": name,

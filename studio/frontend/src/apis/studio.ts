@@ -21,7 +21,13 @@ import type {
   ProjectSummary,
   ReferenceEntry,
   ReferenceIndex,
-  ReelResponse,
+  EntryKind,
+  Depth,
+  NodeListing,
+  FolderListing,
+  MediaListing,
+  FileEntry,
+  FolderEntry,
   RunPage,
   RunPlan,
   RunRecord,
@@ -32,7 +38,6 @@ import type {
   SceneSummary,
   SortOrder,
   TextResponse,
-  TreeResponse,
   UploadGrant,
   NodeView,
   ReferenceSpec,
@@ -54,6 +59,14 @@ import { apiGet, apiSend } from "./client";
  */
 export type FolderRef = { node?: string };
 
+/** What every listing filter can narrow on. Both readers below accept them. */
+export interface ListFilter {
+  /** An entry must carry ALL of these. */
+  tag?: string[];
+  /** `folder`, `image`, `video`, `text`, `other`. Omit for everything. */
+  kind?: EntryKind[];
+}
+
 /**
  * The libraries the signed-in caller is in.
  *
@@ -66,25 +79,83 @@ export function getLibraries() {
   return apiGet<Library[]>("/api/libraries");
 }
 
-/** Immediate contents of one folder. */
-export function getTree(where: FolderRef, sort: SortOrder) {
-  return apiGet<TreeResponse>("/api/tree", { ...where, sort });
+/**
+ * The one listing route: everything under a node, at a depth, filtered.
+ *
+ * **`GET /api/tree` and `GET /api/reel` were folded into it.** They were two of
+ * three answers this API gave to "what is under this node" — the third being the
+ * one the CLI used — and they differed in depth, in which kinds they admitted
+ * and in whether they paged. Those are arguments, so there is one route and the
+ * two readers below are conveniences over it rather than two endpoints.
+ */
+export function listNodes(
+  where: FolderRef,
+  opts: ListFilter & {
+    depth?: Depth;
+    sort?: SortOrder;
+    cursor?: string;
+    limit?: number;
+  } = {},
+) {
+  return apiGet<NodeListing>("/api/nodes", {
+    under: where.node,
+    depth: opts.depth,
+    sort: opts.sort,
+    cursor: opts.cursor,
+    kind: opts.kind?.length ? opts.kind.join(",") : undefined,
+    tag: opts.tag?.length ? opts.tag.join(",") : undefined,
+    // `apiGet` builds a query string, so the number goes over as one.
+    limit: opts.limit === undefined ? undefined : String(opts.limit),
+  });
+}
+
+/**
+ * Immediate contents of one folder, split into folders and files.
+ *
+ * **The split is the client's job now**, which is what makes one array on the
+ * wire the right shape: a caller wanting them apart does this, and a caller
+ * wanting them in one order — every recursive listing — cannot put them back
+ * together once the server has separated them.
+ */
+export async function getFolder(
+  where: FolderRef,
+  sort: SortOrder,
+  filter: ListFilter = {},
+): Promise<FolderListing> {
+  const listing = await listNodes(where, { ...filter, sort, depth: "1" });
+  return {
+    prefix: listing.prefix,
+    sort: listing.sort,
+    breadcrumbs: listing.breadcrumbs,
+    folders: listing.entries.filter((e): e is FolderEntry => e.kind === "folder"),
+    files: listing.entries.filter((e): e is FileEntry => e.kind !== "folder"),
+  };
 }
 
 /** One page of images and videos beneath a folder, recursively. */
-export function getReel(
+export async function getMedia(
   where: FolderRef,
   sort: SortOrder,
   cursor?: string,
   pageSize?: number,
-) {
-  return apiGet<ReelResponse>("/api/reel", {
-    ...where,
+  filter: ListFilter = {},
+): Promise<MediaListing> {
+  const listing = await listNodes(where, {
+    ...filter,
     sort,
     cursor,
-    // `apiGet` builds a query string, so the number goes over as one.
-    page_size: pageSize === undefined ? undefined : String(pageSize),
+    depth: "all",
+    kind: filter.kind ?? ["image", "video"],
+    limit: pageSize,
   });
+  return {
+    prefix: listing.prefix,
+    sort: listing.sort,
+    items: listing.entries as FileEntry[],
+    total: listing.total,
+    truncated: listing.truncated,
+    next_cursor: listing.next_cursor,
+  };
 }
 
 /** One node's record, by id. The SPA reads it for `parent_id`. */

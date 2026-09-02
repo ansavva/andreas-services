@@ -547,8 +547,8 @@ def test_an_output_lists_in_its_folder_once_the_upload_is_confirmed(empty_api, m
     output_folder = _child(run["folder"], layout.OUTPUT_FOLDER)["node_id"]
 
     def listed():
-        body = empty_api.get(f"/api/tree?node={output_folder}").get_json()
-        return [entry["name"] for entry in body["files"]]
+        body = empty_api.get(f"/api/nodes?under={output_folder}").get_json()
+        return [entry["name"] for entry in body["entries"]]
 
     # The bytes land — the presigned PUT goes straight to S3, so the test writes
     # them the same way, without the API in between.

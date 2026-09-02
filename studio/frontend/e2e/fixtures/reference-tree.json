@@ -17,11 +17,18 @@
     }
   ],
   "counts": {
-    "files": 2,
-    "folders": 1,
-    "media": 2
+    "folder": 1,
+    "image": 2
   },
-  "files": [
+  "depth": "1",
+  "entries": [
+    {
+      "id": "node-a05a85c2-24d0-4576-a14f-bf76d0b232d7",
+      "kind": "folder",
+      "last_modified": "2026-08-27T14:32:24.151176+00:00",
+      "name": "face",
+      "prefix": "jason/reference/face/"
+    },
     {
       "content_type": "image/jpeg",
       "id": "node-a0d7ddb3-1f07-57c2-9911-cf576a1832cd",
@@ -43,14 +50,9 @@
       "url": "/e2e-asset.png"
     }
   ],
-  "folders": [
-    {
-      "id": "node-a05a85c2-24d0-4576-a14f-bf76d0b232d7",
-      "last_modified": "2026-08-27T14:32:24.151176+00:00",
-      "name": "face",
-      "prefix": "jason/reference/face/"
-    }
-  ],
+  "next_cursor": null,
   "prefix": "jason/reference/",
-  "sort": "name"
+  "sort": "name",
+  "total": 3,
+  "truncated": false
 }

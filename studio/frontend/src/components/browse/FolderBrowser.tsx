@@ -16,7 +16,7 @@ import {
   renameNode,
 } from "../../apis/studio";
 import { ApertureSpinner } from "../common/Aperture";
-import { useTree } from "../../hooks/useTree";
+import { useFolder } from "../../hooks/useFolder";
 import { useSelection } from "../../hooks/useSelection";
 import { useUploads } from "../../hooks/useUploads";
 import type { FileEntry, SortOrder } from "../../types";
@@ -145,7 +145,7 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
    * viewer is its own screen now, so this only ever shows a folder and the
    * resolution — and the request it cost on every cold link — is gone with it.
    */
-  const { data, loading, error, reload } = useTree(folder, sort);
+  const { data, loading, error, reload } = useFolder(folder, sort);
   const folderId = folder;
 
   /**

@@ -66,7 +66,7 @@ export type Target = { kind: "folder"; id: FolderId } | { kind: "object"; id: st
  * fixing: its id is not knowable before the first request — `/api/libraries`
  * returns the library, not its root node — so an app that insisted on
  * `/f/<id>` would have to resolve before it could draw anything, and
- * `GET /api/tree` with no address is already that folder.
+ * `GET /api/nodes` with no `under` is already that folder.
  */
 export function folderPath(id: FolderId): string {
   return id === null ? "/f" : `/f/${id}`;

@@ -34,9 +34,26 @@ from studio_core.services import catalog, keys
 
 logger = logging.getLogger(__name__)
 
+#: The kinds the sparse `reel` attribute is written onto, and therefore the only
+#: kinds `by-recent` can answer for. Named for the attribute rather than for the
+#: endpoint that used to be built on it.
 REEL_KINDS = frozenset({"image", "video"})
-DEFAULT_REEL_PAGE_SIZE = 200
-MAX_REEL_PAGE_SIZE = 1000
+
+#: Every listing pages now, where only the recursive one did. A folder is one
+#: page, so this costs a one-element `next_cursor: null` and buys one shape.
+DEFAULT_PAGE_SIZE = 200
+MAX_PAGE_SIZE = 1000
+
+#: `PROPFIND`'s `Depth`, minus the `0` that names the collection itself — there
+#: is already a route for one node, and it is `GET /api/nodes/<id>`.
+DEPTH_ONE = "1"
+DEPTH_ALL = "all"
+DEPTHS = frozenset({DEPTH_ONE, DEPTH_ALL})
+
+#: What `?kind=` accepts: `folder` off the row, the rest classified from the
+#: extension by `keys.kind`. Not `catalog.KINDS`, which is the storage
+#: vocabulary — folder or file — and says nothing about what a file holds.
+ENTRY_KINDS = frozenset({catalog.KIND_FOLDER, "image", "video", "text", "other"})
 
 # The four orders every listing endpoint accepts. `newest` is the default
 # because this is a library of generated output: what you came to look at is
@@ -57,6 +74,38 @@ def clean_sort(raw: str | None) -> str:
     if raw not in SORTS:
         raise ValidationError(f"sort must be one of {', '.join(sorted(SORTS))}")
     return raw
+
+
+def clean_depth(raw: str | None) -> str:
+    if raw in (None, ""):
+        return DEPTH_ONE
+    if raw not in DEPTHS:
+        raise ValidationError(f"depth must be one of {', '.join(sorted(DEPTHS))}")
+    return raw
+
+
+def _csv(raw: str | None) -> list[str]:
+    """A comma-separated query parameter as a list, blanks dropped.
+
+    Spelled out rather than `raw.split(",")` because the bare form makes
+    `?tag=a,b` ask for one tag literally named `a,b`, which is a filter that
+    silently matches nothing — the exact bug `routes/characters` carried on its
+    own tag filter until somebody counted the images a shoot actually sent.
+    """
+    return [part.strip().lower() for part in (raw or "").split(",") if part.strip()]
+
+
+def _clean_kinds(raw: str | None) -> frozenset:
+    asked = _csv(raw)
+    unknown = [kind for kind in asked if kind not in ENTRY_KINDS]
+    if unknown:
+        raise ValidationError(
+            f"unknown kind {unknown[0]!r} — one of {', '.join(sorted(ENTRY_KINDS))}")
+    return frozenset(asked)
+
+
+def _clean_tags(raw: str | None) -> frozenset:
+    return frozenset(_csv(raw))
 
 
 # ───────────────────────── locating a folder ─────────────────────────
@@ -236,6 +285,17 @@ def _file_entry(record: dict, prefix: str) -> dict:
         "last_modified": _timestamp(record),
         "kind": keys.kind(name),
     }
+    # **The MD5 of the bytes.** Served because `studio curate dedupe` was
+    # DOWNLOADING every same-size candidate to compute exactly this — hashing a
+    # forty-image pool to find no duplicates was forty downloads. It is a
+    # comparison of two served values instead, and it has to survive the move
+    # off `support.view`, which is where a listing used to get it.
+    if record.get("parent_id"):
+        entry["parent_id"] = record["parent_id"]
+    if record.get("checksum"):
+        entry["checksum"] = record["checksum"]
+    if record.get("entity"):
+        entry["entity"] = record["entity"]
     # Off the row, and only when there is one: the viewer shows a caption where
     # it used to show a filename and a byte count, and a listing that omitted
     # them would make the viewer fetch each node again to find out.
@@ -269,9 +329,17 @@ def _folder_entry(record: dict, prefix: str) -> dict:
     """
     return {
         "id": record["node_id"],
+        # `kind` where a folder entry used to be told apart by carrying `prefix`
+        # instead of `key`. One array of entries needs one discriminator, and an
+        # absent field is a worse one than a present value.
+        "kind": catalog.KIND_FOLDER,
         "prefix": f"{prefix}{record['name']}/",
         "name": record["name"],
         "last_modified": _timestamp(record),
+        **({"parent_id": record["parent_id"]} if record.get("parent_id") else {}),
+        # The reverse pointer that makes a listing draw a character card rather
+        # than a folder icon. Written once in the entity's create transaction.
+        **({"entity": record["entity"]} if record.get("entity") else {}),
     }
 
 
@@ -327,127 +395,182 @@ def _records_for(entries: list[dict]) -> list[dict]:
 # ───────────────────────────── the endpoints ─────────────────────────────
 
 
-def list_folder(lib: str, node_id: str | None = None, raw_sort: str | None = None) -> dict:
-    """Immediate contents of one folder, ready to render.
-
-    **One query and one batched read** (#309), where this used to be a delimited
-    `ListObjectsV2`. Folders and files come back in the same pass distinguished
-    by `kind` — they are the same item type now — and the query returns
-    name-ascending, which is two of the four sorts for free.
-
-    A zero-byte folder marker cannot exist in a catalog, so nothing filters for
-    one. That filter, and the "the prefix itself comes back as an object" filter
-    beside it, were both artefacts of asking S3 what a folder was.
-    """
-    sort = clean_sort(raw_sort)
-    folder = _node_at(lib, node_id)
-    records = _records_for(catalog.children(folder["node_id"]))
-
-    # **The prefix is composed from the crumbs, never echoed from a request.**
-    # It is a rendering for a person, and there is no longer an address it could
-    # be echoed from.
-    breadcrumbs = _breadcrumbs(folder)
-    prefix = breadcrumbs[-1]["prefix"]
-
-    folders = [record for record in records if record["kind"] == catalog.KIND_FOLDER]
-    files = [
-        record
-        for record in records
-        if record["kind"] != catalog.KIND_FOLDER and not is_abandoned_upload(record)
-    ]
-    _sort_records(folders, sort)
-    _sort_records(files, sort)
-
-    entries = [_file_entry(record, prefix) for record in files]
-    return {
-        "prefix": prefix,
-        "sort": sort,
-        "breadcrumbs": breadcrumbs,
-        "folders": [_folder_entry(record, prefix) for record in folders],
-        "files": entries,
-        "counts": {
-            "folders": len(folders),
-            "files": len(entries),
-            "media": sum(1 for entry in entries if entry["kind"] in REEL_KINDS),
-        },
-    }
-
-
-def reel_items(
+def entries(
     lib: str,
-    node_id: str | None = None,
-    cursor: str | None = None,
-    page_size: int | None = None,
+    *,
+    under: str | None = None,
+    depth: str | None = None,
+    kinds: str | None = None,
+    tags: str | None = None,
     raw_sort: str | None = None,
+    cursor: str | None = None,
+    page_size: str | None = None,
 ) -> dict:
-    """Every image and video beneath a folder, recursively, one page at a time.
+    """Everything under one node: one level or the whole branch, filtered.
 
-    **Two enumerations, one for each shape of request** (#310). A reel from the
-    library root is a `by-recent` query — hashed on the sparse `reel` attribute,
-    ranged on `created_at`, so the newest rows arrive first and a cut drops the
-    oldest. A reel from anywhere else is a `by-path` `begins_with`, one query for
-    a whole branch. Both are bounded by `config.max_folder_objects`, which
-    replaces `STUDIO_MAX_WALK_OBJECTS` and the twenty-thousand-object S3 walk it
-    bounded.
+    **One read where there were three**, and the three were split by caller
+    rather than by meaning. `GET /api/nodes?parent=` answered the pipeline with
+    bare records; `GET /api/tree` answered the SPA with folders and files in
+    separate arrays; `GET /api/reel` answered the SPA again with the same branch
+    flattened, media-only and paged. Every one of them was "what is under this
+    node", and the differences between them are arguments: how deep, which
+    kinds, how many at a time.
 
-    **The two are no longer filtered the same, and that is the sparse index
-    earning its keep.** `by-recent` now returns only rows that carry `reel`,
-    which is written onto image and video files and onto nothing else — so the
-    cap is spent on things the reel can show, where it used to be spent on every
-    folder in the library and then filtered in memory. `by-path` has no such
-    property: its key is the tree, so the filter below still runs over it.
+    So they are arguments. `depth=1` is the folder listing, `depth=all` the
+    branch, `kind=image,video` the reel, and `tag=` the thing none of them could
+    do — which is what a character's identity images are now that a `REF#` row
+    is not what says so.
 
-    **This is still fetch-then-sort, and it should be said plainly.** Sorting by
-    date means the whole branch has to be known before a page can be cut from it,
-    and `name` sorts are not an order either index offers, so the rows are read,
-    filtered, sorted in memory and sliced. The cursor is an offset into that,
-    not a `LastEvaluatedKey`. What improved is what is enumerated — rows rather
-    than objects, with a real microsecond `created_at` rather than a
-    one-second `LastModified` — not the complexity.
+    `depth` rather than a second endpoint is `PROPFIND`'s `Depth: 0 | 1 |
+    infinity`, and it is worth borrowing rather than reinventing: a filesystem
+    has never needed a second call for "readdir, but recursive and only images".
 
-    Presigning still happens *after* the slice, so a request signs one page's
-    worth of URLs rather than the branch's. Keep it that way.
+    **The kind filter is applied here and not in the query**, with one exception
+    below, because DynamoDB cannot filter on a value it does not key. What that
+    costs is the enumeration, which is what `max_folder_objects` bounds and what
+    `truncated` reports.
     """
+    depth = clean_depth(depth)
     sort = clean_sort(raw_sort)
-    limit = _reel_page_size(page_size)
-    offset = _reel_offset(cursor)
+    wanted_kinds = _clean_kinds(kinds)
+    wanted_tags = _clean_tags(tags)
+    limit = _page_size(page_size)
+    offset = _offset(cursor)
 
-    folder = _node_at(lib, node_id)
+    folder = _node_at(lib, under)
     breadcrumbs = _breadcrumbs(folder)
     prefix = breadcrumbs[-1]["prefix"]
-
-    cap = config.max_folder_objects()
     base_path = catalog.child_path(folder)
-    if folder.get("parent_id"):
-        rows, truncated = catalog.branch(lib, base_path, cap)
-    else:
-        rows, truncated = catalog.recent(lib, cap)
 
-    media = [
-        record
-        for record in rows
-        if record["kind"] == catalog.KIND_FILE
-        and not is_abandoned_upload(record)
-        and keys.kind(record["name"]) in REEL_KINDS
+    rows, truncated = _enumerate(lib, folder, depth, wanted_kinds)
+    kept = [record for record in rows if _admits(record, wanted_kinds, wanted_tags)]
+    _sort_records(kept, sort)
+
+    window = kept[offset : offset + limit]
+    # At one level every row sits directly in this folder, so the name path is
+    # already in hand. Resolving it per row is only a branch's problem.
+    prefixes = (
+        {record["node_id"]: prefix for record in window}
+        if depth == DEPTH_ONE
+        else _folder_prefixes(window, prefix, base_path, rows)
+    )
+
+    # Presigning happens AFTER the slice, so a request signs one page's worth of
+    # URLs rather than the branch's. Keep it that way.
+    listed = [
+        (_folder_entry if record["kind"] == catalog.KIND_FOLDER else _file_entry)(
+            record, prefixes[record["node_id"]]
+        )
+        for record in window
     ]
-    _sort_records(media, sort)
+    _attach_owners(listed, window, folder, depth)
 
-    window = media[offset : offset + limit]
-    prefixes = _folder_prefixes(window, prefix, base_path, rows)
-    items = [_file_entry(record, prefixes[record["node_id"]]) for record in window]
+    counts: dict[str, int] = {}
+    for record in kept:
+        counts[_kind_of(record)] = counts.get(_kind_of(record), 0) + 1
 
     next_offset = offset + len(window)
     return {
         "prefix": prefix,
         "sort": sort,
-        "items": items,
-        "total": len(media),
-        # True when the *enumeration* was cut short, not the page — the caller
-        # is showing a library that has more in it than this endpoint will admit
-        # to, and should say so rather than imply the tail does not exist.
+        "depth": depth,
+        "breadcrumbs": breadcrumbs,
+        "entries": listed,
+        # Keyed by the same vocabulary `?kind=` filters on, and counted over
+        # everything the filters admitted rather than over the page — a header
+        # reading "3 folders" while the page holds two of them is a count
+        # nobody can act on. Free: `kept` is already in hand.
+        "counts": counts,
+        "total": len(kept),
+        # True when the ENUMERATION was cut short, not the page — the caller is
+        # showing a library with more in it than this will admit to, and should
+        # say so rather than imply the tail does not exist.
         "truncated": truncated,
-        "next_cursor": str(next_offset) if next_offset < len(media) else None,
+        "next_cursor": str(next_offset) if next_offset < len(kept) else None,
     }
+
+
+def _enumerate(lib: str, folder: dict, depth: str, kinds: frozenset) -> tuple[list[dict], bool]:
+    """The rows a request has to consider, and whether the read was cut short.
+
+    Three shapes, and the middle one is the sparse index earning its keep.
+
+    A **one-level** listing is the by-parent query plus a batched read for the
+    records — `children` returns the index projection alone, which carries no
+    `size`, no `content_type` and no `tags`, so it cannot answer a filter or a
+    listing on its own.
+
+    A **branch from the library root, asking only for media**, is `by-recent`:
+    hashed on the sparse `reel` attribute, which is written onto images and
+    videos and onto nothing else, so the cap is spent on rows the caller can use
+    instead of on every folder in the library. **Only when the kinds asked for
+    are a subset of the media kinds** — the index does not contain a folder or a
+    text file, so a wider request answered from it would report them absent
+    rather than unasked-for.
+
+    Any **other branch** is one `begins_with` on `by-path`.
+    """
+    if depth == DEPTH_ONE:
+        return _records_for(catalog.children(folder["node_id"])), False
+
+    cap = config.max_folder_objects()
+    if not folder.get("parent_id") and kinds and kinds <= REEL_KINDS:
+        return catalog.recent(lib, cap)
+    return catalog.branch(lib, catalog.child_path(folder), cap)
+
+
+def _attach_owners(listed: list[dict], window: list[dict], folder: dict, depth: str) -> None:
+    """The entity each entry belongs to — **at one level only, and on purpose.**
+
+    It is what lets the home screen draw a character card instead of a folder
+    icon, so it cannot simply be dropped. It is also the most expensive thing a
+    listing could ask for: `owner_of` walks a row's ancestors, so resolving it
+    per row is a batched read per thumbnail.
+
+    One level escapes that, because every child of a folder is in the same entity
+    the folder is — resolve it once from the parent and hand the same answer to
+    every child. The exception is a child that is an entity **root** itself; it
+    carries `entity` and answers for itself, and it is the row the home screen
+    actually cares about.
+
+    A branch has no such property: two rows a hundred nodes apart share nothing.
+    So `depth=all` carries no `owner` rather than an expensive one or a wrong
+    one, and a caller that needs the entity for a deep row asks
+    `GET /api/nodes/<id>/owner` for the one row it is drawing.
+    """
+    if depth != DEPTH_ONE:
+        return
+    inherited = catalog.owner_of(folder)
+    for entry, record in zip(listed, window):
+        owner = (
+            catalog.entity_summary(record["entity"]) if record.get("entity") else inherited
+        )
+        if owner is not None:
+            entry["owner"] = owner
+
+
+def _kind_of(record: dict) -> str:
+    """What a row is, in the one vocabulary a caller filters on.
+
+    `folder` off the row, everything else classified from the extension — the
+    same split `_file_entry` reports, so what a caller filters by is what it
+    reads back.
+    """
+    if record["kind"] == catalog.KIND_FOLDER:
+        return catalog.KIND_FOLDER
+    return keys.kind(record["name"])
+
+
+def _admits(record: dict, kinds: frozenset, tags: frozenset) -> bool:
+    """Whether one row survives the filters. Abandoned uploads never do."""
+    if is_abandoned_upload(record):
+        return False
+    if kinds and _kind_of(record) not in kinds:
+        return False
+    # ALL of them, which is what a tag filter has always promised where one
+    # existed: `?tag=default,face` is the face images sent by default, not
+    # everything carrying either word.
+    return not tags or tags <= set(record.get("tags") or [])
 
 
 def _folder_prefixes(
@@ -486,7 +609,7 @@ def _folder_prefixes(
     return prefixes
 
 
-def _reel_offset(cursor: str | None) -> int:
+def _offset(cursor: str | None) -> int:
     if cursor in (None, ""):
         return 0
     try:
@@ -498,16 +621,16 @@ def _reel_offset(cursor: str | None) -> int:
     return value
 
 
-def _reel_page_size(raw: int | str | None) -> int:
+def _page_size(raw: int | str | None) -> int:
     if raw in (None, ""):
-        return DEFAULT_REEL_PAGE_SIZE
+        return DEFAULT_PAGE_SIZE
     try:
         value = int(raw)
     except (TypeError, ValueError):
         raise ValidationError("page_size must be an integer") from None
     if value < 1:
         raise ValidationError("page_size must be positive")
-    return min(value, MAX_REEL_PAGE_SIZE)
+    return min(value, MAX_PAGE_SIZE)
 
 
 # ───────────────────────── the two file-at-a-time reads ─────────────────────

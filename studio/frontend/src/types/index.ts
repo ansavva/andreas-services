@@ -156,9 +156,14 @@ export interface FileEntry {
 
 export interface FolderEntry {
   id: string;
+  kind: "folder";
   prefix: string;
   name: string;
   last_modified: string | null;
+  parent_id?: string;
+  /** The entity whose root this is, when it is one. Draws a card, not an icon. */
+  entity?: string;
+  owner?: NodeOwner | null;
 }
 
 export interface Crumb {
@@ -168,23 +173,56 @@ export interface Crumb {
   prefix: string;
 }
 
-export interface TreeResponse {
+/**
+ * One folder's contents, split — what `getFolder` makes of a listing.
+ *
+ * Not a wire shape. `GET /api/nodes` answers with one array; splitting it is the
+ * client's job, and this is the result of doing it.
+ */
+export interface FolderListing {
   prefix: string;
   sort: SortOrder;
   breadcrumbs: Crumb[];
   folders: FolderEntry[];
   files: FileEntry[];
-  counts: { folders: number; files: number; media: number };
 }
 
-export interface ReelResponse {
+/** One page of media beneath a folder — what `getMedia` makes of a listing. */
+export interface MediaListing {
   prefix: string;
   sort: SortOrder;
   items: FileEntry[];
   total: number;
-  /** True when the recursive walk hit its cap — there is more than this shows. */
   truncated: boolean;
-  /** An offset into the sorted result, not an S3 continuation token. */
+  next_cursor: string | null;
+}
+
+/** `PROPFIND`'s `Depth`, minus the `0` — one node is `GET /api/nodes/<id>`. */
+export type Depth = "1" | "all";
+
+/** What `?kind=` filters on, and what an entry reports. */
+export type EntryKind = "folder" | MediaKind;
+
+/**
+ * `GET /api/nodes` — the one listing route.
+ *
+ * **One array, discriminated by `kind`**, where `/api/tree` handed back folders
+ * and files in separate fields. A caller wanting them apart splits in a line
+ * (`getFolder` does); a caller wanting them in one order — anything recursive —
+ * could not have put them back together.
+ */
+export interface NodeListing {
+  prefix: string;
+  sort: SortOrder;
+  depth: Depth;
+  breadcrumbs: Crumb[];
+  entries: (FileEntry | FolderEntry)[];
+  /** Keyed by kind, over everything the filters admitted — not over the page. */
+  counts: Partial<Record<EntryKind, number>>;
+  total: number;
+  /** True when the enumeration hit its cap — there is more than this shows. */
+  truncated: boolean;
+  /** An offset into the sorted result, not a DynamoDB continuation token. */
   next_cursor: string | null;
 }
 

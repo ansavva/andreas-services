@@ -29,16 +29,16 @@ const getModel = vi.fn();
 const getModelSchema = vi.fn();
 const getCharacterSelection = vi.fn();
 const getProject = vi.fn();
-const getTree = vi.fn();
+const getFolder = vi.fn();
 
 vi.mock("../../apis/studio", () => ({
   patchRunPlan: (...args: unknown[]) => patchRunPlan(...args),
   previewPlanPrompt: (...args: unknown[]) => previewPrompt(...args),
   patchRunSends: (...args: unknown[]) => patchRunSends(...args),
   // The picker's listing call. Named here because the mock replaces the whole
-  // module, and an unmocked `getTree` would be `undefined` the moment the dialog
+  // module, and an unmocked `getFolder` would be `undefined` the moment the dialog
   // opens rather than at import.
-  getTree: (...args: unknown[]) => getTree(...args),
+  getFolder: (...args: unknown[]) => getFolder(...args),
   getAsset: vi.fn(() =>
     Promise.resolve({ url: "https://example.test/re-signed" }),
   ),
@@ -72,8 +72,8 @@ beforeEach(() => {
   getModelSchema.mockReset();
   getCharacterSelection.mockReset();
   getProject.mockReset();
-  getTree.mockReset();
-  getTree.mockResolvedValue({
+  getFolder.mockReset();
+  getFolder.mockResolvedValue({
     folders: [],
     files: [],
     breadcrumbs: [],
@@ -386,7 +386,7 @@ describe("which model input a new image binds to", () => {
     // The frame-first workflow: an empty video run gaining an image is a still
     // being handed over to be animated, and `image_input` there submits nowhere.
     getModel.mockResolvedValue(entry({ kind: "video" }));
-    getTree.mockResolvedValue({
+    getFolder.mockResolvedValue({
       folders: [],
       files: [
         {

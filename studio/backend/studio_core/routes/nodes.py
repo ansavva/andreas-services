@@ -62,64 +62,58 @@ bp = Blueprint("nodes", __name__, url_prefix="/api")
 
 @bp.get("/nodes")
 def list_nodes():
-    """The children of one folder, name-ascending, each with its owner.
+    """Everything under one node, ready to draw. The only listing this API has.
 
-    **One query, a batched read, and one owner resolution for the whole
-    listing.** `catalog.children` reads the by-parent items, whose projection is
-    `node_id, lib, kind, path, created_at` — no `size`, no `content_type` — so
-    the records come from `catalog.records`, which is `ceil(n / 100)` more round
-    trips. Widening the projection instead would make this one query and put a
-    mutable copy of every file's metadata on a second item, which every rename
-    and every text edit would then have to keep in step (#309).
+    **This absorbed `GET /api/tree` and `GET /api/reel`.** All three were "what
+    is under this node" and differed in depth, in which kinds they admitted and
+    in whether they paged — so those are arguments:
 
-    **`owner` is resolved once, from the parent**, and that is what keeps it
-    affordable. Every child of one folder sits in the same entity as the folder
-    does — the only exception is a child that is an entity root *itself*, and
-    such a child carries `entity` and answers for itself. Deriving it per row
-    would be a batched read of the same ancestry per thumbnail.
+        ?under=<id>     the folder. Omitted is the library root.
+        ?depth=1|all    one level, or the whole branch. Default 1.
+        ?kind=          folder,image,video,text,other — comma separated
+        ?tag=           an entry must carry ALL of them
+        ?sort=          newest|oldest|name|name_desc
+        ?cursor=&limit= a page
 
-    A bare array, like `/api/libraries`, and folders and files interleaved rather
-    than split: `kind` already distinguishes them.
+    `?parent=` is `?under=` now. It was required, which the root could not
+    satisfy — the pipeline resolved the root by another route first and the SPA
+    used `/api/tree` instead, which is one of the reasons there were three of
+    these.
+
+    **What it hands back changed shape once.** Entries are one array rather than
+    `folders` and `files` split apart, discriminated by `kind`, which is what
+    this route already did before it grew breadcrumbs and URLs. A caller that
+    wants them apart splits on `kind` in a line; a caller that wants them in one
+    order — every recursive listing — cannot put them back together.
+
+    `owner` is no longer resolved for a listing. It was affordable at one level
+    because every child of a folder shares the parent's owner, and that trick
+    does not survive a branch; `GET /api/nodes/<id>/owner` answers for one node,
+    and a listing that needs the entity already knows which one it asked under.
     """
-    parent_id = request.args.get("parent")
-    if not parent_id:
-        raise ValidationError("parent is required")
-
     held = support.memberships()
-    # Read before the listing rather than after, because the parent is what names
-    # the library: an empty folder's children carry no `lib` to check, so a
-    # listing authorised from its own results would authorise nothing at all for
-    # exactly the folders that have nothing in them.
-    parent = support.node_at(parent_id, held)
-    owner = catalog.owner_of(parent)
+    under = request.args.get("under")
+    if under:
+        # Read before the listing rather than after, because the node is what
+        # names the library: an empty folder's children carry no `lib` to check,
+        # so a listing authorised from its own results would authorise nothing at
+        # all for exactly the folders that have nothing in them.
+        support.node_at(under, held)
+    else:
+        support.member_of(g.library, held)
 
-    entries = catalog.children(parent_id)
-    full = catalog.records([entry["node_id"] for entry in entries])
-
-    views = []
-    for entry in entries:
-        record = full.get(entry["node_id"])
-        if record is None:
-            # A folder listing a child whose record is not there. Reported from
-            # the projection rather than dropped, for the reason
-            # `routes/libraries.py` gives about a dangling membership: a node
-            # hidden here is a node that still exists and can still be opened by
-            # id. Logged because every write in `services.catalog` is a
-            # transaction over both halves, so one half alone means a row was
-            # written by hand.
-            logger.warning(
-                "Folder %s lists a child with no record: %s", parent_id, entry["node_id"]
-            )
-            record = entry
-        views.append(support.view(record, _child_owner(record, owner)))
-    return jsonify(views), 200
-
-
-def _child_owner(record: dict, parent_owner: dict | None) -> dict | None:
-    """A child's owner, which is its parent's unless the child is an entity root."""
-    if record.get("entity"):
-        return catalog.entity_summary(record["entity"])
-    return parent_owner
+    return jsonify(
+        browse.entries(
+            g.library,
+            under=under,
+            depth=request.args.get("depth"),
+            kinds=request.args.get("kind"),
+            tags=request.args.get("tag"),
+            raw_sort=request.args.get("sort"),
+            cursor=request.args.get("cursor"),
+            page_size=request.args.get("limit"),
+        )
+    ), 200
 
 
 @bp.get("/nodes/<node_id>")

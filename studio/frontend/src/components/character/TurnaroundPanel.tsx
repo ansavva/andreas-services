@@ -17,9 +17,9 @@ import {
   draftTurnaround,
   getProjects,
   getProject,
-  getReel,
+  getMedia,
   getReferenceSpec,
-  getTree,
+  getFolder,
 } from "../../apis/studio";
 import { ApertureSpinner } from "../common/Aperture";
 import { AnglePlate } from "../common/AnglePlate";
@@ -116,7 +116,7 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
   const projectMedia = useResource(
     projectRecord.data ? ["reel", projectRecord.data.root] : null,
     projectRecord.data
-      ? () => getReel({ node: projectRecord.data!.root }, "newest")
+      ? () => getMedia({ node: projectRecord.data!.root }, "newest")
       : null,
   );
   const spec = useResource(["reference-spec"], useCallback(() => getReferenceSpec(), []));
@@ -131,20 +131,20 @@ export function TurnaroundPanel({ record }: { record: CharacterRecord }) {
   // may not have one, and the panel says so instead of assuming.
   const rootTree = useResource(
     ["tree", record.root],
-    useCallback(() => getTree({ node: record.root }, "name"), [record.root]),
+    useCallback(() => getFolder({ node: record.root }, "name"), [record.root]),
   );
   const seedFolder = useMemo(
     () => (rootTree.data?.folders ?? []).find((f) => f.name === "seed"),
     [rootTree.data],
   );
 
-  // `getReel`, not `getTree`: a seed pool is a TREE the moment anyone files it
+  // `getMedia`, not `getFolder`: a seed pool is a TREE the moment anyone files it
   // — `original/`, `restored/`, a folder per age — and a listing one level deep
   // shows only what was never filed. That exact blindness kept thirteen
   // restored photographs out of a shoot's view on the CLI side.
   const pool = useResource(
     seedFolder ? ["reel", seedFolder.id] : null,
-    seedFolder ? () => getReel({ node: seedFolder.id }, "name") : null,
+    seedFolder ? () => getMedia({ node: seedFolder.id }, "name") : null,
   );
 
   /**

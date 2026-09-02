@@ -55,7 +55,7 @@ function stubOnly(): void {
 /** The feed `?in=recursive` walks, in the order `stubApi` serves it. */
 const FEED = [
   CLIP_ITEM,
-  ...fixture<{ items: Array<{ id: string; name: string }> }>("reel").items,
+  ...fixture<{ entries: Array<{ id: string; name: string }> }>("reel").entries,
 ];
 
 const at = (id: string) => `/o/${id}?in=recursive`;

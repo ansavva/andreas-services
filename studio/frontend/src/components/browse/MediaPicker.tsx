@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Alert, Breadcrumbs, Button, Dialog, Text } from "@ansavva/design-system";
 
 import { ApertureSpinner } from "../common/Aperture";
-import { getTree } from "../../apis/studio";
+import { getFolder } from "../../apis/studio";
 import type { Crumb, FileEntry, FolderEntry } from "../../types";
 import type { FolderId } from "../../utils/location";
 import { ArrowUpIcon, FolderIcon } from "../common/icons";
@@ -70,7 +70,7 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
 
     // By name, like the destination picker: "newest first" answers a question
     // nobody asks while looking for a particular picture.
-    getTree(folderId === null ? {} : { node: folderId }, "name")
+    getFolder(folderId === null ? {} : { node: folderId }, "name")
       .then((result) => {
         if (cancelled) return;
         setFolders(result.folders);

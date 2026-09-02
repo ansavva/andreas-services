@@ -11,7 +11,7 @@ import {
   getCharacter,
   getCharacters,
   getReferences,
-  getTree,
+  getFolder,
 } from "../../apis/studio";
 import { MediaThumb } from "../media/MediaThumb";
 import { useResource } from "../../hooks/useResource";
@@ -85,7 +85,7 @@ export class AttachFailed extends Error {
 
 /** One folder's immediate child folders, by name. */
 async function childFolder(parent: string, name: string): Promise<string | null> {
-  const tree = await getTree({ node: parent }, "name");
+  const tree = await getFolder({ node: parent }, "name");
   return tree.folders.find((folder) => folder.name === name)?.id ?? null;
 }
 

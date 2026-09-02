@@ -17,7 +17,7 @@ They come from `http://localhost:8000` against the published dev-seed
 character — the same 54-object fixture every developer's stack loads. A
 hand-written stub drifts from the API silently and then asserts its own
 imagination. `capture.py` is the only way they are produced, and it **scrubs
-presigned URLs**: `/api/reel` answers with them, and a presigned URL carries the
+presigned URLs**: `GET /api/nodes` answers with them, and a presigned URL carries the
 signing key's access key id and a signature. The first capture put both straight
 into git, and the browser then fetched real S3 for fourteen images — caught by
 the spec that asserts nothing escapes to the network.

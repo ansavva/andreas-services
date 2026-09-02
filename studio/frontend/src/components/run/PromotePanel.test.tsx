@@ -12,7 +12,7 @@ vi.mock("../../apis/studio", () => ({
   getCharacters: vi.fn(),
   getCharacter: vi.fn(),
   getReferences: vi.fn(),
-  getTree: vi.fn(),
+  getFolder: vi.fn(),
   createNode: vi.fn(),
   copyNodes: vi.fn(),
   addReference: vi.fn(),
@@ -26,7 +26,7 @@ import {
   getCharacter,
   getCharacters,
   getReferences,
-  getTree,
+  getFolder,
 } from "../../apis/studio";
 import { PromotePanel, promoteToReference, splitTags } from "./PromotePanel";
 import { TestProviders } from "../../test-providers";
@@ -34,7 +34,7 @@ import type {
   CopiedNodes,
   NodeRecord,
   RunAsset,
-  TreeResponse,
+  FolderListing,
 } from "../../types";
 
 /**
@@ -56,7 +56,7 @@ beforeEach(() => vi.clearAllMocks());
 const list = vi.mocked(getCharacters);
 const read = vi.mocked(getCharacter);
 const references = vi.mocked(getReferences);
-const tree = vi.mocked(getTree);
+const tree = vi.mocked(getFolder);
 const create = vi.mocked(createNode);
 const copy = vi.mocked(copyNodes);
 const attach = vi.mocked(addReference);
@@ -71,20 +71,20 @@ const asset: RunAsset = {
   url: "https://example.invalid/frame.webp",
 };
 
-/** A `getTree` answer holding the folders named. */
-function folders(named: Record<string, string>): TreeResponse {
+/** A `getFolder` answer holding the folders named. */
+function folders(named: Record<string, string>): FolderListing {
   return {
     prefix: "",
     sort: "name",
     breadcrumbs: [],
     folders: Object.entries(named).map(([name, id]) => ({
       id,
+      kind: "folder" as const,
       prefix: name,
       name,
       last_modified: null,
     })),
     files: [],
-    counts: { folders: 0, files: 0, media: 0 },
   };
 }
 

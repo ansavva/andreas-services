@@ -6,7 +6,7 @@ import { Alert, Badge, Button, Select, Text, Toggle, ToggleGroup } from "@ansavv
 import {
   addReference,
   getReferences,
-  getTree,
+  getFolder,
   patchReference,
   setDefaultSet,
   type DefaultSetAck,
@@ -588,10 +588,10 @@ function Unattached({
   onAttach: (node: string, group: string) => void;
 }) {
   const load = useCallback(async () => {
-    const root = await getTree({ node: rootId }, "name");
+    const root = await getFolder({ node: rootId }, "name");
     const folder = root.folders.find((each) => each.name === REFERENCE_FOLDER);
     if (!folder) return [] as FileEntry[];
-    const listing = await getTree({ node: folder.id }, "name");
+    const listing = await getFolder({ node: folder.id }, "name");
     return listing.files.filter((file) => file.kind === "image");
   }, [rootId]);
 
