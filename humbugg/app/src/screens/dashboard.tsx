@@ -181,7 +181,7 @@ function ProfileSetup({ onSaved }: { onSaved(profile: Profile): void }) {
       <Text style={[styles.bodyMuted, { marginTop: 12 }]}>This is the name other participants will see.</Text>
       <View style={{ marginTop: 28, gap: gap.lg }}>
         <FieldLabel label="Display name">
-          <Input aria-label="Display name" maxLength={100} value={name} onValueChange={setName} placeholder="Alex" />
+          <Input maxLength={100} value={name} onValueChange={setName} placeholder="Alex" />
         </FieldLabel>
         <View>
           <Text style={styles.fieldLabelText}>
@@ -291,11 +291,10 @@ function CreateGroup({ onCreated }: { onCreated(id: string): void }) {
       <Text style={[styles.heading, { marginTop: 4 }]}>Start a group</Text>
       <View style={{ marginTop: 24, gap: gap.md }}>
         <FieldLabel label="Group name">
-          <Input aria-label="Group name" maxLength={120} value={name} onValueChange={setName} placeholder="The Holly Jolly Crew" />
+          <Input maxLength={120} value={name} onValueChange={setName} placeholder="The Holly Jolly Crew" />
         </FieldLabel>
         <FieldLabel label="A note for the group">
           <Textarea
-            aria-label="A note for the group"
             maxLength={1000}
             value={description}
             onValueChange={setDescription}
@@ -311,7 +310,6 @@ function CreateGroup({ onCreated }: { onCreated(id: string): void }) {
                 answer to this exact field — a masked text entry with a picker.
               */}
               <DateInput
-                aria-label="Event date"
                 value={eventDate}
                 min={signupDeadline && signupDeadline > minimumDate ? signupDeadline : minimumDate}
                 onValueChange={(next) => { setEventDate(next); setError(null); }}
@@ -321,7 +319,6 @@ function CreateGroup({ onCreated }: { onCreated(id: string): void }) {
           <View style={{ flex: 1 }}>
             <FieldLabel label="Join by">
               <DateInput
-                aria-label="Join by"
                 value={signupDeadline}
                 min={minimumDate}
                 max={eventDate || undefined}
@@ -331,9 +328,8 @@ function CreateGroup({ onCreated }: { onCreated(id: string): void }) {
           </View>
         </View>
         <Text style={styles.tiny}>The join-by date must be on or before the event date.</Text>
-        <FieldLabel label="Spending limit (USD)">
+        <FieldLabel label="Spending limit in US dollars">
           <Input
-            aria-label="Spending limit in US dollars"
             type="number"
             value={spendingLimit}
             onValueChange={setSpendingLimit}

@@ -25,10 +25,10 @@ Live at `https://www.humbugg.com` (product app at `app.humbugg.com`, API at `api
 | Milestone | Closed | Open | State |
 |---|---|---|---|
 | Foundation | 13 | 0 | Complete |
-| Free | 12 | 1 | The active milestone — only #138 remains |
+| Free | 13 | 0 | **Complete.** #138 closed 2026-09-02 |
 | Plus | 9 | 0 | **Closed, and not finished.** Read the next section before believing it |
 | Work | 0 | 10 | Deliberately untouched |
-| Launch | 3 | 10 | Gated on Free |
+| Launch | 3 | 10 | Free no longer gates it; the Plus screens below do |
 
 ### How it got out of order, and why that matters
 
@@ -76,10 +76,28 @@ covers because every Plus issue described a backend that was genuinely delivered
 This blocks Launch more than anything else on this list: #160 (the payment and email matrix) and
 #162 (the beta) both assume a purchaser can use what they bought.
 
-### 2. #138 — mobile and assistive-technology verification
+### 2. #138 — mobile and assistive-technology verification — **done**
 
-A review pass over everything above, and it closes Free. Worth doing last on purpose, and worth
-doing by somebody who did not write the six features merged on 2026-09-02.
+It closed Free. Three things came out of it that outlive the issue:
+
+**The `FieldLabel` trap is now a CI check, because reasoning did not stop it.** An `aria-label` on a
+control inside a `FieldLabel` is silently overridden by the design system's `aria-labelledby`, so it
+reads as the working pattern and gets copied. Eighteen had accumulated, and the trap cost three
+separate mistakes in one afternoon before anything counted them. `npm run a11y:check` counts them
+now; removing all eighteen changed no test, which is what "silently" means.
+
+**Two colours failed WCAG AA and nothing would have noticed.** `accent` as 14px link text was
+3.77:1 and the design system's `Avatar.Fallback` paints `muted` on `surfaceAlt` at 4.13:1. Both are
+fixed by ~5–10% darkenings — imperceptible as brand, decisive as ratio — in `brand-colors.json`,
+the marketing site's `styles.css` and the regenerated Cognito document. `contrast.test.ts` pins
+every pair the app actually paints, so the next brand edit is what runs the check.
+
+**`/settings` had no browser coverage at all**, which is how it was the one screen nobody had
+looked at narrow. It is in the mobile sweep now.
+
+The manual remainder — a real screen reader, gestures, the largest text size, a two-account
+walkthrough — is [`free-verification-checklist.md`](free-verification-checklist.md). It stayed short
+because everything a machine could take was taken off it first.
 
 ---
 

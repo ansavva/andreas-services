@@ -31,6 +31,7 @@ can — the deployed Lambda's own IAM role, CloudFront behaviors, real SES feedb
 cd humbugg/backend  && dotnet test Humbugg.slnx        # unit + integration-as-skips
 cd humbugg/app      && npm test                        # jest
 cd humbugg/app      && npm run e2e                     # Playwright, stubbed — no AWS
+cd humbugg/app      && npm run a11y:check              # accessible names, read off the source
 cd humbugg/marketing && npm test                       # vitest
 
 # ── integration tier (local only) ─────────────────────────────────────────────
@@ -44,6 +45,21 @@ cd humbugg/app && npm run e2e:live
 humbugg/scripts/dev-up-backend.sh
 cd humbugg/app && npm run e2e:capture
 ```
+
+## The part that is not a test
+
+Accessibility is checked three ways, because it splits three ways:
+
+| Property | Where | Why there |
+|---|---|---|
+| An accessible name on every control | `app/tool/accessibility-audit.ts` | decidable from the source, and invisible at runtime — an `aria-label` inside a `FieldLabel` is silently overridden by the design system's `aria-labelledby`, so it looks correct and does nothing |
+| Colour contrast | `app/src/theme/contrast.test.ts` | decidable from `brand-colors.json`, so editing a brand colour is what runs it |
+| Width, keyboard reach, private data on screen | `app/e2e/verification.spec.ts` | needs a rendered page |
+
+What is left after those three needs a person and a real device — a screen reader, gesture
+navigation, the largest text size, a two-account walkthrough of the whole exchange. That is
+[`free-verification-checklist.md`](free-verification-checklist.md), and it is short on purpose:
+everything a machine could take has been taken off it.
 
 ## Where does my test go?
 

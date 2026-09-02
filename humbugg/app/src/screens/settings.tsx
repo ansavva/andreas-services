@@ -160,7 +160,6 @@ function ProfileSection({
       <View style={{ marginTop: 28, gap: gap.md }}>
         <FieldLabel label="Display name">
           <Input
-            aria-label="Display name"
             maxLength={100}
             value={name}
             onValueChange={(next) => { setName(next); setNameStatus(null); }}
@@ -257,7 +256,7 @@ function AccountSection({ email }: { email: string | null }) {
           label="Email"
           help="Your email is managed by sign-in and can't be changed here."
         >
-          <Input aria-label="Email" value={email ?? ''} disabled />
+          <Input value={email ?? ''} disabled />
         </FieldLabel>
       </View>
     </Card>
