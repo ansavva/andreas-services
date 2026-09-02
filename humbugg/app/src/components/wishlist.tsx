@@ -349,7 +349,6 @@ function WishForm({
       <View style={{ marginTop: gap.md, gap: gap.md }}>
         <FieldLabel label="What is it?">
           <Input
-            aria-label="What is it?"
             maxLength={200}
             value={values.title}
             onValueChange={(value) => set('title', value)}
@@ -358,7 +357,6 @@ function WishForm({
         </FieldLabel>
         <FieldLabel label="Kind">
           <Select
-            aria-label="Kind"
             options={wishKinds}
             value={values.kind}
             onValueChange={(value) => set('kind', value as WishFormValues['kind'])}
@@ -366,7 +364,6 @@ function WishForm({
         </FieldLabel>
         <FieldLabel label="How much would you love it?">
           <Select
-            aria-label="How much would you love it?"
             options={wishPriorities}
             value={values.priority}
             onValueChange={(value) => set('priority', value as WishFormValues['priority'])}
@@ -374,7 +371,6 @@ function WishForm({
         </FieldLabel>
         <FieldLabel label="Link" hint="(optional)">
           <Input
-            aria-label="Link"
             maxLength={2048}
             value={values.url}
             onValueChange={(value) => set('url', value)}
@@ -401,7 +397,6 @@ function WishForm({
         ) : null}
         <FieldLabel label="Image link" hint="(optional)">
           <Input
-            aria-label="Image link"
             maxLength={2048}
             value={values.imageUrl}
             onValueChange={(value) => set('imageUrl', value)}
@@ -410,7 +405,6 @@ function WishForm({
         </FieldLabel>
         <FieldLabel label="Rough price" hint="(optional)">
           <Input
-            aria-label="Rough price"
             value={values.price}
             onValueChange={(value) => set('price', value)}
             placeholder="25.00"
@@ -418,7 +412,6 @@ function WishForm({
         </FieldLabel>
         <FieldLabel label="How many?">
           <Input
-            aria-label="How many?"
             value={values.quantity}
             onValueChange={(value) => set('quantity', value)}
             placeholder="1"
@@ -426,7 +419,6 @@ function WishForm({
         </FieldLabel>
         <FieldLabel label="Notes" hint="(optional)">
           <Textarea
-            aria-label="Notes"
             maxLength={1000}
             value={values.details}
             onValueChange={(value) => set('details', value)}

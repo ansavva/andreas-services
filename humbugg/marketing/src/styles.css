@@ -5,15 +5,15 @@
 
 @theme {
   --color-ink: #18332b;
-  --color-muted: #68746d;
+  --color-muted: #626e67;
   --color-line: #ddd6c5;
   --color-bg: #fbf8ef;
   --color-card: #fffdf8;
   --color-surface-alt: #f1ecdf;
   --color-frame: #173f35;
   --color-frame-text: #fffdf8;
-  --color-accent: #a67628;
-  --color-accent-hover: #8c611e;
+  --color-accent: #966a24;
+  --color-accent-hover: #835c1f;
   --color-primary: #1d5545;
   --color-primary-hover: #17483a;
   --color-primary-active: #113b30;

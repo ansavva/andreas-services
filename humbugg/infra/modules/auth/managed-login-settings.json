@@ -92,12 +92,12 @@
       "lightMode": {
         "bodyColor": "18332bff",
         "headingColor": "18332bff",
-        "descriptionColor": "68746dff"
+        "descriptionColor": "626e67ff"
       },
       "darkMode": {
         "bodyColor": "18332bff",
         "headingColor": "18332bff",
-        "descriptionColor": "68746dff"
+        "descriptionColor": "626e67ff"
       }
     },
     "phoneNumberSelector": {
@@ -118,8 +118,8 @@
           "textColor": "fffdf8ff"
         },
         "disabled": {
-          "backgroundColor": "68746dff",
-          "borderColor": "68746dff"
+          "backgroundColor": "626e67ff",
+          "borderColor": "626e67ff"
         }
       },
       "darkMode": {
@@ -136,8 +136,8 @@
           "textColor": "fffdf8ff"
         },
         "disabled": {
-          "backgroundColor": "68746dff",
-          "borderColor": "68746dff"
+          "backgroundColor": "626e67ff",
+          "borderColor": "626e67ff"
         }
       }
     },
@@ -261,7 +261,7 @@
           "backgroundColor": "fffdf8ff",
           "borderColor": "ddd6c5ff"
         },
-        "placeholderColor": "68746dff"
+        "placeholderColor": "626e67ff"
       },
       "borderRadius": 8,
       "darkMode": {
@@ -269,15 +269,15 @@
           "backgroundColor": "fffdf8ff",
           "borderColor": "ddd6c5ff"
         },
-        "placeholderColor": "68746dff"
+        "placeholderColor": "626e67ff"
       }
     },
     "inputDescription": {
       "lightMode": {
-        "textColor": "68746dff"
+        "textColor": "626e67ff"
       },
       "darkMode": {
-        "textColor": "68746dff"
+        "textColor": "626e67ff"
       }
     },
     "buttons": {

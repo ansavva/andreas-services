@@ -217,6 +217,13 @@ jobs:
       - name: Cognito branding in sync with brand colours
         run: cd humbugg/app && npm run brand:check
 
+      # Two accessibility mistakes that are invisible at runtime and obvious in a
+      # grep: an `aria-label` inside a `FieldLabel` (which the design system's
+      # `aria-labelledby` silently overrides) and a bare control with no name at
+      # all. Eighteen of the first had accumulated before anything looked.
+      - name: Accessibility rules
+        run: cd humbugg/app && npm run a11y:check
+
       # A real export, not just a typecheck: Metro resolution failures against
       # the design system's platform leaves only surface when the bundle is
       # actually built, and they would otherwise reach production.

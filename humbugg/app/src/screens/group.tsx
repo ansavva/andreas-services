@@ -488,7 +488,6 @@ function WishListForm({
       <View style={{ marginTop: 24, gap: gap.md }}>
         <FieldLabel label="Likes, sizes and hobbies">
           <Textarea
-            aria-label="Likes, sizes and hobbies"
             maxLength={2000}
             value={wishlist}
             onValueChange={setWishlist}
@@ -497,7 +496,6 @@ function WishListForm({
         </FieldLabel>
         <FieldLabel label="Allergies and things to avoid">
           <Textarea
-            aria-label="Allergies and things to avoid"
             maxLength={2000}
             value={avoidances}
             onValueChange={setAvoidances}
