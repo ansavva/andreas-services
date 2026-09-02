@@ -93,9 +93,13 @@ describe("which sequence the address names", () => {
     // "2 of 3" is the whole assertion: the folder is the source, and the open
     // node's position in it is what the page opened on rather than the top.
     await waitFor(() => expect(screen.getByText(/2 of 3/)).toBeTruthy());
-    // The third argument is the tag filter, empty here — a folder walk asks for
-    // the folder, not for a search.
-    expect(tree).toHaveBeenCalledWith({ node: FOLDER }, "newest", { tag: [] });
+    // The third argument is the filter, empty on both axes here — a folder walk
+    // asks for the folder, not for a search. Either one populated would send
+    // `depth=all` and answer with the subtree instead.
+    expect(tree).toHaveBeenCalledWith({ node: FOLDER }, "newest", {
+      tag: [],
+      kind: [],
+    });
   });
 
   it("walks a RUN's frames, and never asks for a folder", async () => {

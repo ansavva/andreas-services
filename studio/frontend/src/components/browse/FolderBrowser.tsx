@@ -6,6 +6,8 @@ import {
   Button,
   Input,
   Text,
+  Toggle,
+  ToggleGroup,
 } from "@ansavva/design-system";
 
 import {
@@ -17,9 +19,10 @@ import {
 } from "../../apis/studio";
 import { ApertureSpinner } from "../common/Aperture";
 import { useFolder } from "../../hooks/useFolder";
+import { useSearchParamState } from "../../hooks/useSearchParamState";
 import { useSelection } from "../../hooks/useSelection";
 import { useUploads } from "../../hooks/useUploads";
-import type { FileEntry, SortOrder } from "../../types";
+import type { EntryKind, FileEntry, SortOrder } from "../../types";
 import type { FolderId } from "../../utils/location";
 import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { CopyKeyButton } from "../common/CopyKeyButton";
@@ -123,6 +126,24 @@ interface Props {
  */
 const BULK_GATE = 5;
 
+const VIEW_FOLDERS = "folders";
+const VIEW_MEDIA = "media";
+
+/**
+ * What the Media view asks the listing for.
+ *
+ * `image,video` — which, because `getFolder` sends any `kind` filter with
+ * `depth=all`, is also what turns this from a readdir into a search of the whole
+ * subtree. That is the point of it: "every picture of this character" is not a
+ * question about the folder you happen to be standing in, and answering it by
+ * walking `reference/`, `corpus/`, `seed/` and `archive/` in turn is the thing
+ * the view exists to stop.
+ *
+ * Folders and text drop out of the result, so the two sections that draw them
+ * render nothing on their own — there is no `view` branch anywhere below.
+ */
+const MEDIA_VIEW: EntryKind[] = ["image", "video"];
+
 type PickerTarget = {
   verb: "move" | "copy";
   ids: string[];
@@ -157,6 +178,14 @@ export function FolderBrowser({ nav, boundary = null, boundaryLabel }: Props) {
    * order is the honest one — the server narrows, then the typed name hides.
    */
   const [tags, setTags] = useState<string[]>([]);
+  /**
+   * Folders, or every picture and clip beneath here — see `MEDIA_VIEW`.
+   *
+   * In the URL rather than in component state, so it is linkable and so it
+   * survives leaving a Files tab and coming back. It rides beside `?folder=`,
+   * which means the two compose: a chip narrows *where*, this narrows *what*.
+   */
+  const [view, setView] = useSearchParamState("view", VIEW_FOLDERS);
   const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
 
   /**
@@ -167,7 +196,12 @@ export function FolderBrowser({ nav, boundary = null, boundaryLabel }: Props) {
    * viewer is its own screen now, so this only ever shows a folder and the
    * resolution — and the request it cost on every cold link — is gone with it.
    */
-  const { data, loading, error, reload } = useFolder(folder, sort, tags);
+  const { data, loading, error, reload } = useFolder(
+    folder,
+    sort,
+    tags,
+    view === VIEW_MEDIA ? MEDIA_VIEW : [],
+  );
   const folderId = folder;
 
   /**
@@ -510,6 +544,29 @@ export function FolderBrowser({ nav, boundary = null, boundaryLabel }: Props) {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-t border-line py-2">
+        {/*
+          **Two views of one folder, and the pair is the whole control.**
+
+          Folders is the readdir this has always been. Media is every image and
+          clip *beneath* here, flat and newest-first — the same shape the tag
+          filter already produces, which is why it needed no second component to
+          draw it.
+
+          Single-select, and empty is refused: `ToggleGroup` lets the pressed
+          member be unpressed, and a browser showing neither view is not a
+          state — it is the listing gone blank with no way to say why.
+        */}
+        <ToggleGroup.Root
+          aria-label="View"
+          value={[view === VIEW_MEDIA ? VIEW_MEDIA : VIEW_FOLDERS]}
+          onValueChange={(next) => {
+            if (next.length > 0) setView(next[0]!);
+          }}
+        >
+          <Toggle value={VIEW_FOLDERS}>Folders</Toggle>
+          <Toggle value={VIEW_MEDIA}>Media</Toggle>
+        </ToggleGroup.Root>
+
         <SortControl value={sort} onChange={nav.setSort} />
         <FilterControl
           value={filter}

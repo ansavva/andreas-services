@@ -156,6 +156,47 @@ test("the Files tab names its boundary crumb after the character", async ({
   await expect(crumbs).not.toContainText(CHARACTER);
 });
 
+/**
+ * **Media is the second question a folder gets asked**, and it was only
+ * answerable by walking. A character's pictures are spread across `reference/`,
+ * `corpus/`, `seed/` and `archive/` by convention — none of it enforced — so
+ * "show me everything of this character" meant opening four folders in turn and
+ * holding the result in your head.
+ *
+ * The view sends `kind=image,video`, which `getFolder` sends with `depth=all`,
+ * so it is the tag filter's own trick in the other vocabulary: narrowing turns
+ * a readdir into a search of the subtree. Folders and text drop out of the
+ * result rather than being hidden by a branch in the render.
+ *
+ * `?view=` rather than component state, so the answer is a link.
+ */
+test("Media shows the whole subtree's pictures, and Folders comes back", async ({
+  page,
+}) => {
+  stubOnly("the captured tree is what makes the two listings differ");
+  await page.goto(`/c/${CHARACTER}?tab=files`);
+
+  const folders = page.getByRole("heading", { name: "Folders" });
+  const media = page.getByRole("heading", { name: /Photos & video/ });
+  await expect(folders).toBeVisible();
+
+  await page.getByRole("button", { name: "Media", exact: true }).click();
+  await expect(media).toBeVisible();
+  // The folders are not hidden — they are not in the answer.
+  await expect(folders).toHaveCount(0);
+  await expect(page).toHaveURL(/view=media/);
+  await expect(
+    page.getByText("Searching this folder and everything under it."),
+  ).toBeVisible();
+
+  // Both ways, because a one-way switch is a trap: the folder chips above still
+  // scope where you are standing, and getting back to them must not need a
+  // reload.
+  await page.getByRole("button", { name: "Folders", exact: true }).click();
+  await expect(folders).toBeVisible();
+  await expect(media).toHaveCount(0);
+});
+
 test("the captured listing still says 49 jpeg and 5 png", async ({ page }) => {
   // **The reason the seed images were normalised at all.** Five of the 54
   // arrived as PNG bytes behind a `.jpg` name, and content type is derived from
