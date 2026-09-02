@@ -25,7 +25,7 @@ from studio_pipeline.domain import curate as _curate
 from studio_pipeline.domain import frames as _frames
 from studio_pipeline.domain import movies as _movies
 from studio_pipeline.domain import phrasebook as _phrasebook
-from studio_pipeline.domain import spec as _spec
+from studio_pipeline.domain import templates as _templates
 from studio_pipeline.domain import projects as _projects
 from studio_pipeline.domain import prompt as _prompt
 from studio_pipeline.domain import runs as _runs
@@ -33,7 +33,6 @@ from studio_pipeline.domain import scenes as _scenes
 from studio_pipeline.engine import add_model as _add_model
 from studio_pipeline.engine import board as _board
 from studio_pipeline.engine import runner as _runner
-from studio_pipeline.engine import turnaround as _turnaround
 from studio_pipeline.objects import config_sync as _config_sync
 from studio_pipeline.objects import convert as _convert
 from studio_pipeline.objects import crop as _crop
@@ -60,7 +59,7 @@ class _Grouped(click.Group):
         ("generate",    ["run", "models", "add-model"]),
         ("records",     ["runs", "scenes", "movies", "frames", "projects"]),
         ("characters",  ["character", "curate", "contact-sheet"]),
-        ("authoring",   ["prompt", "phrasebook", "spec"]),
+        ("authoring",   ["prompt", "phrasebook", "templates"]),
         ("objects",     ["upload", "download", "describe", "presign", "convert", "crop",
                          "config"]),
     ]
@@ -149,11 +148,6 @@ main.add_command(_session.cmd_whoami, "whoami")
 main.add_command(_runner.main.commands["run"], "run")
 main.add_command(_runner.main.commands["models"], "models")
 
-# `turnaround` reads as a character command and is defined in `engine/` because it
-# invokes models. Attaching it here rather than in `characters.py` keeps the
-# dependency arrow pointing one way: the character store knows nothing about the
-# engine, and only this wiring module knows about both.
-_character.main.add_command(_turnaround.cmd_turnaround, "turnaround")
 
 # Same arrangement for the three scene commands that invoke models: the scene
 # store stays a store, and `board`/`render`/`check` read as scene commands
@@ -182,7 +176,7 @@ for _name, _cmd in [
     ("convert", _convert.convert),
     ("crop", _crop.crop),
     ("config", _config_sync.main),
-    ("spec", _spec.main),
+    ("templates", _templates.main),
 ]:
     main.add_command(_cmd, _name)
 

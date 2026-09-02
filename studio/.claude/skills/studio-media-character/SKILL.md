@@ -360,8 +360,8 @@ better than prose can, and a long identity paragraph fights it — see
    `create` refuses a bible missing any of them.
 2. `studio character create <name> --from-profile <your-bible.yaml>`.
 3. `studio character add-to <source photos…> <name> seed` — the founding images.
-4. **`studio character turnaround <name> --project <project>`** — the standard face and
-   body set, described and indexed in one pass. See below.
+4. **Run the standard set** — a run per template, from the fourteen the library
+   holds. `studio templates show` lists them. See below.
 5. Upload anything the standard set does not cover into the character, then
    **describe and tag it**: `studio describe <node> --tag default --tag wardrobe`.
 
@@ -389,21 +389,21 @@ Both of these have been broken in practice, in the same session:
 - its result was then written straight into a character's face group, which
   nobody had agreed to.
 
-The tools now enforce what they can. `shoot` has no approval flag and asks
-interactively, and it **never files its own output** — results stay in their run
-until someone promotes them with `add-refs --from-run`. What the tools cannot
+The tools now enforce what they can. Nothing that spends has an approval flag,
+and nothing **files its own output** — results stay in their run until somebody
+copies one into a character and tags it. What the tools cannot
 enforce is an agent deciding a previous message counted as approval. It does not.
 When in doubt, render the payload into the conversation and stop.
 
-## The standard set (`shoot`)
+## The standard set, which is now fourteen TEMPLATES
 
-A reference library is chosen from **by tag**, so an angle nobody shot is an angle
-nobody can pick. `shoot` renders the fourteen every character should have —
-eight `face` and six `body`. Face is a full turn: front, three-quarter and
-profile to each side, both three-quarter-backs, and back. Body is the same turn
-**without the two front three-quarters**, whose angle image is refused as
-sensitive content by every model that has tried it. Face angles are cropped at
-mid-chest; body angles are the whole figure, head to feet.
+A character is chosen from **by tag**, so a picture nobody made is a picture
+nobody can pick. The standard set is the fourteen every character should have —
+eight face and six body. Face is a full turn: front, three-quarter and profile to
+each side, both three-quarter-backs, and back. Body is the same turn **without
+the two front three-quarters**, whose angle image is refused as sensitive content
+by every model that has tried it. Face templates crop at mid-chest; body ones are
+the whole figure, head to feet.
 
 **Direction is always the edge of frame the face points toward**, never the
 subject's own left or right. `three_quarter_left` means the nose points at the
@@ -411,69 +411,41 @@ left edge. This is not pedantry: the wording it replaced said "turned to THEIR
 LEFT so the viewer sees the LEFT side of the face", which instructs two opposite
 rotations at once, and both three-quarters duly came back facing the same way.
 
-Each is one recorded run built from three things: a **angle image** (a generic,
-anonymous, untextured figure that says only how to stand), the character's **seed
-photographs** (who it is), and a prompt filled from the character's own bible —
-its usual top, and every cue in `consistency.must`.
+**The one-command turnaround is gone, and it is worth knowing what went with
+it.** It rendered all fourteen at once, each one chained off an ANCHOR —
+the first render — with every later prompt told in prose to take its wardrobe and
+background from it. That chaining was the only thing holding those two constant
+across a set, and it is gone: a template is picked for **one** run now, and
+holding a set consistent is done by looking at the results and re-running the
+ones that drifted.
+
+Each render is one recorded run built from three things: a **angle image** (a
+generic, anonymous, untextured figure that says only how to stand), the
+character's **identity images** (who it is), and a template filled from the
+character's own bible — its usual top, and every cue in `consistency.must`.
 
 ```bash
-studio character turnaround <name> --project <project> --dry-run   # assemble, record nothing
-studio character turnaround <name> --project <project>             # one DRAFT per angle
-studio character turnaround <name> --project <project> --group face
-studio character turnaround <name> --project <project> --angle body_back   # re-shoot one
-studio spec show                                                   # what the angles are
+studio templates show                    # what templates this stack holds
+studio templates pull --path t.yaml      # stack -> file
+studio templates push --path t.yaml      # file  -> stack (refuses a conflict)
 ```
 
-- **Nothing bills, and nothing is even approved.** Every angle becomes an
-  unapproved DRAFT with an address you can open; `--dry-run` stops one step
-  earlier and records nothing at all. Approving and sending are `runs approve`
-  and `runs submit`, which is where they already were.
-- **The prompts are DATA, not part of this package.** They live in the library
-  as rows, the app edits them, and `studio spec pull` / `studio spec push` move them
-  between stacks — so a wording fix is not a release. `studio spec show` lists what a
-  stack holds. A library with no spec has no angles and cannot shoot at all.
-- **Nothing enters the character.** Results stay in their runs; the shoot prints
-  the `add-refs --from-run` line for each. Look before promoting:
+- **Nothing bills, and nothing is even approved.** A run made from a template is
+  an unapproved DRAFT with an address you can open. Approving and sending are
+  `runs approve` and `runs submit`, which is where they already were.
+- **The prompts are DATA, not part of this package.** They live in the library as
+  rows, the app edits them, and `studio templates pull` / `push` move them
+  between stacks — so a wording fix is not a release.
+- **A template names its cast by POSITION.** `{character.1.top}` is the first
+  character the run binds — the same number `[Image1]` counts. A slug would be
+  wrong the moment somebody renamed the character.
+- **`build` and `must` name a variant**: `{character.1.build.face}`. The bible
+  answers both differently for a face than for a body, and citing the bare name
+  is refused rather than defaulted, because a face template silently filled with
+  body proportions is wrong in a way the finished prose does not show.
+- **Nothing enters the character.** Results stay in their runs; promoting one is
+  a copy into the character's tree and then a tag. Look before promoting:
   `studio runs outputs <project>/latest --presign`.
-- **`--project` is required**, as it is for any generating command.
-- **Identity comes from `seed/`** when it has any, because driving a shoot off
-  already-generated references feeds model output back in as identity and
-  compounds drift. `--identity refs` / `--pick` / `--pick-tag` override that.
-- **`seed/` is read as a TREE, subfolders and all**, so `--seed-pick` names a
-  filed photograph as `<folder>/<file>` — a bare name works too while only one
-  file answers to it, and is refused rather than guessed when two folders share
-  it. A tidied pool is usually far bigger than the four an angle sends, so
-  expect to be asked which; the refusal lists them by the same path you type
-  back.
-- **The medium comes from the character**, not from the spec — an angle renders in
-  whatever `rendering.default_style` says, and is told to match the medium of
-  the reference images it is given. A character drawn in ink is not turned into a
-  photograph.
-- **`--model` overrides the engine** for every angle; the spec's defaults are
-  chosen so any registered image model accepts them. A dry run preflights the
-  override, so a model that would refuse it costs nothing to find out.
-- **`--review-sheet DIR` shows the images each payload sends**, captioned
-  `[ImageN]` in the order the model receives them. A key is a name; a name is not
-  a look, and the mistakes that matter here are visual.
-- The angle images live in the repo under `studio/config/` and are copied to the
-  bucket by `studio/scripts/dev-setup.sh`. If a shoot says one is missing, re-run
-  that script.
-
-Promoting a keeper, once a person has seen it and said so:
-
-```bash
-studio runs outputs <project>/latest --presign          # look at it first
-studio download <project>/latest#1 --dest /tmp/promote   # take a copy…
-studio upload /tmp/promote/<file> <name>/reference/face  # …into the CHARACTER's tree
-studio describe <node> --tag default --tag face          # …and that is the promotion
-```
-
-`studio character create <name> --from-profile <bible> --turnaround --project <p>`
-creates and shoots in one command, through the same two gates.
-
-No new skill directory — ever. The character is now usable by the whole pipeline.
-Names are lowercase `[a-z0-9_-]`. There is no reserved-name list: characters live
-under `characters/`, so a project named `misc` simply is not one.
 
 ### When an angle image comes back wrong, read the bible before rewriting the prompt
 

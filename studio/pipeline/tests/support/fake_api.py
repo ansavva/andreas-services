@@ -239,15 +239,9 @@ class FakeApi:
         #: scene_id -> [shot]. The `SHOT#` rows.
         self.shots: dict[str, list[dict]] = {}
         self.terms: list[dict] = []
-        #: The reference spec, as the two row classes the catalog keeps it in.
+        #: The template library, as the two row classes the catalog keeps it in.
         self.spec_blocks: dict[str, str] = {}
-        self.spec_angles: dict[str, dict] = {}
-        #: Every turnaround body this fake was asked for, newest last, and
-        #: what to answer `failed` with. A test asserts on the REQUEST here
-        #: rather than on a prompt: assembling is the service's job, and the
-        #: seam worth checking is what the CLI decided to send.
-        self.turnarounds: list[dict] = []
-        self.turnaround_failures: list[dict] = []
+        self.templates: dict[str, dict] = {}
         #: render-<uuid> -> the job row. The `RENDER#` rows.
         self.renders: dict[str, dict] = {}
         #: Set it and `POST /api/renders` refuses. The seam that proves a dry
@@ -280,7 +274,7 @@ class FakeApi:
         self.callback = "poll"
 
         #: **"Nothing may submit", which is stronger than "nothing may bill".**
-        #: `test_board` and `test_turnaround` assert that a dry run does not
+        #: `test_board` asserts that a dry run does not
         #: reach the provider AT ALL — the fake would answer a submission
         #: perfectly happily, and a board that submitted on a dry run would pass
         #: every other check in those files.
@@ -635,10 +629,9 @@ class FakeApi:
             (r"/api/images/crop", self._r_image_crop),
             (r"/api/phrasebook", self._r_phrasebook),
             (r"/api/phrasebook/([^/]+)/([^/]+)", self._r_phrasebook_term),
-            (r"/api/characters/([^/]+)/turnaround", self._r_turnaround),
-            (r"/api/reference-spec", self._r_reference_spec),
-            (r"/api/reference-spec/blocks/([^/]+)", self._r_spec_block),
-            (r"/api/reference-spec/angles/([^/]+)", self._r_spec_angle),
+            (r"/api/templates", self._r_templates),
+            (r"/api/templates/blocks/([^/]+)", self._r_block),
+            (r"/api/templates/([^/]+)", self._r_template),
         ]
 
     # ── node routes ─────────────────────────────────────────────────────────
@@ -2187,66 +2180,22 @@ class FakeApi:
         self.terms.remove(term)
         return {"deleted": avoid}
 
-    # ── drafting a turnaround ───────────────────────────────────────────────
 
-    def _r_turnaround(self, method, body, params, character_id):
-        if method != "POST":
-            raise FakeError(405, method)
-        self.turnarounds.append(body)
-        angles = [a for a in self.spec_angles.values()
-                  if not body.get("group") or a.get("group") == body["group"]]
-        if body.get("angles"):
-            angles = [a for a in angles if a["id"] in body["angles"]]
-
-        made = []
-        for angle in angles:
-            # **The BACKEND's assembler, loaded rather than restated** — the same
-            # arrangement `digest` is on, and for the reason this file's own
-            # cautionary note gives: a fake that approximates the answer lets the
-            # CLI's tests pass against words the real service does not produce.
-            # `services/reference.py` imports `string` and `errors`, nothing else.
-            character = self._entity(self.characters, character_id, "character")
-            prompt = _backend_service("reference").assemble(
-                angle, self.spec_blocks, character.get("profile") or {},
-                identity_positions=list(range(1, len(body.get("identity") or []) + 1)))
-            plan = {"version": 1, "origin": "authored", "prompt": prompt,
-                    "params": {"aspect_ratio": "2:3", **(body.get("extra") or {})}}
-            entry = {"angle": angle["id"], "plan": plan,
-                     "model": body.get("model") or "openai/gpt-image-2",
-                     "sends": [{"field": "input_images", "role": "reference", "node": n}
-                               for n in body.get("identity") or []]}
-            if not body.get("preview"):
-                # Through the fake's own run creation rather than a second copy
-                # of it, exactly as the route goes through `create_draft`: the
-                # thing worth checking is that a turnaround makes ORDINARY
-                # drafts, and a bespoke shortcut here would hide it if it did not.
-                run = self._r_runs("POST", {
-                    "project": body.get("project"), "kind": "image",
-                    "engine": "studio-media-gpt-image-2",
-                    "model": entry["model"], "plan": plan,
-                    "sends": entry["sends"],
-                }, {})
-                entry.update(id=run["id"], status="draft")
-            made.append(entry)
-
-        key = "preview" if body.get("preview") else "drafted"
-        return {key: made, "failed": list(self.turnaround_failures)}
-
-    # ── the reference spec ──────────────────────────────────────────────────
+    # ── the template library ────────────────────────────────────────────────
     #
-    # `{"blocks": {...}, "angles": [...]}`, which is the shape the route returns.
+    # `{"blocks": {...}, "templates": [...]}`, the shape the route returns.
     # Answering a bare list here is the exact mistake the phrasebook handler
     # above records: the fake was more forgiving than the service, so the suite
     # passed while the CLI read nothing.
 
-    def _r_reference_spec(self, method, body, params):
+    def _r_templates(self, method, body, params):
         if method != "GET":
             raise FakeError(405, method)
-        angles = sorted(self.spec_angles.values(),
-                        key=lambda a: (a.get("order") or 0, a["id"]))
-        return {"blocks": dict(self.spec_blocks), "angles": angles}
+        found = sorted(self.templates.values(),
+                       key=lambda t: (t.get("name") or t["id"]).lower())
+        return {"blocks": dict(self.spec_blocks), "templates": found}
 
-    def _r_spec_block(self, method, body, params, name):
+    def _r_block(self, method, body, params, name):
         name = urllib.parse.unquote(name)
         if method == "PATCH":
             self.spec_blocks[name] = body["text"]
@@ -2256,15 +2205,15 @@ class FakeApi:
             return {"name": name, "deleted": True}
         raise FakeError(405, method)
 
-    def _r_spec_angle(self, method, body, params, angle_id):
-        angle_id = urllib.parse.unquote(angle_id)
+    def _r_template(self, method, body, params, template_id):
+        template_id = urllib.parse.unquote(template_id)
         if method == "PATCH":
             record = {k: v for k, v in body.items() if k != "id"}
-            self.spec_angles[angle_id] = {"id": angle_id, **record}
-            return self.spec_angles[angle_id]
+            self.templates[template_id] = {"id": template_id, **record}
+            return self.templates[template_id]
         if method == "DELETE":
-            self.spec_angles.pop(angle_id, None)
-            return {"id": angle_id, "deleted": True}
+            self.templates.pop(template_id, None)
+            return {"id": template_id, "deleted": True}
         raise FakeError(405, method)
 
     # ── seeding ─────────────────────────────────────────────────────────────

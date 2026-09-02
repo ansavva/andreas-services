@@ -1,9 +1,9 @@
-"""`studio spec` — read and move the reference spec, the prose a turnaround fills.
+"""`studio templates` — read and move the template library, the prose a run fills.
 
-    studio spec show                            # what this stack says
-    studio spec pull --path spec.yaml           # stack  -> file
-    studio spec push --path spec.yaml           # file   -> stack   (refuses a conflict)
-    studio spec push --path spec.yaml --force   # …and overwrite anyway
+    studio templates show                            # what this stack says
+    studio templates pull --path templates.yaml           # stack  -> file
+    studio templates push --path templates.yaml           # file   -> stack   (refuses a conflict)
+    studio templates push --path templates.yaml --force   # …and overwrite anyway
 
 **A FILE IN THE MIDDLE, RATHER THAN STACK TO STACK IN ONE PROCESS.** A profile
 selects an API url and a Cognito pool for the whole process, so a single command
@@ -23,7 +23,7 @@ both sides might be right: prod may carry a fix nobody put back into dev. A
 push that overwrote it would revert that fix silently, and a push that skipped
 it would report success while leaving the two stacks disagreeing. So it refuses,
 prints the difference, and writes nothing at all — not even the rows that were
-fine, because a half-applied spec is the state that is hardest to reason about.
+fine, because a half-applied library is the state that is hardest to reason about.
 
 `--force` overwrites. It is not a convenience: it is the claim that the file is
 right and the destination is stale, which is a thing only a person reading the
@@ -32,9 +32,9 @@ diff can know.
 ## What it never does
 
 **No delete.** A row the file does not mention is left alone, exactly as
-`config sync` leaves an angle image the repo no longer has. A file is a
+`config sync` leaves a template image the repo no longer has. A file is a
 statement about the rows it contains, not an assertion that nothing else exists
-— and the destination is a live library somebody may have added an angle to.
+— and the destination is a live library somebody may have added a template to.
 """
 
 from __future__ import annotations
@@ -48,66 +48,65 @@ import yaml
 from studio_pipeline.adapters import entities as E
 from studio_pipeline.errors import die
 
-#: The fields a pushed angle carries. Anything else in the file is dropped
+#: The fields a pushed template carries. Anything else in the file is dropped
 #: rather than sent — a pulled file round-trips whatever the API added, and
 #: refusing those would make edit-then-push fail on fields it produced itself.
-ANGLE_FIELDS = ("group", "prompt", "description", "tags", "order",
-                "illustration")
+TEMPLATE_FIELDS = ("name", "prompt", "description", "tags", "illustration")
 
 
-class SpecError(RuntimeError):
-    """The spec could not be read, written or compared."""
+class LibraryError(RuntimeError):
+    """The template library could not be read, written or compared."""
 
 
 def fetch() -> dict:
-    """The spec this profile's stack holds."""
-    got = E.reference_spec()
-    return {"blocks": got.get("blocks") or {}, "angles": got.get("angles") or []}
+    """The template library this profile's stack holds."""
+    got = E.templates()
+    return {"blocks": got.get("blocks") or {}, "templates": got.get("templates") or []}
 
 
 def read_file(path: str) -> dict:
-    """A spec document from disk, checked for shape before anything is sent."""
+    """A library document from disk, checked for shape before anything is sent."""
     try:
         with open(path, encoding="utf-8") as fh:
             doc = yaml.safe_load(fh)
     except FileNotFoundError:
-        raise SpecError(f"no such file: {path}")
+        raise LibraryError(f"no such file: {path}")
     except yaml.YAMLError as exc:
-        raise SpecError(f"{path} is not valid YAML:\n  {exc}")
+        raise LibraryError(f"{path} is not valid YAML:\n  {exc}")
     if not isinstance(doc, dict):
-        raise SpecError(f"{path} must be a mapping with `blocks:` and `angles:`.")
+        raise LibraryError(f"{path} must be a mapping with `blocks:` and `templates:`.")
 
     blocks = doc.get("blocks") or {}
-    angles = doc.get("angles") or []
+    templates = doc.get("templates") or []
     if not isinstance(blocks, dict) or not all(
             isinstance(k, str) and isinstance(v, str) for k, v in blocks.items()):
-        raise SpecError(f"{path}: `blocks` must map a name to its text.")
-    if not isinstance(angles, list):
-        raise SpecError(f"{path}: `angles` must be a list.")
-    for angle in angles:
-        if not isinstance(angle, dict) or not angle.get("id"):
-            raise SpecError(f"{path}: every angle needs an `id`.")
-    if not blocks and not angles:
-        raise SpecError(f"{path} holds no blocks and no angles — nothing to push.")
-    return {"blocks": blocks, "angles": angles}
+        raise LibraryError(f"{path}: `blocks` must map a name to its text.")
+    if not isinstance(templates, list):
+        raise LibraryError(f"{path}: `templates` must be a list.")
+    for template in templates:
+        if not isinstance(template, dict) or not template.get("id"):
+            raise LibraryError(f"{path}: every template needs an `id`.")
+    if not blocks and not templates:
+        raise LibraryError(f"{path} holds no blocks and no templates — nothing to push.")
+    return {"blocks": blocks, "templates": templates}
 
 
-def document(spec: dict) -> str:
-    """The spec as YAML a person can edit.
+def document(library: dict) -> str:
+    """The library as YAML a person can edit.
 
     Block strings are dumped with `default_style='|'` so a paragraph stays a
     paragraph. A block is prose that a person is going to read and rewrite, and
     YAML's folded scalars turn it into one long line the moment it contains a
     colon.
     """
-    blocks = {name: _Literal(text) for name, text in sorted(spec["blocks"].items())}
-    angles = [{"id": angle["id"],
-               **{k: angle[k] for k in ANGLE_FIELDS if angle.get(k) is not None}}
-              for angle in spec["angles"]]
-    for angle in angles:
-        if isinstance(angle.get("prompt"), str):
-            angle["prompt"] = _Literal(angle["prompt"])
-    return yaml.dump({"blocks": blocks, "angles": angles},
+    blocks = {name: _Literal(text) for name, text in sorted(library["blocks"].items())}
+    templates = [{"id": template["id"],
+               **{k: template[k] for k in TEMPLATE_FIELDS if template.get(k) is not None}}
+              for template in library["templates"]]
+    for template in templates:
+        if isinstance(template.get("prompt"), str):
+            template["prompt"] = _Literal(template["prompt"])
+    return yaml.dump({"blocks": blocks, "templates": templates},
                      sort_keys=False, allow_unicode=True, width=88)
 
 
@@ -122,19 +121,19 @@ yaml.add_representer(
 )
 
 
-def _angle_payload(angle: dict) -> dict:
-    return {k: angle[k] for k in ANGLE_FIELDS if angle.get(k) is not None}
+def _angle_payload(template: dict) -> dict:
+    return {k: template[k] for k in TEMPLATE_FIELDS if template.get(k) is not None}
 
 
 def compare(wanted: dict, held: dict) -> tuple[list, list, list]:
-    """(new, same, differing) across blocks and angles, as (kind, name, …) tuples.
+    """(new, same, differing) across blocks and templates, as (kind, name, …) tuples.
 
     One pass over both kinds rather than two, because every caller below wants
-    them interleaved: a push reports "3 new, 1 differs" about the spec, not
-    about blocks and then about angles.
+    them interleaved: a push reports "3 new, 1 differs" about the library, not
+    about blocks and then about templates.
     """
     held_blocks = held["blocks"]
-    held_angles = {a["id"]: a for a in held["angles"]}
+    held_angles = {a["id"]: a for a in held["templates"]}
     new, same, differing = [], [], []
 
     for name, text in sorted(wanted["blocks"].items()):
@@ -145,15 +144,15 @@ def compare(wanted: dict, held: dict) -> tuple[list, list, list]:
         else:
             differing.append(("block", name, text, held_blocks[name]))
 
-    for angle in wanted["angles"]:
-        payload = _angle_payload(angle)
-        there = held_angles.get(angle["id"])
+    for template in wanted["templates"]:
+        payload = _angle_payload(template)
+        there = held_angles.get(template["id"])
         if there is None:
-            new.append(("angle", angle["id"], payload, None))
+            new.append(("template", template["id"], payload, None))
         elif _angle_payload(there) == payload:
-            same.append(("angle", angle["id"], payload, _angle_payload(there)))
+            same.append(("template", template["id"], payload, _angle_payload(there)))
         else:
-            differing.append(("angle", angle["id"], payload, _angle_payload(there)))
+            differing.append(("template", template["id"], payload, _angle_payload(there)))
     return new, same, differing
 
 
@@ -179,14 +178,14 @@ def render_conflicts(differing: list) -> str:
     return "\n".join(out)
 
 
-def apply(spec: dict, rows: list) -> int:
+def apply(library: dict, rows: list) -> int:
     """Write the named rows. Returns how many were written."""
     written = 0
     for kind, name, payload, _held in rows:
         if kind == "block":
-            E.put_spec_block(name, payload)
+            E.put_block(name, payload)
         else:
-            E.put_spec_angle(name, payload)
+            E.put_template(name, payload)
         written += 1
     return written
 
@@ -194,68 +193,68 @@ def apply(spec: dict, rows: list) -> int:
 # ── CLI ─────────────────────────────────────────────────────────────────────
 
 
-@click.group("spec")
+@click.group("templates")
 def main():
-    """The reference spec: the prose a turnaround fills from a character."""
+    """The template library: the prose a run's prompt is built from."""
 
 
 @main.command("show")
 def show():
-    """What this stack's spec says, block by block and angle by angle."""
+    """What this stack holds, block by block and template by template."""
     try:
-        spec = fetch()
-    except SpecError as exc:
+        library = fetch()
+    except LibraryError as exc:
         die(str(exc))
-    if not spec["blocks"] and not spec["angles"]:
-        # Not an error. An empty spec is a real state — a fresh stack has one —
-        # and the useful answer is what to do about it, not a non-zero exit that
-        # a script would treat as a failure to read.
-        print("this library holds no reference spec — nothing to shoot from.\n"
-              "       push one:  studio spec push --path <file>", file=sys.stderr)
+    if not library["blocks"] and not library["templates"]:
+        # Not an error. An empty library is a real state — a fresh stack has one
+        # — and the useful answer is what to do about it, not a non-zero exit
+        # that a script would treat as a failure to read.
+        print("this library holds no templates — nothing to build a prompt from.\n"
+              "       push some:  studio templates push --path <file>", file=sys.stderr)
         return 0
-    print(f"blocks ({len(spec['blocks'])})")
-    for name, text in sorted(spec["blocks"].items()):
+    print(f"blocks ({len(library['blocks'])})")
+    for name, text in sorted(library["blocks"].items()):
         first = " ".join(text.split())
         print(f"  {name:<20} {first[:70]}{'…' if len(first) > 70 else ''}")
-    print(f"\nangles ({len(spec['angles'])})")
-    for angle in spec["angles"]:
-        print(f"  {angle['id']:<32} {angle.get('group', '?')}")
+    print(f"\ntemplates ({len(library['templates'])})")
+    for template in library["templates"]:
+        print(f"  {template['id']:<32} {template.get('name') or ''}")
     return 0
 
 
 @main.command("pull")
-@click.option("--path", required=True, help="Where to write the spec document.")
+@click.option("--path", required=True, help="Where to write the document.")
 def pull(path: str):
-    """Write this stack's spec to a file you can read and edit."""
+    """Write this stack's templates to a file you can read and edit."""
     try:
-        spec = fetch()
-    except SpecError as exc:
+        library = fetch()
+    except LibraryError as exc:
         die(str(exc))
     with open(path, "w", encoding="utf-8") as fh:
-        fh.write(document(spec))
-    print(f"wrote {path} — {len(spec['blocks'])} block(s), {len(spec['angles'])} angle(s)",
-          file=sys.stderr)
+        fh.write(document(library))
+    print(f"wrote {path} — {len(library['blocks'])} block(s), "
+          f"{len(library['templates'])} template(s)", file=sys.stderr)
     return 0
 
 
 @main.command("push")
-@click.option("--path", required=True, help="The spec document to send.")
+@click.option("--path", required=True, help="The document to send.")
 @click.option("--force", is_flag=True,
               help="Overwrite rows that differ, instead of refusing.")
 @click.option("--dry-run", is_flag=True,
               help="Say what would be written; write nothing.")
 def push(path: str, force: bool, dry_run: bool):
-    """Send a spec document to this profile's stack.
+    """Send a template document to this profile's stack.
 
     Refuses outright if any row already there differs, printing the difference
-    and writing NOTHING — not even the rows that were fine. A half-applied spec
+    and writing NOTHING — not even the rows that were fine. A half-applied library
     is the hardest state to reason about, and the rows that differ are exactly
     the ones somebody has to decide about.
     """
     try:
         wanted = read_file(path)
         held = fetch()
-    except SpecError as exc:
+    except LibraryError as exc:
         die(str(exc))
 
     new, same, differing = compare(wanted, held)
