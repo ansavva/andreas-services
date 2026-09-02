@@ -103,12 +103,11 @@ export function ProjectPage() {
           />
         }
       >
+        {/* One line, because there is one label. The mono caption under this
+            was the slug — the address a person typed — and it survived the slug
+            removal as `record.name` a second time, so the bar drew the project's
+            name twice. */}
         <Text variant="display">{record.name}</Text>
-        {/* The slug is the address a person types at the CLI, so it is set in
-            the face every other address on this app now uses. */}
-        <Text variant="caption" tone="muted" className="font-mono">
-          {record.name}
-        </Text>
       </PageBar>
 
       {/* `defaultValue` as well as `value`, which the package requires even

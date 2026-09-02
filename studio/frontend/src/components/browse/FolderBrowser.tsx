@@ -69,8 +69,6 @@ export interface BrowserNav {
    * plain click stays a client-side navigation instead of a page load.
    */
   fileHref: (file: FileEntry) => string;
-  /** Opens the viewer on everything beneath the folder on screen. */
-  playReel: () => void;
 }
 
 interface Props {
@@ -86,14 +84,6 @@ interface Props {
    * by this.
    */
   boundary?: FolderId;
-  /**
-   * Tags the browser opens already narrowed to.
-   *
-   * What the References tab is: a character's Files, filtered to the images it
-   * sends. There is no reference index to draw any more — identity is a tag —
-   * so the tab that drew one is this browser with `default` already typed in.
-   */
-  initialTags?: string[];
 }
 
 /**
@@ -128,7 +118,7 @@ type PickerTarget = {
 };
 
 /**
- * The file layer, whole: listing, selection, upload, reel, text page, and every
+ * The file layer, whole: listing, selection, upload, text page, and every
  * write a person can make.
  *
  * This was the body of `BrowsePage` and is a component so that a character's and
@@ -138,7 +128,7 @@ type PickerTarget = {
  * name-path routes it used to call took a slash-joined path that a rename
  * invalidated mid-flight.
  */
-export function FolderBrowser({ nav, boundary = null, initialTags = [] }: Props) {
+export function FolderBrowser({ nav, boundary = null }: Props) {
   const { folder, sort } = nav;
 
   const [actionError, setActionError] = useState<string | null>(null);
@@ -152,7 +142,7 @@ export function FolderBrowser({ nav, boundary = null, initialTags = [] }: Props)
    * request into a search of everything under this folder. They compose, and the
    * order is the honest one — the server narrows, then the typed name hides.
    */
-  const [tags, setTags] = useState<string[]>(initialTags);
+  const [tags, setTags] = useState<string[]>([]);
   const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
 
   /**
@@ -514,10 +504,11 @@ export function FolderBrowser({ nav, boundary = null, initialTags = [] }: Props)
 
           All three act on the folder you are in — copy its prefix, delete it,
           make one inside it — so they read as a set. The divider is doing real
-          work rather than decorating: `Play reel` is the only filled button here,
-          and a delete sitting flush against it is a mis-click with no undo, so
-          the destructive icon stays in the middle of its own cluster and a rule
-          separates the cluster from the primary. Do not close that gap.
+          work rather than decorating: Upload is the one button on the far side
+          of it, and a delete sitting flush against a control a person arrives
+          looking for is a mis-click with no undo, so the destructive icon stays
+          in the middle of its own cluster and a rule separates the two. Do not
+          close that gap.
         */}
         <div className="flex shrink-0 items-center gap-0.5">
           {/* Still the *name path*, and still worth copying even though nothing
@@ -562,9 +553,6 @@ export function FolderBrowser({ nav, boundary = null, initialTags = [] }: Props)
         */}
         <UploadButton onFiles={uploads.start} disabled={hereId === null} />
 
-        {/* A navigation now, not a piece of state this component holds open.
-            It goes to the viewer with `?in=recursive:<folder>`, which is what
-            makes a reel a place you can link to and press back out of. */}
         {files.length > 0 && (
           <Button
             intent="secondary"
@@ -576,10 +564,6 @@ export function FolderBrowser({ nav, boundary = null, initialTags = [] }: Props)
             {selection.count > 0 ? "Select none" : "Select all"}
           </Button>
         )}
-
-        <Button size="sm" onClick={nav.playReel}>
-          Play reel
-        </Button>
       </div>
 
       <div className="border-b border-line pb-2">

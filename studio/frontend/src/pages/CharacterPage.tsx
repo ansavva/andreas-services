@@ -20,7 +20,7 @@ import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog"
  * One character: who they are, what they look like, and everything filed under
  * them.
  *
- * ## Three tabs, where there were seven
+ * ## Four tabs, where there were seven
  *
  * The root's children — `reference/`, `corpus/`, `seed/`, `archive/` and
  * anything made by hand — each used to get a tab beside Profile and References.
@@ -34,14 +34,14 @@ import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog"
  * The folders are shortcut chips at the top of Files now. `FolderTab` builds
  * them from the same listing, so nothing about the convention hardened.
  *
- * ## The `reference/` folder and the References tab were never the same thing
+ * ## There is no Identity tab, and there should not be one
  *
- * **References is the row index; `reference/` is a folder.** An image is
- * identity because a `REF#` row says so, not because of where it sits, so the
- * two can and do disagree — and that disagreement is worth seeing. It used to be
- * shown as two adjacent tabs called `References` and `reference`, which is the
- * worst available way to say it: the reader had to diff two listings by eye to
- * find the interesting case. `ReferencesGrid` names the state instead.
+ * There was: the References tab became `Identity`, which was Files with
+ * `default` already typed into the tag filter. That is not a second kind of
+ * thing — **identity is a tag on a file**, and a tab whose whole content is one
+ * preset filter of the tab beside it is a second way of looking at the same
+ * listing dressed as a place. The filter is in Files, where every other way of
+ * narrowing the listing is, and it is one press from the same result.
  *
  * ## Two writes, one button
  *
@@ -69,12 +69,10 @@ export function CharacterPage() {
   /**
    * The 409 message, as the API worded it.
    *
-   * **A boolean would be a lie here.** This route refuses with 409 for two
-   * unrelated reasons — a slug somebody else has taken, and a `rev` that moved
-   * under the write — and nothing in the response distinguishes them. So the
-   * page shows what the API said rather than guessing, and offers a re-read,
-   * which is the right next move for either: harmless against a taken slug and
-   * the whole fix for a stale record.
+   * **A string rather than a boolean, because the API words it.** A 409 here is
+   * a `rev` that moved under the write — names stopped being unique, so there
+   * is no longer a second reason for one — and the page shows what the API said
+   * rather than inventing its own sentence. The offered re-read is the fix.
    */
   const [conflict, setConflict] = useState<string | null>(null);
 
@@ -178,11 +176,10 @@ export function CharacterPage() {
           />
         }
       >
+        {/* One line, because there is one label. The mono caption under this
+            was the slug, and it survived the slug removal as `record.name` a
+            second time — so the bar drew the character's name twice. */}
         <Text variant="display">{record.name}</Text>
-        {/* The slug is what a `studio` command is given, so it is mono. */}
-        <Text variant="caption" tone="muted" className="font-mono">
-          {record.name}
-        </Text>
       </PageBar>
 
       {/* `defaultValue` as well as `value`, which the package requires even
@@ -195,11 +192,6 @@ export function CharacterPage() {
             reads as two strips. */}
         <Tabs.List className="overflow-x-auto border-b border-line">
           <Tabs.Tab value="profile">Profile</Tabs.Tab>
-          {/* **Its files, opened already narrowed to `default`.** There is no
-              reference index to draw — what a `REF#` row said is a tag on the
-              picture — so the tab that drew one is the browser with the filter
-              pre-filled, and everything the browser can do works here. */}
-          <Tabs.Tab value="identity">Identity</Tabs.Tab>
           <Tabs.Tab value="files">Files</Tabs.Tab>
           {/* The reverse questions. Both routes existed with no caller, so a
               character was a dead end: who it is, what it looks like, and
@@ -221,10 +213,6 @@ export function CharacterPage() {
             conflict={conflict}
             onReload={character.reload}
           />
-        </Tabs.Panel>
-
-        <Tabs.Panel value="identity">
-          <FolderTab rootId={record.root} initialTags={["default"]} />
         </Tabs.Panel>
 
         <Tabs.Panel value="runs">

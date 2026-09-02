@@ -801,16 +801,27 @@ that breaks every time the pipeline ships.
   is no `NAME#` item to delete. Leaving is the one
   navigation between folders that **replaces** rather than pushes: the entry
   behind you would otherwise be the prefix you just destroyed.
-- **The three folder icons are one cluster, and the rule before "Play reel" is
+- **The three folder icons are one cluster, and the rule after them is
   load-bearing.** Copy prefix, delete this folder and new folder all act on the
   folder you are in, so they sit together at a tighter gap than the row's own —
   which is why copy moved down out of the breadcrumb row, where it had been
-  stranded away from the other two. `Play reel` is the only filled button on the
-  page, and a delete flush against it is a mis-click with no undo, so the
-  destructive icon stays in the middle of the cluster and a `w-px` divider
-  separates the cluster from the primary. The two rows now split exactly as the
-  comment above them claims: *where you are* on top, everything you can *do*
-  below.
+  stranded away from the other two. Upload sits on the far side of the divider,
+  and a delete flush against the one control a person arrives *looking* for is a
+  mis-click with no undo, so the destructive icon stays in the middle of the
+  cluster and a `w-px` divider separates the two. The two rows now split exactly
+  as the comment above them claims: *where you are* on top, everything you can
+  *do* below.
+- **There is no "Play reel" button, and no Identity tab.** Both were removed in
+  September 2026, and for the same reason: each was a second way of looking at a
+  listing the page already showed. Identity was a character's Files with
+  `default` pre-filled in the tag filter — identity is a *tag*, so that is a
+  preset of the tab beside it rather than a place of its own — and Play reel
+  opened the viewer on a recursive walk of the folder on screen. The viewer
+  still plays a feed: opening any tile from Home's Recent grid scrolls the same
+  recursive walk (`/o/<id>?in=recursive`). What went is the button that made it
+  look like a separate mode. `/o` with **no** id still resolves for old links,
+  but nothing in the app builds that address any more, and `feedPath` is gone
+  with it.
 - **Destructive confirmation for ONE file is in the button, not in a dialog.**
   `ConfirmDeleteButton` arms on the first press, names what it will destroy, and
   disarms on a timeout, on blur, or on Escape. It had two reasons and only one

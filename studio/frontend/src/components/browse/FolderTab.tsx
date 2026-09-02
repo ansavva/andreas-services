@@ -5,7 +5,7 @@ import { getFolder } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
 import { useSearchParamState } from "../../hooks/useSearchParamState";
 import type { FileEntry, SortOrder } from "../../types";
-import { feedPath, objectPath, type FolderId } from "../../utils/location";
+import { objectPath, type FolderId } from "../../utils/location";
 import { ChipRow } from "../common/ChipRow";
 import { FolderBrowser, type BrowserNav } from "./FolderBrowser";
 
@@ -62,7 +62,6 @@ export function useLocalBrowserNav(rootId: string): BrowserNav {
         navigate(objectPath(file.id, { in: "f", id: folder })),
       fileHref: (file: FileEntry) =>
         objectPath(file.id, { in: "f", id: folder }),
-      playReel: () => navigate(feedPath({ in: "recursive", id: folder })),
     }),
     [folder, navigate, rootId, setFolderParam, sort],
   );
@@ -86,19 +85,12 @@ export function useLocalBrowserNav(rootId: string): BrowserNav {
  * wrapped into three rows of underline. They are shortcuts now — one scrolling
  * row of a fixed shape, with the browser still the only place a folder opens.
  */
-export function FolderTab({
-  rootId,
-  initialTags = [],
-}: {
-  rootId: string;
-  /** Tags the browser opens narrowed to — see `FolderBrowser`. */
-  initialTags?: string[];
-}) {
+export function FolderTab({ rootId }: { rootId: string }) {
   const nav = useLocalBrowserNav(rootId);
   return (
     <div className="flex w-full flex-col gap-4">
       <FolderShortcuts rootId={rootId} nav={nav} />
-      <FolderBrowser nav={nav} boundary={rootId} initialTags={initialTags} />
+      <FolderBrowser nav={nav} boundary={rootId} />
     </div>
   );
 }

@@ -134,8 +134,9 @@ describe("which sequence the address names", () => {
   });
 
   it("opens a feed at its first frame when the address carries no id", async () => {
-    // `/o?in=…` is what "Play reel" navigates to — see `feedPath`. The id
-    // appears a moment later, when the first file resolves.
+    // `/o?in=…` with no id. Nothing in the app builds one now that "Play reel"
+    // is gone, but the viewer still opens on the first frame and the id appears
+    // a moment later, so an old link does not dead-end.
     open(`/o?in=${encodeURIComponent(`f:${FOLDER}`)}`);
 
     await waitFor(() => expect(screen.getByText(/1 of 3/)).toBeTruthy());

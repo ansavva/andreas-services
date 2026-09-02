@@ -90,8 +90,10 @@ export function StudioRoutes() {
 
         {/* One file, open, and an ordinary page inside the layout above — it
             was a `fixed inset-x-0 z-50` reel until Phase C. `/o` with no id
-            opens a feed at its first file (see `feedPath`) and the address
-            gains the id as soon as that file resolves. */}
+            opens a feed at its first file and the address gains the id as soon
+            as that file resolves; nothing in the app builds that shape any more
+            — "Play reel" was the one thing that did — but an old link still
+            lands somewhere usable. */}
         <Route path="/o" element={<ObjectPage />} />
         <Route path="/o/:nodeId" element={<ObjectPage />} />
       </Route>

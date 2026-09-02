@@ -9,7 +9,7 @@ import {
   ProjectsSection,
 } from "../components/entity/EntitySections";
 import { useMedia } from "../hooks/useMedia";
-import { feedPath, folderPath, objectPath } from "../utils/location";
+import { folderPath, objectPath } from "../utils/location";
 import { LoadError } from "../components/common/LoadError";
 
 /**
@@ -22,9 +22,12 @@ import { LoadError } from "../components/common/LoadError";
  * forbidden to read the document. They are rows with ids now, so the first screen
  * can be the two lists instead of a listing of the library root.
  *
- * The reel stays, third, and unchanged: it is the answer to "what did the last
- * hour produce", which neither list answers and which is most of why anybody
- * opens studio between sessions.
+ * Recent stays, third: it is the answer to "what did the last hour produce",
+ * which neither list answers and which is most of why anybody opens studio
+ * between sessions. It is a *grid*, not a mode — the "Play reel" button beside
+ * it is gone, because opening any tile already scrolls the same recursive walk
+ * and a button that only chose the first tile for you was a second name for the
+ * thing under it.
  *
  * **The two lists are components now, not markup here.** `/characters` and
  * `/projects` are real screens the header links to, and they render exactly
@@ -35,8 +38,8 @@ export function HomePage() {
   const navigate = useNavigate();
 
   /**
-   * Recent is the same recursive walk "Play reel" does at the root, fetched
-   * eagerly because it *is* the section — there is nothing to click first.
+   * The recursive walk of the whole library, newest first, fetched eagerly
+   * because it *is* the section — there is nothing to click first.
    *
    * It asks for the twelve it draws rather than the API's default of two
    * hundred, which shrinks the response and the presigning.
@@ -49,9 +52,9 @@ export function HomePage() {
    * pretending to be one.
    */
   const RECENT = 12;
-  const reel = useMedia(null, "newest", true, RECENT);
+  const feed = useMedia(null, "newest", true, RECENT);
 
-  const recent = reel.items.slice(0, RECENT);
+  const recent = feed.items.slice(0, RECENT);
 
   return (
     <>
@@ -64,35 +67,23 @@ export function HomePage() {
             because it is a different kind of thing. */}
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2">
           <Text variant="title">Recent</Text>
-          <div className="flex items-center gap-2">
-            {/* The library's file tree. It is in the header now as well — this
-                stays because it is the thing the tiles beside it come from, and
-                a section that shows twelve of something wants a way to see the
-                rest. */}
-            <Button
-              intent="secondary"
-              size="sm"
-              onClick={() => navigate(folderPath(null))}
-            >
-              Browse files
-            </Button>
-            {/* A navigation, like every other reel in the app now — the
-                overlay this page used to hold open could not be linked to and
-                could not be backed out of. */}
-            <Button
-              size="sm"
-              disabled={reel.items.length === 0}
-              onClick={() => navigate(feedPath({ in: "recursive", id: null }))}
-            >
-              Play reel
-            </Button>
-          </div>
+          {/* The library's file tree. It is in the header now as well — this
+              stays because it is the thing the tiles beside it come from, and
+              a section that shows twelve of something wants a way to see the
+              rest. */}
+          <Button
+            intent="secondary"
+            size="sm"
+            onClick={() => navigate(folderPath(null))}
+          >
+            Browse files
+          </Button>
         </div>
 
-        {reel.loading && recent.length === 0 && (
+        {feed.loading && recent.length === 0 && (
           <ApertureSpinner size="md" label="Loading recent media" />
         )}
-        {reel.error && <LoadError what="recent media" message={reel.error} />}
+        {feed.error && <LoadError what="recent media" message={feed.error} />}
 
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
           {recent.map((file) => (
@@ -100,9 +91,12 @@ export function HomePage() {
             // act on a selection with, so the tiles open and do not pick.
             //
             // They open into the same walk they were drawn from, so the twelve
-            // shown here are the start of the reel rather than twelve dead ends
-            // — this section is a preview of that feed, and opening one should
-            // not be a different thing from pressing Play.
+            // shown here are the start of a feed rather than twelve dead ends —
+            // this section is a preview of that walk, and `in=recursive` is what
+            // carries the rest of it into the viewer. It is also the only way in
+            // now that "Play reel" is gone, which is the whole argument for
+            // dropping the button: it opened this on the first tile, and so does
+            // clicking the first tile.
             <MediaTile
               key={file.id}
               file={file}
