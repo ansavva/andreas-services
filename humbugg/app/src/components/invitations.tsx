@@ -17,7 +17,7 @@ import { useAuth } from '../context/auth-context';
 import { gap, styles } from '../theme/styles';
 import type { GroupDetail, InvitationStatus, ManagedInvitation } from '../types';
 import { FieldLabel } from './field';
-import { isPlusRequired, PlusLockedNote } from './plus';
+import { isPlusRequired, PanelLoadFailure, PlusLockedNote } from './plus';
 import { Card } from './shell';
 import { StatusMessage } from './status-message';
 
@@ -145,8 +145,10 @@ export function InvitationsPanel({
     );
 
   // Nothing is drawn until the first read lands. An empty list and an unread one look identical,
-  // and "Nobody has been invited yet" is a claim rather than a placeholder.
-  if (invitations === null) return null;
+  // and "Nobody has been invited yet" is a claim rather than a placeholder. A read that FAILED is
+  // its own state — without this the error is set and then rendered by nothing.
+  if (invitations === null)
+    return error ? <PanelLoadFailure title="Invitations" message={error} /> : null;
 
   const outstanding = invitations.filter(
     (invitation) => invitation.status !== 'accepted' && invitation.status !== 'revoked',

@@ -18,6 +18,9 @@ const mocks = {
   resendInvitation: jest.fn(),
   revokeInvitation: jest.fn(),
   setOrganizerRole: jest.fn(),
+  getReminders: jest.fn(),
+  updateReminders: jest.fn(),
+  updateCustomization: jest.fn(),
   width: 1280,
 };
 
@@ -55,6 +58,9 @@ jest.mock('../api/client', () => {
       resendInvitation: (...args: unknown[]) => mocks.resendInvitation(...args),
       revokeInvitation: (...args: unknown[]) => mocks.revokeInvitation(...args),
       setOrganizerRole: (...args: unknown[]) => mocks.setOrganizerRole(...args),
+      getReminders: (...args: unknown[]) => mocks.getReminders(...args),
+      updateReminders: (...args: unknown[]) => mocks.updateReminders(...args),
+      updateCustomization: (...args: unknown[]) => mocks.updateCustomization(...args),
     },
     ApiError,
   };
@@ -82,7 +88,12 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
 }));
 
 import OrganizeScreen from './organize';
-import type { GroupReadiness, ParticipantReadiness } from '../types';
+import type {
+  GroupReadiness,
+  ParticipantReadiness,
+  ReminderOverview,
+  ReminderSettings,
+} from '../types';
 
 const { ApiError } = jest.requireMock('../api/client') as {
   ApiError: new (status: number, code: string, message: string) => Error;
@@ -154,6 +165,37 @@ beforeEach(() => {
   mocks.resendInvitation.mockResolvedValue({});
   mocks.revokeInvitation.mockResolvedValue(undefined);
   mocks.setOrganizerRole.mockResolvedValue({});
+  mocks.getReminders.mockResolvedValue(reminders());
+  mocks.updateReminders.mockImplementation((_t: string, _g: string, settings: object) =>
+    Promise.resolve(reminders(settings as Partial<ReminderSettings>)),
+  );
+  mocks.updateCustomization.mockResolvedValue({
+    group_id: 'group-1',
+    name: 'Office Secret Santa',
+    plan: 'plus',
+    is_owner: true,
+    customization: {
+      greeting: 'Welcome',
+      instructions: '',
+      primary_color: '#7C2D12',
+      accent_color: '#F59E0B',
+      image_data_url: null,
+    },
+  });
+});
+
+const reminders = (settings: Partial<ReminderSettings> = {}): ReminderOverview => ({
+  settings: {
+    state: 'stopped',
+    remind_unaccepted_invitations: true,
+    remind_incomplete_readiness: false,
+    interval_days: 3,
+    quiet_start_utc_hour: 9,
+    quiet_end_utc_hour: 21,
+    ...settings,
+  },
+  next_scheduled_at: null,
+  recent_history: [],
 });
 
 describe('loading and failure', () => {
@@ -725,6 +767,180 @@ describe('co-organizers', () => {
 
     await waitFor(() =>
       expect(screen.getByText('Sharing the organizing is part of Plus.')).toBeOnTheScreen(),
+    );
+  });
+});
+
+// ─── Reminders and customization (#574) ─────────────────────────────────────────────────────────
+
+describe('scheduled reminders', () => {
+  it('says in one sentence what is about to happen, and to whom', async () => {
+    mocks.getReminders.mockResolvedValue(
+      reminders({
+        state: 'active',
+        remind_unaccepted_invitations: true,
+        remind_incomplete_readiness: true,
+        interval_days: 3,
+      }),
+    );
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() =>
+      expect(
+        screen.getAllByText(
+          'Reminds people who have not accepted their invitation and people whose list or address is not finished, every 3 days, between 09:00–21:00 UTC.',
+        ).length,
+      ).toBeGreaterThan(0),
+    );
+  });
+
+  it('says nothing is sent when it is off, rather than describing a schedule that will not run', async () => {
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() => expect(screen.getAllByText('Nothing is sent.').length).toBeGreaterThan(0));
+  });
+
+  it('saves the settings and re-describes what it will now do', async () => {
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('Chasing, without you doing it')).toBeOnTheScreen());
+
+    fireEvent.changeText(screen.getByLabelText('How often, in days'), '7');
+    fireEvent.press(screen.getByText('Save reminder settings'));
+
+    await waitFor(() =>
+      expect(mocks.updateReminders).toHaveBeenCalledWith(
+        'token',
+        'group-1',
+        expect.objectContaining({ interval_days: 7 }),
+      ),
+    );
+  });
+
+  it('shows the server’s refusal rather than saving nothing quietly', async () => {
+    mocks.updateReminders.mockRejectedValue(
+      new Error('Reminder interval must be between 1 and 14 days.'),
+    );
+
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('Chasing, without you doing it')).toBeOnTheScreen());
+
+    fireEvent.changeText(screen.getByLabelText('How often, in days'), '90');
+    fireEvent.press(screen.getByText('Save reminder settings'));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('Reminder interval must be between 1 and 14 days.'),
+      ).toBeOnTheScreen(),
+    );
+  });
+
+  it('offers Plus instead of settings on a Free exchange', async () => {
+    mocks.getReminders.mockRejectedValue(new ApiError(402, 'plus_required', 'Plus required.'));
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() =>
+      expect(screen.getByText('Automatic reminders are part of Plus.')).toBeOnTheScreen(),
+    );
+    expect(screen.queryByLabelText('How often, in days')).toBeNull();
+  });
+
+  // The bug this pins shipped once: the catch set an error and the guard under it returned null,
+  // so a failed first read rendered NOTHING — no settings, no error, no panel.
+  it('says why it could not load, instead of being absent', async () => {
+    mocks.getReminders.mockRejectedValue(new Error('The reminder service is down.'));
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() =>
+      expect(screen.getByText('The reminder service is down.')).toBeOnTheScreen(),
+    );
+  });
+});
+
+describe('exchange customization', () => {
+  it('sends the greeting on the field name the API takes', async () => {
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('How this exchange looks')).toBeOnTheScreen());
+
+    fireEvent.changeText(screen.getByLabelText('Greeting'), 'Welcome to the Holly Jolly Crew');
+    fireEvent.press(screen.getByText('Save how it looks'));
+
+    // `image`, not `image_data_url`. The response uses the other name, and sending it back saves
+    // nothing while looking exactly like a picker that failed.
+    await waitFor(() =>
+      expect(mocks.updateCustomization).toHaveBeenCalledWith('token', 'group-1', {
+        greeting: 'Welcome to the Holly Jolly Crew',
+        instructions: '',
+        primary_color: '#7C2D12',
+        accent_color: '#F59E0B',
+        image: '',
+      }),
+    );
+  });
+
+  it('shows the server’s wording when it refuses markup', async () => {
+    mocks.updateCustomization.mockRejectedValue(
+      new Error('greeting cannot contain HTML or links.'),
+    );
+
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('How this exchange looks')).toBeOnTheScreen());
+
+    fireEvent.changeText(screen.getByLabelText('Greeting'), '<b>hi</b>');
+    fireEvent.press(screen.getByText('Save how it looks'));
+
+    await waitFor(() =>
+      expect(screen.getByText('greeting cannot contain HTML or links.')).toBeOnTheScreen(),
+    );
+  });
+
+  it('says a half-typed colour is not one yet, rather than painting a swatch of nothing', async () => {
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('How this exchange looks')).toBeOnTheScreen());
+
+    fireEvent.changeText(screen.getByLabelText('Main colour'), '#7C2D');
+
+    await waitFor(() => expect(screen.getByText('Not a colour yet')).toBeOnTheScreen());
+  });
+
+  // Unlike invitations and reminders there is no read to be refused — customization is a PUT — so
+  // a Free organizer would otherwise be given a whole form that can only fail on save.
+  it('offers Plus instead of the form on a Free exchange, before anything is typed', async () => {
+    mocks.getGroup.mockResolvedValue({
+      group_id: 'group-1',
+      name: 'Office Secret Santa',
+      plan: 'free',
+      participant_limit: 6,
+      is_owner: true,
+      is_organizer: true,
+      members: [{ member_id: 'm1', display_name: 'Ana', is_organizer: true, is_participating: true }],
+    });
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('Your own greeting, instructions and colours are part of Plus.'),
+      ).toBeOnTheScreen(),
+    );
+    expect(screen.queryByLabelText('Greeting')).toBeNull();
+  });
+
+  it('still takes a 402 on save as the answer, if the plan changed underneath', async () => {
+    mocks.updateCustomization.mockRejectedValue(
+      new ApiError(402, 'plus_required', 'Plus required.'),
+    );
+
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('How this exchange looks')).toBeOnTheScreen());
+    fireEvent.press(screen.getByText('Save how it looks'));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('Your own greeting, instructions and colours are part of Plus.'),
+      ).toBeOnTheScreen(),
     );
   });
 });

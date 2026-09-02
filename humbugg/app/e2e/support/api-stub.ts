@@ -54,7 +54,14 @@ export async function stubApi(page: Page): Promise<void> {
     // deliberately no Plus fixture: inventing one would assert against data the backend never
     // produced, and the Plus path is covered by the jest suite where the seam is a mock and says
     // so. `e2e:capture` cannot reach it either, because its seed exchange is Free.
-    if (p === `/api/groups/${group.group_id}/invitations`)
+    // Every Plus capability answers the same way on this group, for the same reason. `customization`
+    // is a PUT, so the Free path there is a refusal on save rather than on read — the screen still
+    // has to end up at the same place.
+    if (
+      p === `/api/groups/${group.group_id}/invitations` ||
+      p === `/api/groups/${group.group_id}/reminders` ||
+      p === `/api/groups/${group.group_id}/customization`
+    )
       return route.fulfill({
         status: 402,
         contentType: 'application/json',

@@ -306,6 +306,24 @@ export function PlusRefusalCard({
 }
 
 /**
+ * A panel whose first read failed, saying so instead of rendering nothing.
+ *
+ * Both capability panels hold their content back until the first read lands, because an empty list
+ * and an unread one look identical and "nobody has been invited yet" is a claim rather than a
+ * placeholder. The bug that pattern hides is that a FAILED read is also "not landed": the catch
+ * sets an error and the guard below it returns null, so the error never reaches a screen and the
+ * panel is simply absent. That shipped once. This is the third state the guard was missing.
+ */
+export function PanelLoadFailure({ title, message }: { title: string; message: string }) {
+  return (
+    <Card>
+      <Text style={styles.eyebrow}>{title}</Text>
+      <StatusMessage message={message} />
+    </Card>
+  );
+}
+
+/**
  * A locked capability on a screen that already carries the billing panel.
  *
  * `PlusRefusalCard` is the right answer where there is nowhere else to buy — the group screen. On

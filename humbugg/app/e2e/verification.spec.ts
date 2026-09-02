@@ -174,13 +174,19 @@ test('the invite secret is never put on the wire as a query parameter', async ({
  * that the screen treats that as the ANSWER — an upgrade offer — rather than as an error, which is
  * the difference between a plan boundary and a broken page.
  */
-test('the invitations panel offers Plus on a Free exchange instead of failing', async ({ page }) => {
+test('every Plus capability offers Plus on a Free exchange instead of failing', async ({ page }) => {
   stubOnly('the dev stack’s own plan decides this in live mode');
   await stubApi(page);
   await signIn(page);
 
   await page.goto(`/organize/${group.group_id}`);
   await expect(page.getByText('Sending and tracking invitations is part of Plus.')).toBeVisible();
-  // No dead form behind the offer.
+  await expect(page.getByText('Automatic reminders are part of Plus.')).toBeVisible();
+  // No dead forms behind the notices.
   await expect(page.getByLabel('Email addresses')).toBeHidden();
+  await expect(page.getByLabel('How often, in days')).toBeHidden();
+
+  // One purchase, one place to make it. A locked notice that carried its own checkout button would
+  // put several on this page — which is how `billing.spec.ts` caught the first attempt.
+  await expect(page.getByText('$12 once, for this exchange')).toBeVisible();
 });

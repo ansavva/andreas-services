@@ -40,3 +40,33 @@ export async function pickAvatar(): Promise<AvatarPickResult> {
 
   return { kind: 'picked', dataUrl: toDataUrl(mimeType, asset.base64) };
 }
+
+/**
+ * The same picker, shaped for an exchange's banner rather than a face (#574).
+ *
+ * The backend crops to 1200x600, so the editor is offered at 2:1 — cropping here means the
+ * organizer chooses what survives the crop instead of discovering afterwards that the server took
+ * the middle. Validation is `pickAvatar`'s, unchanged: it reads a type and a size, neither of which
+ * is avatar-specific, and both ceilings are the ones the API enforces.
+ */
+export async function pickBanner(): Promise<AvatarPickResult> {
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ['images'],
+    base64: true,
+    quality: 0.9,
+    allowsEditing: true,
+    aspect: [2, 1],
+  });
+
+  if (result.canceled) return { kind: 'cancelled' };
+
+  const asset = result.assets[0];
+  if (!asset?.base64) return { kind: 'error', message: 'Unable to read that image.' };
+
+  const mimeType = asset.mimeType ?? 'image/jpeg';
+  const size = asset.fileSize ?? Math.floor((asset.base64.length * 3) / 4);
+  const validationError = validateAvatarFile({ type: mimeType, size });
+  if (validationError) return { kind: 'error', message: validationError };
+
+  return { kind: 'picked', dataUrl: toDataUrl(mimeType, asset.base64) };
+}
