@@ -60,7 +60,8 @@ export async function stubApi(page: Page): Promise<void> {
     if (
       p === `/api/groups/${group.group_id}/invitations` ||
       p === `/api/groups/${group.group_id}/reminders` ||
-      p === `/api/groups/${group.group_id}/customization`
+      p === `/api/groups/${group.group_id}/customization` ||
+      p === '/api/templates'
     )
       return route.fulfill({
         status: 402,

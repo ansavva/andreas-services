@@ -21,6 +21,13 @@ const mocks = {
   getReminders: jest.fn(),
   updateReminders: jest.fn(),
   updateCustomization: jest.fn(),
+  sendReminder: jest.fn(),
+  listTemplates: jest.fn(),
+  saveTemplate: jest.fn(),
+  applyTemplate: jest.fn(),
+  deleteTemplate: jest.fn(),
+  previewLateParticipant: jest.fn(),
+  confirmLateParticipant: jest.fn(),
   width: 1280,
 };
 
@@ -61,6 +68,13 @@ jest.mock('../api/client', () => {
       getReminders: (...args: unknown[]) => mocks.getReminders(...args),
       updateReminders: (...args: unknown[]) => mocks.updateReminders(...args),
       updateCustomization: (...args: unknown[]) => mocks.updateCustomization(...args),
+      sendReminder: (...args: unknown[]) => mocks.sendReminder(...args),
+      listTemplates: (...args: unknown[]) => mocks.listTemplates(...args),
+      saveTemplate: (...args: unknown[]) => mocks.saveTemplate(...args),
+      applyTemplate: (...args: unknown[]) => mocks.applyTemplate(...args),
+      deleteTemplate: (...args: unknown[]) => mocks.deleteTemplate(...args),
+      previewLateParticipant: (...args: unknown[]) => mocks.previewLateParticipant(...args),
+      confirmLateParticipant: (...args: unknown[]) => mocks.confirmLateParticipant(...args),
     },
     ApiError,
   };
@@ -169,6 +183,27 @@ beforeEach(() => {
   mocks.updateReminders.mockImplementation((_t: string, _g: string, settings: object) =>
     Promise.resolve(reminders(settings as Partial<ReminderSettings>)),
   );
+  mocks.sendReminder.mockResolvedValue({});
+  mocks.listTemplates.mockResolvedValue([]);
+  mocks.saveTemplate.mockResolvedValue({ template_id: 't1', name: 'The usual' });
+  mocks.deleteTemplate.mockResolvedValue(undefined);
+  mocks.previewLateParticipant.mockResolvedValue({
+    proposal_id: 'p1',
+    member_id: 'member-Sam',
+    affected_participant_count: 2,
+    expires_at: '2026-09-02T12:00:00Z',
+  });
+  mocks.confirmLateParticipant.mockResolvedValue({
+    member_id: 'member-Sam',
+    affected_participant_count: 2,
+    assignment_version: 'v2',
+  });
+  mocks.applyTemplate.mockResolvedValue({
+    group_id: 'group-1',
+    name: 'Office Secret Santa 2027',
+    plan: 'plus',
+    is_owner: true,
+  });
   mocks.updateCustomization.mockResolvedValue({
     group_id: 'group-1',
     name: 'Office Secret Santa',
@@ -941,6 +976,278 @@ describe('exchange customization', () => {
       expect(
         screen.getByText('Your own greeting, instructions and colours are part of Plus.'),
       ).toBeOnTheScreen(),
+    );
+  });
+});
+
+// ─── Templates, late participants and the manual nudge (#574) ───────────────────────────────────
+
+const aTemplate = (overrides: Record<string, unknown> = {}) => ({
+  template_id: 't1',
+  name: 'The usual',
+  exchange_name: 'Office Secret Santa 2027',
+  description: 'Same as ever.',
+  signup_deadline_days_before_event: 7,
+  wishlist_prompt: '',
+  exclusions_policy: 'none',
+  reminder_preferences: {
+    state: 'stopped',
+    remind_unaccepted_invitations: true,
+    remind_incomplete_readiness: false,
+    interval_days: 3,
+    quiet_start_utc_hour: 9,
+    quiet_end_utc_hour: 21,
+  },
+  customization: {
+    greeting: '',
+    instructions: '',
+    primary_color: '#7C2D12',
+    accent_color: '#F59E0B',
+    image_data_url: null,
+  },
+  prior_participants: [
+    { member_id: 'm-robin', display_name: 'Robin', email: 'robin@example.com' },
+    { member_id: 'm-sam', display_name: 'Sam', email: 'sam@example.com' },
+  ],
+  ...overrides,
+});
+
+describe('templates', () => {
+  it('saves this exchange under a name of its own', async () => {
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() =>
+      expect(screen.getByText('Save this setup, or start from one')).toBeOnTheScreen(),
+    );
+
+    fireEvent.changeText(screen.getByLabelText('Save this exchange as a template'), 'The usual');
+    fireEvent.press(screen.getByText('Save as a template'));
+
+    await waitFor(() =>
+      expect(mocks.saveTemplate).toHaveBeenCalledWith('token', 'The usual', 'group-1'),
+    );
+  });
+
+  // Applying REWRITES the exchange — name, description, dates, customization, reminders and
+  // possibly exclusions. Discovering that afterwards is the failure this pins against.
+  it('says what applying would replace, before the button that does it', async () => {
+    mocks.listTemplates.mockResolvedValue([aTemplate()]);
+
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() =>
+      expect(screen.getByText('Save this setup, or start from one')).toBeOnTheScreen(),
+    );
+
+    fireEvent(screen.getByLabelText('Start this exchange from a template'), 'valueChange', 't1');
+
+    await waitFor(() =>
+      expect(screen.getByText('This replaces what is here now')).toBeOnTheScreen(),
+    );
+    expect(
+      screen.getByText(/becomes “Office Secret Santa 2027”.*exclusions are cleared/s),
+    ).toBeOnTheScreen();
+  });
+
+  it('invites nobody unless they are ticked', async () => {
+    mocks.listTemplates.mockResolvedValue([aTemplate()]);
+
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() =>
+      expect(screen.getByText('Save this setup, or start from one')).toBeOnTheScreen(),
+    );
+    fireEvent(screen.getByLabelText('Start this exchange from a template'), 'valueChange', 't1');
+    await waitFor(() => expect(screen.getByText('This replaces what is here now')).toBeOnTheScreen());
+
+    fireEvent.changeText(screen.getByLabelText('The new event date'), '2027-12-19');
+    fireEvent.press(screen.getByText('Apply this template'));
+
+    // An empty list, not "everybody who was here last time".
+    await waitFor(() =>
+      expect(mocks.applyTemplate).toHaveBeenCalledWith('token', 't1', 'group-1', '2027-12-19', []),
+    );
+    await waitFor(() => expect(screen.getByText('Applied. Nobody was invited.')).toBeOnTheScreen());
+  });
+
+  it('sends only the people who were ticked', async () => {
+    mocks.listTemplates.mockResolvedValue([aTemplate()]);
+
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() =>
+      expect(screen.getByText('Save this setup, or start from one')).toBeOnTheScreen(),
+    );
+    fireEvent(screen.getByLabelText('Start this exchange from a template'), 'valueChange', 't1');
+    await waitFor(() => expect(screen.getByText('This replaces what is here now')).toBeOnTheScreen());
+
+    fireEvent(screen.getByLabelText('Invite Robin'), 'checkedChange', true);
+    fireEvent.changeText(screen.getByLabelText('The new event date'), '2027-12-19');
+    fireEvent.press(screen.getByText('Apply this template'));
+
+    await waitFor(() =>
+      expect(mocks.applyTemplate).toHaveBeenCalledWith('token', 't1', 'group-1', '2027-12-19', [
+        'm-robin',
+      ]),
+    );
+  });
+
+  it('will not apply without a date, because the server needs one', async () => {
+    mocks.listTemplates.mockResolvedValue([aTemplate()]);
+
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() =>
+      expect(screen.getByText('Save this setup, or start from one')).toBeOnTheScreen(),
+    );
+    fireEvent(screen.getByLabelText('Start this exchange from a template'), 'valueChange', 't1');
+    await waitFor(() => expect(screen.getByText('This replaces what is here now')).toBeOnTheScreen());
+
+    fireEvent.press(screen.getByText('Apply this template'));
+    expect(mocks.applyTemplate).not.toHaveBeenCalled();
+  });
+
+  it('offers Plus instead of templates on a Free exchange', async () => {
+    mocks.listTemplates.mockRejectedValue(new ApiError(402, 'plus_required', 'Plus required.'));
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() =>
+      expect(screen.getByText('Saving a setup as a template is part of Plus.')).toBeOnTheScreen(),
+    );
+  });
+});
+
+describe('adding somebody after the draw', () => {
+  const drawn = () =>
+    readiness({
+      status: 'drawn',
+      participants: [
+        participant('Alex', { role: 'owner', assignment: 'ready' }),
+        participant('Sam', {
+          is_participating: false,
+          wishlist: 'not_applicable',
+          address: 'not_applicable',
+          assignment: 'not_applicable',
+        }),
+      ],
+    });
+
+  it('offers it only after a draw, and only for somebody sitting out', async () => {
+    mocks.getReadiness.mockResolvedValue(readiness({ participants: [participant('Sam')] }));
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('The full roster')).toBeOnTheScreen());
+
+    // Before the draw there is nothing to disturb, so nothing is offered.
+    expect(screen.queryByText('Add to the draw')).toBeNull();
+  });
+
+  it('says how many matches would move before anything moves', async () => {
+    mocks.getReadiness.mockResolvedValue(drawn());
+
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('Add to the draw')).toBeOnTheScreen());
+
+    fireEvent.press(screen.getByText('Add to the draw'));
+    fireEvent.press(await screen.findByText('See what it would change'));
+
+    await waitFor(() =>
+      expect(mocks.previewLateParticipant).toHaveBeenCalledWith('token', 'group-1', 'member-Sam'),
+    );
+    // The count, and what it means for the people it affects.
+    await waitFor(() =>
+      expect(screen.getByText(/2 other people’s matches change/)).toBeOnTheScreen(),
+    );
+    // Nothing has been committed yet.
+    expect(mocks.confirmLateParticipant).not.toHaveBeenCalled();
+  });
+
+  it('confirms the exact proposal it previewed', async () => {
+    mocks.getReadiness.mockResolvedValue(drawn());
+
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('Add to the draw')).toBeOnTheScreen());
+    fireEvent.press(screen.getByText('Add to the draw'));
+    fireEvent.press(await screen.findByText('See what it would change'));
+    fireEvent.press(await screen.findByText('Yes, change the matches'));
+
+    await waitFor(() =>
+      expect(mocks.confirmLateParticipant).toHaveBeenCalledWith('token', 'group-1', 'p1'),
+    );
+  });
+
+  // The preview expires, and any draw change invalidates it. Retrying a dead proposal_id would 409
+  // for ever, so the flow drops back to the preview step and says why.
+  it('drops a stale proposal back to the preview step rather than retrying it', async () => {
+    mocks.getReadiness.mockResolvedValue(drawn());
+    mocks.confirmLateParticipant.mockRejectedValue(
+      new Error('This late-participant preview is stale. Create a new preview.'),
+    );
+
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('Add to the draw')).toBeOnTheScreen());
+    fireEvent.press(screen.getByText('Add to the draw'));
+    fireEvent.press(await screen.findByText('See what it would change'));
+    fireEvent.press(await screen.findByText('Yes, change the matches'));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('This late-participant preview is stale. Create a new preview.'),
+      ).toBeOnTheScreen(),
+    );
+    expect(screen.getByText('See what it would change')).toBeOnTheScreen();
+    expect(screen.queryByText('Yes, change the matches')).toBeNull();
+  });
+
+  it('offers Plus instead, on a Free exchange', async () => {
+    mocks.getReadiness.mockResolvedValue(drawn());
+    mocks.previewLateParticipant.mockRejectedValue(
+      new ApiError(402, 'plus_required', 'Plus required.'),
+    );
+
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('Add to the draw')).toBeOnTheScreen());
+    fireEvent.press(screen.getByText('Add to the draw'));
+    fireEvent.press(await screen.findByText('See what it would change'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Adding somebody after the draw is part of Plus.')).toBeOnTheScreen(),
+    );
+  });
+});
+
+describe('the manual nudge', () => {
+  // `sendReminder` is not `resendInvitation`: one sends the invitation again, the other sends a
+  // reminder ABOUT it and counts against the reminder schedule.
+  it('sends a reminder rather than the invitation again', async () => {
+    mocks.listInvitations.mockResolvedValue([
+      { invitation_id: 'i1', email: 'robin@example.com', status: 'sent', expires_at: '2026-10-01T00:00:00Z' },
+    ]);
+
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('robin@example.com')).toBeOnTheScreen());
+
+    fireEvent.press(screen.getByText('Nudge'));
+
+    await waitFor(() =>
+      expect(mocks.sendReminder).toHaveBeenCalledWith(
+        'token',
+        'group-1',
+        'i1',
+        'unaccepted_invitation',
+      ),
+    );
+    expect(mocks.resendInvitation).not.toHaveBeenCalled();
+  });
+
+  it('names the fix when reminders were never set up', async () => {
+    mocks.listInvitations.mockResolvedValue([
+      { invitation_id: 'i1', email: 'robin@example.com', status: 'sent', expires_at: '2026-10-01T00:00:00Z' },
+    ]);
+    mocks.sendReminder.mockRejectedValue(new Error('Configure reminders before sending one.'));
+
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('robin@example.com')).toBeOnTheScreen());
+
+    fireEvent.press(screen.getByText('Nudge'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Configure reminders before sending one.')).toBeOnTheScreen(),
     );
   });
 });
