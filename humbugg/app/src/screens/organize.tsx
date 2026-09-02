@@ -14,8 +14,10 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { api, ApiError } from '../api/client';
+import { CustomizationPanel } from '../components/customization';
 import { InvitationsPanel } from '../components/invitations';
 import { isPlusRequired, PlusBillingPanel, PlusLockedNote } from '../components/plus';
+import { RemindersPanel } from '../components/reminders';
 import { Card, LoadingPanel, Shell } from '../components/shell';
 import { StatusMessage } from '../components/status-message';
 import { useAuth } from '../context/auth-context';
@@ -206,6 +208,12 @@ export default function OrganizeScreen({
         ) : null}
 
         <InvitationsPanel group={group} onChanged={() => void load(true)} />
+
+        {/* Reminders sit under invitations because the first thing they chase is an unanswered
+            invitation, and the settings read as nonsense before you have sent one. */}
+        <RemindersPanel group={group} />
+
+        <CustomizationPanel group={group} onSaved={setGroup} />
 
         <GiftProgressPanel readiness={readiness} />
 
