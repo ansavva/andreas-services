@@ -33,8 +33,7 @@ function record(over: Partial<CharacterRecord> = {}): CharacterRecord {
   return {
     id: ID,
     lib: "lib-0001",
-    slug: "<slug>",
-    display_name: "<name>",
+    name: "<name>",
     rev: 7,
     created: "2026-08-01T00:00:00Z",
     updated: "2026-08-01T00:00:00Z",
@@ -116,11 +115,11 @@ describe("saving identity and the bible together", () => {
     // The trap this exists to catch: both routes are compare-and-swap on the
     // same row, so sending them the same `rev` makes the second one 409 against
     // a change the page itself just made.
-    patch.mockResolvedValue(record({ slug: "<other>", rev: 8 }));
-    setProfile.mockResolvedValue(record({ slug: "<other>", rev: 9 }));
+    patch.mockResolvedValue(record({ rev: 8 }));
+    setProfile.mockResolvedValue(record({ rev: 9 }));
 
     await open();
-    await editAndSave("Slug", "<other>");
+    await editAndSave("Name", "<other>");
     // The record fields alone are dirty here, so only the one write goes.
     await waitFor(() => expect(patch).toHaveBeenCalledWith(ID, expect.objectContaining({ rev: 7 })));
     expect(setProfile).not.toHaveBeenCalled();
@@ -132,8 +131,8 @@ describe("saving identity and the bible together", () => {
     setProfile.mockResolvedValue(record({ rev: 9 }));
 
     await open();
-    // Both halves dirty: the slug, and a leaf inside the first bible section.
-    fireEvent.change(screen.getByLabelText("Slug"), { target: { value: "<other>" } });
+    // Both halves dirty: the name, and a leaf inside the first bible section.
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "<other>" } });
     fireEvent.change(screen.getByLabelText("Hair"), { target: { value: "long" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 

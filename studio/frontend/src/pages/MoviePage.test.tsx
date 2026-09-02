@@ -7,7 +7,7 @@ import { TestProviders } from "../test-providers";
 
 vi.mock("../apis/studio", () => ({
   getMovie: vi.fn(),
-  getProject: vi.fn().mockResolvedValue({ id: "proj-1", slug: "a-project", title: "A project" }),
+  getProject: vi.fn().mockResolvedValue({ id: "proj-1", name: "A project" }),
 }));
 
 import { getMovie } from "../apis/studio";
@@ -27,8 +27,7 @@ function record(over: Partial<MovieRecord> = {}): MovieRecord {
   return {
     id: ID,
     project: "proj-1",
-    slug: "a-movie",
-    title: "A movie",
+    name: "A movie",
     status: "planned",
     created: "2026-08-20T00:00:00Z",
     output: null,
@@ -71,7 +70,7 @@ it("opens a scene from its row", async () => {
   read.mockResolvedValue(
     record({
       scenes: [
-        { id: "scene-7", slug: "a-scene", title: "A scene", status: "assembled", thumb: null },
+        { id: "scene-7", name: "A scene", status: "assembled", thumb: null },
       ],
     } as Partial<MovieRecord>),
   );
@@ -91,8 +90,8 @@ it("numbers the scenes in cut order", async () => {
   read.mockResolvedValue(
     record({
       scenes: [
-        { id: "s1", slug: "first", title: "First", status: "assembled", thumb: null },
-        { id: "s2", slug: "second", title: "Second", status: "planned", thumb: null },
+        { id: "s1", name: "First", status: "assembled", thumb: null },
+        { id: "s2", name: "Second", status: "planned", thumb: null },
       ],
     } as Partial<MovieRecord>),
   );

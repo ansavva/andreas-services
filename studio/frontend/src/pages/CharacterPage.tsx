@@ -164,13 +164,13 @@ export function CharacterPage() {
         actions={
           <ConfirmDestroyDialog
             label="Delete"
-            title={`Delete ${record.slug}?`}
+            title={`Delete ${record.name}?`}
             summary={
               "The character, its profile and its whole reference library go. " +
               "Runs that used it stay — a run really did use this subject, and " +
               "deleting the character is not a reason to delete the work."
             }
-            confirmWord={record.slug}
+            confirmWord={record.name}
             onConfirm={async () => {
               await deleteCharacter(record.id, "delete", true);
               navigate(CHARACTERS_PATH);
@@ -178,10 +178,10 @@ export function CharacterPage() {
           />
         }
       >
-        <Text variant="display">{record.display_name}</Text>
+        <Text variant="display">{record.name}</Text>
         {/* The slug is what a `studio` command is given, so it is mono. */}
         <Text variant="caption" tone="muted" className="font-mono">
-          {record.slug}
+          {record.name}
         </Text>
       </PageBar>
 
@@ -214,10 +214,7 @@ export function CharacterPage() {
             // succeeded leaves the form holding what the API returned rather
             // than a draft it has to be reconciled against.
             key={record.rev}
-            identity={{
-              slug: record.slug,
-              display_name: record.display_name,
-            }}
+            identity={{ name: record.name }}
             profile={record.profile}
             rev={record.rev}
             onSave={saveCharacter}

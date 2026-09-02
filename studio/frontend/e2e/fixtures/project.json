@@ -1,9 +1,8 @@
 {
   "characters": [
     {
-      "display_name": "jason",
-      "id": "char-57399438-f54b-5b36-8d84-3fd4dcbf34cc",
-      "slug": "jason"
+      "name": "jason",
+      "id": "char-57399438-f54b-5b36-8d84-3fd4dcbf34cc"
     }
   ],
   "counts": {
@@ -17,7 +16,6 @@
   "lib": "lib-160af8b7-bf45-5fd0-b4d1-8bd7e52fac07",
   "rev": 1,
   "root": "node-7bb01883-15cf-436a-b253-585ce46d342e",
-  "slug": "a-test-project",
-  "title": "A test project",
+  "name": "A test project",
   "updated": "2026-08-27T15:14:02.954245+00:00"
 }

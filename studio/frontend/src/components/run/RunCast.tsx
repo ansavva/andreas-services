@@ -96,7 +96,7 @@ export function RunCast({ runId, projectId, value, onSaved }: Props) {
                 onClick={() => void toggle(each.id)}
               >
                 {at >= 0 ? `${at + 1}. ` : ""}
-                {each.display_name || each.slug}
+                {each.name}
               </Button>
             );
           })}

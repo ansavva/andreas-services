@@ -13,7 +13,7 @@
       "owner": {
         "id": "char-57399438-f54b-5b36-8d84-3fd4dcbf34cc",
         "kind": "character",
-        "slug": "jason"
+        "name": "jason"
       },
       "parent_id": "node-43fbd3f9-35f7-540c-b1c7-68b35c15b25d",
       "updated_at": "2026-08-27T02:19:24.255448+00:00"
@@ -26,7 +26,7 @@
       "owner": {
         "id": "char-57399438-f54b-5b36-8d84-3fd4dcbf34cc",
         "kind": "character",
-        "slug": "jason"
+        "name": "jason"
       },
       "parent_id": "node-43fbd3f9-35f7-540c-b1c7-68b35c15b25d",
       "updated_at": "2026-08-27T02:19:24.255406+00:00"
@@ -39,7 +39,7 @@
       "owner": {
         "id": "char-57399438-f54b-5b36-8d84-3fd4dcbf34cc",
         "kind": "character",
-        "slug": "jason"
+        "name": "jason"
       },
       "parent_id": "node-43fbd3f9-35f7-540c-b1c7-68b35c15b25d",
       "updated_at": "2026-08-27T02:19:24.255381+00:00"
@@ -52,7 +52,7 @@
       "owner": {
         "id": "char-57399438-f54b-5b36-8d84-3fd4dcbf34cc",
         "kind": "character",
-        "slug": "jason"
+        "name": "jason"
       },
       "parent_id": "node-43fbd3f9-35f7-540c-b1c7-68b35c15b25d",
       "updated_at": "2026-08-27T02:19:24.255428+00:00"

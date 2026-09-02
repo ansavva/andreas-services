@@ -233,8 +233,7 @@ describe("the panel", () => {
     list.mockResolvedValue([
       {
         id: CHAR,
-        slug: "a-subject",
-        display_name: "A subject",
+        name: "A subject",
         hero: null,
         counts: { default: 2, files: 4 },
         updated: "2026-08-20T00:00:00Z",

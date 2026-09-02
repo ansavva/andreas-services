@@ -84,13 +84,11 @@ export function CreateEntityDialog({ kind }: Props) {
     try {
       if (isCharacter) {
         const record = await createCharacter({
-          slug: clean,
-          display_name: name.trim() || clean,
+          name: name.trim() || clean,
         });
         navigate(characterPath(record.id));
       } else {
         const record = await createProject({
-          slug: clean,
           ...(name.trim() ? { title: name.trim() } : {}),
           ...(description.trim() ? { description: description.trim() } : {}),
         });

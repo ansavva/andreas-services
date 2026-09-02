@@ -273,14 +273,14 @@ it("renames a template by its ID, not by the name it had", async () => {
    */
   read.mockResolvedValue(SPEC);
   vi.mocked(saveTemplate).mockResolvedValue({
-    ...SPEC.templates[0],
+    ...SPEC.templates[0]!,
     name: "Face, straight on",
   });
   show();
 
   const box = await screen.findByDisplayValue("Face, front");
   fireEvent.change(box, { target: { value: "Face, straight on" } });
-  fireEvent.click(screen.getAllByRole("button", { name: /^Save/ })[0]);
+  fireEvent.click(screen.getAllByRole("button", { name: /^Save/ })[0]!);
 
   await waitFor(() =>
     expect(saveTemplate).toHaveBeenCalledWith(

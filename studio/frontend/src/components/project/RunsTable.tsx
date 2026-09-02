@@ -19,7 +19,7 @@ import { RunList } from "../run/RunList";
 interface Props {
   projectId: string;
   /** The project's characters, so the filter offers names rather than ids. */
-  characters: Array<{ id: string; slug: string; display_name: string }>;
+  characters: Array<{ id: string; name: string }>;
   onOpen: (run: RunSummary) => void;
 }
 
@@ -144,7 +144,7 @@ export function RunsTable({ projectId, characters, onOpen }: Props) {
             <Select
               options={[
                 { value: "", label: "Any character" },
-                ...characters.map((each) => ({ value: each.id, label: each.display_name })),
+                ...characters.map((each) => ({ value: each.id, label: each.name })),
               ]}
               value={character ?? ""}
               onValueChange={(next: string) => setCharacter(next === "" ? null : next)}

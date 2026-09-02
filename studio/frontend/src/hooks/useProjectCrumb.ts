@@ -26,7 +26,7 @@ export function useProjectCrumb(projectId: string): Crumb[] {
   return useMemo(
     () => [
       { label: "Projects", to: PROJECTS_PATH },
-      { label: data?.title || data?.slug || "Project", to: projectPath(projectId) },
+      { label: data?.name || "Project", to: projectPath(projectId) },
     ],
     [data, projectId],
   );

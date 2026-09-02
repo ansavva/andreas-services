@@ -81,22 +81,22 @@ export interface NodeRecord {
 }
 
 /**
- * The entity a node belongs to: what the app renders as "in <slug>".
+ * The entity a node belongs to: what the app renders as "in <name>".
  *
- * A `slug` and not a display name, because the slug is the address a person
- * types at the CLI and the two must read as the same thing. It is mutable — a
- * rename moves it — which is exactly why nothing here stores it: it is re-read
- * with the node every time.
+ * A `name`, which is the only label an entity has. It was a `slug` beside a
+ * display name; both collapsed into this. It is mutable — a rename moves it —
+ * which is exactly why nothing here stores it: it is re-read with the node
+ * every time.
  *
  * **The owner is the DEEPEST entity, which is often a run**, and a run has no
- * slug — so `slug` is null there and the id is all there is to show. This
+ * name — so `name` is null there and the id is all there is to show. This
  * declared only `character | project` while the API has always answered with
  * whichever entity is nearest; the union now says what is actually returned.
  */
 export interface NodeOwner {
   kind: "character" | "project" | "run" | "scene" | "movie";
   id: string;
-  slug: string | null;
+  name: string | null;
 }
 
 /**
@@ -354,9 +354,10 @@ export interface UploadGrant {
 // a folder name plus a document inside it. Two consequences shape every type
 // below and neither is cosmetic:
 //
-// * **The id is the identity and the slug is a label.** Nothing here is keyed
-//   on a slug, so a rename is one write and no link, binding or reference goes
-//   stale. `slug` is present because it is what a person types at the CLI.
+// * **The id is the identity and the name is a label.** Nothing here is keyed
+//   on a name, so a rename is one write and no link, binding or reference goes
+//   stale. A name is NOT unique: two characters may be called the same thing,
+//   which is why every address in this file is an id and none is a name.
 // * **Studio owns the envelope; the provider owns the payload.** A run's status,
 //   model, bindings and outputs are fields because studio validates them. The
 //   request and response bodies are *node ids* — the app fetches them as text
@@ -379,8 +380,7 @@ export interface HeroImage {
 /** One row of `GET /api/characters`. */
 export interface CharacterSummary {
   id: string;
-  slug: string;
-  display_name: string;
+  name: string;
   hero: HeroImage | null;
   /**
    * `default` is how many of its images a generation is shown — what
@@ -440,15 +440,13 @@ export type CharacterProfile = Record<string, ProfileValue>;
  * the body's key rather than by the verb. One form edits both; see `ProfileForm`.
  */
 export interface CharacterIdentity {
-  slug: string;
-  display_name: string;
+  name: string;
 }
 
 export interface CharacterRecord {
   id: string;
   lib: string;
-  slug: string;
-  display_name: string;
+  name: string;
   rev: number;
   created: string;
   updated: string;
@@ -465,7 +463,7 @@ export interface CharacterRecord {
  * `order` is an attribute gapped by 1000, so inserting between two entries is
  * one write and touches neither neighbour. `group` is an attribute, so
  * regrouping copies no bytes. Both used to be encoded in the filename
- * (`<slug>_<group>_<n>.png`), which is why the file this names can now be called
+ * (`<name>_<group>_<n>.png`), which is why the file this names can now be called
  * anything and renamed freely: the row names its **node id**.
  */
 /**
@@ -572,8 +570,7 @@ export const ENGINE_CAPS: ReadonlyArray<{ engine: string; cap: number }> = [
 /** One row of `GET /api/projects`. */
 export interface ProjectSummary {
   id: string;
-  slug: string;
-  title: string;
+  name: string;
   hero: HeroImage | null;
   counts: ProjectCounts;
   updated: string;
@@ -596,8 +593,7 @@ export interface ProjectCounts {
 export interface ProjectRecord {
   id: string;
   lib: string;
-  slug: string;
-  title: string;
+  name: string;
   description: string;
   rev: number;
   created: string;
@@ -605,7 +601,7 @@ export interface ProjectRecord {
   root: string;
   hero: string | null;
   counts: ProjectCounts;
-  characters: Array<{ id: string; slug: string; display_name: string }>;
+  characters: Array<{ id: string; name: string }>;
 }
 
 /**
@@ -717,7 +713,7 @@ export interface RunCost {
  * **Every field here must be one the API actually writes into the listing row.**
  * This declared `slug` and the row never carried one — the CLI's equivalent
  * formatter crashed on it and this table rendered an empty column. A run has no
- * slug at all now: it is a machine event, addressed by its id or by `latest`.
+ * label at all: it is a machine event, addressed by its id or by `latest`.
  */
 export interface RunSummary {
   id: string;
@@ -1257,8 +1253,7 @@ export interface Take {
 export interface SceneSummary {
   id: string;
   project: string;
-  slug: string;
-  title: string;
+  name: string;
   status: string;
   created: string;
   thumb?: HeroImage | null;
@@ -1266,7 +1261,7 @@ export interface SceneSummary {
 
 /**
  * A link back UP the tree — which scene used this run, which movie cut this
- * scene. Thin on purpose: id, slug and title are what a link needs to be drawn.
+ * scene. Thin on purpose: an id and a name are what a link needs to be drawn.
  *
  * These are answered off `by-sk` edge rows, and until those existed the
  * questions had no answer at any price: a run lived in a shot's attribute and a
@@ -1274,8 +1269,7 @@ export interface SceneSummary {
  */
 export interface Backlink {
   id: string;
-  slug: string | null;
-  title: string | null;
+  name: string | null;
 }
 
 export interface SceneRecord extends SceneSummary {
@@ -1307,8 +1301,7 @@ export interface SceneRecord extends SceneSummary {
 export interface MovieSummary {
   id: string;
   project: string;
-  slug: string;
-  title: string;
+  name: string;
   status: string;
   created: string;
   thumb?: HeroImage | null;

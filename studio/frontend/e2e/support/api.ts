@@ -43,7 +43,7 @@ interface Node {
   content_type?: string;
   created_at: string;
   updated_at?: string;
-  owner?: { kind: string; id: string; slug: string | null } | null;
+  owner?: { kind: string; id: string; name: string | null } | null;
 }
 
 /** A pane in the recursive walk — a different shape from a node row. */
@@ -248,7 +248,7 @@ export const SCENE_ID = "scene-e2e0-0000-0000-0000-0000000scene";
 export const SCENE: Record<string, unknown> = {
   id: SCENE_ID,
   project: RUN_PROJECT,
-  slug: "e2e-scene",
+  name: "e2e-scene",
   title: "An end-to-end scene",
   status: "assembled",
   movies: [],

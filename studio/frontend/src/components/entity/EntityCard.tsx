@@ -4,9 +4,15 @@ import type { HeroImage } from "../../types";
 import { MediaThumb } from "../media/MediaThumb";
 
 interface Props {
-  title: string;
-  /** The slug — the address a person types, shown because it is not the title. */
-  slug: string;
+  /**
+   * What the entity is called. **The one label there is.**
+   *
+   * The card used to draw two — a `title` in body text and a `slug` in mono
+   * underneath, because a slug was the address a person typed and a title was
+   * prose. There is no address to show any more: identity is a UUID, which is
+   * not something to put on a card.
+   */
+  name: string;
   hero: HeroImage | null;
   /** "41 references · 62 files", "12 runs · 2 scenes" — whatever this entity counts. */
   counts: string;
@@ -28,12 +34,12 @@ interface Props {
  * The whole card is one `<button>`, which is why nothing inside it may be one —
  * the same constraint every row and tile in this app is under.
  */
-export function EntityCard({ title, slug, hero, counts, onOpen }: Props) {
+export function EntityCard({ name, hero, counts, onOpen }: Props) {
   return (
     <button
       type="button"
       onClick={onOpen}
-      title={slug}
+      title={name}
       // Square, and a hairline rather than a filled card. These sit in a grid
       // where a rule alone would not close the shape, so the border stays —
       // what goes is the rounding and the fill that made each one an object
@@ -47,7 +53,7 @@ export function EntityCard({ title, slug, hero, counts, onOpen }: Props) {
           <MediaThumb nodeId={hero.node} url={hero.url} name="" aspect="auto" />
         ) : (
           <span className="flex h-full w-full items-center justify-center font-heading text-xl text-muted">
-            {title.slice(0, 1).toUpperCase()}
+            {name.slice(0, 1).toUpperCase()}
           </span>
         )}
       </span>
@@ -57,7 +63,7 @@ export function EntityCard({ title, slug, hero, counts, onOpen }: Props) {
 
         `Text variant="body"` renders a `<p>`; `variant="caption"` renders a
         `<span>`, which is **inline**. So these two sat on one line with nothing
-        between them and the card read `<slug><counts>` run together — literally
+        between them and the card read `<label><counts>` run together — literally
         "jason0 references · 54 files" — while `truncate` did nothing at all,
         needing a block box to have a width to truncate against.
 
@@ -67,14 +73,10 @@ export function EntityCard({ title, slug, hero, counts, onOpen }: Props) {
       */}
       <span className="min-w-0 flex-1">
         <Text variant="body" weight="medium" className="truncate">
-          {title}
+          {name}
         </Text>
-        {/* The slug is an address and the counts are numbers — both metadata,
-            both mono. `tabular-nums` is kept as well: it is what lines the
-            counts up between one card and the next. */}
-        <Text variant="caption" tone="muted" className="block truncate font-mono">
-          {slug}
-        </Text>
+        {/* The counts are numbers, so mono with `tabular-nums`: it is what
+            lines them up between one card and the next. */}
         <Text variant="caption" tone="muted" className="block truncate font-mono tabular-nums">
           {counts}
         </Text>

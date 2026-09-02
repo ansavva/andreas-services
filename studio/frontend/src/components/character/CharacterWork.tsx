@@ -69,8 +69,7 @@ export function CharacterProjects({ characterId }: { characterId: string }) {
       {data.map((project) => (
         <EntityCard
           key={project.id}
-          title={project.title || project.slug}
-          slug={project.slug}
+          name={project.name}
           hero={project.hero}
           counts={`${project.counts.runs} runs · ${project.counts.scenes} scenes · ${project.counts.movies} movies`}
           onOpen={() => navigate(projectPath(project.id))}

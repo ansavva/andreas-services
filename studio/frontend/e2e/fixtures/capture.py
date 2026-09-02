@@ -98,7 +98,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 STUDIO = HERE.parents[2]
 API = os.environ.get("STUDIO_E2E_API", "http://localhost:8000")
 
-#: The project to take the run fixtures from — a slug or an id. The first one
+#: The project to take the run fixtures from — a name or an id. The first one
 #: the library holds, when nothing says otherwise.
 PROJECT = os.environ.get("STUDIO_E2E_PROJECT")
 #: Whose live input schema `SchemaParams` is exercised against.
@@ -241,7 +241,7 @@ def authoring(bearer: str, library: str, character: dict) -> None:
     projects = get("/api/projects", bearer, library)
     wanted = PROJECT
     project_row = next(
-        (row for row in projects if wanted in (row["id"], row["slug"])), None
+        (row for row in projects if wanted in (row["id"], row.get("name"))), None
     ) if wanted else (projects[0] if projects else None)
     if project_row is None:
         raise SystemExit(

@@ -93,9 +93,9 @@ export function ProjectPage() {
         actions={
           <ConfirmDestroyDialog
             label="Delete"
-            title={`Delete ${record.slug}?`}
+            title={`Delete ${record.name}?`}
             summary={deleteSummary(held, counts)}
-            confirmWord={record.slug}
+            confirmWord={record.name}
             onConfirm={async () => {
               await deleteProject(record.id, "delete", held > 0);
               navigate(PROJECTS_PATH);
@@ -103,11 +103,11 @@ export function ProjectPage() {
           />
         }
       >
-        <Text variant="display">{record.title || record.slug}</Text>
+        <Text variant="display">{record.name}</Text>
         {/* The slug is the address a person types at the CLI, so it is set in
             the face every other address on this app now uses. */}
         <Text variant="caption" tone="muted" className="font-mono">
-          {record.slug}
+          {record.name}
         </Text>
       </PageBar>
 
@@ -215,8 +215,8 @@ function ScenesTab({ projectId }: { projectId: string }) {
       {data.map((scene) => (
         <EntityRow
           key={scene.id}
-          title={scene.title || scene.slug}
-          subtitle={`${scene.slug} · ${formatDate(scene.created)}`}
+          title={scene.name}
+          subtitle={`${scene.name} · ${formatDate(scene.created)}`}
           status={scene.status}
           thumb={scene.thumb ?? null}
           onOpen={() => navigate(scenePath(scene.id))}
@@ -245,8 +245,8 @@ function MoviesTab({ projectId }: { projectId: string }) {
       {data.map((movie) => (
         <EntityRow
           key={movie.id}
-          title={movie.title || movie.slug}
-          subtitle={`${movie.slug} · ${formatDate(movie.created)}`}
+          title={movie.name}
+          subtitle={`${movie.name} · ${formatDate(movie.created)}`}
           status={movie.status}
           thumb={movie.thumb ?? null}
           onOpen={() => navigate(moviePath(movie.id))}

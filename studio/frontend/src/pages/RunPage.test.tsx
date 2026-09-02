@@ -24,8 +24,7 @@ vi.mock("../apis/studio", () => ({
   // the editor rather than the crumb that asks for the name.
   getProject: vi.fn().mockResolvedValue({
     id: "proj-1",
-    slug: "a-project",
-    title: "A project",
+    name: "A project",
     characters: [],
   }),
   getCharacters: vi.fn().mockResolvedValue([]),
@@ -195,7 +194,7 @@ it("names the project in the trail", async () => {
 it("names the scene that used this run, and goes there", async () => {
   read.mockResolvedValue(
     record({
-      scenes: [{ id: "scene-9", slug: "a-scene", title: "A scene" }],
+      scenes: [{ id: "scene-9", name: "A scene" }],
     } as Partial<RunRecord>),
   );
   await open();

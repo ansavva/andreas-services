@@ -38,7 +38,7 @@ export function OwnerLink({ nodeId }: { nodeId: string }) {
       {/* The slug, because that is what a person types at the CLI and the two
           must read as the same thing. A run has none — it is a machine event —
           so it falls back to the word. */}
-      <span className="font-body text-xs">in {data.slug ?? data.kind}</span>
+      <span className="font-body text-xs">in {data.name ?? data.kind}</span>
     </button>
   );
 }

@@ -605,8 +605,8 @@ export function RunPlanEditor({
         ? project.characters
         : (library ?? []).map((each) => ({
             id: each.id,
-            slug: each.slug,
-            display_name: each.display_name,
+            slug: each.name,
+            name: each.name,
           })),
     [project, library],
   );
@@ -1251,7 +1251,7 @@ function CharacterRefs({
   room,
   onAppend,
 }: {
-  choices: Array<{ id: string; slug: string; display_name: string }>;
+  choices: Array<{ id: string; name: string }>;
   /** Room left under the model's reference cap; `null` where it has none. */
   room: number | null;
   onAppend: (selection: SelectionEntry[]) => void;
@@ -1312,7 +1312,7 @@ function CharacterRefs({
           <Select
             options={choices.map((each) => ({
               value: each.id,
-              label: each.display_name || each.slug,
+              label: each.name,
             }))}
             value={who}
             onValueChange={setPicked}

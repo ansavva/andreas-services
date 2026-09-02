@@ -91,7 +91,7 @@ interface Props {
    * offer them at all, which made every run the app created uncitable and the
    * template picker permanently disabled.
    */
-  characters?: Array<{ id: string; slug: string; display_name?: string }>;
+  characters?: Array<{ id: string; name?: string }>;
 }
 
 /**
@@ -336,7 +336,7 @@ export function NewRunStrip({ projectId, characters = [] }: Props) {
                       {/* The position, because it is what a prompt cites:
                           `{character.1.top}` is whichever of these is first. */}
                       {at >= 0 ? `${at + 1}. ` : ""}
-                      {each.display_name || each.slug}
+                      {each.name}
                     </Button>
                   );
                 })}

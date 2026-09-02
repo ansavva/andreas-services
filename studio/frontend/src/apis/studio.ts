@@ -410,7 +410,7 @@ export function deleteNode(id: string) {
 // Characters, projects, runs, scenes and movies — rows with ids, queried rather
 // than walked. Three things hold for every call below:
 //
-// * **Ids, never slugs.** The API accepts `slug:<slug>` on the read routes for
+// * **Ids, and there is no other address.** The API accepted `slug:<slug>` for
 //   the CLI, where a person types a name; the SPA always holds an id and never
 //   sends one, so a rename cannot invalidate anything it is holding.
 // * **`rev` on every record write.** The caller sends the `rev` it read and a
@@ -431,26 +431,25 @@ export function getCharacter(id: string) {
 }
 
 export function createCharacter(body: {
-  slug: string;
-  display_name: string;
+  name: string;
   profile?: CharacterProfile;
 }) {
   return apiSend<CharacterRecord>("POST", "/api/characters", body);
 }
 
 /**
- * Rename, retitle, or re-hero a character.
+ * Rename or re-hero a character.
  *
  * **A rename here moves nothing.** No object is copied, no run document is
  * rewritten, and every reference, binding and default-set entry keeps pointing
- * at the same node ids — the slug is a label on one row and the root folder's
- * name changes in the same transaction. It used to be a `PATCH` per slugged
+ * at the same node ids — the name is a label on one row and nothing else moves,
+ * the root folder included, because it is named by the id. It used to be a `PATCH` per slugged
  * basename across four pools plus a rewrite pass over every run that cited the
  * old path.
  */
 export function patchCharacter(
   id: string,
-  body: { rev: number; slug?: string; display_name?: string; hero?: string },
+  body: { rev: number; name?: string; hero?: string },
 ) {
   return apiSend<EntityPatch<CharacterRecord>>(
     "PATCH",
@@ -657,7 +656,7 @@ export function previewPlanPrompt(runId: string, template: string) {
  * the full type.
  *
  * It bit twice before being named. Feeding a default-set acknowledgement into
- * the page's record left a character with no name, no slug and no root folder;
+ * the page's record left a character with no name and no root folder;
  * feeding a `PATCH /characters` reply in crashed the project page on
  * `record.counts.runs`.
  *
@@ -750,8 +749,7 @@ export function getProject(id: string) {
 }
 
 export function createProject(body: {
-  slug: string;
-  title?: string;
+  name?: string;
   description?: string;
   characters?: string[];
 }) {
@@ -762,8 +760,7 @@ export function patchProject(
   id: string,
   body: {
     rev: number;
-    slug?: string;
-    title?: string;
+    name?: string;
     description?: string;
     hero?: string;
   },
@@ -805,7 +802,7 @@ export function deleteProject(
  *
  * It was not, and the asymmetry cost three bugs: the route answered with the id
  * strings it had been handed while a `GET` expands the same field into
- * `{id, slug, display_name}` objects. Merging replaced objects with strings, so
+ * `{id, name}` objects. Merging replaced objects with strings, so
  * `characters.map(c => c.id)` became a list of `undefined` and every chip read
  * unselected while the write itself had succeeded — a failure no type could
  * catch, because the type was an assertion about a shape nobody had checked.
@@ -1141,7 +1138,7 @@ export function getScene(id: string) {
 }
 
 /**
- * Change a scene's own fields — its setting, its title, its status.
+ * Change a scene's own fields — its setting, its name, its status.
  *
  * `setting` is the one a person edits: it is prepended byte-identically to
  * every panel prompt, so it is the single lever that keeps separately rendered

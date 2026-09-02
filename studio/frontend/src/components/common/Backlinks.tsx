@@ -46,7 +46,7 @@ export function Backlinks({ label, links, to }: Props) {
           onClick={() => navigate(to(link.id))}
           className="rounded text-sm text-accent underline underline-offset-2 hover:opacity-80"
         >
-          {link.title || link.slug || link.id}
+          {link.name || link.id}
         </button>
       ))}
     </div>

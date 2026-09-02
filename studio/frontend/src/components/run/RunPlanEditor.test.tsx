@@ -101,7 +101,7 @@ beforeEach(() => {
     id: "proj-1",
     root: "node-project",
     characters: [
-      { id: "char-1", slug: "placeholder", display_name: "Placeholder" },
+      { id: "char-1", name: "Placeholder" },
     ],
   });
 });

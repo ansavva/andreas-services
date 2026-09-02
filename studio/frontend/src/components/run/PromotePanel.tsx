@@ -240,8 +240,8 @@ export function PromotePanel({
   const offered = useMemo(() => {
     const all = characters.data ?? [];
     const own = new Set(runCharacters);
-    const by = (a: { display_name: string }, b: { display_name: string }) =>
-      a.display_name.localeCompare(b.display_name);
+    const by = (a: { name: string }, b: { name: string }) =>
+      a.name.localeCompare(b.name);
     return [
       ...all.filter((each) => own.has(each.id)).sort(by),
       ...all.filter((each) => !own.has(each.id)).sort(by),
@@ -319,7 +319,7 @@ export function PromotePanel({
     return [...new Set([...existing, ...CONVENTIONAL_GROUPS, UNSORTED])].sort();
   }, [inUse.data]);
 
-  const slug = offered.find((each) => each.id === character)?.slug ?? "";
+  const name = offered.find((each) => each.id === character)?.name ?? "";
   const target = group.trim() || UNSORTED;
 
   async function promote() {
@@ -346,7 +346,7 @@ export function PromotePanel({
           // message that names a folder: the reader has to go and find it.
           body:
             `${err.message} You will find it as “${err.copy.name}” in ` +
-            `${slug || "the character"}'s reference/${err.group}/ folder — ` +
+            `${name || "the character"}'s reference/${err.group}/ folder — ` +
             `add it from there, or delete it. This run's own copy is fine.`,
         });
       } else {
@@ -367,12 +367,12 @@ export function PromotePanel({
           <Alert.Title>
             {done.already
               ? "That picture is already a reference"
-              : `Added to ${slug || "the character"}'s references`}
+              : `Added to ${name || "the character"}'s references`}
           </Alert.Title>
           <Alert.Description>
             <span>
               It is in the {done.group} group, and shots of{" "}
-              {slug || "this character"} will be matched against it from now on.
+              {name || "this character"} will be matched against it from now on.
               This run still has its own copy.{" "}
             </span>
             {/* A real `<a href>`: command-click belongs to the browser, which is
@@ -393,7 +393,7 @@ export function PromotePanel({
               }}
               className="text-sm text-accent underline underline-offset-2 hover:opacity-80"
             >
-              Open {slug || "the character"}'s references
+              Open {name || "the character"}'s references
             </a>
           </Alert.Description>
         </Alert.Root>
@@ -409,7 +409,7 @@ export function PromotePanel({
   return (
     <section className="flex flex-col gap-3 rounded-none border-line bg-card p-3">
       <Text variant="title">
-        {slug ? `Add to ${slug}'s references` : "Add to a character's references"}
+        {name ? `Add to ${name}'s references` : "Add to a character's references"}
       </Text>
 
       {/* **A click outside does not throw typed words away.** The drawer asks
@@ -457,7 +457,7 @@ export function PromotePanel({
           in front of it is half filled in and navigating would lose it. */}
       <Text variant="body" className="max-w-prose">
         References are the pictures studio works from to keep{" "}
-        {slug || "this character"} looking the same in everything you make.
+        {name || "this character"} looking the same in everything you make.
         Adding “{asset.name}” puts it in that set.
       </Text>
 
@@ -506,7 +506,7 @@ export function PromotePanel({
             <Select
               options={offered.map((each) => ({
                 value: each.id,
-                label: each.display_name,
+                label: each.name,
               }))}
               value={character}
               placeholder={

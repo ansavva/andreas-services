@@ -47,11 +47,11 @@ export function HeaderSearch() {
     () => [
       ...(characters.data ?? []).map((each) => ({
         value: characterPath(each.id),
-        label: each.display_name || each.slug,
+        label: each.name,
       })),
       ...(projects.data ?? []).map((each) => ({
         value: projectPath(each.id),
-        label: each.title || each.slug,
+        label: each.name,
       })),
     ],
     [characters.data, projects.data],
