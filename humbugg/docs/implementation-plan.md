@@ -25,7 +25,7 @@ Live at `https://www.humbugg.com` (product app at `app.humbugg.com`, API at `api
 | Milestone | Closed | Open | State |
 |---|---|---|---|
 | Foundation | 13 | 0 | Complete |
-| Free | 11 | 2 | The active milestone — #129 and #138 remain |
+| Free | 12 | 1 | The active milestone — only #138 remains |
 | Plus | 9 | 0 | **Closed, and not finished.** Read the next section before believing it |
 | Work | 0 | 10 | Deliberately untouched |
 | Launch | 3 | 10 | Gated on Free |
@@ -76,14 +76,7 @@ covers because every Plus issue described a backend that was genuinely delivered
 This blocks Launch more than anything else on this list: #160 (the payment and email matrix) and
 #162 (the beta) both assume a purchaser can use what they bought.
 
-### 2. #129 — product metadata from wishlist URLs
-
-Deliberately last, and still is. Today a pasted URL is stored as typed, validated as absolute
-http(s) and **never fetched**. #129 is the issue that introduces fetching, and with it an SSRF
-surface: it needs the blocklist, redirect/size/time limits and sanitisation its acceptance criteria
-describe. Nothing else is blocked on it, so there is no reason to take that risk early.
-
-### 3. #138 — mobile and assistive-technology verification
+### 2. #138 — mobile and assistive-technology verification
 
 A review pass over everything above, and it closes Free. Worth doing last on purpose, and worth
 doing by somebody who did not write the six features merged on 2026-09-02.
@@ -164,6 +157,19 @@ exclusions and this is where to look.
 Repeating deliberately invites nobody. The prior roster comes back as a list of NAMES for the
 organizer to send the link to; enrolling last year's participants would put people in a draw they
 never agreed to.
+
+**#129 is the service's only outbound request, and its safety lives in one file.**
+`WishUrlSafety` judges the resolved ADDRESS rather than the hostname, and it is installed as the
+HTTP handler's `ConnectCallback` so the connection is made to the address that was checked — a
+separate "validate then fetch" is a DNS-rebinding hole. Redirects are followed by hand so each hop
+is re-inspected. The full boundary is in [`threat-model.md`](threat-model.md#outbound-requests-129);
+change any of it there first.
+
+Writing its tests found three real defects in the fetcher, one of which is worth remembering:
+**on Unix, `Uri.TryCreate("/img/x.jpg", UriKind.Absolute, …)` succeeds**, producing
+`file:///img/x.jpg`. A site-relative `og:image` therefore never reached the relative-resolution
+branch. Nothing unsafe followed — the scheme check refused it — but "absolute" and "has a scheme we
+want" are different questions and this codebase now asks the second one.
 
 **Three times now an issue comment has described a capability as built when only its endpoint was.**
 #135's said the edit endpoint existed — it did, and `api.updateGroup` was called from exactly one

@@ -1,7 +1,7 @@
 // The wishlist editor. Covers the interactions someone actually performs on their own list, and the
 // two rules that matter beyond the UI: a reorder sends a complete order, and the giver's view is
 // read-only.
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import type { RecipientWish, Wish } from '../types';
 
@@ -11,6 +11,7 @@ const mocks = {
   updateWish: jest.fn(),
   deleteWish: jest.fn(),
   reorderWishes: jest.fn(),
+  previewWishUrl: jest.fn(),
 };
 
 jest.mock('../api/client', () => ({
@@ -20,6 +21,7 @@ jest.mock('../api/client', () => ({
     updateWish: (...args: unknown[]) => mocks.updateWish(...args),
     deleteWish: (...args: unknown[]) => mocks.deleteWish(...args),
     reorderWishes: (...args: unknown[]) => mocks.reorderWishes(...args),
+    previewWishUrl: (...args: unknown[]) => mocks.previewWishUrl(...args),
   },
   ApiError: class extends Error {},
 }));
@@ -420,3 +422,116 @@ describe("the giver's purchase claims", () => {
     expect(screen.queryByText(/never see it/)).toBeNull();
   });
 });
+
+/**
+ * Reading a pasted product link (#129).
+ *
+ * The fields it fills are a stranger's server's words, so two things matter more than the filling:
+ * that the owner keeps whatever they already typed, and that the screen says where the rest came
+ * from.
+ */
+describe('filling a wish from a link', () => {
+  async function openAddForm() {
+    render(<WishListPanel groupId="g1" />);
+    await waitFor(() => expect(screen.getByText('Add a wish')).toBeTruthy());
+    fireEvent.press(screen.getByText('Add a wish'));
+    return screen.getByLabelText('Link (optional)');
+  }
+
+  it('fills the empty fields and names the source', async () => {
+    mocks.previewWishUrl.mockResolvedValue({
+      host: 'shop.example.com',
+      fetched: true,
+      title: 'A very good chef knife',
+      image_url: 'https://cdn.example.com/knife.jpg',
+      canonical_url: 'https://shop.example.com/product/1',
+      price_cents: 2599,
+      currency: 'GBP',
+    });
+    const link = await openAddForm();
+
+    fireEvent.changeText(link, 'https://shop.example.com/product/1?ref=tracking');
+    await act(async () => {
+      fireEvent.press(screen.getByText('Fill from the link'));
+    });
+
+    expect(screen.getByLabelText('What is it?').props.value).toBe('A very good chef knife');
+    expect(screen.getByLabelText('Rough price (optional)').props.value).toBe('25.99');
+    // The canonical replaces the tracking URL — that is what it is for.
+    expect(link.props.value).toBe('https://shop.example.com/product/1');
+    expect(screen.getByText(/Filled from shop\.example\.com/)).toBeTruthy();
+  });
+
+  /** A preview that overwrites what somebody typed is a preview that loses their work. */
+  it('never overwrites a field the owner already filled', async () => {
+    mocks.previewWishUrl.mockResolvedValue({
+      host: 'shop.example.com',
+      fetched: true,
+      title: 'The seller’s title',
+      image_url: null,
+      canonical_url: 'https://shop.example.com/product/1',
+      price_cents: 9999,
+      currency: 'GBP',
+    });
+    const link = await openAddForm();
+
+    fireEvent.changeText(screen.getByLabelText('What is it?'), 'The knife I actually want');
+    fireEvent.changeText(screen.getByLabelText('Rough price (optional)'), '20');
+    fireEvent.changeText(link, 'https://shop.example.com/product/1');
+    await act(async () => {
+      fireEvent.press(screen.getByText('Fill from the link'));
+    });
+
+    expect(screen.getByLabelText('What is it?').props.value).toBe('The knife I actually want');
+    expect(screen.getByLabelText('Rough price (optional)').props.value).toBe('20');
+  });
+
+  /** A page that offered nothing leaves a manual form, which is what it already was. */
+  it('leaves the form alone when the page offered nothing', async () => {
+    mocks.previewWishUrl.mockResolvedValue({
+      host: 'shop.example.com',
+      fetched: false,
+      title: null,
+      image_url: null,
+      canonical_url: 'https://shop.example.com/product/1',
+      price_cents: null,
+      currency: null,
+    });
+    const link = await openAddForm();
+
+    fireEvent.changeText(link, 'https://shop.example.com/product/1');
+    await act(async () => {
+      fireEvent.press(screen.getByText('Fill from the link'));
+    });
+
+    expect(screen.getByLabelText('What is it?').props.value).toBe('');
+    // Still addable by hand — the point of the fallback.
+    expect(screen.getByText('Add to my list')).toBeTruthy();
+  });
+
+  it('shows a refusal the server could decide from the URL alone', async () => {
+    mocks.previewWishUrl.mockRejectedValue(
+      new Error('That link points somewhere private rather than at a public web page.'),
+    );
+    const link = await openAddForm();
+
+    fireEvent.changeText(link, 'http://169.254.169.254/latest/meta-data/');
+    await act(async () => {
+      fireEvent.press(screen.getByText('Fill from the link'));
+    });
+
+    expect(screen.getByText(/points somewhere private/)).toBeTruthy();
+  });
+
+  /** Editing an existing wish is for correcting it, not for re-fetching over it. */
+  it('is not offered on the edit form', async () => {
+    mocks.listWishes.mockResolvedValue([wish({ wish_id: 'a', title: 'Chef knife' })]);
+    render(<WishListPanel groupId="g1" />);
+    await waitFor(() => expect(screen.getByLabelText('Edit Chef knife')).toBeTruthy());
+
+    fireEvent.press(screen.getByLabelText('Edit Chef knife'));
+
+    expect(screen.queryByText('Fill from the link')).toBeNull();
+  });
+});
+

@@ -11,8 +11,19 @@ namespace Humbugg.Api.Controllers;
 /// <c>GET /groups/{groupId}/assignment</c>, which is the one place the draw is consulted.
 /// </summary>
 [ApiController, Authorize, Route("api/groups/{groupId}/members/me/wishes")]
-public sealed class WishesController(IWishService wishes) : ControllerBase
+public sealed class WishesController(IWishService wishes, IWishPreviewService previews) : ControllerBase
 {
+    // Reading a pasted product link (#129). A POST because it has a side effect — Humbugg's servers
+    // make a request somebody else chose the destination of — and because a URL in a request body is
+    // not written to an access log the way a query string is.
+    //
+    // Authenticated and membership-checked: this is the one endpoint that makes an outbound request
+    // on a caller's say-so, so it is not available to the internet at large. What it can reach is
+    // bounded by WishUrlSafety, and what it returns is four short fields, never the page.
+    [HttpPost("preview")]
+    public Task<WishPreview> Preview(string groupId, [FromBody] WishPreviewRequest request, CancellationToken cancellationToken) =>
+        previews.PreviewAsync(groupId, request, cancellationToken);
+
     [HttpGet]
     public Task<IReadOnlyList<Wish>> List(string groupId, CancellationToken cancellationToken) =>
         wishes.ListAsync(groupId, cancellationToken);

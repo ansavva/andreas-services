@@ -206,6 +206,27 @@ builder.Services.AddScoped<IProductAnalytics, ProductAnalytics>();
 builder.Services.AddScoped<IProfileService, ProfileService>();
 builder.Services.AddScoped<IGroupService, GroupService>();
 builder.Services.AddScoped<IWishService, WishService>();
+// Reading a pasted product link (#129). The handler is the security boundary, not the caller: its
+// ConnectCallback resolves the host, refuses every non-public answer and dials the address it just
+// approved, which is what closes the gap a separate "validate then fetch" leaves open to DNS
+// rebinding. Redirects are followed by hand in the service so each hop is re-judged.
+builder.Services.AddHttpClient(WishPreviewService.ClientName, client =>
+    {
+        client.Timeout = WishPreviewService.Timeout;
+        client.MaxResponseContentBufferSize = WishPreviewService.MaxBytes;
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Humbugg-LinkPreview/1.0 (+https://humbugg.com)");
+    })
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        AllowAutoRedirect = false,
+        ConnectCallback = async (context, cancellationToken) =>
+            await WishUrlSafety.ConnectAsync(context.DnsEndPoint, cancellationToken),
+        ConnectTimeout = TimeSpan.FromSeconds(3),
+        // No cookie jar and no credentials: this fetches public pages on nobody's behalf.
+        UseCookies = false,
+        Credentials = null,
+    });
+builder.Services.AddScoped<IWishPreviewService, WishPreviewService>();
 builder.Services.AddScoped<IQuestionService, QuestionService>();
 builder.Services.AddScoped<IInvitationService, InvitationService>();
 builder.Services.AddScoped<ILateParticipantService, LateParticipantService>();

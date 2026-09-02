@@ -37,6 +37,31 @@ this document specifies the invariant/limit that the feature must ship with.
 | Plan / entitlement | Medium — controls quota | `humbugg-prod-groups.plan` / `entitlement_id` |
 | Organization / Work membership **[FUTURE]** | High — cross-tenant boundary | not yet modelled |
 
+### Outbound requests (#129)
+
+Wishlist link previews are the **only** place Humbugg's servers make a request to an address a user
+chose, so they are the service's only SSRF surface. Four things bound it:
+
+1. **The check is on the resolved address, never the hostname.** A name resolves to whatever its
+   owner's DNS says today, so `localtest.me` and a hundred services like it are public records that
+   answer 127.0.0.1. Only the IP can be judged.
+2. **The connection is made to the address that was checked.** `WishUrlSafety.ConnectAsync` is
+   installed as the handler's `ConnectCallback`: it resolves once, requires *every* answer to be
+   public, and dials the approved addresses. Validating and then letting a socket re-resolve is a
+   DNS-rebinding hole.
+3. **169.254.0.0/16 is refused**, along with loopback, RFC1918, CGNAT, benchmarking, multicast,
+   IPv6 unique-local and link-local, and IPv4-mapped forms of all of them. That range holds the
+   instance-metadata service, which is the highest-value target an SSRF can have.
+4. **Redirects are followed by hand**, three at most, each hop re-inspected — a 302 is a URL chosen
+   by the page rather than by the user.
+
+Also: ports 80/443 only, `user:pass@` refused, 5s deadline, 512KB read cap enforced on bytes actually
+read rather than on `Content-Length`, `text/html` only, no cookies, no credentials. The response
+carries four short fields and never the page body, which makes it a poor exfiltration primitive even
+for an authenticated caller. Refusals that needed DNS or a connection are reported identically to a
+timeout, because the difference between "blocked, it is internal" and "nothing there" is a port
+scanner.
+
 Trust boundaries: the **browser** (untrusted), **API Gateway HTTP API** + Cognito JWT authorizer
 (authentication edge), the **ASP.NET Core Lambda** (authorization + business rules — the security
 kernel), **DynamoDB** (IAM-scoped storage), and the **Mailer platform** (SigV4-signed, separate
