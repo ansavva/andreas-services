@@ -15,6 +15,7 @@ public interface IGroupService
     Task<GroupDetail> GetAsync(string groupId, CancellationToken cancellationToken = default);
     Task<GroupReadiness> GetReadinessAsync(string groupId, CancellationToken cancellationToken = default);
     Task<GroupDetail> UpdateAsync(string groupId, UpdateGroupRequest request, CancellationToken cancellationToken = default);
+    Task<RepeatedExchange> RepeatAsync(string groupId, RepeatExchangeRequest request, CancellationToken cancellationToken = default);
     Task<GroupDetail> UpdateCustomizationAsync(string groupId, UpdateCustomizationRequest request, CancellationToken cancellationToken = default);
     Task<InvitationPreview> GetInvitationAsync(string groupId, string? inviteToken, CancellationToken cancellationToken = default);
     Task DeleteAsync(string groupId, CancellationToken cancellationToken = default);
@@ -97,6 +98,114 @@ internal sealed class GroupService(
             $"invite_sent:{group.GroupId}", cancellationToken: cancellationToken);
         var detail = await GetAsync(group.GroupId, cancellationToken);
         return detail with { InviteUrl = InviteUrl(group.GroupId, secret) };
+    }
+
+    /// <summary>
+    /// Starts a new exchange from a previous one (#136).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Free, and available to any owner. It creates a NEW exchange rather than reopening the old one,
+    /// so last year stays exactly as it was — the source is only ever read.
+    /// </para>
+    /// <para>
+    /// **Nothing private travels.** Not assignments, addresses, wishlists, purchase claims,
+    /// conversations or gift progress — and not because each is filtered out, but because the new
+    /// exchange has no memberships except the organizer's. There is nowhere for any of it to land.
+    /// What carries over is what the organizer typed: the name, the description, the instructions,
+    /// the spending limit, and optionally the pairs who should not draw each other.
+    /// </para>
+    /// <para>
+    /// **Nobody is enrolled.** The prior participants come back as a list of names so the organizer
+    /// knows who to send the link to; joining is the same act it always was. Silently enrolling last
+    /// year's roster would put people in an exchange they never agreed to and hand them a place in a
+    /// draw they might not want.
+    /// </para>
+    /// </remarks>
+    public async Task<RepeatedExchange> RepeatAsync(
+        string groupId,
+        RepeatExchangeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var source = await RequireGroupAsync(groupId, cancellationToken);
+        if (source.OwnerUserId != user.UserId)
+            throw ApiException.Forbidden("Only the owner of an exchange can repeat it.");
+        var profile = await profiles.GetAsync(user.UserId, cancellationToken)
+            ?? throw ApiException.Conflict("Complete your profile before creating a group.");
+
+        var roster = await memberships.GetByGroupAsync(groupId, cancellationToken);
+        var dates = Validation.GroupDates(request.EventDate, request.SignupDeadline);
+        var secret = NewSecret();
+        var now = DateTimeOffset.UtcNow.ToString("O");
+        var newGroupId = Guid.NewGuid().ToString();
+
+        var group = new GroupRecord(
+            newGroupId,
+            user.UserId,
+            Validation.Required(request.Name ?? source.Name, "name", 120),
+            request.CopyDetails ? source.Description : "",
+            dates.EventDate,
+            dates.SignupDeadline,
+            request.CopyDetails ? source.SpendingLimitCents : null,
+            "USD",
+            // Always Free. Plus is bought per exchange and does not travel — repeating one would
+            // otherwise be a way to get it for nothing.
+            PlanCode.Free,
+            null,
+            GroupStatus.Open,
+            Hash(secret),
+            request.CopyExclusions ? TranslateExclusions(source, roster, newGroupId) : [],
+            now,
+            now,
+            // Customization is Plus branding and the new exchange is Free; carrying it over would
+            // hand out a paid capability. RequiresAddress is a fact about how THIS exchange hands
+            // gifts over, which the organizer decides again.
+            Customization: null,
+            RequiresAddress: false,
+            Instructions: request.CopyDetails ? source.Instructions : "");
+
+        await groups.CreateAsync(group, cancellationToken);
+        await memberships.CreateAsync(group.GroupId, user.UserId, profile.DisplayName, true, cancellationToken);
+        await audit.RecordAsync(AuditAction.GroupCreated, group.GroupId, AuditTarget.Group(group.GroupId),
+            new Dictionary<string, string> { ["repeated_from"] = groupId }, cancellationToken: cancellationToken);
+        await analytics.TrackAsync(AnalyticsEventType.RepeatExchangeCreated, group.Plan, group.GroupId,
+            $"repeat_exchange:{group.GroupId}", cancellationToken: cancellationToken);
+
+        return new RepeatedExchange(
+            await GetAsync(group.GroupId, cancellationToken),
+            InviteUrl(group.GroupId, secret),
+            roster
+                .Where(member => member.UserId != user.UserId)
+                .Select(member => member.DisplayName)
+                .OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase)
+                .ToList());
+    }
+
+    /// <summary>
+    /// Rewrites the source's exclusions into the new exchange's member ids.
+    /// </summary>
+    /// <remarks>
+    /// A member id is <c>sha256(groupId:userId)</c>, so what somebody's id WILL be in the new
+    /// exchange is known before they join — which is what makes carrying the pairs over possible at
+    /// all, given that a literal copy would name ids belonging to last year's group.
+    ///
+    /// A pair is kept only when both sides still resolve to an account: somebody whose membership is
+    /// gone, or was anonymized by an account deletion, takes their pairs with them rather than
+    /// leaving a constraint nobody can explain. Until both people join, the pair simply names
+    /// non-members, and the matcher ignores it.
+    /// </remarks>
+    private static IReadOnlyList<string[]> TranslateExclusions(
+        GroupRecord source,
+        IReadOnlyList<MembershipRecord> roster,
+        string newGroupId)
+    {
+        var users = roster.ToDictionary(member => member.MemberId, member => member.UserId, StringComparer.Ordinal);
+        return source.Exclusions
+            .Where(pair => pair.Length == 2 && pair.All(users.ContainsKey))
+            .Select(pair => pair
+                .Select(memberId => Data.MembershipRepository.MemberId(newGroupId, users[memberId]))
+                .ToArray())
+            .ToList();
     }
 
     public async Task<GroupDetail> GetAsync(string groupId, CancellationToken cancellationToken = default)

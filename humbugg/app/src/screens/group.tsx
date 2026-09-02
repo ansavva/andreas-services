@@ -13,6 +13,7 @@ import { ExchangeInstructions, ExchangeSettingsPanel } from '../components/excha
 import { isPlusRequired, PlusRefusalCard } from '../components/plus';
 import { GiftReceivedPanel, GiftStagePanel } from '../components/gift-progress';
 import { QuestionsPanel } from '../components/questions';
+import { RepeatExchangePanel } from '../components/repeat-exchange';
 import { FieldLabel } from '../components/field';
 import { Card, LoadingPanel, Shell } from '../components/shell';
 import { StatusMessage } from '../components/status-message';
@@ -215,6 +216,13 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
             after everybody has their assignment is a different (and rarer) job. */}
         {group.is_organizer && group.status === 'open' ? (
           <ExchangeSettingsPanel group={group} onSaved={setGroup} />
+        ) : null}
+
+        {/* Offered after the draw, which is when an organizer actually thinks about next year —
+            before it they are still running this one (#136). Owner-only: it creates an exchange,
+            and the person who owns this one is who should own that one. */}
+        {group.is_owner && group.status === 'drawn' ? (
+          <RepeatExchangePanel group={group} />
         ) : null}
 
         <Card>

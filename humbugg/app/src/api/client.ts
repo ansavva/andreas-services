@@ -18,6 +18,7 @@ import type {
   GiftReceipt,
   GiftStage,
   PolicyConsent,
+  RepeatedExchange,
   QuestionThread,
   PlusPurchaseStatus,
   Profile,
@@ -113,6 +114,10 @@ export const api = {
   // a save that would flatten somebody else's edit is refused instead. Omit it for a one-field flip
   // computed from a value you already hold — there is nothing to conflict with.
   updateGroup: (token: string, id: string, data: Record<string, unknown>) => request<GroupDetail>(`/groups/${id}`, token, json('PATCH', data)),
+  // Repeat an exchange (#136). A POST on the SOURCE — that is what the caller has and what
+  // authorizes the copy; the new exchange and its one-time link come back in the response.
+  repeatExchange: (token: string, id: string, data: Record<string, unknown>) =>
+    request<RepeatedExchange>(`/groups/${id}/repeat`, token, json('POST', data)),
   removeMember: (token: string, id: string, memberId: string) =>
     request<void>(`/groups/${id}/members/${memberId}`, token, json('DELETE')),
   updateCustomization: (token: string, id: string, data: Record<string, unknown>) => request<GroupDetail>(`/groups/${id}/customization`, token, json('PUT', data)),
