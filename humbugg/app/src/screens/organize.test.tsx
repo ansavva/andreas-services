@@ -13,6 +13,11 @@ const mocks = {
   updateGroup: jest.fn(),
   listPlans: jest.fn(),
   getPlusPurchaseStatus: jest.fn(),
+  listInvitations: jest.fn(),
+  createInvitations: jest.fn(),
+  resendInvitation: jest.fn(),
+  revokeInvitation: jest.fn(),
+  setOrganizerRole: jest.fn(),
   width: 1280,
 };
 
@@ -45,6 +50,11 @@ jest.mock('../api/client', () => {
       updateGroup: (...args: unknown[]) => mocks.updateGroup(...args),
       listPlans: (...args: unknown[]) => mocks.listPlans(...args),
       getPlusPurchaseStatus: (...args: unknown[]) => mocks.getPlusPurchaseStatus(...args),
+      listInvitations: (...args: unknown[]) => mocks.listInvitations(...args),
+      createInvitations: (...args: unknown[]) => mocks.createInvitations(...args),
+      resendInvitation: (...args: unknown[]) => mocks.resendInvitation(...args),
+      revokeInvitation: (...args: unknown[]) => mocks.revokeInvitation(...args),
+      setOrganizerRole: (...args: unknown[]) => mocks.setOrganizerRole(...args),
     },
     ApiError,
   };
@@ -126,7 +136,12 @@ const readiness = (overrides: Partial<GroupReadiness> = {}): GroupReadiness => {
 beforeEach(() => {
   jest.clearAllMocks();
   mocks.width = 1280;
-  mocks.getGroup.mockResolvedValue({ group_id: 'group-1', name: 'Office Secret Santa' });
+  mocks.getGroup.mockResolvedValue({
+    group_id: 'group-1',
+    name: 'Office Secret Santa',
+    plan: 'plus',
+    is_owner: true,
+  });
   mocks.getReadiness.mockResolvedValue(readiness());
   mocks.updateGroup.mockResolvedValue({});
   mocks.listPlans.mockResolvedValue([
@@ -134,6 +149,11 @@ beforeEach(() => {
     { code: 'plus', name: 'Plus', participant_limit: 50, marketed_as_unlimited: false, price_cents: 1_200, currency: 'USD', billing_cadence: 'one_time', price_id: 'price_plus' },
   ]);
   mocks.getPlusPurchaseStatus.mockResolvedValue({ group_id: 'group-1' });
+  mocks.listInvitations.mockResolvedValue([]);
+  mocks.createInvitations.mockResolvedValue({ invitations: [] });
+  mocks.resendInvitation.mockResolvedValue({});
+  mocks.revokeInvitation.mockResolvedValue(undefined);
+  mocks.setOrganizerRole.mockResolvedValue({});
 });
 
 describe('loading and failure', () => {
@@ -527,5 +547,184 @@ describe('the billing area', () => {
     await waitFor(() => expect(screen.getByText('Who is ready')).toBeTruthy());
     expect(screen.queryByText('This exchange is on Free')).toBeNull();
     expect(mocks.getPlusPurchaseStatus).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Managed invitations and co-organizers (#574) ───────────────────────────────────────────────
+//
+// Both capabilities shipped complete on the backend in August 2026 and were reachable from no
+// screen until now, so what these pin is the wiring: that the endpoint is actually called, that a
+// Free exchange is told what it is missing rather than shown a button that only ever fails, and
+// that the two refusals land in the right places.
+
+describe('managed invitations', () => {
+  it('sends what was pasted, however it was separated', async () => {
+    mocks.createInvitations.mockResolvedValue({
+      invitations: [
+        { invitation_id: 'i1', email: 'robin@example.com', status: 'sent', expires_at: '2026-10-01T00:00:00Z' },
+        { invitation_id: 'i2', email: 'sam@example.com', status: 'sent', expires_at: '2026-10-01T00:00:00Z' },
+      ],
+    });
+
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('Invite people by email')).toBeOnTheScreen());
+
+    fireEvent.changeText(
+      screen.getByLabelText('Email addresses'),
+      'robin@example.com, sam@example.com\n',
+    );
+    // The button counts them, which is the only feedback before the send that the paste parsed.
+    fireEvent.press(await screen.findByText('Send 2 invitations'));
+
+    await waitFor(() =>
+      expect(mocks.createInvitations).toHaveBeenCalledWith('token', 'group-1', [
+        'robin@example.com',
+        'sam@example.com',
+      ]),
+    );
+    await waitFor(() => expect(screen.getByText('2 invitations sent.')).toBeOnTheScreen());
+  });
+
+  it('drops a repeated address rather than letting the server refuse the whole batch', async () => {
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('Invite people by email')).toBeOnTheScreen());
+
+    fireEvent.changeText(
+      screen.getByLabelText('Email addresses'),
+      'robin@example.com\nROBIN@example.com',
+    );
+    fireEvent.press(await screen.findByText('Send the invitation'));
+
+    await waitFor(() =>
+      expect(mocks.createInvitations).toHaveBeenCalledWith('token', 'group-1', ['robin@example.com']),
+    );
+  });
+
+  it('shows the server’s own words when an address is refused', async () => {
+    mocks.createInvitations.mockRejectedValue(
+      new Error("'not-an-address' is not a valid single email address."),
+    );
+
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('Invite people by email')).toBeOnTheScreen());
+
+    fireEvent.changeText(screen.getByLabelText('Email addresses'), 'not-an-address');
+    fireEvent.press(await screen.findByText('Send the invitation'));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("'not-an-address' is not a valid single email address."),
+      ).toBeOnTheScreen(),
+    );
+  });
+
+  it('offers Plus instead of a form when the exchange is on Free', async () => {
+    mocks.listInvitations.mockRejectedValue(new ApiError(402, 'plus_required', 'Plus required.'));
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() =>
+      expect(screen.getByText('Sending and tracking invitations is part of Plus.')).toBeOnTheScreen(),
+    );
+    expect(screen.queryByLabelText('Email addresses')).toBeNull();
+  });
+
+  it('lets an outstanding invitation be sent again or withdrawn, and a joined one neither', async () => {
+    mocks.listInvitations.mockResolvedValue([
+      { invitation_id: 'i1', email: 'robin@example.com', status: 'sent', expires_at: '2026-10-01T00:00:00Z' },
+      { invitation_id: 'i2', email: 'sam@example.com', status: 'accepted', expires_at: '2026-10-01T00:00:00Z', accepted_at: '2026-09-01T00:00:00Z' },
+    ]);
+
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('robin@example.com')).toBeOnTheScreen());
+
+    // One row is actionable, the other is history — so exactly one of each button exists.
+    expect(screen.getAllByText('Send again')).toHaveLength(1);
+    expect(screen.getAllByText('Withdraw')).toHaveLength(1);
+    expect(screen.getByText('Joined')).toBeOnTheScreen();
+
+    fireEvent.press(screen.getByText('Withdraw'));
+    await waitFor(() =>
+      expect(mocks.revokeInvitation).toHaveBeenCalledWith('token', 'group-1', 'i1'),
+    );
+  });
+
+  it('explains a resend that came too soon rather than looking like nothing happened', async () => {
+    mocks.listInvitations.mockResolvedValue([
+      { invitation_id: 'i1', email: 'robin@example.com', status: 'sent', expires_at: '2026-10-01T00:00:00Z' },
+    ]);
+    mocks.resendInvitation.mockRejectedValue(new Error('Wait 15 minutes before resending.'));
+
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('robin@example.com')).toBeOnTheScreen());
+
+    fireEvent.press(screen.getByText('Send again'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Wait 15 minutes before resending.')).toBeOnTheScreen(),
+    );
+  });
+});
+
+describe('co-organizers', () => {
+  const roster = [
+    participant('Alex', { role: 'owner' }),
+    participant('Robin'),
+    participant('Sam', { role: 'co_organizer' }),
+  ];
+
+  it('promotes and demotes from the roster', async () => {
+    mocks.getReadiness.mockResolvedValue(readiness({ participants: roster }));
+
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('The full roster')).toBeOnTheScreen());
+
+    // The owner has no button at all: the backend refuses to demote them, so offering it would be
+    // a button whose only outcome is a 409.
+    expect(screen.getAllByText('Make organizer')).toHaveLength(1);
+    expect(screen.getAllByText('Remove as organizer')).toHaveLength(1);
+
+    fireEvent.press(screen.getByText('Make organizer'));
+    await waitFor(() =>
+      expect(mocks.setOrganizerRole).toHaveBeenCalledWith('token', 'group-1', 'member-Robin', true),
+    );
+
+    fireEvent.press(screen.getByText('Remove as organizer'));
+    await waitFor(() =>
+      expect(mocks.setOrganizerRole).toHaveBeenCalledWith('token', 'group-1', 'member-Sam', false),
+    );
+  });
+
+  it('shows a co-organizer no role buttons, because the backend is owner-only', async () => {
+    mocks.getGroup.mockResolvedValue({
+      group_id: 'group-1',
+      name: 'Office Secret Santa',
+      plan: 'plus',
+      is_owner: false,
+    });
+    mocks.getReadiness.mockResolvedValue(readiness({ participants: roster }));
+
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('The full roster')).toBeOnTheScreen());
+
+    expect(screen.queryByText('Make organizer')).toBeNull();
+    expect(screen.queryByText('Remove as organizer')).toBeNull();
+  });
+
+  it('offers Plus only once the owner has actually tried', async () => {
+    mocks.getReadiness.mockResolvedValue(readiness({ participants: roster }));
+    mocks.setOrganizerRole.mockRejectedValue(new ApiError(402, 'plus_required', 'Plus required.'));
+
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('The full roster')).toBeOnTheScreen());
+
+    // An upgrade offer above an untouched roster is an advert, not an answer.
+    expect(screen.queryByText('Sharing the organizing is part of Plus.')).toBeNull();
+
+    fireEvent.press(screen.getByText('Make organizer'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Sharing the organizing is part of Plus.')).toBeOnTheScreen(),
+    );
   });
 });

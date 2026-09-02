@@ -14,7 +14,8 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { api, ApiError } from '../api/client';
-import { PlusBillingPanel } from '../components/plus';
+import { InvitationsPanel } from '../components/invitations';
+import { isPlusRequired, PlusBillingPanel, PlusLockedNote } from '../components/plus';
 import { Card, LoadingPanel, Shell } from '../components/shell';
 import { StatusMessage } from '../components/status-message';
 import { useAuth } from '../context/auth-context';
@@ -52,6 +53,7 @@ export default function OrganizeScreen({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
+  const [rolesNeedPlus, setRolesNeedPlus] = useState(false);
 
   /**
    * `quiet` re-reads without the full-screen loading state.
@@ -183,7 +185,27 @@ export default function OrganizeScreen({
           total={counts.needs_nudge}
         />
 
-        <RosterPanel readiness={readiness} />
+        <RosterPanel
+          readiness={readiness}
+          group={group}
+          onRoleChanged={() => void load(true)}
+          onNeedsPlus={() => setRolesNeedPlus(true)}
+        />
+
+        {/*
+          The roster's own "Make organizer" refusal. It is a whole card, so it cannot live inside a
+          participant row — and it only appears once somebody has actually tried, because a locked
+          notice above an untouched roster is an advert rather than an answer.
+        */}
+        {rolesNeedPlus ? (
+          <PlusLockedNote
+            reason="Sharing the organizing is part of Plus."
+            action="hand the running of this exchange to somebody alongside you"
+            isOwner={group.is_owner}
+          />
+        ) : null}
+
+        <InvitationsPanel group={group} onChanged={() => void load(true)} />
 
         <GiftProgressPanel readiness={readiness} />
 
@@ -353,11 +375,51 @@ function NudgePanel({
   );
 }
 
-function RosterPanel({ readiness }: { readiness: GroupReadiness }) {
+function RosterPanel({
+  readiness,
+  group,
+  onRoleChanged,
+  onNeedsPlus,
+}: {
+  readiness: GroupReadiness;
+  group: GroupDetail;
+  onRoleChanged(): void;
+  onNeedsPlus(): void;
+}) {
+  const auth = useAuth();
   const { width } = useWindowDimensions();
   // Under 640px the badges go under the name instead of beside it; three chips beside a name on a
   // phone squeeze the name to two characters.
   const stacked = width < 640;
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Promote or demote a co-organizer (#574).
+   *
+   * Owner-only, and the backend says so: `UpdateOrganizerRoleAsync` calls `RequireOwner` before it
+   * checks the plan. A co-organizer seeing these buttons could only ever be told no, so
+   * `group.is_owner` decides whether they are drawn at all rather than whether they work.
+   */
+  async function setRole(person: ParticipantReadiness, isOrganizer: boolean) {
+    setBusy(person.member_id);
+    setError(null);
+    try {
+      await api.setOrganizerRole(
+        await auth.accessToken(),
+        group.group_id,
+        person.member_id,
+        isOrganizer,
+      );
+      onRoleChanged();
+    } catch (err) {
+      if (isPlusRequired(err)) onNeedsPlus();
+      else setError(err instanceof Error ? err.message : 'That role could not be changed.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <Card>
       <View style={local.panelHeading}>
@@ -368,6 +430,10 @@ function RosterPanel({ readiness }: { readiness: GroupReadiness }) {
         <View style={styles.countBadge}>
           <Text style={styles.countBadgeText}>{readiness.counts.members}</Text>
         </View>
+      </View>
+
+      <View style={{ marginTop: error ? 20 : 0 }}>
+        <StatusMessage message={error} />
       </View>
 
       {readiness.participants.length === 0 ? (
@@ -414,6 +480,16 @@ function RosterPanel({ readiness }: { readiness: GroupReadiness }) {
                     />
                   )}
                 </View>
+              ) : null}
+              {group.is_owner && person.role !== 'owner' ? (
+                <Button
+                  intent="secondary"
+                  size="sm"
+                  disabled={busy !== null}
+                  onPress={() => void setRole(person, person.role !== 'co_organizer')}
+                >
+                  {person.role === 'co_organizer' ? 'Remove as organizer' : 'Make organizer'}
+                </Button>
               ) : null}
             </View>
           ))}

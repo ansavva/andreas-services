@@ -166,3 +166,21 @@ test('the invite secret is never put on the wire as a query parameter', async ({
 
   expect(urls.filter((url) => url.includes('e2e-invite-secret'))).toEqual([]);
 });
+
+/**
+ * A Free exchange is told what Plus would add, rather than shown a form that can only fail (#574).
+ *
+ * The captured fixture group is on Free, so the API really does answer 402 here. What this pins is
+ * that the screen treats that as the ANSWER — an upgrade offer — rather than as an error, which is
+ * the difference between a plan boundary and a broken page.
+ */
+test('the invitations panel offers Plus on a Free exchange instead of failing', async ({ page }) => {
+  stubOnly('the dev stack’s own plan decides this in live mode');
+  await stubApi(page);
+  await signIn(page);
+
+  await page.goto(`/organize/${group.group_id}`);
+  await expect(page.getByText('Sending and tracking invitations is part of Plus.')).toBeVisible();
+  // No dead form behind the offer.
+  await expect(page.getByLabel('Email addresses')).toBeHidden();
+});
