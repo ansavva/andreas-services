@@ -101,6 +101,24 @@ interface Props {
    * the address does not change because the label did.
    */
   boundaryLabel?: string;
+  /**
+   * Which view this browser opens on — see `MEDIA_VIEW`.
+   *
+   * `folders` everywhere a person is browsing *files*. `media` where the whole
+   * point of the screen is the pictures: a project's Runs tab in Grid, which is
+   * this browser scoped to `runs/`.
+   */
+  defaultView?: string;
+  /**
+   * The query parameter the view rides in, and the one `folder` rides in beside
+   * it (`<viewParam>Folder`).
+   *
+   * **Both are named because two browsers can share a page.** A project draws
+   * one under Files and another under Runs, and with one key between them
+   * switching tabs would carry a folder id from one subtree into the other —
+   * a browser standing somewhere it cannot show.
+   */
+  viewParam?: string;
 }
 
 /**
@@ -163,7 +181,13 @@ type PickerTarget = {
  * name-path routes it used to call took a slash-joined path that a rename
  * invalidated mid-flight.
  */
-export function FolderBrowser({ nav, boundary = null, boundaryLabel }: Props) {
+export function FolderBrowser({
+  nav,
+  boundary = null,
+  boundaryLabel,
+  defaultView = VIEW_FOLDERS,
+  viewParam = "view",
+}: Props) {
   const { folder, sort } = nav;
 
   const [actionError, setActionError] = useState<string | null>(null);
@@ -185,7 +209,7 @@ export function FolderBrowser({ nav, boundary = null, boundaryLabel }: Props) {
    * survives leaving a Files tab and coming back. It rides beside `?folder=`,
    * which means the two compose: a chip narrows *where*, this narrows *what*.
    */
-  const [view, setView] = useSearchParamState("view", VIEW_FOLDERS);
+  const [view, setView] = useSearchParamState(viewParam, defaultView);
   const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
 
   /**

@@ -811,6 +811,32 @@ that breaks every time the pipeline ships.
   cluster and a `w-px` divider separates the two. The two rows now split exactly
   as the comment above them claims: *where you are* on top, everything you can
   *do* below.
+- **The browser has two views, and Media is a SEARCH.** `Folders | Media` in the
+  action row. Media sends `kind=image,video`, and `getFolder` sends any `kind`
+  filter with `depth=all` — the same trick the tag filter has always used, in the
+  other vocabulary. So folders and text are not hidden by a branch in the render;
+  they are not in the answer, and the two sections that draw them render nothing
+  on their own. It composes with everything already there: the folder chips still
+  say *where*, the tag filter still narrows *what*, and sort, filter, selection,
+  upload and every bulk write work unchanged over the flat result. `?view=media`,
+  so it is a link.
+- **A project's Runs tab is that browser again, scoped to `runs/`.** `List |
+  Grid`, and the unit is what differs — List's is the RUN (status, model, cost,
+  the plan behind it, each a field on the listing row and each filterable);
+  Grid's is the OUTPUT, since a run's outputs are ordinary nodes under the
+  project's `runs/` folder. Neither replaces the other: "which runs on this model
+  failed last week" is only answerable in one, "what has this project actually
+  made" only in the other. `RunsGrid` resolves `runs` by name under the project
+  root, exactly as `services/layout.py` does at write time, and draws
+  `FolderBrowser` rather than `FolderTab` — the children of `runs/` are one
+  folder per run named by the run id, so the shortcut chips would be a rail of
+  `run-<uuid>`. It does **not** label each tile with its run: a listing
+  deliberately carries no `owner` for a deep row, and the runs listing projects
+  only the first output onto its row as `thumb`, so a label would cost a read per
+  thumbnail. Opening a tile resolves the owner for the one node it draws.
+  A project draws two browsers, so their view and folder ride in named query keys
+  (`view`/`folder`, `runsView`/`runsFolder`) — one key between them would carry a
+  folder id from one subtree into the other on a tab switch.
 - **There is no "Play reel" button, and no Identity tab.** Both were removed in
   September 2026, and for the same reason: each was a second way of looking at a
   listing the page already showed. Identity was a character's Files with

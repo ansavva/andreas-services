@@ -215,6 +215,29 @@ export const CLIP_ITEM: Item = {
   url: CLIP_PATH,
 };
 
+/**
+ * The project's own root, and the `runs/` folder under it.
+ *
+ * **Synthetic, and it has to be**: the captured stack's project tree was never
+ * part of the fixture set — the seed is one character — so there is no real
+ * listing of a project root to serve. The SHAPE is a captured folder entry with
+ * its id and name overridden, the same bargain `CLIP_ITEM` strikes.
+ *
+ * It is what the Runs tab's Grid resolves: `RunsGrid` looks up the child named
+ * `runs` under the project root, exactly as `services/layout.py` does at write
+ * time, and browses it in Media view. The `depth=all` branch below then answers
+ * with the reel, so the grid draws real captured media.
+ */
+export const PROJECT_ROOT = project.root as string;
+
+const CAPTURED_FOLDER = characterRoot.entries[0]!;
+
+export const RUNS_FOLDER = {
+  ...CAPTURED_FOLDER,
+  id: "node-e2e00000-0000-0000-0000-0000000005un",
+  name: "runs",
+};
+
 export const TEXT_NODE: Node = {
   ...STILL,
   id: "node-e2e00000-0000-0000-0000-0000000073x7",
@@ -561,6 +584,13 @@ export async function stubApi(page: Page): Promise<void> {
           total: reel.total + 1,
         });
       }
+      if (under === PROJECT_ROOT)
+        return json(route, {
+          ...characterRoot,
+          entries: [RUNS_FOLDER],
+          counts: { folder: 1 },
+          total: 1,
+        });
       if (under === CHARACTER_ROOT) return json(route, characterTree);
       if (under === REFERENCE_POOL) return json(route, referenceTree);
       if (under === SEED_FOLDER) return json(route, seedFolder);

@@ -33,9 +33,14 @@ import { FolderBrowser, type BrowserNav } from "./FolderBrowser";
  * right trade in one direction only, and it is why `/f/<id>` still exists and the
  * tab does not replace it: a *link* to a folder is a link to the browser.
  */
-export function useLocalBrowserNav(rootId: string): BrowserNav {
+export function useLocalBrowserNav(rootId: string, param = "folder"): BrowserNav {
   const navigate = useNavigate();
-  const [folderParam, setFolderParam] = useSearchParamState("folder", "");
+  // **Which query key, because a project draws TWO of these** — Files, and the
+  // Runs tab's Grid. One key between them would carry a folder id from one
+  // subtree into the other on a tab switch, leaving a browser standing
+  // somewhere it cannot show. The default is the name Files has always used,
+  // so its links still work.
+  const [folderParam, setFolderParam] = useSearchParamState(param, "");
   const [sort, setSort] = useState<SortOrder>("newest");
 
   // The entity's own root is the default, so it is written as absence — a
