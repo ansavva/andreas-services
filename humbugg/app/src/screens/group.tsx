@@ -23,6 +23,7 @@ import type {
   Membership,
   RecipientAssignment,
   RevealAssignment,
+  WishClaimState,
 } from '../types';
 import { sessionKeys, sessionStore } from '../utils/session-store';
 import { validateAddressForm } from '../utils/validation';
@@ -89,6 +90,21 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
     }
   }
 
+  // Claims are their own action rather than `action()`: that one reloads the entire group, and
+  // marking a gift bought is not a change to the roster, the draw or anyone's membership. It also
+  // must not clear the success banner from whatever the organizer just did.
+  async function claimAction(work: (token: string) => Promise<RecipientAssignment>) {
+    setBusy(true);
+    setError(null);
+    try {
+      setAssignment(await work(await auth.accessToken()));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'That could not be saved.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (loading) return <Shell><LoadingPanel>Opening your exchange…</LoadingPanel></Shell>;
   if (!group || !me) {
     return (
@@ -148,7 +164,21 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
           />
         ) : null}
 
-        {assignment ? <AssignmentCard assignment={assignment} /> : null}
+        {assignment ? (
+          <AssignmentCard
+            assignment={assignment}
+            busy={busy}
+            // Both calls answer with the whole assignment, so the card re-renders from the server's
+            // view rather than a locally patched one — a wish the recipient deleted while the giver
+            // was deciding disappears instead of lingering with a claim attached to nothing.
+            onClaim={(wishId, state, quantity) =>
+              void claimAction((token) => api.setWishClaim(token, groupId, wishId, state, quantity))
+            }
+            onRelease={(wishId) =>
+              void claimAction((token) => api.releaseWishClaim(token, groupId, wishId))
+            }
+          />
+        ) : null}
 
         <Card>
           <Text style={styles.eyebrow}>Participants</Text>
@@ -257,7 +287,17 @@ function MetaChip({ children }: { children: React.ReactNode }) {
   );
 }
 
-function AssignmentCard({ assignment }: { assignment: RecipientAssignment }) {
+function AssignmentCard({
+  assignment,
+  busy,
+  onClaim,
+  onRelease,
+}: {
+  assignment: RecipientAssignment;
+  busy: boolean;
+  onClaim(wishId: string, state: WishClaimState, quantity: number): void;
+  onRelease(wishId: string): void;
+}) {
   const address = Object.values(assignment.address ?? {}).filter(Boolean).join(', ');
   return (
     <View style={styles.assignmentCard}>
@@ -269,7 +309,12 @@ function AssignmentCard({ assignment }: { assignment: RecipientAssignment }) {
         <View>
           <Text style={styles.assignmentLabel}>Their wishlist</Text>
           <View style={{ marginTop: 8 }}>
-            <RecipientWishList wishes={assignment.wishes ?? []} />
+            <RecipientWishList
+              wishes={assignment.wishes ?? []}
+              busy={busy}
+              onClaim={onClaim}
+              onRelease={onRelease}
+            />
           </View>
         </View>
         <View>

@@ -313,6 +313,36 @@ public sealed class WishServiceTests
         private readonly List<MembershipRecord> members = items.ToList();
         // Real behaviour, not a counter: the readiness dashboard reads this field back, so a fake
         // that swallowed the write would let a test pass on a value production never stores.
+        public Task SetWishClaimAsync(string memberId, string drawId, string wishId, WishClaimRecord claim, CancellationToken cancellationToken = default)
+        {
+            var index = members.FindIndex(item => item.MemberId == memberId);
+            if (index < 0) return Task.CompletedTask;
+            var current = members[index];
+            // Mirrors the repository: a map from an earlier draw is replaced, not merged into.
+            var claims = current.WishClaimsDrawId == drawId && current.WishClaims is { } existing
+                ? new Dictionary<string, WishClaimRecord>(existing, StringComparer.Ordinal)
+                : new Dictionary<string, WishClaimRecord>(StringComparer.Ordinal);
+            claims[wishId] = claim;
+            members[index] = current with { WishClaims = claims, WishClaimsDrawId = drawId };
+            return Task.CompletedTask;
+        }
+        public Task RemoveWishClaimAsync(string memberId, string drawId, string wishId, CancellationToken cancellationToken = default)
+        {
+            var index = members.FindIndex(item => item.MemberId == memberId);
+            if (index < 0) return Task.CompletedTask;
+            var current = members[index];
+            if (current.WishClaimsDrawId != drawId || current.WishClaims is not { } existing) return Task.CompletedTask;
+            var claims = new Dictionary<string, WishClaimRecord>(existing, StringComparer.Ordinal);
+            claims.Remove(wishId);
+            members[index] = current with { WishClaims = claims };
+            return Task.CompletedTask;
+        }
+        public Task ClearWishClaimsAsync(string memberId, CancellationToken cancellationToken = default)
+        {
+            var index = members.FindIndex(item => item.MemberId == memberId);
+            if (index >= 0) members[index] = members[index] with { WishClaims = null, WishClaimsDrawId = null };
+            return Task.CompletedTask;
+        }
         public Task MarkAssignmentViewedAsync(string memberId, string drawId, CancellationToken cancellationToken = default)
         {
             var index = members.FindIndex(item => item.MemberId == memberId);

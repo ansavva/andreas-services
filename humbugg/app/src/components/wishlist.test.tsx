@@ -3,7 +3,7 @@
 // read-only.
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
-import type { Wish } from '../types';
+import type { RecipientWish, Wish } from '../types';
 
 const mocks = {
   listWishes: jest.fn(),
@@ -37,13 +37,13 @@ import { RecipientWishList, WishListPanel } from './wishlist';
 
 function wish(overrides: Partial<Wish> & { wish_id: string; title: string }): Wish {
   return {
-    kind: 'Product',
+    kind: 'product',
     url: null,
     image_url: null,
     price_cents: null,
     currency: null,
     quantity: 1,
-    priority: 'Normal',
+    priority: 'normal',
     details: null,
     position: 0,
     created_at: '2026-01-01T00:00:00Z',
@@ -266,14 +266,14 @@ describe("the giver's view", () => {
         wishes={[
           {
             wish_id: 'a',
-            kind: 'Product',
+            kind: 'product',
             title: 'Chef knife',
             url: 'https://example.com/knife',
             image_url: null,
             price_cents: 2599,
             currency: 'USD',
             quantity: 1,
-            priority: 'High',
+            priority: 'high',
             details: 'Any brand is fine',
             position: 0,
           },
@@ -290,9 +290,133 @@ describe("the giver's view", () => {
     expect(screen.queryByLabelText('Remove Chef knife')).toBeNull();
   });
 
+  // Would have failed before the casing fix: the API sends "product"/"high", and the app's unions
+  // said "Product"/"High", so both badges rendered empty.
+  it('labels the kind and priority the API actually sends', () => {
+    render(
+      <RecipientWishList
+        wishes={[
+          {
+            wish_id: 'a',
+            kind: 'product',
+            title: 'Chef knife',
+            url: null,
+            image_url: null,
+            price_cents: null,
+            currency: null,
+            quantity: 1,
+            priority: 'high',
+            details: null,
+            position: 0,
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('To buy')).toBeTruthy();
+    expect(screen.getByText('Would love it')).toBeTruthy();
+  });
+
   it('says so plainly when the recipient added nothing', () => {
     render(<RecipientWishList wishes={[]} />);
 
     expect(screen.getByText('No specific wishes added.')).toBeTruthy();
+  });
+});
+
+// Purchase claims (#130). The list is the only surface that renders them, and it renders them only
+// when handed the handlers — which is how the emergency reveal and every other read-only path get
+// none by omission rather than by remembering to strip them.
+describe("the giver's purchase claims", () => {
+  const claim = jest.fn();
+  const release = jest.fn();
+
+  function recipientWish(overrides: Partial<RecipientWish> = {}): RecipientWish {
+    return {
+      wish_id: 'a',
+      kind: 'product',
+      title: 'Chef knife',
+      url: null,
+      image_url: null,
+      price_cents: null,
+      currency: null,
+      quantity: 1,
+      priority: 'normal',
+      details: null,
+      position: 0,
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    claim.mockClear();
+    release.mockClear();
+  });
+
+  it('offers both marks on an unclaimed wish, and says the mark is private', () => {
+    render(<RecipientWishList wishes={[recipientWish()]} onClaim={claim} onRelease={release} />);
+
+    expect(screen.getByText(/never see it, and it is only for this draw/)).toBeTruthy();
+    fireEvent.press(screen.getByText("I'm getting this"));
+    expect(claim).toHaveBeenCalledWith('a', 'planned', 1);
+
+    fireEvent.press(screen.getByText('I bought it'));
+    expect(claim).toHaveBeenCalledWith('a', 'purchased', 1);
+    // Nothing to undo until something is claimed.
+    expect(screen.queryByText('Undo')).toBeNull();
+  });
+
+  it('reads back a claim and lets it be released', () => {
+    render(
+      <RecipientWishList
+        wishes={[recipientWish({ claim: { state: 'purchased', quantity: 1, updated_at: 'now' } })]}
+        onClaim={claim}
+        onRelease={release}
+      />,
+    );
+
+    expect(screen.getByText('You bought this')).toBeTruthy();
+    // Already bought: there is no further mark to make, only an undo.
+    expect(screen.queryByText('I bought it')).toBeNull();
+    expect(screen.queryByText("I'm getting this")).toBeNull();
+
+    fireEvent.press(screen.getByText('Undo'));
+    expect(release).toHaveBeenCalledWith('a');
+  });
+
+  it('claims the whole quantity by default and reports a partial one', () => {
+    const { rerender } = render(
+      <RecipientWishList wishes={[recipientWish({ quantity: 3 })]} onClaim={claim} onRelease={release} />,
+    );
+
+    fireEvent.press(screen.getByText('I bought it'));
+    expect(claim).toHaveBeenCalledWith('a', 'purchased', 3);
+
+    rerender(
+      <RecipientWishList
+        wishes={[recipientWish({ quantity: 3, claim: { state: 'planned', quantity: 2, updated_at: 'now' } })]}
+        onClaim={claim}
+        onRelease={release}
+      />,
+    );
+    expect(screen.getByText('You are getting this · 2 of 3')).toBeTruthy();
+  });
+
+  /**
+   * The read-only path. Without handlers there is no control to press — which is what the emergency
+   * reveal renders, and what an owner's own list could never render anyway because `Wish` carries
+   * no claim.
+   */
+  it('renders nothing about claims when it is not given the handlers', () => {
+    render(
+      <RecipientWishList
+        wishes={[recipientWish({ claim: { state: 'purchased', quantity: 1, updated_at: 'now' } })]}
+      />,
+    );
+
+    expect(screen.getByText('Chef knife')).toBeTruthy();
+    expect(screen.queryByText('You bought this')).toBeNull();
+    expect(screen.queryByText('I bought it')).toBeNull();
+    expect(screen.queryByText(/never see it/)).toBeNull();
   });
 });

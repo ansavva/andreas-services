@@ -157,8 +157,30 @@ export interface CheckoutResponse {
   status: PaymentStatus;
 }
 
-export type WishKind = 'Product' | 'Custom' | 'Experience' | 'Charity';
-export type WishPriority = 'Low' | 'Normal' | 'High';
+// Lowercase because that is what the wire carries. The API serialises every enum through
+// `JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower)`, so `WishKind.Product` arrives as
+// "product" — these were PascalCase, which type-checked and then failed silently at runtime: every
+// `kindLabel[wish.kind]` lookup missed and rendered an empty badge, and `priority !== 'Normal'` was
+// always true, so every wish also carried a second empty one. Writes were unaffected (the backend
+// parses case-insensitively), which is why it survived: only the read was wrong.
+export type WishKind = 'product' | 'custom' | 'experience' | 'charity';
+export type WishPriority = 'low' | 'normal' | 'high';
+
+/**
+ * How far along the giver is on one wish (#130).
+ *
+ * Two states, not three. "planned" is a soft hold that stops a giver buying the same thing twice
+ * across sessions; "purchased" is done. Sent and received are the exchange's milestones, not the
+ * wish's, and belong to the organizer roll-up (#132).
+ */
+export type WishClaimState = 'planned' | 'purchased';
+
+/** The GIVER's own claim on a wish. Never the wishlist owner's — they are never sent one. */
+export interface WishClaim {
+  state: WishClaimState;
+  quantity: number;
+  updated_at: string;
+}
 
 /** A wish on your own list. */
 export interface Wish {
@@ -194,6 +216,11 @@ export interface RecipientWish {
   priority: WishPriority;
   details?: string | null;
   position: number;
+  /**
+   * The reader's OWN claim, or absent. Deliberately not on `Wish`: a claim on your own list would
+   * tell you what your giver has already bought, which is the one thing this feature must not do.
+   */
+  claim?: WishClaim | null;
 }
 
 export interface RecipientAssignment {

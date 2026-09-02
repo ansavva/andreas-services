@@ -67,7 +67,14 @@ internal sealed class DataExportService(
                 Wishes: (await wishes.GetByMemberAsync(membership.MemberId, cancellationToken))
                     .Select(ExportedWish).ToList(),
                 JoinedAt: membership.CreatedAt,
-                UpdatedAt: membership.UpdatedAt));
+                UpdatedAt: membership.UpdatedAt,
+                // Read off the caller's own membership row, which is where a claim lives — so this
+                // is structurally the caller's own data and cannot accidentally be somebody else's.
+                WishClaims: membership.WishClaims?
+                    .Select(pair => new ExportedWishClaim(
+                        pair.Key, pair.Value.State, pair.Value.Quantity, pair.Value.UpdatedAt))
+                    .OrderBy(claim => claim.WishId, StringComparer.Ordinal)
+                    .ToList()));
         }
 
         exportedMemberships = exportedMemberships
@@ -78,6 +85,8 @@ internal sealed class DataExportService(
         {
             "This export contains only your own personal data. It never includes other members' " +
             "wishlists, addresses, or the identity of anyone you were assigned to give to.",
+            "wish_claims records gifts you marked as planned or purchased. It names the item by its " +
+            "id and never the person whose list it was on.",
         };
         if (user.Email is null)
             notes.Add("Your email address is managed by AWS Cognito and was not present on the access " +

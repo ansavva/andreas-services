@@ -9,6 +9,7 @@ import type {
   PlanDefinition,
   Membership,
   Wish,
+  WishClaimState,
   CreateWishInput,
   UpdateWishInput,
   ManagedInvitation,
@@ -150,6 +151,16 @@ export const api = {
   draw: (token: string, id: string) => request<RecipientAssignment>(`/groups/${id}/draw`, token, json('POST')),
   reset: (token: string, id: string) => request<GroupDetail>(`/groups/${id}/reset`, token, json('POST')),
   getAssignment: (token: string, id: string, drawVersion?: string | null) => request<RecipientAssignment>(`/groups/${id}/assignment${drawVersion ? `?draw_version=${encodeURIComponent(drawVersion)}` : ''}`, token),
+  // Purchase claims (#130). Both return the whole assignment, so one round trip leaves the giver's
+  // view consistent — including a wish the owner deleted while the giver was deciding.
+  setWishClaim: (token: string, id: string, wishId: string, state: WishClaimState, quantity?: number) =>
+    request<RecipientAssignment>(
+      `/groups/${id}/assignment/wishes/${wishId}/claim`,
+      token,
+      json('PUT', quantity === undefined ? { state } : { state, quantity }),
+    ),
+  releaseWishClaim: (token: string, id: string, wishId: string) =>
+    request<RecipientAssignment>(`/groups/${id}/assignment/wishes/${wishId}/claim`, token, json('DELETE')),
   reveal: (token: string, id: string, reason: string) => request<{ assignments: RevealAssignment[] }>(`/groups/${id}/assignment/reveal`, token, json('POST', { reason })),
   previewLateParticipant: (token: string, id: string, memberId: string) =>
     request<LateParticipantPreview>(`/groups/${id}/late-participants/${memberId}/preview`, token, json('POST')),

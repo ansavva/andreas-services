@@ -273,7 +273,11 @@ Group `humbugg-prod` with `cancel-in-progress: false` — queued pushes wait for
 
 - `humbugg-prod-profiles` — per-user profile and wish-list data
 - `humbugg-prod-groups` — group metadata (owner, name, member list)
-- `humbugg-prod-groupmembers` — group ↔ member relationship + assignment results
+- `humbugg-prod-groupmembers` — group ↔ member relationship + assignment results. Also holds each
+  member's **purchase claims** (#130): which wishes on their assigned recipient's list they have
+  marked planned or bought. They live on the CLAIMANT's row rather than on the wish, which is the
+  whole privacy design — a wishlist owner never reads another member's private membership fields, so
+  the surprise is preserved by where the data is rather than by a projection somebody must remember
 - `humbugg-prod-draws` — private giver → recipient maps, separate from ordinary group responses
 - `humbugg-prod-audit-events` — standard append-only audit trail for sensitive exchange actions (creation/deletion, participant/exclusion/role/entitlement/reminder changes, draws, resets, reveals, self-service data clears, membership anonymization, and account deletion); see `infra/README.md`. Account deletion never erases audit records — it anonymizes only the `actor_user_id` via the narrow `IAuditActorAnonymizer` seam. Retention/deletion policy is documented in `docs/data-retention-deletion.md`.
 - `humbugg-prod-analytics-events` — privacy-safe product-analytics funnel events (plan + aggregate counts only; no wishlist/address/email/token/assignment). Deduped by `idempotency_key`; disable via `HUMBUGG_ANALYTICS_ENABLED=false`; see `docs/analytics.md`

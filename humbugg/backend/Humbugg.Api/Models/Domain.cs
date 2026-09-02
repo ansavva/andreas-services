@@ -12,6 +12,12 @@ public enum WishKind { Product, Custom, Experience, Charity }
 // Ordering hint for the giver, not a sort key: the list's own order is `position`, which the owner
 // controls. Priority says how much the wish is wanted, which is a different question from where it sits.
 public enum WishPriority { Low, Normal, High }
+
+// How far along a giver is on one wish (#130). Two states, not three: "planned" is a soft hold that
+// stops the giver buying two of the same thing across sessions, "purchased" is done. There is no
+// "sent" or "received" here — those are the exchange's milestones and belong to #132's roll-up,
+// which counts these without ever naming who set them.
+public enum WishClaimState { Planned, Purchased }
 public enum PlanCode { Free, Plus, Work }
 public enum BillingCadence { Free, OneTime, Annual }
 
@@ -199,10 +205,10 @@ public sealed record GroupReadiness(
 //
 // Two projections of the same stored row, and the split is deliberate rather than ceremonial.
 // `Wish` is what an owner sees of their own list. `RecipientWish` is what their assigned giver sees.
-// They carry the same fields today, which is exactly why the seam has to exist now: #130 adds
-// purchase claims, which every gift viewer may see and the owner may never see, and #132 adds gift
-// progress. Projecting both from one record through one type would make that leak a one-line
-// mistake. Neither type is ever the stored record.
+// The seam is now load-bearing rather than anticipatory: `RecipientWish` carries `Claim` (#130) and
+// `Wish` must never grow it, because a claim on your own list would tell you what your giver has
+// already bought. Projecting both audiences from one record through one type would make that leak a
+// one-line mistake. Neither type is ever the stored record.
 public sealed record Wish(
     string WishId,
     WishKind Kind,
@@ -231,7 +237,14 @@ public sealed record RecipientWish(
     int Quantity,
     WishPriority Priority,
     string? Details,
-    int Position);
+    int Position,
+    // The CALLER's own claim on this wish, or null. Never anyone else's — with one giver per
+    // recipient there is only ever one, and reading a claim set by somebody else would be reading
+    // who else is buying for this person, which is an assignment.
+    WishClaim? Claim = null);
+
+/// <summary>What the giver has decided about one wish. Visible only to that giver.</summary>
+public sealed record WishClaim(WishClaimState State, int Quantity, string UpdatedAt);
 
 public sealed record RecipientAssignment(
     string MemberId,
@@ -335,7 +348,14 @@ public sealed record ExportedMembership(
     // The caller's own wishes. Personal data they authored, so the export must carry it (#189).
     IReadOnlyList<Wish> Wishes,
     string JoinedAt,
-    string UpdatedAt);
+    string UpdatedAt,
+    // The caller's own purchase claims for this exchange (#130) — data about their behaviour, so
+    // the right of access covers it. Deliberately carries the wish id and NOT the recipient: the
+    // export's standing rule is that it never names whom the caller was assigned to give to, and an
+    // opaque id the caller has already seen does not name anyone.
+    IReadOnlyList<ExportedWishClaim>? WishClaims = null);
+
+public sealed record ExportedWishClaim(string WishId, WishClaimState State, int Quantity, string UpdatedAt);
 
 public sealed record SaveProfileRequest(
     string? DisplayName,
@@ -395,6 +415,9 @@ public sealed record UpdateWishRequest(
     string? Details);
 
 public sealed record ReorderWishesRequest(IReadOnlyList<string>? WishIds);
+// Quantity is optional and defaults to the whole wish: "I am getting this" is the common case, and
+// making a giver state a number to claim a quantity-1 item is friction for nothing.
+public sealed record SetWishClaimRequest(string? State, int? Quantity);
 
 internal sealed record ProfileRecord(
     string UserId,
@@ -439,7 +462,21 @@ internal sealed record MembershipRecord(
     // Stored as the draw id rather than a flag so it self-invalidates: a reset and a late-participant
     // reassignment both mint a new draw id, and everyone reverts to "has not looked" — which is the
     // truth, because the link they followed is the one the API now refuses as obsolete.
-    string? AssignmentViewedDrawId = null);
+    string? AssignmentViewedDrawId = null,
+    // This member's purchase claims, keyed by the WISH id on their recipient's list (#130).
+    //
+    // They live on the CLAIMANT's row, not on the wish, and that placement is the whole privacy
+    // design. A wishlist owner never reads another member's private membership fields, so there is
+    // no projection to get wrong and no endpoint to forget: the surprise is preserved by where the
+    // data is, not by remembering to strip it. It also makes the row self-cleaning — claims die with
+    // the membership, so the deletion sweep already covers them.
+    IReadOnlyDictionary<string, WishClaimRecord>? WishClaims = null,
+    // The draw those claims belong to, for the same self-invalidating reason as the field above. A
+    // reset or a late-participant reassignment mints a new draw id and you may now be buying for
+    // somebody else entirely; last draw's claims must not decorate this draw's list.
+    string? WishClaimsDrawId = null);
+
+internal sealed record WishClaimRecord(WishClaimState State, int Quantity, string UpdatedAt);
 // Stored row. `MemberId` is the partition key and `WishId` the sort key, so listing one member's
 // wishes is a Query and never a Scan, and every single-item operation must name the owning member —
 // ownership is enforced by the key itself rather than by a check someone can forget.

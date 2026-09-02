@@ -94,14 +94,23 @@ branch `Codex/humbugg-plus-purchase-ux-141` was kept for its specification, whic
 carries no `price_id` gets "Plus is not on sale yet" instead of a button whose only outcome is a
 409.
 
-### 3. #130 → #131 → #132 — the rest of the wishlist spine · **next**
+### 3. #130 → #131 → #132 — the rest of the wishlist spine · **#130 built**
 
 All three hang off the wish model added in #127. Take them in that order: claims and questions are
 independent of each other but both inform what #132 has to display, and #133 renders all three.
 
-**#130 carries a privacy rule that the model was shaped around.** A purchase claim is visible to
-every gift viewer and *never* to the wishlist owner. That is why `Wish` and `RecipientWish` are
-separate types today despite carrying identical fields — see "Seams that exist for a reason" below.
+**#130 is built, and its privacy rule turned out to decide the storage.** A purchase claim is
+visible to the assigned giver and *never* to the wishlist owner. It is stored on the **claimant's
+own membership row**, keyed by wish id and scoped to a draw id, rather than on the wish: a wishlist
+owner never reads another member's private membership fields, so there is no projection to get
+wrong and no future endpoint to forget. `Wish` and `RecipientWish` are no longer identical —
+`RecipientWish` carries `Claim` and `Wish` must never grow it.
+
+Confirmed with the maintainer on 2026-09-02: **a wishlist is visible to the assigned giver and
+nobody else.** So "other authorized gift viewers can see that an item is claimed" is satisfied
+trivially — there is exactly one such viewer per recipient per draw — and the feature's real value
+is the giver's own tracking plus the substrate #132 aggregates. Broadening who may read a wishlist
+would be a separate product change, not part of #130.
 
 ### 4. #129 — product metadata from wishlist URLs
 
@@ -158,11 +167,16 @@ wishes.
 
 Things that look like redundancy and are not. Removing them is how the bug gets in.
 
-**`Wish` vs `RecipientWish`** (`Models/Domain.cs`). Identical fields today. They are separate
-because #130 adds purchase claims — visible to every gift viewer, never to the owner — and #132 adds
-gift progress. Projecting both audiences through one type makes that leak a one-line mistake.
-`RecipientWish` also deliberately drops `CreatedAt`/`UpdatedAt`: when someone last edited their list
-is their own business.
+**`Wish` vs `RecipientWish`** (`Models/Domain.cs`). No longer identical: `RecipientWish` carries
+`Claim` (#130) and `Wish` must never grow it, because a claim on your own list would tell you what
+your giver has already bought. #132's gift progress lands on the same side. Projecting both
+audiences through one type makes that leak a one-line mistake. `RecipientWish` also deliberately
+drops `CreatedAt`/`UpdatedAt`: when someone last edited their list is their own business.
+
+**A purchase claim is never audited.** Every other sensitive action is. An audit row carries the
+actor and the target, so recording "this member claimed a wish belonging to that member" would write
+the draw assignment into the one table an organizer is allowed to read. Auditing is never gated on a
+plan, and it is also never allowed to be the thing that spoils the exchange.
 
 **The free-text `wishlist` field was not replaced.** #127 added structured wishes *alongside* it, and
 it now carries general preferences ("Likes, sizes and hobbies"). That is why there was no data

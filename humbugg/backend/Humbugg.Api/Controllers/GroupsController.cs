@@ -96,6 +96,24 @@ public sealed class GroupsController(IGroupService groups) : ControllerBase
         CancellationToken cancellationToken) =>
         groups.GetAssignmentAsync(groupId, drawVersion, cancellationToken);
 
+    // Purchase claims (#130). Under `assignment` because that is the authorization: the only list
+    // you may claim on is the one the draw entitles you to read. The wishlist owner has no route to
+    // this state at all — it is stored on the claimant's own membership row, not on the wish.
+    [HttpPut("{groupId}/assignment/wishes/{wishId}/claim")]
+    public Task<RecipientAssignment> SetWishClaim(
+        string groupId,
+        string wishId,
+        [FromBody] SetWishClaimRequest request,
+        CancellationToken cancellationToken) =>
+        groups.SetWishClaimAsync(groupId, wishId, request, cancellationToken);
+
+    [HttpDelete("{groupId}/assignment/wishes/{wishId}/claim")]
+    public Task<RecipientAssignment> ReleaseWishClaim(
+        string groupId,
+        string wishId,
+        CancellationToken cancellationToken) =>
+        groups.ReleaseWishClaimAsync(groupId, wishId, cancellationToken);
+
     [HttpPost("{groupId}/assignment/reveal")]
     public Task<RevealResponse> Reveal(string groupId, [FromBody] RevealRequest request, CancellationToken cancellationToken) =>
         groups.RevealAsync(groupId, request, cancellationToken);

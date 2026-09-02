@@ -11,9 +11,9 @@ import { FieldLabel } from '../components/field';
 import { Card } from '../components/shell';
 import { StatusMessage } from '../components/status-message';
 import { useAuth } from '../context/auth-context';
-import { gap, styles } from '../theme/styles';
+import { blends, gap, styles } from '../theme/styles';
 import { brand } from '../theme/theme';
-import type { RecipientWish, Wish } from '../types';
+import type { RecipientWish, Wish, WishClaimState } from '../types';
 import {
   emptyWishForm,
   formatPrice,
@@ -206,8 +206,8 @@ function WishRow({
         <Text style={[styles.small, styles.semibold]}>{wish.title}</Text>
         <View style={local.chips}>
           <Badge size="sm">{kindLabel[wish.kind]}</Badge>
-          {wish.priority !== 'Normal' ? (
-            <Badge size="sm" intent={wish.priority === 'High' ? 'primary' : 'neutral'}>
+          {wish.priority !== 'normal' ? (
+            <Badge size="sm" intent={wish.priority === 'high' ? 'primary' : 'neutral'}>
               {priorityLabel[wish.priority]}
             </Badge>
           ) : null}
@@ -390,13 +390,37 @@ function WishForm({
   );
 }
 
-/** The giver's view after the draw. Read-only by construction — there is nothing to press. */
-export function RecipientWishList({ wishes }: { wishes: RecipientWish[] }) {
+/**
+ * The giver's view after the draw, with their own purchase claims (#130).
+ *
+ * The claim controls appear here and nowhere else, which is the same argument the API makes with
+ * its route: the only list you may mark up is the one your assignment gives you. The wishlist owner
+ * has no component that could render this, because `Wish` carries no claim to render.
+ */
+export function RecipientWishList({
+  wishes,
+  busy = false,
+  onClaim,
+  onRelease,
+}: {
+  wishes: RecipientWish[];
+  busy?: boolean;
+  /** Omit both to render the list read-only — which is what an emergency reveal gets. */
+  onClaim?(wishId: string, state: WishClaimState, quantity: number): void;
+  onRelease?(wishId: string): void;
+}) {
   if (wishes.length === 0) {
     return <Text style={styles.assignmentText}>No specific wishes added.</Text>;
   }
   return (
     <View style={{ gap: gap.sm }}>
+      {/* Said once for the list rather than under every item: the reassurance is about the
+          feature, not about any particular gift, and repeating it per wish is noise. */}
+      {onClaim ? (
+        <Text style={[styles.tiny, { color: blends.assignmentLabel }]}>
+          What you mark here is yours alone — they never see it, and it is only for this draw.
+        </Text>
+      ) : null}
       {wishes.map((wish) => {
         const price = formatPrice(wish.price_cents, wish.currency);
         const host = linkHost(wish.url);
@@ -407,8 +431,8 @@ export function RecipientWishList({ wishes }: { wishes: RecipientWish[] }) {
             </Text>
             <View style={local.chips}>
               <Badge size="sm">{kindLabel[wish.kind]}</Badge>
-              {wish.priority !== 'Normal' ? (
-                <Badge size="sm" intent={wish.priority === 'High' ? 'primary' : 'neutral'}>
+              {wish.priority !== 'normal' ? (
+                <Badge size="sm" intent={wish.priority === 'high' ? 'primary' : 'neutral'}>
                   {priorityLabel[wish.priority]}
                 </Badge>
               ) : null}
@@ -429,9 +453,97 @@ export function RecipientWishList({ wishes }: { wishes: RecipientWish[] }) {
             {wish.details ? (
               <Text style={[styles.tiny, { color: brand.primaryText }]}>{wish.details}</Text>
             ) : null}
+            {onClaim && onRelease ? (
+              <ClaimControls
+                wish={wish}
+                busy={busy}
+                onClaim={onClaim}
+                onRelease={onRelease}
+              />
+            ) : null}
           </View>
         );
       })}
+    </View>
+  );
+}
+
+/**
+ * One wish's claim row.
+ *
+ * The buttons are the design system's `secondary` intent rather than `primary`: this sits on the
+ * assignment card, whose background IS `primary`, so a primary button would be dark green on dark
+ * green. Nothing is hand-rolled to get there — the intent that reads on this surface is the one
+ * the package already ships.
+ */
+function ClaimControls({
+  wish,
+  busy,
+  onClaim,
+  onRelease,
+}: {
+  wish: RecipientWish;
+  busy: boolean;
+  onClaim(wishId: string, state: WishClaimState, quantity: number): void;
+  onRelease(wishId: string): void;
+}) {
+  // Defaults to the whole wish, which is what a giver almost always means. The picker only exists
+  // when there is a choice to make.
+  const [quantity, setQuantity] = useState(String(wish.claim?.quantity ?? wish.quantity));
+  const chosen = Math.min(Math.max(Number(quantity) || wish.quantity, 1), wish.quantity);
+  const claim = wish.claim ?? null;
+
+  return (
+    <View style={{ gap: gap.xs, marginTop: 4 }}>
+      {claim ? (
+        <Text style={styles.assignmentLabel}>
+          {claim.state === 'purchased' ? 'You bought this' : 'You are getting this'}
+          {wish.quantity > 1 ? ` · ${claim.quantity} of ${wish.quantity}` : ''}
+        </Text>
+      ) : null}
+
+      {wish.quantity > 1 && claim?.state !== 'purchased' ? (
+        <View style={{ maxWidth: 200 }}>
+          <Select
+            aria-label={`How many of ${wish.title}`}
+            options={Array.from({ length: wish.quantity }, (_, index) => ({
+              value: String(index + 1),
+              label: `${index + 1} of ${wish.quantity}`,
+            }))}
+            value={String(chosen)}
+            onValueChange={(next) => setQuantity(next ?? String(wish.quantity))}
+          />
+        </View>
+      ) : null}
+
+      <View style={local.rowActions}>
+        {claim?.state !== 'planned' && claim?.state !== 'purchased' ? (
+          <Button
+            intent="secondary"
+            size="sm"
+            disabled={busy}
+            onPress={() => onClaim(wish.wish_id, 'planned', chosen)}
+          >
+            I'm getting this
+          </Button>
+        ) : null}
+        {claim?.state !== 'purchased' ? (
+          <Button
+            intent="secondary"
+            size="sm"
+            disabled={busy}
+            onPress={() => onClaim(wish.wish_id, 'purchased', chosen)}
+          >
+            I bought it
+          </Button>
+        ) : null}
+        {claim ? (
+          <Button intent="secondary" size="sm" disabled={busy} onPress={() => onRelease(wish.wish_id)}>
+            Undo
+          </Button>
+        ) : null}
+      </View>
+
     </View>
   );
 }
