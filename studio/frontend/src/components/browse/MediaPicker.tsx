@@ -8,6 +8,7 @@ import type { Crumb, FileEntry, FolderEntry } from "../../types";
 import type { FolderId } from "../../utils/location";
 import { ArrowUpIcon, FolderIcon } from "../common/icons";
 import { MediaThumb } from "../media/MediaThumb";
+import { TagFilter } from "./TagFilter";
 
 interface Props {
   /** Written into the title — "an image to send". */
@@ -50,6 +51,19 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
   const [folders, setFolders] = useState<FolderEntry[]>([]);
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [crumbs, setCrumbs] = useState<Crumb[]>([]);
+  /**
+   * Tags narrowing the listing — and, while any are on, widening its SCOPE.
+   *
+   * A picker is where the tags matter most: what used to be "open the character,
+   * open `reference/`, open `face/`" is `default` + `face` from wherever you
+   * happen to be standing, because a tag search reaches the whole branch.
+   */
+  const [tags, setTags] = useState<string[]>([]);
+  // Extracted and stable: `tags` is a new array every render, so the listing
+  // effect would re-run forever if it depended on the array itself.
+  const asked = tags.join(",");
+  const [facet, setFacet] = useState<Record<string, number>>({});
+  const [searching, setSearching] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -70,12 +84,19 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
 
     // By name, like the destination picker: "newest first" answers a question
     // nobody asks while looking for a particular picture.
-    getFolder(folderId === null ? {} : { node: folderId }, "name")
+    getFolder(folderId === null ? {} : { node: folderId }, "name", {
+      tag: asked ? asked.split(",") : [],
+    })
       .then((result) => {
         if (cancelled) return;
-        setFolders(result.folders);
+        // **Folders are dropped while a tag search is on.** They are the way to
+        // the pictures at one level; in a result set gathered from the whole
+        // branch they are not on the way to anything.
+        setFolders(result.depth === "all" ? [] : result.folders);
         setFiles(result.files.filter((file) => file.kind === "image" || file.kind === "video"));
         setCrumbs(result.breadcrumbs);
+        setFacet(result.tags ?? {});
+        setSearching(result.depth === "all");
       })
       .catch((err: Error) => {
         if (!cancelled) setError(err.message);
@@ -87,7 +108,7 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
     return () => {
       cancelled = true;
     };
-  }, [folderId]);
+  }, [folderId, asked]);
 
   const parent = crumbs.at(-2)?.id;
   const shownPath = crumbs.at(-1)?.prefix ?? "";
@@ -131,6 +152,8 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
             </Breadcrumbs.Item>
           ))}
         </Breadcrumbs.Root>
+
+        <TagFilter value={tags} onChange={setTags} facet={facet} searching={searching} />
 
         <div className="min-h-48 flex-1 overflow-auto rounded-none border border-line">
           {loading && (
@@ -186,9 +209,19 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
                 </div>
               )}
 
-              {files.length === 0 && folders.length === 0 && (
+              {/* Two sentences, because a search that found nothing and a
+                  folder that holds nothing are different facts. "Nothing here"
+                  is wrong when the search covered the whole branch — it names
+                  the folder you are standing in, which is not where it looked. */}
+              {files.length === 0 && folders.length === 0 && !searching && (
                 <Text variant="caption" tone="muted" className="p-3">
                   Nothing here.
+                </Text>
+              )}
+
+              {files.length === 0 && folders.length === 0 && searching && (
+                <Text variant="caption" tone="muted" className="p-3">
+                  Nothing under this folder is tagged {tags.join(" + ")}.
                 </Text>
               )}
             </div>

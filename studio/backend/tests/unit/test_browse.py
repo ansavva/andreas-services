@@ -877,3 +877,54 @@ def test_an_abandoned_upload_is_kept_out_of_the_reel_too(catalog_tree, media_buc
     names = [item["name"] for item in _media(CATALOG_LIBRARY, None, None, None)["entries"]]
 
     assert "never-arrived-reel.webp" not in names
+
+
+def test_the_listing_facets_the_tags_it_found(catalog_tree):
+    """Every tag in the result, with how many entries carry it, commonest first.
+
+    A facet over what was listed — not a vocabulary of the library, which nothing
+    stores. It is what makes a tag filter usable without remembering what you
+    typed last time.
+    """
+    seed = _node_id("characters/subject-a/seed/")
+    files = _files(browse.entries(CATALOG_LIBRARY, under=seed))
+    catalog.describe_node(files[0]["id"], tags=["default", "face"])
+    catalog.describe_node(files[1]["id"], tags=["face"])
+
+    assert browse.entries(CATALOG_LIBRARY, under=seed)["tags"] == {"face": 2, "default": 1}
+
+
+def test_a_tag_filter_narrows_the_facet_to_what_survives(catalog_tree):
+    """The facet is computed after the filters, so it says what to narrow BY next."""
+    seed = _node_id("characters/subject-a/seed/")
+    files = _files(browse.entries(CATALOG_LIBRARY, under=seed))
+    catalog.describe_node(files[0]["id"], tags=["default", "face"])
+    catalog.describe_node(files[1]["id"], tags=["face", "body"])
+
+    narrowed = browse.entries(CATALOG_LIBRARY, under=seed, tags="face")
+
+    assert narrowed["total"] == 2
+    assert narrowed["tags"] == {"face": 2, "body": 1, "default": 1}
+
+
+def test_a_tag_filter_wants_ALL_the_tags(catalog_tree):
+    """`?tag=default,face` is the face images sent by default — not either word."""
+    seed = _node_id("characters/subject-a/seed/")
+    files = _files(browse.entries(CATALOG_LIBRARY, under=seed))
+    catalog.describe_node(files[0]["id"], tags=["default", "face"])
+    catalog.describe_node(files[1]["id"], tags=["face"])
+
+    both = browse.entries(CATALOG_LIBRARY, under=seed, tags="default,face")
+
+    assert [entry["id"] for entry in both["entries"]] == [files[0]["id"]]
+
+
+def test_a_tag_filter_reaches_the_whole_branch(catalog_tree):
+    """What the filter is FOR: you do not know which folder a tagged image is in."""
+    root = _node_id("characters/subject-a/")
+    deep = _files(browse.entries(CATALOG_LIBRARY, under=_node_id("characters/subject-a/seed/")))
+    catalog.describe_node(deep[0]["id"], tags=["default"])
+
+    assert browse.entries(CATALOG_LIBRARY, under=root, tags="default")["total"] == 0
+    branch = browse.entries(CATALOG_LIBRARY, under=root, depth="all", tags="default")
+    assert [entry["id"] for entry in branch["entries"]] == [deep[0]["id"]]

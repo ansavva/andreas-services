@@ -57,6 +57,8 @@ function listing(over: Partial<FolderListing>): FolderListing {
   return {
     prefix: "",
     sort: "name",
+    depth: "1" as const,
+    tags: {},
     breadcrumbs: [],
     folders: [],
     files: [],

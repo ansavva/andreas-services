@@ -60,6 +60,8 @@ function listing(files: FileEntry[]): FolderListing {
   return {
     prefix: "",
     sort: "newest",
+    depth: "1" as const,
+    tags: {},
     breadcrumbs: [],
     folders: [],
     files,
@@ -92,7 +94,9 @@ describe("which sequence the address names", () => {
     // "2 of 3" is the whole assertion: the folder is the source, and the open
     // node's position in it is what the page opened on rather than the top.
     await waitFor(() => expect(screen.getByText(/2 of 3/)).toBeTruthy());
-    expect(tree).toHaveBeenCalledWith({ node: FOLDER }, "newest");
+    // The third argument is the tag filter, empty here — a folder walk asks for
+    // the folder, not for a search.
+    expect(tree).toHaveBeenCalledWith({ node: FOLDER }, "newest", { tag: [] });
   });
 
   it("walks a RUN's frames, and never asks for a folder", async () => {

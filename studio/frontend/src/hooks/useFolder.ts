@@ -7,13 +7,25 @@ import type { SortOrder, FolderListing } from "../types";
 /**
  * One folder's listing, by node id.
  *
+ * A non-empty `tags` turns this into a search of the whole branch beneath the
+ * folder — see `getFolder`. The listing that comes back says which it did, in
+ * `depth`, so a caller can tell a folder from a result set.
+ *
  * `null` is the library root, whose id is not knowable before the first request
  * — `GET /api/tree` with no address is already that folder. `undefined` is
  * "which folder is not settled yet", which is what an object URL looks like
  * until its parent has been asked for; nothing is fetched then, because the
  * alternative is a request for the root that the answer immediately discards.
  */
-export function useFolder(folderId: FolderId | undefined, sort: SortOrder) {
+export function useFolder(
+  folderId: FolderId | undefined,
+  sort: SortOrder,
+  tags: string[] = [],
+) {
+  // **The dependency, extracted and stable.** `tags` is a fresh array on every
+  // render at every call site, so depending on it directly re-fetches forever;
+  // the joined string is the value that actually changed.
+  const asked = tags.join(",");
   const [data, setData] = useState<FolderListing | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +37,9 @@ export function useFolder(folderId: FolderId | undefined, sort: SortOrder) {
     setLoading(true);
     setError(null);
 
-    getFolder(folderId === null ? {} : { node: folderId }, sort)
+    getFolder(folderId === null ? {} : { node: folderId }, sort, {
+      tag: asked ? asked.split(",") : [],
+    })
       .then((result) => {
         if (!cancelled) setData(result);
       })
@@ -39,7 +53,7 @@ export function useFolder(folderId: FolderId | undefined, sort: SortOrder) {
     return () => {
       cancelled = true;
     };
-  }, [folderId, sort]);
+  }, [folderId, sort, asked]);
 
   useEffect(load, [load]);
 

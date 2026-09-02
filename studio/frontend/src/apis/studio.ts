@@ -122,10 +122,17 @@ export async function getFolder(
   sort: SortOrder,
   filter: ListFilter = {},
 ): Promise<FolderListing> {
-  const listing = await listNodes(where, { ...filter, sort, depth: "1" });
+  // **A tag filter searches the BRANCH.** Not knowing which folder a tagged
+  // image is in is the whole reason for asking by tag, so a filter that only
+  // looked in the folder you happen to be standing in would answer the question
+  // nobody has.
+  const depth = filter.tag?.length ? "all" : "1";
+  const listing = await listNodes(where, { ...filter, sort, depth });
   return {
     prefix: listing.prefix,
     sort: listing.sort,
+    depth: listing.depth,
+    tags: listing.tags,
     breadcrumbs: listing.breadcrumbs,
     folders: listing.entries.filter((e): e is FolderEntry => e.kind === "folder"),
     files: listing.entries.filter((e): e is FileEntry => e.kind !== "folder"),
@@ -151,6 +158,7 @@ export async function getMedia(
   return {
     prefix: listing.prefix,
     sort: listing.sort,
+    tags: listing.tags,
     items: listing.entries as FileEntry[],
     total: listing.total,
     truncated: listing.truncated,

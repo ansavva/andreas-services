@@ -77,6 +77,8 @@ beforeEach(() => {
     folders: [],
     files: [],
     breadcrumbs: [],
+    depth: "1",
+    tags: {},
     sort: "name",
   });
   // The registry and the schema are unreachable unless a case says otherwise —
@@ -387,6 +389,8 @@ describe("which model input a new image binds to", () => {
     // being handed over to be animated, and `image_input` there submits nowhere.
     getModel.mockResolvedValue(entry({ kind: "video" }));
     getFolder.mockResolvedValue({
+      depth: "1",
+      tags: {},
       folders: [],
       files: [
         {

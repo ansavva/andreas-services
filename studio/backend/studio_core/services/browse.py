@@ -466,8 +466,11 @@ def entries(
     _attach_owners(listed, window, folder, depth)
 
     counts: dict[str, int] = {}
+    tag_counts: dict[str, int] = {}
     for record in kept:
         counts[_kind_of(record)] = counts.get(_kind_of(record), 0) + 1
+        for tag in record.get("tags") or []:
+            tag_counts[tag] = tag_counts.get(tag, 0) + 1
 
     next_offset = offset + len(window)
     return {
@@ -481,6 +484,13 @@ def entries(
         # reading "3 folders" while the page holds two of them is a count
         # nobody can act on. Free: `kept` is already in hand.
         "counts": counts,
+        # **The tags present in this result, with how many carry each.** A facet,
+        # not a vocabulary: there is no list of every tag in a library and this is
+        # not one. It exists because tags are how things are found now, and a
+        # filter you can only use by remembering what you typed last time is a
+        # filter nobody uses — narrowing by one tag reveals the tags that
+        # co-occur with it, which is how the second one gets chosen.
+        "tags": dict(sorted(tag_counts.items(), key=lambda pair: (-pair[1], pair[0]))),
         "total": len(kept),
         # True when the ENUMERATION was cut short, not the page — the caller is
         # showing a library with more in it than this will admit to, and should

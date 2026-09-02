@@ -182,15 +182,19 @@ export interface Crumb {
 export interface FolderListing {
   prefix: string;
   sort: SortOrder;
+  /** `all` when a tag filter is on — a tag search is a search of the branch. */
+  depth: Depth;
   breadcrumbs: Crumb[];
   folders: FolderEntry[];
   files: FileEntry[];
+  tags: Record<string, number>;
 }
 
 /** One page of media beneath a folder — what `getMedia` makes of a listing. */
 export interface MediaListing {
   prefix: string;
   sort: SortOrder;
+  tags: Record<string, number>;
   items: FileEntry[];
   total: number;
   truncated: boolean;
@@ -219,6 +223,13 @@ export interface NodeListing {
   entries: (FileEntry | FolderEntry)[];
   /** Keyed by kind, over everything the filters admitted — not over the page. */
   counts: Partial<Record<EntryKind, number>>;
+  /**
+   * The tags present in this result and how many entries carry each, commonest
+   * first. A facet over what was listed — **not a vocabulary of the library**,
+   * which nothing stores. Computed after the filters, so narrowing by one tag
+   * leaves exactly the tags worth narrowing by next.
+   */
+  tags: Record<string, number>;
   total: number;
   /** True when the enumeration hit its cap — there is more than this shows. */
   truncated: boolean;

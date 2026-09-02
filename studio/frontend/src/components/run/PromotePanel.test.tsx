@@ -76,6 +76,8 @@ function folders(named: Record<string, string>): FolderListing {
   return {
     prefix: "",
     sort: "name",
+    depth: "1" as const,
+    tags: {},
     breadcrumbs: [],
     folders: Object.entries(named).map(([name, id]) => ({
       id,
