@@ -222,6 +222,7 @@ package-lock.json
 !design-system/package-lock.json
 !website/frontend/package-lock.json
 !studio/frontend/package-lock.json
+!classroom/frontend/package-lock.json
 
 # TypeScript incremental build state — a local artifact, never committed.
 *.tsbuildinfo

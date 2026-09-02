@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "classroom-api"
+version = "0.1.0"
+description = "Classroom pages API Lambda"
+authors = []
+packages = []
+
+[tool.poetry.dependencies]
+python = "^3.11"
+boto3 = "1.26.137"
+Flask = "3.0.3"
+Flask-Cors = "5.0.0"
+Werkzeug = "3.0.4"
+mangum = "0.17.0"
+asgiref = "3.8.1"
+# Rust-backed HTML sanitizer (ammonia). Chosen over a pure-Python cleaner
+# because this is the XSS boundary for pages students load — see
+# classroom_core/utils/html.py.
+nh3 = "0.2.18"
+
+[tool.poetry.group.dev.dependencies]
+moto = {version = "4.2.14", extras = ["dynamodb"]}
+pytest = "7.4.3"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

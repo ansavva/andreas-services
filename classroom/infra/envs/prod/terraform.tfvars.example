@@ -1,0 +1,2 @@
+# classroom/prod takes no variables today. Copy this file to terraform.tfvars
+# if that changes; secrets belong in TF_VAR_* in CI, never in the repo.
