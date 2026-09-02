@@ -22,8 +22,10 @@ export function Shell({ children, compact = false }: { children: ReactNode; comp
           {/* The product lives on another origin, so these are plain anchors —
               a react-router <Link> would try to resolve them as marketing routes. */}
           <nav className="flex items-center gap-2" aria-label="Primary navigation">
-            {/* Pricing IS a marketing route, so it is the one nav item that is a <Link>. */}
-            <Link className="nav-link hidden sm:inline-flex" to="/pricing">Pricing</Link>
+            {/* Pricing IS a marketing route, so it is the one nav item that is a <Link>.
+                Never `hidden sm:` — it shipped that way for an hour and the pricing page was
+                unreachable from a phone entirely, because the footer carries only policy links. */}
+            <Link className="nav-link" to="/pricing">Pricing</Link>
             <a className="nav-link hidden sm:inline-flex" href={appUrl('/login')}>Sign in</a>
             <a className={buttonClass()} href={appUrl('/signup')}>Start a group</a>
           </nav>
@@ -40,6 +42,11 @@ export function SiteFooter() {
   return (
     <footer className="border-t border-line/80 bg-bg">
       <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-10 lg:px-8">
+        <nav aria-label="Site" className="flex flex-wrap gap-x-6 gap-y-3">
+          <Link to="/pricing" className="text-sm font-medium text-muted hover:text-ink hover:underline">
+            Pricing
+          </Link>
+        </nav>
         <nav aria-label="Policies" className="flex flex-wrap gap-x-6 gap-y-3">
           {LEGAL_LINKS.map((link) => (
             <Link key={link.to} to={link.to} className="text-sm font-medium text-muted hover:text-ink hover:underline">
