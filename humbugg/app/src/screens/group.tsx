@@ -10,6 +10,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { api, ApiError } from '../api/client';
 import { DangerButton } from '../components/danger-button';
 import { isPlusRequired, PlusRefusalCard } from '../components/plus';
+import { GiftReceivedPanel, GiftStagePanel } from '../components/gift-progress';
 import { QuestionsPanel } from '../components/questions';
 import { FieldLabel } from '../components/field';
 import { Card, LoadingPanel, Shell } from '../components/shell';
@@ -189,6 +190,18 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
         */}
         {group.status === 'drawn' && me.is_participating ? (
           <>
+            {/* Gift progress (#132), both ends. The stage comes back on the assignment — it is the
+                caller's own status for that assignment — so it needs no fetch of its own. */}
+            {assignment?.gift ? (
+              <GiftStagePanel
+                gift={assignment.gift}
+                busy={busy}
+                onChange={(stage) =>
+                  void claimAction((token) => api.setGiftStage(token, groupId, stage))
+                }
+              />
+            ) : null}
+            <GiftReceivedPanel groupId={groupId} />
             <QuestionsPanel groupId={groupId} side="giver" />
             <QuestionsPanel groupId={groupId} side="recipient" />
           </>

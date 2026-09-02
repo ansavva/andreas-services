@@ -21,6 +21,9 @@ internal interface IMembershipRepository
     Task SetWishClaimAsync(string memberId, string drawId, string wishId, WishClaimRecord claim, CancellationToken cancellationToken = default);
     Task RemoveWishClaimAsync(string memberId, string drawId, string wishId, CancellationToken cancellationToken = default);
     Task ClearWishClaimsAsync(string memberId, CancellationToken cancellationToken = default);
+    Task SetGiftStageAsync(string memberId, string drawId, GiftStage stage, CancellationToken cancellationToken = default);
+    Task SetGiftReceivedAsync(string memberId, string drawId, bool received, CancellationToken cancellationToken = default);
+    Task ClearGiftProgressAsync(string memberId, CancellationToken cancellationToken = default);
     Task AnonymizeAsync(string memberId, string pseudonym, string displayName, CancellationToken cancellationToken = default);
     Task DeleteAsync(string memberId, CancellationToken cancellationToken = default);
     Task DeleteByGroupAsync(string groupId, CancellationToken cancellationToken = default);
@@ -206,6 +209,79 @@ internal sealed class MembershipRepository(IAmazonDynamoDB db, HumbuggSettings s
             ConditionExpression = "attribute_exists(member_id)"
         }, cancellationToken);
 
+    /// <summary>
+    /// Records how far along the gift this member is giving has got (#132).
+    /// </summary>
+    /// <remarks>
+    /// Writes the draw id alongside the stage in one update, so a stage can never be left scoped to
+    /// a draw it did not come from. The recipient's confirmation is REMOVEd rather than kept: it
+    /// belongs to whatever the giver had done at the time, and moving the stage is only permitted
+    /// while it is unset anyway — the service refuses the write otherwise.
+    ///
+    /// Deliberately not routed through <see cref="UpdateAsync"/>: that moves <c>updated_at</c>, and
+    /// buying a gift is not an edit to your membership.
+    /// </remarks>
+    public Task SetGiftStageAsync(
+        string memberId,
+        string drawId,
+        GiftStage stage,
+        CancellationToken cancellationToken = default) =>
+        db.UpdateItemAsync(new UpdateItemRequest
+        {
+            TableName = settings.GroupMembersTable,
+            Key = Key(memberId),
+            UpdateExpression =
+                "SET gift_stage = :stage, gift_stage_at = :at, gift_progress_draw_id = :draw REMOVE gift_received_at",
+            ExpressionAttributeValues = new()
+            {
+                [":stage"] = DynamoValues.S(stage.ToString()),
+                [":at"] = DynamoValues.S(DateTimeOffset.UtcNow.ToString("O")),
+                [":draw"] = DynamoValues.S(drawId),
+            },
+            ConditionExpression = "attribute_exists(member_id)",
+        }, cancellationToken);
+
+    /// <summary>
+    /// Records that the person this member gives to has confirmed the gift arrived.
+    /// </summary>
+    /// <remarks>
+    /// Called with the GIVER's member id, which the service resolved by inverting the draw — the
+    /// recipient never learns whose row this was. The stage is left alone: what the giver did is
+    /// their own record, and "received" is a second fact about the same gift, not a fourth stage
+    /// overwriting the first three.
+    /// </remarks>
+    public Task SetGiftReceivedAsync(
+        string memberId,
+        string drawId,
+        bool received,
+        CancellationToken cancellationToken = default) =>
+        db.UpdateItemAsync(new UpdateItemRequest
+        {
+            TableName = settings.GroupMembersTable,
+            Key = Key(memberId),
+            UpdateExpression = received
+                ? "SET gift_received_at = :at, gift_progress_draw_id = :draw"
+                : "SET gift_progress_draw_id = :draw REMOVE gift_received_at",
+            ExpressionAttributeValues = received
+                ? new()
+                {
+                    [":at"] = DynamoValues.S(DateTimeOffset.UtcNow.ToString("O")),
+                    [":draw"] = DynamoValues.S(drawId),
+                }
+                : new() { [":draw"] = DynamoValues.S(drawId) },
+            ConditionExpression = "attribute_exists(member_id)",
+        }, cancellationToken);
+
+    /// <summary>Drops the gift progress on this row — the self-service clear and the anonymize path.</summary>
+    public Task ClearGiftProgressAsync(string memberId, CancellationToken cancellationToken = default) =>
+        db.UpdateItemAsync(new UpdateItemRequest
+        {
+            TableName = settings.GroupMembersTable,
+            Key = Key(memberId),
+            UpdateExpression = "REMOVE gift_stage, gift_stage_at, gift_received_at, gift_progress_draw_id",
+            ConditionExpression = "attribute_exists(member_id)",
+        }, cancellationToken);
+
     private static Dictionary<string, AttributeValue> Key(string memberId) =>
         new() { ["member_id"] = DynamoValues.S(memberId) };
 
@@ -244,7 +320,7 @@ internal sealed class MembershipRepository(IAmazonDynamoDB db, HumbuggSettings s
         {
             TableName = settings.GroupMembersTable,
             Key = new() { ["member_id"] = DynamoValues.S(memberId) },
-            UpdateExpression = "SET user_id = :user, display_name = :name, is_organizer = :notOrganizer, wishlist = :empty, avoidances = :empty, address = :address, updated_at = :now REMOVE assignment_viewed_draw_id, wish_claims, wish_claims_draw_id",
+            UpdateExpression = "SET user_id = :user, display_name = :name, is_organizer = :notOrganizer, wishlist = :empty, avoidances = :empty, address = :address, updated_at = :now REMOVE assignment_viewed_draw_id, wish_claims, wish_claims_draw_id, gift_stage, gift_stage_at, gift_received_at, gift_progress_draw_id",
             ExpressionAttributeValues = new()
             {
                 [":user"] = DynamoValues.S(pseudonym),
@@ -310,6 +386,13 @@ internal sealed class MembershipRepository(IAmazonDynamoDB db, HumbuggSettings s
             };
             item["wish_claims_draw_id"] = DynamoValues.S(record.WishClaimsDrawId);
         }
+        if (record.GiftProgressDrawId is not null)
+        {
+            item["gift_progress_draw_id"] = DynamoValues.S(record.GiftProgressDrawId);
+            if (record.GiftStage is { } stage) item["gift_stage"] = DynamoValues.S(stage.ToString());
+            if (record.GiftStageAt is not null) item["gift_stage_at"] = DynamoValues.S(record.GiftStageAt);
+            if (record.GiftReceivedAt is not null) item["gift_received_at"] = DynamoValues.S(record.GiftReceivedAt);
+        }
         return item;
     }
 
@@ -319,7 +402,11 @@ internal sealed class MembershipRepository(IAmazonDynamoDB db, HumbuggSettings s
         item.Address("address"), item.String("created_at"), item.String("updated_at"),
         item.TryGetValue("assignment_viewed_draw_id", out var viewed) ? viewed.S : null,
         ReadClaims(item),
-        item.TryGetValue("wish_claims_draw_id", out var claimsDraw) ? claimsDraw.S : null);
+        item.TryGetValue("wish_claims_draw_id", out var claimsDraw) ? claimsDraw.S : null,
+        Enum.TryParse<GiftStage>(item.String("gift_stage"), out var giftStage) ? giftStage : null,
+        item.TryGetValue("gift_stage_at", out var stageAt) ? stageAt.S : null,
+        item.TryGetValue("gift_received_at", out var receivedAt) ? receivedAt.S : null,
+        item.TryGetValue("gift_progress_draw_id", out var giftDraw) ? giftDraw.S : null);
 
     private static IReadOnlyDictionary<string, WishClaimRecord>? ReadClaims(
         IReadOnlyDictionary<string, AttributeValue> item)

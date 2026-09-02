@@ -114,6 +114,28 @@ public sealed class GroupsController(IGroupService groups) : ControllerBase
         CancellationToken cancellationToken) =>
         groups.ReleaseWishClaimAsync(groupId, wishId, cancellationToken);
 
+    // Gift progress (#132). The giver's three stages hang off `assignment` — the assignment is what
+    // you are preparing a gift for — and the recipient's confirmation off `members/me`, because the
+    // only member a caller can address is themselves. The recipient's PUT writes onto their giver's
+    // row, whose id the server resolves by inverting the draw and never returns.
+    [HttpPut("{groupId}/assignment/gift")]
+    public Task<RecipientAssignment> SetGiftStage(
+        string groupId,
+        [FromBody] SetGiftStageRequest request,
+        CancellationToken cancellationToken) =>
+        groups.SetGiftStageAsync(groupId, request, cancellationToken);
+
+    [HttpGet("{groupId}/members/me/gift")]
+    public Task<GiftReceipt> GiftReceipt(string groupId, CancellationToken cancellationToken) =>
+        groups.GetGiftReceiptAsync(groupId, cancellationToken);
+
+    [HttpPut("{groupId}/members/me/gift")]
+    public Task<GiftReceipt> SetGiftReceived(
+        string groupId,
+        [FromBody] SetGiftReceivedRequest request,
+        CancellationToken cancellationToken) =>
+        groups.SetGiftReceivedAsync(groupId, request, cancellationToken);
+
     [HttpPost("{groupId}/assignment/reveal")]
     public Task<RevealResponse> Reveal(string groupId, [FromBody] RevealRequest request, CancellationToken cancellationToken) =>
         groups.RevealAsync(groupId, request, cancellationToken);

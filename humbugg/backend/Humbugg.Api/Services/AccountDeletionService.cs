@@ -124,6 +124,13 @@ internal sealed class AccountDeletionService(
             membership.MemberId,
             await ThreadsGivenByAsync(group.GroupId, membership.MemberId, cancellationToken),
             cancellationToken);
+        // The "it arrived" they left on their giver's row (#132). Their own stage goes with the
+        // membership on either path below — Anonymize removes it and Delete takes the whole row —
+        // but this one is on somebody else's row and would otherwise outlive them.
+        var draw = await groups.GetDrawAsync(group.GroupId, cancellationToken);
+        var giverId = draw?.Assignments.FirstOrDefault(pair => pair.Value == membership.MemberId).Key;
+        if (draw is not null && !string.IsNullOrEmpty(giverId))
+            await memberships.SetGiftReceivedAsync(giverId, draw.DrawId, false, cancellationToken);
 
         if (group.Status == GroupStatus.Drawn)
         {

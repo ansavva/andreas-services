@@ -18,6 +18,15 @@ public enum WishPriority { Low, Normal, High }
 // "sent" or "received" here — those are the exchange's milestones and belong to #132's roll-up,
 // which counts these without ever naming who set them.
 public enum WishClaimState { Planned, Purchased }
+
+// How far along the gift itself is (#132), as distinct from any one wish on the list.
+//
+// The giver owns these three and the recipient owns "received", which is a SEPARATE field rather
+// than a fourth stage. That is not a modelling nicety: a gift handed over at a party is never marked
+// sent, and a single ordered enum would either refuse that or let a recipient overwrite the giver's
+// record of what they did. Two fields, two owners, and the only ordering rule is the one that is
+// actually true — a received gift was obviously bought.
+public enum GiftStage { Choosing, Purchased, Sent }
 public enum PlanCode { Free, Plus, Work }
 public enum BillingCadence { Free, OneTime, Annual }
 
@@ -177,7 +186,30 @@ public sealed record PendingInvitation(
 /// <summary>Aggregate gift progress — counts only, so it can never say who is giving to whom.
 /// Null until gift tracking exists (#132). Null rather than three zeroes on purpose: zeroes read as
 /// "nobody has bought anything yet", which is a different and false statement.</summary>
+/// <summary>
+/// The organizer's roll-up: counts, and nothing else.
+/// </summary>
+/// <remarks>
+/// Cumulative, so a gift already sent still counts as purchased. An organizer reading "4 purchased,
+/// 1 sent" would otherwise conclude four gifts are sitting in hallways when three are in the post.
+/// Never a name, never a pairing, never a wish — the same rule the rest of the dashboard follows.
+/// </remarks>
 public sealed record GiftProgress(int Purchased, int Sent, int Received, int Total);
+
+/// <summary>The caller's own gift status for their current assignment (#132).</summary>
+public sealed record GiftStatus(
+    GiftStage Stage,
+    string? StageAt,
+    bool Received,
+    string? ReceivedAt,
+    /// <summary>False once the recipient has confirmed receipt — the giver can no longer walk it back.</summary>
+    bool CanChangeStage);
+
+/// <summary>What the RECIPIENT sees and controls: whether they have said it arrived.</summary>
+public sealed record GiftReceipt(bool Received, string? ReceivedAt);
+
+public sealed record SetGiftStageRequest(string? Stage);
+public sealed record SetGiftReceivedRequest(bool Received);
 
 public sealed record ReadinessCounts(
     int Members,
@@ -254,7 +286,10 @@ public sealed record RecipientAssignment(
     string Wishlist,
     string Avoidances,
     Address Address,
-    IReadOnlyList<RecipientWish> Wishes);
+    IReadOnlyList<RecipientWish> Wishes,
+    // The CALLER's own gift status, never the recipient's opinion of it — the same rule as
+    // RecipientWish.Claim. Null on the emergency reveal, which is not the giver reading their own.
+    GiftStatus? Gift = null);
 
 public sealed record RevealAssignment(Membership Giver, RecipientAssignment Recipient);
 
@@ -540,7 +575,17 @@ internal sealed record MembershipRecord(
     // The draw those claims belong to, for the same self-invalidating reason as the field above. A
     // reset or a late-participant reassignment mints a new draw id and you may now be buying for
     // somebody else entirely; last draw's claims must not decorate this draw's list.
-    string? WishClaimsDrawId = null);
+    string? WishClaimsDrawId = null,
+    // How far along the gift this member is GIVING has got (#132). Owned by them.
+    GiftStage? GiftStage = null,
+    string? GiftStageAt = null,
+    // When the person they are giving TO said it arrived. Written by that person, resolved through
+    // the draw — so the recipient never learns whose row they wrote to, and the giver's own record
+    // of what they did stays theirs.
+    string? GiftReceivedAt = null,
+    // Scope, for the same self-invalidating reason as the two fields above it: after a reset you may
+    // be buying for somebody else, and last draw's progress is not this draw's.
+    string? GiftProgressDrawId = null);
 
 internal sealed record WishClaimRecord(WishClaimState State, int Quantity, string UpdatedAt);
 // Stored row. `MemberId` is the partition key and `WishId` the sort key, so listing one member's

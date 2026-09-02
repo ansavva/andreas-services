@@ -38,6 +38,10 @@ public enum AuditAction
     WishDeleted,
     MembershipAnonymized,
     AccountDeleted,
+    // Gift progress (#132). The target is always the ACTOR's own member id and the metadata carries
+    // a stage, never a pairing: an audit row naming the other party would put the draw assignment in
+    // the one table an organizer is allowed to read.
+    GiftProgressChanged,
 }
 
 /// <summary>

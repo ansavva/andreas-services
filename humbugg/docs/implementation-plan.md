@@ -19,7 +19,7 @@ Live at `https://www.humbugg.com` (product app at `app.humbugg.com`, API at `api
 | Milestone | Closed | Open | State |
 |---|---|---|---|
 | Foundation | 13 | 0 | Complete |
-| Free | 3 | 10 | The active milestone |
+| Free | 6 | 7 | The active milestone |
 | Plus | 8 | 1 | Backend complete and deployed; the purchase UI (#141) is **built**, awaiting review |
 | Work | 0 | 10 | Deliberately untouched |
 | Launch | 2 | 11 | Gated on Free |
@@ -94,12 +94,23 @@ branch `Codex/humbugg-plus-purchase-ux-141` was kept for its specification, whic
 carries no `price_id` gets "Plus is not on sale yet" instead of a button whose only outcome is a
 409.
 
-### 3. #130 → #131 → #132 — the rest of the wishlist spine · **#130 and #131 built**
+### 3. #130 → #131 → #132 — the rest of the wishlist spine · **complete**
 
 All three hang off the wish model added in #127. Claims and questions are independent of each other
-but both inform what #132 has to display, and #133 renders all three. **#132 is what is left**, and
-it now has its substrate: the readiness dashboard's "Not tracked yet." panel counts the claims #130
-stores, without ever naming who set them.
+but both inform what #132 has to display, and #133 renders all three. All three are built, and the
+readiness dashboard's gift-progress panel is filled in — as counts, never as names.
+
+**#132 is two facts about one gift, owned by two people, and that shape is the decision.** The
+giver's stage (`choosing`/`purchased`/`sent`) lives on their own row; the recipient's "it arrived"
+lives on the **giver's** row, written there by inverting the draw so the recipient never learns whose
+row it was. A single four-state enum would either refuse the gift handed over at a party — which is
+never marked sent — or let a recipient overwrite the giver's record of what they actually did. The
+only ordering rule enforced is the one that is actually true: a gift somebody has confirmed
+receiving was obviously bought, so the giver cannot walk the stage back afterwards.
+
+Unlike a purchase claim, gift progress **is** audited — safely, because every row targets the ACTOR
+and carries a stage. A row naming the other party would be the draw assignment, in the one table an
+organizer may read.
 
 **#131's anonymity is structural, and that is the thing to preserve.** No row in
 `humbugg-prod-questions` stores the giver: a message records which SIDE wrote it, and every request

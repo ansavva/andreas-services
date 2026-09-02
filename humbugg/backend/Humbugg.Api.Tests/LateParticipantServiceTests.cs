@@ -318,6 +318,45 @@ public sealed class LateParticipantServiceTests
 
     private sealed class FakeMembers : IMembershipRepository
     {
+        public Task SetGiftStageAsync(string memberId, string drawId, GiftStage stage, CancellationToken cancellationToken = default)
+        {
+            var index = Items.FindIndex(item => item.MemberId == memberId);
+            // Mirrors the repository, receipt clear included: moving the stage is only allowed while
+            // nobody has confirmed receipt, so the write always leaves that unset.
+            if (index >= 0)
+                Items[index] = Items[index] with
+                {
+                    GiftStage = stage,
+                    GiftStageAt = "now",
+                    GiftReceivedAt = null,
+                    GiftProgressDrawId = drawId,
+                };
+            return Task.CompletedTask;
+        }
+        public Task SetGiftReceivedAsync(string memberId, string drawId, bool received, CancellationToken cancellationToken = default)
+        {
+            var index = Items.FindIndex(item => item.MemberId == memberId);
+            if (index >= 0)
+                Items[index] = Items[index] with
+                {
+                    GiftReceivedAt = received ? "now" : null,
+                    GiftProgressDrawId = drawId,
+                };
+            return Task.CompletedTask;
+        }
+        public Task ClearGiftProgressAsync(string memberId, CancellationToken cancellationToken = default)
+        {
+            var index = Items.FindIndex(item => item.MemberId == memberId);
+            if (index >= 0)
+                Items[index] = Items[index] with
+                {
+                    GiftStage = null,
+                    GiftStageAt = null,
+                    GiftReceivedAt = null,
+                    GiftProgressDrawId = null,
+                };
+            return Task.CompletedTask;
+        }
         public Task SetWishClaimAsync(string memberId, string drawId, string wishId, WishClaimRecord claim, CancellationToken cancellationToken = default)
         {
             var index = Items.FindIndex(item => item.MemberId == memberId);

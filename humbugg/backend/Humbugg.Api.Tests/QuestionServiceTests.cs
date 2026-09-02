@@ -419,6 +419,12 @@ public sealed class QuestionServiceTests
         public Task<MembershipRecord> UpdateParticipationAsync(string memberId, bool participating, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<MembershipRecord> UpdateOrganizerAsync(string memberId, bool organizer, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task MarkAssignmentViewedAsync(string memberId, string drawId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task SetGiftStageAsync(string memberId, string drawId, GiftStage stage, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+        public Task SetGiftReceivedAsync(string memberId, string drawId, bool received, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+        public Task ClearGiftProgressAsync(string memberId, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
         public Task SetWishClaimAsync(string memberId, string drawId, string wishId, WishClaimRecord claim, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task RemoveWishClaimAsync(string memberId, string drawId, string wishId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task ClearWishClaimsAsync(string memberId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
