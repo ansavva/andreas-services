@@ -133,10 +133,6 @@ const models = fixture<{
   models: Record<string, { key: string; model: string; kind: string }>;
 }>("models");
 const modelSchema = fixture<{ model: string }>("model-schema");
-const references = fixture<{
-  counts: Record<string, number>;
-  groups: Record<string, Array<Record<string, unknown>>>;
-}>("references");
 const characterTree = fixture<Listing<Node>>("character-tree");
 const referenceTree = fixture<Listing<Node>>("reference-tree");
 
@@ -158,11 +154,13 @@ export const REFERENCE_POOL = characterTree.entries.find(
  * The two nodes a promotion CREATES, which is why they are synthesised.
  *
  * Everything else here was captured; these cannot be, because they do not exist
- * until the run under test makes them. The group folder is `unsorted` — absent
- * from the captured `reference/` listing on purpose, so the spec walks the
- * branch that creates one rather than the branch that finds one.
+ * until the run under test makes them.
+ *
+ * `MADE_FOLDER` is what the stub answers any folder creation with. A promotion
+ * creates one only when `reference/` itself is missing — the `<group>/` folder
+ * it used to make as well is gone, because a group is a tag rather than a place.
  */
-export const GROUP_FOLDER = "node-e2e00000-0000-0000-0000-000000009rup";
+export const MADE_FOLDER = "node-e2e00000-0000-0000-0000-000000009rup";
 export const COPY = "node-e2e00000-0000-0000-0000-0000000000c0";
 
 /** A 1x1 PNG, so an `<img>` that reaches a stub actually decodes. */
@@ -389,7 +387,7 @@ function runIdIn(path: string): string {
  *
  * Every flow this suite covers POSTs to a path that also has a GET: `/api/runs`
  * is the listing and the create, `/api/nodes` is the browse and the mkdir,
- * `/api/characters/<id>/references` is the library and the attach. Dispatching
+ * `/api/characters/<id>` and the node routes carry it. Dispatching
  * on the path alone answered each of those with the other one's body — a create
  * that returned a listing, an attach that returned a character — which is a
  * green test against a stub doing the opposite of the thing under test.
@@ -435,7 +433,7 @@ async function written(
       route,
       {
         ...STILL,
-        id: GROUP_FOLDER,
+        id: MADE_FOLDER,
         parent_id: String(body.parent ?? ""),
         name: String(body.name ?? ""),
         kind: "folder",
@@ -456,10 +454,12 @@ async function written(
     });
     return true;
   }
-  if (method === "POST" && path.endsWith("/references")) {
-    // The captured row for this character, pointed at whatever was attached.
-    const row = Object.values(references.groups)[0]?.[0] ?? {};
-    await json(route, { ...row, node: body.node, group: body.group }, 201);
+  // **The promotion's second half is a describe now.** It was a POST to
+  // `/references` writing a row; identity is a tag on the file, so the copy is
+  // tagged and the route is the ordinary node describe.
+  if (method === "PATCH" && /\/api\/nodes\/[^/]+$/.test(path)) {
+    await json(route, { id: path.split("/").pop(), tags: body.tags ?? [],
+                        description: body.description ?? null });
     return true;
   }
 
@@ -506,7 +506,6 @@ export async function stubApi(page: Page): Promise<void> {
     if (path.endsWith("/api/characters")) return json(route, characters);
     // Before the character itself, which would otherwise swallow it — the old
     // dispatch answered a reference library with a character record.
-    if (path.endsWith("/references")) return json(route, references);
     if (path.includes("/api/characters/")) return json(route, character);
     if (path.endsWith("/api/projects")) return json(route, projects);
     // The record only. `/api/projects/<id>/scenes` and its siblings keep

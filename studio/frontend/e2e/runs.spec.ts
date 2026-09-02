@@ -31,7 +31,6 @@ import {
   COPY,
   CREATED_RUN,
   DRAFT_RUN,
-  GROUP_FOLDER,
   IMAGE_RUN,
   LIBRARY,
   OUTPUT,
@@ -292,7 +291,7 @@ test("Run again is offered on a submitted run and not on a draft", async ({
  * Promote to reference
  * ---------------------------------------------------------------------- */
 
-test("promoting copies into the group folder and attaches the COPY", async ({
+test("promoting copies into the pool and TAGS the copy", async ({
   page,
 }) => {
   stubOnly("it would write a reference into the dev character");
@@ -327,47 +326,37 @@ test("promoting copies into the group folder and attaches the COPY", async ({
   expect(escaped(calls, page)).toEqual([]);
 
   const promotion = calls.filter((call) =>
-    /\/api\/(characters\/|nodes$|nodes\/copy$)/.test(call.path),
+    /\/api\/(characters\/|nodes$|nodes\/copy$|nodes\/node-)/.test(call.path),
   );
   expect(spell(promotion)).toEqual([
     // The character, for its root folder.
     `GET /api/characters/${CHARACTER}`,
-    // Then the two folders, ensured from the top down. One listing route now,
-    // so what used to read as `tree` then `nodes` is the same call twice.
+    // **One folder ensured, not two.** The group was a `<group>/` subfolder and
+    // a column on a row; it is a tag, so only `reference/` is resolved.
     "GET /api/nodes",
-    "GET /api/nodes",
-    "POST /api/nodes",
-    // Only then the bytes, and only then the identity.
+    // Only then the bytes, and only then the identity — which is a tag written
+    // onto the COPY, never onto the run's own output.
     "POST /api/nodes/copy",
-    `POST /api/characters/${CHARACTER}/references`,
+    `PATCH /api/nodes/${COPY}`,
   ]);
 
-  // The root first, then the pool inside it — a promotion that listed the pool
-  // without finding it under the root would be guessing at a path.
-  // `under`, where the folder listing said `node` — one route, one parameter.
+  // **One listing, of the root.** A promotion used to resolve `reference/` and
+  // then a `<group>/` folder inside it, because a group was a place as well as a
+  // column. It is only a tag, so the copy lands in the pool and there is nothing
+  // else to find or create. `under`, where the folder listing said `node`.
   expect(promotion[1]!.query.get("under")).toBe(CHARACTER_ROOT);
-  expect(promotion[2]!.query.get("under")).toBe(REFERENCE_POOL);
-  // `unsorted` is absent from the captured `reference/` listing, so this is the
-  // branch that creates a group folder rather than the one that finds one.
-  expect(promotion[3]!.body).toMatchObject({
-    name: "unsorted",
-    kind: "folder",
-    parent: REFERENCE_POOL,
-  });
 
-  // The run's own output, into the folder that was just made — not into the
-  // pool, and not by name.
-  const copy = promotion[4]!.body;
+  // The run's own output, into the pool — not by name.
+  const copy = promotion[2]!.body;
   expect(copy.ids).toEqual([OUTPUT.node]);
-  expect(copy.destination).toBe(GROUP_FOLDER);
+  expect(copy.destination).toBe(REFERENCE_POOL);
 
-  // **The whole point.** The reference names the copy the destination made, not
-  // the run's own output — two blobs with independent lifetimes, so detaching
-  // the reference later cannot reach back into the run.
-  const attach = promotion[5]!.body;
-  expect(attach.node).toBe(COPY);
-  expect(attach.node).not.toBe(OUTPUT.node);
-  expect(attach.group).toBe("unsorted");
+  // **The whole point.** The tag lands on the copy the destination made, not on
+  // the run's own output — two blobs with independent lifetimes, so untagging or
+  // deleting the promoted image later cannot reach back into the run.
+  expect(promotion[3]!.path.endsWith(`/api/nodes/${COPY}`)).toBe(true);
+  expect(promotion[3]!.path.endsWith(OUTPUT.node)).toBe(false);
+  expect(promotion[3]!.body.tags).toEqual(["default", "unsorted"]);
 });
 
 test("only an image output offers to become a reference", async ({ page }) => {

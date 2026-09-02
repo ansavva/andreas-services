@@ -51,11 +51,9 @@ vi.mock("../apis/studio", () => ({
   // above: an accessed name that is not on the factory is a vitest error about
   // the mock, which reads as a bug in the page.
   getCharacter: vi.fn(),
-  getReferences: vi.fn().mockResolvedValue({ groups: {}, counts: {} }),
   getFolder: vi.fn(),
   createNode: vi.fn(),
   copyNodes: vi.fn(),
-  addReference: vi.fn(),
 }));
 
 import { deleteRun, getRun, getRuns } from "../apis/studio";

@@ -118,7 +118,7 @@ export function CharactersSection({ action }: { action?: ReactNode }) {
             title={character.display_name}
             slug={character.slug}
             hero={character.hero}
-            counts={`${character.counts.references} references · ${character.counts.files} files`}
+            counts={`${character.counts.default} sent · ${character.counts.files} files`}
             onOpen={() => navigate(characterPath(character.id))}
           />
         ))}

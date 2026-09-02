@@ -11,21 +11,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../apis/studio", () => ({
   getCharacters: vi.fn(),
   getCharacter: vi.fn(),
-  getReferences: vi.fn(),
+  listNodes: vi.fn(),
   getFolder: vi.fn(),
   createNode: vi.fn(),
   copyNodes: vi.fn(),
-  addReference: vi.fn(),
+  describeNode: vi.fn(),
 }));
 
 import { ApiError } from "../../apis/client";
 import {
-  addReference,
+  describeNode,
   copyNodes,
   createNode,
   getCharacter,
   getCharacters,
-  getReferences,
+  listNodes,
   getFolder,
 } from "../../apis/studio";
 import { PromotePanel, promoteToReference, splitTags } from "./PromotePanel";
@@ -55,11 +55,11 @@ beforeEach(() => vi.clearAllMocks());
 
 const list = vi.mocked(getCharacters);
 const read = vi.mocked(getCharacter);
-const references = vi.mocked(getReferences);
+const references = vi.mocked(listNodes);
 const tree = vi.mocked(getFolder);
 const create = vi.mocked(createNode);
 const copy = vi.mocked(copyNodes);
-const attach = vi.mocked(addReference);
+const attach = vi.mocked(describeNode);
 
 const CHAR = "char-1";
 const OUTPUT = "node-out";
@@ -102,16 +102,14 @@ function copied(id: string, name: string): CopiedNodes {
 /** The happy path's stubs: both folders already there, one copy, one attach. */
 function stubStore(over: { copyName?: string } = {}) {
   read.mockResolvedValue({ id: CHAR, root: "node-root" } as never);
-  tree.mockImplementation(async (where) => {
-    if (where.node === "node-root") return folders({ reference: "node-ref" });
-    return folders({ unsorted: "node-group", face: "node-face" });
-  });
+  tree.mockImplementation(async () => folders({ reference: "node-ref" }));
+  references.mockResolvedValue({ tags: { face: 2 } } as never);
   copy.mockResolvedValue(copied("node-copy", over.copyName ?? "frame.webp"));
-  attach.mockResolvedValue({ node: "node-copy", group: "unsorted" } as never);
+  attach.mockResolvedValue({ id: "node-copy" } as never);
 }
 
 describe("promoteToReference", () => {
-  it("ensures both folders, copies, then attaches the copy — in that order", async () => {
+  it("ensures the pool, copies, then TAGS the copy — in that order", async () => {
     const order: string[] = [];
     read.mockImplementation(async () => {
       order.push("character");
@@ -119,20 +117,15 @@ describe("promoteToReference", () => {
     });
     tree.mockImplementation(async (where) => {
       order.push(`list ${where.node}`);
-      if (where.node === "node-root") return folders({ reference: "node-ref" });
-      return folders({ face: "node-face" });
-    });
-    create.mockImplementation(async () => {
-      order.push("create group");
-      return node("node-group", "unsorted");
+      return folders({ reference: "node-ref" });
     });
     copy.mockImplementation(async () => {
       order.push("copy");
       return copied("node-copy", "frame (2).webp");
     });
     attach.mockImplementation(async () => {
-      order.push("attach");
-      return { node: "node-copy" } as never;
+      order.push("tag");
+      return { id: "node-copy" } as never;
     });
 
     const result = await promoteToReference({
@@ -141,20 +134,16 @@ describe("promoteToReference", () => {
       group: "unsorted",
     });
 
-    expect(order).toEqual([
-      "character",
-      "list node-root",
-      "list node-ref",
-      "create group",
-      "copy",
-      "attach",
-    ]);
-    expect(copy).toHaveBeenCalledWith([OUTPUT], "node-group");
+    // **One folder, not two.** The group was a `<group>/` subfolder AND a column
+    // on the row; it is a tag, so the copy lands in `reference/` and the group
+    // is said once.
+    expect(order).toEqual(["character", "list node-root", "copy", "tag"]);
+    expect(copy).toHaveBeenCalledWith([OUTPUT], "node-ref");
     // **The COPY's id**, and the name the destination decided — `frame.webp`
     // was taken, so it landed as `frame (2).webp` and nothing here guessed it.
     expect(attach).toHaveBeenCalledWith(
-      CHAR,
-      expect.objectContaining({ node: "node-copy", group: "unsorted" }),
+      "node-copy",
+      expect.objectContaining({ tags: ["default", "unsorted"] }),
     );
     expect(attach).not.toHaveBeenCalledWith(
       CHAR,
@@ -171,18 +160,20 @@ describe("promoteToReference", () => {
      */
     read.mockResolvedValue({ id: CHAR, root: "node-root" } as never);
     let listed = 0;
-    tree.mockImplementation(async (where) => {
-      if (where.node === "node-root") return folders({ reference: "node-ref" });
+    tree.mockImplementation(async () => {
       listed += 1;
       // Absent on the first look, there on the re-list after the conflict.
-      return listed === 1 ? folders({}) : folders({ unsorted: "node-raced" });
+      // **`reference/` is the only folder ensured now** — the `<group>/` one is
+      // gone, because the group is a tag rather than a place.
+      return listed === 1 ? folders({}) : folders({ reference: "node-raced" });
     });
     create.mockRejectedValue(new ApiError("name already taken", 409, "conflict"));
+    references.mockResolvedValue({ tags: {} } as never);
     copy.mockResolvedValue({
       ...copied("node-copy", "frame.webp"),
       destination: "node-raced",
     });
-    attach.mockResolvedValue({ node: "node-copy" } as never);
+    attach.mockResolvedValue({ id: "node-copy" } as never);
 
     await promoteToReference({ character: CHAR, node: OUTPUT, group: "unsorted" });
 
@@ -202,9 +193,12 @@ describe("promoteToReference", () => {
     });
   });
 
-  it("treats a 409 on the attach as already done rather than as a failure", async () => {
+  it("re-tagging is not a conflict, so there is no `already` branch to take", async () => {
+    // Attaching a node twice was a 409 — the row either existed or did not.
+    // Writing a tag onto a file that already carries it is the same write, so a
+    // second promotion of the same picture is quietly correct rather than a
+    // state this has to report.
     stubStore();
-    attach.mockRejectedValue(new ApiError("already a reference", 409, "conflict"));
 
     const result = await promoteToReference({
       character: CHAR,
@@ -212,7 +206,11 @@ describe("promoteToReference", () => {
       group: "unsorted",
     });
 
-    expect(result.already).toBe(true);
+    expect(result.already).toBe(false);
+    expect(attach).toHaveBeenCalledWith(
+      "node-copy",
+      expect.objectContaining({ tags: ["default", "unsorted"] }),
+    );
   });
 });
 
@@ -248,7 +246,7 @@ describe("the panel", () => {
         slug: "a-subject",
         display_name: "A subject",
         hero: null,
-        counts: { references: 2, files: 4 },
+        counts: { default: 2, files: 4 },
         updated: "2026-08-20T00:00:00Z",
       },
     ]);
@@ -300,8 +298,8 @@ describe("the panel", () => {
 
     await waitFor(() =>
       expect(attach).toHaveBeenCalledWith(
-        CHAR,
-        expect.objectContaining({ node: "node-copy", group: "unsorted" }),
+        "node-copy",
+        expect.objectContaining({ tags: ["default", "unsorted"] }),
       ),
     );
     expect(await screen.findByText(/Added to .*'s references/)).toBeTruthy();

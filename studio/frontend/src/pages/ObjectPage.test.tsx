@@ -22,7 +22,6 @@ vi.mock("../apis/studio", () => ({
   getFolder: vi.fn(),
   getRun: vi.fn(),
   getScene: vi.fn(),
-  getReferences: vi.fn(),
   getNode: vi.fn(),
   getAsset: vi.fn(),
   getNodeOwner: vi.fn().mockResolvedValue(null),

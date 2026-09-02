@@ -19,8 +19,6 @@ import type {
   ProjectInput,
   ProjectRecord,
   ProjectSummary,
-  ReferenceEntry,
-  ReferenceIndex,
   EntryKind,
   Depth,
   NodeListing,
@@ -640,98 +638,9 @@ export function draftTurnaround(
   );
 }
 
-export function getReferences(id: string, group?: string) {
-  return apiGet<ReferenceIndex>(
-    `/api/characters/${encodeURIComponent(id)}/references`,
-    { group },
-  );
-}
-
 /**
- * Attach an existing node as a reference.
+ * A write answers with LESS than a read does.
  *
- * Two steps, and always has been: the bytes arrive, then a person decides the
- * image is identity. `after` places the entry between two existing ones by
- * taking the midpoint of their `order` values — one write, neither neighbour
- * touched.
- */
-export function addReference(
-  id: string,
-  body: {
-    node: string;
-    group: string;
-    description?: string;
-    tags?: string[];
-    after?: string;
-  },
-) {
-  return apiSend<ReferenceEntry>(
-    "POST",
-    `/api/characters/${encodeURIComponent(id)}/references`,
-    body,
-  );
-}
-
-/**
- * Change one entry's group, description, tags or position.
- *
- * Each of those used to be something else entirely: the group was the folder the
- * file sat in, the position was a number in its filename, and the description
- * was a key in the bible that every write rewrote whole. All three are one row's
- * write now, so two people describing two references stop fighting over one
- * document.
- */
-export function patchReference(
-  id: string,
-  node: string,
-  body: {
-    group?: string;
-    description?: string;
-    tags?: string[];
-    after?: string;
-  },
-) {
-  return apiSend<ReferenceEntry>(
-    "PATCH",
-    `/api/characters/${encodeURIComponent(id)}/references/${encodeURIComponent(node)}`,
-    body,
-  );
-}
-
-/** Detach an entry. The file stays exactly where it is. */
-export function deleteReference(id: string, node: string) {
-  return apiSend<{ node: string }>(
-    "DELETE",
-    `/api/characters/${encodeURIComponent(id)}/references/${encodeURIComponent(node)}`,
-  );
-}
-
-/**
- * The ordered handful a generation reaches for when nothing else is asked.
- *
- * **`rev` is required**, and this did not send it — the route compare-and-swaps
- * the record like every other write on it. Nothing in the app calls this yet, so
- * the omission had no symptom; the CLI's copy of the same mistake failed with
- * `rev is required` the moment #479 let the request reach the API at all.
- *
- * Every member must already be a reference. The API refuses a node with no
- * `REF#` row rather than accepting a set that names an image a shoot cannot send.
- */
-/**
- * The acknowledgement this route answers with — **not** a character record.
- *
- * It used to be typed `CharacterRecord`, which was simply false: the route
- * returns `{id, default_set, rev}` and nothing else. Nothing read the result
- * until the grid learned to write the set, and the first caller to trust the
- * type fed three fields into the page's record — so the character lost its
- * name, its slug and its root folder. The data was never touched; only the
- * screen was wrong, which is the worst way for a type to be a lie.
- */
-/**
- * What a WRITE to an entity answers with — never as much as a `GET`.
- *
- * **This is a whole class of bug, not one route.** `GET /characters/<id>` adds
- * `hero_url` and `counts` on top of the stored record; `GET /projects/<id>`
  * adds the expanded `characters`. Every `PATCH` returns `jsonify(updated)` —
  * the record as stored, without any of it — and the wrappers here all claimed
  * the full type.
@@ -747,23 +656,6 @@ export function deleteReference(id: string, node: string) {
  * something new.
  */
 export type EntityPatch<T> = Partial<T> & { id: string; rev: number };
-
-export interface DefaultSetAck {
-  id: string;
-  default_set: string[];
-  rev: number;
-}
-
-export function setDefaultSet(id: string, nodes: string[], rev: number) {
-  return apiSend<DefaultSetAck>(
-    "PATCH",
-    `/api/characters/${encodeURIComponent(id)}/default-set`,
-    {
-      nodes,
-      rev,
-    },
-  );
-}
 
 /**
  * Revise one shot of a storyboard.
@@ -789,16 +681,18 @@ export function patchShot(
  * The ordered images a model would actually be shown, and the cap they face.
  *
  * **A route rather than a function in each half of studio**, so the CLI and this
- * app cannot disagree about what slot 3 was. `pick` names files, `tag` names
- * tags, `group` names a group; each takes a comma-joined list, and the first one
- * given wins in that order. None given falls through to the `default_set`.
+ * app cannot disagree about what slot 3 was. `pick` names files and `tag` names
+ * tags, both comma-joined; `pick` wins, and neither given means the `default`
+ * images. `group` is gone as a parameter because a group IS a tag.
  *
- * **Two refusals a caller has to surface rather than work around**, both 409:
- * `over_cap` when more references match than the model will take, carrying every
- * candidate so a person can choose, and `stale_default_set` when the set names a
- * node that is no longer a reference. Neither is truncated or filtered, because
- * a generation shown seven of eighteen images silently is a result nobody can
- * explain afterwards.
+ * **One refusal a caller has to surface rather than work around**, a 409:
+ * `over_cap`, when more images match than the model will take, carrying every
+ * candidate so a person can choose. Never truncated, because a generation shown
+ * seven of eighteen images silently is a result nobody can explain afterwards.
+ *
+ * `stale_default_set` was the other one, and it cannot happen: it fired when the
+ * set on the record named a node that was no longer a reference, and there is no
+ * list and no row — a tag cannot outlive the file it is written on.
  *
  * **`ApiError.message` is the CODE on those two, not the sentence.** The API's
  * ordinary errors put their prose in `error` and a structured one puts the code

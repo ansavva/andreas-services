@@ -5,13 +5,13 @@ import { Alert, Button, Field, Input, Select, Text } from "@ansavva/design-syste
 
 import { ApiError } from "../../apis/client";
 import {
-  addReference,
   copyNodes,
   createNode,
+  describeNode,
   getCharacter,
   getCharacters,
-  getReferences,
   getFolder,
+  listNodes,
 } from "../../apis/studio";
 import { MediaThumb } from "../media/MediaThumb";
 import { useResource } from "../../hooks/useResource";
@@ -19,22 +19,28 @@ import type { RunAsset } from "../../types";
 import { characterPath, objectPath } from "../../utils/location";
 
 /**
- * The group a reference lands in when nobody says otherwise.
+ * The tag that makes an image one the character SENDS.
  *
- * The CLI's default, spelled the same way — `refs.py`'s `UNSORTED`. A promotion
- * that had to pick a group before it could happen would push people into
- * guessing one, and a wrongly-grouped reference is worse than an ungrouped one:
- * `character regroup` moves it, and a set chosen by group would have sent it.
+ * The whole of what a `REF#` row and a `default_set` entry used to say between
+ * them, on the picture. A promotion writes it, because promoting is precisely
+ * the act of deciding this image is identity.
+ */
+export const DEFAULT_TAG = "default";
+
+/**
+ * A group left unnamed. Kept as a word rather than as "no tag at all" so a
+ * promotion nobody classified is still findable, and one `describe` away from
+ * wherever it belongs.
  */
 export const UNSORTED = "unsorted";
 
 /**
  * The groups a character conventionally has, offered alongside its real ones.
  *
- * A suggestion list and never a menu — the group is an attribute of a `REF#`
- * row, so any word is legal and the API validates none of these. They are here
- * because a first promotion into a fresh character has no existing groups to
- * offer, and "face" is what it almost always wants.
+ * A suggestion list and never a menu — a group is an ordinary tag, so any word
+ * is legal and the API validates none of these. They are here because a first
+ * promotion into a fresh character has no existing tags to offer, and "face" is
+ * what it almost always wants.
  */
 export const CONVENTIONAL_GROUPS = ["face", "body", "frame", "wardrobe"];
 
@@ -112,23 +118,30 @@ async function ensureFolder(parent: string, name: string): Promise<string> {
 }
 
 /**
- * Promote one image into a character's references — **a real copy, then attach.**
+ * Promote one image into a character's identity — **a real copy, then a tag.**
  *
- * The CLI's `character add-refs --from-run` performed step for step, because the
- * two must not drift: the run's output is copied into the character's
- * `reference/<group>/` folder, and the COPY gets the `REF#` row. Two blobs with
- * independent lifetimes — the run keeps its own output, so every record citing
- * it stays correct, and detaching or deleting the reference later cannot reach
+ * **The copy is not optional, and it is what ownership now rests on.** A `REF#`
+ * row could name a node anywhere in the library, so attaching a run's own output
+ * was possible; a tag says nothing about whose image it is, and the character's
+ * branch is what answers that. So the run's output is copied into the
+ * character's `reference/` folder and the COPY is tagged. Two blobs with
+ * independent lifetimes: the run keeps its own output, every record citing it
+ * stays correct, and untagging or deleting the promoted image later cannot reach
  * back into the run.
  *
- * **The id attached is the one the copy route answered with**, never the source
- * and never a name this could have guessed. A destination already holding the
- * name numbers it — `clip.mp4` lands as `clip (2).mp4` — and the numbering is
- * decided there, not here.
+ * **The id tagged is the one the copy route answered with**, never the source and
+ * never a name this could have guessed. A destination already holding the name
+ * numbers it — `clip.mp4` lands as `clip (2).mp4` — and the numbering is decided
+ * there, not here.
  *
- * Exported so its ORDER is testable. Getting it wrong is not a cosmetic bug:
- * attaching the original would make the run's own output the character's
- * identity, which is the exact thing the copy exists to avoid.
+ * **The group is a tag, not a folder.** It used to be both — a `<group>/`
+ * subfolder and a column on the row — which is two places for one fact and the
+ * shape this whole change removes. The copy lands in `reference/` and the group
+ * rides along beside `default`.
+ *
+ * Exported so its ORDER is testable. Getting it wrong is not cosmetic: tagging
+ * the original would make the run's own output the character's identity, which
+ * is the exact thing the copy exists to avoid.
  */
 export async function promoteToReference({
   character,
@@ -145,23 +158,23 @@ export async function promoteToReference({
 }): Promise<Promoted> {
   const record = await getCharacter(character);
   const pool = await ensureFolder(record.root, REFERENCE_POOL);
-  const folder = await ensureFolder(pool, group);
 
-  const copied = await copyNodes([node], folder);
+  const copied = await copyNodes([node], pool);
   const made = copied.nodes[0];
-  if (!made) throw new Error("the copy reported nothing — nothing was attached");
+  if (!made) throw new Error("the copy reported nothing — nothing was tagged");
   const copy = { id: made.id, name: made.name };
 
+  // `default` first, then the group, then anything typed. De-duplicated because
+  // somebody typing `face` in the tags box as well should not produce it twice.
+  const written = [...new Set([DEFAULT_TAG, group, ...(tags ?? [])])].filter(Boolean);
+
   try {
-    await addReference(character, {
-      node: copy.id,
-      group,
+    await describeNode(copy.id, {
+      tags: written,
       ...(description ? { description } : {}),
-      ...(tags && tags.length > 0 ? { tags } : {}),
     });
   } catch (err) {
     const error = err as ApiError;
-    if (error.status === 409) return { copy, group, already: true };
     throw new AttachFailed(error.message, copy, group);
   }
 
@@ -285,21 +298,33 @@ export function PromotePanel({
   );
   const [done, setDone] = useState<Promoted | null>(null);
 
-  // The character's real groups, for the datalist. Asked only once one is
-  // chosen — before that there is no character whose groups these would be.
-  const loadGroups = useCallback(
-    () => (character ? getReferences(character) : Promise.reject(new Error("none"))),
+  // **The character's real tags, off the listing's own facet.** There is no
+  // reference index to read groups out of; what the character actually uses is
+  // whatever its images carry, which every listing already counts. Asked only
+  // once a character is chosen — before that there is nobody whose tags these
+  // would be.
+  const loadTags = useCallback(
+    () =>
+      character
+        ? getCharacter(character).then((record) =>
+            listNodes({ node: record.root }, { depth: "all", kind: ["image"] }),
+          )
+        : Promise.reject(new Error("none")),
     [character],
   );
-  const references = useResource(
-    character ? ["references", character] : null,
-    character ? loadGroups : null,
+  const inUse = useResource(
+    character ? ["character-tags", character] : null,
+    character ? loadTags : null,
   );
 
   const groups = useMemo(() => {
-    const existing = Object.keys(references.data?.counts ?? {});
+    // `default` is not offered: it is what a promotion writes, not a group to
+    // choose, and putting it in the list would invite somebody to pick it twice.
+    const existing = Object.keys(inUse.data?.tags ?? {}).filter(
+      (tag) => tag !== DEFAULT_TAG,
+    );
     return [...new Set([...existing, ...CONVENTIONAL_GROUPS, UNSORTED])].sort();
-  }, [references.data]);
+  }, [inUse.data]);
 
   const slug = offered.find((each) => each.id === character)?.slug ?? "";
   const target = group.trim() || UNSORTED;

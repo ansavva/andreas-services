@@ -367,7 +367,12 @@ export interface CharacterSummary {
   slug: string;
   display_name: string;
   hero: HeroImage | null;
-  counts: { references: number; files: number };
+  /**
+   * `default` is how many of its images a generation is shown — what
+   * `counts.references` was, counted off the tag rather than off a row class
+   * that no longer exists. Both come out of one branch walk.
+   */
+  counts: { default: number; files: number };
   updated: string;
 }
 
@@ -435,7 +440,6 @@ export interface CharacterRecord {
   root: string;
   /** A node id, not a signed URL — see `HeroImage`. */
   hero: string | null;
-  default_set: string[];
   profile: CharacterProfile;
   schema_version?: number;
 }
@@ -504,30 +508,6 @@ export interface TurnaroundResult {
   drafted?: Array<{ angle: string; id: string; status: string }>;
   preview?: Array<{ angle: string; model: string; plan: { prompt: string; params: Record<string, unknown> }; sends: Array<{ node: string; field: string }> }>;
   failed: Array<{ angle: string; error: string }>;
-}
-
-export interface ReferenceEntry {
-  node: string;
-  /** Absent inside a grouped listing, where the key already says it. */
-  group?: string;
-  order: number;
-  description: string;
-  tags: string[];
-  /** True when the node is in the character's `default_set`. */
-  default?: boolean;
-  file: {
-    name: string;
-    size?: number;
-    content_type?: string | null;
-    /** Presigned inline GET, short-lived like every other URL in this app. */
-    url: string;
-  };
-}
-
-/** `GET /api/characters/<id>/references`, grouped and in `order` within a group. */
-export interface ReferenceIndex {
-  groups: Record<string, ReferenceEntry[]>;
-  counts: Record<string, number>;
 }
 
 /**

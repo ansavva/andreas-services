@@ -83,7 +83,7 @@ test("the home page lists the seeded character with its real counts", async ({
   // **`counts.files` was read by the CLI and sent by no route until this
   // branch**, so every character in every listing showed `0 files`. The fixture
   // is the API's own answer and carries 54.
-  await expect(page.getByText(/0 references · 54 files/)).toBeVisible();
+  await expect(page.getByText(/0 sent · 54 files/)).toBeVisible();
 });
 
 test("no request escapes to the network", async ({ page }) => {

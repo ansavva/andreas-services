@@ -11,7 +11,6 @@ import { PageBar } from "../components/layout/PageBar";
 import { CharacterProjects, CharacterRuns } from "../components/character/CharacterWork";
 import { ProfileForm } from "../components/character/ProfileForm";
 import { TurnaroundPanel } from "../components/character/TurnaroundPanel";
-import { ReferencesGrid } from "../components/character/ReferencesGrid";
 import { useResource } from "../hooks/useResource";
 import { CHARACTERS_PATH } from "../utils/location";
 import type { CharacterIdentity, CharacterProfile, CharacterRecord } from "../types";
@@ -197,7 +196,11 @@ export function CharacterPage() {
             reads as two strips. */}
         <Tabs.List className="overflow-x-auto border-b border-line">
           <Tabs.Tab value="profile">Profile</Tabs.Tab>
-          <Tabs.Tab value="references">References</Tabs.Tab>
+          {/* **Its files, opened already narrowed to `default`.** There is no
+              reference index to draw — what a `REF#` row said is a tag on the
+              picture — so the tab that drew one is the browser with the filter
+              pre-filled, and everything the browser can do works here. */}
+          <Tabs.Tab value="identity">Identity</Tabs.Tab>
           {/* Making them, as opposed to reading them. It sits beside
               References because that is what it produces, and the two
               questions — what does this character look like, and shoot the
@@ -229,22 +232,8 @@ export function CharacterPage() {
           />
         </Tabs.Panel>
 
-        <Tabs.Panel value="references">
-          <ReferencesGrid
-            characterId={record.id}
-            rootId={record.root}
-            defaultSet={record.default_set}
-            // The set is written against the revision, and the route answers
-            // with `{id, default_set, rev}` — an acknowledgement, not a record.
-            // So it is MERGED. Swapping it in wholesale is what briefly left
-            // this character nameless on screen.
-            rev={record.rev}
-            onSaved={(ack) =>
-              character.setData((current) =>
-                current ? { ...current, default_set: ack.default_set, rev: ack.rev } : current,
-              )
-            }
-          />
+        <Tabs.Panel value="identity">
+          <FolderTab rootId={record.root} initialTags={["default"]} />
         </Tabs.Panel>
 
         <Tabs.Panel value="runs">

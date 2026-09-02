@@ -5,7 +5,6 @@ import { Drawer, Text, Button } from "@ansavva/design-system";
 
 import { ApertureSpinner } from "../components/common/Aperture";
 import { deleteNodes, describeNode, renameNode } from "../apis/studio";
-import { ReferenceFields } from "../components/character/ReferenceFields";
 import type { Crumb } from "../components/layout/PageBar";
 import { MediaPlayer, type MediaPlayerControls } from "../components/media/MediaPlayer";
 import { TextPage } from "../components/text/TextPage";
@@ -424,18 +423,12 @@ export function ObjectPage() {
                 setEditing(false);
               }}
               onKeepEditing={() => setEditWarning(false)}
-              // Only in a character's reference pool. Elsewhere a node has no
-              // group, no position and no caption, and the panel is the file's
-              // own fields alone.
-              extra={
-                source?.in === "refs" ? (
-                  <ReferenceFields
-                    characterId={source.id}
-                    node={current.id}
-                    onChanged={feed.reload}
-                  />
-                ) : undefined
-              }
+              // **No second panel any more.** A `ReferenceFields` used to sit
+              // here when the node was in a character's reference pool, editing
+              // the group, the position and a caption that lived on the `REF#`
+              // row. All three are the file's own `tags` and `description` now,
+              // which the panel below already edits — so the second form was a
+              // second way to say the same thing about the same file.
             />
           </Drawer.Panel>
         </Drawer.Root>

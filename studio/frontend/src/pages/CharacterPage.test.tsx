@@ -11,9 +11,6 @@ import type { CharacterRecord } from "../types";
 vi.mock("../components/browse/FolderTab", () => ({
   FolderTab: ({ rootId }: { rootId: string }) => <div>files of {rootId}</div>,
 }));
-vi.mock("../components/character/ReferencesGrid", () => ({
-  ReferencesGrid: () => <div>references</div>,
-}));
 
 vi.mock("../apis/studio", () => ({
   deleteCharacter: vi.fn(),
@@ -43,7 +40,6 @@ function record(over: Partial<CharacterRecord> = {}): CharacterRecord {
     updated: "2026-08-01T00:00:00Z",
     root: "node-root",
     hero: null,
-    default_set: [],
     profile: {
       // `hair` is short and stays a line. `build` is 63 characters — over the
       // old 100-char threshold it was a single-line input you had to scroll
@@ -91,7 +87,9 @@ describe("the tab strip", () => {
     await open();
 
     const tabs = screen.getAllByRole("tab").map((tab) => tab.textContent);
-    expect(tabs).toEqual(["Profile", "References", "Shoot", "Files", "Runs", "Projects"]);
+    // `Identity` where `References` was: there is no reference index to draw,
+    // so the tab is the file browser with `default` already in its tag filter.
+    expect(tabs).toEqual(["Profile", "Identity", "Shoot", "Files", "Runs", "Projects"]);
     expect(tabs).not.toContain("reference");
     expect(tabs).not.toContain("seed");
   });

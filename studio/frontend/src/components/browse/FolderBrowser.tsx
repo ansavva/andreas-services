@@ -86,6 +86,14 @@ interface Props {
    * by this.
    */
   boundary?: FolderId;
+  /**
+   * Tags the browser opens already narrowed to.
+   *
+   * What the References tab is: a character's Files, filtered to the images it
+   * sends. There is no reference index to draw any more — identity is a tag —
+   * so the tab that drew one is this browser with `default` already typed in.
+   */
+  initialTags?: string[];
 }
 
 /**
@@ -130,7 +138,7 @@ type PickerTarget = {
  * name-path routes it used to call took a slash-joined path that a rename
  * invalidated mid-flight.
  */
-export function FolderBrowser({ nav, boundary = null }: Props) {
+export function FolderBrowser({ nav, boundary = null, initialTags = [] }: Props) {
   const { folder, sort } = nav;
 
   const [actionError, setActionError] = useState<string | null>(null);
@@ -144,7 +152,7 @@ export function FolderBrowser({ nav, boundary = null }: Props) {
    * request into a search of everything under this folder. They compose, and the
    * order is the honest one — the server narrows, then the typed name hides.
    */
-  const [tags, setTags] = useState<string[]>([]);
+  const [tags, setTags] = useState<string[]>(initialTags);
   const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
 
   /**

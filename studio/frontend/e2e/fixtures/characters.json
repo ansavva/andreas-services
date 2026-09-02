@@ -1,8 +1,8 @@
 [
   {
     "counts": {
-      "files": 54,
-      "references": 0
+      "default": 0,
+      "files": 54
     },
     "display_name": "jason",
     "hero": null,
