@@ -457,7 +457,7 @@ export function RunPage() {
                             asking would be a question about nothing. */}
                         <ConfirmDeleteButton
                           noun="this run"
-                          tone="page"
+                          tone="text"
                           onConfirm={async () => {
                             await deleteRun(data.id);
                             navigate(projectPath(data.project));

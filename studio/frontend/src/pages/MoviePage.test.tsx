@@ -7,6 +7,7 @@ import { TestProviders } from "../test-providers";
 
 vi.mock("../apis/studio", () => ({
   getMovie: vi.fn(),
+  deleteMovie: vi.fn(),
   getProject: vi.fn().mockResolvedValue({ id: "proj-1", name: "A project" }),
 }));
 

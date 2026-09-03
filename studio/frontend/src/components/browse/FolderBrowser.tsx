@@ -43,7 +43,7 @@ import { TagFilter } from "./TagFilter";
 import { UploadButton } from "./UploadButton";
 import { UploadStatus } from "./UploadStatus";
 import { CopyIcon, FolderIntoIcon, FolderPlusIcon } from "../common/icons";
-import { ConfirmDestroyDialog } from "../common/ConfirmDestroyDialog";
+import { BULK_GATE, ConfirmDestroyDialog } from "../common/ConfirmDestroyDialog";
 
 /**
  * How the browser is addressed, supplied by whoever is showing it.
@@ -148,16 +148,6 @@ interface Props {
  * there is no way to have a picker open with no operation chosen, or to close
  * one and leave a stale verb behind for the next.
  */
-/**
- * Where an armed button stops being enough for a bulk delete.
- *
- * Under this many, the cost of being wrong is a handful of frames still on
- * screen and the two-press button is proportionate. At or above it, the count
- * has to be typed — a selection is invisible once it is gone, and "select all"
- * followed by "delete" is two presses from emptying a folder.
- */
-const BULK_GATE = 5;
-
 const VIEW_FOLDERS = "folders";
 const VIEW_MEDIA = "media";
 
@@ -659,7 +649,7 @@ export function FolderBrowser({
           <CopyKeyButton value={prefix ?? ""} noun="prefix" />
 
           <ConfirmDeleteButton
-            tone="bar"
+            tone="icon"
             disabled={atRoot || hereId === null}
             noun={atRoot ? "this folder" : folderName}
             onConfirm={deleteCurrentFolder}
@@ -852,7 +842,7 @@ export function FolderBrowser({
                 folder. */}
           {selection.count < BULK_GATE ? (
             <ConfirmDeleteButton
-              tone="bar"
+              tone="icon"
               noun={selectedNoun("file", "files")}
               onConfirm={deleteSelected}
             />

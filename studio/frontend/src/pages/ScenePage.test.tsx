@@ -20,6 +20,7 @@ vi.mock("../apis/studio", () => ({
   getScene: vi.fn(),
   patchScene: vi.fn(),
   patchShot: vi.fn(),
+  deleteScene: vi.fn(),
   getProject: vi.fn(),
 }));
 
