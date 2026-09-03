@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import type { RunSummary } from "../../types";
@@ -46,11 +46,18 @@ function library(rows: RunSummary[]) {
   });
 }
 
+/** Reports `location.search`, so a test can assert a filter landed in the URL. */
+function SearchProbe() {
+  const location = useLocation();
+  return <span data-testid="search">{location.search}</span>;
+}
+
 function open() {
   render(
     <TestProviders>
       <MemoryRouter>
         <RunsTable projectId={PROJECT} characters={[]} to={() => "/x"} />
+        <SearchProbe />
       </MemoryRouter>
     </TestProviders>,
   );
@@ -99,5 +106,38 @@ it("still narrows to exactly one status when one is named", async () => {
   // A named status is a narrowing, so `include` has no business being sent too.
   expect(list).not.toHaveBeenCalledWith(
     expect.objectContaining({ status: "succeeded", include: "drafts" }),
+  );
+});
+
+it("the filters are collapsed by default", () => {
+  library([]);
+  open();
+
+  expect(
+    screen.getByRole("button", { name: /^Filter runs/ }).getAttribute("aria-expanded"),
+  ).toBe("false");
+});
+
+it("choosing a status is URL state, and Clear resets it", async () => {
+  library([run({ id: "run-waiting", status: "draft" })]);
+  open();
+
+  await waitFor(() => expect(screen.getByText("draft")).toBeTruthy());
+  expect(screen.getByTestId("search")).toHaveProperty("textContent", "");
+
+  fireEvent.click(screen.getByRole("combobox", { name: /status/i }));
+  fireEvent.click(await screen.findByRole("option", { name: "draft" }));
+
+  await waitFor(() => expect(screen.getByTestId("search")).toHaveProperty(
+    "textContent",
+    "?status=draft",
+  ));
+
+  fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+  await waitFor(() =>
+    expect(screen.getByTestId("search")).toHaveProperty("textContent", ""),
+  );
+  await waitFor(() =>
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({ include: "drafts" })),
   );
 });

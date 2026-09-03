@@ -342,3 +342,52 @@ input.h-10,
 .field-row :is(input, button, [role="combobox"]) {
   height: 2.75rem;
 }
+
+/* ────────────────────────── one sticky offset ────────────────────────────
+ *
+ * **`AppHeader` is the one thing every screen sticks under, and now it has a
+ * name.** A selection strip pinned under it with a literal `top-16` would
+ * agree with the header's height only until one of them changed — this is
+ * the number, read once here, so a second sticky surface can reuse it rather
+ * than re-measuring the same bar.
+ *
+ * `72px`: `py-3` (12px) twice plus the 48px mark/wordmark row it wraps, which
+ * is what the header's own `py-3` comment already derives it from.
+ */
+:root {
+  --header-h: 72px;
+}
+
+/* ─────────────────────── touch targets below 44px ───────────────────────
+ *
+ * **A `sm` `IconButton` is 32px, which is the package's own deliberate opt-in
+ * to a smaller VISUAL target for dense chrome** — a row's `⋯`, a tile's
+ * corner. It still fails WCAG 2.5.5 on a touchscreen, where the finger is
+ * wider than the box it is aiming at. This widens the invisible hit area
+ * without moving the drawn one, on `pointer: coarse` only — a mouse loses
+ * nothing by aiming at 32px, and a phone gets a target it can actually hit.
+ */
+@media (pointer: coarse) {
+  .touch-target {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+}
+
+/* ────────────────────── a Select that has to truncate ──────────────────────
+ *
+ * **`min-width: auto` is the flexbox default, and it wins over an ancestor's
+ * `width`.** `Select`'s trigger is `flex … justify-between` around a
+ * `truncate` label span; without this, that span refuses to shrink below its
+ * own text's width, which forces the button — and everything constraining it
+ * — wider than asked. `FolderBrowser`'s toolbar caps `SortControl` at `w-28`
+ * below `sm` so its own `⋯` never wraps onto a second line at 390px; without
+ * this rule the cap is silently ignored and the wrap happens anyway.
+ *
+ * Consumer-side, like the two blocks above: keyed to the package's own
+ * `role="combobox"` markup, so a future release that already sets this itself
+ * makes the rule redundant rather than wrong.
+ */
+[role="combobox"] > .truncate {
+  min-width: 0;
+}
