@@ -2,7 +2,6 @@ import { useCallback, useMemo, useState } from "react";
 
 import {
   Alert,
-  Badge,
   Button,
   Card,
   Field,
@@ -22,6 +21,7 @@ import {
 import { ApertureSpinner } from "../components/common/Aperture";
 import { AutoTextarea } from "../components/common/AutoTextarea";
 import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
+import { FormBar } from "../components/common/FormBar";
 import { TagSelect } from "../components/common/TagSelect";
 import { TokenizedPromptEditor } from "../components/common/TokenizedPromptEditor";
 import type { PromptToken } from "../components/common/TokenizedPromptEditor";
@@ -279,12 +279,13 @@ function NewBlock({ taken, setData }: { taken: string[]; setData: SetData }) {
       ) : null}
       <div className="flex gap-2">
         <Button
+          size="sm"
           onClick={create}
           disabled={saving || problem !== null || !name || !text.trim()}
         >
           {saving ? "Creating…" : "Create"}
         </Button>
-        <Button intent="ghost" onClick={() => setOpen(false)} disabled={saving}>
+        <Button intent="secondary" size="sm" onClick={() => setOpen(false)} disabled={saving}>
           Cancel
         </Button>
       </div>
@@ -363,11 +364,8 @@ function BlockEditor({
       >
         <span className="flex w-full items-center justify-between gap-2">
           <span className="font-mono text-sm">{`{${name}}`}</span>
-          <span className="flex shrink-0 items-center gap-2">
-            {dirty ? <Badge size="sm">unsaved</Badge> : null}
-            <span className="text-xs text-muted">
-              {usedBy === 1 ? "1 template" : `${usedBy} templates`}
-            </span>
+          <span className="shrink-0 text-xs text-muted">
+            {usedBy === 1 ? "1 template" : `${usedBy} templates`}
           </span>
         </span>
         {open ? null : (
@@ -396,24 +394,11 @@ function BlockEditor({
           <Field.Root name={`block-${name}`}>
             <AutoTextarea value={draft} onValueChange={setDraft} className="font-mono" />
           </Field.Root>
-          {failed ? (
-            <Alert.Root intent="danger">
-              <Alert.Description>{failed}</Alert.Description>
-            </Alert.Root>
-          ) : null}
-          <div className="flex gap-2">
-            <Button onClick={save} disabled={!dirty || saving}>
-              {saving ? "Saving…" : "Save"}
-            </Button>
-            {dirty ? (
-              <Button intent="ghost" onClick={() => setDraft(text)} disabled={saving}>
-                Revert
-              </Button>
-            ) : null}
-            {/* Nothing is lost by closing: the draft lives on this component,
-                which stays mounted, and the collapsed card carries the
-                `unsaved` badge until it is saved or reverted. */}
-            <Button intent="ghost" onClick={() => setOpen(false)} disabled={saving}>
+          {/* Close is kept off the save row: it shuts the expander, not the
+              form. Nothing is lost by closing — the draft lives on this
+              component, which stays mounted, until it is saved or reverted. */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Button intent="secondary" size="sm" onClick={() => setOpen(false)} disabled={saving}>
               Close
             </Button>
             {/*
@@ -431,6 +416,13 @@ function BlockEditor({
               disabled={saving}
             />
           </div>
+          <FormBar
+            dirty={dirty}
+            saving={saving}
+            onSave={() => void save()}
+            onRevert={() => setDraft(text)}
+            error={failed}
+          />
         </div>
       ) : null}
     </div>
@@ -734,30 +726,19 @@ function TemplateEditor({
           <Field.Label>Description</Field.Label>
           <AutoTextarea minRows={2} value={description} onValueChange={setDescription} />
         </Field.Root>
-
-        {failed ? <Alert.Root intent="danger">
-            <Alert.Description>{failed}</Alert.Description>
-          </Alert.Root> : null}
       </div>
-      <Card.Footer>
-        <Button onClick={save} disabled={!dirty || saving}>
-          {saving ? "Saving…" : "Save"}
-        </Button>
-        {dirty ? (
-          <Button
-            intent="ghost"
-            onClick={() => {
-              setPrompt(template.prompt);
-              setDescription(template.description);
-              setName(template.name);
-              setTags(template.tags ?? []);
-            }}
-            disabled={saving}
-          >
-            Revert
-          </Button>
-        ) : null}
-      </Card.Footer>
+      <FormBar
+        dirty={dirty}
+        saving={saving}
+        onSave={() => void save()}
+        onRevert={() => {
+          setPrompt(template.prompt);
+          setDescription(template.description);
+          setName(template.name);
+          setTags(template.tags ?? []);
+        }}
+        error={failed}
+      />
     </Card.Root>
   );
 }

@@ -15,6 +15,7 @@ import {
 
 import type { CharacterIdentity, CharacterProfile, ProfileValue } from "../../types";
 import { AutoTextarea } from "../common/AutoTextarea";
+import { FormBar } from "../common/FormBar";
 import { ChevronDownIcon } from "../common/icons";
 
 interface Props {
@@ -362,31 +363,6 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
 
   return (
     <div className="flex flex-col gap-4">
-      {/*
-        One bar, one revision number, and it follows the page down.
-
-        There used to be two of each: a Save on the identity card and a second on
-        the bible below it, with a "revision N" beside both showing the same
-        number. They are still two writes — the page chains them — and that is not
-        something a person should have to hold.
-
-        Sticky because a bible is longer than a screen, and a save you have to
-        scroll back up to reach is one people stop making. Three items, so it
-        stays one row at 390px.
-      */}
-      <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-line bg-bg py-2">
-        <Text variant="caption" tone="muted" className="tabular-nums">
-          revision {rev}
-        </Text>
-        <div className="flex-1" />
-        <Button intent="secondary" size="sm" disabled={!dirty || busy} onClick={revert}>
-          Revert
-        </Button>
-        <Button size="sm" disabled={!dirty || busy} onClick={save}>
-          {busy ? "Saving…" : dirty ? "Save" : "Saved"}
-        </Button>
-      </div>
-
       {conflict && (
         <Alert.Root intent="warning">
           <Alert.Title>That did not go through</Alert.Title>
@@ -404,13 +380,6 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
         </Alert.Root>
       )}
 
-      {error && !conflict && (
-        <Alert.Root intent="danger">
-          <Alert.Title>Could not save</Alert.Title>
-          <Alert.Description>{error}</Alert.Description>
-        </Alert.Root>
-      )}
-
       {/*
         The rail is additive and desktop-only.
 
@@ -421,7 +390,7 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
       */}
       <div className="grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-6">
         <nav aria-label="Profile sections" className="hidden lg:block">
-          {/* `top-14` clears the sticky save bar above it. */}
+          {/* `top-14` clears the app header. */}
           <div className="sticky top-14 flex flex-col gap-1">
             <Button intent="secondary" size="sm" className="justify-start" onClick={toggleAll}>
               {allOpen ? "Collapse all" : "Expand all"}
@@ -516,6 +485,28 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
               ))}
             </div>
           ))}
+
+          {/*
+            One bar, one revision number.
+
+            There used to be two of each: a Save on the identity card and a
+            second on the bible below it, with a "revision N" beside both showing
+            the same number. They are still two writes — the page chains them —
+            and that is not something a person should have to hold.
+
+            Sticky on a phone because a bible is longer than a screen, and a save
+            you have to scroll to reach is one people stop making. It sat at the
+            top of the form before this, where it slid under the app header.
+          */}
+          <FormBar
+            dirty={dirty}
+            saving={busy}
+            onSave={save}
+            onRevert={revert}
+            meta={`revision ${rev}`}
+            error={conflict ? null : error}
+            sticky
+          />
         </div>
       </div>
     </div>

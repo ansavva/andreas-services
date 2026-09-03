@@ -156,7 +156,7 @@ describe("saving identity and the bible together", () => {
   it("has one save bar and one revision label, not one per section", async () => {
     await open();
 
-    expect(screen.getAllByRole("button", { name: "Saved" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Save" })).toHaveLength(1);
     expect(screen.getAllByText(/revision 7/)).toHaveLength(1);
   });
 });
