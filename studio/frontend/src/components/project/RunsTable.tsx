@@ -20,7 +20,8 @@ interface Props {
   projectId: string;
   /** The project's characters, so the filter offers names rather than ids. */
   characters: Array<{ id: string; name: string }>;
-  onOpen: (run: RunSummary) => void;
+  /** A run's address — the rows are links. */
+  to: (run: RunSummary) => string;
 }
 
 /**
@@ -66,7 +67,7 @@ const STATUSES: RunStatus[] = [
  * `cursor` is real pagination rather than an offset: the rows are ranged on the
  * creation timestamp under the project's partition, so a page is a query.
  */
-export function RunsTable({ projectId, characters, onOpen }: Props) {
+export function RunsTable({ projectId, characters, to }: Props) {
   const [status, setStatus] = useState<string | null>(null);
   const [model, setModel] = useState("");
   const [character, setCharacter] = useState<string | null>(null);
@@ -200,7 +201,7 @@ export function RunsTable({ projectId, characters, onOpen }: Props) {
         <EmptyState title="Nothing here matches that search." />
       )}
 
-      <RunList runs={runs} onOpen={(run) => onOpen(run as RunSummary)} />
+      <RunList runs={runs} to={(run) => to(run as RunSummary)} />
 
       {loading && <SectionLoading label="Loading runs" />}
 

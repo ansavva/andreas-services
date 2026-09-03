@@ -119,6 +119,23 @@ it("offers the run composer on the Runs tab and nowhere else", async () => {
 });
 
 /**
+ * **The Runs tab is the list, with no reading to switch away from.**
+ *
+ * A List/Grid toggle used to sit here — Grid was the file browser scoped to
+ * the project's `runs/` folder, a run's OUTPUTS rather than the run itself,
+ * which is Files' question one tab over. `RunsTable` is mocked in this file,
+ * so what this asserts is that `ProjectPage` itself offers no toggle to reach
+ * a second reading with.
+ */
+it("offers no List/Grid toggle on the Runs tab", async () => {
+  await open(`/p/${ID}?tab=runs`);
+
+  expect(screen.queryByRole("button", { name: "Grid" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "List" })).toBeNull();
+  expect(screen.getByText("runs table")).toBeTruthy();
+});
+
+/**
  * The delete gate.
  *
  * A project takes its runs, scenes and movies with it, and the armed-button

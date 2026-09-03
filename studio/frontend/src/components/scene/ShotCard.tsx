@@ -38,6 +38,7 @@ export function ShotCard({
   n,
   bracketed,
   onOpenRun,
+  runHref,
   onView,
   frameHref,
   onSave,
@@ -46,6 +47,8 @@ export function ShotCard({
   n: number;
   bracketed: boolean;
   onOpenRun: (run: string) => void;
+  /** The same destination as `onOpenRun`, as an address — see `RunList.to`. */
+  runHref: (run: string) => string;
   onView: (asset: RunAsset) => void;
   /** Where a frame opens, as an address — the scene owns the `?in=` context. */
   frameHref: (asset: RunAsset) => string;
@@ -308,10 +311,7 @@ export function ShotCard({
                         it, and saying it twice a few pixels apart is the same
                         duplication the run screen just lost. */}
                     <section className="flex flex-col gap-1">
-                      <RunList
-                        runs={runs}
-                        onOpen={(run) => onOpenRun(run.id)}
-                      />
+                      <RunList runs={runs} to={(run) => runHref(run.id)} />
                     </section>
                   </>
                 )}

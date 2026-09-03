@@ -1,7 +1,10 @@
+import { useNavigate } from "react-router-dom";
+
 import { Text } from "@ansavva/design-system";
 
 import type { HeroImage } from "../../types";
 import { MediaThumb } from "../media/MediaThumb";
+import { isModifiedPress } from "./EntityRow";
 
 interface Props {
   /**
@@ -16,11 +19,12 @@ interface Props {
   hero: HeroImage | null;
   /** "41 references · 62 files", "12 runs · 2 scenes" — whatever this entity counts. */
   counts: string;
-  onOpen: () => void;
+  /** Where the card goes. An `<a>`, for the same reason `EntityRow` is one. */
+  to: string;
 }
 
 /**
- * A character or a project, as a card.
+ * A character or a project, as a card — the one card, beside the one row.
  *
  * One component for both because the difference between them is what they count,
  * and that arrives as a formatted string — a second card that differed only in
@@ -31,21 +35,27 @@ interface Props {
  * has no hero until a run in it succeeds. So the fallback is the initial rather
  * than a broken-image glyph or a "no image" apology.
  *
- * The whole card is one `<button>`, which is why nothing inside it may be one —
- * the same constraint every row and tile in this app is under.
+ * The whole card is one `<a>`, which is why nothing inside it may be a control.
  */
-export function EntityCard({ name, hero, counts, onOpen }: Props) {
+export function EntityCard({ name, hero, counts, to }: Props) {
+  const navigate = useNavigate();
+
   return (
-    <button
-      type="button"
-      onClick={onOpen}
+    <a
+      href={to}
+      onClick={(event) => {
+        if (isModifiedPress(event) || event.shiftKey) return;
+        event.preventDefault();
+        navigate(to);
+      }}
       title={name}
       // Square, and a hairline rather than a filled card. These sit in a grid
       // where a rule alone would not close the shape, so the border stays —
       // what goes is the rounding and the fill that made each one an object
-      // floating on the page instead of a cell in a grid.
+      // floating on the page instead of a cell in a grid. Hover and focus are
+      // the row's, so the two shapes answer a pointer the same way.
       className="flex w-full items-center gap-3 rounded-none border border-line p-2 text-left
-                 transition-colors hover:bg-card
+                 transition-colors hover:bg-surface-alt
                  focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
     >
       <span className="size-16 shrink-0 overflow-hidden rounded-none border border-line bg-surface-alt">
@@ -58,29 +68,16 @@ export function EntityCard({ name, hero, counts, onOpen }: Props) {
         )}
       </span>
 
-      {/*
-        `block` on both captions, and it is a bug fix rather than tidying.
-
-        `Text variant="body"` renders a `<p>`; `variant="caption"` renders a
-        `<span>`, which is **inline**. So these two sat on one line with nothing
-        between them and the card read `<label><counts>` run together — literally
-        "jason0 references · 54 files" — while `truncate` did nothing at all,
-        needing a block box to have a width to truncate against.
-
-        The e2e suite asserts the counts with a regex that still matched as a
-        substring, which is why it went unnoticed: nothing was missing from the
-        DOM, it was only unreadable.
-      */}
+      {/* `block` on the caption: `variant="caption"` is an inline span, and
+          without it the counts ran onto the name's line as one word. */}
       <span className="min-w-0 flex-1">
         <Text variant="body" weight="medium" className="truncate">
           {name}
         </Text>
-        {/* The counts are numbers, so mono with `tabular-nums`: it is what
-            lines them up between one card and the next. */}
         <Text variant="caption" tone="muted" className="block truncate font-mono tabular-nums">
           {counts}
         </Text>
       </span>
-    </button>
+    </a>
   );
 }

@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import type { RunSummary } from "../../types";
@@ -48,7 +49,9 @@ function library(rows: RunSummary[]) {
 function open() {
   render(
     <TestProviders>
-      <RunsTable projectId={PROJECT} characters={[]} onOpen={() => {}} />
+      <MemoryRouter>
+        <RunsTable projectId={PROJECT} characters={[]} to={() => "/x"} />
+      </MemoryRouter>
     </TestProviders>,
   );
 }

@@ -123,9 +123,13 @@ export function Filmstrip({
                  scroller. Measured: `document.documentElement.scrollWidth` was
                  4984 against a 390 viewport (`body` stayed 390), and the page
                  scrolled 4.6k px into empty space at every width. */
-              className={`relative w-16 shrink-0 cursor-pointer rounded-xs outline-offset-2
-                          focus-visible:outline-2 focus-visible:outline-primary
-                          ${current ? "outline outline-2 outline-primary" : "opacity-70 hover:opacity-100"}`}
+              /* Square corners, and the current tile's ring is `MediaTile`'s —
+                 a box-shadow ring paints outside the box exactly like the
+                 outline it replaces, which is why `p-1.5` on the scroller still
+                 clears it at the first and last tile. */
+              className={`relative w-16 shrink-0 cursor-pointer rounded-none
+                          focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary
+                          ${current ? "ring-2 ring-primary" : "opacity-70 hover:opacity-100"}`}
             >
               {/* The name is on the button's `title` and in this label, so the
                   picture inside it is decorative — see `MediaThumb`. */}
@@ -136,7 +140,7 @@ export function Filmstrip({
                 name={item.name}
                 isVideo={item.kind === "video"}
                 aspect="square"
-                className="rounded-xs"
+                className="rounded-none"
               />
             </button>
           );
