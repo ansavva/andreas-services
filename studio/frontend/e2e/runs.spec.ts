@@ -177,7 +177,7 @@ test("the composer strip makes a draft and lands in its editor", async ({
   await expect(page.getByText("Editing the plan")).toBeVisible();
   // The live schema drew the params form: `aspect_ratio` is an `allOf` naming a
   // component, so its presence is also the `$ref` resolution working end to end.
-  await expect(page.getByLabel("aspect_ratio")).toBeVisible();
+  await expect(page.getByLabel("Aspect ratio")).toBeVisible();
 });
 
 /* -------------------------------------------------------------------------

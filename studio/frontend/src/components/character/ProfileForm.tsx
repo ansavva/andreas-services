@@ -14,6 +14,7 @@ import {
 } from "@ansavva/design-system";
 
 import type { CharacterIdentity, CharacterProfile, ProfileValue } from "../../types";
+import { humaniseKey } from "../../utils/format";
 import { AutoTextarea } from "../common/AutoTextarea";
 import { FormBar } from "../common/FormBar";
 import { ChevronDownIcon } from "../common/icons";
@@ -412,7 +413,7 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
                 {group.keys.map((section) => (
                   <RailLink
                     key={section}
-                    title={humanise(section)}
+                    title={humaniseKey(section)}
                     open={open.has(section)}
                     dirty={dirtySections.has(section)}
                     onClick={() => goToSection(section)}
@@ -463,7 +464,7 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
                 <ProfileSection
                   key={key}
                   id={key}
-                  title={humanise(key)}
+                  title={humaniseKey(key)}
                   hint={SECTION_HINTS.get(key)}
                   // Only the summary carries one, and only while the sections it
                   // restates are dirty in this session.
@@ -743,7 +744,7 @@ interface NodeProps {
 /** One leaf, one list or one group — chosen by the shape of the value. */
 function ProfileNode({ label, path, value, multiline, onChange, headless = false }: NodeProps) {
   const name = path.join(".");
-  const title = humanise(label);
+  const title = humaniseKey(label);
 
   if (typeof value === "boolean") {
     return (
@@ -971,12 +972,6 @@ function GroupList({
 
 function isMap(value: ProfileValue): value is Record<string, ProfileValue> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** `apparent_age` → `Apparent age`. The keys are the bible's own wording. */
-function humanise(key: string): string {
-  const spaced = key.replace(/_/g, " ");
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
 /**

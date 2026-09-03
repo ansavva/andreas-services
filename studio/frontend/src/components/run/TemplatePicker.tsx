@@ -93,8 +93,8 @@ export function TemplatePicker({ onPick, cast }: Props) {
                 title="No templates yet."
                 hint={
                   <>
-                    Push some with <code>studio templates push --path &lt;file&gt;</code>, or
-                    write one on the Templates page.
+                    Write one on the Templates page, or push several at once
+                    with <code>studio templates push --path &lt;file&gt;</code>.
                   </>
                 }
               />

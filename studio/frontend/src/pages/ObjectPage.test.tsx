@@ -188,7 +188,7 @@ describe("which sequence the address names", () => {
     // asked for is the one on screen — not `node-a`, which page one led with.
     await waitFor(() => expect(screen.getByText(/3 of 3/)).toBeTruthy());
     expect(walk).toHaveBeenCalledTimes(2);
-    expect(screen.queryByText("No images or videos here.")).toBeNull();
+    expect(screen.queryByText("No images or videos yet.")).toBeNull();
   });
 
   it("opens a feed at its first frame when the address carries no id", async () => {

@@ -318,12 +318,12 @@ export function ObjectPage() {
     }
     // `searching` as well as `loading`: between two pages of a walk that has
     // not found the file yet, nothing is in flight and the feed is not empty —
-    // saying "no images or videos here" there would be a verdict delivered
+    // saying "no images or videos yet" there would be a verdict delivered
     // mid-search.
     if (feed.loading || searching) return <PageLoading label="Loading media" />;
     return (
       <EmptyState
-        title="No images or videos here."
+        title="No images or videos yet."
         action={
           <Button size="sm" onClick={close}>
             Back

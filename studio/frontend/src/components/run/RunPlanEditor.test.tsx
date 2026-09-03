@@ -342,7 +342,7 @@ describe("editing a plan", () => {
   it("says that saving withdraws the approval, before anything is typed", () => {
     editor();
 
-    expect(screen.getByText("withdraws the approval")).toBeTruthy();
+    expect(screen.getByText("Withdraws the approval")).toBeTruthy();
   });
 });
 
@@ -360,7 +360,7 @@ describe("the params form the schema drives", () => {
     editor();
 
     // The described key leaves the freeform rows and becomes a select.
-    await waitFor(() => expect(screen.getByLabelText("aspect_ratio")).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText("Aspect ratio")).toBeTruthy());
     expect(screen.queryByDisplayValue("aspect_ratio")).toBeNull();
     // The image field is a SEND. Hard rule #3: it never becomes a param box.
     expect(screen.queryByLabelText("image_input")).toBeNull();

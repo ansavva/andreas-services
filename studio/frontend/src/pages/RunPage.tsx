@@ -500,7 +500,7 @@ export function RunPage() {
           <Tabs.Root value={pane} defaultValue="plan" onValueChange={setPane}>
             <Tabs.List className="overflow-x-auto border-b border-line">
               <Tabs.Tab value="plan">Plan</Tabs.Tab>
-              <Tabs.Tab value="payload">Payload</Tabs.Tab>
+              <Tabs.Tab value="request">Request</Tabs.Tab>
             </Tabs.List>
 
             <Tabs.Panel value="plan">
@@ -595,7 +595,7 @@ export function RunPage() {
               than only for the CLI — so what is drawn here is always material that
               was already in the library when the run went out. */}
                     {Object.keys(data.bindings).length === 0 ? (
-                      <EmptyState title="Nothing was bound." />
+                      <EmptyState title="No bindings yet." />
                     ) : (
                       Object.entries(data.bindings).map(([role, assets]) => (
                         <div key={role} className="flex flex-col gap-1">
@@ -632,7 +632,7 @@ export function RunPage() {
               </div>
             </Tabs.Panel>
 
-            <Tabs.Panel value="payload">
+            <Tabs.Panel value="request">
               <div className="flex min-w-0 flex-col gap-3 pt-4">
                 <section className="flex flex-col gap-3">
                   <Text variant="caption" tone="muted">
@@ -760,7 +760,7 @@ function DuplicateNotice({ run }: { run: RunRecord }) {
 
   return (
     <Alert.Root intent="warning">
-      <Alert.Title>This payload has been run here before</Alert.Title>
+      <Alert.Title>This request has been run here before</Alert.Title>
       <Alert.Description>
         <span>
           Another run in this project sent exactly this prompt, these parameters
@@ -802,11 +802,11 @@ function PayloadPreview({ runId }: { runId: string }) {
   const load = useCallback(() => getRunPayloadPreview(runId), [runId]);
   const { data, loading, error } = useResource(["payload", runId], load);
 
-  if (loading) return <SectionLoading label="Reading the payload" />;
+  if (loading) return <SectionLoading label="Reading the request" />;
   if (error || !data) {
     return (
       <Text variant="caption" tone="muted">
-        The payload could not be built: {error ?? "nothing came back"}
+        The request could not be built: {error ?? "nothing came back"}
       </Text>
     );
   }
