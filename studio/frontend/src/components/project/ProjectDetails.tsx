@@ -2,6 +2,8 @@ import { useCallback, useState } from "react";
 
 import { Alert, Field, Input, Text } from "@ansavva/design-system";
 
+import { EmptyState } from "../common/EmptyState";
+
 import { ApiError } from "../../apis/client";
 import { getCharacters, patchProject, setProjectCharacters } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
@@ -75,7 +77,7 @@ export function ProjectDetails({ record, onSaved }: Props) {
     <div className="flex flex-col gap-4">
       {conflict && (
         <Alert.Root intent="warning">
-          <Alert.Title>This project moved under the edit</Alert.Title>
+          <Alert.Title>Could not save over a newer version</Alert.Title>
           <Alert.Description>{conflict}</Alert.Description>
         </Alert.Root>
       )}
@@ -104,6 +106,7 @@ export function ProjectDetails({ record, onSaved }: Props) {
         }}
         meta={`revision ${record.rev}`}
         error={error}
+        errorTitle="Could not save the project"
       />
 
       <Involvement record={record} onSaved={onSaved} />
@@ -160,15 +163,13 @@ function Involvement({ record, onSaved }: Props) {
 
       {error && (
         <Alert.Root intent="danger">
-          <Alert.Title>Could not change who is involved</Alert.Title>
+          <Alert.Title>Could not change the characters</Alert.Title>
           <Alert.Description>{error}</Alert.Description>
         </Alert.Root>
       )}
 
       {(data ?? []).length === 0 ? (
-        <Text variant="body" tone="muted">
-          There are no characters in this library yet.
-        </Text>
+        <EmptyState title="No characters in this library yet." />
       ) : (
         <div className="flex flex-wrap gap-2">
           {(data ?? []).map((character) => {

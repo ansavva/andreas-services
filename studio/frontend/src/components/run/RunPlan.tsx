@@ -474,7 +474,7 @@ export function RunBar({
     <section className="flex flex-col items-start gap-2">
       {failure && (
         <Alert.Root intent="danger">
-          <Alert.Title>Nothing was sent</Alert.Title>
+          <Alert.Title>Could not submit the run</Alert.Title>
           <Alert.Description>
             {failure.message}
             {failure.hint ? ` ${failure.hint}` : ""}
@@ -538,7 +538,7 @@ export function InFlightBar({
     <section className="flex flex-col gap-2 rounded-none border border-line bg-card p-3">
       {error && (
         <Alert.Root intent="danger">
-          <Alert.Title>That did not work</Alert.Title>
+          <Alert.Title>Could not check the run</Alert.Title>
           <Alert.Description>{error}</Alert.Description>
         </Alert.Root>
       )}

@@ -1,9 +1,11 @@
 import { useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { Alert, Badge, Text } from "@ansavva/design-system";
+import { Badge, Text } from "@ansavva/design-system";
 
-import { ApertureSpinner } from "../components/common/Aperture";
+import { EmptyState } from "../components/common/EmptyState";
+import { LoadError } from "../components/common/LoadError";
+import { PageLoading } from "../components/common/PageLoading";
 import { getMovie } from "../apis/studio";
 import { PageBar } from "../components/layout/PageBar";
 import { EntityRow } from "../components/entity/EntityRow";
@@ -26,27 +28,19 @@ export function MoviePage() {
   const navigate = useNavigate();
 
   const load = useCallback(() => getMovie(movieId), [movieId]);
-  const { data, loading, error } = useResource(["movie", movieId], load);
+  const { data, loading, error, reload } = useResource(["movie", movieId], load);
   const crumbs = useProjectCrumb(data?.project ?? "");
 
-  if (loading) {
-    return (
-      <>
-        <div className="flex justify-center py-16">
-          <ApertureSpinner size="lg" label="Loading movie" />
-        </div>
-      </>
-    );
-  }
+  if (loading) return <PageLoading label="Loading movie" />;
 
   if (error || !data) {
     return (
-      <>
-        <Alert.Root intent="danger">
-          <Alert.Title>Could not open this movie</Alert.Title>
-          <Alert.Description>{error ?? "It may have been deleted."}</Alert.Description>
-        </Alert.Root>
-      </>
+      <LoadError
+        what="this movie"
+        message={error ?? "It may have been deleted."}
+        onRetry={reload}
+        escape={{ label: "Back to home", onClick: () => navigate("/") }}
+      />
     );
   }
 
@@ -92,9 +86,7 @@ export function MoviePage() {
           Scenes
         </Text>
         {data.scenes.length === 0 ? (
-          <Text variant="body" tone="muted">
-            No scenes are cut into this yet.
-          </Text>
+          <EmptyState title="No scenes yet." hint="A movie is scenes cut into one piece." />
         ) : (
           <div className="flex flex-col">
             {data.scenes.map((scene, index) => (

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { Drawer, Text, Button } from "@ansavva/design-system";
+import { Drawer, Button } from "@ansavva/design-system";
 
-import { ApertureSpinner } from "../components/common/Aperture";
+import { EmptyState } from "../components/common/EmptyState";
+import { LoadError } from "../components/common/LoadError";
+import { PageLoading } from "../components/common/PageLoading";
 import { deleteNodes, describeNode, renameNode } from "../apis/studio";
 import type { Crumb } from "../components/layout/PageBar";
 import { MediaPlayer, type MediaPlayerControls } from "../components/media/MediaPlayer";
@@ -288,25 +290,33 @@ export function ObjectPage() {
   }
 
   if (!current) {
+    // A feed that failed used to look exactly like a feed that was empty —
+    // the error was never read — so a dropped connection said "no images or
+    // videos here" about a folder full of them.
+    if (feed.error) {
+      return (
+        <LoadError
+          what="this file"
+          message={feed.error}
+          onRetry={feed.reload}
+          escape={{ label: "Back", onClick: close }}
+        />
+      );
+    }
+    // `searching` as well as `loading`: between two pages of a walk that has
+    // not found the file yet, nothing is in flight and the feed is not empty —
+    // saying "no images or videos here" there would be a verdict delivered
+    // mid-search.
+    if (feed.loading || searching) return <PageLoading label="Loading media" />;
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-        {/* `searching` as well as `loading`: between two pages of a walk that
-            has not found the file yet, nothing is in flight and the feed is not
-            empty — saying "no images or videos here" there would be a verdict
-            delivered mid-search. */}
-        {feed.loading || searching ? (
-          <ApertureSpinner size="lg" label="Loading media" />
-        ) : (
-          <>
-            <Text variant="body" tone="muted">
-              No images or videos here.
-            </Text>
-            <Button size="sm" onClick={close}>
-              Back
-            </Button>
-          </>
-        )}
-      </div>
+      <EmptyState
+        title="No images or videos here."
+        action={
+          <Button size="sm" onClick={close}>
+            Back
+          </Button>
+        }
+      />
     );
   }
 

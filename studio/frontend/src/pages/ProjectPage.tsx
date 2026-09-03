@@ -2,9 +2,7 @@ import { useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import {
-  Alert,
   Badge,
-  Button,
   Tabs,
   Text,
   Toggle,
@@ -17,7 +15,9 @@ import {
   getProjectMovies,
   getProjectScenes,
 } from "../apis/studio";
-import { ApertureSpinner } from "../components/common/Aperture";
+import { EmptyState } from "../components/common/EmptyState";
+import { PageLoading } from "../components/common/PageLoading";
+import { SectionLoading } from "../components/common/SectionLoading";
 import { FolderTab } from "../components/browse/FolderTab";
 import { PageBar } from "../components/layout/PageBar";
 import { EntityRow } from "../components/entity/EntityRow";
@@ -67,29 +67,16 @@ export function ProjectPage() {
   const load = useCallback(() => getProject(projectId), [projectId]);
   const project = useResource(["project", projectId], load);
 
-  if (project.loading) {
-    return (
-      <>
-        <div className="flex justify-center py-16">
-          <ApertureSpinner size="lg" label="Loading project" />
-        </div>
-      </>
-    );
-  }
+  if (project.loading) return <PageLoading label="Loading project" />;
 
   if (project.error || !project.data) {
     return (
-      <>
-        <Alert.Root intent="danger">
-          <Alert.Title>Could not open this project</Alert.Title>
-          <Alert.Description>{project.error ?? "It may have been deleted."}</Alert.Description>
-        </Alert.Root>
-        <div>
-          <Button size="sm" onClick={() => navigate("/")}>
-            Back to home
-          </Button>
-        </div>
-      </>
+      <LoadError
+        what="this project"
+        message={project.error ?? "It may have been deleted."}
+        onRetry={project.reload}
+        escape={{ label: "Back to home", onClick: () => navigate("/") }}
+      />
     );
   }
 
@@ -251,13 +238,14 @@ function ScenesTab({ projectId }: { projectId: string }) {
   const load = useCallback(() => getProjectScenes(projectId), [projectId]);
   const { data, loading, error, reload } = useResource(["project-scenes", projectId], load);
 
-  if (loading) return <ApertureSpinner size="md" label="Loading scenes" />;
+  if (loading) return <SectionLoading label="Loading scenes" />;
   if (error) return <LoadError what="scenes" message={error} onRetry={reload} />;
   if (!data || data.length === 0)
     return (
-      <Text variant="body" tone="muted">
-        No scenes yet. A scene is shots stitched into one continuous take.
-      </Text>
+      <EmptyState
+        title="No scenes yet."
+        hint="A scene is shots stitched into one continuous take."
+      />
     );
 
   return (
@@ -281,14 +269,10 @@ function MoviesTab({ projectId }: { projectId: string }) {
   const load = useCallback(() => getProjectMovies(projectId), [projectId]);
   const { data, loading, error, reload } = useResource(["project-movies", projectId], load);
 
-  if (loading) return <ApertureSpinner size="md" label="Loading movies" />;
+  if (loading) return <SectionLoading label="Loading movies" />;
   if (error) return <LoadError what="movies" message={error} onRetry={reload} />;
   if (!data || data.length === 0)
-    return (
-      <Text variant="body" tone="muted">
-        No movies yet. A movie is scenes cut into one piece.
-      </Text>
-    );
+    return <EmptyState title="No movies yet." hint="A movie is scenes cut into one piece." />;
 
   return (
     <div className="flex flex-col">

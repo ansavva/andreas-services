@@ -122,7 +122,7 @@ it("says what to do when a library holds no templates at all", async () => {
    */
   read.mockResolvedValue({ blocks: {}, templates: [] });
   show();
-  expect(await screen.findByText(/holds no templates/i)).toBeTruthy();
+  expect(await screen.findByText(/No templates yet/i)).toBeTruthy();
   expect(screen.getByText(/templates push/)).toBeTruthy();
 });
 

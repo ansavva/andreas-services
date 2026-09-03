@@ -18,7 +18,10 @@ import {
   getRuns,
   reconcileRun,
 } from "../apis/studio";
-import { ApertureSpinner } from "../components/common/Aperture";
+import { EmptyState } from "../components/common/EmptyState";
+import { LoadError } from "../components/common/LoadError";
+import { PageLoading } from "../components/common/PageLoading";
+import { SectionLoading } from "../components/common/SectionLoading";
 import { PageBar } from "../components/layout/PageBar";
 import { Backlinks } from "../components/common/Backlinks";
 import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
@@ -190,26 +193,16 @@ export function RunPage() {
   // happen to sit in.
   const RUN = useMemo(() => ({ in: "run" as const, id: runId }), [runId]);
 
-  if (loading) {
-    return (
-      <>
-        <div className="flex justify-center py-16">
-          <ApertureSpinner size="lg" label="Loading run" />
-        </div>
-      </>
-    );
-  }
+  if (loading) return <PageLoading label="Loading run" />;
 
   if (error || !data) {
     return (
-      <>
-        <Alert.Root intent="danger">
-          <Alert.Title>Could not open this run</Alert.Title>
-          <Alert.Description>
-            {error ?? "It may have been deleted."}
-          </Alert.Description>
-        </Alert.Root>
-      </>
+      <LoadError
+        what="this run"
+        message={error ?? "It may have been deleted."}
+        onRetry={reload}
+        escape={{ label: "Back to home", onClick: () => navigate("/") }}
+      />
     );
   }
 
@@ -283,13 +276,15 @@ export function RunPage() {
               repeating "Nothing came back" underneath it says nothing twice. */}
           {data.outputs.length === 0 ? (
             data.error ? null : (
-              <Text variant="body" tone="muted">
-                {isUnsubmitted(data.status)
-                  ? "Not run yet."
-                  : data.status === "pending" || data.status === "running"
-                    ? "Still working."
-                    : "Nothing came back."}
-              </Text>
+              <EmptyState
+                title={
+                  isUnsubmitted(data.status)
+                    ? "Not run yet."
+                    : data.status === "pending" || data.status === "running"
+                      ? "Still working."
+                      : "Nothing came back."
+                }
+              />
             )
           ) : (
             <div
@@ -535,9 +530,7 @@ export function RunPage() {
               than only for the CLI — so what is drawn here is always material that
               was already in the library when the run went out. */}
                     {Object.keys(data.bindings).length === 0 ? (
-                      <Text variant="body" tone="muted">
-                        Nothing was bound.
-                      </Text>
+                      <EmptyState title="Nothing was bound." />
                     ) : (
                       Object.entries(data.bindings).map(([role, assets]) => (
                         <div key={role} className="flex flex-col gap-1">
@@ -733,13 +726,7 @@ function PayloadPreview({ runId }: { runId: string }) {
   const load = useCallback(() => getRunPayloadPreview(runId), [runId]);
   const { data, loading, error } = useResource(["payload", runId], load);
 
-  if (loading) {
-    return (
-      <div className="flex justify-center py-6">
-        <ApertureSpinner size="md" label="Reading the payload" />
-      </div>
-    );
-  }
+  if (loading) return <SectionLoading label="Reading the payload" />;
   if (error || !data) {
     return (
       <Text variant="caption" tone="muted">
@@ -784,7 +771,7 @@ function PayloadDocument({
     [node],
   );
   const [open, setOpen] = useState(false);
-  const { data, loading, error } = useResource(
+  const { data, loading, error, reload } = useResource(
     open && node !== null ? ["node-text", node] : null,
     load,
   );
@@ -822,17 +809,10 @@ function PayloadDocument({
 
       {open && (
         <div className="border-t border-line bg-card">
-          {loading && (
-            <div className="flex justify-center py-6">
-              <ApertureSpinner size="md" label={`Loading ${label}`} />
-            </div>
-          )}
+          {loading && <SectionLoading label={`Loading ${label}`} />}
           {error && (
             <div className="p-3">
-              <Alert.Root intent="danger">
-                <Alert.Title>Could not read {label}</Alert.Title>
-                <Alert.Description>{error}</Alert.Description>
-              </Alert.Root>
+              <LoadError what={label} message={error} onRetry={reload} />
             </div>
           )}
           {data && (

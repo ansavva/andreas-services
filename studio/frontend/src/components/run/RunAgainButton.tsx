@@ -94,7 +94,7 @@ export function RunAgainButton({ run }: { run: RunRecord }) {
     <section className="flex flex-col items-end gap-2">
       {failure && (
         <Alert.Root intent="danger">
-          <Alert.Title>Nothing was created</Alert.Title>
+          <Alert.Title>Could not create the run</Alert.Title>
           <Alert.Description>{failure}</Alert.Description>
         </Alert.Root>
       )}

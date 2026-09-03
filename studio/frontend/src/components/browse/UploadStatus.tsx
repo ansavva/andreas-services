@@ -59,10 +59,11 @@ export function UploadStatus({ items, onClearFinished }: Props) {
 
           {/* `Alert` rather than a red `Text`: the package has no `danger` tone
               on `Text` on purpose, and this is the component it has for saying
-              a thing went wrong. Description only — the row above already names
-              the file, so a title would repeat it. */}
+              a thing went wrong. The title is the one every failure in the app
+              wears, and says "this file" because the row above names it. */}
           {item.error && (
             <Alert.Root intent="danger">
+              <Alert.Title>Could not upload this file</Alert.Title>
               <Alert.Description>{item.error}</Alert.Description>
             </Alert.Root>
           )}

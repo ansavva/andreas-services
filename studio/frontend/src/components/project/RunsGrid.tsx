@@ -1,10 +1,9 @@
 import { useCallback } from "react";
 
-import { Text } from "@ansavva/design-system";
-
 import { getFolder } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
-import { ApertureSpinner } from "../common/Aperture";
+import { EmptyState } from "../common/EmptyState";
+import { SectionLoading } from "../common/SectionLoading";
 import { LoadError } from "../common/LoadError";
 import { FolderBrowser } from "../browse/FolderBrowser";
 import { useLocalBrowserNav } from "../browse/FolderTab";
@@ -60,17 +59,11 @@ export function RunsGrid({ projectId, rootId }: { projectId: string; rootId: str
     load,
   );
 
-  if (loading) return <ApertureSpinner size="md" label="Loading outputs" />;
+  if (loading) return <SectionLoading label="Loading outputs" />;
   if (error) return <LoadError what="outputs" message={error} onRetry={reload} />;
 
   const runs = data?.folders.find((folder) => folder.name === RUNS_FOLDER);
-  if (!runs)
-    return (
-      <Text variant="body" tone="muted">
-        Nothing has been rendered in this project yet. Outputs appear here once a
-        run succeeds.
-      </Text>
-    );
+  if (!runs) return <EmptyState title="No outputs yet." hint="Outputs appear here once a run succeeds." />;
 
   return <RunsBrowser rootId={runs.id} />;
 }

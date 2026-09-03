@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Alert, Badge, Button, Text, Textarea } from "@ansavva/design-system";
 
-import { ApertureSpinner } from "../common/Aperture";
+import { SectionLoading } from "../common/SectionLoading";
 import { getNodeText, saveNodeText } from "../../apis/studio";
 import { copyLabel, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { formatTextContent } from "../../utils/format";
@@ -253,11 +253,7 @@ export function TextPage({ file, onClose, onSaved }: Props) {
             </div>
           )}
 
-          {!data && !error && (
-            <div className="flex h-64 items-center justify-center">
-              <ApertureSpinner size="md" label="Loading file" />
-            </div>
-          )}
+          {!data && !error && <SectionLoading label="Loading file" />}
 
           {data && data.truncated && (
             <div className="p-4 pb-0">

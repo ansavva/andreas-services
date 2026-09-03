@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Alert, Breadcrumbs, Button, Dialog, Text } from "@ansavva/design-system";
 
-import { ApertureSpinner } from "../common/Aperture";
+import { EmptyState } from "../common/EmptyState";
+import { SectionLoading } from "../common/SectionLoading";
 import { getFolder } from "../../apis/studio";
 import type { Crumb, FileEntry, FolderEntry } from "../../types";
 import type { FolderId } from "../../utils/location";
@@ -154,11 +155,7 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
         <TagFilter value={tags} onChange={setTags} searching={searching} />
 
         <div className="min-h-48 flex-1 overflow-auto rounded-none border border-line">
-          {loading && (
-            <div className="flex h-48 items-center justify-center">
-              <ApertureSpinner size="md" label="Loading folder" />
-            </div>
-          )}
+          {loading && <SectionLoading label="Loading folder" />}
 
           {!loading && (
             <div className="flex flex-col">
@@ -212,15 +209,14 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
                   is wrong when the search covered the whole branch — it names
                   the folder you are standing in, which is not where it looked. */}
               {files.length === 0 && folders.length === 0 && !searching && (
-                <Text variant="caption" tone="muted" className="p-3">
-                  Nothing here.
-                </Text>
+                <EmptyState title="No files here yet." className="p-3" />
               )}
 
               {files.length === 0 && folders.length === 0 && searching && (
-                <Text variant="caption" tone="muted" className="p-3">
-                  Nothing under this folder is tagged {tags.join(" + ")}.
-                </Text>
+                <EmptyState
+                  title={`Nothing under this folder is tagged ${tags.join(" + ")}.`}
+                  className="p-3"
+                />
               )}
             </div>
           )}
@@ -232,7 +228,7 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
 
         {error && (
           <Alert.Root intent="danger">
-            <Alert.Title>That did not work</Alert.Title>
+            <Alert.Title>Could not add the selection</Alert.Title>
             <Alert.Description>{error}</Alert.Description>
           </Alert.Root>
         )}
