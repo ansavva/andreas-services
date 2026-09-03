@@ -1,13 +1,7 @@
 import { useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import {
-  Badge,
-  Tabs,
-  Text,
-  Toggle,
-  ToggleGroup,
-} from "@ansavva/design-system";
+import { Badge, Tabs, Text } from "@ansavva/design-system";
 
 import {
   deleteProject,
@@ -22,7 +16,6 @@ import { FolderTab } from "../components/browse/FolderTab";
 import { PageBar } from "../components/layout/PageBar";
 import { EntityRow } from "../components/entity/EntityRow";
 import { ProjectDetails } from "../components/project/ProjectDetails";
-import { RunsGrid } from "../components/project/RunsGrid";
 import { RunsTable } from "../components/project/RunsTable";
 import { NewRunStrip } from "../components/run/NewRunStrip";
 import { useResource } from "../hooks/useResource";
@@ -55,15 +48,11 @@ import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog"
  * off the pool is the CLI's job, and `studio projects inputs <project>` prints
  * each position beside its node.
  */
-const RUNS_LIST = "list";
-const RUNS_GRID = "grid";
-
 export function ProjectPage() {
   const { projectId = "" } = useParams();
   const navigate = useNavigate();
 
   const [tab, setTab] = useSearchParamState("tab", "overview");
-  const [runsView, setRunsView] = useSearchParamState("runs", RUNS_LIST);
   const load = useCallback(() => getProject(projectId), [projectId]);
   const project = useResource(["project", projectId], load);
 
@@ -172,49 +161,22 @@ export function ProjectPage() {
             what it makes is a run in THIS project — and because the page bar's
             one action deletes the project. */}
         <Tabs.Panel value="runs" className="flex flex-col gap-4">
-          {/*
-            **Two readings of the same runs, and the unit is what differs.**
-
-            List's unit is the RUN — status, model, cost, when, the plan that
-            produced it — and it is filterable on every one of those, because
-            they are fields on the row. Grid's unit is the OUTPUT: it is the file
-            browser scoped to the project's `runs/` folder, in Media view, since
-            a run's outputs are ordinary nodes under it.
-
-            So this is not a skin. "Which runs on this model failed last week" is
-            a question only the list can answer, and "what has this project
-            actually made" is one only the grid can. Neither replaces the other,
-            which is why the control is a pair rather than a preference.
-
-            `?runs=` so a grid is a link, and single-select with empty refused —
-            a Runs tab showing neither reading is not a state.
-          */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <ToggleGroup.Root
-              aria-label="Runs view"
-              value={[runsView === RUNS_GRID ? RUNS_GRID : RUNS_LIST]}
-              onValueChange={(next) => {
-                if (next.length > 0) setRunsView(next[0]!);
-              }}
-            >
-              <Toggle value={RUNS_LIST}>List</Toggle>
-              <Toggle value={RUNS_GRID}>Grid</Toggle>
-            </ToggleGroup.Root>
-
-            {/* Stays in both, because "make one of these" is about the tab
-                rather than about how the tab is drawn. */}
+          {/* **One reading, not a choice of two.** This used to sit beside a
+              Grid view — the file browser scoped to `runs/`, in Media view —
+              and the pair asked "which runs failed" and "what did this project
+              make" to share one control. Those are different questions with
+              different owners: the second is Files' job, one tab over, on
+              exactly the same folder. A run's OUTPUTS live there; a run's own
+              fields — status, model, cost, when — live here. */}
+          <div className="flex justify-end">
             <NewRunStrip projectId={record.id} characters={record.characters} />
           </div>
 
-          {runsView === RUNS_GRID ? (
-            <RunsGrid projectId={record.id} rootId={record.root} />
-          ) : (
-            <RunsTable
-              projectId={record.id}
-              characters={record.characters}
-              onOpen={(run) => navigate(runPath(record.id, run.id))}
-            />
-          )}
+          <RunsTable
+            projectId={record.id}
+            characters={record.characters}
+            to={(run) => runPath(record.id, run.id)}
+          />
         </Tabs.Panel>
 
         <Tabs.Panel value="scenes">
@@ -234,7 +196,6 @@ export function ProjectPage() {
 }
 
 function ScenesTab({ projectId }: { projectId: string }) {
-  const navigate = useNavigate();
   const load = useCallback(() => getProjectScenes(projectId), [projectId]);
   const { data, loading, error, reload } = useResource(["project-scenes", projectId], load);
 
@@ -254,10 +215,12 @@ function ScenesTab({ projectId }: { projectId: string }) {
         <EntityRow
           key={scene.id}
           title={scene.name}
-          subtitle={`${scene.name} · ${formatDate(scene.created)}`}
+          // The date, not the name said twice — the row already carries the
+          // title once.
+          subtitle={formatDate(scene.created)}
           status={scene.status}
           thumb={scene.thumb ?? null}
-          onOpen={() => navigate(scenePath(scene.id))}
+          to={scenePath(scene.id)}
         />
       ))}
     </div>
@@ -265,7 +228,6 @@ function ScenesTab({ projectId }: { projectId: string }) {
 }
 
 function MoviesTab({ projectId }: { projectId: string }) {
-  const navigate = useNavigate();
   const load = useCallback(() => getProjectMovies(projectId), [projectId]);
   const { data, loading, error, reload } = useResource(["project-movies", projectId], load);
 
@@ -280,10 +242,10 @@ function MoviesTab({ projectId }: { projectId: string }) {
         <EntityRow
           key={movie.id}
           title={movie.name}
-          subtitle={`${movie.name} · ${formatDate(movie.created)}`}
+          subtitle={formatDate(movie.created)}
           status={movie.status}
           thumb={movie.thumb ?? null}
-          onOpen={() => navigate(moviePath(movie.id))}
+          to={moviePath(movie.id)}
         />
       ))}
     </div>

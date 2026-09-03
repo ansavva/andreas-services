@@ -77,7 +77,8 @@ it("opens a scene from its row", async () => {
   );
   await open();
 
-  fireEvent.click(await screen.findByRole("button", { name: /A scene/ }));
+  // A row is `EntityRow`'s `<a>` now, not a `<button>` — see `EntityRow.to`.
+  fireEvent.click(await screen.findByRole("link", { name: /A scene/ }));
 
   await screen.findByText("landed");
   expect(landed).toBe("/s/scene-7");
@@ -98,7 +99,7 @@ it("numbers the scenes in cut order", async () => {
   );
   await open();
 
-  const rows = await screen.findAllByRole("button", { name: /First|Second/ });
+  const rows = await screen.findAllByRole("link", { name: /First|Second/ });
   expect(rows[0]?.textContent).toMatch(/^1/);
   expect(rows[1]?.textContent).toMatch(/^2/);
 });

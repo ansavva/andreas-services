@@ -27,12 +27,14 @@ describe("what a run cost, in words", () => {
   it("does not throw on a cost object with a null amount", () => {
     /** The regression itself: `Cannot read properties of null (reading 'toFixed')`. */
     expect(() => formatCost({ currency: null, amount: null })).not.toThrow();
-    expect(formatCost({ currency: null, amount: null })).toBe("not reported");
+    expect(formatCost({ currency: null, amount: null })).toBe("—");
   });
 
   it("says nothing for a run that never reached the provider", () => {
-    expect(formatCost(null)).toBe("not reported");
-    expect(formatCost(null, "—")).toBe("—");
+    // "—" is the one sentinel now: the run list and the run page used to
+    // disagree here, and a caller can still ask for its own by name.
+    expect(formatCost(null)).toBe("—");
+    expect(formatCost(null, "not reported")).toBe("not reported");
   });
 
   it("keeps a zero price rather than reading it as absent", () => {

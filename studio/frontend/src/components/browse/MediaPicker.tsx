@@ -9,6 +9,7 @@ import type { Crumb, FileEntry, FolderEntry } from "../../types";
 import type { FolderId } from "../../utils/location";
 import { ArrowUpIcon, FolderIcon } from "../common/icons";
 import { MediaThumb } from "../media/MediaThumb";
+import { MEDIA_GRID } from "../../utils/grid";
 import { TagFilter } from "./TagFilter";
 
 interface Props {
@@ -189,9 +190,8 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
               ))}
 
               {files.length > 0 && (
-                // The same density as every other media grid in the app: two
-                // columns on a phone rather than one column of enormous tiles.
-                <div className="grid grid-cols-2 gap-2 p-2 sm:grid-cols-4 md:grid-cols-5">
+                // The same grid as every other media listing in the app.
+                <div className={`${MEDIA_GRID} p-2`}>
                   {files.map((file) => (
                     <Tile
                       key={file.id}
@@ -282,7 +282,7 @@ function Tile({
       className={`relative flex flex-col gap-1 rounded-none border p-1 text-left transition-colors
                   disabled:cursor-default disabled:opacity-40
                   focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary
-                  ${chosen ? "border-primary bg-surface-alt" : "border-line hover:bg-surface-alt"}`}
+                  ${chosen ? "border-primary ring-2 ring-primary" : "border-line hover:bg-surface-alt"}`}
     >
       <MediaThumb
         nodeId={file.id}
@@ -297,9 +297,12 @@ function Tile({
         {already ? "already sent" : file.name}
       </Text>
       {chosen && (
+        // Square, like every other badge in the app — a picker tile was the
+        // one round mark left, and it read as a different vocabulary from the
+        // ordinals everywhere else (a movie's cut order, a folder's index).
         <span
-          className="absolute right-2 top-2 flex size-6 items-center justify-center rounded-full
-                     bg-primary font-body text-xs text-primary-text"
+          className="absolute right-2 top-2 flex size-6 items-center justify-center rounded-none
+                     bg-primary font-mono text-xs tabular-nums text-primary-text"
         >
           {position + 1}
         </span>

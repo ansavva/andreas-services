@@ -94,10 +94,12 @@ export function MoviePage() {
                 key={scene.id}
                 index={index + 1}
                 title={scene.name}
-                subtitle={scene.name}
+                // The date, not the name a second time — the row already
+                // carries the title once.
+                subtitle={formatDate(scene.created)}
                 status={scene.status}
                 thumb={scene.thumb ?? null}
-                onOpen={() => navigate(scenePath(scene.id))}
+                to={scenePath(scene.id)}
               />
             ))}
           </div>

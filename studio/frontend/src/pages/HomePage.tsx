@@ -9,6 +9,7 @@ import {
   ProjectsSection,
 } from "../components/entity/EntitySections";
 import { useMedia } from "../hooks/useMedia";
+import { MEDIA_GRID } from "../utils/grid";
 import { folderPath, objectPath } from "../utils/location";
 import { LoadError } from "../components/common/LoadError";
 
@@ -85,7 +86,7 @@ export function HomePage() {
           <LoadError what="recent media" message={feed.error} onRetry={feed.reload} />
         )}
 
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
+        <div className={MEDIA_GRID}>
           {recent.map((file) => (
             // Selection is a *browser* affordance and there is nothing here to
             // act on a selection with, so the tiles open and do not pick.

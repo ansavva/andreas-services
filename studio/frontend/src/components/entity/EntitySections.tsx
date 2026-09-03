@@ -1,5 +1,4 @@
 import { useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 
 import { Text } from "@ansavva/design-system";
@@ -8,6 +7,7 @@ import { EmptyState } from "../common/EmptyState";
 import { SectionLoading } from "../common/SectionLoading";
 import { getCharacters, getProjects } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
+import { ENTITY_GRID } from "../../utils/grid";
 import { characterPath, projectPath } from "../../utils/location";
 import { EntityCard } from "./EntityCard";
 import { LoadError } from "../common/LoadError";
@@ -93,7 +93,6 @@ function Section({
 }
 
 export function CharactersSection({ action }: { action?: ReactNode }) {
-  const navigate = useNavigate();
   const { data, loading, error, reload } = useResource(
     ["characters"],
     useCallback(() => getCharacters(), []),
@@ -110,14 +109,14 @@ export function CharactersSection({ action }: { action?: ReactNode }) {
       action={action}
       empty={<Empty kind="character" hasAction={action !== undefined} />}
     >
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div className={ENTITY_GRID}>
         {(data ?? []).map((character) => (
           <EntityCard
             key={character.id}
             name={character.name}
             hero={character.hero}
             counts={`${character.counts.default} sent · ${character.counts.files} files`}
-            onOpen={() => navigate(characterPath(character.id))}
+            to={characterPath(character.id)}
           />
         ))}
       </div>
@@ -126,7 +125,6 @@ export function CharactersSection({ action }: { action?: ReactNode }) {
 }
 
 export function ProjectsSection({ action }: { action?: ReactNode }) {
-  const navigate = useNavigate();
   const { data, loading, error, reload } = useResource(
     ["projects"],
     useCallback(() => getProjects(), []),
@@ -143,14 +141,14 @@ export function ProjectsSection({ action }: { action?: ReactNode }) {
       action={action}
       empty={<Empty kind="project" hasAction={action !== undefined} />}
     >
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div className={ENTITY_GRID}>
         {(data ?? []).map((project) => (
           <EntityCard
             key={project.id}
             name={project.name}
             hero={project.hero}
             counts={`${project.counts.runs} runs · ${project.counts.scenes} scenes · ${project.counts.movies} movies`}
-            onOpen={() => navigate(projectPath(project.id))}
+            to={projectPath(project.id)}
           />
         ))}
       </div>

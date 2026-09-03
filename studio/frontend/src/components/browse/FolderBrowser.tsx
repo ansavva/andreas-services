@@ -26,6 +26,7 @@ import { useSearchParamState } from "../../hooks/useSearchParamState";
 import { useSelection } from "../../hooks/useSelection";
 import { useUploads } from "../../hooks/useUploads";
 import type { EntryKind, FileEntry, SortOrder } from "../../types";
+import { MEDIA_GRID } from "../../utils/grid";
 import type { FolderId } from "../../utils/location";
 import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { CopyKeyButton } from "../common/CopyKeyButton";
@@ -861,7 +862,11 @@ export function FolderBrowser({
       {folders.length > 0 && (
         <section className="flex flex-col gap-2">
           <Text variant="title">Folders</Text>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {/* A ruled list, like the files below it — not a grid of its own. A
+              folder and a file are the same row shape now, so a folder of
+              folders no longer reads as a different kind of listing from a
+              folder of files. */}
+          <div className="flex flex-col">
             {folders.map((folder) => (
               <FolderCard
                 key={folder.id}
@@ -896,7 +901,7 @@ export function FolderBrowser({
             </span>
           </Text>
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+          <div className={MEDIA_GRID}>
             {media.map((file) => (
               <MediaTile
                 key={file.id}

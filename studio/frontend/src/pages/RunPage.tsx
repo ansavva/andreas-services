@@ -25,8 +25,8 @@ import { SectionLoading } from "../components/common/SectionLoading";
 import { PageBar } from "../components/layout/PageBar";
 import { Backlinks } from "../components/common/Backlinks";
 import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
+import { EntityRow } from "../components/entity/EntityRow";
 import { OutputPanel } from "../components/media/OutputPanel";
-import { MediaThumb } from "../components/media/MediaThumb";
 import { InFlightBar, RunBar, RunPlan } from "../components/run/RunPlan";
 import { PromotePanel } from "../components/run/PromotePanel";
 import { RunAgainButton } from "../components/run/RunAgainButton";
@@ -36,6 +36,7 @@ import { useDisclosure } from "../hooks/useDisclosure";
 import { useResource } from "../hooks/useResource";
 import { useProjectCrumb } from "../hooks/useProjectCrumb";
 import { formatBytes, formatDate, formatTextContent } from "../utils/format";
+import { MEDIA_GRID } from "../utils/grid";
 import {
   isTerminal,
   isUnsubmitted,
@@ -287,13 +288,9 @@ export function RunPage() {
               />
             )
           ) : (
-            <div
-              className={`grid gap-2 ${
-                data.outputs.length === 1
-                  ? "grid-cols-1"
-                  : "grid-cols-2 sm:grid-cols-3"
-              }`}
-            >
+            // The one output is the subject of the page, not a tile among
+            // others — `OutputPanel`'s own `sole` prop is what changes for it.
+            <div className={data.outputs.length === 1 ? "grid grid-cols-1 gap-2" : MEDIA_GRID}>
               {data.outputs.map((asset) => (
                 <Fragment key={asset.node}>
                   <OutputPanel
@@ -537,14 +534,25 @@ export function RunPage() {
                           <Text variant="caption" tone="muted">
                             {role}
                           </Text>
-                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                          {/* Rows, not a grid of tiles of its own — a binding is
+                              a listing entry like any other, and `EntityRow` is
+                              the one shape a listing draws. */}
+                          <div className="flex flex-col">
                             {assets.map((asset) => (
-                              <AssetTile
+                              <EntityRow
                                 key={asset.node}
-                                asset={asset}
-                                onOpen={() =>
-                                  navigate(objectPath(asset.node, RUN))
+                                title={asset.name}
+                                subtitle={
+                                  asset.size !== undefined
+                                    ? formatBytes(asset.size)
+                                    : undefined
                                 }
+                                thumb={{
+                                  node: asset.node,
+                                  url: asset.url,
+                                  isVideo: (asset.content_type ?? "").startsWith("video/"),
+                                }}
+                                to={objectPath(asset.node, RUN)}
                               />
                             ))}
                           </div>
@@ -829,51 +837,6 @@ function PayloadDocument({
         </div>
       )}
     </div>
-  );
-}
-
-function AssetTile({
-  asset,
-  onOpen,
-  aspect = "square",
-}: {
-  asset: RunAsset;
-  onOpen: () => void;
-  /**
-   * A grid of tiles wants one shape so the rows line up. A run's SINGLE output
-   * is not a tile in a grid — it is the thing the page is about — so it takes
-   * the media's own aspect instead of being letterboxed into a square the
-   * width of half the page.
-   */
-  aspect?: "square" | "auto";
-}) {
-  const isVideo = (asset.content_type ?? "").startsWith("video/");
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      title={asset.name}
-      className="flex flex-col gap-1 rounded-none border border-line bg-card p-1 text-left
-                 transition-colors hover:bg-surface-alt
-                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-    >
-      <MediaThumb
-        nodeId={asset.node}
-        url={asset.url}
-        name={asset.name}
-        isVideo={isVideo}
-        aspect={aspect}
-        className="w-full rounded-none"
-      />
-      <Text variant="caption" tone="muted" className="truncate font-mono">
-        {asset.name}
-      </Text>
-      {asset.size !== undefined && (
-        <Text variant="caption" tone="muted" className="font-mono tabular-nums">
-          {formatBytes(asset.size)}
-        </Text>
-      )}
-    </button>
   );
 }
 
