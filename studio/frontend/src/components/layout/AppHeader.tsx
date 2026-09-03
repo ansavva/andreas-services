@@ -1,14 +1,15 @@
 import { NavLink } from "react-router-dom";
 
-import { Dropdown, Text } from "@ansavva/design-system";
+import { Drawer, Dropdown, Text, iconButtonClass } from "@ansavva/design-system";
 
 import { useAuth } from "../../context/AuthContext";
 import { CHARACTERS_PATH, HOME_PATH, PROJECTS_PATH, TEMPLATES_PATH, folderPath } from "../../utils/location";
 import { ApertureMark } from "../common/Aperture";
+import { chipClass } from "../common/Chip";
 import { ChipRow } from "../common/ChipRow";
 import { LibrarySwitcher } from "../common/LibrarySwitcher";
 import { HeaderSearch } from "./HeaderSearch";
-import { AccountIcon } from "../common/icons";
+import { AccountIcon, SearchIcon } from "../common/icons";
 
 /**
  * The persistent strip: where you can go, and who you are.
@@ -67,9 +68,11 @@ export function AppHeader() {
 
         <div className="flex-1" />
 
-        {/* Hidden below `md`: a search box and three nav chips cannot share a
-            390px row, and the chips are the thing you cannot do without. */}
+        {/* Hidden below `md`: a 192px box and three nav chips cannot share a
+            390px row, and the chips are the thing you cannot do without.
+            `MobileSearch` is what stands in for it there. */}
         <HeaderSearch />
+        <MobileSearch />
 
         {/* Renders nothing while the caller is in one library. See `LibrarySwitcher`. */}
         <LibrarySwitcher />
@@ -114,27 +117,53 @@ const DESTINATIONS = [
  * same three destinations read as two different kinds of control on the two
  * screen sizes. A square chip is also what the rest of the chrome is now —
  * hairline rules and right angles — and a pill is the one shape in that
- * vocabulary that insists on being a badge.
+ * vocabulary that insists on being a badge. `chipClass` is the pressed/rest
+ * pair itself, shared with `ProjectDetails`' character toggles — see `Chip`.
  */
 function HeaderLink({ to, label, chip = false }: { to: string; label: string; chip?: boolean }) {
   return (
     <NavLink
       to={to}
       className={({ isActive }) =>
-        `rounded-none font-body text-sm transition-colors focus-visible:outline-2
-         focus-visible:outline-offset-2
-         focus-visible:outline-primary ${chip ? "shrink-0 snap-start border px-3 py-1" : "px-3 py-1.5"}
-         ${
-           isActive
-             ? chip
-               ? "border-primary bg-primary text-primary-text"
-               : "bg-surface-alt text-ink"
-             : `text-muted hover:bg-surface-alt hover:text-ink ${chip ? "border-line" : ""}`
-         }`
+        chip
+          ? chipClass(isActive)
+          : `rounded-none px-3 py-1.5 font-body text-sm transition-colors focus-visible:outline-2
+             focus-visible:outline-offset-2 focus-visible:outline-primary
+             ${isActive ? "bg-surface-alt text-ink" : "text-muted hover:bg-surface-alt hover:text-ink"}`
       }
     >
       {label}
     </NavLink>
+  );
+}
+
+/**
+ * The one way to search below `md` — a `Drawer` rather than the inline box.
+ *
+ * **There used to be no way at all.** `HeaderSearch` was `hidden md:block`
+ * outright, so jumping to a character or a project by name needed a desktop
+ * width; on a phone the only path was Characters or Projects and a scroll. The
+ * drawer is what a 390px row has room for instead: one icon, and the same
+ * `Combobox` full-width once it opens, autofocused so the keyboard is already
+ * up when the panel lands.
+ */
+function MobileSearch() {
+  return (
+    <Drawer.Root side="top">
+      <Drawer.Trigger
+        aria-label="Search"
+        title="Search"
+        className={iconButtonClass({ size: "sm", className: "touch-target rounded-none md:hidden" })}
+      >
+        <SearchIcon />
+      </Drawer.Trigger>
+
+      <Drawer.Backdrop />
+      <Drawer.Panel>
+        <Drawer.Title>Search</Drawer.Title>
+        <HeaderSearch className="w-full" autoFocus />
+      </Drawer.Panel>
+    </Drawer.Root>
   );
 }
 
@@ -149,12 +178,13 @@ function HeaderLink({ to, label, chip = false }: { to: string; label: string; ch
 function AccountMenu({ email, onSignOut }: { email: string | null; onSignOut: () => void }) {
   return (
     <Dropdown.Root>
+      {/* `iconButtonClass`, not a hand-rolled set of the same four rows: the
+          focus ring, the disabled treatment and the hover fill come from the
+          one place every other icon control in the app now reads them from. */}
       <Dropdown.Trigger
         aria-label={email ? `Account — ${email}` : "Account"}
         title={email ?? "Account"}
-        className="shrink-0 rounded-none p-2 text-muted transition-colors hover:bg-surface-alt
-                   hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2
-                   focus-visible:outline-primary"
+        className={iconButtonClass({ size: "sm", className: "touch-target rounded-none" })}
       >
         <AccountIcon />
       </Dropdown.Trigger>

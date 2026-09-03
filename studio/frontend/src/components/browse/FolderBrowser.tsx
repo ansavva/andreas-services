@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import {
   Alert,
   Breadcrumbs,
   Button,
+  Dropdown,
   Input,
   Text,
   Toggle,
   ToggleGroup,
+  Tooltip,
+  iconButtonClass,
   useToast,
 } from "@ansavva/design-system";
 
@@ -19,8 +23,11 @@ import {
   renameNode,
 } from "../../apis/studio";
 import { EmptyState } from "../common/EmptyState";
+import { FilterBar } from "../common/FilterBar";
 import { LoadError } from "../common/LoadError";
 import { PageLoading } from "../common/PageLoading";
+import { useArmed } from "../../hooks/useArmed";
+import { copyLabel, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { useFolder } from "../../hooks/useFolder";
 import { useSearchParamState } from "../../hooks/useSearchParamState";
 import { useSelection } from "../../hooks/useSelection";
@@ -43,7 +50,7 @@ import { SortControl } from "./SortControl";
 import { TagFilter } from "./TagFilter";
 import { UploadButton } from "./UploadButton";
 import { UploadStatus } from "./UploadStatus";
-import { CopyIcon, FolderIntoIcon, FolderPlusIcon } from "../common/icons";
+import { CopyIcon, DotsIcon, FolderIntoIcon } from "../common/icons";
 import { BULK_GATE, ConfirmDestroyDialog } from "../common/ConfirmDestroyDialog";
 
 /**
@@ -66,6 +73,18 @@ export interface BrowserNav {
   setSort: (next: SortOrder) => void;
   /** `replace` is for the one move that is not a journey — leaving a deleted folder. */
   goToFolder: (id: FolderId, options?: { replace?: boolean }) => void;
+  /**
+   * The same destination as `goToFolder`, as an address rather than an act.
+   *
+   * What lets the browser's own trail render `Breadcrumbs.Item href={…}`
+   * instead of `href="#"` plus a handler — real addresses are what make
+   * middle-click, command-click and "copy link" work on a crumb the same way
+   * they already work on a tile (`fileHref`) and a `PageBar` crumb. `/f` never
+   * calls this: `showTrail` is false there and `BrowsePage` draws its own
+   * crumbs from real paths already, so only the Files-tab nav
+   * (`useLocalBrowserNav`) has to answer it for real.
+   */
+  folderHref: (id: FolderId) => string;
   /**
    * Opens the viewer at this file, with this browser as its context.
    *
@@ -216,7 +235,16 @@ export function FolderBrowser({
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [newFolder, setNewFolder] = useState<string | null>(null);
-  const [filter, setFilter] = useState("");
+  /**
+   * `q` and `tags`, both in the URL rather than in component state.
+   *
+   * **A filtered folder used to be lost on reload and unshareable.** R8: list
+   * state belongs in the address, and a filter is exactly that — narrowing
+   * "what is in this folder" is a fact about the view somebody is looking at,
+   * not chrome. `FilterBar` collapses the fields out of sight by default, but
+   * the values underneath are always the URL's.
+   */
+  const [filter, setFilter] = useSearchParamState("q", "");
   /**
    * The tags narrowing the listing — a SERVER filter, unlike `filter` above.
    *
@@ -224,8 +252,19 @@ export function FolderBrowser({
    * changes what is asked for, and changes the scope with it: one tag turns the
    * request into a search of everything under this folder. They compose, and the
    * order is the honest one — the server narrows, then the typed name hides.
+   *
+   * Held as one comma-joined param rather than one key per tag — `tags` is an
+   * open set, and a param name has to be written down in advance.
    */
-  const [tags, setTags] = useState<string[]>([]);
+  const [tagsParam, setTagsParam] = useSearchParamState("tags", "");
+  const tags = useMemo(
+    () => (tagsParam ? tagsParam.split(",").map(decodeURIComponent) : []),
+    [tagsParam],
+  );
+  const setTags = useCallback(
+    (next: string[]) => setTagsParam(next.map(encodeURIComponent).join(",")),
+    [setTagsParam],
+  );
   /**
    * Folders, or every picture and clip beneath here — see `MEDIA_VIEW`.
    *
@@ -341,6 +380,26 @@ export function FolderBrowser({
     },
     [nav],
   );
+
+  /** What `FilterBar`'s badge counts, and what its "Clear" resets. */
+  const activeFilterCount = (filter.trim() ? 1 : 0) + tags.length;
+
+  /**
+   * One write, not two.
+   *
+   * `q` and `tags` are each their own `useSearchParamState`, and each setter
+   * reads the URL fresh from its own render — calling both in one handler has
+   * each build its `next` from the SAME snapshot, so only the second
+   * dispatch's single deletion survives. See `RunsTable.clearFilters`, which
+   * hits the identical shape with four fields instead of two.
+   */
+  const [searchParams, setSearchParams] = useSearchParams();
+  const clearFilters = useCallback(() => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("q");
+    next.delete("tags");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   /**
    * One selection over BOTH lists.
@@ -569,15 +628,15 @@ export function FolderBrowser({
       }`}
     >
       {/*
-        Two rows, not one — where this file lists both, and only on the
-        standalone route.
+        One row, not two — and it holds one thing: where you are.
 
-        These are two different kinds of control and they used to share a line:
-        where you are (back, breadcrumbs) and what you can do here (sort, copy the
-        prefix, delete, new folder, play). On any real path the breadcrumbs took
-        the width and the buttons wrapped underneath them anyway — in whatever
-        order the flex run happened to break — so a folder deep in a project
-        opened onto a bar that looked different from the one at the root.
+        **This used to also hold a `← Back` button**, a second navigation
+        vocabulary beside the crumbs it sat next to. Every crumb here is
+        already a real address (`nav.folderHref`), so "up one folder" is the
+        crumb one step left of the current one — a second control saying the
+        same thing wanted its own words to say it in, and disagreed with the
+        crumbs about what "back" meant once a folder was reached by a shared
+        link rather than by browsing down into it.
 
         **`showTrail` is what `/f` turns off.** `BrowsePage` draws a `PageBar`
         above this now — the ancestry as crumbs, the current folder as the
@@ -586,60 +645,47 @@ export function FolderBrowser({
         `PageBar` on, so it keeps drawing this trail as its only one.
       */}
       {showTrail && (
-        <div className="flex min-w-0 items-center gap-2">
-          {/*
-            Up one folder, not browser-back.
-            They are different journeys and both are wanted: back retraces how you
-            got here, which after a shared link is nowhere. This goes *up the tree*,
-            which is where "back" means to someone reading a folder they were linked
-            into — and it stops at the browser's boundary, so a character's Files
-            tab cannot climb out of the character.
-          */}
-          <Button
-            intent="secondary"
-            size="sm"
-            disabled={atRoot}
-            aria-label="Up one folder"
-            onClick={() => goToFolder(parentId)}
-          >
-            <span aria-hidden="true">←</span> Back
-          </Button>
-
-          {/* Breadcrumbs.Root carries `w-full` of its own, so it needs a shrinking
-              flex parent or it claims the row and wraps what follows beneath it. */}
-          <div className="min-w-0 flex-1">
-            <Breadcrumbs.Root>
-              {crumbs.map((crumb, index, all) => (
-                <Breadcrumbs.Item
-                  key={crumb.id}
-                  current={index === all.length - 1}
-                  href="#"
-                  onClick={(event: React.MouseEvent) => {
-                    event.preventDefault();
-                    // The boundary crumb is the browser's own root, and inside a
-                    // Files tab that is not the library root — so it is navigated
-                    // to by id rather than by the `null` the standalone browser
-                    // uses for the top.
-                    goToFolder(
-                      index === 0 && boundary === null ? null : crumb.id,
-                    );
-                  }}
-                >
-                  {/* See `boundaryLabel`: the entity's name in place of the id
-                      its root folder is stored under. Only the first crumb, and
-                      only inside a scoped browser — the standalone one's first
-                      crumb is `/`. */}
-                  {index === 0 && boundary !== null && boundaryLabel
-                    ? boundaryLabel
-                    : crumb.name}
-                </Breadcrumbs.Item>
-              ))}
-            </Breadcrumbs.Root>
-          </div>
-        </div>
+        <Breadcrumbs.Root>
+          {crumbs.map((crumb, index, all) => {
+            // The boundary crumb is the browser's own root, and inside a
+            // Files tab that is not the library root — so it is navigated to
+            // by id rather than by the `null` the standalone browser uses for
+            // the top.
+            const targetId = index === 0 && boundary === null ? null : crumb.id;
+            return (
+              <Breadcrumbs.Item
+                key={crumb.id}
+                current={index === all.length - 1}
+                href={nav.folderHref(targetId)}
+                onClick={(event: React.MouseEvent) => {
+                  if (event.metaKey || event.ctrlKey || event.shiftKey) return;
+                  event.preventDefault();
+                  goToFolder(targetId);
+                }}
+              >
+                {/* See `boundaryLabel`: the entity's name in place of the id
+                    its root folder is stored under. Only the first crumb, and
+                    only inside a scoped browser — the standalone one's first
+                    crumb is `/`. */}
+                {index === 0 && boundary !== null && boundaryLabel
+                  ? boundaryLabel
+                  : crumb.name}
+              </Breadcrumbs.Item>
+            );
+          })}
+        </Breadcrumbs.Root>
       )}
 
-      <div className="flex flex-wrap items-center gap-2 border-t border-line py-2">
+      {/*
+        One row, whatever the width. It used to be two — this line plus the
+        text filter and tag picker underneath, always open — and a folder of
+        three files paid for a search interface it never needed. `FilterBar`
+        collapses those two behind one disclosure, and the folder-scoped
+        actions that used to be a cluster of icons (copy the prefix, delete
+        this folder, make one) collapse into the `⋯` beside it, alongside
+        `Select all` for a folder nothing is picked in yet.
+      */}
+      <div className="flex flex-wrap items-center gap-1.5 border-t border-line py-2 sm:gap-2">
         {/*
           **Two views of one folder, and the pair is the whole control.**
 
@@ -663,84 +709,45 @@ export function FolderBrowser({
           <Toggle value={VIEW_MEDIA}>Media</Toggle>
         </ToggleGroup.Root>
 
-        <SortControl value={sort} onChange={nav.setSort} />
-        <FilterControl
-          value={filter}
-          onChange={setFilter}
-          total={(data?.folders.length ?? 0) + (data?.files.length ?? 0)}
-        />
+        {/* Capped and truncating below `sm` — the Select's natural content
+            width was the single biggest thing standing between this row and
+            fitting at 390px, so this is the one place the toolbar asks the
+            text to give rather than the layout. `min-w-0` on both this and
+            the label span (`app.css`, keyed to `[role="combobox"]`) is what
+            lets a `width` set here actually win over the flex default that
+            otherwise refuses to shrink below the text's own size. */}
+        <div className="w-28 min-w-0 shrink-0 sm:w-auto">
+          <SortControl value={sort} onChange={nav.setSort} />
+        </div>
 
         <div className="flex-1" />
 
-        {/*
-          One cluster of three icons, then the primary.
-
-          All three act on the folder you are in — copy its prefix, delete it,
-          make one inside it — so they read as a set. The divider is doing real
-          work rather than decorating: Upload is the one button on the far side
-          of it, and a delete sitting flush against a control a person arrives
-          looking for is a mis-click with no undo, so the destructive icon stays
-          in the middle of its own cluster and a rule separates the two. Do not
-          close that gap.
-        */}
-        <div className="flex shrink-0 items-center gap-0.5">
-          {/* Still the *name path*, and still worth copying even though nothing
-              is addressed by one any more: it is what a person types at the CLI,
-              which resolves it through `GET /api/resolve`. */}
-          <CopyKeyButton value={prefix ?? ""} noun="prefix" />
-
-          <ConfirmDeleteButton
-            tone="icon"
-            disabled={atRoot || hereId === null}
-            noun={atRoot ? "this folder" : folderName}
-            onConfirm={deleteCurrentFolder}
+        <FilterBar activeCount={activeFilterCount} onClear={clearFilters}>
+          <FilterControl
+            value={filter}
+            onChange={setFilter}
+            total={(data?.folders.length ?? 0) + (data?.files.length ?? 0)}
           />
+          <TagFilter value={tags} onChange={setTags} searching={data?.depth === "all"} />
+        </FilterBar>
 
-          {/* An icon, like the two beside it: "New folder" is a noun-shaped
-              action with an icon everyone already knows, and spelling it out
-              made it the widest thing in the row. The label lives on
-              `aria-label` and `title`. */}
-          <button
-            type="button"
-            onClick={() => setNewFolder("")}
-            disabled={hereId === null}
-            aria-label="New folder"
-            title="New folder"
-            className="shrink-0 rounded-none p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
-                       disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent
-                       focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            <FolderPlusIcon />
-          </button>
+        {/* Hidden below `sm`: the row has to stay one line at 390px, and the
+            `⋯` menu carries the same action there — see `FolderMenu`. */}
+        <div className="hidden shrink-0 sm:block">
+          <UploadButton onFiles={uploads.start} disabled={hereId === null} />
         </div>
 
-        <div aria-hidden="true" className="mx-1 h-6 w-px shrink-0 bg-line" />
-
-        {/*
-          Upload, on the other side of the divider from the destructive cluster.
-
-          It is labelled where its three neighbours are icons, because there is no
-          icon everyone reads as "put a file here" — the tray-with-an-arrow means
-          upload, download and share depending on the platform — and this is the
-          one control a person arrives *looking* for.
-        */}
-        <UploadButton onFiles={uploads.start} disabled={hereId === null} />
-
-        {files.length > 0 && (
-          <Button
-            intent="secondary"
-            size="sm"
-            onClick={
-              selection.count > 0 ? selection.clear : selection.selectAll
-            }
-          >
-            {selection.count > 0 ? "Select none" : "Select all"}
-          </Button>
-        )}
-      </div>
-
-      <div className="border-b border-line pb-2">
-        <TagFilter value={tags} onChange={setTags} searching={data?.depth === "all"} />
+        <FolderMenu
+          disabled={hereId === null}
+          atRoot={atRoot}
+          folderName={folderName}
+          prefix={prefix}
+          onNewFolder={() => setNewFolder("")}
+          onUploadFiles={uploads.start}
+          onDeleteFolder={deleteCurrentFolder}
+          showSelectAll={selection.count === 0 && files.length > 0}
+          onSelectAll={selection.selectAll}
+        />
       </div>
 
       {newFolder !== null && (
@@ -809,72 +816,91 @@ export function FolderBrowser({
 
       {hiddenByFilter && <EmptyState title={`Nothing here matches “${filter}”.`} />}
 
-      {/* **The selection bar sits over BOTH lists, not inside the grid.**
-          It used to live in the `Photos & video` section, which was right while
-          only images could be selected — a folder holding nothing but
-          `result.json` files then had no bar at all, and "Select all" under a
-          heading that says "Photos" would now also take the text files. */}
+      {/* **The selection strip sits over BOTH lists, not inside the grid**,
+          sticky under the header so it stays reachable while the grid below
+          it scrolls — the same reason a photo app keeps its selection bar
+          pinned rather than letting it scroll away with the thing it acts on.
+
+          **Every selection control lives here now, and nowhere else.** It
+          used to be split: this bar held the count and the destructive
+          actions, while `Select all`/`Select none` sat in the toolbar above —
+          two places to look for one concern. `aria-live="polite"` on the
+          count is what a screen reader needs in its place: the toolbar's own
+          count used to say nothing when it changed. */}
       {selection.count > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-none border border-line bg-card px-3 py-2">
+        <div
+          className="sticky top-[var(--header-h)] z-20 flex flex-wrap items-center gap-2
+                     rounded-none border border-line bg-card px-3 py-2"
+        >
           <Text
             variant="caption"
             tone="muted"
             className="font-mono tabular-nums"
+            aria-live="polite"
           >
-            {selection.count} of {files.length} selected
+            {selection.count} selected
           </Text>
 
           <div className="flex-1" />
 
-          {/* One key per line, in grid order rather than the order they were
-                picked: this is going into a shell loop or a `--keys` argument,
-                and the order you happened to click in is not information. */}
-          <CopyKeyButton
-            value={selection.selectedItems.map((item) => item.key).join("\n")}
-            noun={selectedNoun("key", "keys")}
-          />
+          <Button intent="secondary" size="sm" onClick={selection.selectAll}>
+            Select all
+          </Button>
+          <Button intent="secondary" size="sm" onClick={selection.clear}>
+            Select none
+          </Button>
 
           {/* Media has no per-tile menu the way a row does — sixty thumbnails
                 with a control each is the crowding this grid exists to avoid —
                 so this bar is where a bulk move and a bulk copy are reached
-                from. */}
-          <button
-            type="button"
-            onClick={() =>
-              setPickerTarget({
-                verb: "copy",
-                ids: selection.selectedItems.map((item) => item.id),
-                noun: selectedNoun("file", "files"),
-              })
-            }
-            aria-label={`Copy ${selectedNoun("file", "files")} to…`}
-            title={`Copy ${selectedNoun("file", "files")} to…`}
-            className="shrink-0 rounded-none p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
-                         focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            {/* Two sheets, one behind the other: the source stays, which is
-                  the whole difference from the arrow on the move button. */}
-            <CopyIcon />
-          </button>
+                from. Icon-only, with a tooltip: the strip already holds six
+                controls, and two full-width labels here would crowd the phone
+                width the strip has to fit at 390px. */}
+          <Tooltip.Root>
+            <Tooltip.Trigger
+              className={iconButtonClass({ size: "sm", className: "touch-target rounded-none" })}
+              aria-label={`Copy ${selectedNoun("file", "files")} to…`}
+              onClick={() =>
+                setPickerTarget({
+                  verb: "copy",
+                  ids: selection.selectedItems.map((item) => item.id),
+                  noun: selectedNoun("file", "files"),
+                })
+              }
+            >
+              {/* Two sheets, one behind the other: the source stays, which is
+                    the whole difference from the arrow on the move button. */}
+              <CopyIcon />
+            </Tooltip.Trigger>
+            <Tooltip.Content>Copy to…</Tooltip.Content>
+          </Tooltip.Root>
 
-          <button
-            type="button"
-            onClick={() =>
-              setPickerTarget({
-                verb: "move",
-                ids: selection.selectedItems.map((item) => item.id),
-                noun: selectedNoun("file", "files"),
-              })
-            }
-            aria-label={`Move ${selectedNoun("file", "files")}`}
-            title={`Move ${selectedNoun("file", "files")}`}
-            className="shrink-0 rounded-none p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink
-                         focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            {/* A folder with something going into it — the destination is
-                  what a move is about, and the arrow says which way. */}
-            <FolderIntoIcon />
-          </button>
+          <Tooltip.Root>
+            <Tooltip.Trigger
+              className={iconButtonClass({ size: "sm", className: "touch-target rounded-none" })}
+              aria-label={`Move ${selectedNoun("file", "files")}`}
+              onClick={() =>
+                setPickerTarget({
+                  verb: "move",
+                  ids: selection.selectedItems.map((item) => item.id),
+                  noun: selectedNoun("file", "files"),
+                })
+              }
+            >
+              {/* A folder with something going into it — the destination is
+                    what a move is about, and the arrow says which way. */}
+              <FolderIntoIcon />
+            </Tooltip.Trigger>
+            <Tooltip.Content>Move to…</Tooltip.Content>
+          </Tooltip.Root>
+
+          {/* One path per line, in grid order rather than the order they were
+                picked: this is going into a shell loop or a `--paths` argument,
+                and the order you happened to click in is not information. */}
+          <CopyKeyButton
+            value={selection.selectedItems.map((item) => item.key).join("\n")}
+            noun={selectedNoun("path", "paths")}
+          />
 
           {/* Under five, the armed button — the cost of being wrong is a
                 handful of frames still on screen. Above it, the count has to
@@ -1012,5 +1038,133 @@ export function FolderBrowser({
         />
       )}
     </div>
+  );
+}
+
+interface FolderMenuProps {
+  /** `hereId === null` — the listing has not landed, so nothing here can write yet. */
+  disabled: boolean;
+  atRoot: boolean;
+  folderName: string;
+  prefix: string | null;
+  onNewFolder: () => void;
+  onUploadFiles: (files: File[]) => void;
+  onDeleteFolder: () => Promise<unknown>;
+  /** `selection.count === 0 && files.length > 0` — nothing to "Select none" from yet. */
+  showSelectAll: boolean;
+  onSelectAll: () => void;
+}
+
+/**
+ * Everything this folder itself can do, behind one `⋯`.
+ *
+ * **This used to be a cluster of three icon buttons plus a text button**, laid
+ * out beside the view toggle, the sort and the filter — five controls fighting
+ * one row for space before the toolbar could wrap even once. Every one of them
+ * acts on the folder itself rather than on anything inside it, which is what
+ * makes them one menu rather than five separate decisions about where to put
+ * each: `ItemActions` already draws this exact line for a file or a folder
+ * *listed* here, and this is the same line drawn for the folder you are
+ * *standing in*.
+ *
+ * `Upload…` is here too, but only below `sm` — the visible `UploadButton`
+ * beside this trigger covers it everywhere else, and a control reachable two
+ * ways at the same width would be a second name to learn for the one thing a
+ * person arrives looking for.
+ */
+function FolderMenu({
+  disabled,
+  atRoot,
+  folderName,
+  prefix,
+  onNewFolder,
+  onUploadFiles,
+  onDeleteFolder,
+  showSelectAll,
+  onSelectAll,
+}: FolderMenuProps) {
+  const [open, setOpen] = useState(false);
+  const { status, copy } = useCopyToClipboard();
+  const { armed, busy, press, disarm, handlers } = useArmed({ onFire: onDeleteFolder });
+  const uploadInput = useRef<HTMLInputElement>(null);
+
+  const change = useCallback(
+    (next: boolean) => {
+      setOpen(next);
+      if (!next) disarm();
+    },
+    [disarm],
+  );
+
+  const deleteLabel = busy
+    ? "Deleting…"
+    : armed
+      ? `Confirm — delete ${atRoot ? "this folder" : folderName}`
+      : "Delete folder";
+
+  return (
+    <Dropdown.Root open={open} onOpenChange={change}>
+      <input
+        ref={uploadInput}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(event) => {
+          const picked = Array.from(event.target.files ?? []);
+          event.target.value = "";
+          if (picked.length > 0) onUploadFiles(picked);
+        }}
+      />
+
+      <Dropdown.Trigger
+        aria-label="More"
+        title="More"
+        className={iconButtonClass({ size: "sm", className: "touch-target rounded-none shrink-0" })}
+      >
+        <DotsIcon />
+      </Dropdown.Trigger>
+
+      <Dropdown.Content className="left-auto right-0 rounded-none">
+        {/* Below `sm` only — see the docblock above. */}
+        <div className="sm:hidden">
+          <Dropdown.Item disabled={disabled} onSelect={() => uploadInput.current?.click()}>
+            Upload…
+          </Dropdown.Item>
+        </div>
+
+        <Dropdown.Item disabled={disabled} onSelect={onNewFolder}>
+          New folder…
+        </Dropdown.Item>
+
+        {/* Kept open, like `ItemActions`' own copy item — the label changing to
+            "Copied" IS the feedback, and closing the menu would take it away
+            before it could be read. */}
+        <Dropdown.Item
+          onClick={(event: React.MouseEvent) => {
+            event.preventDefault();
+            void copy(prefix ?? "");
+          }}
+        >
+          <span aria-live="polite">{copyLabel(status, "Copy path")}</span>
+        </Dropdown.Item>
+
+        {showSelectAll && <Dropdown.Item onSelect={onSelectAll}>Select all</Dropdown.Item>}
+
+        {/* Arms in place, exactly as `ItemActions`' delete item does: the menu
+            stays open on the first press so the red label can be read, and
+            closes on the second — which is also the fire. */}
+        <Dropdown.Item
+          disabled={disabled || atRoot || busy}
+          {...handlers}
+          onClick={(event: React.MouseEvent) => {
+            if (!armed) event.preventDefault();
+            press();
+          }}
+          className={armed ? "text-danger" : ""}
+        >
+          <span aria-live="assertive">{deleteLabel}</span>
+        </Dropdown.Item>
+      </Dropdown.Content>
+    </Dropdown.Root>
   );
 }

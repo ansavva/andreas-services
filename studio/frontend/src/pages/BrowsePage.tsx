@@ -89,6 +89,12 @@ export function BrowsePage() {
       sort,
       setSort,
       goToFolder,
+      // `/f` never renders `FolderBrowser`'s own trail (`showTrail={false}` —
+      // see the `PageBar` above), so nothing here actually calls this; it
+      // exists because `BrowserNav` is one interface for two navs and the
+      // Files-tab one (`useLocalBrowserNav`) genuinely needs it. `folderPath`
+      // is the same builder `goToFolder` already navigates with.
+      folderHref: (id: FolderId) => folderPath(id),
       // The sort rides along into the viewer so its sequence is the order the
       // grid was showing. Anything else means clicking the third tile and
       // arriving somewhere else in the reel.

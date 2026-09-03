@@ -172,6 +172,13 @@ export const DotsIcon = ({ className = "size-5 fill-current stroke-none" }: Prop
   </Glyph>
 );
 
+export const SearchIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <circle cx="10.5" cy="10.5" r="6.5" />
+    <path d="m20 20-4.35-4.35" />
+  </Glyph>
+);
+
 export const AccountIcon = ({ className }: Props) => (
   <Glyph className={className}>
     <circle cx="12" cy="8" r="3.5" />

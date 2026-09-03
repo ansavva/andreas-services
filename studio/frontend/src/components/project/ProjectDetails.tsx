@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import { Alert, Field, Input, Text } from "@ansavva/design-system";
 
 import { EmptyState } from "../common/EmptyState";
+import { chipClass } from "../common/Chip";
 
 import { ApiError } from "../../apis/client";
 import { getCharacters, patchProject, setProjectCharacters } from "../../apis/studio";
@@ -181,13 +182,7 @@ function Involvement({ record, onSaved }: Props) {
                 disabled={busy}
                 aria-pressed={on}
                 onClick={() => void toggle(character.id)}
-                className={`rounded-none border px-3 py-1 font-body text-sm transition-colors
-                            disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2
-                            focus-visible:outline-primary ${
-                              on
-                                ? "border-primary bg-primary text-primary-text"
-                                : "border-line text-muted hover:bg-surface-alt hover:text-ink"
-                            }`}
+                className={chipClass(on, "disabled:opacity-60")}
               >
                 {character.name}
               </button>
