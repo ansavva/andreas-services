@@ -2,6 +2,8 @@ import { useState } from "react";
 
 import { Badge, Button, Tabs, Text } from "@ansavva/design-system";
 
+import { EmptyState } from "../common/EmptyState";
+
 import type { RunAsset, Shot, ShotRun } from "../../types";
 import { OutputPanel } from "../media/OutputPanel";
 import {
@@ -203,9 +205,7 @@ export function ShotCard({
               )}
             </div>
           ) : (
-            <Text variant="body" tone="muted">
-              Nothing rendered yet.
-            </Text>
+            <EmptyState title="No takes yet." hint="A take is what a run for this shot returns." />
           )}
         </div>
 
@@ -294,9 +294,7 @@ export function ShotCard({
             <Tabs.Panel value="runs">
               <div className="flex min-w-0 flex-col gap-3 pt-3">
                 {runCount === 0 ? (
-                  <Text variant="body" tone="muted">
-                    Nothing has been run for this shot yet.
-                  </Text>
+                  <EmptyState title="No runs yet." />
                 ) : (
                   <>
                     {/* **The runs behind this shot, as a list rather than as links on tiles.**

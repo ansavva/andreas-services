@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Alert, Breadcrumbs, Button, Dialog, Text } from "@ansavva/design-system";
 
-import { ApertureSpinner } from "../common/Aperture";
+import { EmptyState } from "../common/EmptyState";
+import { SectionLoading } from "../common/SectionLoading";
 import { getFolder } from "../../apis/studio";
 import type { Crumb, FolderEntry } from "../../types";
 import type { FolderId } from "../../utils/location";
@@ -149,11 +150,7 @@ export function DestinationPicker({
         </Breadcrumbs.Root>
 
         <div className="min-h-40 flex-1 overflow-auto rounded-md border border-line">
-          {loading && (
-            <div className="flex h-40 items-center justify-center">
-              <ApertureSpinner size="md" label="Loading folders" />
-            </div>
-          )}
+          {loading && <SectionLoading label="Loading folders" />}
 
           {!loading && (
             <div className="flex flex-col">
@@ -176,10 +173,11 @@ export function DestinationPicker({
               ))}
 
               {folders.length === 0 && (
-                <Text variant="caption" tone="muted" className="p-3">
-                  No folders here — {verb === "move" ? "moving" : "copying"} into this one is
-                  still fine.
-                </Text>
+                <EmptyState
+                  title="No folders here."
+                  hint={`${verb === "move" ? "Moving" : "Copying"} into this one is still fine.`}
+                  className="p-3"
+                />
               )}
             </div>
           )}
@@ -193,7 +191,7 @@ export function DestinationPicker({
 
         {error && (
           <Alert.Root intent="danger">
-            <Alert.Title>That did not work</Alert.Title>
+            <Alert.Title>Could not {verb} the items</Alert.Title>
             <Alert.Description>{error}</Alert.Description>
           </Alert.Root>
         )}

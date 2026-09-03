@@ -8,6 +8,7 @@ import {
   Text,
   Toggle,
   ToggleGroup,
+  useToast,
 } from "@ansavva/design-system";
 
 import {
@@ -17,7 +18,9 @@ import {
   moveNodes,
   renameNode,
 } from "../../apis/studio";
-import { ApertureSpinner } from "../common/Aperture";
+import { EmptyState } from "../common/EmptyState";
+import { LoadError } from "../common/LoadError";
+import { PageLoading } from "../common/PageLoading";
 import { useFolder } from "../../hooks/useFolder";
 import { useSearchParamState } from "../../hooks/useSearchParamState";
 import { useSelection } from "../../hooks/useSelection";
@@ -346,6 +349,7 @@ export function FolderBrowser({
    * while the listing has not landed, exactly like `prefix`.
    */
   const uploads = useUploads(hereId, reload);
+  const toast = useToast();
 
   /** "3 files", "1 key" — the count and its noun, agreeing about plurality. */
   const selectedNoun = useCallback(
@@ -379,10 +383,25 @@ export function FolderBrowser({
     [reload],
   );
 
+  /**
+   * A delete leaves nothing behind to read — the listing refetches and the
+   * row is simply not there — so the toast is the only record that it
+   * happened rather than, say, the refresh dropping it.
+   */
   const deleteSelected = useCallback(async () => {
+    const noun = selectedNoun("file", "files");
     await run(deleteNodes(selection.selectedItems.map((item) => item.id)));
     selection.clear();
-  }, [run, selection]);
+    toast.add({ intent: "success", title: `Deleted ${noun}` });
+  }, [run, selectedNoun, selection, toast]);
+
+  const deleteOne = useCallback(
+    async (id: string, name: string) => {
+      await run(deleteNodes([id]));
+      toast.add({ intent: "success", title: `Deleted ${name}` });
+    },
+    [run, toast],
+  );
 
   /**
    * The picker's submit, for whichever operation it was opened on.
@@ -739,44 +758,25 @@ export function FolderBrowser({
 
       {actionError && (
         <Alert.Root intent="danger">
-          <Alert.Title>That did not work</Alert.Title>
+          <Alert.Title>Could not update this folder</Alert.Title>
           <Alert.Description>{actionError}</Alert.Description>
         </Alert.Root>
       )}
 
-      {loading && (
-        <div className="flex justify-center py-16">
-          <ApertureSpinner size="lg" label="Loading folder" />
-        </div>
-      )}
+      {loading && <PageLoading label="Loading folder" />}
 
-      {error && (
-        <Alert.Root intent="danger">
-          <Alert.Title>Could not load this folder</Alert.Title>
-          <Alert.Description>{error}</Alert.Description>
-        </Alert.Root>
-      )}
+      {error && <LoadError what="this folder" message={error} onRetry={reload} />}
 
-      {isEmpty && tags.length === 0 && (
-        <Text variant="body" tone="muted">
-          This folder is empty.
-        </Text>
-      )}
+      {isEmpty && tags.length === 0 && <EmptyState title="No files here yet." />}
 
       {/* Empty because of the TAGS is a third sentence, and it has to name the
           scope: "nothing here" would be wrong when the search covered the whole
           branch and still found nothing. */}
       {isEmpty && tags.length > 0 && (
-        <Text variant="body" tone="muted">
-          Nothing under this folder is tagged {tags.join(" + ")}.
-        </Text>
+        <EmptyState title={`Nothing under this folder is tagged ${tags.join(" + ")}.`} />
       )}
 
-      {hiddenByFilter && (
-        <Text variant="body" tone="muted">
-          Nothing here matches “{filter}”.
-        </Text>
-      )}
+      {hiddenByFilter && <EmptyState title={`Nothing here matches “${filter}”.`} />}
 
       {/* **The selection bar sits over BOTH lists, not inside the grid.**
           It used to live in the `Photos & video` section, which was right while
@@ -887,7 +887,7 @@ export function FolderBrowser({
                     forbiddenId: folder.id,
                   })
                 }
-                onDelete={() => run(deleteNodes([folder.id]))}
+                onDelete={() => deleteOne(folder.id, folder.name)}
               />
             ))}
           </div>
@@ -954,7 +954,7 @@ export function FolderBrowser({
                     noun: file.name,
                   })
                 }
-                onDelete={() => run(deleteNodes([file.id]))}
+                onDelete={() => deleteOne(file.id, file.name)}
               />
             ))}
           </div>

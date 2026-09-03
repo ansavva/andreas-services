@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 
 import { Button, Text } from "@ansavva/design-system";
 
-import { ApertureSpinner } from "../components/common/Aperture";
+import { SectionLoading } from "../components/common/SectionLoading";
 import { MediaTile } from "../components/browse/MediaTile";
 import {
   CharactersSection,
@@ -80,10 +80,10 @@ export function HomePage() {
           </Button>
         </div>
 
-        {feed.loading && recent.length === 0 && (
-          <ApertureSpinner size="md" label="Loading recent media" />
+        {feed.loading && recent.length === 0 && <SectionLoading label="Loading recent media" />}
+        {feed.error && (
+          <LoadError what="recent media" message={feed.error} onRetry={feed.reload} />
         )}
-        {feed.error && <LoadError what="recent media" message={feed.error} />}
 
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
           {recent.map((file) => (

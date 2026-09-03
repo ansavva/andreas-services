@@ -3,7 +3,9 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { Alert, Badge, Button, Text } from "@ansavva/design-system";
 
-import { ApertureSpinner } from "../components/common/Aperture";
+import { EmptyState } from "../components/common/EmptyState";
+import { LoadError } from "../components/common/LoadError";
+import { PageLoading } from "../components/common/PageLoading";
 import { getScene, patchScene, patchShot } from "../apis/studio";
 import { AutoTextarea } from "../components/common/AutoTextarea";
 import { PageBar } from "../components/layout/PageBar";
@@ -37,7 +39,7 @@ export function ScenePage() {
   const navigate = useNavigate();
 
   const load = useCallback(() => getScene(sceneId), [sceneId]);
-  const { data, loading, error, setData } = useResource(
+  const { data, loading, error, reload, setData } = useResource(
     ["scene", sceneId],
     load,
   );
@@ -103,26 +105,16 @@ export function ScenePage() {
     [sceneId, setData],
   );
 
-  if (loading) {
-    return (
-      <>
-        <div className="flex justify-center py-16">
-          <ApertureSpinner size="lg" label="Loading scene" />
-        </div>
-      </>
-    );
-  }
+  if (loading) return <PageLoading label="Loading scene" />;
 
   if (error || !data) {
     return (
-      <>
-        <Alert.Root intent="danger">
-          <Alert.Title>Could not open this scene</Alert.Title>
-          <Alert.Description>
-            {error ?? "It may have been deleted."}
-          </Alert.Description>
-        </Alert.Root>
-      </>
+      <LoadError
+        what="this scene"
+        message={error ?? "It may have been deleted."}
+        onRetry={reload}
+        escape={{ label: "Back to home", onClick: () => navigate("/") }}
+      />
     );
   }
 
@@ -249,9 +241,16 @@ export function ScenePage() {
             </div>
           ) : (
             <div className="flex max-w-prose flex-col items-start gap-1">
-              <Text variant="body" tone="muted">
-                {data.setting || "No setting written for this scene."}
-              </Text>
+              {data.setting ? (
+                <Text variant="body" tone="muted">
+                  {data.setting}
+                </Text>
+              ) : (
+                <EmptyState
+                  title="No setting yet."
+                  hint="Where every shot in this scene happens, carried into each one's prompt."
+                />
+              )}
               <Button
                 intent="secondary"
                 size="sm"
@@ -267,9 +266,10 @@ export function ScenePage() {
           )}
 
           {data.shots.length === 0 ? (
-            <Text variant="body" tone="muted">
-              Nothing planned yet.
-            </Text>
+            <EmptyState
+              title="No shots yet."
+              hint="A scene is shots stitched into one continuous take."
+            />
           ) : (
             <div className="flex flex-col">
               {[...data.shots]

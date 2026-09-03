@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import {
   Alert,
@@ -18,10 +19,12 @@ import {
   saveTemplate,
   saveBlock,
 } from "../apis/studio";
-import { ApertureSpinner } from "../components/common/Aperture";
 import { AutoTextarea } from "../components/common/AutoTextarea";
 import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
 import { FormBar } from "../components/common/FormBar";
+import { EmptyState } from "../components/common/EmptyState";
+import { LoadError } from "../components/common/LoadError";
+import { PageLoading } from "../components/common/PageLoading";
 import { TagSelect } from "../components/common/TagSelect";
 import { TokenizedPromptEditor } from "../components/common/TokenizedPromptEditor";
 import type { PromptToken } from "../components/common/TokenizedPromptEditor";
@@ -62,16 +65,19 @@ import type { TemplateLibrary, PromptTemplate } from "../types";
  * template cites.
  */
 export function TemplatesPage() {
+  const navigate = useNavigate();
   const load = useCallback(() => getTemplates(), []);
-  const { data, loading, error, setData } = useResource(["templates"], load);
+  const { data, loading, error, reload, setData } = useResource(["templates"], load);
 
-  if (loading) return <ApertureSpinner />;
+  if (loading) return <PageLoading label="Loading templates" />;
   if (error)
     return (
-      <Alert.Root intent="danger">
-        <Alert.Title>Could not read the templates</Alert.Title>
-        <Alert.Description>{error}</Alert.Description>
-      </Alert.Root>
+      <LoadError
+        what="the templates"
+        message={error}
+        onRetry={reload}
+        escape={{ label: "Back to home", onClick: () => navigate("/") }}
+      />
     );
   if (!data) return null;
 
@@ -81,13 +87,15 @@ export function TemplatesPage() {
     <>
       <PageBar crumbs={[{ label: "Templates", to: "/templates" }]} />
       {empty ? (
-        <Alert.Root intent="info">
-          <Alert.Title>This library holds no templates</Alert.Title>
-          <Alert.Description>
-            A run has no prompt to start from until it does. Push some with{" "}
-            <code>studio templates push --path &lt;file&gt;</code>.
-          </Alert.Description>
-        </Alert.Root>
+        <EmptyState
+          title="No templates yet."
+          hint={
+            <>
+              A run has no prompt to start from until there are. Push some with{" "}
+              <code>studio templates push --path &lt;file&gt;</code>.
+            </>
+          }
+        />
       ) : (
         <>
           <LibraryTabs library={data} setData={setData} />
@@ -274,6 +282,7 @@ function NewBlock({ taken, setData }: { taken: string[]; setData: SetData }) {
       </Field.Root>
       {failed ? (
         <Alert.Root intent="danger">
+          <Alert.Title>Could not create the block</Alert.Title>
           <Alert.Description>{failed}</Alert.Description>
         </Alert.Root>
       ) : null}
@@ -422,6 +431,7 @@ function BlockEditor({
             onSave={() => void save()}
             onRevert={() => setDraft(text)}
             error={failed}
+            errorTitle="Could not save the block"
           />
         </div>
       ) : null}
@@ -494,6 +504,7 @@ function NewTemplate({ setData }: { setData: SetData }) {
       </Field.Root>
       {failed ? (
         <Alert.Root intent="danger">
+          <Alert.Title>Could not create the template</Alert.Title>
           <Alert.Description>{failed}</Alert.Description>
         </Alert.Root>
       ) : null}
@@ -738,6 +749,7 @@ function TemplateEditor({
           setTags(template.tags ?? []);
         }}
         error={failed}
+        errorTitle="Could not save the template"
       />
     </Card.Root>
   );

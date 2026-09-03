@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useToast } from "@ansavva/design-system";
+
 import { uploadFile, type UploadProgress } from "../apis/upload";
 
 export type UploadStatus = "waiting" | "sending" | "done" | "failed";
@@ -47,6 +49,7 @@ let sequence = 0;
 export function useUploads(parentId: string | null, onSettled: () => void) {
   const [items, setItems] = useState<readonly UploadItem[]>([]);
   const [active, setActive] = useState(false);
+  const toast = useToast();
 
   // Set on unmount so a resolving upload cannot write state into a page that is
   // gone — the same guard `ConfirmDeleteButton` keeps, and reached the same way:
@@ -85,6 +88,7 @@ export function useUploads(parentId: string | null, onSettled: () => void) {
       setItems((current) => [...current, ...queued]);
       setActive(true);
 
+      const landed: string[] = [];
       for (const [index, file] of files.entries()) {
         const item = queued[index];
         if (!item) continue;
@@ -94,16 +98,27 @@ export function useUploads(parentId: string | null, onSettled: () => void) {
             onProgress: (progress: UploadProgress) => patch(item.key, progress),
           });
           patch(item.key, { status: "done", landedAs: node.name, loaded: file.size });
+          landed.push(node.name);
         } catch (err) {
           patch(item.key, { status: "failed", error: (err as Error).message });
         }
       }
 
+      // Said once the queue drains, not per file, for the same reason the
+      // refresh is. The rows above the grid carry the detail — which name
+      // each file landed under, and which failed — and stay until cleared;
+      // the toast is the one line for a person who has scrolled on.
+      if (landed.length > 0)
+        toast.add({
+          intent: "success",
+          title: landed.length === 1 ? `Uploaded ${landed[0]}` : `Uploaded ${landed.length} files`,
+        });
+
       if (gone.current) return;
       setActive(false);
       onSettled();
     },
-    [onSettled, parentId, patch],
+    [onSettled, parentId, patch, toast],
   );
 
   /**

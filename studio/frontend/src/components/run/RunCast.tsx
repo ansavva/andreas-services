@@ -105,6 +105,7 @@ export function RunCast({ runId, projectId, value, onSaved }: Props) {
 
       {error && (
         <Alert.Root intent="danger">
+          <Alert.Title>Could not change the cast</Alert.Title>
           <Alert.Description>{error}</Alert.Description>
         </Alert.Root>
       )}

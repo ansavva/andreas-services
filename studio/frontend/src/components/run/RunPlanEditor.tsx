@@ -16,6 +16,8 @@ import {
   Text,
 } from "@ansavva/design-system";
 
+import { EmptyState } from "../common/EmptyState";
+
 import { ApiError } from "../../apis/client";
 import {
   getCharacterSelection,
@@ -696,7 +698,7 @@ export function RunPlanEditor({
 
       {error && (
         <Alert.Root intent="danger">
-          <Alert.Title>That did not save</Alert.Title>
+          <Alert.Title>Could not save the plan</Alert.Title>
           <Alert.Description>{error}</Alert.Description>
         </Alert.Root>
       )}
@@ -1120,11 +1122,7 @@ function Sends({
         </Alert.Root>
       ) : null}
 
-      {rows.length === 0 && (
-        <Text variant="body" tone="muted">
-          Nothing is sent. This run is text only.
-        </Text>
-      )}
+      {rows.length === 0 && <EmptyState title="No images are sent." hint="This run is text only." />}
 
       {rows.map((row, index) => (
         <div
@@ -1345,7 +1343,7 @@ function CharacterRefs({
 
       {error && (
         <Alert.Root intent="danger">
-          <Alert.Title>Nothing was added</Alert.Title>
+          <Alert.Title>Could not add the references</Alert.Title>
           <Alert.Description>{error}</Alert.Description>
         </Alert.Root>
       )}

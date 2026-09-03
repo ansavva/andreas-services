@@ -1,9 +1,8 @@
 import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { Text } from "@ansavva/design-system";
-
-import { ApertureSpinner } from "../common/Aperture";
+import { EmptyState } from "../common/EmptyState";
+import { SectionLoading } from "../common/SectionLoading";
 import { getCharacterProjects, getCharacterRuns } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
 import { projectPath, runPath } from "../../utils/location";
@@ -30,16 +29,16 @@ export function CharacterRuns({ characterId }: { characterId: string }) {
   const load = useCallback(() => getCharacterRuns(characterId), [characterId]);
   const { data, loading, error, reload } = useResource(["character-runs", characterId], load);
 
-  if (loading) return <ApertureSpinner size="md" label="Loading runs" />;
+  if (loading) return <SectionLoading label="Loading runs" />;
   if (error) return <LoadError what="runs" message={error} onRetry={reload} />;
 
   const runs = data?.runs ?? [];
   if (runs.length === 0) {
     return (
-      <Text variant="body" tone="muted">
-        Nothing has been rendered with this character yet. A run records which
-        characters it used, so this fills in on its own.
-      </Text>
+      <EmptyState
+        title="No runs yet."
+        hint="A run records which characters it used, so this fills in on its own."
+      />
     );
   }
 
@@ -54,13 +53,14 @@ export function CharacterProjects({ characterId }: { characterId: string }) {
   const load = useCallback(() => getCharacterProjects(characterId), [characterId]);
   const { data, loading, error, reload } = useResource(["character-projects", characterId], load);
 
-  if (loading) return <ApertureSpinner size="md" label="Loading projects" />;
+  if (loading) return <SectionLoading label="Loading projects" />;
   if (error) return <LoadError what="projects" message={error} onRetry={reload} />;
   if (!data || data.length === 0) {
     return (
-      <Text variant="body" tone="muted">
-        This character is not linked to a project yet.
-      </Text>
+      <EmptyState
+        title="No projects yet."
+        hint="A project lists who it is about; this fills in once one names this character."
+      />
     );
   }
 

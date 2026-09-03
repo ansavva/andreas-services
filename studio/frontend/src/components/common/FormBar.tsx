@@ -11,6 +11,8 @@ interface Props {
   meta?: ReactNode;
   /** The last save's refusal. Rendered above the row, under one title. */
   error?: string | null;
+  /** That title, in the form every failure alert wears: "Could not save the plan". */
+  errorTitle?: string;
   /**
    * Pin the row to the bottom of a small screen.
    *
@@ -68,7 +70,16 @@ export function useSavedFlash(): [boolean, () => void] {
  * in place; Cancel is for closing an edit session or a drawer, and this row
  * closes nothing.
  */
-export function FormBar({ dirty, saving, onSave, onRevert, meta, error, sticky }: Props) {
+export function FormBar({
+  dirty,
+  saving,
+  onSave,
+  onRevert,
+  meta,
+  error,
+  errorTitle = "Could not save",
+  sticky,
+}: Props) {
   const [saved, flash] = useSavedFlash();
   const wasSaving = useRef(false);
   useEffect(() => {
@@ -91,7 +102,7 @@ export function FormBar({ dirty, saving, onSave, onRevert, meta, error, sticky }
     >
       {error && (
         <Alert.Root intent="danger">
-          <Alert.Title>Could not save</Alert.Title>
+          <Alert.Title>{errorTitle}</Alert.Title>
           <Alert.Description>{error}</Alert.Description>
         </Alert.Root>
       )}

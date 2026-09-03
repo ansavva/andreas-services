@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 
 import {
-  Alert,
   Button,
   DateInput,
   Field,
   Input,
   Select,
-  Text,
   type DateStatus,
 } from "@ansavva/design-system";
 
-import { ApertureSpinner } from "../common/Aperture";
+import { EmptyState } from "../common/EmptyState";
+import { LoadError } from "../common/LoadError";
+import { SectionLoading } from "../common/SectionLoading";
 import { getRuns } from "../../apis/studio";
 import type { RunStatus, RunSummary } from "../../types";
 import { RunList } from "../run/RunList";
@@ -194,26 +194,15 @@ export function RunsTable({ projectId, characters, onOpen }: Props) {
         </Button>
       </div>
 
-      {error && (
-        <Alert.Root intent="danger">
-          <Alert.Title>Could not load runs</Alert.Title>
-          <Alert.Description>{error}</Alert.Description>
-        </Alert.Root>
-      )}
+      {error && <LoadError what="runs" message={error} onRetry={() => fetchPage(null)} />}
 
       {!loading && runs.length === 0 && !error && (
-        <Text variant="body" tone="muted">
-          No runs match that.
-        </Text>
+        <EmptyState title="Nothing here matches that search." />
       )}
 
       <RunList runs={runs} onOpen={(run) => onOpen(run as RunSummary)} />
 
-      {loading && (
-        <div className="flex justify-center py-6">
-          <ApertureSpinner size="md" label="Loading runs" />
-        </div>
-      )}
+      {loading && <SectionLoading label="Loading runs" />}
 
       {cursor !== null && !loading && (
         <div className="flex justify-center">

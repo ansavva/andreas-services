@@ -105,6 +105,26 @@ export function useMedia(
   }, [enabled, exhausted, fetchPage]);
 
   /**
+   * Start the walk over from its first page.
+   *
+   * For a walk that failed: `loadMore` continues from a cursor, and a failed
+   * first page has none, so a retry button had nothing to call. Supersedes
+   * whatever is in flight the same way a changed folder does — a new id, and
+   * the late page is dropped against it.
+   */
+  const reload = useCallback(() => {
+    const id = query.current.id + 1;
+    query.current = { ...query.current, id };
+    cursor.current = null;
+    inFlight.current = false;
+    setItems([]);
+    setExhausted(false);
+    setTruncated(false);
+    if (!enabled) return;
+    void fetchPage(id, null);
+  }, [enabled, fetchPage]);
+
+  /**
    * Forget one item without re-walking the bucket.
    *
    * The reel is a snapshot of a recursive walk, and re-taking that walk after
@@ -137,5 +157,5 @@ export function useMedia(
     );
   }, []);
 
-  return { items, loading, error, exhausted, truncated, loadMore, dropItem, refreshItem };
+  return { items, loading, error, exhausted, truncated, loadMore, reload, dropItem, refreshItem };
 }

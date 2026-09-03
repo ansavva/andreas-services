@@ -1,9 +1,10 @@
 import { useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { Alert, Button, Tabs, Text } from "@ansavva/design-system";
+import { Tabs, Text } from "@ansavva/design-system";
 
-import { ApertureSpinner } from "../components/common/Aperture";
+import { LoadError } from "../components/common/LoadError";
+import { PageLoading } from "../components/common/PageLoading";
 import { ApiError } from "../apis/client";
 import { deleteCharacter, getCharacter, patchCharacter, setCharacterProfile } from "../apis/studio";
 import { FolderTab } from "../components/browse/FolderTab";
@@ -109,29 +110,16 @@ export function CharacterPage() {
     [character, characterId],
   );
 
-  if (character.loading) {
-    return (
-      <>
-        <div className="flex justify-center py-16">
-          <ApertureSpinner size="lg" label="Loading character" />
-        </div>
-      </>
-    );
-  }
+  if (character.loading) return <PageLoading label="Loading character" />;
 
   if (character.error || !character.data) {
     return (
-      <>
-        <Alert.Root intent="danger">
-          <Alert.Title>Could not open this character</Alert.Title>
-          <Alert.Description>{character.error ?? "It may have been deleted."}</Alert.Description>
-        </Alert.Root>
-        <div>
-          <Button size="sm" onClick={() => navigate("/")}>
-            Back to home
-          </Button>
-        </div>
-      </>
+      <LoadError
+        what="this character"
+        message={character.error ?? "It may have been deleted."}
+        onRetry={character.reload}
+        escape={{ label: "Back to home", onClick: () => navigate("/") }}
+      />
     );
   }
 

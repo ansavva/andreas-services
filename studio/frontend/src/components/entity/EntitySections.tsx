@@ -4,7 +4,8 @@ import type { ReactNode } from "react";
 
 import { Text } from "@ansavva/design-system";
 
-import { ApertureSpinner } from "../common/Aperture";
+import { EmptyState } from "../common/EmptyState";
+import { SectionLoading } from "../common/SectionLoading";
 import { getCharacters, getProjects } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
 import { characterPath, projectPath } from "../../utils/location";
@@ -38,12 +39,10 @@ import { CreateEntityDialog } from "./CreateEntityDialog";
  */
 function Empty({ kind, hasAction }: { kind: "character" | "project"; hasAction: boolean }) {
   return (
-    <div className="flex flex-col items-start gap-2">
-      <Text variant="body" tone="muted">No {kind}s yet.</Text>
-      {!hasAction && (
-        <CreateEntityDialog kind={kind} />
-      )}
-    </div>
+    <EmptyState
+      title={`No ${kind}s yet.`}
+      action={hasAction ? undefined : <CreateEntityDialog kind={kind} />}
+    />
   );
 }
 
@@ -64,7 +63,7 @@ function Section({
   loading: boolean;
   error: string | null;
   errorTitle: string;
-  onRetry?: () => void;
+  onRetry: () => void;
   empty: ReactNode;
   action?: ReactNode;
   children: ReactNode;
@@ -84,7 +83,7 @@ function Section({
         {action}
       </div>
 
-      {loading && <ApertureSpinner size="md" label={`Loading ${title.toLowerCase()}`} />}
+      {loading && <SectionLoading label={`Loading ${title.toLowerCase()}`} />}
       {error && <LoadError what={errorTitle.replace("Could not load ", "")} message={error} onRetry={onRetry} />}
       {count === 0 && empty}
 

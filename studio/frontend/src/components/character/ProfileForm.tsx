@@ -365,7 +365,7 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
     <div className="flex flex-col gap-4">
       {conflict && (
         <Alert.Root intent="warning">
-          <Alert.Title>That did not go through</Alert.Title>
+          <Alert.Title>Could not save over a newer version</Alert.Title>
           <Alert.Description>
             {conflict} Your edits are still here and nothing was overwritten. Re-read the record,
             then apply them again.
@@ -505,6 +505,7 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
             onRevert={revert}
             meta={`revision ${rev}`}
             error={conflict ? null : error}
+            errorTitle="Could not save the profile"
             sticky
           />
         </div>

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 
-import { Badge, Button, Input, Text } from "@ansavva/design-system";
+import { Badge, Button, Input } from "@ansavva/design-system";
+
+import { EmptyState } from "./EmptyState";
 
 import { deleteTag, getTags, renameTag } from "../../apis/studio";
 import type { TagInUse, TagScope } from "../../types";
@@ -194,11 +196,11 @@ export function TagSelect({ scope, value, onChange, placeholder, manage }: Props
                      overflow-auto rounded-md border border-line bg-card p-1 shadow-lg"
         >
           {offered.length === 0 && !isNew && (
-            <Text variant="caption" tone="muted" className="px-2 py-1.5">
-              {vocabulary.length === 0
-                ? "No tags yet. Type one and press Enter."
-                : "Every tag is already on this."}
-            </Text>
+            <EmptyState
+              title={vocabulary.length === 0 ? "No tags yet." : "Every tag is already on this."}
+              hint={vocabulary.length === 0 ? "Type one and press Enter." : undefined}
+              className="px-2 py-1.5"
+            />
           )}
 
           {offered.map((tag) => (

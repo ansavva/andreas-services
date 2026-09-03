@@ -69,10 +69,10 @@ it("shows a project holding nothing but unapproved payloads", async () => {
   library([run({ id: "run-waiting", status: "draft" })]);
   open();
 
-  // Before the fix this drew "No runs match that" against a project with a
-  // full queue in it.
+  // Before the fix this drew "Nothing here matches that search" against a
+  // project with a full queue in it.
   expect(await screen.findByText("draft")).toBeTruthy();
-  expect(screen.queryByText(/No runs match that/i)).toBeNull();
+  expect(screen.queryByText(/Nothing here matches/i)).toBeNull();
 });
 
 it("still narrows to exactly one status when one is named", async () => {

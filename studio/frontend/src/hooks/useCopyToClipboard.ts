@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useToast } from "@ansavva/design-system";
+
 export type CopyStatus = "idle" | "copied" | "failed";
 
 /** How long the button stays in its post-copy state before reverting. */
@@ -14,10 +16,18 @@ const FLASH_MS = 1600;
  * only ever served over HTTPS or localhost, both secure contexts, so a missing
  * `navigator.clipboard` means a browser we do not support rather than a
  * deployment we do; it lands in the same `failed` state.
+ *
+ * **The toast is the confirmation.** A copy leaves nothing on screen — the
+ * clipboard is invisible — so the only proof it happened used to be the
+ * button's icon flipping for a second and a half, which is easy to miss from
+ * a menu that closes or a tile the pointer has already left. The status is
+ * kept for the icon; the toast is what says it out loud, and it says so from
+ * one place rather than from each of the three controls that copy.
  */
 export function useCopyToClipboard(flashMs: number = FLASH_MS) {
   const [status, setStatus] = useState<CopyStatus>("idle");
   const timer = useRef<number | null>(null);
+  const toast = useToast();
 
   // A tile can unmount while its flash is still running — navigating a folder
   // replaces the whole grid — so the timeout has to be cancellable.
@@ -38,11 +48,14 @@ export function useCopyToClipboard(flashMs: number = FLASH_MS) {
         next = "failed";
       }
 
+      if (next === "copied") toast.add({ intent: "success", title: "Copied to the clipboard" });
+      else toast.add({ intent: "danger", title: "Could not copy to the clipboard" });
+
       setStatus(next);
       if (timer.current !== null) window.clearTimeout(timer.current);
       timer.current = window.setTimeout(() => setStatus("idle"), flashMs);
     },
-    [flashMs],
+    [flashMs, toast],
   );
 
   return { status, copy };
