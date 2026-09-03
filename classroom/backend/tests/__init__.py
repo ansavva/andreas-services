@@ -7,6 +7,5 @@ package, so without this file that directory is `tests/` itself — and neither
 to `backend/`, which is what both imports need.
 
 `python -m pytest` happens to paper over this by putting the working directory
-on `sys.path` first; `poetry run pytest`, which is what CI runs, does not. Same
-convention as scout/backend/tests/__init__.py.
+on `sys.path` first; `poetry run pytest`, which is what CI runs, does not.
 """

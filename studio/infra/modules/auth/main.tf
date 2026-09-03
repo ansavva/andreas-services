@@ -127,8 +127,8 @@ resource "aws_cognito_user_pool_client" "main" {
   # REFRESH_TOKEN_AUTH. `scripts/dev-token.py` and the prod smoke test take the
   # same two flows. Dropping either breaks all three.
   #
-  # Scout's copy of this module drops `ALLOW_REFRESH_TOKEN_AUTH` and enables
-  # `refresh_token_rotation`, and copying that here does not merely change a
+  # A sibling copy of this module once dropped `ALLOW_REFRESH_TOKEN_AUTH` and
+  # enabled `refresh_token_rotation`; copying that here does not merely change a
   # policy — Cognito REJECTS rotation alongside `ALLOW_REFRESH_TOKEN_AUTH`, at
   # apply time, in a service-side validation `terraform validate` cannot see.
   # So there is no half-measure: rotation for studio means moving the CLI onto

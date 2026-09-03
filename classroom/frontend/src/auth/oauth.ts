@@ -6,8 +6,8 @@
  * page, which this service does not have to write, style or maintain.
  *
  * Services in this monorepo are self-contained and share no code, so this is
- * classroom's own copy of a flow studio and scout each keep their own version
- * of — with classroom's own storage keys, so two of these apps open in one
+ * classroom's own copy of a flow studio keeps its own version of — with
+ * classroom's own storage keys, so two of these apps open in one
  * browser cannot read or clobber each other's session.
  */
 

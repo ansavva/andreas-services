@@ -144,7 +144,7 @@ resource "aws_iam_role" "github_actions" {
 }
 
 data "aws_iam_policy_document" "github_actions_permissions" {
-  # CloudFormation — scout ephemeral PR stacks + production stack
+  # CloudFormation — legacy; no service uses it today
   statement {
     effect    = "Allow"
     actions   = ["cloudformation:*"]
@@ -179,7 +179,7 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     resources = ["*"]
   }
 
-  # API Gateway — scout stack
+  # API Gateway — service REST/HTTP APIs
   statement {
     effect    = "Allow"
     actions   = ["apigateway:*"]
@@ -207,7 +207,7 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     resources = ["*"]
   }
 
-  # EventBridge — scout email processor schedule
+  # EventBridge — service schedules
   statement {
     effect    = "Allow"
     actions   = ["events:*"]
@@ -332,7 +332,6 @@ data "aws_iam_policy_document" "github_actions_permissions" {
       "ssm:RemoveTagsFromResource",
     ]
     resources = [
-      "arn:aws:ssm:*:*:parameter/scout/*",
       "arn:aws:ssm:*:*:parameter/storybook/*",
       "arn:aws:ssm:*:*:parameter/humbugg/*",
       "arn:aws:ssm:*:*:parameter/mailer/*",
