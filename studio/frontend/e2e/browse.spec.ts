@@ -230,7 +230,7 @@ test("a tile in Media opens the file it shows", async ({ page }) => {
   // render once there is something to draw.
   await expect(page.getByLabel("Neighbours")).toBeVisible();
   await expect(page.getByRole("region", { name: "File details" })).toBeVisible();
-  await expect(page.getByText("No images or videos here.")).toHaveCount(0);
+  await expect(page.getByText("No images or videos yet.")).toHaveCount(0);
 });
 
 test("the captured listing still says 49 jpeg and 5 png", async ({ page }) => {

@@ -310,8 +310,8 @@ it("keeps the open pane in the address, at rest naming none", async () => {
   // The default tab, written as absence — a link copied at rest names no tab.
   expect(screen.getByTestId("tab-param").textContent).toBe("");
 
-  fireEvent.click(screen.getByRole("tab", { name: "Payload" }));
-  expect(screen.getByTestId("tab-param").textContent).toBe("payload");
+  fireEvent.click(screen.getByRole("tab", { name: "Request" }));
+  expect(screen.getByTestId("tab-param").textContent).toBe("request");
 
   fireEvent.click(screen.getByRole("tab", { name: "Plan" }));
   expect(screen.getByTestId("tab-param").textContent).toBe("");

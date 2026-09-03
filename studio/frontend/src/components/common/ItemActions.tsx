@@ -14,7 +14,7 @@ interface Props {
    *  it write with: rename, move, copy and delete all take node ids. */
   copyValue: string;
   /** What `copyValue` names, which is all that differs between the two labels. */
-  copyNoun?: "key" | "prefix";
+  copyNoun?: "path" | "prefix";
   /** Opens the parent's rename field. The parent owns it so it can be full width. */
   onRename: () => void;
   /** Opens the parent's destination picker on a move. */
@@ -59,7 +59,7 @@ interface Props {
 export function ItemActions({
   name,
   copyValue,
-  copyNoun = "key",
+  copyNoun = "path",
   onRename,
   onMove,
   onCopyTo,

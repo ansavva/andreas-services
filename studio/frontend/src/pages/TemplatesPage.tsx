@@ -187,8 +187,9 @@ function LibraryTabs({
             title="No templates yet."
             hint={
               <>
-                A run has no prompt to start from until there are. Push some with{" "}
-                <code>studio templates push --path &lt;file&gt;</code>, or write one here.
+                A run has no prompt to start from until there are. Write one
+                here, or push several at once with{" "}
+                <code>studio templates push --path &lt;file&gt;</code>.
               </>
             }
             action={

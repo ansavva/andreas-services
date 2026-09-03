@@ -23,7 +23,7 @@ describe("copying to the clipboard", () => {
   it("says so in a toast, in the notifications region", async () => {
     render(<CopyKeyButton value="<name>/reference/pool/1.jpg" />, { wrapper: TestProviders });
 
-    fireEvent.click(screen.getByRole("button", { name: "Copy key" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy path" }));
 
     const region = await screen.findByRole("region", { name: "Notifications" });
     await waitFor(() => expect(region.textContent).toContain("Copied to the clipboard"));
@@ -36,7 +36,7 @@ describe("copying to the clipboard", () => {
     });
     render(<CopyKeyButton value="<name>/reference/pool/1.jpg" />, { wrapper: TestProviders });
 
-    fireEvent.click(screen.getByRole("button", { name: "Copy key" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy path" }));
 
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toContain("Could not copy to the clipboard"),

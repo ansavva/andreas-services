@@ -19,9 +19,9 @@ interface Props {
   /**
    * What `value` names — the only thing that differs between the labels.
    *
-   * Usually `"key"` or `"prefix"`, but free text so a bulk copy can say what it
-   * is copying ("26 keys"). That is what lets the grid's selection bar use this
-   * button rather than growing a second copy control with its own glyph, its own
+   * Usually `"path"`, but free text so a bulk copy can say what it is copying
+   * ("26 paths"). That is what lets the grid's selection bar use this button
+   * rather than growing a second copy control with its own glyph, its own
    * flash timing and its own idea of what "copied" looks like.
    */
   noun?: string;
@@ -40,7 +40,8 @@ interface Props {
  * `tone`.
  *
  * The name is from when that address was an S3 key. It is a name path now (see
- * `value`), and the name survives because it is what the surrounding components
+ * `value`), and the label already says so — "Copy path", not "Copy key". The
+ * component's own name survives because it is what the surrounding components
  * call this one in their own comments — worth renaming only alongside those.
  *
  * It is always a *sibling* of whatever opens the resource, never a child: every
@@ -54,7 +55,7 @@ interface Props {
  * fill come from the same three rows every other icon control in the monorepo
  * uses. Only `tone` is left here, because only the *surface* is studio's.
  */
-export function CopyKeyButton({ value, noun = "key", tone = "row", className = "" }: Props) {
+export function CopyKeyButton({ value, noun = "path", tone = "row", className = "" }: Props) {
   const { status, copy } = useCopyToClipboard();
   const label = copyLabel(status, `Copy ${noun}`);
 
