@@ -94,8 +94,8 @@ it("lists EVERY block, not only the ones some template happens to cite", async (
   });
   show();
   await blocksTab();
-  expect(screen.getByRole("button", { name: /\{orphan\}/ })).toBeTruthy();
-  expect(screen.getByText("0 templates")).toBeTruthy();
+  expect(screen.getByRole("button", { name: /\{orphan\}/, expanded: false })).toBeTruthy();
+  expect(screen.getByText("(0 templates)")).toBeTruthy();
 });
 
 it("says how many templates a block reaches BEFORE it is edited", async () => {
@@ -112,7 +112,7 @@ it("says how many templates a block reaches BEFORE it is edited", async () => {
   });
   show();
   await blocksTab();
-  expect(screen.getByText("2 templates")).toBeTruthy();
+  expect(screen.getByText("(2 templates)")).toBeTruthy();
 });
 
 it("says what to do when a library holds no templates at all", async () => {
@@ -195,7 +195,7 @@ it("creates a block, which is the same call as editing one", async () => {
   show();
   await blocksTab();
 
-  fireEvent.click(screen.getByText("+ New block"));
+  fireEvent.click(screen.getByRole("button", { name: "New block" }));
   fireEvent.change(screen.getByLabelText("Name"), {
     target: { value: "backdrop_body" },
   });
@@ -207,7 +207,7 @@ it("creates a block, which is the same call as editing one", async () => {
   await waitFor(() =>
     expect(savedBlock).toHaveBeenCalledWith("backdrop_body", "White seamless."),
   );
-  expect(await screen.findByRole("button", { name: /\{backdrop_body\}/ })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: /\{backdrop_body\}/, expanded: false })).toBeTruthy();
 });
 
 it("refuses a name no template could ever cite", async () => {
@@ -220,7 +220,7 @@ it("refuses a name no template could ever cite", async () => {
   show();
   await blocksTab();
 
-  fireEvent.click(screen.getByText("+ New block"));
+  fireEvent.click(screen.getByRole("button", { name: "New block" }));
   fireEvent.change(screen.getByLabelText("Name"), { target: { value: "2fast" } });
   fireEvent.change(screen.getByLabelText("Text"), { target: { value: "prose" } });
 
@@ -233,7 +233,7 @@ it("will not silently overwrite a block that already exists", async () => {
   show();
   await blocksTab();
 
-  fireEvent.click(screen.getByText("+ New block"));
+  fireEvent.click(screen.getByRole("button", { name: "New block" }));
   fireEvent.change(screen.getByLabelText("Name"), { target: { value: "face_only" } });
   expect(screen.getByText(/already holds that name/)).toBeTruthy();
 });

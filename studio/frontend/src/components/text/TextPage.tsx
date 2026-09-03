@@ -8,6 +8,7 @@ import { copyLabel, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { formatTextContent } from "../../utils/format";
 import type { FileEntry, TextResponse } from "../../types";
 import { CopyKeyButton } from "../common/CopyKeyButton";
+import { PageBar, type Crumb } from "../layout/PageBar";
 import { MarkdownView } from "./MarkdownView";
 
 interface Props {
@@ -15,6 +16,8 @@ interface Props {
   onClose: () => void;
   /** Called after a successful save, so the listing behind this can re-fetch. */
   onSaved?: () => void;
+  /** Where the page sits — the folder this file is in, as one crumb. */
+  crumbs?: Crumb[];
 }
 
 /**
@@ -22,14 +25,13 @@ interface Props {
  * `prompt.json` and `scene.json`, the subject `profile.yaml` files,
  * `phrasebook/wording.yaml` and the reference captions.
  *
- * **It is a page rather than a modal, and it can be edited.** Both changed
- * together. It used to be a small centred card over a dimmed backdrop, which is
- * the right shape for a confirmation and the wrong one for a document: a
- * `profile.yaml` is a thing you sit and read, and reading it through a letterbox
- * with the folder listing showing around the edges is worse than the file
- * deserves. So it fills the viewport, the way opening a clip does, and the URL
- * already pointed at it — `/characters/<name>/profile.yaml` was a share link
- * before this and still is.
+ * **It is `AppLayout` with a `PageBar` now, not a `fixed inset-0` takeover.**
+ * It used to fill the viewport and lock the body's own scroll the way the old
+ * media viewer did, because there was no page to put it on. `ObjectPage`
+ * became an ordinary page for the same reason (`ObjectHeader`'s own note), and
+ * this follows: a `profile.yaml` is a thing you sit and read, and reading it
+ * behind its own header — with the same crumb back to the folder every other
+ * screen draws — is the app's one shape rather than a second one for text.
  *
  * Two decisions inside the editor are worth knowing:
  *
@@ -48,7 +50,7 @@ interface Props {
  * a field means. That is unchanged by making it writable: you are editing text,
  * not filling in a form the pipeline would have to keep honouring.
  */
-export function TextPage({ file, onClose, onSaved }: Props) {
+export function TextPage({ file, onClose, onSaved, crumbs }: Props) {
   const [data, setData] = useState<TextResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [raw, setRaw] = useState(false);
@@ -98,18 +100,14 @@ export function TextPage({ file, onClose, onSaved }: Props) {
     onClose();
   }, [confirmDiscard, dirty, onClose]);
 
+  // Escape closes only while nothing is dirty — a dirty Escape arms the same
+  // "leave without saving" question the header offers, rather than leaving.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") close();
     };
     window.addEventListener("keydown", onKeyDown);
-
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = previous;
-    };
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, [close]);
 
   // A reload or a closed tab is the one exit this component cannot intercept, so
@@ -147,148 +145,137 @@ export function TextPage({ file, onClose, onSaved }: Props) {
   const editable = data !== null && !data.truncated;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={file.name}
-      className="fixed inset-0 z-50 flex flex-col bg-bg"
-    >
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-3">
-        <div className="min-w-0 flex-1">
-          <Text variant="title" className="truncate">
-            {file.name}
-          </Text>
-          {/* The name path — the thing `CopyKeyButton` beside it copies, and
-              the thing a `studio` command is handed. */}
-          <Text variant="caption" tone="muted" className="truncate font-mono">
-            {file.key}
-          </Text>
-        </div>
+    <>
+      <PageBar
+        crumbs={crumbs}
+        actions={
+          <>
+            {data && (
+              <Badge intent="neutral" className="font-mono">
+                {data.language}
+              </Badge>
+            )}
 
-        {data && (
-          <Badge intent="neutral" className="font-mono">
-            {data.language}
-          </Badge>
+            {/* Rendered/raw is a *reading* choice, so it is gone while editing —
+                there is only one way to edit markdown and it is as markdown. */}
+            {isMarkdown && !editing && (
+              <Button intent="secondary" size="sm" onClick={() => setRaw((value) => !value)}>
+                {raw ? "Rendered" : "Raw"}
+              </Button>
+            )}
+
+            {/* Two different things are copyable here and the labels say which: the
+                file's contents, and the key that names the file. */}
+            <CopyKeyButton value={file.key} />
+            {data && !editing && (
+              <Button
+                intent="secondary"
+                size="sm"
+                onClick={() => void contentCopy.copy(data.content)}
+              >
+                {copyLabel(contentCopy.status, "Copy text")}
+              </Button>
+            )}
+
+            {editing ? (
+              <>
+                <Button size="sm" disabled={saving || !dirty} onClick={save}>
+                  {saving ? "Saving…" : dirty ? "Save" : "Saved"}
+                </Button>
+                <Button
+                  intent="secondary"
+                  size="sm"
+                  disabled={saving}
+                  onClick={() => {
+                    setDraft(null);
+                    setSaveError(null);
+                    setConfirmDiscard(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              editable && (
+                <Button size="sm" onClick={() => setDraft(data.content)}>
+                  Edit
+                </Button>
+              )
+            )}
+
+            {confirmDiscard ? (
+              <Button size="sm" onClick={onClose}>
+                Leave without saving
+              </Button>
+            ) : (
+              <Button intent="secondary" size="sm" onClick={close} aria-label="Close (Esc)">
+                Close
+              </Button>
+            )}
+          </>
+        }
+      >
+        <Text variant="display" className="min-w-0 truncate">
+          {file.name}
+        </Text>
+        {/* The name path — the thing `CopyKeyButton` beside it copies, and
+            the thing a `studio` command is handed. */}
+        <Text variant="caption" tone="muted" className="min-w-0 truncate font-mono">
+          {file.key}
+        </Text>
+      </PageBar>
+
+      {confirmDiscard && (
+        <Text variant="caption" tone="muted">
+          You have unsaved changes. Save to keep them, or leave without saving.
+        </Text>
+      )}
+
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
+        {error && (
+          <Alert.Root intent="danger">
+            <Alert.Title>Could not open this file</Alert.Title>
+            <Alert.Description>{error}</Alert.Description>
+          </Alert.Root>
         )}
 
-        {/* Rendered/raw is a *reading* choice, so it is gone while editing —
-            there is only one way to edit markdown and it is as markdown. */}
-        {isMarkdown && !editing && (
-          <Button intent="secondary" size="sm" onClick={() => setRaw((value) => !value)}>
-            {raw ? "Rendered" : "Raw"}
-          </Button>
+        {saveError && (
+          <Alert.Root intent="danger">
+            <Alert.Title>Could not save this file</Alert.Title>
+            <Alert.Description>{saveError}</Alert.Description>
+          </Alert.Root>
         )}
 
-        {/* Two different things are copyable here and the labels say which: the
-            file's contents, and the key that names the file. */}
-        <CopyKeyButton value={file.key} />
-        {data && !editing && (
-          <Button intent="secondary" size="sm" onClick={() => void contentCopy.copy(data.content)}>
-            {copyLabel(contentCopy.status, "Copy text")}
-          </Button>
+        {!data && !error && <SectionLoading label="Loading file" />}
+
+        {data && data.truncated && (
+          <Alert.Root intent="warning">
+            <Alert.Title>This file is too big to show in full</Alert.Title>
+            <Alert.Description>
+              Only the first part is here, so it cannot be edited — saving would drop the rest.
+            </Alert.Description>
+          </Alert.Root>
         )}
 
         {editing ? (
-          <>
-            <Button size="sm" disabled={saving || !dirty} onClick={save}>
-              {saving ? "Saving…" : dirty ? "Save" : "Saved"}
-            </Button>
-            <Button
-              intent="secondary"
-              size="sm"
-              disabled={saving}
-              onClick={() => {
-                setDraft(null);
-                setSaveError(null);
-                setConfirmDiscard(false);
-              }}
-            >
-              Cancel
-            </Button>
-          </>
+          <Textarea
+            value={draft}
+            onValueChange={setDraft}
+            spellCheck={false}
+            aria-label={`Contents of ${file.name}`}
+            className="min-h-[60vh] rounded-none font-mono text-xs leading-relaxed"
+          />
         ) : (
-          editable && (
-            <Button size="sm" onClick={() => setDraft(data.content)}>
-              Edit
-            </Button>
-          )
-        )}
-
-        {confirmDiscard ? (
-          <Button size="sm" onClick={onClose}>
-            Leave without saving
-          </Button>
-        ) : (
-          <Button intent="secondary" size="sm" onClick={close} aria-label="Close (Esc)">
-            Close
-          </Button>
-        )}
-      </header>
-
-      {confirmDiscard && (
-        <div className="border-b border-line px-4 py-2">
-          <Text variant="caption" tone="muted">
-            You have unsaved changes. Save to keep them, or leave without saving.
-          </Text>
-        </div>
-      )}
-
-      <div className="min-h-0 flex-1 overflow-auto">
-        <div className="mx-auto w-full max-w-4xl">
-          {error && (
-            <div className="p-4">
-              <Alert.Root intent="danger">
-                <Alert.Title>Could not open this file</Alert.Title>
-                <Alert.Description>{error}</Alert.Description>
-              </Alert.Root>
-            </div>
-          )}
-
-          {saveError && (
-            <div className="p-4 pb-0">
-              <Alert.Root intent="danger">
-                <Alert.Title>Could not save this file</Alert.Title>
-                <Alert.Description>{saveError}</Alert.Description>
-              </Alert.Root>
-            </div>
-          )}
-
-          {!data && !error && <SectionLoading label="Loading file" />}
-
-          {data && data.truncated && (
-            <div className="p-4 pb-0">
-              <Alert.Root intent="warning">
-                <Alert.Title>This file is too big to show in full</Alert.Title>
-                <Alert.Description>
-                  Only the first part is here, so it cannot be edited — saving would drop the rest.
-                </Alert.Description>
-              </Alert.Root>
-            </div>
-          )}
-
-          {editing ? (
-            <div className="p-4">
-              <Textarea
-                value={draft}
-                onValueChange={setDraft}
-                rows={28}
-                spellCheck={false}
-                aria-label={`Contents of ${file.name}`}
-                className="font-mono text-xs leading-relaxed"
-              />
-            </div>
+          data &&
+          (isMarkdown && !raw ? (
+            <MarkdownView source={data.content} />
           ) : (
-            data &&
-            (isMarkdown && !raw ? (
-              <MarkdownView source={data.content} />
-            ) : (
-              <pre className="overflow-x-auto p-4 font-mono text-xs leading-relaxed text-ink">
-                <code>{formatTextContent(data.content, data.language)}</code>
-              </pre>
-            ))
-          )}
-        </div>
+            <pre className="overflow-x-auto font-mono text-xs leading-relaxed text-ink">
+              <code>{formatTextContent(data.content, data.language)}</code>
+            </pre>
+          ))
+        )}
       </div>
-    </div>
+    </>
   );
 }

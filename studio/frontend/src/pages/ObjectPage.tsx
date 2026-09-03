@@ -286,7 +286,12 @@ export function ObjectPage() {
   });
 
   if (open && isText) {
-    return <TextPage file={open} onClose={close} onSaved={feed.reload} />;
+    // Same crumb `ObjectHeader` draws for the media case — `TextPage` grew its
+    // own `PageBar` once it stopped being a `fixed inset-0` takeover, and a
+    // page inside `AppLayout` needs to say where it sits like every other one.
+    return (
+      <TextPage file={open} onClose={close} onSaved={feed.reload} crumbs={crumbsFor(source)} />
+    );
   }
 
   if (!current) {
