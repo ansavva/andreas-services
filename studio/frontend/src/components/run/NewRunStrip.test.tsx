@@ -149,7 +149,7 @@ it("will not create until a model is chosen", async () => {
   // Re-queried after each change rather than held: the form lives inside a
   // portalled drawer, so the element is a different node after a re-render.
   const create = () =>
-    screen.getByRole("button", { name: "Create draft" }) as HTMLButtonElement;
+    screen.getByRole("button", { name: "Create run" }) as HTMLButtonElement;
   expect(create().disabled).toBe(true);
 
   choose("still-model");
@@ -161,7 +161,7 @@ describe("what the draft is created with", () => {
     await open();
     choose("still-model");
 
-    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create run" }));
 
     await waitFor(() => expect(create).toHaveBeenCalled());
     expect(create).toHaveBeenCalledWith({
@@ -186,7 +186,7 @@ describe("what the draft is created with", () => {
     fireEvent.click(screen.getByRole("button", { name: "Video" }));
     choose("motion-model");
 
-    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create run" }));
 
     await waitFor(() => expect(create).toHaveBeenCalled());
     expect(create.mock.calls[0]?.[0].plan?.params).toEqual({
@@ -200,7 +200,7 @@ describe("what the draft is created with", () => {
     choose("still-model");
     fireEvent.change(screen.getByLabelText("Output name"), { target: { value: "Wide Shot" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create run" }));
 
     await waitFor(() => expect(create).toHaveBeenCalled());
     expect(create.mock.calls[0]?.[0].name).toBe("wide-shot");
@@ -217,7 +217,7 @@ it("opens the new draft with its editor already open", async () => {
 
   await open();
   choose("still-model");
-  fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+  fireEvent.click(screen.getByRole("button", { name: "Create run" }));
 
   await waitFor(() =>
     expect(screen.getByTestId("address").textContent).toBe(
@@ -231,7 +231,7 @@ it("says what went wrong where the choice was made, and stays there", async () =
 
   await open();
   choose("still-model");
-  fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+  fireEvent.click(screen.getByRole("button", { name: "Create run" }));
 
   /**
    * **This used to assert there was no `dialog` on screen**, back when the form
@@ -244,7 +244,7 @@ it("says what went wrong where the choice was made, and stays there", async () =
   const panel = screen.getByRole("dialog");
   expect(await screen.findByText("project is not yours")).toBeTruthy();
   expect(panel.contains(screen.getByText("project is not yours"))).toBe(true);
-  expect(screen.getByRole("button", { name: "Create draft" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Create run" })).toBeTruthy();
   expect(screen.getByTestId("address").textContent).toContain(`/p/${PROJECT}`);
   expect(screen.getByTestId("address").textContent).not.toContain("/r/");
 });

@@ -6,7 +6,6 @@ import {
   Button,
   Drawer,
   Field,
-  IconButton,
   Input,
   Select,
   Text,
@@ -95,7 +94,7 @@ interface Props {
 }
 
 /**
- * Starting a run from the app: a strip above the runs, and a draft.
+ * Starting a run from the app: a trigger in the project's page bar, and a draft.
  *
  * **It creates the smallest legal run and leaves.** `POST /api/runs` needs only
  * a project, a kind and a model; the prompt, the params and the images are all a
@@ -105,11 +104,14 @@ interface Props {
  * edited too. This asks the three questions the API cannot proceed without, and
  * the editor asks the rest on the draft's own page.
  *
- * **No dialog, deliberately.** The house pattern for creating a record is
- * `CreateEntityDialog`, and this does not follow it: a modal that opens onto a
- * form and then navigates somewhere else is a step that exists only to be
- * dismissed. The strip is where the runs are, and pressing it lands in the
- * editor.
+ * **A drawer, not `CreateEntityDialog`'s dialog — but the same trigger.** A
+ * modal that opens onto a form and then navigates somewhere else is a step
+ * that exists only to be dismissed, so this keeps the drawer it always had.
+ * What changed is the button: it used to be a bare plus above the Runs tab's
+ * List/Grid toggle, and it is `PageBar`'s `primary` now, styled exactly like
+ * the character and project create buttons — a leading plus and the words
+ * "New run" — because a person should not have to learn a second shape for
+ * "make one of these".
  *
  * Nothing here spends. A draft is hidden from listings until it is submitted and
  * is discardable from its own page, so an abandoned one costs a row.
@@ -202,23 +204,22 @@ export function NewRunStrip({ projectId, characters = [] }: Props) {
   }
 
   /**
-   * A plus above the list, and the form arrives in a drawer.
+   * The trigger, and the form arrives in a drawer.
    *
-   * Three shapes in three days, and each one answered the last: a form standing
-   * permanently open across a tab that is mostly read; then a button that
-   * swapped itself for the form in place, which pushed the run list down the
-   * page every time it opened; now a plus where "make one of these" belongs —
-   * top-right, above the thing it makes — and the form beside the list rather
-   * than on top of it. The promote panel is the same drawer, so the two things
-   * this page can create are asked for the same way.
+   * **One create pattern now, not a page-specific plus.** This used to be a
+   * bare `IconButton` beside the Runs tab's List/Grid toggle — the only "make
+   * one of these" control in the app with no visible word on it. It is the
+   * project's `PageBar primary` now, styled like `CreateEntityDialog`'s
+   * trigger: a leading plus and the words "New run", because a person
+   * shopping the header for what a page can make should find the same shape
+   * everywhere it appears. The promote panel is the same drawer, so the two
+   * things a run page can open are asked for the same way.
    */
   const trigger = (
-    // `label` IS the accessible name — IconButton takes the words out of the
-    // box and puts them in the accessibility tree, so there is no `title` to
-    // add and nothing here is unnamed.
-    <IconButton label="New run" onClick={() => setOpen(true)}>
-      <PlusIcon />
-    </IconButton>
+    <Button size="sm" className="inline-flex items-center gap-1.5" onClick={() => setOpen(true)}>
+      <PlusIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+      New run
+    </Button>
   );
 
   if (!open) return trigger;
@@ -362,7 +363,7 @@ export function NewRunStrip({ projectId, characters = [] }: Props) {
             a smaller target, which is not what a row of 44s wants. */}
         <div className="flex items-center gap-2">
           <Button disabled={!entry || busy} onClick={() => void create()}>
-            {busy ? "Creating…" : "Create draft"}
+            {busy ? "Creating…" : "Create run"}
           </Button>
           <Button intent="secondary" disabled={busy} onClick={() => setOpen(false)}>
             Cancel

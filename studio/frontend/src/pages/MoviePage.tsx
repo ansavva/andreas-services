@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { Badge, Text } from "@ansavva/design-system";
@@ -6,14 +6,15 @@ import { Badge, Text } from "@ansavva/design-system";
 import { EmptyState } from "../components/common/EmptyState";
 import { LoadError } from "../components/common/LoadError";
 import { PageLoading } from "../components/common/PageLoading";
-import { getMovie } from "../apis/studio";
+import { deleteMovie, getMovie } from "../apis/studio";
+import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog";
 import { PageBar } from "../components/layout/PageBar";
 import { EntityRow } from "../components/entity/EntityRow";
 import { MediaThumb } from "../components/media/MediaThumb";
 import { useResource } from "../hooks/useResource";
 import { useProjectCrumb } from "../hooks/useProjectCrumb";
 import { formatDate } from "../utils/format";
-import { objectPath, scenePath } from "../utils/location";
+import { objectPath, projectPath, scenePath } from "../utils/location";
 
 /**
  * One movie: the scenes it is cut from, in order, and the finished piece.
@@ -30,6 +31,8 @@ export function MoviePage() {
   const load = useCallback(() => getMovie(movieId), [movieId]);
   const { data, loading, error, reload } = useResource(["movie", movieId], load);
   const crumbs = useProjectCrumb(data?.project ?? "");
+  /** The delete dialog, opened from the page bar's menu rather than drawn loose. */
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   if (loading) return <PageLoading label="Loading movie" />;
 
@@ -46,15 +49,34 @@ export function MoviePage() {
 
   return (
     <>
-      <PageBar crumbs={crumbs}>
-        <Text variant="display">{data.name}</Text>
-        <Badge intent="neutral" className="font-mono">
-          {data.status}
-        </Badge>
-        <Text variant="caption" tone="muted" className="font-mono">
-          {formatDate(data.created)}
-        </Text>
-      </PageBar>
+      <PageBar
+        crumbs={crumbs}
+        title={data.name}
+        meta={
+          <>
+            <Badge intent="neutral" className="font-mono">
+              {data.status}
+            </Badge>
+            <Text variant="caption" tone="muted" className="font-mono">
+              {formatDate(data.created)}
+            </Text>
+          </>
+        }
+        menu={[{ label: "Delete", danger: true, onSelect: () => setDeleteOpen(true) }]}
+      />
+
+      <ConfirmDestroyDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        label="Delete"
+        title={`Delete ${data.name}?`}
+        summary="Its folder and the cut piece go with it. The scenes it was cut from stay — they hold their own shots and their own cuts."
+        confirmWord={data.name}
+        onConfirm={async () => {
+          await deleteMovie(data.id, "delete");
+          navigate(projectPath(data.project));
+        }}
+      />
 
       {data.output && (
         <section className="flex flex-col gap-3">
@@ -108,4 +130,3 @@ export function MoviePage() {
     </>
   );
 }
-

@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { Tabs, Text } from "@ansavva/design-system";
+import { Tabs } from "@ansavva/design-system";
 
 import { LoadError } from "../components/common/LoadError";
 import { PageLoading } from "../components/common/PageLoading";
@@ -64,6 +64,8 @@ export function CharacterPage() {
   const navigate = useNavigate();
 
   const [tab, setTab] = useSearchParamState("tab", "profile");
+  /** The delete dialog, opened from the page bar's menu rather than drawn loose. */
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const load = useCallback(() => getCharacter(characterId), [characterId]);
   const character = useResource(["character", characterId], load);
 
@@ -128,15 +130,10 @@ export function CharacterPage() {
   return (
     <>
       {/*
-        The two-group layout this page argued for is `PageBar` now, and the
-        argument is unchanged — it just holds for every page instead of this one.
-
-        `ms-auto` pins a control to the right of whatever *line* it lands on,
-        and on a phone that line is whichever one the flex run happened to break
-        at — so the destructive control moved around under the title depending on
-        how long the name was. Two children and `justify-between` give it one
-        place on a wide screen and one place on a narrow one: beside the title,
-        or on its own line beneath it.
+        Delete lives in the menu now, behind `⋯` — the button itself moved,
+        the confirmation did not: it is still `ConfirmDestroyDialog`, still
+        typing the name, just opened by a menu item instead of drawn loose
+        beside the title.
 
         **No cascade here, and the noun says so.** Projects and runs that name
         this character hold link rows, and `force` drops those — but the runs
@@ -147,28 +144,26 @@ export function CharacterPage() {
       */}
       <PageBar
         crumbs={[{ label: "Characters", to: CHARACTERS_PATH }]}
-        actions={
-          <ConfirmDestroyDialog
-            label="Delete"
-            title={`Delete ${record.name}?`}
-            summary={
-              "The character, its profile and its whole reference library go. " +
-              "Runs that used it stay — a run really did use this subject, and " +
-              "deleting the character is not a reason to delete the work."
-            }
-            confirmWord={record.name}
-            onConfirm={async () => {
-              await deleteCharacter(record.id, "delete", true);
-              navigate(CHARACTERS_PATH);
-            }}
-          />
+        title={record.name}
+        menu={[{ label: "Delete", danger: true, onSelect: () => setDeleteOpen(true) }]}
+      />
+
+      <ConfirmDestroyDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        label="Delete"
+        title={`Delete ${record.name}?`}
+        summary={
+          "The character, its profile and its whole reference library go. " +
+          "Runs that used it stay — a run really did use this subject, and " +
+          "deleting the character is not a reason to delete the work."
         }
-      >
-        {/* One line, because there is one label. The mono caption under this
-            was the slug, and it survived the slug removal as `record.name` a
-            second time — so the bar drew the character's name twice. */}
-        <Text variant="display">{record.name}</Text>
-      </PageBar>
+        confirmWord={record.name}
+        onConfirm={async () => {
+          await deleteCharacter(record.id, "delete", true);
+          navigate(CHARACTERS_PATH);
+        }}
+      />
 
       {/* `defaultValue` as well as `value`, which the package requires even
           when controlled: it seeds `useControllableState`, and Tabs does not

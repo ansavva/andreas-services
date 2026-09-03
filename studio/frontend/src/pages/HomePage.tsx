@@ -8,6 +8,7 @@ import {
   CharactersSection,
   ProjectsSection,
 } from "../components/entity/EntitySections";
+import { PageBar } from "../components/layout/PageBar";
 import { useMedia } from "../hooks/useMedia";
 import { MEDIA_GRID } from "../utils/grid";
 import { folderPath, objectPath } from "../utils/location";
@@ -59,6 +60,8 @@ export function HomePage() {
 
   return (
     <>
+      <PageBar title="Home" />
+
       <CharactersSection />
       <ProjectsSection />
 

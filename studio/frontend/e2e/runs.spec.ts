@@ -157,7 +157,7 @@ test("the composer strip makes a draft and lands in its editor", async ({
   // strip that wrote a row per keystroke would fill the project with drafts.
   expect(wrote(calls)).toEqual([]);
 
-  await page.getByRole("button", { name: "Create draft" }).click();
+  await page.getByRole("button", { name: "Create run" }).click();
 
   await page.waitForURL(new RegExp(`/p/${PROJECT}/r/${CREATED_RUN}$`));
   const created = wrote(calls);

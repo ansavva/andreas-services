@@ -93,13 +93,10 @@ export function TemplatesPage() {
 
   return (
     <>
-      {/*
-        No crumb — this is a top-level screen. `children`/`actions` is
-        `PageBar`'s current shape; once the pagebar PR lands this becomes
-        `title="Templates"` and `primary={...}` instead.
-      */}
+      {/* No crumb — this is a top-level screen. */}
       <PageBar
-        actions={
+        title="Templates"
+        primary={
           <Button
             size="sm"
             onClick={() =>
@@ -110,9 +107,7 @@ export function TemplatesPage() {
             {tab === "blocks" ? "New block" : "New template"}
           </Button>
         }
-      >
-        <Text variant="display">Templates</Text>
-      </PageBar>
+      />
 
       <LibraryTabs
         library={data}

@@ -10,28 +10,9 @@ import {
   buttonClass,
 } from "@ansavva/design-system";
 
-import { ApiError } from "../../apis/client";
 import { createCharacter, createProject } from "../../apis/studio";
 import { characterPath, projectPath } from "../../utils/location";
-
-/**
- * A slug, as the API will read it.
- *
- * Folded here as well as server-side so the field shows what is about to be
- * claimed rather than what was typed — `Some Name` becoming `some-name` after
- * the request is a surprise, and the slug is the address a person types at the
- * CLI afterwards.
- *
- * It is a *courtesy*, not the check. `keys.clean_slug` refuses what it refuses
- * and a 409 is the real answer to "is this taken"; this only stops the obvious
- * cases reaching it.
- */
-function slugify(raw: string): string {
-  return raw
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
+import { PlusIcon } from "../common/icons";
 
 interface Props {
   kind: "character" | "project";
@@ -46,50 +27,49 @@ interface Props {
  * a payload to approve — and an unreasonable thing to say about creating an
  * empty record with a name.
  *
- * One component for both because the shape is the same — a slug, a human name,
- * one extra field — and the two differ only in which fields and which route.
- * Two dialogs would be two places for the 409 handling to drift.
+ * One component for both because the shape is the same — a name and one extra
+ * field — and the two differ only in which fields and which route.
  *
- * **A taken slug is the expected failure, not an error state.** It is the one
- * thing the caller cannot know in advance, the API answers it with a 409, and
- * the message names the slug — so it is shown against the field and the draft
- * is kept. Anything else is surfaced as itself rather than guessed at.
+ * **The slug field this used to open on is gone.** Neither route ever took
+ * one: `createCharacter` and `createProject` both take `name`, and the field
+ * folded what was typed into an address that was never sent. It survived the
+ * slug removal elsewhere in the entity model as a form asking a question the
+ * API had stopped listening for.
+ *
+ * One button pattern now, everywhere something is made: a `Button size="sm"`
+ * with a leading plus and "New ‹noun›", confirming "Create ‹noun›" — the same
+ * shape `NewRunStrip`'s trigger wears.
  */
 export function CreateEntityDialog({ kind }: Props) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const [slug, setSlug] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
-  const [taken, setTaken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const isCharacter = kind === "character";
-  const clean = slugify(slug);
+  const trimmed = name.trim();
 
   function reset() {
-    setSlug("");
     setName("");
     setDescription("");
-    setTaken(null);
     setError(null);
   }
 
   async function submit() {
-    if (!clean) return;
+    // A character needs a name to be recognised by; a project does not — an
+    // untitled project is a real thing to make and fill in later.
+    if (isCharacter && !trimmed) return;
     setBusy(true);
-    setTaken(null);
     setError(null);
     try {
       if (isCharacter) {
-        const record = await createCharacter({
-          name: name.trim() || clean,
-        });
+        const record = await createCharacter({ name: trimmed });
         navigate(characterPath(record.id));
       } else {
         const record = await createProject({
-          ...(name.trim() ? { title: name.trim() } : {}),
+          ...(trimmed ? { name: trimmed } : {}),
           ...(description.trim() ? { description: description.trim() } : {}),
         });
         navigate(projectPath(record.id));
@@ -97,10 +77,7 @@ export function CreateEntityDialog({ kind }: Props) {
       setOpen(false);
       reset();
     } catch (err) {
-      // 409 is the one refusal worth answering in place: the slug is claimed,
-      // which is a thing to change rather than a thing that went wrong.
-      if (err instanceof ApiError && err.status === 409) setTaken(err.message);
-      else setError((err as Error).message);
+      setError((err as Error).message);
     } finally {
       setBusy(false);
     }
@@ -119,36 +96,27 @@ export function CreateEntityDialog({ kind }: Props) {
           nests a button in a button: invalid, and the browser quietly makes the
           press do nothing. `buttonClass` is what the package exports for
           exactly this. */}
-      <Dialog.Trigger className={buttonClass({ size: "sm" })}>New {kind}</Dialog.Trigger>
+      <Dialog.Trigger
+        className={buttonClass({ size: "sm", className: "inline-flex items-center gap-1.5" })}
+      >
+        <PlusIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+        New {kind}
+      </Dialog.Trigger>
       <Dialog.Backdrop />
       <Dialog.Popup className="flex w-full max-w-md flex-col gap-4 p-4">
         <Dialog.Title>New {kind}</Dialog.Title>
 
-        <Field.Root name="slug" invalid={taken !== null}>
-          <Field.Label>Slug</Field.Label>
-          <Input
-            value={slug}
-            onValueChange={setSlug}
-            placeholder={isCharacter ? "a-character" : "a-project"}
-            autoFocus
-          />
-          <Field.Description>
-            {/* Shown as it will be stored, so the address a person types next is
-                never a surprise. */}
-            Library-unique, and the address you type at the CLI.
-            {clean && clean !== slug ? ` Stored as “${clean}”.` : ""}
-          </Field.Description>
-          {taken && <Field.Error>{taken}</Field.Error>}
-        </Field.Root>
-
-        <Field.Root name="name">
-          <Field.Label>{isCharacter ? "Display name" : "Title"}</Field.Label>
+        <Field.Root name="name" invalid={isCharacter && trimmed === ""}>
+          <Field.Label>{isCharacter ? "Name" : "Title"}</Field.Label>
           <Input
             value={name}
             onValueChange={setName}
             placeholder={isCharacter ? "How they are written about" : "What this is called"}
+            autoFocus
           />
-          <Field.Description>Optional — the slug is used when this is empty.</Field.Description>
+          {!isCharacter && (
+            <Field.Description>Optional — left blank, the project is untitled.</Field.Description>
+          )}
         </Field.Root>
 
         {!isCharacter && (
@@ -167,7 +135,7 @@ export function CreateEntityDialog({ kind }: Props) {
 
         <div className="flex flex-wrap justify-end gap-2">
           <Dialog.Close>Cancel</Dialog.Close>
-          <Button disabled={!clean || busy} onClick={() => void submit()}>
+          <Button disabled={(isCharacter && !trimmed) || busy} onClick={() => void submit()}>
             {busy ? "Creating…" : `Create ${kind}`}
           </Button>
         </div>

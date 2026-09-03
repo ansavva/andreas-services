@@ -363,7 +363,10 @@ test("opening an object does not scroll the page, and the strip still centres", 
   await expect
     .poll(async () =>
       page.evaluate((name) => {
-        const title = [...document.querySelectorAll("h4")].find(
+        // `<h2>` now — the object screen's title is `PageBar`'s `display`
+        // variant, matching every other routed page's heading, where it used
+        // to be a `title`-variant `<h4>` this page alone carried.
+        const title = [...document.querySelectorAll("h2")].find(
           (el) => el.textContent?.trim() === name,
         );
         if (!title) return "missing";

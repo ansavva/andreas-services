@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { Text } from "@ansavva/design-system";
 
+import { useArmed } from "../../hooks/useArmed";
 import { PageBar, type Crumb } from "../layout/PageBar";
 import type { FileEntry } from "../../types";
 import { formatBytes, formatDate } from "../../utils/format";
@@ -29,6 +30,14 @@ interface HeaderProps {
  * `PageBar` — the same one every other screen in the app uses, which is the
  * point: a file stopped being a mode and became a thing with an address.
  *
+ * **Copy, Edit and Download stay reachable icons; Delete moved behind `⋯`.**
+ * Every other page keeps its destructive control off the row of things
+ * pressed on every visit, and this one used to be the exception — five icons
+ * in a line, one of them red. It arms in place inside the menu now, the same
+ * machine `ItemActions`' delete item runs on: unarmed, the press is swallowed
+ * and the label turns red and restates what it destroys; armed, it is let
+ * through and the menu closes as any selection does.
+ *
  * The facts are mono. A byte count, a date and a position are figures read
  * against each other as you step along a feed, and a proportional face makes
  * the line reflow under every one of those steps.
@@ -42,28 +51,51 @@ export function ObjectHeader({
   onToggleEditing,
   onClose,
 }: HeaderProps) {
+  const destroy = useArmed({ onFire: async () => onDelete?.() });
+
   return (
     <PageBar
       crumbs={crumbs}
+      title={file.name}
+      meta={
+        <Text variant="caption" family="mono" tone="muted">
+          {formatBytes(file.size)}
+          {file.last_modified ? ` · ${formatDate(file.last_modified)}` : ""}
+          {position ? ` · ${position}` : ""}
+        </Text>
+      }
       actions={
         <ObjectActions
           file={file}
-          onDelete={onDelete}
           editing={editing}
           onToggleEditing={onToggleEditing}
           onClose={onClose}
         />
       }
-    >
-      <Text variant="title" weight="medium" className="min-w-0 truncate">
-        {file.name}
-      </Text>
-      <Text variant="caption" family="mono" tone="muted">
-        {formatBytes(file.size)}
-        {file.last_modified ? ` · ${formatDate(file.last_modified)}` : ""}
-        {position ? ` · ${position}` : ""}
-      </Text>
-    </PageBar>
+      menu={
+        onDelete
+          ? [
+              {
+                label: destroy.busy
+                  ? "Deleting…"
+                  : destroy.armed
+                    ? "Confirm — delete this file"
+                    : "Delete",
+                danger: destroy.armed || destroy.busy,
+                disabled: destroy.busy,
+                onClick: (event) => {
+                  if (!destroy.armed) event.preventDefault();
+                  destroy.press();
+                },
+                itemProps: destroy.handlers,
+              },
+            ]
+          : undefined
+      }
+      onMenuOpenChange={(open) => {
+        if (!open) destroy.disarm();
+      }}
+    />
   );
 }
 

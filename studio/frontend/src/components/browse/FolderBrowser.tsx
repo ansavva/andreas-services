@@ -25,7 +25,7 @@ import { useFolder } from "../../hooks/useFolder";
 import { useSearchParamState } from "../../hooks/useSearchParamState";
 import { useSelection } from "../../hooks/useSelection";
 import { useUploads } from "../../hooks/useUploads";
-import type { EntryKind, FileEntry, SortOrder } from "../../types";
+import type { Crumb as FolderCrumb, EntryKind, FileEntry, SortOrder } from "../../types";
 import { MEDIA_GRID } from "../../utils/grid";
 import type { FolderId } from "../../utils/location";
 import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
@@ -134,6 +134,23 @@ interface Props {
    * a browser standing somewhere it cannot show.
    */
   viewParam?: string;
+  /**
+   * Draw the browser's own `← Back` and breadcrumb trail.
+   *
+   * **False on `/f` only.** The standalone route now carries a `PageBar` of its
+   * own — the ancestry as crumbs, the current folder as the title — and this
+   * browser's trail said the same thing a second time immediately underneath
+   * it. A Files tab still draws its own: it has no address of its own for a
+   * `PageBar` to put a crumb trail on, so this remains its only one.
+   */
+  showTrail?: boolean;
+  /**
+   * The listing's own breadcrumb trail, told to whoever asked for it —
+   * `BrowsePage`, so its `PageBar` can draw the ancestry and the title without
+   * a second `getFolder` call for the same folder this component already
+   * fetched.
+   */
+  onBreadcrumbs?: (crumbs: FolderCrumb[]) => void;
 }
 
 /**
@@ -192,6 +209,8 @@ export function FolderBrowser({
   boundaryLabel,
   defaultView = VIEW_FOLDERS,
   viewParam = "view",
+  showTrail = true,
+  onBreadcrumbs,
 }: Props) {
   const { folder, sort } = nav;
 
@@ -261,6 +280,18 @@ export function FolderBrowser({
   const boundaryIndex =
     boundary === null ? 0 : allCrumbs.findIndex((c) => c.id === boundary);
   const crumbs = boundaryIndex > 0 ? allCrumbs.slice(boundaryIndex) : allCrumbs;
+
+  // Handed to `onBreadcrumbs` whenever the trail changes — `BrowsePage`'s
+  // `PageBar` reads it there rather than fetching the same folder a second
+  // time. An effect, not a call in the render body: the parent's `setState`
+  // during this component's own render is what React warns about.
+  useEffect(() => {
+    onBreadcrumbs?.(crumbs);
+    // `crumbs` is a fresh array every render (`allCrumbs.slice`/the `?? []`
+    // fallback), so the dependency is its JSON shape rather than its identity
+    // — otherwise this fires on every render whether the trail moved or not.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onBreadcrumbs, JSON.stringify(crumbs)]);
 
   /**
    * `prefix` is `null` until the listing lands, and it is not `""` — `""` is the
@@ -538,7 +569,8 @@ export function FolderBrowser({
       }`}
     >
       {/*
-        Two rows, not one.
+        Two rows, not one — where this file lists both, and only on the
+        standalone route.
 
         These are two different kinds of control and they used to share a line:
         where you are (back, breadcrumbs) and what you can do here (sort, copy the
@@ -546,58 +578,66 @@ export function FolderBrowser({
         the width and the buttons wrapped underneath them anyway — in whatever
         order the flex run happened to break — so a folder deep in a project
         opened onto a bar that looked different from the one at the root.
-      */}
-      <div className="flex min-w-0 items-center gap-2">
-        {/*
-          Up one folder, not browser-back.
-          They are different journeys and both are wanted: back retraces how you
-          got here, which after a shared link is nowhere. This goes *up the tree*,
-          which is where "back" means to someone reading a folder they were linked
-          into — and it stops at the browser's boundary, so a character's Files
-          tab cannot climb out of the character.
-        */}
-        <Button
-          intent="secondary"
-          size="sm"
-          disabled={atRoot}
-          aria-label="Up one folder"
-          onClick={() => goToFolder(parentId)}
-        >
-          <span aria-hidden="true">←</span> Back
-        </Button>
 
-        {/* Breadcrumbs.Root carries `w-full` of its own, so it needs a shrinking
-            flex parent or it claims the row and wraps what follows beneath it. */}
-        <div className="min-w-0 flex-1">
-          <Breadcrumbs.Root>
-            {crumbs.map((crumb, index, all) => (
-              <Breadcrumbs.Item
-                key={crumb.id}
-                current={index === all.length - 1}
-                href="#"
-                onClick={(event: React.MouseEvent) => {
-                  event.preventDefault();
-                  // The boundary crumb is the browser's own root, and inside a
-                  // Files tab that is not the library root — so it is navigated
-                  // to by id rather than by the `null` the standalone browser
-                  // uses for the top.
-                  goToFolder(
-                    index === 0 && boundary === null ? null : crumb.id,
-                  );
-                }}
-              >
-                {/* See `boundaryLabel`: the entity's name in place of the id
-                    its root folder is stored under. Only the first crumb, and
-                    only inside a scoped browser — the standalone one's first
-                    crumb is `/`. */}
-                {index === 0 && boundary !== null && boundaryLabel
-                  ? boundaryLabel
-                  : crumb.name}
-              </Breadcrumbs.Item>
-            ))}
-          </Breadcrumbs.Root>
+        **`showTrail` is what `/f` turns off.** `BrowsePage` draws a `PageBar`
+        above this now — the ancestry as crumbs, the current folder as the
+        title — and this row said exactly that a second time underneath it,
+        one rule down. A Files tab has no address of its own to hang a
+        `PageBar` on, so it keeps drawing this trail as its only one.
+      */}
+      {showTrail && (
+        <div className="flex min-w-0 items-center gap-2">
+          {/*
+            Up one folder, not browser-back.
+            They are different journeys and both are wanted: back retraces how you
+            got here, which after a shared link is nowhere. This goes *up the tree*,
+            which is where "back" means to someone reading a folder they were linked
+            into — and it stops at the browser's boundary, so a character's Files
+            tab cannot climb out of the character.
+          */}
+          <Button
+            intent="secondary"
+            size="sm"
+            disabled={atRoot}
+            aria-label="Up one folder"
+            onClick={() => goToFolder(parentId)}
+          >
+            <span aria-hidden="true">←</span> Back
+          </Button>
+
+          {/* Breadcrumbs.Root carries `w-full` of its own, so it needs a shrinking
+              flex parent or it claims the row and wraps what follows beneath it. */}
+          <div className="min-w-0 flex-1">
+            <Breadcrumbs.Root>
+              {crumbs.map((crumb, index, all) => (
+                <Breadcrumbs.Item
+                  key={crumb.id}
+                  current={index === all.length - 1}
+                  href="#"
+                  onClick={(event: React.MouseEvent) => {
+                    event.preventDefault();
+                    // The boundary crumb is the browser's own root, and inside a
+                    // Files tab that is not the library root — so it is navigated
+                    // to by id rather than by the `null` the standalone browser
+                    // uses for the top.
+                    goToFolder(
+                      index === 0 && boundary === null ? null : crumb.id,
+                    );
+                  }}
+                >
+                  {/* See `boundaryLabel`: the entity's name in place of the id
+                      its root folder is stored under. Only the first crumb, and
+                      only inside a scoped browser — the standalone one's first
+                      crumb is `/`. */}
+                  {index === 0 && boundary !== null && boundaryLabel
+                    ? boundaryLabel
+                    : crumb.name}
+                </Breadcrumbs.Item>
+              ))}
+            </Breadcrumbs.Root>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2 border-t border-line py-2">
         {/*

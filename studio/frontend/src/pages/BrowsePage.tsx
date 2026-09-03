@@ -1,13 +1,15 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import {
   FolderBrowser,
   type BrowserNav,
 } from "../components/browse/FolderBrowser";
+import { PageBar, type Crumb } from "../components/layout/PageBar";
 import {
   DEFAULT_SORT,
   isSortOrder,
+  type Crumb as FolderCrumb,
   type FileEntry,
   type SortOrder,
 } from "../types";
@@ -32,11 +34,19 @@ import {
  * rendered this browser with the file open over it, which is why opening a run
  * output landed you in the file tree. Opening a file is a navigation to
  * `ViewerPage` now, and this page's job stops at the folder.
+ *
+ * **A `PageBar` now sits above it, and `FolderBrowser`'s own trail does not.**
+ * The route names a folder, so the page frame every other screen carries — the
+ * ancestry as crumbs, the current folder as the title — belongs here too. The
+ * ancestry itself is `FolderBrowser`'s own `getFolder` answer, handed up
+ * through `onBreadcrumbs` rather than fetched a second time for the page bar
+ * to draw.
  */
 export function BrowsePage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+  const [trail, setTrail] = useState<FolderCrumb[]>([]);
 
   const folder = useMemo(() => {
     const target = targetFromPath(location.pathname);
@@ -102,7 +112,23 @@ export function BrowsePage() {
     [folder, goToFolder, navigate, sort, setSort],
   );
 
-  return <FolderBrowser nav={nav} />;
+  // The first crumb is always the library root, and it is stored under `/`
+  // rather than under a name worth showing — `FolderBrowser`'s own trail
+  // spells that the same way for the standalone browser. Every level after it
+  // reads its stored name; the last one is the title rather than a crumb, so
+  // the current folder is never listed as a step to itself.
+  const crumbs: Crumb[] = trail.slice(0, -1).map((crumb, index) => ({
+    label: index === 0 ? "Files" : crumb.name,
+    to: index === 0 ? folderPath(null) : folderPath(crumb.id),
+  }));
+  const title = trail.length <= 1 ? "Files" : (trail.at(-1)?.name ?? "Files");
+
+  return (
+    <>
+      <PageBar crumbs={crumbs} title={title} />
+      <FolderBrowser nav={nav} showTrail={false} onBreadcrumbs={setTrail} />
+    </>
+  );
 }
 
 /**

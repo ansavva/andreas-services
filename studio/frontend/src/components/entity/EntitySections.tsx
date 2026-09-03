@@ -31,17 +31,17 @@ import { CreateEntityDialog } from "./CreateEntityDialog";
 /**
  * Nothing here yet, and the way to change that.
  *
- * **The button appears only when the heading has none.** Both were shown at
- * first and an empty list drew "New project" twice, a handspan apart — the
- * section's own action and the empty state's call to action, which are the same
- * control. Home passes no action, so its empty state carries the button; the
- * index pages put it in the heading, where it stays once the list fills up.
+ * **The button appears only when nothing else on the page already offers it.**
+ * Home shows both sections with no page-level create control, so their empty
+ * states carry the button. `/characters` and `/projects` have one now — the
+ * page's own `PageBar primary` — and passing it a second time here would draw
+ * "New project" twice, a handspan apart.
  */
-function Empty({ kind, hasAction }: { kind: "character" | "project"; hasAction: boolean }) {
+function Empty({ kind, hasPrimary }: { kind: "character" | "project"; hasPrimary: boolean }) {
   return (
     <EmptyState
       title={`No ${kind}s yet.`}
-      action={hasAction ? undefined : <CreateEntityDialog kind={kind} />}
+      action={hasPrimary ? undefined : <CreateEntityDialog kind={kind} />}
     />
   );
 }
@@ -55,7 +55,6 @@ function Section({
   errorTitle,
   onRetry,
   empty,
-  action,
   children,
 }: {
   title: string;
@@ -65,7 +64,6 @@ function Section({
   errorTitle: string;
   onRetry: () => void;
   empty: ReactNode;
-  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -73,14 +71,13 @@ function Section({
       {/* A hairline under the heading, the same rule `PageBar` draws under a
           page title. It is what makes a column of sections read as one ruled
           page rather than as headings floating over grids. */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2">
+      <div className="border-b border-line pb-2">
         <Text variant="title">
           {title}{" "}
           {count !== undefined && (
             <span className="font-mono text-sm text-muted tabular-nums">({count})</span>
           )}
         </Text>
-        {action}
       </div>
 
       {loading && <SectionLoading label={`Loading ${title.toLowerCase()}`} />}
@@ -92,7 +89,7 @@ function Section({
   );
 }
 
-export function CharactersSection({ action }: { action?: ReactNode }) {
+export function CharactersSection({ hasPrimary = false }: { hasPrimary?: boolean }) {
   const { data, loading, error, reload } = useResource(
     ["characters"],
     useCallback(() => getCharacters(), []),
@@ -106,8 +103,7 @@ export function CharactersSection({ action }: { action?: ReactNode }) {
       error={error}
       errorTitle="Could not load characters"
       onRetry={reload}
-      action={action}
-      empty={<Empty kind="character" hasAction={action !== undefined} />}
+      empty={<Empty kind="character" hasPrimary={hasPrimary} />}
     >
       <div className={ENTITY_GRID}>
         {(data ?? []).map((character) => (
@@ -124,7 +120,7 @@ export function CharactersSection({ action }: { action?: ReactNode }) {
   );
 }
 
-export function ProjectsSection({ action }: { action?: ReactNode }) {
+export function ProjectsSection({ hasPrimary = false }: { hasPrimary?: boolean }) {
   const { data, loading, error, reload } = useResource(
     ["projects"],
     useCallback(() => getProjects(), []),
@@ -138,8 +134,7 @@ export function ProjectsSection({ action }: { action?: ReactNode }) {
       error={error}
       errorTitle="Could not load projects"
       onRetry={reload}
-      action={action}
-      empty={<Empty kind="project" hasAction={action !== undefined} />}
+      empty={<Empty kind="project" hasPrimary={hasPrimary} />}
     >
       <div className={ENTITY_GRID}>
         {(data ?? []).map((project) => (

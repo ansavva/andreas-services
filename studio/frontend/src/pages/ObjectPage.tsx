@@ -6,7 +6,14 @@ import { Drawer, Button } from "@ansavva/design-system";
 import { EmptyState } from "../components/common/EmptyState";
 import { LoadError } from "../components/common/LoadError";
 import { PageLoading } from "../components/common/PageLoading";
-import { deleteNodes, describeNode, renameNode } from "../apis/studio";
+import {
+  deleteNodes,
+  describeNode,
+  getCharacter,
+  getNode,
+  getScene,
+  renameNode,
+} from "../apis/studio";
 import type { Crumb } from "../components/layout/PageBar";
 import { MediaPlayer, type MediaPlayerControls } from "../components/media/MediaPlayer";
 import { TextPage } from "../components/text/TextPage";
@@ -16,8 +23,10 @@ import { ObjectActions } from "../components/viewer/ObjectActions";
 import { ObjectDetails, ObjectHeader } from "../components/viewer/ObjectHeader";
 import { OwnerLink } from "../components/viewer/OwnerLink";
 import { useKeyboardNav } from "../hooks/useKeyboardNav";
+import { useResource } from "../hooks/useResource";
 import { useViewerFeed } from "../hooks/useViewerFeed";
 import { DEFAULT_SORT, isSortOrder, type FileEntry, type SortOrder } from "../types";
+import type { ViewerSource } from "../utils/location";
 import {
   HOME_PATH,
   characterPath,
@@ -65,6 +74,7 @@ export function ObjectPage() {
   const sort: SortOrder = isSortOrder(sortParam) ? sortParam : DEFAULT_SORT;
 
   const feed = useViewerFeed(source, nodeId, sort);
+  const crumbs = useSourceCrumbs(source);
 
   /**
    * The player's own container and controls, held in state rather than in refs.
@@ -289,9 +299,7 @@ export function ObjectPage() {
     // Same crumb `ObjectHeader` draws for the media case — `TextPage` grew its
     // own `PageBar` once it stopped being a `fixed inset-0` takeover, and a
     // page inside `AppLayout` needs to say where it sits like every other one.
-    return (
-      <TextPage file={open} onClose={close} onSaved={feed.reload} crumbs={crumbsFor(source)} />
-    );
+    return <TextPage file={open} onClose={close} onSaved={feed.reload} crumbs={crumbs} />;
   }
 
   if (!current) {
@@ -356,7 +364,7 @@ export function ObjectPage() {
       <ObjectHeader
         file={current}
         position={position}
-        crumbs={crumbsFor(source)}
+        crumbs={crumbs}
         onDelete={removeThis}
         editing={editing}
         onToggleEditing={toggleEditing}
@@ -389,19 +397,22 @@ export function ObjectPage() {
             className="h-[min(65dvh,44rem)] border border-line"
             onContainerChange={setStage}
             onControlsChange={setControls}
-            // Edit and delete, and only those two. They have to be reachable
-            // while the player is fullscreen, where the header below is not
-            // painted; everything else on the header is a thing you do with the
-            // page in front of you. Rename used to be the first of the pair and
-            // is now one field inside the second.
+            // **Only while fullscreen.** The page header carries Copy, Edit,
+            // Download and Close now — the same controls this row used to
+            // duplicate over the media on every visit — so drawing it too is
+            // two rows saying the same thing. Fullscreen is the one state
+            // where the header genuinely is not painted, and edit/delete are
+            // the two that still have to be reachable there.
             actions={
-              <ObjectActions
-                file={current}
-                variant="media"
-                onDelete={removeThis}
-                editing={editing}
-                onToggleEditing={toggleEditing}
-              />
+              fullscreen ? (
+                <ObjectActions
+                  file={current}
+                  variant="media"
+                  onDelete={removeThis}
+                  editing={editing}
+                  onToggleEditing={toggleEditing}
+                />
+              ) : undefined
             }
           />
 
@@ -478,22 +489,58 @@ export function ObjectPage() {
 }
 
 /**
- * The one crumb the address can honestly draw.
+ * The one crumb the address can honestly draw — named, not generic.
  *
- * A run is missing on purpose, for the reason `home` gives: `runPath` needs the
- * project id as well and a context carries one id. Home is always valid and the
- * breadcrumb from there is one click.
+ * **This used to say "Folder", "Scene" or "Character" no matter which one it
+ * was**, which told a reader where the KIND of place was and never which
+ * place. The label is the entity's own name now, fetched by the id the
+ * context already carries — `getNode`, `getScene` or `getCharacter`
+ * depending on which source it is, called unconditionally in that order
+ * because hooks cannot be called any other way, and idle (no query, no
+ * request) for whichever two are not the source in hand.
+ *
+ * A run is still missing a crumb of its own, for the reason `home` below
+ * gives: `runPath` needs the project id as well and a context carries one
+ * id. Home is always valid and the breadcrumb from there is one click.
+ *
+ * The library root (`f`/`recursive` with no id) has no node to name — "Files"
+ * is what it is called everywhere else in the app the address bar spells it
+ * out (the header link, `BrowsePage`'s own title) — and a name still loading
+ * falls back to the generic word for what it is, the same way
+ * `useProjectCrumb` shows "Project" until the fetch lands.
  */
-function crumbsFor(source: ReturnType<typeof sourceFromParam>): Crumb[] | undefined {
+function useSourceCrumbs(source: ViewerSource | null): Crumb[] | undefined {
+  const folderId = source && (source.in === "f" || source.in === "recursive") ? source.id : null;
+  const sceneId = source?.in === "scene" ? source.id : null;
+  const characterId = source?.in === "refs" ? source.id : null;
+
+  const folder = useResource(
+    folderId ? ["crumb-folder", folderId] : null,
+    folderId ? () => getNode(folderId) : null,
+  );
+  const scene = useResource(
+    sceneId ? ["crumb-scene", sceneId] : null,
+    sceneId ? () => getScene(sceneId) : null,
+  );
+  const character = useResource(
+    characterId ? ["crumb-character", characterId] : null,
+    characterId ? () => getCharacter(characterId) : null,
+  );
+
   if (!source) return undefined;
   switch (source.in) {
     case "f":
     case "recursive":
-      return [{ label: "Folder", to: folderPath(source.id) }];
+      return [
+        {
+          label: source.id === null ? "Files" : (folder.data?.name ?? "Folder"),
+          to: folderPath(source.id),
+        },
+      ];
     case "scene":
-      return [{ label: "Scene", to: scenePath(source.id) }];
+      return [{ label: scene.data?.name ?? "Scene", to: scenePath(source.id) }];
     case "refs":
-      return [{ label: "Character", to: characterPath(source.id) }];
+      return [{ label: character.data?.name ?? "Character", to: characterPath(source.id) }];
     case "run":
       return [{ label: "Home", to: HOME_PATH }];
   }
