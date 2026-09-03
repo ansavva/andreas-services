@@ -149,7 +149,7 @@ export function DestinationPicker({
           ))}
         </Breadcrumbs.Root>
 
-        <div className="min-h-40 flex-1 overflow-auto rounded-md border border-line">
+        <div className="min-h-40 flex-1 overflow-auto rounded-none border border-line">
           {loading && <SectionLoading label="Loading folders" />}
 
           {!loading && (
@@ -234,6 +234,7 @@ function PickerRow({
   up?: boolean;
 }) {
   return (
+    // eslint-disable-next-line studio/no-hand-rolled-button -- a listing row, same shape as FileRow/FolderCard.
     <button
       type="button"
       onClick={onSelect}

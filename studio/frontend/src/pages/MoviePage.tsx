@@ -83,6 +83,8 @@ export function MoviePage() {
           <Text variant="title" className="border-b border-line pb-2">
             The piece
           </Text>
+          {/* eslint-disable-next-line studio/no-hand-rolled-button -- a media
+              tile, the same button-as-tile shape as MediaTile. */}
           <button
             type="button"
             onClick={() => navigate(objectPath(data.output!.node))}

@@ -157,6 +157,12 @@ export const ArrowUpIcon = ({ className }: Props) => (
   </Glyph>
 );
 
+export const ArrowDownIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M12 5v14m0 0-6-6m6 6 6-6" />
+  </Glyph>
+);
+
 export const ChevronDownIcon = ({ className }: Props) => (
   <Glyph className={className}>
     <path d="m6 9 6 6 6-6" />

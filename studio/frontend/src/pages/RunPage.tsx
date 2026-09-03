@@ -18,7 +18,9 @@ import {
   getRuns,
   reconcileRun,
 } from "../apis/studio";
+import { ChevronDownIcon } from "../components/common/icons";
 import { EmptyState } from "../components/common/EmptyState";
+import { linkButtonClass } from "../components/common/linkButtonClass";
 import { LoadError } from "../components/common/LoadError";
 import { PageLoading } from "../components/common/PageLoading";
 import { SectionLoading } from "../components/common/SectionLoading";
@@ -420,7 +422,7 @@ export function RunPage() {
                       isPromotable(asset) ? (
                         <Button
                           size="sm"
-                          intent={promote.isOpen(asset.node) ? "ghost" : "primary"}
+                          intent={promote.isOpen(asset.node) ? "secondary" : "primary"}
                           aria-expanded={promote.isOpen(asset.node)}
                           onClick={() => promote.toggle(asset.node)}
                         >
@@ -771,7 +773,7 @@ function DuplicateNotice({ run }: { run: RunRecord }) {
         <button
           type="button"
           onClick={() => navigate(runPath(twin.project, twin.id))}
-          className="rounded text-sm text-accent underline underline-offset-2 hover:opacity-80"
+          className={linkButtonClass("accent")}
         >
           Open the earlier run
         </button>
@@ -867,15 +869,18 @@ function PayloadDocument({
 
   return (
     <div className="border-t border-line">
+      {/* eslint-disable-next-line studio/no-hand-rolled-button -- a disclosure
+          row, the same button-as-row shape as FileRow/FolderCard. */}
       <button
         type="button"
         onClick={() => setOpen(!open)}
         className="flex w-full items-center gap-2 py-2 text-left transition-colors hover:text-muted
                    focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
       >
-        <span aria-hidden="true" className="text-muted">
-          {open ? "▾" : "▸"}
-        </span>
+        <ChevronDownIcon
+          className={`size-4 shrink-0 fill-none stroke-current stroke-[1.5] text-muted transition-transform
+                      motion-reduce:transition-none ${open ? "" : "-rotate-90"}`}
+        />
         {/* A file name, so mono — this is the one label on the page that is
             literally a path a person would type. */}
         <Text variant="body" family="mono">

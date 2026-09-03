@@ -189,7 +189,7 @@ export function PageBar({
                   <Dropdown.Trigger
                     aria-label="More actions"
                     title="More actions"
-                    className={iconButtonClass({ size: "sm", className: "rounded-none" })}
+                    className={iconButtonClass({ size: "sm", className: "touch-target rounded-none" })}
                   >
                     <DotsIcon />
                   </Dropdown.Trigger>

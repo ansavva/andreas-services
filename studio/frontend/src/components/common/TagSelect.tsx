@@ -183,7 +183,7 @@ export function TagSelect({ scope, value, onChange, placeholder, manage }: Props
   return (
     <div ref={box} className="relative flex flex-col gap-1.5">
       <div
-        className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border border-line
+        className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-none border border-line
                    bg-card px-2 py-1.5"
         onClick={() => setOpen(true)}
       >
@@ -244,7 +244,7 @@ export function TagSelect({ scope, value, onChange, placeholder, manage }: Props
           role="listbox"
           aria-label="Tags"
           className="absolute top-full z-20 mt-1 flex max-h-72 w-full flex-col gap-1
-                     overflow-auto rounded-md border border-line bg-card p-1 shadow-lg"
+                     overflow-auto rounded-none border border-line bg-card p-1 shadow-lg"
         >
           {offered.length === 0 && !isNew && (
             <EmptyState
@@ -274,7 +274,7 @@ export function TagSelect({ scope, value, onChange, placeholder, manage }: Props
                     role="option"
                     aria-selected={false}
                     onClick={() => add(tag.name)}
-                    className="flex flex-1 items-center justify-between rounded px-2 py-1.5
+                    className="flex flex-1 items-center justify-between rounded-none px-2 py-1.5
                                text-left text-sm hover:bg-surface-alt"
                   >
                     <span>{tag.name}</span>
@@ -292,7 +292,7 @@ export function TagSelect({ scope, value, onChange, placeholder, manage }: Props
                           setRenaming(tag.name);
                           setDraft(tag.name);
                         }}
-                        className="rounded px-1.5 py-1 text-xs text-muted hover:bg-surface-alt"
+                        className="rounded-none px-1.5 py-1 text-xs text-muted hover:bg-surface-alt"
                       >
                         Rename
                       </button>
@@ -301,7 +301,7 @@ export function TagSelect({ scope, value, onChange, placeholder, manage }: Props
                         aria-label={`Delete tag ${tag.name}`}
                         disabled={busy}
                         onClick={() => setDeleting(tag)}
-                        className="rounded px-1.5 py-1 text-xs text-muted hover:bg-surface-alt"
+                        className="rounded-none px-1.5 py-1 text-xs text-muted hover:bg-surface-alt"
                       >
                         Delete
                       </button>
@@ -318,7 +318,7 @@ export function TagSelect({ scope, value, onChange, placeholder, manage }: Props
               role="option"
               aria-selected={false}
               onClick={() => add(query)}
-              className="rounded px-2 py-1.5 text-left text-sm hover:bg-surface-alt"
+              className="rounded-none px-2 py-1.5 text-left text-sm hover:bg-surface-alt"
             >
               Create <Badge size="sm">{exact}</Badge>
             </button>

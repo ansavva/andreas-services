@@ -596,7 +596,7 @@ function ProfileSection({
               <span
                 role="img"
                 aria-label="unsaved changes"
-                className="size-1.5 shrink-0 rounded-full bg-accent"
+                className="size-1.5 shrink-0 rounded-pill bg-accent"
               />
             )}
           </span>
@@ -661,6 +661,7 @@ function RailLink({
   onClick: () => void;
 }) {
   return (
+    // eslint-disable-next-line studio/no-hand-rolled-button -- a nav-rail row (label + a dot); Button has no slot for the dot.
     <button
       type="button"
       onClick={onClick}
@@ -677,7 +678,7 @@ function RailLink({
         <span
           role="img"
           aria-label="unsaved changes"
-          className="size-1.5 shrink-0 rounded-full bg-accent"
+          className="size-1.5 shrink-0 rounded-pill bg-accent"
         />
       )}
     </button>

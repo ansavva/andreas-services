@@ -105,6 +105,7 @@ export function TemplatePicker({ onPick, cast }: Props) {
                 const needs = castNeededBy(entry.prompt);
                 const short = needs > cast;
                 return (
+                  // eslint-disable-next-line studio/no-hand-rolled-button -- a listing row, same shape as FileRow/FolderCard.
                   <button
                     key={entry.id}
                     type="button"

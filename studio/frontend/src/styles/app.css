@@ -124,6 +124,22 @@
   --color-accent-hover: color-mix(in srgb, var(--color-accent) 88%, black 12%);
   --color-danger-hover: color-mix(in srgb, var(--color-danger) 88%, white 12%);
 
+  /* **The media chrome is its own overlay system, not a second name for the
+     ramp.** `MediaPlayer`, `PlayerTransport`, `ObjectActions` and
+     `CopyKeyButton`'s `chrome`/`tile` tones all paint controls FLOATING OVER
+     a photograph or a clip rather than over a surface this app chose — so
+     `text-ink`/`bg-line` are the wrong roles to reach for even though they
+     currently resolve to the same steps: a re-brand that moved `ink` off
+     white would take the chrome with it, and a control legible on a frame is
+     a different promise than one legible on a panel. These five are that
+     promise, stated once. They happen to equal `bg`/`ink`/`line`/two alpha
+     rungs today; nothing requires them to keep matching. */
+  --color-chrome-ink: var(--color-neutral-12);
+  --color-chrome-muted: var(--color-neutral-a11);
+  --color-chrome-scrim: var(--color-neutral-1);
+  --color-chrome-hover: var(--color-neutral-a5);
+  --color-chrome-active: var(--color-neutral-a6);
+
   /* Near-square, in Replicate's range. The design system's own `sm/md/lg` are
      6/10/16px, which reads as a card system; studio wants hairline-separated
      sections and 2/4/6px does not round the corner off a video frame. Sixty-
@@ -211,6 +227,14 @@
   --color-primary-active: color-mix(in srgb, var(--color-primary) 76%, black 24%);
   --color-accent-hover: color-mix(in srgb, var(--color-accent) 88%, black 12%);
   --color-danger-hover: color-mix(in srgb, var(--color-danger) 88%, white 12%);
+
+  /* See the `@theme static` block above for why these are named separately
+     from `ink`/`line` rather than reused. */
+  --color-chrome-ink: var(--color-neutral-12);
+  --color-chrome-muted: var(--color-neutral-a11);
+  --color-chrome-scrim: var(--color-neutral-1);
+  --color-chrome-hover: var(--color-neutral-a5);
+  --color-chrome-active: var(--color-neutral-a6);
 }
 
 html,

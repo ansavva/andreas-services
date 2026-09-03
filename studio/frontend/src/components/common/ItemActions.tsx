@@ -90,7 +90,7 @@ export function ItemActions({
       <Dropdown.Trigger
         aria-label={`Actions for ${name}`}
         title={`Actions for ${name}`}
-        className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink"
+        className="touch-target shrink-0 rounded-none p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink"
       >
         <DotsIcon />
       </Dropdown.Trigger>

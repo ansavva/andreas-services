@@ -51,7 +51,7 @@ export function Marked({ text }: { text: string }) {
           <span
             key={index}
             data-unfilled={part.text}
-            className="box-decoration-clone rounded border border-dashed border-neutral-8 px-1 py-0.5 text-muted"
+            className="box-decoration-clone rounded-none border border-dashed border-muted px-1 py-0.5 text-muted"
           >
             {part.text}
           </span>
