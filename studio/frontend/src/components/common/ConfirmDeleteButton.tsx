@@ -71,12 +71,16 @@ export function ConfirmDeleteButton({
       <IconButton
         label={label}
         size="sm"
-        // The package's own danger row — the one fill it measured for a glyph.
-        intent={armed || busy ? "danger" : "ghost"}
+        // The package's own danger row while armed — the one fill it measured
+        // for a glyph. Resting, `intent` is left unset rather than spelled
+        // out as `"ghost"`: that is `IconButton`'s own default, and studio's
+        // "never ghost" rule is about `Button`'s labelled weights, not the
+        // bare icon fill every icon-only control in this app already wears.
+        intent={armed || busy ? "danger" : undefined}
         onClick={press}
         {...handlers}
         disabled={disabled || busy}
-        className={`shrink-0 ${armed || busy ? "" : "text-muted hover:text-danger"} ${className}`}
+        className={`touch-target shrink-0 ${armed || busy ? "" : "text-muted hover:text-danger"} ${className}`}
       >
         {announcement}
         {/* A question mark while armed: the icon itself has to say that this

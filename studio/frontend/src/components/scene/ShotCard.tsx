@@ -240,10 +240,10 @@ export function ShotCard({
                 {(shot.panels ?? []).length === 0 &&
                   !shot.clip &&
                   !shot.opens_on?.node && (
-                    <Text variant="caption" tone="muted">
-                      No panels — this shot renders from the previous
-                      shot&apos;s last frame.
-                    </Text>
+                    <EmptyState
+                      title="No panels."
+                      hint="This shot renders from the previous shot's last frame."
+                    />
                   )}
 
                 <Sends

@@ -56,6 +56,7 @@ function Section({
   onRetry,
   empty,
   children,
+  heading = true,
 }: {
   title: string;
   count?: number;
@@ -65,20 +66,27 @@ function Section({
   onRetry: () => void;
   empty: ReactNode;
   children: ReactNode;
+  /**
+   * Off on `/characters` and `/projects`, whose `PageBar` already carries
+   * this title — `HomePage` stacks three sections and keeps its own.
+   */
+  heading?: boolean;
 }) {
   return (
     <section className="flex flex-col gap-3">
       {/* A hairline under the heading, the same rule `PageBar` draws under a
           page title. It is what makes a column of sections read as one ruled
           page rather than as headings floating over grids. */}
-      <div className="border-b border-line pb-2">
-        <Text variant="title">
-          {title}{" "}
-          {count !== undefined && (
-            <span className="font-mono text-sm text-muted tabular-nums">({count})</span>
-          )}
-        </Text>
-      </div>
+      {heading && (
+        <div className="border-b border-line pb-2">
+          <Text variant="title">
+            {title}{" "}
+            {count !== undefined && (
+              <span className="font-mono text-sm text-muted tabular-nums">({count})</span>
+            )}
+          </Text>
+        </div>
+      )}
 
       {loading && <SectionLoading label={`Loading ${title.toLowerCase()}`} />}
       {error && <LoadError what={errorTitle.replace("Could not load ", "")} message={error} onRetry={onRetry} />}
@@ -89,7 +97,12 @@ function Section({
   );
 }
 
-export function CharactersSection({ hasPrimary = false }: { hasPrimary?: boolean }) {
+interface SectionProps {
+  hasPrimary?: boolean;
+  heading?: boolean;
+}
+
+export function CharactersSection({ hasPrimary = false, heading }: SectionProps) {
   const { data, loading, error, reload } = useResource(
     ["characters"],
     useCallback(() => getCharacters(), []),
@@ -104,6 +117,7 @@ export function CharactersSection({ hasPrimary = false }: { hasPrimary?: boolean
       errorTitle="Could not load characters"
       onRetry={reload}
       empty={<Empty kind="character" hasPrimary={hasPrimary} />}
+      heading={heading}
     >
       <div className={ENTITY_GRID}>
         {(data ?? []).map((character) => (
@@ -120,7 +134,7 @@ export function CharactersSection({ hasPrimary = false }: { hasPrimary?: boolean
   );
 }
 
-export function ProjectsSection({ hasPrimary = false }: { hasPrimary?: boolean }) {
+export function ProjectsSection({ hasPrimary = false, heading }: SectionProps) {
   const { data, loading, error, reload } = useResource(
     ["projects"],
     useCallback(() => getProjects(), []),
@@ -135,6 +149,7 @@ export function ProjectsSection({ hasPrimary = false }: { hasPrimary?: boolean }
       errorTitle="Could not load projects"
       onRetry={reload}
       empty={<Empty kind="project" hasPrimary={hasPrimary} />}
+      heading={heading}
     >
       <div className={ENTITY_GRID}>
         {(data ?? []).map((project) => (

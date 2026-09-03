@@ -960,6 +960,43 @@ that breaks every time the pipeline ships.
 - Lambda uses `lifecycle { ignore_changes = [image_uri, environment] }`; the
   deploy workflow owns the image tag and the env vars.
 
+### UI vocabulary
+
+A fixed set of primitives, not freehand markup, is what a screen is built
+from: `PageBar` (title, meta, actions, a `⋯` menu) and `FormBar` (a form's
+save/cancel row); `EmptyState` and `LoadError` for the two ways a listing has
+nothing to show; `PageLoading`/`SectionLoading` for the two loading weights;
+`EntityRow`/`EntityCard`/`MediaTile` for a listing item; `FilterBar` for the
+tag/search strip above one; `Chip`/`chipClass` for the square, bordered
+toggle; `ConfirmDeleteButton`/`ConfirmDestroyDialog` for destructive actions,
+weighted by what is lost — one entity arms in place, anything with children
+types its name; `useArmed`, the arm/disarm machine both of those (and
+`ArmedButton`, `ItemActions`) run on; `dangerButtonClass`, the one recipe for
+a text button that destroys; and toasts (`useToast`) for feedback that is not
+a page's own error state.
+
+Nine rules keep every screen speaking that vocabulary, #589-#596:
+
+1. **Square corners** — `rounded-none`; `rounded-pill` stays a shape, not a corner.
+2. **No ghost intent** — `secondary` is `Button`'s quiet weight.
+3. **Semantic colour only** — no raw `neutral-*` ramp class outside the
+   `chrome-*` tokens `styles/app.css` defines for media overlays.
+4. **No hand-rolled controls** — `Button`/`IconButton`/`buttonClass`, not a
+   `<button className="…border…hover:…">`.
+5. **No literal glyph characters** — icons are SVGs from `components/common/icons.tsx`.
+6. **Every spinner says what it is loading** — `ApertureSpinner` takes a `label`.
+7. **Empty-state prose lives in `EmptyState`** — nothing else says "No … yet."
+8. **One shape for a failure title** — "Could not ‹verb› ‹noun›", never "That
+   did not…"/"Nothing was…".
+9. **The lint rules are what keep the other eight true, not memory.** This
+   directory's `eslint/` (a local plugin, no dependency added) enforces 1, 3
+   and 5 by walking every class-bearing expression — a JSX `className`, a
+   template literal, a hoisted constant, or an argument to
+   `buttonClass`/`chipClass`/`clsx`/`twMerge` all resolve to the same check —
+   and 4 the same way over `<button>` elements outside `components/common/`;
+   2, 6, 7 and 8 are `no-restricted-syntax` selectors in `eslint.config.js`.
+   `npm run lint` is what a PR runs.
+
 ## API
 
 Every route is behind the Cognito authorizer except `GET /api/health`.

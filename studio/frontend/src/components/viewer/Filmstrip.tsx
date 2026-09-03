@@ -88,6 +88,7 @@ export function Filmstrip({
       <IconButton
         label="Previous (←)"
         size="sm"
+        className="touch-target"
         disabled={!onPrev}
         onClick={() => onPrev?.()}
       >
@@ -108,6 +109,7 @@ export function Filmstrip({
         {items.map((item) => {
           const current = item.id === currentId;
           return (
+            // eslint-disable-next-line studio/no-hand-rolled-button -- a media tile, the same shape as MediaTile.
             <button
               key={item.id}
               type="button"
@@ -156,6 +158,7 @@ export function Filmstrip({
       <IconButton
         label="Next (→)"
         size="sm"
+        className="touch-target"
         disabled={!onNext}
         onClick={() => onNext?.()}
       >

@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
 
-import { Text } from "@ansavva/design-system";
+import { Badge, Text } from "@ansavva/design-system";
 
 import { useArmed } from "../../hooks/useArmed";
+import { EmptyState } from "../common/EmptyState";
 import { PageBar, type Crumb } from "../layout/PageBar";
 import type { FileEntry } from "../../types";
 import { formatBytes, formatDate } from "../../utils/format";
@@ -132,22 +133,15 @@ export function ObjectDetails({ file, aside }: DetailsProps) {
       {file.description ? (
         <Text variant="body">{file.description}</Text>
       ) : (
-        <Text variant="caption" tone="muted">
-          No description yet.
-        </Text>
+        <EmptyState title="No description yet." />
       )}
 
       {tags.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {tags.map((tag) => (
-            <Text
-              key={tag}
-              variant="caption"
-              family="mono"
-              className="rounded-xs bg-neutral-a3 px-1.5 py-0.5"
-            >
+            <Badge key={tag} intent="neutral" size="sm" className="font-mono">
               {tag}
-            </Text>
+            </Badge>
           ))}
         </div>
       )}

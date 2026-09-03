@@ -161,6 +161,7 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
           {!loading && (
             <div className="flex flex-col">
               {parent !== undefined && (
+                // eslint-disable-next-line studio/no-hand-rolled-button -- a listing row, same shape as FileRow/FolderCard.
                 <button
                   type="button"
                   onClick={() => setFolderId(parent)}
@@ -174,6 +175,7 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
               )}
 
               {folders.map((folder) => (
+                // eslint-disable-next-line studio/no-hand-rolled-button -- a listing row, same shape as FileRow/FolderCard.
                 <button
                   key={folder.id}
                   type="button"
@@ -272,6 +274,7 @@ function Tile({
   const chosen = position >= 0;
 
   return (
+    // eslint-disable-next-line studio/no-hand-rolled-button -- a media tile, same shape as MediaTile.
     <button
       type="button"
       onClick={onToggle}

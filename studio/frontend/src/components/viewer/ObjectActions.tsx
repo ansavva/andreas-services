@@ -5,9 +5,7 @@ import type { FileEntry } from "../../types";
 import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { CopyKeyButton } from "../common/CopyKeyButton";
 import { CloseIcon, DownloadIcon, PencilIcon } from "../common/icons";
-
-/** The chrome buttons all wear the same fill over a media frame — `MediaPlayer`'s. */
-const CHROME_BUTTON = "text-neutral-12 hover:bg-neutral-a5 active:bg-neutral-a6";
+import { CHROME_BUTTON } from "../media/chromeButton";
 
 interface Props {
   file: FileEntry;

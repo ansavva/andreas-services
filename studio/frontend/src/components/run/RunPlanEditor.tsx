@@ -52,7 +52,7 @@ import {
   fieldsOf,
   parsePrompt,
 } from "../scene/motionPrompt";
-import { TrashIcon } from "../common/icons";
+import { ArrowDownIcon, ArrowUpIcon, TrashIcon } from "../common/icons";
 import { MediaPicker } from "../browse/MediaPicker";
 import { MediaThumb } from "../media/MediaThumb";
 import { SchemaParams, describedKeys } from "./SchemaParams";
@@ -1188,7 +1188,7 @@ function Sends({
                   disabled={index === 0}
                   onClick={() => onMove(index, -1)}
                 >
-                  ↑
+                  <ArrowUpIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
                 </Button>
                 <Button
                   intent="secondary"
@@ -1197,7 +1197,7 @@ function Sends({
                   disabled={index === rows.length - 1}
                   onClick={() => onMove(index, 1)}
                 >
-                  ↓
+                  <ArrowDownIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
                 </Button>
                 <Button
                   intent="secondary"
