@@ -216,7 +216,7 @@ export function TextPage({ file, onClose, onSaved }: Props) {
 
         {confirmDiscard ? (
           <Button size="sm" onClick={onClose}>
-            Discard changes
+            Leave without saving
           </Button>
         ) : (
           <Button intent="secondary" size="sm" onClick={close} aria-label="Close (Esc)">
@@ -228,7 +228,7 @@ export function TextPage({ file, onClose, onSaved }: Props) {
       {confirmDiscard && (
         <div className="border-b border-line px-4 py-2">
           <Text variant="caption" tone="muted">
-            You have unsaved changes. Press Discard changes to leave, or Save to keep them.
+            You have unsaved changes. Save to keep them, or leave without saving.
           </Text>
         </div>
       )}

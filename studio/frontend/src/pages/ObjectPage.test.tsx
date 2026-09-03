@@ -226,7 +226,7 @@ describe("editing the file's own fields", () => {
     );
 
     // And the way out is offered rather than taken.
-    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    fireEvent.click(screen.getByRole("button", { name: "Leave without saving" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 

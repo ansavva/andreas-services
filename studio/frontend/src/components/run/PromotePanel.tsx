@@ -423,14 +423,14 @@ export function PromotePanel({
             <span className="flex flex-col gap-2">
               <span>What you have filled in here would be lost.</span>
               <span className="flex flex-wrap gap-2">
-                <Button intent="secondary" onClick={onKeepEditing}>
+                <Button intent="secondary" size="sm" onClick={onKeepEditing}>
                   Keep editing
                 </Button>
                 {/* No `danger` intent exists — the package ships three
                     weights and says so. The Alert around it is what carries
                     the warning; this is just the choice inside it. */}
-                <Button intent="secondary" onClick={onDiscard}>
-                  Discard
+                <Button intent="secondary" size="sm" onClick={onDiscard}>
+                  Leave without saving
                 </Button>
               </span>
             </span>

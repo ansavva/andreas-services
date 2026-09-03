@@ -1,12 +1,13 @@
 import { useCallback, useState } from "react";
 
-import { Alert, Button, Field, Input, Text } from "@ansavva/design-system";
+import { Alert, Field, Input, Text } from "@ansavva/design-system";
 
 import { ApiError } from "../../apis/client";
 import { getCharacters, patchProject, setProjectCharacters } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
 import type { ProjectRecord } from "../../types";
 import { AutoTextarea } from "../common/AutoTextarea";
+import { FormBar } from "../common/FormBar";
 
 interface Props {
   record: ProjectRecord;
@@ -78,13 +79,6 @@ export function ProjectDetails({ record, onSaved }: Props) {
           <Alert.Description>{conflict}</Alert.Description>
         </Alert.Root>
       )}
-      {error && (
-        <Alert.Root intent="danger">
-          <Alert.Title>Could not save</Alert.Title>
-          <Alert.Description>{error}</Alert.Description>
-        </Alert.Root>
-      )}
-
       <Field.Root name="name">
         <Field.Label>Name</Field.Label>
         <Input value={name} onValueChange={setName} placeholder={record.name} />
@@ -100,26 +94,17 @@ export function ProjectDetails({ record, onSaved }: Props) {
         />
       </Field.Root>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" disabled={!dirty || busy} onClick={() => void save()}>
-          {busy ? "Saving…" : dirty ? "Save" : "Saved"}
-        </Button>
-        {dirty && (
-          <Button
-            intent="secondary"
-            size="sm"
-            onClick={() => {
-              setName(record.name ?? "");
-              setDescription(record.description ?? "");
-            }}
-          >
-            Revert
-          </Button>
-        )}
-        <Text variant="caption" tone="muted">
-          revision {record.rev}
-        </Text>
-      </div>
+      <FormBar
+        dirty={dirty}
+        saving={busy}
+        onSave={() => void save()}
+        onRevert={() => {
+          setName(record.name ?? "");
+          setDescription(record.description ?? "");
+        }}
+        meta={`revision ${record.rev}`}
+        error={error}
+      />
 
       <Involvement record={record} onSaved={onSaved} />
     </div>
