@@ -10,7 +10,14 @@ import type { RunRecord } from "../../types";
 import { runPath } from "../../utils/location";
 
 /**
- * Run this again — a fresh attempt at the same payload, without leaving the page.
+ * The two things a finished run can still do, and the one failure both share.
+ *
+ * **Extracted so `RunPage` can place the pieces separately.** They used to be
+ * one component drawn as a pair — the cheap `Duplicate` beside the money
+ * `Run again` — because both live on the run screen and both start with the
+ * same `createRun`. The page bar splits them now: `Run again` is the page's
+ * `primary`, `Duplicate` is a line in its `⋯` menu, and this hook is what lets
+ * them still share one `failure` message rather than each carrying its own.
  *
  * **A run cannot be re-submitted, and that is not a gap being worked around.** A
  * run row records one submission: its request, its response, its outputs and the
@@ -31,20 +38,10 @@ import { runPath } from "../../utils/location";
  * reading a payload and saying yes to it, which is what a second press on a
  * button that has just told you it spends is.
  */
-export function RunAgainButton({ run }: { run: RunRecord }) {
+export function useRunAgain(run: RunRecord) {
   const navigate = useNavigate();
   const [failure, setFailure] = useState<string | null>(null);
 
-  /**
-   * **Navigates on a partial failure too, and that is the safe direction.**
-   *
-   * Create is the only step whose failure leaves nothing behind — there is no
-   * new run, so this stays put and says why. Once the draft exists it is the
-   * thing to look at whatever happened next: approve or submit failing lands a
-   * person on a normal unsubmitted run, in front of `RunBar`, which is the
-   * recovery path for exactly this and states the refusal in its own words when
-   * they press it. Nothing has been billed unless submit returned.
-   */
   /**
    * **Clone into a draft, and stop there.** Nothing is approved and nothing is
    * sent, so this spends nothing.
@@ -69,6 +66,16 @@ export function RunAgainButton({ run }: { run: RunRecord }) {
     }
   }, [navigate, run]);
 
+  /**
+   * **Navigates on a partial failure too, and that is the safe direction.**
+   *
+   * Create is the only step whose failure leaves nothing behind — there is no
+   * new run, so this stays put and says why. Once the draft exists it is the
+   * thing to look at whatever happened next: approve or submit failing lands a
+   * person on a normal unsubmitted run, in front of `RunBar`, which is the
+   * recovery path for exactly this and states the refusal in its own words when
+   * they press it. Nothing has been billed unless submit returned.
+   */
   const fire = useCallback(async () => {
     setFailure(null);
     let created;
@@ -87,6 +94,18 @@ export function RunAgainButton({ run }: { run: RunRecord }) {
     }
     navigate(runPath(run.project, created.id));
   }, [navigate, run]);
+
+  return { duplicate, fire, failure };
+}
+
+/**
+ * `useRunAgain`'s two controls, drawn together — the shape a caller wants when
+ * nothing else is competing for the row. `RunPage` no longer renders this
+ * directly (its page bar wants the pieces apart), but it stays the composed
+ * form for anywhere else a run screen offers both at once.
+ */
+export function RunAgainButton({ run }: { run: RunRecord }) {
+  const { duplicate, fire, failure } = useRunAgain(run);
 
   return (
     // No frame: a bordered card around one button is chrome for its own sake.

@@ -148,6 +148,14 @@ export function TextPage({ file, onClose, onSaved, crumbs }: Props) {
     <>
       <PageBar
         crumbs={crumbs}
+        title={file.name}
+        meta={
+          // The name path — the thing `CopyKeyButton` beside it copies, and
+          // the thing a `studio` command is handed.
+          <Text variant="caption" tone="muted" className="min-w-0 truncate font-mono">
+            {file.key}
+          </Text>
+        }
         actions={
           <>
             {data && (
@@ -214,16 +222,7 @@ export function TextPage({ file, onClose, onSaved, crumbs }: Props) {
             )}
           </>
         }
-      >
-        <Text variant="display" className="min-w-0 truncate">
-          {file.name}
-        </Text>
-        {/* The name path — the thing `CopyKeyButton` beside it copies, and
-            the thing a `studio` command is handed. */}
-        <Text variant="caption" tone="muted" className="min-w-0 truncate font-mono">
-          {file.key}
-        </Text>
-      </PageBar>
+      />
 
       {confirmDiscard && (
         <Text variant="caption" tone="muted">

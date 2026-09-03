@@ -6,8 +6,9 @@ import { Alert, Badge, Button, Text } from "@ansavva/design-system";
 import { EmptyState } from "../components/common/EmptyState";
 import { LoadError } from "../components/common/LoadError";
 import { PageLoading } from "../components/common/PageLoading";
-import { getScene, patchScene, patchShot } from "../apis/studio";
+import { deleteScene, getScene, patchScene, patchShot } from "../apis/studio";
 import { AutoTextarea } from "../components/common/AutoTextarea";
+import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog";
 import { PageBar } from "../components/layout/PageBar";
 import { Backlinks } from "../components/common/Backlinks";
 import { OutputPanel } from "../components/media/OutputPanel";
@@ -17,7 +18,7 @@ import { useResource } from "../hooks/useResource";
 import { useProjectCrumb } from "../hooks/useProjectCrumb";
 import type { RunAsset, Shot } from "../types";
 import { formatDate } from "../utils/format";
-import { moviePath, objectPath, runPath } from "../utils/location";
+import { moviePath, objectPath, projectPath, runPath } from "../utils/location";
 
 /**
  * One scene: the plan, the shots, and the take they were stitched into.
@@ -64,6 +65,8 @@ export function ScenePage() {
    * keeps separately rendered panels agreeing on one room — and the only way to
    * change it was to re-ingest the whole plan from a JSON file.
    */
+  /** The delete dialog, opened from the page bar's menu rather than drawn loose. */
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [editingSetting, setEditingSetting] = useState(false);
   const [settingDraft, setSettingDraft] = useState("");
   const [settingSaving, setSettingSaving] = useState(false);
@@ -123,32 +126,52 @@ export function ScenePage() {
 
   return (
     <>
-      <PageBar crumbs={crumbs}>
-        <Text variant="display">{data.name}</Text>
-        <Badge intent="neutral" className="font-mono">
-          {data.status}
-        </Badge>
-        <Text variant="caption" tone="muted" className="font-mono">
-          {formatDate(data.created)}
-        </Text>
-        {/* **How the scene is built belongs with what it is called.** This sat
-            over the shots as its own ruled row, which made it read as a section
-            heading for them — but `chained`, the shot count and the planned
-            runtime are facts about the SCENE, the same kind of thing as its
-            status and its date, and this is where those already are. */}
-        <Badge intent="neutral" className="font-mono">
-          {isBracketed(data.shots) ? "bracketed" : "chained"}
-        </Badge>
-        <Text variant="caption" tone="muted">
-          {data.shots.length} shot{data.shots.length === 1 ? "" : "s"}
-          {plannedRuntime(data.shots)
-            ? ` · ${plannedRuntime(data.shots)}s planned`
-            : ""}
-          {isBracketed(data.shots)
-            ? " · each shot pinned at both ends"
-            : " · each shot opens on the last frame of the one before"}
-        </Text>
-      </PageBar>
+      <PageBar
+        crumbs={crumbs}
+        title={data.name}
+        meta={
+          <>
+            <Badge intent="neutral" className="font-mono">
+              {data.status}
+            </Badge>
+            {/* **How the scene is built belongs with what it is called.** This
+                sat over the shots as its own ruled row, which made it read as
+                a section heading for them — but `chained`, the shot count and
+                the planned runtime are facts about the SCENE, the same kind
+                of thing as its status and its date, and this is where those
+                already are. */}
+            <Badge intent="neutral" className="font-mono">
+              {isBracketed(data.shots) ? "bracketed" : "chained"}
+            </Badge>
+            <Text variant="caption" tone="muted" className="font-mono">
+              {formatDate(data.created)}
+            </Text>
+            <Text variant="caption" tone="muted" family="mono">
+              {data.shots.length} shot{data.shots.length === 1 ? "" : "s"}
+              {plannedRuntime(data.shots)
+                ? ` · ${plannedRuntime(data.shots)}s planned`
+                : ""}
+              {isBracketed(data.shots)
+                ? " · each shot pinned at both ends"
+                : " · each shot opens on the last frame of the one before"}
+            </Text>
+          </>
+        }
+        menu={[{ label: "Delete", danger: true, onSelect: () => setDeleteOpen(true) }]}
+      />
+
+      <ConfirmDestroyDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        label="Delete"
+        title={`Delete ${data.name}?`}
+        summary="Its shots and its folder go with it. Any movie already cut from it keeps its own copy of the piece."
+        confirmWord={data.name}
+        onConfirm={async () => {
+          await deleteScene(data.id, "delete");
+          navigate(projectPath(data.project));
+        }}
+      />
 
       {/* **The cut leads, at full width.** It IS the scene — every shot below
           is an account of how it was made — so it is not a column beside the

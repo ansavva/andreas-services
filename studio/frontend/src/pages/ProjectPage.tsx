@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { Badge, Tabs, Text } from "@ansavva/design-system";
@@ -53,6 +53,8 @@ export function ProjectPage() {
   const navigate = useNavigate();
 
   const [tab, setTab] = useSearchParamState("tab", "overview");
+  /** The delete dialog, opened from the page bar's menu rather than drawn loose. */
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const load = useCallback(() => getProject(projectId), [projectId]);
   const project = useResource(["project", projectId], load);
 
@@ -76,37 +78,35 @@ export function ProjectPage() {
 
   return (
     <>
-      {/* **The noun spells out the cascade, because the button IS the
-          confirmation.** `ConfirmDeleteButton` arms in place rather than
-          opening a modal — the reasoning is in that file — so the armed label
-          is the only thing standing between a click and 29 runs. It says the
-          count for that reason, and the count comes off the record rather
-          than a second fetch.
+      {/* **Delete lives behind `⋯` now, and the noun still spells out the
+          cascade.** `ConfirmDestroyDialog` types the name because a project
+          takes its runs, scenes and movies with it — the same reasoning as
+          before, opened from the menu instead of drawn loose beside the
+          title.
 
-          The `ms-auto` this used to hang the button off is gone with the bar:
-          it pinned the control to whichever line the flex run broke at, which
-          on a phone moved a destructive button around under the title. */}
+          **`New run` is the page's primary now, not a strip above the Runs
+          tab.** It still opens the same drawer — `NewRunStrip` — because what
+          it makes belongs to the project either way; only the trigger moved,
+          to the one place every other entity's create control lives. */}
       <PageBar
         crumbs={[{ label: "Projects", to: PROJECTS_PATH }]}
-        actions={
-          <ConfirmDestroyDialog
-            label="Delete"
-            title={`Delete ${record.name}?`}
-            summary={deleteSummary(held, counts)}
-            confirmWord={record.name}
-            onConfirm={async () => {
-              await deleteProject(record.id, "delete", held > 0);
-              navigate(PROJECTS_PATH);
-            }}
-          />
-        }
-      >
-        {/* One line, because there is one label. The mono caption under this
-            was the slug — the address a person typed — and it survived the slug
-            removal as `record.name` a second time, so the bar drew the project's
-            name twice. */}
-        <Text variant="display">{record.name}</Text>
-      </PageBar>
+        title={record.name}
+        primary={<NewRunStrip projectId={record.id} characters={record.characters} />}
+        menu={[{ label: "Delete", danger: true, onSelect: () => setDeleteOpen(true) }]}
+      />
+
+      <ConfirmDestroyDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        label="Delete"
+        title={`Delete ${record.name}?`}
+        summary={deleteSummary(held, counts)}
+        confirmWord={record.name}
+        onConfirm={async () => {
+          await deleteProject(record.id, "delete", held > 0);
+          navigate(PROJECTS_PATH);
+        }}
+      />
 
       {/* `defaultValue` as well as `value`, which the package requires even
           when controlled: it seeds `useControllableState`, and Tabs does not
@@ -161,17 +161,15 @@ export function ProjectPage() {
             what it makes is a run in THIS project — and because the page bar's
             one action deletes the project. */}
         <Tabs.Panel value="runs" className="flex flex-col gap-4">
-          {/* **One reading, not a choice of two.** This used to sit beside a
-              Grid view — the file browser scoped to `runs/`, in Media view —
-              and the pair asked "which runs failed" and "what did this project
-              make" to share one control. Those are different questions with
-              different owners: the second is Files' job, one tab over, on
-              exactly the same folder. A run's OUTPUTS live there; a run's own
-              fields — status, model, cost, when — live here. */}
-          <div className="flex justify-end">
-            <NewRunStrip projectId={record.id} characters={record.characters} />
-          </div>
+          {/* **One reading, not a choice of two.** The Grid view — the file
+              browser scoped to `runs/`, in Media view — is gone: "which runs
+              failed" and "what did this project make" are different questions
+              with different owners, and the second is Files' job, one tab
+              over, on exactly the same folder. A run's OUTPUTS live there; a
+              run's own fields — status, model, cost, when — live here.
 
+              `New run` moved to the page bar's primary slot, so there is
+              nothing left to draw above the table at all. */}
           <RunsTable
             projectId={record.id}
             characters={record.characters}

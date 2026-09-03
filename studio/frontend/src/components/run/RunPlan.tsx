@@ -357,6 +357,32 @@ function named(by: string, me: { sub: string | null; email: string | null }): st
 }
 
 /**
+ * Who said yes, and how — for a run that has already gone out.
+ *
+ * **Extracted so it can stand on its own in the page bar body.** `RunBar`'s
+ * own non-draft branch used to be the only place this rendered; now
+ * `RunPage` reaches for it directly whenever a run's `primary` slot holds
+ * `Run again` instead of `RunBar` — the two mean the same run screen, just
+ * with the money button moved out to make room for `Duplicate` in the menu.
+ * Renders nothing for a run with no approval to report.
+ */
+export function ApprovalNote({ run }: { run: RunRecord }) {
+  const me = { sub: getUserSub(), email: getUserEmail() };
+  if (!run.approval) return null;
+  return (
+    <Text variant="caption" tone="muted">
+      {run.approval.by === "backfill"
+        ? "Approved before approvals were recorded — stamped by the backfill at the moment this run was created."
+        : `Approved by ${named(run.approval.by, me)} on ${formatDate(run.approval.at)}.${
+            run.approval.via === "relayed"
+              ? " Relayed — the yes was given elsewhere and passed on by an agent, not entered here."
+              : ""
+          }`}
+    </Text>
+  );
+}
+
+/**
  * Running a draft — **one armed press, and that press is the approval.**
  *
  * This used to be an approve `Dialog`, a Revoke button and a separate Submit,
@@ -399,22 +425,9 @@ export function RunBar({
     }
   }, [onRan, onReload, run.id, run.plan_digest]);
 
-  const me = { sub: getUserSub(), email: getUserEmail() };
-
   if (run.status !== "draft" && run.status !== "approved") {
     // Sent already. What is left to say is who said yes, and how.
-    if (!run.approval) return null;
-    return (
-      <Text variant="caption" tone="muted">
-        {run.approval.by === "backfill"
-          ? "Approved before approvals were recorded — stamped by the backfill at the moment this run was created."
-          : `Approved by ${named(run.approval.by, me)} on ${formatDate(run.approval.at)}.${
-              run.approval.via === "relayed"
-                ? " Relayed — the yes was given elsewhere and passed on by an agent, not entered here."
-                : ""
-            }`}
-      </Text>
-    );
+    return <ApprovalNote run={run} />;
   }
 
   return (

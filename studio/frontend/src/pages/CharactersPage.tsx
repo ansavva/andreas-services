@@ -1,5 +1,6 @@
 import { CreateEntityDialog } from "../components/entity/CreateEntityDialog";
 import { CharactersSection } from "../components/entity/EntitySections";
+import { PageBar } from "../components/layout/PageBar";
 
 /**
  * Every character, and nothing else.
@@ -9,12 +10,14 @@ import { CharactersSection } from "../components/entity/EntitySections";
  * have to scroll past two others to reach is not somewhere you can *go*. The
  * header links here.
  *
- * No `PageBar`: the section's own heading names the screen and the header's
- * active link says where you are, so a breadcrumb here would have one crumb
- * pointing at the page you are standing on.
+ * No crumb: the header's active link already says where you are, and one
+ * crumb pointing at the page you are standing on says nothing.
  */
 export function CharactersPage() {
   return (
-    <CharactersSection action={<CreateEntityDialog kind="character" />} />
+    <>
+      <PageBar title="Characters" primary={<CreateEntityDialog kind="character" />} />
+      <CharactersSection hasPrimary />
+    </>
   );
 }
