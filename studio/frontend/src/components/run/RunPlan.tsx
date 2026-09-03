@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 
 import {
   Alert,
@@ -15,6 +15,7 @@ import { approveRun, submitRun } from "../../apis/studio";
 import type { RunAsset, RunRecord, RunSend } from "../../types";
 import { formatDate, formatTextContent } from "../../utils/format";
 import { getUserEmail, getUserSub } from "../../auth/oauth";
+import { useArmed } from "../../hooks/useArmed";
 
 /**
  * What a run WAS FOR — the half a run page could not show until runs had a plan.
@@ -265,22 +266,20 @@ export function Prompt({ prompt }: { prompt: unknown }) {
   );
 }
 
-const ARMED_MS = 4000;
-
 /**
  * Arm on the first press, act on the second — the confirmation lives in the
  * button, never in a dialog.
  *
- * The mechanics are `ConfirmDeleteButton`'s and are deliberately identical: the
- * same three things disarm it — the timeout, focus leaving, and Escape — so a
+ * The mechanics are `useArmed`'s, shared with `ConfirmDeleteButton`: the same
+ * three things disarm it — the timeout, focus leaving, and Escape — so a
  * half-pressed control is never still live when you come back to it, and it
  * never swallows an Escape meant for something around it.
  *
  * **Not a prop on that button, because everything else about it is the delete.**
  * Its labels all contain the word, its resting face is a trash can and its armed
  * face is a danger fill; a `tone` prop turning all three off would be a second
- * component wearing the first's name. So the arm/disarm shape is shared and the
- * tone is not.
+ * component wearing the first's name. So the arm/disarm machine is shared and
+ * the paint is not.
  *
  * It lives in this file because both callers are the run surface's own money
  * controls — the one-act `RunBar` below, and `RunAgainButton` beside it.
@@ -313,50 +312,8 @@ export function ArmedButton({
   onFire: () => Promise<unknown>;
   disabled?: boolean;
 }) {
-  const [phase, setPhase] = useState<"idle" | "armed" | "busy">("idle");
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Set on unmount so a resolving promise cannot call setState afterwards —
-  // `RunAgainButton` navigates away as the last step of its own sequence.
-  const gone = useRef(false);
-
-  useEffect(() => {
-    gone.current = false;
-    return () => {
-      gone.current = true;
-      if (timer.current) clearTimeout(timer.current);
-    };
-  }, []);
-
-  const disarm = useCallback(() => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
-    setPhase((current) => (current === "armed" ? "idle" : current));
-  }, []);
-
-  const press = useCallback(() => {
-    if (phase === "busy") return;
-
-    if (phase === "idle") {
-      setPhase("armed");
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => {
-        if (!gone.current) setPhase("idle");
-      }, ARMED_MS);
-      return;
-    }
-
-    if (timer.current) clearTimeout(timer.current);
-    setPhase("busy");
-    void onFire()
-      .catch(() => {
-        /* the caller surfaces the message; this only owns the button */
-      })
-      .finally(() => {
-        if (!gone.current) setPhase("idle");
-      });
-  }, [onFire, phase]);
-
-  const label = phase === "busy" ? busy : phase === "armed" ? armed : idle;
+  const state = useArmed({ onFire });
+  const label = state.busy ? busy : state.armed ? armed : idle;
 
   return (
     <Tooltip.Root>
@@ -369,17 +326,9 @@ export function ArmedButton({
           destroys nothing, and dressing it in red would say the wrong one. */}
       <Tooltip.Trigger
         className={buttonClass({ intent: "primary", size: "sm" })}
-        onClick={press}
-        onBlur={disarm}
-        onKeyDown={(event) => {
-          // Only while armed, so the page's own Escape handler is untouched
-          // the rest of the time.
-          if (event.key === "Escape" && phase === "armed") {
-            event.stopPropagation();
-            disarm();
-          }
-        }}
-        disabled={disabled || phase === "busy"}
+        onClick={state.press}
+        {...state.handlers}
+        disabled={disabled || state.busy}
       >
         {label}
       </Tooltip.Trigger>

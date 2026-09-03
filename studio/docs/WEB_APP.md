@@ -531,8 +531,8 @@ that breaks every time the pipeline ships.
   distinction was only ever about which of two buttons you got.
 
   The dialog went with the second press. First press arms and says what the
-  second will do; the second runs. See `ArmedButton`, which `ConfirmDeleteButton`
-  and `RunAgainButton` share the mechanics of.
+  second will do; the second runs. See `useArmed`, the one arm/disarm machine
+  `ArmedButton`, `ConfirmDeleteButton` and `ItemActions` all run on.
 - **A run's outputs can be promoted into a character, inline.** An image output
   carries a `Promote…` control beside it — a **sibling** of `OutputPanel`, never
   inside it, because the panel's caption is a real `<a href>` and its player is
@@ -796,7 +796,7 @@ that breaks every time the pipeline ships.
   its card — but that card is drawn by the folder's *parent*, so the one folder
   with no card on screen was the one you were standing in, and getting rid of it
   meant navigating back out to find it in the grid. `BrowsePage` puts a
-  `ConfirmDeleteButton` (tone `bar`) in the action row, disabled at the root
+  `ConfirmDeleteButton` (tone `icon`) in the action row, disabled at the root
   where the API refuses it anyway — the root node has no `parent_id`, so there
   is no `NAME#` item to delete. Leaving is the one
   navigation between folders that **replaces** rather than pushes: the entry

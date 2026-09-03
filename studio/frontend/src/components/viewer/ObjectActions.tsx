@@ -93,7 +93,7 @@ export function ObjectActions({
           </IconButton>
         )}
         {onDelete && (
-          <ConfirmDeleteButton noun="this file" onConfirm={onDelete} tone="chrome" />
+          <ConfirmDeleteButton noun="this file" onConfirm={onDelete} className={CHROME_BUTTON} />
         )}
       </>
     );

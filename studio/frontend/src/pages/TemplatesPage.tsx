@@ -21,6 +21,7 @@ import {
 } from "../apis/studio";
 import { AutoTextarea } from "../components/common/AutoTextarea";
 import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
+import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog";
 import { FormBar } from "../components/common/FormBar";
 import { EmptyState } from "../components/common/EmptyState";
 import { LoadError } from "../components/common/LoadError";
@@ -337,9 +338,13 @@ function BlockEditor({
     }
   }, [draft, name, setData]);
 
+  // Its own message, not `failed`: that one sits under the save row with the
+  // save's title, and a delete that was refused is not a save that was.
+  const [removeFailed, setRemoveFailed] = useState<string | null>(null);
+
   const remove = useCallback(async () => {
     setSaving(true);
-    setFailed(null);
+    setRemoveFailed(null);
     try {
       await deleteBlock(name);
       setData((current) => {
@@ -349,7 +354,7 @@ function BlockEditor({
         return { ...current, blocks };
       });
     } catch (problem) {
-      setFailed(problem instanceof Error ? problem.message : String(problem));
+      setRemoveFailed(problem instanceof Error ? problem.message : String(problem));
       setSaving(false);
     }
   }, [name, setData]);
@@ -403,6 +408,12 @@ function BlockEditor({
           <Field.Root name={`block-${name}`}>
             <AutoTextarea value={draft} onValueChange={setDraft} className="font-mono" />
           </Field.Root>
+          {removeFailed ? (
+            <Alert.Root intent="danger" onDismiss={() => setRemoveFailed(null)}>
+              <Alert.Title>Could not delete the block</Alert.Title>
+              <Alert.Description>{removeFailed}</Alert.Description>
+            </Alert.Root>
+          ) : null}
           {/* Close is kept off the save row: it shuts the expander, not the
               form. Nothing is lost by closing — the draft lives on this
               component, which stays mounted, until it is saved or reverted. */}
@@ -415,15 +426,28 @@ function BlockEditor({
               route's deliberate position** — a template names its blocks in
               prose, so the only honest check is to assemble every template and see
               what fails, which the assembly does loudly. What this screen CAN do
-              is say the count before the press, because it already knows it.
+              is weigh the confirmation by the count, because it already knows it:
+              a block nothing cites is one thing and arms in place; a cited one
+              takes templates down with it and types its name, like any other
+              entity with children.
             */}
-            <ConfirmDeleteButton
-              noun={usedBy > 0
-                ? `{${name}} — ${usedBy} template(s) cite it and will refuse to draft`
-                : `{${name}}`}
-              onConfirm={remove}
-              disabled={saving}
-            />
+            {usedBy > 0 ? (
+              <ConfirmDestroyDialog
+                label="Delete"
+                disabled={saving}
+                title={`Delete {${name}}?`}
+                summary={`${usedBy === 1 ? "1 template cites it" : `${usedBy} templates cite it`} and will refuse to draft until edited. Nothing checks that for you.`}
+                confirmWord={name}
+                onConfirm={remove}
+              />
+            ) : (
+              <ConfirmDeleteButton
+                tone="text"
+                noun={`{${name}}`}
+                onConfirm={remove}
+                disabled={saving}
+              />
+            )}
           </div>
           <FormBar
             dirty={dirty}
