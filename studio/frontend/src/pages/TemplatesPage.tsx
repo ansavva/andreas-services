@@ -91,11 +91,23 @@ export function TemplatesPage() {
     );
   if (!data) return null;
 
+  // The count in the bar, not repeated as a section heading under it — see
+  // `CharactersPage` for the reasoning. Whichever tab is open, because that
+  // is the count the page is actually showing.
+  const blockCount = Object.keys(data.blocks).length;
+  const shownCount = tab === "blocks" ? blockCount : data.templates.length;
+  const shownNoun = tab === "blocks" ? "block" : "template";
+
   return (
     <>
       {/* No crumb — this is a top-level screen. */}
       <PageBar
         title="Templates"
+        meta={
+          <Text variant="caption" family="mono" tone="muted">
+            {shownCount} {shownCount === 1 ? shownNoun : `${shownNoun}s`}
+          </Text>
+        }
         primary={
           <Button
             size="sm"
@@ -127,18 +139,6 @@ type SetData = (
   next: TemplateLibrary | null | ((current: TemplateLibrary | null) => TemplateLibrary | null),
 ) => void;
 
-/** A section's own heading, counted the way `EntitySections` counts. */
-function SectionHeading({ title, count }: { title: string; count: number }) {
-  return (
-    <div className="flex items-center justify-between gap-2 border-b border-line pb-2">
-      <Text variant="title">
-        {title}{" "}
-        <span className="font-mono text-sm text-muted tabular-nums">({count})</span>
-      </Text>
-    </div>
-  );
-}
-
 function LibraryTabs({
   library,
   setData,
@@ -167,9 +167,7 @@ function LibraryTabs({
         <Tabs.Tab value="blocks">Blocks</Tabs.Tab>
       </Tabs.List>
 
-      <Tabs.Panel value="templates" className="flex flex-col gap-3">
-        <SectionHeading title="Templates" count={library.templates.length} />
-
+      <Tabs.Panel value="templates" className="flex flex-col gap-3 pt-3">
         {creatingTemplate && (
           <NewTemplateForm
             onCreated={(saved) => {
@@ -206,9 +204,7 @@ function LibraryTabs({
         ))}
       </Tabs.Panel>
 
-      <Tabs.Panel value="blocks" className="flex flex-col gap-3">
-        <SectionHeading title="Blocks" count={names.length} />
-
+      <Tabs.Panel value="blocks" className="flex flex-col gap-3 pt-3">
         {!creatingBlock && names.length === 0 ? (
           <EmptyState
             title="No blocks yet."

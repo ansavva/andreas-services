@@ -52,8 +52,17 @@ export function FilterBar({ activeCount, onClear, children, label = "Filter" }: 
           itself: the panel's own `className` prop reaches its innermost div,
           two levels below the one that is actually laid out as this flex
           row's child, so a width set there would never reach the box that
-          needs to wrap onto its own line. */}
-      <div className="basis-full">
+          needs to wrap onto its own line.
+
+          **Conditional on `open`, not constant.** `Collapsible.Root`'s
+          `contents` display means this div is a flex item of the CALLER's
+          toolbar row even while collapsed — so a bare `basis-full` claimed
+          the whole line whether or not the panel had anything in it,
+          wrapping every sibling after `FilterBar` (Upload, the folder `⋯`)
+          onto a second row at every width, not just below the one the panel
+          itself needs to stack at. Closed, this is a normal auto-basis item
+          with nothing visible inside it and no claim on the line at all. */}
+      <div className={open ? "basis-full" : undefined}>
         <Collapsible.Panel>
           <div className="flex flex-wrap items-end gap-2 border border-line bg-card p-3">
             {children}
