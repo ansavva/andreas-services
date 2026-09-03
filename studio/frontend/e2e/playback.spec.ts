@@ -252,8 +252,10 @@ test("a non-media node still opens the text page", async ({ page }) => {
   // frame, and Phase C moved the branch that decides which.
   await page.goto(`/o/${TEXT_NODE.id}`);
 
+  // No `dialog` role any more — `TextPage` is an ordinary page inside
+  // `AppLayout` now, with its own `PageBar` heading rather than a takeover.
   await expect(
-    page.getByRole("dialog", { name: TEXT_NODE.name }),
+    page.getByRole("heading", { name: TEXT_NODE.name }),
   ).toBeVisible();
   await expect(page.getByText('"shot"')).toBeVisible();
   await expect(page.getByRole("button", { name: "Close (Esc)" })).toBeVisible();

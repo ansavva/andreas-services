@@ -154,35 +154,45 @@ test("the blocks live on their own tab", async ({ page }) => {
 test("a block can be closed again after it is opened", async ({ page }) => {
   await page.goto("/templates");
   await page.getByRole("tab", { name: /Blocks/ }).click();
-  // By `aria-expanded`, not by name: the delete control inside an opened block
-  // names the block too, so a name match is ambiguous the moment it opens.
+  // By `aria-expanded`, not by name: the delete control beside it names the
+  // block too, so a name match is ambiguous whether the block is open or not.
   const header = page
     .locator("button[aria-expanded]")
     .filter({ hasText: "{build_intro}" });
+  // `Collapsible.Panel` hides its content with `inert` rather than unmounting
+  // it, so the box stays in the DOM collapsed and a visibility check on it is
+  // not trustworthy — `inert` on the panel it controls is the real signal.
+  const panelId = await header.getAttribute("aria-controls");
+  const panel = page.locator(`#${panelId}`);
 
   await header.click();
-  const box = page.getByRole("textbox").filter({ hasText: /THE BUILD IS/ });
-  await expect(box).toHaveCount(1);
+  await expect(header).toHaveAttribute("aria-expanded", "true");
+  await expect(panel).not.toHaveAttribute("inert");
 
   await header.click();
-  await expect(box).toHaveCount(0);
+  await expect(header).toHaveAttribute("aria-expanded", "false");
+  await expect(panel).toHaveAttribute("inert");
 });
 
 test("Close and Escape both get you out of an opened block", async ({ page }) => {
   await page.goto("/templates");
   await page.getByRole("tab", { name: /Blocks/ }).click();
-  // By `aria-expanded`, not by name: the delete control inside an opened block
-  // names the block too, so a name match is ambiguous the moment it opens.
+  // By `aria-expanded`, not by name: the delete control beside it names the
+  // block too, so a name match is ambiguous whether the block is open or not.
   const header = page
     .locator("button[aria-expanded]")
     .filter({ hasText: "{build_intro}" });
-  const box = page.getByRole("textbox").filter({ hasText: /THE BUILD IS/ });
+  // Scoped to this block's own panel — every block's Close button shares the
+  // same name, and every panel is mounted whether open or collapsed.
+  const panelId = await header.getAttribute("aria-controls");
+  const panel = page.locator(`#${panelId}`);
+  const box = panel.getByRole("textbox").filter({ hasText: /THE BUILD IS/ });
 
   await header.click();
-  await page.getByRole("button", { name: "Close", exact: true }).click();
-  await expect(box).toHaveCount(0);
+  await panel.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(header).toHaveAttribute("aria-expanded", "false");
 
   await header.click();
   await box.press("Escape");
-  await expect(box).toHaveCount(0);
+  await expect(header).toHaveAttribute("aria-expanded", "false");
 });
