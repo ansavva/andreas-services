@@ -30,7 +30,7 @@ part of this change by weight. The pipeline's version made the same choice.
 ----------------------------------------------------------
 `live` is the default and `fake` is set only by `tests/conftest.py`, exactly as
 in the pipeline — so a `dev-up.sh` session bills precisely as it always did and
-hard rule #2's approval gate is untouched by any of this. `fake` answers every
+hard rule #2 is untouched by any of this. `fake` answers every
 function locally: no socket is opened, no token is read, nothing is billed.
 
 **The two halves of studio deliberately spell this the same way.** The pipeline's

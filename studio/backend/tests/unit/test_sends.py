@@ -1,4 +1,4 @@
-"""`SEND#` rows and the plan digest — the two halves of an approval.
+"""`SEND#` rows and the plan digest — what a run sends, and what makes it "the same".
 
 A run recorded WHAT it sent (`bindings`, a `{field: [node, …]}` map) and lost
 WHY. `engine/submit.py::gather` decides that an image is a start frame or a
@@ -11,8 +11,8 @@ list and the prompt cites positions in it, so a send that came back in the wrong
 place makes plate *n* the wrong plate. That is why the sort key is zero-padded
 and why `put_sends` renumbers rather than merging.
 
-The digest is what makes hard rule #2's "re-approve after **any** edit"
-checkable rather than remembered.
+The digest is the hash under the submission fingerprint — the duplicate guard —
+so what it includes is the definition of "the same payload".
 """
 
 from studio_core import config

@@ -348,10 +348,10 @@ def test_the_prompt_keeps_its_newlines():
 
 
 def test_trailing_space_on_a_line_still_goes():
-    """Invisible, never deliberate, and it would move the approval digest.
+    """Invisible, never deliberate, and it would move the fingerprint.
 
-    Two prompts that read identically must hash identically, or an approval
-    fails over something nobody can see on screen.
+    Two prompts that read identically must hash identically, or a duplicate
+    slips past over something nobody can see on screen.
     """
     from studio_core.services import template as tmpl
 

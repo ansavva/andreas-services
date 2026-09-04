@@ -33,11 +33,11 @@ upload the bytes first — and matching on prose is how that stops working.
 `draft`: the existence of the row is not the record of a submission.
 
 What that buys is the whole of the feature: a plan that can be read, edited and
-linked to before anything bills, and an **approval that is an artifact** rather
-than a `y` that scrolled off a terminal. `plan_digest` hashes what was approved,
-`POST /runs/<id>/approve` records it, and the transition into `pending` is
-refused unless the two still agree. Hard rule #2's "re-approve after **any**
-edit" stops being a thing a person remembers.
+linked to before anything bills. **There is no approve step.** Hard rule #2 —
+nothing runs unless a person tells it to — is kept by the clients: the CLI shows
+the payload and submits only on an explicit `studio runs submit`, the SPA's Send
+button submits. `POST /runs/<id>/submit` is the act, and the API's part is to
+refuse a second one.
 
 Three consequences are load-bearing and each is defended below:
 
@@ -50,8 +50,9 @@ Three consequences are load-bearing and each is defended below:
   is derived from them.
 
 **It is not a permission boundary.** The CLI and the SPA hold tokens from the
-same pool, so an agent can approve a run it wrote. What is enforced is that an
-approval names a payload and dies when that payload changes.
+same pool, so an agent can submit a run it wrote. What is enforced is that a run
+is sent once, and that two identical payloads are visible as such — the
+`fingerprint` the listing row carries.
 """
 
 import json
@@ -269,19 +270,6 @@ def _source_for(node_id: str, record: dict | None) -> dict:
     return catalog.source_of(record)
 
 
-def digest_of(record: dict, send_entries: list[dict] | None = None) -> str:
-    """The digest of what this run would send, as it stands right now.
-
-    Recomputed rather than read off the row wherever a decision depends on it —
-    the stored `plan_digest` is a cache for a client to compare against, and a
-    gate that trusted its own cache would pass exactly the case it exists to
-    catch.
-    """
-    if send_entries is None:
-        send_entries = catalog.sends(record["id"])
-    return catalog.plan_digest(record.get("plan"), send_entries)
-
-
 def _document(folder_id: str, name: str, text: str, owner) -> dict:
     """One payload document: a node, its bytes, and the length actually encoded.
 
@@ -307,13 +295,13 @@ def _document(folder_id: str, name: str, text: str, owner) -> dict:
 
 @bp.post("/runs")
 def create_run():
-    """Create the run as a **draft**, before anything has been approved.
+    """Create the run as a **draft**, before anything has been submitted.
 
     **The ordering moved one step earlier and that is the whole feature.** The
     record was always written before the submission, so that a prediction which
     times out still leaves an envelope rather than nothing. It is now written
-    before the *approval* too, which is what gives an approval something to be
-    attached to: a plan with an address, editable, linkable, and hashable.
+    before the *decision* to send too: a plan with an address, editable,
+    linkable, and hashable.
 
     A row does not assert that anything happened, which is why a draft is hidden
     from listings and left out of the project's run count until it is submitted.
@@ -339,8 +327,8 @@ def create_draft(body: dict, held) -> dict:
 
     **Split out of the route so a SECOND caller can make a draft without a
     second implementation of what a draft IS.** `POST /api/characters/<id>/turnaround`
-    writes fourteen of these in one request; assembling the envelope, the sends,
-    the digest and the fingerprint a second time there would be two answers to a
+    writes fourteen of these in one request; assembling the envelope, the sends
+    and the fingerprint a second time there would be two answers to a
     question this service has to have exactly one of — and the divergence would
     be invisible, because a run records the outcome and not the reasoning.
 
@@ -397,17 +385,15 @@ def create_draft(body: dict, held) -> dict:
             # part of the plan. It has to be persisted because the thing that
             # names the output file is now the callback, which arrives with no
             # request body and cannot be told what to call anything — and it is
-            # deliberately outside `plan` because `plan_digest` hashes the plan:
-            # a rename would otherwise void an approval over something the
-            # provider is never sent. `services/generate.py::_output_names`.
+            # deliberately outside `plan` because the fingerprint hashes the
+            # plan: a rename would otherwise make one submission read as two.
+            # `services/generate.py::_output_names`.
             "output_name": body.get("name"),
             # The AUTHORED half. `plan` is studio's own and is validated as a
             # map and no further: which knobs a model has is registry data, the
             # registry is the pipeline's, and a copy of it here would be a
             # second answer to what a model accepts.
             "plan": plan,
-            "plan_digest": None,
-            "approval": None,
             "counted": False,
             "prediction_id": None,
             "submitted": None,
@@ -426,7 +412,7 @@ def create_draft(body: dict, held) -> dict:
     )
 
     written = catalog.put_sends(record["id"], send_entries)
-    assignments = {"plan_digest": catalog.plan_digest(plan, written)}
+    assignments = {}
     # Projected onto the listing row so the duplicate-submission guard is one
     # query rather than one `GET /api/runs/<id>` per candidate run. See
     # `catalog.submission_fingerprint`.
@@ -451,10 +437,9 @@ def create_draft(body: dict, held) -> dict:
             "status": record["status"],
             "folder": record["folder"],
             "payload": record["payload"],
-            "plan_digest": record["plan_digest"],
             # The duplicate-submission guard's handle. Derived here so the CLI
-            # never computes it: `plan_digest` has had three implementations in
-            # this repository and one of them silently disagreed.
+            # never computes it: the hash under it has had three implementations
+            # in this repository and one of them silently disagreed.
             "fingerprint": record["fingerprint"],
             "sends": written,
             "created": record["created"],
@@ -716,14 +701,12 @@ def view(record: dict, send_entries: list[dict] | None = None) -> dict:
 
     return (
         {
-            # The three authored fields are always present, `None` included. An
+            # The authored field is always present, `None` included. An
             # attribute cleared to `None` is REMOVEd from the row, so a record
             # read back has no key at all — and a client would have to tell
             # "absent" from "null" to draw the difference between a run with no
             # plan and one whose plan was cleared. There is no difference.
             "plan": None,
-            "plan_digest": None,
-            "approval": None,
             **record,
             # **Who this run is ABOUT, which `characters` alone does not answer.**
             # That field is written at creation and nowhere else, so a run built
@@ -757,8 +740,6 @@ def view(record: dict, send_entries: list[dict] | None = None) -> dict:
             "bindings": {
                 name: expand(entries) for name, entries in bindings.items()
             },
-            "stale": record.get("approval") is not None
-            and record["approval"].get("digest") != digest_of(record, send_entries),
             "outputs": expand(record.get("outputs") or []),
         }
     )
@@ -783,24 +764,16 @@ def _draftable(record: dict) -> None:
 
 
 def _revised(record: dict, assignments: dict, send_entries: list[dict]) -> dict:
-    """Write a plan change, recompute the digest, and **drop any approval.**
+    """Write a plan change and recompute the fingerprint.
 
-    This is hard rule #2's "re-approve after **any** edit", made mechanical. It
-    was a sentence in a document until now, checked by nobody, and the failure it
-    names — approve a payload, edit it, submit the edit — is one that has
-    actually happened in this repository.
-
-    Returning the run to `draft` rather than merely clearing `approval` keeps one
-    answer to "can this be submitted" instead of two that have to agree.
+    The fingerprint moves with the payload: an edited draft is a different
+    submission, and a stale fingerprint would make the next identical payload
+    look like a duplicate of it. A `discarded` run edited this way is a `draft`
+    again — one answer to "can this be submitted" rather than two.
     """
     plan = assignments.get("plan", record.get("plan"))
-    digest = catalog.plan_digest(plan, send_entries)
-    # The fingerprint moves with the payload, for the same reason the digest
-    # does: an edited draft is a different submission, and a stale fingerprint
-    # would make the next identical payload look like a duplicate of it.
     fingerprint = catalog.submission_fingerprint(record.get("model"), plan, send_entries)
-    assignments = {**assignments, "plan_digest": digest, "fingerprint": fingerprint,
-                   "approval": None, "status": "draft"}
+    assignments = {**assignments, "fingerprint": fingerprint, "status": "draft"}
     return catalog.update_project_entity(
         KIND, record, assignments, {"status": "draft", "fingerprint": fingerprint}
     )
@@ -810,8 +783,9 @@ def _revised(record: dict, assignments: dict, send_entries: list[dict]) -> dict:
 def preview_payload(run_id: str):
     """The payload this run WOULD send, rebuilt from the plan as it stands.
 
-    **Hard rule #2 asks a person to approve the full payload, and until this
-    existed the app could not show them one.** A draft has no `request.json` —
+    **Hard rule #2 asks a person to read the full payload before sending it,
+    and until this existed the app could not show them one.** A draft has no
+    `request.json` —
     that document records what was actually sent and is written after dispatch —
     so the payload tab was empty for exactly the runs whose payload most needed
     reading, and an edit to the plan appeared to change nothing.
@@ -819,7 +793,7 @@ def preview_payload(run_id: str):
     It is the SAME assembly `submit` uses, not a second one: `generate.payload_of`
     is the single allowlist of what reaches a provider, and its own docstring
     says why that matters — a field added to the plan later must not silently
-    become part of a payload somebody approved as something else. Re-deriving it
+    become part of a payload somebody read as something else. Re-deriving it
     in the client would have been that second copy.
 
     **Bindings are node ids, never presigned URLs.** Presigning is what
@@ -843,7 +817,7 @@ def preview_payload(run_id: str):
 
 @bp.patch("/runs/<run_id>/plan")
 def update_plan(run_id: str):
-    """Rewrite a draft's authored half. Clears the approval, every time."""
+    """Rewrite a draft's authored half."""
     body = support.body()
     held = support.memberships()
     record = _run(run_id, held)
@@ -902,16 +876,15 @@ def _expanded(plan: dict, record: dict) -> dict:
     """Fill a plan's `template` into its `prompt`, if it carries one.
 
     **Expanded at SAVE, and the plan keeps both.** A template expanded at submit
-    would mean the payload a person approved is not the payload that gets sent,
-    and `plan_digest` — the whole mechanism that makes hard rule #2 something
-    other than a promise — would be hashing the wrong string. Expanding here
-    keeps the digest over exactly what reaches the model.
+    would mean the payload a person read is not the payload that gets sent, and
+    the fingerprint would be hashing the wrong string. Expanding here keeps it
+    over exactly what reaches the model.
 
     The template is kept beside it so the prompt stays re-editable: without it,
     filling a template in once would leave the next editor a wall of finished
     prose with no way back to what was written. Nothing re-expands on its own —
     a character edited later does not silently move a drafted prompt — because
-    re-expanding takes a save, and a save withdraws the approval anyway.
+    re-expanding takes a save.
     """
     template = plan.get("template")
     if template is None:
@@ -928,8 +901,7 @@ def preview_plan(run_id: str):
 
     The editor calls it on every change, which is the same shape the turnaround
     preview has and for the same reason: what a prompt will SAY is the thing
-    that tells you whether it is right, so it cannot sit behind the save that
-    withdraws the approval.
+    that tells you whether it is right, so it cannot sit behind a save.
     """
     body = support.body()
     held = support.memberships()
@@ -949,7 +921,7 @@ def preview_plan(run_id: str):
 
 @bp.patch("/runs/<run_id>/sends")
 def update_sends(run_id: str):
-    """Replace the ordered images a draft binds. Clears the approval, every time.
+    """Replace the ordered images a draft binds.
 
     A replace rather than a merge, because position is the meaning: send 3 is the
     third image the model is handed, and a prompt citing "the first image" makes
@@ -970,91 +942,14 @@ def update_sends(run_id: str):
     return jsonify(view(updated, written)), 200
 
 
-@bp.post("/runs/<run_id>/approve")
-def approve_run(run_id: str):
-    """Record that a person read this payload and said yes to **this** payload.
-
-    **`digest` is required and is compared, not stored.** The client sends the
-    digest of what it just showed somebody; this recomputes the digest of what is
-    actually on the row and refuses a mismatch. That is compare-and-swap, and it
-    is the difference between an approval and a timestamp: a `y` at a terminal
-    said nothing about what it was a yes *to*.
-
-    **This is not a permission boundary and the docstring will not pretend it
-    is.** Both halves of studio hold tokens from the same pool, so an agent can
-    call this on a run it wrote. What it cannot do is approve one payload and
-    send another.
-
-    **`via` records HOW the yes arrived, and exists because the alternative was
-    worse.** The CLI had no way to approve without a terminal confirm, on the
-    reasoning that an approval flag is the door an agent walks through while
-    believing some earlier exchange counted as approval. The absence stopped
-    nothing — `yes | studio runs approve …` clears a `click.confirm` — and what
-    it produced was a row indistinguishable from a person clicking the button,
-    which is the failure the reasoning was trying to prevent. So the door is
-    labelled: `relayed` means somebody said yes where this service cannot see it
-    and an agent passed it on. It is a WEAKER claim than `interactive`, and a
-    reader can finally tell the two apart.
-    """
-    body = support.body()
-    held = support.memberships()
-    record = _run(run_id, held)
-
-    if record.get("status") not in ("draft", "approved"):
-        raise ConflictError(
-            f"run {record['id']} is {record['status']}; only a draft is approved"
-        )
-
-    claimed = body.get("digest")
-    if not isinstance(claimed, str) or not claimed:
-        raise ValidationError("digest is required — approve a payload, not a run")
-
-    send_entries = catalog.sends(record["id"])
-    current = digest_of(record, send_entries)
-    if claimed != current:
-        return support.structured(
-            "stale_digest",
-            "the plan changed after the payload you approved was rendered; "
-            "review it again",
-            409,
-            digest=current,
-        )
-
-    via = body.get("via", "interactive")
-    if via not in ("interactive", "relayed"):
-        raise ValidationError("via must be 'interactive' or 'relayed'")
-
-    approval = {"by": g.caller_sub, "at": catalog.now(), "digest": current, "via": via}
-    updated = catalog.update_project_entity(
-        KIND, record, {"approval": approval, "status": "approved"},
-        {"status": "approved"},
-    )
-    return jsonify(view(updated, send_entries)), 200
-
-
-@bp.delete("/runs/<run_id>/approve")
-def revoke_approval(run_id: str):
-    """Take an approval back. A draft again, and submittable by nobody."""
-    held = support.memberships()
-    record = _run(run_id, held)
-    if record.get("status") != "approved":
-        raise ConflictError(f"run {record['id']} is {record['status']}, not approved")
-
-    updated = catalog.update_project_entity(
-        KIND, record, {"approval": None, "status": "draft"}, {"status": "draft"}
-    )
-    return jsonify(view(updated)), 200
-
-
 @bp.patch("/runs/<run_id>")
 def update_run(run_id: str):
     """Move a run forward: submitted, succeeded, failed, cancelled.
 
-    **The transition into `pending` is the gate, and it is here rather than in
-    the CLI on purpose.** The API is the only thing both halves of studio pass
-    through — the same argument that moved hard rule #3 out of the pipeline's
-    `runs.py` and into this module. A check the CLI made alone would be a rule
-    the SPA did not have.
+    **The transition out of the unsubmitted set is where a run is counted, and
+    it is here rather than in the CLI on purpose.** The API is the only thing
+    both halves of studio pass through — the same argument that moved hard rule
+    #3 out of the pipeline's `runs.py` and into this module.
 
     **No `rev`, and that is deliberate.** A character is edited by a person, twice
     at once, and losing somebody's paragraph is the failure optimistic concurrency
@@ -1077,24 +972,18 @@ def update_run(run_id: str):
             raise ValidationError(
                 f"status must be one of {', '.join(sorted(catalog.RUN_STATUSES))}"
             )
-        # **The gate is on LEAVING the unsubmitted set, not on reaching
-        # `pending`, and the difference is the whole of it.** `engine/submit.py`
-        # writes `running` when it does not poll and `succeeded` when it does; it
-        # never passes through `pending` at all. A check that named one status
-        # would have been a gate the only caller walks straight past — enforced
-        # in the tests, refused by nothing in practice.
+        # **Counting is on LEAVING the unsubmitted set, not on reaching
+        # `pending`.** A caller may write `running` or `succeeded` directly and
+        # never pass through `pending` at all; a check that named one status
+        # would miss the only path some callers take.
         leaving = (
             record.get("status") in catalog.UNSUBMITTED_RUN_STATUSES
             and body["status"] not in catalog.UNSUBMITTED_RUN_STATUSES
             # An adoption is not a submission. It files an artifact that already
-            # existed, calls no provider and bills nothing, so there is no
-            # payload for anybody to have approved.
+            # existed, calls no provider and bills nothing.
             and body["status"] != catalog.ADOPTED
         )
         if leaving:
-            refusal = _refuse_submission(record)
-            if refusal is not None:
-                return refusal
             # **Counted here, once, because this is where a run stops being an
             # intention.** A draft is created uncounted; without this a project
             # would report zero runs however many it had actually made.
@@ -1144,45 +1033,9 @@ def update_run(run_id: str):
     ), 200
 
 
-def _refuse_submission(record: dict):
-    """The one check that makes hard rule #2 enforceable. `None` means go ahead.
-
-    Called only when a run is leaving the unsubmitted set — a run already
-    `running` or `succeeded` moves on freely, because that is the machine
-    reporting what a prediction did rather than anybody asking to spend money.
-
-    Two refusals, and they fail differently because a client acts on them
-    differently: `not_approved` means show the payload and ask, `stale_digest`
-    means the payload moved after somebody said yes and has to be read again.
-
-    **The digest is recomputed here rather than trusted off the row.** A gate
-    that read its own cached answer would pass exactly the case it exists to
-    catch — a plan written by some path that forgot to update `plan_digest`.
-    """
-    if record.get("status") != "approved":
-        return support.structured(
-            "not_approved",
-            f"run {record['id']} is {record.get('status')} and has not been "
-            "approved; nothing may be submitted without approval of the full "
-            "payload",
-            409,
-        )
-    approval = record.get("approval") or {}
-    current = digest_of(record)
-    if approval.get("digest") != current:
-        return support.structured(
-            "stale_digest",
-            "the payload changed after it was approved; review and approve it "
-            "again before submitting",
-            409,
-            digest=current,
-        )
-    return None
-
-
 @bp.post("/runs/<run_id>/submit")
 def submit_run(run_id: str):
-    """Send an approved run to the provider. **The route that spends money.**
+    """Send a draft to the provider. **The route that spends money.**
 
     **This is what moved.** Until now the CLI held the Replicate token, built the
     presigned URLs, created the prediction and sat in a poll loop until it
@@ -1195,16 +1048,16 @@ def submit_run(run_id: str):
 
     1. **Refuse an already-submitted run**, before anything else. A second POST
        to this route is the cheapest way to buy the same prediction twice.
-    2. **Check the approval and the digest** — `_refuse_submission`, the same
-       function `PATCH /api/runs/<id>` uses, so there is one answer to "may this
-       be sent" rather than two that have to agree.
-    3. **Preflight the payload while the run is still `approved`.** A model that
+    2. **Preflight the payload while the run is still a `draft`.** A model that
        will refuse the input must leave the run exactly as it was — editable,
-       approvable, submittable again — rather than at `pending` with nothing
-       behind it.
-    4. **Move to `pending`, then call the provider.** The gate stands in front of
-       the money rather than behind it, and a process that dies in between leaves
-       a run that reads as "went out and never answered" rather than as a draft.
+       submittable again — rather than at `pending` with nothing behind it.
+    3. **Move to `pending`, then call the provider.** A process that dies in
+       between leaves a run that reads as "went out and never answered" rather
+       than as a draft.
+
+    **There is no approval check.** Hard rule #2 — nothing runs unless a person
+    tells it to — is kept by whoever calls this: the CLI on an explicit
+    `studio runs submit`, the SPA on Send. Calling this route is the decision.
 
     The response says which of the two closing triggers this submission got.
     `callback: "webhook"` means Replicate will call back and the caller should
@@ -1220,12 +1073,8 @@ def submit_run(run_id: str):
             f"run {record['id']} is {record['status']}; it has already been sent"
         )
 
-    refusal = _refuse_submission(record)
-    if refusal is not None:
-        return refusal
-
     send_entries = catalog.sends(record["id"])
-    # Before `pending`, deliberately. See point 3 above.
+    # Before `pending`, deliberately. See point 2 above.
     entry, payload, bindings = generate.prepare(record, send_entries)
 
     bump_count = not record.get("counted")
