@@ -60,9 +60,20 @@ export function FilterBar({ activeCount, onClear, children, label = "Filter" }: 
           the whole line whether or not the panel had anything in it,
           wrapping every sibling after `FilterBar` (Upload, the folder `⋯`)
           onto a second row at every width, not just below the one the panel
-          itself needs to stack at. Closed, this is a normal auto-basis item
-          with nothing visible inside it and no claim on the line at all. */}
-      <div className={open ? "basis-full" : undefined}>
+          itself needs to stack at.
+
+          **`basis-0 min-w-0` CLOSED, not `undefined`.** That last sentence
+          used to read "closed, this is a normal auto-basis item … with no
+          claim on the line at all", and it was wrong — measured at 390px, the
+          closed wrapper was the full 358px of the row. An auto-basis flex
+          item is sized by its CONTENT, and the content is the collapsed
+          panel's filter controls, whose min-content width is most of a phone.
+          Invisible (the panel is zero-height) and still occupying a whole
+          line, which is what kept pushing the folder browser's `⋯` onto a
+          second row after everything else had been made narrow enough.
+          `basis-0` gives it no base size and `min-w-0` lets it actually reach
+          zero, so closed it claims nothing. */}
+      <div className={open ? "basis-full" : "min-w-0 basis-0"}>
         <Collapsible.Panel>
           <div className="flex flex-wrap items-end gap-2 border border-line bg-card p-3">
             {children}

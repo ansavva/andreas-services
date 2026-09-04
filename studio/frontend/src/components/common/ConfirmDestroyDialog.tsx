@@ -1,8 +1,7 @@
 import { useState } from "react";
 
-import { AlertDialog, Button, Field, Input, Text } from "@ansavva/design-system";
+import { AlertDialog, Button, buttonClass, Field, Input, Text } from "@ansavva/design-system";
 
-import { dangerButtonClass } from "./danger";
 
 /**
  * Where an armed button stops being enough for a bulk delete.
@@ -108,7 +107,10 @@ export function ConfirmDestroyDialog({
       {/* The trigger IS the button — `AlertDialog.Trigger` renders its own, so
           a `Button` inside it would be a button in a button. */}
       {!controlled && (
-        <AlertDialog.Trigger disabled={disabled} className={dangerButtonClass({ className })}>
+        <AlertDialog.Trigger
+          disabled={disabled}
+          className={buttonClass({ intent: "danger", size: "sm", className })}
+        >
           {label}
         </AlertDialog.Trigger>
       )}
@@ -132,12 +134,10 @@ export function ConfirmDestroyDialog({
 
         <div className="flex flex-wrap justify-end gap-2">
           <AlertDialog.Close>Cancel</AlertDialog.Close>
-          {/* `Button` merges its own recipe with this one through tailwind-merge,
-              so the danger fill has the last word on every property it sets. */}
           <Button
+            intent="danger"
             size="sm"
             disabled={!armed || busy}
-            className={dangerButtonClass()}
             onClick={() => void run()}
           >
             {busy ? "Deleting…" : label}

@@ -76,6 +76,21 @@ export const FileIcon = ({ className }: Props) => (
   </Glyph>
 );
 
+/**
+ * A framed picture — the Media half of the file browser's view switch.
+ *
+ * `FileIcon` was the obvious reuse and is the wrong glyph: the switch's whole
+ * job is "the tree, or the pictures in it", and a document beside a folder
+ * reads as a second kind of tree rather than as its opposite.
+ */
+export const ImageIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <circle cx="8.5" cy="10" r="1.5" />
+    <path d="m21 16-5-5-6 6-2-2-5 5" />
+  </Glyph>
+);
+
 // --- actions ---------------------------------------------------------------
 
 /** Two sheets, one behind the other: the source stays. That is the whole difference from a move. */

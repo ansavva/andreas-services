@@ -152,20 +152,17 @@ export function PageBar({
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <div className="flex min-w-0 flex-col gap-1">
             {title && (
-              // `Text`'s heading variants carry `text-balance` by default,
-              // which is `text-wrap: balance` — a shorthand that resets
-              // `text-wrap-mode` to `wrap` wherever it wins the cascade. That
-              // beats `truncate`'s `white-space: nowrap` on stylesheet order
-              // alone, not on anything this className says, so an inline
-              // style is what actually wins: a long project or run name wrapped
-              // onto three lines instead of eliding, exactly the failure mode
-              // `design-system-spacing-overrides-need-inline-style` already
-              // named for the same twMerge gap.
-              <Text
-                variant="display"
-                className="min-w-0 truncate"
-                style={{ textWrap: "nowrap" }}
-              >
+              // `truncate` is a PROP as of design-system 0.17.0, and it works.
+              // It used to be an inline `style={{ textWrap: "nowrap" }}`: the
+              // heading variants carry `text-balance`, which is a shorthand
+              // that also resets `text-wrap-mode` to `wrap`, and the package's
+              // class merge did not know the two conflicted — so both survived
+              // and stylesheet order decided, wrapping a long project or run
+              // name onto three lines instead of eliding it. The package now
+              // states that conflict in its own merge, so the prop and a bare
+              // `className="truncate"` both win. `min-w-0` stays: that is this
+              // element's job as a flex child, not the package's.
+              <Text variant="display" truncate className="min-w-0">
                 {title}
               </Text>
             )}
@@ -189,7 +186,7 @@ export function PageBar({
                   <Dropdown.Trigger
                     aria-label="More actions"
                     title="More actions"
-                    className={iconButtonClass({ size: "sm", className: "touch-target rounded-none" })}
+                    className={iconButtonClass({ size: "sm", className: "rounded-none" })}
                   >
                     <DotsIcon />
                   </Dropdown.Trigger>

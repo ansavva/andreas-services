@@ -62,12 +62,19 @@ describe("the text tone, which is a word at rest and a sentence armed", () => {
 
     fireEvent.click(button());
 
-    // Classes, not an inline style: `buttonClass` merges through tailwind-merge,
-    // which drops the intent's own fill and the `nowrap`/`h-8` these override.
+    // The PACKAGE's own danger intent and `wrap` option, since design-system
+    // 0.17.0 — this used to be a local `dangerButtonClass` recipe that
+    // re-derived the fill and swapped in `h-auto min-h-8` by hand.
+    //
+    // `min-h-8` rather than `h-auto`: `wrapSizeStyles` trades the fixed height
+    // for the SAME number as a minimum, so a one-line label lays out exactly as
+    // it did unwrapped and only a second line grows the box. Asserting the
+    // fixed height is absent is the half that matters — it would clip.
     expect(button().className).toContain("bg-danger");
     expect(button().className).toContain("whitespace-normal");
-    expect(button().className).toContain("h-auto");
+    expect(button().className).toContain("min-h-8");
     expect(button().className).not.toContain("whitespace-nowrap");
+    expect(button().className).not.toMatch(/(^| )h-8( |$)/);
   });
 
   it("deletes only on the second press", async () => {

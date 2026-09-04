@@ -922,7 +922,7 @@ function PayloadDocument({
 function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div className="border-t border-line py-2">
-      <Text variant="caption" tone="muted" className="block">
+      <Text variant="caption" tone="muted">
         {label}
       </Text>
       <Text variant="body" family="mono" className="truncate">

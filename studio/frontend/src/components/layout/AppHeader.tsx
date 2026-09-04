@@ -1,11 +1,10 @@
 import { NavLink } from "react-router-dom";
 
-import { Drawer, Dropdown, Text, iconButtonClass } from "@ansavva/design-system";
+import { chipClass, Drawer, Dropdown, Text, iconButtonClass } from "@ansavva/design-system";
 
 import { useAuth } from "../../context/AuthContext";
 import { CHARACTERS_PATH, HOME_PATH, PROJECTS_PATH, TEMPLATES_PATH, folderPath } from "../../utils/location";
 import { ApertureMark } from "../common/Aperture";
-import { chipClass } from "../common/Chip";
 import { ChipRow } from "../common/ChipRow";
 import { LibrarySwitcher } from "../common/LibrarySwitcher";
 import { HeaderSearch } from "./HeaderSearch";
@@ -117,8 +116,14 @@ const DESTINATIONS = [
  * same three destinations read as two different kinds of control on the two
  * screen sizes. A square chip is also what the rest of the chrome is now —
  * hairline rules and right angles — and a pill is the one shape in that
- * vocabulary that insists on being a badge. `chipClass` is the pressed/rest
- * pair itself, shared with `ProjectDetails`' character toggles — see `Chip`.
+ * vocabulary that insists on being a badge.
+ *
+ * **`chipClass` is the PACKAGE's now** (design-system 0.17.0), not studio's.
+ * The local copy existed because a `NavLink` takes a function `className` and
+ * cannot be handed a wrapping component — which is exactly the case the
+ * package's helper is shaped for, so the helper replaced it and the component
+ * form went to `ProjectDetails`. `snap-start` stays here rather than moving
+ * upstream: it belongs to `ChipRow`'s scroll behaviour, not to being a chip.
  */
 function HeaderLink({ to, label, chip = false }: { to: string; label: string; chip?: boolean }) {
   return (
@@ -126,7 +131,7 @@ function HeaderLink({ to, label, chip = false }: { to: string; label: string; ch
       to={to}
       className={({ isActive }) =>
         chip
-          ? chipClass(isActive)
+          ? chipClass({ pressed: isActive, size: "sm", className: "snap-start" })
           : `rounded-none px-3 py-1.5 font-body text-sm transition-colors focus-visible:outline-2
              focus-visible:outline-offset-2 focus-visible:outline-primary
              ${isActive ? "bg-surface-alt text-ink" : "text-muted hover:bg-surface-alt hover:text-ink"}`
@@ -153,7 +158,7 @@ function MobileSearch() {
       <Drawer.Trigger
         aria-label="Search"
         title="Search"
-        className={iconButtonClass({ size: "sm", className: "touch-target rounded-none md:hidden" })}
+        className={iconButtonClass({ size: "sm", className: "rounded-none md:hidden" })}
       >
         <SearchIcon />
       </Drawer.Trigger>
@@ -184,7 +189,7 @@ function AccountMenu({ email, onSignOut }: { email: string | null; onSignOut: ()
       <Dropdown.Trigger
         aria-label={email ? `Account — ${email}` : "Account"}
         title={email ?? "Account"}
-        className={iconButtonClass({ size: "sm", className: "touch-target rounded-none" })}
+        className={iconButtonClass({ size: "sm", className: "rounded-none" })}
       >
         <AccountIcon />
       </Dropdown.Trigger>

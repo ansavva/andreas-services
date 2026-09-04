@@ -836,7 +836,7 @@ export function RunPlanEditor({
       </div>
 
       <div className="flex flex-col gap-3">
-        <Text variant="caption" tone="muted" className="block">
+        <Text variant="caption" tone="muted">
           Parameters
         </Text>
 
@@ -1080,12 +1080,12 @@ function Sends({
 
   return (
     <div className="flex flex-col gap-2">
-      <Text variant="caption" tone="muted" className="block">
+      <Text variant="caption" tone="muted">
         Images
       </Text>
       {/* The explanatory clause used to live in the label itself. A section
           label names the section; what it means is a line of its own. */}
-      <Text variant="caption" tone="muted" className="block">
+      <Text variant="caption" tone="muted">
         In the order the model is handed them.
       </Text>
 
@@ -1298,7 +1298,7 @@ function CharacterRefs({
 
   return (
     <div className="flex flex-col gap-2 rounded-none border border-dashed border-line p-2">
-      <Text variant="caption" tone="muted" className="block">
+      <Text variant="caption" tone="muted">
         Or add a character&rsquo;s references
       </Text>
 

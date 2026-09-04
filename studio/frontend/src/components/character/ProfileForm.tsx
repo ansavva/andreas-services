@@ -555,30 +555,23 @@ function ProfileSection({
     // scrolls to it.
     //
     // **The padding reset is an inline style, and it has to be.** `Card.Root`
-    // carries `p-lg`, and the package merges a caller's classes with
-    // `tailwind-merge` — which does not recognise this design system's t-shirt
-    // spacing keys as spacing at all. `twMerge('… p-lg …', 'p-0')` returns
-    // *both*, so which one applies is decided by their order in the generated
-    // stylesheet, and `.p-lg` is emitted after `.p-0`. The className reset
-    // silently lost: the card kept its 24px and the panel below added 24px more,
-    // for 48px a side on a 390px screen. Same trap for `gap-sm` vs `gap-0`.
-    // An inline style is not a preference here, it is the only deterministic
-    // answer — the same reasoning `ConfirmDeleteButton` records for its fill.
-    <Card.Root
-      ref={innerRef}
-      data-section={id}
-      style={{ padding: 0, gap: 0 }}
-      className="scroll-mt-16"
-    >
+    // `p-0 gap-0` as CLASSES, which is only possible as of design-system
+    // 0.17.0. They were an inline `style={{ padding: 0, gap: 0 }}` because the
+    // package merged a caller's classes with a `tailwind-merge` that did not
+    // recognise this design system's t-shirt spacing keys as spacing at all:
+    // `twMerge('… p-lg …', 'p-0')` returned BOTH, and which one applied was
+    // decided by their order in the generated stylesheet, where `.p-lg` comes
+    // after `.p-0`. The reset silently lost — the card kept its 24px and the
+    // panel below added 24px more, 48px a side on a 390px screen. The package
+    // teaches its merge the scale now, so a t-shirt override behaves exactly
+    // as a numeric one always did.
+    <Card.Root ref={innerRef} data-section={id} className="scroll-mt-16 gap-0 p-0">
       <Collapsible.Root open={open} onOpenChange={onOpenChange}>
-        {/* `py` inline for the same reason — the trigger's own `py-sm` beat the
-            `py-md` written here, which quietly made the tap target shorter than
-            intended on the control this page is used through most. `px` is safe
-            as a class: the trigger sets none of its own. */}
-        <Collapsible.Trigger
-          style={{ paddingBlock: "0.75rem" }}
-          className="w-full justify-between px-4 text-base sm:px-6"
-        >
+        {/* `py-3` as a class for the same reason as the card above: the
+            trigger's own `py-sm` used to beat the `py-md` written here, which
+            quietly made the tap target shorter than intended on the control
+            this page is used through most. The merge resolves it now. */}
+        <Collapsible.Trigger className="w-full justify-between px-4 py-3 text-base sm:px-6">
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate">{title}</span>
             {/* Named on the trigger rather than only inside the panel: a section

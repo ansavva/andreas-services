@@ -5,7 +5,6 @@ import type { FileEntry } from "../../types";
 import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { CopyKeyButton } from "../common/CopyKeyButton";
 import { CloseIcon, DownloadIcon, PencilIcon } from "../common/icons";
-import { CHROME_BUTTON } from "../media/chromeButton";
 
 interface Props {
   file: FileEntry;
@@ -94,7 +93,7 @@ export function ObjectActions({
             label={editing ? "Hide details" : "Edit details"}
             pressed={editing}
             size="sm"
-            className={CHROME_BUTTON}
+            intent="overlay"
             onClick={onToggleEditing}
           >
             {/* `sm` shrinks the box and not the glyph, so the icon is sized to
@@ -103,7 +102,7 @@ export function ObjectActions({
           </IconButton>
         )}
         {onDelete && (
-          <ConfirmDeleteButton noun="this file" onConfirm={onDelete} className={CHROME_BUTTON} />
+          <ConfirmDeleteButton noun="this file" onConfirm={onDelete} overlay />
         )}
       </>
     );

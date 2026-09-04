@@ -50,7 +50,7 @@ import { SortControl } from "./SortControl";
 import { TagFilter } from "./TagFilter";
 import { UploadButton } from "./UploadButton";
 import { UploadStatus } from "./UploadStatus";
-import { CopyIcon, DotsIcon, FolderIntoIcon } from "../common/icons";
+import { CopyIcon, DotsIcon, FolderIcon, FolderIntoIcon, ImageIcon } from "../common/icons";
 import { BULK_GATE, ConfirmDestroyDialog } from "../common/ConfirmDestroyDialog";
 
 /**
@@ -700,27 +700,64 @@ export function FolderBrowser({
         */}
         <ToggleGroup.Root
           aria-label="View"
+          // `sm`, which design-system 0.17.0 added for exactly this row. Two
+          // members at the default size measured about 157px — 44% of a 390px
+          // phone once its side padding is out — which is what forced the rest
+          // of this toolbar into the compromises around it. `sm` also puts the
+          // pair on the same 32px height as the `sm` Buttons beside it; the
+          // default is 44 now, so leaving it unset would have made this row
+          // TALLER than it was rather than narrower.
+          size="sm"
           value={[view === VIEW_MEDIA ? VIEW_MEDIA : VIEW_FOLDERS]}
           onValueChange={(next) => {
             if (next.length > 0) setView(next[0]!);
           }}
         >
-          <Toggle value={VIEW_FOLDERS}>Folders</Toggle>
-          <Toggle value={VIEW_MEDIA}>Media</Toggle>
+          {/* **A glyph on a phone, the word everywhere else.** `size="sm"`
+              alone took about 16px off this pair, and the row was ~10px too
+              wide for 358px (a 390px phone minus its padding) — so it still
+              wrapped the `⋯` onto a second line, which is the limitation this
+              was meant to lift. Dropping to the glyph below `sm` takes the
+              pair from ~151px to ~94px and the row fits.
+
+              NOT the package's `iconOnly`, which squares the box at every
+              width: two words are clearer than two glyphs when there is room
+              for them, and this is the one place the app knows there is. What
+              the package DOES supply is `label` — the accessible name, so the
+              control is still "Folders" and "Media" to a screen reader at the
+              width where the words are not drawn, and a tooltip to a pointer. */}
+          <Toggle value={VIEW_FOLDERS} label="Folders">
+            <FolderIcon className="size-4 fill-none stroke-current stroke-[1.5] sm:hidden" />
+            <span className="hidden sm:inline">Folders</span>
+          </Toggle>
+          <Toggle value={VIEW_MEDIA} label="Media">
+            <ImageIcon className="size-4 fill-none stroke-current stroke-[1.5] sm:hidden" />
+            <span className="hidden sm:inline">Media</span>
+          </Toggle>
         </ToggleGroup.Root>
 
         {/* Capped and truncating below `sm` — the Select's natural content
             width was the single biggest thing standing between this row and
             fitting at 390px, so this is the one place the toolbar asks the
-            text to give rather than the layout. `min-w-0` on both this and
-            the label span (`app.css`, keyed to `[role="combobox"]`) is what
-            lets a `width` set here actually win over the flex default that
-            otherwise refuses to shrink below the text's own size. */}
+            text to give rather than the layout.
+
+            `min-w-0` here is still this element's job. What is no longer this
+            app's job is the SAME property on the trigger's label span: that
+            was a rule in `app.css` keyed to the package's `[role="combobox"]`
+            markup, and the package sets it itself as of 0.17.0 — so a `width`
+            set here wins without studio reaching into the package's DOM. */}
         <div className="w-28 min-w-0 shrink-0 sm:w-auto">
           <SortControl value={sort} onChange={nav.setSort} />
         </div>
 
-        <div className="flex-1" />
+        {/* The spacer that right-aligns everything after it — and the last
+            thing keeping this row off one line at 390px. A `flex-1` item takes
+            all the free space on the line it lands on, so in a WRAPPING row it
+            pushes whatever follows onto the next one: the view switch, the
+            sort and Filter all fitted with room to spare and the `⋯` still
+            wrapped. Below `sm` there is no space to distribute and nothing to
+            right-align, so the spacer is simply not there. */}
+        <div className="hidden flex-1 sm:block" />
 
         <FilterBar activeCount={activeFilterCount} onClear={clearFilters}>
           <FilterControl
@@ -858,7 +895,7 @@ export function FolderBrowser({
                 width the strip has to fit at 390px. */}
           <Tooltip.Root>
             <Tooltip.Trigger
-              className={iconButtonClass({ size: "sm", className: "touch-target rounded-none" })}
+              className={iconButtonClass({ size: "sm", className: "rounded-none" })}
               aria-label={`Copy ${selectedNoun("file", "files")} to…`}
               onClick={() =>
                 setPickerTarget({
@@ -877,7 +914,7 @@ export function FolderBrowser({
 
           <Tooltip.Root>
             <Tooltip.Trigger
-              className={iconButtonClass({ size: "sm", className: "touch-target rounded-none" })}
+              className={iconButtonClass({ size: "sm", className: "rounded-none" })}
               aria-label={`Move ${selectedNoun("file", "files")}`}
               onClick={() =>
                 setPickerTarget({
@@ -1119,7 +1156,7 @@ function FolderMenu({
       <Dropdown.Trigger
         aria-label="More"
         title="More"
-        className={iconButtonClass({ size: "sm", className: "touch-target rounded-none shrink-0" })}
+        className={iconButtonClass({ size: "sm", className: "rounded-none shrink-0" })}
       >
         <DotsIcon />
       </Dropdown.Trigger>

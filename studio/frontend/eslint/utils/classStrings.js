@@ -3,7 +3,7 @@
  *
  * A class list in this codebase is almost never a bare string literal — it is
  * a template literal with a ternary spliced in, a `buttonClass({...})` call,
- * or a named constant (`CHROME_BUTTON`) referenced from three files. The
+ * or a named constant referenced from three files. The
  * vocabulary rules need every one of those shapes, so this walks the parts an
  * `eslint-plugin`-free rule can still reason about: literals, template
  * quasis, both sides of `? :` and `&&`/`||`, array and object members (for
@@ -18,7 +18,6 @@ export const CLASS_FUNCTIONS = new Set([
   "buttonClass",
   "iconButtonClass",
   "chipClass",
-  "dangerButtonClass",
   "linkButtonClass",
   "clsx",
   "twMerge",

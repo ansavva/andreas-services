@@ -1,7 +1,6 @@
 import { Button, IconButton } from "@ansavva/design-system";
 
 import { useArmed } from "../../hooks/useArmed";
-import { dangerButtonClass } from "./danger";
 import { QuestionIcon, TrashIcon } from "./icons";
 
 type Tone = "text" | "icon";
@@ -18,7 +17,20 @@ interface Props {
    */
   tone?: Tone;
   disabled?: boolean;
-  /** Extra classes for the resting face — a row over media passes its chrome fill. */
+  /**
+   * Draw the resting face for a control sitting ON MEDIA rather than on one of
+   * this app's surfaces — a delete over a video frame.
+   *
+   * **This was a class string until design-system 0.17.0**, passed in through
+   * `className` from a local `CHROME_BUTTON` constant that studio maintained
+   * over app-defined `--color-chrome-*` roles. The package ships those roles
+   * now (`overlay-*`) and an `IconButton intent="overlay"` that wears them, so
+   * the caller states WHAT THE SURFACE IS and the package decides what that
+   * looks like. `icon` tone only: a labelled delete over a photograph is a
+   * legibility problem no fill row solves.
+   */
+  overlay?: boolean;
+  /** Extra classes for the resting face. */
   className?: string;
 }
 
@@ -48,6 +60,7 @@ export function ConfirmDeleteButton({
   onConfirm,
   tone = "icon",
   disabled = false,
+  overlay = false,
   className = "",
 }: Props) {
   const { armed, busy, press, handlers } = useArmed({ onFire: onConfirm });
@@ -72,15 +85,17 @@ export function ConfirmDeleteButton({
         label={label}
         size="sm"
         // The package's own danger row while armed — the one fill it measured
-        // for a glyph. Resting, `intent` is left unset rather than spelled
-        // out as `"ghost"`: that is `IconButton`'s own default, and studio's
+        // for a glyph, and the same row `Button intent="danger"` wears since
+        // 0.17.0, so the two read as one control. Resting, `intent` is
+        // `overlay` on media and otherwise left unset rather than spelled out
+        // as `"ghost"`: that is `IconButton`'s own default, and studio's
         // "never ghost" rule is about `Button`'s labelled weights, not the
         // bare icon fill every icon-only control in this app already wears.
-        intent={armed || busy ? "danger" : undefined}
+        intent={armed || busy ? "danger" : overlay ? "overlay" : undefined}
         onClick={press}
         {...handlers}
         disabled={disabled || busy}
-        className={`touch-target shrink-0 ${armed || busy ? "" : "text-muted hover:text-danger"} ${className}`}
+        className={`shrink-0 ${armed || busy ? "" : "text-muted hover:text-danger"} ${className}`}
       >
         {announcement}
         {/* A question mark while armed: the icon itself has to say that this
@@ -92,14 +107,24 @@ export function ConfirmDeleteButton({
 
   return (
     <Button
-      intent="secondary"
+      // `danger` while armed, and the package's own row rather than a fill
+      // re-derived here: design-system 0.17.0 measured `danger-text` and gave
+      // Button the intent, which is what retired studio's `dangerButtonClass`.
+      intent={armed || busy ? "danger" : "secondary"}
       size="sm"
+      // `wrap` for the same reason the local helper had a `wraps` flag: the
+      // armed label spells out what it will destroy, and at a fixed height
+      // with `whitespace-nowrap` a long noun ran off the side of a phone and
+      // took the page's horizontal scroll with it. It is on unconditionally —
+      // a one-line label lays out identically either way, so there is nothing
+      // to gain by making it conditional on the state.
+      wrap
       onClick={press}
       {...handlers}
       disabled={disabled || busy}
       aria-label={label}
       title={label}
-      className={armed || busy ? dangerButtonClass({ wraps: true, className }) : className}
+      className={className}
     >
       {announcement}
       {/* The bare word at rest, never the confirmation — the arming is the whole

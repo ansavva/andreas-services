@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 
-import { Dropdown } from "@ansavva/design-system";
+import { Dropdown, iconButtonClass } from "@ansavva/design-system";
 
 import { copyLabel, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { useArmed } from "../../hooks/useArmed";
@@ -90,7 +90,16 @@ export function ItemActions({
       <Dropdown.Trigger
         aria-label={`Actions for ${name}`}
         title={`Actions for ${name}`}
-        className="touch-target shrink-0 rounded-none p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink"
+        // `iconButtonClass` rather than a hand-written box, which is what the
+        // other five icon triggers in this app already do. It carries the 44px
+        // coarse-pointer hit area itself as of design-system 0.17.0 — this
+        // used to add studio's `.touch-target` class by hand, with a lint rule
+        // to keep it there. `text-muted` stays: a row's `⋯` is quieter than
+        // the ghost intent's resting `ink` until you reach for it.
+        className={iconButtonClass({
+          size: "sm",
+          className: "shrink-0 rounded-none text-muted hover:text-ink",
+        })}
       >
         <DotsIcon />
       </Dropdown.Trigger>

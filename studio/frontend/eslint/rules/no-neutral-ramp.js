@@ -5,7 +5,7 @@ function hasNeutralRamp(text) {
 }
 
 export default makeClassTokenRule({
-  description: "No raw neutral-ramp Tailwind classes outside the chrome tokens; use a semantic token.",
+  description: "No raw neutral-ramp Tailwind classes; use a semantic role — including `overlay-*` for a control drawn over media.",
   test: hasNeutralRamp,
-  message: "Use a semantic token (text-ink, bg-surface-alt…), not the neutral ramp.",
+  message: "Use a semantic role (text-ink, bg-surface-alt, or overlay-* over media), not the neutral ramp.",
 });

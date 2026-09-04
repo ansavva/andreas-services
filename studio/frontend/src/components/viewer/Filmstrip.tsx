@@ -88,7 +88,6 @@ export function Filmstrip({
       <IconButton
         label="Previous (←)"
         size="sm"
-        className="touch-target"
         disabled={!onPrev}
         onClick={() => onPrev?.()}
       >
@@ -158,7 +157,6 @@ export function Filmstrip({
       <IconButton
         label="Next (→)"
         size="sm"
-        className="touch-target"
         disabled={!onNext}
         onClick={() => onNext?.()}
       >

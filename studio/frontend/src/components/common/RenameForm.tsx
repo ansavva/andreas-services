@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { Input, Text } from "@ansavva/design-system";
+import { IconButton, Input, Text } from "@ansavva/design-system";
 import { CheckIcon, CloseIcon } from "./icons";
 
 interface Props {
@@ -101,10 +101,18 @@ export function RenameForm({ name, onRename, onClose, className = "" }: Props) {
     >
       <div ref={fieldRef} className="flex min-w-0 items-center gap-1">
         <Input value={value} onValueChange={setValue} placeholder={name} />
-        <IconButton type="submit" disabled={busy} label="Save name">
+        {/* The PACKAGE's IconButton. There was a local re-implementation right
+            here until design-system 0.17.0, and the three things it existed to
+            hand-write are all the component's own now: `aria-label` (a required
+            prop), `title` mirrored from it, and a 44px hit area on a coarse
+            pointer. The last was the reason for the copy — it needed studio's
+            `.touch-target` class, and the package's `sm` carries the target
+            itself now, as a centred pseudo-element that grows the target
+            without growing the drawn box. */}
+        <IconButton type="submit" size="sm" disabled={busy} label="Save name">
           <CheckIcon />
         </IconButton>
-        <IconButton type="button" onClick={onClose} label="Cancel rename (Esc)">
+        <IconButton type="button" size="sm" onClick={onClose} label="Cancel rename (Esc)">
           <CloseIcon />
         </IconButton>
       </div>
@@ -115,24 +123,5 @@ export function RenameForm({ name, onRename, onClose, className = "" }: Props) {
         </Text>
       )}
     </form>
-  );
-}
-
-function IconButton({
-  children,
-  label,
-  ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { label: string }) {
-  return (
-    <button
-      {...props}
-      aria-label={label}
-      title={label}
-      className="touch-target shrink-0 rounded-none p-2 text-muted transition-colors disabled:opacity-60
-                 hover:bg-surface-alt hover:text-ink
-                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-    >
-      {children}
-    </button>
   );
 }

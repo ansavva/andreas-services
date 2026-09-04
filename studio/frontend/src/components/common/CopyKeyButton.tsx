@@ -67,7 +67,7 @@ export function CopyKeyButton({ value, noun = "path", tone = "row", className = 
       // documents `sm` as exactly that deliberate opt-in to a smaller target.
       size="sm"
       onClick={() => void copy(value)}
-      className={`touch-target shrink-0 ${toneStyles[tone]} ${className}`}
+      className={`shrink-0 ${toneStyles[tone]} ${className}`}
     >
       {/* `aria-live` on the icon's label, so a screen reader hears the outcome
           of a press whose only other feedback is a colour change. */}
@@ -88,16 +88,24 @@ export function CopyKeyButton({ value, noun = "path", tone = "row", className = 
  * different kind of control.
  *
  * **All three used to be written in `white/NN` and `black/NN`**, then in the
- * raw ramp (`neutral-1`, `neutral-a11`, `neutral-a5`) once that existed. Both
- * were the same mistake at different resolutions: a literal nothing could
- * re-brand. `chrome-scrim`/`chrome-muted`/`chrome-ink`/`chrome-hover` are
- * `styles/app.css`'s names for a control floating over media it cannot see
- * the colour of — the same tokens `MediaPlayer`'s own chrome buttons wear.
+ * raw ramp (`neutral-1`, `neutral-a11`, `neutral-a5`) once that existed, then
+ * in `--color-chrome-*` roles studio defined for itself. Each step was the
+ * same mistake at a higher resolution: a name this app owned, describing a
+ * surface this app cannot see.
+ * `overlay-scrim`/`overlay-muted`/`overlay-ink`/`overlay-hover` are the
+ * PACKAGE's names for it as of design-system 0.17.0 — and unlike the
+ * app-defined set they replace, they deliberately hold one value in both
+ * schemes, because a photograph does not follow the OS colour scheme.
+ *
+ * `chrome` and `tile` rest at `overlay-muted` and lift to `overlay-ink`, which
+ * is why they are still a tone map rather than `IconButton intent="overlay"`:
+ * that intent rests at full `ink`, and a copy affordance on a tile should be
+ * quieter than the media it sits on until you reach for it.
  */
 const toneStyles: Record<Tone, string> = {
   row: "text-muted hover:text-ink",
-  tile: "bg-chrome-scrim/80 text-chrome-muted hover:bg-chrome-scrim/95 hover:text-chrome-ink",
-  chrome: "text-chrome-muted hover:bg-chrome-hover hover:text-chrome-ink",
+  tile: "bg-overlay-scrim/80 text-overlay-muted hover:bg-overlay-scrim/95 hover:text-overlay-ink",
+  chrome: "text-overlay-muted hover:bg-overlay-hover hover:text-overlay-ink",
 };
 
 /** Outcome beats tone: a copied tick is green on a photograph too. */

@@ -99,10 +99,19 @@ export function RunPlan({
               key={key}
               className="rounded-none border border-line bg-card px-2 py-1"
             >
-              <Text variant="caption" tone="muted">
+              {/* `inline` on BOTH: this pair is a `key value` pill sharing one
+                  line inside a non-flex <span>, which is the case
+                  `variant="caption"` used to give for free and now has to ask
+                  for. design-system 0.17.0 made caption a block by default —
+                  the right default, since a caption under a title was the
+                  overwhelming majority and ran together without it. This is
+                  the minority the `inline` prop exists for. */}
+              <Text variant="caption" tone="muted" inline>
                 {key}
               </Text>{" "}
-              <Text variant="caption">{String(value)}</Text>
+              <Text variant="caption" inline>
+                {String(value)}
+              </Text>
             </span>
           ))}
         </div>

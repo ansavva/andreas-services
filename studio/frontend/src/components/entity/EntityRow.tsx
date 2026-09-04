@@ -148,10 +148,12 @@ export function EntityRow({
         <Text variant="body" family={mono ? "mono" : "body"} className="truncate">
           {title}
         </Text>
-        {/* `block`: a caption is an inline span, and without it a subtitle
-            runs onto the title's line. */}
+        {/* The subtitle gets its own line because `caption` is a block as of
+            design-system 0.17.0 — it used to carry `className="block"`, since
+            an inline caption ran onto the title's line and had no width to
+            truncate against. */}
         {subtitle && (
-          <Text variant="caption" tone="muted" className="block truncate font-mono tabular-nums">
+          <Text variant="caption" tone="muted" className="truncate font-mono tabular-nums">
             {subtitle}
           </Text>
         )}

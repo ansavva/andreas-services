@@ -678,20 +678,26 @@ from: `PageBar` (title, meta, actions, a `⋯` menu) and `FormBar` (a form's
 save/cancel row); `EmptyState` and `LoadError` for the two ways a listing has
 nothing to show; `PageLoading`/`SectionLoading` for the two loading weights;
 `EntityRow`/`EntityCard`/`MediaTile` for a listing item; `FilterBar` for the
-tag/search strip above one; `Chip`/`chipClass` for the square, bordered
-toggle; `ConfirmDeleteButton`/`ConfirmDestroyDialog` for destructive actions,
-weighted by what is lost — one entity arms in place, anything with children
-types its name; `useArmed`, the arm/disarm machine both of those (and
-`ArmedButton`, `ItemActions`) run on; `dangerButtonClass`, the one recipe for
-a text button that destroys; and toasts (`useToast`) for feedback that is not
-a page's own error state.
+tag/search strip above one; `ChipRow` for a row of chips that scrolls rather
+than wraps; `ConfirmDeleteButton`/`ConfirmDestroyDialog` for destructive
+actions, weighted by what is lost — one entity arms in place, anything with
+children types its name; `useArmed`, the arm/disarm machine both of those (and
+`ArmedButton`, `ItemActions`) run on; and toasts (`useToast`) for feedback that
+is not a page's own error state.
+
+**Two of these used to be local and are the package's now** (design-system
+0.17.0): `Chip`/`chipClass` for the square bordered toggle, and — replacing a
+`dangerButtonClass` helper that re-derived the fill — `Button intent="danger"`
+with `wrap` for a label that is a sentence. Reach for the package's.
 
 Nine rules keep every screen speaking that vocabulary, #589-#596:
 
 1. **Square corners** — `rounded-none`; `rounded-pill` stays a shape, not a corner.
 2. **No ghost intent** — `secondary` is `Button`'s quiet weight.
-3. **Semantic colour only** — no raw `neutral-*` ramp class outside the
-   `chrome-*` tokens `styles/app.css` defines for media overlays.
+3. **Semantic colour only** — no raw `neutral-*` ramp class. A control drawn
+   over MEDIA uses the package's `overlay-*` roles (`IconButton
+   intent="overlay"` wears them); those replaced a `--color-chrome-*` set
+   `styles/app.css` used to define here.
 4. **No hand-rolled controls** — `Button`/`IconButton`/`buttonClass`, not a
    `<button className="…border…hover:…">`.
 5. **No literal glyph characters** — icons are SVGs from `components/common/icons.tsx`.
