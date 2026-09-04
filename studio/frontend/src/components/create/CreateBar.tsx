@@ -26,13 +26,26 @@ import {
   patchRunPlan,
   submitRun,
 } from "../../apis/studio";
-import { useCreateBar, useCreateBarState, type AttachRef } from "../../context/CreateBarContext";
+import {
+  useCreateBar,
+  useCreateBarState,
+  type AttachRef,
+} from "../../context/CreateBarContext";
 import { useResource } from "../../hooks/useResource";
 import type { CreatedRun, RunSummary } from "../../types";
 import { formatDate } from "../../utils/format";
-import { EyeIcon, ImageIcon, SendIcon, SlidersIcon, VideoIcon } from "../common/icons";
+import {
+  EyeIcon,
+  ImageIcon,
+  SendIcon,
+  SlidersIcon,
+  VideoIcon,
+} from "../common/icons";
 import { PromptPreview } from "../common/PromptPreview";
-import { TokenizedPromptEditor, type PromptToken } from "../common/TokenizedPromptEditor";
+import {
+  TokenizedPromptEditor,
+  type PromptToken,
+} from "../common/TokenizedPromptEditor";
 import { unfilledIn } from "../common/UnfilledMarks";
 import { TemplatePicker } from "../run/TemplatePicker";
 import { CreateDrawer } from "./CreateDrawer";
@@ -115,7 +128,10 @@ export function CreateBar() {
     held !== null;
 
   // The registry is per-deploy, so the key carries no id.
-  const models = useResource(["models"], useCallback(() => getModels(), []));
+  const models = useResource(
+    ["models"],
+    useCallback(() => getModels(), []),
+  );
   const target = bar.target;
   const project = useResource(
     target ? ["project", target] : null,
@@ -128,18 +144,31 @@ export function CreateBar() {
   );
   // Blocks for the `{` menu and the preview. Lazily: a bar nobody has touched
   // has no reason to read the template library.
-  const templates = useResource(active ? ["templates"] : null, useCallback(() => getTemplates(), []));
+  const templates = useResource(
+    active ? ["templates"] : null,
+    useCallback(() => getTemplates(), []),
+  );
 
-  const entry = findEntry(models.data, bar.model[bar.kind]) ?? defaultEntry(models.data, bar.kind);
+  const entry =
+    findEntry(models.data, bar.model[bar.kind]) ??
+    defaultEntry(models.data, bar.kind);
   const params = useMemo(
     () => (entry ? (bar.params[entry.model] ?? seedPlan(entry).params) : {}),
     [bar.params, entry],
   );
-  const projectCast = useMemo(() => project.data?.characters ?? [], [project.data]);
-  const cast = useMemo(() => castOf(attachments, projectCast), [attachments, projectCast]);
+  const projectCast = useMemo(
+    () => project.data?.characters ?? [],
+    [project.data],
+  );
+  const cast = useMemo(
+    () => castOf(attachments, projectCast),
+    [attachments, projectCast],
+  );
 
   const tokens = useMemo<PromptToken[]>(() => {
-    const blocks = Object.entries(templates.data?.blocks ?? {}).sort(([a], [b]) => a.localeCompare(b));
+    const blocks = Object.entries(templates.data?.blocks ?? {}).sort(
+      ([a], [b]) => a.localeCompare(b),
+    );
     return [
       ...blocks.map(([name, text]) => ({
         name: `block.${name}`,
@@ -209,10 +238,16 @@ export function CreateBar() {
           }
         }
         if (!force && fingerprint) {
-          const page = await getRuns({ project: target, fingerprint, include: "drafts" });
+          const page = await getRuns({
+            project: target,
+            fingerprint,
+            include: "drafts",
+          });
           const twin = page.runs.find(
             (other) =>
-              other.id !== draft!.id && other.status !== "draft" && other.status !== "discarded",
+              other.id !== draft!.id &&
+              other.status !== "draft" &&
+              other.status !== "discarded",
           );
           if (twin) {
             setHeld({ draft, twin });
@@ -237,7 +272,21 @@ export function CreateBar() {
         setBusy(false);
       }
     },
-    [attachments, bar, busy, cast, entry, held, navigate, params, project.data?.name, prompt, queryClient, target, toast],
+    [
+      attachments,
+      bar,
+      busy,
+      cast,
+      entry,
+      held,
+      navigate,
+      params,
+      project.data?.name,
+      prompt,
+      queryClient,
+      target,
+      toast,
+    ],
   );
 
   const discard = useCallback(async () => {
@@ -254,7 +303,11 @@ export function CreateBar() {
   }, [held]);
 
   const projectOptions = useMemo<ComboboxOption[]>(
-    () => (projects.data ?? []).map((each) => ({ value: each.id, label: each.name })),
+    () =>
+      (projects.data ?? []).map((each) => ({
+        value: each.id,
+        label: each.name,
+      })),
     [projects.data],
   );
 
@@ -266,44 +319,136 @@ export function CreateBar() {
 
   return (
     <div
-      className="flex min-w-0 flex-1 flex-col"
+      // The slot keeps its resting height whatever the bar is doing. Once
+      // active the box FLOATS over the page: the action row, the strip, the
+      // drawer and a taller prompt all grow downwards over the content, and
+      // nothing beneath the sticky header moves. 50px is the resting box: a
+      // 44px control row, its 2px of vertical padding and the two borders.
+      className="relative min-h-[50px] min-w-0 flex-1"
       data-create-bar=""
       onFocus={() => setFocused(true)}
       onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+          setFocused(false);
       }}
     >
       <div
-        className={`flex flex-col rounded-none border bg-card ${active ? "border-ink" : "border-line"}`}
+        className={
+          active
+            ? "absolute inset-x-0 top-0 z-30 flex flex-col"
+            : "flex flex-col"
+        }
       >
-        <div className="flex items-start gap-2 py-0.5 pl-0.5 pr-2">
-          {/* IMAGE / VIDEO. Single-select and never empty: a run is one or
+        <div
+          className={`flex flex-col rounded-none border bg-card ${active ? "border-ink" : "border-line"}`}
+        >
+          <div className="flex items-start gap-2 py-0.5 pl-0.5 pr-2">
+            {/* IMAGE / VIDEO. Single-select and never empty: a run is one or
               the other, and the strip under the bar is drawn from it. */}
-          <ToggleGroup.Root
-            aria-label="Kind"
-            value={[bar.kind]}
-            onValueChange={(next: string[]) => {
-              const chosen = next[0];
-              if (chosen === "image" || chosen === "video") setKind(chosen);
-            }}
-            // `sm`: two 32px squares. At 390px the row also holds the menu
-            // button and the search icon, and two 44s would push it over.
-            size="sm"
-            className="mt-1 shrink-0 gap-0 border-r border-line pr-1"
-          >
-            <Toggle value="image" iconOnly label="Image" className="rounded-none">
-              <ImageIcon />
-            </Toggle>
-            <Toggle value="video" iconOnly label="Video" className="rounded-none">
-              <VideoIcon />
-            </Toggle>
-          </ToggleGroup.Root>
+            <ToggleGroup.Root
+              aria-label="Kind"
+              value={[bar.kind]}
+              onValueChange={(next: string[]) => {
+                const chosen = next[0];
+                if (chosen === "image" || chosen === "video") setKind(chosen);
+              }}
+              // `sm`: two 32px squares. At 390px the row also holds the menu
+              // button and the search icon, and two 44s would push it over.
+              size="sm"
+              className="mt-1 shrink-0 gap-0 border-r border-line pr-1"
+            >
+              <Toggle
+                value="image"
+                iconOnly
+                label="Image"
+                className="rounded-none"
+              >
+                <ImageIcon />
+              </Toggle>
+              <Toggle
+                value="video"
+                iconOnly
+                label="Video"
+                className="rounded-none"
+              >
+                <VideoIcon />
+              </Toggle>
+            </ToggleGroup.Root>
 
-          {/* Off a project page the bar has to be told where a run goes. On
+            {/* Off a project page the bar has to be told where a run goes. On
               one, the route says. Inline above `md`; on a phone the picker
               takes a row of its own under the prompt, below. */}
+            {!bar.onProject && (
+              <div className="hidden w-40 shrink-0 self-center md:block">
+                <Combobox
+                  aria-label="Project"
+                  options={projectOptions}
+                  value={target ?? null}
+                  placeholder="Project"
+                  onValueChange={(next: string) => bar.setProject(next || null)}
+                />
+              </div>
+            )}
+
+            <div className="min-w-0 flex-1 py-2.5">
+              <TokenizedPromptEditor
+                value={bar.prompt}
+                onValueChange={bar.setPrompt}
+                tokens={tokens}
+                ariaLabel="Prompt"
+                placeholder={placeholder}
+                className=""
+                // One line at rest; eight before it scrolls.
+                contentClassName="min-h-6 max-h-48 overflow-y-auto"
+                onSubmit={() => void send()}
+                focusKey={bar.focus}
+              />
+            </div>
+
+            <Popover.Root open={settingsOpen} onOpenChange={setSettingsOpen}>
+              <Popover.Trigger
+                aria-label="Settings"
+                title="Settings"
+                className={iconButtonClass({
+                  size: "sm",
+                  pressed: settingsOpen,
+                  className: "mt-1.5 rounded-none",
+                })}
+              >
+                <SlidersIcon />
+              </Popover.Trigger>
+              <Popover.Content
+                label="Settings"
+                className="left-auto right-0 w-[min(40rem,calc(100vw-2rem))] max-w-none rounded-none"
+              >
+                {entry && (
+                  <CreateSettings
+                    kind={bar.kind}
+                    models={models.data ?? {}}
+                    entry={entry}
+                    params={params}
+                    onModel={bar.setModel}
+                    onParams={(next: Record<string, unknown>) =>
+                      bar.setParams(entry.model, next)
+                    }
+                  />
+                )}
+              </Popover.Content>
+            </Popover.Root>
+
+            <Button
+              size="sm"
+              className="mt-1.5 inline-flex shrink-0 items-center gap-1.5"
+              disabled={!canSend}
+              onClick={() => void send()}
+            >
+              <SendIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+              {busy ? "Sending…" : "Send"}
+            </Button>
+          </div>
+
           {!bar.onProject && (
-            <div className="hidden w-40 shrink-0 self-center md:block">
+            <div className="border-t border-line px-2 py-1 md:hidden">
               <Combobox
                 aria-label="Project"
                 options={projectOptions}
@@ -314,170 +459,137 @@ export function CreateBar() {
             </div>
           )}
 
-          <div className="min-w-0 flex-1 py-2.5">
-            <TokenizedPromptEditor
-              value={bar.prompt}
-              onValueChange={bar.setPrompt}
-              tokens={tokens}
-              ariaLabel="Prompt"
-              placeholder={placeholder}
-              className=""
-              // One line at rest; eight before it scrolls.
-              contentClassName="min-h-6 max-h-48 overflow-y-auto"
-              onSubmit={() => void send()}
-              focusKey={bar.focus}
-            />
-          </div>
+          {active && (
+            <div className="flex flex-wrap items-center gap-1 border-t border-line px-2 py-1">
+              <TemplatePicker
+                compact
+                cast={cast.length}
+                onPick={bar.setPrompt}
+              />
 
-          <Popover.Root open={settingsOpen} onOpenChange={setSettingsOpen}>
-            <Popover.Trigger
-              aria-label="Settings"
-              title="Settings"
-              className={iconButtonClass({
-                size: "sm",
-                pressed: settingsOpen,
-                className: "mt-1.5 rounded-none",
-              })}
-            >
-              <SlidersIcon />
-            </Popover.Trigger>
-            <Popover.Content
-              label="Settings"
-              className="left-auto right-0 w-[min(40rem,calc(100vw-2rem))] max-w-none rounded-none"
-            >
-              {entry && (
-                <CreateSettings
-                  kind={bar.kind}
-                  models={models.data ?? {}}
-                  entry={entry}
-                  params={params}
-                  onModel={bar.setModel}
-                  onParams={(next: Record<string, unknown>) => bar.setParams(entry.model, next)}
-                />
-              )}
-            </Popover.Content>
-          </Popover.Root>
+              <Popover.Root open={previewOpen} onOpenChange={setPreviewOpen}>
+                <Popover.Trigger
+                  className={`inline-flex h-8 items-center gap-1.5 rounded-none px-3 text-sm font-medium ${
+                    previewOpen
+                      ? "bg-surface-alt text-ink"
+                      : "text-muted hover:text-ink"
+                  }`}
+                >
+                  <EyeIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+                  Preview
+                </Popover.Trigger>
+                <Popover.Content
+                  label="Preview"
+                  className="w-[min(40rem,calc(100vw-2rem))] max-w-none rounded-none"
+                >
+                  <PromptPreview
+                    prompt={bar.prompt}
+                    blocks={templates.data?.blocks ?? {}}
+                  />
+                </Popover.Content>
+              </Popover.Root>
 
-          <Button
-            size="sm"
-            className="mt-1.5 inline-flex shrink-0 items-center gap-1.5"
-            disabled={!canSend}
-            onClick={() => void send()}
-          >
-            <SendIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
-            {busy ? "Sending…" : "Send"}
-          </Button>
-        </div>
-
-        {!bar.onProject && (
-          <div className="border-t border-line px-2 py-1 md:hidden">
-            <Combobox
-              aria-label="Project"
-              options={projectOptions}
-              value={target ?? null}
-              placeholder="Project"
-              onValueChange={(next: string) => bar.setProject(next || null)}
-            />
-          </div>
-        )}
-
-        {active && (
-          <div className="flex flex-wrap items-center gap-1 border-t border-line px-2 py-1">
-            <TemplatePicker compact cast={cast.length} onPick={bar.setPrompt} />
-
-            <Popover.Root open={previewOpen} onOpenChange={setPreviewOpen}>
-              <Popover.Trigger
-                className={`inline-flex h-8 items-center gap-1.5 rounded-none px-3 text-sm font-medium ${
-                  previewOpen ? "bg-surface-alt text-ink" : "text-muted hover:text-ink"
-                }`}
+              <Text
+                variant="caption"
+                tone="muted"
+                className="ml-1 hidden md:block"
               >
-                <EyeIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
-                Preview
-              </Popover.Trigger>
-              <Popover.Content
-                label="Preview"
-                className="w-[min(40rem,calc(100vw-2rem))] max-w-none rounded-none"
+                Type <span className="font-mono">{"{"}</span> to cite a block or
+                a character. <span className="font-mono">&lt;…&gt;</span> marks
+                what you fill by hand.
+                {unfilled.length > 0 &&
+                  ` ${unfilled.length} unfilled: ${unfilled.join(" ")}`}
+              </Text>
+
+              <Text
+                variant="caption"
+                tone="muted"
+                className="ml-auto font-mono"
               >
-                <PromptPreview prompt={bar.prompt} blocks={templates.data?.blocks ?? {}} />
-              </Popover.Content>
-            </Popover.Root>
-
-            <Text variant="caption" tone="muted" className="ml-1 hidden md:block">
-              Type <span className="font-mono">{"{"}</span> to cite a block or a character.{" "}
-              <span className="font-mono">&lt;…&gt;</span> marks what you fill by hand.
-              {unfilled.length > 0 && ` ${unfilled.length} unfilled: ${unfilled.join(" ")}`}
-            </Text>
-
-            <Text variant="caption" tone="muted" className="ml-auto font-mono">
-              {lines} {lines === 1 ? "line" : "lines"}
-            </Text>
-          </div>
-        )}
-      </div>
-
-      {active && entry && (
-        <div className="flex flex-col rounded-none border border-t-0 border-line bg-card">
-          <CreateModeStrip
-            kind={bar.kind}
-            entry={entry}
-            attachments={attachments}
-            role={bar.role}
-            onRole={bar.setRole}
-            onDetach={bar.detach}
-            onClear={bar.clearAttachments}
-            keep={bar.keep}
-            onKeep={bar.setKeep}
-            params={params}
-            onParams={(next: Record<string, unknown>) => bar.setParams(entry.model, next)}
-          />
-          {bar.role !== null && target && (
-            <CreateDrawer
-              projectId={target}
-              cast={projectCast}
-              attached={new Set(attachments.map((each) => each.ref.node))}
-              onAttach={(ref: AttachRef) => {
-                if (bar.role) attach(ref, bar.role);
-              }}
-              onClose={() => bar.setRole(null)}
-            />
+                {lines} {lines === 1 ? "line" : "lines"}
+              </Text>
+            </div>
           )}
         </div>
-      )}
 
-      {held && (
-        <Alert.Root intent="warning" className="mt-2 rounded-none">
-          <Alert.Title>This request has been run here before</Alert.Title>
-          <Alert.Description>
-            <span>
-              Another run in this project sent exactly this prompt, these parameters and these
-              images on {formatDate(held.twin.created)}. Sending again bills again — a model
-              answers differently every time, so a second attempt is often the point.{" "}
-            </span>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button size="sm" disabled={busy} onClick={() => void send(true)}>
-                Send anyway
-              </Button>
-              <Button size="sm" intent="secondary" disabled={busy} onClick={() => void discard()}>
-                Discard
-              </Button>
-              <Button
-                size="sm"
-                intent="secondary"
-                onClick={() => navigate(runPath(held.twin.project, held.twin.id))}
-              >
-                Open the earlier run
-              </Button>
-            </div>
-          </Alert.Description>
-        </Alert.Root>
-      )}
+        {active && entry && (
+          <div className="flex flex-col rounded-none border border-t-0 border-line bg-card">
+            <CreateModeStrip
+              kind={bar.kind}
+              entry={entry}
+              attachments={attachments}
+              role={bar.role}
+              onRole={bar.setRole}
+              onDetach={bar.detach}
+              onClear={bar.clearAttachments}
+              keep={bar.keep}
+              onKeep={bar.setKeep}
+              params={params}
+              onParams={(next: Record<string, unknown>) =>
+                bar.setParams(entry.model, next)
+              }
+            />
+            {bar.role !== null && target && (
+              <CreateDrawer
+                projectId={target}
+                cast={projectCast}
+                attached={new Set(attachments.map((each) => each.ref.node))}
+                onAttach={(ref: AttachRef) => {
+                  if (bar.role) attach(ref, bar.role);
+                }}
+                onClose={() => bar.setRole(null)}
+              />
+            )}
+          </div>
+        )}
 
-      {failure && (
-        <Alert.Root intent="danger" className="mt-2 rounded-none">
-          <Alert.Title>Could not send this run</Alert.Title>
-          <Alert.Description>{failure}</Alert.Description>
-        </Alert.Root>
-      )}
+        {held && (
+          <Alert.Root intent="warning" className="mt-2 rounded-none">
+            <Alert.Title>This request has been run here before</Alert.Title>
+            <Alert.Description>
+              <span>
+                Another run in this project sent exactly this prompt, these
+                parameters and these images on {formatDate(held.twin.created)}.
+                Sending again bills again — a model answers differently every
+                time, so a second attempt is often the point.{" "}
+              </span>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void send(true)}
+                >
+                  Send anyway
+                </Button>
+                <Button
+                  size="sm"
+                  intent="secondary"
+                  disabled={busy}
+                  onClick={() => void discard()}
+                >
+                  Discard
+                </Button>
+                <Button
+                  size="sm"
+                  intent="secondary"
+                  onClick={() =>
+                    navigate(runPath(held.twin.project, held.twin.id))
+                  }
+                >
+                  Open the earlier run
+                </Button>
+              </div>
+            </Alert.Description>
+          </Alert.Root>
+        )}
+
+        {failure && (
+          <Alert.Root intent="danger" className="mt-2 rounded-none">
+            <Alert.Title>Could not send this run</Alert.Title>
+            <Alert.Description>{failure}</Alert.Description>
+          </Alert.Root>
+        )}
+      </div>
     </div>
   );
 }
