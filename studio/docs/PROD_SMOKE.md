@@ -33,7 +33,7 @@ you whether the *deployed role* may make the call.
 `GET /api/models/<name>/schema`, which makes the API fetch the token, decrypt it
 and call Replicate — the whole credential path — **without creating a
 prediction**. Proving it through a submission would mean a real generation on
-every deploy: a bill, and a payload nobody approved.
+every deploy: a bill, and a payload nobody said to send.
 
 **The value comes from a GitHub environment secret**, `REPLICATE_API_TOKEN` on
 the `studio-production` environment:

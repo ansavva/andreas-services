@@ -12,10 +12,11 @@ them; S3 keys and entity root folders carry ids, never names. Read it before
 assuming a name is an address or that a document defines anything.
 
 **A run has an authored half — [docs/RUN_PLAN.md](docs/RUN_PLAN.md).** It is a
-`draft` from the moment it is planned, carrying a `plan`, one `SEND#` row per
-bound image, and an `approval` bound to a hash of both. **The API refuses to
-submit a run unless it is approved and that hash still matches** — hard rule #2
-made mechanical. Read it before touching anything that creates or submits a run.
+`draft` from the moment it is planned, carrying a `plan` and one `SEND#` row
+per bound image, and it stays a draft until a person says to send it. **There
+is no approve step: `POST /api/runs/<id>/submit` takes a draft straight to the
+provider, and calling it is the decision.** Read it before touching anything
+that creates or submits a run.
 
 ## What studio is
 
@@ -69,28 +70,33 @@ a fixture is dev-origin by construction; and `DEV_SUBJECTS` in
 publishes, so adding one is a reviewed diff. Full reasoning in
 [docs/PIPELINE.md](docs/PIPELINE.md#the-exception-a-dev-subject-may-be-named).
 
-### 2. NEVER submit without approval of the FULL payload
+### 2. NOTHING runs unless a person tells it to
 
 Every generation costs money. Before any submit, show the complete `input`
-object as two JSON documents — `PROMPT` then `INPUT` — and get explicit
-approval. Re-approve after **any** edit. `--dry-run` renders exactly this
-without billing.
+object as two JSON documents — `PROMPT` then `INPUT` — ask, and submit only
+when told. `--dry-run` renders exactly this without billing and leaves a draft.
+**The submit command is the act** — `studio run` without `--dry-run`, or
+`studio runs submit <run>` on a draft — and **there is no separate approve
+step** anywhere: not in the CLI, not in the API, not in the app. In the app,
+pressing Send submits. (Decision 2026-09-04; the approve routes, the `approved`
+status and the recorded approval are gone.)
 
-**Approval is of a payload, not of a plan.** A yes to "shall I shoot?", a
-multiple-choice answer, or a payload shown several messages ago is not approval
-of the request about to be sent. Show it again and wait. **No flag on a command
-that spends answers this for a person, and if one appears, that is a bug.**
-`studio runs approve --relayed` is not an exception: it records a yes given
-elsewhere, spends nothing, prints the payload anyway, and stamps the row
-`via: relayed` so it reads as the weaker claim it is.
+**A yes is to a payload, not to a plan.** A yes to "shall I shoot?", a
+multiple-choice answer, or a payload shown several messages ago is not an
+instruction to send the request about to go out. Show it again and wait. Show
+it again after **any** edit. **No flag on a command that spends answers this
+for a person, and if one appears, that is a bug** — there is no `--yes`, and
+the `--relayed` that once recorded a second-hand yes went with the approve
+step it belonged to.
 
-**Half of this is enforced rather than remembered.** `POST /api/runs/<id>/submit`
-is what calls Replicate; what shows a person the payload is the CLI, and the
-SPA's run page. An approval records the digest of the payload it was given for,
-and the API refuses the submission if the plan or the images have moved since —
-approve-then-edit is a 409. It is **not** a permission boundary: the CLI and the
-SPA hold tokens from the same pool, so an agent can approve a run it wrote. The
-rule above is what stops that being a formality.
+**What the code enforces is smaller than the rule, and says so.**
+`POST /api/runs/<id>/submit` is the one route that calls Replicate; it takes a
+`draft`, refuses anything already sent, and asks nothing else. What shows a
+person the payload is the CLI's render and the app's run page. The rule is
+carried by who calls submit — a person, or an agent that person has explicitly
+told to send this run — and the CLI and the SPA hold tokens from the same pool,
+so nothing about a token is a permission boundary. The rule above is what stops
+"an agent can call submit" from being a formality.
 
 ### 2b. NEVER put an image into a character without approval
 

@@ -241,8 +241,8 @@ def test_publish_cannot_reach_a_model_provider():
     """**The pin, and read what it does not catch.**
 
     #284: `--publish` is a copy. It generates nothing, so it costs nothing, and
-    it carries no hard-rule-#2 approval gate of its own — the approval happened
-    when a human ran the generations that filled the dev stack. `dev-aws-seed.sh`
+    it has nothing to ask under hard rule #2 — a person said to run these when
+    they ran the generations that filled the dev stack. `dev-aws-seed.sh`
     pins the same property about itself with a grep; this is the Python version.
 
     WHAT IT CATCHES: a generation added to this module directly — a provider's

@@ -452,8 +452,8 @@ Its posture, and what each decision is actually protecting:
 `dev-seed publish` (`scripts/dev_seed/`). It **promotes** a fixture out of a
 dev stack rather than building one: a human drives the CLI against their own
 stack as ordinary work, and a handful of the nodes that produces become the
-fixture. So it calls no model, needs no provider token, and carries no approval
-gate of its own — the approval happened when the generations were run.
+fixture. So it calls no model, needs no provider token, and asks nobody
+anything — hard rule #2 was met when a person ran the generations.
 `scripts/dev_seed/tests/test_dev_seed.py` pins that.
 
 It reads the source stack's **catalog table**, not a bucket listing, and walks

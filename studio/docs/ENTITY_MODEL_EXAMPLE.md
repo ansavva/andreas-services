@@ -887,7 +887,7 @@ $ studio run --project rooftop-teaser --model nano-banana-pro \
              --character subject-a --pick-tag face \
              --prompt "…" --aspect 9:16 --resolution 4k --dry-run
 # GET /api/characters/char-9f3c1e57-… → /selection?tag=face
-# renders PROMPT and INPUT for approval. Nothing is submitted. (hard rule #2)
+# renders PROMPT and INPUT to read. Nothing is submitted. (hard rule #2)
 
 $ studio run --project rooftop-teaser --model nano-banana-pro \
              --character subject-a --pick-tag face \

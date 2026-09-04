@@ -55,10 +55,9 @@ local work runs against this machine's dev stack.
   S3** on a signed PUT (`POST /api/nodes/<id>/upload-url`, then
   `POST /api/nodes/<id>/confirm-upload`), so the Lambda's 6 MB request limit
   never applies. HEIC is refused with a message: no browser but Safari draws it.
-- **Plan, approve and submit runs** from a run page, through the same API the
-  CLI uses. The payload is shown in full before the yes, and
-  `POST /api/runs/<id>/submit` refuses a run whose plan has changed since it was
-  approved — hard rule #2 in `CLAUDE.md`.
+- **Plan and submit runs** from a run page, through the same API the CLI
+  uses. The payload is shown in full before the button, and pressing it is the
+  act — there is no separate approve step. Hard rule #2 in `CLAUDE.md`.
 - **Switch library.** An account can be a member of more than one.
 - **Download** any single file (`GET /api/nodes/<id>/download-url`).
 

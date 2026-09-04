@@ -68,13 +68,14 @@ pattern over a name's shape, which cannot tell a first name from a placeholder.
 **Production characters are unchanged.** They are never named, and nothing
 about the fixture path reaches them.
 
-### 2. NEVER submit without approval of the FULL payload
+### 2. NOTHING runs unless a person tells it to
 
 **Show the user the complete `input` object as JSON — every parameter, not just
-the prompt — and wait for them to say yes before any prediction is created.**
-Every submission bills, and a wrong `duration` or `mode` costs exactly as much as
-a wrong prompt. Re-approve after *any* edit — an approval covers the payload that
-was shown, not the next revision of it.
+the prompt — ask, and submit only when told.** Every submission bills, and a
+wrong `duration` or `mode` costs exactly as much as a wrong prompt. Show it
+again after *any* edit — a yes covers the payload that was shown, not the next
+revision of it. **The submit command is the act, and there is no separate
+approve step** (decision 2026-09-04).
 
 **Different models take different inputs.** Seedance takes `image` /
 `last_frame_image` / `seed` / `resolution`; Kling takes `start_image` /
@@ -104,30 +105,26 @@ render_payload()`); `--dry-run --json` emits the raw payload plus its
 `bindings` for machines. Image inputs appear as a presigned-key marker rather
 than the signed URL, since the URL itself is ~2 KB of noise and expires.
 
-The gate covers what is sent to the model. The surrounding steps — presigning,
-polling, downloads, uploads, recording the run — do not need approval.
+The rule covers what is sent to the model. The surrounding steps — presigning,
+polling, downloads, uploads, recording the run — need no asking.
 
-**`--dry-run` leaves a DRAFT, and the approval is a row.** The run is created
-when it is planned rather than when it is submitted, so the payload printed
-above has an address: it can be opened in the app, edited — `studio runs edit`,
-or the run page's own editor — and approved later with `studio runs approve`.
-Every edit withdraws the approval and returns the run to `draft`. The approval
-records a hash of the plan and the ordered images, and **the API refuses the
-submission if either has moved since** — the "re-approve after any edit"
-sentence above, made mechanical. See [RUN_PLAN.md](RUN_PLAN.md).
+**`--dry-run` leaves a DRAFT.** The run is created when it is planned rather
+than when it is submitted, so the payload printed above has an address: it can
+be opened in the app, edited — `studio runs edit`, or the run page's own editor
+— read again with `studio runs show`, and sent later with `studio runs submit`
+when a person says so. The submit is the act; the API takes a `draft` straight
+to the provider and records no approval. See [RUN_PLAN.md](RUN_PLAN.md).
 
-**Approval is of a payload, not of a plan.** A yes to "shall I render this?", an
+**A yes is to a payload, not to a plan.** A yes to "shall I render this?", an
 answer to a multiple-choice question, or a payload shown earlier in the
-conversation is not approval of the request about to be sent. Show it again and
-wait. **There is deliberately no `--yes`-style flag on any generating command** —
-`run` and `scenes board` both ask, and an approval flag there is precisely the
-door an agent walks through while believing some earlier exchange counted as
-approval. If one appears on a command that spends, it is a bug.
-
-`studio runs approve --relayed` is not that, and the distinction is the point:
-it writes a *record*, it bills nothing, it still prints the whole payload, and
-it marks the row `via: relayed` so a second-hand yes can be told from a typed
-one. See [RUN_PLAN.md](RUN_PLAN.md).
+conversation is not an instruction to send the request about to go out. Show it
+again and wait. **There is deliberately no `--yes`-style flag on any generating
+command** — `run` submits because it was typed, `scenes board` asks at the
+terminal — and a yes-flag there is precisely the door an agent walks through
+while believing some earlier exchange counted as being told to. If one appears
+on a command that spends, it is a bug. The `--relayed` flag that once recorded
+a second-hand yes as a row went with the approve step it belonged to: a recorded
+yes was never a stronger claim than a typed command.
 
 ### 2b. NEVER put an image into a character without approval
 
@@ -203,7 +200,7 @@ studio/pipeline/
         │   └── templates/profile.yaml
         │
         ├── engine/                MODEL INVOCATION
-        │   ├── resubmit.py        send a draft somebody already approved
+        │   ├── resubmit.py        send a draft — `studio runs submit`
         │   ├── runner.py          `studio run`
         │   ├── board.py           `studio scenes board` / `render` / `check`
         │   ├── registry.py  registry_file.py  schema.py  submit.py  refs.py  add_model.py
@@ -371,8 +368,8 @@ an angle image in the library rather than the repo is how they diverge.
 **Ask which project before generating anything.** `--project` is required and
 never inferred: where output lands is the one thing rerunning a command cannot
 undo. Offer the existing projects (`studio projects list`) and the option of a
-new one (`studio projects new`), and settle it *before* showing a payload for
-approval — approving a payload must never imply approving where it lands.
+new one (`studio projects new`), and settle it *before* showing a payload — a
+yes to a payload must never imply a yes to where it lands.
 
 ### The tiers — run, shot, scene, movie
 
@@ -503,19 +500,19 @@ than trusting this number.
 |-----------|-----------------------------------------------------------|
 | `studio-media-scene`     | **A piece longer than one generation.** Chains video runs — each starting from the previous clip's last frame — then stitches them into one cut. Owns the chain loop, the continuity rules that keep shots cutting together, the per-shot verification gate, and the `multi_prompt`-cuts-vs-timing trade. Use when a shot outruns the model's duration ceiling or must read as one continuous take |
 | `studio-media-movie`     | **The tier above a scene.** Cuts a project's finished scenes into one piece. Owns the cut order and the movie-vs-longer-scene decision: cut a movie where a hard cut belongs (a change of place, time or subject); extend a scene where it must read as one take |
-| `studio-media-shot`      | **Orchestrates a whole shot**: reads a brief, shows the multi-step plan as JSON for approval, then renders a still and animates it — frame-first, one approval gate per billing step. Use when a brief describes motion or spans more than one studio-* call |
+| `studio-media-shot`      | **Orchestrates a whole shot**: reads a brief, shows the multi-step plan as JSON to read, then renders a still and animates it — frame-first, show-then-ask at every billing step. Use when a brief describes motion or spans more than one studio-* call |
 | `studio-media-core`      | **The shared machinery.** The model **registry** (the backend's `models.json`, served at `GET /api/models`), the one submit lifecycle, live-schema validation, and `studio run` — the runner that invokes *any* registered model. Models are DATA, not code |
 | `studio-media-add-model` | **Onboard a new Replicate model**: reads its live schema *and* its README, proposes a registry entry for review, then writes it to the registry. Also owns writing the new model's skill page — nothing generates it. The only way a model should be added |
-| `studio-media-image`     | The **frame-first workflow** for stills — why to render a frame before a video, run chaining, the approval gate, choosing between the image models. Model-agnostic; each model has its own skill |
+| `studio-media-image`     | The **frame-first workflow** for stills — why to render a frame before a video, run chaining, the show-then-ask rule, choosing between the image models. Model-agnostic; each model has its own skill |
 | `studio-media-image-upscale` | `topazlabs/image-upscale` — enlarge and restore an image that already exists. The only registered model that restores rather than generates |
-| `studio-media-nano-banana-pro` | `google/nano-banana-pro` — strongest all-round image model. Legible text, 4K, ≤14 refs, tunable safety filter. **Never set `allow_fallback_model`** — it reroutes to a different model than the one approved |
+| `studio-media-nano-banana-pro` | `google/nano-banana-pro` — strongest all-round image model. Legible text, 4K, ≤14 refs, tunable safety filter. **Never set `allow_fallback_model`** — it reroutes to a different model than the one shown |
 | `studio-media-nano-banana-2` | `google/nano-banana-2` — fast/cheap sibling. The only model with the extreme `1:4`…`8:1` ratios; Google Search / Image Search grounding |
 | `studio-media-gpt-image-2` | `openai/gpt-image-2` — OpenAI's newest, and **the default for character frames**. Dense legible text, pixel-exact sizes, references held at high fidelity **automatically**. No transparent background |
 | `studio-media-gpt-image-1-5` | `openai/gpt-image-1.5` — the one that does **transparent backgrounds** and exposes `input_fidelity` (dial face preservation up *or down*). Aspect limited to `1:1`/`3:2`/`2:3` |
 | `studio-media-seedance`  | `bytedance/seedance-2.0` — native audio, first/last frame, reference images/videos/audio. A start frame and a reference set **cannot** be combined |
 | `studio-media-kling`     | `kwaivgi/kling-v3-omni-video` — Kling 3.0 / O3 Omni (~$0.168/s, `reference_images` for consistency, native multi-shot to 6 cuts). Start frame and reference images can be combined |
 | `studio-media-veo-3-1`   | `google/veo-3.1` — the control-oriented engine, and the only one with a repeatable **seed** and a real `negative_prompt`. Reference images work only at 16:9 and 8 seconds; durations are a 4/6/8s enum |
-| `studio-media-grok-imagine-video` | `xai/grok-imagine-video` — animates one approved still, any integer 1–15s, and is the only registered model that **edits an existing clip**. No reference images, so not for holding a character on-model |
+| `studio-media-grok-imagine-video` | `xai/grok-imagine-video` — animates one chosen still, any integer 1–15s, and is the only registered model that **edits an existing clip**. No reference images, so not for holding a character on-model |
 | `studio-media-prompt`    | Author prompts as structured JSON for either engine (`--engine seedance\|kling-replicate`); validates rules and routes technical fields + the negative prompt where each engine takes them |
 | `studio-media-character` | Manage on-model characters (create/update/list/curate/load) whose bible is a field on the character's row and whose identity images are files carrying `default`; characters are data, not skills |
 | `studio-media-s3`        | Address the media store through the API by name path (list, upload, download, presign) — the asset store holding **characters** and **projects**, plus the run, scene and movie stores. Storage only; model invocation lives in `studio-media-core` |
@@ -544,7 +541,7 @@ Note two commands that read alike and are not:
 | | |
 |---|---|
 | `studio run` | submit a generation (creates a run) |
-| `studio runs` | the run store — `list`, `show`, `find`, `approve`, `submit`, `edit`, `delete` (reads and edits runs) |
+| `studio runs` | the run store — `list`, `show`, `find`, `submit`, `edit`, `delete` (reads and edits runs) |
 
 The parsing is **Click**. `pipeline/tests/contracts/cli_surface_reference.json`
 records every command, option, flag spelling, arity, default, choice list,
@@ -664,7 +661,7 @@ and a colleague, which a per-machine file never could.
 | `submit.py` | **The AUTHORING half of the submit lifecycle**, image and video alike: gather every image input as node ids, preflight, render the two documents hard rule #2 asks a person to read, and record the draft. The billing half — presign, create the prediction, upload the output, close the run — is `POST /api/runs/<id>/submit` and a callback. `wait_for` watches the run *row*, so `Ctrl-C` abandons a wait rather than a generation. |
 | `schema.py` | Validates fields, enums, ranges and `denied` — off a schema fetched through `GET /api/models/<name>/schema`. The API runs its own copy of the check at submit time, because the SPA also submits and never passes through here; that one is the gate and this one is the better message. |
 | `refs.py` | Character reference selection and project input pool → **node ids**. Selection itself is `GET /api/characters/<id>/selection`, so the CLI and the SPA cannot disagree about which images a generation saw; what is here is the translation, and the over-cap refusal that names the commands which narrow a set. |
-| `resubmit.py` | Send a draft somebody has already approved — `studio runs submit`, and the retry path. Separate from `runner.py` because there is nothing to author: the plan, the sends and the approval are on the row, so this is a status check and one `POST`. |
+| `resubmit.py` | Send a draft a person has said to send — `studio runs submit`, and the retry path. Separate from `runner.py` because there is nothing to author: the plan and the sends are on the row, so this is a status check and one `POST`. |
 | `board.py` | `studio scenes board` / `render` / `check` — the two commands that spend money in a scene's life, plus the free one that says whether they would work. Turns the plan's roles into bindings and hands them to the same lifecycle `runner.py` drives. Every cap, exclusion and format rule stays in `submit.py`; a copy here is the one that drifts. |
 | `add_model.py` | Onboarding: fetch schema + README **through the API**, infer an entry, append it to the registry. The inference stays here because what it produces is a repo file somebody reviews. It writes no documentation — see `studio-media-add-model`. |
 

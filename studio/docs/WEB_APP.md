@@ -30,12 +30,12 @@ Studio makes the result browsable: folders keep their structure, images and
 video are the focus, and every item has a page of its own where it plays in
 place, with the feed it belongs to beside it.
 
-**Studio reads the library, tidies it, accepts bytes for it, and submits an
-approved run — it does not decide what to make.** It browses; it can rename,
-move, copy, delete, create folders, edit text files in place, and upload
-through a presigned PUT the bytes travel to directly. Planning a generation is
-the pipeline's job and the SPA's run page; the payload a person approved is what
-`POST /api/runs/<id>/submit` sends.
+**Studio reads the library, tidies it, accepts bytes for it, and submits a
+run when a person presses Send — it does not decide what to make.** It browses;
+it can rename, move, copy, delete, create folders, edit text files in place, and
+upload through a presigned PUT the bytes travel to directly. Planning a
+generation is the pipeline's job and the SPA's run page; the payload on the
+page is what `POST /api/runs/<id>/submit` sends.
 
 The line between "edit a text file" and "upload" is held in exactly one place:
 `manage.update_text` refuses a node that is not a file carrying a blob, which
@@ -328,32 +328,26 @@ page and a plain textarea over its literal bytes, and never offers fields.
   never decoded. The *plan* is studio's too — the prompt, the params, and one
   ordered `SEND#` row per bound image with its role and provenance; `bindings`
   is derived from those sends. See [RUN_PLAN.md](RUN_PLAN.md).
-- **Approving in the app is a real write, and it is bound to a hash.** `POST
-  /api/runs/<id>/approve` sends the digest the page was showing; the API
-  recomputes and answers 409 if the payload moved. It is not a permission
-  boundary — the CLI holds the same kind of token — so the page claims no
-  authority it does not have.
-- **Editing a plan is two writes, and each one withdraws the approval.** `PATCH
-  /api/runs/<id>/plan` and `PATCH /api/runs/<id>/sends` each replace their half
-  whole, recompute the digest and return the run to `draft` — so the editor
-  sends only the half that moved, and the run bar is hidden while it is open.
-  Both routes refuse a submitted run, which is why the button appears on an
-  unsubmitted one rather than being answered with a 409.
+- **There is no approve step in the app, and no approve route to call.**
+  Decision 2026-09-04: pressing Send submits. The approve route is gone, and
+  so are the `approved` status, the `approval` field and
+  `plan_digest` on the record. The page claims no authority it does not have —
+  the CLI holds the same kind of token — so what hard rule #2 buys here is that
+  the payload is on screen before the button is.
+- **Editing a plan is two writes.** `PATCH /api/runs/<id>/plan` and `PATCH
+  /api/runs/<id>/sends` each replace their half whole and move the fingerprint
+  — so the editor sends only the half that moved, and the run bar is hidden
+  while it is open. Both routes refuse a submitted run, which is why the button
+  appears on an unsubmitted one rather than being answered with a 409.
 - **The app can submit.** `POST /api/runs/<id>/submit` is what calls Replicate;
   the SPA has no provider credential and never gains one, because the spending
   sits behind that route.
-- **Running is ONE armed button — "Run — this spends" — and approving is what
-  pressing it does.** The page renders the plan, the ordered images and the
-  exact payload a draft would send, rebuilt by the same assembly `submit` uses.
-  Asking for a yes over that document and then asking again under a different
-  word teaches somebody to click through the first one, so there is no
-  separate approve dialog. `RunBar` writes the approval — the digest of the
-  payload the page is rendering, `via: "interactive"` — *before* it submits, so
-  the API's compare-and-swap still refuses a submission whose payload moved
-  underneath, and the audit trail still records who said yes and when.
-  `draft` and `approved` render the same control. First press arms and says
-  what the second will do; the second runs. See `useArmed`, the one arm/disarm
-  machine `ArmedButton`, `ConfirmDeleteButton` and `ItemActions` all run on.
+- **Running is ONE armed button — "Run — this spends" — and pressing it is the
+  act.** The page renders the plan, the ordered images and the exact payload a
+  draft would send, rebuilt by the same assembly `submit` uses. `RunBar` calls
+  `POST /submit` and nothing before it. First press arms and says what the
+  second will do; the second runs. See `useArmed`, the one arm/disarm machine
+  `ArmedButton`, `ConfirmDeleteButton` and `ItemActions` all run on.
 - **A run's outputs can be promoted into a character, inline.** An image output
   carries a `Promote…` control beside it — a **sibling** of `OutputPanel`, never
   inside it, because the panel's caption is a real `<a href>` and its player is
@@ -811,9 +805,8 @@ the entity's id.
 | `GET /api/runs/resolve` | A run by `ref` |
 | `GET \| PATCH \| DELETE /api/runs/<id>` | The envelope, with outputs and bindings expanded |
 | `GET /api/runs/<id>/payload` · `POST /api/runs/<id>/plan/preview` | The payload a submit would send, assembled from the plan |
-| `PATCH /api/runs/<id>/plan` · `PATCH /api/runs/<id>/sends` | Replace half the plan; each returns the run to `draft` |
-| `POST \| DELETE /api/runs/<id>/approve` | Record an approval bound to the payload digest, or withdraw it |
-| `POST /api/runs/<id>/submit` | **Sends an approved run to the provider.** The one route in this service that spends money |
+| `PATCH /api/runs/<id>/plan` · `PATCH /api/runs/<id>/sends` | Replace half the plan; each moves the fingerprint. Refused once submitted |
+| `POST /api/runs/<id>/submit` | **Sends a draft to the provider.** The one route in this service that spends money; calling it is the decision — there is no approve step |
 | `POST /api/runs/<id>/reconcile` | Asks the provider what happened and closes the run — for a callback that never arrived |
 | `POST /api/runs/<id>/outputs` · `/response` | An upload URL per output; the provider's response stored as a payload blob |
 | `GET \| POST /api/scenes` · `GET \| PATCH \| DELETE /api/scenes/<id>` | The scene record |

@@ -11,8 +11,8 @@
 
 It extends [ENTITY_MODEL.md](ENTITY_MODEL.md) rather than replacing anything in
 it. A run was already a row; this gives it the half a scene has and it did not —
-a **plan**, authored before the submission, approved as an artifact rather than
-as an answer in a terminal, and readable in the app.
+a **plan**, authored before the submission, kept as an artifact rather than
+as text that scrolled past in a terminal, and readable in the app.
 
 **An earlier draft of this file said past runs could not be backfilled. That was
 wrong on the facts** and the whole of it is replaced. The reasoning confused two
@@ -41,11 +41,14 @@ movie ⊃ scene ⊃ shot ⊃ panel
 - **storyboard** — a scene's whole plan: `setting`, `defaults`, `logline` and its
   ordered `SHOT#` rows. Not an entity; there is no `BOARD#`.
 
-**Storyboarding has no approval step, and never had one.** `scenes board` runs
-the same `click.confirm` everything else does, and no scene, shot or panel
-carries an approved state. A storyboard is an *economic* preview; hard rule #2's
-confirm is an *approval* gate. This added the approval record, at the run tier only
-— scenes inherit it, because `scenes board` and `scenes render` produce runs.
+**Nothing has an approve step.** `scenes board` runs a `click.confirm` at the
+terminal, and no scene, shot, panel — or run — carries an approved state. A run
+did, for a while: an `approval` row bound to a digest of the plan, written by an approve
+subcommand or by the app before it submitted, and checked by the API at
+submit. **Decision 2026-09-04 removed it everywhere.** The record it kept
+was never a stronger claim than the command that submitted; the submit is the
+act. A storyboard is an *economic* preview; hard rule #2 is show, ask, submit
+when told.
 
 ---
 
@@ -63,10 +66,7 @@ confirm is an *approval* gate. This added the approval record, at the run tier o
   │    origin      "authored" | "backfilled"                       │
   │    note        (nullable)                                      │
   │                                                                │
-  │    plan_digest  sha256( plan ⊕ sends )   recomputed on write    │
-  │                                                                │
-  │  APPROVAL ───────────────────────────────────────────────────  │
-  │    approval    { by, at, digest }  |  null                     │
+  │    fingerprint  sha256( model ⊕ plan ⊕ sends )   on every write │
   │                                                                │
   │  RECORDED ───────────────────────────────────────────────────  │
   │    status, kind, model, engine, prediction_id, counted         │
@@ -137,38 +137,38 @@ images in the same words, computed by the same code.
 `sample` has no send: it binds to nothing, so it can never be something the model
 was handed.
 
-### The state machine, and the one gate
+### The state machine
 
 ```
-                          any plan or sends edit
-              ┌───────────────────────────────────────┐
-              │                                       │
-              ▼                                       │
-        ┌─────────┐   approve    ┌──────────┐         │    ┌─────────┐
-        │  draft  │─────────────►│ approved │─────────┴───►│ pending │
-        └────┬────┘  409 if the  └────┬─────┘   API 409s   └────┬────┘
-             │       digest is        │         unless          │
-             │       stale        revoke        the digest      ▼
-             │                        │         still matches   ┌─────────┐
-             │                        └──► draft                │ running │
-             │ discard                                          └────┬────┘
-             ▼                                                       │
-       ┌───────────┐                            ┌────────────────────┴──────┐
-       │ discarded │                            ▼          ▼                ▼
-       └───────────┘                       succeeded    failed        cancelled
+                any plan or sends edit (stays a draft)
+              ┌──────────────┐
+              │              │
+              ▼              │
+        ┌─────────┐          │     submit      ┌─────────┐
+        │  draft  │──────────┴────────────────►│ pending │
+        └────┬────┘   `studio run`,            └────┬────┘
+             │        `studio runs submit`,         │
+             │        Send in the app —             ▼
+             │        the call IS the decision  ┌─────────┐
+             │ discard                          │ running │
+             ▼                                  └────┬────┘
+       ┌───────────┐                ┌────────────────┴──────────┐
+       │ discarded │                ▼          ▼                ▼
+       └───────────┘           succeeded    failed        cancelled
 ```
 
-**The gate is on LEAVING the unsubmitted states, not on reaching `pending`, and
-the difference is the whole of it.** `engine/submit.py` writes `running` when it
-does not poll and `succeeded` when it does; it never passes through `pending` at
-all. A check naming one status would have been enforced by the test suite and
-bypassed by the only caller in existence — which is worse than no gate, because
-it reads as working.
+**There is no `approved` state and no gate between `draft` and `pending`.**
+There was one: `approve` moved a draft to `approved` with a digest, an edit
+moved it back, and the API 409'd a submit whose digest had moved. Decision
+2026-09-04 deleted the lot — the recorded yes was never a stronger claim than
+the submit command, and a second gesture over a payload already on screen is
+what teaches a person to click through the first. What remains on leaving
+`draft` is bookkeeping: the run is **counted** once, and `submitted` is stamped.
 
-`adopted` is the one way out that the gate does not stand in front of: it wraps
-an artifact that already existed, calls no provider and bills nothing. It was
-also **missing from `RUN_STATUSES` entirely**, so `studio runs adopt` would have
-been a 400 against this service; the pipeline's fake never validated a status, so
+`adopted` is the one way out that is not a submission: it wraps an artifact
+that already existed, calls no provider and bills nothing. It was once
+**missing from `RUN_STATUSES` entirely**, so `studio runs adopt` would have been
+a 400 against this service; the pipeline's fake never validated a status, so
 nothing caught it.
 
 Two consequences of a row no longer asserting that anything happened:
@@ -182,23 +182,25 @@ Two consequences of a row no longer asserting that anything happened:
   reads counts, so a project holding nothing but drafts would have deleted them
   without a word. It asks for draft rows separately.
 
-### What the digest is for
+### What the fingerprint is for
 
-`plan_digest` hashes **everything a person approves**: the plan, and the ordered
-sends as `(field, role, node)`. `source` is excluded — provenance is for a
-reader, and re-deriving it more accurately later must not void an approval
-nobody's payload changed.
+`submission_fingerprint` hashes the model, the plan, and the ordered sends as
+`(field, role, node)`. `source` is excluded — provenance is for a reader, and
+re-deriving it more accurately later must not make two identical payloads read
+as different. It is recomputed by the API on every write that can change any of
+the three, never accepted from a client, and it answers one question:
+**has this exact payload already gone out here?** — `GET /api/runs?fingerprint=`,
+which the run page reads for `DuplicateNotice`.
 
-It is recomputed by the API on every write that can change either, and never
-accepted from a client. Approving sends the digest the client believes it is
-approving; the API compares and answers **409** on a mismatch. That is
-compare-and-swap, and it is the mechanical form of "re-approve after **any**
-edit" — a rule that was remembered rather than checked, and that was broken in a
-real session, which is why hard rule 2b exists.
+The hash under it, `plan_digest` in `services/digest.py`, is the same function
+that once backed the approval record. It is kept because the fingerprint is
+derived from it and a second hash would be a fourth implementation in a
+repository already bitten by the third; it is no longer stored on the row.
 
-**It is not a permission boundary and this file will not pretend it is.** The CLI
-and the SPA hold ID tokens from the same Cognito pool, so an agent can approve a
-run it wrote. What it cannot do is approve one payload and send another.
+**Nothing here is a permission boundary and this file will not pretend it is.**
+The CLI and the SPA hold ID tokens from the same Cognito pool, so an agent can
+submit a run it wrote. Hard rule #2 is what stops that: nothing runs unless a
+person tells it to, and the submit command is that telling.
 
 ---
 
@@ -209,23 +211,21 @@ Additive. Every existing route kept its shape.
 | Route | |
 |---|---|
 | `POST /api/runs` | **Creates `draft`.** Body takes `plan` and `sends`; `bindings` is still accepted and read as sends with the role left null |
-| `PATCH /api/runs/<id>/plan` | `{plan}` — a draft's authored fields. **Clears the approval and returns it to `draft`.** Refused once submitted |
-| `PATCH /api/runs/<id>/sends` | `{sends}` — replace the ordered images. Same clearing rule. Every node is existence- and library-checked, and hard rule #3's URL refusal applies |
-| `POST /api/runs/<id>/approve` | `{digest}` → **409 `stale_digest`** if it no longer matches, carrying the current one |
-| `DELETE /api/runs/<id>/approve` | Revokes; back to `draft` |
-| `PATCH /api/runs/<id>` | Leaving the unsubmitted states is **409 `not_approved`** unless approved with a current digest |
-| `POST /api/runs/<id>/submit` | **Sends it.** The route that spends money — see below |
+| `PATCH /api/runs/<id>/plan` | `{plan}` — a draft's authored fields. Moves the fingerprint. Refused once submitted |
+| `PATCH /api/runs/<id>/sends` | `{sends}` — replace the ordered images. Same rule. Every node is existence- and library-checked, and hard rule #3's URL refusal applies |
+| `PATCH /api/runs/<id>` | Leaving the unsubmitted states counts the run and stamps `submitted`; no approval is checked |
+| `POST /api/runs/<id>/submit` | **Sends a `draft`.** The route that spends money, and calling it is the decision — see below |
 | `POST /api/runs/<id>/reconcile` | Ask the provider what happened and close the run on the answer |
-| `GET /api/runs/<id>` | Gains `plan`, `plan_digest`, `approval`, `stale` and `sends` (expanded, with role and source) |
+| `GET /api/runs/<id>` | Gains `plan`, `fingerprint` and `sends` (expanded, with role and source) |
 | `GET /api/runs` | Gains `?include=drafts`; drafts and discards hidden otherwise |
 
 ### Submission is a route, and the run closes itself
 
 **The API does the spending.** A generation is not attached to a terminal (a
 15-second Kling shot is minutes of wall clock, and a `Ctrl-C` must not strand a
-billing prediction), the SPA can submit what a person approved on the page in
-front of them, and the output travels provider → S3 without passing through a
-developer's connection.
+billing prediction), the SPA can submit what a person is looking at on the page
+in front of them, and the output travels provider → S3 without passing through
+a developer's connection.
 
 So `POST /api/runs/<id>/submit` does the spending, and **the run is closed by
 Replicate calling back** rather than by whatever asked for it:
@@ -234,9 +234,9 @@ Replicate calling back** rather than by whatever asked for it:
    CLI or SPA                 API                    Replicate
        │                       │                         │
        ├── submit ────────────►│                         │
-       │                       ├─ approved? digest?      │
-       │                       ├─ preflight              │   ← still `approved`
-       │                       ├─ status = pending       │   ← the gate is passed
+       │                       ├─ a draft? (409 if sent) │
+       │                       ├─ preflight              │   ← still `draft`
+       │                       ├─ status = pending       │   ← now it has gone out
        │                       ├─ presign the sends      │
        │                       ├─ create prediction ────►│
        │◄── running, pred id ──┤                         │
@@ -247,14 +247,13 @@ Replicate calling back** rather than by whatever asked for it:
 ```
 
 **The status moves to `pending` before the provider is called**, exactly as it
-did in the CLI, which is what keeps the approval gate in front of the money —
-and what makes a submission that dies in flight legible as "went out and never
-answered" rather than as a draft nobody sent.
+did in the CLI, which is what makes a submission that dies in flight legible as
+"went out and never answered" rather than as a draft nobody sent.
 
 **Preflight runs before `pending`**, which is the one ordering that changed
-meaning. A payload the model will refuse leaves the run `approved` and
-resubmittable; only a payload that has actually gone out reaches a state that
-implies money.
+meaning. A payload the model will refuse leaves the run a `draft`, editable and
+submittable again; only a payload that has actually gone out reaches a state
+that implies money.
 
 ### Receiving a callback and processing one are separate, and that is about dev
 
@@ -344,15 +343,15 @@ answer to what a model accepts.
 ## CLI
 
 `studio run` is unchanged from the outside — invoking it without `--dry-run` *is*
-the request to submit, so it drafts, approves and submits in one act. What
-changed is that the yes leaves a row naming the payload it was for.
+the request to submit, so it drafts and submits in one act. The person who
+typed it is the yes.
 
 ```
 studio run … --dry-run                      # → a DRAFT, and prints its id
 studio runs list <project> --status draft   # what is waiting
-studio runs edit run-<uuid>                 # $EDITOR over the payload; withdraws the yes
-studio runs approve run-<uuid>              # re-renders the payload, asks, approves
-studio runs submit run-<uuid>               # refuses an unapproved or stale run
+studio runs edit run-<uuid>                 # $EDITOR over the payload; read it again after
+studio runs show run-<uuid>                 # the payload, as stored
+studio runs submit run-<uuid>               # sends a draft — this command IS the act
 studio runs reconcile run-<uuid>            # for one that went out and never came back
 studio runs discard run-<uuid>              # a draft that will not be submitted
 ```
@@ -360,25 +359,16 @@ studio runs discard run-<uuid>              # a draft that will not be submitted
 - **`--dry-run` persists a draft.** It rendered a payload to a terminal and kept
   nothing, so the thing hard rule #2 asks a person to read had no address. A
   draft costs a row and no bytes, is hidden from every listing, and is what
-  `runs approve` acts on.
-- **`--relayed`, and this bullet used to say there would never be one.** It said
-  an approval flag is the door an agent walks through while believing some
-  earlier exchange counted as approval, and that it would produce a
-  *signed-looking* artifact. The second half was right, and was an argument
-  against the *absence*: `yes | studio runs approve …` clears a `click.confirm`
-  in one pipe, so the missing flag prevented nothing and made every relayed
-  approval **identical to a click** — same `by`, same `at`, no trace of how the
-  yes travelled. The rule wrote the artifact it was trying to prevent.
-
-  So `via` is recorded: `interactive` for a yes given at the control — the app's
-  button or a terminal confirm — and `relayed` for one an agent passed on with
-  `--relayed`. `relayed` is the weaker claim, the app states it in words on the
-  run page, and `runs approve --relayed` still prints the entire payload,
-  because the gate was never the keystroke.
-
-  What no flag can enforce is that a person really said yes. That was equally
-  true of the confirm — a `y` proves a keypress, not a reading — which is why
-  the option is named after the claim it makes rather than the prompt it skips.
+  `runs submit` acts on.
+- **There is no approve subcommand under `studio runs`, and there was one.** It re-rendered the
+  payload, asked, and wrote an `approval` row the API checked at submit; a
+  `--relayed` flag recorded a yes given elsewhere as the weaker claim it was.
+  Decision 2026-09-04 deleted both. The record never outranked the command
+  that submitted — an agent told "send it" could type `runs submit` exactly as
+  easily as the approve with `--relayed` — and a second gesture over a payload
+  already read is what teaches a person to wave through the first. What no
+  flag can enforce is that a person really said to send it; that is the rule,
+  and it is carried by who runs the command rather than by a row.
 - **`runs edit` is what a typo used to cost a re-draft.** The routes below have
   existed since a run gained a plan and nothing called them: a wrong word in a
   prompt meant discarding the draft and building it again, images and all. It
@@ -396,8 +386,8 @@ studio runs discard run-<uuid>              # a draft that will not be submitted
 - **`runs discard` deletes the folder by default**, the opposite of `runs delete`.
   A submitted run's folder holds media somebody paid for; a draft's holds two
   payload documents and an empty `output/`.
-- `scenes board` needed no change: its single confirm
-  still gates the batch, and each submission now leaves an approval behind it.
+- `scenes board` needed no change: its single terminal confirm still stands in
+  front of the batch, and each submission is a run like any other.
 
 ---
 
@@ -411,33 +401,23 @@ them differently is what would need justifying.
 - **The sends draw as a filmstrip**, numbered in bind order, each captioned with
   where it came from: `character · face`, `earlier run · #2`, `input 4`.
 - **Running a draft is ONE armed press — `Run — this spends` — and that press is
-  the approval.**
+  the act.**
 
-  **This bullet used to describe a two-step approve bar, and it is kept rather
-  than edited over.** It said: "The approve bar states the digest in words, never
-  as a hash: nobody has approved this / this exact payload is cleared / the
-  payload changed after it was approved." Behind it were an approve dialog, a
-  Revoke button and a separate Submit.
+  **This bullet has been rewritten twice, and the history is kept.** It first
+  described a two-step approve bar — an approve dialog, a Revoke button and a
+  separate Submit, with three digest sentences: "nobody has approved this / this
+  exact payload is cleared / the payload changed after it was approved". The
+  second gesture went next: `RunBar` wrote the approval and submitted in one
+  press, so the compare-and-swap still held. Decision 2026-09-04 then removed
+  the approval itself, everywhere: `RunBar` calls `POST /submit` and nothing
+  before it, and the API records no yes because the submit is the yes.
 
-  The separate approve step was redundant in a UI where the payload is on screen:
-  the page renders the plan, the ordered images and the exact payload a draft
-  would send. Asking for a yes over that and then asking again under a different
-  word is what teaches somebody to click through the first one. Running them is
-  approval — the same one act `studio run` performs from a terminal.
-
-  **The mechanism is untouched.** `RunBar` calls `POST /approve` with the digest
-  the page is rendering and then `POST /submit`, in that order, so the
-  compare-and-swap in this document still holds: a payload that moved underneath
-  answers 409 `stale_digest` and nothing is sent. Both routes are unchanged, and
-  so is every other caller — a CLI-made draft, `runs approve`, `runs approve
-  --relayed` and `runs submit` all behave exactly as described above. What went
-  is one screen's second gesture, not a gate.
-
-  The three digest sentences went with it, because there is no longer an interval
-  they can describe: an approval written by the same press that submits cannot
-  sit around waiting to go stale. `draft` and `approved` therefore render the
-  same control. The bar still sits **below** the plan — the control that spends
-  should not be the first thing on the screen.
+  The separate approve step was redundant in a UI where the payload is on
+  screen: the page renders the plan, the ordered images and the exact payload a
+  draft would send. Asking for a yes over that and then asking again under a
+  different word is what teaches somebody to click through the first one. The
+  bar still sits **below** the plan — the control that spends should not be the
+  first thing on the screen.
 - **An image output can be promoted into a character from here**, inline: pick a
   character and a group, and the output is **copied** into
   `reference/` and the copy gets the `default` tag. That is what promoting has
@@ -458,14 +438,14 @@ the app could read a payload it could not change, so every correction went back
 through a terminal.
 
 - **A mode, not an always-editable form.** This page is read far more often than
-  it is written, and the plan is the thing an approval names — a prompt sitting
-  in a text box invites a keystroke into the document somebody is about to say
-  yes to. The run bar is hidden while the editor is open for the same reason: an
-  armed spend button beside unsaved words is a yes to whichever of the two you
-  were not looking at.
+  it is written, and the plan is the thing a person is about to send — a prompt
+  sitting in a text box invites a keystroke into the document somebody is about
+  to say yes to. The run bar is hidden while the editor is open for the same
+  reason: an armed spend button beside unsaved words is a yes to whichever of
+  the two you were not looking at.
 - **Two writes, and only the half that moved.** Each `PATCH` replaces its half
-  whole, and each clears the approval — so sending both every time would withdraw
-  a yes over an edit that touched one of them.
+  whole, so sending both every time would rewrite the send rows of a run whose
+  prompt was the only thing touched.
 - **The images edit as a list, not as the filmstrip that draws them.** What is
   being edited is a sequence: a row per image, with the position, up and down,
   remove, and the model input it binds to. `MediaPicker` — the file-shaped twin
@@ -492,4 +472,4 @@ through a terminal.
 3. **Retire the stored `bindings` attribute** once every run has sends.
 4. **Do drafts expire?** Proposed: no. A draft costs a row and no bytes.
 5. **Does a scene learn about drafts?** `scenes render` could draft every shot and
-   approve the board in one pass. Same mechanism, one tier up.
+   submit the board in one pass, on one yes. Same mechanism, one tier up.
