@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import {
   Alert,
+  Badge,
   Button,
   Combobox,
   Popover,
@@ -95,9 +96,11 @@ interface Held {
  * over a prompt they can read.
  *
  * **At rest it is one row.** The action row, the mode strip and the drawer
- * appear once the bar is *active* — focused, holding a prompt, holding an
- * image, or with a role highlighted — so a page opened to read the feed is
- * not opened under a composer's chrome.
+ * appear while the bar is *active* — focus is inside it, or one of its own
+ * popovers or the duplicate warning is open — and go the moment a press lands
+ * anywhere else, whatever the bar still holds. The prompt stays readable in
+ * the row; images it holds are counted beside the settings icon so a Send
+ * from the collapsed row is never a surprise.
  *
  * **The state is not here.** `CreateBarContext` holds it so the feed can load
  * a run into the bar from a route element; this component reads it, draws it,
@@ -118,14 +121,7 @@ export function CreateBar() {
   const [held, setHeld] = useState<Held | null>(null);
 
   const attachments = bar.attachments[bar.kind];
-  const active =
-    focused ||
-    bar.prompt !== "" ||
-    attachments.length > 0 ||
-    bar.role !== null ||
-    previewOpen ||
-    settingsOpen ||
-    held !== null;
+  const active = focused || previewOpen || settingsOpen || held !== null;
 
   // The registry is per-deploy, so the key carries no id.
   const models = useResource(
@@ -404,6 +400,13 @@ export function CreateBar() {
                 focusKey={bar.focus}
               />
             </div>
+
+            {!active && attachments.length > 0 && (
+              <Badge size="sm" className="mt-3 shrink-0 rounded-none">
+                {attachments.length}{" "}
+                {attachments.length === 1 ? "image" : "images"}
+              </Badge>
+            )}
 
             <Popover.Root open={settingsOpen} onOpenChange={setSettingsOpen}>
               <Popover.Trigger

@@ -1,4 +1,11 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 
@@ -24,8 +31,12 @@ vi.mock("../../apis/studio", () => ({
   // The settings popover and the drawer, when they open.
   getModelSchema: vi.fn().mockRejectedValue(new Error("no registry in tests")),
   getCharacters: vi.fn().mockResolvedValue([]),
-  getCharacterSelection: vi.fn().mockResolvedValue({ selection: [], cap: null, source: "default" }),
-  getProjectInputs: vi.fn().mockResolvedValue({ folder: "node-in", inputs: [] }),
+  getCharacterSelection: vi
+    .fn()
+    .mockResolvedValue({ selection: [], cap: null, source: "default" }),
+  getProjectInputs: vi
+    .fn()
+    .mockResolvedValue({ folder: "node-in", inputs: [] }),
 }));
 
 import {
@@ -59,7 +70,12 @@ const MOTION: ModelEntry = {
   model: "vendor/motion-model",
   kind: "video",
   skill: "studio-media-motion-model",
-  images: { refs: "reference_images", start: "start_image", end: "end_image", max_refs: 6 },
+  images: {
+    refs: "reference_images",
+    start: "start_image",
+    end: "end_image",
+    max_refs: 6,
+  },
   snapshot: {
     duration: { default: 5, enum: [5, 10] },
     start_image: { default: null },
@@ -107,7 +123,10 @@ beforeAll(() => {
 afterEach(cleanup);
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(getModels).mockResolvedValue({ "still-model": STILL, "motion-model": MOTION });
+  vi.mocked(getModels).mockResolvedValue({
+    "still-model": STILL,
+    "motion-model": MOTION,
+  });
   vi.mocked(getProject).mockResolvedValue({
     id: PROJECT,
     name: "A project",
@@ -115,7 +134,10 @@ beforeEach(() => {
   } as never);
   vi.mocked(getTemplates).mockResolvedValue({ blocks: {}, templates: [] });
   vi.mocked(createRun).mockResolvedValue(created());
-  vi.mocked(submitRun).mockResolvedValue({ id: "run-0001", status: "pending" } as never);
+  vi.mocked(submitRun).mockResolvedValue({
+    id: "run-0001",
+    status: "pending",
+  } as never);
   vi.mocked(getRuns).mockResolvedValue({ runs: [], cursor: null });
 });
 
@@ -134,6 +156,11 @@ async function open(path = `/p/${PROJECT}`) {
 }
 
 const editor = () => screen.getByRole("textbox", { name: "Prompt" });
+
+/** Focus lands in the bar — what wakes it. React hears `focusin`, not `focus`. */
+const wake = () => fireEvent.focusIn(editor());
+/** Focus leaves for somewhere outside the bar. */
+const leave = () => fireEvent.focusOut(editor(), { relatedTarget: null });
 const strip = () => document.querySelector("[data-mode-strip]") as HTMLElement;
 
 /** The prompt, put into the bar the way a feed row would. */
@@ -143,6 +170,7 @@ function fill(prompt: string) {
 
 it("the kind switch changes the strip and the model", async () => {
   await open();
+  wake();
   fill("A portrait.");
   await waitFor(() => expect(strip()).toBeTruthy());
 
@@ -187,7 +215,12 @@ it("Enter creates the draft and then submits it, in that order; Shift+Enter does
     model: "vendor/still-model",
     engine: "studio-media-still-model",
     // The snapshot's defaults; the image field and `prompt` are not params.
-    plan: { version: 1, origin: "authored", prompt: "A portrait.", params: { resolution: "2K" } },
+    plan: {
+      version: 1,
+      origin: "authored",
+      prompt: "A portrait.",
+      params: { resolution: "2K" },
+    },
     sends: [],
   });
   const order = [
@@ -197,7 +230,11 @@ it("Enter creates the draft and then submits it, in that order; Shift+Enter does
   ];
   expect([...order].sort((a, b) => a - b)).toEqual(order);
   // The duplicate question is one cheap read on the listing row.
-  expect(getRuns).toHaveBeenCalledWith({ project: PROJECT, fingerprint: "f1", include: "drafts" });
+  expect(getRuns).toHaveBeenCalledWith({
+    project: PROJECT,
+    fingerprint: "f1",
+    include: "drafts",
+  });
 
   // Sent: the prompt goes, the toast says so.
   expect(await screen.findByText("Sent")).toBeTruthy();
@@ -226,7 +263,9 @@ it("holds a draft whose payload already went out here, and Send anyway submits i
   await waitFor(() => expect(editor().textContent).toContain("A portrait."));
 
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
-  expect(await screen.findByText("This request has been run here before")).toBeTruthy();
+  expect(
+    await screen.findByText("This request has been run here before"),
+  ).toBeTruthy();
   expect(submitRun).not.toHaveBeenCalled();
 
   fireEvent.click(screen.getByRole("button", { name: "Send anyway" }));
@@ -239,41 +278,64 @@ it("a template pick fills the prompt", async () => {
   vi.mocked(getTemplates).mockResolvedValue({
     blocks: {},
     templates: [
-      { id: "tpl-1", name: "Face front", prompt: "A face, front on.", description: "", tags: [] },
+      {
+        id: "tpl-1",
+        name: "Face front",
+        prompt: "A face, front on.",
+        description: "",
+        tags: [],
+      },
     ],
   });
   await open();
-  // The action row appears once the bar is active; a word in it is enough.
+  wake();
+  // The action row appears once focus is in the bar.
   fill("draft");
   fireEvent.click(await screen.findByRole("button", { name: "Template" }));
   fireEvent.click(await screen.findByRole("button", { name: /Face front/ }));
 
-  await waitFor(() => expect(editor().textContent).toContain("A face, front on."));
+  await waitFor(() =>
+    expect(editor().textContent).toContain("A face, front on."),
+  );
 });
 
 it("attachments show as thumbs with a role badge and a way off; a frame switches to video", async () => {
   await open();
+  wake();
   api.attach(FACE, "reference");
   await waitFor(() => expect(strip()).toBeTruthy());
 
   const reference = within(strip()).getByRole("group", { name: "Reference" });
-  expect(within(reference).getByText("Reference", { selector: "span" })).toBeTruthy();
-  expect(within(reference).getByRole("button", { name: "Remove face-01.png" })).toBeTruthy();
+  expect(
+    within(reference).getByText("Reference", { selector: "span" }),
+  ).toBeTruthy();
+  expect(
+    within(reference).getByRole("button", { name: "Remove face-01.png" }),
+  ).toBeTruthy();
 
   api.attach({ ...FACE, node: "node-frame", name: "out-2.png" }, "start");
   await waitFor(() =>
-    expect(within(strip()).getByRole("group", { name: "Animate" })).toBeTruthy(),
+    expect(
+      within(strip()).getByRole("group", { name: "Animate" }),
+    ).toBeTruthy(),
   );
   expect(
-    within(within(strip()).getByRole("group", { name: "Animate" })).getByRole("button", {
-      name: "Remove out-2.png",
-    }),
+    within(within(strip()).getByRole("group", { name: "Animate" })).getByRole(
+      "button",
+      {
+        name: "Remove out-2.png",
+      },
+    ),
   ).toBeTruthy();
 
   // Back on image, the reference is still there, and × takes it off.
   fireEvent.click(screen.getByRole("button", { name: "Image" }));
-  fireEvent.click(within(strip()).getByRole("button", { name: "Remove face-01.png" }));
-  expect(screen.queryByRole("button", { name: "Remove face-01.png" })).toBeNull();
+  fireEvent.click(
+    within(strip()).getByRole("button", { name: "Remove face-01.png" }),
+  );
+  expect(
+    screen.queryByRole("button", { name: "Remove face-01.png" }),
+  ).toBeNull();
 });
 
 it("off a project page, the bar asks which project and lands there after sending", async () => {
@@ -284,4 +346,25 @@ it("off a project page, the bar asks which project and lands there after sending
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
   await waitFor(() => expect(submitRun).toHaveBeenCalled());
   expect(screen.getByTestId("address").textContent).toBe(`/p/${PROJECT}`);
+});
+
+it("the chrome follows focus: a press elsewhere collapses it, whatever the bar holds", async () => {
+  await open();
+  fill("A portrait.");
+  api.attach(FACE, "reference");
+  wake();
+  await waitFor(() => expect(strip()).toBeTruthy());
+  expect(screen.getByRole("button", { name: "Template" })).toBeTruthy();
+
+  leave();
+  await waitFor(() => expect(strip()).toBeNull());
+  expect(screen.queryByRole("button", { name: "Template" })).toBeNull();
+  // What it holds is not lost, only folded: the prompt stays in the row and
+  // the image it would send is counted.
+  expect(editor().textContent).toContain("A portrait.");
+  expect(screen.getByText("1 image")).toBeTruthy();
+
+  wake();
+  await waitFor(() => expect(strip()).toBeTruthy());
+  expect(screen.queryByText("1 image")).toBeNull();
 });
