@@ -68,13 +68,17 @@ export function EntityCard({ name, hero, counts, to }: Props) {
         )}
       </span>
 
-      {/* `block` on the caption: `variant="caption"` is an inline span, and
-          without it the counts ran onto the name's line as one word. */}
+      {/* The counts get a line of their own because `caption` is a block as of
+          design-system 0.17.0. This card is the reason that default changed:
+          it read `Name0 references · 54 files` when caption was inline, and
+          carried a `className="block"` to fix it — one every caller had to
+          remember. `truncate` needs the block box too; an inline box has no
+          width to elide against. */}
       <span className="min-w-0 flex-1">
         <Text variant="body" weight="medium" className="truncate">
           {name}
         </Text>
-        <Text variant="caption" tone="muted" className="block truncate font-mono tabular-nums">
+        <Text variant="caption" tone="muted" className="truncate font-mono tabular-nums">
           {counts}
         </Text>
       </span>

@@ -1,9 +1,8 @@
 import { useCallback, useState } from "react";
 
-import { Alert, Field, Input, Text } from "@ansavva/design-system";
+import { Alert, Chip, Field, Input, Text } from "@ansavva/design-system";
 
 import { EmptyState } from "../common/EmptyState";
-import { chipClass } from "../common/Chip";
 
 import { ApiError } from "../../apis/client";
 import { getCharacters, patchProject, setProjectCharacters } from "../../apis/studio";
@@ -176,16 +175,21 @@ function Involvement({ record, onSaved }: Props) {
           {(data ?? []).map((character) => {
             const on = involved.has(character.id);
             return (
-              <button
+              // The COMPONENT form, where AppHeader's nav takes the helper:
+              // this is already a plain `<button aria-pressed>`, which is
+              // exactly what `Chip` renders. `pressed` is controlled and
+              // presentational here — the truth is `involved`, which the
+              // parent owns.
+              <Chip
                 key={character.id}
-                type="button"
+                pressed={on}
+                size="sm"
                 disabled={busy}
-                aria-pressed={on}
                 onClick={() => void toggle(character.id)}
-                className={chipClass(on, "disabled:opacity-60")}
+                className="disabled:opacity-60"
               >
                 {character.name}
-              </button>
+              </Chip>
             );
           })}
         </div>

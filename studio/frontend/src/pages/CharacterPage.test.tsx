@@ -212,22 +212,26 @@ describe("the sections", () => {
   });
 
   it("resets the card's own padding, which a class cannot be trusted to do", async () => {
-    // `Card.Root` carries `p-lg`, and the package merges caller classes with
-    // `tailwind-merge`, which does not recognise this design system's t-shirt
-    // spacing keys — `twMerge('… p-lg …', 'p-0')` returns BOTH, and `.p-lg` is
-    // emitted after `.p-0` in the stylesheet, so the reset lost. The card kept
-    // 24px and the panel added 24px more: 48px a side on a 390px screen.
+    // `Card.Root` carries `p-lg`, and this resets it. It used to have to be an
+    // inline style: the package merged caller classes with a `tailwind-merge`
+    // that did not recognise this design system's t-shirt spacing keys, so
+    // `twMerge('… p-lg …', 'p-0')` returned BOTH and `.p-lg` — emitted after
+    // `.p-0` — won. The card kept 24px and the panel added 24px more: 48px a
+    // side on a 390px screen.
     //
-    // Asserting the inline style is the point. A className assertion would have
-    // passed the whole time this was broken.
+    // design-system 0.17.0 teaches the merge the scale, so the reset is a
+    // className again and the assertion follows it. What is asserted is that
+    // `p-lg` is GONE, not merely that `p-0` is present — the whole failure was
+    // that both survived, and a bare `toContain("p-0")` would have passed
+    // throughout.
     await open();
 
     const card = document.querySelector<HTMLElement>('[data-section=" record"]');
     expect(card).toBeTruthy();
-    // Parsed, not string-compared: jsdom serialises these two zeroes
-    // differently — `padding` as "0px" and `gap` as "0".
-    expect(parseFloat(card!.style.padding)).toBe(0);
-    expect(parseFloat(card!.style.gap)).toBe(0);
+    expect(card!.className).toContain("p-0");
+    expect(card!.className).toContain("gap-0");
+    expect(card!.className).not.toContain("p-lg");
+    expect(card!.className).not.toContain("gap-sm");
   });
 
   it("marks the section that moved, and only that one", async () => {

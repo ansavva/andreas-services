@@ -22,7 +22,6 @@ import {
   SoundOffIcon,
   SoundOnIcon,
 } from "../common/icons";
-import { CHROME_BUTTON } from "./chromeButton";
 import { PlayerTransport } from "./PlayerTransport";
 
 /**
@@ -332,7 +331,7 @@ export function MediaPlayer({
 
   const media = `h-full w-full ${FITS[fit]}`;
   const box = [
-    "relative isolate block overflow-hidden rounded-none bg-chrome-scrim",
+    "relative isolate block overflow-hidden rounded-none bg-overlay-scrim",
     isFullscreen ? "" : ASPECTS[aspect],
     className,
   ].join(" ");
@@ -396,11 +395,11 @@ export function MediaPlayer({
           onClick={startPlaying}
           aria-label={`Play ${name}`}
           className="absolute inset-0 z-10 flex cursor-pointer items-center justify-center
-                     bg-chrome-scrim/20 transition-colors hover:bg-chrome-scrim/40
+                     bg-overlay-scrim/20 transition-colors hover:bg-overlay-scrim/40
                      focus-visible:outline-2 focus-visible:outline-offset-[-2px]
                      focus-visible:outline-primary"
         >
-          <span className="flex size-14 items-center justify-center rounded-pill bg-chrome-scrim/70 text-chrome-ink">
+          <span className="flex size-14 items-center justify-center rounded-pill bg-overlay-scrim/70 text-overlay-ink">
             <PlayIcon className="size-7 fill-none stroke-current stroke-[1.5]" />
           </span>
         </button>
@@ -412,7 +411,7 @@ export function MediaPlayer({
           variant="caption"
           family="mono"
           className="pointer-events-none absolute bottom-1.5 right-1.5 z-10 rounded-none
-                     bg-chrome-scrim/80 px-1.5 py-0.5 text-chrome-ink"
+                     bg-overlay-scrim/80 px-1.5 py-0.5 text-overlay-ink"
         >
           {formatDuration(duration)}
         </Text>
@@ -421,7 +420,7 @@ export function MediaPlayer({
       {showChrome && !failed && (
         <div
           className={`pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start
-                      justify-between gap-2 bg-gradient-to-b from-chrome-scrim/80 to-transparent
+                      justify-between gap-2 bg-gradient-to-b from-overlay-scrim/80 to-transparent
                       p-2 pb-10 ${isFullscreen ? FULLSCREEN_TOP : ""}`}
         >
           <div className="pointer-events-auto flex min-w-0 items-center gap-1">{actions}</div>
@@ -437,7 +436,7 @@ export function MediaPlayer({
                 label={playback.muted ? "Unmute (m)" : "Mute (m)"}
                 size="sm"
                 onClick={playback.toggleMuted}
-                className={CHROME_BUTTON}
+                intent="overlay"
               >
                 {playback.muted ? <SoundOffIcon /> : <SoundOnIcon />}
               </IconButton>
@@ -454,7 +453,7 @@ export function MediaPlayer({
                 label={isFullscreen ? "Exit fullscreen (f)" : "Fullscreen (f)"}
                 size="sm"
                 onClick={() => void toggle()}
-                className={CHROME_BUTTON}
+                intent="overlay"
               >
                 {isFullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}
               </IconButton>
@@ -465,7 +464,7 @@ export function MediaPlayer({
                 label={playing ? `Close ${name}` : "Close"}
                 size="sm"
                 onClick={close}
-                className={CHROME_BUTTON}
+                intent="overlay"
               >
                 <CloseIcon />
               </IconButton>
@@ -477,11 +476,11 @@ export function MediaPlayer({
       {isVideo && playing && !failed && (
         <div
           className={`pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col gap-1
-                      bg-gradient-to-t from-chrome-scrim/85 to-transparent px-3 pb-3 pt-12
+                      bg-gradient-to-t from-overlay-scrim/85 to-transparent px-3 pb-3 pt-12
                       ${isFullscreen ? FULLSCREEN_BOTTOM : ""}`}
         >
           {playback.blocked && (
-            <Text variant="caption" className="pointer-events-auto text-chrome-ink">
+            <Text variant="caption" className="pointer-events-auto text-overlay-ink">
               Your browser blocked sound. Press play, then unmute above.
             </Text>
           )}

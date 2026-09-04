@@ -5,7 +5,6 @@ import { IconButton, Slider, Text } from "@ansavva/design-system";
 import type { MediaPlayback } from "../../hooks/useMediaPlayback";
 import { formatDuration } from "../../utils/format";
 import { PauseIcon, PlayIcon, SeekBackIcon, SeekForwardIcon } from "../common/icons";
-import { CHROME_BUTTON } from "./chromeButton";
 
 /** How far back-5 / forward-5 move. Named because the labels say the number. */
 const SKIP_SECONDS = 5;
@@ -81,7 +80,7 @@ export function PlayerTransport({
         label={`Back ${SKIP_SECONDS} seconds`}
         size={size}
         onClick={() => seekBy(-SKIP_SECONDS)}
-        className={CHROME_BUTTON}
+        intent="overlay"
       >
         <SeekBackIcon className={glyph} />
       </IconButton>
@@ -90,7 +89,7 @@ export function PlayerTransport({
         label={paused ? "Play (space)" : "Pause (space)"}
         size={size}
         onClick={togglePaused}
-        className={CHROME_BUTTON}
+        intent="overlay"
       >
         {paused ? <PlayIcon className={glyph} /> : <PauseIcon className={glyph} />}
       </IconButton>
@@ -99,7 +98,7 @@ export function PlayerTransport({
         label={`Forward ${SKIP_SECONDS} seconds`}
         size={size}
         onClick={() => seekBy(SKIP_SECONDS)}
-        className={CHROME_BUTTON}
+        intent="overlay"
       >
         <SeekForwardIcon className={glyph} />
       </IconButton>
@@ -111,7 +110,7 @@ export function PlayerTransport({
       <Text
         variant="caption"
         family="mono"
-        className="w-10 shrink-0 text-right text-chrome-ink"
+        className="w-10 shrink-0 text-right text-overlay-ink"
       >
         {elapsed}
       </Text>

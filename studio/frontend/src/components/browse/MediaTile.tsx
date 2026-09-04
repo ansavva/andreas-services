@@ -132,7 +132,7 @@ export function MediaTile({
         // The ring is what keeps a checkbox legible over a pale frame — the
         // media-chrome scrim, since the frame under it is media this app did
         // not choose the colour of.
-        className={`absolute left-1.5 top-1.5 shadow-[0_0_0_1px_var(--color-chrome-scrim)] transition-opacity
+        className={`absolute left-1.5 top-1.5 shadow-[0_0_0_1px_var(--color-overlay-scrim)] transition-opacity
                     focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100
                     pointer-coarse:opacity-100 ${selectionActive ? "opacity-100" : "opacity-0"}`}
       >

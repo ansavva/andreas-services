@@ -124,21 +124,6 @@
   --color-accent-hover: color-mix(in srgb, var(--color-accent) 88%, black 12%);
   --color-danger-hover: color-mix(in srgb, var(--color-danger) 88%, white 12%);
 
-  /* **The media chrome is its own overlay system, not a second name for the
-     ramp.** `MediaPlayer`, `PlayerTransport`, `ObjectActions` and
-     `CopyKeyButton`'s `chrome`/`tile` tones all paint controls FLOATING OVER
-     a photograph or a clip rather than over a surface this app chose — so
-     `text-ink`/`bg-line` are the wrong roles to reach for even though they
-     currently resolve to the same steps: a re-brand that moved `ink` off
-     white would take the chrome with it, and a control legible on a frame is
-     a different promise than one legible on a panel. These five are that
-     promise, stated once. They happen to equal `bg`/`ink`/`line`/two alpha
-     rungs today; nothing requires them to keep matching. */
-  --color-chrome-ink: var(--color-neutral-12);
-  --color-chrome-muted: var(--color-neutral-a11);
-  --color-chrome-scrim: var(--color-neutral-1);
-  --color-chrome-hover: var(--color-neutral-a5);
-  --color-chrome-active: var(--color-neutral-a6);
 
   /* Near-square, in Replicate's range. The design system's own `sm/md/lg` are
      6/10/16px, which reads as a card system; studio wants hairline-separated
@@ -229,13 +214,7 @@
   --color-danger-hover: color-mix(in srgb, var(--color-danger) 88%, white 12%);
 
   /* See the `@theme static` block above for why these are named separately
-     from `ink`/`line` rather than reused. */
-  --color-chrome-ink: var(--color-neutral-12);
-  --color-chrome-muted: var(--color-neutral-a11);
-  --color-chrome-scrim: var(--color-neutral-1);
-  --color-chrome-hover: var(--color-neutral-a5);
-  --color-chrome-active: var(--color-neutral-a6);
-}
+     from `ink`/`line` rather than reused. */}
 
 html,
 body,
@@ -330,16 +309,20 @@ body {
 /* ──────────────────────────── one control height ────────────────────────────
  *
  * **Every form control in this app is 44px, and this is the one place that is
- * decided.** The package ships three heights for things that sit side by side:
- * a `Select` trigger and a `md` Button are 44 — the WCAG 2.5.5 target-size
- * floor both of them cite — an `Input` is 40 from the shared `controlBox`, and
- * a `Toggle` sets no height at all and lands at 36 from its padding.
+ * decided.** The package ships two heights for things that sit side by side:
+ * a `Select` trigger, a `md` Button and — since 0.17.0 — a `md` Toggle are all
+ * 44, the WCAG 2.5.5 target-size floor they each cite, while an `Input` is 40
+ * from the shared `controlBox`.
  *
- * Bottom-aligned, as a field row is, those disagreements do not read as a few
- * pixels: each control's LABEL sits above its own box, so three heights put
- * three labels on three lines. It was fixed four times in four rows by hand
- * before it was fixed here, and the same latent bug sat in every row nobody had
- * looked at yet.
+ * **It was THREE heights until 0.17.0**, because `Toggle` set none at all and
+ * landed at 36 from its padding. That is fixed upstream now, so this block has
+ * one disagreement left to normalise rather than two.
+ *
+ * Bottom-aligned, as a field row is, that disagreement does not read as a few
+ * pixels: each control's LABEL sits above its own box, so two heights put two
+ * labels on two lines. It was fixed four times in four rows by hand before it
+ * was fixed here, and the same latent bug sat in every row nobody had looked
+ * at yet.
  *
  * **The durable fix is upstream**: `controlBox` should be `h-11`, which is what
  * `input.props.ts` would say if it applied the reasoning its own `Select` and
@@ -380,38 +363,4 @@ input.h-10,
  */
 :root {
   --header-h: 72px;
-}
-
-/* ─────────────────────── touch targets below 44px ───────────────────────
- *
- * **A `sm` `IconButton` is 32px, which is the package's own deliberate opt-in
- * to a smaller VISUAL target for dense chrome** — a row's `⋯`, a tile's
- * corner. It still fails WCAG 2.5.5 on a touchscreen, where the finger is
- * wider than the box it is aiming at. This widens the invisible hit area
- * without moving the drawn one, on `pointer: coarse` only — a mouse loses
- * nothing by aiming at 32px, and a phone gets a target it can actually hit.
- */
-@media (pointer: coarse) {
-  .touch-target {
-    min-height: 2.75rem;
-    min-width: 2.75rem;
-  }
-}
-
-/* ────────────────────── a Select that has to truncate ──────────────────────
- *
- * **`min-width: auto` is the flexbox default, and it wins over an ancestor's
- * `width`.** `Select`'s trigger is `flex … justify-between` around a
- * `truncate` label span; without this, that span refuses to shrink below its
- * own text's width, which forces the button — and everything constraining it
- * — wider than asked. `FolderBrowser`'s toolbar caps `SortControl` at `w-28`
- * below `sm` so its own `⋯` never wraps onto a second line at 390px; without
- * this rule the cap is silently ignored and the wrap happens anyway.
- *
- * Consumer-side, like the two blocks above: keyed to the package's own
- * `role="combobox"` markup, so a future release that already sets this itself
- * makes the rule redundant rather than wrong.
- */
-[role="combobox"] > .truncate {
-  min-width: 0;
 }

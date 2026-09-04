@@ -244,14 +244,14 @@ export function MediaThumb({
         />
       )}
 
-      {/* Square, and mono: a duration is metadata. `bg-chrome-scrim/80` is the
+      {/* Square, and mono: a duration is metadata. `bg-overlay-scrim/80` is the
           media-chrome scrim at the weight the black literal here used to
           carry — a badge over media has to be dark, and the point of the token
           is that "dark, over a frame" is one thing this app can re-value. */}
       {(badge ?? (isVideo && !failed)) && (
         <span
-          className="pointer-events-none absolute bottom-1.5 right-1.5 bg-chrome-scrim/80 px-1.5
-                     py-0.5 font-mono text-[11px] tabular-nums text-chrome-ink"
+          className="pointer-events-none absolute bottom-1.5 right-1.5 bg-overlay-scrim/80 px-1.5
+                     py-0.5 font-mono text-[11px] tabular-nums text-overlay-ink"
         >
           {badge ?? (duration ? formatDuration(duration) : "video")}
         </span>
@@ -260,8 +260,8 @@ export function MediaThumb({
       {showName && (
         <span
           className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t
-                     from-chrome-scrim/85 to-transparent px-2 pb-1.5 pt-6 text-left font-mono text-[11px]
-                     text-chrome-ink
+                     from-overlay-scrim/85 to-transparent px-2 pb-1.5 pt-6 text-left font-mono text-[11px]
+                     text-overlay-ink
                      opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
         >
           {name}

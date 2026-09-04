@@ -9,7 +9,7 @@ function looksLikeAStyledControl(text) {
  * `components/common/` is a control drawn by hand instead of reached for —
  * `Button`, `IconButton` or `buttonClass`. Scoped OFF `components/common/` in
  * `eslint.config.js`, because that is where the design-system-wrapping
- * helpers (`Chip`, `TagSelect`, `Backlinks`, …) live and are allowed to build
+ * helpers (`TagSelect`, `Backlinks`, …) live and are allowed to build
  * one. A genuinely structural raw button elsewhere — a listing row that is
  * itself the click target, a full-bleed poster play button — gets an
  * `eslint-disable-next-line` naming why, not a rewrite into a component that

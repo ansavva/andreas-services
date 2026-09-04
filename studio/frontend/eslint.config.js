@@ -66,8 +66,9 @@ export default tseslint.config(
   },
   {
     // R4 hand-rolled controls — off inside components/common/, where the
-    // design-system-wrapping helpers (Chip, TagSelect, Backlinks, …) are
-    // exactly the place a raw element is allowed to carry its own classes.
+    // design-system-wrapping helpers (TagSelect, Backlinks, …) are exactly the
+    // place a raw element is allowed to carry its own classes. `Chip` used to
+    // be one of them and is the package's component now.
     files: ["src/**/*.{ts,tsx}"],
     ignores: ["src/components/common/**"],
     plugins: { studio },

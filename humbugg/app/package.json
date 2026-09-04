@@ -19,8 +19,8 @@
     "a11y:check": "node tool/accessibility-audit.ts"
   },
   "dependencies": {
-    "@ansavva/design-system": "0.16.0",
-    "@ansavva/tokens": "^0.4.0",
+    "@ansavva/design-system": "0.17.0",
+    "@ansavva/tokens": "^0.5.0",
     "@expo-google-fonts/archivo": "^0.4.2",
     "@expo-google-fonts/lily-script-one": "^0.4.1",
     "@expo-google-fonts/spectral": "^0.4.1",

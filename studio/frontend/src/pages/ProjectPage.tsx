@@ -150,9 +150,10 @@ export function ProjectPage() {
             }
           />
 
-          {/* `block`: `caption` is a `<span>`, and an inline box takes no
-              top border or padding of its own. */}
-          <Text variant="caption" tone="muted" className="block border-t border-line pt-2 font-mono">
+          {/* The top border and padding need a block box, which `caption` is
+              by default as of design-system 0.17.0 — this used to carry
+              `className="block"` to get one. */}
+          <Text variant="caption" tone="muted" className="border-t border-line pt-2 font-mono">
             Created {formatDate(record.created)} · updated {formatDate(record.updated)}
           </Text>
         </Tabs.Panel>
