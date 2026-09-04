@@ -180,7 +180,7 @@ studio runs show <project>/latest
 studio runs outputs <project>/latest --presign    # feed into the next render
 studio runs find --character <name>               # across every project
 studio runs edit <project>/latest                 # a DRAFT's prompt, params and images
-                                                  # — withdraws any approval
+                                                  # — show it again before sending
 studio runs delete <project>/latest              # keeps the folder; --files delete removes it
 
 # Frames: verify a clip, and take the handoff frame for chaining

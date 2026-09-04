@@ -44,7 +44,9 @@ Stated in full at the top of `studio/CLAUDE.md`. In brief:
 - **Never name a production character in the repo.** Characters are catalog
   rows; code, docs, commits and PR titles use the `<name>` placeholder. A dev
   subject listed in `DEV_SUBJECTS` is the one exception.
-- **Never submit a generation without approval of the full payload.**
+- **Nothing runs unless a person tells it to.** Show the full payload
+  (`--dry-run`), ask, submit only when told. The submit command is the act;
+  there is no separate approve step.
 - **S3 is the only origin.** Assets reach a model as presigned URLs, never uploads.
 - **Local commands run against this machine's dev stack**, selected by the `dev`
   profile. Production is `studio --profile prod …`, and nothing confirms it.

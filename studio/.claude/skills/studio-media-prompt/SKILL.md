@@ -226,13 +226,11 @@ color used sparingly for a joke or a signal.
 
 > `"Vintage pen-and-ink comic illustration, bold variable-weight linework, dense cross-hatching and stipple shading, heavy spot-blacks, high-contrast black and white on aged paper with occasional selective spot color."`
 
-## Approve before sending
+## Show, ask, then send
 
-**Show the user the complete payload and get approval before it is rendered.**
+**Nothing runs unless a person tells it to.** Show the complete payload as the two documents — `PROMPT` then `INPUT` — ask, and submit only when told. `--dry-run` renders exactly that and bills nothing. The submit command (`studio run`, or `studio runs submit` on a draft) IS the act; there is no separate approve step. Show the payload again after **any** edit: a yes to a plan, to a menu answer, or to a payload shown several messages ago is not an instruction to send the request about to go out.
 Both engines bill per run, and both are submitted by the same command, so the
-same gate applies to each: show the two documents — `PROMPT` then `INPUT` — and
-wait for a yes to *that payload*. `--dry-run` renders exactly that and bills
-nothing. Re-approve after any edit.
+same rule applies to each.
 
 ## Workflow
 

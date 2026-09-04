@@ -1,6 +1,6 @@
 ---
 name: studio-media-image
-description: The FRAME-FIRST WORKFLOW for still images in the studio-* pipeline — why to render a frame before a video, how runs chain, the approval gate, how images reach Replicate (presigned S3 URLs only), and handing a still to a video engine. Use whenever the user wants to create, render, or edit an image, a frame, a poster, a thumbnail, or a start frame to animate, and whenever choosing between the image models. Each model has its own skill (studio-media-nano-banana-pro, studio-media-nano-banana-2, studio-media-gpt-image-2, studio-media-gpt-image-1-5); this covers what is true of all of them.
+description: The FRAME-FIRST WORKFLOW for still images in the studio-* pipeline — why to render a frame before a video, how runs chain, the show-then-ask rule, how images reach Replicate (presigned S3 URLs only), and handing a still to a video engine. Use whenever the user wants to create, render, or edit an image, a frame, a poster, a thumbnail, or a start frame to animate, and whenever choosing between the image models. Each model has its own skill (studio-media-nano-banana-pro, studio-media-nano-banana-2, studio-media-gpt-image-2, studio-media-gpt-image-1-5); this covers what is true of all of them.
 ---
 
 # studio-media-image — image generation as a recorded run
@@ -100,7 +100,7 @@ nothing.
 target model's live schema before the run is recorded and before anything bills.
 Unknown fields, bad enum values and out-of-range numbers are rejected locally,
 plus documented constraints the schema does not enforce. `--dry-run` runs the
-same check, so an approved payload is a payload that submits. When a field is
+same check, so the payload a person read is the payload that submits. When a field is
 aimed at the wrong model, the error names the one that takes it:
 
 ```
@@ -162,11 +162,10 @@ studio run \
 Inputs are de-duplicated and order is preserved: `--image-run` first, then the
 character's set, then `--ref-run`, then `--key`.
 
-## Approval gate (MANDATORY) — the FULL payload, as two JSON documents
+## Hard rule #2 (MANDATORY) — the FULL payload, as two JSON documents
 
-**Show the user the complete `input` object and wait for explicit approval before
-submitting.** Every parameter, not just the prompt: a wrong `aspect_ratio` or a
-wrong model bills exactly like a wrong prompt. Re-approve after *any* edit.
+**Nothing runs unless a person tells it to.** Show the complete payload as the two documents — `PROMPT` then `INPUT` — ask, and submit only when told. `--dry-run` renders exactly that and bills nothing. The submit command (`studio run`, or `studio runs submit` on a draft) IS the act; there is no separate approve step. Show the payload again after **any** edit: a yes to a plan, to a menu answer, or to a payload shown several messages ago is not an instruction to send the request about to go out. Every parameter, not just the prompt: a wrong `aspect_ratio` or a wrong
+model bills exactly like a wrong prompt.
 
 `--dry-run` renders it in the house format — two documents, because nesting the
 prompt inside the payload double-escapes it into one unreadable line:
@@ -196,10 +195,10 @@ image and video submissions review identically.
 camera/action/scene shaped and targets the video engines only
 (`--engine seedance|kling-replicate`), so document 1/2 is a plain string here.
 
-**Retrying is not re-approving — but changing the payload is.** A transient
+**Retrying an identical payload needs no second look — a changed payload does.** A transient
 `E003 ModelRateLimitError` (Replicate capacity) can be retried with the identical
 payload. Do NOT quietly set `allow_fallback_model: true` to get past it: that
-reroutes to a *different model* (`bytedance/seedream-5`) than the one approved.
+reroutes to a *different model* (`bytedance/seedream-5`) than the one shown.
 
 ## A failure mode worth recognising
 

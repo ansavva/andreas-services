@@ -214,14 +214,14 @@ studio scenes new <project> --name <name> --from-json plan.json
 studio scenes plan <project>/<name>          # read it back as a table
 studio scenes check <project>/<name>         # would every payload be accepted?
 
-# 2. render the panels  (APPROVAL GATE — bills, cents each)
+# 2. render the panels  (SHOWS EVERY PAYLOAD, THEN ASKS — bills, cents each)
 studio scenes board <project>/<name> --dry-run --review-sheet /tmp/board
 studio scenes board <project>/<name>
 
 # 3. LOOK AT THE BOARD — a sheet can be read, a plan cannot
 studio scenes sheet <project>/<name> --out /tmp/board
 
-# 4. render one shot  (APPROVAL GATE — bills, dollars)
+# 4. render one shot  (SHOWS THE PAYLOAD, THEN ASKS — bills, dollars)
 studio scenes render <project>/<name> --shot 1
 
 # 5. look at the clip, then carry its last frame into the next shot
@@ -244,12 +244,13 @@ exist until shot N is rendered and its handoff taken.
 
 `scenes render --dry-run` writes a **draft run per shot** rather than printing a
 payload that scrolls away, so the thing hard rule #2 asks a person to read has an
-address: it can be opened in the app, linked to, and approved later.
+address: it can be opened in the app, linked to, and submitted later — when a
+person says to. There is no approve step; the submit command is the act.
 
 ```bash
 studio scenes render <project>/<name> --shot 1 --dry-run   # -> draft run-…
-studio runs approve run-…                                  # read it, say yes
-studio runs submit run-…                                   # bills
+studio runs show run-…                                     # read it
+studio runs submit run-…                                   # bills — only when told
 studio scenes attach <project>/<name> --shot 1 --run run-… # tell the scene
 ```
 
@@ -449,9 +450,9 @@ differences between generations, and no prompt wording prevents that.
 ## Cost, and where the gate goes
 
 Kling standard is **$0.168/s**, **$0.224/s** with audio — so a 15 s shot with
-audio is ~$3.36 and a four-shot scene is real money. The full-payload approval
-gate applies to **every shot**, because every shot is its own submission
-(`CLAUDE.md` rule 2). Steps 2–4 move bytes only and need no approval.
+audio is ~$3.36 and a four-shot scene is real money. Show the full payload and
+ask before **every shot**, because every shot is its own submission
+(`CLAUDE.md` rule 2). Steps 2–4 move bytes only and need no asking.
 
 Length is a lever, not a default: a still beat rendered at 6 s costs a third of
 15 s and drifts less. Pick the duration the beat needs.

@@ -354,8 +354,9 @@ may be inferred:
 
 1. **Spending.** Show the complete payload as the two documents — `PROMPT` then
    `INPUT` — and wait for a yes to **that payload**. Not to a plan, not to a
-   menu option, not to "shall I shoot?". A payload approved earlier in the
-   conversation is not an approval of the one about to be sent; re-show it.
+   menu option, not to "shall I shoot?". A payload shown earlier in the
+   conversation is not a yes to the one about to be sent; re-show it. The
+   submit command is the act; there is no separate approve step.
 2. **Identity.** A generated image does **not** become a reference
    because it rendered successfully. Show it, and wait for a yes before it is
    added, replaced, renumbered or archived. This includes `reference/`,
@@ -368,10 +369,10 @@ Both of these have been broken in practice, in the same session:
 - its result was then written straight into a character's face group, which
   nobody had agreed to.
 
-The tools now enforce what they can. Nothing that spends has an approval flag,
+The tools now enforce what they can. Nothing that spends has a yes-flag,
 and nothing **files its own output** — results stay in their run until somebody
 copies one into a character and tags it. What the tools cannot
-enforce is an agent deciding a previous message counted as approval. It does not.
+enforce is an agent deciding a previous message counted as being told to. It did not.
 When in doubt, render the payload into the conversation and stop.
 
 ## The standard set, which is now fourteen TEMPLATES
@@ -405,9 +406,9 @@ studio templates pull --path t.yaml      # stack -> file
 studio templates push --path t.yaml      # file  -> stack (refuses a conflict)
 ```
 
-- **Nothing bills, and nothing is even approved.** A run made from a template is
-  an unapproved DRAFT with an address you can open. Approving and sending are
-  `runs approve` and `runs submit`, which is where they already were.
+- **Nothing bills.** A run made from a template is a DRAFT with an address you
+  can open. Reading and sending are `runs show` and `runs submit`, which is
+  where they already were.
 - **The prompts are DATA, not part of this package.** They live in the library as
   rows, the app edits them, and `studio templates pull` / `push` move them
   between stacks — so a wording fix is not a release.

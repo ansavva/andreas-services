@@ -65,16 +65,10 @@ enforces this locally rather than letting Replicate reject a billed request.
 `studio models show seedance` prints the live schema; it is authoritative over
 this table.
 
-## Approval gate (MANDATORY) — the FULL payload
+## Hard rule #2 (MANDATORY) — the FULL payload, shown, then asked
 
-**Show the user the complete payload as the two documents — `PROMPT` then
-`INPUT` — and wait for explicit approval before submitting.** Every parameter,
-not just the prompt text: a wrong `resolution` or a wrong `duration` bills
-exactly like a wrong prompt. Re-approve after **any** edit. A yes given to a
-plan, to a menu answer, or to a payload shown several messages ago is not
-approval of the request about to be sent.
-
-`--dry-run` renders exactly that review and bills nothing.
+**Nothing runs unless a person tells it to.** Show the complete payload as the two documents — `PROMPT` then `INPUT` — ask, and submit only when told. `--dry-run` renders exactly that and bills nothing. The submit command (`studio run`, or `studio runs submit` on a draft) IS the act; there is no separate approve step. Show the payload again after **any** edit: a yes to a plan, to a menu answer, or to a payload shown several messages ago is not an instruction to send the request about to go out. Every parameter, not just the prompt text: a wrong `resolution` or a wrong
+`duration` bills exactly like a wrong prompt.
 
 ## Wording
 

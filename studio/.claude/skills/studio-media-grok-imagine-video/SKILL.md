@@ -81,8 +81,9 @@ studio run \
 Bind the still with `--start-run` / `--start-key` (→ `image`). `--ref-run` and
 `--key` have nowhere to bind — there is no reference field.
 
-**Show the user the exact prompt and get approval before submitting** — every run
-bills. `--dry-run` renders the payload without spending.
+**Show the user the exact payload and submit only when told** — every run
+bills, and the submit command is the act. `--dry-run` renders the payload
+without spending.
 
 ### Editing an existing clip
 

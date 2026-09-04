@@ -139,8 +139,8 @@ Seedance, Kling lets a start frame and `reference_images` combine. Kling accepts
 only `.jpg/.jpeg/.png`, and the submitter rejects a `.webp` binding up front
 rather than letting the render fail.
 
-**Show the user the exact prompt and get approval before submitting** — every run
-bills.
+**Show the user the exact payload and submit only when told** — every run
+bills, and the submit command is the act.
 
 Parsing note: Replicate's `logs` field can contain raw control characters, so
 `json.loads(..., strict=False)` when reading a prediction. Strict parsing fails.
