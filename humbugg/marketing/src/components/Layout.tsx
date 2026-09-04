@@ -25,7 +25,7 @@ export function Shell({ children, compact = false }: { children: ReactNode; comp
             {/* Pricing IS a marketing route, so it is the one nav item that is a <Link>.
                 Never `hidden sm:` — it shipped that way for an hour and the pricing page was
                 unreachable from a phone entirely, because the footer carries only policy links. */}
-            <Link className="nav-link" to="/pricing">Pricing</Link>
+            <Link className="nav-link inline-flex" to="/pricing">Pricing</Link>
             <a className="nav-link hidden sm:inline-flex" href={appUrl('/login')}>Sign in</a>
             <a className={buttonClass()} href={appUrl('/signup')}>Start a group</a>
           </nav>
