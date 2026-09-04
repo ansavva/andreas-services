@@ -25,7 +25,7 @@ terraform {
 # `modules/media` holds the bytes and nothing lists them. Identity, name, parent
 # and owner are rows here; an S3 key is an opaque `blob_key` nothing derives or
 # parses. So a lost row is a lost file even though every byte of it survives,
-# and no amount of S3 versioning reaches it. Rename, move, share and transfer are
+# and no amount of S3 versioning reaches it. Rename, move and share are
 # row writes that touch zero objects — the same property, seen from the other
 # side.
 #
@@ -157,7 +157,7 @@ resource "aws_dynamodb_table" "catalog" {
   # The bucket's protection is versioning plus a role with no
   # `s3:DeleteObjectVersion`, so every delete studio can perform there is a
   # tombstone it can be reached back past. Nothing equivalent exists for a row —
-  # a bad transaction during a move or a transfer, which rewrites `path` or `lib`
+  # a bad transaction during a move, which rewrites `path`
   # across an entire subtree, overwrites in place and leaves nothing behind.
   #
   # An environment that genuinely does not want it — a throwaway dev table whose

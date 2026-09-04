@@ -108,7 +108,7 @@ module "auth" {
 #
 # The bucket above holds the bytes; this holds the library. Identity, name,
 # parent and owner are rows here, and an S3 key is an opaque `blob_key` nothing
-# derives or parses — so rename, move, share and transfer are row writes that
+# derives or parses — so rename, move and share are row writes that
 # touch zero objects, and a lost row is a lost file even though every byte of it
 # survives. `modules/catalog` carries the full reasoning.
 #

@@ -195,8 +195,8 @@ Neither the S3 grant nor the DynamoDB one can express the security boundary:
   access to. IAM cannot ask a question whose answer is in the data it is
   guarding.
 - **Two nodes in different libraries are two items in one partition space.**
-  `lib` is an attribute a transfer rewrites, and a key you can move an item
-  across is not a key you can authorise on.
+  `lib` is an attribute, and a key you can move an item across is not a key
+  you can authorise on.
 
 So the policy's job is narrow — `GetItem`, `BatchGetItem`, `Query`, `PutItem`,
 `UpdateItem`, `DeleteItem` and `TransactWriteItems` on this table and
@@ -220,8 +220,7 @@ boundary moved.** Anything that widens who can see what is a change in
 reads as ordinary application code. Do not read a clean Terraform plan as
 evidence.
 
-**A row has no version history.** A move or a transfer rewrites `path` or `lib`
-across a whole subtree and leaves nothing behind. The catalog's only recovery
+**A row has no version history.** A move rewrites `path` across a whole subtree and leaves nothing behind. The catalog's only recovery
 is the table's PITR, restored out of band by a human into a new table, plus
 `deletion_protection_enabled` refusing a `DeleteTable` at the API rather than
 only in Terraform.
@@ -741,7 +740,6 @@ the entity's id.
 | `GET /api/resolve?path=` | A slash-joined name path → the node it names. An empty path is the library root |
 | `POST /api/nodes` | `{parent, name, kind, blob_key?, size?, content_type?, on_conflict?}` → creates a folder or a file. **201.** 409 if the name is taken, unless `on_conflict: "number"` |
 | `PATCH /api/nodes/<id>` | `{name}` to rename **or** `{parent}` to move — both at once is a 400, not a guess. `{description, tags}` → what a picture IS and what it is FOR |
-| `POST /api/nodes/<id>/transfer` | `{lib}` → hands the node and its subtree to another library. **Owner in both**, or 403; the node keeps its id, so every share link survives and resolves only for the destination's members |
 | `DELETE /api/nodes/<id>` | Node and subtree. Rows first, then blobs |
 | `POST /api/nodes/move` | `{ids: [...], destination}` → moves 1..N nodes, names kept. 409 if taken |
 | `POST /api/nodes/copy` | `{ids: [...], destination}` → copies 1..N nodes, sources kept. Names numbered if taken |
@@ -998,8 +996,8 @@ It reads the `sub` off the pool account rather than inventing one, is safe to
 run repeatedly, and leaves an existing membership exactly as it is —
 **including its role**, because "add" quietly demoting an owner is the kind of
 surprise that costs somebody their library. `STUDIO_ROLE` is `member` by
-default; `owner` is the wider grant and what a transfer needs in both
-libraries.
+default; no route reads the role, so `owner` records who holds the library
+rather than granting anything wider.
 
 Its defaults come from SSM, so they point at **prod**, like `create-user.sh`
 and unlike everything named `dev-*`. Set `USER_POOL_ID` and `CATALOG_TABLE`

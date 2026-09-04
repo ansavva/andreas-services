@@ -176,7 +176,7 @@ resource "aws_iam_role_policy" "media_access" {
 # deletes recoverable. Neither idea carries over. A row has no prefix to scope
 # by — `blob_key` is deliberately opaque and membership is a table lookup, so
 # IAM cannot express "the caller's libraries" at all — and a row has no version
-# history: an overwrite during a move or a transfer, which rewrites `path` or
+# history: an overwrite during a move, which rewrites `path` or
 # `lib` across a whole subtree, leaves nothing behind. The catalog's only
 # recovery is the table's PITR, restored out of band by a human into a new
 # table. So the boundary is held entirely in the API's own code, which is also

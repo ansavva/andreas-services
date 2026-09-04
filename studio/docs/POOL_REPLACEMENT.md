@@ -83,10 +83,8 @@ nothing, and says so.
 
 **`STUDIO_ROLE` defaults to `member`, and that is not what an owner had.** This
 runbook omitted it on the first real use and quietly restored an owner as a
-member; the difference is real — `role` is what
-`routes/support.py:owner_of` checks before allowing a node to be transferred
-into or out of a library. It is the one field the default gets wrong, so read it
-back out of `memberships-before.json` rather than trusting the default.
+member. It is the one field the default gets wrong, so read it back out of
+`memberships-before.json` rather than trusting the default.
 
 A wrong role is now correctable in place: `add-member.sh` converges it, and
 `--no-converge` opts out. It refused to until this was found — the only way back

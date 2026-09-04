@@ -426,40 +426,6 @@ def write_text(node_id: str):
     return jsonify(manage.update_text(record, support.body().get("content"))), 200
 
 
-@bp.post("/nodes/<node_id>/transfer")
-def transfer_node(node_id: str):
-    """Hand a subtree to another library. Owner in both, or 403.
-
-    **Its own route rather than a `parent` in the patch above**, because
-    `catalog.move_node` refuses a destination in another library on purpose and
-    that refusal is worth keeping: a transfer changes who can reach the branch,
-    and the check that makes it safe is one a move has no reason to make.
-
-    **Two libraries, two checks, and which is which is the point of writing them
-    on separate lines.** The first is against the node's own `lib` — read off the
-    record, never off `g.library`. The second is against the library named in the
-    body. The caller needs `owner` in both: in the source because the subtree is
-    leaving it, and in the destination because everyone there is about to be able
-    to read it.
-
-    **The node keeps its id, so every share link to it survives** — and now
-    resolves only for members of the destination.
-    """
-    body = support.body()
-    lib = body.get("lib")
-    if not isinstance(lib, str) or not lib:
-        raise ValidationError("lib is required")
-
-    held = support.memberships()
-    record = catalog.node(node_id)
-    support.owner_of(record["lib"], held)  # the source: the node's own library
-    support.owner_of(lib, held)  # the destination: the library the body names
-
-    # 200 and not 201: nothing new exists, and the response is the node it has
-    # always been with a different `lib`.
-    return jsonify(support.view(catalog.transfer_node(node_id, lib))), 200
-
-
 @bp.get("/nodes/<node_id>/download-url")
 def download_url(node_id: str):
     """A fresh presigned GET for one node's blob.

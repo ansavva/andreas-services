@@ -91,9 +91,8 @@ The media bucket's guarantee is versioning plus a role with no
 cannot reach past. A lifecycle rule expires a noncurrent version after 30 days
 (`noncurrent_version_expiration_days`) and removes a delete marker with nothing
 behind it, so the recovery window is bounded rather than the bucket growing
-with every overwrite. **Nothing equivalent exists for a row.** A move or a transfer
-rewrites `path` or `lib` across a whole subtree, in place, and leaves nothing
-behind. So:
+with every overwrite. **Nothing equivalent exists for a row.** A move
+rewrites `path` across a whole subtree, in place, and leaves nothing behind. So:
 
 - **PITR on, 35 days, restorable to any second.** It is the only recovery this
   data has. The variable defaults to `true` and the asymmetry is deliberate:

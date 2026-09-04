@@ -59,9 +59,7 @@ local work runs against this machine's dev stack.
   CLI uses. The payload is shown in full before the yes, and
   `POST /api/runs/<id>/submit` refuses a run whose plan has changed since it was
   approved — hard rule #2 in `CLAUDE.md`.
-- **Switch library.** An account can be a member of more than one, and a subtree
-  can be handed from one to another (`POST /api/nodes/<id>/transfer`, owner in
-  both).
+- **Switch library.** An account can be a member of more than one.
 - **Download** any single file (`GET /api/nodes/<id>/download-url`).
 
 ### Keys
@@ -108,8 +106,8 @@ STUDIO_LIBRARY=lib-… ./studio/scripts/add-member.sh --list
 ```
 
 **No API route grants membership, deliberately** — one could grant itself access
-to somebody else's library. `STUDIO_ROLE` is `member` by default; `owner` is the
-wider grant and the one a transfer between libraries requires in both.
+to somebody else's library. `STUDIO_ROLE` is `member` by default; no route
+reads the role, so `owner` is a record of who holds the library, not a wider grant.
 
 ## Development
 
