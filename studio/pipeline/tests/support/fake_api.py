@@ -77,8 +77,8 @@ def _backend_service(name: str):
     Four modules are shared this way — `storyboard`, `prompt`, `digest` and
     `reference` — and all four are written to import neither Flask nor boto3 so
     that a unit test needs neither. What they hold is the API's own answers: whether a plan
-    is coherent, whether a prompt will render well, and what a person's approval
-    was an approval OF. A fake that approximated any of them would let the CLI's
+    is coherent, whether a prompt will render well, and whether two payloads are
+    the same one. A fake that approximated any of them would let the CLI's
     tests pass against answers the real service does not give, which is the
     failure this fake exists to prevent.
 
@@ -149,35 +149,30 @@ class FakeError(Exception):
 #: The statuses that come before a submission. **Mirrors
 #: `catalog.UNSUBMITTED_RUN_STATUSES`**, and a copy rather than an import because
 #: the pipeline does not depend on the backend package and never has.
-UNSUBMITTED = frozenset({"draft", "approved", "discarded"})
+UNSUBMITTED = frozenset({"draft", "discarded"})
 
 #: Every word a run's status may be. **The fake validated none of them**, which
 #: is how `studio runs adopt` came to write `adopted` — a status the real route
 #: rejects with a 400 — and pass its tests for as long as it has existed.
-RUN_STATUSES = frozenset({"draft", "approved", "pending", "running", "succeeded",
+RUN_STATUSES = frozenset({"draft", "pending", "running", "succeeded",
                           "failed", "cancelled", "discarded", "adopted"})
 
 
-def _plan_digest(plan, sends) -> str:
-    """The BACKEND's digest, loaded rather than restated.
+def _fingerprint(model, plan, sends) -> str:
+    """The BACKEND's fingerprint, loaded rather than restated.
 
-    **This was the cautionary case in this file and is no longer one.** It was a
-    second implementation of `catalog.plan_digest` whose own comment admitted
-    nothing held the two together — and `routes/runs.py` records that this hash
-    has had three implementations in the repository, one of which silently
-    disagreed. A digest that disagrees does not produce a wrong answer; it
-    produces every approval failing, or one silently passing.
+    **This was the cautionary case in this file and is no longer one.** The hash
+    under it was once a second implementation here whose own comment admitted
+    nothing held the two together — and `routes/runs.py` records that it has
+    had three implementations in the repository, one of which silently
+    disagreed. A hash that disagrees does not produce a wrong answer; it makes
+    every duplicate check fail, or one silently pass.
 
     What made it a copy was reachability, not judgement: it lived in
     `catalog.py`, which imports boto3, so a unit suite could not load it. It is
     `services/digest.py` now — `hashlib`, `json` and `decimal`, nothing else —
     and is loaded the same way `storyboard` and `prompt` are.
     """
-    return _backend_service("digest").plan_digest(plan, sends)
-
-
-def _fingerprint(model, plan, sends) -> str:
-    """`catalog.submission_fingerprint`, from the same module for the same reason."""
     return _backend_service("digest").submission_fingerprint(model, plan, sends)
 
 
@@ -609,7 +604,6 @@ class FakeApi:
             (r"/api/runs/([^/]+)/response", self._r_run_response),
             (r"/api/runs/([^/]+)/plan", self._r_run_plan),
             (r"/api/runs/([^/]+)/sends", self._r_run_sends),
-            (r"/api/runs/([^/]+)/approve", self._r_run_approve),
             (r"/api/runs/([^/]+)/submit", self._r_run_submit),
             (r"/api/runs/([^/]+)/reconcile", self._r_run_reconcile),
             (r"/api/runs/([^/]+)", self._r_run),
@@ -1319,8 +1313,7 @@ class FakeApi:
             # because that is what a person typed; the service resolves ids only
             # now, and so does this.
             project = self._entity(self.projects, project_ref, "project")
-            # `HIDDEN_RUN_STATUSES`, not `UNSUBMITTED`: an APPROVED run is
-            # visible in a listing and only `draft` and `discarded` are not.
+            # `HIDDEN_RUN_STATUSES`: only `draft` and `discarded` are hidden.
             hidden = (frozenset() if params.get("include") == "drafts"
                       else frozenset({"draft", "discarded"}))
             live = [r for r in self._sorted_runs()
@@ -1389,11 +1382,10 @@ class FakeApi:
         record = {"id": run_id, "lib": self.lib, "project": project["id"],
                   # **A draft, exactly as the real route creates one.** The
                   # record is written when the run is PLANNED, not when it is
-                  # submitted, which is what gives an approval something to
-                  # attach to.
+                  # submitted, which is what gives a person something to read.
                   "status": "draft", "kind": body["kind"],
                   "engine": body["engine"], "model": body["model"],
-                  "plan": body.get("plan"), "approval": None, "counted": False,
+                  "plan": body.get("plan"), "counted": False,
                   "sends": sends,
                   "prediction_id": None, "created": _now(), "submitted": None,
                   "completed": None,
@@ -1401,13 +1393,13 @@ class FakeApi:
                   "folder": folder["id"], "outputs": [],
                   "cost": None, "error": None, "payload": payload,
                   # **A filename, not an identity**, and an envelope field rather
-                  # than part of the plan — `plan_digest` hashes the plan, so a
-                  # rename would void an approval over something the provider is
-                  # never sent. Recorded at draft time because the callback that
-                  # names the output file arrives with no request body.
+                  # than part of the plan — the fingerprint hashes the plan, so
+                  # a rename would make two identical payloads read as different
+                  # over something the provider is never sent. Recorded at draft
+                  # time because the callback that names the output file arrives
+                  # with no request body.
                   "output_name": body.get("name"),
                   "input": body.get("input") or {}}
-        record["plan_digest"] = _plan_digest(record["plan"], sends)
         record["fingerprint"] = _fingerprint(record.get("model"), record["plan"], sends)
         self.runs[run_id] = record
         return self._run_view(record)
@@ -1427,10 +1419,9 @@ class FakeApi:
         if method == "GET":
             return self._run_view(record)
         if method == "PATCH":
-            # **The gate, and it is on LEAVING the unsubmitted states.** Not on
-            # reaching `pending`: `engine/submit.py` writes `running` when it
-            # does not poll and `succeeded` when it does, so a check naming one
-            # status would be enforced here and bypassed in practice.
+            # **No gate on leaving `draft`.** There is no approve step: the
+            # real route counts the run on the way out and writes the status,
+            # and `engine/submit.py` writes `running` or `succeeded` directly.
             if "status" in body:
                 if body["status"] not in RUN_STATUSES:
                     raise FakeError(400, f"status must be one of "
@@ -1438,16 +1429,11 @@ class FakeApi:
                 leaving = (record["status"] in UNSUBMITTED
                            and body["status"] not in UNSUBMITTED
                            # An adoption files an artifact that already existed.
-                           # Nothing was submitted, so nothing was approved.
+                           # Nothing was submitted.
                            and body["status"] != "adopted")
                 if leaving:
-                    if record["status"] != "approved":
-                        raise FakeError(409, f"run {run_id} is {record['status']} "
-                                             "and has not been approved")
-                    current = _plan_digest(record.get("plan"), record["sends"])
-                    if (record.get("approval") or {}).get("digest") != current:
-                        raise FakeError(409, "the payload changed after it was "
-                                             "approved; approve it again")
+                    record["counted"] = True
+                    record["submitted"] = record.get("submitted") or _now()
             for field in ("status", "prediction_id", "error", "cost", "completed",
                           "submitted", "outputs"):
                 if field in body:
@@ -1472,30 +1458,6 @@ class FakeApi:
         record["sends"] = body["sends"]
         return self._revised(record)
 
-    def _r_run_approve(self, method, body, params, run_id):
-        record = self.runs[run_id]
-        if method == "DELETE":
-            record["approval"] = None
-            record["status"] = "draft"
-            return self._run_view(record)
-        if record["status"] not in ("draft", "approved"):
-            raise FakeError(409, f"run {run_id} is {record['status']}; only a "
-                                 "draft is approved")
-        current = _plan_digest(record.get("plan"), record["sends"])
-        if body.get("digest") != current:
-            raise FakeError(409, "the plan changed after the payload you approved "
-                                 "was rendered; review it again")
-        # `via` mirrors the real route, INCLUDING its refusal of a third word.
-        # The fake validating nothing is what let `studio runs adopt` write a
-        # status the real route rejects and pass its tests for months.
-        via = body.get("via", "interactive")
-        if via not in ("interactive", "relayed"):
-            raise FakeError(400, "via must be 'interactive' or 'relayed'")
-        record["approval"] = {"by": "sub-fake", "at": _now(), "digest": current,
-                              "via": via}
-        record["status"] = "approved"
-        return self._run_view(record)
-
     # ── the submission, and the callback that closes it ─────────────────────
     #
     # **This is what replaced `adapters/replicate.py`'s fake.** The pipeline used
@@ -1512,12 +1474,13 @@ class FakeApi:
     #     decodes it — so magic bytes fail in ways that look like pipeline bugs.
 
     def _r_run_submit(self, method, body, params, run_id):
-        """`POST /api/runs/<id>/submit` — the gate, then a prediction.
+        """`POST /api/runs/<id>/submit` — a draft goes straight to the provider.
 
-        The gate is the real route's, spelled out rather than shared, for the
-        reason this whole file exists: a fake more generous than the thing it
-        fakes hides the bug it was written to catch. An unapproved run is a 409
-        here exactly as it is in production.
+        No approve step, exactly as the real route: calling this is the act.
+        What the fake keeps of the real route's refusals is the one that
+        matters — a run that has already been sent is a 409 here as in
+        production, because a fake more generous than the thing it fakes hides
+        the bug it was written to catch.
         """
         if method != "POST":
             raise FakeError(405, f"{method} /api/runs/{run_id}/submit")
@@ -1534,13 +1497,6 @@ class FakeApi:
         if record["status"] not in UNSUBMITTED:
             raise FakeError(409, f"run {run_id} is {record['status']}; it has "
                                  "already been sent")
-        if record["status"] != "approved":
-            raise FakeError(409, f"run {run_id} is {record['status']} and has "
-                                 "not been approved")
-        current = _plan_digest(record.get("plan"), record["sends"])
-        if (record.get("approval") or {}).get("digest") != current:
-            raise FakeError(409, "the payload changed after it was approved; "
-                                 "review and approve it again")
 
         record["status"] = "running"
         record["submitted"] = _now()
@@ -1614,12 +1570,9 @@ class FakeApi:
         return record
 
     def _revised(self, record: dict) -> dict:
-        """Any plan or sends edit clears the approval. Hard rule #2, mechanically."""
-        record["plan_digest"] = _plan_digest(record.get("plan"), record["sends"])
+        """Any plan or sends edit moves the fingerprint."""
         record["fingerprint"] = _fingerprint(record.get("model"), record.get("plan"),
                                              record["sends"])
-        record["approval"] = None
-        record["status"] = "draft"
         return self._run_view(record)
 
     def _r_run_outputs(self, method, body, params, run_id):

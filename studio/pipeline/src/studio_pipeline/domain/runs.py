@@ -157,7 +157,7 @@ PROMPT_REF = "<< see document 1/2 — PROMPT >>"
 
 def render_payload(run: str, model: str, endpoint: str, payload: dict,
                    bindings: dict | None = None) -> str:
-    """Render a submission for approval as TWO JSON documents.
+    """Render a submission for a person to read, as TWO JSON documents.
 
     **This is hard rule #2's surface and nothing may shorten it.** One combined
     document is unreviewable: `prompt` is itself a serialized JSON object, so
@@ -199,8 +199,7 @@ def record_request(
     characters: list[str] | None = None, plan: dict | None = None,
     sends: list[dict] | None = None, name: str | None = None,
 ) -> dict:
-    """Create the run as a DRAFT. **Called before the submission AND before the
-    approval.**
+    """Create the run as a DRAFT. **Called before the submission.**
 
     The ordering is the reason `request.json` and `result.json` were two writes
     and is preserved as two calls: a prediction that times out still leaves a
@@ -646,18 +645,16 @@ def _validate_edit(doc) -> dict:
 @click.option("--project", help="Default project for a bare runref.")
 @reports(RunError, api.ApiError)
 def do_edit(runref, source, dump, project):
-    """Rewrite a draft's prompt, parameters and images. **Withdraws any approval.**
+    """Rewrite a draft's prompt, parameters and images.
 
     A draft was the one thing in studio that could be read and not changed. The
     routes to change it have existed since the run gained a plan and nothing
     called them, so a prompt with a typo in it meant discarding the draft and
     drafting it again — which is why this exists.
 
-    **It withdraws the approval every time, and that is the API's doing rather
-    than this command's.** Hard rule #2 says re-approve after *any* edit; the
-    route returns the run to `draft` and clears the record of who said yes, so a
-    yes cannot outlive the payload it was given for. Stated here because finding
-    it out at submit time is finding it out too late.
+    **An edited draft is a payload nobody has read yet.** Hard rule #2 says
+    show it again before submitting; `studio runs show` does, and this command
+    ends by saying so.
 
     The document is the payload and nothing else — `prompt`, `params`, `note`
     and the ordered `sends`. The pictures' names are printed above the editor
@@ -675,7 +672,7 @@ def do_edit(runref, source, dump, project):
         studio runs edit run-<uuid> --file -     # the document back, from stdin
     """
     record = resolve_run(runref, project)
-    if record.get("status") not in ("draft", "approved"):
+    if record.get("status") != "draft":
         raise RunError(
             f"run {record['id']} is {record.get('status')} and has been "
             f"submitted; its plan is what was sent and cannot be rewritten")
@@ -711,8 +708,8 @@ def do_edit(runref, source, dump, project):
 def _apply_edit(record: dict, before: dict, after: dict) -> None:
     """Write the halves that moved, and say what that cost.
 
-    Plan first, then sends, because both clear the approval and the second write
-    is the one whose response is current.
+    Plan first, then sends; the second write is the one whose response is
+    current.
     """
     plan_changed = any(before[key] != after.get(key, before[key])
                        for key in ("prompt", "params", "note"))
@@ -734,67 +731,8 @@ def _apply_edit(record: dict, before: dict, after: dict) -> None:
     what = " and ".join(w for w in ("the plan" if plan_changed else "",
                                     "the images" if sends_changed else "") if w)
     print(f"edited {what} of {record['id']}")
-    if record.get("approval"):
-        print("the approval was withdrawn — this payload is not the one that "
-              "was read.", file=sys.stderr)
-    print(f"read it and approve it again with: studio runs approve {record['id']}")
-
-
-@main.command("approve")
-@click.argument("runref", required=True)
-@click.option("--project", help="Default project for a bare runref.")
-@click.option("--relayed", is_flag=True,
-              help="Somebody said yes where this terminal cannot see it, and "
-                   "you are passing it on. Records the approval as RELAYED.")
-@reports(RunError, api.ApiError)
-def do_approve(runref, project, relayed):
-    """Read a draft's payload in full, then say yes to **that** payload.
-
-    **Why there is a `--relayed` flag and not a `--yes`.** An approval flag is
-    the door an agent walks through while believing some earlier exchange
-    counted as approval, and what this writes is a durable record of somebody
-    saying yes — but the absence of a flag prevents nothing. `yes | studio runs
-    approve …` satisfies a `click.confirm` in one pipe, and an agent told "I
-    approve these" by a person will reach for it — reasonably, because the
-    person did say yes. What the missing flag achieved was to make that row
-    **indistinguishable from a click**: same `by`, same `at`, no trace of how
-    the yes travelled. The rule meant to stop a forged record was writing one.
-
-    So the door is labelled rather than nailed shut. `--relayed` skips the
-    confirm and records `via: relayed` — a strictly weaker claim than a typed
-    yes, and one a reader can see. It still PRINTS the whole payload: the point
-    was never the keystroke, it was that the words and images somebody agreed to
-    end up where they can be read back.
-
-    **`--relayed` is a statement of fact, not a convenience.** Use it when a
-    person has actually said yes. Using it because approving is tedious writes a
-    false record, and no flag can prevent that — which is why this one is named
-    after the claim it makes rather than after the prompt it skips.
-
-    The digest is what turns any of this into an approval rather than a
-    timestamp. It names the exact words and the exact ordered images, so
-    re-wording a prompt afterwards does not leave a stale yes behind — the API
-    refuses the submission and says the payload moved.
-    """
-    record = resolve_run(runref, project)
-    if record.get("status") != "draft":
-        raise RunError(f"run {record['id']} is {record.get('status')}, not a draft")
-
-    # Printed on both paths. A relayed yes still has to leave the payload
-    # somewhere the person who gave it can check what it was a yes to.
-    print(_render_plan(record))
-    if not relayed:
-        if not click.confirm(f"\napprove this payload for run {record['id']}?",
-                             default=False):
-            print("not approved.", file=sys.stderr)
-            raise SystemExit(1)
-
-    updated = entities.approve_run(
-        record["id"], record["plan_digest"],
-        via="relayed" if relayed else "interactive")
-    how = " (RELAYED — recorded as second-hand)" if relayed else ""
-    print(f"approved {updated['id']}{how} — submit it with: "
-          f"studio runs submit {updated['id']}")
+    print(f"read it again with: studio runs show {record['id']}  —  "
+          f"then, if told to: studio runs submit {record['id']}")
 
 
 @main.command("submit")
@@ -802,18 +740,24 @@ def do_approve(runref, project, relayed):
 @click.option("--project", help="Default project for a bare runref.")
 @reports(RunError, api.ApiError)
 def do_submit(runref, project):
-    """Send an approved draft to the model. **This is what bills.**
+    """Send a draft to the model. **This is what bills.**
 
-    Deliberately not the same command as `approve`: the two exist apart so that
-    the payload can be read in one place — a terminal, or the app — and sent from
-    another, which is the whole point of the approval being a record rather than
-    a keystroke.
+    **This command is the act, and there is no separate approve step.** Hard
+    rule #2 — nothing runs unless a person tells it to — is met by who types
+    it: a person who has read the payload (`--dry-run`, or `studio runs show`),
+    or an agent that person has explicitly told to send this run. No flag on
+    this command stands in for either; a `--yes` was refused for that reason,
+    and an approve subcommand that recorded a yes as a row was deleted
+    because a recorded yes is not a stronger claim than a typed command.
+
+    The draft is what goes out. It can have been left by `--dry-run`, by
+    `scenes board`, or by the app, and it can be read in one place and sent from
+    another.
     """
     record = resolve_run(runref, project)
-    if record.get("status") != "approved":
+    if record.get("status") != "draft":
         raise RunError(
-            f"run {record['id']} is {record.get('status')}, not approved.\n"
-            f"       studio runs approve {record['id']}")
+            f"run {record['id']} is {record.get('status')}, not a draft")
     print(f"submitting {record['id']} …", file=sys.stderr)
     # The engine owns the submit lifecycle; importing it here rather than at the
     # top keeps `domain` free of `engine` at import time, which is the direction
@@ -867,7 +811,7 @@ def do_discard(runref, files, project):
     made — so keeping it by default would leave an orphan per abandoned idea.
     """
     record = resolve_run(runref, project)
-    if record.get("status") not in ("draft", "approved"):
+    if record.get("status") != "draft":
         raise RunError(
             f"run {record['id']} is {record.get('status')} and has been "
             f"submitted; use `studio runs delete` if you mean to remove it")
@@ -879,10 +823,10 @@ def _render_plan(record: dict) -> str:
     """A draft's payload, as the two documents hard rule #2 asks for.
 
     Rebuilt from the record rather than re-rendered from a live payload, because
-    what a person is approving is what is STORED — a render assembled again from
-    arguments would be a second opinion about the payload, and approving the
-    second opinion while the first is what submits is precisely the gap the
-    digest exists to close.
+    what a person is reading is what is STORED — a render assembled again from
+    arguments would be a second opinion about the payload, and reading the
+    second opinion while the first is what submits is precisely the gap this
+    exists to close.
     """
     plan = record.get("plan") or {}
     sends = record.get("sends") or []

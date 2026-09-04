@@ -45,8 +45,9 @@ def _draft(project, *, prompt="a wave", model="openai/gpt-image-2") -> dict:
 def test_the_fingerprint_comes_off_the_draft_rather_than_being_computed(a_project):
     """The whole reason the check moved after the draft.
 
-    `plan_digest` has had three implementations in this repository and one of
-    them silently disagreed over `Decimal`, reporting 131 healthy runs as stale.
+    The hash under the fingerprint has had three implementations in this
+    repository and one of them silently disagreed over `Decimal`, reporting 131
+    healthy runs as stale.
     A fourth hash on this side of the wire is the failure that keeps happening,
     so the CLI reads the value the API derived.
     """
@@ -63,8 +64,8 @@ def test_two_identical_payloads_share_a_fingerprint(a_project):
 def test_the_same_payload_on_a_different_model_does_not(a_project):
     """Two identical plans on different engines are different submissions.
 
-    This is the one thing `plan_digest` does not carry, and the only reason the
-    fingerprint is a separate value rather than the digest itself.
+    This is the one thing the plan's own hash does not carry, and the only
+    reason the fingerprint is a separate value rather than that hash itself.
     """
     assert (_draft(a_project, model="openai/gpt-image-2")["fingerprint"]
             != _draft(a_project, model="google/nano-banana-pro")["fingerprint"])
@@ -85,7 +86,6 @@ def test_an_unsubmitted_draft_is_not_a_duplicate(a_project):
 
 def test_a_submitted_run_is(a_project):
     first = _draft(a_project)
-    entities.approve_run(first["id"], first["plan_digest"])
     entities.patch_run(first["id"], status="succeeded")
 
     found = SUB.already_submitted(_draft(a_project))
@@ -106,7 +106,6 @@ def test_the_same_payload_in_another_project_is_not_a_duplicate(a_project, libra
     """
     other = entities.create_project("elsewhere")
     first = _draft(a_project)
-    entities.approve_run(first["id"], first["plan_digest"])
     entities.patch_run(first["id"], status="succeeded")
 
     assert SUB.already_submitted(_draft(other)) is None

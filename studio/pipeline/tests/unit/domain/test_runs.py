@@ -57,11 +57,11 @@ def test_a_node_id_binding_is_kept_shape_and_all(library):
 def test_recording_a_run_creates_the_envelope_before_the_submission(library):
     """The ordering that leaves a record behind when a prediction times out.
 
-    `status` is `draft` and there are no outputs — the run exists, and neither
-    the approval nor the submission has happened. A store that recorded nothing
-    until success would lose exactly the runs worth investigating; a store that
-    recorded nothing until the approval would leave the payload a person is
-    supposed to read with no address.
+    `status` is `draft` and there are no outputs — the run exists, and the
+    submission has not happened. A store that recorded nothing until success
+    would lose exactly the runs worth investigating; a store that recorded
+    nothing until the submission would leave the payload a person is supposed
+    to read with no address.
     """
     record = R.record_request(library.project, kind="image",
                               engine="nano-banana-pro",
@@ -71,8 +71,8 @@ def test_recording_a_run_creates_the_envelope_before_the_submission(library):
                               characters=[library.character])
     assert record["status"] == "draft"
     assert record["outputs"] == []
-    assert record["approval"] is None
-    assert record["plan_digest"].startswith("sha256:")
+    assert "approval" not in record and "plan_digest" not in record
+    assert record["fingerprint"].startswith("sha256:")
     assert record["folder"].startswith("node-")
     assert record["payload"]["request"].startswith("node-")
     assert record["payload"]["response"] is None
@@ -200,7 +200,6 @@ def test_submitting_a_draft_closes_the_run(library):
                               model="google/nano-banana-pro",
                               input={"prompt": "a porch"}, bindings={},
                               name="a-porch")
-    E.approve_run(record["id"], record["plan_digest"])
 
     from studio_pipeline.engine import resubmit
 
@@ -226,7 +225,6 @@ def test_a_submission_that_is_never_answered_is_closed_by_reconcile(library):
     record = R.record_request(library.project, kind="image", engine="e",
                               model="google/nano-banana-pro",
                               input={"prompt": "a porch"}, bindings={})
-    E.approve_run(record["id"], record["plan_digest"])
     sent = E.submit_run(record["id"])
     assert sent["status"] == "running", "submitted, and not yet closed"
 
@@ -280,13 +278,7 @@ def test_listing_accepts_a_slug_a_person_typed(library):
 # ── runrefs ─────────────────────────────────────────────────────────────────
 
 def _submit(record: dict) -> None:
-    """Move a draft to `succeeded` the way the API insists it be moved.
-
-    A status transition out of `draft` is refused until the run is approved —
-    that is hard rule #2 made mechanical — so a test that wants a submitted run
-    approves it rather than writing the status straight onto the row.
-    """
-    E.approve_run(record["id"], record["plan_digest"])
+    """Move a draft to `succeeded`. No approve step stands in the way."""
     E.patch_run(record["id"], status="succeeded")
 
 
@@ -511,7 +503,7 @@ def test_an_owner_slash_name_is_inferred_from_the_live_schema(library, monkeypat
     """**Evaluating a model used to mean leaving the harness entirely.**
 
     A four-way upscaler comparison ran three models straight against Replicate
-    off presigned URLs: no schema validation, no approval render, no run
+    off presigned URLs: no schema validation, no payload render, no run
     records. `owner/name` now takes the ordinary path with an entry inferred in
     memory — and writes nothing to `models.json`, because onboarding is a
     separate decision with a skill page attached.
@@ -534,70 +526,11 @@ def test_an_owner_slash_name_is_inferred_from_the_live_schema(library, monkeypat
     assert entry["images"]["start"] == "image"
 
 
-# ── the approval gate, from this side of the wire ───────────────────────────
+# ── submitting a draft, from this side of the wire ──────────────────────────
 #
-# Hard rule #2 says never submit without approval of the full payload, and
-# re-approve after any edit. Until now that was a `click.confirm` in a terminal
-# and nothing else: it left no trace, so nothing could check that the payload
-# somebody said yes to was the payload that went out.
-
-
-def test_a_draft_cannot_be_submitted_until_it_is_approved(library):
-    """The refusal comes from the API, so it binds the app as well as the CLI."""
-    from studio_pipeline.adapters import api
-
-    record = R.record_request(library.project, kind="image", engine="e",
-                              model="m", input={"prompt": "a porch"}, bindings={})
-
-    with pytest.raises(api.ApiError):
-        E.patch_run(record["id"], status="running")
-
-
-def test_approving_then_rewording_the_prompt_refuses_the_submission(library):
-    """**Approve-then-edit, the failure the digest exists to catch.**
-
-    A payload is approved, a prompt is reworded, and the run goes out carrying
-    words nobody read. The rule said not to; nothing checked it.
-    """
-    from studio_pipeline.adapters import api
-
-    record = R.record_request(library.project, kind="image", engine="e",
-                              model="m", input={"prompt": "a porch"}, bindings={})
-    E.approve_run(record["id"], record["plan_digest"])
-
-    E.patch_run_plan(record["id"], {"prompt": "a porch at dusk"})
-
-    with pytest.raises(api.ApiError):
-        E.patch_run(record["id"], status="running")
-
-
-def test_the_cli_approves_a_draft_only_after_showing_its_payload(library):
-    """`runs approve` re-renders the payload and asks.
-
-    This docstring used to end "**there is no `--yes`**", on the reasoning that
-    an approval flag is the door an agent walks through while believing some
-    earlier exchange counted as approval. There is now `--relayed`, covered
-    below: the absence never prevented the thing it named, and what it did
-    achieve was a row indistinguishable from a click.
-    """
-    # A plan, because that is what `submit.draft` writes — the render reads what
-    # is STORED rather than rebuilding a payload from arguments, so a run with no
-    # plan has nothing to show and that is the honest answer.
-    record = R.record_request(library.project, kind="image", engine="e",
-                              model="google/nano-banana-pro",
-                              input={"prompt": "a porch at dawn"},
-                              plan={"prompt": "a porch at dawn",
-                                    "params": {"output_format": "png"}},
-                              sends=[{"field": "image_input", "role": "reference",
-                                      "node": library.face_1}],
-                              bindings={"image_input": [library.face_1]})
-
-    result = CliRunner().invoke(cli.main, ["runs", "approve", record["id"]], input="y\n")
-
-    assert result.exit_code == 0, result.output
-    assert "a porch at dawn" in result.output, "the payload is shown before the ask"
-    assert "IMAGES" in result.output, "the pictures are part of the payload"
-    assert E.get_run(record["id"])["status"] == "approved"
+# Hard rule #2 — nothing runs unless a person tells it to — is met by who
+# types `studio runs submit`, not by a recorded yes. Decision 2026-09-04: the
+# approve step is gone everywhere; the submit command is the act.
 
 
 def _draft_with_a_plan(library, prompt):
@@ -611,63 +544,40 @@ def _draft_with_a_plan(library, prompt):
                             bindings={"image_input": [library.face_1]})
 
 
-def test_relayed_skips_the_confirm_and_says_so_in_the_record(library):
-    """**The flag that was refused, and why refusing it made things worse.**
-
-    `yes | studio runs approve …` has always cleared the confirm in one pipe, so
-    the missing flag stopped nothing. What it produced was a row carrying the
-    same `by` and `at` as a person clicking the button in the app — a record
-    that overstated what had happened, which is what the rule was written to
-    prevent.
-
-    So the door is labelled. `via` is `relayed`, a weaker claim than a typed
-    yes, and the app draws it differently.
-    """
-    record = _draft_with_a_plan(library, "a porch at noon")
-
-    # No stdin at all: a confirm would raise rather than silently pass.
-    result = CliRunner().invoke(cli.main, ["runs", "approve", record["id"], "--relayed"])
-
-    assert result.exit_code == 0, result.output
-    stored = E.get_run(record["id"])
-    assert stored["status"] == "approved"
-    assert stored["approval"]["via"] == "relayed"
+def test_there_is_no_approve_command(library):
+    """`studio runs approve` is gone, `--relayed` with it."""
+    record = _draft_with_a_plan(library, "a porch at dawn")
+    result = CliRunner().invoke(cli.main, ["runs", "approve", record["id"]])
+    assert result.exit_code != 0
+    assert "No such command" in result.output
+    assert E.get_run(record["id"])["status"] == "draft"
 
 
-def test_relayed_still_prints_the_payload(library):
-    """Skipping the keystroke is not skipping the payload.
-
-    The point was never the `y`. It was that the exact words and the exact
-    ordered images end up somewhere the person who said yes can read back what
-    it was for — which matters MORE when they said it somewhere else.
-    """
-    record = _draft_with_a_plan(library, "a stairwell at dusk")
-
-    result = CliRunner().invoke(cli.main, ["runs", "approve", record["id"], "--relayed"])
-
-    assert "a stairwell at dusk" in result.output
-    assert "IMAGES" in result.output
-    assert "RELAYED" in result.output, "the weaker claim is stated to the operator too"
-
-
-def test_an_ordinary_approval_is_recorded_as_interactive(library):
-    """The default has to keep making the stronger claim, or `relayed` says nothing."""
+def test_submit_takes_a_draft_straight_out(library):
+    """No approve step: a draft submits, and the command is the act."""
     record = _draft_with_a_plan(library, "a porch at dawn")
 
-    result = CliRunner().invoke(cli.main, ["runs", "approve", record["id"]], input="y\n")
+    result = CliRunner().invoke(cli.main, ["runs", "submit", record["id"]])
 
     assert result.exit_code == 0, result.output
-    assert E.get_run(record["id"])["approval"]["via"] == "interactive"
+    assert E.get_run(record["id"])["status"] == "succeeded"
 
 
-def test_declining_the_cli_gate_approves_nothing(library):
-    record = R.record_request(library.project, kind="image", engine="e",
-                              model="m", input={"prompt": "a porch"}, bindings={})
+def test_submit_refuses_a_run_that_already_went_out(library):
+    record = _draft_with_a_plan(library, "a porch at dawn")
+    E.patch_run(record["id"], status="succeeded")
 
-    result = CliRunner().invoke(cli.main, ["runs", "approve", record["id"]], input="n\n")
+    result = CliRunner().invoke(cli.main, ["runs", "submit", record["id"]])
 
-    assert result.exit_code == 1
-    assert E.get_run(record["id"])["status"] == "draft"
+    assert result.exit_code != 0
+    assert "not a draft" in result.output
+
+
+def test_submit_has_no_yes_flag():
+    """No flag on a command that spends stands in for a person."""
+    submit = cli.main.commands["runs"].commands["submit"]
+    names = {opt for param in submit.params for opt in param.opts}
+    assert names == {"runref", "--project"}, names
 
 
 def test_discarding_a_draft_removes_it_and_its_folder(library):
@@ -701,8 +611,8 @@ def test_a_submitted_run_cannot_be_discarded(library):
 #
 # The routes have existed since a run gained a plan and nothing called them, so
 # a typo in a prompt meant discarding the draft and drafting it again. What each
-# of these holds up is that an edit WITHDRAWS THE APPROVAL — the mechanical half
-# of hard rule #2, and the reason a yes cannot outlive the payload it was for.
+# of these holds up is that an edit writes only what moved, and that an edited
+# draft is still a draft — a payload to read again before saying to send it.
 
 
 def _draft(library, **over):
@@ -756,14 +666,13 @@ def test_reordering_the_images_is_a_real_edit(library):
     assert updated["plan"]["prompt"] == "a porch at dawn", "untouched"
 
 
-def test_an_edit_withdraws_the_approval(library):
-    """Hard rule #2's "re-approve after **any** edit", as a state change.
+def test_an_edit_leaves_a_draft_and_says_to_read_it_again(library):
+    """An edited draft is a payload nobody has read yet.
 
-    The API does it; this asserts the CLI leaves the run in it rather than
-    reporting a success that hides a run nobody can submit.
+    Hard rule #2 says show it again; the command ends by naming the two
+    commands that do — `runs show`, then `runs submit` once told to.
     """
     record = _draft(library)
-    E.approve_run(record["id"], E.get_run(record["id"])["plan_digest"])
 
     document = R.editable(E.get_run(record["id"]))
     document["params"] = {"output_format": "webp"}
@@ -772,8 +681,8 @@ def test_an_edit_withdraws_the_approval(library):
     assert result.exit_code == 0, result.output
     updated = E.get_run(record["id"])
     assert updated["status"] == "draft"
-    assert updated["approval"] is None
-    assert "approve" in result.output, "it says how to get the yes back"
+    assert "approval" not in updated
+    assert "runs show" in result.output and "runs submit" in result.output
 
 
 def test_a_document_naming_only_one_field_leaves_the_rest_alone(library):
@@ -790,16 +699,16 @@ def test_a_document_naming_only_one_field_leaves_the_rest_alone(library):
 
 
 def test_an_unchanged_document_writes_nothing(library):
-    """Saving an editor without touching it is not an edit, and must not clear
-    an approval as though it were."""
+    """Saving an editor without touching it is not an edit, and must not move
+    the fingerprint as though it were."""
     record = _draft(library)
-    E.approve_run(record["id"], E.get_run(record["id"])["plan_digest"])
+    before = E.get_run(record["id"])["fingerprint"]
 
     result = _edit(record["id"], R.editable(E.get_run(record["id"])))
 
     assert result.exit_code == 0, result.output
     assert "no changes" in result.output
-    assert E.get_run(record["id"])["status"] == "approved"
+    assert E.get_run(record["id"])["fingerprint"] == before
 
 
 def test_a_submitted_run_cannot_be_edited(library):
@@ -891,17 +800,18 @@ def test_the_plan_is_the_prompt_and_the_params_and_no_images(library):
     assert plan["origin"] == "authored"
 
 
-def test_a_dry_run_leaves_a_draft_that_can_be_approved_and_submitted(library, monkeypatch):
+def test_a_dry_run_leaves_a_draft_that_can_be_submitted(library, monkeypatch):
     """**The flow this whole change exists for, end to end.**
 
     `--dry-run` rendered a payload to a terminal and kept nothing, so the thing
     hard rule #2 asks a person to read had no address: it could not be opened in
-    the app, linked to, or approved later. It leaves a draft now, and the draft
-    is what `runs approve` and `runs submit` act on.
+    the app, linked to, or submitted later. It leaves a draft now, and the draft
+    is what `runs submit` acts on.
 
-    The three steps are deliberately three commands. Reading a payload and
-    sending it are different acts, and the whole point of recording an approval
-    is that they can happen in different places — a terminal, or a browser.
+    Two commands, deliberately. Reading a payload and sending it are different
+    acts, and they can happen in different places — a terminal, or a browser.
+    There is no third: the submit command is the act, and no approve step
+    stands between the two (decision 2026-09-04).
     """
     monkeypatch.setenv("REPLICATE_API_TOKEN", "r8_fake")
 
@@ -917,9 +827,7 @@ def test_a_dry_run_leaves_a_draft_that_can_be_approved_and_submitted(library, mo
     assert draft["status"] == "draft"
     assert draft["plan"]["prompt"] == "a porch at dawn"
     assert [s["role"] for s in draft["sends"]] == ["reference"]
-
-    approved = CliRunner().invoke(cli.main, ["runs", "approve", draft["id"]], input="y\n")
-    assert approved.exit_code == 0, approved.output
+    assert "studio runs submit" in dry.output, "the dry run names the next act"
 
     submitted = CliRunner().invoke(cli.main, ["runs", "submit", draft["id"]])
     assert submitted.exit_code == 0, submitted.output
@@ -942,4 +850,4 @@ def test_a_dry_run_bills_nothing(library, monkeypatch):
     draft = E.get_run(E.query_runs(project=library.project, status="draft")["runs"][0]["id"])
     assert draft["prediction_id"] is None
     assert draft["outputs"] == []
-    assert draft["approval"] is None
+    assert "approval" not in draft

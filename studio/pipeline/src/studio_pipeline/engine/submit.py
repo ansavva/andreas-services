@@ -5,7 +5,7 @@ The per-model field names are registry data, so the steps live here once — and
 
     gather image inputs as NODE IDS               ── here
       -> reject what this model will not accept   ── here (a courtesy; see below)
-      -> render for approval / stop at --dry-run  ── here.  HARD RULE #2.
+      -> render for a person to read / stop at --dry-run  ── here.  HARD RULE #2.
       -> RECORD THE RUN as a DRAFT                ── here
       ─────────────────────────────────────────────────────────────────────────
       -> presign at the last moment               ── the API
@@ -27,7 +27,7 @@ does.** The one paid call in the repository is
 The half that faces a person stays here. `gather` decides which image lands in
 which field and in which position, `render` prints the two documents hard rule
 #2 asks somebody to read, and `draft` records the payload before any of it is
-approved. Those are authoring, they bill nothing, and they belong where the
+submitted. Those are authoring, they bill nothing, and they belong where the
 person is.
 
 The places where the two mediums legitimately differ — a video may be submitted
@@ -117,7 +117,7 @@ def as_node(value: str) -> str:
 
 #: node id -> its record, for the life of the process. A node's name and size do
 #: not change under a running command, and the same handful of images is looked
-#: at three times — by the format check, by the byte warning and by the approval
+#: at three times — by the format check, by the byte warning and by the payload
 #: render. Fetching each once is the difference between one request per image and
 #: three.
 _RECORDS: dict[str, dict] = {}
@@ -142,7 +142,7 @@ def _ext(ref: str) -> str:
 
 
 def _label(ref: str) -> str:
-    """`<name> (<ref>)` — what a person reads in the approval render.
+    """`<name> (<ref>)` — what a person reads in the payload render.
 
     A node id alone is unreviewable, and hard rule #2 is a rule about a payload
     a person can actually check. The id stays beside the name because it is what
@@ -448,7 +448,7 @@ def _check_image_budget(entry: dict, bindings: dict) -> None:
 def preflight(entry: dict, payload: dict, bindings: dict) -> None:
     """Documented constraints first, then the live schema.
 
-    Runs on --dry-run too, so an approved payload is a payload that submits.
+    Runs on --dry-run too, so the payload a person read is the payload that submits.
 
     **A courtesy now, not the gate.** The API runs its own copy of this at submit
     time (`services/generate.preflight`), because the SPA submits too and never
@@ -477,14 +477,14 @@ def preflight(entry: dict, payload: dict, bindings: dict) -> None:
 
 
 # --------------------------------------------------------------------------
-# 3. render — the approval view
+# 3. render — the payload view
 # --------------------------------------------------------------------------
 
-#: What the approval render says the payload will be POSTed to.
+#: What the payload render says the payload will be POSTed to.
 #:
 #: **A string this process never calls** — the API does — and it is here
 #: because hard rule #2 is about what a person can check: a payload document
-#: that did not say where it was going would be a worse thing to approve.
+#: that did not say where it was going would be a worse thing to read.
 REPLICATE_PREDICTIONS = "https://api.replicate.com/v1/models/{model}/predictions"
 
 
@@ -494,7 +494,7 @@ def predictions_endpoint(model: str) -> str:
 
 
 def render(entry: dict, run: str, payload: dict, bindings: dict, as_json: bool) -> str:
-    """The two-document approval render, or raw JSON for machines.
+    """The two-document payload render, or raw JSON for machines.
 
     **Hard rule #2's surface.** Image inputs appear as what will be signed into
     the field at submit time: the signed URL is ~2 KB of noise and expires, so it
@@ -609,11 +609,11 @@ def already_submitted(record: dict) -> dict | None:
 
 
 def draft(entry: dict, payload: dict, bindings: dict, args) -> dict:
-    """Create the run as a DRAFT. **Nothing has billed and nothing is approved.**
+    """Create the run as a DRAFT. **Nothing has billed and nothing is submitted.**
 
     Split out of `execute` so that the payload a person reads has an address.
     `--dry-run` stops here, which is the point of the split: the payload is a
-    record that can be opened in the app, edited, linked to and approved later,
+    record that can be opened in the app, edited, linked to and submitted later,
     not a block of text that scrolls away.
     """
     kind = entry["kind"]
@@ -639,9 +639,9 @@ def draft(entry: dict, payload: dict, bindings: dict, args) -> dict:
             # request body — so if the name is not on the row before the
             # submission, nothing will ever know it.
             #
-            # Not part of `plan`, deliberately: `plan_digest` hashes the plan, so
-            # a filename in there would void an approval over something the
-            # provider is never sent.
+            # Not part of `plan`, deliberately: the fingerprint hashes the plan,
+            # so a filename in there would make two identical payloads read as
+            # different over something the provider is never sent.
             name=R.slugify(getattr(args, "name", None) or defaults(kind)["slug"]))
     except R.RunError as e:
         raise SubmitError(f"refusing to record an invalid request: {e}")
@@ -649,45 +649,22 @@ def draft(entry: dict, payload: dict, bindings: dict, args) -> dict:
         raise SubmitError(f"refusing to record a run against an unknown character: {e}")
 
 
-def approve(record: dict) -> dict:
-    """Record approval of exactly the payload that was just rendered.
-
-    **The digest is what makes this an approval rather than a timestamp.** It is
-    the one the API computed when the draft was written, so approving says yes to
-    a specific set of words and a specific ordered list of images — and the API
-    refuses it if either has moved since.
-
-    This does not weaken hard rule #2 and it does not satisfy it either. The rule
-    is about a person reading a payload and answering; what this adds is that the
-    answer survives, names what it was an answer to, and dies when that changes.
-    """
-    try:
-        return entities.approve_run(record["id"], record["plan_digest"])
-    except api.ApiError as exc:
-        raise SubmitError(
-            f"could not approve run {record['id']}: {exc}\n"
-            f"       If the payload moved since it was rendered, read it again: "
-            f"studio runs show {record['id']}"
-        ) from exc
-
 def execute(entry: dict, payload: dict, bindings: dict, args,
             on_drafted=None) -> dict:
-    """Draft, approve, submit — and return the RUN RECORD.
+    """Draft, then submit — and return the RUN RECORD.
 
-    **Unchanged from the outside, and that is deliberate.** Invoking `studio run`
-    without `--dry-run` is the request to submit, exactly as it has always been,
-    so the approval is recorded here rather than demanded as a second command.
-    What changed is that the yes now leaves a row naming the payload it was for.
-
-    A person who wants the two steps apart has them: `--dry-run` leaves the
-    draft, and `studio runs approve` re-renders it and asks.
+    **Invoking `studio run` without `--dry-run` is the request to submit.** There
+    is no approve step between the two: the command is the act, and hard rule
+    #2 is that a person typed it after reading the payload. A person who wants
+    the two halves apart has them: `--dry-run` leaves the draft, `studio runs
+    show` re-renders it, and `studio runs submit` sends it.
 
     It returned an exit code once, and every batch caller then went back for
     `<project>/latest` to find out which run it had just made — a lookup that is
     wrong the moment two runs land in one project close together, and that could
     not be right at all: a run has no name to be looked up by.
 
-    **`on_drafted` runs between the draft and the approval**, which is the only
+    **`on_drafted` runs between the draft and the submission**, which is the only
     window where a duplicate can be refused for free: the draft exists, so its
     fingerprint does, and nothing has billed. `runner.py` passes the refusal;
     a caller that does not care passes nothing.
@@ -697,7 +674,6 @@ def execute(entry: dict, payload: dict, bindings: dict, args,
     record = draft(entry, payload, bindings, args)
     if on_drafted is not None:
         on_drafted(record)
-    approve(record)
     return submit(entry, record, payload, bindings, args)
 
 
@@ -721,14 +697,13 @@ def submit(entry: dict, record: dict, payload: dict, bindings: dict,
 
     `payload` and `bindings` are still parameters and are still **not sent**. The
     API rebuilds both from the run's own plan and sends, which is the point: a
-    payload assembled twice is two opinions about what was approved. They are
+    payload assembled twice is two opinions about what a person read. They are
     here because the caller has them and because `--dest` and the render below
     read them, and they are deliberately not passed to the route.
 
     **What is preserved exactly:** the API moves the run to `pending` before it
-    calls the provider, so the approval gate still stands in front of the money
-    and a submission that dies in flight still reads as "went out and never
-    answered" rather than as a draft.
+    calls the provider, so a submission that dies in flight still reads as
+    "went out and never answered" rather than as a draft.
     """
     kind = entry["kind"]
     d = defaults(kind)
@@ -741,7 +716,7 @@ def submit(entry: dict, record: dict, payload: dict, bindings: dict,
     except api.ApiError as exc:
         raise SubmitError(
             f"refusing to submit run {run_id}: {exc}\n"
-            f"       Read the payload and approve it: studio runs approve {run_id}"
+            f"       Read the payload: studio runs show {run_id}"
         ) from exc
 
     prediction = sent.get("prediction_id")

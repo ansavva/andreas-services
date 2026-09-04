@@ -206,7 +206,7 @@ def _project(manifest: dict) -> dict:
     only on a binding path a dry run does not take, and `execute` — which always
     reads it — is never reached without a submit. So `scenes board` and `scenes
     render` validated clean and died with `TypeError: string indices must be
-    integers` the moment they were run for real, after the approval prompt and
+    integers` the moment they were run for real, after the confirm prompt and
     before any spend.
 
     Resolved from `project` on the scene row rather than from `project_name`: the
@@ -357,9 +357,9 @@ def shot_bindings(manifest: dict, shot: dict, entry: dict) -> tuple[str | None, 
 
     # Some models take a start frame and references together, but refuse both
     # once an END frame joins them. A shot that brackets itself with two
-    # approved compositions has already said everything the references would
+    # finished compositions has already said everything the references would
     # have said, so the references are what give way — silently would be wrong,
-    # hence the note, and the payload shown for approval is the trimmed one.
+    # hence the note, and the payload shown to the person is the trimmed one.
     if end and REG.field(entry, "images.end_excludes_refs") and refs:
         notes.append(f"{shot['id']}: {len(refs)} reference(s) dropped — {entry['key']} "
                      f"takes a start and an end frame together and nothing else. The two "
@@ -658,7 +658,7 @@ def run_board(ref: str, opts) -> int:
 
         # GATE 1 — the payload, in full, before anything bills.
         # A LABEL, not an id: the run does not exist yet and must not, because
-        # hard rule #2 approves the payload before anything is recorded.
+        # hard rule #2 shows the payload before anything is recorded.
         run = f"{owner}/{R.slugify(args.slug)}"
         print(f"\n===== {shot['id']} panel {panel['n']}  ->  a storyboard panel =====")
         print(SUB.render(entry, run, payload, bindings, False))
@@ -672,8 +672,8 @@ def run_board(ref: str, opts) -> int:
         return 0
 
     # No `--yes`. A person reads the payloads above and answers this, or nothing
-    # is submitted: an approval flag is the door an agent walks through while
-    # believing some earlier exchange counted as approval.
+    # is submitted: a yes-flag is the door an agent walks through while
+    # believing some earlier exchange counted as being told to.
     if not click.confirm(f"\nsubmit {len(prepared)} panel generation(s) for "
                          f"{manifest['label']}?", default=False):
         print("nothing submitted.", file=sys.stderr)
@@ -711,7 +711,7 @@ def run_board(ref: str, opts) -> int:
         dest_name = panel_storyboard_name(shot, panel,
                                           os.path.splitext(outs[0]["name"] or "")[1])
         # The run keeps its own output; the board holds a copy of the panel as it
-        # was when approved. A real copy — two blobs, two lifetimes — because a
+        # was when submitted. A real copy — two blobs, two lifetimes — because a
         # second row on one blob is copy-on-write and the delete route
         # destroys the shared bytes when either row goes.
         storyboard = SC.scene_folder(manifest, SC.STORYBOARD_FOLDER)
@@ -797,7 +797,7 @@ def run_render(ref: str, opts) -> int:
     #
     # **A dry run leaves a DRAFT per shot, exactly as `studio run --dry-run`
     # does.** The thing hard rule #2 asks a person to READ needs an address: a
-    # draft can be opened in the app, linked to, and approved later, and a
+    # draft can be opened in the app, linked to, and submitted later, and a
     # payload printed to a terminal cannot. A shot submitted as a standalone
     # run is not recorded on its shot, and `scenes assemble` then refuses to
     # cut a scene whose shots have all plainly rendered — see `cmd_attach`.
@@ -824,7 +824,6 @@ def run_render(ref: str, opts) -> int:
         for shot, record in drafts:
             n = next(s["n"] for s in shots if s["id"] == shot["id"])
             print(f"\n{shot['id']}: {record['id']}\n"
-                  f"       approve it:  studio runs approve {record['id']}\n"
                   f"       submit it:   studio runs submit {record['id']}\n"
                   f"       then record it on the shot:\n"
                   f"         studio scenes attach {manifest['label']} "
@@ -896,7 +895,7 @@ def run_render(ref: str, opts) -> int:
 SHARED = [
     click.option("--dest", help="also keep a local copy of each result"),
     click.option("--dry-run", is_flag=True,
-                 help="show every payload for approval; submit nothing, bill nothing"),
+                 help="show every payload; submit nothing, bill nothing"),
     click.option("--project", help="project, when the sceneref does not carry one"),
     click.option("--review-sheet",
                  help=("also keep a local copy of each payload's contact sheet here. "
