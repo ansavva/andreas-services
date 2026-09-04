@@ -142,7 +142,6 @@ export async function getMedia(
   where: FolderRef,
   sort: SortOrder,
   cursor?: string,
-  pageSize?: number,
   filter: ListFilter = {},
 ): Promise<MediaListing> {
   const listing = await listNodes(where, {
@@ -151,7 +150,6 @@ export async function getMedia(
     cursor,
     depth: "all",
     kind: filter.kind ?? ["image", "video"],
-    limit: pageSize,
   });
   return {
     prefix: listing.prefix,
