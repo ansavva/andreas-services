@@ -28,11 +28,16 @@ export function appUrl(path = '/') {
 
 /**
  * Maps a path this site used to serve onto its equivalent on the product app.
- * The auth and join paths carry over one-to-one; the old `/app` prefix is the
- * app's root, so `/app/settings` becomes `/settings`.
+ * The join path and the `/app` prefix carry over one-to-one (`/app/settings`
+ * becomes `/settings`, the app's root). `/signup`, `/confirm` and
+ * `/forgot-password` do not: Managed Login (see `docs/auth-managed-login.md`)
+ * removed every standalone auth screen but `/login`, which is one button that
+ * starts the hosted flow — sign-up, confirm and forgot-password all live on
+ * that same hosted page now, so old links to them land on `/login` too.
  */
 export function legacyAppPath(pathname: string) {
   if (pathname === '/app') return '/';
   if (pathname.startsWith('/app/')) return pathname.slice('/app'.length);
+  if (pathname === '/signup' || pathname === '/confirm' || pathname === '/forgot-password') return '/login';
   return pathname;
 }

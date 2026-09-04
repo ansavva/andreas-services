@@ -17,10 +17,15 @@ describe('product app URLs', () => {
 });
 
 describe('legacyAppPath', () => {
-  it('keeps auth and join paths one-to-one', () => {
+  it('keeps /login and /join one-to-one', () => {
     expect(legacyAppPath('/login')).toBe('/login');
-    expect(legacyAppPath('/forgot-password')).toBe('/forgot-password');
     expect(legacyAppPath('/join/abc123')).toBe('/join/abc123');
+  });
+
+  it('sends the auth screens Managed Login removed to /login', () => {
+    expect(legacyAppPath('/signup')).toBe('/login');
+    expect(legacyAppPath('/confirm')).toBe('/login');
+    expect(legacyAppPath('/forgot-password')).toBe('/login');
   });
 
   it('drops the /app prefix the product app no longer uses', () => {
