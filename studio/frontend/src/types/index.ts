@@ -849,6 +849,49 @@ export interface RunPage {
 }
 
 /**
+ * One row of the runs FEED — `GET /api/runs?view=feed`.
+ *
+ * Everything a feed row draws from a single list call, so the feed never
+ * fetches a run per row: the plan (the prompt and the parameter chips), what
+ * went in (`sends`, each with its role, provenance and a signed URL), what came
+ * out (`outputs`, all of them, signed), the timings a row needs to say "sent 12s
+ * ago" and count up while it runs, the cost, and who it is about by name.
+ *
+ * **Opt-in, and a superset of `RunSummary`.** The plain listing stays the
+ * projection because every other consumer of it is cheap for reading no
+ * envelope. No `approval`, no `plan_digest`, no `stale`: those are the run
+ * page's, and this row never operates the gate. Mirrored by
+ * `RUN_FEED_REQUIRED` in `backend/tests/unit/test_run_feed.py`.
+ */
+export interface RunFeedRow extends RunSummary {
+  lib: string;
+  engine: string | null;
+  updated: string | null;
+  /** When it went out — what the elapsed counter on a running row starts from. */
+  submitted: string | null;
+  completed: string | null;
+  error: string | null;
+  fingerprint?: string | null;
+  plan: RunPlan | null;
+  characters: string[];
+  /**
+   * Who the run is about, NAMED. The record's own `characters`, else the
+   * owners of what it bound. `name` is null for a character since deleted.
+   */
+  cast: Array<{ id: string; name: string | null }>;
+  sends: RunSend[];
+  outputs: RunAsset[];
+  /** The first output, signed — never a second node to reconcile. */
+  thumb: HeroImage | null;
+}
+
+/** A page of the feed. Same cursor rule as `RunPage`. */
+export interface RunFeedPage {
+  runs: RunFeedRow[];
+  cursor: string | null;
+}
+
+/**
  * What `POST /api/runs` takes. Three fields are required and the rest are not.
  *
  * **No provider `input` here, deliberately.** The route accepts one and writes
