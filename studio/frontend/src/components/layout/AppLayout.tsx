@@ -1,5 +1,6 @@
 import { Outlet } from "react-router-dom";
 
+import { CreateBarProvider } from "../../context/CreateBarContext";
 import { SidebarProvider } from "../../context/SidebarContext";
 import { AppSidebar } from "./AppSidebar";
 import { TopBar } from "./TopBar";
@@ -26,20 +27,24 @@ import { TopBar } from "./TopBar";
  *
  * `SidebarProvider` sits here rather than in `App`, because it is the shell's
  * own state: `/auth/callback` renders outside this layout and has no sidebar
- * to collapse.
+ * to collapse. `CreateBarProvider` for the same reason: the bar is in the top
+ * bar and the things that fill it are route elements, so the provider has to
+ * sit above both.
  */
 export function AppLayout() {
   return (
     <SidebarProvider>
-      <div className="flex min-h-full">
-        <AppSidebar />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <TopBar />
-          <main className="flex flex-1 flex-col gap-6 px-4 py-6 md:px-6">
-            <Outlet />
-          </main>
+      <CreateBarProvider>
+        <div className="flex min-h-full">
+          <AppSidebar />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <TopBar />
+            <main className="flex flex-1 flex-col gap-6 px-4 py-6 md:px-6">
+              <Outlet />
+            </main>
+          </div>
         </div>
-      </div>
+      </CreateBarProvider>
     </SidebarProvider>
   );
 }

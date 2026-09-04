@@ -202,12 +202,9 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
         : held.some((each) => each.role === role && each.ref.node === ref.node)
           ? held
           : [...held, { ref, role }];
-      return {
-        ...current,
-        kind,
-        attachments: { ...current.attachments, [kind]: next },
-        focus: current.focus + 1,
-      };
+      // No focus bump: a tile pressed in the drawer must not pull the caret
+      // away from the drawer it was pressed in.
+      return { ...current, kind, attachments: { ...current.attachments, [kind]: next } };
     });
   }, []);
 

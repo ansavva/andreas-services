@@ -26,11 +26,10 @@ import {
   patchRunPlan,
   submitRun,
 } from "../../apis/studio";
-import { useCreateBarState } from "../../context/CreateBarContext";
+import { useCreateBar, useCreateBarState, type AttachRef } from "../../context/CreateBarContext";
 import { useResource } from "../../hooks/useResource";
 import type { CreatedRun, RunSummary } from "../../types";
 import { formatDate } from "../../utils/format";
-import { linkButtonClass } from "../common/linkButtonClass";
 import { EyeIcon, ImageIcon, SendIcon, SlidersIcon, VideoIcon } from "../common/icons";
 import { PromptPreview } from "../common/PromptPreview";
 import { TokenizedPromptEditor, type PromptToken } from "../common/TokenizedPromptEditor";
@@ -93,6 +92,7 @@ interface Held {
  */
 export function CreateBar() {
   const bar = useCreateBarState();
+  const { attach, setKind } = useCreateBar();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -284,7 +284,7 @@ export function CreateBar() {
             value={[bar.kind]}
             onValueChange={(next: string[]) => {
               const chosen = next[0];
-              if (chosen === "image" || chosen === "video") bar.setKind(chosen);
+              if (chosen === "image" || chosen === "video") setKind(chosen);
             }}
             className="shrink-0 gap-0 border-r border-line pr-1"
           >
@@ -348,7 +348,7 @@ export function CreateBar() {
                   entry={entry}
                   params={params}
                   onModel={bar.setModel}
-                  onParams={(next) => bar.setParams(entry.model, next)}
+                  onParams={(next: Record<string, unknown>) => bar.setParams(entry.model, next)}
                 />
               )}
             </Popover.Content>
@@ -412,15 +412,15 @@ export function CreateBar() {
             keep={bar.keep}
             onKeep={bar.setKeep}
             params={params}
-            onParams={(next) => bar.setParams(entry.model, next)}
+            onParams={(next: Record<string, unknown>) => bar.setParams(entry.model, next)}
           />
           {bar.role !== null && target && (
             <CreateDrawer
               projectId={target}
               cast={projectCast}
               attached={new Set(attachments.map((each) => each.ref.node))}
-              onAttach={(ref) => {
-                if (bar.role) bar.attachTo(ref, bar.role);
+              onAttach={(ref: AttachRef) => {
+                if (bar.role) attach(ref, bar.role);
               }}
               onClose={() => bar.setRole(null)}
             />
@@ -437,19 +437,19 @@ export function CreateBar() {
               images on {formatDate(held.twin.created)}. Sending again bills again — a model
               answers differently every time, so a second attempt is often the point.{" "}
             </span>
-            <button
-              type="button"
-              onClick={() => navigate(runPath(held.twin.project, held.twin.id))}
-              className={linkButtonClass("accent")}
-            >
-              Open the earlier run
-            </button>
             <div className="mt-2 flex flex-wrap gap-2">
               <Button size="sm" disabled={busy} onClick={() => void send(true)}>
                 Send anyway
               </Button>
               <Button size="sm" intent="secondary" disabled={busy} onClick={() => void discard()}>
                 Discard
+              </Button>
+              <Button
+                size="sm"
+                intent="secondary"
+                onClick={() => navigate(runPath(held.twin.project, held.twin.id))}
+              >
+                Open the earlier run
               </Button>
             </div>
           </Alert.Description>
