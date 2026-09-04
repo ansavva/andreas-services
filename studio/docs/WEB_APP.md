@@ -312,10 +312,23 @@ page and a plain textarea over its literal bytes, and never offers fields.
 
 ## Conventions & gotchas
 
+- **The shell is a sidebar and a top bar, and every screen renders inside
+  `AppLayout`.** `AppSidebar` is the design system's `Sidebar` — 256px, or a
+  64px icon rail — holding the five sections (`DESTINATIONS`), the five most
+  recently updated projects, the library switcher and the account menu. The
+  collapse state is `SidebarContext`'s, not the package's own, so the opened
+  run can collapse the rail from a route element: `useShellSidebar()` gives
+  `{ collapsed, setCollapsed, toggle }`, mirrored into `localStorage` under
+  `SIDEBAR_STORAGE_KEY`. `TopBar` is full width and sticky — `CreateBarSlot`
+  (the create bar's mount point, empty until that lands) and then
+  `HeaderSearch`. Below `md` the sidebar is not drawn: a menu `IconButton`
+  opens the same `SidebarContents` in a `Drawer`, and search sits behind an
+  icon. `--header-h` in `app.css` is the bar's height at both widths; content
+  is full width with the mockup's `px-6`, no `max-w-*` cap.
 - **The logo is a function, not a file, and the favicon is generated from it.**
   `src/utils/aperture.ts` solves a six-blade iris at any openness;
   `components/common/Aperture.tsx` draws it twice from that one construction —
-  `ApertureMark` in the header, and `ApertureSpinner`, the same mark with
+  `ApertureMark` in the sidebar, and `ApertureSpinner`, the same mark with
   `openness` moving, at every loading call site. A browser tab cannot import a
   module, so `npm run mark` renders `src/assets/aperture.svg` from the same
   function and `npm run mark:check` fails the PR when the committed file has
@@ -606,8 +619,10 @@ page and a plain textarea over its literal bytes, and never offers fields.
   is a project's `input/` folder, drawn one tab over from the Files that already
   holds it — `--input N` is a position in a name-ascending listing that nothing
   stores, and `studio projects inputs <project>` prints those positions. The
-  viewer still plays a feed: opening any tile from Home's Recent grid scrolls
-  the recursive walk (`/o/<id>?in=recursive`).
+  viewer still plays a feed: opening any tile from the library's Media view
+  scrolls the recursive walk (`/o/<id>?in=recursive`). Home lists no media —
+  it is characters and projects, and the Recent grid it used to carry walked
+  the whole library for twelve tiles.
 - **Destructive confirmation for ONE file is in the button, not in a dialog.**
   `ConfirmDeleteButton` arms on the first press, names what it will destroy,
   and disarms on a timeout, on blur, or on Escape — a dialog in a fixed
@@ -678,8 +693,7 @@ from: `PageBar` (title, meta, actions, a `⋯` menu) and `FormBar` (a form's
 save/cancel row); `EmptyState` and `LoadError` for the two ways a listing has
 nothing to show; `PageLoading`/`SectionLoading` for the two loading weights;
 `EntityRow`/`EntityCard`/`MediaTile` for a listing item; `FilterBar` for the
-tag/search strip above one; `ChipRow` for a row of chips that scrolls rather
-than wraps; `ConfirmDeleteButton`/`ConfirmDestroyDialog` for destructive
+tag/search strip above one; `ConfirmDeleteButton`/`ConfirmDestroyDialog` for destructive
 actions, weighted by what is lost — one entity arms in place, anything with
 children types its name; `useArmed`, the arm/disarm machine both of those (and
 `ArmedButton`, `ItemActions`) run on; and toasts (`useToast`) for feedback that

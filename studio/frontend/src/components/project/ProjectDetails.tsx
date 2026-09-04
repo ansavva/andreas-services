@@ -175,8 +175,8 @@ function Involvement({ record, onSaved }: Props) {
           {(data ?? []).map((character) => {
             const on = involved.has(character.id);
             return (
-              // The COMPONENT form, where AppHeader's nav takes the helper:
-              // this is already a plain `<button aria-pressed>`, which is
+              // The COMPONENT form rather than the `chipClass` helper: this
+              // is already a plain `<button aria-pressed>`, which is
               // exactly what `Chip` renders. `pressed` is controlled and
               // presentational here — the truth is `involved`, which the
               // parent owns.

@@ -66,7 +66,7 @@ test("a seeded session reaches the app rather than the hosted sign-in page", asy
   await expect(page.getByRole("menuitem", { name: /sign out/i })).toBeVisible();
 });
 
-test("the header offers the three sections", async ({ page }) => {
+test("the sidebar offers the sections", async ({ page }) => {
   // The navigation this rework added. It is asserted here rather than trusted
   // to the screenshots because it is the one thing on every screen: if these
   // stop rendering, every page loses its way out at once.
@@ -292,9 +292,10 @@ test("media tiles are links, so a modified click can leave the page", async ({
   page,
 }) => {
   stubOnly("the stub feed is what makes the grid deterministic");
-  // Home's Recent grid, which the reel fixture fills — a character's Files tab
-  // needs a tab click to reach and this is about the tile, not the route.
-  await page.goto("/");
+  // The library's Media view, which the reel fixture fills — Home lists no
+  // media any more, and a character's Files tab needs a tab click to reach;
+  // this is about the tile, not the route.
+  await page.goto("/f?view=media");
   await page.waitForLoadState("networkidle");
 
   const linked = page.locator('main a[href*="/o/"]');

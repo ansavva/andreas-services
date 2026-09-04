@@ -358,11 +358,21 @@ input.h-10,
  * number, read once here, so a second sticky surface can reuse it rather than
  * re-measuring the same bar.
  *
- * `72px`: `py-3.5` (14px) twice plus the 44px control row it wraps. The bar
- * is `min-h` rather than `h`, because the create bar grows line by line; a
- * surface that sticks under a grown bar has to re-measure, and that is the
- * create bar's problem rather than this number's.
+ * `72px` above `md`: `py-3.5` (14px) twice plus the 44px control row it
+ * wraps. `56px` below it — the phone bar of the mockup, `py-1.5` around the
+ * same 44px row — because a 390px screen cannot spend 72px on a bar that
+ * holds two icons. The breakpoint is Tailwind's `md`, which is the one
+ * `TopBar` switches its padding on; the two have to agree or a surface stuck
+ * under the bar sits 16px off it on one width. The bar is `min-h` rather
+ * than `h`, because the create bar grows line by line; a surface that sticks
+ * under a grown bar has to re-measure, and that is the create bar's problem
+ * rather than this number's.
  */
 :root {
-  --header-h: 72px;
+  --header-h: 56px;
+}
+@media (min-width: 768px) {
+  :root {
+    --header-h: 72px;
+  }
 }
