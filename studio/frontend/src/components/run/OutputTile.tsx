@@ -1,4 +1,4 @@
-import { IconButton, buttonClass } from "@ansavva/design-system";
+import { Button, IconButton } from "@ansavva/design-system";
 
 import type { RunAsset, RunFeedRow } from "../../types";
 import {
@@ -53,8 +53,7 @@ export function OutputTile({
 
   return (
     <div className="group relative overflow-hidden rounded-none border border-line bg-card">
-      {/* eslint-disable-next-line studio/no-hand-rolled-button -- the tile is
-          the opening button; its frame is on the wrapper above. */}
+      {/* The tile is the opening button; its frame is on the wrapper above. */}
       <button type="button" onClick={onOpen} aria-label={`Open ${label}`} className="block w-full">
         <MediaThumb
           nodeId={asset.node}
@@ -138,17 +137,14 @@ function OverlayAction({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
+    <Button
+      intent="secondary"
+      size="sm"
       onClick={onClick}
-      className={buttonClass({
-        intent: "secondary",
-        size: "sm",
-        className: "rounded-none border border-overlay-muted bg-overlay-scrim/65 text-overlay-ink hover:bg-overlay-hover",
-      })}
+      className="rounded-none border border-overlay-muted bg-overlay-scrim/65 text-overlay-ink hover:bg-overlay-hover"
     >
       {icon}
       {label}
-    </button>
+    </Button>
   );
 }

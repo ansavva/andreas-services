@@ -5,6 +5,7 @@ import { Sidebar, useSidebar } from "@ansavva/design-system";
 
 import { getProjects } from "../../apis/studio";
 import { useShellSidebar } from "../../context/SidebarContext";
+import { useInFlightRuns } from "../../hooks/useInFlightRuns";
 import { useResource } from "../../hooks/useResource";
 import {
   CHARACTERS_PATH,
@@ -14,7 +15,7 @@ import {
   folderPath,
   projectPath,
 } from "../../utils/location";
-import { ApertureMark } from "../common/Aperture";
+import { ApertureMark, ApertureSpinner } from "../common/Aperture";
 import { LibrarySwitcher } from "../common/LibrarySwitcher";
 import {
   AccountIcon,
@@ -192,11 +193,9 @@ function NavItem({
  * on and what this sorts on, for the reason `WEB_APP.md` gives — a list
  * ordered by a date it does not show reads as a bug.
  *
- * TODO(slice 4): a project with a run in flight shows an `ApertureSpinner`
- * beside its name. Nothing cheap answers "which projects have a running run"
- * yet — `ProjectSummary.counts` has no `running`, and `GET /api/runs?status=`
- * is one request per project — so the spinner waits for the feed slice's
- * in-flight query.
+ * A project with a run in flight shows an `ApertureSpinner` beside its name,
+ * read off the feed's cache by `useInFlightRuns` — which is to say for the
+ * projects open this session, the only ones anything cheap can answer for.
  */
 function RecentProjects({
   pathname,
@@ -206,6 +205,7 @@ function RecentProjects({
   onNavigate?: () => void;
 }) {
   const { data } = useResource(["projects"], useCallback(() => getProjects(), []));
+  const running = useInFlightRuns();
 
   const recent = useMemo(
     () =>
@@ -220,13 +220,26 @@ function RecentProjects({
   return (
     <Sidebar.Section title="Recent projects">
       {recent.map((project) => (
-        <NavItem
-          key={project.id}
-          to={projectPath(project.id)}
-          label={project.name}
-          active={pathname === projectPath(project.id)}
-          onNavigate={onNavigate}
-        />
+        // The spinner is a sibling laid over the item's right edge: the
+        // package's item has no trailing slot, and a spinner inside a link's
+        // label would be read out as part of its name.
+        <div key={project.id} className="relative">
+          <NavItem
+            to={projectPath(project.id)}
+            label={project.name}
+            active={pathname.startsWith(projectPath(project.id))}
+            onNavigate={onNavigate}
+          />
+          {(running[project.id] ?? 0) > 0 && (
+            <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2">
+              <ApertureSpinner
+                size="sm"
+                label={`${running[project.id]} running in ${project.name}`}
+                className="size-3.5 text-warning"
+              />
+            </span>
+          )}
+        </div>
       ))}
     </Sidebar.Section>
   );
