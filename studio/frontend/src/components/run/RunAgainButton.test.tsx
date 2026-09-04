@@ -121,7 +121,7 @@ const button = () => screen.getByRole("button", { name: /Run again|Press again/ 
 describe("duplicate", () => {
   const dup = () => screen.getByRole("button", { name: "Duplicate" });
 
-  it("creates a draft and opens it in the editor, spending nothing", async () => {
+  it("creates a draft and opens it, spending nothing", async () => {
     create.mockResolvedValue(created());
     const source = record();
     open(source);
@@ -130,32 +130,21 @@ describe("duplicate", () => {
 
     await waitFor(() => expect(create).toHaveBeenCalledWith(rerunBodyOf(source)));
     expect(submit).not.toHaveBeenCalled();
+    // The draft opens over the feed; its row there offers Edit and Run. There
+    // is no editor page to land in any more — the create bar is the editor.
     expect(await screen.findByText("at /p/proj-1/r/run-2")).toBeTruthy();
-    // Straight into the editor — a clone exists to be changed.
-    expect(screen.getByTestId("state").textContent).toContain('"editing":true');
   });
 
-  /**
-   * The unit case above renders fresh, so it could not have caught this: the
-   * app navigates from one run page to ANOTHER run page, which React Router
-   * re-renders rather than remounts. `RunPage` read `editing` from a `useState`
-   * initial value, so the cloned draft opened read-only. Pinned here as the
-   * contract this button depends on — it hands `editing` over and cannot know
-   * whether the page mounts.
-   */
-  it("hands the editor instruction over on every clone, not just the first", async () => {
+  it("opens every clone, not just the first", async () => {
     create.mockResolvedValue(created());
     open();
 
     fireEvent.click(dup());
     expect(await screen.findByText("at /p/proj-1/r/run-2")).toBeTruthy();
-    expect(screen.getByTestId("state").textContent).toContain('"editing":true');
 
-    // A second clone from the same mounted bar carries it again.
     create.mockResolvedValue(created({ id: "run-3" }));
     fireEvent.click(dup());
     expect(await screen.findByText("at /p/proj-1/r/run-3")).toBeTruthy();
-    expect(screen.getByTestId("state").textContent).toContain('"editing":true');
   });
 
   it("takes one press — there is nothing to arm against", () => {
