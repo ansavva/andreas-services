@@ -207,7 +207,7 @@ export function AttachmentThumb({
     // picture is shown whole at the strip's height, its own width, on a
     // lighter ground so a transparent PNG does not read as a black square.
     <div
-      className="relative h-16 shrink-0 overflow-hidden border border-line bg-surface-alt"
+      className="relative h-24 shrink-0 overflow-hidden border border-line bg-surface-alt"
       title={`${ROLE_WORDS[role].label} · ${ref.name}`}
     >
       <img
