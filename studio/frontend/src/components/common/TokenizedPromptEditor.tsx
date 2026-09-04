@@ -229,7 +229,7 @@ export function TokenizedPromptEditor({
             />
           }
           placeholder={
-            <span className="pointer-events-none absolute left-0 top-0 truncate font-mono text-sm leading-6 text-muted">
+            <span className="pointer-events-none absolute inset-x-0 top-0 truncate font-mono text-sm leading-6 text-muted">
               {placeholder}
             </span>
           }

@@ -286,7 +286,10 @@ export function CreateBar() {
               const chosen = next[0];
               if (chosen === "image" || chosen === "video") setKind(chosen);
             }}
-            className="shrink-0 gap-0 border-r border-line pr-1"
+            // `sm`: two 32px squares. At 390px the row also holds the menu
+            // button and the search icon, and two 44s would push it over.
+            size="sm"
+            className="mt-1 shrink-0 gap-0 border-r border-line pr-1"
           >
             <Toggle value="image" iconOnly label="Image" className="rounded-none">
               <ImageIcon />
@@ -297,9 +300,10 @@ export function CreateBar() {
           </ToggleGroup.Root>
 
           {/* Off a project page the bar has to be told where a run goes. On
-              one, the route says. */}
+              one, the route says. Inline above `md`; on a phone the picker
+              takes a row of its own under the prompt, below. */}
           {!bar.onProject && (
-            <div className="w-40 shrink-0 self-center">
+            <div className="hidden w-40 shrink-0 self-center md:block">
               <Combobox
                 aria-label="Project"
                 options={projectOptions}
@@ -330,9 +334,9 @@ export function CreateBar() {
               aria-label="Settings"
               title="Settings"
               className={iconButtonClass({
-                size: "md",
+                size: "sm",
                 pressed: settingsOpen,
-                className: "mt-0.5 rounded-none",
+                className: "mt-1.5 rounded-none",
               })}
             >
               <SlidersIcon />
@@ -364,6 +368,18 @@ export function CreateBar() {
             {busy ? "Sending…" : "Send"}
           </Button>
         </div>
+
+        {!bar.onProject && (
+          <div className="border-t border-line px-2 py-1 md:hidden">
+            <Combobox
+              aria-label="Project"
+              options={projectOptions}
+              value={target ?? null}
+              placeholder="Project"
+              onValueChange={(next: string) => bar.setProject(next || null)}
+            />
+          </div>
+        )}
 
         {active && (
           <div className="flex flex-wrap items-center gap-1 border-t border-line px-2 py-1">
