@@ -489,17 +489,15 @@ export function CreateBar() {
                 </Popover.Content>
               </Popover.Root>
 
-              <Text
-                variant="caption"
-                tone="muted"
-                className="ml-1 hidden md:block"
-              >
-                Type <span className="font-mono">{"{"}</span> to cite a block or
-                a character. <span className="font-mono">&lt;…&gt;</span> marks
-                what you fill by hand.
-                {unfilled.length > 0 &&
-                  ` ${unfilled.length} unfilled: ${unfilled.join(" ")}`}
-              </Text>
+              {unfilled.length > 0 && (
+                <Text
+                  variant="caption"
+                  tone="muted"
+                  className="ml-1 hidden md:block"
+                >
+                  {unfilled.length} unfilled: {unfilled.join(" ")}
+                </Text>
+              )}
 
               <Text
                 variant="caption"
