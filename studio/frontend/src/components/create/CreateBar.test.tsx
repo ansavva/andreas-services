@@ -368,3 +368,14 @@ it("the chrome follows focus: a press elsewhere collapses it, whatever the bar h
   await waitFor(() => expect(strip()).toBeTruthy());
   expect(screen.queryByText("1 image")).toBeNull();
 });
+
+it("a press on something that takes no focus still folds it", async () => {
+  // macOS: a click on a button leaves focus where it was, so the editor keeps
+  // the caret while the person is plainly done with the bar.
+  await open();
+  wake();
+  await waitFor(() => expect(strip()).toBeTruthy());
+
+  fireEvent.pointerDown(document.body);
+  await waitFor(() => expect(strip()).toBeNull());
+});

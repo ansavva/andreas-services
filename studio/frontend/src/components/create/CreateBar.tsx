@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -114,6 +114,27 @@ export function CreateBar() {
   const toast = useToast();
 
   const [focused, setFocused] = useState(false);
+  const [blurKey, setBlurKey] = useState(0);
+  const root = useRef<HTMLDivElement>(null);
+
+  // Focus leaving is not enough to know a press landed elsewhere: on macOS a
+  // click on a button does not take focus, so pressing a feed tile left the
+  // caret in the editor and the chrome open. A press anywhere outside the
+  // bar folds it and takes the caret with it, so typing does not carry on
+  // into a bar that looks closed. Its popovers render inside it, so a press
+  // in one is a press inside.
+  useEffect(() => {
+    const onPress = (event: PointerEvent) => {
+      const bar = root.current;
+      if (!bar || bar.contains(event.target as Node | null)) return;
+      setFocused(false);
+      // Through Lexical, not `.blur()` on the element: the editor would put
+      // focus straight back when its next update commits.
+      setBlurKey((key) => key + 1);
+    };
+    document.addEventListener("pointerdown", onPress, true);
+    return () => document.removeEventListener("pointerdown", onPress, true);
+  }, []);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -320,6 +341,7 @@ export function CreateBar() {
       // drawer and a taller prompt all grow downwards over the content, and
       // nothing beneath the sticky header moves. 50px is the resting box: a
       // 44px control row, its 2px of vertical padding and the two borders.
+      ref={root}
       className="relative min-h-[50px] min-w-0 flex-1"
       data-create-bar=""
       onFocus={() => setFocused(true)}
@@ -398,6 +420,7 @@ export function CreateBar() {
                 contentClassName="min-h-6 max-h-48 overflow-y-auto"
                 onSubmit={() => void send()}
                 focusKey={bar.focus}
+                blurKey={blurKey}
               />
             </div>
 

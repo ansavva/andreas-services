@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { MutableRefObject } from "react";
 import { createPortal } from "react-dom";
 
@@ -24,6 +31,7 @@ import {
   COMMAND_PRIORITY_HIGH,
   KEY_ENTER_COMMAND,
   TextNode,
+  $setSelection,
 } from "lexical";
 
 import { $createTokenNode, TokenNode } from "./TokenNode";
@@ -153,6 +161,7 @@ export function TokenizedPromptEditor({
   contentClassName = "min-h-24",
   onSubmit,
   focusKey,
+  blurKey,
 }: {
   value: string;
   onValueChange: (next: string) => void;
@@ -174,9 +183,20 @@ export function TokenizedPromptEditor({
   onSubmit?: () => void;
   /** Focus the editor whenever this changes. What "load a run into the bar" does. */
   focusKey?: number;
+  /**
+   * Bump to take focus OUT of the editor. A plain `.blur()` on the element
+   * does not hold: Lexical keeps its selection and puts focus back when the
+   * next update commits (`$updateDOMSelection`), so leaving has to go through
+   * `editor.blur()`, which drops the selection first.
+   */
+  blurKey?: number;
 }) {
   const kinds = useMemo(
-    () => Object.fromEntries(tokens.map((t) => [t.name, t.kind])) as Record<string, "block" | "computed">,
+    () =>
+      Object.fromEntries(tokens.map((t) => [t.name, t.kind])) as Record<
+        string,
+        "block" | "computed"
+      >,
     [tokens],
   );
 
@@ -218,23 +238,23 @@ export function TokenizedPromptEditor({
         {/* `relative` on a box with no padding of its own, so the placeholder
             can sit exactly where the first character will land. */}
         <div className="relative">
-        <PlainTextPlugin
-          contentEditable={
-            <ContentEditable
-              aria-label={ariaLabel ?? "Prompt"}
-              // `whitespace-pre-wrap`: blank lines are part of the prompt now —
-              // they survive assembly and reach the model — so the editor has to
-              // show them rather than collapse them like ordinary HTML.
-              className={`${contentClassName} whitespace-pre-wrap font-mono text-sm leading-6 outline-none`}
-            />
-          }
-          placeholder={
-            <span className="pointer-events-none absolute inset-x-0 top-0 truncate font-mono text-sm leading-6 text-muted">
-              {placeholder}
-            </span>
-          }
-          ErrorBoundary={LexicalErrorBoundary}
-        />
+          <PlainTextPlugin
+            contentEditable={
+              <ContentEditable
+                aria-label={ariaLabel ?? "Prompt"}
+                // `whitespace-pre-wrap`: blank lines are part of the prompt now —
+                // they survive assembly and reach the model — so the editor has to
+                // show them rather than collapse them like ordinary HTML.
+                className={`${contentClassName} whitespace-pre-wrap font-mono text-sm leading-6 outline-none`}
+              />
+            }
+            placeholder={
+              <span className="pointer-events-none absolute inset-x-0 top-0 truncate font-mono text-sm leading-6 text-muted">
+                {placeholder}
+              </span>
+            }
+            ErrorBoundary={LexicalErrorBoundary}
+          />
         </div>
         {/* Cmd-Z. Lexical ships no history unless it is asked for, so undo did
             nothing at all — in a box whose whole purpose is trying wordings out. */}
@@ -243,6 +263,7 @@ export function TokenizedPromptEditor({
         <Pillify kinds={kinds} />
         {onSubmit && <SubmitOnEnter onSubmit={onSubmit} menuOpen={menuOpen} />}
         <Focus focusKey={focusKey} />
+        <Blur blurKey={blurKey} />
         <OnChangePlugin
           ignoreSelectionChange
           onChange={(state) =>
@@ -283,7 +304,13 @@ function SubmitOnEnter({
       editor.registerCommand<KeyboardEvent | null>(
         KEY_ENTER_COMMAND,
         (event) => {
-          if (event === null || event.shiftKey || event.isComposing || menuOpen.current) return false;
+          if (
+            event === null ||
+            event.shiftKey ||
+            event.isComposing ||
+            menuOpen.current
+          )
+            return false;
           event.preventDefault();
           onSubmit();
           return true;
@@ -292,6 +319,23 @@ function SubmitOnEnter({
       ),
     [editor, menuOpen, onSubmit],
   );
+
+  return null;
+}
+
+/** Leave the editor when asked to — a press outside the bar asks. */
+function Blur({ blurKey }: { blurKey: number | undefined }) {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    if (blurKey === undefined || blurKey === 0) return;
+    // `editor.blur()` alone does not hold: it takes the DOM selection away
+    // but the editor state keeps its own, and the next commit's
+    // `$updateDOMSelection` puts the DOM selection — and focus — back to
+    // match. Drop the state's selection first, so there is nothing to restore.
+    editor.update(() => $setSelection(null), { discrete: true });
+    editor.blur();
+  }, [editor, blurKey]);
 
   return null;
 }
@@ -388,7 +432,9 @@ function Pillify({ kinds }: { kinds: Record<string, "block" | "computed"> }) {
           found.start === 0
             ? node.splitText(found.end)[0]
             : node.splitText(found.start, found.end)[1];
-        target?.replace($createTokenNode(found.token, kinds[found.name] ?? "computed"));
+        target?.replace(
+          $createTokenNode(found.token, kinds[found.name] ?? "computed"),
+        );
       }),
     [editor, kinds],
   );
@@ -447,7 +493,9 @@ function Typeahead({
     () =>
       tokens
         .filter((t) => !t.legacy)
-        .filter((t) => t.name.toLowerCase().includes((query ?? "").toLowerCase()))
+        .filter((t) =>
+          t.name.toLowerCase().includes((query ?? "").toLowerCase()),
+        )
         .slice(0, 8)
         .map((token) => new TokenOption(token)),
     [query, tokens],
@@ -469,7 +517,11 @@ function Typeahead({
   );
 
   const select = useCallback(
-    (option: TokenOption, nodeToReplace: TextNode | null, closeMenu: () => void) => {
+    (
+      option: TokenOption,
+      nodeToReplace: TextNode | null,
+      closeMenu: () => void,
+    ) => {
       editor.update(() => {
         const pill = $createTokenNode(
           `{${option.token.name}}`,
@@ -500,7 +552,10 @@ function Typeahead({
       // a template is mostly citations — and the default suppresses the menu
       // when the caret sits against a text entity, which every pill is.
       ignoreEntityBoundary
-      menuRenderFn={(anchorElementRef, { selectedIndex, selectOptionAndCleanUp, setHighlightedIndex }) =>
+      menuRenderFn={(
+        anchorElementRef,
+        { selectedIndex, selectOptionAndCleanUp, setHighlightedIndex },
+      ) =>
         anchorElementRef.current === null || options.length === 0
           ? null
           : createPortal(
