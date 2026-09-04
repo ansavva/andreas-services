@@ -17,11 +17,10 @@ import { HeaderSearch } from "./HeaderSearch";
  * fault on a grid of dark frames.
  *
  * **72px above `md`, 56px below, and `--header-h` in `app.css` is that
- * number at both widths.** 14px — 6px on a phone — of padding either side of
- * a 44px control. The create bar grows line by line once it is here, so the
- * bar is `min-h` rather than `h`; anything sticky under it reads the variable
- * and will need to re-measure when the bar grows — that is the create bar's
- * problem, and it is named there.
+ * number at both widths — exactly, not at least.** The lightbox and the
+ * folder browser's sticky strip read the variable, so the header is `h` and
+ * never grows: the create bar's active state, and a prompt taller than one
+ * line, float over the page from inside their slot rather than pushing it.
  *
  * Below `md` the sidebar is not drawn, so this bar carries the way to it: a
  * menu button opening the same contents in a `Drawer`, and the search behind
@@ -30,8 +29,8 @@ import { HeaderSearch } from "./HeaderSearch";
 export function TopBar() {
   return (
     <header
-      className="sticky top-0 z-30 flex min-h-[var(--header-h)] items-center gap-3 border-b
-                 border-line bg-bg px-4 py-1.5 md:px-6 md:py-3.5"
+      className="sticky top-0 z-30 flex h-[var(--header-h)] items-center gap-3 border-b
+                 border-line bg-bg px-4 md:px-6"
     >
       <MobileMenu />
 
