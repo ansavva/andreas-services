@@ -13,7 +13,7 @@ import { PromptFields } from "../scene/motionPrompt";
 import { ApiError } from "../../apis/client";
 import { approveRun, submitRun } from "../../apis/studio";
 import type { RunAsset, RunRecord, RunSend } from "../../types";
-import { formatDate, formatTextContent } from "../../utils/format";
+import { formatDate } from "../../utils/format";
 import { getUserEmail, getUserSub } from "../../auth/oauth";
 import { useArmed } from "../../hooks/useArmed";
 
