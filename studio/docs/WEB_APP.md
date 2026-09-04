@@ -319,9 +319,8 @@ page and a plain textarea over its literal bytes, and never offers fields.
   collapse state is `SidebarContext`'s, not the package's own, so the opened
   run can collapse the rail from a route element: `useShellSidebar()` gives
   `{ collapsed, setCollapsed, toggle }`, mirrored into `localStorage` under
-  `SIDEBAR_STORAGE_KEY`. `TopBar` is full width and sticky — `CreateBarSlot`
-  (the create bar's mount point, empty until that lands) and then
-  `HeaderSearch`. Below `md` the sidebar is not drawn: a menu `IconButton`
+  `SIDEBAR_STORAGE_KEY`. `TopBar` is full width and sticky — `CreateBarSlot`,
+  which mounts `CreateBar`, and then `HeaderSearch`. Below `md` the sidebar is not drawn: a menu `IconButton`
   opens the same `SidebarContents` in a `Drawer`, and search sits behind an
   icon. `--header-h` in `app.css` is the bar's height at both widths; content
   is full width with the mockup's `px-6`, no `max-w-*` cap.
@@ -406,10 +405,29 @@ page and a plain textarea over its literal bytes, and never offers fields.
   the group IS the approval — and the panel states plainly what it will do.
   Video outputs get no control: a reference is a picture a later render is
   checked against.
-- **Every gesture that spends or destroys is arm-then-fire in the button
-  itself.** `ConfirmDestroyDialog` remains for entity deletion and nothing on
-  the run surface reaches for it; the promote drawer is the one overlay, and
-  it declines a dismissal while it holds words.
+- **None of these flows uses a dialog, and that is a requirement rather than a
+  style.** Creating a run is the create bar at the top of every screen,
+  promoting is an inline panel, and every gesture that spends or destroys is
+  arm-then-fire in the button itself. `ConfirmDestroyDialog` remains for
+  entity deletion and nothing on the run surface reaches for it.
+- **The create bar is one box at the top of every screen, and Enter sends.**
+  `components/create/CreateBar.tsx` in `TopBar`'s `CreateBarSlot`; its state is
+  `CreateBarContext`, mounted in `AppLayout`, so a feed row or a tile can fill
+  it from a route element: `useCreateBar()` is `{ loadRun, attach, setKind }`
+  and nothing else. The kind switch picks IMAGE or VIDEO and the strip under
+  the bar is that kind's roles — Reference and Edit; Animate (start), End
+  frame, Reference, Duration — each drawn only where the selected model's
+  registry `images` has a field for it (`create/roles.ts`). Highlighting a
+  role opens `CreateDrawer`, whose tiles (cast identity images, the input pool,
+  the project's outputs) attach to that role. Parameters are `CreateSettings`
+  behind the sliders icon: the kind's models and `SchemaParams` over the live
+  schema, seeded from the snapshot by `seedPlan`. Send is `createRun` (plan +
+  sends together, then `PATCH /plan` with `template` when the prompt cites
+  anything, so the API expands it), one `?fingerprint=` read that holds the
+  draft behind a warning if the same payload already went out here, then
+  `submitRun`. It targets the route's project, else the last one used
+  (`CREATE_PROJECT_STORAGE_KEY`) behind a picker. `NewRunStrip` and
+  `RunPlanEditor` are gone; a draft is edited by loading it back into the bar.
 - **A run closes itself, so the feed has something to poll and a reason to.**
   The prediction is closed by Replicate calling the API back, which is why
   `TERMINAL_RUN_STATUSES` exists: a client that knows which states can still

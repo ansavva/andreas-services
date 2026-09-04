@@ -444,11 +444,11 @@ thumbnails carrying their role, the cast as chips.
   by default. A hidden draft is the one thing a person has to be able to find —
   an invisible queue is one nobody works through.
 
-**A draft can be edited in the app too — `RunPlanEditor`, behind an `Edit the
-plan` button that appears only on an unsubmitted run.** It was the last thing the
-plan made possible and the last thing built: the routes shipped with the plan and
-the app could read a payload it could not change, so every correction went back
-through a terminal.
+**A draft was edited in the app by `RunPlanEditor`, behind an `Edit the plan`
+button on an unsubmitted run. That editor is deleted (2026-09-04): the create
+bar at the top of every screen is where a plan is written now, and Edit on a
+feed row loads a run back into it.** What follows is kept as the record of
+what the editor decided, because the bar inherits every one of those rules.
 
 - **A mode, not an always-editable form.** This page is read far more often than
   it is written, and the plan is the thing a person is about to send — a prompt

@@ -26,7 +26,7 @@
  * seed. `project-runs-feed.json` holds two of that project's four runs — the
  * draft and the succeeded image run — which is what the feed draws here.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 import {
   CHARACTER,
@@ -44,6 +44,7 @@ import {
   CHARACTER_ROOT,
   stubApi,
 } from "./support/api";
+import { escaped, log, spell, wrote } from "./support/calls";
 import { signIn } from "./support/session";
 
 const LIVE = process.env.E2E_LIVE === "1";
@@ -57,65 +58,6 @@ const LIVE = process.env.E2E_LIVE === "1";
  */
 function stubOnly(reason: string): void {
   test.skip(LIVE, reason);
-}
-
-/** One call the app made, as this file wants to read it back. */
-interface Call {
-  method: string;
-  /** Kept so a spec can prove the call was served by the stub, not by :8000. */
-  origin: string;
-  path: string;
-  query: URLSearchParams;
-  body: Record<string, unknown>;
-}
-
-/**
- * Every `/api` call, in the order the browser made them.
- *
- * Registered before the first navigation, because a listener attached
- * afterwards cannot have seen what it is about to assert on — the same mistake
- * an early version of `browse.spec.ts`'s escape check made.
- */
-function log(page: Page): Call[] {
-  const calls: Call[] = [];
-  page.on("request", (request) => {
-    const url = new URL(request.url());
-    if (!url.pathname.startsWith("/api/")) return;
-    let body: Record<string, unknown> = {};
-    try {
-      body = (request.postDataJSON() ?? {}) as Record<string, unknown>;
-    } catch {
-      /* a GET, or a write with no JSON body */
-    }
-    calls.push({
-      method: request.method(),
-      origin: url.origin,
-      path: url.pathname,
-      query: url.searchParams,
-      body,
-    });
-  });
-  return calls;
-}
-
-const wrote = (calls: Call[]) => calls.filter((call) => call.method !== "GET");
-const spell = (calls: Call[]) =>
-  calls.map((call) => `${call.method} ${call.path}`);
-
-/**
- * Calls that went somewhere other than the page's own origin.
- *
- * **`npm run e2e` builds and previews on :4173 and must not depend on a dev
- * server.** A developer usually has `dev-up.sh` running while writing these, so
- * a spec that only passed because :8000 happened to be up would pass locally and
- * fail in CI — where there is no stack at all. This is that assumption made
- * checkable inside the flows that write.
- */
-function escaped(calls: Call[], page: Page): string[] {
-  const here = new URL(page.url()).origin;
-  return calls
-    .filter((call) => call.origin !== here)
-    .map((call) => `${call.origin}${call.path}`);
 }
 
 /** The opened run — the lightbox over the feed. */
