@@ -9,6 +9,7 @@ import {
   UpscaleIcon,
   UseInPromptIcon,
 } from "../common/icons";
+import { ratioOf } from "./aspect";
 import { MediaThumb } from "../media/MediaThumb";
 import { isPromotable, isVideoAsset } from "./PromoteDrawer";
 import type { useRunActions } from "./useRunActions";
@@ -54,13 +55,19 @@ export function OutputTile({
   return (
     <div className="group relative overflow-hidden rounded-none border border-line bg-card">
       {/* The tile is the opening button; its frame is on the wrapper above. */}
-      <button type="button" onClick={onOpen} aria-label={`Open ${label}`} className="block w-full">
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={`Open ${label}`}
+        className="block w-full"
+      >
         <MediaThumb
           nodeId={asset.node}
           url={asset.url}
           name={asset.name}
           isVideo={video}
           aspect={video ? "video" : "portrait"}
+          ratio={ratioOf(row)}
           fit="cover"
         />
       </button>
@@ -106,15 +113,31 @@ export function OutputTile({
         className="absolute inset-x-2 bottom-2 grid grid-cols-2 gap-1.5 opacity-0 transition-opacity
                    group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
       >
-        <OverlayAction icon={<RerunIcon className={GLYPH} />} label="Again" onClick={() => actions.outputAgain(asset, index)} />
+        <OverlayAction
+          icon={<RerunIcon className={GLYPH} />}
+          label="Again"
+          onClick={() => actions.outputAgain(asset, index)}
+        />
         {!video && (
-          <OverlayAction icon={<UpscaleIcon className={GLYPH} />} label="Upscale" onClick={() => actions.upscale(asset, index)} />
+          <OverlayAction
+            icon={<UpscaleIcon className={GLYPH} />}
+            label="Upscale"
+            onClick={() => actions.upscale(asset, index)}
+          />
         )}
         {!video && (
-          <OverlayAction icon={<PlayIcon className="size-3.5 fill-current stroke-none" />} label="Animate" onClick={() => actions.animate(asset, index)} />
+          <OverlayAction
+            icon={<PlayIcon className="size-3.5 fill-current stroke-none" />}
+            label="Animate"
+            onClick={() => actions.animate(asset, index)}
+          />
         )}
         {isPromotable(asset) && (
-          <OverlayAction icon={<PromoteIcon className={GLYPH} />} label="Promote" onClick={onPromote} />
+          <OverlayAction
+            icon={<PromoteIcon className={GLYPH} />}
+            label="Promote"
+            onClick={onPromote}
+          />
         )}
       </div>
     </div>

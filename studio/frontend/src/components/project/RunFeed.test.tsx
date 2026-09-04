@@ -1,8 +1,18 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CreateBarProvider, useCreateBarState } from "../../context/CreateBarContext";
+import {
+  CreateBarProvider,
+  useCreateBarState,
+} from "../../context/CreateBarContext";
 import { TestProviders } from "../../test-providers";
 import type { RunFeedRow } from "../../types";
 
@@ -13,7 +23,11 @@ vi.mock("../../apis/studio", () => ({
   deleteRun: vi.fn().mockResolvedValue({ id: "run-1", files: "keep" }),
   getAsset: vi.fn(),
   getModels: vi.fn().mockResolvedValue({
-    "image-upscale": { key: "image-upscale", model: "topazlabs/image-upscale", kind: "image" },
+    "image-upscale": {
+      key: "image-upscale",
+      model: "topazlabs/image-upscale",
+      kind: "image",
+    },
   }),
 }));
 
@@ -62,8 +76,18 @@ function row(over: Partial<RunFeedRow> = {}): RunFeedRow {
       },
     ],
     outputs: [
-      { node: "node-o1", name: "out-1.png", url: "/out-1.png", content_type: "image/png" },
-      { node: "node-o2", name: "out-2.png", url: "/out-2.png", content_type: "image/png" },
+      {
+        node: "node-o1",
+        name: "out-1.png",
+        url: "/out-1.png",
+        content_type: "image/png",
+      },
+      {
+        node: "node-o2",
+        name: "out-2.png",
+        url: "/out-2.png",
+        content_type: "image/png",
+      },
     ],
     ...over,
   };
@@ -78,7 +102,12 @@ function Probe() {
     <output data-testid="bar">
       {JSON.stringify({
         kind,
-        seed: { model: state.model[kind], prompt: state.prompt, kind, attachments: held.length },
+        seed: {
+          model: state.model[kind],
+          prompt: state.prompt,
+          kind,
+          attachments: held.length,
+        },
         attachments: held.map((a) => `${a.role}:${a.ref.node}`),
       })}
     </output>
@@ -99,7 +128,12 @@ async function draw(rows: RunFeedRow[], path = "/p/proj-1?tab=runs") {
   render(
     <MemoryRouter initialEntries={[path]}>
       <CreateBarProvider>
-        <RunFeed projectId="proj-1" characters={[{ id: "char-1", name: "jason" }]} heroes={{}} onOpen={onOpen} />
+        <RunFeed
+          projectId="proj-1"
+          characters={[{ id: "char-1", name: "jason" }]}
+          heroes={{}}
+          onOpen={onOpen}
+        />
         <Probe />
       </CreateBarProvider>
     </MemoryRouter>,
@@ -117,16 +151,28 @@ describe("the feed", () => {
     ]);
 
     expect(list).toHaveBeenCalledWith(
-      expect.objectContaining({ project: "proj-1", view: "feed", include: "drafts" }),
+      expect.objectContaining({
+        project: "proj-1",
+        view: "feed",
+        include: "drafts",
+      }),
     );
     const today = await screen.findByRole("region", { name: "Today" });
     expect(within(today).getAllByRole("article")).toHaveLength(1);
-    expect(within(screen.getByRole("region", { name: "Yesterday" })).getAllByRole("article")).toHaveLength(1);
+    expect(
+      within(screen.getByRole("region", { name: "Yesterday" })).getAllByRole(
+        "article",
+      ),
+    ).toHaveLength(1);
     // The third group is a date, and it is the third heading.
     // The filter panel is a region too; the groups are the sections.
-    const regions = screen.getAllByRole("region").filter((each) => each.tagName === "SECTION");
+    const regions = screen
+      .getAllByRole("region")
+      .filter((each) => each.tagName === "SECTION");
     expect(regions).toHaveLength(3);
-    expect(regions[2]!.getAttribute("aria-label")).not.toMatch(/Today|Yesterday/);
+    expect(regions[2]!.getAttribute("aria-label")).not.toMatch(
+      /Today|Yesterday/,
+    );
   });
 
   it("draws the plan beside the outputs: status, kind, prompt, scalar params, the model, the cast", async () => {
@@ -141,10 +187,17 @@ describe("the feed", () => {
     // A list is not a chip.
     expect(within(article).queryByText("weights")).toBeNull();
     expect(within(article).getByText("openai/gpt-image-2")).toBeTruthy();
-    expect(within(article).getByRole("link", { name: /jason/ }).getAttribute("href")).toBe("/c/char-1");
+    expect(
+      within(article).getByRole("link", { name: /jason/ }).getAttribute("href"),
+    ).toBe("/c/char-1");
     // Two outputs, two tiles, each opening the run at its own position.
-    fireEvent.click(within(article).getByRole("button", { name: "Open Output 2 of 2" }));
-    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "run-1" }), 1);
+    fireEvent.click(
+      within(article).getByRole("button", { name: "Open Output 2 of 2" }),
+    );
+    expect(onOpen).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "run-1" }),
+      1,
+    );
   });
 
   it("searches prompts on Enter and sends the words as q", async () => {
@@ -155,7 +208,9 @@ describe("the feed", () => {
     fireEvent.keyDown(box, { key: "Enter" });
 
     await waitFor(() =>
-      expect(list).toHaveBeenCalledWith(expect.objectContaining({ q: "portrait", view: "feed" })),
+      expect(list).toHaveBeenCalledWith(
+        expect.objectContaining({ q: "portrait", view: "feed" }),
+      ),
     );
   });
 });
@@ -176,20 +231,38 @@ describe("a run in flight", () => {
     const article = await screen.findByRole("article");
     // As many tiles as the plan asked for.
     expect(within(article).getAllByTestId("in-flight-tile")).toHaveLength(2);
-    expect(within(article).getAllByTestId("in-flight-tile")[0]!.className).toContain("studio-shimmer");
+    expect(
+      within(article).getAllByTestId("in-flight-tile")[0]!.className,
+    ).toContain("studio-shimmer");
     expect(within(article).getByText("Running…")).toBeTruthy();
     expect(within(article).getByText(/^1[23]s$/)).toBeTruthy();
     expect(within(article).getByText(/sent 1[23]s ago/)).toBeTruthy();
     // The spinner is on the badge too.
-    expect(within(article).getAllByRole("progressbar", { name: "Run running" }).length).toBeGreaterThanOrEqual(2);
+    expect(
+      within(article).getAllByRole("progressbar", { name: "Run running" })
+        .length,
+    ).toBeGreaterThanOrEqual(2);
     // Nothing spends or destroys while it is out.
     expect(within(article).queryByRole("button", { name: "Rerun" })).toBeNull();
-    expect(within(article).queryByRole("button", { name: /Delete/ })).toBeNull();
+    expect(
+      within(article).queryByRole("button", { name: /Delete/ }),
+    ).toBeNull();
   });
 
   it("counts the tiles off the plan, one when it says nothing", () => {
     expect(expectedOutputs(row({ plan: null }))).toBe(1);
-    expect(expectedOutputs(row({ plan: { version: 1, origin: "authored", prompt: "", params: { num_outputs: 4 } } }))).toBe(4);
+    expect(
+      expectedOutputs(
+        row({
+          plan: {
+            version: 1,
+            origin: "authored",
+            prompt: "",
+            params: { num_outputs: 4 },
+          },
+        }),
+      ),
+    ).toBe(4);
   });
 });
 
@@ -199,14 +272,21 @@ describe("the actions", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
 
-    expect(bar().seed).toEqual({ model: "openai/gpt-image-2", prompt: "a portrait, 85mm", kind: "image", attachments: 1 });
+    expect(bar().seed).toEqual({
+      model: "openai/gpt-image-2",
+      prompt: "a portrait, 85mm",
+      kind: "image",
+      attachments: 1,
+    });
   });
 
   it("Use in prompt attaches the output as a reference; Animate switches to video with it as the start", async () => {
     await draw([row()]);
     await screen.findByRole("article");
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Use in prompt" })[1]!);
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Use in prompt" })[1]!,
+    );
     expect(bar().attachments).toEqual(["reference:node-o2"]);
 
     fireEvent.click(screen.getAllByRole("button", { name: "Animate" })[0]!);
@@ -228,7 +308,10 @@ describe("the actions", () => {
   });
 
   it("Rerun arms on the first press and creates then submits on the second", async () => {
-    vi.mocked(createRun).mockResolvedValue({ id: "run-new", fingerprint: "sha256:x" } as never);
+    vi.mocked(createRun).mockResolvedValue({
+      id: "run-new",
+      fingerprint: "sha256:x",
+    } as never);
     vi.mocked(submitRun).mockResolvedValue({} as never);
     await draw([row()]);
 
@@ -240,13 +323,25 @@ describe("the actions", () => {
     fireEvent.click(screen.getByRole("button", { name: /Press again/ }));
     await waitFor(() => expect(submitRun).toHaveBeenCalledWith("run-new"));
     expect(createRun).toHaveBeenCalledWith(
-      expect.objectContaining({ project: "proj-1", model: "openai/gpt-image-2", sends: [{ field: "input_images", role: "reference", node: "node-s1" }] }),
+      expect.objectContaining({
+        project: "proj-1",
+        model: "openai/gpt-image-2",
+        sends: [{ field: "input_images", role: "reference", node: "node-s1" }],
+      }),
     );
   });
 
   it("a draft offers Run, which arms first and submits second", async () => {
     vi.mocked(submitRun).mockResolvedValue({} as never);
-    await draw([row({ status: "draft", submitted: null, completed: null, outputs: [], cost: null })]);
+    await draw([
+      row({
+        status: "draft",
+        submitted: null,
+        completed: null,
+        outputs: [],
+        cost: null,
+      }),
+    ]);
 
     const run = await screen.findByRole("button", { name: "Run" });
     fireEvent.click(run);
@@ -258,10 +353,55 @@ describe("the actions", () => {
   it("Delete arms, then deletes the run", async () => {
     await draw([row()]);
 
-    const trash = await screen.findByRole("button", { name: "Delete this run" });
+    const trash = await screen.findByRole("button", {
+      name: "Delete this run",
+    });
     fireEvent.click(trash);
     expect(deleteRun).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: /Confirm — delete this run/ }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Confirm — delete this run/ }),
+    );
     await waitFor(() => expect(deleteRun).toHaveBeenCalledWith("run-1"));
+  });
+});
+
+describe("the shape of the frames", () => {
+  it("a draft draws dashed frames the size and number its plan asks for", async () => {
+    await draw([
+      row({
+        status: "draft",
+        kind: "image",
+        outputs: [],
+        plan: {
+          version: 1,
+          origin: "authored",
+          prompt: "x",
+          params: { aspect_ratio: "2:3", number_of_images: 3 },
+        },
+      }),
+    ]);
+    await screen.findByRole("article");
+    const frames = screen.getAllByTestId("draft-tile");
+    expect(frames).toHaveLength(3);
+    expect(frames[0]!.style.aspectRatio).toBe("2 / 3");
+    expect(screen.getByText("Not run yet.")).toBeTruthy();
+  });
+
+  it("an output tile takes the plan's aspect ratio, not the kind's", async () => {
+    await draw([
+      row({
+        kind: "video",
+        plan: {
+          version: 1,
+          origin: "authored",
+          prompt: "x",
+          params: { aspect_ratio: "9:16", duration: 5 },
+        },
+      }),
+    ]);
+    await screen.findByRole("article");
+    const tile = screen.getAllByRole("button", { name: /^Open Output/ })[0]!;
+    const box = tile.querySelector("span[style]") as HTMLElement;
+    expect(box.style.aspectRatio).toBe("9 / 16");
   });
 });

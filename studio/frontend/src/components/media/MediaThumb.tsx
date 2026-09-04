@@ -53,6 +53,12 @@ interface Props {
    */
   isVideo?: boolean;
   aspect?: keyof typeof ASPECTS;
+  /**
+   * An exact shape as a CSS `aspect-ratio` value (`"9 / 16"`), which beats
+   * `aspect`. The feed passes the plan's own `aspect_ratio` so a portrait clip
+   * is not cropped into a landscape box.
+   */
+  ratio?: string;
   /** `cover` fills the box and crops; `contain` shows the whole frame. */
   fit?: "cover" | "contain";
   /** Bottom-right overlay. A video's duration fills this when nothing else does. */
@@ -147,6 +153,7 @@ export function MediaThumb({
   name,
   isVideo: isVideoProp,
   aspect = "square",
+  ratio,
   fit = "cover",
   badge,
   showName = false,
@@ -199,7 +206,8 @@ export function MediaThumb({
       onPointerLeave={(event) => {
         if (isVideo && event.pointerType === "mouse") preview(false);
       }}
-      className={`relative block overflow-hidden bg-surface-alt ${ASPECTS[aspect]} ${className}`}
+      className={`relative block overflow-hidden bg-surface-alt ${ratio ? "" : ASPECTS[aspect]} ${className}`}
+      style={ratio ? { aspectRatio: ratio } : undefined}
     >
       {failed ? (
         <span className="flex h-full w-full items-center justify-center px-2 text-center text-xs text-muted">

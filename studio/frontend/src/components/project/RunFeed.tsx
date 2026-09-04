@@ -39,7 +39,13 @@ import { SectionLoading } from "../common/SectionLoading";
 import { CharacterChipLink } from "../character/CharacterChip";
 import { MediaThumb } from "../media/MediaThumb";
 import { ArmedButton } from "../run/ArmedButton";
-import { elapsedSince, groupByDay, inFlight, relativeTime } from "../run/feedTime";
+import {
+  elapsedSince,
+  groupByDay,
+  inFlight,
+  relativeTime,
+} from "../run/feedTime";
+import { ratioOf } from "../run/aspect";
 import { OutputTile } from "../run/OutputTile";
 import { ParamChips } from "../run/ParamChips";
 import { PromoteDrawer } from "../run/PromoteDrawer";
@@ -62,9 +68,19 @@ export const FEED_POLL_MS = 5_000;
  * `discarded` is absent: it is gone, and offering a filter for it would suggest
  * otherwise.
  */
-const STATUSES: RunStatus[] = ["draft", "pending", "running", "succeeded", "failed", "cancelled"];
+const STATUSES: RunStatus[] = [
+  "draft",
+  "pending",
+  "running",
+  "succeeded",
+  "failed",
+  "cancelled",
+];
 
-const STATUS_INTENT: Record<RunStatus, "neutral" | "success" | "danger" | "warning"> = {
+const STATUS_INTENT: Record<
+  RunStatus,
+  "neutral" | "success" | "danger" | "warning"
+> = {
   draft: "neutral",
   discarded: "neutral",
   pending: "warning",
@@ -110,7 +126,8 @@ export function useFeedFilters() {
   const [searchParams, setSearchParams] = useSearchParams();
   const clear = useCallback(() => {
     const next = new URLSearchParams(searchParams);
-    for (const key of ["status", "character", "model", "since", "q"]) next.delete(key);
+    for (const key of ["status", "character", "model", "since", "q"])
+      next.delete(key);
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
@@ -127,7 +144,8 @@ export function useFeedFilters() {
     setSince,
     setQ,
     clear,
-    activeCount: [status, character, model.trim(), since].filter(Boolean).length,
+    activeCount: [status, character, model.trim(), since].filter(Boolean)
+      .length,
   };
 }
 
@@ -149,7 +167,9 @@ export function useRunFeed(projectId: string, filters: FeedFilters) {
         project: projectId,
         view: "feed",
         // "Any status" means any — see `STATUSES`.
-        ...(filters.status ? { status: filters.status } : { include: "drafts" }),
+        ...(filters.status
+          ? { status: filters.status }
+          : { include: "drafts" }),
         ...(filters.model ? { model: filters.model } : {}),
         ...(filters.character ? { character: filters.character } : {}),
         ...(filters.since ? { since: filters.since } : {}),
@@ -227,7 +247,11 @@ export function RunFeed({ projectId, characters, heroes, onOpen }: Props) {
           />
         </div>
 
-        <FilterBar activeCount={filters.activeCount} onClear={filters.clear} label="Filter runs">
+        <FilterBar
+          activeCount={filters.activeCount}
+          onClear={filters.clear}
+          label="Filter runs"
+        >
           <div className="min-w-40">
             <Field.Root name="status">
               <Field.Label>Status</Field.Label>
@@ -248,7 +272,10 @@ export function RunFeed({ projectId, characters, heroes, onOpen }: Props) {
               <Select
                 options={[
                   { value: "", label: "Any character" },
-                  ...characters.map((each) => ({ value: each.id, label: each.name })),
+                  ...characters.map((each) => ({
+                    value: each.id,
+                    label: each.name,
+                  })),
                 ]}
                 value={filters.applied.character}
                 onValueChange={filters.setCharacter}
@@ -281,7 +308,8 @@ export function RunFeed({ projectId, characters, heroes, onOpen }: Props) {
                 value={filters.applied.since}
                 picker="calendar"
                 onValueChange={(next: string, status: DateStatus) => {
-                  if (status === "valid" || status === "empty") filters.setSince(next);
+                  if (status === "valid" || status === "empty")
+                    filters.setSince(next);
                 }}
               />
             </Field.Root>
@@ -313,24 +341,40 @@ export function RunFeed({ projectId, characters, heroes, onOpen }: Props) {
       ) : (
         <div className="flex flex-col gap-5">
           {groups.map((group) => (
-            <section key={group.label} aria-label={group.label} className="flex flex-col gap-4">
+            <section
+              key={group.label}
+              aria-label={group.label}
+              className="flex flex-col gap-4"
+            >
               <Text variant="caption" tone="muted">
                 {group.label}
               </Text>
               {group.rows.map((row) => (
-                <FeedRow key={row.id} row={row} heroes={heroes} now={now} onOpen={onOpen} />
+                <FeedRow
+                  key={row.id}
+                  row={row}
+                  heroes={heroes}
+                  now={now}
+                  onOpen={onOpen}
+                />
               ))}
             </section>
           ))}
 
-          {feed.isFetchingNextPage && <SectionLoading label="Loading more runs" />}
+          {feed.isFetchingNextPage && (
+            <SectionLoading label="Loading more runs" />
+          )}
 
           {/* A prompt search can answer a short or empty page with a cursor
               still set — "keep going", not "nothing more" — so the button
               stays while there is a cursor, whatever the page held. */}
           {feed.hasNextPage && !feed.isFetchingNextPage && (
             <div className="flex justify-center">
-              <Button intent="secondary" size="sm" onClick={() => void feed.fetchNextPage()}>
+              <Button
+                intent="secondary"
+                size="sm"
+                onClick={() => void feed.fetchNextPage()}
+              >
                 Load more
               </Button>
             </div>
@@ -352,7 +396,8 @@ export function expectedOutputs(row: RunFeedRow): number {
   const params = row.plan?.params ?? {};
   for (const key of ["outputs", "num_outputs", "number_of_images", "n"]) {
     const value = params[key];
-    if (typeof value === "number" && value >= 1) return Math.min(Math.floor(value), 8);
+    if (typeof value === "number" && value >= 1)
+      return Math.min(Math.floor(value), 8);
   }
   return 1;
 }
@@ -376,10 +421,18 @@ function FeedRow({
   return (
     <article
       aria-label={`Run ${relativeTime(row.created, now)}`}
-      className="grid gap-4 border-t border-line pt-4 md:grid-cols-[minmax(0,1fr)_320px] md:gap-6"
+      // The outputs column is capped: on a wide screen a half-column clip
+      // would be a metre tall, and the plan would sit a screen away from it.
+      className="grid gap-4 border-t border-line pt-4 md:grid-cols-[minmax(0,48rem)_minmax(20rem,32rem)] md:gap-6"
     >
       {/* Outputs. The grid is by kind: four stills across, two clips. */}
-      <div className={video ? "grid grid-cols-1 gap-2 sm:grid-cols-2" : "grid grid-cols-2 gap-2 sm:grid-cols-4"}>
+      <div
+        className={
+          video
+            ? "grid grid-cols-1 gap-2 sm:grid-cols-2"
+            : "grid grid-cols-2 gap-2 sm:grid-cols-4"
+        }
+      >
         {flying ? (
           <InFlightTiles row={row} now={now} />
         ) : row.outputs.length > 0 ? (
@@ -401,11 +454,11 @@ function FeedRow({
               <Alert.Description>{row.error}</Alert.Description>
             </Alert.Root>
           </div>
+        ) : row.status === "draft" ? (
+          <DraftTiles row={row} />
         ) : (
           <div className="sm:col-span-2">
-            <EmptyState
-              title={row.status === "draft" ? "Not run yet." : "Nothing came back."}
-            />
+            <EmptyState title="Nothing came back." />
           </div>
         )}
       </div>
@@ -417,13 +470,22 @@ function FeedRow({
           <Badge intent="neutral" className="rounded-none font-mono">
             {row.kind}
           </Badge>
-          <Text variant="caption" family="mono" tone="muted" className="ml-auto tabular-nums">
+          <Text
+            variant="caption"
+            family="mono"
+            tone="muted"
+            className="ml-auto tabular-nums"
+          >
             {flying ? (
-              <span className="text-warning">sent {relativeTime(row.submitted, now)}</span>
+              <span className="text-warning">
+                sent {relativeTime(row.submitted, now)}
+              </span>
             ) : (
               <>
                 {relativeTime(row.created, now)}
-                {row.cost && formatCost(row.cost, "") ? ` · ${formatCost(row.cost)}` : ""}
+                {row.cost && formatCost(row.cost, "")
+                  ? ` · ${formatCost(row.cost)}`
+                  : ""}
               </>
             )}
           </Text>
@@ -491,8 +553,17 @@ function FeedRow({
  */
 export function StatusBadge({ status }: { status: RunStatus }) {
   return (
-    <Badge intent={STATUS_INTENT[status]} className="rounded-none gap-1.5 font-mono">
-      {inFlight(status) && <ApertureSpinner size="sm" label={`Run ${status}`} className="size-3.5" />}
+    <Badge
+      intent={STATUS_INTENT[status]}
+      className="rounded-none gap-1.5 font-mono"
+    >
+      {inFlight(status) && (
+        <ApertureSpinner
+          size="sm"
+          label={`Run ${status}`}
+          className="size-3.5"
+        />
+      )}
       {status}
     </Badge>
   );
@@ -507,27 +578,65 @@ export function StatusBadge({ status }: { status: RunStatus }) {
  */
 function InFlightTiles({ row, now }: { row: RunFeedRow; now: number }) {
   const count = expectedOutputs(row);
-  const aspect = row.kind === "video" ? "aspect-video" : "aspect-[3/4]";
+  const ratio = ratioOf(row);
   return (
     <>
       {Array.from({ length: count }, (_, i) => (
         <div
           key={i}
           data-testid="in-flight-tile"
-          className={`studio-shimmer flex ${aspect} flex-col items-center justify-center gap-2 rounded-none border ${
+          style={{ aspectRatio: ratio }}
+          className={`studio-shimmer flex flex-col items-center justify-center gap-2 rounded-none border ${
             i === 0 ? "border-warning/50" : "border-line"
           }`}
         >
           {i === 0 && (
             <>
-              <ApertureSpinner size="lg" label={`Run ${row.status}`} className="text-warning" />
+              <ApertureSpinner
+                size="lg"
+                label={`Run ${row.status}`}
+                className="text-warning"
+              />
               <Text variant="body" weight="medium" className="text-warning">
                 {row.status === "pending" ? "Sending…" : "Running…"}
               </Text>
-              <Text variant="caption" family="mono" tone="muted" className="tabular-nums">
+              <Text
+                variant="caption"
+                family="mono"
+                tone="muted"
+                className="tabular-nums"
+              >
                 {elapsedSince(row.submitted ?? row.created, now)}
               </Text>
             </>
+          )}
+        </div>
+      ))}
+    </>
+  );
+}
+
+/**
+ * The empty frames a draft will fill — its outputs' shape and count, drawn
+ * dashed, so a row that has not run yet is still the size it will be and the
+ * eye has something where the pictures go.
+ */
+function DraftTiles({ row }: { row: RunFeedRow }) {
+  const count = expectedOutputs(row);
+  const ratio = ratioOf(row);
+  return (
+    <>
+      {Array.from({ length: count }, (_, i) => (
+        <div
+          key={i}
+          data-testid="draft-tile"
+          style={{ aspectRatio: ratio }}
+          className="flex flex-col items-center justify-center rounded-none border border-dashed border-line bg-surface-alt/40"
+        >
+          {i === 0 && (
+            <Text variant="caption" tone="muted">
+              Not run yet.
+            </Text>
           )}
         </div>
       ))}
@@ -559,7 +668,14 @@ function Prompt({ row }: { row: RunFeedRow }) {
 
   return (
     <div className="flex flex-col items-start gap-1">
-      <Text variant="body" className={expanded ? "whitespace-pre-wrap break-words" : "line-clamp-3 break-words"}>
+      <Text
+        variant="body"
+        className={
+          expanded
+            ? "whitespace-pre-wrap break-words"
+            : "line-clamp-3 break-words"
+        }
+      >
         {text}
       </Text>
       {long && (
@@ -585,7 +701,13 @@ function Prompt({ row }: { row: RunFeedRow }) {
  * here); a finished run can be run again, edited, opened in Files, deleted,
  * or read.
  */
-function RowActions({ row, actions }: { row: RunFeedRow; actions: ReturnType<typeof useRunActions> }) {
+function RowActions({
+  row,
+  actions,
+}: {
+  row: RunFeedRow;
+  actions: ReturnType<typeof useRunActions>;
+}) {
   const client = useQueryClient();
   const toast = useToast();
   const flying = inFlight(row.status);
@@ -595,7 +717,11 @@ function RowActions({ row, actions }: { row: RunFeedRow; actions: ReturnType<typ
     try {
       await submitRun(row.id);
     } catch (err) {
-      toast.add({ intent: "danger", title: "Could not submit the run", description: (err as Error).message });
+      toast.add({
+        intent: "danger",
+        title: "Could not submit the run",
+        description: (err as Error).message,
+      });
     }
     await client.invalidateQueries({ queryKey: ["runs"] });
   }, [client, row.id, toast]);
@@ -626,22 +752,39 @@ function RowActions({ row, actions }: { row: RunFeedRow; actions: ReturnType<typ
           className="rounded-none"
         />
       )}
-      <Action icon={<PencilIcon className={GLYPH} />} label="Edit" onClick={actions.edit} />
+      <Action
+        icon={<PencilIcon className={GLYPH} />}
+        label="Edit"
+        onClick={actions.edit}
+      />
       {actions.folderHref && !flying && (
         <a
           href={actions.folderHref}
-          className={buttonClass({ intent: "secondary", size: "sm", className: "rounded-none" })}
+          className={buttonClass({
+            intent: "secondary",
+            size: "sm",
+            className: "rounded-none",
+          })}
         >
           <FolderIcon className={GLYPH} />
           Folder
         </a>
       )}
       {!flying && (
-        <ConfirmDeleteButton noun="this run" tone="text" onConfirm={actions.remove} className="rounded-none" />
+        <ConfirmDeleteButton
+          noun="this run"
+          tone="text"
+          onConfirm={actions.remove}
+          className="rounded-none"
+        />
       )}
       <Dropdown.Root>
         <Dropdown.Trigger
-          className={buttonClass({ intent: "secondary", size: "sm", className: "rounded-none" })}
+          className={buttonClass({
+            intent: "secondary",
+            size: "sm",
+            className: "rounded-none",
+          })}
         >
           <DotsIcon className="size-4 fill-current stroke-none" />
           More
@@ -650,7 +793,9 @@ function RowActions({ row, actions }: { row: RunFeedRow; actions: ReturnType<typ
           <Dropdown.Item onSelect={actions.copyPrompt} disabled={!row.plan}>
             Copy prompt
           </Dropdown.Item>
-          <Dropdown.Item onSelect={actions.openRequest}>Open request documents</Dropdown.Item>
+          <Dropdown.Item onSelect={actions.openRequest}>
+            Open request documents
+          </Dropdown.Item>
         </Dropdown.Content>
       </Dropdown.Root>
     </div>
@@ -659,9 +804,22 @@ function RowActions({ row, actions }: { row: RunFeedRow; actions: ReturnType<typ
 
 const GLYPH = "size-4 fill-none stroke-current stroke-[1.5]";
 
-function Action({ icon, label, onClick }: { icon: ReactNode; label: string; onClick: () => void }) {
+function Action({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
   return (
-    <Button intent="secondary" size="sm" onClick={onClick} className="rounded-none">
+    <Button
+      intent="secondary"
+      size="sm"
+      onClick={onClick}
+      className="rounded-none"
+    >
       {icon}
       {label}
     </Button>
