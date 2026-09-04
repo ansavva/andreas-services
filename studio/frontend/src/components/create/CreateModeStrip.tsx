@@ -219,10 +219,10 @@ export function AttachmentThumb({
         intent="overlay"
         size="sm"
         label={`Remove ${ref.name}`}
-        className="absolute right-0 top-0 size-5 rounded-none"
+        className="absolute right-0 top-0 size-5 rounded-none bg-overlay-scrim/70"
         onClick={onDetach}
       >
-        <CloseIcon className="size-3" />
+        <CloseIcon className="size-3 fill-none stroke-current stroke-2" />
       </IconButton>
     </div>
   );
