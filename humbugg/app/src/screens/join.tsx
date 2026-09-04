@@ -121,7 +121,7 @@ export default function JoinScreen({ groupId }: { groupId: string }) {
 
         {auth.authenticated ? (
           <View style={{ marginTop: 28, width: '100%' }}>
-            <Button size="lg" disabled={busy || !invite} onPress={() => void join()}>
+            <Button style={styles.buttonBlock} size="lg" disabled={busy || !invite} onPress={() => void join()}>
               {busy ? 'Joining…' : 'Join the exchange'}
             </Button>
           </View>
@@ -138,7 +138,7 @@ export default function JoinScreen({ groupId }: { groupId: string }) {
             </Text>
             {/* One button, not two: sign-in and sign-up are the same hosted page now, and the
                 visitor chooses between them there. */}
-            <Button size="lg" onPress={() => router.push('/login')}>
+            <Button style={styles.buttonBlock} size="lg" onPress={() => router.push('/login')}>
               Sign in or create an account
             </Button>
           </View>

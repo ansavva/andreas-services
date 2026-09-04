@@ -30,7 +30,8 @@
         "run",
         "dev"
       ],
-      "port": 5173
+      "port": 5173,
+      "autoPort": true
     },
     {
       "name": "website-prod",
@@ -40,6 +41,16 @@
         "export PATH=/opt/homebrew/opt/node@20/bin:$PATH && cd website/frontend && exec npm run start"
       ],
       "port": 3000
+    },
+    {
+      "name": "humbugg-app-stubbed",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": [
+        "-c",
+        "cd humbugg/app && EXPO_PUBLIC_API_BASE_URL=/api EXPO_PUBLIC_COGNITO_CLIENT_ID=e2e-fake-client EXPO_PUBLIC_COGNITO_DOMAIN=e2e-fake.auth.us-east-1.amazoncognito.com npx expo export -p web --output-dir dist-e2e --clear && exec npx serve -s dist-e2e -l ${PORT:-4173} --no-clipboard"
+      ],
+      "port": 4173,
+      "autoPort": true
     }
   ]
 }

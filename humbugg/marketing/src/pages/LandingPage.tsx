@@ -50,17 +50,17 @@ export default function LandingPage() {
             <div className="hero-card relative z-10">
               <div className="flex items-start justify-between border-b border-line pb-5">
                 <div><p className="eyebrow">This year’s exchange</p><h2 className="mt-2 font-heading text-3xl font-semibold">The Holly Jolly Crew</h2></div>
-                <span className="rounded-full bg-surface-alt px-3 py-1 text-xs font-semibold text-primary">Ready</span>
+                <span className="rounded-pill bg-surface-alt px-3 py-1 text-xs font-semibold text-primary">Ready</span>
               </div>
               <div className="my-7 space-y-3">
                 {['Maya', 'Theo', 'Nina', 'Sam', 'Alex'].map((name, index) => (
-                  <div key={name} className="flex items-center gap-3 rounded-xl bg-surface-alt px-4 py-3">
+                  <div key={name} className="flex items-center gap-3 rounded-md bg-surface-alt px-4 py-3">
                     <span className="avatar-chip">{name[0]}</span><span className="font-medium">{name}</span>
                     <span className="ml-auto text-xs text-muted">{index < 4 ? 'Wish list ready' : 'Joined'}</span>
                   </div>
                 ))}
               </div>
-              <div className="rounded-xl bg-primary p-4 text-center font-semibold text-primary-text">5 people · Ready to draw</div>
+              <div className="rounded-md bg-primary p-4 text-center font-semibold text-primary-text">5 people · Ready to draw</div>
             </div>
           </div>
         </div>

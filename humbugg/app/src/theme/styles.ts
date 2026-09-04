@@ -10,7 +10,18 @@
 // `color-mix(in srgb, X n%, Y)` is resolved to its flat result (comments show
 // the original). Static colours are safe here — see the note on `brand` in
 // `theme.ts` for why.
+//
+// RADII ARE THE ONE EXCEPTION, and deliberately so. They come from
+// `@ansavva/tokens` rather than from a converted literal, because a corner is
+// the one thing here the design system's own components also draw — a hard 16
+// in this file next to a `radii.lg` inside `Button` is how the two halves of a
+// screen come to disagree. As of tokens 0.6.0 every step but `pill` is 0, so
+// this app is square; `marketing/src/styles.css` reaches for the same scale
+// through `var(--radius-*)` and the two platforms move together. A pill stays
+// a pill on both — it is a shape, not a corner.
 import { StyleSheet } from 'react-native';
+
+import { radii } from '@ansavva/tokens';
 
 import { brand, fonts } from './theme';
 
@@ -134,7 +145,7 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    borderRadius: 11.5, // .72rem
+    borderRadius: radii.md,
     borderWidth: 1,
     borderColor: alpha(brand.primaryText, 16), // the CSS inset ring
     backgroundColor: brand.primary,
@@ -147,7 +158,7 @@ export const styles = StyleSheet.create({
   },
   brandMarkText: { color: brand.primaryText, fontFamily: fonts.wordmark, fontSize: 32 },
   /** `.brand-mark-large` */
-  brandMarkLarge: { width: 64, height: 64, borderRadius: 18.4 },
+  brandMarkLarge: { width: 64, height: 64, borderRadius: radii.lg },
   brandMarkLargeText: { fontSize: 52 },
   /** `.brand-wordmark` */
   wordmark: {
@@ -158,11 +169,11 @@ export const styles = StyleSheet.create({
   },
 
   // ── Surfaces ──────────────────────────────────────────────────────────────
-  /** `Card` from the web app's Layout: `rounded-2xl border border-line bg-card p-6 shadow-sm`. */
+  /** `Card` from the web app's Layout: `rounded-lg border border-line bg-card p-6 shadow-sm`. */
   card: {
     borderWidth: 1,
     borderColor: brand.line,
-    borderRadius: 16,
+    borderRadius: radii.lg,
     padding: 24,
     backgroundColor: brand.card,
     shadowColor: brand.ink,
@@ -177,7 +188,7 @@ export const styles = StyleSheet.create({
   heroCard: {
     borderWidth: 1,
     borderColor: brand.line,
-    borderRadius: 24,
+    borderRadius: radii.lg,
     padding: 28,
     backgroundColor: brand.card,
     shadowColor: brand.ink,
@@ -187,13 +198,13 @@ export const styles = StyleSheet.create({
     elevation: 8,
   },
   /** `rounded-xl bg-surface-alt p-5` — the inset panels in the organizer tools. */
-  panel: { borderRadius: 12, backgroundColor: brand.surfaceAlt, padding: 20 },
+  panel: { borderRadius: radii.md, backgroundColor: brand.surfaceAlt, padding: 20 },
   /** `.empty-panel` */
   emptyPanel: {
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: brand.line,
-    borderRadius: 16,
+    borderRadius: radii.lg,
     paddingVertical: 40,
     paddingHorizontal: 16,
     alignItems: 'center',
@@ -203,7 +214,7 @@ export const styles = StyleSheet.create({
 
   // ── Status ────────────────────────────────────────────────────────────────
   /** `.status-message` */
-  statusMessage: { marginTop: 16, borderRadius: 12, paddingVertical: 13, paddingHorizontal: 16 },
+  statusMessage: { marginTop: 16, borderRadius: radii.md, paddingVertical: 13, paddingHorizontal: 16 },
   statusMessageText: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20 },
   /** `.status-error` */
   statusError: { backgroundColor: blends.dangerWash },
@@ -214,7 +225,7 @@ export const styles = StyleSheet.create({
   /** `.status-pill` */
   statusPill: {
     alignSelf: 'flex-start',
-    borderRadius: 999,
+    borderRadius: radii.pill,
     paddingVertical: 5,
     paddingHorizontal: 11,
     backgroundColor: brand.surfaceAlt,
@@ -235,7 +246,7 @@ export const styles = StyleSheet.create({
     height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 999,
+    borderRadius: radii.pill,
     backgroundColor: brand.surfaceAlt,
     paddingHorizontal: 8,
   },
@@ -250,7 +261,7 @@ export const styles = StyleSheet.create({
     gap: 16,
     borderWidth: 1,
     borderColor: brand.line,
-    borderRadius: 14,
+    borderRadius: radii.md,
     padding: 16,
   },
   groupRowActive: { borderColor: brand.primary },
@@ -259,7 +270,7 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 13,
-    borderRadius: 13,
+    borderRadius: radii.md,
     padding: 12,
     backgroundColor: brand.surfaceAlt,
   },
@@ -269,13 +280,13 @@ export const styles = StyleSheet.create({
     height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 999,
+    borderRadius: radii.pill,
     backgroundColor: blends.avatarChip,
   },
   avatarChipText: { color: brand.primary, fontFamily: fonts.heading, fontSize: 15 },
   /** `.pair-chip` */
   pairChip: {
-    borderRadius: 999,
+    borderRadius: radii.pill,
     paddingVertical: 6,
     paddingHorizontal: 11,
     backgroundColor: brand.surfaceAlt,
@@ -285,7 +296,7 @@ export const styles = StyleSheet.create({
   metaChip: {
     borderWidth: 1,
     borderColor: brand.line,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     paddingVertical: 7,
     paddingHorizontal: 12,
     backgroundColor: brand.card,
@@ -296,7 +307,7 @@ export const styles = StyleSheet.create({
   // ── The assignment reveal ─────────────────────────────────────────────────
   /** `.assignment-card` */
   assignmentCard: {
-    borderRadius: 24,
+    borderRadius: radii.lg,
     padding: 32,
     backgroundColor: brand.primary,
     shadowColor: brand.primary,
@@ -317,6 +328,20 @@ export const styles = StyleSheet.create({
   assignmentText: { color: brand.primaryText, fontFamily: fonts.body, fontSize: 14, lineHeight: 20 },
 
   // ── Forms ─────────────────────────────────────────────────────────────────
+  /**
+   * A `Button` that spans its container — the primary action at the foot of a
+   * form or card.
+   *
+   * Needed explicitly since design-system 0.18.0, which stopped five native
+   * leaves stretching to their parent's width: a React Native parent defaults
+   * to `alignItems: 'stretch'`, `Button` declared no cross-axis size, and so a
+   * button that hugs its label on web ran the full width of the screen on a
+   * device. Hugging is the default on both platforms now, which is right for
+   * the toolbar and row buttons this app is mostly made of — the handful that
+   * really are full-bleed say so here, once, the same way `w-full` says it on
+   * the web side.
+   */
+  buttonBlock: { alignSelf: 'stretch' },
   /** `.field-label` */
   fieldLabel: { gap: 7 },
   fieldLabelText: { color: brand.ink, fontFamily: fonts.bodySemibold, fontSize: 14 },
@@ -324,7 +349,7 @@ export const styles = StyleSheet.create({
   navLink: {
     minHeight: 40,
     justifyContent: 'center',
-    borderRadius: 8,
+    borderRadius: radii.sm,
     paddingHorizontal: 12,
   },
   navLinkText: { color: brand.muted, fontFamily: fonts.bodySemibold, fontSize: 14 },
@@ -348,7 +373,7 @@ export const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: brand.line,
-    borderRadius: 12,
+    borderRadius: radii.md,
     padding: 4,
     backgroundColor: brand.card,
     shadowColor: brand.ink,
@@ -357,7 +382,7 @@ export const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
     elevation: 8,
   },
-  menuItem: { borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12 },
+  menuItem: { borderRadius: radii.sm, paddingVertical: 8, paddingHorizontal: 12 },
   menuItemText: { color: brand.ink, fontFamily: fonts.bodyMedium, fontSize: 14 },
   menuItemDangerText: { color: brand.danger },
 });

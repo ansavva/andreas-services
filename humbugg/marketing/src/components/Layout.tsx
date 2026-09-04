@@ -68,5 +68,5 @@ export function StatusMessage({ message, tone = 'error' }: { message?: string | 
 }
 
 export function Card({ children, className = '', ...props }: HTMLAttributes<HTMLElement> & { children: ReactNode }) {
-  return <section className={`rounded-2xl border border-line bg-card p-6 shadow-sm ${className}`} {...props}>{children}</section>;
+  return <section className={`rounded-lg border border-line bg-card p-6 shadow-sm ${className}`} {...props}>{children}</section>;
 }
