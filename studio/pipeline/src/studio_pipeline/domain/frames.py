@@ -17,11 +17,9 @@ read — including by an agent, which otherwise has no way to check its own outp
 A FRAME IS A NODE ID, NOT A KEY
 -------------------------------
 Everything this module hands back — a pooled frame, a chain entry, a seed — is a
-**node id**. It was an S3 key until the entity model, and a key is invalidated
-by any rename or move of the file it names: a chain built in the morning stopped
-naming its own frames the moment somebody tidied the input pool. Nothing here
-constructs an address either, because there is nothing left to construct — the
-project record names its root and the tree is walked from it.
+**node id**. A key is invalidated by any rename or move of the file it names; a
+node id survives both. Nothing here constructs an address: the project record
+names its root and the tree is walked from it.
 
 WHERE FRAMES GO
 ---------------
@@ -31,9 +29,9 @@ set feeds generated pixels back in as identity and compounds drift. Chaining
 from the input pool is correct and expected — curating into a character's
 `reference/` is a separate, deliberate decision (hard rule #2b).
 
-The pool no longer numbers what it is given, either. `--input N` is position N
-in `GET /api/projects/<id>/inputs`, so a frame keeps whatever basename it
-arrived with and `projects.add_inputs` reports the position it landed at.
+The pool does not number what it is given. `--input N` is position N in
+`GET /api/projects/<id>/inputs`, so a frame keeps whatever basename it arrived
+with and `projects.add_inputs` reports the position it landed at.
 
 CHAINS — an ordered list of one sequence's own frames
 -----------------------------------------------------
@@ -43,9 +41,8 @@ handoff frame since — **not** the character's `reference/` set.
 
 **A planned scene does not need this.** `studio scenes` derives that list from
 the scene's shot rows, where both halves already live. A chain is for a sequence
-with no scene behind it, which is the only thing it was ever actually used for:
-two records of one sequence, kept in sync by hand, is the shape of every bug
-this repo has had to write a migrator for.
+with no scene behind it; two records of one sequence, kept in sync by hand, is
+a bug waiting to happen.
 
 Those frames are on-model for *this* scene: same location, wardrobe, lighting and
 grade. The curated set is a different context, so feeding it in mid-scene pulls
@@ -53,21 +50,18 @@ the render toward that other context and fights the continuity the chain exists
 to hold. Reach into `reference/` only when the scene introduces something the
 existing frames cannot show, and then send only the images that show it.
 
-**A chain stays an ordinary JSON file** in the project's `chains/` folder, and
-deliberately so: it is an ad-hoc sequence with no scene behind it, and the
-entity model's open question #4 leaves `chains/` a folder rather than making a
-sixth entity out of something that may not survive scenes maturing. What changed
-is what is inside it — node ids — and how it is written: `store.write_into` a
-folder node the project record leads to, rather than a key built from a slug.
+**A chain is an ordinary JSON file** in the project's `chains/` folder, and
+deliberately so: it is an ad-hoc sequence with no scene behind it, and not an
+entity of its own. It holds node ids and is written with `store.write_into` on
+a folder node the project record leads to.
 
     studio frames last <runref> --add-input --chain <slug>
     studio frames chain <project>/<slug> --seed <node id of shot 1's start image>
     studio frames chain <project>/<slug> --args --max 7   # -> --key … --key …
 
 `--chain` takes a bare slug or the qualified `<project>/<slug>` — the project
-comes from the runref either way. Both spellings work because `chain` requires
-the qualified one and these two never did, and a rule that differs between
-sibling commands is the rule people get wrong.
+comes from the runref either way. `chain` requires the qualified form, and a
+rule that differs between sibling commands is the rule people get wrong.
 
 `--max` keeps the seed plus the most recent frames, because every engine caps
 `reference_images` (Kling 7). The seed is kept because it anchors the look the
@@ -78,15 +72,14 @@ it records the frame on the shot row itself, so there is no second list.
 
 THE FRAMES ARE PULLED BY THE SERVICE, NOT BY THIS PROCESS
 ---------------------------------------------------------
-`ffmpeg` used to ship in this wheel. It ships in the render worker's image now,
-so `last`, `at` and `grid` resolve a runref to one video node, enqueue a render
-job and wait for it — `domain/renders.py`. The clip is never downloaded here.
+`ffmpeg` ships in the render worker's image, not in this wheel, so `last`, `at`
+and `grid` resolve a runref to one video node, enqueue a render job and wait for
+it — `domain/renders.py`. The clip is never downloaded here.
 
-**Every frame therefore lands in the library**, which is a change. `--add-input`
-still means "into the project's input pool", and without it the frame goes to the
-project's `renders/` folder instead of nowhere: a worker has no way to hand bytes
-back except through S3. `--dest` copies it to a local directory afterwards, which
-is what it always did.
+**Every frame therefore lands in the library.** `--add-input` means "into the
+project's input pool"; without it the frame goes to the project's `renders/`
+folder, because a worker has no way to hand bytes back except through S3.
+`--dest` copies it to a local directory afterwards.
 """
 from __future__ import annotations
 
@@ -112,22 +105,18 @@ CHAINS_FOLDER = "chains"
 #: under the project's root and created if absent, exactly like `chains/` — a
 #: convention, not schema, and deletable by anyone who wants the space back.
 #:
-#: It exists because these commands used to produce a file and nothing else. The
-#: bytes are made in a worker now and S3 is the only way they reach this machine,
-#: so there has to be somewhere for them to be. Naming that folder for what it
-#: holds beats scattering renders through the input pool, which is material a
-#: person curated.
+#: The bytes are made in a worker and S3 is the only way they reach this
+#: machine, so there has to be somewhere for them to be. Naming that folder for
+#: what it holds beats scattering renders through the input pool, which is
+#: material a person curated.
 RENDERS_FOLDER = "renders"
 
 
 def resolve_video(ref: str, project: str | None) -> tuple[dict, str]:
     """Resolve a runref to exactly one video. -> (run record, video NODE id).
 
-    **A node id, where this used to be a local path.** It downloaded the clip and
-    handed back a filename, because the ffmpeg that read it ran here. The render
-    worker reads it out of S3 instead, so what a caller needs is the id — and the
-    hundreds of megabytes that used to come through this process for every frame
-    grab do not move at all.
+    A node id, not a local path: the render worker reads the clip out of S3, so
+    what a caller needs is the id, and the clip never moves through this process.
 
     Returns the **record**, not a `(project, id)` pair, for the reason
     `runs.resolve_run` gives: every caller went straight on to read the run.
@@ -145,16 +134,10 @@ def resolve_video(ref: str, project: str | None) -> tuple[dict, str]:
 def chain_slug(slug: str) -> str:
     """A chain slug, accepting the `<project>/<slug>` form `chain` takes.
 
-    `slugify` turns `/` into `-`, so `--chain <project>/<slug>` on `last`/`at`
-    used to create a chain called `<project>-<slug>` — in the right project, but
-    under a name `frames chain <project>/<slug>` could then never find. It went
-    unnoticed because a chain that does not exist reads as an empty one, so the
-    only symptom was a second chain quietly appearing beside the real one. The
-    module docstring taught that exact form, which is how it was reached.
-
-    Both spellings are accepted now rather than one being refused: `chain`
-    requires the qualified form and these two never did, and a rule that differs
-    between sibling commands is the rule people get wrong.
+    The project part is dropped before slugifying: `slugify` turns `/` into
+    `-`, which would make a chain called `<project>-<slug>` that `frames chain
+    <project>/<slug>` could never find — and an absent chain reads as an empty
+    one, so the only symptom would be a second chain beside the real one.
     """
     return R.slugify(slug.split("/", 1)[1] if "/" in slug else slug)
 
@@ -178,10 +161,9 @@ def load_chain(record: dict, slug: str) -> dict:
     """An absent chain reads as an empty one.
 
     Absent means the file is not in `chains/`, which is what `store.child`
-    answering None says. It does **not** mean a read that failed: the bare
-    `except` this used to carry made a refusal look like an empty chain, and an
-    empty chain is the state `chain_add` appends to — so a 403 would have
-    started a second chain beside the real one rather than saying no.
+    answering None says. It does **not** mean a read that failed: an empty chain
+    is the state `chain_add` appends to, so a swallowed 403 would start a second
+    chain beside the real one rather than saying no.
     """
     folder = chains_folder(record)
     node = store.child(folder, chain_name(slug))
@@ -267,7 +249,7 @@ def _pull(run: dict, video: str, dest, add_input, *, name: str, at=None,
 
     One helper for all three commands because they differ only in which render
     kind they ask for and what the file is called — the destination and the local
-    copy are identical, and were three copies before the encode moved.
+    copy are identical.
 
     **Takes the resolved run and video rather than the runref.** Resolving a
     runref is two API calls (`runs/resolve` and the record), and doing it here as
@@ -297,10 +279,9 @@ def _emit(run: dict, asset: dict, local: str | None, add_input: bool,
     encoding. The worker's contract is one node out; what that node then means is
     this side's.
 
-    `--chain` still requires `--add-input`, and the reason is unchanged even
-    though every frame now has a node: a chain is what the next shot's
-    `reference_images` are read from, and a frame nobody pooled is not working
-    material — it is a render somebody looked at.
+    `--chain` requires `--add-input` even though every frame has a node: a chain
+    is what the next shot's `reference_images` are read from, and a frame nobody
+    pooled is not working material — it is a render somebody looked at.
     """
     print(local or asset["node"])
     if local:
@@ -388,11 +369,9 @@ def do_grid(ref, count, dest, project):
 def do_chain(ref, add_key, args, max_, seed):
     """The frames recorded for a scene chain, in order.
 
-    `--add-key` and `--seed` keep their names — both are in
-    `cli_surface_reference.json`, which is a contract — but they take node ids.
-    A raw S3 key is refused rather than resolved: hard rule #3 says a binding
-    names a node, and quietly accepting the old spelling is how a stale
-    addressing scheme survives the change meant to end it.
+    `--add-key` and `--seed` take node ids despite the option name (the name is
+    in `cli_surface_reference.json`, which is a contract). A raw S3 key is
+    refused rather than resolved: hard rule #3 says a binding names a node.
     """
     if "/" not in ref:
         die("chain ref must be <project>/<slug>")

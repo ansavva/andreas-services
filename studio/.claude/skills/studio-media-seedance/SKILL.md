@@ -195,9 +195,8 @@ STOP and load **`studio-media-character`** first.
 Replicate accepts a file input as a URL. References live in the media library,
 so the path is a short-lived **presigned HTTPS URL** minted by the API: the
 store stays private, Replicate fetches the object during the job, and only a
-short URL — never the bytes — exists anywhere. **No `REPLICATE_API_TOKEN` is
-needed here for anything**: the API holds the provider credential and does the
-submitting, so the CLI never has one.
+short URL — never the bytes — exists anywhere. The CLI holds no provider
+credential: the API does, and does the submitting.
 
 Normally you never do this by hand: `--character <name>` on the runner resolves
 the selection and presigns it. To look at what a selection resolves to first:

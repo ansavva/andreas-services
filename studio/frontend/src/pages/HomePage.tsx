@@ -26,10 +26,10 @@ import { LoadError } from "../components/common/LoadError";
  *
  * Recent stays, third: it is the answer to "what did the last hour produce",
  * which neither list answers and which is most of why anybody opens studio
- * between sessions. It is a *grid*, not a mode — the "Play reel" button beside
- * it is gone, because opening any tile already scrolls the same recursive walk
- * and a button that only chose the first tile for you was a second name for the
- * thing under it.
+ * between sessions. It is a *grid*, not a mode, and there is no "play" button
+ * beside it: opening any tile already scrolls the same recursive walk, and a
+ * button that only chose the first tile for you would be a second name for
+ * the thing under it.
  *
  * **The two lists are components now, not markup here.** `/characters` and
  * `/projects` are real screens the header links to, and they render exactly
@@ -97,10 +97,9 @@ export function HomePage() {
             // They open into the same walk they were drawn from, so the twelve
             // shown here are the start of a feed rather than twelve dead ends —
             // this section is a preview of that walk, and `in=recursive` is what
-            // carries the rest of it into the viewer. It is also the only way in
-            // now that "Play reel" is gone, which is the whole argument for
-            // dropping the button: it opened this on the first tile, and so does
-            // clicking the first tile.
+            // carries the rest of it into the viewer. It is also the only way
+            // in: a "play" button would open this on the first tile, and so
+            // does clicking the first tile.
             <MediaTile
               key={file.id}
               file={file}

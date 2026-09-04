@@ -34,10 +34,10 @@ import { AutoTextarea } from "../common/AutoTextarea";
  */
 
 /** Which control a prop gets. `null` means: this form cannot draw it. */
-export type ParamKind = "enum" | "number" | "boolean" | "string";
+type ParamKind = "enum" | "number" | "boolean" | "string";
 
 /** The param values as the editor holds them — text, keyed by prop name. */
-export type ParamValues = Record<string, string | undefined>;
+type ParamValues = Record<string, string | undefined>;
 
 /**
  * An input's allowed values, following a `$ref` when the enum is indirect.
@@ -78,7 +78,7 @@ export function isUriShaped(spec: SchemaProp): boolean {
   return false;
 }
 
-export function kindOf(
+function kindOf(
   spec: SchemaProp,
   schemas: Record<string, SchemaProp>,
 ): ParamKind | null {
@@ -115,7 +115,7 @@ function order(spec: SchemaProp): number {
  * Matched on the name because that is what the schema gives us — nothing in
  * the JSON marks a field as secret.
  */
-export function isCredential(name: string): boolean {
+function isCredential(name: string): boolean {
   return /api[_-]?key|token|secret|password|credential/i.test(name);
 }
 

@@ -9,41 +9,24 @@ top to bottom against `docs/ENTITY_MODEL_EXAMPLE.md` §2. A domain module calls
 query parameter's name, and never learns that `rev` is spelled `rev`. When the
 backend moves a field, this file changes and nothing else does.
 
-That is the lesson `adapters/store.py` already carries from #302, applied one
-layer up: the pipeline held seventy-one boto3 calls before that module existed,
-and the migration was only reviewable because the vocabulary stayed put while
-the thing underneath it moved.
+`adapters/store.py` carries the same rule for the node routes.
 
 ## Ids, and nothing but ids
 
-Every route below takes an **id**. There used to be a second address,
-`slug:<slug>`, for exactly one reason — a person types a name on a command
-line — confined to `GET /api/characters/<id>` and `GET /api/projects/<id>`, with
-`address()` to build it and `resolve_*` to turn one into a record in a single
-call.
-
-**It went with slugs.** A name is a free-text label now: two characters may be
-called the same thing, so resolving one would mean picking between them, which
-is not something an address may do. `list_characters` is how a person finds an
-id; every wrapper here takes one.
+Every route below takes an **id**. A name is a free-text label: two characters
+may be called the same thing, so resolving one would mean picking between them,
+which is not something an address may do. `list_characters` is how a person
+finds an id; every wrapper here takes one.
 
 ## What is deliberately not here
 
-**Bytes.** They travel presigned, and `adapters/store.py` owns that. The one
-route left here that hands out an upload URL is `add_run_output`, because its
-*request* shape is entity knowledge; what the caller then does with the URL is
-the store's business.
-
-**And there are fewer of those than there were.** `scene_output` and
-`movie_output` minted upload URLs for a stitched take that this process had just
-encoded; a worker encodes it and files it now, so both went with the encoder
-(#537). `put_run_response` stored a provider's reply that this process had just
-received; the callback consumer receives it now (#536). `revoke_run_approval`
-and `patch_movie` were never reached from a command at all. **A wrapper with no
+**Bytes.** They travel presigned, and `adapters/store.py` owns that. No route
+here hands out an upload URL: a worker encodes and files a stitched take, and
+the API files a run's output off a provider callback. **A wrapper with no
 caller is a claim about the wire surface that nothing checks**, and
-`test_the_wire_surface_is_the_table` reads this file to build that claim — so a
-route the CLI does not call must not be spelled here, however faithfully the
-backend still serves it for the SPA.
+`test_the_route_table_is_the_whole_wire_surface` reads this file to build that
+claim — so a route the CLI does not call must not be spelled here, however
+faithfully the backend still serves it for the SPA.
 
 **Node routes.** `POST /api/nodes`, the move/copy/delete verbs and the text
 routes live in `adapters/store.py`, beside the path resolution they share. The
@@ -57,10 +40,9 @@ six as `PUT`, which is what PUT is for. The API registers none of them: it uses
 integration response and two gateway responses at once, and one omission is a
 browser failure with no status attached (`backend/studio_core/app_factory.py`).
 
-Every one of the six sent `PUT` from here anyway, and none of them had ever
-reached the API. `tests/support/fake_api.py` answered PUT, so the suite agreed with the
-adapter rather than with the service — which is why it refuses the verb outright
-now. If the API adopts PUT, this file changes with it and nothing else does.
+`tests/support/fake_api.py` refuses the verb outright, so the suite agrees with
+the service rather than with the adapter. If the API adopts PUT, this file
+changes with it and nothing else does.
 
 ## Errors
 
@@ -121,8 +103,7 @@ def patch_character(char_id: str, rev: int, *, name: str | None = None,
 
     `rev` is compare-and-swap, not check-then-write: a stale value is refused by
     the API's condition expression rather than by a read this side of the wire.
-    `api.Conflict` means somebody else wrote — it used to mean "that slug is
-    taken" as well, and there is no claim left to take.
+    `api.Conflict` means somebody else wrote; a name is not claimed.
     """
     body = _clean(name=name, hero=hero)
     body["rev"] = rev
@@ -141,11 +122,6 @@ def put_profile(char_id: str, profile: dict, rev: int) -> dict:
                        {"profile": profile, "rev": rev})
 
 
-def patch_profile(char_id: str, patch: dict, rev: int) -> dict:
-    """Merge one section of the bible, leaving the rest alone."""
-    return api.patch(f"/api/characters/{char_id}/profile", {"patch": patch, "rev": rev})
-
-
 def delete_character(char_id: str, *, files: str = "keep", force: bool = False) -> dict:
     """Delete a character. `files='keep'` orphans the folder rather than the media.
 
@@ -161,11 +137,10 @@ def delete_character(char_id: str, *, files: str = "keep", force: bool = False) 
 def character_images(char_id: str, tags: list[str] | None = None) -> list[dict]:
     """Every image under a character, with what each one says about itself.
 
-    **The reference index is gone and this is not a replacement for it.** That
-    listed the pictures somebody had filed a `REF#` row for, so an image dropped
-    into the tree by hand was invisible — which is how twelve files in this
-    library ended up with no description anywhere. This is the character's whole
-    branch, filtered to images, and the tags on each say which are identity.
+    **There is no reference index.** An index would list only the pictures
+    somebody had filed a row for, so an image dropped into the tree by hand
+    would be invisible. This is the character's whole branch, filtered to
+    images, and the tags on each say which are identity.
 
     One listing call: `?under=<root>&depth=all&kind=image`, which is the same
     route the file browser and the picker use.
@@ -184,9 +159,8 @@ def selection(char_id: str, *, pick: list[str] | None = None,
     route rather than a function in each: the CLI and the SPA disagreeing about
     which images a generation saw is a disagreement nobody can audit afterwards.
 
-    Over-cap is refused with the index in the body rather than truncated — the
-    behaviour `engine/refs.py` used to implement locally, moved somewhere both
-    callers share. That refusal arrives as `api.Conflict`.
+    Over-cap is refused with the index in the body rather than truncated. That
+    refusal arrives as `api.Conflict`.
     """
     return api.get(f"/api/characters/{char_id}/selection",
                    pick=",".join(pick) if pick else None,
@@ -197,17 +171,6 @@ def selection(char_id: str, *, pick: list[str] | None = None,
 def textblock(char_id: str) -> dict:
     """The pasteable identity paragraph, for engines driven from a start frame."""
     return api.get(f"/api/characters/{char_id}/textblock")
-
-
-def character_runs(char_id: str, cursor: str | None = None) -> dict:
-    """Runs that used this character, newest first. One query; formerly a walk."""
-    return api.get(f"/api/characters/{char_id}/runs", cursor=cursor)
-
-
-def character_projects(char_id: str) -> list[dict]:
-    """Projects that involve this character — a question with no answer before."""
-    found = api.get(f"/api/characters/{char_id}/projects")
-    return found if isinstance(found, list) else []
 
 
 # ── projects ────────────────────────────────────────────────────────────────
@@ -242,8 +205,8 @@ def delete_project(proj_id: str, *, files: str = "keep", cascade: bool = False,
                    force: bool = False) -> dict:
     """`cascade` takes the runs, scenes and movies with it. `force` orphans them.
 
-    Both exist because `force` shipped first and does the wrong thing: it leaves
-    every child naming a project id that is gone. Prefer `cascade`.
+    `force` leaves every child naming a project id that no longer exists.
+    Prefer `cascade`.
     """
     return api.delete(f"/api/projects/{proj_id}", files=files,
                       cascade=1 if cascade else None, force=1 if force else None)
@@ -278,14 +241,6 @@ def project_inputs(proj_id: str) -> list[dict]:
     """
     found = api.get(f"/api/projects/{proj_id}/inputs")
     return _as_list(found.get("inputs") if isinstance(found, dict) else found)
-
-
-def project_scenes(proj_id: str) -> list[dict]:
-    return _as_list(api.get(f"/api/projects/{proj_id}/scenes"))
-
-
-def project_movies(proj_id: str) -> list[dict]:
-    return _as_list(api.get(f"/api/projects/{proj_id}/movies"))
 
 
 # ── runs ────────────────────────────────────────────────────────────────────
@@ -364,14 +319,10 @@ def query_runs(*, project: str | None = None, character: str | None = None,
                since: str | None = None, limit: int | None = None,
                cursor: str | None = None, fingerprint: str | None = None,
                include: str | None = None) -> dict:
-    """`{"runs": [...], "cursor": …}` — the query that replaces `runs find`.
-
-    `runs find --character` used to list every project, list every run in each,
-    read three documents per run and grep. It is one query against a row.
+    """`{"runs": [...], "cursor": …}` — one query against a row.
 
     `fingerprint` is the duplicate-submission guard: it asks whether this exact
-    payload has been submitted to this project before, which used to be a
-    per-machine file because the listing rows did not carry enough to answer it.
+    payload has been submitted to this project before.
     `include="drafts"` goes with it — an unsubmitted draft bills nothing and must
     not read as a duplicate, but the caller decides that, not this wrapper.
     """
@@ -403,9 +354,9 @@ def patch_run(run_id: str, *, status: str | None = None,
               outputs: list[str] | None = None) -> dict:
     """Completion. `error` is passed through even when falsy — null clears it.
 
-    `outputs` is here for **adoption only**. Every ordinary output arrives
-    through `add_run_output`, which mints the node and appends it in one act;
-    an adopted artifact already exists and is reparented into the run's folder,
+    `outputs` is here for **adoption only**. Every ordinary output is filed by
+    the API itself off the provider's callback, which mints the node and appends
+    it in one act; an adopted artifact already exists and is reparented into the run's folder,
     so the list has to be set rather than grown. A caller passing it for any
     other reason is fighting the route that maintains it.
     """
@@ -456,12 +407,6 @@ def reconcile_run(run_id: str) -> dict:
     return api.post(f"/api/runs/{run_id}/reconcile", {})
 
 
-def add_run_output(run_id: str, name: str, size: int, content_type: str) -> dict:
-    """A node under the run's `output/`, plus a presigned PUT for its bytes."""
-    return api.post(f"/api/runs/{run_id}/outputs",
-                    {"name": name, "size": size, "content_type": content_type})
-
-
 def delete_run(run_id: str, *, files: str = "keep") -> dict:
     return api.delete(f"/api/runs/{run_id}", files=files)
 
@@ -489,10 +434,6 @@ def get_scene(scene_id: str) -> dict:
 def patch_scene(scene_id: str, **fields) -> dict:
     """Whatever moved: `name`, `setting`, `status`, `output`, `stitch`, `characters`."""
     return api.patch(f"/api/scenes/{scene_id}", _clean(**fields))
-
-
-def delete_scene(scene_id: str, *, files: str = "keep") -> dict:
-    return api.delete(f"/api/scenes/{scene_id}", files=files)
 
 
 def put_shots(scene_id: str, shots: list[dict]) -> dict:
@@ -525,10 +466,6 @@ def get_movie(movie_id: str) -> dict:
     return api.get(f"/api/movies/{movie_id}")
 
 
-def delete_movie(movie_id: str, *, files: str = "keep") -> dict:
-    return api.delete(f"/api/movies/{movie_id}", files=files)
-
-
 def put_movie_scenes(movie_id: str, scenes: list[str]) -> dict:
     """Replace the cut list. **Scene ids** — the route validates every entry.
 
@@ -546,9 +483,8 @@ def templates() -> dict:
     `{"blocks": {...}, "templates": [...]}`.
 
     Wrapped, like `/api/phrasebook` and unlike the bare-array listings — and the
-    shape is normalised here rather than at the call site, because the last
-    module that let a wrapped answer reach `_as_list` reported every library's
-    phrasebook as empty for the whole life of a migration.
+    shape is normalised here rather than at the call site, because a wrapped
+    answer reaching `_as_list` reads as an empty list, not as an error.
     """
     found = api.get("/api/templates")
     if not isinstance(found, dict):
@@ -584,12 +520,10 @@ def new_template_id() -> str:
     return f"template-{uuid.uuid4()}"
 
 
-# There are deliberately no `delete_*` wrappers, and #553 is why: a wrapper
-# with no caller is a claim about the wire surface that nothing checks, and it
-# deleted five of them for that reason on the day this was written. `studio spec`
-# never removes a row — a push states what a file contains, not that nothing else
-# exists — so nothing here would call them. The API serves both DELETEs for the
-# app, which is the same footing `/api/runs/<id>/response` is on.
+# There are deliberately no `delete_*` wrappers: a wrapper with no caller is a
+# claim about the wire surface that nothing checks. `studio spec` never removes
+# a row — a push states what a file contains, not that nothing else exists — so
+# nothing here would call them. The API serves both DELETEs for the app.
 
 
 def _segment(value: str) -> str:
@@ -609,22 +543,14 @@ def _segment(value: str) -> str:
 def phrasebook(model: str | None = None) -> list[dict]:
     """The avoid/use pairs, optionally for one model.
 
-    **There is no document any more**, which removes a whole failure: `add` used
-    to write through `PATCH /api/text`, a route that overwrites and cannot
-    create, so a library that had never held `phrasebook/wording.yaml` refused
-    the first entry anybody tried to record. A row has no such precondition.
+    Rows, not a document: a row has no create-before-write precondition, so the
+    first entry a library records needs nothing to exist first.
 
-    **This route wraps, and `_as_list` alone silently swallowed it.** It answers
-    `{"terms": [...]}` where every other listing route here answers a bare
-    array, so `_as_list` — which returns `[]` for any shape that is not a list —
-    turned every read into an empty phrasebook. Not "the phrasebook is empty",
-    which is a legitimate state and reads identically: `show` printed `{}`,
-    `models` printed nothing, and `check` reported no wording list, for every
-    model, whatever the library held. The claim that reading was never the
-    broken half of this migration was wrong.
-
-    Unnoticed because the pipeline's fake API answered this route with a bare
-    list, so the suite exercised a shape the service does not return.
+    **This route wraps.** It answers `{"terms": [...]}` where every other
+    listing route here answers a bare array, so `_as_list` alone — which returns
+    `[]` for any shape that is not a list — would turn every read into an empty
+    phrasebook, indistinguishable from the legitimate empty state. The fake API
+    in the suite must answer the wrapped shape for the same reason.
     """
     found = api.get("/api/phrasebook", model=model)
     if isinstance(found, dict):
@@ -684,8 +610,8 @@ def model_schema(model: str) -> dict:
 
     `{model, props, schemas, snapshot}`. **The CLI holds no Replicate token**, so
     this is the only way it can see a schema at all — and that is the point
-    rather than a limitation: three commands that never spend anything used to be
-    the reason a provider credential sat on every developer's machine.
+    rather than a limitation: no provider credential sits on a developer's
+    machine for commands that never spend anything.
 
     Registered or not. `studio add-model` and `studio run owner/name` both ask
     about a model precisely because it is not in the registry yet.
@@ -720,9 +646,9 @@ def build_prompt(obj: dict, engine: str, *, emit: str = "both",
 
 # ── renders ─────────────────────────────────────────────────────────────────
 #
-# **What used to be `adapters/ffmpeg.py` and Pillow in this wheel.** Stitching, a
-# frame grab, a contact grid and a contact sheet are done by a worker Lambda with
-# ffmpeg in its image; this enqueues one and reads the row back. See
+# Stitching, a frame grab, a contact grid and a contact sheet are done by a
+# worker Lambda with ffmpeg in its image; this enqueues one and reads the row
+# back. See
 # `domain/renders.py` for the wait, and `backend/studio_core/services/render.py`
 # for what the worker does with it.
 

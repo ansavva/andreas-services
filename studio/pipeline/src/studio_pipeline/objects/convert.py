@@ -13,10 +13,10 @@ append-only history, so it is copied, not re-encoded in place.
 
 THE PIXELS ARE PUSHED AROUND BY THE SERVICE, SYNCHRONOUSLY
 -----------------------------------------------------------
-**Pillow used to be in this wheel.** It is in the API image now, and this command
-is one `POST /api/images/convert`: the bytes never come down and never go back
-up, so a conversion is a request rather than a download, a decode, an encode and
-an upload.
+**Pillow lives in the API image, not this wheel.** This command is one
+`POST /api/images/convert`: the bytes never come down and never go back up, so
+a conversion is a request rather than a download, a decode, an encode and an
+upload.
 
 **It is not on the render queue, and that was a decision rather than an
 oversight.** Stitching went to a worker because a re-encode is minutes and
@@ -71,12 +71,9 @@ EXT_FOR = {"png": ".png", "jpg": ".jpg", "jpeg": ".jpg", "webp": ".webp"}
 def input_pool(project: str) -> str:
     """The project's input pool folder node — where converted material belongs.
 
-    **`add_inputs` no longer has to be gone through**, and the reason the old
-    code did is gone with it. The bytes used to be in this process's memory and
-    `projects.add_inputs` takes local paths, so a conversion was staged to a temp
-    file under a name this module had to invent — with a digest of the source key
-    in it, because seven conversions in a row all called `converted.jpg` silently
-    overwrote each other.
+    **`add_inputs` is not gone through**: the bytes never reach this process, so
+    there is nothing to stage to a temp file and no name for this module to
+    invent.
 
     The API writes the file now and `create_numbered` resolves a clash, so a
     second conversion of the same source lands `frame (2).png` beside the first.
@@ -138,11 +135,9 @@ def _source_name(key: str) -> str:
 @click.option("--quality", type=int, default=95, help="JPEG/WebP quality (default 95).")
 @click.option("--run", help="Source runref, e.g. <name>/latest#1.")
 @click.option("--to", type=click.Choice(["jpeg", "jpg", "png", "webp"]), help="Target format.")
-# **Reported rather than raised**, and it was `die("no such object: …")` before.
-# The source used to be read here, so a missing one was this module's 404 to
-# name; the route reads it now, so the 404 arrives as an `api.NotFound` carrying
-# the path — and without this the commonest failure of this command is a
-# traceback instead of the sentence it always printed.
+# **Reported rather than raised.** The route reads the source, so a missing one
+# arrives as an `api.NotFound` carrying the path — and without this the
+# commonest failure of this command is a traceback instead of a sentence.
 @reports(api.NotFound, api.Forbidden, api.ApiError, R.RunError)
 def convert(add_input, dest_key, for_, key, project, quality, run, to):
     if not add_input and not dest_key:

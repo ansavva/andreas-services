@@ -76,31 +76,28 @@ either cannot be listed or cannot be opened.
   across every descendant. If a move were interrupted, `path` would be stale and
   could be rebuilt from `parent_id`; nothing can rebuild `parent_id`, which is
   why it is written first — see `move_node`. **`lib` is derived in the same
-  sense** — a node is in the library its parent is in — and `transfer_node`
-  rewrites it across a branch under the same ordering rule.
+  sense** — a node is in the library its parent is in.
 * **`blob_key` is stamped once and never re-derived.** It is built by
   `blob_key_for` at creation, from the owner the parent already resolves to, and
-  after that it is a pointer that nothing splits, rewrites or recomputes. Prod
-  also holds `characters/<slug>/…` keys written years before this table existed,
-  and they stay correct forever precisely because the text carries no meaning to
-  any reader. The one thing that reads a key is `is_api_blob`, which looks at the
+  after that it is a pointer that nothing splits, rewrites or recomputes. Every
+  key in prod is `<owner_kind>/<owner_id>/…`, and it stays correct forever
+  precisely because the text carries no meaning to any reader. The one thing
+  that reads a key is `is_api_blob`, which looks at the
   **tail** — `<node_id>.<ext>`, which cannot change — and never at the prefix,
   which drifts the moment a node moves between owners.
 
 ## The library root is an ordinary node
 
 `root_node` on the library names a real `NODE#<id>`/`META` row, with `path`
-`"/"` and **no** `parent_id`. #280 does not say so either way; the alternative —
-a root that is only an id on the library item — means every function that needs
-a parent's `path` has a special case for "the parent is the root", and
-`create_node` would have to read the library to find out. A root that is a node
-costs one row and removes that branch everywhere.
+`"/"` and **no** `parent_id`. The alternative — a root that is only an id on the
+library item — means every function that needs a parent's `path` has a special
+case for "the parent is the root", and `create_node` would have to read the
+library to find out. A root that is a node costs one row and removes that branch
+everywhere.
 
 Its missing `parent_id` is then load-bearing: it is what makes "rename the
 library root", "move it" and "delete it" refuse, since there is no `NAME#` item
-to rewrite. That is the same refusal `keys.assert_inside_root` used to make from
-a string comparison against the media root, arrived at from the data instead —
-which is why that function had no caller left and went with #312.
+to rewrite.
 
 ## What this module does not do
 
@@ -126,8 +123,7 @@ from studio_core.errors import ConflictError, NotFoundError, UpstreamError, Vali
 from studio_core.services import digest, keys, storyboard
 # Re-exported so every caller keeps saying `catalog.plan_digest(...)`. They live
 # in `digest.py` because the pipeline's test fake loads that module rather than
-# restating the hash — see its docstring, and `routes/runs.py` on the three
-# implementations one of these once had.
+# restating the hash — see its docstring.
 from studio_core.services.digest import (  # noqa: F401
     plan_digest,
     submission_fingerprint,
@@ -139,15 +135,6 @@ KIND_FOLDER = "folder"
 KIND_FILE = "file"
 KINDS = frozenset({KIND_FOLDER, KIND_FILE})
 
-# The role a membership row carries. `owner` is named here because a route
-# compares against it — `transfer_node`'s caller must hold it in both libraries —
-# and the string is written by `scripts/add-member.sh`, which is the only thing
-# that creates a membership. Nothing in this module reads or enforces a role:
-# membership is authorisation and it is checked above, against the node's own
-# `lib`. The other value is `member`, and it is not named because no code
-# branches on it.
-ROLE_OWNER = "owner"
-
 # `by-path` is the subtree index: hashed on `lib`, ranged on `path`, so one
 # `begins_with` reads a whole branch.
 #
@@ -157,18 +144,16 @@ ROLE_OWNER = "owner"
 # of that index's key attributes, so what the attribute is *named* decides who is
 # in the index. `reel` is written onto file nodes whose extension reads as an
 # image or a video and onto nothing else — so folder nodes, entity records,
-# membership rows, slug claims and reference rows all carry `lib`, all carry a
-# timestamp, and all stay out.
+# membership rows and entity index rows all carry `lib`, all carry a timestamp,
+# and all stay out.
 #
-# That is a fix rather than accommodation for the entity rows. Hashed on `lib`,
-# every folder in the library entered the reel's enumeration and was filtered out
-# in memory by `browse.reel_items` — after it had already been counted against
-# `config.max_folder_objects`. A sparse index spends the cap on rows the reel can
-# actually show.
+# Sparse on purpose. Hashed on `lib`, every folder in the library would enter
+# the reel's enumeration and be filtered out in memory by `browse.entries` —
+# after being counted against `config.max_folder_objects`. A sparse index
+# spends the cap on rows the reel can actually show.
 #
-# `by-sk` inverts the table so a sort key can be asked who points at it. It used
-# to have `scripts/add-member.sh` as its only consumer; the entity model made it
-# load-bearing — "every project involving this character" is
+# `by-sk` inverts the table so a sort key can be asked who points at it: "every
+# project involving this character" is
 # `sk = CHAR#<id> AND begins_with(pk, "PROJ#")`, and "every run that used it" is
 # the same query one prefix over.
 BY_PATH_INDEX = "by-path"
@@ -221,11 +206,6 @@ PROJECT_ENTITIES = (ENTITY_RUN, ENTITY_SCENE, ENTITY_MOVIE)
 # count is never a scan and never drifts by one.
 COUNT_FIELD = {ENTITY_RUN: "runs", ENTITY_SCENE: "scenes", ENTITY_MOVIE: "movies"}
 
-# The version of the character profile shape this API validates against. On the
-# record rather than inside `profile`, because it describes the map rather than
-# being part of it.
-PROFILE_SCHEMA_VERSION = 2
-
 # What a run's `status` may be. Studio owns this word — it is the one thing about
 # a submission this service is willing to have an opinion on — while the
 # provider's own response stays an undecoded blob beside it.
@@ -238,17 +218,11 @@ RUN_STATUSES = frozenset({
 #: adopt`, which files a pre-scheme file so history is uniform. **Nothing was
 #: submitted and nothing billed**, so it is the one way out of the unsubmitted
 #: states that the approval gate does not stand in front of.
-#:
-#: It was missing from `RUN_STATUSES` entirely, which made `runs adopt` a 400
-#: against this service for as long as the route has validated the word. Nothing
-#: caught it because the pipeline's fake never validated a status at all.
 ADOPTED = "adopted"
 
-#: The three that come BEFORE a submission, and adding them changed what a run
-#: row means. A run used to be written only once a person had said yes at a
-#: terminal, so the existence of the row *was* the record of a submission. A run
-#: is created when it is PLANNED now — which is what makes a plan editable,
-#: viewable and approvable — so the row no longer says anything happened.
+#: The three that come BEFORE a submission. A run is created when it is PLANNED
+#: — which is what makes a plan editable, viewable and approvable — so the
+#: existence of a row does not say anything happened.
 #:
 #: `draft` and `discarded` are kept out of every default listing and out of the
 #: project's run count for exactly that reason: a grid mixing intentions with
@@ -263,10 +237,8 @@ HIDDEN_RUN_STATUSES = frozenset({"draft", "discarded"})
 # which of its values are endings — the alternative is every caller writing its
 # own set and one of them forgetting `cancelled`.
 #
-# It exists because the app polls. A run page had no idea whether the status it
-# was showing could still change, so it showed whatever was true when the page
-# opened and waited for a human to press reload; a client that knows which
-# states are terminal can stop asking on its own.
+# It exists because the app polls: a client that knows which states are
+# terminal can stop asking on its own.
 TERMINAL_RUN_STATUSES = frozenset({"succeeded", "failed", "cancelled", "discarded"})
 
 # The sort key of the record half of a node, of a library, and of every entity.
@@ -298,9 +270,9 @@ def _decimals(value):
     """Turn every `float` on the way *in* into a `Decimal`.
 
     **`TypeSerializer` refuses a float outright** — DynamoDB's N is a decimal
-    type and boto3 will not guess a binary-float rounding for you. Nothing in
-    this table held one until a run started recording what a prediction cost,
-    and `{"amount": 0.032}` arriving from a JSON body is a float every time.
+    type and boto3 will not guess a binary-float rounding for you. A run's
+    recorded cost — `{"amount": 0.032}` arriving from a JSON body — is a float
+    every time.
 
     The conversion goes through `str` rather than `Decimal(value)` so that 0.032
     is stored as 0.032 and not as the seventeen digits its binary
@@ -323,11 +295,9 @@ def _serialize(value):
 def _now() -> str:
     """ISO-8601 with microseconds, always UTC.
 
-    Microseconds because this is the timestamp the reel will sort on, and the
-    thing it replaces — S3's `LastModified` — has one-second resolution while a
-    run writes its whole output inside one second. `browse._sort_files` breaks
-    ties on the key to survive that; a timestamp that does not collide is what
-    retires the workaround.
+    Microseconds because this is the timestamp the reel sorts on, and a run
+    writes its whole output inside one second — a one-second clock would tie
+    almost everywhere and `browse._sort_records` would need a tie-break.
     """
     return datetime.now(timezone.utc).isoformat(timespec="microseconds")
 
@@ -352,9 +322,8 @@ def _lib_pk(lib: str) -> str:
     The same text a membership row carries as its *sort* key, and that the two
     agree is the mechanism rather than a coincidence: a membership is filed under
     the *user*, so the inverted `by-sk` index reaches every member of a library by
-    asking for the string the library itself is keyed on. There used to be a
-    `_lib_sk` here spelled apart from this one to say so; it went with
-    `members_of`, and `scripts/add-member.sh` is what asks that question now.
+    asking for the string the library itself is keyed on. `scripts/add-member.sh`
+    is what asks that question.
     """
     return f"LIB#{lib}"
 
@@ -436,8 +405,8 @@ def _query(**kwargs) -> list[dict]:
 def _records_from(limit: int, **kwargs) -> tuple[list[dict], bool]:
     """The `META` records one query returns, and whether it was cut short.
 
-    **Both halves of a node sit in `by-path` and `by-recent`** — #280 puts `lib`,
-    `path` and `created_at` on the by-parent item too — so an unfiltered query
+    **Both halves of a node sit in `by-path` and `by-recent`** — the by-parent
+    item carries `lib`, `path` and `created_at` too — so an unfiltered query
     returns a node twice, once complete and once as a projection. `META` is the
     half that is the record.
 
@@ -573,8 +542,8 @@ def records(node_ids: list[str]) -> dict[str, dict]:
     """Full records for many nodes at once, keyed by id.
 
     **This exists because `children` cannot answer with `size` or
-    `content_type`.** The by-parent item carries the index projection #280
-    defines and nothing more, so a listing that wants a file's size is one query
+    `content_type`.** The by-parent item carries the index projection and
+    nothing more, so a listing that wants a file's size is one query
     for the folder plus `ceil(n / 100)` batched reads for the records — and that
     is the shape to keep. Widening the projection would remove the batch and put
     a second copy of every mutable attribute on a second item, which every
@@ -607,12 +576,12 @@ def children(parent_id: str) -> list[dict]:
     """One folder's contents, name-ascending.
 
     This reads the by-parent items, so what comes back is the **index
-    projection** #280 defines — `node_id`, `lib`, `kind`, `path`, `created_at`,
-    plus the `name` carried in the sort key — and not the full record. A caller
-    that needs `blob_key` or `size` for one entry fetches it with `node`.
+    projection** — `node_id`, `lib`, `kind`, `path`, `created_at`, plus the
+    `name` carried in the sort key — and not the full record. A caller that
+    needs `blob_key` or `size` for one entry fetches it with `node`.
 
-    That is a deliberate reading of the schema rather than an oversight: the
-    projection is what makes a listing one query, and widening it would mean
+    Deliberate: the projection is what makes a listing one query, and widening
+    it would mean
     every rename and move keeps a second copy of the file's metadata in step.
 
     The order is free. DynamoDB returns a partition sorted by sort key, and the
@@ -694,8 +663,8 @@ def recent(lib: str, limit: int) -> tuple[list[dict], bool]:
     over a whole library wants the newest of it, and `by-path` cannot answer
     that — its range key is an ancestor list, so its order is the tree's.
 
-    **Every row this returns is already something the reel can show**, which it
-    was not before. `by-recent` is hashed on the sparse `reel` attribute, so a
+    **Every row this returns is already something the reel can show.**
+    `by-recent` is hashed on the sparse `reel` attribute, so a
     folder, an entity record and a library index row are absent from it rather
     than read and discarded — and the `limit` above is therefore spent on media
     instead of on whatever the tree happened to hold.
@@ -745,7 +714,7 @@ def _write(steps: list[tuple[dict, Exception | None]]) -> None:
     entry's condition is the one that failed. Pairing them is what lets a
     put-if-absent on a `NAME#` item mean "that name is taken" (409) while the
     `attribute_exists` guard on a record in the same transaction means "the node
-    is gone" (404) — DynamoDB reports which item was cancelled and in which
+    is missing" (404) — DynamoDB reports which item was cancelled and in which
     position, and throwing that away would collapse both onto one status.
 
     A step with no exception is one that carries no condition and so can never
@@ -839,7 +808,7 @@ def _update(key: dict, assignments: dict) -> dict:
 
     # **A `None` is a REMOVE, not a NULL**, and it is the same rule `_item`
     # follows on the way in: an absent attribute is what `attribute_not_exists`
-    # and every reader here already understand. It became load-bearing with the
+    # and every reader here already understand. It is load-bearing for the
     # sparse `reel` key — renaming `clip.png` to `clip.txt` has to take the row
     # *out* of `by-recent`, and writing NULL would leave it in the index
     # advertising a file the reel cannot draw.
@@ -903,10 +872,10 @@ def _folder_node(node_id: str) -> dict:
 # **The blob key is the opposite: stamped once, at creation, and never
 # re-derived.** It carries the owner's id so a bucket listing is per-entity —
 # Storage Lens cost, lifecycle rules, a bulk delete that is one prefix — and
-# carries no name, so a listing of the PRODUCTION bucket stops leaking hard
-# rule #1. That half of the rule is unchanged by the rule going env-scoped: a
-# dev subject may be named in the repo, and a production character still may
-# not be named anywhere — including in a key nobody thought of as prose.
+# carries no name, so a listing of the PRODUCTION bucket cannot leak hard
+# rule #1. That rule is env-scoped — a dev subject may be named in the repo —
+# and a production character may not be named anywhere, including in a key
+# nobody thought of as prose.
 #
 # The honest cost, stated where somebody would be tempted to fix it: move a file
 # from a character to a project and its key keeps the old prefix. The key is
@@ -921,9 +890,7 @@ def _folder_node(node_id: str) -> dict:
 OWNER_PREFIXES = {ENTITY_CHARACTER: "characters", ENTITY_PROJECT: "projects"}
 LIBRARY_PREFIX = "libraries"
 
-# The second segment of every key this API has ever stamped: an entity or
-# library id. No legacy key had one — those were `characters/<slug>/…`, where a
-# slug is a name a person chose.
+# The second segment of every key this API stamps: an entity or library id.
 #
 # Matched by PREFIX rather than by a uuid pattern, which is how an id is
 # recognised everywhere else here (`startswith("proj-")` in the CLI resolvers,
@@ -957,31 +924,22 @@ def blob_key_for(node_id: str, name: str, owner_kind: str | None, owner_id: str)
 def is_api_blob(record: dict) -> bool:
     """Whether this node's bytes were written through this API.
 
-    **It reads the SHAPE of the first two segments, and this used to read the
-    tail.** That was `/<node_id>.<ext>`, which was every key this API had ever
-    written — until the key became descriptive and its last segment became the
-    file's own name. `reseat --apply` then rewrote production to the new shape
-    and every one of its 186 file nodes stopped matching, so both upload routes
-    refused to overwrite anything in the library. Measured, not theorised.
+    **It reads the SHAPE of the first two segments and nothing else**:
+    `<owner_prefix>/<entity-or-library id>/…` — one of the three prefixes, then
+    an id. The tail is not read: a key's last segment is `<node_id>.<ext>` when
+    `blob_key_for` stamped it and may be a descriptive name in a library
+    `studio catalog reseat` has not been run against, and both are keys this
+    API wrote.
 
-    So the test is `<owner_prefix>/<entity-or-library id>/…`: one of the three
-    prefixes, then an id. That holds for the flat keys this API stamps AND for
-    the descriptive ones the reseat of that era left in production, which is
-    what makes it correct while the two coexist — and they still do. `reseat`
-    builds a flat key again and clears them, but until it has been run against a
-    given library both shapes are live in it.
-
-    **It is still not a check on WHICH owner.** The prefix says who owned the
-    node when the key was stamped and drifts the moment the node moves, so
-    reading the id itself would start refusing uploads to a file somebody
-    dragged into another folder. Only the shape is read; the values are not.
+    **It is not a check on WHICH owner.** The prefix says who owned the node
+    when the key was stamped and drifts the moment the node moves, so reading
+    the id itself would start refusing uploads to a file somebody dragged into
+    another folder. Only the shape is read; the values are not.
 
     The two upload routes share this so they cannot disagree about which objects
     are writable through a signature — a distinction a signed URL makes permanent
-    the moment it is handed out. A key of any other shape predates the catalog
-    (#309) — `characters/<slug>/…`, `blobs/<node_id>`, `config/angle/…` — and
-    overwriting bytes written before this table existed is not what those routes
-    are for.
+    the moment it is handed out. A key of any other shape was not written by
+    this API, and overwriting such bytes is not what those routes are for.
     """
     blob_key = record.get("blob_key")
     if not blob_key:
@@ -1033,7 +991,7 @@ def owner_of(record: dict) -> dict | None:
         try:
             return entity_summary(entity_id)
         except (NotFoundError, ValidationError):
-            # A reverse pointer naming a record that is gone. Skipped rather than
+            # A reverse pointer naming a record that does not exist. Skipped rather than
             # raised: the node is fine, and a listing that 500s because one
             # ancestor was half-deleted is a worse answer than "owned by nobody".
             logger.warning("Node %s names a missing entity: %s", record["node_id"], entity_id)
@@ -1154,7 +1112,7 @@ def create_node(
     knows, so it is asked.
 
     A folder is refused a `blob_key`, which is the whole of the distinction:
-    #280 defines a folder as a node with no blob. Size and content type are
+    a folder is a node with no blob. Size and content type are
     optional because the caller writing the object may not know either yet —
     `set_blob` fills them in later.
 
@@ -1174,8 +1132,8 @@ def create_node(
     owner is filing bytes under an entity that does not hold the node, so the
     only thing that may compute one is `_blob_owner`.
 
-    An explicit `blob_key` is still stored exactly as given, because prod holds
-    keys written long before this table did.
+    An explicit `blob_key` is stored exactly as given: a key is a pointer, and
+    this module never forms a second opinion about one it did not mint.
     """
     if kind not in KINDS:
         raise ValidationError(f"kind must be one of {', '.join(sorted(KINDS))}")
@@ -1215,7 +1173,7 @@ def create_numbered(parent_id: str, raw_name: str | None, kind: str) -> dict:
     """`create_node`, but a taken name is numbered instead of refused.
 
     `clip.mp4` arriving beside a `clip.mp4` becomes `clip (2).mp4` — the form
-    `keys.numbered_name` owns and `manage.copy_objects` has produced since #317.
+    `keys.numbered_name` owns and `manage.copy_nodes` produces.
     Nothing is overwritten in any branch, and nothing is refused for a clash.
 
     **Retry-on-conflict, not list-then-choose, and the difference is the whole
@@ -1254,8 +1212,8 @@ def create_numbered(parent_id: str, raw_name: str | None, kind: str) -> dict:
 #: parses. Capped only so one paste cannot make a listing unreadable.
 MAX_DESCRIPTION = 2000
 #: Free-form on purpose. A per-library vocabulary would make filtering reliable
-#: and would be a second thing to keep correct; references have been free-form
-#: since `--pick-tag` existed, and the tags there converged without one.
+#: and would be a second thing to keep correct; the reference tags a
+#: `--pick-tag` filter matches are free-form and converge without one.
 MAX_TAGS = 32
 MAX_TAG = 40
 
@@ -1293,18 +1251,11 @@ def clean_tags(raw) -> list[str]:
 def describe_node(node_id: str, *, description=..., tags=...) -> dict:
     """What a file SHOWS, on the file — one row, no objects, no bytes.
 
-    **This is the whole write path for what a picture is now.** A description
-    used to live on a `CHAR#`/`REF#` row, so the same image described as a
-    character's identity carried its description in a row belonging to the
-    character-image *relationship* — the wrong home for "head and shoulders in
-    full profile", which is true of the picture whether or not anybody ever made
-    it identity. The rows are gone entirely and `tags` joined `description` here,
-    so what a picture IS and what it is FOR are both attributes of the file.
-
-    The cost of the old home was visible in this library: twelve files sat in
-    `reference/` folders with no row and therefore no description anywhere, and a
-    legacy `profile.corpus` list was the only thing holding descriptions for
-    some of them.
+    **This is the whole write path for what a picture is.** A description and
+    its tags are attributes of the file, never of a relationship the file is in:
+    "head and shoulders in full profile" is true of the picture whether or not
+    anybody ever makes it identity, so what a picture IS and what it is FOR both
+    live here.
 
     A sentinel default rather than `None` for both arguments, because `None` is
     a value here: sending `description=None` clears it, and omitting it leaves
@@ -1406,12 +1357,9 @@ def move_node(node_id: str, parent_id: str) -> dict:
     reasons: a node cannot be moved inside itself (there the copy loop would
     feed itself; here the subtree would contain its own ancestor), and a name
     already taken at the destination refuses the whole request rather than
-    merging two trees. Crossing libraries is refused as well — that is
-    `transfer_node` below, which rewrites `lib` across the branch and carries
-    membership implications a move does not. **Do not relax this refusal to make
-    a transfer easier**: the two operations differ in who is allowed to ask for
-    them, and a move that could change `lib` would be a transfer that skipped the
-    ownership check in the destination library.
+    merging two trees. Crossing libraries is refused as well: a move that could
+    change `lib` would change who can reach the branch, which no membership check
+    on a move asks about.
     """
     record = node(node_id)
     if not record.get("parent_id"):
@@ -1452,144 +1400,24 @@ def move_node(node_id: str, parent_id: str) -> dict:
     return {**moved, "moved": True, "descendants": len(descendants)}
 
 
-def transfer_node(node_id: str, lib: str) -> dict:
-    """Carry a node, and everything beneath it, into another library.
+def _rewrite_branch(descendants: list[dict], *, old: str, new: str) -> None:
+    """Re-materialise `path` on a moved branch.
 
-    **Zero objects move, and if an implementation here ever reaches for
-    `CopyObject` the model is wrong rather than the code.** A blob is addressed
-    by a key nothing parses, and which library a node belongs to is an attribute
-    on a row. Rewriting the attribute is the entire operation; the bytes are not
-    involved and are not even read. `tests/integration/test_transfer.py` asserts
-    that against a real bucket, because a mock's call log would pass on any code
-    that copied through some other path.
-
-    **A whole subtree or nothing.** The unit is a node — a project, a character,
-    a run — and everything under it, never a scattering of files chosen
-    individually. Run records name their inputs by node, so a branch stays
-    internally consistent when it moves as one batch and stops being consistent
-    the moment half of it is somewhere else. `subtree` bounds it at
-    `STUDIO_MAX_FOLDER_OBJECTS` and refuses rather than truncating, for the
-    reason stated there.
-
-    **It lands on the destination library's root**, not on a folder inside it.
-    One library id is the whole request, and where it goes next is an ordinary
-    `move_node` the caller can now make, because the node is in their library.
-    Taking a destination folder as well would be a second thing to authorise and
-    a second way to name the wrong library.
-
-    **Two writes, target first, and the order is `move_node`'s for `move_node`'s
-    reason.** `parent_id` is the one attribute nothing can reconstruct; `lib` and
-    `path` are both derivable from it by walking parents, so they are the safe
-    half to leave half-written. That order also puts the name collision — a
-    conditional put — before anything else is touched, so a 409 here has written
-    nothing at all, which is what "a refusal rather than a partial transfer"
-    requires.
-
-    **The cost of that order, stated rather than hidden:** an interruption
-    between the two writes leaves the node in its new library with descendants
-    still in the old one, and re-running does *not* repair it — the second run
-    sees a node already where it was asked to go. The subtree is still reachable
-    by `parent_id` the whole time, and `lib` can be rebuilt from it, but nothing
-    here does that today. Unlike `delete_node`, this one does not finish itself.
-    """
-    record = node(node_id)
-    if not record.get("parent_id"):
-        raise ValidationError("the library root cannot be transferred")
-    if lib == record["lib"]:
-        # Already where it was asked to go. Not an error, and not a write: the
-        # same reading `move_node` gives a destination that is the current
-        # parent.
-        return {**record, "transferred": False, "descendants": 0}
-
-    # `library` raises `NotFoundError` for an id naming no row, which is what a
-    # membership pointing at nothing looks like — see `routes/libraries.py`.
-    # `_folder_node` then reads the root it names, so a library whose root is
-    # missing fails here rather than after the subtree has been rewritten.
-    destination = _folder_node(library(lib)["root_node"])
-    branch = child_path(record)
-    # Read before the first write. Afterwards the node's own `path` and `lib`
-    # name the destination while its descendants still name the source, so this
-    # query has one answer only while it is asked first.
-    descendants = subtree(record["lib"], branch)
-
-    now = _now()
-    transferred = {
-        **record,
-        "parent_id": destination["node_id"],
-        "lib": lib,
-        "path": child_path(destination),
-        "updated_at": now,
-    }
-
-    assignments = {
-        "parent_id": destination["node_id"],
-        "lib": lib,
-        "path": transferred["path"],
-        "updated_at": now,
-    }
-    if record["kind"] == KIND_FILE:
-        assignments["reel"] = _reel_value(record["name"], lib)
-        transferred["reel"] = assignments["reel"]
-
-    _write(
-        [
-            (_delete_name(parent_id=record["parent_id"], name=record["name"]), None),
-            (
-                _put_name(transferred, parent_id=destination["node_id"], name=record["name"]),
-                ConflictError(f"'{record['name']}' already exists there"),
-            ),
-            (_update_meta(node_id, assignments), NotFoundError(node_id)),
-        ]
-    )
-
-    _rewrite_branch(descendants, old=branch, new=child_path(transferred), lib=lib)
-
-    logger.info(
-        "Transferred %s from %s to %s (%d descendants)",
-        node_id,
-        record["lib"],
-        lib,
-        len(descendants),
-    )
-    return {**transferred, "transferred": True, "descendants": len(descendants)}
-
-
-def _rewrite_branch(
-    descendants: list[dict], *, old: str, new: str, lib: str | None = None
-) -> None:
-    """Re-materialise `path` — and, for a transfer, `lib` — on a moved branch.
-
-    Both halves of every node, because the by-parent item carries `path` and
-    `lib` too and `by-path` is hashed on the one and ranged on the other: a
-    descendant rewritten on the record half alone would be indexed under a
-    library it is no longer in. Two writes per descendant is what fixes the batch
-    at fifty nodes.
+    Both halves of every node, because the by-parent item carries `path` too and
+    `by-path` ranges on it. Two writes per descendant is what fixes the batch at
+    fifty nodes.
 
     Only the prefix of `path` changes. The part below the moved node describes
-    ancestors that moved with it and is copied across untouched.
-
-    `lib` is optional because a move never changes it — the destination is in the
-    same library or `move_node` refused — and assigning it there would be a
-    second writer of the attribute every GSI partitions on, for no change.
-
-    **A transfer also has to carry `reel`, because its value *is* the library
-    id.** Miss it and every image in the branch stays in the source library's
-    reel while its row says it belongs to another — a leak of exactly the kind
-    the membership checks exist to prevent, and one that no folder listing would
-    show. Only on the record half: `by-recent` reads `reel` and `created_at`, and
-    the by-parent item carries neither, so writing it there would put a second
-    copy of every file in the index.
+    ancestors that moved with it and is copied across untouched. `lib` is never
+    touched: a move stays inside one library or `move_node` refused.
     """
     steps: list[tuple[dict, Exception | None]] = []
     for record in descendants:
         path = new + record["path"][len(old):]
-        assignments = {"path": path} if lib is None else {"path": path, "lib": lib}
-        meta_assignments = dict(assignments)
-        if lib is not None and record["kind"] == KIND_FILE:
-            meta_assignments["reel"] = _reel_value(record["name"], lib)
+        assignments = {"path": path}
         steps.append(
             (
-                _update_meta(record["node_id"], {**meta_assignments, "updated_at": _now()}),
+                _update_meta(record["node_id"], {**assignments, "updated_at": _now()}),
                 NotFoundError(record["node_id"]),
             )
         )
@@ -1650,8 +1478,9 @@ def delete_node(node_id: str, *, allow_entities: bool = False) -> dict:
     (see `services.layout`): every other folder in a character or a project may
     be renamed, moved or deleted freely, because reference-ness and run-ness are
     row attributes now. The root is different only because a record names it, and
-    a record naming a node that is gone is the one broken state this model cannot
-    repair from the tree. The refusal says which entity to delete instead.
+    a record naming a node that does not exist is the one broken state this
+    model cannot repair from the tree. The refusal says which entity to delete
+    instead.
 
     `allow_entities` is for the entity deletes themselves, which have already
     removed the record and its links and are finishing the job. It is not a
@@ -1662,14 +1491,13 @@ def delete_node(node_id: str, *, allow_entities: bool = False) -> dict:
     copy in this model copies a row, so "is this blob now unreferenced" is not a
     question one delete can answer.
 
-    **A sweep is opened before the first row goes, and that is what retired
-    `studio catalog gc`.** The bytes are deleted by the caller after this
-    returns, so an interruption in between used to leave objects nothing named —
-    findable only by listing the whole bucket against the whole table, which is
-    exactly what the collector did. The sweep records the same keys on a row
-    first, so an interruption leaves a *pointer* to the orphans rather than
-    orphans nobody can find. `sweep_id` comes back for the caller to close once
-    the bytes are gone; see `open_sweep`.
+    **A sweep is opened before the first row goes.** The bytes are deleted by
+    the caller after this returns, so an interruption in between would otherwise
+    leave objects nothing named — findable only by listing the whole bucket
+    against the whole table. The sweep records the same keys on a row first, so
+    an interruption leaves a *pointer* to the orphans rather than orphans nobody
+    can find. `sweep_id` comes back for the caller to close once the bytes are
+    deleted; see `open_sweep`.
     """
     record = node(node_id)
     if not record.get("parent_id"):
@@ -1707,20 +1535,14 @@ def delete_node(node_id: str, *, allow_entities: bool = False) -> dict:
 #
 # A sweep is the row that makes a delete recoverable without a bucket scan.
 #
-# THE FAILURE IT REPLACES
-# -----------------------
+# WHY IT EXISTS
+# -------------
 # Rows are deleted first and bytes second, because the other order leaves a row
-# pointing at a blob that is gone — a broken tile the user sees — while the
-# reverse leaves an object no reader can reach. That asymmetry is right and is
-# not what changed. What changed is how the leftover is found: it used to be
-# found by listing every object in the bucket, scanning every row in the table
-# and subtracting, which is a whole command (`studio catalog gc`), a boto3
-# client in the CLI, a journal, a two-phase dry run, and a guard against the one
-# input that turned it into a bucket wipe. All of that existed because the API
-# threw away the only thing that knew which keys were in flight.
-#
-# It does not throw it away now. The keys are written to a row *before* the
-# rows that name them are deleted, so the leftover is addressed rather than
+# pointing at a blob that has been deleted — a broken tile the user sees — while
+# this order leaves an object no reader can reach. Without a sweep that leftover
+# could only be found by listing every object in the bucket, scanning every row
+# in the table and subtracting. So the keys are written to a row *before* the
+# rows that name them are deleted, and the leftover is addressed rather than
 # searched for.
 #
 # WHY THE DRAIN RE-CHECKS EVERY NODE
@@ -1749,12 +1571,11 @@ def open_sweep(lib: str, freed: list[tuple[str, str]]) -> list[str]:
     what gets deleted, and the node id is what `drain` asks about to find out
     whether deleting it is still the right thing to do.
 
-    **The sort keys come back, and closing takes them.** Returning an opaque
-    sweep id instead meant `close_sweep` had to *find* its own rows, which is a
-    query of the whole library partition per close — and a bulk delete closes one
-    sweep per node, so the suite went from 33 seconds to 16 minutes on the day
-    that landed. A caller that just wrote a row knows where it is; making it say
-    so turns the close into point deletes.
+    **The sort keys come back, and closing takes them.** An opaque sweep id
+    would make `close_sweep` *find* its own rows — a query of the whole library
+    partition per close, and a bulk delete closes one sweep per node. A caller
+    that just wrote a row knows where it is; making it say so turns the close
+    into point deletes.
 
     Empty when there is nothing to record, so a folder-only delete writes no row.
     Most deletes in this library are folders.
@@ -1788,7 +1609,7 @@ def open_sweep(lib: str, freed: list[tuple[str, str]]) -> list[str]:
 
 
 def close_sweep(lib: str, sort_keys: list[str]) -> None:
-    """Drop a sweep's rows once its bytes are gone. Point deletes, no query.
+    """Drop a sweep's rows once its bytes are deleted. Point deletes, no query.
 
     Unconditional and tolerant of a row that is already gone: `drain` may have
     discharged the sweep first, and a delete racing its own recovery is a state
@@ -1866,8 +1687,8 @@ def set_blob(
 ) -> dict:
     """Point a file node at its bytes.
 
-    The by-parent item is untouched, because #280 does not project `blob_key`,
-    `size` or `content_type` onto it — so this is one item, and still a
+    The by-parent item is untouched, because it does not carry `blob_key`,
+    `size` or `content_type` — so this is one item, and still a
     transaction. That costs twice the write capacity of a bare `UpdateItem` and
     buys one thing worth having: every write in this module fails the same way,
     through `_write`, with a per-item reason. A single `UpdateItem` here would
@@ -1875,8 +1696,7 @@ def set_blob(
 
     `blob_key` is stored exactly as given. It is not validated against a prefix,
     not checked for existence in the bucket, and not derived from `node_id` —
-    prod holds keys written long before this table did and they stay where they
-    are.
+    a key is a pointer, and this module forms no second opinion about one.
     """
     if not blob_key:
         raise ValidationError("blob_key is required")
@@ -1919,23 +1739,17 @@ def set_blob(
 # library" — this table must never be scanned — so a second item exists purely
 # as the **list index**: `LIB#<lib>` / `CHAR#<char_id>`, one query per library.
 #
-# ## The second item used to claim a NAME, and no longer does
+# ## The second item is a listing, never a name claim
 #
-# It was `LIB#<lib>` / `CHARSLUG#<slug>`, written under
-# `attribute_not_exists(pk)`, and its job was uniqueness as much as listing: a
-# slug was a library-unique handle a person typed, so two characters could not
-# share one.
+# A character has one free-text `name`, it is a LABEL, and nothing resolves an
+# entity by it — the SPA routes on `char-<uuid>`, the API addresses ids, and an
+# edge stores an id. So a duplicate name is two rows that look alike in a list,
+# which a person fixes by renaming one, and it is not worth a condition
+# expression, a second failure mode and a 409 the client has to handle.
 #
-# **Slugs are gone and so is the uniqueness.** A character has one free-text
-# `name`, it is a LABEL, and nothing resolves an entity by it — the SPA routes on
-# `char-<uuid>`, the API addresses ids, and an edge stores an id. So a duplicate
-# name is two rows that look alike in a list, which a person fixes by renaming
-# one, and it is not worth a condition expression, a second failure mode and a
-# 409 the client has to handle.
-#
-# The item that remains is keyed on the id it points at, which means a rename
-# touches exactly one row: the record. Nothing to keep in step, nothing to move
-# in a transaction, nothing to half-happen.
+# The index item is keyed on the id it points at, which means a rename touches
+# exactly one row: the record. Nothing to keep in step, nothing to move in a
+# transaction, nothing to half-happen.
 #
 # ## The index is a pointer, never a projection
 #
@@ -1952,9 +1766,8 @@ def set_blob(
 # ## `rev` is compare-and-swap, not check-then-write
 #
 # Every mutation of a record carries the `rev` the caller last read and fails the
-# transaction if it moved. That closes a window that was open: the old
-# `write_profile` re-read a node's `updated_at` and refused if it had changed,
-# which is a check and a write with a gap between them. A `ConditionExpression`
+# transaction if it moved. Re-reading `updated` and refusing if it had changed
+# would be a check and a write with a gap between them; a `ConditionExpression`
 # has no gap.
 
 
@@ -2108,9 +1921,8 @@ def entities_in(lib: str, kind: str) -> list[dict]:
     so one without the other means a row was written by hand — and a listing that
     500s over it is a library nobody can open.
 
-    **There is no `entity_by_name`**, and that is the point of the change that
-    removed slugs: a name is a label, so resolving one would have to pick between
-    duplicates. Every caller addresses an id.
+    **There is no `entity_by_name`**: a name is a label, so resolving one would
+    have to pick between duplicates. Every caller addresses an id.
     """
     members = _members(lib, kind)
     found = entities_by_id(kind, [member["entity"] for member in members])
@@ -2130,10 +1942,7 @@ def linked(entity_id: str, holder_kind: str) -> list[str]:
 
     `by-sk` inverts the table, so `sk = CHAR#<id> AND begins_with(pk, "PROJ#")`
     is "which projects involve this character" and the same query one prefix over
-    is "which runs used it". Both are questions that have no answer at all in the
-    document-shaped model this replaces — the second one is `runs find
-    --character`, which lists every project, lists every run in each, reads
-    `request.json` for each, and greps.
+    is "which runs used it".
     """
     prefix = ENTITY_KEYS[holder_kind][1]
     items = _query(
@@ -2189,12 +1998,10 @@ def links(entity_id: str, target_kind: str) -> list[str]:
 # **Where an ordered child points at an entity, it gets an edge row beside it**,
 # written in the SAME transaction — for the reason `create_project_entity`
 # already gives about character usage: a link written afterwards is a link a
-# crash can lose. That is the whole rule, and two relationships used to break
-# it. A movie's scenes were a JSON list, which no index can address into, and a
-# scene's shots named their run in an attribute, which `by-sk` cannot see. Both
-# questions — "which movie cuts this scene", "which scene used this run" — had
-# no answer at any price, which is the exact complaint `linked()` was written to
-# retire for characters.
+# crash can lose. That is the whole rule: a movie's scenes are also a JSON list
+# and a scene's shots also name their run in an attribute, and no index can see
+# into either — the edge row beside each is what makes "which movie cuts this
+# scene" and "which scene used this run" one `by-sk` query apiece.
 
 
 def edge_sk(target_id: str) -> str:
@@ -2341,14 +2148,11 @@ def _tree_steps(parent: dict, entity_id: str, layout: tuple) -> tuple[dict, list
     on the record. One field in each direction, and no map of folder names in
     either.
 
-    **The folder is NAMED by the entity id**, which it was not: it used to take
-    the slug, and a rename moved it so that somebody browsing the tree saw the
-    name they had just chosen. That cannot survive free-text names. A folder's
+    **The folder is NAMED by the entity id, not by the display name.** A folder's
     name is unique among its siblings — genuinely, because `child_by_name`
     resolves a path segment — so naming entity roots by their display name would
-    refuse the second character called `Anna` from the tree, which is exactly the
-    uniqueness that dropping slugs was meant to remove, arriving by a side door
-    and with a worse message.
+    refuse the second character called `Anna` from the tree, a uniqueness the
+    entity model deliberately does not impose on names.
 
     So the id is the folder's name here, the way it is already the S3 key's, and
     the display name lives on the record alone. A listing hands back `owner` for
@@ -2383,10 +2187,9 @@ def create_character(
     operations, and none of them breaks anything, because an image is identity
     when it carries the `default` tag and not because of the folder it sits in.
 
-    **Nothing here can collide.** It used to claim the slug, and a second
-    character wanting that name was a 409. A name is a free-text label now and
-    the root folder is named by the id, so both keys are minted UUIDs and the
-    only conflict left is one that cannot happen.
+    **Nothing here can collide.** A name is a free-text label and the root
+    folder is named by the id, so both keys are minted UUIDs and the only
+    conflict left is one that cannot happen.
     """
     parent = _folder_node(parent_id)
     if parent["lib"] != lib:
@@ -2400,7 +2203,6 @@ def create_character(
         "id": char_id,
         "lib": lib,
         "name": name,
-        "schema_version": PROFILE_SCHEMA_VERSION,
         "rev": 1,
         "created": now,
         "updated": now,
@@ -2439,8 +2241,8 @@ def create_project(
     `characters` are written as `PROJ#<id>` / `CHAR#<id>` rows rather than as a
     list on the record, which is what makes the reverse question answerable: read
     forwards it is "who is in this project", and read backwards on `by-sk` it is
-    "which projects involve this character" — a question with no answer today at
-    any price.
+    "which projects involve this character" — which a list on the record could
+    not answer.
     """
     parent = _folder_node(parent_id)
     if parent["lib"] != lib:
@@ -2496,12 +2298,9 @@ def update_entity(kind: str, record: dict, rev: int, assignments: dict) -> dict:
     numbers in the message, and the client re-reads rather than losing the
     first's work.
 
-    **A rename is an assignment like any other**, which it was not. Renaming used
-    to be four extra writes — drop the old slug claim, take the new one under
-    `attribute_not_exists`, and move the root folder — riding in this same
-    transaction so that a collision left the whole request undone. All of it is
-    gone with slugs: the name is a label on this row, the index row is keyed on
-    the id, and the root folder is named by the id. One item changes.
+    **A rename is an assignment like any other**: the name is a label on this
+    row, the index row is keyed on the id, and the root folder is named by the
+    id. One item changes.
     """
     now = _now()
     assignments = {**assignments, "rev": rev + 1, "updated": now}
@@ -2525,7 +2324,7 @@ def delete_project_cascade(record: dict, *, delete_files: bool) -> dict:
     29 runs is ~377 items — 87 entity rows plus two per node — and
     `TRANSACTION_ITEMS` caps a `TransactWriteItems` at 100. So this is a
     sequence, and the ORDER is what makes an interruption survivable: every
-    child is gone before the project that lists it, exactly as `delete_node`
+    child is deleted before the project that lists it, exactly as `delete_node`
     deletes a subtree deepest-first. What a crash leaves is a project holding
     fewer children — visible, and finished by running this again.
 
@@ -2533,10 +2332,9 @@ def delete_project_cascade(record: dict, *, delete_files: bool) -> dict:
     scenes and a scene names runs, so taking them in that order never leaves a
     record pointing at something already deleted.
 
-    The alternative this replaces was `?force=1`, which deleted the project and
-    left every run's envelope naming a project id that no longer existed. That
-    is the one state the model cannot repair from, and it was the only thing on
-    offer for "delete this project and its work".
+    Deleting the project alone would leave every run's envelope naming a project
+    id that does not exist — the one state the model cannot repair from — which
+    is why there is no shortcut past the cascade.
     """
     blob_keys: list[str] = []
     sweeps: list[str] = []
@@ -2567,7 +2365,7 @@ def delete_entity(kind: str, record: dict, *, delete_files: bool) -> dict:
 
     **The record goes before the tree, and that order is the recoverable one.**
     What survives an interruption is a folder nothing claims — visible, movable,
-    deletable by hand — rather than a record naming a node that is gone, which is
+    deletable by hand — rather than a record naming a node that does not exist, which is
     the one broken state the tree cannot repair.
 
     Everything that *points at* this entity is the caller's problem and is
@@ -2637,7 +2435,7 @@ def _orphan(node_id: str, lib: str) -> None:
     """Cut a folder loose from the entity that owned it.
 
     The reverse pointer goes first, because a folder still carrying `entity`
-    after its record is gone is what `delete_node` refuses and what `owner_of`
+    after its record is deleted is what `delete_node` refuses and what `owner_of`
     logs about. Then it is moved to the library root, where it is an ordinary
     folder somebody can browse, rename or delete by hand.
 
@@ -2663,36 +2461,19 @@ def _orphan(node_id: str, lib: str) -> None:
 
 # ─────────────────────────── reference entries ───────────────────────────
 #
-# **This is what kills filename magic.** Order is an attribute, not a trailing
-# number in a basename, so `curate renumber` has nothing left to maintain. Group
-# is an attribute, so `curate regroup` is one write and moves no objects. A
-# **The `REF#` rows are gone, and nothing replaced them here.**
+# **There are no reference rows.** Which of a character's pictures are its
+# identity, and what each picture shows, are tags on the node — `default` for
+# the handful a generation is shown, `face` or `body` for what the picture is —
+# so this module stores nothing about it and `services/browse.entries` answers
+# the question with a tag filter over the character's branch.
 #
-# One row per reference image said which of a character's pictures were its
-# identity, in which group and in which order. All three are tags on the node
-# now — `default` for the handful a generation is shown, `face` or `body` for
-# what the picture is — so this module stores nothing about it and
-# `services/browse.entries` answers the question with a tag filter over the
-# character's branch.
-#
-# What that deletes is not the rows but the invariant between them and the
-# record: `default_set` was a list of node ids that had to name live `REF#`
-# rows, and it drifted — one production character carried four ids that named
-# nothing, and a default shoot silently sent three images where seven were
-# meant. A tag cannot drift from the file it is written on.
-#
-# `describe_node` above is the whole of the write path now. It was already the
-# place a description lived (#483); the tags joined it.
+# A tag cannot drift from the file it is written on. A list of node ids on the
+# record would have to name live rows, and nothing could keep it doing so.
+# `describe_node` above is the whole of the write path.
 
 
 def set_project_characters(project_id: str, lib: str, characters: list[str]) -> list[str]:
-    """Replace a project's involvement links. One caller of `set_edges`.
-
-    This used to spell the `PROJ#<id> / CHAR#<id>` key itself, and it was the
-    only relationship in the table that got the shape right — so the shape was
-    a habit rather than a rule, and the two relationships written later did not
-    follow it. It is a rule now, and this is the first caller.
-    """
+    """Replace a project's involvement links. One caller of `set_edges`."""
     return set_edges(ENTITY_PROJECT, project_id, lib, ENTITY_CHARACTER, characters)
 
 
@@ -2706,10 +2487,8 @@ def set_project_characters(project_id: str, lib: str, characters: list[str]) -> 
 # |---|---|
 # | id, project, status, model, engine, kind, characters, bindings (node ids), timings, prediction id, error, outputs | the exact `input` sent, the exact response returned |
 #
-# That split preserves the reason the old rule existed — the pipeline changes the
-# payload's shape freely, so a service that parsed one would become a liar — while
-# giving the app a run it can render. `docs/WEB_APP.md`'s "never decode
-# request.json" survives, moved to where it is actually true.
+# The pipeline changes the payload's shape freely, so a service that parsed one
+# would become a liar; the envelope is what gives the app a run it can render.
 #
 # **The listing row is a projection and the only one in this module.** A project's
 # runs are `pk = PROJ#<id>, begins_with(sk, "RUN#"), ScanIndexForward=false` —
@@ -2717,7 +2496,7 @@ def set_project_characters(project_id: str, lib: str, characters: list[str]) -> 
 # thumbnail so the grid draws without a `BatchGetItem` over hundreds of
 # envelopes. It is safe to project *because a run is immutable once it
 # completes*: there is nothing left to keep in step. Do not copy this reasoning
-# onto a slug claim, where the opposite is true.
+# onto a record a person edits, where the opposite is true.
 
 
 def _listing_sk(kind: str, created: str, entity_id: str) -> str:
@@ -2725,8 +2504,8 @@ def _listing_sk(kind: str, created: str, entity_id: str) -> str:
 
     The timestamp comes first so the range is chronological, and the id follows
     so two entities created in the same microsecond are still two rows. The
-    reverse order a listing wants is `ScanIndexForward=False` rather than an
-    inverted key, because the same rows are also read oldest-first by anything
+    reverse order a listing wants is `ScanIndexForward=False` rather than a
+    reversed key, because the same rows are also read oldest-first by anything
     replaying a project.
     """
     return f"{ENTITY_KEYS[kind][1]}{created}#{entity_id}"
@@ -2756,20 +2535,14 @@ def create_project_entity(
     """A run, a scene or a movie: envelope, listing row, folder — one write.
 
     **Its folder is named for its id and its record names the folder's node
-    id**, which is why renaming or moving that folder afterwards strands nothing.
-    That is the property the timestamp-slug folder name used to carry and could
-    not keep: a run that recorded a path was stranded by the first rename above
-    it, and `domain/rewrite.py` existed for exactly that.
-
-    The folder used to take a slug where the entity had one — a scene and a movie
-    did, a run did not. Slugs are gone: a scene and a movie carry a free-text
-    `name` on the record and their folder is named by the id, like a run's always
-    was and like a character's is now. A folder name is unique among its siblings,
-    so naming these by a label would refuse the second scene called `Opening` from
-    the tree, which is the uniqueness dropping slugs was meant to remove.
+    id**, which is why renaming or moving that folder afterwards strands nothing:
+    no record anywhere holds a path. A scene and a movie carry a free-text `name`
+    on the record and their folder is still named by the id, because a folder
+    name is unique among its siblings and naming these by a label would refuse
+    the second scene called `Opening` from the tree.
 
     **`count=False` creates the entity without counting it, and a RUN uses it.**
-    A run is created as a `draft` now — when it is planned, not when it is
+    A run is created as a `draft` — when it is planned, not when it is
     submitted — so counting at creation would make a project's run count include
     intentions nobody bought. The count is bumped instead by the transition into
     `pending`, through `update_project_entity(bump_count=True)`, which is the
@@ -2778,11 +2551,8 @@ def create_project_entity(
 
     **Every edge this entity carries goes in the same transaction**, because
     "which runs used this character" has to be true the moment the run exists —
-    a link written afterwards is a link a crash can lose. That reasoning was
-    always general and the code was not: it wrote character rows only, so a
-    movie's scenes and a run's parent were left with no edge at all and no way
-    to be read backwards. `_edge_targets` is the whole list, and `edge_sk` reads
-    each target's kind off its own id.
+    a link written afterwards is a link a crash can lose. `_edge_targets` is
+    the whole list, and `edge_sk` reads each target's kind off its own id.
     """
     parent = _folder_node(parent_id)
     entity_id = _mint(kind)
@@ -2906,10 +2676,9 @@ def update_project_entity(
     _write(steps)
     # **A `None` assignment is reported as a `None`, because that is what was
     # written.** `_update` turns one into a REMOVE, so the row genuinely loses
-    # the attribute; filtering it out of the reply handed the caller back the
-    # value it had just cleared. Nothing noticed while the only `None`s here were
-    # `error` and `cost` on a run nobody read twice — it surfaced the moment a
-    # plan edit cleared an `approval` and the response still showed one.
+    # the attribute; filtering it out of the reply would hand the caller back
+    # the value it had just cleared — a plan edit that cleared an `approval`
+    # would still show one.
     #
     # `update_entity` above still filters. It is left alone deliberately: it
     # serves characters and projects, whose `PATCH` bodies omit what they do not
@@ -2920,9 +2689,7 @@ def update_project_entity(
 def runs_for_character(char_id: str) -> list[dict]:
     """Every run that used one character, as envelopes.
 
-    `runs find --character` was a walk over every project, every run folder and
-    three JSON documents each. It is `by-sk` now: one query for the ids, one
-    batched read for the records.
+    One `by-sk` query for the ids, one batched read for the records.
     """
     run_ids = linked(char_id, ENTITY_RUN)
     found = entities_by_id(ENTITY_RUN, run_ids)
@@ -2954,14 +2721,9 @@ def shots(scene_id: str) -> list[dict]:
     return entries
 
 
-# Everything a shot row holds, and it is the list of what a storyboard IS.
-#
-# It held four names — `order`, `prompt`, `run`, `panel` — which was the whole
-# of a shot before storyboards existed. The CLI has authored `beat`, `panels`,
-# `motion`, `continues` and `opens_on` since, and every one of them was dropped
-# here on the way in: a seven-shot plan ingested clean, reported success, and
-# came back as seven rows of `{id, order, created}`. The plan was never stored,
-# so nothing could draw it and `scenes board` had nothing to render from.
+# Everything a shot row holds, and it is the list of what a storyboard IS. A
+# field the CLI authors and this tuple omits is dropped silently on the way in,
+# so the tuple has to be the whole list.
 #
 # `panels` is a list of objects and `motion` is an object; both survive the trip
 # because `_serialize` marshals nested values and `_numbers` walks them back.
@@ -2998,20 +2760,18 @@ def _shot_run_edges(scene_id: str, lib: str, written: list[dict],
 
     A shot's identity is its position — it exists as a plan before anything is
     rendered — so `SHOT#<n>` is the right key for it and the run it later binds
-    is a field. That left the run reachable only by reading every shot of every
-    scene, which is why "which scene used this run" had no answer.
+    is a field. Without an edge the run would be reachable only by reading every
+    shot of every scene.
 
     So the edge lives beside the shot rather than replacing it, and is derived
     from the shots on every write instead of being maintained incrementally:
     a shot can gain, change or lose its run through two different routes, and a
     derived set cannot drift from the thing it is derived from.
 
-    **A shot names a run in three places, not one.** This read `shot["run"]`
-    only, which is the motion render — and in the production library that field
-    is empty on every shot while twenty-five *panels* carry a run, because
-    boarding records the still per panel. So the backlink would have been empty
-    for every boarded scene there: right in the tests, right on a dev stack that
-    had no shots at all, and wrong on the only data that exists.
+    **A shot names a run in three places, not one.** In a boarded scene
+    `shot["run"]` — the motion render — is typically empty while every *panel*
+    carries a run, because boarding records the still per panel. Reading
+    `shot["run"]` alone leaves the backlink empty for every boarded scene.
 
     | Field | What named the run |
     |---|---|
@@ -3060,9 +2820,7 @@ def put_shots(scene_id: str, lib: str, entries: list[dict]) -> list[dict]:
         merged = {field: entry.get(field, previous.get(field)) for field in SHOT_FIELDS}
         # **One level deeper, for panels only.** The rule above protects a shot's
         # fields; a `panels` list that IS named replaces the stored one whole, so
-        # the images and boarded flags inside it need carrying across too. That
-        # ran in the pipeline, which made the CLI the only client able to revise
-        # a plan without orphaning a board.
+        # the images and boarded flags inside it need carrying across too.
         deeper = storyboard.merge_panels(previous, entry)
         if deeper is not None:
             merged["panels"] = deeper
@@ -3101,9 +2859,8 @@ def update_shot(scene_id: str, lib: str, shot_id: str, changes: dict) -> dict:
     """One shot: which run rendered it, which panel it came from, its plan.
 
     The same field list as `put_shots`, because a shot patched one field at a
-    time and a shot rewritten by a plan revision are the same row. They held two
-    different lists once, and the narrower one silently discarded whatever the
-    other had just written.
+    time and a shot rewritten by a plan revision are the same row; a narrower
+    list here would silently discard whatever the other had just written.
     """
     entry = next((item for item in shots(scene_id) if item["id"] == shot_id), None)
     if entry is None:
@@ -3154,11 +2911,9 @@ def source_of(record: dict) -> dict:
 
     kind = entity_kind(owner)
     if kind == ENTITY_CHARACTER:
-        # **No group, and no order.** A `REF#` row used to say an image was this
-        # character's third face reference, and provenance repeated it. What the
-        # picture is is on the picture now — its own `tags`, which every listing
-        # already carries — so saying it a second time here would be a second
-        # copy of a fact that has one home.
+        # **No group, and no order.** What the picture is is on the picture —
+        # its own `tags`, which every listing already carries — so saying it
+        # here would be a second copy of a fact that has one home.
         return {"kind": "character", "character": owner}
 
     if kind == ENTITY_RUN:
@@ -3212,11 +2967,10 @@ def source_of(record: dict) -> dict:
 # is why the sort key is a zero-padded number: a range query returns bind order
 # without anything having to sort it afterwards.
 #
-# What this replaces is `bindings`, a `{field: [node, …]}` map on the record.
-# The map recorded WHAT was sent and lost WHY: `engine/submit.py::gather` decides
-# that an image is a start frame or a reference, and which character group it
-# came from, and then discards all of it. `role` and `source` are that reasoning,
-# kept.
+# A bare `{field: [node, …]}` map on the record would record WHAT was sent and
+# lose WHY: `engine/submit.py::gather` decides that an image is a start frame or
+# a reference, and which character group it came from. `role` and `source` are
+# that reasoning, kept.
 
 
 SEND_PREFIX = "SEND#"
@@ -3236,9 +2990,7 @@ def _send_sk(order: int) -> str:
     """`SEND#0007`. Zero-padded so the key sorts numerically as a string.
 
     Four digits, because a model that took more than 9,999 reference images
-    would have other problems. `%d` would sort `SEND#10` before `SEND#2`, which
-    is the same `-10`-before-`-2` bug the run outputs used to have when their
-    order came from a filename rather than from the row.
+    would have other problems. `%d` would sort `SEND#10` before `SEND#2`.
     """
     return f"{SEND_PREFIX}{order:04d}"
 
@@ -3305,11 +3057,10 @@ def put_sends(run_id: str, entries: list[dict]) -> list[dict]:
 
 # ──────────────────────── the plan digest ────────────────────────
 #
-# Both derivations moved to `services/digest.py` and are re-exported at the top
+# Both derivations live in `services/digest.py` and are re-exported at the top
 # of this module, so `catalog.plan_digest` and `catalog.submission_fingerprint`
-# still name them. They left because this module imports boto3 and the pipeline's
-# test fake cannot: it loads `digest.py` and gets the real hash, where it used to
-# carry a copy whose own comment admitted nothing held the two together.
+# name them. They live there because this module imports boto3 and the
+# pipeline's test fake cannot: it loads `digest.py` and gets the real hash.
 
 
 # ────────────────────────── the reference spec ──────────────────────────
@@ -3317,24 +3068,21 @@ def put_sends(run_id: str, entries: list[dict]) -> list[dict]:
 # HOW A REFERENCE PROMPT IS WRITTEN, AS ROWS — the shared prose blocks and the
 # per-angle templates that a turnaround fills from a character's bible.
 #
-# It was `domain/templates/reference_angles.yaml`, a file in the pipeline
-# package. That put every word of it behind a `pip install`: the SPA could not
-# read a prompt, let alone change one, so a wording fix meant a code change, a
-# review and a release — for prose whose whole nature is that it is tuned against
-# what a model actually returned. The same argument `POST /api/prompt` already
-# won for video prompts, one tier down.
+# In the table rather than in a file the pipeline ships, so the SPA can read a
+# prompt and change one without a code change, a review and a release — prose
+# whose whole nature is that it is tuned against what a model actually returned.
+# The same argument `POST /api/prompt` makes for video prompts, one tier down.
 #
-# **Rows rather than a document under `config/`,** which is where this was first
-# headed. A single YAML blob is precisely the shape `phrasebook/wording.yaml`
-# was moved OFF, and for reasons that apply here unchanged: one bad edit takes
-# out all fourteen angles at once, two editors racing overwrite each other
-# wholesale rather than per-field, and nothing can be read without parsing the
-# whole. A block is a row, an angle is a row, and a UI form edits one of them.
+# **Rows rather than one document under `config/`.** A single blob means one
+# bad edit takes out every template at once, two editors racing overwrite each
+# other wholesale rather than per-field, and nothing can be read without
+# parsing the whole. A block is a row, a template is a row, and a UI form edits
+# one of them.
 #
-# `SPEC#BLOCK#<name>` and `SPEC#ANGLE#<id>` share the `SPEC#` prefix so the whole
-# spec is one `begins_with`, and sort so every block precedes every angle — which
-# is also the order they have to be assembled in, since an angle template cites
-# blocks by name.
+# `SPEC#BLOCK#<name>` and `SPEC#TEMPLATE#<id>` share the `SPEC#` prefix so the
+# whole spec is one `begins_with`, and sort so every block precedes every
+# template — which is also the order they have to be assembled in, since a
+# template cites blocks by name.
 #
 # WHAT IS DELIBERATELY NOT HERE: the model, the aspect ratio and the moderation
 # setting. Those are engine configuration rather than prose — a wrong one is a
@@ -3359,14 +3107,12 @@ MAX_TEMPLATE_NAME = 120
 def clean_template_name(raw: str | None) -> str:
     """A template's name — a LABEL, not its key.
 
-    **The record is keyed on a UUID**, which is now the rule rather than a
-    choice: this table holds no name claims at all, so a name here identifies
-    nothing and is not unique. It was briefly keyed on the name, on the grounds
-    that nothing points at a template — but that is a judgement about a fact
-    that CHANGES, and "which template did this run start from" is an obvious
-    field that a name key would strand.
+    **The record is keyed on a UUID**: this table holds no name claims, so a
+    name here identifies nothing and is not unique. Keying on the name would
+    strand any field that points at a template — "which template did this run
+    start from" is an obvious one.
 
-    A block is the one exception left, and has the reason a template lacks: it
+    A block is the one exception, and has the reason a template lacks: it
     is cited by name IN PROSE, `{block.face_only}`, so a UUID there would name
     something no template could write.
 
@@ -3391,11 +3137,9 @@ def templates(lib: str) -> dict:
     One query. Blocks come back as a mapping because that is what a template
     fills from, and templates as a list, sorted by name.
 
-    **There is no `order` any more.** It existed because these were reference
-    ANGLES and their order was the order a turnaround shot them in — the face
-    turn and then the body turn, each going round the same way. Nothing shoots a
-    set now: a template is picked for one run, so the only order that matters is
-    the one a person reads a list in, and that is alphabetical.
+    **There is no `order`.** A template is picked for one run, so the only
+    order that matters is the one a person reads a list in, and that is
+    alphabetical.
     """
     items = _query(
         TableName=config.catalog_table(),
@@ -3432,12 +3176,10 @@ def put_template(lib: str, template_id: str, fields: dict) -> dict:
     back `id` and whatever the read added, and rejecting those would make the
     obvious edit-then-save flow fail on fields it produced itself.
 
-    **One row, and a rename is a field write.** This briefly also took a
-    `TPLNAME#` claim, so that two templates could not share a name. The claim is
-    gone with every other name claim in this table: a name is a LABEL here now,
-    and identity is the id. Nothing resolves a template by name, so a duplicate
-    is a display problem rather than an ambiguity, and it costs a person nothing
-    they cannot fix by renaming one.
+    **One row, and a rename is a field write.** A name is a LABEL and identity
+    is the id. Nothing resolves a template by name, so a duplicate is a display
+    problem rather than an ambiguity, and it costs a person nothing they cannot
+    fix by renaming one.
     """
     record = {k: v for k, v in fields.items() if k in TEMPLATE_FIELDS}
     record["updated"] = _now()
@@ -3455,9 +3197,8 @@ def delete_spec_block(lib: str, name: str) -> None:
 
 # ─────────────────────────── the phrasebook ───────────────────────────
 #
-# A per-model list of avoid/use pairs — a table wearing a YAML file, and it is a
-# table now. `phrasebook add` stops being able to fail on a library that has
-# never held the document, because there is no document.
+# A per-model list of avoid/use pairs, one row per pair. There is no document
+# to create first, so `phrasebook add` cannot fail on an empty library.
 
 
 TERM_PREFIX = "TERM#"
@@ -3488,10 +3229,7 @@ def add_term(lib: str, model: str, avoid: str, use: str, note: str | None = None
 
     `replicate` is `<owner>/<name>`, carried for display and stored per row
     rather than per model — there is no model row to hang it off, and a term is
-    the only thing this table knows about a model. It was accepted by the route
-    and dropped here for the whole life of the migration, which made
-    `phrasebook show` print `replicate: null` and `phrasebook models` print `?`
-    for every model. The pipeline's fake API stored it, so the suite passed.
+    the only thing this table knows about a model.
     """
     now = _now()
     record = {"model": model, "avoid": avoid, "use": use, "note": note,
@@ -3515,17 +3253,15 @@ def delete_term(lib: str, model: str, avoid: str) -> None:
 #
 # A RENDER JOB IS A ROW, AND DELIBERATELY NOT A SIXTH ENTITY.
 #
-# Stitching, frame extraction and contact sheets moved off a developer's laptop
-# onto a worker Lambda (see `services/render.py`), and the caller that used to
-# watch a progress bar now has to be told when the work finished. The issue that
-# moved the code proposed polling the record — a scene and a movie already carry
-# a status — and that is right as far as it goes: it does not go as far as
-# `frames grid`, which produces an image belonging to no scene, or as far as
+# Stitching, frame extraction and contact sheets run on a worker Lambda (see
+# `services/render.py`), so the caller has to be told when the work finished.
+# Polling the scene or movie record — both carry a status — does not go as far
+# as `frames grid`, which produces an image belonging to no scene, or as far as
 # reporting *why* something failed, since a scene's `error` is one field for
 # every kind of failure a scene can have.
 #
 # So a job has a row of its own: `pk = RENDER#<id>`, `sk = META`. It is not an
-# entity — no `ENTITY_KEYS` prefix, no slug claim, no listing projection, no
+# entity — no `ENTITY_KEYS` prefix, no listing projection, no
 # `by-recent` presence, nothing in `docs/ENTITY_MODEL.md`. The precedent above it
 # in this file is `SWEEP#`: bookkeeping the service writes about work in flight,
 # read by the machinery and not by a person browsing a library.

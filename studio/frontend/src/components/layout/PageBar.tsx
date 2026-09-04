@@ -13,7 +13,7 @@ export interface Crumb {
 }
 
 /** One entry in the overflow menu behind the `⋯` trigger. */
-export interface PageBarMenuItem {
+interface PageBarMenuItem {
   label: string;
   /** Fires and closes the menu. Omit for an item that manages its own click — see `onClick`. */
   onSelect?: () => void;

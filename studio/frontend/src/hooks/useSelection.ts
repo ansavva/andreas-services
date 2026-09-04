@@ -7,9 +7,9 @@ import type { FileEntry } from "../types";
  *
  * Keyed by node id rather than by index, because a listing can be re-fetched
  * under a selection — a presigned URL healing itself, a folder polled again —
- * and an index-keyed selection would silently come to mean different files. It
- * held the object key until #313 and holds the id for the same reason one press
- * further on: an id survives the rename that changes a key.
+ * and an index-keyed selection would silently come to mean different files. An
+ * id rather than a key for the same reason one press further on: an id
+ * survives the rename that changes a key.
  *
  * The anchor is what makes shift-click a *range*: an extending press adds
  * everything between the last press and this one rather than toggling, which is

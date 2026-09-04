@@ -364,9 +364,8 @@ def test_a_file_makes_the_whole_round_trip(api, library, debris, bucket):
     # about a key that was never written.
     assert client.head_object(Bucket=bucket_name, Key=blob_key)["ContentLength"] == len(BODY)
 
-    # **The delete walks `by-path`, and that is a GSI.** `test_transfer.py`
-    # sidesteps the index for exactly this reason; here it cannot be sidestepped,
-    # because `catalog.delete_node` is what the route calls. Racing it makes the
+    # **The delete walks `by-path`, and that is a GSI.** It cannot be
+    # sidestepped here, because `catalog.delete_node` is what the route calls. Racing it makes the
     # delete report one node and leave the file's bytes in the bucket — a failure
     # that would land two assertions later, on `s3.head`, saying nothing about
     # the cause. `child_path` is the folder's own children's `path` prefix, which

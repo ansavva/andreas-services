@@ -108,9 +108,7 @@ def memberships() -> dict[str, str]:
     missing, malformed or unverifiable token, so there is no unauthenticated path
     past this line and the token is verified once per request.
 
-    A mapping rather than a list of ids, because `transfer` needs the role and
-    every other route needs only the key — `lib in memberships()` reads the same
-    either way. One read answers both questions.
+    A mapping of library to role; every route reads it as `lib in memberships()`.
     """
     return {
         membership["lib"]: membership["role"]
@@ -122,24 +120,6 @@ def member_of(lib: str, held: dict[str, str]) -> None:
     """Refuse unless the caller is in the library the record says it belongs to."""
     if lib not in held:
         raise ForbiddenError(f"You are not a member of {lib}.")
-
-
-def owner_of(lib: str, held: dict[str, str]) -> None:
-    """Refuse unless the caller *owns* this library.
-
-    The only place in the API where a role is read at all. Everywhere else
-    membership is the whole of authorisation, because a library is a shared
-    workspace and its members are its editors. A transfer is the exception on
-    purpose: it changes who can reach a subtree, so it is not something one
-    library's member gets to do to another library.
-
-    Two messages, because they are two situations. A non-member is told what
-    every other route tells them; a member who is not an owner is told the thing
-    they could not otherwise work out.
-    """
-    member_of(lib, held)
-    if held[lib] != catalog.ROLE_OWNER:
-        raise ForbiddenError(f"You must be an owner of {lib} to transfer in or out of it.")
 
 
 def view(record: dict, owner: dict | None = None) -> dict:

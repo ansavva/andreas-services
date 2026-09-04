@@ -39,9 +39,8 @@ studio run --model image-upscale --project <project> \
   --extra '{"enhance_model":"High Fidelity V2","upscale_factor":"4x","face_enhancement":true,"face_enhancement_creativity":0}'
 ```
 
-**No prompt.** `--prompt` is an error here, not a no-op. Passing one used to be
-unavoidable and made the model unrunnable: the only payload the CLI would build
-was the one Topaz rejected.
+**No prompt.** `--prompt` is an error here, not a no-op: Topaz rejects a
+payload carrying one.
 
 ## Which enhancer
 

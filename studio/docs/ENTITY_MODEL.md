@@ -29,53 +29,6 @@ conditional on anything any more.
 
 ---
 
-## What was wrong, and what this replaced
-
-The catalog modelled **files**. Studio's users are not files — they are
-**characters** and **projects**, and both were expressed as a folder name plus
-a document inside it.
-
-Four consequences, and every one of them cost something:
-
-1. **Identity is a magic string in a path.** `characters/<slug>/…` and
-   `projects/<slug>/…` make the slug the primary key. So a rename is a tree
-   rewrite (`characters/rename.py`), and a run that recorded a path is stranded
-   by it — which is the whole reason `domain/rewrite.py` exists, and why #420 is
-   open. `paths.py` is 300 lines of string construction whose only job is
-   keeping every module's spelling of that magic string identical.
-
-2. **Records are documents in a bucket, so nothing can query them.** "Every run
-   using this character" is `runs find --character`, which lists every project,
-   lists every run in each, reads `request.json` for each, and greps. "Which
-   projects involve this character" has no answer at all. Both are one query
-   against a row.
-
-3. **Filenames carry structure too.** `<slug>_<group>_<n>.png` in a character's
-   reference pool, `<slug>_in_<n>.png` in a project's input pool. Reference
-   *order* is filename order, so `curate renumber` and `curate regroup` exist to
-   maintain numbering that a row would carry as an attribute. The bible then
-   describes those files in a `references:` map keyed on the very basename the
-   renumbering changes — which is why the two go out of step and why every
-   description write rewrites the whole document.
-
-4. **The web app cannot present any of it.** `WEB_APP.md` states, correctly,
-   that the run JSON is deliberately never parsed — the pipeline owns its shape.
-   The result is that studio.andreas.services can only ever be a file browser
-   over a library whose meaning it is forbidden to read. A character is a folder
-   with a YAML file in it; a run is a folder with three JSON files in it.
-
-The bucket also **leaks names**, which is a hard-rule-#1 problem hiding in
-plain sight: a listing of the media bucket is a list of character slugs. The
-repo forbids naming a character in code, docstrings, fixtures and commit
-messages, and then writes every one of them into an S3 key.
-
-**The fix in one line:** characters, projects, runs, scenes and movies become
-rows with UUIDs; the folder tree stays exactly what it is and hangs off them;
-an S3 key opens with the owner's id instead of its slug, and nothing reads a key
-to decide anything.
-
----
-
 ## Principles
 
 1. **An id is the identity. A name is a label.** Every entity has a `v4` UUID
@@ -94,8 +47,8 @@ to decide anything.
    creation and never re-derived. See
    [D2, and the descriptive detour](#d2-and-the-descriptive-detour).
 3. **Every mutation is an API route.** The CLI holds no AWS credentials and
-   composes no writes of its own; it calls the same routes the SPA calls. This
-   was already true for bytes ([#308](#), #302) and is now true for records.
+   composes no writes of its own; it calls the same routes the SPA calls, for
+   bytes and for records alike.
 4. **Structured data belongs in the row; opaque payloads belong in a blob.**
    Studio owns the envelope of a run and validates it; the model provider owns
    the request and response bodies, which studio stores and never parses. The
@@ -107,87 +60,6 @@ to decide anything.
 6. **One addressing scheme: the node id.** Name paths and raw keys both go.
 
 ---
-
-## Decisions — all five settled, all five built
-
-This section asked for five answers before any code moved. Every one was
-answered **as recommended** and every one has shipped, so what stood here as a
-choice is recorded here as an outcome. The reasoning that produced each is in
-the git history of this file; the consequences are the rest of this document.
-
-| | Question | Settled on | Where it lives now |
-|---|---|---|---|
-| **D1** | One table or three? | **One.** `studio-<env>-catalog` gained `CHAR#`, `PROJ#`, `RUN#`, `SCENE#`, `MOVIE#` partitions beside `LIB#`, `USER#` and `NODE#`. | [Item table](#item-table) |
-| **D2** | What an S3 key looks like | **`<owner_kind>/<owner_id>/<node_id>.<ext>`** — owner id, then the node's id. Stamped once at creation, never parsed, never re-derived. **Revised once and revised back — see below.** | [S3 layout](#s3-layout) |
-| **D3** | How far it goes | **All five entity types**, not characters and projects alone. | [Entities](#entities) |
-| **D4** | Prod data | **Migrated**, by a forward migrator: `plan` / `apply` / `verify` as separate invocations, journalled under `local/migrations/`. | `maintenance/catalog_check.py` |
-| **D5** | Entities in the reel | **Sparse `by-recent`**, re-keyed on a `reel` attribute written only onto image and video file nodes. Fixed the pre-existing folder pollution on the way past. | [Item table](#item-table) |
-
-### D2, and the descriptive detour
-
-**D2 as first decided made the key meaningless** —
-`<owner_kind>/<owner_id>/<node_id>.<ext>` — on the reasoning that a readable key
-is what stranded 69 records and made `domain/rewrite.py` necessary.
-
-**That was then revised, on the argument that it conflated two properties.** The
-danger, the revision said, was never that the old keys read well; it was that
-they were **load-bearing** — `paths.py` built them, callers parsed them, records
-named paths instead of ids. The entity model had already stopped that outright by
-making a record name a node id, so structure in a key was free, and it bought a
-bucket a person could read plus a rebuild path if the catalog were ever lost. The
-key became `<owner_kind>/<owner_id>/<folders below the owner>/<filename>` and
-`reseat --apply` rewrote production into it.
-
-**That revision is reverted. The key is flat again, and this is the settled
-shape:**
-
-```
-characters/char-45f4c2b4-…/node-0304a8b0-….png
-projects/proj-a8091a40-…/node-a5e5d2b1-….mp4
-libraries/lib-bf3b86ef-…/node-7c48b0f9-….png
-```
-
-Two things went wrong with the descriptive key, and neither is about it being
-load-bearing — that half of the revision's reasoning was correct and still is.
-
-- **It put character names back in the bucket.** D2's hard-rule-#1 half removed
-  the slug from the *prefix*, and the descriptive leaf carried the name straight
-  back in one segment lower: `…/reference/face/<name>_face_1.png`. Hard rule #1
-  forbids a character's name in code, docstrings, fixtures, tests and commit
-  messages; a bucket listing spelling it out is the same leak the rule exists to
-  prevent, and it reached 182 production keys.
-- **It made drift permanent.** A key is stamped once and a rename is a row write
-  that deliberately does not touch it, so under a descriptive scheme *every*
-  rename drifted. `reseat` stopped being a migration and became a chore with no
-  end — which is why the section it replaced had to argue that a library showing
-  drift was not a library with a problem.
-
-**Flat, a rename drifts nothing.** The leaf is the node id and no rename changes
-it. The only drift left is a node that MOVED between owners, plus the two legacy
-eras — pre-catalog keys and the descriptive ones — and both of those clear once.
-
-**What this gives up, and it is real.** A listing is UUIDs, so the catalog is the
-only thing that can say what any byte is. Losing the table means losing the
-meaning of every object, not just the index. That is accepted deliberately: the
-table carries PITR and deletion protection and that is the whole of the safety
-net. **Nothing writes a manifest into the bucket** — a rejected option, not an
-oversight, and if the exposure ever stops being acceptable that is the thing to
-build.
-
-**THE PROPERTY THIS STILL RESTS ON: nothing parses a `blob_key`.** It did not
-become less necessary by the key becoming boring. A key is a pointer, it is
-passed whole to `presign`, and the moment something derives truth from one a
-rename is a data migration again and this is all back where it started.
-`test_no_caller_splits_a_blob_key` is the guard, over both halves of the service.
-`services/catalog.py::blob_key_for` and `maintenance/catalog_migrate.py::desired_key`
-are the only two builders, they are in different packages, and
-`test_the_two_key_builders_agree` holds them to the same shape — a second opinion
-about what a key should be *is* drift.
-
-**D4 is done, and so is the migrator.** `plan`, `apply`, `verify` and `reseat`
-have all run against production. The module stays because `reseat` is not a
-one-shot: it is what clears the descriptive keys, and what clears a key left
-behind when a node changes owner.
 
 ## The data model
 
@@ -269,11 +141,8 @@ down nowhere, which is how the two written last came to miss it.
 
 Both kept their original shape and gained an edge beside it, because both carry
 something an edge cannot express: a movie may legally cut one scene twice as a
-reprise, and an edge is set membership. `studio catalog edges` backfilled the
-rows for records that predate them and `catalog verify` reported a missing or
-stale one; both went with the `maintenance/` layer. Every writer maintains its
-own edges — `catalog.put_shots` and its siblings — so the backfill has nothing
-left to do.
+reprise, and an edge is set membership. Every writer maintains its own edges —
+`catalog.put_shots` and its siblings.
 
 **Two items per entity.** The `META` row is the record; the second is the
 **library index** — `LIB#<lib>` / `CHAR#<char_id>` — which is what makes the
@@ -297,36 +166,6 @@ at and it must never change: `CHAR#<char_id>` / `META`. That answers "read this
 character" and answers nothing about "every character in this library" — and
 this table must never be scanned — so a second item exists purely as the **list
 index**: `LIB#<lib>` / `CHAR#<char_id>`, one query per library.
-
-#### The second item used to claim a NAME, and no longer does
-
-It was `LIB#<lib>` / `CHARSLUG#<slug>`, written under
-`attribute_not_exists(pk)`, and its job was uniqueness as much as listing. The
-argument for it was sound as far as it went: DynamoDB enforces uniqueness on one
-thing only, the primary key, so making a slug unique meant making it part of a
-key — and a GSI would not have done, because two records with the same slug both
-land in an index, silently.
-
-**What changed is that the uniqueness stopped being wanted.** A character has one
-free-text `name`, it is a LABEL, and nothing resolves an entity by it: the SPA
-routes on `char-<uuid>`, the API addresses ids, an edge stores an id. So a
-duplicate name is two rows that look alike in a list — which a person fixes by
-renaming one — and it is not worth a condition expression, a second failure mode
-and a 409 every client has to handle.
-
-The item that remains is keyed on the id it points at, which means a rename
-touches exactly one row: the record. Nothing to keep in step, nothing to move in
-a transaction, nothing to half-happen.
-
-**Keying the character on its name instead** — `LIB#<lib>` / `CHAR#<name>` —
-would collapse it to one item and reintroduce exactly the disease: renaming
-becomes delete-and-recreate, and every run link and binding that pointed at it is
-pointing at a key that no longer exists.
-
-So: two items, one transaction, and the create/rename/delete paths are the same
-shape as the node writes beside them. A rename is: delete the old claim, put the
-new claim conditionally, update the record, rename the root folder node — four
-operations, atomic.
 
 ### The folder layout is convention, not schema
 
@@ -418,7 +257,6 @@ to a real field, and minus `references:` and
 `default_set:` — both of which are now tags on the files themselves. The remaining sections — `identity`, `face`,
 `body`, `wardrobe`, `voice`, `rendering`, `consistency`, `text_identity_block` —
 are stored as nested maps and validated against a schema the API owns.
-`schema_version` moves onto the record.
 
 **`rev` closes a window that is currently open.** Today `write_profile` re-reads
 the node's `updated_at` and refuses if it moved — check-then-write, with a gap.
@@ -495,22 +333,6 @@ Scene and movie records follow the same shape: an envelope of ids and status,
 with shots as `SHOT#` rows carrying `order`, `prompt`, `run`, `panel`, and the
 stitched output as a node id.
 
-### What is deleted from the model
-
-- Every `*_prefix()` / `*_key()` builder in `domain/paths.py` for characters and
-  projects. The module becomes a name-validation helper or disappears.
-- `domain/rewrite.py` in its entirety, and #420 with it. A record names a node
-  id; a rename or a move cannot strand one. **This is the single largest
-  simplification in the proposal.**
-- `domain/characters/rename.py` — a rename is `PATCH /api/characters/<id>`.
-- `curate renumber` and `curate regroup`.
-- The name-path write routes (`/api/folder`, `/api/object`, `/api/objects/*`,
-  `PATCH /api/text?key=`) and `GET /api/asset?key=` — see
-  [Shared material](#shared-material).
-- `services/keys.py`'s `clean_key`, `_normalise`, `_reject_traversal`.
-
----
-
 ## S3 layout
 
 Entity-prefixed keys (D2), and nothing below the prefix but the node
@@ -563,9 +385,8 @@ Folders a person makes by hand keep working and belong to nobody in particular.
 
 ### Shared material
 
-`phrasebook/wording.yaml` and `config/angle/` were the two things with no catalog
-node, and they were the sole reason `GET /api/asset?key=` took a raw S3 key.
-Both are closed.
+Nothing in the library lacks a catalog node — the phrasebook and the angle
+images included — so nothing is addressed by a raw S3 key.
 
 - **The phrasebook is rows** — `LIB#<lib>` / `TERM#<model>#<avoid>`. It was a
   per-model list of avoid/use pairs, which is a table wearing a YAML file.
@@ -623,12 +444,7 @@ moves with it.
 | `PATCH /api/characters/<id>/profile` | `{profile, rev}` → whole-bible replace, validated. The `edit` round trip |
 | `PATCH /api/characters/<id>/profile` | `{patch, rev}` → merge one section |
 | `DELETE /api/characters/<id>` | `?files=keep\|delete` — refuses while a project or run still links it, unless `?force=1` |
-| `GET /api/characters/<id>/references` | `?group=` → entries in `(group, order)` order, each with its node and a presigned URL |
-| `POST /api/characters/<id>/references` | `{node, group, description?, tags?, after?}` → attaches an existing node. **409** if already a reference |
-| `PATCH /api/characters/<id>/references/<node>` | `{group?, description?, tags?, after?}` |
-| `PATCH /api/characters/<id>/references` | `{entries: [{node, group, description?, tags?}]}` → bulk describe / reorder in one transaction. This is `describe-refs` and `sync-refs` |
-| `DELETE /api/characters/<id>/references/<node>` | detaches; the file stays where it is |
-| `PATCH /api/characters/<id>/default-set` | `{nodes: [...]}` |
+| `PATCH /api/nodes/<id>` | `{description?, tags?}` — a reference is a file node under the character carrying tags (`default` marks identity) and a description; `studio describe` is the CLI over it |
 | `GET /api/characters/<id>/selection` | `?pick=&tag=&limit=` → the ordered nodes a model would be shown, with presigned URLs. **Refuses** an over-cap selection with the index in the body — the current behaviour, moved to one place |
 | `GET /api/characters/<id>/textblock` | the pasteable identity paragraph |
 | `GET /api/characters/<id>/runs` | `?cursor=` → runs that used this character, newest first |
@@ -684,15 +500,14 @@ Kept, with the name-path routes removed and the bulk verbs moved onto ids.
 
 | Route | |
 |---|---|
-| `GET /api/nodes?parent=` · `GET /api/nodes/<id>` · `GET /api/resolve?path=` | unchanged |
-| `POST /api/nodes` `{parent, name, kind, on_conflict?}` | unchanged |
-| `PATCH /api/nodes/<id>` `{name}` **or** `{parent}` | unchanged; both is still a 400 |
-| `POST /api/nodes/move` `{ids, destination}` | replaces `/api/objects/move` and `/api/folder/move` |
-| `POST /api/nodes/copy` `{ids, destination}` | replaces `/api/objects/copy` |
-| `DELETE /api/nodes` `{ids}` | replaces `/api/objects` and `/api/folder` |
-| `GET/PATCH /api/nodes/<id>/text` | replaces `/api/text` in both directions |
-| `GET /api/nodes/<id>/download-url` · `POST /api/nodes/<id>/upload-url` · `/confirm-upload` | unchanged |
-| `GET /api/nodes?under=&depth=&kind=&tag=` | one listing; `prefix=` dropped, and `/api/tree` + `/api/reel` folded in |
+| `GET /api/nodes?parent=` · `GET /api/nodes/<id>` · `GET /api/resolve?path=` | |
+| `POST /api/nodes` `{parent, name, kind, on_conflict?}` | |
+| `PATCH /api/nodes/<id>` `{name}` **or** `{parent}` | both is a 400 |
+| `POST /api/nodes/move` `{ids, destination}` · `POST /api/nodes/copy` `{ids, destination}` | |
+| `DELETE /api/nodes` `{ids}` · `DELETE /api/nodes/<id>` | |
+| `GET/PATCH /api/nodes/<id>/text` | |
+| `GET /api/nodes/<id>/download-url` · `POST /api/nodes/<id>/upload-url` · `/confirm-upload` | |
+| `GET /api/nodes?under=&depth=&kind=&tag=` | one listing over a subtree |
 | `GET /api/nodes/<id>/owner` | which entity a node belongs to, derived from its ancestry — what the SPA shows as "in project …" |
 
 **A node view gains `owner`**: `{kind, id, name}` or null. It still never carries
@@ -732,47 +547,6 @@ objects     upload · download · presign · convert
 maintenance catalog (plan · migrate · verify · gc · reseat) · dev-seed
 ```
 
-### What changes, command by command
-
-| Command | Change |
-|---|---|
-| `character create <name>` | `POST /api/characters`. Creates the pools as part of the transaction rather than lazily on first write |
-| `character rename <name> <new>` | one `PATCH` of one field. **No objects move, no records are rewritten, the root folder does not even move.** Today this is a per-basename `PATCH` sweep plus a record rewrite |
-| `character set-ref-desc` / `describe-refs` | one row write each, or one bulk `PUT`. No whole-bible rewrite, no `updated_at` conflict dance |
-| `character order <name> --group face <node>…` | **new** — explicit reference ordering, replacing filename numbering |
-| `character regroup` (was `curate regroup`) | one `PATCH` per entry; no object moves |
-| `curate renumber` | **deleted** — nothing to renumber |
-| `curate move` | a node move, unchanged in meaning |
-| `projects new <slug>` | `POST /api/projects` |
-| `projects link <slug> <character>` | **new** — maintain involvement explicitly |
-| `projects rename` | **new**, and trivial — it was impossible before |
-| `runs find --character <slug>` | one API query instead of a walk over every project |
-| `runs list --model --status --since` | **new** filters, free from the row |
-| `runs show` | prints the envelope; `--payload` prints the untouched provider documents |
-| `runs delete <runref>` | **new** — `DELETE /api/runs/<id>`, keeping the folder unless `--files delete` |
-| `rewrite check` | **deleted** — the class of bug is gone |
-| `phrasebook add` | `POST /api/phrasebook`; no document to be missing |
-| `upload` / `download` / `presign` | take a node id or a `<entity>/<path>` address that the API resolves |
-| `catalog verify` / `reseat` | **deleted** with the rest of `maintenance/`. Their subject was the migration below, which is over |
-
-**Addressing on the command line.** **An id, or a name the CLI matches itself.**
-This used to say a slug was what a person types and that `<slug>/reference/…`
-resolved server-side through `GET /api/resolve?path=` — and it did, against a
-claim row, in one call. There is no claim: the API resolves ids only, so a name
-is a listing plus a match on the client (`paths.by_name`), and an ambiguous name
-is **refused with the ids** rather than resolved to whichever sorted first.
-
-A name path still resolves through `GET /api/resolve?path=`, but its first
-segment is an entity's root folder — which is named by the entity's **id**, so a
-path is `<char-uuid>/reference/face/<file>`. The strings in every `SKILL.md`
-that spelled that segment as a name have been updated.
-
-Ambiguity between a character and a project called the same thing is still
-settled by the command: `studio character …` matches characters, `studio
-projects …` matches projects, and `--project` never looks at characters.
-
----
-
 ## The web app
 
 Today the SPA is a file browser rooted at the library, and the entity structure
@@ -790,8 +564,7 @@ reachable from everywhere.
 | `/s/<scene_id>` · `/m/<movie_id>` | Scene, Movie |
 | `/f/<node_id>` · `/o/<node_id>` | Folder browser, object viewer — unchanged |
 
-Ids in URLs everywhere, so every link survives every rename. No legacy
-redirect route; `LegacyRedirect.tsx` goes.
+Ids in URLs everywhere, so every link survives every rename.
 
 ### Character page
 
@@ -835,46 +608,6 @@ the browsing experience, not a replacement for it.
 
 ---
 
-## Migration
-
-Assumes D4 = migrate.
-
-**This ran. The commands below no longer exist** — `plan` and `apply` were
-retired in August 2026 once prod carried its entity rows, and `verify` was
-promoted to `studio catalog verify`. What follows is the runbook as it was
-executed, kept because the ORDERING is the safety property and a future
-migration of any kind should copy it. `git log` has the code.
-
-`studio catalog migrate plan | apply | verify`, then `reseat` — separate
-invocations, `--dry-run` unless `--apply`, journalled under
-`local/migrations/<ts>.json`, in the shape `catalog_seed` established and for
-the same reason: the ordering between phases is the safety property.
-
-| Phase | Does |
-|---|---|
-| `plan` | Walks the catalog. Reports every character, project, run, scene and movie it would create, every document it would parse, and every one it cannot. **UNPARSEABLE must be 0** before `apply` |
-| `apply` | Creates entity rows; adopts each existing tree's top folder as the entity's `root` rather than making a new one; turns each `references:` entry into a row; turns each run/scene/movie document into an envelope and leaves the document in place as its payload blob. **Copies no bytes, moves no objects, deletes nothing** |
-| `verify` | Re-reads both sides: every entity resolves, every folder it names exists, every reference names a live node, every envelope's outputs exist |
-| `reseat` | *Optional, separate, later.* Rewrites blob keys to the new scheme — server-side copy, row update, delete of the old object. Only after `verify` passes |
-
-Slugs are read off the existing folder names and become the entity's `slug`
-attribute — so the strings a person types do not change on migration day even
-though nothing is addressed by them any more.
-
-### Running it, per environment
-
-**Prod — migrate BEFORE deploying.** `apply` only adds rows, and every one of
-them is invisible to the code currently running: entity rows carry
-`created`/`updated` rather than `created_at`, so they do not enter the present
-`by-recent` index, and their `pk` prefixes keep them out of every node listing.
-The `reel` stamps sit inert until the GSI is re-keyed. So there is no window in
-which prod is half-migrated and visibly wrong.
-
-```bash
-studio catalog migrate plan       # UNPARSEABLE must be 0, or apply refuses
-studio catalog migrate apply
-studio catalog migrate verify
-studio config sync --apply        # the angle images, which have no node in prod
 # then merge: studio-prod.yaml applies the GSI and ships the new image
 studio catalog reseat --apply     # optional, later, never automatic
 ```
@@ -924,38 +657,3 @@ a stack whose id is lost keeps billing while being unreachable.
 there to migrate.
 
 ---
-
-## Build order
-
-Each phase is a PR, green on its own, and the service keeps working throughout.
-
-| # | Phase | Contains |
-|---|---|---|
-| 1 | **Catalog service** | New item shapes, entity CRUD, slug claims, `rev`, transactions, unit tests. No routes yet |
-| 2 | **Characters + projects API** | Routes above, `moto`-backed tests both sides, smoke coverage |
-| 3 | **CLI onto entities** | `character`, `projects`, `curate` move to the API; `paths.py` character/project builders and `rename.py` deleted; CLI surface reference regenerated deliberately |
-| 4 | **Runs typed** | `POST /api/runs` gains the envelope; `runs.py` records ids; `rewrite.py` and `runs find`'s walk deleted |
-| 5 | **Scenes + movies typed** | Same, one tier up |
-| 6 | **SPA — entities** | Home, character page, project page, run page; browser rescoped, `LegacyRedirect` deleted |
-| 7 | **Shared material** | Phrasebook rows, angle images as nodes, `?key=` and `keys.clean_key` deleted |
-| 8 | **Migrator** | `catalog migrate`, then `reseat` |
-| 9 | **Sweep** | Name-path routes deleted, docs rewritten, `PIPELINE.md` and `WEB_APP.md` reconciled against this file |
-
-Phases 1–3 are the ones that answer your complaint directly. 4–5 are D3. 6 is
-the presentation rethink. 7–9 are the cleanup that makes the model honest.
-
----
-
-## Open questions beyond the five decisions
-
-1. **Does a character belong to exactly one library?** Assumed yes. A character
-   shared across libraries would need a copy or a link table; nothing wants one
-   yet.
-2. **Should `run` carry cost?** Replicate reports prediction metrics
-   inconsistently by model. Proposed: record it when the provider gives it, and
-   never compute it.
-3. **Delete semantics.** Proposed: deleting an entity defaults to keeping its
-   files (the folder is orphaned into the library root) and `?files=delete` is
-   explicit. The reverse default loses media to a typo.
-4. **`chains/`** — an ad-hoc frame sequence with no scene behind it. Proposed:
-   leave it as an ordinary folder for now rather than making it a sixth entity.

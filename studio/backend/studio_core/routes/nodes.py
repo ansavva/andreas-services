@@ -1,12 +1,7 @@
 """The file layer: list, read, create, rename, move, copy, delete, upload, edit.
 
-**Ids only.** Every route here takes a node id, and the name-path routes that
-used to sit beside them in `routes/manage.py` are gone — `/api/folder`,
-`/api/object`, `/api/objects/*` and `PATCH /api/text?key=`. What kept them alive
-was that every share link this service had ever issued was a path of names; ids
-in URLs everywhere is what retired them, and the whole of `manage.py` went with
-the second addressing scheme rather than staying as a file a reader had to work
-out the address convention of.
+**Ids only.** Every route here takes a node id; there is no name-path
+addressing, so a share link survives every rename and move.
 
 `GET /api/resolve?path=` survives that and is the reason it can: it turns a name
 path into an id **once**, so `<folder>/reference/face/<file>` keeps working as an
@@ -36,7 +31,7 @@ every other folder in a character or a project may be renamed, moved or deleted
 freely, because reference-ness and run-ness are row attributes rather than
 locations. The root is different only because a record names it.
 
-## What comes from `before_request` (#351)
+## What comes from `before_request`
 
 `g.caller_sub` and `g.library` are set on every request before any route here
 runs, so nothing in this file verifies a token or reads a header to decide which
@@ -86,10 +81,10 @@ def list_nodes():
     wants them apart splits on `kind` in a line; a caller that wants them in one
     order — every recursive listing — cannot put them back together.
 
-    `owner` is no longer resolved for a listing. It was affordable at one level
-    because every child of a folder shares the parent's owner, and that trick
-    does not survive a branch; `GET /api/nodes/<id>/owner` answers for one node,
-    and a listing that needs the entity already knows which one it asked under.
+    `owner` is not resolved for a listing: every child of a folder shares the
+    parent's owner at one level, and that trick does not survive a branch.
+    `GET /api/nodes/<id>/owner` answers for one node, and a listing that needs
+    the entity already knows which one it asked under.
     """
     held = support.memberships()
     under = request.args.get("under")
@@ -257,10 +252,9 @@ def update_node(node_id: str):
     which is what tells the UI to keep the rename field open rather than closing
     it and reporting success.
 
-    **Renaming an entity's root folder here does not rename the entity**, and it
-    no longer has anything to do with it: an entity root is NAMED BY ITS ID, so
-    the two were separated entirely when slugs went. Changing what a character is
-    called is `PATCH /api/characters/<id>`, one field on one row.
+    **Renaming an entity's root folder here does not rename the entity**: an
+    entity root is NAMED BY ITS ID. Changing what a character is called is
+    `PATCH /api/characters/<id>`, one field on one row.
     """
     body = support.body()
     name = body.get("name")
@@ -432,40 +426,6 @@ def write_text(node_id: str):
     return jsonify(manage.update_text(record, support.body().get("content"))), 200
 
 
-@bp.post("/nodes/<node_id>/transfer")
-def transfer_node(node_id: str):
-    """Hand a subtree to another library. Owner in both, or 403.
-
-    **Its own route rather than a `parent` in the patch above**, because
-    `catalog.move_node` refuses a destination in another library on purpose and
-    that refusal is worth keeping: a transfer changes who can reach the branch,
-    and the check that makes it safe is one a move has no reason to make.
-
-    **Two libraries, two checks, and which is which is the point of writing them
-    on separate lines.** The first is against the node's own `lib` — read off the
-    record, never off `g.library`. The second is against the library named in the
-    body. The caller needs `owner` in both: in the source because the subtree is
-    leaving it, and in the destination because everyone there is about to be able
-    to read it.
-
-    **The node keeps its id, so every share link to it survives** — and now
-    resolves only for members of the destination.
-    """
-    body = support.body()
-    lib = body.get("lib")
-    if not isinstance(lib, str) or not lib:
-        raise ValidationError("lib is required")
-
-    held = support.memberships()
-    record = catalog.node(node_id)
-    support.owner_of(record["lib"], held)  # the source: the node's own library
-    support.owner_of(lib, held)  # the destination: the library the body names
-
-    # 200 and not 201: nothing new exists, and the response is the node it has
-    # always been with a different `lib`.
-    return jsonify(support.view(catalog.transfer_node(node_id, lib))), 200
-
-
 @bp.get("/nodes/<node_id>/download-url")
 def download_url(node_id: str):
     """A fresh presigned GET for one node's blob.
@@ -580,7 +540,7 @@ def confirm_upload(node_id: str):
 
     Until this runs the node is a placeholder, and `browse.is_abandoned_upload`
     keeps it out of a listing — a row naming a key with nothing behind it draws a
-    tile that will not load, which is the state #442 reported.
+    tile that will not load.
     """
     held = support.memberships()
     record = support.node_at(node_id, held)

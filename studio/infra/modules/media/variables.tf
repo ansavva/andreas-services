@@ -17,23 +17,6 @@ variable "versioning_enabled" {
   default     = true
 }
 
-variable "key_prefix" {
-  description = <<-EOT
-    Optional key prefix the whole tree lives under. EMPTY by default: the tree is
-    at the bucket root, because the bucket IS the media store. (There was a
-    `media/` wrapper once, left over from mirroring a Google Drive folder 1:1; it
-    bought nothing and was removed.) This stays as the single seam for staging a
-    second copy of the tree in the same bucket. Include the trailing slash.
-  EOT
-  type        = string
-  default     = ""
-
-  validation {
-    condition     = var.key_prefix == "" || endswith(var.key_prefix, "/")
-    error_message = "key_prefix must be empty or end with a trailing slash (e.g. \"staging/\")."
-  }
-}
-
 variable "tags" {
   description = "Tags applied to all resources"
   type        = map(string)
@@ -59,4 +42,10 @@ variable "cors_allowed_origins" {
     condition     = !contains(var.cors_allowed_origins, "*")
     error_message = "A wildcard origin would let any page complete an upload PUT. Name the SPA's origin."
   }
+}
+
+variable "noncurrent_version_expiration_days" {
+  description = "Days a superseded object version is kept before it expires. The recovery window for a delete or an overwrite."
+  type        = number
+  default     = 30
 }

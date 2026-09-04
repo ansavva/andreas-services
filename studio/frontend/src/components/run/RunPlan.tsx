@@ -13,7 +13,7 @@ import { PromptFields } from "../scene/motionPrompt";
 import { ApiError } from "../../apis/client";
 import { approveRun, submitRun } from "../../apis/studio";
 import type { RunAsset, RunRecord, RunSend } from "../../types";
-import { formatDate, formatTextContent } from "../../utils/format";
+import { formatDate } from "../../utils/format";
 import { getUserEmail, getUserSub } from "../../auth/oauth";
 import { useArmed } from "../../hooks/useArmed";
 
@@ -232,38 +232,6 @@ function describe(send: RunSend): string {
     default:
       return send.field;
   }
-}
-
-/**
- * The prompt, as the document it is.
- *
- * `formatTextContent` re-indents JSON for reading and is the only thing done to
- * it — no field is looked up and nothing branches on the shape. A structured
- * prompt is authored as JSON by `studio prompt`, and flattening one into a
- * paragraph would throw away the structure that makes it re-editable.
- */
-/**
- * A prompt document, drawn the one way.
- *
- * Exported because a scene's shot carries the same thing — a compiled prompt
- * document — and was drawing it as a definition list of Subject / Action /
- * Style while the run screen drew it as the document it is. Two renderings of
- * one artifact is how they drift.
- */
-export function Prompt({ prompt }: { prompt: unknown }) {
-  const text =
-    typeof prompt === "string" ? prompt : JSON.stringify(prompt, null, 2);
-  return (
-    // `whitespace-pre-wrap break-words`, not `overflow-auto` alone: a prompt is
-    // prose, and at 390px an unwrapped one runs off the right edge and has to be
-    // scrolled sideways a line at a time. A structured prompt keeps its
-    // indentation, which is what `pre-wrap` preserves and `normal` would not.
-    <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-none border border-line bg-card p-3 font-mono text-xs leading-relaxed text-ink">
-      <code>
-        {formatTextContent(text, typeof prompt === "string" ? "text" : "json")}
-      </code>
-    </pre>
-  );
 }
 
 /**

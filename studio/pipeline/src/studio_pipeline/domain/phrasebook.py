@@ -5,41 +5,21 @@ the phrase to use in its place. Different models read the same idea
 differently, so the phrasing that produces the intended result varies between
 them, and that knowledge is tedious to rediscover.
 
-IT WAS A YAML DOCUMENT AND IT IS NOW ROWS
------------------------------------------
-`phrasebook/wording.yaml` is gone. Each substitution is one row —
-`LIB#<lib>` / `TERM#<model>#<avoid>` — which is what it always was: a per-model
-list of avoid/use pairs is a table wearing a document.
+ROWS, NOT A DOCUMENT
+--------------------
+Each substitution is one row — `LIB#<lib>` / `TERM#<model>#<avoid>` — because
+a per-model list of avoid/use pairs is a table. A row has no precondition:
+`add` on an empty library writes one row and succeeds, and there is no
+document for a sync to clobber.
 
-**The concrete win is a failure that disappears.** The document was written
-through `PATCH /api/text`, a route that overwrites an existing key and cannot
-invent one, because studio's API has no upload and this was the one write in it
-a person authors. So `studio phrasebook add` against a library that had never
-held a `wording.yaml` was *refused* — the first entry anybody tried to record
-was the one that could not be. The workaround was a seed copy in the repo and a
-line in `dev-setup.sh` that pushed it only when the key was absent (#425),
-carefully, because from the first `add` the bucket's copy was the live document
-and a plain sync would have deleted its entries.
+`GET /api/phrasebook` answers `{"terms": [...]}` where every other listing
+route answers a bare array; `adapters.entities.phrasebook` unwraps it, and
+`tests/unit/adapters/test_entities.py` pins that, because an unwrapped read
+would come back empty and an empty phrasebook is a legitimate state that looks
+identical.
 
-None of that exists any more. A row has no precondition: `add` on an empty
-library writes one row and succeeds, and there is nothing for a sync to
-clobber.
-
-**This used to claim reading was never the broken half. It was.** `GET
-/api/phrasebook` answers `{"terms": [...]}` where every other listing route
-answers a bare array, and `adapters.entities.phrasebook` passed the response
-through `_as_list`, which returns `[]` for any shape that is not a list. So
-every read came back empty — for every model, in every library, whatever it
-held — and an empty phrasebook is a legitimate state that looks identical.
-Prod held 16 terms and `show` printed `{}`. The pipeline's fake API answered
-this one route with a bare list, so the suite never saw it. Fixed in the
-adapter, pinned in `tests/unit/adapters/test_entities.py`.
-
-Two smaller things went with it. Uniqueness is now the key's: a duplicate
-avoid-phrase for one model is a **409** rather than a second entry silently
-appended beside the first, which is how the same phrase ended up recorded twice
-with different replacements. And `rm` is possible at all — removing an entry
-from a document meant rewriting the whole document, so nothing offered it.
+Uniqueness is the key's: a duplicate avoid-phrase for one model is a **409**
+rather than a second entry beside the first. `rm` deletes one row.
 
 SHAPE
 -----
@@ -103,10 +83,9 @@ def _section(rows: list[dict]) -> dict:
     `entries` — because that is what every `SKILL.md` example shows and what a
     person reading the output expects. The storage changed; the reading did not.
 
-    **The date field is `created`, not the document's `added`.** Rows carry the
-    same `created` stamp every other row in the table does, and the reader was
-    left asking for `added` when the migration made them rows — so the date was
-    silently absent from every section `show` printed.
+    **The date field is `created`.** Rows carry the same `created` stamp every
+    other row in the table does; reading any other name would silently drop
+    the date from every section `show` prints.
     """
     replicate = next((r["replicate"] for r in rows if r.get("replicate")), None)
     return {"replicate": replicate,
@@ -175,12 +154,7 @@ def do_check(model, text):
 @click.option("--replicate", help="owner/name, when first creating the section")
 @click.option("--use", required=True)
 def do_add(avoid, model, note, replicate, use):
-    """Record a substitution.
-
-    **This can no longer fail on a library that has never held a phrasebook.**
-    See the module docstring: the write used to require a document to already
-    exist, so the first entry anybody recorded was the one that was refused.
-    """
+    """Record a substitution. Works on a library that has never held one."""
     try:
         entities.add_phrasebook_term(model, avoid, use, note=note or None,
                                      replicate=replicate)

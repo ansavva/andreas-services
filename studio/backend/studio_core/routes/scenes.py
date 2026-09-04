@@ -11,10 +11,7 @@ prompts is what a person does to a plan; `run` and `panel` are what a render put
 there, and a plain replace would silently discard them — so a shot matched by id
 keeps both unless the request names them.
 
-**Stitching is a render job, and this docstring used to say the opposite.** It
-said `ffmpeg` ships in the pipeline wheel and the Lambda has none, so `assemble`
-downloads, stitches locally and `PATCH`es the record — sound reasoning about a
-fact, and the fact was an image. `services/render.py` enqueues a cut and a worker
+**Stitching is a render job.** `services/render.py` enqueues a cut and a worker
 Lambda with ffmpeg in its image does the download, the stitch and the record.
 
 `POST /api/scenes/<id>/output` below is unchanged and is not what the render path
@@ -65,12 +62,9 @@ def _scene(scene_id: str, held: dict) -> dict:
 def _planned(body: dict, name: str) -> tuple[dict, list[dict]]:
     """Normalise and validate an authored plan. **The write gate.**
 
-    This route used to take whatever `shots` it was handed — a list of objects,
-    and nothing further asked. Every plan reaching it happened to be well formed
-    because `domain/storyboard.py` normalised it first, on one client, and the
-    SPA had no way to author one at all. So the checks existed and the service
-    did not have them: a duplicate shot id, a panel with neither prompt nor
-    image, two panels both claiming to be the start frame — all storable.
+    The service, not a client, decides what is storable: a duplicate shot id, a
+    panel with neither prompt nor image, two panels both claiming to be the
+    start frame are refused here whichever client sent them.
 
     `storyboard.normalise` also fills in what the author left implicit (ids,
     numbering, inherited defaults, derived status), which is why it runs here
@@ -124,10 +118,7 @@ def create_scene():
             **{field: body[field] for field in SCENE_PLAN if field in body},
         },
         # `name` belongs in the projection because a row without one cannot be
-        # DRAWN. It used to carry `slug` too, for addressing — `GET /api/scenes`
-        # omitted it and every caller resolving `<project>/<slug>` raised
-        # `KeyError: 'slug'` against a row it had just been handed. The only
-        # address is the id now, so there is nothing left to omit.
+        # DRAWN. The only address is the id.
         listing={"status": doc.get("status") or "planned", "name": name},
     )
 
@@ -328,11 +319,9 @@ def get_scene(scene_id: str):
 # never learned it had one.
 #
 # `stitch` and `output` are the encoder's own report and are stored without being
-# read here. That used to be because the encoder was somewhere else entirely —
-# `ffmpeg` shipped in the CLI's wheel and the Lambda had none — and it stays true
-# for a better reason: the encoder is `services/render.py` now, which writes these
-# fields itself through `update_project_entity` rather than through this route, so
-# this route's job is to accept a report from a client that made a cut some other
+# read here: the encoder is `services/render.py`, which writes these fields
+# itself through `update_project_entity` rather than through this route, so this
+# route's job is to accept a report from a client that made a cut some other
 # way. `movies.py` accepted `output` already, which is why a movie assembled and a
 # scene did not.
 #
@@ -413,8 +402,8 @@ def _restate(record: dict, shots: list[dict]) -> dict:
     """Recompute the scene's status from its shots, and store it if it moved.
 
     **Derived, not asserted.** `scene_status` reads the shots and the output; a
-    caller that wrote a shot and forgot to restate the scene used to leave the
-    two disagreeing, and the SPA drew whatever the row said. Writing only on a
+    caller that wrote a shot and forgot to restate the scene would otherwise
+    leave the two disagreeing. Writing only on a
     change keeps this off the hot path for the common revision that moves
     nothing.
     """

@@ -8,9 +8,6 @@
 # It is not *only* that half, and the difference matters. CI builds the deployed
 # half, but a person or an agent working on it locally still needs the parts CI
 # gets for free: frontend/.env.local (step 3) and frontend/node_modules (step 4).
-# This header used to claim the deployed half "needs nothing from here", which
-# read as a scope boundary and left those prerequisites owned by no script at
-# all — the reason a clean checkout reported `tsc: not found`.
 #
 # The only hard requirement is `uv`. The pipeline itself is one package
 # (studio/pipeline) with one dependency set, exposing one command: `studio`.
@@ -66,11 +63,8 @@ fi
 # ---------------------------------------------------------------------------
 # 2. Install the pipeline and put its `studio` command on PATH.
 #
-#    The pipeline used to be a set of standalone scripts, each declaring its own
-#    dependencies inline and invoked by its path. It is now one package with one
-#    dependency set, exposing one command — so setup is a sync rather than a
-#    per-script cache warm, and the skills can say `studio runs list` instead of
-#    naming a file.
+#    One package with one dependency set, exposing one command — so setup is a
+#    single sync, and the skills say `studio runs list` rather than naming a file.
 # ---------------------------------------------------------------------------
 PIPELINE="$STUDIO_DIR/pipeline"
 
@@ -99,19 +93,14 @@ fi
 # ---------------------------------------------------------------------------
 # 3. Write the env files, from THIS MACHINE'S DEV STACK.
 #
-#    This block used to read `/studio/prod/*` from SSM and pin the live bucket
-#    and the live Cognito pool into the local env files, under a heading that
-#    read "LOCAL POINTS AT PROD, DELIBERATELY". **That is over (#287.)** Studio
-#    stops connecting to production from this repo, the way every other service
-#    in the monorepo already works. The old reasoning — that a second, empty
-#    bucket would exercise none of the behaviour that matters — is answered by
-#    seeding the dev stack from a published fixture (#284, #285) rather than by
-#    pointing at prod.
+#    Nothing here reads `/studio/prod/*`: the values come from this machine's
+#    dev stack, which `dev-aws-seed.sh` seeds from a published fixture so it
+#    exercises the behaviour that matters without touching prod.
 #
-#    Running the CLI against production is a `studio --profile prod <command>`
-#    now, and it is deliberately still not a flag on this script: this one sets
-#    up the LOCAL half, and pointing that at prod is what #287 removed. Step 3a
-#    below syncs the `dev` profile; `studio profile sync prod` writes the other.
+#    Running the CLI against production is `studio --profile prod <command>`,
+#    deliberately not a flag on this script: this one sets up the LOCAL half.
+#    Step 3a below syncs the `dev` profile; `studio profile sync prod` writes
+#    the other.
 #
 #    Values come from the dev stack's Terraform outputs, not SSM: SSM holds what
 #    the deploy workflow wrote, and nothing deploys a dev stack.
@@ -124,10 +113,8 @@ fi
 # the whole session hook down with it. Its `log` output goes to stderr, so what
 # is captured is exactly the four values.
 #
-# Four of the five: the catalog table used to be read here to pin into
-# `studio/.env`, and the `dev` profile carries it now. `load_dev_stack_outputs`
-# still refuses a state missing any of the five, so nothing is unchecked by
-# dropping it — it is simply not this script's to write any more.
+# Four of the five: the `dev` profile carries the catalog table.
+# `load_dev_stack_outputs` refuses a state missing any of the five.
 if dev_stack="$(
   # shellcheck source=dev-aws-common.sh
   source "$STUDIO_DIR/scripts/dev-aws-common.sh"
@@ -202,11 +189,8 @@ EOF
   # list appended to whenever a variable retires; the cost of an extra entry is
   # one grep per session and the cost of a missing one is a wrong diagnosis.
   #
-  # STUDIO_S3_PREFIX used to need a message of its own, because "nothing reads
-  # it" would have been a lie — the layout migrator did, and only it. That
-  # command is deleted, no reader is left, and it joins the list. The WARNING
-  # is not what retired; a stale pin in someone's .env is exactly as silent as
-  # it ever was, and this is what breaks the silence.
+  # A stale pin in someone's .env is silent, and this is what breaks the
+  # silence.
   for dead in STUDIO_S3_PREFIX STUDIO_S3_MEDIA_PREFIX STUDIO_MAX_WALK_OBJECTS; do
     if grep -q "^${dead}=" "$STUDIO_DIR/.env"; then
       warn "studio/.env sets ${dead} — retired, and read by nothing. Delete the line."
@@ -215,12 +199,10 @@ EOF
   # -------------------------------------------------------------------------
   # 3a. The `dev` PROFILE, which replaces pinning the stack into studio/.env.
   #
-  #     This block used to append STUDIO_S3_BUCKET and STUDIO_CATALOG_TABLE to
-  #     that file. Two problems with it, and the second is why it is gone.
-  #
-  #     A pin is per-CHECKOUT and the stack is per-MACHINE, so a second worktree
-  #     had no pins at all and a maintenance command run there addressed
-  #     whatever the shell happened to hold. And a pin covers two of the five
+  #     A pin in studio/.env would be per-CHECKOUT while the stack is
+  #     per-MACHINE, so a second worktree would have none and a command run
+  #     there would address whatever the shell happened to hold. And a pin
+  #     would cover two of the five
   #     values that select a stack — the other three (the API URL and both
   #     Cognito ids) were only ever exported by `dev-up.sh`, into its own shell.
   #     So a `.env` and a shell could name different environments, and
@@ -241,8 +223,8 @@ EOF
     warn "  uv run --project $PIPELINE studio profile sync dev"
   fi
 
-  # A .env pinned to the PROD bucket predates #287. It still wins whenever no
-  # profile is selected, so it still points ordinary commands at production —
+  # A .env pinned to the PROD bucket wins whenever no profile is selected, so
+  # it points ordinary commands at production —
   # named loudly rather than rewritten, because the file is the developer's and
   # silently repointing where their commands write is worse than telling them.
   if grep -qE "^STUDIO_S3_BUCKET=.*prod" "$STUDIO_DIR/.env"; then
@@ -275,11 +257,8 @@ EOF
   #     nodes, so the push goes through `studio config sync` rather than writing
   #     objects directly.
   #
-  #     `phrasebook/wording.yaml` used to be pushed here too, as a COPY-IF-ABSENT
-  #     — the bucket's copy became the live document the moment anyone ran
-  #     `studio phrasebook add`, so syncing the repo copy over it would have
-  #     deleted their entries (#425). The phrasebook is `TERM#` rows now. There
-  #     is no document, `add` needs no seed, and this pushes one thing.
+  #     The phrasebook is `TERM#` rows, not a document, so there is nothing
+  #     else to push.
   # -------------------------------------------------------------------------
   # shellcheck source=dev-shared-material.sh
   source "$STUDIO_DIR/scripts/dev-shared-material.sh"
@@ -301,7 +280,7 @@ else
   warn "    aws sts get-caller-identity"
   warn "  then provision with:"
   warn "    ./studio/scripts/dev-aws-setup.sh"
-  warn "  Nothing here points at production any more (#287)."
+  warn "  Nothing here points at production."
 fi
 
 # ---------------------------------------------------------------------------

@@ -134,8 +134,8 @@ function Expanded({
  * **`build` and `must` name a VARIANT and the bare form is refused**, because
  * the bible answers both differently for a face than for a body — a face crops
  * at mid-chest, so the proportions below it are noise, and the checklist gets a
- * different intro. That used to be decided by a `group` column on the template;
- * defaulting silently is how a face prompt ends up describing legs.
+ * different intro. Defaulting silently is how a face prompt ends up describing
+ * legs.
  */
 const CHARACTER_FIELDS = [
   "top",
@@ -218,10 +218,8 @@ export function RunPlanEditor({
   /**
    * A structured prompt is edited FIELD BY FIELD, the way a shot's is.
    *
-   * It used to be one textarea of raw JSON that had to stay valid — so a
-   * misplaced comma lost the save, and reading your own prompt meant reading
-   * escaping. The document is studio's own, with a schema `studio prompt`
-   * validates, so a form over its fields is both safer and what a person came
+   * The document is studio's own, with a schema `studio prompt` validates, so
+   * a form over its fields is both safer than raw JSON and what a person came
    * to change. A prose prompt has no fields and keeps the textarea.
    */
   const [promptFields, setPromptFields] = useState<Record<string, string>>(() =>
@@ -454,12 +452,9 @@ export function RunPlanEditor({
   /**
    * Why the preview did not expand, when it did not.
    *
-   * **A refusal used to be swallowed** — caught, dropped, and the unexpanded
-   * text shown in its place — so a prompt citing a character the run does not
-   * bind looked like a prompt that simply had not expanded yet, and the only
-   * account of it arrived on save. That is the one thing a person needs told
-   * here: the API's message names the citation and the range, which is exactly
-   * the fix.
+   * A refusal is shown, not swallowed: a prompt citing a character the run
+   * does not bind would otherwise look like one that had not expanded yet. The
+   * API's message names the citation and the range, which is exactly the fix.
    */
   const [unfilled, setUnfilled] = useState<string | null>(null);
   useEffect(() => {
@@ -553,12 +548,9 @@ export function RunPlanEditor({
    * Which model inputs to offer for a new image — what this run already binds,
    * plus the image fields the registry names for this model.
    *
-   * **This used to be read off the run alone, and said why: there was no
-   * registry here and there must not become one, because `models.json` was the
-   * pipeline's file and a copy in this app would be a second answer that went
-   * stale silently.** That reasoning was right about a copy and is no longer
-   * about one. The registry moved into the API — `backend/studio_core/models.json`,
-   * served by `routes/models.py` — precisely so there is ONE copy at runtime;
+   * **Read from the API's registry, never a copy here.** The registry is
+   * `backend/studio_core/models.json`, served by `routes/models.py`, precisely
+   * so there is ONE copy at runtime;
    * the pipeline reads it over HTTP too. Asking `GET /api/models/<name>` here is
    * reading that same copy, not making a second.
    *
@@ -1159,12 +1151,10 @@ function Sends({
               {row.name}
             </Text>
             {/* **Every control on this line, and every one of them 44px.**
-                The three buttons used to be a sibling of this whole column, so
-                they centred against the row — thumbnail and filename included —
-                and sat fifteen pixels above the two controls they act on. The
-                heights disagreed as well: an `Input` is 40 from the package's
-                shared `controlBox`, a `Select` trigger is 44, and a `sm` Button
-                is 32, so a row of them stepped down three times. */}
+                The buttons sit in the row with the two controls they act on;
+                an `Input` is 40 from the package's shared `controlBox`, a
+                `Select` trigger is 44 and a `sm` Button is 32, so each is
+                pinned to 44 rather than stepping down three times. */}
             <div className="field-row flex flex-wrap items-center gap-2">
               <Input
                 aria-label={`Model input for image ${index + 1}`}

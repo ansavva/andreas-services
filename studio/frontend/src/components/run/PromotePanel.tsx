@@ -26,14 +26,14 @@ import { characterPath, objectPath } from "../../utils/location";
  * them, on the picture. A promotion writes it, because promoting is precisely
  * the act of deciding this image is identity.
  */
-export const DEFAULT_TAG = "default";
+const DEFAULT_TAG = "default";
 
 /**
  * A group left unnamed. Kept as a word rather than as "no tag at all" so a
  * promotion nobody classified is still findable, and one `describe` away from
  * wherever it belongs.
  */
-export const UNSORTED = "unsorted";
+const UNSORTED = "unsorted";
 
 /**
  * The groups a character conventionally has, offered alongside its real ones.
@@ -43,13 +43,13 @@ export const UNSORTED = "unsorted";
  * promotion into a fresh character has no existing tags to offer, and "face" is
  * what it almost always wants.
  */
-export const CONVENTIONAL_GROUPS = ["face", "body", "frame", "wardrobe"];
+const CONVENTIONAL_GROUPS = ["face", "body", "frame", "wardrobe"];
 
 /** The pool folder a character's references live under. `REFERENCE_POOL`. */
 const REFERENCE_POOL = "reference";
 
 /** What landed, once a promotion has finished. */
-export interface Promoted {
+interface Promoted {
   /** The COPY — a new node, with a name the destination may have numbered. */
   copy: { id: string; name: string };
   group: string;
@@ -71,7 +71,7 @@ export interface Promoted {
  * the partial state is reported rather than swept, exactly as the CLI tolerates
  * it — the file is in the character's folder and is not yet identity.
  */
-export class AttachFailed extends Error {
+class AttachFailed extends Error {
   constructor(
     message: string,
     readonly copy: { id: string; name: string },

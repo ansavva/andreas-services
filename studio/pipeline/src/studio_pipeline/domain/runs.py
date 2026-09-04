@@ -1,7 +1,6 @@
-"""`studio runs` — the run store, now an envelope in a row rather than three files.
+"""`studio runs` — the run store: an envelope in a row, plus the provider's blobs.
 
-A **run** is one submission to a model and everything about it. What changed is
-where "everything about it" lives:
+A **run** is one submission to a model and everything about it, split in two:
 
     the row   id, project, status, kind, engine, model, prediction id,
               timings, bindings (NODE IDS), characters, folder, outputs,
@@ -9,33 +8,22 @@ where "everything about it" lives:
     the blobs request.json, prompt.json, result.json  — the provider owns, and
               studio stores them verbatim and never decodes them
 
-That split is the entity model's fourth principle and it preserves the rule the
-old module was built around. `PIPELINE.md` said "do not decode `request.json`",
-and it was right for one reason — the pipeline changes the payload's shape
-freely, so nothing should be invited to parse it. The rule survives, moved to
-where it is actually true: the payload blobs. The envelope around them is
-studio's own, so it can be queried.
+The payload blobs are never decoded: the pipeline changes the payload's shape
+freely, so nothing should be invited to parse it. The envelope around them is
+studio's own, so it can be queried — `runs find --character` is
+`GET /api/runs?character=…`, one query, and `runs list --model/--status/--since`
+is three more parameters on the same query. Both are in `adapters/entities.py`,
+and this module does not know how either is spelled.
 
-WHAT THIS BUYS, CONCRETELY
---------------------------
-`runs find --character` listed every project, listed every run in each, read
-`request.json` for each and grepped. It is `GET /api/runs?character=…` — one
-query. `runs list --model/--status/--since` did not exist at any price and is
-three more parameters on the same query. Both are in `adapters/entities.py`, and
-this module does not know how either is spelled.
+BINDINGS ARE NODE IDS
+---------------------
+A path is invalidated by any rename or move; a node id survives both by
+construction, so a binding is a node id.
 
-BINDINGS ARE NODE IDS, AND THAT RETIRES A WHOLE MODULE
-------------------------------------------------------
-A binding used to be a path, checked here against four allowed roots. A path is
-invalidated by any rename or move, which is why `domain/rewrite.py` existed and
-why sixty-nine records once pointed at reference images that no longer existed.
-A node id survives both by construction, so `rewrite.py` is deleted and the class
-of bug with it.
-
-**Hard rule #3 moved but did not weaken.** `check_bindings` still refuses a
-URL-shaped binding here, before the request is sent, so `submit.py` can decline
-to submit at all — and the API refuses it again, which is the strengthening: the
-SPA goes through the API too, and it never went through this function.
+**Hard rule #3.** `check_bindings` refuses a URL-shaped binding here, before the
+request is sent, so `submit.py` can decline to submit at all — and the API
+refuses it again, because the SPA goes through the API too and never through
+this function.
 
 ADDRESSING A RUN
 ----------------
@@ -44,21 +32,14 @@ ADDRESSING A RUN
     latest               when the project is supplied out of band (--project)
     run-<uuid>           the id, which is what a record holds
 
-**A RUN HAS NO SLUG, AND THAT IS THE WHOLE OF ITS ADDRESSING.** It used to, and
-the label was a worse copy of a column the row already had: every slug in
-production read `<timestamp>_<hint>`, so it was unique only by embedding
-`created` — which is what sorting reads, what `--since` filters on, and what a
-timestamp in a folder name was imitating in the first place. Strip the timestamp
-and 29 runs collapsed to 19 labels.
+**A RUN HAS NO SLUG, AND THAT IS THE WHOLE OF ITS ADDRESSING.** A run is a
+machine event: it is found by `latest`, by its id, or by the filters below —
+`--character`, `--model`, `--status`, `--since`. A human label would only be
+unique by embedding `created`, which is what sorting reads and `--since`
+filters on already.
 
-Nothing keyed on it and no claim row enforced it, so resolving one needed an
-exact match, then a substring fallback, then an ambiguity error to prop it up.
-All three are gone with it. A run is a machine event: it is found by `latest`,
-by its id, or by the filters below — `--character`, `--model`, `--status`,
-`--since` — which is how it was actually being found already.
-
-A scene and a movie keep their slug and title. Those are things a person plans
-and comes back to; a run is not.
+A scene and a movie have a slug and title. Those are things a person plans and
+comes back to; a run is not.
 
 CLI
 ---
@@ -86,11 +67,11 @@ from studio_pipeline.errors import reports
 SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
 IMG_EXTS = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".bmp"}
 VID_EXTS = {".mp4", ".mov", ".webm", ".m4v"}
-#: **There is no `ID_RE`.** One existed and nothing ever matched against it,
-#: which is the correct number of matches: an id's prefix is for a person
-#: reading a log, and every command that takes one either passes it to the API
-#: or tests `startswith("node-")` to tell an id from a name path. A regex that
-#: says what an id looks like invites parsing one for meaning.
+#: **There is no `ID_RE`.** An id's prefix is for a person reading a log, and
+#: every command that takes one either passes it to the API or tests
+#: `startswith("node-")` to tell an id from a name path. A regex that says what
+#: an id looks like invites parsing one for meaning.
+#:
 #: What a send may be FOR. The API is the enforcer and refuses anything else;
 #: this is here so `runs edit` can name the four in an error message rather than
 #: spending a round trip to be told. `submit.py` assigns them from the registry —
@@ -103,7 +84,7 @@ class RunError(Exception):
 
 
 def slugify(slug: str) -> str:
-    """A run's human label. Still cleaned, because it becomes a folder name."""
+    """A run's human label, cleaned because it becomes a folder name."""
     out = SLUG_RE.sub("-", (slug or "run").strip()).strip("-.")
     return out[:60] or "run"
 
@@ -163,10 +144,8 @@ def presign(nodes: list[str]) -> list[str]:
     """Mint fresh presigned URLs — the ONLY way assets reach Replicate.
 
     **There is no expiry parameter.** The API signs these against its own
-    credentials and owns the TTL (`STUDIO_PRESIGN_TTL_SECONDS`). This used to
-    take an `expires` it ignored, purely so the CLI's `--expires` had somewhere
-    to go; that flag existed on eleven commands, could not be honoured by any of
-    them, and is gone.
+    credentials and owns the TTL (`STUDIO_PRESIGN_TTL_SECONDS`); nothing on this
+    side could honour one.
     """
     return [store.presign_node(node) for node in nodes]
 
@@ -233,15 +212,12 @@ def record_request(
     usually needs the record for something else too.
 
     **No slug is sent.** A run has none; the API names its folder for its id.
-    What the caller used to pass here as `slug` was doing two jobs, and only one
-    of them was any good — see `--name` on `studio run`, which keeps the good
-    one: what the output FILE is called, and which arrives here as `name`.
+    `name` — `--name` on `studio run` — is what the output FILE is called.
 
-    **`name` is recorded now rather than used later**, and that is a consequence
-    of the download moving into the API. It was an argument to the download while
-    the download was this process's; the callback that closes a run carries no
-    request body, so a filename that is not on the row before the submission is a
-    filename nothing can recover.
+    **`name` is recorded at creation rather than used later** because the
+    download happens in the API: the callback that closes a run carries no
+    request body, so a filename that is not on the row before the submission is
+    a filename nothing can recover.
     """
     clean = check_bindings(bindings or {})
     try:
@@ -294,11 +270,10 @@ def find_runs(**filters) -> list[dict]:
 def run_outputs(run_id: str) -> list[dict]:
     """A run's output nodes, in the order the run recorded them.
 
-    **Order is the record's, not a listing's**, and that is a real change. It
-    used to be a natural sort over `output/`'s children because the folder was
-    the only source — which meant `-10` sorting before `-2` would hand a later
-    run the wrong frame under the right name. The row holds the order the
-    outputs were written in, so there is nothing left to re-derive.
+    **Order is the record's, not a listing's.** A natural sort over `output/`'s
+    children would put `-10` before `-2` and hand a later run the wrong frame
+    under the right name. The row holds the order the outputs were written in,
+    so there is nothing to re-derive.
     """
     return entities.get_run(run_id).get("outputs") or []
 
@@ -344,10 +319,9 @@ def resolve_run(ref: str, default_project: str | None = None) -> dict:
     straight on to read the run, and returning a pair meant a second round trip
     plus two more strings to keep in step.
 
-    **The project segment is turned into an id here**, which it was not: the
-    route took a bare slug, precisely because that is what a person types. A name
-    is a free-text label now and the route resolves nothing but ids, so a name
-    costs one listing on this side before the ref is sent.
+    **The project segment is turned into an id here.** A name is a free-text
+    label and the route resolves nothing but ids, so a name costs one listing on
+    this side before the ref is sent.
     """
     project, sep, tail = ref.partition("/")
     if sep and not project.startswith("proj-"):
@@ -366,9 +340,8 @@ def resolve_run(ref: str, default_project: str | None = None) -> dict:
 def _address(project: str | None) -> str | None:
     """A project id passed through; a name matched client-side.
 
-    It used to be `slug:<name>` — one string, no round trip, resolved by the API
-    against a claim row. A name is a free-text label now and the API will not
-    resolve one, so this costs a listing and can refuse an ambiguous name.
+    A name is a free-text label and the API will not resolve one, so this costs
+    a listing and can refuse an ambiguous name.
     """
     if not project or project.startswith("proj-"):
         return project
@@ -389,9 +362,8 @@ def resolve_output_nodes(ref: str, default_project: str | None = None,
                          kinds: set[str] | None = None) -> list[str]:
     """The NODE IDS of a runref's output — what chaining consumes.
 
-    Node ids, where this returned paths. That is the whole of #420: a later run
-    binds these, and a binding that named a path would be stranded by any
-    rename of the file it named.
+    Node ids, not paths: a later run binds these, and a binding that named a
+    path would be stranded by any rename of the file it named.
     """
     # **The index is applied AFTER the kind filter**, which is why it comes back
     # from the resolver rather than being acted on there: `#2` means the second
@@ -421,11 +393,11 @@ def resolve_output_nodes(ref: str, default_project: str | None = None,
 def _output_node(entry: dict) -> str:
     """An output's node id, under either spelling the record may carry.
 
-    A run record read back from the API keys it `id`; documents written before
-    #420 key it `node`. Reading only `node` made every runref binding
-    (`--ref-run`, `--image-run`, `--start-run`, `--end-run`, and `add-refs
-    --from-run`) die on `KeyError` against a live record. `engine/turnaround.py`
-    already carries the same two-spelling read for the same reason.
+    A run record read back from the API keys it `id`; older documents key it
+    `node`. Reading only one spelling makes every runref binding (`--ref-run`,
+    `--image-run`, `--start-run`, `--end-run`, and `add-refs --from-run`) die on
+    `KeyError` against the other. `engine/turnaround.py` carries the same
+    two-spelling read for the same reason.
     """
     node = entry.get("node") or entry.get("id")
     if not node:
@@ -478,12 +450,10 @@ def main():
 def _row(record: dict) -> str:
     """One listing row. **Every field here is one the projection actually carries.**
 
-    It used to render `record['slug']`, which no listing row has ever held — the
-    projection is `{lib, id, created, status, model, kind, thumb}` — so
-    `runs list` raised `KeyError` against the real API while passing against a
-    test fake that projected off the full record. Reading with `.get` where a
-    field is optional, and reading nothing that is not projected, is the rule
-    here.
+    The projection is `{lib, id, created, status, model, kind, thumb}`; a test
+    fake that projects off the full record will pass a row that raises
+    `KeyError` against the real API. Reading with `.get` where a field is
+    optional, and reading nothing that is not projected, is the rule here.
     """
     cost = (record.get("cost") or {}).get("amount")
     return (f"{record['created'][:16]}  {record['id']}  "
@@ -520,9 +490,7 @@ def do_list(project, character, json_, model, since, status):
 def do_find(character, json_, project):
     """Every run that used a character, across every project.
 
-    **One API query**, where this listed every project, listed every run in each
-    and read three documents per run to grep for a name. `--project` is now a
-    filter applied to that query rather than the loop it used to drive.
+    **One API query.** `--project` is a filter applied to that query.
     """
     address = _character_address(character)
     if project:
@@ -563,16 +531,12 @@ def do_show(runref, payload, project):
 @click.option("--project", help="Default project for a bare run slug.")
 @reports(RunError, api.ApiError)
 def do_outputs(runref, json_, presign, project):
-    """`--presign` reaches `store` directly, and that is a fix.
+    """`--presign` reaches `store` directly, deliberately.
 
     The flag is named `presign` and so is this module's function, so inside this
-    body the flag shadows it — `presign(keys, expires)` called `True` and raised
-    `TypeError: 'bool' object is not callable` for as long as the option
-    existed. `--help` printed happily and nothing invoked it. Renaming the
-    parameter is not available: `cli_surface_reference.json` records the dest,
-    and it is a contract. Doing the work inline is. (The shadowing is harmless
-    now that `presign` takes one argument, but the inline call stays: it is the
-    thing that made the bug impossible rather than merely unlikely.)
+    body the flag shadows it — calling `presign(...)` here would call `True`.
+    Renaming the parameter is not available: `cli_surface_reference.json`
+    records the dest, and it is a contract. Doing the work inline is.
     """
     nodes = resolve_output_nodes(runref, project)
     vals = [store.presign_node(n) for n in nodes] if presign else nodes
@@ -786,13 +750,10 @@ def _apply_edit(record: dict, before: dict, after: dict) -> None:
 def do_approve(runref, project, relayed):
     """Read a draft's payload in full, then say yes to **that** payload.
 
-    **This used to say "no `--yes`, and there will not be one."** The reasoning
-    was that an approval flag is the door an agent walks through while believing
-    some earlier exchange counted as approval, and that what this writes is a
-    durable record of somebody saying yes. Both halves are still true. The
-    conclusion was not.
-
-    **The absence of a flag never prevented anything.** `yes | studio runs
+    **Why there is a `--relayed` flag and not a `--yes`.** An approval flag is
+    the door an agent walks through while believing some earlier exchange
+    counted as approval, and what this writes is a durable record of somebody
+    saying yes — but the absence of a flag prevents nothing. `yes | studio runs
     approve …` satisfies a `click.confirm` in one pipe, and an agent told "I
     approve these" by a person will reach for it — reasonably, because the
     person did say yes. What the missing flag achieved was to make that row

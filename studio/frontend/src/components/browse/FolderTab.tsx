@@ -30,7 +30,7 @@ import { FolderBrowser, type BrowserNav } from "./FolderBrowser";
  * right trade in one direction only, and it is why `/f/<id>` still exists and the
  * tab does not replace it: a *link* to a folder is a link to the browser.
  */
-export function useLocalBrowserNav(rootId: string, param = "folder"): BrowserNav {
+function useLocalBrowserNav(rootId: string, param = "folder"): BrowserNav {
   const navigate = useNavigate();
   const location = useLocation();
   // **Which query key, because a project draws TWO of these** — Files, and the

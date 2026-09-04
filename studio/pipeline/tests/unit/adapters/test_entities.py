@@ -52,22 +52,23 @@ WIRE_SURFACE = {
     # asks for an object by key. The backend still serves it for the SPA's
     # tile refresh, node-addressed.
     "/api/nodes",
-    "/api/nodes/move",
+    # NOT `/api/nodes/move`. The SPA moves nodes; nothing at a terminal does,
+    # and the wrapper that spelled it had no caller.
     "/api/nodes/copy",
     "/api/nodes/<id>",
     "/api/nodes/<id>/download-url",
     "/api/nodes/<id>/upload-url",
     "/api/nodes/<id>/confirm-upload",
     "/api/nodes/<id>/text",
-    "/api/nodes/<id>/owner",
     # characters
     "/api/characters",
     "/api/characters/<id>",
     "/api/characters/<id>/profile",
     "/api/characters/<id>/selection",
     "/api/characters/<id>/textblock",
-    "/api/characters/<id>/runs",
-    "/api/characters/<id>/projects",
+    # NOT `/api/characters/<id>/runs` or `/api/characters/<id>/projects`.
+    # `GET /api/runs?character=` answers the first, and nothing at a terminal
+    # asks the second; both wrappers outlived their last caller.
     # projects
     "/api/projects",
     "/api/projects/<id>",
@@ -76,9 +77,10 @@ WIRE_SURFACE = {
     # NOT `/api/projects/<id>/runs`. The spec lists it, and the pipeline does
     # not call it: `GET /api/runs?project=` answers the same question with the
     # same filters, and one query route is easier to keep in step than two. The
-    # backend may serve it for the SPA; nothing here will notice.
-    "/api/projects/<id>/scenes",
-    "/api/projects/<id>/movies",
+    # backend may serve it for the SPA; nothing here will notice. The same goes
+    # for `/api/projects/<id>/scenes` and `/api/projects/<id>/movies`:
+    # `GET /api/scenes?project=` and `GET /api/movies?project=` are what the
+    # CLI calls.
     # runs
     "/api/runs",
     # A runref — `<project>/latest#2` — to the run it names. The sibling of
@@ -86,7 +88,9 @@ WIRE_SURFACE = {
     # person types into the thing it names.
     "/api/runs/resolve",
     "/api/runs/<id>",
-    "/api/runs/<id>/outputs",
+    # NOT `/api/runs/<id>/outputs`. The API files a run's output for itself off
+    # the provider's callback; the suite's fixture is the one thing that still
+    # POSTs there, from `tests/support/fake_api.py`, not from this package.
     # NOT `/api/runs/<id>/response`. Storing the provider's reply verbatim was
     # this package's job while this package was what received one; a callback
     # consumer receives it now (#536), and the wrapper that spelled the route
@@ -268,14 +272,6 @@ def test_the_profile_is_a_record_field(library):
     record = E.get_character(library.character)
     E.put_profile(record["id"], {"identity": {"build": "new"}}, record["rev"])
     assert E.get_character(record["id"])["profile"] == {"identity": {"build": "new"}}
-
-
-def test_patching_the_profile_merges_one_section(library):
-    record = E.get_character(library.character)
-    E.patch_profile(record["id"], {"voice": {"accent": "changed"}}, record["rev"])
-    profile = E.get_character(record["id"])["profile"]
-    assert profile["voice"] == {"accent": "changed"}
-    assert profile["face"]  # untouched
 
 
 # ── identity, which is tags ─────────────────────────────────────────────────

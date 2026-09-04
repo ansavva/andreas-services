@@ -14,10 +14,10 @@ import { getAsset } from "../apis/studio";
  * `attempted` caps this at one retry per node so a genuinely missing object
  * (deleted upstream between the listing and the render) cannot loop.
  *
- * **Takes the node id, not the key.** It used to pass the row's name path to
- * `/api/asset?key=`, which signs a raw S3 key — so anything uploaded through
- * the app, whose bytes live at `blobs/<id>`, could never be re-signed and every
- * expired tile stayed broken (#432).
+ * **Takes the node id, not a name path.** `/api/asset?key=` signs a raw S3
+ * key, and anything uploaded through the app has its bytes at `blobs/<id>` —
+ * a name path handed there could never be re-signed, and every expired tile
+ * would stay broken.
  */
 export function useSignedSrc(nodeId: string, initialUrl: string) {
   const [src, setSrc] = useState(initialUrl);

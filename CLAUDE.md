@@ -145,49 +145,44 @@ in both, by design.
 | `studio/` | AI media generation pipeline **and** a browser over its output | Claude Code skills (local, `uv`) + Flask + React/Vite/TS + Lambda (Docker) + Cognito + **DynamoDB** (`studio-prod-catalog`, single-table: characters, projects, runs, scenes, movies and the node tree; three GSIs) + S3 |
 | `infra/` | Shared infrastructure | Terraform |
 
-**`studio/` used to break this repo's environment rule and no longer does.**
-Until August 2026 it ran **local against prod** — one media bucket, one Cognito
-pool, no dev environment — on the reasoning that a view onto a single library of
-generated media would exercise nothing against an empty second copy. That is
-over: studio has a per-machine dev stack like every other service, and
-`dev-setup.sh` and `dev-up.sh` point at it. The reasoning was answered rather
-than abandoned — the dev stack is *seeded* from a published fixture, so it is
-not meant to be empty. **Both halves now work end to end.** #284 and #285
-landed as code in August and went unrun for weeks; `v1` was published on
-2026-08-27 and a fresh stack seeds from it in about two seconds. It carries one
-character and its seed pool — no runs, scenes or movies, because those are model
-output and cost money to make. Publishing is human-gated, but **not** because it
-generates media: `publish` promotes nodes that already exist in a dev stack, so
-it calls no model and costs nothing. The gate is hard rule #1 — `catalog.json`
-lands in git, so the publisher requires `--dev-subjects-only` before `--apply`
-and refuses any name outside `DEV_SUBJECTS`. That rule is **env-scoped**: a dev
+**`studio/` has a per-machine dev stack like every other service** — its own
+Cognito pool, media bucket, catalog table and callback endpoint, named
+`studio-dev-<short12>-*` — and `dev-setup.sh` and `dev-up.sh` point at it. The
+stack is *seeded* from a published fixture, so it is not meant to be empty: `v1`
+carries one character and its seed pool — no runs, scenes or movies, because
+those are model output and cost money to make — and a fresh stack loads it in
+about two seconds. Publishing is human-gated, but **not** because it generates
+media: `publish` promotes nodes that already exist in a dev stack, so it calls
+no model and costs nothing. The gate is hard rule #1 — `catalog.json` lands in
+git, so the publisher requires `--dev-subjects-only` before `--apply` and
+refuses any name outside `DEV_SUBJECTS`. That rule is **env-scoped**: a dev
 subject may be named in the repo, a production character never may.
 `studio/CLAUDE.md` has the reasoning.
 
-Running the **CLI** against production is a **named profile**, decided in August
-2026 and modelled on the AWS CLI's: `studio --profile prod <command>`, or
-`STUDIO_PROFILE=prod`. A profile carries all five values that select a stack —
-API URL, both Cognito ids, media bucket, catalog table — from
-`~/.config/andreas-services/studio/config`, and an explicit `--profile` beats an
-exported `STUDIO_API_URL` rather than losing to it. There is no confirmation
-step on prod: selecting it is the intent. It is also **not** a permission
-boundary — the maintenance commands run under your own IAM key either way. See
-`studio/CLAUDE.md`. And:
+Running the **CLI** against production is a **named profile**, modelled on the
+AWS CLI's: `studio --profile prod <command>`, or `STUDIO_PROFILE=prod`. A
+profile carries all five values that select a stack — API URL, both Cognito
+ids, media bucket, catalog table — from
+`~/.config/andreas-services/studio/config`. An explicit `--profile` beats an
+exported `STUDIO_API_URL`, because `dev-up.sh` exports one and `--profile prod`
+typed in that shell must not silently keep talking to dev. There is no
+confirmation step on prod: selecting it is the intent. It is also **not** a
+permission boundary — the CLI holds no AWS credential; the one tool that does,
+`dev-seed`, runs under your own IAM key. See `studio/CLAUDE.md`. And:
 
 **`studio/` is the one service that is not purely a deployable unit.** Half of it
-— `studio/.claude/skills/`, eighteen skills — runs locally inside Claude on a
+— `studio/.claude/skills/`, nineteen skills — runs locally inside Claude on a
 developer's machine and never deploys; the CI path filters exclude it from the
 prod workflow. The other half is an ordinary Flask + Vite service. Both share the
-media S3 bucket, which `studio/infra/modules/media` owns. It is also the one
-bucket whose name predates the naming convention below and is deliberately
-renamed in August 2026 — see `studio/infra/README.md`.
+media S3 bucket, which `studio/infra/modules/media` owns — see
+`studio/infra/README.md`.
 
 **Those skills come in two families, and picking one is the first step of any
 task in `studio/`** — route by what the task changes, not what it mentions:
 
 | Changing… | Load |
 |---|---|
-| media or an S3 record (an image, a clip, a character, a project, a run) | a **`studio-media-*`** skill |
+| media or a catalog record (an image, a clip, a character, a project, a run) | a **`studio-media-*`** skill |
 | studio's own code (`pipeline/`, `backend/`, `frontend/`, `infra/`) | **`studio-code-pipeline`** |
 
 Load it with the Skill tool rather than skimming its `SKILL.md` — these pages
@@ -196,7 +191,7 @@ screen and starting work tends to end in hand-rolled `aws s3` calls that a
 `studio` subcommand already does. Full routing table in
 [studio/CLAUDE.md](studio/CLAUDE.md#which-skill).
 
-Those eighteen skills live in `studio/.claude/skills/` and are directory-scoped:
+Those nineteen skills live in `studio/.claude/skills/` and are directory-scoped:
 they register only once a file under `studio/` has been read, so a `Skill` call
 on the first action of a session returns `Unknown skill`. That is a timing
 artifact, not a missing skill. The root **`studio`** skill is the entry point —

@@ -1,4 +1,4 @@
-"""`studio login` / `logout` / `whoami` — the CLI's session (#300).
+"""`studio login` / `logout` / `whoami` — the CLI's session.
 
 Three commands and no more. Signing in is the whole of what they do; everything
 else the CLI knows about identity it reads back off the stored token. Where the

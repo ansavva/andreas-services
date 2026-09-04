@@ -19,11 +19,8 @@ cd "$ROOT"
 # fails per-request rather than at boot, which is a slower way to learn the same
 # thing. Since August 2026 they are a long-lived access key in
 # `~/.aws/credentials` or `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` in the
-# environment, and boto3 reads both natively. The export below used to be
-# load-bearing — under `aws login` the CLI read a cache boto3 could not see, so
-# the API failed with "no EC2 IMDS role found" while `aws sts
-# get-caller-identity` happily succeeded. It is kept because it costs nothing
-# and still does the right thing for an SSO or credential_process profile.
+# environment, and boto3 reads both natively. The export below costs nothing
+# and does the right thing for an SSO or credential_process profile.
 if ! aws sts get-caller-identity >/dev/null 2>&1; then
   echo "AWS credentials are not valid. Put an access key in ~/.aws/credentials," >&2
   echo "or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. See the root CLAUDE.md." >&2
@@ -52,12 +49,9 @@ export STUDIO_ALLOWED_ORIGIN="http://localhost:5173"
 # verifies against another is precisely the drift a hardcoded value would
 # create.
 #
-# **THIS MACHINE'S DEV STACK, NOT PROD.** studio used to read `/studio/prod/*`
-# here and serve the local API against the live bucket and the live pool. That
-# is over (#287): this repo no longer connects to production, the way every
-# other service in the monorepo already works.
+# **THIS MACHINE'S DEV STACK, NOT PROD.** Nothing here reads `/studio/prod/*`.
 #
-# Running the CLI against prod is a `studio --profile prod <command>` now, and
+# Running the CLI against prod is a `studio --profile prod <command>`, and
 # it is deliberately not a flag on this script — this one starts a local API
 # server, and there is no version of that which should serve production. The
 # profile mechanism is `pipeline/src/studio_pipeline/profiles.py`.
@@ -98,9 +92,8 @@ IFS=$'\t' read -r POOL_ID CLIENT_ID MEDIA_BUCKET CATALOG_TABLE \
 
 export STUDIO_COGNITO_USER_POOL_ID="$POOL_ID"
 export STUDIO_COGNITO_CLIENT_ID="$CLIENT_ID"
-# Exported unconditionally now, unlike the SSM version. `config.py`'s defaults
-# name PROD resources, so falling through to them is no longer a survivable
-# outcome — it is the exact thing this issue removes. `load_dev_stack_outputs`
+# Exported unconditionally: `config.py`'s defaults name PROD resources, so
+# falling through to them is not a survivable outcome. `load_dev_stack_outputs`
 # refuses an incomplete state, so reaching here means all four are set.
 export STUDIO_MEDIA_BUCKET="$MEDIA_BUCKET"
 export STUDIO_CATALOG_TABLE="$CATALOG_TABLE"
@@ -163,8 +156,8 @@ if [ -z "${REPLICATE_API_TOKEN:-}" ]; then
   echo "  Put it in ~/.config/andreas-services/studio/dev.env. Everything else works." >&2
 fi
 
-# Where `studio login` and every other CLI call go (#300). Defaults to the
-# deployed API; pointed at the Flask process this script is about to start, so
+# Where `studio login` and every other CLI call go: the Flask process this
+# script is about to start, so
 # the CLI drives the local API against this machine's dev stack rather than the
 # Lambda.
 export STUDIO_API_URL="http://localhost:8000"

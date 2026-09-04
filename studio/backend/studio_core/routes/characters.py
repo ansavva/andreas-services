@@ -1,47 +1,37 @@
 """Characters: who a subject is, and which images say so.
 
-A character used to be a folder with a YAML file in it. It is a row now — `CHAR#
-<char_id>` / `META`, with a `LIB#<lib>` / `CHAR#<char_id>` index row beside it —
-and the four consequences of that are the whole reason this module exists:
+A character is a row — `CHAR#<char_id>` / `META`, with a `LIB#<lib>` /
+`CHAR#<char_id>` index row beside it — and four things follow from that:
 
-* **A rename is one field on one row.** It used to be a `PATCH` per slugged
-  basename across four pools plus a rewrite pass over every run document that
-  had cited the old path. Then, briefly, four writes in one transaction: drop the
-  old slug claim, take the new one, bump the record, rename the root folder.
-  Slugs are gone and so is all of that — the name is a free-text label, the index
+* **A rename is one field on one row.** The name is a free-text label, the index
   row is keyed on the id, and the root folder is named by the id.
-* **Reference order and group are attributes**, so `curate renumber` has nothing
-  to maintain and `curate regroup` moves no bytes.
-* **Descriptions are rows**, so writing twelve of them is one transaction rather
-  than twelve rewrites of one document racing each other's `updated_at`.
+* **What a picture is and what it is for are tags on the file**, so nothing has
+  to be renumbered or regrouped and no bytes move.
+* **A description is on the file's row**, so writing twelve of them is twelve
+  row writes rather than twelve rewrites of one document racing each other.
 * **"Which projects involve this character" has an answer**, and "every run that
-  used it" is one query rather than a walk over every run folder in the library.
+  used it" is one query.
 
 ## The two things this module decides rather than stores
 
-**The profile schema.** `profile` is the whole of the old `profile.yaml` minus
-the field promoted to a real column (`name`) and the two that became tags on the
-files themselves — `references:` and
-`default_set`, which are both "which of this character's pictures does a
-generation get shown" and are both answered by `default` and a group tag on the
-node now. The sections are validated here — nowhere else in the service has an
-opinion about the shape of a bible.
+**The profile schema.** `profile` is the bible: seven sections and one
+paragraph. Which of a character's pictures a generation is shown is not in it —
+that is the `default` tag and a group tag on the node. The sections are
+validated here — nowhere else in the service has an opinion about the shape of
+a bible.
 
 **What a model will actually be shown.** `GET /api/characters/<id>/selection` is
 a route rather than a function in each half of studio precisely so the CLI and
 the SPA cannot disagree about it, and so the over-cap refusal happens in one
-place. Slot N still means "position N in the resolved selection"; what moved is
-where the resolving happens.
+place. Slot N means "position N in the resolved selection".
 
 ## Hard rule #1 lives here too
 
-No character is named anywhere in this repository, and that includes the S3 keys
-this module's uploads produce: an identity image is
+No production character is named anywhere in this repository, and that includes
+the S3 keys this module's uploads produce: an identity image is
 `characters/<char_id>/<node_id>.<ext>`, so a listing of the media bucket is a
-list of UUIDs. The old layout wrote the slug into every key, which made a bucket
-listing a list of character names — the rule broken in the one place nobody was
-reading. **The catalog's own folder tree now says nothing either**: a character's
-root folder is named by its id, so the names live on one row each.
+list of UUIDs. **The catalog's folder tree says nothing either**: a character's
+root folder is named by its id, so the name lives on one row.
 """
 
 import logging
@@ -61,8 +51,7 @@ bp = Blueprint("characters", __name__, url_prefix="/api")
 
 KIND = catalog.ENTITY_CHARACTER
 
-# The bible's sections, as the API validates them. Seven maps and one paragraph
-# — the shape `profile.yaml` already had, minus what was promoted to a column.
+# The bible's sections, as the API validates them. Seven maps and one paragraph.
 #
 # Validated as *sections* and not field by field, deliberately. What goes inside
 # `face` is a description a person writes for a model to read, and a service that
@@ -93,23 +82,14 @@ TEXT_BLOCK = "text_identity_block"
 # something the paragraph is not for.
 IDENTITY_BEARING = ("identity", "face", "body", "wardrobe", "consistency")
 
-# **`ENGINE_CAPS` lived here and is deleted.** It was
-# `{"kling": 7, "seedance": 9, "nano-banana": 14}` — three of nine model
-# families — so `gpt-image-2`, which studio's docs name as the DEFAULT for
-# character frames, had no cap on this side at all, and neither did `veo-3.1`,
-# `grok-imagine-video` or `image-upscale`. A selection aimed at any of them came
-# back unrefused however large it was, while the CLI refused the same selection
-# correctly off the real registry.
+# **There is no cap table here.** `services/registry.py` is the registry, served
+# at `GET /api/models`, and a second copy here would be a second answer to what
+# a model accepts — one that drifts the moment a model is added.
 #
-# `services/registry.py` is that registry, now owned by this service and served
-# at `GET /api/models`. `routes/runs.py` already argued the principle in a
-# comment — a second copy here is a second answer to what a model accepts — and
-# the copy existed anyway, one file over.
-#
-# **A cap is refused rather than applied**, and that behaviour is unchanged:
-# silently handing a model the first seven of eighteen references is a shoot
-# whose result nobody can explain, so the request fails and the whole index comes
-# back in the body so the caller can choose.
+# **A cap is refused rather than applied**: silently handing a model the first
+# seven of eighteen references is a shoot whose result nobody can explain, so
+# the request fails and the whole index comes back in the body so the caller
+# can choose.
 
 
 def clean_profile(raw) -> dict:
@@ -169,16 +149,9 @@ def _hero(record: dict, nodes: dict[str, dict]) -> dict | None:
 def _file_counts(records: list[dict]) -> dict[str, dict[str, int]]:
     """`entity id -> {files, default}`, batched then one branch query each.
 
-    **Both numbers come out of one walk.** `counts.references` used to be a
-    second query — `CHAR#<id>` for the `REF#` rows — and there are no such rows;
-    what replaced it is the files under this character carrying `default`, which
-    the walk this function already does has in hand.
-
-    **`counts.files` was in the CLI's listing and in no API response**, so every
-    character has displayed `files 0` since the entity model landed — the client
-    read `counts.get("files", 0)` and the server only ever sent
-    `counts.references`. Nobody noticed because zero is a plausible answer for a
-    character nobody has uploaded to yet.
+    **Both numbers come out of one walk.** `counts.default` is the files under
+    this character carrying `default`, which the walk that counts files already
+    has in hand.
 
     One `BatchGetItem` for the roots and then one `branch` query per character,
     which is defensible for the reason a counter on the record is not: a library
@@ -215,8 +188,7 @@ def list_characters():
     **One query for the index rows, one batched read for the records, one batched
     read for the heroes and one for the roots.** Both counts come out of ONE
     branch query per character — `counts.default` is the files under it carrying
-    the `default` tag, which the walk that counts files already has in hand. It
-    used to be a second query for the `REF#` rows, and there are none.
+    the `default` tag, which the walk that counts files already has in hand.
 
     `?q=` filters on the name, in memory. A library holds tens of characters, not
     thousands; an index for this would be a second thing to keep correct for a
@@ -258,10 +230,9 @@ def create_character():
     `TransactWriteItems`; a create that timed out is a create a person can simply
     repeat.
 
-    **There is no 409 any more.** A slug already claimed used to be one, carrying
-    a machine-readable code so the client could offer a different slug. A name is
-    a free-text label now and both keys are minted UUIDs, so nothing here can
-    collide and there is nothing for a client to recover from.
+    **There is no 409.** A name is a free-text label and both keys are minted
+    UUIDs, so nothing here can collide and there is nothing for a client to
+    recover from.
     """
     body = support.body()
     held = support.memberships()
@@ -297,15 +268,11 @@ def get_character(addressed: str):
 def update_character(addressed: str):
     """Rename or re-hero — under a `rev`.
 
-    **A stale `rev` is a 409 and never a silent overwrite**, which closes a window
-    that was genuinely open: the old `write_profile` re-read the node's
-    `updated_at` and refused if it had moved, and that is a check and a write with
-    a gap between them.
+    **A stale `rev` is a 409 and never a silent overwrite**: the condition is
+    in the write, so there is no gap between a check and the write it guards.
 
-    **A rename is now just one of the assignments.** It used to be four more
-    writes riding in the same transaction — the old slug claim dropped, the new
-    one taken, the root folder moved — so that a collision left the request
-    entirely undone. There is no claim to collide with.
+    **A rename is just one of the assignments.** There is no name claim to
+    collide with.
     """
     body = support.body()
     held = support.memberships()
@@ -362,10 +329,7 @@ def write_profile(addressed: str):
         raise ValidationError("send profile to replace, or patch to merge")
 
     if replacing:
-        assignments = {
-            "profile": clean_profile(body.get("profile")),
-            "schema_version": catalog.PROFILE_SCHEMA_VERSION,
-        }
+        assignments = {"profile": clean_profile(body.get("profile"))}
     else:
         patch = clean_profile(body.get("patch"))
         assignments = {"profile": {**(record.get("profile") or {}), **patch}}
@@ -419,20 +383,11 @@ def delete_character(addressed: str):
 
 # ─────────────────────────── identity ───────────────────────────
 #
-# **There is no reference index any more, and no `default_set`.** Both were
-# answers to one question — which of a character's many pictures does a
-# generation get shown — and both answered it somewhere other than on the
-# picture. A `REF#` row said an image was a character's third face reference; a
-# list on the record said which handful to send. So the same fact lived in two
-# places with an invariant between them, and the invariant drifted: one
-# production character carried four ids in `default_set` that were not
-# references any more, and a default shoot sent three images where seven were
-# meant.
-#
-# It is tags on the file now. `default` is the handful, a group tag like `face`
-# narrows it, and both travel with the picture through a move, a copy or a
-# rename because they are attributes of the node. Nothing can drift from
-# anything, because there is only one copy.
+# **There is no reference index and no `default_set`.** Which of a character's
+# many pictures a generation gets shown is answered on the picture: `default` is
+# the handful, a group tag like `face` narrows it, and both travel with the
+# picture through a move, a copy or a rename because they are attributes of the
+# node. Nothing can drift from anything, because there is only one copy.
 
 #: What a selection asks for when nobody says otherwise.
 DEFAULT_TAG = "default"
@@ -448,8 +403,8 @@ def _identity(record: dict, tags: list[str]) -> list[dict]:
     One branch query under the character's root — the same read `counts` makes —
     filtered on tags by the listing itself.
 
-    **Ordered by name, and that is a decision rather than a leftover.** Order no
-    longer means anything about a character's pictures, but a payload still hands
+    **Ordered by name, and that is a decision rather than a leftover.** Order
+    means nothing about a character's pictures, but a payload hands
     a model `[Image1]` and `[Image2]`, so the selection needs *an* order and it
     has to be the same one twice. Name is the only property of a file that does
     not change when somebody re-uploads or re-tags it; `newest` would reshuffle a
@@ -504,9 +459,8 @@ def _picked(record: dict, tokens: list[str]) -> list[dict]:
 def _csv(raw: str | None) -> list[str]:
     """A comma-separated query parameter as a list, blanks dropped.
 
-    Every filter on `GET /selection` takes a list, and each one used to be read
-    with a bare `request.args.get` and then compared whole — so `?tag=a,b` asked
-    for a tag literally named `a,b`.
+    Every filter on `GET /selection` takes a list; a bare `request.args.get`
+    compared whole would make `?tag=a,b` ask for a tag literally named `a,b`.
     """
     return [part.strip() for part in (raw or "").split(",") if part.strip()]
 
@@ -514,8 +468,8 @@ def _csv(raw: str | None) -> list[str]:
 def _must_match(chosen: list, record: dict, asked: str) -> None:
     """A filter that selected nothing is a refusal, not an empty selection.
 
-    The property whose absence cost a whole debugging session: being handed no
-    images is not a selection, and what runs next spends money on it.
+    Being handed no images is not a selection, and what runs next spends money
+    on it.
     """
     if not chosen:
         raise ValidationError(
@@ -544,10 +498,8 @@ def reference_nodes(refs: dict, held: dict) -> list[str]:
     """
     found: list[str] = []
     for named in refs.get("characters") or []:
-        # **A plan names a character by ID.** It used to accept a slug too, and
-        # `entity_at` read a bare string as an id — so every slug lookup raised
-        # `NotFoundError`, which the tolerance below swallowed, and the board drew
-        # nothing, silently. There is one address now and this is it.
+        # **A plan names a character by ID**, and nothing else: a name is a
+        # label two characters may share.
         try:
             record = _character(str(named), held)
             pick, tags = _csv(refs.get("pick")), _csv(refs.get("pick_tag"))
@@ -558,7 +510,7 @@ def reference_nodes(refs: dict, held: dict) -> list[str]:
         except (ValidationError, NotFoundError, ForbiddenError) as exc:
             # Tolerated, but never in silence: a gap on the board is a thing
             # somebody has to be able to explain, and an empty list that logged
-            # nothing is what made this take a deploy to find.
+            # nothing cannot be.
             logger.warning("could not resolve references for %s: %s", named, exc)
             continue
     return found
@@ -570,15 +522,12 @@ def selection(addressed: str):
 
     **The one route both halves of studio must agree on**, which is why it is a
     route rather than a function in each. Slot N means "position N in the
-    resolved selection" exactly as it always did; the resolving happens here, so
-    the CLI and the SPA cannot disagree about what a model was given.
+    resolved selection"; the resolving happens here, so the CLI and the SPA
+    cannot disagree about what a model was given.
 
-    Two sources now, where there were four. `pick` names images; anything else
-    is tags, and no tags at all means `default` — which is the whole of what the
-    `default_set` used to be, said on the pictures instead of in a list beside
-    them. `group` is gone as a parameter because a group is a tag: `?tag=face`
-    is what `?group=face` was, and `?tag=default,face` is the face images this
-    character sends, which nothing could previously express at all.
+    Two sources. `pick` names images; anything else is tags, and no tags at all
+    means `default`. A group is a tag: `?tag=default,face` is the face images
+    this character sends.
 
     **A filter that matches nothing is refused, never answered with an empty
     list.** Asking for images and being handed none is a typo, not a selection,
@@ -588,9 +537,6 @@ def selection(addressed: str):
     Handing a model the first seven of eighteen silently is a shoot whose result
     nobody can explain afterwards. The refusal carries every candidate so the
     caller can choose rather than guess.
-
-    `stale_default_set` is gone with the list that produced it: a tag cannot
-    outlive the file it is written on.
     """
     held = support.memberships()
     record = _character(addressed, held)
@@ -649,9 +595,9 @@ def _cap(args) -> int | None:
     """The ceiling this selection is measured against, or none at all.
 
     `?limit=` is explicit and wins. `?engine=` is resolved against the registry,
-    which is a real lookup rather than the prefix match it replaces: two members
-    of one family may legitimately differ, and an alias resolves properly instead
-    of by accident. Neither given means no cap, and no refusal — a caller that did
+    a real lookup rather than a prefix match: two members of one family may
+    legitimately differ, and an alias resolves properly. Neither given means no
+    cap, and no refusal — a caller that did
     not say what it was feeding cannot be told it fed too much, and an unknown
     engine name is the same case.
     """
@@ -673,21 +619,13 @@ def _cap(args) -> int | None:
 def textblock(addressed: str):
     """The pasteable identity paragraph, on its own so a prompt can fetch it.
 
-    **`raw` is the half that was documented and never built.** The CLI has always
-    read `found["raw"]` for the un-authored case and this route has always sent
-    `{id, text}` alone, so `studio character textblock` on a character without a
-    block printed `{}` followed by instructions to compress it. Only the authored
-    path had a test.
-
     Both keys are always present. A caller branches on `text` being empty, which
-    is one rule; `raw` appearing only sometimes would be a second one, and the
-    client that got it wrong is the reason this route now states both.
+    is one rule; `raw` appearing only sometimes would be a second one.
 
     **The template's unfilled `<>` counts as absent**, and that decision is made
-    here rather than in each client. The CLI already skipped a block starting
-    `<`; the SPA does not, so a character created from the blank template and
-    never written up would have handed one caller the raw sections and the other
-    a literal `<>` — which is the paragraph landing in a prompt.
+    here rather than in each client. Otherwise a character created from the
+    blank template and never written up hands one caller the raw sections and
+    another a literal `<>` — which is the paragraph landing in a prompt.
     """
     held = support.memberships()
     record = _character(addressed, held)
@@ -705,9 +643,7 @@ def textblock(addressed: str):
 def character_runs(addressed: str):
     """Every run that used this character, newest first.
 
-    `runs find --character` was a walk over every project, every run folder and
-    three JSON documents each. It is one `by-sk` query for the ids and one batched
-    read for the envelopes.
+    One `by-sk` query for the ids and one batched read for the envelopes.
     """
     held = support.memberships()
     record = _character(addressed, held)
@@ -716,12 +652,11 @@ def character_runs(addressed: str):
 
 @bp.get("/characters/<addressed>/projects")
 def character_projects(addressed: str):
-    """Every project that involves this character — a question with no answer before.
+    """Every project that involves this character.
 
-    **The same rows `GET /api/projects` sends.** This answered `{id, name}` and
-    nothing else, so the SPA drew them with the card it draws every
-    other project list with and threw on `project.counts.runs` — the tab was a
-    blank error page. One builder now, in `routes/projects.py`.
+    **The same rows `GET /api/projects` sends**, from the one builder in
+    `routes/projects.py`, so the SPA draws them with the card it draws every
+    other project list with.
     """
     held = support.memberships()
     record = _character(addressed, held)

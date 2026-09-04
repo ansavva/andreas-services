@@ -2,22 +2,17 @@
 
 THE BIBLE IS A FIELD ON A ROW, NOT A DOCUMENT IN A BUCKET
 ---------------------------------------------------------
-`characters/<name>/profile.yaml` is gone. The bible is `profile` on the
-character record — a validated map the API owns — and one of its keys was
-promoted out of it into a real field, because it is not description, it is
-identity:
+The bible is `profile` on the character record — a validated map the API owns
+— and one of its keys lives outside it as a real field, because it is not
+description, it is identity:
 
     name          -> the record's `name`, a free-text label
 
-There were TWO. The record carried a `slug` — library-unique, claimed, the thing
-a person typed — beside a `display_name` for prose. Both are one `name` now, so
-this document's `name:` key means what it always did and there is no second
-label to keep in step.
+The record has one label, so this document's `name:` key is it and there is no
+second label to keep in step.
 
-Two more keys became rows rather than fields: `references:` is one `REF#` row
-per image and `default_set:` is an ordered list of node ids on the record. So
-nothing in the bible names a file any more, and a rename cannot strand a
-description.
+Nothing in the bible names a file: which images are identity is a tag on each
+image, so a rename cannot strand a description.
 
 **`load_profile` merges the promoted field back in**, and that is a
 compatibility seam with a reason rather than a courtesy: `domain/prompt.py`
@@ -27,25 +22,19 @@ into prose. Handing it a map with a key silently missing would not fail; it
 would render slightly worse prompts, which is the failure that does not get
 noticed.
 
-`rev` CLOSED THE WINDOW THAT `updated_at` LEFT OPEN
----------------------------------------------------
-This module used to carry a long argument about conflict detection: it compared
-the S3 ETag, then compared the node's `updated_at` when the catalog stopped
-exposing an ETag, and admitted in its own docstring that both were
-**check-then-write** — read the version, compare it here, then write, with a
-window in between where somebody else's write lands and is lost. It closed with
-"closing that window needs an `If-Match` on the API".
+`rev` IS THE CONFLICT CHECK, AND IT HAPPENS WHERE THE WRITE HAPPENS
+-------------------------------------------------------------------
+Comparing a version here and then writing is check-then-write, with a window
+in between where somebody else's write lands and is lost. `rev` closes it:
+`PATCH /api/characters/<id>/profile` takes `{profile, rev}` and the API refuses
+a stale one with a `ConditionExpression`, so there is no gap at all. A `409`
+arrives as `api.Conflict` and means exactly one thing: somebody wrote since you
+read.
 
-That is what `rev` is. `PATCH /api/characters/<id>/profile` takes `{profile, rev}`
-and the API refuses a stale one with a `ConditionExpression`, so the comparison
-happens where the write happens and there is no gap at all. A `409` arrives as
-`api.Conflict` and means exactly one thing: somebody wrote since you read.
-
-The local sidecar survives with a new job. It held the ETag, then `updated_at`;
-it now holds the `rev` observed at pull time, and `edit --push` sends *that*
-rather than whatever the record says today — so a push of a copy pulled an hour
-ago is refused by the API rather than quietly reverting every description
-written since.
+The local sidecar holds the `rev` observed at pull time, and `edit --push`
+sends *that* rather than whatever the record says today — so a push of a copy
+pulled an hour ago is refused by the API rather than quietly reverting every
+description written since.
 """
 from __future__ import annotations
 
@@ -75,7 +64,6 @@ from studio_pipeline.domain.characters.base import (
 # `default_set` are deliberately absent, because they are rows and a document
 # that carried them would invite someone to edit a copy of them.
 PROFILE_KEYS = (
-    "schema_version",
     "name",
     "identity",
     "face",
@@ -134,17 +122,11 @@ def check_profile(data: dict, where: str, name: str | None = None) -> None:
 def document(record: dict) -> dict:
     """The record as the one map every reader of a bible expects.
 
-    `name` is the record's `name`, which is now the only one it has: the bible's
-    `name:` key was the slug and every downstream reader spells it `name`, and
-    the record's `slug` and `display_name` collapsed into one field of that name.
-    See the module docstring.
-    Two spellings became one without either side moving.
+    `name` is the record's `name`, the only label it has; every downstream
+    reader spells it `name`. See the module docstring.
     """
     profile = dict(record.get("profile") or {})
-    merged = {
-        "schema_version": profile.pop("schema_version", None) or record.get("schema_version"),
-        "name": record["name"],
-    }
+    merged = {"name": record["name"]}
     merged.update(profile)
     return merged
 
@@ -168,21 +150,10 @@ def split_document(data: dict) -> tuple[dict, str]:
     The inverse of `document`. `name` is dropped rather than written: a rename
     is `PATCH /api/characters/<id>`, so a bible that disagrees with the record
     cannot rename anything and must not look as though it could.
-
-    **`schema_version` is dropped for a different reason: the API stamps it.**
-    A replace sets it from `catalog.PROFILE_SCHEMA_VERSION`, and `clean_profile`
-    validates the bible by section — so a document that carries the key back is
-    refused with `profile has no section called 'schema_version'`. `document()`
-    merges it in for a reader, this takes it out again for a writer, and neither
-    half is optional: it is in the file a person edits and it is not a section.
-
-    This was invisible until the verb was fixed. Both `edit --push` and
-    `create --from-profile` sent it, and the request died on an unregistered
-    `PUT` before anything looked at the body.
     """
     return {k: v for k, v in data.items()
             if k not in PROMOTED
-            and k not in ("references", "default_set", "schema_version")}
+            and k not in ("references", "default_set")}
 
 
 def save_profile(record: dict, data: dict, rev: int | None = None) -> dict:
@@ -190,13 +161,10 @@ def save_profile(record: dict, data: dict, rev: int | None = None) -> dict:
 
     `rev` is the revision the caller last saw — the sidecar's for `edit --push`,
     the record's own for an explicit file. The API refuses a stale one, which is
-    the whole of the conflict story now; nothing here re-reads and compares.
+    the whole of the conflict story; nothing here re-reads and compares.
 
-    **It used to be two writes.** `display_name` rode on the record rather than
-    inside `profile`, so a document that changed it cost a second call — done
-    second and with the bumped `rev`, so a failure left the bible written and the
-    label stale. There is no second label, so there is no second write and no
-    half-state to recover from.
+    **One write.** There is no second label on the record, so there is no
+    second call and no half-state to recover from.
     """
     try:
         return entities.put_profile(record["id"], split_document(data),
@@ -266,12 +234,9 @@ def cmd_show(name, json_, profile_):
     if json_:
         print(json.dumps(record, indent=2))
         return
-    # **There is no drift to report here any more, and that is the change.**
-    # This block used to name `default_set` members with no `REF#` row — an image
-    # a turnaround would not send, whose only other symptom was a generation that
-    # saw fewer pictures than somebody chose. Two records with an invariant
-    # between them became one tag on one file, so the failure has no way to
-    # happen and nothing to report.
+    # **There is no drift to report here.** Which images a turnaround sends is
+    # one tag on one file, not two records with an invariant between them, so
+    # "an image somebody chose that would not be sent" has no way to happen.
     images = entities.character_images(record["id"])
     counts: dict[str, int] = {}
     for entry in images:
@@ -297,10 +262,8 @@ def cmd_show(name, json_, profile_):
 def cmd_create(name, dry_run, from_profile, model, project, turnaround):
     """Create a character: the record, its library index row, its root and four pools.
 
-    **One transaction.** The pools used to appear lazily, on whatever write
-    happened to need one first, so a character could exist with no `reference/`
-    and the first `add-refs` would invent it. Either the whole character exists
-    or none of it does.
+    **One transaction.** Either the whole character exists or none of it does;
+    no write has to invent a pool because it happened to need one first.
     """
     src = from_profile or TEMPLATE
     if not os.path.isfile(src):
@@ -312,8 +275,8 @@ def cmd_create(name, dry_run, from_profile, model, project, turnaround):
         die("--turnaround needs a real bible: the blank template has no wardrobe or consistency "
             "block to build a prompt from. Pass --from-profile.")
 
-    # **No conflict to catch.** A name was a claimed slug, so a create could be
-    # refused; a name is a label now and two characters may share one.
+    # **No conflict to catch.** A name is a label and two characters may share
+    # one.
     record = entities.create_character(name, profile=split_document(data))
     made = [f"{n['name']}/" for n in store.children_of(record["root"])
             if n.get("kind") == "folder"]
@@ -368,7 +331,7 @@ def cmd_delete(name, files, force):
     subject" answerable. But a run is HISTORY: it really did use this character,
     and deleting the character is not a reason to delete the work. So force
     drops the links and leaves the runs, where the same flag on a project would
-    leave children naming a parent that is gone.
+    leave children naming a parent that no longer exists.
     """
     record = _require(name)
     try:
@@ -423,10 +386,8 @@ def cmd_textblock(name):
     record = _require(name)
     found = entities.textblock(record["id"])
     authored = (found.get("text") or "").strip()
-    # No `<`-check here any more: the route empties an unfilled `<>` before it
-    # answers, so the branch is `text` or nothing. It used to be tested here and
-    # `raw` used to arrive empty from a route that never sent it, which is how
-    # this printed `{}` and told you to compress it.
+    # No `<`-check here: the route empties an unfilled `<>` before it answers,
+    # so the branch is `text` or nothing.
     if authored:
         print(authored)
         print(f"\n(authored block from {record['name']}'s bible)", file=sys.stderr)
@@ -477,8 +438,7 @@ def cmd_set_profile(name, file):
 #   .<name>.base.yaml   pristine copy as pulled — used to detect your edits + diff
 #   .<name>.rev         the record's `rev` at pull time — sent back as the CAS
 #                       value, so a push of a stale copy is refused by the API
-#                       rather than compared here. It held an S3 ETag, then the
-#                       node's `updated_at`; both were check-then-write.
+#                       rather than compared here.
 
 def local_paths(name: str, override: str | None = None) -> tuple[str, str, str]:
     """(working copy, base copy, rev file) for a character."""

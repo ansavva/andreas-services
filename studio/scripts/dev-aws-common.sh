@@ -21,20 +21,11 @@ AWS_REGION_VALUE="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
 AWS_PROFILE_ARGS=()
 AWS_PROFILE_RESOLVED=0
 
-# The dev stack's one account. **Neither half of it is committed** — the
-# password never could be, and the address no longer is.
-#
-# It used to be the literal `dev@studio.test`, on the reasoning that a reserved
-# `.test` TLD (RFC 2606) can never be a real mailbox, so the address was safe to
-# hard-code and worth hard-coding: `dev-user.sh` creates exactly the account
-# `dev-token.sh` signs in as, and one constant is how those cannot drift onto
-# two different people.
-#
-# That second half still has to hold, and now it holds through the config file
-# rather than through the repo: both scripts read one value from one place, so
-# they still cannot drift — the place is just no longer inside a checkout.
-# `.test` is still what belongs in it, and nothing here enforces that, because
-# the value is now the developer's to choose.
+# The dev stack's one account. **Neither half of it is committed.** Both
+# `dev-user.sh` and `dev-token.sh` read the address from this one file, so the
+# account created and the account signed in as cannot drift apart. A reserved
+# `.test` address (RFC 2606) is what belongs in it, because it can never be a
+# real mailbox; nothing enforces that, because the value is the developer's.
 DEV_ENV_FILE="$CONFIG_DIR/dev.env"
 
 load_dev_user_email() {
@@ -211,11 +202,8 @@ export_temporary_aws_credentials() {
   local credentials
   # Make the selected profile resolve its current session before exporting credentials. This lets
   # SSO/credential-process profiles refresh their cached role credentials instead of copying a stale
-  # set into the long-running backend container. It used to be what made `terraform apply` work at
-  # all: `aws login` wrote a cache only the AWS CLI read, so the S3 backend resolved it while the
-  # AWS provider did not. The long-lived access key this repo moved to in August 2026 is read by
-  # both, so this is now redundancy rather than the fix. See "Environment access" in the root
-  # CLAUDE.md.
+  # set into the long-running backend container. With a long-lived access key it is redundancy
+  # rather than the fix. See "Environment access" in the root CLAUDE.md.
   resolve_aws_profile
   aws_dev_probe sts get-caller-identity >/dev/null ||
     die "AWS credentials are not currently valid. Sign in to AWS and try again."
@@ -266,8 +254,8 @@ load_dev_stack_outputs() {
   DEV_CLIENT_ID="$(jq -r '.outputs.cognito_user_pool_client_id.value // empty' <<<"$state_json")"
   # `<prefix>.auth.<region>.amazoncognito.com` — this stack's Managed Login
   # host, which the SPA redirects to. Checked below with the rest: an empty one
-  # is a stack applied before #364, and the local app cannot sign in at all
-  # against it, so failing here beats a blank sign-in button later.
+  # is a stack applied without Managed Login, and the local app cannot sign in
+  # at all against it, so failing here beats a blank sign-in button later.
   DEV_AUTH_DOMAIN="$(jq -r '.outputs.cognito_auth_domain.value // empty' <<<"$state_json")"
   DEV_BUCKET="$(jq -r '.outputs.media_bucket_name.value // empty' <<<"$state_json")"
   DEV_TABLE="$(jq -r '.outputs.catalog_table_name.value // empty' <<<"$state_json")"

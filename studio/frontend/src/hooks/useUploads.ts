@@ -4,7 +4,7 @@ import { useToast } from "@ansavva/design-system";
 
 import { uploadFile, type UploadProgress } from "../apis/upload";
 
-export type UploadStatus = "waiting" | "sending" | "done" | "failed";
+type UploadStatus = "waiting" | "sending" | "done" | "failed";
 
 export interface UploadItem {
   /** A client-side key for the row. Not a node id — a waiting file has no node. */

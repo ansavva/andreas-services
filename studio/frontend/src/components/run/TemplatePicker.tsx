@@ -27,7 +27,7 @@ interface Props {
  * binds nobody, and a picker that hid every template until a cast existed would
  * hide exactly the ones that never needed one.
  */
-export function castNeededBy(prompt: string): number {
+function castNeededBy(prompt: string): number {
   let most = 0;
   for (const [, digits] of prompt.matchAll(/\{character\.(\d+)\./g)) {
     most = Math.max(most, Number(digits));

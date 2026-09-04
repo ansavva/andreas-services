@@ -96,13 +96,12 @@ def test_a_stale_rev_is_refused(library):
 
 # ── involvement ─────────────────────────────────────────────────────────────
 
-def test_linking_a_character_is_readable_from_both_ends(library):
-    """The reverse question had no answer at any price before this was a row."""
+def test_linking_a_character_records_it_on_the_project(library):
+    """Involvement is a row on the project, not a folder somewhere."""
     result = CliRunner().invoke(cli.main, ["projects", "link", "porch-teaser",
                                            "subject-b"])
     assert result.exit_code == 0, result.output
-    assert {p["id"] for p in E.character_projects(library.character_b)} == {
-        library.project}
+    assert library.character_b in {c["id"] for c in E.get_project(library.project)["characters"]}
 
 
 def test_unlinking_leaves_the_files_and_the_runs_alone(library):
@@ -111,7 +110,7 @@ def test_unlinking_leaves_the_files_and_the_runs_alone(library):
     result = CliRunner().invoke(cli.main, ["projects", "unlink", "porch-teaser",
                                            "subject-a"])
     assert result.exit_code == 0, result.output
-    assert E.character_projects(library.character) == []
+    assert library.character not in {c["id"] for c in E.get_project(library.project)["characters"]}
     # The run recorded that it USED the character; involvement is a separate
     # fact about the project, and unlinking one must not rewrite the other.
     assert R.find_runs(character=P.by_name(E.list_characters(), "subject-a", "character")["id"])

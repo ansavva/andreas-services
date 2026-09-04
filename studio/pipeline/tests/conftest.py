@@ -95,7 +95,7 @@ def _committed_models() -> dict:
     path = _pipeline.STUDIO_DIR / "backend" / "studio_core" / "models.json"
     return json.loads(path.read_text())["models"]
 
-from tests.support.fake_api import BUCKET, FakeApi  # noqa: E402
+from tests.support.fake_api import BUCKET, FakeApi, add_run_output  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -407,7 +407,7 @@ def library(fake_api):
     # states without an approval naming its exact payload — so a fixture that
     # skipped this step would be seeding a state the service cannot produce.
     E.approve_run(lib.run, run["plan_digest"])
-    signed = E.add_run_output(lib.run, "output-1.jpeg", 9, "image/jpeg")
+    signed = add_run_output(lib.run, "output-1.jpeg", 9, "image/jpeg")
     _confirm(fake_api, signed, b"jpeg-out")
     E.patch_run(lib.run, status="succeeded", prediction_id="s7k2m9x4qwe1",
                 completed="2026-08-19T09:41:02.883740+00:00",

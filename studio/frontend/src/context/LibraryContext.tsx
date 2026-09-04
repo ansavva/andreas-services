@@ -46,7 +46,7 @@ const LibraryContext = createContext<LibraryContextValue | null>(null);
  * The library the app opens on, out of the ones the caller can reach.
  *
  * The stored id wins if it is still one of theirs — a membership can be revoked
- * between visits, and a header naming a library you are no longer in is a 403 on
+ * between visits, and a header naming a library you are not in is a 403 on
  * every request rather than an empty listing. Otherwise the first, which is not
  * arbitrary: `GET /api/libraries` sorts by name, so "the first" is the top of
  * the switcher and visibly the one being shown.
@@ -56,7 +56,7 @@ const LibraryContext = createContext<LibraryContextValue | null>(null);
  * the wrong library; here the guess is visible, reversible and attached to a
  * control that says which one it landed on.
  */
-export function chooseLibrary(libraries: Library[], stored: string | null): string | null {
+function chooseLibrary(libraries: Library[], stored: string | null): string | null {
   if (stored && libraries.some((library) => library.id === stored)) return stored;
   return libraries[0]?.id ?? null;
 }

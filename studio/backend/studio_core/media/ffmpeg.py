@@ -38,11 +38,6 @@ import re
 import subprocess
 import tempfile
 
-#: What a scene or a movie may be cut from. Shared with `services/render.py`
-#: rather than restated, so a new container format is legal in both at once.
-VIDEO_EXT = (".mp4", ".mov", ".m4v", ".webm")
-
-
 class MediaError(RuntimeError):
     """This file cannot be processed, and trying again will not change that.
 

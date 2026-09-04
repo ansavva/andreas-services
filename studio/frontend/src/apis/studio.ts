@@ -36,7 +36,6 @@ import type {
   SortOrder,
   TextResponse,
   UploadGrant,
-  NodeView,
   TemplateLibrary,
   TagInUse,
   TagScope,
@@ -50,15 +49,14 @@ import { apiGet, apiSend } from "./client";
  * Which folder a listing is about.
  *
  * A node id, or nothing at all for the library root — whose id is not knowable
- * before the first request answers. **`prefix=` is gone**, and with it the last
- * read route that took a name path: a listing is a query on the parent id, so an
- * id is the argument the query already wants, while a path cost a read per
- * segment to walk down from the root first.
+ * before the first request answers. Never a name path: a listing is a query on
+ * the parent id, so an id is the argument the query already wants, while a path
+ * would cost a read per segment to walk down from the root first.
  */
-export type FolderRef = { node?: string };
+type FolderRef = { node?: string };
 
 /** What every listing filter can narrow on. Both readers below accept them. */
-export interface ListFilter {
+interface ListFilter {
   /** An entry must carry ALL of these. */
   tag?: string[];
   /** `folder`, `image`, `video`, `text`, `other`. Omit for everything. */
@@ -178,12 +176,11 @@ export function getNode(id: string) {
  * cross-origin download actually downloads), and the media surfaces re-signing
  * a URL that expired while the tab sat idle.
  *
- * **By node id, and that is the fix rather than a tidy-up (#432).** The route
- * also takes a `key`, and there it means a raw *S3* key rather than the name
- * path everything else in this file sends — the pipeline reads shared material
- * that has no catalog node through it. So a name path handed to `key` signs
- * whatever object happens to sit at that string, which since #294 is nothing at
- * all for anything uploaded through the app: its bytes are at `blobs/<id>`.
+ * **By node id, never by name path.** The route also takes a `key`, and there
+ * it means a raw *S3* key — the pipeline reads shared material that has no
+ * catalog node through it. A name path handed to `key` signs whatever object
+ * happens to sit at that string, which is nothing at all for anything uploaded
+ * through the app: its bytes are at `blobs/<id>`.
  */
 export function getAsset(
   node: string,
@@ -196,9 +193,8 @@ export function getAsset(
  * A JSON/markdown/text object's contents, for the text page.
  *
  * On the node's own route in both directions (`GET` here, `PATCH` in
- * `saveNodeText`), which is what closed the last gap #432 left open: the read
- * took a node id and the write took a name path, so the two addressed the same
- * file through two resolvers that could disagree. One address, one resolver.
+ * `saveNodeText`), so the read and the write address the same file through one
+ * resolver that cannot disagree with itself.
  */
 export function getNodeText(id: string) {
   return apiGet<TextResponse>(`/api/nodes/${encodeURIComponent(id)}/text`);
@@ -217,12 +213,10 @@ export function getNodeOwner(id: string) {
 // ---------------------------------------------------------------------------
 // File-layer writes — node ids, and nothing else
 //
-// Every one of these used to take a slash-joined *name* path, and there were
-// nine of them because a folder's address and a file's address were different
-// strings that counted different things. An id is an id, so `move`, `copy` and
-// `delete` are one route each and take a mixed selection.
+// An id is an id, so `move`, `copy` and `delete` are one route each and take a
+// mixed selection of folders and files.
 //
-// What that bought is the same thing ids bought the URL: a rename cannot strand
+// What that buys is the same thing ids buy the URL: a rename cannot strand
 // a request in flight, and nothing has to translate between an address and a
 // key. See ENTITY_MODEL.md, "one addressing scheme: the node id".
 // ---------------------------------------------------------------------------
@@ -411,9 +405,8 @@ export function deleteNode(id: string) {
 // Characters, projects, runs, scenes and movies — rows with ids, queried rather
 // than walked. Three things hold for every call below:
 //
-// * **Ids, and there is no other address.** The API accepted `slug:<slug>` for
-//   the CLI, where a person types a name; the SPA always holds an id and never
-//   sends one, so a rename cannot invalidate anything it is holding.
+// * **Ids, and there is no other address.** The SPA always holds an id and
+//   never sends a name, so a rename cannot invalidate anything it is holding.
 // * **`rev` on every record write.** The caller sends the `rev` it read and a
 //   stale one comes back 409. That is a compare-and-swap, not a check followed
 //   by a write with a window in it.
@@ -444,9 +437,7 @@ export function createCharacter(body: {
  * **A rename here moves nothing.** No object is copied, no run document is
  * rewritten, and every reference, binding and default-set entry keeps pointing
  * at the same node ids — the name is a label on one row and nothing else moves,
- * the root folder included, because it is named by the id. It used to be a `PATCH` per slugged
- * basename across four pools plus a rewrite pass over every run that cited the
- * old path.
+ * the root folder included, because it is named by the id.
  */
 export function patchCharacter(
   id: string,
@@ -523,34 +514,6 @@ export function deleteCharacter(
     `/api/characters/${encodeURIComponent(id)}?files=${files}` +
       (force ? "&force=1" : ""),
   );
-}
-
-/** The reference index, grouped and in `order` within each group. */
-/**
- * The reference spec: the prose a turnaround fills from a character's bible.
- *
- * It was a YAML file in the pipeline package, so this screen could not exist —
- * a wording change meant a code change, a review and a release, for prose whose
- * whole nature is that it gets tuned against what a model returned.
- *
- * Blocks and angles are separate rows, so editing one is one write and two
- * people editing different angles do not overwrite each other.
- */
-/**
- * One name path to the node it names.
- *
- * The address a person types, resolved once — the same route the CLI has always
- * used, without the app ever composing a path of its own.
- *
- * **It answers a NODE VIEW, not a file entry, and the difference is a crash.**
- * `support.view` reports the node's own fields; it carries no presigned `url`,
- * because a URL is what `support.assets` adds when a record POINTS at a node.
- * Typed as `FileEntry` this compiled happily and then threw on the first render
- * — `looksLikeVideo(name, url)` split an undefined. Pass the id to `MediaThumb`
- * and let it sign.
- */
-export function resolvePath(path: string) {
-  return apiGet<NodeView>("/api/resolve", { path });
 }
 
 /**
@@ -666,7 +629,7 @@ export function previewPlanPrompt(runId: string, template: string) {
  * the property that makes this safe against the next route that omits
  * something new.
  */
-export type EntityPatch<T> = Partial<T> & { id: string; rev: number };
+type EntityPatch<T> = Partial<T> & { id: string; rev: number };
 
 /**
  * Revise one shot of a storyboard.
@@ -694,18 +657,16 @@ export function patchShot(
  * **A route rather than a function in each half of studio**, so the CLI and this
  * app cannot disagree about what slot 3 was. `pick` names files and `tag` names
  * tags, both comma-joined; `pick` wins, and neither given means the `default`
- * images. `group` is gone as a parameter because a group IS a tag.
+ * images. There is no `group` parameter because a group IS a tag.
  *
  * **One refusal a caller has to surface rather than work around**, a 409:
  * `over_cap`, when more images match than the model will take, carrying every
  * candidate so a person can choose. Never truncated, because a generation shown
  * seven of eighteen images silently is a result nobody can explain afterwards.
+ * A stale selection is not a second refusal: a tag cannot outlive the file it
+ * is written on.
  *
- * `stale_default_set` was the other one, and it cannot happen: it fired when the
- * set on the record named a node that was no longer a reference, and there is no
- * list and no row — a tag cannot outlive the file it is written on.
- *
- * **`ApiError.message` is the CODE on those two, not the sentence.** The API's
+ * **`ApiError.message` is the CODE on that refusal, not the sentence.** The API's
  * ordinary errors put their prose in `error` and a structured one puts the code
  * there, so `apis/client` — which reads `error` first — surfaces `over_cap`
  * verbatim and drops the `index`. A caller that wants the candidates has to read
@@ -727,7 +688,7 @@ export function getCharacterSelection(
   );
 }
 
-/** Runs that used this character — one query, where it used to be a full walk. */
+/** Runs that used this character — one query, not a walk. */
 export function getCharacterRuns(id: string, cursor?: string) {
   return apiGet<RunPage>(`/api/characters/${encodeURIComponent(id)}/runs`, {
     cursor,
@@ -799,18 +760,12 @@ export function deleteProject(
 
 /** Replace the involvement links wholesale — this is `projects link` / `unlink`. */
 /**
- * Replace who a project is about. **The answer is mergeable.**
- *
- * It was not, and the asymmetry cost three bugs: the route answered with the id
- * strings it had been handed while a `GET` expands the same field into
- * `{id, name}` objects. Merging replaced objects with strings, so
- * `characters.map(c => c.id)` became a list of `undefined` and every chip read
- * unselected while the write itself had succeeded — a failure no type could
- * catch, because the type was an assertion about a shape nobody had checked.
- *
- * The route now answers in the shape `GET` sends. The refetch this used to
- * require is gone, and `ProjectPage` lost the `onReload` prop that existed for
- * nothing else.
+ * Replace who a project is about. **The answer is mergeable**: the route
+ * answers in the shape `GET` sends — `{id, name}` objects, not the id strings
+ * it was handed — so the caller merges it into the record instead of
+ * refetching. A route that echoed strings would put them where the record
+ * holds objects, and `characters.map(c => c.id)` would read every chip as
+ * unselected while the write had succeeded — a failure no type can catch.
  */
 export function setProjectCharacters(id: string, characters: string[]) {
   return apiSend<{ id: string; characters: ProjectRecord["characters"] }>(
@@ -977,14 +932,6 @@ export function approveRun(id: string, digest: string) {
     {
       digest,
     },
-  );
-}
-
-/** Take an approval back. The run returns to `draft` and cannot be submitted. */
-export function revokeRunApproval(id: string) {
-  return apiSend<RunRecord>(
-    "DELETE",
-    `/api/runs/${encodeURIComponent(id)}/approve`,
   );
 }
 

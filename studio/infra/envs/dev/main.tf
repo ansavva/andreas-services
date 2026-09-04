@@ -18,9 +18,8 @@
 # resources below. A per-machine CloudFront distribution would cost 20 minutes
 # per apply and per destroy to prove nothing.
 #
-# **It DOES declare an API Gateway now, and that sentence used to say it never
-# would.** The exception is `module.callbacks`, and it is worth stating why it
-# earns one when hosting does not.
+# The one exception is `module.callbacks`, which does declare an API Gateway,
+# and it is worth stating why it earns one when hosting does not.
 #
 # Replicate cannot reach `http://localhost:8000`. So for as long as this
 # environment had no public endpoint, the callback that closes a generation

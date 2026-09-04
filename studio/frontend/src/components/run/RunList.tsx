@@ -23,7 +23,7 @@ import { formatCost } from "../../utils/cost";
  * **Chrome is the caller's.** Filters, paging, empty states and headings differ
  * by screen and belong to the screen; what a RUN looks like does not.
  */
-export const STATUS_INTENT: Record<
+const STATUS_INTENT: Record<
   RunStatus,
   "neutral" | "success" | "danger" | "warning"
 > = {
@@ -52,7 +52,7 @@ export const STATUS_INTENT: Record<
  * renders what it is given and leaves out what it is not, rather than each
  * caller inventing a different shape for the same absence.
  */
-export interface RunRow extends Partial<Omit<RunSummary, "id">> {
+interface RunRow extends Partial<Omit<RunSummary, "id">> {
   id: string;
   /** What this run is TO the thing listing it — a scene shot's `clip`, `sample`,
       `handoff`, `earlier take`. Absent everywhere the list is already of one

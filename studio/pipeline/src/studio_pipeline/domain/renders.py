@@ -1,6 +1,6 @@
-"""Ask the service to render something, and wait for it. **This replaces ffmpeg.**
+"""Ask the service to render something, and wait for it.
 
-`adapters/ffmpeg.py` is gone and so is Pillow: stitching a scene, cutting a
+Neither ffmpeg nor Pillow ships in this wheel: stitching a scene, cutting a
 movie, pulling a frame, sampling a contact grid and laying out a contact sheet
 are all done by a worker Lambda with ffmpeg in its image, and this is how a
 terminal asks for one.
@@ -20,9 +20,9 @@ are refusals a person acts on. All of them belong in front of the person, not at
 the far end of a queue where they arrive twenty seconds later as a failed row.
 So the CLI resolves every input to a **node id** and the job carries node ids.
 
-## Why waiting here is not what waiting used to be
+## What waiting means
 
-`engine/submit.wait_for` learned this first and the same sentence applies:
+The same sentence as `engine/submit.wait_for`:
 **`Ctrl-C` abandons a wait, not the work.** The render is being done by something
 else; interrupting this leaves the job running and the row is still there to
 read. A timeout is likewise not a failure — it is this terminal's patience
@@ -32,8 +32,7 @@ running out, and the message says how to pick the thread back up.
 
 One node, in a folder the caller named, plus a report. `fetch` is what brings it
 back to disk for the commands that print a local path. The bytes go
-worker → S3 → here, where they used to be produced here — which is the cost of
-the move, and it is one download per command rather than one per input.
+worker → S3 → here: one download per command rather than one per input.
 """
 from __future__ import annotations
 
@@ -145,8 +144,8 @@ def scratch(record: dict, *names: str) -> str:
     convention, exactly like `chains/`, and deletable by anyone who wants the
     space back.
 
-    That is a real change and worth stating: these commands used to leave nothing
-    behind. They accumulate now, visibly, in a folder named for what it holds.
+    These commands accumulate output, visibly, in a folder named for what it
+    holds.
     """
     return store.folder_path(record, *names)["id"]
 

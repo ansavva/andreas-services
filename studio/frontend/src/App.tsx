@@ -205,11 +205,10 @@ export function App() {
 /**
  * Empty the cache when the library changes.
  *
- * **The remount above is no longer enough, and that is what a cache costs.**
- * Discarding component state used to discard every answer with it; a cache
- * outlives the components that filled it, so without this a switch would redraw
- * the previous library's characters from memory and only correct itself when
- * something refetched. Keys are not library-scoped instead, because that would
+ * **The remount above is not enough on its own, and that is what a cache
+ * costs.** A cache outlives the components that filled it, so without this a
+ * switch would redraw the previous library's characters from memory and only
+ * correct itself when something refetched. Keys are not library-scoped instead, because that would
  * put the library context inside `useResource` and every component test would
  * need a provider to render at all.
  *

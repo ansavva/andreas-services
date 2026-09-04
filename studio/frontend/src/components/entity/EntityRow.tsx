@@ -17,7 +17,7 @@ export type RowBadge = string | { label: string; intent?: BadgeIntent };
  * has — a blank square carrying the kind in mono, or nothing at all. Files and
  * folders have no picture and are not missing one, so they bring an icon.
  */
-export type RowThumb =
+type RowThumb =
   | { node: string; url: string; isVideo?: boolean }
   | { placeholder: string }
   | { icon: ReactNode };

@@ -1,16 +1,11 @@
 """Fill a TEMPLATE from the bible of each character a run binds.
 
-**The half of a prompt that a character decides.** It lived in
-`engine/turnaround.py` in the pipeline package, which put it behind a
-`pip install`: the SPA could not assemble a prompt, so it could not show one,
-preview one or make one. Everything else — the character record, its images, the
-run rows — the API already served.
-
-Moved rather than copied. A second implementation of this on the SPA side would
-be two opinions about what a run was told to render, and the disagreement would
-be invisible after the fact because the run records the outcome and not the
-reasoning. That is the argument `GET /api/characters/<id>/selection` records for
-resolving a selection in one place, and it holds here unchanged.
+**The half of a prompt that a character decides**, in the API so the SPA and
+the CLI fill it the same way. A second implementation would be two opinions
+about what a run was told to render, and the disagreement would be invisible
+after the fact because the run records the outcome and not the reasoning. That
+is the argument `GET /api/characters/<id>/selection` makes for resolving a
+selection in one place, and it holds here unchanged.
 
 ## What a template may cite
 
@@ -26,20 +21,18 @@ Blocks by name, and these computed values:
                                  identity images actually landed
 
 **N is the character's POSITION in the run**, one-based, the same number
-`[Image1]` counts. It is not the slug: a slug is an attribute a rename swaps,
-and a prompt naming one would be quietly wrong the moment somebody renamed the
+`[Image1]` counts. It is not the name: a name is a label a rename swaps, and a
+prompt citing one would be quietly wrong the moment somebody renamed the
 character. `build` and `must` name a variant because the bible answers them
 differently for a face than for a body, and defaulting silently is how a face
 template ends up describing legs.
 
-**There are no plate slots, no plate, and no anchor.** A template used to be able
-to bind a generic pose figure as a first image, cited as `{angle_slot}`; that
-distorted the very thing it recorded and was deleted. `{slot.anchor}` went the
-same way and for a different reason — it carried a sentence telling a render to
-take its wardrobe and background from an earlier one, which described a binding
-that only a fourteen-at-a-time turnaround made. Both are gone rather than
-disabled: left in place, each is a loaded gun with an authored block still
-arguing for it.
+**There are no plate slots, no plate, and no anchor.** A generic pose figure
+bound as a first image distorts the very thing it records, and a sentence
+telling a render to take its wardrobe and background from an earlier one
+describes a binding only a fourteen-at-a-time turnaround makes. Neither is
+provided, so a template citing either gets the refusal every unknown citation
+gets — a loaded gun is not left in place with an authored block arguing for it.
 """
 
 import string
@@ -82,9 +75,9 @@ def top_text(profile: dict) -> str:
     names embroidery or a graphic — which a model renders differently every time
     and would make the group inconsistent. So the detail is not used.
 
-    The schema puts the COLOUR in that same field, though, so dropping it whole
-    threw the colour away too and an angle came back in a colour nobody chose.
-    `colour:` is the narrow way back in.
+    The schema puts the COLOUR in that same field, so `colour:` is read on its
+    own — dropping the detail whole would drop the colour with it, and an angle
+    would come back in a colour nobody chose.
     """
     tops = ((profile.get("wardrobe") or {}).get("tops")) or []
     top = tops[0] if tops and isinstance(tops[0], dict) else {}
@@ -97,8 +90,8 @@ def top_text(profile: dict) -> str:
 def style_text(profile: dict, blocks: dict) -> str:
     """What MEDIUM to render in — the character's, never this code's.
 
-    The spec used to assert "photographic, no stylisation" for every angle, which
-    is right only for a character whose material is photographs. For one who
+    Asserting "photographic, no stylisation" for every angle is right only for
+    a character whose material is photographs. For one who
     exists as pen-and-ink panels it would convert him to a medium he has never
     appeared in, with the reference images fighting the prompt.
     """
@@ -119,8 +112,8 @@ def age_text(profile: dict) -> str:
     """`identity.apparent_age`.
 
     Seed photographs accumulate over years — the same person at 35 and at 55 in
-    one identity set, with the model free to average them. Nothing in the prompt
-    named an age, so nothing decided it.
+    one identity set, with the model free to average them. A prompt that names
+    no age leaves the model to decide it.
     """
     return _clean((profile.get("identity") or {}).get("apparent_age"))
 
@@ -143,25 +136,23 @@ def build_text(profile: dict, group: str = "body") -> str:
 
     HEIGHT comes first, and from `identity` rather than `body`: it is the one
     proportion the bible states as a NUMBER, and a figure on a plain backdrop
-    has no scale of its own, so the number is the only thing that settles it. It
-    was the only field never sent, because the build clause read `body:` alone.
+    has no scale of its own, so the number is the only thing that settles it.
 
-    ## One LABELLED line per field, and that is the change
+    ## One LABELLED line per field
 
-    This joined every field with a space into one run-on paragraph, and the
-    hand-authored body prompts that actually worked did not: they arrived as
+    A run-on paragraph joining every field with a space loses which field a
+    sentence belongs to; the hand-authored body prompts that work arrive as
 
         - Chest: Full square chest, rounded capped deltoids... SEEN FROM THE
           SIDE the chest has real DEPTH...
         - Legs: ...
         - Body hair: ...
 
-    with each field named and on its own line. Which field a sentence belongs to
-    is information the bible has and the run-on form threw away — and it is the
-    information a turned body angle needs most, because "the chest curves out in
-    side view" only reads as an instruction about the chest if it is labelled as
-    one. A wall of unattributed sentences is what produced a flat side profile
-    from a good front one.
+    with each field named and on its own line. That is information the bible
+    has, and it is the information a turned body angle needs most, because "the
+    chest curves out in side view" only reads as an instruction about the chest
+    if it is labelled as one. A wall of unattributed sentences produces a flat
+    side profile from a good front one.
 
     The label is the bible's own key, so a field written into the bible tomorrow
     is labelled without an edit here.
@@ -222,8 +213,7 @@ def character_values(profile: dict, blocks: dict) -> dict:
     `build` and `must` come back as namespaces rather than strings. Both read
     differently for a face than for a body — a face crops at mid-chest, so the
     proportions below it are noise, and the consistency checklist is introduced
-    by a different sentence — and that used to be decided by a `group` column on
-    the angle. A template says which it wants.
+    by a different sentence. A template says which it wants.
     """
     values = {
         "top": top_text(profile),
@@ -244,15 +234,12 @@ def character_values(profile: dict, blocks: dict) -> dict:
 
 
 def _unnumbered(template: str) -> set:
-    """`{character.<field>}` citations, which no longer resolve.
+    """`{character.<field>}` citations, which do not resolve.
 
     **A prompt names its cast by POSITION**, one-based, the same rule
     `[Image1]` already follows — `{character.1.top}` is the first character
-    bound to this run. There were two dialects while there were two kinds of
-    template: an angle was about exactly one character and wrote the bare form,
-    a run plan could bind several and wrote the numbered one. There is one
-    template library now, so there is one spelling, and the bare form is caught
-    here rather than reaching `vformat` as an unhelpful `AttributeError`.
+    bound to this run. There is one spelling, and the bare form is caught here
+    rather than reaching `vformat` as an unhelpful `AttributeError`.
     """
     found = set()
     try:
@@ -291,19 +278,12 @@ def values_for(profiles: list, blocks: dict, identity_positions=None) -> dict:
     Three namespaces, and the dots are the point: `{block.scale_face}` and
     `{character.1.top}` say where a placeholder comes from, which is the
     question a reader of an assembled prompt actually has — and, more than that,
-    they cannot collide. Bare names shared one flat namespace, so a block called
-    `top` was silently beaten by the bible's `top_text` and nothing said so.
+    they cannot collide. In one flat namespace a block called `top` would be
+    silently beaten by the bible's `top_text`.
 
     A dot in a format field is ATTRIBUTE access rather than a nested key, so each
     namespace goes in as an object. Every block name matches `[a-z_][a-z0-9_]*`,
     which is also the rule for a Python identifier, so all of them are reachable.
-
-    **`slot.anchor` is gone.** It carried a sentence telling a render to take its
-    wardrobe and background from an earlier one, and it was written into all
-    fourteen production templates. The chaining it belonged to is gone, so a
-    template citing it now gets the refusal every unknown citation gets, which is
-    the right answer: the words would have described a binding that no longer
-    happens.
     """
     block_ns = {k: v for k, v in blocks.items() if isinstance(v, str)}
     cast = SimpleNamespace(**{
@@ -322,12 +302,8 @@ def expand(template: str, profiles: list, blocks: dict,
            identity_positions=None) -> str:
     """A template's finished prompt. **The one fill there is.**
 
-    There were two — `assemble` for a reference angle, about exactly one
-    character and citing it unnumbered, and `expand_cast` for a run plan, which
-    could bind several and numbered them. Two dialects for one operation, kept
-    apart only because the two kinds of template were stored apart. There is one
-    template library now, so there is one spelling: positional, one-based, the
-    same rule `[Image1]` follows.
+    One spelling for the cast: positional, one-based, the same rule `[Image1]`
+    follows.
 
     A missing placeholder is a `ValidationError` naming both the placeholder and
     what WAS available, because templates are edited by people: the likeliest
@@ -410,13 +386,9 @@ def expand_parts(template: str, profiles: list, blocks: dict,
             f"this prompt has a malformed template: {exc}. "
             f"A literal brace must be doubled — {{{{ and }}}}.")
 
-    # **Whitespace is PRESERVED, and it used to be destroyed here.**
-    #
-    # This ended `" ".join(text.split())`, which collapses every newline into a
-    # space. That was right while the source was a folded YAML scalar, where a
-    # line break was an artifact of how the file wrapped rather than something
-    # anybody chose — and it became wrong the moment the source became a row a
-    # person types into a box.
+    # **Whitespace is PRESERVED.** Ending with `" ".join(text.split())` would
+    # collapse every newline into a space, which is wrong for a row a person
+    # types into a box.
     #
     # Not a readability preference. The single best-performing reference render
     # this repository has produced was authored by hand with SIX newlines in its

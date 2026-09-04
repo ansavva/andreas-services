@@ -7,7 +7,7 @@ description: The shared machinery every studio-* engine runs on — the model RE
 
 **Models are data, not code.** One entry per model in the **registry**, one
 runner over all of them. Adding a model is a reviewed data change plus a written
-page — never an edit to five scripts, which is what it used to be.
+page.
 `studio models` is the whole surface onto it.
 
 This skill is the plumbing. For how to *use* a given model, read its own skill:
@@ -95,10 +95,9 @@ The registry is data — one JSON document that every studio-* tool reads, and t
 only thing you edit to add a model. `studio models show <key>` prints an entry
 alongside the live schema; `studio-media-add-model` is how a new one gets written.
 
-**It is the deployed service's document, and the CLI reads it from there.** It
-used to ship inside the pipeline, and the app kept a three-engine copy of the
-reference caps that disagreed with it — so a selection the CLI refused, the app
-allowed. One copy now, served to both. Two things follow: reading the registry
+**It is the deployed service's document, and the CLI reads it from there.** One
+copy, served to the CLI and the app alike, so both refuse the same selection.
+Two things follow: reading the registry
 needs a session like every other command, and a model added here reaches
 production when the backend deploys. Against a local dev API it is live at once.
 
@@ -184,10 +183,9 @@ generative model with the same prompt is a normal thing to want, and the point
 is that it is a decision somebody makes rather than something a script does in
 silence.
 
-**It is a query against the run store, not a local file.** It used to be a
-per-machine list beside the credentials, which caught the same machine
-submitting twice — what actually happened — and nothing else. The fingerprint is
-recorded on the run now, so a second machine and a colleague are caught too. An
+**It is a query against the run store, not a local file.** The fingerprint is
+recorded on the run, so a second machine and a colleague are caught, not only
+the same machine submitting twice. An
 unsubmitted draft never counts: repeating a `--dry-run` is ordinary.
 
 **An `owner/name` that is not a registry key runs off the live schema.** Trying

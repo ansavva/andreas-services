@@ -49,66 +49,7 @@ confirm is an *approval* gate. This added the approval record, at the run tier o
 
 ---
 
-## What was missing
-
-A run carried an envelope — status, model, timings, bindings, outputs, cost — and
-no authored half at all. What a person intended went into `request.json`, the
-**provider's** document, which this service is forbidden to read. Three
-consequences:
-
-1. **A run could be shown as outcome, never as intent.** `RunPage` drew the
-   envelope, the outputs and the payload documents as text. Not what the run was
-   *for*, because nothing recorded it.
-2. **A binding could not explain itself.** `engine/submit.py::gather` decides
-   which image lands in which field and in which position — an edit target first,
-   then curated identity, then chained run outputs, then the working pool — and
-   then discarded that reasoning. `bindings` was the residue: field name to node
-   ids. **Position in that list is cited by the prompt** (a real production
-   prompt reads "the FIRST image is an existing angle image of him"), so the ordering
-   was load-bearing and its meaning was nowhere.
-3. **Approval left no artifact.** Hard rule #2 says show the full payload, get an
-   explicit yes, and re-approve after **any** edit. It was enforced by a
-   `click.confirm`. Nothing could show that a run was approved, check that the
-   payload still matched, or approve anything outside a terminal.
-
-**The ordering that blocked all three was deliberate**, and this overturned it.
-`engine/board.py` said: *a LABEL, not an id: the run does not exist yet and must
-not, because hard rule #2 approves the payload before anything is recorded.* The
-answer is that `record_request` already ran *before* `create_prediction`, so a
-record has never meant "this billed" — moving it one step earlier makes the
-approval a thing that can be recorded, re-checked and revoked. **The run row
-stopped meaning "a submission happened" and started meaning "a submission was
-intended",** which is what `draft` and `discarded` are for.
-
----
-
 ## The data model
-
-### Today — a scene has two halves, a run had one
-
-```
-            A SCENE                                    A RUN  (before)
-  ┌──────────────────────────────┐          ┌──────────────────────────────┐
-  │ SCENE#<id> / META            │          │ RUN#<id> / META              │
-  │  AUTHORED ─────────────────  │          │  AUTHORED ─────────────────  │
-  │    title, logline            │          │                              │
-  │    setting, defaults         │          │       ·· nothing ··          │
-  │  RECORDED ─────────────────  │          │  RECORDED ─────────────────  │
-  │    status, output, error     │          │    status, kind, model       │
-  │                              │          │    engine, prediction_id     │
-  │                              │          │    outputs, cost, error      │
-  │                              │          │    bindings {field:[node]}   │
-  └──────────────┬───────────────┘          └──────────────┬───────────────┘
-                 │ SHOT#<id> × n                           │
-                 ▼                                         ▼
-  ┌──────────────────────────────┐          ┌──────────────────────────────┐
-  │  AUTHORED                    │          │                              │
-  │    order, beat, prompt       │          │       ·· no children ··      │
-  │    panels[], motion          │          │                              │
-  │  RECORDED                    │          │                              │
-  │    run, node, shot_node      │          │                              │
-  └──────────────────────────────┘          └──────────────────────────────┘
-```
 
 ### Now — the run has the same two halves
 
@@ -278,22 +219,13 @@ Additive. Every existing route kept its shape.
 | `GET /api/runs/<id>` | Gains `plan`, `plan_digest`, `approval`, `stale` and `sends` (expanded, with role and source) |
 | `GET /api/runs` | Gains `?include=drafts`; drafts and discards hidden otherwise |
 
-### Submission is a route now, and the run closes itself
+### Submission is a route, and the run closes itself
 
-**The gate above was built while the CLI still did the spending.** It refused a
-transition; what performed the transition was `engine/submit.py`, holding the
-Replicate token, minting the presigned URLs, creating the prediction and then
-sitting in a poll loop until it settled. Three things followed, and #536 is about
-all three:
-
-* **A generation was attached to a terminal.** A 15-second Kling shot is minutes
-  of wall clock; `Ctrl-C` at the wrong moment left a run at `running` with a
-  prediction still billing and nothing to record what it produced.
-* **The SPA could not submit at all.** It has no provider credential and nowhere
-  to poll from, so every generation had to originate in a CLI — including the
-  ones a person had just approved on the run page in front of them.
-* **The download was a developer's own connection.** Provider → laptop → S3, for
-  a file that was going to S3 either way.
+**The API does the spending.** A generation is not attached to a terminal (a
+15-second Kling shot is minutes of wall clock, and a `Ctrl-C` must not strand a
+billing prediction), the SPA can submit what a person approved on the page in
+front of them, and the output travels provider → S3 without passing through a
+developer's connection.
 
 So `POST /api/runs/<id>/submit` does the spending, and **the run is closed by
 Replicate calling back** rather than by whatever asked for it:
@@ -331,24 +263,20 @@ in milliseconds. A **consumer** verifies the signature and closes the run: a
 worker Lambda in production, and a process beside `dev-up.sh` on a developer's
 machine.
 
-**This reverses a decision recorded in #536, and the reversal is the point.**
-That issue said "No worker, no queue" and rejected a worker Lambda as adding
-"SQS, a DLQ and a second Lambda to avoid a public route". What it was rejecting
-was a **polling** worker — one that asks Replicate for status on a timer, which
-needs all of that machinery just to avoid exposing an endpoint. This is an event
-consumer draining completions that are already being pushed to us, and it was
-adopted for a reason the issue could not have weighed, because it surfaced while
-answering a different question: **Replicate cannot reach `http://localhost:8000`.**
+**Receive and process are split because Replicate cannot reach
+`http://localhost:8000`.** The consumer is an event consumer draining
+completions that are pushed to it, not a poller asking the provider for status
+on a timer.
 
-With the close inline in the API Lambda, local development had to fall back to
-polling, and the code that closes a run in production was code no developer had
-ever executed. Splitting receive from process fixes exactly that — the deployed
-half is a dependency-free zip Lambda that only enqueues, and the half that
-changes runs from the working tree. Three things came along with it:
+If the close ran inline in the API Lambda, local development would fall back
+to polling and the code that closes a run in production would be code no
+developer had executed. With the split, the deployed half is a dependency-free
+zip Lambda that only enqueues, and the half that changes runs from the working
+tree. Three things follow:
 
 * the callback is acknowledged before a 200 MB download rather than after it;
-* a failed upload is a redrive and then a dead-letter queue, where it used to be
-  a paid-for file that was simply gone;
+* a failed upload is a redrive and then a dead-letter queue, not a paid-for
+  file that is simply gone;
 * the three functions size independently — the API Lambda stays at 512 MB and 60
   seconds instead of growing to fit the largest video studio can produce.
 
@@ -551,88 +479,6 @@ through a terminal.
   a suggestion rather than a menu. There is no registry in this app and there
   must not become one — `models.json` is the pipeline's — and a wrong field is
   refused at submit by the live schema check.
-
----
-
-## The backfill
-
-**Every past run reconstructs, and nothing is guessed.** Measured against
-`studio-prod-catalog`:
-
-| | |
-|---|---|
-| runs | **254** |
-| with `request.json` | **254 / 254** |
-| with `bindings` as node ids | **254 / 254** |
-| distinct models, all in `models.json` | 3 |
-| `backfill-plans` dry run: reconstructable | **254**, unreconstructable **0** |
-
-```
-  WHAT EXISTS                                       WHAT IS WRITTEN
-  ───────────────────────────────                   ─────────────────────────────
-
-  payload.request ──► request.json
-      { "model": …,
-        "input": {
-           "prompt":        "…"      ─────────────► plan.prompt
-           "aspect_ratio":  "…"  ─┐
-           "output_format": "…"   ├──────────────► plan.params
-           "quality":       "…"  ─┘
-        } }                                        plan.origin  = "backfilled"
-
-  bindings { "input_images": [n1 … n6] }
-      ├─ field name           ───────────────────► send.field
-      ├─ models.json[…].images ──────────────────► send.role
-      ├─ position in the list ───────────────────► SEND#0001 … SEND#000n
-      └─ each node's own ancestry ───────────────► send.source   (by the API)
-
-  created  ─────────────────────────────────────► approval.at
-                                                   approval.by = "backfill"
-```
-
-`input` holds the prompt and the params and **no image fields** — they were
-presigned in after the record was written, which is why this is lossless. Checked
-against a real production document before it was relied on.
-
-**`approval.at` is a real timestamp, not a convenient one.** `record_request` is
-called immediately after the terminal confirm returns, so a run's `created` is
-within milliseconds of the moment somebody actually said yes. `by` names the
-mechanism rather than a person, because nobody approved these in a browser and a
-row implying they had would be undetectable later. The run page says so:
-*approved before approvals were recorded.*
-
-**Where it ran, and why it is gone.** `studio catalog backfill-plans` was a
-maintenance command holding its own AWS clients. It could not be a route:
-`PATCH /api/runs/<id>/plan` refuses a submitted run — a plan edited after the
-fact would sit beside `request.json` describing something never sent — and a
-backfill endpoint able to bypass that refusal would be a permanent hole cut for
-a one-shot.
-
-That reasoning is still right, and it is the reasoning that removed the command
-rather than the API route. The whole `maintenance/` layer is deleted; the
-backfill was never run against prod, so this section describes work that did not
-happen. Reconstructing it would mean re-adding a tool with its own DynamoDB
-client to write a plan nobody authored, for runs that already carry the exact
-payload they were sent. The gap is legible — the run page says *approved before
-approvals were recorded* — and legible is enough.
-
-**One gap nothing can close.** Before angle images became catalog nodes they
-travelled through `gather` marked `shared:<key>` and were **stripped before the
-record was written**. Runs from that era under-report their images, and a
-text-only generation is indistinguishable from one. Counted in the report, never
-invented.
-
-There is no longer a command to run. What `catalog verify` would have told you —
-that a planless run is **coverage rather than corruption**, and that a *stale*
-digest is the real fault — has no reporter either. If a stale digest starts
-happening, the check belongs inside the API beside `plan_digest`, not in a CLI
-command carrying a table scan.
-
-The rest of this section is kept as the record of what the backfill would have
-reconstructed and from what. Historically, `catalog verify` failed on a plan
-whose stored digest disagreed with it —
-silent until somebody submits, and then reported as "the payload changed", which
-would be true of nothing anybody did.
 
 ---
 

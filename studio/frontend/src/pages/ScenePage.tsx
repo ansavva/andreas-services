@@ -189,10 +189,10 @@ export function ScenePage() {
           </Text>
           {/* **Every cut, newest first, not just the current one.** Assembling
               is not a one-shot act: a shot gets re-rendered and the scene is
-              cut again, and comparing the two is the reason for doing it. The
-              older cut used to be overwritten in place and survived only as an
-              S3 object version, which is recoverable and not something anyone
-              can look at. */}
+              cut again, and comparing the two is the reason for doing it. An
+              older cut overwritten in place would survive only as an S3 object
+              version, which is recoverable and not something anyone can look
+              at. */}
           <div className="flex flex-col gap-3">
             {[
               ...(data.output ? [{ asset: data.output, current: true }] : []),
