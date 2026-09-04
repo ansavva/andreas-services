@@ -154,6 +154,13 @@ export const IMAGE_RUN = imageRun.id;
 export const CREATED_RUN = createdRun.id;
 /** The output tile the promote panel is opened from. */
 export const OUTPUT = imageRun.outputs[0]!;
+/**
+ * The image run's stored `request.json`, which the opened run's Request row
+ * reads through `GET /api/nodes/<id>/text` — captured with the run, so the
+ * id is the API's. Answered below with `TEXT_BODY`, like every text node here.
+ */
+const IMAGE_RUN_PAYLOAD = imageRun.payload as { request: string; response: string };
+export const IMAGE_RUN_REQUEST = IMAGE_RUN_PAYLOAD.request;
 /** The character's `reference/` pool, which a promotion finds rather than makes. */
 export const REFERENCE_POOL = characterTree.entries.find(
   (folder) => folder.name === "reference",
@@ -377,7 +384,15 @@ export const TEXT_BODY = '{\n  "shot": "e2e",\n  "seconds": 5\n}\n';
 
 /** Every node `GET /api/nodes/<id>` can answer for. */
 const NODES = new Map<string, Node>(
-  [...characterRoot.entries, ...seedFolder.entries, TEXT_NODE].map((node) => [node.id, node]),
+  [
+    ...characterRoot.entries,
+    ...seedFolder.entries,
+    TEXT_NODE,
+    // The image run's two payload documents: the same captured text row under
+    // the ids the run record points at, so the Request row has bytes to show.
+    { ...TEXT_NODE, id: IMAGE_RUN_PAYLOAD.request, name: "request.json" },
+    { ...TEXT_NODE, id: IMAGE_RUN_PAYLOAD.response, name: "response.json" },
+  ].map((node) => [node.id, node]),
 );
 
 function json(route: Route, body: unknown, status = 200) {

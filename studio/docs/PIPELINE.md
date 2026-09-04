@@ -110,7 +110,7 @@ polling, downloads, uploads, recording the run — need no asking.
 
 **`--dry-run` leaves a DRAFT.** The run is created when it is planned rather
 than when it is submitted, so the payload printed above has an address: it can
-be opened in the app, edited — `studio runs edit`, or the run page's own editor
+be opened in the app, edited — `studio runs edit`, or the app's create bar
 — read again with `studio runs show`, and sent later with `studio runs submit`
 when a person says so. The submit is the act; the API takes a `draft` straight
 to the provider and records no approval. See [RUN_PLAN.md](RUN_PLAN.md).

@@ -41,9 +41,9 @@ developer's afternoon.
 The **authoring** group — `project`, `project-runs`, `project-runs-feed`, `run-draft`, `run-image`,
 `created-run`, `created-run-record`, `models`, `model-schema`, `references`,
 `character-tree`, `reference-tree` — is the opposite. The seed holds no project,
-no runs and nothing ever submitted, so the three screens `runs.spec.ts` is about
-have nothing in it to be captured from; it needs a stack that **has** been worked
-in. Which project and which runs is discovery — the first project, its newest
+no runs and nothing ever submitted, so the two screens `runs.spec.ts` is about —
+a project's feed and a run opened over it — have nothing in it to be captured
+from; it needs a stack that **has** been worked in. Which project and which runs is discovery — the first project, its newest
 draft, its newest succeeded image run — with `STUDIO_E2E_PROJECT` and
 `STUDIO_E2E_SCHEMA_MODEL` to steer it.
 

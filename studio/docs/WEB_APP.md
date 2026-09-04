@@ -34,8 +34,8 @@ place, with the feed it belongs to beside it.
 run when a person presses Send — it does not decide what to make.** It browses;
 it can rename, move, copy, delete, create folders, edit text files in place, and
 upload through a presigned PUT the bytes travel to directly. Planning a
-generation is the pipeline's job and the SPA's run page; the payload on the
-page is what `POST /api/runs/<id>/submit` sends.
+generation is the pipeline's job and the SPA's create bar; the payload behind
+the opened run's Request row is what `POST /api/runs/<id>/submit` sent.
 
 The line between "edit a text file" and "upload" is held in exactly one place:
 `manage.update_text` refuses a node that is not a file carrying a blob, which
@@ -335,58 +335,88 @@ page and a plain textarea over its literal bytes, and never offers fields.
   drifted. **Edit the geometry and re-run `npm run mark`** — never the SVG. It
   goes through Vite's asset pipeline rather than `public/`, so it comes out
   content-hashed and the deploy's `immutable` cache-control is right for it.
-- **A run page shows three different kinds of thing, and conflating them is the
-  one mistake to avoid.** The *envelope* is studio's and safe to render as
+- **A project's Runs tab is the feed, and it is the default tab.** `RunFeed`
+  draws one row per run, newest first, grouped by day — outputs on the left,
+  the plan on the right — from one `GET /api/runs?view=feed` page per scroll,
+  so no row fetches anything. `?q=` is the prompt search on the feed itself,
+  applied on Enter; status, character, model and since ride in the address
+  like the browser's own filters. A run in flight fills its row with
+  full-size `studio-shimmer` tiles carrying the aperture spinner and the
+  seconds since it went out, the feed polls (`FEED_POLL_MS`) while any row is
+  in flight, and `useInFlightRuns` reads those same cached pages for the
+  "N running" badge in the project header and the spinner beside the project
+  in the sidebar — which is why both are only ever right about projects open
+  this session. Hover a tile for its own actions (download, Use in prompt,
+  Again / Upscale / Animate / Promote — `OutputTile`); the run's are icon+word
+  in its column (Rerun, Edit, Folder, Trash, More). Every one of them is
+  `useRunActions`, which the opened run's grid draws too, so a gesture means
+  one thing in both places. Settings, behind the gear at the end of the strip,
+  is what Overview was; `?tab=overview` still lands there.
+- **The opened run is a lightbox over the feed, not a page.** `/p/<project>/
+  r/<run>` renders `ProjectPage` with `runId` set, and `RunLightbox` sits over
+  the feed with the create bar live above it: the output large (`MediaPlayer`,
+  so a clip plays in place), the run's other outputs under it, a strip of the
+  project's runs along the bottom, and a rail holding the plan, the sends with
+  their roles, the cast, one uniform action grid, and a collapsed **Request**
+  row. It collapses the sidebar to its rail on open and restores it on close;
+  Esc closes back to the project with `?tab` and the filters kept; Left/Right
+  and the strip step through the rows the feed has loaded — the same
+  `["runs", "feed", …]` cache, so opening a run costs no second listing.
+  `getRun` is fetched for what a row does not carry: the folder, the
+  prediction id and the payload nodes. A cold link with nothing cached draws
+  the row off the record (`rowOfRecord`). The two-column `pages/RunPage.tsx`
+  that used to answer this address is deleted.
+- **An opened run shows three different kinds of thing, and conflating them is
+  the one mistake to avoid.** The *envelope* is studio's and safe to render as
   fields. The *payload documents* are the provider's and are shown as text and
-  never decoded. The *plan* is studio's too — the prompt, the params, and one
-  ordered `SEND#` row per bound image with its role and provenance; `bindings`
-  is derived from those sends. See [RUN_PLAN.md](RUN_PLAN.md).
+  never decoded — `PayloadDocument`, behind the Request row, fetched one
+  document at a time and only when pressed. The *plan* is studio's too — the
+  prompt, the params, and one ordered `SEND#` row per bound image with its
+  role and provenance; `bindings` is derived from those sends. See
+  [RUN_PLAN.md](RUN_PLAN.md).
 - **There is no approve step in the app, and no approve route to call.**
   Decision 2026-09-04: pressing Send submits. The approve route is gone, and
   so are the `approved` status, the `approval` field and
-  `plan_digest` on the record. The page claims no authority it does not have —
+  `plan_digest` on the record. The app claims no authority it does not have —
   the CLI holds the same kind of token — so what hard rule #2 buys here is that
   the payload is on screen before the button is.
 - **Editing a plan is two writes.** `PATCH /api/runs/<id>/plan` and `PATCH
   /api/runs/<id>/sends` each replace their half whole and move the fingerprint
-  — so the editor sends only the half that moved, and the run bar is hidden
-  while it is open. Both routes refuse a submitted run, which is why the button
-  appears on an unsubmitted one rather than being answered with a 409.
+  — so an editor sends only the half that moved. Both routes refuse a
+  submitted run, which is why Edit on a finished run loads it into the create
+  bar as a NEW draft rather than being answered with a 409.
 - **The app can submit.** `POST /api/runs/<id>/submit` is what calls Replicate;
   the SPA has no provider credential and never gains one, because the spending
   sits behind that route.
-- **Running is ONE armed button — "Run — this spends" — and pressing it is the
-  act.** The page renders the plan, the ordered images and the exact payload a
-  draft would send, rebuilt by the same assembly `submit` uses. `RunBar` calls
-  `POST /submit` and nothing before it. First press arms and says what the
-  second will do; the second runs. See `useArmed`, the one arm/disarm machine
-  `ArmedButton`, `ConfirmDeleteButton` and `ItemActions` all run on.
-- **A run's outputs can be promoted into a character, inline.** An image output
-  carries a `Promote…` control beside it — a **sibling** of `OutputPanel`, never
-  inside it, because the panel's caption is a real `<a href>` and its player is
-  full of buttons. Pressing it expands `PromotePanel` under the outputs grid,
-  scoped to that output: a **real copy** into the character's
-  `reference/<group>/` folder, then the `default` tag on the **copy**, so the
-  run keeps its own output and every record citing it stays correct. Hard rule
+- **Running is ONE armed button, and pressing it is the act.** A draft's row
+  and rail offer `Run`; a finished run's offer `Rerun` (`useRunAgain`: a new
+  draft carrying the same plan and ordered sends, byte for byte, then
+  `submit`). Either calls `POST /submit` and nothing before it. First press
+  arms and says what the second will do; the second runs. See `useArmed`, the
+  one arm/disarm machine `ArmedButton`, the lightbox's `ArmedCell`,
+  `ConfirmDeleteButton` and `ItemActions` all run on.
+- **A run's outputs can be promoted into a character, from the tile or the
+  rail.** An image output's hover overlay and the opened run's grid both
+  carry `Promote`, which opens `PromoteDrawer` — `PromotePanel` in a drawer
+  beside the picture it is about, so the output stays on screen while the
+  form is filled in. It makes a **real copy** into the character's
+  `reference/` pool, then puts the `default` tag on the **copy**, so the run
+  keeps its own output and every record citing it stays correct. Hard rule
   #2b is satisfied by the press itself — the person choosing the character and
   the group IS the approval — and the panel states plainly what it will do.
   Video outputs get no control: a reference is a picture a later render is
   checked against.
-- **None of these flows uses a dialog, and that is a requirement rather than a
-  style.** Creating a draft is an inline strip on the project's Runs tab
-  (`NewRunStrip`), promoting is an inline panel, and every gesture that spends
-  or destroys is arm-then-fire in the button itself. `ConfirmDestroyDialog`
-  remains for entity deletion and nothing on the run surface reaches for it.
-- **A run in flight has its own bar.** It says the page is watching and the tab
-  can be closed, and offers `Check now`, which is `reconcile`, for a run that
-  has sat far longer than the model usually takes. A run carrying no prediction
-  id gets no button: nothing reached the provider, so there is nothing to ask
-  about.
-- **A run closes itself, so the page has something to poll and a reason to.**
+- **Every gesture that spends or destroys is arm-then-fire in the button
+  itself.** `ConfirmDestroyDialog` remains for entity deletion and nothing on
+  the run surface reaches for it; the promote drawer is the one overlay, and
+  it declines a dismissal while it holds words.
+- **A run closes itself, so the feed has something to poll and a reason to.**
   The prediction is closed by Replicate calling the API back, which is why
   `TERMINAL_RUN_STATUSES` exists: a client that knows which states can still
-  change stops asking on its own. A run stuck at `running` long after it should
-  have settled is `POST /api/runs/<id>/reconcile`.
+  change stops asking on its own — the feed through `inFlight`, the opened
+  run's record through `isTerminal`. A run stuck at `running` long after it
+  should have settled is `POST /api/runs/<id>/reconcile`, which the app no
+  longer offers a button for: the CLI's `studio runs reconcile` is the tool.
 - **The API takes the ID token, never the access token.** A REST
   `COGNITO_USER_POOLS` authorizer only reads the incoming token as an *access*
   token when the method declares `authorization_scopes`. This one declares none
@@ -585,20 +615,12 @@ page and a plain textarea over its literal bytes, and never offers fields.
   there: the folder chips still say *where*, the tag filter still narrows
   *what*, and sort, filter, selection, upload and every bulk write work
   unchanged over the flat result. `?view=media`, so it is a link.
-- **A project's Runs tab is that browser again, scoped to `runs/`.** `List |
-  Grid`, and the unit is what differs — List's is the RUN (status, model,
-  cost, the plan behind it, each a field on the listing row and each
-  filterable); Grid's is the OUTPUT, since a run's outputs are ordinary nodes
-  under the project's `runs/` folder. `RunsGrid` resolves `runs` by name under
-  the project root, exactly as `services/layout.py` does at write time, and
-  draws `FolderBrowser` rather than `FolderTab` — the children of `runs/` are
-  one folder per run named by the run id, so the shortcut chips would be a rail
-  of `run-<uuid>`. It does **not** label each tile with its run: a listing
-  deliberately carries no `owner` for a deep row, so a label would cost a read
-  per thumbnail. Opening a tile resolves the owner for the one node it draws. A
-  project draws two browsers, so their view and folder ride in named query keys
-  (`view`/`folder`, `runsView`/`runsFolder`) — one key between them would carry
-  a folder id from one subtree into the other on a tab switch.
+- **A project's Runs tab is NOT a browser scoped to `runs/`.** It was, with a
+  `List | Grid` toggle; Grid drew the file browser over the `runs/` folder in
+  Media view, which is a run's OUTPUTS — Files' question, one tab over, on
+  exactly the same folder. The Runs tab is the feed (above), whose unit is the
+  RUN. A project draws one browser now, so `view`/`folder` are its only
+  browser keys.
 - **A deep listing addresses its tiles `in=recursive:`.** `?in=f:<folder>`
   makes the viewer re-read that folder one level down to find the neighbours,
   which is right for a readdir and wrong for both listings that search the
@@ -865,7 +887,7 @@ without a fetch per row, so it asks with **`?view=feed`** and each row becomes:
 ```
 
 An allowlist, like every view here: no `approval`, no `plan_digest`, no
-`stale` — those are the run page's. `cast` is what `GET /api/runs/<id>`
+`stale` — those were the deleted run page's. `cast` is what `GET /api/runs/<id>`
 answers as ids, named: the record's own `characters`, else the owners of what
 it bound, read off the sends' recorded provenance rather than by walking each
 node's ancestry. `?character=` answers with envelopes and `?project=` with
@@ -1022,7 +1044,7 @@ covered: the route table (`routes.test.tsx`), the id↔URL mapping
 (`apis/client.test.ts`), node addressing (`apis/studio.test.ts`,
 `components/NodeAddressing.test.tsx`), the upload sequence
 (`apis/upload.test.ts`), the run surface (`components/run/*.test.tsx`,
-`pages/RunPage.test.tsx`), the player (`components/media/*.test.tsx`,
+`components/project/RunFeed.test.tsx`, `components/run/RunLightbox.test.tsx`), the player (`components/media/*.test.tsx`,
 `hooks/useMediaPlayback.test.ts`), and the entity pages
 (`pages/{Character,Project,Scene,Movie,Object,Templates}Page.test.tsx`).
 

@@ -92,7 +92,7 @@ step it belonged to.
 **What the code enforces is smaller than the rule, and says so.**
 `POST /api/runs/<id>/submit` is the one route that calls Replicate; it takes a
 `draft`, refuses anything already sent, and asks nothing else. What shows a
-person the payload is the CLI's render and the app's run page. The rule is
+person the payload is the CLI's render and the app's opened run. The rule is
 carried by who calls submit — a person, or an agent that person has explicitly
 told to send this run — and the CLI and the SPA hold tokens from the same pool,
 so nothing about a token is a permission boundary. The rule above is what stops

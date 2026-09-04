@@ -422,24 +422,22 @@ test("the current tile's selection ring is not clipped", async ({ page }) => {
 });
 
 /**
- * **The run screen splits, and collapses output-first.**
+ * **The opened run is a lightbox: the stage and the rail side by side, and
+ * the rail under the stage on a phone.**
  *
- * Two assertions in one test because they are one decision. Above `lg` the
- * result sits in the right-hand column beside what produced it, the way the
- * provider's own playground reads. Below it there is one column and the OUTPUT
- * LEADS — the run page used to stack input first, so on a phone the thing a
- * person opened the page for sat under a fact table, a run bar and every
- * binding the run had.
+ * Two assertions in one test because they are one decision. Above `md` the
+ * run's own details sit in a rail beside the picture, the way the mockup
+ * draws it. Below it there is one column and the OUTPUT LEADS — the thing a
+ * person opened the run for is first, and the rail scrolls under it.
  *
- * The output section is first in the DOM at both widths, which is what makes
- * the narrow case need no `order` override; the wide case places it with
- * `col-start`. So the heading order below is also the screen-reader order.
+ * The output is a video and must render as one — an `.mp4` handed to <img>
+ * is the broken thumbnail this suite exists to keep fixed.
  */
 for (const [label, width, splits] of [
   ["desktop", 1440, true],
   ["mobile", 390, false],
 ] as const) {
-  test(`the run screen ${splits ? "splits" : "stacks output-first"} at ${label}`, async ({
+  test(`the opened run ${splits ? "puts the rail beside the stage" : "stacks the rail under the stage"} at ${label}`, async ({
     page,
   }) => {
     stubOnly();
@@ -447,33 +445,27 @@ for (const [label, width, splits] of [
     await page.goto(`/p/${RUN_PROJECT}/r/${RUN_ID}`);
     await page.waitForLoadState("networkidle");
 
-    // Both columns are named, and the result is read first either way.
-    await expect(page.getByText("Inputs", { exact: true })).toBeVisible();
-    await expect(page.getByText("Outputs", { exact: true })).toBeVisible();
+    const dialog = page.getByRole("dialog", { name: "Run" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator("video").first()).toBeVisible();
+    await expect(dialog.getByRole("complementary", { name: "Run details" })).toBeVisible();
 
     const geometry = await page.evaluate(() => {
-      const sections = [...document.querySelectorAll("section")];
-      const outputs = sections.find((s) =>
-        s.textContent?.startsWith("Outputs"),
-      );
-      const column = document.querySelector('[class*="lg:col-start-1"]');
-      if (!outputs || !column) return null;
-      const out = outputs.getBoundingClientRect();
-      const left = column.getBoundingClientRect();
+      const dialog = document.querySelector('[role="dialog"][aria-label="Run"]');
+      const video = dialog?.querySelector("video");
+      const rail = dialog?.querySelector('aside[aria-label="Run details"]');
+      if (!video || !rail) return null;
+      const v = video.getBoundingClientRect();
+      const r = rail.getBoundingClientRect();
       return {
-        sideBySide: out.left >= left.right - 1,
-        outputAbove: out.top < left.top,
+        sideBySide: r.left >= v.right - 1,
+        railBelow: r.top >= v.bottom - 1,
       };
     });
 
     expect(geometry).not.toBeNull();
     expect(geometry!.sideBySide).toBe(splits);
-    // Stacked, the result leads. Split, they start on the same row.
-    if (!splits) expect(geometry!.outputAbove).toBe(true);
-
-    // The output is a video and must render as one — an `.mp4` handed to <img>
-    // is the broken thumbnail this suite exists to keep fixed.
-    await expect(page.locator("main video").first()).toBeVisible();
+    if (!splits) expect(geometry!.railBelow).toBe(true);
   });
 }
 

@@ -190,7 +190,8 @@ re-deriving it more accurately later must not make two identical payloads read
 as different. It is recomputed by the API on every write that can change any of
 the three, never accepted from a client, and it answers one question:
 **has this exact payload already gone out here?** — `GET /api/runs?fingerprint=`,
-which the run page reads for `DuplicateNotice`.
+which the CLI's duplicate check reads. The app's `DuplicateNotice` went with the
+two-column run page (slice 4 of the shell redesign); the feed does not ask.
 
 The hash under it, `plan_digest` in `services/digest.py`, is the same function
 that once backed the approval record. It is kept because the fingerprint is
@@ -393,10 +394,19 @@ studio runs discard run-<uuid>              # a draft that will not be submitted
 
 ## The web app
 
+**The two-column `RunPage` this section was written about is deleted.** A run
+is now a row in the project's feed (`components/project/RunFeed.tsx`) and,
+opened, a lightbox over that feed (`components/run/RunLightbox.tsx`) — see
+[WEB_APP.md](WEB_APP.md#conventions--gotchas). What follows is kept as the
+record of the decisions the feed and the lightbox inherit; where a name below
+no longer exists, the paragraph says what replaced it.
+
 `RunPage` gained a **Plan** section above Outputs, built from the storyboard's own
 components — `Frame`, `SendRow` and `Slot` from `components/scene/Sends.tsx` — on
 the grounds that a shot and a run are the same object at two tiers and drawing
-them differently is what would need justifying.
+them differently is what would need justifying. The feed row and the lightbox
+rail draw the same plan more compactly: the prompt, `ParamChips`, the sends as
+thumbnails carrying their role, the cast as chips.
 
 - **The sends draw as a filmstrip**, numbered in bind order, each captioned with
   where it came from: `character · face`, `earlier run · #2`, `input 4`.
@@ -409,8 +419,10 @@ them differently is what would need justifying.
   exact payload is cleared / the payload changed after it was approved". The
   second gesture went next: `RunBar` wrote the approval and submitted in one
   press, so the compare-and-swap still held. Decision 2026-09-04 then removed
-  the approval itself, everywhere: `RunBar` calls `POST /submit` and nothing
-  before it, and the API records no yes because the submit is the yes.
+  the approval itself, everywhere: `RunBar` called `POST /submit` and nothing
+  before it, and the API records no yes because the submit is the yes. `RunBar`
+  went with the page; the feed row's `Run` and the lightbox's `Run` cell are
+  the same armed press on the same route.
 
   The separate approve step was redundant in a UI where the payload is on
   screen: the page renders the plan, the ordered images and the exact payload a
@@ -428,8 +440,9 @@ them differently is what would need justifying.
 - **`Bindings` now appears only for a run with no sends.** Plan → Images says
   everything it said and more, so drawing both put the same pictures on screen
   twice, the second time with less information.
-- `RunsTable` offers `draft` in its filter. A hidden draft is the one thing a
-  person has to be able to find — an invisible queue is one nobody works through.
+- `RunFeed` (once `RunsTable`) offers `draft` in its filter and asks for drafts
+  by default. A hidden draft is the one thing a person has to be able to find —
+  an invisible queue is one nobody works through.
 
 **A draft can be edited in the app too — `RunPlanEditor`, behind an `Edit the
 plan` button that appears only on an unsubmitted run.** It was the last thing the
