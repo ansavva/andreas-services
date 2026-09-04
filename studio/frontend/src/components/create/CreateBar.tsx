@@ -40,6 +40,7 @@ import {
   ImageIcon,
   SendIcon,
   SlidersIcon,
+  TemplateIcon,
   VideoIcon,
 } from "../common/icons";
 import { PromptPreview } from "../common/PromptPreview";
@@ -48,7 +49,7 @@ import {
   type PromptToken,
 } from "../common/TokenizedPromptEditor";
 import { unfilledIn } from "../common/UnfilledMarks";
-import { TemplatePicker } from "../run/TemplatePicker";
+import { TemplateList } from "../run/TemplateList";
 import { CreateDrawer } from "./CreateDrawer";
 import { CreateModeStrip } from "./CreateModeStrip";
 import { CreateSettings } from "./CreateSettings";
@@ -136,13 +137,15 @@ export function CreateBar() {
     return () => document.removeEventListener("pointerdown", onPress, true);
   }, []);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [held, setHeld] = useState<Held | null>(null);
 
   const attachments = bar.attachments[bar.kind];
-  const active = focused || previewOpen || settingsOpen || held !== null;
+  const active =
+    focused || previewOpen || templatesOpen || settingsOpen || held !== null;
 
   // The registry is per-deploy, so the key carries no id.
   const models = useResource(
@@ -203,7 +206,6 @@ export function CreateBar() {
   }, [cast, templates.data]);
 
   const unfilled = useMemo(() => unfilledIn(bar.prompt), [bar.prompt]);
-  const lines = bar.prompt === "" ? 0 : bar.prompt.split("\n").length;
   const prompt = bar.prompt.trim();
   const canSend = Boolean(entry && target && prompt !== "") && !busy;
 
@@ -431,6 +433,60 @@ export function CreateBar() {
               </Badge>
             )}
 
+            <Popover.Root open={templatesOpen} onOpenChange={setTemplatesOpen}>
+              <Popover.Trigger
+                aria-label="Template"
+                title="Start from a template"
+                className={iconButtonClass({
+                  size: "sm",
+                  pressed: templatesOpen,
+                  className: "mt-1.5 rounded-none",
+                })}
+              >
+                <TemplateIcon />
+              </Popover.Trigger>
+              <Popover.Content
+                label="Templates"
+                className="left-auto right-0 w-[min(28rem,calc(100vw-2rem))] max-w-none rounded-none p-0"
+              >
+                <TemplateList
+                  cast={cast.length}
+                  onPick={(prompt: string) => {
+                    bar.setPrompt(prompt);
+                    setTemplatesOpen(false);
+                  }}
+                />
+              </Popover.Content>
+            </Popover.Root>
+
+            <Popover.Root open={previewOpen} onOpenChange={setPreviewOpen}>
+              <Popover.Trigger
+                aria-label="Preview"
+                title="Preview the prompt as sent"
+                className={iconButtonClass({
+                  size: "sm",
+                  pressed: previewOpen,
+                  className: "mt-1.5 rounded-none",
+                })}
+              >
+                <EyeIcon />
+              </Popover.Trigger>
+              <Popover.Content
+                label="Preview"
+                className="left-auto right-0 w-[min(40rem,calc(100vw-2rem))] max-w-none rounded-none"
+              >
+                {unfilled.length > 0 && (
+                  <Text variant="caption" tone="muted" className="mb-2 block">
+                    {unfilled.length} unfilled: {unfilled.join(" ")}
+                  </Text>
+                )}
+                <PromptPreview
+                  prompt={bar.prompt}
+                  blocks={templates.data?.blocks ?? {}}
+                />
+              </Popover.Content>
+            </Popover.Root>
+
             <Popover.Root open={settingsOpen} onOpenChange={setSettingsOpen}>
               <Popover.Trigger
                 aria-label="Settings"
@@ -482,56 +538,6 @@ export function CreateBar() {
                 placeholder="Project"
                 onValueChange={(next: string) => bar.setProject(next || null)}
               />
-            </div>
-          )}
-
-          {active && (
-            <div className="flex flex-wrap items-center gap-1 border-t border-line px-2 py-1">
-              <TemplatePicker
-                compact
-                cast={cast.length}
-                onPick={bar.setPrompt}
-              />
-
-              <Popover.Root open={previewOpen} onOpenChange={setPreviewOpen}>
-                <Popover.Trigger
-                  className={`inline-flex h-8 items-center gap-1.5 rounded-none px-3 text-sm font-medium ${
-                    previewOpen
-                      ? "bg-surface-alt text-ink"
-                      : "text-muted hover:text-ink"
-                  }`}
-                >
-                  <EyeIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
-                  Preview
-                </Popover.Trigger>
-                <Popover.Content
-                  label="Preview"
-                  className="w-[min(40rem,calc(100vw-2rem))] max-w-none rounded-none"
-                >
-                  <PromptPreview
-                    prompt={bar.prompt}
-                    blocks={templates.data?.blocks ?? {}}
-                  />
-                </Popover.Content>
-              </Popover.Root>
-
-              {unfilled.length > 0 && (
-                <Text
-                  variant="caption"
-                  tone="muted"
-                  className="ml-1 hidden md:block"
-                >
-                  {unfilled.length} unfilled: {unfilled.join(" ")}
-                </Text>
-              )}
-
-              <Text
-                variant="caption"
-                tone="muted"
-                className="ml-auto font-mono"
-              >
-                {lines} {lines === 1 ? "line" : "lines"}
-              </Text>
             </div>
           )}
         </div>

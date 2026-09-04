@@ -47,9 +47,18 @@ export function CreateDrawer({
   const [picked, setPicked] = useState<string | null>(null);
   const source = picked ?? (cast[0] ? `char:${cast[0].id}` : "outputs");
 
-  const characters = useResource(["characters"], useCallback(() => getCharacters(), []));
+  const characters = useResource(
+    ["characters"],
+    useCallback(() => getCharacters(), []),
+  );
   const heroes = useMemo(
-    () => new Map((characters.data ?? []).map((each) => [each.id, each.hero?.url ?? null])),
+    () =>
+      new Map(
+        (characters.data ?? []).map((each) => [
+          each.id,
+          each.hero?.url ?? null,
+        ]),
+      ),
     [characters.data],
   );
 
@@ -64,7 +73,11 @@ export function CreateDrawer({
         <CloseIcon />
       </IconButton>
 
-      <div className="flex flex-wrap gap-1.5 pr-10" role="tablist" aria-label="Image source">
+      <div
+        className="flex flex-wrap gap-1.5 pr-10"
+        role="tablist"
+        aria-label="Image source"
+      >
         {cast.map((each) => {
           const hero = heroes.get(each.id) ?? null;
           const value = `char:${each.id}`;
@@ -79,7 +92,11 @@ export function CreateDrawer({
               onClick={() => setPicked(value)}
             >
               {hero ? (
-                <img src={hero} alt="" className="size-[22px] shrink-0 border border-line object-cover" />
+                <img
+                  src={hero}
+                  alt=""
+                  className="size-[22px] shrink-0 border border-line object-cover"
+                />
               ) : (
                 <span className="inline-flex size-[22px] shrink-0 items-center justify-center border border-dashed border-muted text-muted">
                   <PersonIcon className="size-3 fill-none stroke-current stroke-[1.5]" />
@@ -112,11 +129,23 @@ export function CreateDrawer({
       </div>
 
       {source.startsWith("char:") ? (
-        <CastTiles characterId={source.slice(5)} attached={attached} onAttach={onAttach} />
+        <CastTiles
+          characterId={source.slice(5)}
+          attached={attached}
+          onAttach={onAttach}
+        />
       ) : source === "inputs" ? (
-        <InputTiles projectId={projectId} attached={attached} onAttach={onAttach} />
+        <InputTiles
+          projectId={projectId}
+          attached={attached}
+          onAttach={onAttach}
+        />
       ) : (
-        <OutputTiles projectId={projectId} attached={attached} onAttach={onAttach} />
+        <OutputTiles
+          projectId={projectId}
+          attached={attached}
+          onAttach={onAttach}
+        />
       )}
     </div>
   );
@@ -127,17 +156,25 @@ interface TilesProps {
   onAttach: (ref: AttachRef) => void;
 }
 
-function CastTiles({ characterId, ...rest }: TilesProps & { characterId: string }) {
+function CastTiles({
+  characterId,
+  ...rest
+}: TilesProps & { characterId: string }) {
   const selection = useResource(
     ["character-selection", characterId],
     useCallback(() => getCharacterSelection(characterId), [characterId]),
   );
   if (selection.error) {
     return (
-      <LoadError what="the character's images" message={selection.error} onRetry={selection.reload} />
+      <LoadError
+        what="the character's images"
+        message={selection.error}
+        onRetry={selection.reload}
+      />
     );
   }
-  if (selection.loading || !selection.data) return <SectionLoading label="Loading identity images" />;
+  if (selection.loading || !selection.data)
+    return <SectionLoading label="Loading identity images" />;
 
   const refs: AttachRef[] = selection.data.selection.flatMap((each) =>
     each.url
@@ -155,33 +192,63 @@ function CastTiles({ characterId, ...rest }: TilesProps & { characterId: string 
   return <Tiles refs={refs} empty="No identity images yet." {...rest} />;
 }
 
-function InputTiles({ projectId, ...rest }: TilesProps & { projectId: string }) {
+function InputTiles({
+  projectId,
+  ...rest
+}: TilesProps & { projectId: string }) {
   const inputs = useResource(
     ["project-inputs", projectId],
     useCallback(() => getProjectInputs(projectId), [projectId]),
   );
   if (inputs.error) {
-    return <LoadError what="the input pool" message={inputs.error} onRetry={inputs.reload} />;
+    return (
+      <LoadError
+        what="the input pool"
+        message={inputs.error}
+        onRetry={inputs.reload}
+      />
+    );
   }
-  if (inputs.loading || !inputs.data) return <SectionLoading label="Loading the input pool" />;
+  if (inputs.loading || !inputs.data)
+    return <SectionLoading label="Loading the input pool" />;
 
   const refs: AttachRef[] = inputs.data.inputs.flatMap((each) =>
     each.url && isImageName(each.name)
-      ? [{ node: each.id, url: each.url, name: each.name, kind: "input-pool" as const }]
+      ? [
+          {
+            node: each.id,
+            url: each.url,
+            name: each.name,
+            kind: "input-pool" as const,
+          },
+        ]
       : [],
   );
   return <Tiles refs={refs} empty="No inputs yet." {...rest} />;
 }
 
-function OutputTiles({ projectId, ...rest }: TilesProps & { projectId: string }) {
+function OutputTiles({
+  projectId,
+  ...rest
+}: TilesProps & { projectId: string }) {
   const feed = useResource(
     ["runs", "feed", projectId],
-    useCallback(() => getRuns({ project: projectId, view: "feed" }), [projectId]),
+    useCallback(
+      () => getRuns({ project: projectId, view: "feed" }),
+      [projectId],
+    ),
   );
   if (feed.error) {
-    return <LoadError what="the project's outputs" message={feed.error} onRetry={feed.reload} />;
+    return (
+      <LoadError
+        what="the project's outputs"
+        message={feed.error}
+        onRetry={feed.reload}
+      />
+    );
   }
-  if (feed.loading || !feed.data) return <SectionLoading label="Loading outputs" />;
+  if (feed.loading || !feed.data)
+    return <SectionLoading label="Loading outputs" />;
 
   // Images only: a reference, a start frame or an edit is a picture, and a
   // clip cannot be one. The feed is newest first, so the tiles are too.
@@ -211,7 +278,10 @@ function isImageName(name: string): boolean {
   return IMAGE_EXTENSIONS.test(name);
 }
 
-function isImage(contentType: string | null | undefined, name: string): boolean {
+function isImage(
+  contentType: string | null | undefined,
+  name: string,
+): boolean {
   if (contentType) return contentType.startsWith("image/");
   return isImageName(name);
 }

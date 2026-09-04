@@ -502,8 +502,10 @@ function FeedRow({
                 url={send.url}
                 name={send.name}
                 aspect="square"
+                // Whole, not cropped — see the opened run's rail.
+                fit="contain"
                 title={`${send.role ?? send.field} · ${send.name}`}
-                className="size-14 rounded-none border border-line"
+                className="size-20 rounded-none border border-line"
               />
             ))}
           </div>

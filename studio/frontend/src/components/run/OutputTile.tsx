@@ -72,17 +72,6 @@ export function OutputTile({
         />
       </button>
 
-      {video && (
-        // Says "this plays" without being a control — the tile is the press.
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute left-1/2 top-1/2 flex size-11 -translate-x-1/2 -translate-y-1/2
-                     items-center justify-center border border-overlay-muted bg-overlay-scrim/55 text-overlay-ink"
-        >
-          <PlayIcon className="size-5 fill-current stroke-none" />
-        </span>
-      )}
-
       {/* Top corners: fetch the bytes, or hand the picture to the bar. */}
       <div
         className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100

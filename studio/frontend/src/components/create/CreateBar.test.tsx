@@ -289,7 +289,6 @@ it("a template pick fills the prompt", async () => {
   });
   await open();
   wake();
-  // The action row appears once focus is in the bar.
   fill("draft");
   fireEvent.click(await screen.findByRole("button", { name: "Template" }));
   fireEvent.click(await screen.findByRole("button", { name: /Face front/ }));
@@ -299,16 +298,14 @@ it("a template pick fills the prompt", async () => {
   );
 });
 
-it("attachments show as thumbs with a role badge and a way off; a frame switches to video", async () => {
+it("attachments show as thumbs in their role cell with a way off; a frame switches to video", async () => {
   await open();
   wake();
   api.attach(FACE, "reference");
   await waitFor(() => expect(strip()).toBeTruthy());
 
   const reference = within(strip()).getByRole("group", { name: "Reference" });
-  expect(
-    within(reference).getByText("Reference", { selector: "span" }),
-  ).toBeTruthy();
+  expect(within(reference).getByTitle(/^Reference · /)).toBeTruthy();
   expect(
     within(reference).getByRole("button", { name: "Remove face-01.png" }),
   ).toBeTruthy();
@@ -354,11 +351,9 @@ it("the chrome follows focus: a press elsewhere collapses it, whatever the bar h
   api.attach(FACE, "reference");
   wake();
   await waitFor(() => expect(strip()).toBeTruthy());
-  expect(screen.getByRole("button", { name: "Template" })).toBeTruthy();
 
   leave();
   await waitFor(() => expect(strip()).toBeNull());
-  expect(screen.queryByRole("button", { name: "Template" })).toBeNull();
   // What it holds is not lost, only folded: the prompt stays in the row and
   // the image it would send is counted.
   expect(editor().textContent).toContain("A portrait.");

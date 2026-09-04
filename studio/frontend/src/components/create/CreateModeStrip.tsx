@@ -1,7 +1,6 @@
 import { useId, type ReactElement } from "react";
 
 import {
-  Badge,
   Button,
   Chip,
   IconButton,
@@ -19,6 +18,7 @@ import {
   PencilIcon,
   PersonIcon,
   PlayIcon,
+  CloseIcon,
   TrashIcon,
 } from "../common/icons";
 import { ROLES_BY_KIND, ROLE_WORDS, fieldFor } from "./roles";
@@ -111,19 +111,18 @@ export function CreateModeStrip({
               on ? "bg-surface-alt" : ""
             }`}
           >
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            {/* The word alone; what the role means is a hover away. */}
+            <div className="flex min-w-0 flex-1 items-center">
               <Chip
                 pressed={on}
                 size="sm"
+                title={words.hint}
                 className="w-fit gap-1.5 rounded-none border-0 px-0"
                 onClick={toggle}
               >
                 <Icon className={ICON} />
                 {words.label}
               </Chip>
-              <Text variant="caption" tone="muted" className="hidden md:block">
-                {words.hint}
-              </Text>
             </div>
             <div className="flex shrink-0 gap-1">
               {held.map(({ attachment, index }) => (
@@ -204,26 +203,26 @@ export function AttachmentThumb({
 }) {
   const { ref, role } = attachment;
   return (
+    // No word on the picture: the cell it sits in already says the role. The
+    // picture is shown whole at the strip's height, its own width, on a
+    // lighter ground so a transparent PNG does not read as a black square.
     <div
-      className="relative size-16 shrink-0 border border-line bg-bg"
-      title={ref.name}
+      className="relative h-16 shrink-0 overflow-hidden border border-line bg-surface-alt"
+      title={`${ROLE_WORDS[role].label} · ${ref.name}`}
     >
-      <img src={ref.url} alt="" className="size-full object-cover" />
-      <Badge
-        size="sm"
-        intent="neutral"
-        className="absolute left-0 top-0 rounded-none"
-      >
-        {ROLE_WORDS[role].label}
-      </Badge>
+      <img
+        src={ref.url}
+        alt=""
+        className="h-full w-auto max-w-32 object-contain"
+      />
       <IconButton
         intent="overlay"
         size="sm"
         label={`Remove ${ref.name}`}
-        className="absolute bottom-0 right-0 size-6 rounded-none"
+        className="absolute right-0 top-0 size-5 rounded-none"
         onClick={onDetach}
       >
-        <TrashIcon className="size-3.5" />
+        <CloseIcon className="size-3" />
       </IconButton>
     </div>
   );

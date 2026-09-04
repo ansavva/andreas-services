@@ -1,7 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { Alert, Badge, Button, Collapsible, IconButton, Text, buttonClass } from "@ansavva/design-system";
+import {
+  Alert,
+  Badge,
+  Button,
+  Collapsible,
+  IconButton,
+  Text,
+  buttonClass,
+} from "@ansavva/design-system";
 
 import { getRun, submitRun } from "../../apis/studio";
 import { useShellSidebar } from "../../context/SidebarContext";
@@ -9,7 +24,13 @@ import { useArmed } from "../../hooks/useArmed";
 import { useKeyboardNav } from "../../hooks/useKeyboardNav";
 import { useNow } from "../../hooks/useNow";
 import { useResource } from "../../hooks/useResource";
-import { isTerminal, type HeroImage, type RunAsset, type RunFeedRow, type RunRecord } from "../../types";
+import {
+  isTerminal,
+  type HeroImage,
+  type RunAsset,
+  type RunFeedRow,
+  type RunRecord,
+} from "../../types";
 import { formatCost } from "../../utils/cost";
 import { formatBytes } from "../../utils/format";
 import { folderPath, projectPath, runPath } from "../../utils/location";
@@ -92,7 +113,14 @@ export function RunLightbox({ projectId, runId, characters, heroes }: Props) {
 
   const filters = useFeedFilters();
   const feed = useRunFeed(projectId, filters.applied);
-  const rows = feed.rows;
+  // Only runs with something to look at are worth stepping to: a strip of
+  // "draft" and "failed" tiles is a list of nothing. The open run stays in,
+  // whatever its state, so it has a place to step from.
+  const rows = useMemo(
+    () =>
+      feed.rows.filter((each) => each.outputs.length > 0 || each.id === runId),
+    [feed.rows, runId],
+  );
   const index = rows.findIndex((row) => row.id === runId);
 
   const load = useCallback(() => getRun(runId), [runId]);
@@ -118,7 +146,9 @@ export function RunLightbox({ projectId, runId, characters, heroes }: Props) {
   // Stepping REPLACES: walking ten runs is one place, not ten history entries.
   const goTo = useCallback(
     (target: RunFeedRow) =>
-      navigate(runPath(projectId, target.id) + location.search, { replace: true }),
+      navigate(runPath(projectId, target.id) + location.search, {
+        replace: true,
+      }),
     [location.search, navigate, projectId],
   );
   const prev = index > 0 ? () => goTo(rows[index - 1]!) : undefined;
@@ -143,7 +173,10 @@ export function RunLightbox({ projectId, runId, characters, heroes }: Props) {
       aria-label="Run"
       data-testid="run-lightbox"
       className="fixed inset-x-0 z-20 flex flex-col overflow-y-auto bg-bg md:left-16 md:flex-row md:overflow-hidden"
-      style={{ top: "var(--header-h)", height: "calc(100dvh - var(--header-h))" }}
+      style={{
+        top: "var(--header-h)",
+        height: "calc(100dvh - var(--header-h))",
+      }}
     >
       {/* `key` resets the output index and the Request row per run. */}
       {row ? (
@@ -172,8 +205,17 @@ export function RunLightbox({ projectId, runId, characters, heroes }: Props) {
         />
       ) : record.error ? (
         <div className="flex flex-1 flex-col items-start gap-4 p-6">
-          <LoadError what="this run" message={record.error} onRetry={record.reload} />
-          <Button intent="secondary" size="sm" onClick={close} className="rounded-none">
+          <LoadError
+            what="this run"
+            message={record.error}
+            onRetry={record.reload}
+          />
+          <Button
+            intent="secondary"
+            size="sm"
+            onClick={close}
+            className="rounded-none"
+          >
             Back to the project
           </Button>
         </div>
@@ -212,9 +254,15 @@ function Opened({
   strip: ReactNode;
 }) {
   const location = useLocation();
-  const state = (location.state ?? {}) as { output?: number; request?: boolean };
+  const state = (location.state ?? {}) as {
+    output?: number;
+    request?: boolean;
+  };
   const [output, setOutput] = useState(() =>
-    Math.min(Math.max(state.output ?? 0, 0), Math.max(row.outputs.length - 1, 0)),
+    Math.min(
+      Math.max(state.output ?? 0, 0),
+      Math.max(row.outputs.length - 1, 0),
+    ),
   );
   const [requestOpen, setRequestOpen] = useState(Boolean(state.request));
 
@@ -222,7 +270,9 @@ function Opened({
   const flying = inFlight(row.status);
   const now = useNow(flying);
   const asset = row.outputs[output] ?? null;
-  const video = asset ? isVideoAsset(asset) || row.kind === "video" : row.kind === "video";
+  const video = asset
+    ? isVideoAsset(asset) || row.kind === "video"
+    : row.kind === "video";
   const sent = row.submitted !== null;
 
   return (
@@ -231,7 +281,13 @@ function Opened({
           the project's runs along the bottom. */}
       <div className="relative flex min-h-[60dvh] min-w-0 flex-1 flex-col md:min-h-0">
         <div className="absolute right-3 top-3 z-10 flex gap-1">
-          <IconButton label="Close (Esc)" size="sm" intent="overlay" onClick={onClose} className="rounded-none">
+          <IconButton
+            label="Close (Esc)"
+            size="sm"
+            intent="overlay"
+            onClick={onClose}
+            className="rounded-none"
+          >
             <CloseIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
           </IconButton>
         </div>
@@ -266,11 +322,20 @@ function Opened({
                 row.kind === "video" ? "aspect-video" : "aspect-[3/4]"
               }`}
             >
-              <ApertureSpinner size="lg" label={`Run ${row.status}`} className="text-warning" />
+              <ApertureSpinner
+                size="lg"
+                label={`Run ${row.status}`}
+                className="text-warning"
+              />
               <Text variant="body" weight="medium" className="text-warning">
                 {row.status === "pending" ? "Sending…" : "Running…"}
               </Text>
-              <Text variant="caption" family="mono" tone="muted" className="tabular-nums">
+              <Text
+                variant="caption"
+                family="mono"
+                tone="muted"
+                className="tabular-nums"
+              >
                 {elapsedSince(row.submitted ?? row.created, now)}
               </Text>
             </div>
@@ -288,7 +353,12 @@ function Opened({
                   className="h-full w-full border border-line"
                 />
               </div>
-              <Text variant="caption" family="mono" tone="muted" className="tabular-nums">
+              <Text
+                variant="caption"
+                family="mono"
+                tone="muted"
+                className="tabular-nums"
+              >
                 {asset.name}
                 {asset.size ? ` · ${formatBytes(asset.size)}` : ""}
               </Text>
@@ -301,12 +371,19 @@ function Opened({
               </Alert.Root>
             </div>
           ) : (
-            <EmptyState title={row.status === "draft" ? "Not run yet." : "Nothing came back."} />
+            <EmptyState
+              title={
+                row.status === "draft" ? "Not run yet." : "Nothing came back."
+              }
+            />
           )}
         </div>
 
         {row.outputs.length > 1 && !flying && (
-          <div className="flex justify-center gap-1.5 px-4 pb-2" aria-label="Outputs">
+          <div
+            className="flex justify-center gap-1.5 px-4 pb-2"
+            aria-label="Outputs"
+          >
             {row.outputs.map((each, i) => (
               // The tile is the press; `MediaThumb` inside it is decorative.
               // eslint-disable-next-line studio/no-hand-rolled-button -- a media tile, the same shape as Filmstrip's.
@@ -317,7 +394,9 @@ function Opened({
                 aria-current={i === output ? "true" : undefined}
                 onClick={() => setOutput(i)}
                 className={`w-14 shrink-0 rounded-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
-                  i === output ? "ring-2 ring-primary" : "opacity-70 hover:opacity-100"
+                  i === output
+                    ? "ring-2 ring-primary"
+                    : "opacity-70 hover:opacity-100"
                 }`}
               >
                 <MediaThumb
@@ -346,9 +425,16 @@ function Opened({
           <Badge intent="neutral" className="rounded-none font-mono">
             {row.kind}
           </Badge>
-          <Text variant="caption" family="mono" tone="muted" className="ml-auto tabular-nums">
+          <Text
+            variant="caption"
+            family="mono"
+            tone="muted"
+            className="ml-auto tabular-nums"
+          >
             {flying ? (
-              <span className="text-warning">sent {relativeTime(row.submitted, now)}</span>
+              <span className="text-warning">
+                sent {relativeTime(row.submitted, now)}
+              </span>
             ) : (
               relativeTime(row.created, now)
             )}
@@ -366,9 +452,13 @@ function Opened({
                 url={send.url}
                 name={send.name}
                 aspect="square"
+                // Whole, not cropped: what went in is what a person is
+                // checking the output against. The role is the tooltip, not a
+                // word over the picture — at this size a label hides what it
+                // labels.
+                fit="contain"
                 title={`${send.role ?? send.field} · ${send.name}`}
-                badge={send.role ?? send.field}
-                className="size-14 rounded-none border border-line"
+                className="size-28 rounded-none border border-line"
               />
             ))}
           </div>
@@ -389,11 +479,20 @@ function Opened({
           </div>
         )}
 
-        <Text variant="caption" family="mono" tone="muted" className="tabular-nums">
+        <Text
+          variant="caption"
+          family="mono"
+          tone="muted"
+          className="tabular-nums"
+        >
           {[
             formatCost(row.cost, ""),
-            row.cost?.predict_time ? `${Math.round(row.cost.predict_time)}s` : "",
-            record?.prediction_id ? `prediction ${record.prediction_id.slice(0, 8)}…` : "",
+            row.cost?.predict_time
+              ? `${Math.round(row.cost.predict_time)}s`
+              : "",
+            record?.prediction_id
+              ? `prediction ${record.prediction_id.slice(0, 8)}…`
+              : "",
           ]
             .filter(Boolean)
             .join(" · ") || "—"}
@@ -425,7 +524,12 @@ function Opened({
         >
           <Collapsible.Trigger className="w-full justify-between rounded-none">
             <span className="text-muted">Request</span>
-            <Text variant="caption" family="mono" tone="muted" className="truncate">
+            <Text
+              variant="caption"
+              family="mono"
+              tone="muted"
+              className="truncate"
+            >
               prompt.json · request.json · response.json
             </Text>
             <ChevronDownIcon
@@ -443,13 +547,29 @@ function Opened({
                     : "Nothing has gone to the provider yet. What follows is what WOULD go, rebuilt from the plan every time you open this."}
                 </Text>
                 {!sent && requestOpen && <PayloadPreview runId={record.id} />}
-                <PayloadDocument label="prompt.json" node={record.payload.prompt} sent={sent} />
-                <PayloadDocument label="request.json" node={record.payload.request} sent={sent} />
-                <PayloadDocument label="response.json" node={record.payload.response} sent={sent} />
+                <PayloadDocument
+                  label="prompt.json"
+                  node={record.payload.prompt}
+                  sent={sent}
+                />
+                <PayloadDocument
+                  label="request.json"
+                  node={record.payload.request}
+                  sent={sent}
+                />
+                <PayloadDocument
+                  label="response.json"
+                  node={record.payload.response}
+                  sent={sent}
+                />
               </div>
             ) : recordError ? (
               <div className="py-2">
-                <LoadError what="the request" message={recordError} onRetry={onReload} />
+                <LoadError
+                  what="the request"
+                  message={recordError}
+                  onRetry={onReload}
+                />
               </div>
             ) : (
               <SectionLoading label="Loading the request" />
@@ -480,7 +600,10 @@ function Prompt({ row }: { row: RunFeedRow }) {
     );
   }
   return (
-    <Text variant="body" className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words">
+    <Text
+      variant="body"
+      className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words"
+    >
       {text}
     </Text>
   );
@@ -522,12 +645,25 @@ function ActionGrid({
 
   return (
     <section className="flex flex-col gap-2">
-      <Text variant="caption" tone="muted" className="font-semibold uppercase tracking-wide">
+      <Text
+        variant="caption"
+        tone="muted"
+        className="font-semibold uppercase tracking-wide"
+      >
         Actions
       </Text>
-      <div className="grid grid-cols-3 gap-2" aria-label="Actions">
+      {/* A list, not a grid: one row per action, the word beside its glyph,
+          hairlines between. A grid of boxes gave every word its own frame
+          and the rail read as a keypad. */}
+      <div className="flex flex-col border-t border-line" aria-label="Actions">
         {draft && (
-          <ArmedCell idle="Run" armed="Spends" busy="Running…" icon={<RerunIcon className={GLYPH} />} onFire={run} />
+          <ArmedCell
+            idle="Run"
+            armed="Spends"
+            busy="Running…"
+            icon={<RerunIcon className={GLYPH} />}
+            onFire={run}
+          />
         )}
         {!draft && !flying && (
           <ArmedCell
@@ -538,7 +674,11 @@ function ActionGrid({
             onFire={actions.rerun}
           />
         )}
-        <Cell icon={<PencilIcon className={GLYPH} />} label="Edit" onClick={actions.edit} />
+        <Cell
+          icon={<PencilIcon className={GLYPH} />}
+          label="Edit"
+          onClick={actions.edit}
+        />
         {asset && (
           <Cell
             icon={<UseInPromptIcon className={GLYPH} />}
@@ -554,16 +694,35 @@ function ActionGrid({
           />
         )}
         {asset && still && (
-          <Cell icon={<UpscaleIcon className={GLYPH} />} label="Upscale" onClick={() => actions.upscale(asset, output)} />
+          <Cell
+            icon={<UpscaleIcon className={GLYPH} />}
+            label="Upscale"
+            onClick={() => actions.upscale(asset, output)}
+          />
         )}
         {asset && isPromotable(asset) && (
-          <Cell icon={<PromoteIcon className={GLYPH} />} label="Promote" onClick={onPromote} />
+          <Cell
+            icon={<PromoteIcon className={GLYPH} />}
+            label="Promote"
+            onClick={onPromote}
+          />
         )}
         {asset && (
-          <Cell icon={<DownloadIcon className={GLYPH} />} label="Download" onClick={() => void actions.download(asset)} />
+          <Cell
+            icon={<DownloadIcon className={GLYPH} />}
+            label="Download"
+            onClick={() => void actions.download(asset)}
+          />
         )}
         {folder && !flying && (
-          <a href={folder} className={buttonClass({ intent: "secondary", size: "sm", className: CELL })}>
+          <a
+            href={folder}
+            className={buttonClass({
+              intent: "secondary",
+              size: "sm",
+              className: CELL,
+            })}
+          >
             <FolderIcon className={GLYPH} />
             Folder
           </a>
@@ -584,13 +743,21 @@ function ActionGrid({
 }
 
 const CELL =
-  "flex h-auto min-h-16 flex-col items-center justify-center gap-1 rounded-none px-1 py-2 text-xs font-medium";
+  "flex h-10 w-full items-center justify-start gap-3 rounded-none border-0 border-b border-line px-2 text-sm font-medium";
 
-function Cell({ icon, label, onClick }: { icon: ReactNode; label: string; onClick: () => void }) {
+function Cell({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
   return (
     <Button intent="secondary" size="sm" onClick={onClick} className={CELL}>
       {icon}
-      <span className="text-center leading-tight">{label}</span>
+      <span className="leading-tight">{label}</span>
     </Button>
   );
 }
@@ -629,7 +796,13 @@ function ArmedCell({
 
   return (
     <Button
-      intent={state.armed || state.busy ? (danger ? "danger" : "primary") : "secondary"}
+      intent={
+        state.armed || state.busy
+          ? danger
+            ? "danger"
+            : "primary"
+          : "secondary"
+      }
       size="sm"
       aria-label={name}
       onClick={state.press}
@@ -638,7 +811,7 @@ function ArmedCell({
       className={CELL}
     >
       {icon}
-      <span className="text-center leading-tight">{label}</span>
+      <span className="leading-tight">{label}</span>
       <span className="sr-only" aria-live="assertive">
         {state.armed ? name : ""}
       </span>
@@ -678,19 +851,34 @@ function RunStrip({
     // See `Filmstrip` for why `scrollIntoView` is the wrong tool here.
     const tileBox = tile.getBoundingClientRect();
     const stripBox = el.getBoundingClientRect();
-    const left = el.scrollLeft + (tileBox.left - stripBox.left) - (el.clientWidth - tileBox.width) / 2;
-    if (typeof el.scrollTo === "function") el.scrollTo({ left, behavior: "smooth" });
+    const left =
+      el.scrollLeft +
+      (tileBox.left - stripBox.left) -
+      (el.clientWidth - tileBox.width) / 2;
+    if (typeof el.scrollTo === "function")
+      el.scrollTo({ left, behavior: "smooth" });
     else el.scrollLeft = left;
   }, [currentId]);
 
   if (rows.length < 2) return null;
 
   return (
-    <div className="flex items-center gap-1 border-t border-line px-2 py-2" aria-label="Runs in this project">
-      <IconButton label="Previous run" size="sm" disabled={!onPrev} onClick={() => onPrev?.()}>
+    <div
+      className="flex items-center gap-1 border-t border-line px-2 py-2"
+      aria-label="Runs in this project"
+    >
+      <IconButton
+        label="Previous run"
+        size="sm"
+        disabled={!onPrev}
+        onClick={() => onPrev?.()}
+      >
         <ChevronLeftIcon className="size-5 fill-none stroke-current stroke-[1.5]" />
       </IconButton>
-      <div ref={strip} className="no-scrollbar flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto p-1.5">
+      <div
+        ref={strip}
+        className="no-scrollbar flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto p-1.5"
+      >
         {rows.map((row) => {
           const current = row.id === currentId;
           const thumb = row.thumb ?? row.outputs[0] ?? null;
@@ -709,7 +897,11 @@ function RunStrip({
             >
               {inFlight(row.status) ? (
                 <span className="studio-shimmer flex aspect-square items-center justify-center rounded-none border border-warning/50">
-                  <ApertureSpinner size="sm" label={`Run ${row.status}`} className="text-warning" />
+                  <ApertureSpinner
+                    size="sm"
+                    label={`Run ${row.status}`}
+                    className="text-warning"
+                  />
                 </span>
               ) : thumb ? (
                 <MediaThumb
@@ -736,7 +928,12 @@ function RunStrip({
           </span>
         )}
       </div>
-      <IconButton label="Next run" size="sm" disabled={!onNext} onClick={() => onNext?.()}>
+      <IconButton
+        label="Next run"
+        size="sm"
+        disabled={!onNext}
+        onClick={() => onNext?.()}
+      >
         <ChevronRightIcon className="size-5 fill-none stroke-current stroke-[1.5]" />
       </IconButton>
     </div>

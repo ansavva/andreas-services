@@ -12,7 +12,12 @@ vi.mock("../../apis/studio", () => ({
   getRuns: vi.fn(),
 }));
 
-import { getCharacterSelection, getCharacters, getProjectInputs, getRuns } from "../../apis/studio";
+import {
+  getCharacterSelection,
+  getCharacters,
+  getProjectInputs,
+  getRuns,
+} from "../../apis/studio";
 import { CreateDrawer } from "./CreateDrawer";
 import { sendsOf } from "./roles";
 
@@ -38,7 +43,13 @@ afterEach(cleanup);
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getCharacters).mockResolvedValue([
-    { id: CHARACTER, name: "jason", hero: null, counts: { default: 1, files: 1 }, updated: "" },
+    {
+      id: CHARACTER,
+      name: "jason",
+      hero: null,
+      counts: { default: 1, files: 1 },
+      updated: "",
+    },
   ]);
   vi.mocked(getCharacterSelection).mockResolvedValue({
     selection: [
@@ -88,8 +99,18 @@ beforeEach(() => {
         cast: [],
         sends: [],
         outputs: [
-          { node: "node-out-1", name: "out-1.png", content_type: "image/png", url: "https://example.invalid/1.png" },
-          { node: "node-out-2", name: "out-2.mp4", content_type: "video/mp4", url: "https://example.invalid/2.mp4" },
+          {
+            node: "node-out-1",
+            name: "out-1.png",
+            content_type: "image/png",
+            url: "https://example.invalid/1.png",
+          },
+          {
+            node: "node-out-2",
+            name: "out-2.mp4",
+            content_type: "video/mp4",
+            url: "https://example.invalid/2.mp4",
+          },
         ],
         thumb: null,
       },
@@ -121,7 +142,9 @@ it("opens on the cast, draws a dashed placeholder for a character with no pictur
   expect(tab.querySelector("img")).toBeNull();
   expect(tab.querySelector(".border-dashed")).toBeTruthy();
 
-  fireEvent.click(await screen.findByRole("button", { name: "Attach seed-01.jpg" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Attach seed-01.jpg" }),
+  );
   const ref = onAttach.mock.calls[0]![0];
   expect(ref).toEqual({
     node: "node-seed",
@@ -131,13 +154,17 @@ it("opens on the cast, draws a dashed placeholder for a character with no pictur
     character: CHARACTER,
   });
   const sends = sendsOf([{ ref, role: "reference" }] as Attachment[], STILL);
-  expect(sends).toEqual([{ field: "input_images", role: "reference", node: "node-seed" }]);
+  expect(sends).toEqual([
+    { field: "input_images", role: "reference", node: "node-seed" },
+  ]);
 });
 
 it("the input pool attaches as the image an edit starts from", async () => {
   const onAttach = open();
   fireEvent.click(screen.getByRole("tab", { name: "Inputs" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Attach coat-ref.jpg" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Attach coat-ref.jpg" }),
+  );
 
   const ref = onAttach.mock.calls[0]![0];
   expect(ref).toMatchObject({ node: "node-coat", kind: "input-pool" });
@@ -159,7 +186,12 @@ it("the project's outputs offer only pictures, numbered by output, and animate o
 
   fireEvent.click(tile);
   const ref = onAttach.mock.calls[0]![0];
-  expect(ref).toMatchObject({ node: "node-out-1", kind: "run", run: "run-7f3a0000", output: 1 });
+  expect(ref).toMatchObject({
+    node: "node-out-1",
+    kind: "run",
+    run: "run-7f3a0000",
+    output: 1,
+  });
   expect(sendsOf([{ ref, role: "start" }] as Attachment[], MOTION)).toEqual([
     { field: "start_image", role: "start", node: "node-out-1" },
   ]);

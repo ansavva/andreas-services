@@ -67,7 +67,10 @@ export function CreateSettings({
   }, [entry.images]);
 
   const values = useMemo(
-    () => Object.fromEntries(Object.entries(params).map(([key, value]) => [key, paramText(value)])),
+    () =>
+      Object.fromEntries(
+        Object.entries(params).map(([key, value]) => [key, paramText(value)]),
+      ),
     [params],
   );
 
@@ -78,7 +81,10 @@ export function CreateSettings({
         {/* Labelled by the registry key, which is what the skills and the CLI
             call it. The Replicate id is what gets sent. */}
         <Select
-          options={offered.map((each) => ({ value: each.model, label: each.key }))}
+          options={offered.map((each) => ({
+            value: each.model,
+            label: each.key,
+          }))}
           value={model}
           onValueChange={onModel}
         />
@@ -91,7 +97,11 @@ export function CreateSettings({
       )}
 
       {schema.error ? (
-        <LoadError what="the model's schema" message={schema.error} onRetry={schema.reload} />
+        <LoadError
+          what="the model's schema"
+          message={schema.error}
+          onRetry={schema.reload}
+        />
       ) : schema.loading || !schema.data ? (
         <SectionLoading label="Loading the model's inputs" />
       ) : (

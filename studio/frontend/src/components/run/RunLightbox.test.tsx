@@ -1,8 +1,18 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CreateBarProvider, useCreateBarState } from "../../context/CreateBarContext";
+import {
+  CreateBarProvider,
+  useCreateBarState,
+} from "../../context/CreateBarContext";
 import { SidebarProvider, useShellSidebar } from "../../context/SidebarContext";
 import { TestProviders } from "../../test-providers";
 import type { RunFeedRow, RunRecord } from "../../types";
@@ -21,7 +31,9 @@ vi.mock("../../apis/studio", () => ({
 // The player is its own suite; here the stage only has to name what it shows.
 vi.mock("../media/MediaPlayer", () => ({
   MediaPlayer: ({ name, isVideo }: { name: string; isVideo?: boolean }) => (
-    <div data-testid="stage">{isVideo ? "video" : "image"}: {name}</div>
+    <div data-testid="stage">
+      {isVideo ? "video" : "image"}: {name}
+    </div>
   ),
 }));
 
@@ -51,7 +63,12 @@ function row(over: Partial<RunFeedRow> = {}): RunFeedRow {
     error: null,
     cost: { currency: "USD", amount: 0.14, predict_time: 38 },
     thumb: { node: "node-o1", url: "/out-1.png" },
-    plan: { version: 1, origin: "authored", prompt: "a portrait, 85mm", params: { aspect_ratio: "3:4" } },
+    plan: {
+      version: 1,
+      origin: "authored",
+      prompt: "a portrait, 85mm",
+      params: { aspect_ratio: "3:4" },
+    },
     characters: ["char-1"],
     cast: [{ id: "char-1", name: "jason" }],
     sends: [
@@ -67,8 +84,20 @@ function row(over: Partial<RunFeedRow> = {}): RunFeedRow {
       },
     ],
     outputs: [
-      { node: "node-o1", name: "out-1.png", url: "/out-1.png", content_type: "image/png", size: 2048 },
-      { node: "node-o2", name: "out-2.png", url: "/out-2.png", content_type: "image/png", size: 4096 },
+      {
+        node: "node-o1",
+        name: "out-1.png",
+        url: "/out-1.png",
+        content_type: "image/png",
+        size: 2048,
+      },
+      {
+        node: "node-o2",
+        name: "out-2.png",
+        url: "/out-2.png",
+        content_type: "image/png",
+        size: 4096,
+      },
     ],
     ...over,
   };
@@ -97,7 +126,11 @@ function record(over: Partial<RunRecord> = {}): RunRecord {
     scenes: [],
     cost: base.cost,
     error: null,
-    payload: { prompt: "node-prompt", request: "node-request", response: "node-response" },
+    payload: {
+      prompt: "node-prompt",
+      request: "node-request",
+      response: "node-response",
+    },
     ...over,
   };
 }
@@ -109,9 +142,15 @@ function Probe() {
   const bar = useCreateBarState();
   return (
     <>
-      <output data-testid="address">{location.pathname + location.search}</output>
+      <output data-testid="address">
+        {location.pathname + location.search}
+      </output>
       <output data-testid="collapsed">{String(collapsed)}</output>
-      <output data-testid="attachments">{bar.attachments[bar.kind].map((a) => `${a.role}:${a.ref.node}`).join(",")}</output>
+      <output data-testid="attachments">
+        {bar.attachments[bar.kind]
+          .map((a) => `${a.role}:${a.ref.node}`)
+          .join(",")}
+      </output>
     </>
   );
 }
@@ -121,7 +160,12 @@ function Probe() {
 function At({ runId }: { runId: string }) {
   return (
     <>
-      <RunLightbox projectId="proj-1" runId={runId} characters={[{ id: "char-1", name: "jason" }]} heroes={{}} />
+      <RunLightbox
+        projectId="proj-1"
+        runId={runId}
+        characters={[{ id: "char-1", name: "jason" }]}
+        heroes={{}}
+      />
       <Probe />
     </>
   );
@@ -137,9 +181,18 @@ afterEach(cleanup);
 beforeEach(() => {
   vi.clearAllMocks();
   window.localStorage.clear();
-  list.mockResolvedValue({ runs: [row({ id: "run-2" }), row({ id: "run-1", created: ago(400) })], cursor: null });
+  list.mockResolvedValue({
+    runs: [row({ id: "run-2" }), row({ id: "run-1", created: ago(400) })],
+    cursor: null,
+  });
   read.mockResolvedValue(record());
-  text.mockResolvedValue({ id: "node-request", name: "request.json", language: "json", truncated: false, content: '{"input":{"prompt":"a portrait"}}' } as never);
+  text.mockResolvedValue({
+    id: "node-request",
+    name: "request.json",
+    language: "json",
+    truncated: false,
+    content: '{"input":{"prompt":"a portrait"}}',
+  } as never);
 });
 
 async function draw(path = "/p/proj-1/r/run-2?tab=runs") {
@@ -178,23 +231,33 @@ describe("the opened run", () => {
 
   it("draws the run's plan in the rail and fetches the record for the rest", async () => {
     await draw();
-    const rail = await screen.findByRole("complementary", { name: "Run details" });
+    const rail = await screen.findByRole("complementary", {
+      name: "Run details",
+    });
 
     expect(within(rail).getByText("succeeded")).toBeTruthy();
     expect(within(rail).getByText("a portrait, 85mm")).toBeTruthy();
     expect(within(rail).getByText("aspect_ratio")).toBeTruthy();
     expect(within(rail).getByText("openai/gpt-image-2")).toBeTruthy();
-    expect(within(rail).getByRole("link", { name: /jason/ }).getAttribute("href")).toBe("/c/char-1");
+    expect(
+      within(rail).getByRole("link", { name: /jason/ }).getAttribute("href"),
+    ).toBe("/c/char-1");
     expect(within(rail).getByTitle("reference · seed-01.jpg")).toBeTruthy();
-    await waitFor(() => expect(within(rail).getByText(/prediction 9c1e2f3a…/)).toBeTruthy());
+    await waitFor(() =>
+      expect(within(rail).getByText(/prediction 9c1e2f3a…/)).toBeTruthy(),
+    );
     expect(read).toHaveBeenCalledWith("run-2");
     // The rail's Folder is the run's own folder, off the record.
-    expect(within(rail).getByRole("link", { name: "Folder" }).getAttribute("href")).toBe("/f/node-folder");
+    expect(
+      within(rail).getByRole("link", { name: "Folder" }).getAttribute("href"),
+    ).toBe("/f/node-folder");
   });
 
   it("steps between the project's runs on the arrow keys and the strip, replacing the address", async () => {
     await draw();
-    await screen.findByRole("region", { name: "Runs in this project" }).catch(() => null);
+    await screen
+      .findByRole("region", { name: "Runs in this project" })
+      .catch(() => null);
 
     fireEvent.keyDown(window, { key: "ArrowRight" });
     await waitFor(() => expect(address()).toBe("/p/proj-1/r/run-1?tab=runs"));
@@ -239,7 +302,9 @@ describe("the opened run", () => {
     list.mockResolvedValue({ runs: [], cursor: null });
     await draw();
 
-    const rail = await screen.findByRole("complementary", { name: "Run details" });
+    const rail = await screen.findByRole("complementary", {
+      name: "Run details",
+    });
     expect(within(rail).getByText("a portrait, 85mm")).toBeTruthy();
     expect(within(rail).getByRole("link", { name: /jason/ })).toBeTruthy();
     // One run is no strip.
@@ -252,7 +317,9 @@ describe("the opened run", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Output 2 of 2" }));
     fireEvent.click(screen.getByRole("button", { name: "Use as reference" }));
-    expect(screen.getByTestId("attachments").textContent).toBe("reference:node-o2");
+    expect(screen.getByTestId("attachments").textContent).toBe(
+      "reference:node-o2",
+    );
   });
 
   it("Trash arms, then deletes and returns to the project", async () => {
@@ -262,13 +329,25 @@ describe("the opened run", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Trash" }));
     expect(deleteRun).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Confirm — delete this run" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirm — delete this run" }),
+    );
     await waitFor(() => expect(deleteRun).toHaveBeenCalledWith("run-2"));
   });
 
   it("shows the shimmer and the counter for a run in flight, and offers nothing that spends", async () => {
     list.mockResolvedValue({
-      runs: [row({ id: "run-2", status: "running", submitted: ago(12), completed: null, outputs: [], thumb: null, cost: null })],
+      runs: [
+        row({
+          id: "run-2",
+          status: "running",
+          submitted: ago(12),
+          completed: null,
+          outputs: [],
+          thumb: null,
+          cost: null,
+        }),
+      ],
       cursor: null,
     });
     read.mockResolvedValue(record({ status: "running", outputs: [] }));
@@ -281,4 +360,32 @@ describe("the opened run", () => {
     expect(screen.queryByRole("button", { name: "Trash" })).toBeNull();
     expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
   });
+});
+
+it("the strip and the arrows skip runs with nothing to show", async () => {
+  list.mockResolvedValue({
+    runs: [
+      row({ id: "run-a" }),
+      row({ id: "run-draft", status: "draft", outputs: [], created: ago(100) }),
+      row({
+        id: "run-failed",
+        status: "failed",
+        outputs: [],
+        created: ago(200),
+      }),
+      row({ id: "run-b", created: ago(300) }),
+    ],
+    cursor: null,
+  });
+  await draw("/p/proj-1/r/run-a?tab=runs");
+
+  const strip = await screen.findByLabelText("Runs in this project");
+  // Two runs have outputs (the open one and run-b); the draft and the
+  // failure are not offered.
+  expect(within(strip).getAllByRole("button", { name: /^Run / })).toHaveLength(
+    2,
+  );
+
+  fireEvent.keyDown(document, { key: "ArrowRight" });
+  await waitFor(() => expect(address()).toContain("/r/run-b"));
 });
