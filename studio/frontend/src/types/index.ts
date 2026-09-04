@@ -871,7 +871,6 @@ export interface RunFeedRow extends RunSummary {
   submitted: string | null;
   completed: string | null;
   error: string | null;
-  fingerprint?: string | null;
   plan: RunPlan | null;
   characters: string[];
   /**

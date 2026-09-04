@@ -156,6 +156,21 @@ def test_a_run_with_nothing_bound_and_nothing_made_still_has_a_row(empty_api):
     assert row["thumb"] is None and row["submitted"] is None
 
 
+def test_a_feed_row_carries_a_fingerprint_only_when_the_run_has_one(empty_api):
+    """The listing row's rule, kept: present as a string or absent, never null,
+    so `RunFeedRow` can extend `RunSummary` without widening the field."""
+    from studio_core.routes.runs import _feed_row
+
+    project = _project(empty_api)
+    _create(empty_api, project)
+    (row,) = _listed(empty_api, project=project["id"], include="drafts",
+                     view="feed")["runs"]
+    assert row["fingerprint"].startswith("sha256:")
+
+    bare = _feed_row({"id": "run-x", "created": "2026-01-01T00:00:00+00:00"}, {}, [], {})
+    assert "fingerprint" not in bare
+
+
 def test_the_plain_listing_stays_the_projection(empty_api):
     """The grid, the CLI and the fingerprint check read a row, not an envelope.
 

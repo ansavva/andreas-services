@@ -764,6 +764,7 @@ def _feed_row(row: dict, record: dict, send_entries: list[dict], nodes: dict) ->
                 cast.append(owner)
 
     first = next((asset for asset in outputs if asset.get("url")), None)
+    fingerprint = record.get("fingerprint") or row.get("fingerprint")
     return {
         "id": row["id"],
         "lib": row.get("lib") or record.get("lib"),
@@ -778,7 +779,10 @@ def _feed_row(row: dict, record: dict, send_entries: list[dict], nodes: dict) ->
         "completed": record.get("completed"),
         "cost": record.get("cost"),
         "error": record.get("error"),
-        "fingerprint": record.get("fingerprint") or row.get("fingerprint"),
+        # Present when the run has one, absent otherwise — the listing row's
+        # rule, so `RunFeedRow` can extend `RunSummary` without a `null` the
+        # base never carries.
+        **({"fingerprint": fingerprint} if fingerprint else {}),
         "plan": record.get("plan"),
         "characters": record.get("characters") or [],
         "cast": cast,
