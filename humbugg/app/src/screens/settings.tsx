@@ -13,7 +13,6 @@ import { Linking, Text, View } from 'react-native';
 
 import { api } from '../api/client';
 import { Avatar } from '../components/avatar';
-import { DangerButton } from '../components/danger-button';
 import { FieldLabel } from '../components/field';
 import { Card, LoadingPanel, Shell } from '../components/shell';
 import { StatusMessage } from '../components/status-message';
@@ -335,9 +334,9 @@ function DangerZone({ profile }: { profile: Profile }) {
           <StatusMessage message={error} />
           <View style={{ marginTop: 24, flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
             <AlertDialog.Close>Cancel</AlertDialog.Close>
-            <DangerButton size="sm" disabled={busy || !matches} onPress={() => void deleteAccount()}>
+            <Button intent="danger" size="sm" disabled={busy || !matches} onPress={() => void deleteAccount()}>
               {busy ? 'Deleting…' : 'Permanently delete'}
-            </DangerButton>
+            </Button>
           </View>
         </AlertDialog.Popup>
       </AlertDialog.Root>

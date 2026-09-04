@@ -108,14 +108,14 @@ function PlanColumn({ plan }: { plan: PlanCard }) {
   const featured = plan.code === 'plus';
   return (
     <div
-      className={`flex flex-col rounded-2xl border bg-card p-8 ${
+      className={`flex flex-col rounded-lg border bg-card p-8 ${
         featured ? 'border-primary shadow-lg' : 'border-line'
       }`}
     >
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="font-heading text-2xl font-semibold text-ink">{plan.name}</h2>
         {featured ? (
-          <span className="rounded-full bg-surface-alt px-3 py-1 text-xs font-semibold text-primary">
+          <span className="rounded-pill bg-surface-alt px-3 py-1 text-xs font-semibold text-primary">
             Most chosen
           </span>
         ) : null}
@@ -139,7 +139,7 @@ function PlanColumn({ plan }: { plan: PlanCard }) {
       <ul className="mt-6 flex-1 space-y-3 text-sm text-ink">
         {copy?.features.map((feature) => (
           <li key={feature} className="flex gap-3">
-            <span aria-hidden="true" className="mt-[.35rem] h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+            <span aria-hidden="true" className="mt-[.35rem] h-1.5 w-1.5 shrink-0 rounded-pill bg-primary" />
             <span>{feature}</span>
           </li>
         ))}

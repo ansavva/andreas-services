@@ -8,7 +8,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 
 import { api, ApiError } from '../api/client';
-import { DangerButton } from '../components/danger-button';
 import { ExchangeInstructions, ExchangeSettingsPanel } from '../components/exchange-settings';
 import { isPlusRequired, PlusRefusalCard } from '../components/plus';
 import { GiftReceivedPanel, GiftStagePanel } from '../components/gift-progress';
@@ -363,7 +362,8 @@ function RemoveMemberButton({
   }, [armed]);
 
   return (
-    <DangerButton
+    <Button
+      intent="danger"
       size="sm"
       disabled={busy}
       accessibilityLabel={armed ? `Confirm removing ${name}` : `Remove ${name}`}
@@ -375,7 +375,7 @@ function RemoveMemberButton({
       }}
     >
       {armed ? 'Tap to confirm' : 'Remove'}
-    </DangerButton>
+    </Button>
   );
 }
 
@@ -532,7 +532,7 @@ function WishListForm({
           ) : null}
         </View>
         <StatusMessage message={validationError} />
-        <Button disabled={busy} onPress={submit}>Save my details</Button>
+        <Button style={styles.buttonBlock} disabled={busy} onPress={submit}>Save my details</Button>
       </View>
       <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: brand.line, paddingTop: 16, gap: 12 }}>
         <Text style={styles.tiny}>
@@ -638,7 +638,8 @@ function OrganizerPanel(props: OrganizerProps) {
           <Text style={[styles.heading, { marginTop: 4 }]}>Prepare the draw</Text>
         </View>
         <View>
-          <DangerButton
+          <Button
+            intent="danger"
             size="sm"
             disabled={props.busy}
             accessibilityLabel={
@@ -649,7 +650,7 @@ function OrganizerPanel(props: OrganizerProps) {
             style={{ width: 160 }}
           >
             {props.busy ? 'Deleting…' : confirmingDelete ? 'Confirm delete' : 'Delete group'}
-          </DangerButton>
+          </Button>
           <Text accessibilityLiveRegion="polite" style={local.srOnly}>{deleteAnnouncement}</Text>
         </View>
       </View>
@@ -765,7 +766,7 @@ function OrganizerPanel(props: OrganizerProps) {
               Drawing locks the roster and exclusions. Every person sees only their own recipient.
             </Text>
             <View style={{ marginTop: 16 }}>
-              <Button size="lg" disabled={props.busy} onPress={props.onDraw}>
+              <Button style={styles.buttonBlock} size="lg" disabled={props.busy} onPress={props.onDraw}>
                 Create private assignments
               </Button>
             </View>
@@ -797,12 +798,13 @@ function OrganizerPanel(props: OrganizerProps) {
               />
             </View>
             <View style={{ marginTop: 12, alignSelf: 'flex-start' }}>
-              <DangerButton
+              <Button
+                intent="danger"
                 disabled={reason.trim().length === 0 || props.busy}
                 onPress={() => void props.onReveal(reason)}
               >
                 Reveal all assignments
-              </DangerButton>
+              </Button>
             </View>
           </View>
           {props.revealed ? (

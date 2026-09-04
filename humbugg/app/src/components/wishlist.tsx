@@ -6,7 +6,6 @@ import { useEffect, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { api } from '../api/client';
-import { DangerButton } from '../components/danger-button';
 import { FieldLabel } from '../components/field';
 import { Card } from '../components/shell';
 import { StatusMessage } from '../components/status-message';
@@ -263,7 +262,8 @@ function WishRow({
           Edit
         </Button>
         {/* One press arms, the next commits — the same confirmation shape the rest of this app uses. */}
-        <DangerButton
+        <Button
+          intent="danger"
           size="sm"
           disabled={busy}
           accessibilityLabel={
@@ -276,7 +276,7 @@ function WishRow({
           }}
         >
           {confirmingRemove ? 'Confirm' : 'Remove'}
-        </DangerButton>
+        </Button>
       </View>
     </View>
   );

@@ -125,17 +125,38 @@ theming.
 
 Both packages live on GitHub Packages, which requires a token for **every** read — there is no
 anonymous install. The committed `.npmrc` reads `${NODE_AUTH_TOKEN}`; get one with
-`eval "$(./scripts/github-packages-auth.sh --export)"`. A `401`/`404` on the `@ansavva` scope almost
-always means unauthenticated, not missing.
+`export NODE_AUTH_TOKEN=$(gh auth token)`. **Not** `scripts/github-packages-auth.sh --export` — it
+opens a device flow and hangs on a non-interactive session. A `401`/`404` on the `@ansavva` scope
+almost always means unauthenticated, not missing; a `404` naming `registry.npmjs.org` instead means
+you ran `npm` outside a directory with an `.npmrc`, so the scope never got routed to GitHub.
 
-**All four consumers pin an exact version**, so no release of any kind reaches you on its own.
-Upgrading is a deliberate edit to four `package.json` files plus four `npm install`s — do all four
-together, because a single package version across the monorepo is what makes the workbench and the
-CI leaf assertion mean the same thing everywhere:
+**Every consumer pins an exact version**, so no release of any kind reaches you on its own.
+There are five, and each one moves on its own schedule:
 
 ```
-studio/frontend  website/frontend  humbugg/marketing  humbugg/app
+studio/frontend  website/frontend  classroom/frontend  humbugg/marketing  humbugg/app
 ```
+
+**Bump only the consumers your change is actually about.** A shared version across the monorepo is
+not a goal, and chasing one is how a visual overhaul lands in a service nobody was working on: the
+package is pre-1.0 and a minor can restyle every component, so `npm install` in a service you did
+not intend to touch is a redesign of it. Version drift between services is the normal state.
+
+The one place a version really is coupled is a single deployable: `humbugg/marketing` and
+`humbugg/app` are one product on two platforms, so a difference between them shows up as the two
+halves of Humbugg not matching. Move those two together. Across services, don't.
+
+What drift costs you is smaller than it looks, and worth knowing precisely:
+
+- **The workbench renders the design system's `main`**, not your pin. A consumer that is behind is
+  comparing against a page that may already have moved on — read the CHANGELOG for the delta rather
+  than trusting what you see there.
+- **The CI leaf assertion is per-service** (`humbugg/scripts/assert-design-system-leaves.mjs`, run
+  by `humbugg-pr.yml`), so it proves nothing about any other service either way. Drift does not
+  weaken it.
+- **`@ansavva/tokens` is pinned separately and only where a consumer imports it directly** — today
+  just `humbugg/app`. A design-system minor that needs a new tokens minor says so at the top of its
+  CHANGELOG entry; take both or the components it named render wrong.
 
 Read `node_modules/@ansavva/design-system/CHANGELOG.md` before bumping — it ships in the tarball, so
 it needs no network. A struck-through prop in your editor is a deprecation with a deadline, not a

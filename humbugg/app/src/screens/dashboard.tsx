@@ -241,7 +241,7 @@ function ProfileSetup({ onSaved }: { onSaved(profile: Profile): void }) {
           </Text>
         </View>
         <StatusMessage message={error} />
-        <Button size="lg" disabled={busy} onPress={() => void submit()}>
+        <Button style={styles.buttonBlock} size="lg" disabled={busy} onPress={() => void submit()}>
           {busy ? 'Saving…' : 'Continue'}
         </Button>
       </View>
@@ -337,7 +337,7 @@ function CreateGroup({ onCreated }: { onCreated(id: string): void }) {
           />
         </FieldLabel>
         <StatusMessage message={error} />
-        <Button disabled={busy} onPress={() => void submit()}>
+        <Button style={styles.buttonBlock} disabled={busy} onPress={() => void submit()}>
           {busy ? 'Creating…' : 'Create group'}
         </Button>
         <Text style={styles.tiny}>

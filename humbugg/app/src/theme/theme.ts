@@ -98,9 +98,16 @@ export const brand = {
  * `Spectral, Georgia, serif`: the weight is part of the family, and asking for
  * `fontWeight: '600'` on top of it would double-apply on some platforms.
  *
- * The design system's own native leaves reach for the platform serif
- * (`lib/native-typography.native.ts`) and offer no font seam, so Humbugg's
- * headings are set at our call sites through `theme/styles.ts`.
+ * The design system's own native leaves reach for the platform SANS
+ * (`lib/native-typography.native.ts` — iOS `System`, Android `sans-serif`) and
+ * offer no font seam, so Humbugg's headings are set at our call sites through
+ * `theme/styles.ts`. It was the platform serif until design-system 0.18.0,
+ * whose base theme dropped the display face entirely: `fonts.heading` and
+ * `fonts.body` are now the same stack, because a distinct heading family is a
+ * brand decision the base declines to make. Humbugg makes it — Spectral, below
+ * — and `ThemeProvider` still cannot carry it: `ThemeOverrides` is `light`/
+ * `dark` colour records and nothing else, so fonts AND radii reach the native
+ * leaves only through `@ansavva/tokens` itself.
  */
 export const fonts = {
   heading: 'Spectral_600SemiBold',
