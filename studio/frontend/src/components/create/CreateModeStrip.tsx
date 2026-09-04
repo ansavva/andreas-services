@@ -1,13 +1,32 @@
 import { useId, type ReactElement } from "react";
 
-import { Badge, Button, Chip, IconButton, Select, Text, Toggle, ToggleGroup } from "@ansavva/design-system";
+import {
+  Badge,
+  Button,
+  Chip,
+  IconButton,
+  Select,
+  Text,
+  Toggle,
+  ToggleGroup,
+} from "@ansavva/design-system";
 
 import type { AttachRole, Attachment } from "../../context/CreateBarContext";
 import type { ModelEntry, RunKind, SnapshotProp } from "../../types";
-import { FrameEndIcon, LockIcon, PencilIcon, PersonIcon, PlayIcon, TrashIcon } from "../common/icons";
+import {
+  FrameEndIcon,
+  LockIcon,
+  PencilIcon,
+  PersonIcon,
+  PlayIcon,
+  TrashIcon,
+} from "../common/icons";
 import { ROLES_BY_KIND, ROLE_WORDS, fieldFor } from "./roles";
 
-const ROLE_ICONS: Record<AttachRole, (props: { className?: string }) => ReactElement> = {
+const ROLE_ICONS: Record<
+  AttachRole,
+  (props: { className?: string }) => ReactElement
+> = {
   reference: PersonIcon,
   input: PencilIcon,
   start: PlayIcon,
@@ -62,11 +81,18 @@ export function CreateModeStrip({
   params: Record<string, unknown>;
   onParams: (next: Record<string, unknown>) => void;
 }) {
-  const roles = ROLES_BY_KIND[kind].filter((each) => fieldFor(each, entry) !== null);
+  const roles = ROLES_BY_KIND[kind].filter(
+    (each) => fieldFor(each, entry) !== null,
+  );
   const duration = kind === "video" ? durationOf(entry) : null;
 
   return (
-    <div className="flex items-stretch overflow-x-auto border-b border-line" data-mode-strip="">
+    // No overflow rule here: the Duration listbox drops below the row, and a
+    // scroll container would scroll the whole strip up to reach it instead.
+    <div
+      className="flex flex-wrap items-stretch border-b border-line md:flex-nowrap"
+      data-mode-strip=""
+    >
       {roles.map((each) => {
         const words = ROLE_WORDS[each];
         const Icon = ROLE_ICONS[each];
@@ -138,7 +164,11 @@ export function CreateModeStrip({
         <IconButton
           size="sm"
           pressed={keep}
-          label={keep ? "Keep these images for the next send (on)" : "Keep these images for the next send"}
+          label={
+            keep
+              ? "Keep these images for the next send (on)"
+              : "Keep these images for the next send"
+          }
           className="rounded-none"
           onClick={() => onKeep(!keep)}
         >
@@ -174,9 +204,16 @@ export function AttachmentThumb({
 }) {
   const { ref, role } = attachment;
   return (
-    <div className="relative size-16 shrink-0 border border-line bg-bg" title={ref.name}>
+    <div
+      className="relative size-16 shrink-0 border border-line bg-bg"
+      title={ref.name}
+    >
       <img src={ref.url} alt="" className="size-full object-cover" />
-      <Badge size="sm" intent="neutral" className="absolute left-0 top-0 rounded-none">
+      <Badge
+        size="sm"
+        intent="neutral"
+        className="absolute left-0 top-0 rounded-none"
+      >
         {ROLE_WORDS[role].label}
       </Badge>
       <IconButton
@@ -211,7 +248,12 @@ function DurationCell({
   onChange: (next: number) => void;
 }) {
   const label = useId();
-  const current = typeof value === "number" ? value : typeof prop.default === "number" ? prop.default : null;
+  const current =
+    typeof value === "number"
+      ? value
+      : typeof prop.default === "number"
+        ? prop.default
+        : null;
   const choices = durationChoices(prop);
 
   return (
@@ -239,7 +281,10 @@ function DurationCell({
         <div className="w-24">
           <Select
             aria-labelledby={label}
-            options={choices.map((each) => ({ value: String(each), label: `${each}s` }))}
+            options={choices.map((each) => ({
+              value: String(each),
+              label: `${each}s`,
+            }))}
             value={current === null ? null : String(current)}
             onValueChange={(next: string) => onChange(Number(next))}
           />
@@ -259,9 +304,14 @@ export function durationChoices(prop: SnapshotProp): number[] {
   if (Array.isArray(prop.enum)) {
     return prop.enum.filter((each): each is number => typeof each === "number");
   }
-  const low = Math.max(1, typeof prop.minimum === "number" ? Math.ceil(prop.minimum) : 1);
-  const high = typeof prop.maximum === "number" ? Math.floor(prop.maximum) : low + 9;
+  const low = Math.max(
+    1,
+    typeof prop.minimum === "number" ? Math.ceil(prop.minimum) : 1,
+  );
+  const high =
+    typeof prop.maximum === "number" ? Math.floor(prop.maximum) : low + 9;
   const out: number[] = [];
-  for (let each = low; each <= high && out.length < 60; each += 1) out.push(each);
+  for (let each = low; each <= high && out.length < 60; each += 1)
+    out.push(each);
   return out;
 }
