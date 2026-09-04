@@ -16,6 +16,7 @@ import type {
   NodeKind,
   NodeOwner,
   NodeRecord,
+  ProjectInputs,
   ProjectRecord,
   ProjectSummary,
   EntryKind,
@@ -788,6 +789,11 @@ export function setProjectCharacters(id: string, characters: string[]) {
  * `RunsTable` reads `page.runs` and was always fine, which is why this survived:
  * the one listing anybody had opened was the one that unwrapped.
  */
+/** The working pool, numbered — what `--input N` addresses. */
+export function getProjectInputs(id: string) {
+  return apiGet<ProjectInputs>(`/api/projects/${encodeURIComponent(id)}/inputs`);
+}
+
 export function getProjectScenes(id: string) {
   return apiGet<{ scenes: SceneSummary[]; cursor: string | null }>(
     `/api/projects/${encodeURIComponent(id)}/scenes`,

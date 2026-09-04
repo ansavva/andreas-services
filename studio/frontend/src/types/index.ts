@@ -563,6 +563,28 @@ export interface ProjectRecord {
   characters: Array<{ id: string; name: string }>;
 }
 
+/**
+ * One file of a project's working pool — `GET /api/projects/<id>/inputs`.
+ *
+ * `position` is 1-based in a name-ascending listing and is what `--input N`
+ * means; the route numbers them so no two clients sort differently. `url` is
+ * null for a row whose blob never arrived.
+ */
+export interface ProjectInput {
+  position: number;
+  id: string;
+  name: string;
+  size: number | null;
+  content_type: string | null;
+  url: string | null;
+}
+
+export interface ProjectInputs {
+  /** The `input/` folder, made if it was missing. */
+  folder: string;
+  inputs: ProjectInput[];
+}
+
 export type RunStatus =
   // Before anything is submitted. A run is created when it is PLANNED, so the
   // row does not say that anything happened — see `RunRecord.plan`.
@@ -891,7 +913,7 @@ export interface CreateRunBody {
  * `order` is the position in the list and `source` is derived by the API from
  * where the node sits, so neither is sent. See `RunSend` for what comes back.
  */
-interface RunSendInput {
+export interface RunSendInput {
   field: string;
   role: RunSend["role"];
   node: string;

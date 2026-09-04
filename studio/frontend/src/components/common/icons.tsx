@@ -308,3 +308,61 @@ export const PauseIcon = ({ className }: Props) => (
     <path d="M9 5v14M15 5v14" />
   </Glyph>
 );
+
+// --- the create bar ----------------------------------------------------------
+
+/** A film frame: the VIDEO half of the kind switch. */
+export const VideoIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <rect x="3" y="5" width="18" height="14" />
+    <path d="M3 10h18M3 14h18M8 5v14M16 5v14" />
+  </Glyph>
+);
+
+/** Two sliders: the parameters behind the bar. */
+export const SlidersIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M3 7h18M3 17h18" />
+    <circle cx="8" cy="7" r="2.5" />
+    <circle cx="16" cy="17" r="2.5" />
+  </Glyph>
+);
+
+/** An arrow leaving: Send. */
+export const SendIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M4 12h15M13 6l6 6-6 6" />
+  </Glyph>
+);
+
+/** An eye: the preview. */
+export const EyeIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z" />
+    <circle cx="12" cy="12" r="3" />
+  </Glyph>
+);
+
+/** A padlock: keep the attached images for the next send. */
+export const LockIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <rect x="5" y="11" width="14" height="10" />
+    <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+  </Glyph>
+);
+
+/** A person: a reference image, and a character with no picture yet. */
+export const PersonIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <circle cx="12" cy="8" r="4" />
+    <path d="M4 21a8 8 0 0 1 16 0" />
+  </Glyph>
+);
+
+/** A frame with its bottom bar: the end frame of a clip. */
+export const FrameEndIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <rect x="3" y="5" width="18" height="14" />
+    <path d="M3 15h18" />
+  </Glyph>
+);

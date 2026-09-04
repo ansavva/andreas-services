@@ -7,6 +7,7 @@ import { EmptyState } from "../common/EmptyState";
 import { SectionLoading } from "../common/SectionLoading";
 import { useResource } from "../../hooks/useResource";
 import { LoadError } from "../common/LoadError";
+import { TemplateIcon } from "../common/icons";
 
 interface Props {
   /**
@@ -17,6 +18,12 @@ interface Props {
   onPick: (prompt: string) => void;
   /** How many characters this run binds. `{character.1.…}` is the first of them. */
   cast: number;
+  /**
+   * The trigger as the create bar's action row draws it — an icon and the one
+   * word `Template`, at the row's own small size — rather than the sentence
+   * the run page's button carried.
+   */
+  compact?: boolean;
 }
 
 /**
@@ -67,16 +74,29 @@ function castNeededBy(prompt: string): number {
  * run that makes it, so they belong to a promotion rather than to a plan. They
  * stay on the template until somebody promotes an output into a character.
  */
-export function TemplatePicker({ onPick, cast }: Props) {
+export function TemplatePicker({ onPick, cast, compact = false }: Props) {
   const [open, setOpen] = useState(false);
   const load = useCallback(() => getTemplates(), []);
   const library = useResource(open ? ["templates"] : null, open ? load : null);
 
   return (
     <>
-      <Button size="sm" intent="secondary" onClick={() => setOpen(true)}>
-        Start from a template
-      </Button>
+      {compact ? (
+        <Button
+          size="sm"
+          intent="secondary"
+          title="Start from a template"
+          className="inline-flex items-center gap-1.5 border-0"
+          onClick={() => setOpen(true)}
+        >
+          <TemplateIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+          Template
+        </Button>
+      ) : (
+        <Button size="sm" intent="secondary" onClick={() => setOpen(true)}>
+          Start from a template
+        </Button>
+      )}
 
       {open && (
         <Dialog.Root open onOpenChange={(next: boolean) => !next && setOpen(false)}>
