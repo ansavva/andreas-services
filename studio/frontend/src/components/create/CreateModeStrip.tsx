@@ -213,7 +213,7 @@ export function AttachmentThumb({
       <img
         src={ref.url}
         alt=""
-        className="h-full w-auto max-w-32 object-contain"
+        className="h-full w-auto max-w-48 object-contain"
       />
       <IconButton
         intent="overlay"
