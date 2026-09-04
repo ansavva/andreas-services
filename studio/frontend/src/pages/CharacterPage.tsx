@@ -1,9 +1,10 @@
 import { useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { Alert, Button, Tabs, Text } from "@ansavva/design-system";
+import { Tabs } from "@ansavva/design-system";
 
-import { ApertureSpinner } from "../components/common/Aperture";
+import { LoadError } from "../components/common/LoadError";
+import { PageLoading } from "../components/common/PageLoading";
 import { ApiError } from "../apis/client";
 import { deleteCharacter, getCharacter, patchCharacter, setCharacterProfile } from "../apis/studio";
 import { FolderTab } from "../components/browse/FolderTab";
@@ -20,17 +21,19 @@ import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog"
  * One character: who they are, what they look like, and everything filed under
  * them.
  *
- * ## Four tabs, not one per folder
+ * ## Four tabs, where there were seven
  *
- * The root's children — `reference/`, `seed/`, `archive/` and anything made by
- * hand — are shortcut chips at the top of Files, not tabs. Nothing requires
- * any of those folders, so a fixed tab list would be exactly the rigidity the
- * entity model refuses (ENTITY_MODEL.md, "the folder layout is convention, not
- * schema") — and a strip built from the listing makes *navigation out of
- * data*: it grows and shrinks as folders come and go, every folder tab shows
- * what Files already holds, and at 390px seven of them wrap into three rows
- * of underline. `FolderTab` builds the chips from the same listing, so nothing
- * about the convention hardens.
+ * The root's children — `reference/`, `corpus/`, `seed/`, `archive/` and
+ * anything made by hand — each used to get a tab beside Profile and References.
+ * The reasoning was sound and the result was not: nothing requires any of those
+ * folders, so a fixed list would have been exactly the rigidity the entity model
+ * removed (ENTITY_MODEL.md, "the folder layout is convention, not schema") — but
+ * building the strip from the listing made *navigation out of data*. It grew and
+ * shrank as folders came and went, every folder tab showed what Files already
+ * held, and at 390px the seven of them wrapped into three rows of underline.
+ *
+ * The folders are shortcut chips at the top of Files now. `FolderTab` builds
+ * them from the same listing, so nothing about the convention hardened.
  *
  * ## There is no Identity tab, and there should not be one
  *
@@ -46,8 +49,9 @@ import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog"
  * The identity fields and the bible are both on the character record and both
  * write with `rev`, and they are still two routes: renaming is one write that
  * moves no bytes, a bible edit is a whole-document replace. That split is right
- * and it is not a person's problem, so there is one Save and one "revision N",
- * not one of each per write.
+ * and it is not a person's problem — it used to surface as a Save on the
+ * identity card and a second Save on the form under it, each with its own
+ * "revision N" beside it, both showing the same number.
  *
  * They cannot go in parallel. Both are compare-and-swap on the same row, so the
  * identity write bumps `rev` and a profile write carrying the number read before
@@ -60,6 +64,8 @@ export function CharacterPage() {
   const navigate = useNavigate();
 
   const [tab, setTab] = useSearchParamState("tab", "profile");
+  /** The delete dialog, opened from the page bar's menu rather than drawn loose. */
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const load = useCallback(() => getCharacter(characterId), [characterId]);
   const character = useResource(["character", characterId], load);
 
@@ -67,8 +73,8 @@ export function CharacterPage() {
    * The 409 message, as the API worded it.
    *
    * **A string rather than a boolean, because the API words it.** A 409 here is
-   * a `rev` that moved under the write — names are not unique, so there is no
-   * second reason for one — and the page shows what the API said
+   * a `rev` that moved under the write — names stopped being unique, so there
+   * is no longer a second reason for one — and the page shows what the API said
    * rather than inventing its own sentence. The offered re-read is the fix.
    */
   const [conflict, setConflict] = useState<string | null>(null);
@@ -106,29 +112,16 @@ export function CharacterPage() {
     [character, characterId],
   );
 
-  if (character.loading) {
-    return (
-      <>
-        <div className="flex justify-center py-16">
-          <ApertureSpinner size="lg" label="Loading character" />
-        </div>
-      </>
-    );
-  }
+  if (character.loading) return <PageLoading label="Loading character" />;
 
   if (character.error || !character.data) {
     return (
-      <>
-        <Alert.Root intent="danger">
-          <Alert.Title>Could not open this character</Alert.Title>
-          <Alert.Description>{character.error ?? "It may have been deleted."}</Alert.Description>
-        </Alert.Root>
-        <div>
-          <Button size="sm" onClick={() => navigate("/")}>
-            Back to home
-          </Button>
-        </div>
-      </>
+      <LoadError
+        what="this character"
+        message={character.error ?? "It may have been deleted."}
+        onRetry={character.reload}
+        escape={{ label: "Back to home", onClick: () => navigate("/") }}
+      />
     );
   }
 
@@ -137,15 +130,10 @@ export function CharacterPage() {
   return (
     <>
       {/*
-        The two-group layout this page argued for is `PageBar` now, and the
-        argument is unchanged — it just holds for every page instead of this one.
-
-        `ms-auto` pins a control to the right of whatever *line* it lands on,
-        and on a phone that line is whichever one the flex run happened to break
-        at — so the destructive control moved around under the title depending on
-        how long the name was. Two children and `justify-between` give it one
-        place on a wide screen and one place on a narrow one: beside the title,
-        or on its own line beneath it.
+        Delete lives in the menu now, behind `⋯` — the button itself moved,
+        the confirmation did not: it is still `ConfirmDestroyDialog`, still
+        typing the name, just opened by a menu item instead of drawn loose
+        beside the title.
 
         **No cascade here, and the noun says so.** Projects and runs that name
         this character hold link rows, and `force` drops those — but the runs
@@ -156,26 +144,26 @@ export function CharacterPage() {
       */}
       <PageBar
         crumbs={[{ label: "Characters", to: CHARACTERS_PATH }]}
-        actions={
-          <ConfirmDestroyDialog
-            label="Delete"
-            title={`Delete ${record.name}?`}
-            summary={
-              "The character, its profile and its whole reference library go. " +
-              "Runs that used it stay — a run really did use this subject, and " +
-              "deleting the character is not a reason to delete the work."
-            }
-            confirmWord={record.name}
-            onConfirm={async () => {
-              await deleteCharacter(record.id, "delete", true);
-              navigate(CHARACTERS_PATH);
-            }}
-          />
+        title={record.name}
+        menu={[{ label: "Delete", danger: true, onSelect: () => setDeleteOpen(true) }]}
+      />
+
+      <ConfirmDestroyDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        label="Delete"
+        title={`Delete ${record.name}?`}
+        summary={
+          "The character, its profile and its whole reference library go. " +
+          "Runs that used it stay — a run really did use this subject, and " +
+          "deleting the character is not a reason to delete the work."
         }
-      >
-        {/* One line, because there is one label. */}
-        <Text variant="display">{record.name}</Text>
-      </PageBar>
+        confirmWord={record.name}
+        onConfirm={async () => {
+          await deleteCharacter(record.id, "delete", true);
+          navigate(CHARACTERS_PATH);
+        }}
+      />
 
       {/* `defaultValue` as well as `value`, which the package requires even
           when controlled: it seeds `useControllableState`, and Tabs does not

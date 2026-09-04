@@ -1,12 +1,16 @@
 import { useCallback, useState } from "react";
 
-import { Alert, Button, Field, Input, Text } from "@ansavva/design-system";
+import { Alert, Field, Input, Text } from "@ansavva/design-system";
+
+import { EmptyState } from "../common/EmptyState";
+import { chipClass } from "../common/Chip";
 
 import { ApiError } from "../../apis/client";
 import { getCharacters, patchProject, setProjectCharacters } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
 import type { ProjectRecord } from "../../types";
 import { AutoTextarea } from "../common/AutoTextarea";
+import { FormBar } from "../common/FormBar";
 
 interface Props {
   record: ProjectRecord;
@@ -74,17 +78,10 @@ export function ProjectDetails({ record, onSaved }: Props) {
     <div className="flex flex-col gap-4">
       {conflict && (
         <Alert.Root intent="warning">
-          <Alert.Title>This project moved under the edit</Alert.Title>
+          <Alert.Title>Could not save over a newer version</Alert.Title>
           <Alert.Description>{conflict}</Alert.Description>
         </Alert.Root>
       )}
-      {error && (
-        <Alert.Root intent="danger">
-          <Alert.Title>Could not save</Alert.Title>
-          <Alert.Description>{error}</Alert.Description>
-        </Alert.Root>
-      )}
-
       <Field.Root name="name">
         <Field.Label>Name</Field.Label>
         <Input value={name} onValueChange={setName} placeholder={record.name} />
@@ -100,26 +97,18 @@ export function ProjectDetails({ record, onSaved }: Props) {
         />
       </Field.Root>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" disabled={!dirty || busy} onClick={() => void save()}>
-          {busy ? "Saving…" : dirty ? "Save" : "Saved"}
-        </Button>
-        {dirty && (
-          <Button
-            intent="secondary"
-            size="sm"
-            onClick={() => {
-              setName(record.name ?? "");
-              setDescription(record.description ?? "");
-            }}
-          >
-            Revert
-          </Button>
-        )}
-        <Text variant="caption" tone="muted">
-          revision {record.rev}
-        </Text>
-      </div>
+      <FormBar
+        dirty={dirty}
+        saving={busy}
+        onSave={() => void save()}
+        onRevert={() => {
+          setName(record.name ?? "");
+          setDescription(record.description ?? "");
+        }}
+        meta={`revision ${record.rev}`}
+        error={error}
+        errorTitle="Could not save the project"
+      />
 
       <Involvement record={record} onSaved={onSaved} />
     </div>
@@ -175,15 +164,13 @@ function Involvement({ record, onSaved }: Props) {
 
       {error && (
         <Alert.Root intent="danger">
-          <Alert.Title>Could not change who is involved</Alert.Title>
+          <Alert.Title>Could not change the characters</Alert.Title>
           <Alert.Description>{error}</Alert.Description>
         </Alert.Root>
       )}
 
       {(data ?? []).length === 0 ? (
-        <Text variant="body" tone="muted">
-          There are no characters in this library yet.
-        </Text>
+        <EmptyState title="No characters in this library yet." />
       ) : (
         <div className="flex flex-wrap gap-2">
           {(data ?? []).map((character) => {
@@ -195,13 +182,7 @@ function Involvement({ record, onSaved }: Props) {
                 disabled={busy}
                 aria-pressed={on}
                 onClick={() => void toggle(character.id)}
-                className={`rounded-none border px-3 py-1 font-body text-sm transition-colors
-                            disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2
-                            focus-visible:outline-primary ${
-                              on
-                                ? "border-primary bg-primary text-primary-text"
-                                : "border-line text-muted hover:bg-surface-alt hover:text-ink"
-                            }`}
+                className={chipClass(on, "disabled:opacity-60")}
               >
                 {character.name}
               </button>

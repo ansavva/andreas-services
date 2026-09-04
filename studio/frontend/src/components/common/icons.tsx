@@ -60,7 +60,6 @@ export const PlusIcon = ({ className }: Props) => (
   </Glyph>
 );
 
-export const FolderPlusIcon = ({ className }: Props) => (
   <Glyph className={className}>
     <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
     <path d="M12 10.5v5M9.5 13h5" />
@@ -157,6 +156,12 @@ export const ArrowUpIcon = ({ className }: Props) => (
   </Glyph>
 );
 
+export const ArrowDownIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M12 5v14m0 0-6-6m6 6 6-6" />
+  </Glyph>
+);
+
 export const ChevronDownIcon = ({ className }: Props) => (
   <Glyph className={className}>
     <path d="m6 9 6 6 6-6" />
@@ -169,6 +174,13 @@ export const DotsIcon = ({ className = "size-5 fill-current stroke-none" }: Prop
     <circle cx="5" cy="12" r="1.6" />
     <circle cx="12" cy="12" r="1.6" />
     <circle cx="19" cy="12" r="1.6" />
+  </Glyph>
+);
+
+export const SearchIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <circle cx="10.5" cy="10.5" r="6.5" />
+    <path d="m20 20-4.35-4.35" />
   </Glyph>
 );
 

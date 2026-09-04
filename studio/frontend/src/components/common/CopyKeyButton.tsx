@@ -19,9 +19,9 @@ interface Props {
   /**
    * What `value` names — the only thing that differs between the labels.
    *
-   * Usually `"key"` or `"prefix"`, but free text so a bulk copy can say what it
-   * is copying ("26 keys"). That is what lets the grid's selection bar use this
-   * button rather than growing a second copy control with its own glyph, its own
+   * Usually `"path"`, but free text so a bulk copy can say what it is copying
+   * ("26 paths"). That is what lets the grid's selection bar use this button
+   * rather than growing a second copy control with its own glyph, its own
    * flash timing and its own idea of what "copied" looks like.
    */
   noun?: string;
@@ -40,7 +40,8 @@ interface Props {
  * `tone`.
  *
  * The name is from when that address was an S3 key. It is a name path now (see
- * `value`), and the name survives because it is what the surrounding components
+ * `value`), and the label already says so — "Copy path", not "Copy key". The
+ * component's own name survives because it is what the surrounding components
  * call this one in their own comments — worth renaming only alongside those.
  *
  * It is always a *sibling* of whatever opens the resource, never a child: every
@@ -54,7 +55,7 @@ interface Props {
  * fill come from the same three rows every other icon control in the monorepo
  * uses. Only `tone` is left here, because only the *surface* is studio's.
  */
-export function CopyKeyButton({ value, noun = "key", tone = "row", className = "" }: Props) {
+export function CopyKeyButton({ value, noun = "path", tone = "row", className = "" }: Props) {
   const { status, copy } = useCopyToClipboard();
   const label = copyLabel(status, `Copy ${noun}`);
 
@@ -66,7 +67,7 @@ export function CopyKeyButton({ value, noun = "key", tone = "row", className = "
       // documents `sm` as exactly that deliberate opt-in to a smaller target.
       size="sm"
       onClick={() => void copy(value)}
-      className={`shrink-0 ${toneStyles[tone]} ${className}`}
+      className={`touch-target shrink-0 ${toneStyles[tone]} ${className}`}
     >
       {/* `aria-live` on the icon's label, so a screen reader hears the outcome
           of a press whose only other feedback is a colour change. */}
@@ -86,16 +87,17 @@ export function CopyKeyButton({ value, noun = "key", tone = "row", className = "
  * the object screen's own buttons — it sits in that row and must not read as a
  * different kind of control.
  *
- * **All three used to be written in `white/NN` and `black/NN`**, which is
- * exactly the literal the neutral ramp exists to retire: nothing could re-brand
- * them and nothing could tell a scrim from a hover. `neutral-1` is the ramp's
- * darkest step — what a scrim over unknown media has to be — and the `a` steps
- * are the alpha rungs, for a fill that lands on a surface it cannot see.
+ * **All three used to be written in `white/NN` and `black/NN`**, then in the
+ * raw ramp (`neutral-1`, `neutral-a11`, `neutral-a5`) once that existed. Both
+ * were the same mistake at different resolutions: a literal nothing could
+ * re-brand. `chrome-scrim`/`chrome-muted`/`chrome-ink`/`chrome-hover` are
+ * `styles/app.css`'s names for a control floating over media it cannot see
+ * the colour of — the same tokens `MediaPlayer`'s own chrome buttons wear.
  */
 const toneStyles: Record<Tone, string> = {
   row: "text-muted hover:text-ink",
-  tile: "bg-neutral-1/80 text-neutral-a11 hover:bg-neutral-1/95 hover:text-neutral-12",
-  chrome: "text-neutral-a11 hover:bg-neutral-a5 hover:text-neutral-12",
+  tile: "bg-chrome-scrim/80 text-chrome-muted hover:bg-chrome-scrim/95 hover:text-chrome-ink",
+  chrome: "text-chrome-muted hover:bg-chrome-hover hover:text-chrome-ink",
 };
 
 /** Outcome beats tone: a copied tick is green on a photograph too. */

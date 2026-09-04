@@ -2,7 +2,7 @@ import { useEffect, useMemo, type ReactNode } from "react";
 import { BrowserRouter, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 
-import { Alert } from "@ansavva/design-system";
+import { Alert, Toast } from "@ansavva/design-system";
 
 import { ApertureSpinner } from "./components/common/Aperture";
 import { CALLBACK_PATH, login } from "./auth/oauth";
@@ -184,12 +184,20 @@ export function App() {
     // let `/auth/callback` through unauthenticated, and only a child of the
     // router can. The query client wraps everything, including that path —
     // clearing the cache on a library switch has to outlive any one route.
+    // The toast store sits outside the router and the gates, so a message
+    // queued by a write survives the navigation that follows it — deleting
+    // the folder you are in steps up into its parent, and the toast is what
+    // says the delete happened. Its viewport is a portal to `document.body`
+    // and draws nothing until something is queued.
     <QueryClientProvider client={client}>
-      <AuthProvider>
-        <BrowserRouter>
-          <GatedApp />
-        </BrowserRouter>
-      </AuthProvider>
+      <Toast.Provider>
+        <AuthProvider>
+          <BrowserRouter>
+            <GatedApp />
+          </BrowserRouter>
+        </AuthProvider>
+        <Toast.Viewport />
+      </Toast.Provider>
     </QueryClientProvider>
   );
 }

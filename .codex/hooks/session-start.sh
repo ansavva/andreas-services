@@ -37,7 +37,7 @@ fi
 # Poetry installs for each backend so pytest/ruff are ready immediately.
 # Failures are non-fatal — a broken install shouldn't block the session.
 if command -v poetry &>/dev/null; then
-  for d in storybook/backend humbugg/backend scout/backend/events-api; do
+  for d in storybook/backend humbugg/backend; do
     [ -f "$REPO/$d/pyproject.toml" ] || continue
     echo "Installing $d deps..." >&2
     (cd "$REPO/$d" && poetry install --with dev --no-root --no-interaction --no-ansi -q) >&2 || true

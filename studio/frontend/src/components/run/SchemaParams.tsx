@@ -1,6 +1,7 @@
 import { Button, Field, Input, Select, Switch, Text } from "@ansavva/design-system";
 
 import type { ModelSchema, SchemaProp } from "../../types";
+import { humaniseKey } from "../../utils/format";
 import { AutoTextarea } from "../common/AutoTextarea";
 
 /**
@@ -224,14 +225,20 @@ function Param({
 
   return (
     <Field.Root name={`param_${name}`}>
-      <Field.Label>{name}</Field.Label>
+      <Field.Label>{humaniseKey(name)}</Field.Label>
+      {/* The raw key, kept visible: it is what the model's own docs and error
+          messages say, and a person cross-checking against those should not
+          have to reverse the label back into it. */}
+      <Text variant="caption" tone="muted" className="font-mono">
+        {name}
+      </Text>
 
       {kind === "enum" ? (
         <Select
           options={[
             // Blank is not a value the model takes; it is how a person says
             // "leave this out", which is the only way to get the default back.
-            { value: "", label: "model default" },
+            { value: "", label: "Model default" },
             ...(enumOf(spec, schemas) ?? []).map((option) => ({
               value: String(option),
               label: String(option),
@@ -247,14 +254,14 @@ function Param({
         // would be written into the plan the moment the form rendered.
         <div className="flex flex-wrap items-center gap-2">
           <Switch.Root
-            aria-label={name}
+            aria-label={humaniseKey(name)}
             checked={value === "true"}
             onCheckedChange={(on: boolean) => onSet(name, on ? "true" : "false")}
           >
             <Switch.Thumb />
           </Switch.Root>
           <Text variant="caption" tone="muted">
-            {value === undefined ? "model default" : value === "true" ? "on" : "off"}
+            {value === undefined ? "Model default" : value === "true" ? "on" : "off"}
           </Text>
           {value !== undefined && (
             <Button
@@ -270,7 +277,7 @@ function Param({
         <Input
           type="number"
           value={value ?? ""}
-          placeholder="model default"
+          placeholder="Model default"
           min={typeof spec.minimum === "number" ? spec.minimum : undefined}
           max={typeof spec.maximum === "number" ? spec.maximum : undefined}
           onValueChange={set}
@@ -278,13 +285,13 @@ function Param({
       ) : multiline ? (
         <AutoTextarea
           value={value ?? ""}
-          placeholder="model default"
+          placeholder="Model default"
           onValueChange={set}
         />
       ) : (
         <Input
           value={value ?? ""}
-          placeholder="model default"
+          placeholder="Model default"
           onValueChange={set}
         />
       )}

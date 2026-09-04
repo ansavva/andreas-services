@@ -2,6 +2,8 @@ import { useState } from "react";
 
 import { Badge, Button, Tabs, Text } from "@ansavva/design-system";
 
+import { EmptyState } from "../common/EmptyState";
+
 import type { RunAsset, Shot, ShotRun } from "../../types";
 import { OutputPanel } from "../media/OutputPanel";
 import {
@@ -36,6 +38,7 @@ export function ShotCard({
   n,
   bracketed,
   onOpenRun,
+  runHref,
   onView,
   frameHref,
   onSave,
@@ -44,6 +47,8 @@ export function ShotCard({
   n: number;
   bracketed: boolean;
   onOpenRun: (run: string) => void;
+  /** The same destination as `onOpenRun`, as an address — see `RunList.to`. */
+  runHref: (run: string) => string;
   onView: (asset: RunAsset) => void;
   /** Where a frame opens, as an address — the scene owns the `?in=` context. */
   frameHref: (asset: RunAsset) => string;
@@ -203,9 +208,7 @@ export function ShotCard({
               )}
             </div>
           ) : (
-            <Text variant="body" tone="muted">
-              Nothing rendered yet.
-            </Text>
+            <EmptyState title="No takes yet." hint="A take is what a run for this shot returns." />
           )}
         </div>
 
@@ -237,10 +240,10 @@ export function ShotCard({
                 {(shot.panels ?? []).length === 0 &&
                   !shot.clip &&
                   !shot.opens_on?.node && (
-                    <Text variant="caption" tone="muted">
-                      No panels — this shot renders from the previous
-                      shot&apos;s last frame.
-                    </Text>
+                    <EmptyState
+                      title="No panels."
+                      hint="This shot renders from the previous shot's last frame."
+                    />
                   )}
 
                 <Sends
@@ -294,9 +297,7 @@ export function ShotCard({
             <Tabs.Panel value="runs">
               <div className="flex min-w-0 flex-col gap-3 pt-3">
                 {runCount === 0 ? (
-                  <Text variant="body" tone="muted">
-                    Nothing has been run for this shot yet.
-                  </Text>
+                  <EmptyState title="No runs yet." />
                 ) : (
                   <>
                     {/* **The runs behind this shot, as a list rather than as links on tiles.**
@@ -310,10 +311,7 @@ export function ShotCard({
                         it, and saying it twice a few pixels apart is the same
                         duplication the run screen just lost. */}
                     <section className="flex flex-col gap-1">
-                      <RunList
-                        runs={runs}
-                        onOpen={(run) => onOpenRun(run.id)}
-                      />
+                      <RunList runs={runs} to={(run) => runHref(run.id)} />
                     </section>
                   </>
                 )}

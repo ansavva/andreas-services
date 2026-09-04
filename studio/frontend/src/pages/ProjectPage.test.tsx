@@ -101,21 +101,38 @@ it("names its tabs, and offers no Inputs tab", async () => {
 });
 
 /**
- * Authoring a run starts where the runs are.
+ * Authoring a run is reachable from every tab, not only Runs.
  *
- * Not in the page bar: its one action deletes the project, and what this makes
- * belongs to the project rather than being another thing done *to* it.
+ * **`New run` moved into the page bar**, where every other entity's create
+ * control lives — it used to sit above the runs list and vanish on every other
+ * tab, which made "make a run" a thing you could only do from one specific
+ * place in the project rather than a thing the project itself offers.
  */
-it("offers the run composer on the Runs tab and nowhere else", async () => {
+it("offers the run composer from the page bar, on every tab", async () => {
   await open(`/p/${ID}?tab=runs`);
-  // Disclosed rather than permanent: the tab offers the control, and the form
-  // opens in its place. A form standing open across a tab that is mostly read
-  // is what this replaced.
   fireEvent.click(screen.getByRole("button", { name: "New run" }));
-  expect(screen.getByRole("button", { name: "Create draft" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Create run" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
   fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
-  await waitFor(() => expect(screen.queryByRole("button", { name: "New run" })).toBeNull());
+  await waitFor(() => expect(screen.getByRole("button", { name: "New run" })).toBeTruthy());
+});
+
+/**
+ * **The Runs tab is the list, with no reading to switch away from.**
+ *
+ * A List/Grid toggle used to sit here — Grid was the file browser scoped to
+ * the project's `runs/` folder, a run's OUTPUTS rather than the run itself,
+ * which is Files' question one tab over. `RunsTable` is mocked in this file,
+ * so what this asserts is that `ProjectPage` itself offers no toggle to reach
+ * a second reading with.
+ */
+it("offers no List/Grid toggle on the Runs tab", async () => {
+  await open(`/p/${ID}?tab=runs`);
+
+  expect(screen.queryByRole("button", { name: "Grid" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "List" })).toBeNull();
+  expect(screen.getByText("runs table")).toBeTruthy();
 });
 
 /**
@@ -129,7 +146,9 @@ it("offers the run composer on the Runs tab and nowhere else", async () => {
 it("will not delete until the name is typed, and says what goes with it", async () => {
   await open();
 
-  fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+  // Delete lives behind the page bar's `⋯` now, not loose beside the title.
+  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
 
   // Scoped to the dialog: the trigger and the dialog's action share a label,
   // which is correct — both say what pressing them does.

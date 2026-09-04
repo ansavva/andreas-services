@@ -1,6 +1,18 @@
 import { useState } from "react";
 
-import { AlertDialog, Button, Field, Input, Text, buttonClass } from "@ansavva/design-system";
+import { AlertDialog, Button, Field, Input, Text } from "@ansavva/design-system";
+
+import { dangerButtonClass } from "./danger";
+
+/**
+ * Where an armed button stops being enough for a bulk delete.
+ *
+ * Under this many, the cost of being wrong is a handful of frames still on
+ * screen and the two-press button is proportionate. At or above it, the count
+ * has to be typed — a selection is invisible once it is gone, and "select all"
+ * followed by "delete" is two presses from emptying a folder.
+ */
+export const BULK_GATE = 5;
 
 interface Props {
   /** The button's label — also the dialog's action. "Delete", "Delete 54 files". */
@@ -17,30 +29,36 @@ interface Props {
    */
   confirmWord: string;
   onConfirm: () => Promise<unknown>;
+  disabled?: boolean;
   className?: string;
+  /**
+   * Controlled, for a caller whose opening control is not a button this can
+   * render — a row in a listbox, say. With `open` given no trigger is drawn;
+   * the caller owns both the control and the state.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 /**
  * The gate for a delete that takes other things with it.
  *
- * **`ConfirmDeleteButton` is still right for one file and wrong for this.** It
- * arms in place and the armed label is the whole confirmation, which is a good
+ * **`ConfirmDeleteButton` is right for one thing and wrong for this.** It arms
+ * in place and the armed label is the whole confirmation, which is a good
  * bargain when the cost of being wrong is one frame you can see on screen. It
  * is a bad one when the press destroys twenty-nine runs, three scenes and a
- * movie — the label said so, but a second press in the same spot is exactly the
- * gesture a mis-click produces.
+ * movie — or rewrites forty-three files to take a word off them — because a
+ * second press in the same spot is exactly the gesture a mis-click produces.
  *
  * So the cascade cases type the name. It is the standard shape for this and it
  * earns its friction honestly: the word cannot be guessed from muscle memory,
  * and getting it requires reading the sentence that says what is about to go.
  *
- * **This is not a replacement for the armed button**, and the reason changed
- * under it. It used to be that a portalled dialog is not painted while a
- * `<video>` is in native fullscreen, so the viewer could not have had one; the
- * design system's `container` prop (0.16.0) settles that, and both `Dialog` and
- * `AlertDialog` will paint inside a fullscreen element if handed it. What is
- * left is the argument about cost: one file is an armed button, a cascade is a
- * typed word.
+ * **The weight follows what is lost, not which screen asks.** An entity with
+ * children — a character, a project, a scene, a movie, a tag — types its name.
+ * A selection at or past `BULK_GATE` types its count. One file, one run, one
+ * template is the armed button. A block is one or the other depending on
+ * whether anything cites it.
  */
 export function ConfirmDestroyDialog({
   label,
@@ -48,12 +66,27 @@ export function ConfirmDestroyDialog({
   summary,
   confirmWord,
   onConfirm,
+  disabled = false,
   className,
+  open,
+  onOpenChange,
 }: Props) {
-  const [open, setOpen] = useState(false);
+  const [ownOpen, setOwnOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const controlled = open !== undefined;
+  const isOpen = controlled ? open : ownOpen;
+
+  function change(next: boolean) {
+    if (!controlled) setOwnOpen(next);
+    onOpenChange?.(next);
+    if (!next) {
+      setTyped("");
+      setError(null);
+    }
+  }
 
   const armed = typed.trim() === confirmWord;
 
@@ -62,7 +95,7 @@ export function ConfirmDestroyDialog({
     setError(null);
     try {
       await onConfirm();
-      setOpen(false);
+      change(false);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -71,31 +104,14 @@ export function ConfirmDestroyDialog({
   }
 
   return (
-    <AlertDialog.Root
-      open={open}
-      onOpenChange={(next: boolean) => {
-        setOpen(next);
-        if (!next) {
-          setTyped("");
-          setError(null);
-        }
-      }}
-    >
+    <AlertDialog.Root open={isOpen} onOpenChange={change}>
       {/* The trigger IS the button — `AlertDialog.Trigger` renders its own, so
-          a `Button` inside it would be a button in a button.
-
-          **There is no `danger` intent** — the package ships `primary`,
-          `secondary` and `ghost`, and everything destructive in this app is a
-          `bg-danger` override on top. `cn` is tailwind-merge, so the colour
-          written here beats the intent's own. */}
-      <AlertDialog.Trigger
-        className={buttonClass({
-          size: "sm",
-          className: `bg-danger text-primary-text hover:bg-danger-hover ${className ?? ""}`,
-        })}
-      >
-        {label}
-      </AlertDialog.Trigger>
+          a `Button` inside it would be a button in a button. */}
+      {!controlled && (
+        <AlertDialog.Trigger disabled={disabled} className={dangerButtonClass({ className })}>
+          {label}
+        </AlertDialog.Trigger>
+      )}
       <AlertDialog.Backdrop />
       <AlertDialog.Popup className="flex w-full max-w-md flex-col gap-4 p-4">
         <AlertDialog.Title>{title}</AlertDialog.Title>
@@ -116,10 +132,12 @@ export function ConfirmDestroyDialog({
 
         <div className="flex flex-wrap justify-end gap-2">
           <AlertDialog.Close>Cancel</AlertDialog.Close>
+          {/* `Button` merges its own recipe with this one through tailwind-merge,
+              so the danger fill has the last word on every property it sets. */}
           <Button
             size="sm"
             disabled={!armed || busy}
-            className="bg-danger text-primary-text hover:bg-danger-hover"
+            className={dangerButtonClass()}
             onClick={() => void run()}
           >
             {busy ? "Deleting…" : label}

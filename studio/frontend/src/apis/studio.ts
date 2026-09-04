@@ -1086,6 +1086,27 @@ export function patchScene(id: string, body: Partial<SceneRecord>) {
   );
 }
 
+/**
+ * Delete a scene and its shots. `files` keeps its folder by default.
+ *
+ * The route has been there since the entity model; the app had no wrapper for
+ * it. Not wired to a page yet — the scene bar's Delete is placed separately.
+ */
+export function deleteScene(id: string, files: "keep" | "delete" = "keep") {
+  return apiSend<{ id: string; files: string }>(
+    "DELETE",
+    `/api/scenes/${encodeURIComponent(id)}?files=${files}`,
+  );
+}
+
 export function getMovie(id: string) {
   return apiGet<MovieRecord>(`/api/movies/${encodeURIComponent(id)}`);
+}
+
+/** Delete a movie. Same shape and same `files` default as `deleteScene`. */
+export function deleteMovie(id: string, files: "keep" | "delete" = "keep") {
+  return apiSend<{ id: string; files: string }>(
+    "DELETE",
+    `/api/movies/${encodeURIComponent(id)}?files=${files}`,
+  );
 }

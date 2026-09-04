@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { Alert, Button, Field, Input, Select, Text } from "@ansavva/design-system";
+import { Alert, Button, Field, Input, Select, Text, useToast } from "@ansavva/design-system";
 
 import { ApiError } from "../../apis/client";
 import {
@@ -321,27 +321,34 @@ export function PromotePanel({
 
   const name = offered.find((each) => each.id === character)?.name ?? "";
   const target = group.trim() || UNSORTED;
+  const toast = useToast();
 
   async function promote() {
     if (!character) return;
     setBusy(true);
     setFailure(null);
     try {
-      setDone(
-        await promoteToReference({
-          character,
-          node: asset.node,
-          group: target,
-          description: description.trim(),
-          tags,
-        }),
-      );
+      const result = await promoteToReference({
+        character,
+        node: asset.node,
+        group: target,
+        description: description.trim(),
+        tags,
+      });
+      setDone(result);
+      // The alert below carries the link; the toast is for the reader who
+      // has already scrolled back to the outputs.
+      toast.add({
+        intent: "success",
+        title: result.already ? "Already a reference" : "Reference added",
+        description: `In the ${result.group} group of ${name || "the character"}'s references.`,
+      });
     } catch (err) {
       if (err instanceof AttachFailed) {
         // The one failure that leaves something behind. Say where, in the words
         // a person would use to go and find it.
         setFailure({
-          title: "The picture was copied, but it is not a reference yet",
+          title: "Could not attach the copied picture",
           // The one failure that leaves something behind, so this is the one
           // message that names a folder: the reader has to go and find it.
           body:
@@ -351,7 +358,7 @@ export function PromotePanel({
         });
       } else {
         setFailure({
-          title: "Nothing was added",
+          title: "Could not add the reference",
           body: (err as Error).message,
         });
       }
@@ -423,14 +430,14 @@ export function PromotePanel({
             <span className="flex flex-col gap-2">
               <span>What you have filled in here would be lost.</span>
               <span className="flex flex-wrap gap-2">
-                <Button intent="secondary" onClick={onKeepEditing}>
+                <Button intent="secondary" size="sm" onClick={onKeepEditing}>
                   Keep editing
                 </Button>
                 {/* No `danger` intent exists — the package ships three
                     weights and says so. The Alert around it is what carries
                     the warning; this is just the choice inside it. */}
-                <Button intent="secondary" onClick={onDiscard}>
-                  Discard
+                <Button intent="secondary" size="sm" onClick={onDiscard}>
+                  Leave without saving
                 </Button>
               </span>
             </span>

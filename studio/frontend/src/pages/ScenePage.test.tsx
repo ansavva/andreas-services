@@ -20,16 +20,18 @@ vi.mock("../apis/studio", () => ({
   getScene: vi.fn(),
   patchScene: vi.fn(),
   patchShot: vi.fn(),
+  deleteScene: vi.fn(),
   getProject: vi.fn(),
 }));
 
-import { getProject, getScene, patchScene, patchShot } from "../apis/studio";
+import { deleteScene, getProject, getScene, patchScene, patchShot } from "../apis/studio";
 import { ScenePage } from "./ScenePage";
 import { TestProviders } from "../test-providers";
 
 const read = vi.mocked(getScene);
 const save = vi.mocked(patchShot);
 const project = vi.mocked(getProject);
+const destroy = vi.mocked(deleteScene);
 
 const ID = "scene-0001";
 
@@ -95,6 +97,8 @@ function draw(scene: SceneRecord) {
         {/* Opening a RUN is a different navigation from opening an object, and
             the board now does both — every tile links to the run behind it. */}
         <Route path="/p/:projectId/r/:runId" element={<Land />} />
+        {/* Where deleting the scene lands — the project it belongs to. */}
+        <Route path="/p/:projectId" element={<Land />} />
       </Routes>
     </MemoryRouter>,
     { wrapper: TestProviders },
@@ -797,4 +801,31 @@ it("edits the scene's setting in place, and keeps the board's URLs alive", async
   // to show one changed sentence.
   expect(await screen.findByText("A garage at night")).toBeTruthy();
   expect(vi.mocked(getScene).mock.calls.length).toBe(1);
+});
+
+/**
+ * Delete lives behind the page bar's `⋯` now — never wired to a page before
+ * this, per `apis/studio.ts`'s own note on `deleteScene`.
+ */
+it("types the name before deleting the scene, then lands on its project", async () => {
+  destroy.mockResolvedValue({ id: ID, files: "delete" });
+  draw(record());
+  await screen.findByText("Light flex");
+
+  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+
+  const dialog = await screen.findByRole("alertdialog");
+  const action = within(dialog).getByRole("button", { name: "Delete" }) as HTMLButtonElement;
+  expect(action.disabled).toBe(true);
+  expect(destroy).not.toHaveBeenCalled();
+
+  fireEvent.change(within(dialog).getByLabelText("Confirm"), {
+    target: { value: "Light flex" },
+  });
+  await waitFor(() => expect(action.disabled).toBe(false));
+  fireEvent.click(action);
+
+  await waitFor(() => expect(destroy).toHaveBeenCalledWith(ID, "delete"));
+  await waitFor(() => expect(landed).toBe("/p/proj-0001"));
 });

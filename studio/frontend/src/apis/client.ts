@@ -52,7 +52,7 @@ export class ApiError extends Error {
  * *identity* token; hand it a Cognito access token — which carries `client_id`
  * and `token_use: "access"` rather than the `aud`/`token_use: "id"` the
  * authorizer checks — and every call 401s while sign-in itself looks perfectly
- * healthy. Same choice `website` and `scout` make against the same authorizer.
+ * healthy. Same choice `website` makes against the same authorizer.
  *
  * The token is read out of the store per request rather than cached here, so a
  * long-idle tab picks up a renewed one instead of sending a stale one. When it

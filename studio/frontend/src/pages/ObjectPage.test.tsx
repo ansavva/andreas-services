@@ -23,6 +23,8 @@ vi.mock("../apis/studio", () => ({
   getMedia: vi.fn(),
   getRun: vi.fn(),
   getScene: vi.fn(),
+  getCharacter: vi.fn(),
+  listNodes: vi.fn(),
   getNode: vi.fn(),
   getAsset: vi.fn(),
   getNodeOwner: vi.fn().mockResolvedValue(null),
@@ -31,13 +33,27 @@ vi.mock("../apis/studio", () => ({
   renameNode: vi.fn(),
 }));
 
-import { getAsset, getMedia, getNode, getRun, getFolder } from "../apis/studio";
+import {
+  deleteNodes,
+  getAsset,
+  getCharacter,
+  getMedia,
+  getNode,
+  getRun,
+  getScene,
+  getFolder,
+  listNodes,
+} from "../apis/studio";
 import { ObjectPage } from "./ObjectPage";
 
 const tree = vi.mocked(getFolder);
 const walk = vi.mocked(getMedia);
 const run = vi.mocked(getRun);
+const scene = vi.mocked(getScene);
+const character = vi.mocked(getCharacter);
+const listed = vi.mocked(listNodes);
 const node = vi.mocked(getNode);
+const destroy = vi.mocked(deleteNodes);
 const asset = vi.mocked(getAsset);
 
 const FOLDER = "node-folder";
@@ -172,7 +188,7 @@ describe("which sequence the address names", () => {
     // asked for is the one on screen — not `node-a`, which page one led with.
     await waitFor(() => expect(screen.getByText(/3 of 3/)).toBeTruthy());
     expect(walk).toHaveBeenCalledTimes(2);
-    expect(screen.queryByText("No images or videos here.")).toBeNull();
+    expect(screen.queryByText("No images or videos yet.")).toBeNull();
   });
 
   it("opens a feed at its first frame when the address carries no id", async () => {
@@ -226,7 +242,7 @@ describe("editing the file's own fields", () => {
     );
 
     // And the way out is offered rather than taken.
-    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    fireEvent.click(screen.getByRole("button", { name: "Leave without saving" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
@@ -264,5 +280,91 @@ describe("walking the feed", () => {
 
     fireEvent.keyDown(window, { key: "ArrowLeft" });
     await waitFor(() => expect(screen.getByText(/1 of 3/)).toBeTruthy());
+  });
+});
+
+/**
+ * **The crumb used to say "Folder", "Scene" or "Character" no matter which one
+ * it was.** It names the real thing now — fetched by the id the `?in=` context
+ * already carries — which is the difference between "where kind of place is
+ * this" and "where am I".
+ */
+describe("the crumb names the real place, not the kind of place", () => {
+  it("names the folder a file was opened from", async () => {
+    node.mockImplementation((id: string) =>
+      Promise.resolve({
+        id,
+        lib: "lib-1",
+        name: "Beach shots",
+        kind: "folder",
+        created_at: "2026-08-01T00:00:00Z",
+      } as never),
+    );
+
+    open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
+
+    const crumb = await screen.findByRole("navigation", { name: "Breadcrumb" });
+    await waitFor(() => expect(crumb.textContent).toBe("Beach shots"));
+  });
+
+  it("names the library root Files, which has no node to fetch", async () => {
+    open(`/o/${OPEN}?in=${encodeURIComponent("f")}`);
+
+    const crumb = await screen.findByRole("navigation", { name: "Breadcrumb" });
+    expect(crumb.textContent).toBe("Files");
+    expect(node).not.toHaveBeenCalled();
+  });
+
+  it("names the scene a frame belongs to", async () => {
+    scene.mockResolvedValue({
+      id: "scene-1",
+      project: "proj-1",
+      name: "Porch at dawn",
+      status: "planned",
+      shots: [],
+      movies: [],
+      created: "2026-08-01T00:00:00Z",
+      // The cut, so the feed holds the frame the address opens on.
+      output: {
+        node: OPEN,
+        name: "cut.mp4",
+        url: "https://example.invalid/cut.mp4",
+        content_type: "video/mp4",
+      },
+    } as never);
+
+    open(`/o/${OPEN}?in=${encodeURIComponent("scene:scene-1")}`);
+
+    const crumb = await screen.findByRole("navigation", { name: "Breadcrumb" });
+    await waitFor(() => expect(crumb.textContent).toBe("Porch at dawn"));
+  });
+
+  it("names the character a reference belongs to", async () => {
+    character.mockResolvedValue({ id: "char-1", name: "Someone", root: "root-1" } as never);
+    listed.mockResolvedValue({
+      entries: [file(OPEN, "b.png")],
+    } as never);
+
+    open(`/o/${OPEN}?in=${encodeURIComponent("refs:char-1")}`);
+
+    const crumb = await screen.findByRole("navigation", { name: "Breadcrumb" });
+    await waitFor(() => expect(crumb.textContent).toBe("Someone"));
+  });
+});
+
+/** Delete lives behind the page bar's `⋯` now, arming in place like `ItemActions`. */
+describe("deleting the open file", () => {
+  it("arms before it deletes, then leaves for the folder it came from", async () => {
+    destroy.mockResolvedValue(undefined as never);
+    open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
+    await waitFor(() => expect(screen.getByText(/2 of 3/)).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+    const item = screen.getByRole("menuitem", { name: "Delete" });
+    fireEvent.click(item);
+    expect(destroy).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: /confirm/i }));
+    await waitFor(() => expect(destroy).toHaveBeenCalledWith([OPEN]));
   });
 });

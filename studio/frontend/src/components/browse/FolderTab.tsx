@@ -1,12 +1,9 @@
-import { useCallback, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useMemo } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
-import { getFolder } from "../../apis/studio";
-import { useResource } from "../../hooks/useResource";
-import { useSearchParamState } from "../../hooks/useSearchParamState";
-import type { FileEntry, SortOrder } from "../../types";
+import { DEFAULT_SORT, isSortOrder, type FileEntry, type SortOrder } from "../../types";
 import { objectPath, type FolderId } from "../../utils/location";
-import { ChipRow } from "../common/ChipRow";
+import { useSearchParamState } from "../../hooks/useSearchParamState";
 import { FolderBrowser, type BrowserNav } from "./FolderBrowser";
 
 /**
@@ -33,31 +30,49 @@ import { FolderBrowser, type BrowserNav } from "./FolderBrowser";
  * right trade in one direction only, and it is why `/f/<id>` still exists and the
  * tab does not replace it: a *link* to a folder is a link to the browser.
  */
-export function useLocalBrowserNav(rootId: string, param = "folder"): BrowserNav {
+function useLocalBrowserNav(rootId: string, param = "folder"): BrowserNav {
   const navigate = useNavigate();
+  const location = useLocation();
   // **Which query key, because a project draws TWO of these** — Files, and the
   // Runs tab's Grid. One key between them would carry a folder id from one
   // subtree into the other on a tab switch, leaving a browser standing
   // somewhere it cannot show. The default is the name Files has always used,
   // so its links still work.
   const [folderParam, setFolderParam] = useSearchParamState(param, "");
-  const [sort, setSort] = useState<SortOrder>("newest");
+  // `fsort`, namespaced, because this shares a URL with the entity page's own
+  // params (`tab`, and RunsTable's `status`/`character`/`model`/`since`) — a
+  // bare `sort` would collide the moment either grows one.
+  const [sortParam, setSortParam] = useSearchParamState("fsort", DEFAULT_SORT);
+  const sort: SortOrder = isSortOrder(sortParam) ? sortParam : DEFAULT_SORT;
 
   // The entity's own root is the default, so it is written as absence — a
   // character's Files tab at rest is `?tab=files` and not `?tab=files&folder=…`.
   const folder = folderParam || rootId;
 
+  /** A real address for a crumb — see `FolderBrowser`'s own trail. */
+  const folderHref = useCallback(
+    (id: FolderId) => {
+      const params = new URLSearchParams(location.search);
+      if (id === null || id === rootId) params.delete(param);
+      else params.set(param, id);
+      const query = params.toString();
+      return query ? `${location.pathname}?${query}` : location.pathname;
+    },
+    [location.pathname, location.search, param, rootId],
+  );
+
   return useMemo(
     () => ({
       folder,
       sort,
-      setSort,
+      setSort: setSortParam,
       goToFolder: (id: FolderId) => {
         // `null` is the *library* root, which a scoped browser has no way to
         // show and no business showing — the boundary crumb is this entity's
         // root, so that is where "up from the top" lands.
         setFolderParam(id === null || id === rootId ? "" : id);
       },
+      folderHref,
       // **Opening a file leaves the tab, and that is the right trade now.** The
       // viewer is a screen with an address; keeping it inside the panel would
       // mean the one thing in this app most worth sending someone was the one
@@ -72,7 +87,7 @@ export function useLocalBrowserNav(rootId: string, param = "folder"): BrowserNav
       fileHref: (file: FileEntry, deep = false) =>
         objectPath(file.id, { in: deep ? "recursive" : "f", id: folder }),
     }),
-    [folder, navigate, rootId, setFolderParam, sort],
+    [folder, folderHref, navigate, rootId, setFolderParam, setSortParam, sort],
   );
 }
 
@@ -85,14 +100,15 @@ export function useLocalBrowserNav(rootId: string, param = "folder"): BrowserNav
  * belongs to the tab rather than to the page, and switching away genuinely
  * discards it.
  *
- * ## The chip row, not a tab per folder
- *
- * A tab per root child would make a *listing* into navigation: the strip would
- * grow and shrink as folders were created and deleted, every one of those tabs
- * would show a folder the browser one tab over already held, and at 390px seven
- * of them wrap into three rows of underline. Chips are shortcuts — one
- * scrolling row of a fixed shape, with the browser still the only place a
- * folder opens.
+ * **The chip row above the browser is gone, not replaced.** A character's root
+ * children each used to get a tab of their own, beside Profile and References
+ * — a *listing* turned into navigation, which grew and shrank as folders were
+ * created and deleted. That became a scrolling row of shortcut chips instead,
+ * which was a second way up the same tree the browser already draws: three
+ * stacked ways to say "where am I" (the chips, the browser's own
+ * `← Back`-plus-trail, and this tab's boundary) for one folder. `FolderBrowser`
+ * now draws that trail itself, as real breadcrumbs with real addresses, which
+ * is the one place this belongs.
  */
 export function FolderTab({
   rootId,
@@ -103,76 +119,5 @@ export function FolderTab({
   label?: string;
 }) {
   const nav = useLocalBrowserNav(rootId);
-  return (
-    <div className="flex w-full flex-col gap-4">
-      <FolderShortcuts rootId={rootId} nav={nav} />
-      <FolderBrowser nav={nav} boundary={rootId} boundaryLabel={label} />
-    </div>
-  );
-}
-
-/**
- * The root's immediate children, as jump targets.
- *
- * Fetched here rather than handed down because both callers want it and only one
- * of them ever had the listing to hand. It is the same `GET /api/tree` the
- * browser itself makes for the root, and it renders nothing at all when the root
- * has no subfolders — a character whose starting folders were deleted gets no
- * empty rail.
- *
- * Scrolls rather than wraps — see `ChipRow`, which the reference tag filter uses
- * too, so the two rows cannot drift apart.
- */
-function FolderShortcuts({ rootId, nav }: { rootId: string; nav: BrowserNav }) {
-  const load = useCallback(() => getFolder({ node: rootId }, "name"), [rootId]);
-  const { data } = useResource(["folder-shortcuts", rootId], load);
-
-  const folders = data?.folders ?? [];
-  if (folders.length === 0) return null;
-
-  const here = nav.folder;
-
-  return (
-    <ChipRow role="group" aria-label="Folder shortcuts">
-      <FolderChip
-        label="Top"
-        active={here === rootId}
-        onClick={() => nav.goToFolder(rootId)}
-      />
-      {folders.map((folder) => (
-        <FolderChip
-          key={folder.id}
-          label={folder.name}
-          active={here === folder.id}
-          onClick={() => nav.goToFolder(folder.id)}
-        />
-      ))}
-    </ChipRow>
-  );
-}
-
-function FolderChip({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-current={active ? "true" : undefined}
-      className={`shrink-0 snap-start rounded-none border px-3 py-1 font-body text-sm transition-colors
-                  focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
-                    active
-                      ? "border-primary bg-primary text-primary-text"
-                      : "border-line text-muted hover:bg-surface-alt hover:text-ink"
-                  }`}
-    >
-      {label}
-    </button>
-  );
+  return <FolderBrowser nav={nav} boundary={rootId} boundaryLabel={label} />;
 }

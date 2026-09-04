@@ -1,11 +1,10 @@
 import { useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 
-import { Text } from "@ansavva/design-system";
-
-import { ApertureSpinner } from "../common/Aperture";
+import { EmptyState } from "../common/EmptyState";
+import { SectionLoading } from "../common/SectionLoading";
 import { getCharacterProjects, getCharacterRuns } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
+import { ENTITY_GRID } from "../../utils/grid";
 import { projectPath, runPath } from "../../utils/location";
 import { EntityCard } from "../entity/EntityCard";
 import { RunList } from "../run/RunList";
@@ -26,53 +25,52 @@ import { LoadError } from "../common/LoadError";
  * to go.
  */
 export function CharacterRuns({ characterId }: { characterId: string }) {
-  const navigate = useNavigate();
   const load = useCallback(() => getCharacterRuns(characterId), [characterId]);
   const { data, loading, error, reload } = useResource(["character-runs", characterId], load);
 
-  if (loading) return <ApertureSpinner size="md" label="Loading runs" />;
+  if (loading) return <SectionLoading label="Loading runs" />;
   if (error) return <LoadError what="runs" message={error} onRetry={reload} />;
 
   const runs = data?.runs ?? [];
   if (runs.length === 0) {
     return (
-      <Text variant="body" tone="muted">
-        Nothing has been rendered with this character yet. A run records which
-        characters it used, so this fills in on its own.
-      </Text>
+      <EmptyState
+        title="No runs yet."
+        hint="A run records which characters it used, so this fills in on its own."
+      />
     );
   }
 
   // The rows are `RunList`'s. This tab used to draw its own — no thumbnail, and
   // a status badge that only knew `failed`, so a `running` run read grey here
   // and amber on a project page for the same run.
-  return <RunList runs={runs} onOpen={(run) => navigate(runPath(run.project as string, run.id))} />;
+  return <RunList runs={runs} to={(run) => runPath(run.project as string, run.id)} />;
 }
 
 export function CharacterProjects({ characterId }: { characterId: string }) {
-  const navigate = useNavigate();
   const load = useCallback(() => getCharacterProjects(characterId), [characterId]);
   const { data, loading, error, reload } = useResource(["character-projects", characterId], load);
 
-  if (loading) return <ApertureSpinner size="md" label="Loading projects" />;
+  if (loading) return <SectionLoading label="Loading projects" />;
   if (error) return <LoadError what="projects" message={error} onRetry={reload} />;
   if (!data || data.length === 0) {
     return (
-      <Text variant="body" tone="muted">
-        This character is not linked to a project yet.
-      </Text>
+      <EmptyState
+        title="No projects yet."
+        hint="A project lists who it is about; this fills in once one names this character."
+      />
     );
   }
 
   return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+    <div className={ENTITY_GRID}>
       {data.map((project) => (
         <EntityCard
           key={project.id}
           name={project.name}
           hero={project.hero}
           counts={`${project.counts.runs} runs · ${project.counts.scenes} scenes · ${project.counts.movies} movies`}
-          onOpen={() => navigate(projectPath(project.id))}
+          to={projectPath(project.id)}
         />
       ))}
     </div>

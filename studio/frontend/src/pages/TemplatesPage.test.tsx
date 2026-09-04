@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -94,8 +94,8 @@ it("lists EVERY block, not only the ones some template happens to cite", async (
   });
   show();
   await blocksTab();
-  expect(screen.getByRole("button", { name: /\{orphan\}/ })).toBeTruthy();
-  expect(screen.getByText("0 templates")).toBeTruthy();
+  expect(screen.getByRole("button", { name: /\{orphan\}/, expanded: false })).toBeTruthy();
+  expect(screen.getByText("(0 templates)")).toBeTruthy();
 });
 
 it("says how many templates a block reaches BEFORE it is edited", async () => {
@@ -112,7 +112,7 @@ it("says how many templates a block reaches BEFORE it is edited", async () => {
   });
   show();
   await blocksTab();
-  expect(screen.getByText("2 templates")).toBeTruthy();
+  expect(screen.getByText("(2 templates)")).toBeTruthy();
 });
 
 it("says what to do when a library holds no templates at all", async () => {
@@ -122,7 +122,7 @@ it("says what to do when a library holds no templates at all", async () => {
    */
   read.mockResolvedValue({ blocks: {}, templates: [] });
   show();
-  expect(await screen.findByText(/holds no templates/i)).toBeTruthy();
+  expect(await screen.findByText(/No templates yet/i)).toBeTruthy();
   expect(screen.getByText(/templates push/)).toBeTruthy();
 });
 
@@ -195,7 +195,7 @@ it("creates a block, which is the same call as editing one", async () => {
   show();
   await blocksTab();
 
-  fireEvent.click(screen.getByText("+ New block"));
+  fireEvent.click(screen.getByRole("button", { name: "New block" }));
   fireEvent.change(screen.getByLabelText("Name"), {
     target: { value: "backdrop_body" },
   });
@@ -207,7 +207,7 @@ it("creates a block, which is the same call as editing one", async () => {
   await waitFor(() =>
     expect(savedBlock).toHaveBeenCalledWith("backdrop_body", "White seamless."),
   );
-  expect(await screen.findByRole("button", { name: /\{backdrop_body\}/ })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: /\{backdrop_body\}/, expanded: false })).toBeTruthy();
 });
 
 it("refuses a name no template could ever cite", async () => {
@@ -220,7 +220,7 @@ it("refuses a name no template could ever cite", async () => {
   show();
   await blocksTab();
 
-  fireEvent.click(screen.getByText("+ New block"));
+  fireEvent.click(screen.getByRole("button", { name: "New block" }));
   fireEvent.change(screen.getByLabelText("Name"), { target: { value: "2fast" } });
   fireEvent.change(screen.getByLabelText("Text"), { target: { value: "prose" } });
 
@@ -233,7 +233,7 @@ it("will not silently overwrite a block that already exists", async () => {
   show();
   await blocksTab();
 
-  fireEvent.click(screen.getByText("+ New block"));
+  fireEvent.click(screen.getByRole("button", { name: "New block" }));
   fireEvent.change(screen.getByLabelText("Name"), { target: { value: "face_only" } });
   expect(screen.getByText(/already holds that name/)).toBeTruthy();
 });
@@ -251,10 +251,15 @@ it("deletes a block, and says how many templates it will break first", async () 
   await blocksTab();
 
   fireEvent.click(screen.getByRole("button", { name: /\{face_only\}/ }));
-  const arm = screen.getByRole("button", { name: /Delete/ });
-  fireEvent.click(arm);
-  expect(screen.getByText(/1 template\(s\) cite it/)).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: /1 template\(s\) cite it/ }));
+  // A cited block takes templates down with it, so it types its name rather
+  // than arming in place — the gate a project or a character gets, not a file's.
+  fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+  const dialog = await screen.findByRole("alertdialog");
+  expect(dialog.textContent).toContain("1 template cites it");
+  fireEvent.change(within(dialog).getByLabelText("Confirm"), {
+    target: { value: "face_only" },
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
 
   await waitFor(() => expect(removeBlock).toHaveBeenCalledWith("face_only"));
   await waitFor(() =>

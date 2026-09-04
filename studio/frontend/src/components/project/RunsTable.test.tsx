@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import type { RunSummary } from "../../types";
@@ -45,10 +46,19 @@ function library(rows: RunSummary[]) {
   });
 }
 
+/** Reports `location.search`, so a test can assert a filter landed in the URL. */
+function SearchProbe() {
+  const location = useLocation();
+  return <span data-testid="search">{location.search}</span>;
+}
+
 function open() {
   render(
     <TestProviders>
-      <RunsTable projectId={PROJECT} characters={[]} onOpen={() => {}} />
+      <MemoryRouter>
+        <RunsTable projectId={PROJECT} characters={[]} to={() => "/x"} />
+        <SearchProbe />
+      </MemoryRouter>
     </TestProviders>,
   );
 }
@@ -69,10 +79,10 @@ it("shows a project holding nothing but unapproved payloads", async () => {
   library([run({ id: "run-waiting", status: "draft" })]);
   open();
 
-  // Before the fix this drew "No runs match that" against a project with a
-  // full queue in it.
+  // Before the fix this drew "Nothing here matches that search" against a
+  // project with a full queue in it.
   expect(await screen.findByText("draft")).toBeTruthy();
-  expect(screen.queryByText(/No runs match that/i)).toBeNull();
+  expect(screen.queryByText(/Nothing here matches/i)).toBeNull();
 });
 
 it("still narrows to exactly one status when one is named", async () => {
@@ -96,5 +106,38 @@ it("still narrows to exactly one status when one is named", async () => {
   // A named status is a narrowing, so `include` has no business being sent too.
   expect(list).not.toHaveBeenCalledWith(
     expect.objectContaining({ status: "succeeded", include: "drafts" }),
+  );
+});
+
+it("the filters are collapsed by default", () => {
+  library([]);
+  open();
+
+  expect(
+    screen.getByRole("button", { name: /^Filter runs/ }).getAttribute("aria-expanded"),
+  ).toBe("false");
+});
+
+it("choosing a status is URL state, and Clear resets it", async () => {
+  library([run({ id: "run-waiting", status: "draft" })]);
+  open();
+
+  await waitFor(() => expect(screen.getByText("draft")).toBeTruthy());
+  expect(screen.getByTestId("search")).toHaveProperty("textContent", "");
+
+  fireEvent.click(screen.getByRole("combobox", { name: /status/i }));
+  fireEvent.click(await screen.findByRole("option", { name: "draft" }));
+
+  await waitFor(() => expect(screen.getByTestId("search")).toHaveProperty(
+    "textContent",
+    "?status=draft",
+  ));
+
+  fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+  await waitFor(() =>
+    expect(screen.getByTestId("search")).toHaveProperty("textContent", ""),
+  );
+  await waitFor(() =>
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({ include: "drafts" })),
   );
 });

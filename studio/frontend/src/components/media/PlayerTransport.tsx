@@ -5,6 +5,7 @@ import { IconButton, Slider, Text } from "@ansavva/design-system";
 import type { MediaPlayback } from "../../hooks/useMediaPlayback";
 import { formatDuration } from "../../utils/format";
 import { PauseIcon, PlayIcon, SeekBackIcon, SeekForwardIcon } from "../common/icons";
+import { CHROME_BUTTON } from "./chromeButton";
 
 /** How far back-5 / forward-5 move. Named because the labels say the number. */
 const SKIP_SECONDS = 5;
@@ -80,7 +81,7 @@ export function PlayerTransport({
         label={`Back ${SKIP_SECONDS} seconds`}
         size={size}
         onClick={() => seekBy(-SKIP_SECONDS)}
-        className="text-neutral-12 hover:bg-neutral-a5 active:bg-neutral-a6"
+        className={CHROME_BUTTON}
       >
         <SeekBackIcon className={glyph} />
       </IconButton>
@@ -89,7 +90,7 @@ export function PlayerTransport({
         label={paused ? "Play (space)" : "Pause (space)"}
         size={size}
         onClick={togglePaused}
-        className="text-neutral-12 hover:bg-neutral-a5 active:bg-neutral-a6"
+        className={CHROME_BUTTON}
       >
         {paused ? <PlayIcon className={glyph} /> : <PauseIcon className={glyph} />}
       </IconButton>
@@ -98,7 +99,7 @@ export function PlayerTransport({
         label={`Forward ${SKIP_SECONDS} seconds`}
         size={size}
         onClick={() => seekBy(SKIP_SECONDS)}
-        className="text-neutral-12 hover:bg-neutral-a5 active:bg-neutral-a6"
+        className={CHROME_BUTTON}
       >
         <SeekForwardIcon className={glyph} />
       </IconButton>
@@ -110,7 +111,7 @@ export function PlayerTransport({
       <Text
         variant="caption"
         family="mono"
-        className="w-10 shrink-0 text-right text-neutral-12"
+        className="w-10 shrink-0 text-right text-chrome-ink"
       >
         {elapsed}
       </Text>
@@ -132,7 +133,7 @@ export function PlayerTransport({
         className="min-w-0 flex-1"
       />
 
-      <Text variant="caption" family="mono" className="w-10 shrink-0 text-neutral-11">
+      <Text variant="caption" family="mono" className="w-10 shrink-0 text-muted">
         {total}
       </Text>
     </div>

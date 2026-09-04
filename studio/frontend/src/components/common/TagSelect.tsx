@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 
-import { Badge, Button, Input, Text } from "@ansavva/design-system";
+import { Alert, Badge, Button, Input } from "@ansavva/design-system";
+
+import { EmptyState } from "./EmptyState";
 
 import { deleteTag, getTags, renameTag } from "../../apis/studio";
 import type { TagInUse, TagScope } from "../../types";
+import { ConfirmDestroyDialog } from "./ConfirmDestroyDialog";
 
 interface Props {
   /** Which vocabulary. Files and templates never share one. */
@@ -21,6 +24,12 @@ interface Props {
    * file in the library are not operations to put one keystroke apart.
    */
   manage?: boolean;
+}
+
+/** What a rename or a delete that did not land says, and which it was. */
+interface Failure {
+  title: string;
+  message: string;
 }
 
 /**
@@ -49,9 +58,15 @@ interface Props {
  * ## Renaming and deleting reach everything
  *
  * The name is the identity — no id sits underneath — so renaming rewrites every
- * carrier and deleting removes the word from all of them. Both say how many
- * before they happen, because "remove `studio` from 43 files" is a different
- * press from "remove it from 1".
+ * carrier and deleting removes the word from all of them. **Deleting types the
+ * name**, through `ConfirmDestroyDialog`, because it is an entity with children:
+ * "remove `studio` from 43 files" rewrites forty-three records on one press,
+ * and that press used to be a bare click on a button that said "Delete" with the
+ * count on a sibling span. The dialog says the count in its own sentence.
+ *
+ * Both report a failure here, under the box, because nothing else can: the
+ * item's own save error is about the item, and a rename that half-landed across
+ * the library is not that.
  */
 export function TagSelect({ scope, value, onChange, placeholder, manage }: Props) {
   const [open, setOpen] = useState(false);
@@ -60,6 +75,8 @@ export function TagSelect({ scope, value, onChange, placeholder, manage }: Props
   const [busy, setBusy] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [deleting, setDeleting] = useState<TagInUse | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
   const box = useRef<HTMLDivElement>(null);
 
   const reload = useCallback(() => {
@@ -128,6 +145,7 @@ export function TagSelect({ scope, value, onChange, placeholder, manage }: Props
       return;
     }
     setBusy(true);
+    setFailure(null);
     try {
       await renameTag(scope, from, to);
       // The item in hand follows, because a rename reached every carrier and
@@ -135,6 +153,8 @@ export function TagSelect({ scope, value, onChange, placeholder, manage }: Props
       // stale word for as long as the round trip takes.
       onChange(value.map((tag) => (tag === from ? to : tag)));
       reload();
+    } catch (problem) {
+      setFailure({ title: "Could not rename the tag", message: describe(problem) });
     } finally {
       setBusy(false);
       setRenaming(null);
@@ -143,19 +163,27 @@ export function TagSelect({ scope, value, onChange, placeholder, manage }: Props
 
   const remove = async (name: string) => {
     setBusy(true);
+    setFailure(null);
     try {
       await deleteTag(scope, name);
       onChange(value.filter((tag) => tag !== name));
       reload();
+    } catch (problem) {
+      setFailure({ title: "Could not delete the tag", message: describe(problem) });
     } finally {
       setBusy(false);
     }
   };
 
+  const carriers = (count: number) => {
+    const one = scope === "template" ? "template" : "file";
+    return count === 1 ? `1 ${one}` : `${count} ${one}s`;
+  };
+
   return (
     <div ref={box} className="relative flex flex-col gap-1.5">
       <div
-        className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border border-line
+        className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-none border border-line
                    bg-card px-2 py-1.5"
         onClick={() => setOpen(true)}
       >
@@ -186,19 +214,44 @@ export function TagSelect({ scope, value, onChange, placeholder, manage }: Props
         />
       </div>
 
+      {failure && (
+        <Alert.Root intent="danger" onDismiss={() => setFailure(null)}>
+          <Alert.Title>{failure.title}</Alert.Title>
+          <Alert.Description>{failure.message}</Alert.Description>
+        </Alert.Root>
+      )}
+
+      {/* Outside the list, which closes on any press outside the box — and the
+          dialog portals to the body, so a press inside it is one. Controlled,
+          because its opener is a row in a listbox rather than a button the
+          dialog could draw itself. */}
+      <ConfirmDestroyDialog
+        open={deleting !== null}
+        onOpenChange={(next) => {
+          if (!next) setDeleting(null);
+        }}
+        label="Delete"
+        title={`Delete tag ${deleting?.name ?? ""}?`}
+        summary={`It comes off ${carriers(deleting?.count ?? 0)}. Each one is rewritten; nothing else is touched.`}
+        confirmWord={deleting?.name ?? ""}
+        onConfirm={async () => {
+          if (deleting) await remove(deleting.name);
+        }}
+      />
+
       {open && (
         <div
           role="listbox"
           aria-label="Tags"
           className="absolute top-full z-20 mt-1 flex max-h-72 w-full flex-col gap-1
-                     overflow-auto rounded-md border border-line bg-card p-1 shadow-lg"
+                     overflow-auto rounded-none border border-line bg-card p-1 shadow-lg"
         >
           {offered.length === 0 && !isNew && (
-            <Text variant="caption" tone="muted" className="px-2 py-1.5">
-              {vocabulary.length === 0
-                ? "No tags yet. Type one and press Enter."
-                : "Every tag is already on this."}
-            </Text>
+            <EmptyState
+              title={vocabulary.length === 0 ? "No tags yet." : "Every tag is already on this."}
+              hint={vocabulary.length === 0 ? "Type one and press Enter." : undefined}
+              className="px-2 py-1.5"
+            />
           )}
 
           {offered.map((tag) => (
@@ -221,7 +274,7 @@ export function TagSelect({ scope, value, onChange, placeholder, manage }: Props
                     role="option"
                     aria-selected={false}
                     onClick={() => add(tag.name)}
-                    className="flex flex-1 items-center justify-between rounded px-2 py-1.5
+                    className="flex flex-1 items-center justify-between rounded-none px-2 py-1.5
                                text-left text-sm hover:bg-surface-alt"
                   >
                     <span>{tag.name}</span>
@@ -239,7 +292,7 @@ export function TagSelect({ scope, value, onChange, placeholder, manage }: Props
                           setRenaming(tag.name);
                           setDraft(tag.name);
                         }}
-                        className="rounded px-1.5 py-1 text-xs text-muted hover:bg-surface-alt"
+                        className="rounded-none px-1.5 py-1 text-xs text-muted hover:bg-surface-alt"
                       >
                         Rename
                       </button>
@@ -247,8 +300,8 @@ export function TagSelect({ scope, value, onChange, placeholder, manage }: Props
                         type="button"
                         aria-label={`Delete tag ${tag.name}`}
                         disabled={busy}
-                        onClick={() => void remove(tag.name)}
-                        className="rounded px-1.5 py-1 text-xs text-muted hover:bg-surface-alt"
+                        onClick={() => setDeleting(tag)}
+                        className="rounded-none px-1.5 py-1 text-xs text-muted hover:bg-surface-alt"
                       >
                         Delete
                       </button>
@@ -265,7 +318,7 @@ export function TagSelect({ scope, value, onChange, placeholder, manage }: Props
               role="option"
               aria-selected={false}
               onClick={() => add(query)}
-              className="rounded px-2 py-1.5 text-left text-sm hover:bg-surface-alt"
+              className="rounded-none px-2 py-1.5 text-left text-sm hover:bg-surface-alt"
             >
               Create <Badge size="sm">{exact}</Badge>
             </button>
@@ -274,4 +327,8 @@ export function TagSelect({ scope, value, onChange, placeholder, manage }: Props
       )}
     </div>
   );
+}
+
+function describe(problem: unknown): string {
+  return problem instanceof Error ? problem.message : String(problem);
 }

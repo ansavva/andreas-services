@@ -1,9 +1,10 @@
 import { useCallback, useState } from "react";
 
-import { Alert, Button, Dialog, Text } from "@ansavva/design-system";
+import { Button, Dialog, Text } from "@ansavva/design-system";
 
 import { getTemplates } from "../../apis/studio";
-import { ApertureSpinner } from "../common/Aperture";
+import { EmptyState } from "../common/EmptyState";
+import { SectionLoading } from "../common/SectionLoading";
 import { useResource } from "../../hooks/useResource";
 import { LoadError } from "../common/LoadError";
 
@@ -83,22 +84,20 @@ export function TemplatePicker({ onPick, cast }: Props) {
           <Dialog.Popup className="flex max-h-[85vh] w-full max-w-xl flex-col gap-3 p-4">
             <Dialog.Title>Start from a template</Dialog.Title>
 
-            {library.loading && (
-              <div className="flex h-32 items-center justify-center">
-                <ApertureSpinner size="md" label="Loading templates" />
-              </div>
-            )}
+            {library.loading && <SectionLoading label="Loading templates" />}
 
             {library.error && <LoadError what="templates" message={library.error} onRetry={library.reload} />}
 
             {library.data && library.data.templates.length === 0 && (
-              <Alert.Root>
-                <Alert.Title>This library holds no templates</Alert.Title>
-                <Alert.Description>
-                  Push some with <code>studio templates push --path &lt;file&gt;</code>,
-                  or write one on the Templates page.
-                </Alert.Description>
-              </Alert.Root>
+              <EmptyState
+                title="No templates yet."
+                hint={
+                  <>
+                    Write one on the Templates page, or push several at once
+                    with <code>studio templates push --path &lt;file&gt;</code>.
+                  </>
+                }
+              />
             )}
 
             <div className="flex flex-col gap-2 overflow-auto">
@@ -106,6 +105,7 @@ export function TemplatePicker({ onPick, cast }: Props) {
                 const needs = castNeededBy(entry.prompt);
                 const short = needs > cast;
                 return (
+                  // eslint-disable-next-line studio/no-hand-rolled-button -- a listing row, same shape as FileRow/FolderCard.
                   <button
                     key={entry.id}
                     type="button"
@@ -113,7 +113,7 @@ export function TemplatePicker({ onPick, cast }: Props) {
                       onPick(entry.prompt);
                       setOpen(false);
                     }}
-                    className="flex flex-col gap-1 rounded border border-line p-3 text-left
+                    className="flex flex-col gap-1 rounded-none border border-line p-3 text-left
                                transition-colors hover:bg-surface-alt
                                focus-visible:outline-2 focus-visible:-outline-offset-2
                                focus-visible:outline-primary"

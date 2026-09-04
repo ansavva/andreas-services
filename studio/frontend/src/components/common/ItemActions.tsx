@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import { Dropdown } from "@ansavva/design-system";
 
 import { copyLabel, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { useArmed } from "../../hooks/useArmed";
 import { DotsIcon } from "./icons";
 
 interface Props {
@@ -13,7 +14,7 @@ interface Props {
    *  it write with: rename, move, copy and delete all take node ids. */
   copyValue: string;
   /** What `copyValue` names, which is all that differs between the two labels. */
-  copyNoun?: "key" | "prefix";
+  copyNoun?: "path" | "prefix";
   /** Opens the parent's rename field. The parent owns it so it can be full width. */
   onRename: () => void;
   /** Opens the parent's destination picker on a move. */
@@ -43,11 +44,11 @@ interface Props {
  *   confirmation with it. So it stays open and reports, exactly as
  *   `CopyKeyButton` does elsewhere.
  * * **Delete arms rather than fires.** The item turns red and restates what it is
- *   about to destroy, and the second press does it — the same interaction
- *   `ConfirmDeleteButton` argues for, kept here rather than delegated to that
- *   component because a `role="menu"` may only contain menu items, and it is a
- *   plain button. Closing the menu disarms, so a half-pressed delete is never
- *   left live behind a closed menu.
+ *   about to destroy, and the second press does it — `useArmed`, the same
+ *   machine `ConfirmDeleteButton` runs on, kept as a menu item rather than
+ *   delegated to that component because a `role="menu"` may only contain menu
+ *   items. It expires on the same timeout, and closing the menu disarms it too,
+ *   so a half-pressed delete is never left live behind a closed menu.
  *
  * A `Dropdown` is absolutely positioned inside its own relative wrapper rather
  * than portalled, so it needs nothing from the design system's `container` prop
@@ -58,47 +59,38 @@ interface Props {
 export function ItemActions({
   name,
   copyValue,
-  copyNoun = "key",
+  copyNoun = "path",
   onRename,
   onMove,
   onCopyTo,
   onDelete,
 }: Props) {
   const [open, setOpen] = useState(false);
-  const [armed, setArmed] = useState(false);
-  const [busy, setBusy] = useState(false);
   const { status, copy } = useCopyToClipboard();
-
-  const change = useCallback((next: boolean) => {
-    setOpen(next);
-    // Closing disarms: an armed delete waiting behind a menu nobody can see is
-    // exactly the state `ConfirmDeleteButton`'s timeout exists to prevent.
-    if (!next) setArmed(false);
-  }, []);
-
-  const pressDelete = useCallback(() => {
-    if (!armed) {
-      setArmed(true);
-      return;
-    }
-    setBusy(true);
-    void onDelete()
-      .catch(() => {
-        /* the page surfaces the message; this only owns the menu */
-      })
-      .finally(() => {
-        setBusy(false);
-        setArmed(false);
+  const { armed, busy, press, disarm, handlers } = useArmed({
+    onFire: async () => {
+      try {
+        await onDelete();
+      } finally {
         setOpen(false);
-      });
-  }, [armed, onDelete]);
+      }
+    },
+  });
+
+  const change = useCallback(
+    (next: boolean) => {
+      setOpen(next);
+      if (!next) disarm();
+    },
+    [disarm],
+  );
 
   return (
     <Dropdown.Root open={open} onOpenChange={change}>
       <Dropdown.Trigger
         aria-label={`Actions for ${name}`}
         title={`Actions for ${name}`}
-        className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink"
+        className="touch-target shrink-0 rounded-none p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink"
       >
         <DotsIcon />
       </Dropdown.Trigger>
@@ -125,10 +117,11 @@ export function ItemActions({
 
         <Dropdown.Item
           disabled={busy}
+          {...handlers}
           onClick={(event: React.MouseEvent) => {
             // Arming must not close the menu — the confirmation *is* the item.
             if (!armed) event.preventDefault();
-            pressDelete();
+            press();
           }}
           className={armed ? "text-danger" : ""}
         >

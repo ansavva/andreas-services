@@ -5,15 +5,14 @@ import type { FileEntry } from "../../types";
 import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { CopyKeyButton } from "../common/CopyKeyButton";
 import { CloseIcon, DownloadIcon, PencilIcon } from "../common/icons";
-
-/** The chrome buttons all wear the same fill over a media frame — `MediaPlayer`'s. */
-const CHROME_BUTTON = "text-neutral-12 hover:bg-neutral-a5 active:bg-neutral-a6";
+import { CHROME_BUTTON } from "../media/chromeButton";
 
 interface Props {
   file: FileEntry;
   /**
-   * `page` is the full set, in the page header. `media` is the two that have to
-   * be reachable while the player owns the screen.
+   * `page` is Copy, Edit, Download and Close, in the page bar's `actions`.
+   * `media` is the two that have to be reachable while the player owns the
+   * screen, over the frame, only while it is fullscreen.
    *
    * They are not the same set on purpose. In fullscreen there is no page to
    * read, so the controls over the frame are the two that *change* the file —
@@ -22,6 +21,15 @@ interface Props {
    * prove otherwise is how the reel's chrome grew.
    */
   variant?: "page" | "media";
+  /**
+   * The media variant's own delete, arming in place over the frame.
+   *
+   * **The page variant no longer takes this.** Delete moved to `PageBar`'s
+   * menu — `ObjectHeader` builds that item itself, with the same `useArmed`
+   * machine, because a `role="menu"` may only hold menu items and
+   * `ConfirmDeleteButton` renders a `<button>`. This prop stays for
+   * `variant="media"`, where the fullscreen frame has no menu to hold it.
+   */
   onDelete?: () => Promise<unknown>;
   /**
    * Whether the details drawer is up, and the control that opens it — absent
@@ -53,12 +61,14 @@ interface Props {
  * owns the drawer and aims it — so what is left here is the button that asks
  * for it.
  *
- * **Delete did not follow the editor into an overlay, and that is deliberate.**
- * `ConfirmDeleteButton` arms in place, names what it will destroy and disarms
- * on a timeout, on blur and on Escape. Only *one* of the two reasons it gives
- * for not being a modal was the fullscreen constraint; the other — that a
- * dialog in a fixed position trains a second click that lands before anyone
- * reads it — is untouched by anything here.
+ * **Delete stays `ConfirmDeleteButton` over the media, and becomes a page bar
+ * menu item everywhere else.** The two used to be the same control at two
+ * sizes; they diverged once the page bar had a menu to hold one. Over the
+ * frame there is no menu — `Drawer.Root`'s `container` trick reaches
+ * fullscreen for the editor, but a `Dropdown` has no such seam — so the
+ * `media` variant keeps the arm-in-place button it always had. The `page`
+ * variant draws no delete at all; `ObjectHeader` builds that item with the
+ * same arming machine `ItemActions`' menu delete runs on.
  */
 export function ObjectActions({
   file,
@@ -93,7 +103,7 @@ export function ObjectActions({
           </IconButton>
         )}
         {onDelete && (
-          <ConfirmDeleteButton noun="this file" onConfirm={onDelete} tone="chrome" />
+          <ConfirmDeleteButton noun="this file" onConfirm={onDelete} className={CHROME_BUTTON} />
         )}
       </>
     );
@@ -117,7 +127,7 @@ export function ObjectActions({
         <DownloadIcon />
       </IconButton>
 
-      {onDelete && <ConfirmDeleteButton noun="this file" onConfirm={onDelete} />}
+      {/* Delete is `ObjectHeader`'s menu item now, not a fifth icon here. */}
 
       {onClose && (
         <IconButton label="Close (Esc)" onClick={onClose}>

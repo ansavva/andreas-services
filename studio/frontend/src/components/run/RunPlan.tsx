@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 
 import {
   Alert,
@@ -13,8 +13,9 @@ import { PromptFields } from "../scene/motionPrompt";
 import { ApiError } from "../../apis/client";
 import { approveRun, submitRun } from "../../apis/studio";
 import type { RunAsset, RunRecord, RunSend } from "../../types";
-import { formatDate } from "../../utils/format";
+import { formatDate, formatTextContent } from "../../utils/format";
 import { getUserEmail, getUserSub } from "../../auth/oauth";
+import { useArmed } from "../../hooks/useArmed";
 
 /**
  * What a run WAS FOR — the half a run page could not show until runs had a plan.
@@ -233,22 +234,20 @@ function describe(send: RunSend): string {
   }
 }
 
-const ARMED_MS = 4000;
-
 /**
  * Arm on the first press, act on the second — the confirmation lives in the
  * button, never in a dialog.
  *
- * The mechanics are `ConfirmDeleteButton`'s and are deliberately identical: the
- * same three things disarm it — the timeout, focus leaving, and Escape — so a
+ * The mechanics are `useArmed`'s, shared with `ConfirmDeleteButton`: the same
+ * three things disarm it — the timeout, focus leaving, and Escape — so a
  * half-pressed control is never still live when you come back to it, and it
  * never swallows an Escape meant for something around it.
  *
  * **Not a prop on that button, because everything else about it is the delete.**
  * Its labels all contain the word, its resting face is a trash can and its armed
  * face is a danger fill; a `tone` prop turning all three off would be a second
- * component wearing the first's name. So the arm/disarm shape is shared and the
- * tone is not.
+ * component wearing the first's name. So the arm/disarm machine is shared and
+ * the paint is not.
  *
  * It lives in this file because both callers are the run surface's own money
  * controls — the one-act `RunBar` below, and `RunAgainButton` beside it.
@@ -264,62 +263,25 @@ export function ArmedButton({
   /** At rest. A word or two — what pressing does. */
   idle: string;
   /**
-   * Armed. Short, and still says it spends: the explanation is in the tooltip,
-   * and what stays on the button is that the next press costs money, which is
-   * the half a person needs at the moment they press it.
+   * Armed. Short, and still says it spends.
+   *
+   * **This used to be a sentence**, and the surrounding block used to be three
+   * more: what a re-run is, what it copies, where the page goes afterwards. A
+   * control explained at that length reads as a warning nobody finishes. The
+   * explanation moved to the tooltip; what stays on the button is the fact that
+   * the next press costs money, which is the half a person needs at the moment
+   * they press it.
    */
   armed: string;
   busy: string;
-  /** The explanation, on hover and on focus. */
+  /** The sentence that used to sit beside the button, on hover and on focus. */
   tooltip: string;
   /** Runs on the second press. Rejecting leaves the button disarmed. */
   onFire: () => Promise<unknown>;
   disabled?: boolean;
 }) {
-  const [phase, setPhase] = useState<"idle" | "armed" | "busy">("idle");
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Set on unmount so a resolving promise cannot call setState afterwards —
-  // `RunAgainButton` navigates away as the last step of its own sequence.
-  const gone = useRef(false);
-
-  useEffect(() => {
-    gone.current = false;
-    return () => {
-      gone.current = true;
-      if (timer.current) clearTimeout(timer.current);
-    };
-  }, []);
-
-  const disarm = useCallback(() => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
-    setPhase((current) => (current === "armed" ? "idle" : current));
-  }, []);
-
-  const press = useCallback(() => {
-    if (phase === "busy") return;
-
-    if (phase === "idle") {
-      setPhase("armed");
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => {
-        if (!gone.current) setPhase("idle");
-      }, ARMED_MS);
-      return;
-    }
-
-    if (timer.current) clearTimeout(timer.current);
-    setPhase("busy");
-    void onFire()
-      .catch(() => {
-        /* the caller surfaces the message; this only owns the button */
-      })
-      .finally(() => {
-        if (!gone.current) setPhase("idle");
-      });
-  }, [onFire, phase]);
-
-  const label = phase === "busy" ? busy : phase === "armed" ? armed : idle;
+  const state = useArmed({ onFire });
+  const label = state.busy ? busy : state.armed ? armed : idle;
 
   return (
     <Tooltip.Root>
@@ -332,17 +294,9 @@ export function ArmedButton({
           destroys nothing, and dressing it in red would say the wrong one. */}
       <Tooltip.Trigger
         className={buttonClass({ intent: "primary", size: "sm" })}
-        onClick={press}
-        onBlur={disarm}
-        onKeyDown={(event) => {
-          // Only while armed, so the page's own Escape handler is untouched
-          // the rest of the time.
-          if (event.key === "Escape" && phase === "armed") {
-            event.stopPropagation();
-            disarm();
-          }
-        }}
-        disabled={disabled || phase === "busy"}
+        onClick={state.press}
+        {...state.handlers}
+        disabled={disabled || state.busy}
       >
         {label}
       </Tooltip.Trigger>
@@ -371,11 +325,39 @@ function named(by: string, me: { sub: string | null; email: string | null }): st
 }
 
 /**
+ * Who said yes, and how — for a run that has already gone out.
+ *
+ * **Extracted so it can stand on its own in the page bar body.** `RunBar`'s
+ * own non-draft branch used to be the only place this rendered; now
+ * `RunPage` reaches for it directly whenever a run's `primary` slot holds
+ * `Run again` instead of `RunBar` — the two mean the same run screen, just
+ * with the money button moved out to make room for `Duplicate` in the menu.
+ * Renders nothing for a run with no approval to report.
+ */
+export function ApprovalNote({ run }: { run: RunRecord }) {
+  const me = { sub: getUserSub(), email: getUserEmail() };
+  if (!run.approval) return null;
+  return (
+    <Text variant="caption" tone="muted">
+      {run.approval.by === "backfill"
+        ? "Approved before approvals were recorded — stamped by the backfill at the moment this run was created."
+        : `Approved by ${named(run.approval.by, me)} on ${formatDate(run.approval.at)}.${
+            run.approval.via === "relayed"
+              ? " Relayed — the yes was given elsewhere and passed on by an agent, not entered here."
+              : ""
+          }`}
+    </Text>
+  );
+}
+
+/**
  * Running a draft — **one armed press, and that press is the approval.**
  *
- * There is no separate approve step, because it would be redundant in a UI
- * where the payload is on screen: the page renders the plan, the ordered images
- * and the exact document a draft would send. Asking for a yes over that
+ * This used to be an approve `Dialog`, a Revoke button and a separate Submit,
+ * with three sentences describing which of the digest's three states the run was
+ * in. The separate approve step was redundant in a UI where the payload is on
+ * screen: the page renders the plan, the ordered images and — since the payload
+ * preview — the exact document a draft would send. Asking for a yes over that
  * and then asking again under a different word is what teaches somebody to click
  * through the first one.
  *
@@ -411,22 +393,9 @@ export function RunBar({
     }
   }, [onRan, onReload, run.id, run.plan_digest]);
 
-  const me = { sub: getUserSub(), email: getUserEmail() };
-
   if (run.status !== "draft" && run.status !== "approved") {
     // Sent already. What is left to say is who said yes, and how.
-    if (!run.approval) return null;
-    return (
-      <Text variant="caption" tone="muted">
-        {run.approval.by === "backfill"
-          ? "Approved before approvals were recorded — stamped by the backfill at the moment this run was created."
-          : `Approved by ${named(run.approval.by, me)} on ${formatDate(run.approval.at)}.${
-              run.approval.via === "relayed"
-                ? " Relayed — the yes was given elsewhere and passed on by an agent, not entered here."
-                : ""
-            }`}
-      </Text>
-    );
+    return <ApprovalNote run={run} />;
   }
 
   return (
@@ -435,7 +404,7 @@ export function RunBar({
     <section className="flex flex-col items-start gap-2">
       {failure && (
         <Alert.Root intent="danger">
-          <Alert.Title>Nothing was sent</Alert.Title>
+          <Alert.Title>Could not submit the run</Alert.Title>
           <Alert.Description>
             {failure.message}
             {failure.hint ? ` ${failure.hint}` : ""}
@@ -443,9 +412,11 @@ export function RunBar({
         </Alert.Root>
       )}
 
-      {/* **The button and nothing else.** The payload it describes is already
-          on the page. What it does is on hover; what it costs is on the armed
-          press. */}
+      {/* **The button and nothing else.** Three sentences used to sit around it
+          — what it sends, that one press arms and the second runs, that the run
+          closes itself. A control explained at that length reads as a warning
+          nobody finishes, and the payload it describes is already on the page.
+          What it does is on hover; what it costs is on the armed press. */}
       <ArmedButton
         idle="Run"
         armed="Press again — this spends"
@@ -497,7 +468,7 @@ export function InFlightBar({
     <section className="flex flex-col gap-2 rounded-none border border-line bg-card p-3">
       {error && (
         <Alert.Root intent="danger">
-          <Alert.Title>That did not work</Alert.Title>
+          <Alert.Title>Could not check the run</Alert.Title>
           <Alert.Description>{error}</Alert.Description>
         </Alert.Root>
       )}

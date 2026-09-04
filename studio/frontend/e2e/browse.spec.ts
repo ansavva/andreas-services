@@ -230,7 +230,7 @@ test("a tile in Media opens the file it shows", async ({ page }) => {
   // render once there is something to draw.
   await expect(page.getByLabel("Neighbours")).toBeVisible();
   await expect(page.getByRole("region", { name: "File details" })).toBeVisible();
-  await expect(page.getByText("No images or videos here.")).toHaveCount(0);
+  await expect(page.getByText("No images or videos yet.")).toHaveCount(0);
 });
 
 test("the captured listing still says 49 jpeg and 5 png", async ({ page }) => {
@@ -246,53 +246,29 @@ test("the captured listing still says 49 jpeg and 5 png", async ({ page }) => {
 });
 
 /**
- * **Back is not the breadcrumb**, and `PageBar` now carries both.
+ * **`PageBar` draws no back arrow, on any page.**
  *
- * A crumb goes UP — to the folder or the project. Back goes where you actually
- * came from, and `?in=` makes those routinely different: a file opened from a
- * feed has an "up" it has never visited. The arrow only appears when there is
- * an entry to undo, because a cold share link's back leaves the app entirely.
+ * It used to — an `IconButton` shown whenever `location.key !== "default"`,
+ * so the same page laid out differently opened cold versus opened from a
+ * list. The browser's own Back already answers "where did I come from"; a
+ * crumb answers "where am I", which Back cannot — so the arrow is gone
+ * everywhere rather than conditionally somewhere.
  *
  * `exact: true` is not decoration: Playwright matches an accessible name as a
  * case-insensitive SUBSTRING, and a character's body-angle stills are named
  * "…back…", so a loose locator matches four tiles in the Recent grid and the
  * test fails on a page that is behaving perfectly.
- *
- * **These must navigate in-app, never with a second `page.goto`.** A `goto` is
- * a full document load, so React Router's `location.key` resets to `"default"`
- * and the arrow correctly hides — a test written that way fails against a
- * perfectly good implementation, which is exactly what happened while writing
- * this one.
  */
-test("a back arrow appears once there is somewhere to go back to", async ({
-  page,
-}) => {
-  stubOnly(
-    "the arrow is router state, and the stub feed is what makes the walk deterministic",
-  );
+test("there is no back arrow, cold or navigated to", async ({ page }) => {
+  stubOnly("the stub feed is what makes the walk deterministic");
   await page.goto("/");
   await page.waitForLoadState("networkidle");
-
   await expect(
     page.getByRole("button", { name: "Back", exact: true }),
   ).toHaveCount(0);
 
   await page.getByText("jason", { exact: true }).first().click();
   await page.waitForURL(/\/c\//);
-
-  const back = page.getByRole("button", { name: "Back", exact: true });
-  await expect(back).toBeVisible();
-
-  await back.click();
-  await expect.poll(async () => new URL(page.url()).pathname).toBe("/");
-});
-
-test("a cold link has no back arrow, because back would leave the app", async ({
-  page,
-}) => {
-  stubOnly("same feed");
-  await page.goto(`/c/${CHARACTER}`);
-  await page.waitForLoadState("networkidle");
   await expect(
     page.getByRole("button", { name: "Back", exact: true }),
   ).toHaveCount(0);

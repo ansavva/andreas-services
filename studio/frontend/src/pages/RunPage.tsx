@@ -18,21 +18,28 @@ import {
   getRuns,
   reconcileRun,
 } from "../apis/studio";
-import { ApertureSpinner } from "../components/common/Aperture";
+import { ChevronDownIcon } from "../components/common/icons";
+import { EmptyState } from "../components/common/EmptyState";
+import { linkButtonClass } from "../components/common/linkButtonClass";
+import { LoadError } from "../components/common/LoadError";
+import { PageLoading } from "../components/common/PageLoading";
+import { SectionLoading } from "../components/common/SectionLoading";
 import { PageBar } from "../components/layout/PageBar";
 import { Backlinks } from "../components/common/Backlinks";
-import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
+import { EntityRow } from "../components/entity/EntityRow";
 import { OutputPanel } from "../components/media/OutputPanel";
-import { MediaThumb } from "../components/media/MediaThumb";
-import { InFlightBar, RunBar, RunPlan } from "../components/run/RunPlan";
+import { ApprovalNote, ArmedButton, InFlightBar, RunBar, RunPlan } from "../components/run/RunPlan";
 import { PromotePanel } from "../components/run/PromotePanel";
-import { RunAgainButton } from "../components/run/RunAgainButton";
+import { useRunAgain } from "../components/run/RunAgainButton";
 import { formatCost } from "../utils/cost";
 import { RunPlanEditor } from "../components/run/RunPlanEditor";
+import { useArmed } from "../hooks/useArmed";
 import { useDisclosure } from "../hooks/useDisclosure";
 import { useResource } from "../hooks/useResource";
 import { useProjectCrumb } from "../hooks/useProjectCrumb";
+import { useSearchParamState } from "../hooks/useSearchParamState";
 import { formatBytes, formatDate, formatTextContent } from "../utils/format";
+import { MEDIA_GRID } from "../utils/grid";
 import {
   isTerminal,
   isUnsubmitted,
@@ -88,14 +95,18 @@ export function RunPage() {
   /**
    * Which half of the left column is showing.
    *
-   * Deliberately NOT in the address. The tab a person is on is a reading
-   * position, not a place — `?in=` and the run id are what a pasted link has to
-   * carry, and a payload pane in the query string would survive a share and
-   * open someone else on a raw request document.
+   * **In the address now, like every other tab in the app.** This used to be
+   * component state, on the reasoning that a payload pane in the query string
+   * would survive a share and open someone else on a raw request document —
+   * true, and no different from a link into a project's Scenes tab landing
+   * someone on scenes. `?in=` and the run id already carry the context a share
+   * link needs; the tab is a reading position within that, and a person who
+   * shares a link while reading the payload most likely means to share the
+   * payload.
    */
   /** Whether anything has actually gone to the provider — see `PayloadDocument`. */
   const sent = Boolean(data?.submitted);
-  const [pane, setPane] = useState("plan");
+  const [pane, setPane] = useSearchParamState("tab", "plan");
   // The in-flight bar's "check now", and nothing else — see `decide`.
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
@@ -190,26 +201,40 @@ export function RunPage() {
   // happen to sit in.
   const RUN = useMemo(() => ({ in: "run" as const, id: runId }), [runId]);
 
-  if (loading) {
-    return (
-      <>
-        <div className="flex justify-center py-16">
-          <ApertureSpinner size="lg" label="Loading run" />
-        </div>
-      </>
-    );
-  }
+  /**
+   * `Duplicate` and `Run again` share one hook now — see `useRunAgain` — so
+   * the page bar's `menu` item and its `primary` button fire from the same
+   * `createRun` and read the same failure. Called unconditionally, before the
+   * loading and error returns below: React's rule, not a preference, and the
+   * closures inside only ever run once a button that needs `data` is on
+   * screen.
+   */
+  const runAgain = useRunAgain(data as RunRecord);
+
+  /**
+   * Delete, armed in place inside the menu — `ItemActions`' own machine,
+   * reused rather than copied. Only reachable while the run is unsubmitted
+   * (a menu item, not the control, is what enforces that): nothing has been
+   * spent on a draft, discarded run or approved-but-unsent run, and a mis-click
+   * undoing one should cost nothing either.
+   */
+  const runDelete = useArmed({
+    onFire: async () => {
+      await deleteRun((data as RunRecord).id);
+      navigate(projectPath((data as RunRecord).project));
+    },
+  });
+
+  if (loading) return <PageLoading label="Loading run" />;
 
   if (error || !data) {
     return (
-      <>
-        <Alert.Root intent="danger">
-          <Alert.Title>Could not open this run</Alert.Title>
-          <Alert.Description>
-            {error ?? "It may have been deleted."}
-          </Alert.Description>
-        </Alert.Root>
-      </>
+      <LoadError
+        what="this run"
+        message={error ?? "It may have been deleted."}
+        onRetry={reload}
+        escape={{ label: "Back to home", onClick: () => navigate("/") }}
+      />
     );
   }
 
@@ -221,27 +246,104 @@ export function RunPage() {
    */
   const showEditor = editing && isUnsubmitted(data.status);
 
+  // A draft or an approved-not-yet-sent run: the primary is `RunBar` whole —
+  // its own button and its own failure alert, so nothing else has to repeat
+  // that logic. Anything else that can still act on itself gets `Run again`
+  // as the primary and `Duplicate` behind the menu.
+  const canSubmit = data.status === "draft" || data.status === "approved";
+
   return (
     <>
       {/* The run's project is in its own address — `/p/<id>/r/<id>` — which is
           what that shape is for: a pasted link knows which project it belongs
           to before anything has answered. The name is a request on top of that,
-          not instead of it. */}
-      <PageBar crumbs={crumbs}>
-        {/* A run has no name — the date is what a person recognises it by. */}
-        <Text variant="display">{formatDate(data.created)}</Text>
-        {/* A status and a kind are values the API chose, not prose — mono is
-            what says so, and is what every other status in the app wears. */}
-        <Badge
-          intent={data.status === "failed" ? "danger" : "neutral"}
-          className="font-mono"
-        >
-          {data.status}
-        </Badge>
-        <Badge intent="neutral" className="font-mono">
-          {data.kind}
-        </Badge>
-      </PageBar>
+          not instead of it.
+
+          **`Run`/`Run again` is the primary; `Duplicate` and `Delete` are
+          behind `⋯`.** Both used to be loose rows the page assembled itself —
+          a plan-tab `ConfirmDeleteButton`, a `RunAgainButton` drawn whole at
+          the foot of the plan column — and every other entity page had grown
+          its own different shape for the same two questions: what does this
+          record do, and how do I get rid of it. */}
+      <PageBar
+        crumbs={crumbs}
+        // A run has no name — the date is what a person recognises it by.
+        title={formatDate(data.created)}
+        meta={
+          <>
+            {/* A status and a kind are values the API chose, not prose — mono
+                is what says so, and is what every other status in the app
+                wears. */}
+            <Badge
+              intent={data.status === "failed" ? "danger" : "neutral"}
+              className="font-mono"
+            >
+              {data.status}
+            </Badge>
+            <Badge intent="neutral" className="font-mono">
+              {data.kind}
+            </Badge>
+            <Text variant="caption" family="mono" tone="muted">
+              {data.model}
+            </Text>
+          </>
+        }
+        primary={
+          canSubmit ? (
+            <RunBar run={data} onRan={setData} onReload={reload} />
+          ) : !isUnsubmitted(data.status) ? (
+            <ArmedButton
+              idle="Run again"
+              armed="Press again — this spends"
+              busy="Running…"
+              tooltip="Runs the same prompt, parameters and images as a new attempt. This one keeps its outputs, and the page moves to the new run."
+              onFire={runAgain.fire}
+            />
+          ) : undefined
+        }
+        menu={
+          isUnsubmitted(data.status)
+            ? [
+                {
+                  label: runDelete.busy
+                    ? "Deleting…"
+                    : runDelete.armed
+                      ? "Confirm — delete this run"
+                      : "Delete",
+                  danger: runDelete.armed || runDelete.busy,
+                  disabled: runDelete.busy,
+                  // Arms in place, exactly the way `ItemActions`' delete item
+                  // does: unarmed, the press is swallowed here and the menu
+                  // stays open with the red label; armed, it is let through so
+                  // the menu closes the way any other selection does.
+                  onClick: (event) => {
+                    if (!runDelete.armed) event.preventDefault();
+                    runDelete.press();
+                  },
+                  itemProps: runDelete.handlers,
+                },
+              ]
+            : [{ label: "Duplicate", onSelect: () => void runAgain.duplicate() }]
+        }
+        onMenuOpenChange={(open) => {
+          if (!open) runDelete.disarm();
+        }}
+      />
+
+      {/* The run-again failure and the approval note both belong to the
+          submitted side of this page — the primary above only holds the
+          button, so what it would have shown beside itself lives here. */}
+      {!canSubmit && (
+        <>
+          {runAgain.failure && (
+            <Alert.Root intent="danger">
+              <Alert.Title>Could not create the run</Alert.Title>
+              <Alert.Description>{runAgain.failure}</Alert.Description>
+            </Alert.Root>
+          )}
+          <ApprovalNote run={data} />
+        </>
+      )}
 
       {/* **Split like the provider's own playground, and output-first when it
           cannot split.** What made the run on the left, what came back on the
@@ -282,22 +384,20 @@ export function RunPage() {
               repeating "Nothing came back" underneath it says nothing twice. */}
           {data.outputs.length === 0 ? (
             data.error ? null : (
-              <Text variant="body" tone="muted">
-                {isUnsubmitted(data.status)
-                  ? "Not run yet."
-                  : data.status === "pending" || data.status === "running"
-                    ? "Still working."
-                    : "Nothing came back."}
-              </Text>
+              <EmptyState
+                title={
+                  isUnsubmitted(data.status)
+                    ? "Not run yet."
+                    : data.status === "pending" || data.status === "running"
+                      ? "Still working."
+                      : "Nothing came back."
+                }
+              />
             )
           ) : (
-            <div
-              className={`grid gap-2 ${
-                data.outputs.length === 1
-                  ? "grid-cols-1"
-                  : "grid-cols-2 sm:grid-cols-3"
-              }`}
-            >
+            // The one output is the subject of the page, not a tile among
+            // others — `OutputPanel`'s own `sole` prop is what changes for it.
+            <div className={data.outputs.length === 1 ? "grid grid-cols-1 gap-2" : MEDIA_GRID}>
               {data.outputs.map((asset) => (
                 <Fragment key={asset.node}>
                   <OutputPanel
@@ -321,7 +421,7 @@ export function RunPage() {
                       isPromotable(asset) ? (
                         <Button
                           size="sm"
-                          intent={promote.isOpen(asset.node) ? "ghost" : "primary"}
+                          intent={promote.isOpen(asset.node) ? "secondary" : "primary"}
                           aria-expanded={promote.isOpen(asset.node)}
                           onClick={() => promote.toggle(asset.node)}
                         >
@@ -401,7 +501,7 @@ export function RunPage() {
           <Tabs.Root value={pane} defaultValue="plan" onValueChange={setPane}>
             <Tabs.List className="overflow-x-auto border-b border-line">
               <Tabs.Tab value="plan">Plan</Tabs.Tab>
-              <Tabs.Tab value="payload">Payload</Tabs.Tab>
+              <Tabs.Tab value="request">Request</Tabs.Tab>
             </Tabs.List>
 
             <Tabs.Panel value="plan">
@@ -438,6 +538,8 @@ export function RunPage() {
                 afterwards would sit beside `request.json` describing something
                 that was never sent — so the button is absent rather than present
                 and answered with a 409. */}
+                    {/* Delete moved to the page bar's menu, arm-in-place —
+                        `Edit the plan` is the one thing left here. */}
                     {isUnsubmitted(data.status) && (
                       <div className="flex flex-wrap items-center gap-2">
                         <Button
@@ -447,25 +549,6 @@ export function RunPage() {
                         >
                           Edit the plan
                         </Button>
-                        {/* **Discard, and it is offered here only.** `DELETE
-                            /api/runs/<id>` has no status gate — it will take a
-                            succeeded run and its outputs as readily as an
-                            abandoned draft — so what restricts this to
-                            unsubmitted runs is the app, deliberately. Nothing
-                            has been spent on one, and a draft made by a
-                            mis-click should cost nothing to undo.
-
-                            `files=keep` by default: an unsubmitted run has
-                            produced no files, so there is nothing to sweep and
-                            asking would be a question about nothing. */}
-                        <ConfirmDeleteButton
-                          noun="this run"
-                          tone="page"
-                          onConfirm={async () => {
-                            await deleteRun(data.id);
-                            navigate(projectPath(data.project));
-                          }}
-                        />
                       </div>
                     )}
                   </>
@@ -477,34 +560,13 @@ export function RunPage() {
                   <DuplicateNotice run={data} />
                 )}
 
-                {/* **Under the plan, not over it.** Its own sentence says "the
-            payload above", and it sat above the payload — so the control that
-            spends money was the first thing on the screen and the thing it asks
-            you to read was the second. */}
-                {/* Hidden while the plan is being edited: an armed spend button beside a
-            form holding unsaved words is a yes to whichever of the two you were
-            not looking at. */}
-                {/* **Right-aligned, with every other control that acts on
-                    this run.** A button on the left edge of a wide column
-                    reads as the start of a sentence the page does not
-                    continue; the actions belong together at the end of the
-                    block they act on. */}
-                {!showEditor && (
-                  <div className="flex justify-end">
-                    <RunBar run={data} onRan={setData} onReload={reload} />
-                  </div>
-                )}
-
-                {/* **The only thing a submitted run can still do**, and it makes
-                    a second run rather than re-sending this one — a run row
-                    records one submission. Beside the approval sentence
-                    `RunBar` leaves behind, because the two together are the
-                    account of this attempt and the offer of the next. */}
-                {!isUnsubmitted(data.status) && (
-                  <div className="flex justify-end">
-                    <RunAgainButton run={data} />
-                  </div>
-                )}
+                {/* **`Run`/`Run again` moved to the page bar's `primary`,
+                    and the failure or approval note that used to sit beside
+                    them moved with the concept rather than the markup — see
+                    the block right after `PageBar` above.** Neither is
+                    redrawn here: this used to be where `RunBar` and
+                    `RunAgainButton` sat, and both are one control now instead
+                    of one per status. */}
 
                 {/* Sent, and not back yet. Its own control, because what a person can do
             about a run in flight is nothing like what they can do about one that
@@ -533,23 +595,32 @@ export function RunPage() {
               than only for the CLI — so what is drawn here is always material that
               was already in the library when the run went out. */}
                     {Object.keys(data.bindings).length === 0 ? (
-                      <Text variant="body" tone="muted">
-                        Nothing was bound.
-                      </Text>
+                      <EmptyState title="No bindings yet." />
                     ) : (
                       Object.entries(data.bindings).map(([role, assets]) => (
                         <div key={role} className="flex flex-col gap-1">
                           <Text variant="caption" tone="muted">
                             {role}
                           </Text>
-                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                          {/* Rows, not a grid of tiles of its own — a binding is
+                              a listing entry like any other, and `EntityRow` is
+                              the one shape a listing draws. */}
+                          <div className="flex flex-col">
                             {assets.map((asset) => (
-                              <AssetTile
+                              <EntityRow
                                 key={asset.node}
-                                asset={asset}
-                                onOpen={() =>
-                                  navigate(objectPath(asset.node, RUN))
+                                title={asset.name}
+                                subtitle={
+                                  asset.size !== undefined
+                                    ? formatBytes(asset.size)
+                                    : undefined
                                 }
+                                thumb={{
+                                  node: asset.node,
+                                  url: asset.url,
+                                  isVideo: (asset.content_type ?? "").startsWith("video/"),
+                                }}
+                                to={objectPath(asset.node, RUN)}
                               />
                             ))}
                           </div>
@@ -561,7 +632,7 @@ export function RunPage() {
               </div>
             </Tabs.Panel>
 
-            <Tabs.Panel value="payload">
+            <Tabs.Panel value="request">
               <div className="flex min-w-0 flex-col gap-3 pt-4">
                 <section className="flex flex-col gap-3">
                   <Text variant="caption" tone="muted">
@@ -689,7 +760,7 @@ function DuplicateNotice({ run }: { run: RunRecord }) {
 
   return (
     <Alert.Root intent="warning">
-      <Alert.Title>This payload has been run here before</Alert.Title>
+      <Alert.Title>This request has been run here before</Alert.Title>
       <Alert.Description>
         <span>
           Another run in this project sent exactly this prompt, these parameters
@@ -700,7 +771,7 @@ function DuplicateNotice({ run }: { run: RunRecord }) {
         <button
           type="button"
           onClick={() => navigate(runPath(twin.project, twin.id))}
-          className="rounded text-sm text-accent underline underline-offset-2 hover:opacity-80"
+          className={linkButtonClass("accent")}
         >
           Open the earlier run
         </button>
@@ -731,17 +802,11 @@ function PayloadPreview({ runId }: { runId: string }) {
   const load = useCallback(() => getRunPayloadPreview(runId), [runId]);
   const { data, loading, error } = useResource(["payload", runId], load);
 
-  if (loading) {
-    return (
-      <div className="flex justify-center py-6">
-        <ApertureSpinner size="md" label="Reading the payload" />
-      </div>
-    );
-  }
+  if (loading) return <SectionLoading label="Reading the request" />;
   if (error || !data) {
     return (
       <Text variant="caption" tone="muted">
-        The payload could not be built: {error ?? "nothing came back"}
+        The request could not be built: {error ?? "nothing came back"}
       </Text>
     );
   }
@@ -782,7 +847,7 @@ function PayloadDocument({
     [node],
   );
   const [open, setOpen] = useState(false);
-  const { data, loading, error } = useResource(
+  const { data, loading, error, reload } = useResource(
     open && node !== null ? ["node-text", node] : null,
     load,
   );
@@ -802,15 +867,18 @@ function PayloadDocument({
 
   return (
     <div className="border-t border-line">
+      {/* eslint-disable-next-line studio/no-hand-rolled-button -- a disclosure
+          row, the same button-as-row shape as FileRow/FolderCard. */}
       <button
         type="button"
         onClick={() => setOpen(!open)}
         className="flex w-full items-center gap-2 py-2 text-left transition-colors hover:text-muted
                    focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
       >
-        <span aria-hidden="true" className="text-muted">
-          {open ? "▾" : "▸"}
-        </span>
+        <ChevronDownIcon
+          className={`size-4 shrink-0 fill-none stroke-current stroke-[1.5] text-muted transition-transform
+                      motion-reduce:transition-none ${open ? "" : "-rotate-90"}`}
+        />
         {/* A file name, so mono — this is the one label on the page that is
             literally a path a person would type. */}
         <Text variant="body" family="mono">
@@ -820,17 +888,10 @@ function PayloadDocument({
 
       {open && (
         <div className="border-t border-line bg-card">
-          {loading && (
-            <div className="flex justify-center py-6">
-              <ApertureSpinner size="md" label={`Loading ${label}`} />
-            </div>
-          )}
+          {loading && <SectionLoading label={`Loading ${label}`} />}
           {error && (
             <div className="p-3">
-              <Alert.Root intent="danger">
-                <Alert.Title>Could not read {label}</Alert.Title>
-                <Alert.Description>{error}</Alert.Description>
-              </Alert.Root>
+              <LoadError what={label} message={error} onRetry={reload} />
             </div>
           )}
           {data && (
@@ -847,51 +908,6 @@ function PayloadDocument({
         </div>
       )}
     </div>
-  );
-}
-
-function AssetTile({
-  asset,
-  onOpen,
-  aspect = "square",
-}: {
-  asset: RunAsset;
-  onOpen: () => void;
-  /**
-   * A grid of tiles wants one shape so the rows line up. A run's SINGLE output
-   * is not a tile in a grid — it is the thing the page is about — so it takes
-   * the media's own aspect instead of being letterboxed into a square the
-   * width of half the page.
-   */
-  aspect?: "square" | "auto";
-}) {
-  const isVideo = (asset.content_type ?? "").startsWith("video/");
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      title={asset.name}
-      className="flex flex-col gap-1 rounded-none border border-line bg-card p-1 text-left
-                 transition-colors hover:bg-surface-alt
-                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-    >
-      <MediaThumb
-        nodeId={asset.node}
-        url={asset.url}
-        name={asset.name}
-        isVideo={isVideo}
-        aspect={aspect}
-        className="w-full rounded-none"
-      />
-      <Text variant="caption" tone="muted" className="truncate font-mono">
-        {asset.name}
-      </Text>
-      {asset.size !== undefined && (
-        <Text variant="caption" tone="muted" className="font-mono tabular-nums">
-          {formatBytes(asset.size)}
-        </Text>
-      )}
-    </button>
   );
 }
 

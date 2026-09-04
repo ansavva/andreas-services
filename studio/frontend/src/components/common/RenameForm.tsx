@@ -128,7 +128,7 @@ function IconButton({
       {...props}
       aria-label={label}
       title={label}
-      className="shrink-0 rounded-md p-2 text-muted transition-colors disabled:opacity-60
+      className="touch-target shrink-0 rounded-none p-2 text-muted transition-colors disabled:opacity-60
                  hover:bg-surface-alt hover:text-ink
                  focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
     >

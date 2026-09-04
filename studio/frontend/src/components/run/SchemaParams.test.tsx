@@ -79,8 +79,8 @@ describe("what the schema form draws", () => {
   it("gives an enum a select whose blank option is the model default", () => {
     form();
 
-    const select = screen.getByLabelText("output_format");
-    expect(select.textContent).toContain("model default");
+    const select = screen.getByLabelText("Output format");
+    expect(select.textContent).toContain("Model default");
 
     fireEvent.click(select);
     expect(screen.getByText("png")).toBeTruthy();
@@ -92,7 +92,7 @@ describe("what the schema form draws", () => {
     // the field most often wrong and it never carries its own `enum`.
     form();
 
-    const select = screen.getByLabelText("aspect_ratio");
+    const select = screen.getByLabelText("Aspect ratio");
     fireEvent.click(select);
     expect(screen.getByText("16:9")).toBeTruthy();
     expect(screen.getByText("9:16")).toBeTruthy();
@@ -101,7 +101,7 @@ describe("what the schema form draws", () => {
   it("gives a number its range", () => {
     form();
 
-    const input = screen.getByLabelText("num_outputs") as HTMLInputElement;
+    const input = screen.getByLabelText("Num outputs") as HTMLInputElement;
     expect(input.type).toBe("number");
     expect(input.min).toBe("1");
     expect(input.max).toBe("4");
@@ -110,7 +110,7 @@ describe("what the schema form draws", () => {
   it("gives a boolean a switch, and a way back to the model default", () => {
     form({}, { disable_safety: "true" });
 
-    const toggle = screen.getByRole("switch", { name: "disable_safety" });
+    const toggle = screen.getByRole("switch", { name: "Disable safety" });
     expect(toggle.getAttribute("aria-checked")).toBe("true");
 
     fireEvent.click(screen.getByText("Use the model default"));
@@ -121,16 +121,16 @@ describe("what the schema form draws", () => {
     // Off and unset are different records — one says a person chose false.
     form();
 
-    const toggle = screen.getByRole("switch", { name: "disable_safety" });
+    const toggle = screen.getByRole("switch", { name: "Disable safety" });
     expect(toggle.getAttribute("aria-checked")).toBe("false");
-    expect(toggle.parentElement?.textContent).toContain("model default");
+    expect(toggle.parentElement?.textContent).toContain("Model default");
     expect(screen.queryByText("Use the model default")).toBeNull();
   });
 
   it("gives a plain string an input", () => {
     form();
 
-    expect(screen.getByLabelText("negative_prompt")).toBeTruthy();
+    expect(screen.getByLabelText("Negative prompt")).toBeTruthy();
   });
 
   it("skips the prompt and everything uri-shaped", () => {
@@ -139,15 +139,15 @@ describe("what the schema form draws", () => {
     // box for one would only ever collect the wrong kind of URL.
     form();
 
-    expect(screen.queryByLabelText("prompt")).toBeNull();
-    expect(screen.queryByLabelText("image_input")).toBeNull();
-    expect(screen.queryByLabelText("start_image")).toBeNull();
+    expect(screen.queryByLabelText("Prompt")).toBeNull();
+    expect(screen.queryByLabelText("Image input")).toBeNull();
+    expect(screen.queryByLabelText("Start image")).toBeNull();
   });
 
   it("leaves a shape it cannot draw to the freeform rows", () => {
     form();
 
-    expect(screen.queryByLabelText("lora_weights")).toBeNull();
+    expect(screen.queryByLabelText("Lora weights")).toBeNull();
     expect(describedKeys(schema, new Set()).has("lora_weights")).toBe(false);
   });
 
@@ -160,7 +160,7 @@ describe("what the schema form draws", () => {
   it("clears a prop back to unset rather than to empty", () => {
     form({}, { num_outputs: "3" });
 
-    fireEvent.change(screen.getByLabelText("num_outputs"), {
+    fireEvent.change(screen.getByLabelText("Num outputs"), {
       target: { value: "" },
     });
     expect(onSet).toHaveBeenCalledWith("num_outputs", null);
@@ -171,7 +171,7 @@ describe("what the schema form draws", () => {
     // freeform rows are what a person edits instead.
     form({ props: {}, schemas: {} });
 
-    expect(screen.queryByLabelText("aspect_ratio")).toBeNull();
+    expect(screen.queryByLabelText("Aspect ratio")).toBeNull();
     expect(describedKeys(null, new Set()).size).toBe(0);
   });
 });
@@ -229,6 +229,6 @@ describe("the schema, read", () => {
     expect(screen.queryByLabelText("openai_api_key")).toBeNull();
     expect(screen.queryByLabelText("auth_token")).toBeNull();
     // The ordinary props beside them are untouched.
-    expect(screen.getByLabelText("output_format")).toBeTruthy();
+    expect(screen.getByLabelText("Output format")).toBeTruthy();
   });
 });

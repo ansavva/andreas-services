@@ -1,12 +1,13 @@
 import { useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 
 import { Text } from "@ansavva/design-system";
 
-import { ApertureSpinner } from "../common/Aperture";
+import { EmptyState } from "../common/EmptyState";
+import { SectionLoading } from "../common/SectionLoading";
 import { getCharacters, getProjects } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
+import { ENTITY_GRID } from "../../utils/grid";
 import { characterPath, projectPath } from "../../utils/location";
 import { EntityCard } from "./EntityCard";
 import { LoadError } from "../common/LoadError";
@@ -30,20 +31,18 @@ import { CreateEntityDialog } from "./CreateEntityDialog";
 /**
  * Nothing here yet, and the way to change that.
  *
- * **The button appears only when the heading has none.** Both were shown at
- * first and an empty list drew "New project" twice, a handspan apart — the
- * section's own action and the empty state's call to action, which are the same
- * control. Home passes no action, so its empty state carries the button; the
- * index pages put it in the heading, where it stays once the list fills up.
+ * **The button appears only when nothing else on the page already offers it.**
+ * Home shows both sections with no page-level create control, so their empty
+ * states carry the button. `/characters` and `/projects` have one now — the
+ * page's own `PageBar primary` — and passing it a second time here would draw
+ * "New project" twice, a handspan apart.
  */
-function Empty({ kind, hasAction }: { kind: "character" | "project"; hasAction: boolean }) {
+function Empty({ kind, hasPrimary }: { kind: "character" | "project"; hasPrimary: boolean }) {
   return (
-    <div className="flex flex-col items-start gap-2">
-      <Text variant="body" tone="muted">No {kind}s yet.</Text>
-      {!hasAction && (
-        <CreateEntityDialog kind={kind} />
-      )}
-    </div>
+    <EmptyState
+      title={`No ${kind}s yet.`}
+      action={hasPrimary ? undefined : <CreateEntityDialog kind={kind} />}
+    />
   );
 }
 
@@ -56,35 +55,40 @@ function Section({
   errorTitle,
   onRetry,
   empty,
-  action,
   children,
+  heading = true,
 }: {
   title: string;
   count?: number;
   loading: boolean;
   error: string | null;
   errorTitle: string;
-  onRetry?: () => void;
+  onRetry: () => void;
   empty: ReactNode;
-  action?: ReactNode;
   children: ReactNode;
+  /**
+   * Off on `/characters` and `/projects`, whose `PageBar` already carries
+   * this title — `HomePage` stacks three sections and keeps its own.
+   */
+  heading?: boolean;
 }) {
   return (
     <section className="flex flex-col gap-3">
       {/* A hairline under the heading, the same rule `PageBar` draws under a
           page title. It is what makes a column of sections read as one ruled
           page rather than as headings floating over grids. */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2">
-        <Text variant="title">
-          {title}{" "}
-          {count !== undefined && (
-            <span className="font-mono text-sm text-muted tabular-nums">({count})</span>
-          )}
-        </Text>
-        {action}
-      </div>
+      {heading && (
+        <div className="border-b border-line pb-2">
+          <Text variant="title">
+            {title}{" "}
+            {count !== undefined && (
+              <span className="font-mono text-sm text-muted tabular-nums">({count})</span>
+            )}
+          </Text>
+        </div>
+      )}
 
-      {loading && <ApertureSpinner size="md" label={`Loading ${title.toLowerCase()}`} />}
+      {loading && <SectionLoading label={`Loading ${title.toLowerCase()}`} />}
       {error && <LoadError what={errorTitle.replace("Could not load ", "")} message={error} onRetry={onRetry} />}
       {count === 0 && empty}
 
@@ -93,8 +97,12 @@ function Section({
   );
 }
 
-export function CharactersSection({ action }: { action?: ReactNode }) {
-  const navigate = useNavigate();
+interface SectionProps {
+  hasPrimary?: boolean;
+  heading?: boolean;
+}
+
+export function CharactersSection({ hasPrimary = false, heading }: SectionProps) {
   const { data, loading, error, reload } = useResource(
     ["characters"],
     useCallback(() => getCharacters(), []),
@@ -108,17 +116,17 @@ export function CharactersSection({ action }: { action?: ReactNode }) {
       error={error}
       errorTitle="Could not load characters"
       onRetry={reload}
-      action={action}
-      empty={<Empty kind="character" hasAction={action !== undefined} />}
+      empty={<Empty kind="character" hasPrimary={hasPrimary} />}
+      heading={heading}
     >
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div className={ENTITY_GRID}>
         {(data ?? []).map((character) => (
           <EntityCard
             key={character.id}
             name={character.name}
             hero={character.hero}
             counts={`${character.counts.default} sent · ${character.counts.files} files`}
-            onOpen={() => navigate(characterPath(character.id))}
+            to={characterPath(character.id)}
           />
         ))}
       </div>
@@ -126,8 +134,7 @@ export function CharactersSection({ action }: { action?: ReactNode }) {
   );
 }
 
-export function ProjectsSection({ action }: { action?: ReactNode }) {
-  const navigate = useNavigate();
+export function ProjectsSection({ hasPrimary = false, heading }: SectionProps) {
   const { data, loading, error, reload } = useResource(
     ["projects"],
     useCallback(() => getProjects(), []),
@@ -141,17 +148,17 @@ export function ProjectsSection({ action }: { action?: ReactNode }) {
       error={error}
       errorTitle="Could not load projects"
       onRetry={reload}
-      action={action}
-      empty={<Empty kind="project" hasAction={action !== undefined} />}
+      empty={<Empty kind="project" hasPrimary={hasPrimary} />}
+      heading={heading}
     >
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div className={ENTITY_GRID}>
         {(data ?? []).map((project) => (
           <EntityCard
             key={project.id}
             name={project.name}
             hero={project.hero}
             counts={`${project.counts.runs} runs · ${project.counts.scenes} scenes · ${project.counts.movies} movies`}
-            onOpen={() => navigate(projectPath(project.id))}
+            to={projectPath(project.id)}
           />
         ))}
       </div>

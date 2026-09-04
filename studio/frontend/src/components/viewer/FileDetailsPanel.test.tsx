@@ -213,7 +213,7 @@ describe("the dismissal guard", () => {
       "On the porch.",
     );
     expect(screen.getByRole("button", { name: "Keep editing" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Discard" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Leave without saving" })).toBeTruthy();
   });
 });
 

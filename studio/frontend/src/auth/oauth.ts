@@ -332,8 +332,8 @@ export async function handleCallback(params: URLSearchParams): Promise<string> {
  * promise, awaited by all of them.
  *
  * Studio's client has no refresh-token rotation, so a race here is merely
- * wasteful rather than fatal; scout's does, and there it would invalidate the
- * token mid-flight. Same shape either way, on purpose.
+ * wasteful rather than fatal; with rotation it would invalidate the token
+ * mid-flight. Same shape either way, on purpose.
  */
 let inflight: Promise<StoredTokens> | null = null;
 

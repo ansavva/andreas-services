@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Alert, Breadcrumbs, Button, Dialog, Text } from "@ansavva/design-system";
 
-import { ApertureSpinner } from "../common/Aperture";
+import { EmptyState } from "../common/EmptyState";
+import { SectionLoading } from "../common/SectionLoading";
 import { getFolder } from "../../apis/studio";
 import type { Crumb, FileEntry, FolderEntry } from "../../types";
 import type { FolderId } from "../../utils/location";
 import { ArrowUpIcon, FolderIcon } from "../common/icons";
 import { MediaThumb } from "../media/MediaThumb";
+import { MEDIA_GRID } from "../../utils/grid";
 import { TagFilter } from "./TagFilter";
 
 interface Props {
@@ -154,15 +156,12 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
         <TagFilter value={tags} onChange={setTags} searching={searching} />
 
         <div className="min-h-48 flex-1 overflow-auto rounded-none border border-line">
-          {loading && (
-            <div className="flex h-48 items-center justify-center">
-              <ApertureSpinner size="md" label="Loading folder" />
-            </div>
-          )}
+          {loading && <SectionLoading label="Loading folder" />}
 
           {!loading && (
             <div className="flex flex-col">
               {parent !== undefined && (
+                // eslint-disable-next-line studio/no-hand-rolled-button -- a listing row, same shape as FileRow/FolderCard.
                 <button
                   type="button"
                   onClick={() => setFolderId(parent)}
@@ -176,6 +175,7 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
               )}
 
               {folders.map((folder) => (
+                // eslint-disable-next-line studio/no-hand-rolled-button -- a listing row, same shape as FileRow/FolderCard.
                 <button
                   key={folder.id}
                   type="button"
@@ -192,9 +192,8 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
               ))}
 
               {files.length > 0 && (
-                // The same density as every other media grid in the app: two
-                // columns on a phone rather than one column of enormous tiles.
-                <div className="grid grid-cols-2 gap-2 p-2 sm:grid-cols-4 md:grid-cols-5">
+                // The same grid as every other media listing in the app.
+                <div className={`${MEDIA_GRID} p-2`}>
                   {files.map((file) => (
                     <Tile
                       key={file.id}
@@ -212,15 +211,14 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
                   is wrong when the search covered the whole branch — it names
                   the folder you are standing in, which is not where it looked. */}
               {files.length === 0 && folders.length === 0 && !searching && (
-                <Text variant="caption" tone="muted" className="p-3">
-                  Nothing here.
-                </Text>
+                <EmptyState title="No files here yet." className="p-3" />
               )}
 
               {files.length === 0 && folders.length === 0 && searching && (
-                <Text variant="caption" tone="muted" className="p-3">
-                  Nothing under this folder is tagged {tags.join(" + ")}.
-                </Text>
+                <EmptyState
+                  title={`Nothing under this folder is tagged ${tags.join(" + ")}.`}
+                  className="p-3"
+                />
               )}
             </div>
           )}
@@ -232,7 +230,7 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
 
         {error && (
           <Alert.Root intent="danger">
-            <Alert.Title>That did not work</Alert.Title>
+            <Alert.Title>Could not add the selection</Alert.Title>
             <Alert.Description>{error}</Alert.Description>
           </Alert.Root>
         )}
@@ -276,6 +274,7 @@ function Tile({
   const chosen = position >= 0;
 
   return (
+    // eslint-disable-next-line studio/no-hand-rolled-button -- a media tile, same shape as MediaTile.
     <button
       type="button"
       onClick={onToggle}
@@ -286,7 +285,7 @@ function Tile({
       className={`relative flex flex-col gap-1 rounded-none border p-1 text-left transition-colors
                   disabled:cursor-default disabled:opacity-40
                   focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary
-                  ${chosen ? "border-primary bg-surface-alt" : "border-line hover:bg-surface-alt"}`}
+                  ${chosen ? "border-primary ring-2 ring-primary" : "border-line hover:bg-surface-alt"}`}
     >
       <MediaThumb
         nodeId={file.id}
@@ -301,9 +300,12 @@ function Tile({
         {already ? "already sent" : file.name}
       </Text>
       {chosen && (
+        // Square, like every other badge in the app — a picker tile was the
+        // one round mark left, and it read as a different vocabulary from the
+        // ordinals everywhere else (a movie's cut order, a folder's index).
         <span
-          className="absolute right-2 top-2 flex size-6 items-center justify-center rounded-full
-                     bg-primary font-body text-xs text-primary-text"
+          className="absolute right-2 top-2 flex size-6 items-center justify-center rounded-none
+                     bg-primary font-mono text-xs tabular-nums text-primary-text"
         >
           {position + 1}
         </span>

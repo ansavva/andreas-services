@@ -23,7 +23,7 @@ server-side** for SEO/OG and fast first paint.
   Package `website_core`.
   Endpoints: `POST /api/intake`, `POST /api/subscribe`, `GET /api/admin/submissions`.
 - **`infra/`** — Terraform `modules/` (data, auth, api_gateway, api_domain,
-  compute, hosting) + `envs/prod`, mirroring Scout.
+  compute, hosting) + `envs/prod`.
 
 ```
 Browser ──▶ CloudFront (www + apex)

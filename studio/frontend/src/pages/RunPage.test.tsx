@@ -5,7 +5,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useSearchParams } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RunRecord, RunStatus, RunSummary } from "../types";
@@ -222,8 +222,8 @@ it("says nothing at all when no scene has used it", async () => {
  * re-sent — a run row records one submission.
  */
 const again = () => screen.queryByRole("button", { name: /run again/i });
-const discard = () =>
-  screen.queryByRole("button", { name: /delete this run/i });
+/** Behind the page bar's `⋯` now — see `menuTrigger`. */
+const menuTrigger = () => screen.queryByRole("button", { name: "More actions" });
 
 it("offers Run again only once a run has been sent", async () => {
   read.mockResolvedValue(record({ status: "succeeded" }));
@@ -255,12 +255,13 @@ it("offers Discard on an unsubmitted run, and deletes it back to the project", a
   read.mockResolvedValue(record({ status: "draft" }));
   await open();
 
-  const button = discard();
-  expect(button).toBeTruthy();
+  fireEvent.click(menuTrigger() as HTMLElement);
+  const item = screen.getByRole("menuitem", { name: "Delete" });
   // Armed first: the same two-press confirm every destructive control in this
-  // app uses, and never a dialog.
-  fireEvent.click(button as HTMLElement);
-  fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
+  // app uses, and never a dialog — just a menu item that arms in place, the
+  // way `ItemActions`' own delete item does.
+  fireEvent.click(item);
+  fireEvent.click(screen.getByRole("menuitem", { name: /confirm/i }));
 
   await waitFor(() => expect(remove).toHaveBeenCalledWith(RUN));
   await screen.findByText("the project page");
@@ -270,7 +271,50 @@ it("offers no Discard once a run has been sent", async () => {
   read.mockResolvedValue(record({ status: "succeeded" }));
   await open();
 
-  expect(discard()).toBeNull();
+  fireEvent.click(menuTrigger() as HTMLElement);
+  expect(screen.queryByRole("menuitem", { name: "Delete" })).toBeNull();
+});
+
+/**
+ * **The Plan/Payload split is a place now, not a reading position.** It used to
+ * be `useState` — a pasted link into the payload landed a second reader on
+ * Plan, having read none of what the first one meant to share. Every other
+ * tab in the app already works this way; this was the one holdout.
+ */
+it("keeps the open pane in the address, at rest naming none", async () => {
+  read.mockResolvedValue(record({ status: "succeeded" }));
+
+  function Probe() {
+    const [params] = useSearchParams();
+    return <div data-testid="tab-param">{params.get("tab") ?? ""}</div>;
+  }
+
+  render(
+    <MemoryRouter initialEntries={[`/p/${PROJECT}/r/${RUN}`]}>
+      <Routes>
+        <Route
+          path="/p/:projectId/r/:runId"
+          element={
+            <>
+              <RunPage />
+              <Probe />
+            </>
+          }
+        />
+      </Routes>
+    </MemoryRouter>,
+    { wrapper: TestProviders },
+  );
+  await screen.findByText("Outputs");
+
+  // The default tab, written as absence — a link copied at rest names no tab.
+  expect(screen.getByTestId("tab-param").textContent).toBe("");
+
+  fireEvent.click(screen.getByRole("tab", { name: "Request" }));
+  expect(screen.getByTestId("tab-param").textContent).toBe("request");
+
+  fireEvent.click(screen.getByRole("tab", { name: "Plan" }));
+  expect(screen.getByTestId("tab-param").textContent).toBe("");
 });
 
 /**

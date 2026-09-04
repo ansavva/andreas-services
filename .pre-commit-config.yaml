@@ -13,7 +13,7 @@ repos:
     rev: v1.32.1
     hooks:
       - id: cfn-lint
-        files: ^(humbugg|scout)/infra/.*\.(yaml|yml)$
+        files: ^humbugg/infra/.*\.(yaml|yml)$
         args: [--non-zero-exit-code, error]
 
   - repo: https://github.com/antonbabenko/pre-commit-terraform
@@ -29,7 +29,7 @@ repos:
     rev: v0.15.8
     hooks:
       - id: ruff-check
-        files: ^(scout|storybook|humbugg|studio)/.*\.py$
+        files: ^(storybook|humbugg|studio)/.*\.py$
 
   - repo: local
     hooks:

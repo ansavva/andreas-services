@@ -22,6 +22,7 @@ import {
   SoundOffIcon,
   SoundOnIcon,
 } from "../common/icons";
+import { CHROME_BUTTON } from "./chromeButton";
 import { PlayerTransport } from "./PlayerTransport";
 
 /**
@@ -52,9 +53,6 @@ const FITS = { cover: "object-cover", contain: "object-contain" } as const;
 const FULLSCREEN_TOP = "pt-[max(0.5rem,env(safe-area-inset-top))]";
 const FULLSCREEN_BOTTOM =
   "pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]";
-
-/** The chrome buttons all wear the same fill over a media frame. */
-const CHROME_BUTTON = "text-neutral-12 hover:bg-neutral-a5 active:bg-neutral-a6";
 
 /**
  * The three things a keyboard shortcut needs and the DOM cannot reach.
@@ -334,7 +332,7 @@ export function MediaPlayer({
 
   const media = `h-full w-full ${FITS[fit]}`;
   const box = [
-    "relative isolate block overflow-hidden rounded-xs bg-neutral-1",
+    "relative isolate block overflow-hidden rounded-none bg-chrome-scrim",
     isFullscreen ? "" : ASPECTS[aspect],
     className,
   ].join(" ");
@@ -392,16 +390,17 @@ export function MediaPlayer({
       {/* The poster's press target is the whole box, which is the size a finger
           wants. The circle is what says it is pressable. */}
       {isVideo && !playing && !failed && (
+        // eslint-disable-next-line studio/no-hand-rolled-button -- a full-bleed hit target the size of the frame.
         <button
           type="button"
           onClick={startPlaying}
           aria-label={`Play ${name}`}
           className="absolute inset-0 z-10 flex cursor-pointer items-center justify-center
-                     bg-neutral-1/20 transition-colors hover:bg-neutral-1/40
+                     bg-chrome-scrim/20 transition-colors hover:bg-chrome-scrim/40
                      focus-visible:outline-2 focus-visible:outline-offset-[-2px]
                      focus-visible:outline-primary"
         >
-          <span className="flex size-14 items-center justify-center rounded-pill bg-neutral-1/70 text-neutral-12">
+          <span className="flex size-14 items-center justify-center rounded-pill bg-chrome-scrim/70 text-chrome-ink">
             <PlayIcon className="size-7 fill-none stroke-current stroke-[1.5]" />
           </span>
         </button>
@@ -412,8 +411,8 @@ export function MediaPlayer({
         <Text
           variant="caption"
           family="mono"
-          className="pointer-events-none absolute bottom-1.5 right-1.5 z-10 rounded-xs
-                     bg-neutral-1/80 px-1.5 py-0.5 text-neutral-12"
+          className="pointer-events-none absolute bottom-1.5 right-1.5 z-10 rounded-none
+                     bg-chrome-scrim/80 px-1.5 py-0.5 text-chrome-ink"
         >
           {formatDuration(duration)}
         </Text>
@@ -422,7 +421,7 @@ export function MediaPlayer({
       {showChrome && !failed && (
         <div
           className={`pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start
-                      justify-between gap-2 bg-gradient-to-b from-neutral-1/80 to-transparent
+                      justify-between gap-2 bg-gradient-to-b from-chrome-scrim/80 to-transparent
                       p-2 pb-10 ${isFullscreen ? FULLSCREEN_TOP : ""}`}
         >
           <div className="pointer-events-auto flex min-w-0 items-center gap-1">{actions}</div>
@@ -478,11 +477,11 @@ export function MediaPlayer({
       {isVideo && playing && !failed && (
         <div
           className={`pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col gap-1
-                      bg-gradient-to-t from-neutral-1/85 to-transparent px-3 pb-3 pt-12
+                      bg-gradient-to-t from-chrome-scrim/85 to-transparent px-3 pb-3 pt-12
                       ${isFullscreen ? FULLSCREEN_BOTTOM : ""}`}
         >
           {playback.blocked && (
-            <Text variant="caption" className="pointer-events-auto text-neutral-12">
+            <Text variant="caption" className="pointer-events-auto text-chrome-ink">
               Your browser blocked sound. Press play, then unmute above.
             </Text>
           )}

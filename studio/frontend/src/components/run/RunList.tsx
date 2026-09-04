@@ -1,8 +1,8 @@
-import { Badge, Text } from "@ansavva/design-system";
+import { Text } from "@ansavva/design-system";
 
 import { formatDate } from "../../utils/format";
-import type { RunKind, RunStatus, RunSummary } from "../../types";
-import { MediaThumb } from "../media/MediaThumb";
+import type { RunStatus, RunSummary } from "../../types";
+import { EntityRow, type RowBadge } from "../entity/EntityRow";
 import { formatCost } from "../../utils/cost";
 
 /**
@@ -19,6 +19,7 @@ import { formatCost } from "../../utils/cost";
  * each was reasonable on its own. That is what this component is for — not to
  * save lines, but so that a status colour means one thing across the app.
  *
+ * The row itself is `EntityRow`'s: what a run adds is which fields go where.
  * **Chrome is the caller's.** Filters, paging, empty states and headings differ
  * by screen and belong to the screen; what a RUN looks like does not.
  */
@@ -61,99 +62,64 @@ interface RunRow extends Partial<Omit<RunSummary, "id">> {
 
 export function RunList({
   runs,
-  onOpen,
+  to,
   empty,
 }: {
   runs: RunRow[];
-  onOpen: (run: RunRow) => void;
+  /** A run's address. The caller knows the project; a row may not. */
+  to: (run: RunRow) => string;
   /** Shown instead of the rows when there are none. */
   empty?: React.ReactNode;
 }) {
   if (runs.length === 0) return <>{empty ?? null}</>;
 
   return (
-    <div className="flex flex-col gap-2">
-      {runs.map((run) => (
-        <button
-          key={run.id}
-          type="button"
-          onClick={() => onOpen(run)}
-          className="flex w-full items-center gap-3 rounded-none border border-line bg-card p-2 text-left
-                     transition-colors hover:bg-surface-alt
-                     focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          {/* The thumbnail is the run's first output, signed by the listing —
-              what the projection on the listing row is for. A run that has not
-              produced anything yet shows its kind instead; a caller that reads
-              no thumbnails at all draws neither, rather than a row of empty
-              squares. */}
-          {(run.thumb || run.kind) && (
-            <span className="size-20 shrink-0 overflow-hidden rounded-none border border-line bg-surface-alt">
-              {run.thumb ? (
-                // `isVideo` is not optional here even though its default is
-                // `false`: a video run's first output is an `.mp4`, and without
-                // this the row rendered it through `<img>` and drew a broken
-                // image. `run.kind` has said which it is all along.
-                <MediaThumb
-                  nodeId={run.thumb.node}
-                  url={run.thumb.url}
-                  name=""
-                  aspect="auto"
-                  isVideo={run.kind === "video"}
-                />
-              ) : (
-                <span className="flex h-full w-full items-center justify-center text-xs text-muted">
-                  {run.kind as RunKind}
-                </span>
-              )}
-            </span>
-          )}
+    <div className="flex flex-col">
+      {runs.map((run) => {
+        const status: RowBadge[] = [];
+        if (run.role) status.push(run.role);
+        if (run.status) status.push({ label: run.status, intent: STATUS_INTENT[run.status] });
 
-          <span className="min-w-0 flex-1">
-            {/* A run has no label. The date is what identifies one to a person,
-                which is what the old slug was imitating by carrying a timestamp;
-                the model is the next most useful thing about it. */}
-            {/* A date standing in for a name, and a model id — both are
-                values rather than prose, so both are mono. */}
-            <Text variant="body" family="mono" className="truncate">
-              {run.created ? formatDate(run.created) : run.id}
-            </Text>
-            {run.model && (
-              <Text
-                variant="caption"
-                tone="muted"
-                className="block truncate font-mono"
-              >
-                {run.model}
-              </Text>
-            )}
-          </span>
-
-          {run.role && (
-            <Badge intent="neutral" className="font-mono">
-              {run.role}
-            </Badge>
-          )}
-          {run.status && (
-            <Badge intent={STATUS_INTENT[run.status]} className="font-mono">
-              {run.status}
-            </Badge>
-          )}
-
-          {/* Recorded when the provider reports it and never computed —
-              Replicate's prediction metrics differ by model, and a number this
-              app worked out itself would be a guess wearing a currency sign. */}
-          {run.cost !== undefined && (
-            <Text
-              variant="caption"
-              tone="muted"
-              className="w-20 shrink-0 text-right font-mono tabular-nums"
-            >
-              {formatCost(run.cost, "—")}
-            </Text>
-          )}
-        </button>
-      ))}
+        return (
+          <EntityRow
+            key={run.id}
+            // A run has no label. The date is what identifies one to a person,
+            // and the model is the next most useful thing about it — both
+            // values rather than prose, so both mono.
+            title={run.created ? formatDate(run.created) : run.id}
+            mono
+            subtitle={run.model}
+            // The thumbnail is the run's first output, signed by the listing.
+            // `isVideo` is not optional: a video run's first output is an
+            // `.mp4`, and without it the row drew a broken image. A run that
+            // has produced nothing shows its kind; a caller that reads no
+            // thumbnails draws neither.
+            thumb={
+              run.thumb
+                ? { node: run.thumb.node, url: run.thumb.url, isVideo: run.kind === "video" }
+                : run.kind
+                  ? { placeholder: run.kind }
+                  : undefined
+            }
+            status={status}
+            to={to(run)}
+            // Recorded when the provider reports it and never computed —
+            // Replicate's prediction metrics differ by model, and a number this
+            // app worked out itself would be a guess wearing a currency sign.
+            trailing={
+              run.cost !== undefined && (
+                <Text
+                  variant="caption"
+                  tone="muted"
+                  className="w-20 shrink-0 text-right font-mono tabular-nums"
+                >
+                  {formatCost(run.cost)}
+                </Text>
+              )
+            }
+          />
+        );
+      })}
     </div>
   );
 }

@@ -120,7 +120,7 @@ function inline(text: string): React.ReactNode[] {
       );
     } else if (token.startsWith("`")) {
       parts.push(
-        <code key={match.index} className="rounded-sm bg-surface-alt px-1 font-mono text-xs text-ink">
+        <code key={match.index} className="rounded-none bg-surface-alt px-1 font-mono text-xs text-ink">
           {token.slice(1, -1)}
         </code>,
       );

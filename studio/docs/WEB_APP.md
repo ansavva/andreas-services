@@ -352,8 +352,8 @@ page and a plain textarea over its literal bytes, and never offers fields.
   the API's compare-and-swap still refuses a submission whose payload moved
   underneath, and the audit trail still records who said yes and when.
   `draft` and `approved` render the same control. First press arms and says
-  what the second will do; the second runs. See `ArmedButton`, which
-  `ConfirmDeleteButton` and `RunAgainButton` share the mechanics of.
+  what the second will do; the second runs. See `useArmed`, the one arm/disarm
+  machine `ArmedButton`, `ConfirmDeleteButton` and `ItemActions` all run on.
 - **A run's outputs can be promoted into a character, inline.** An image output
   carries a `Promote…` control beside it — a **sibling** of `OutputPanel`, never
   inside it, because the panel's caption is a real `<a href>` and its player is
@@ -560,7 +560,7 @@ page and a plain textarea over its literal bytes, and never offers fields.
   Every other folder carries its own `Move…`/`Delete` in an `ItemActions` menu
   on its card — but that card is drawn by the folder's *parent*, so the one
   folder with no card on screen is the one you are standing in. `BrowsePage`
-  puts a `ConfirmDeleteButton` (tone `bar`) in the action row, disabled at the
+  puts a `ConfirmDeleteButton` (tone `icon`) in the action row, disabled at the
   root where the API refuses it anyway. Leaving is the one navigation between
   folders that **replaces** rather than pushes: the entry behind you would
   otherwise be the folder you just destroyed.
@@ -573,11 +573,11 @@ page and a plain textarea over its literal bytes, and never offers fields.
 - **The browser has two views, and Media is a SEARCH.** `Folders | Media` in
   the action row. Media sends `kind=image,video` with `depth=all` — the same
   trick the tag filter uses. Folders and text are not hidden by a branch in the
-  render; they are not in the answer. It composes with everything already
+  render; they are not in the answer, and the two sections that draw them render
+  nothing on their own. It composes with everything already
   there: the folder chips still say *where*, the tag filter still narrows
   *what*, and sort, filter, selection, upload and every bulk write work
-  unchanged over the flat result. The view rides in the query string, so it is
-  a link.
+  unchanged over the flat result. `?view=media`, so it is a link.
 - **A project's Runs tab is that browser again, scoped to `runs/`.** `List |
   Grid`, and the unit is what differs — List's is the RUN (status, model,
   cost, the plan behind it, each a field on the listing row and each
@@ -670,6 +670,43 @@ page and a plain textarea over its literal bytes, and never offers fields.
   a bug forever, which is why there is one accessor rather than two fields.
 - Lambda uses `lifecycle { ignore_changes = [image_uri, environment] }`; the
   deploy workflow owns the image tag and the env vars.
+
+### UI vocabulary
+
+A fixed set of primitives, not freehand markup, is what a screen is built
+from: `PageBar` (title, meta, actions, a `⋯` menu) and `FormBar` (a form's
+save/cancel row); `EmptyState` and `LoadError` for the two ways a listing has
+nothing to show; `PageLoading`/`SectionLoading` for the two loading weights;
+`EntityRow`/`EntityCard`/`MediaTile` for a listing item; `FilterBar` for the
+tag/search strip above one; `Chip`/`chipClass` for the square, bordered
+toggle; `ConfirmDeleteButton`/`ConfirmDestroyDialog` for destructive actions,
+weighted by what is lost — one entity arms in place, anything with children
+types its name; `useArmed`, the arm/disarm machine both of those (and
+`ArmedButton`, `ItemActions`) run on; `dangerButtonClass`, the one recipe for
+a text button that destroys; and toasts (`useToast`) for feedback that is not
+a page's own error state.
+
+Nine rules keep every screen speaking that vocabulary, #589-#596:
+
+1. **Square corners** — `rounded-none`; `rounded-pill` stays a shape, not a corner.
+2. **No ghost intent** — `secondary` is `Button`'s quiet weight.
+3. **Semantic colour only** — no raw `neutral-*` ramp class outside the
+   `chrome-*` tokens `styles/app.css` defines for media overlays.
+4. **No hand-rolled controls** — `Button`/`IconButton`/`buttonClass`, not a
+   `<button className="…border…hover:…">`.
+5. **No literal glyph characters** — icons are SVGs from `components/common/icons.tsx`.
+6. **Every spinner says what it is loading** — `ApertureSpinner` takes a `label`.
+7. **Empty-state prose lives in `EmptyState`** — nothing else says "No … yet."
+8. **One shape for a failure title** — "Could not ‹verb› ‹noun›", never "That
+   did not…"/"Nothing was…".
+9. **The lint rules are what keep the other eight true, not memory.** This
+   directory's `eslint/` (a local plugin, no dependency added) enforces 1, 3
+   and 5 by walking every class-bearing expression — a JSX `className`, a
+   template literal, a hoisted constant, or an argument to
+   `buttonClass`/`chipClass`/`clsx`/`twMerge` all resolve to the same check —
+   and 4 the same way over `<button>` elements outside `components/common/`;
+   2, 6, 7 and 8 are `no-restricted-syntax` selectors in `eslint.config.js`.
+   `npm run lint` is what a PR runs.
 
 ## API
 

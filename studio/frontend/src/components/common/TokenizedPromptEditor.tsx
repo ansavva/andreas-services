@@ -185,7 +185,7 @@ export function TokenizedPromptEditor({
         theme: {},
       }}
     >
-      <div className="rounded border border-line p-2">
+      <div className="rounded-none border border-line p-2">
         <PlainTextPlugin
           contentEditable={
             <ContentEditable
@@ -407,7 +407,7 @@ function Typeahead({
               <ul
                 role="listbox"
                 aria-label="Insert a placeholder"
-                className="m-0 max-h-64 w-72 list-none overflow-auto rounded border border-line bg-card p-1 shadow-lg"
+                className="m-0 max-h-64 w-72 list-none overflow-auto rounded-none border border-line bg-card p-1 shadow-lg"
               >
                 {options.map((option, index) => (
                   <li
@@ -424,7 +424,7 @@ function Typeahead({
                       setHighlightedIndex(index);
                       selectOptionAndCleanUp(option);
                     }}
-                    className={`flex cursor-pointer items-baseline gap-2 rounded px-2 py-1 ${
+                    className={`flex cursor-pointer items-baseline gap-2 rounded-none px-2 py-1 ${
                       selectedIndex === index ? "bg-surface-alt" : ""
                     }`}
                   >

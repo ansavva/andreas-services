@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
@@ -7,13 +7,15 @@ import { TestProviders } from "../test-providers";
 
 vi.mock("../apis/studio", () => ({
   getMovie: vi.fn(),
+  deleteMovie: vi.fn(),
   getProject: vi.fn().mockResolvedValue({ id: "proj-1", name: "A project" }),
 }));
 
-import { getMovie } from "../apis/studio";
+import { deleteMovie, getMovie } from "../apis/studio";
 import { MoviePage } from "./MoviePage";
 
 const read = vi.mocked(getMovie);
+const destroy = vi.mocked(deleteMovie);
 const ID = "movie-1";
 
 let landed = "";
@@ -48,6 +50,8 @@ async function open() {
       <Routes>
         <Route path="/m/:movieId" element={<MoviePage />} />
         <Route path="/s/:sceneId" element={<Land />} />
+        {/* Where deleting the movie lands — the project it belongs to. */}
+        <Route path="/p/:projectId" element={<Land />} />
       </Routes>
     </MemoryRouter>,
     { wrapper: TestProviders },
@@ -76,7 +80,8 @@ it("opens a scene from its row", async () => {
   );
   await open();
 
-  fireEvent.click(await screen.findByRole("button", { name: /A scene/ }));
+  // A row is `EntityRow`'s `<a>` now, not a `<button>` — see `EntityRow.to`.
+  fireEvent.click(await screen.findByRole("link", { name: /A scene/ }));
 
   await screen.findByText("landed");
   expect(landed).toBe("/s/scene-7");
@@ -97,7 +102,30 @@ it("numbers the scenes in cut order", async () => {
   );
   await open();
 
-  const rows = await screen.findAllByRole("button", { name: /First|Second/ });
+  const rows = await screen.findAllByRole("link", { name: /First|Second/ });
   expect(rows[0]?.textContent).toMatch(/^1/);
   expect(rows[1]?.textContent).toMatch(/^2/);
+});
+
+/** Delete lives behind the page bar's `⋯`, typing the name like Scene's does. */
+it("types the name before deleting the movie, then lands on its project", async () => {
+  destroy.mockResolvedValue({ id: ID, files: "delete" });
+  read.mockResolvedValue(record());
+  await open();
+
+  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+
+  const dialog = await screen.findByRole("alertdialog");
+  const action = screen.getByRole("button", { name: "Delete" }) as HTMLButtonElement;
+  expect(action.disabled).toBe(true);
+  expect(destroy).not.toHaveBeenCalled();
+
+  fireEvent.change(within(dialog).getByLabelText("Confirm"), { target: { value: "A movie" } });
+  await waitFor(() => expect(action.disabled).toBe(false));
+  fireEvent.click(action);
+
+  await waitFor(() => expect(destroy).toHaveBeenCalledWith(ID, "delete"));
+  await screen.findByText("landed");
+  expect(landed).toBe("/p/proj-1");
 });

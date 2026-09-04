@@ -16,6 +16,8 @@ import {
   Text,
 } from "@ansavva/design-system";
 
+import { EmptyState } from "../common/EmptyState";
+
 import { ApiError } from "../../apis/client";
 import {
   getCharacterSelection,
@@ -37,6 +39,7 @@ import type {
   RunSend,
   SelectionEntry,
 } from "../../types";
+import { humaniseKey } from "../../utils/format";
 import { AutoTextarea } from "../common/AutoTextarea";
 import { RunCast } from "./RunCast";
 import { TemplatePicker } from "./TemplatePicker";
@@ -49,7 +52,7 @@ import {
   fieldsOf,
   parsePrompt,
 } from "../scene/motionPrompt";
-import { TrashIcon } from "../common/icons";
+import { ArrowDownIcon, ArrowUpIcon, TrashIcon } from "../common/icons";
 import { MediaPicker } from "../browse/MediaPicker";
 import { MediaThumb } from "../media/MediaThumb";
 import { SchemaParams, describedKeys } from "./SchemaParams";
@@ -677,7 +680,9 @@ export function RunPlanEditor({
     <section className="flex flex-col gap-4 rounded-none border border-line bg-card p-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <Text variant="title">Editing the plan</Text>
-        <Badge intent="warning">withdraws the approval</Badge>
+        {/* A note, not a status — it reads as a phrase in body font, sentence
+            case, rather than the lowercase mono a state like "draft" gets. */}
+        <Badge intent="warning">Withdraws the approval</Badge>
       </div>
 
       <Text variant="caption" tone="muted" className="max-w-prose">
@@ -688,7 +693,7 @@ export function RunPlanEditor({
 
       {error && (
         <Alert.Root intent="danger">
-          <Alert.Title>That did not save</Alert.Title>
+          <Alert.Title>Could not save the plan</Alert.Title>
           <Alert.Description>{error}</Alert.Description>
         </Alert.Root>
       )}
@@ -721,7 +726,7 @@ export function RunPlanEditor({
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {(["shot", "movement", "lens_mm", "speed"] as const).map((k) => (
               <Field.Root key={k} name={`camera_${k}`}>
-                <Field.Label>{k === "lens_mm" ? "Lens (mm)" : k}</Field.Label>
+                <Field.Label>{humaniseKey(k)}</Field.Label>
                 <Input
                   value={camera[k]}
                   onValueChange={(next: string) =>
@@ -831,7 +836,7 @@ export function RunPlanEditor({
       </div>
 
       <div className="flex flex-col gap-3">
-        <Text variant="caption" tone="muted">
+        <Text variant="caption" tone="muted" className="block">
           Parameters
         </Text>
 
@@ -1075,8 +1080,13 @@ function Sends({
 
   return (
     <div className="flex flex-col gap-2">
-      <Text variant="caption" tone="muted">
-        Images, in the order the model is handed them
+      <Text variant="caption" tone="muted" className="block">
+        Images
+      </Text>
+      {/* The explanatory clause used to live in the label itself. A section
+          label names the section; what it means is a line of its own. */}
+      <Text variant="caption" tone="muted" className="block">
+        In the order the model is handed them.
       </Text>
 
       {/*
@@ -1112,11 +1122,7 @@ function Sends({
         </Alert.Root>
       ) : null}
 
-      {rows.length === 0 && (
-        <Text variant="body" tone="muted">
-          Nothing is sent. This run is text only.
-        </Text>
-      )}
+      {rows.length === 0 && <EmptyState title="No images yet." hint="This run is text only." />}
 
       {rows.map((row, index) => (
         <div
@@ -1172,7 +1178,7 @@ function Sends({
                   disabled={index === 0}
                   onClick={() => onMove(index, -1)}
                 >
-                  ↑
+                  <ArrowUpIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
                 </Button>
                 <Button
                   intent="secondary"
@@ -1181,7 +1187,7 @@ function Sends({
                   disabled={index === rows.length - 1}
                   onClick={() => onMove(index, 1)}
                 >
-                  ↓
+                  <ArrowDownIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
                 </Button>
                 <Button
                   intent="secondary"
@@ -1292,7 +1298,7 @@ function CharacterRefs({
 
   return (
     <div className="flex flex-col gap-2 rounded-none border border-dashed border-line p-2">
-      <Text variant="caption" tone="muted">
+      <Text variant="caption" tone="muted" className="block">
         Or add a character&rsquo;s references
       </Text>
 
@@ -1335,7 +1341,7 @@ function CharacterRefs({
 
       {error && (
         <Alert.Root intent="danger">
-          <Alert.Title>Nothing was added</Alert.Title>
+          <Alert.Title>Could not add the references</Alert.Title>
           <Alert.Description>{error}</Alert.Description>
         </Alert.Root>
       )}
