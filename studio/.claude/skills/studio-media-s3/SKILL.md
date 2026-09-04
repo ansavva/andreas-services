@@ -77,11 +77,10 @@ entity is found by asking for it, not by listing a folder that groups it.
 config/angle/                the turnaround's framing angle images
 ```
 
-**The documents that used to define these things are gone.** No `profile.yaml`,
-no `project.json`, no `scene.json`, no `movie.json` — each is a row, so each can
-be queried, and none can drift from the folder it used to sit in. A run keeps
-`request.json` and `result.json`, but as *payload*: the provider's own bytes,
-stored and never decoded.
+**No document defines an entity.** A character, project, scene or movie is a
+row, so each can be queried and none can drift from its folder. A run keeps
+`request.json` and `result.json` as *payload*: the provider's own bytes, stored
+and never decoded.
 
 **Every folder name here is convention.** The API makes them with the entity and
 resolves them by name when it needs one, creating what is absent. Rename `runs/`
@@ -145,16 +144,8 @@ If a turnaround still reports a missing angle image, the angle images live in th
 `studio/config/` and reach the store via `studio/scripts/dev-setup.sh` — re-run
 it rather than uploading one by hand.
 
-The phrasebook used to be named here too. It is `TERM#` rows now, so there is no
-document to address and `studio phrasebook` is the whole of its surface.
-
-**`studio phrasebook add` fails the same way and is fixed by the same script.**
-Recording a substitution overwrites the wording list and cannot create one, so
-against a store that has never held a `wording.yaml` it refuses. The repo ships
-a starting copy and `dev-setup.sh` puts it there when the key is absent — and
-only then, because after the first `add` the store's copy is the one with the
-entries in it. Reading is unaffected either way: no wording list reads as an
-empty one, so `terms` and `check` keep working.
+The phrasebook is `TERM#` rows, not a document here; `studio phrasebook` is
+the whole of its surface.
 
 ## The commands
 
@@ -243,9 +234,8 @@ The store is **private**. To let Replicate fetch an image or video, presign it �
 a short-lived HTTPS URL carrying its own signature, signed by the API against
 credentials the CLI does not hold. Pass the URLs straight into a prediction's
 `reference_images` / `image` inputs. Only short URLs enter the agent context; the
-bytes never do. **No `REPLICATE_API_TOKEN` is needed here for anything**: the
-API holds the provider credential and does the submitting, so the CLI never has
-one.
+bytes never do. The CLI holds no provider credential: the API does, and does
+the submitting.
 
 **`--expires` is accepted and ignored, everywhere it appears.** The API owns the
 URL's lifetime and sets it centrally; a number passed here cannot be honoured, so
@@ -260,10 +250,7 @@ than a render job. The flag survives because the CLI surface is a contract.
   `studio character rename`, which do it.
 - **And nothing that names it has to be rewritten.** A record stores a node id,
   which is the file's identity rather than its address, so a rename or a move
-  strands nothing. This is the one entry here that reversed: a record used to
-  store a path, and carrying those along was a step whose absence once left 69
-  records pointing at reference images that no longer existed. There is no
-  `rewrite` command any more because there is no longer anything for it to find.
+  strands nothing and there is nothing to reconcile afterwards.
 - **Writing to a path that already holds a file replaces it and keeps the
   record**, so everything naming it stays true. Production keeps prior revisions;
   a local dev stack is not the place to rely on that.
@@ -279,8 +266,7 @@ than a render job. The flag survives because the CLI surface is a contract.
   the folder unless asked with `--files delete`, because the reverse default
   loses generated media to a typo. **Bytes a delete strands are the API's
   problem, not yours** — it records what it is about to free before it frees it,
-  and the next delete finishes anything an interrupted one left. There used to be
-  a command for sweeping those up by hand; there is nothing to run.
+  and the next delete finishes anything an interrupted one left.
 - Provisioning and teardown live in [`infra/README.md`](../../../infra/README.md).
   Which stack your commands reach — per-machine dev, not production — is in
   [studio/CLAUDE.md](../../../CLAUDE.md).
@@ -306,13 +292,9 @@ like, then state the box here. What this buys over cropping on a laptop is that
 the cut is recorded, repeatable and applied to the object the library holds
 rather than to a copy that has drifted.
 
-## Two things that used to bite
+## Two things worth knowing
 
-**`upload` creates its destination.** It did not, so the first file into a new
-subfolder died on a parent that did not exist, and nothing in the CLI created
-one — organising a pool into subfolders was a dead end reached through a
-dry-run `curate dedupe --group <name>` run for its side effect. Missing
-ancestors are created too.
+**`upload` creates its destination**, missing ancestors included.
 
 **Prefer node ids in anything scripted.** A name is unique only within one
 folder, and pools are trees: after a library is organised, `IMG_4549__crop.jpg`

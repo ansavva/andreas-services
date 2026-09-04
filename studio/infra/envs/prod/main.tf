@@ -45,26 +45,13 @@ data "aws_acm_certificate" "wildcard" {
 
 # THE MEDIA BUCKET.
 #
-# Studio owns this bucket. It used to be the other way round: the bucket was
-# provisioned from a separate `xharness` repo, and this file carried a long note
-# forbidding any resource or data source for it, so that studio's state could
-# never touch data it did not own. That note is gone because the premise is —
-# the generation pipeline that fills the bucket now lives in `.claude/skills/`
-# alongside the app that reads it, and the bucket was imported into this state
-# in August 2026.
-#
-# It was called `xharness-prod-media-us-east-1` until August 2026, which never
-# matched the `[project]-[env]-[component]-[region]` convention. S3 has no
-# rename, and changing the `bucket` argument is a destroy-and-recreate, so the
-# rename was done as a second bucket plus a verified copy — 938 objects,
-# 1,261,751,658 bytes, every key, size and checksum compared before anything was
-# re-pointed. The old bucket was then deleted deliberately, on an explicit
-# decision, taking its version history with it. `infra/README.md` records what
-# that cost.
+# Studio owns this bucket: the generation pipeline that fills it lives in
+# `.claude/skills/` alongside the app that reads it, so there is no other state
+# with a claim on it.
 #
 # `prevent_destroy` means `terraform destroy` on this whole environment fails by
 # design (see `modules/media/main.tf`). There is no second copy of this bucket
-# anywhere now, so versioning and that flag are the whole of its protection.
+# anywhere, so versioning and that flag are the whole of its protection.
 #
 # `module.compute` takes its bucket name from the module rather than a bare
 # string, so the IAM policy that grants access has a real dependency edge on the
@@ -74,7 +61,6 @@ module "media" {
   source = "../../modules/media"
 
   bucket_name = var.media_bucket_name
-  key_prefix  = var.media_root_prefix
 
   # Built from `local.app_domain`, like the API's `allowed_origin` below, so the
   # two CORS surfaces cannot come to name different hostnames for one SPA. This
@@ -200,7 +186,6 @@ module "compute" {
   # From the module, not from the variable directly: this is what orders the
   # IAM policy after the bucket exists.
   media_bucket_name = module.media.bucket_name
-  media_root_prefix = var.media_root_prefix
   allowed_origin    = "https://${local.app_domain}"
 
   # Same reasoning, one step further: the ARN comes from the module so the item
@@ -272,7 +257,6 @@ module "callbacks" {
   name_prefix = "${local.project}-${local.environment}"
 
   media_bucket_name = module.media.bucket_name
-  media_root_prefix = var.media_root_prefix
 
   catalog_table_name        = module.catalog.table_name
   replicate_token_parameter = local.replicate_token_name
@@ -299,9 +283,8 @@ module "callbacks" {
 # WHERE A STITCH HAPPENS.
 #
 # `modules/render/main.tf` argues the whole case; the short version is that
-# `routes/scenes.py` used to say stitching stays in the CLI because the Lambda
-# has no `ffmpeg`, and that is a statement about an image. This is a **second
-# image** rather than ffmpeg in the API's: an 80 MB video toolchain should not be
+# stitching needs `ffmpeg`, and this is a **second image** rather than ffmpeg
+# in the API's: an 80 MB video toolchain should not be
 # pulled on every cold start of a function that answers folder listings, and a
 # re-encode is minutes against API Gateway's 30-second ceiling.
 #
@@ -342,7 +325,6 @@ module "render" {
   catalog_access_policy = module.compute.catalog_access_policy
 
   media_bucket_name  = module.media.bucket_name
-  media_root_prefix  = var.media_root_prefix
   catalog_table_name = module.catalog.table_name
 
   tags = local.common_tags
@@ -398,17 +380,6 @@ module "hosting" {
   tags            = local.common_tags
 }
 
-# Terraform owns this parameter because Terraform knows the value; the deploy
-# workflow reads it back out when building the frontend.
-resource "aws_ssm_parameter" "api_domain" {
-  name        = "/${local.project}/${local.environment}/api-domain"
-  description = "Public base URL of the studio backend API"
-  type        = "String"
-  value       = module.api_domain.api_base_url
-
-  tags = local.common_tags
-}
-
 # THE SHARED DEV-SEED BUCKET, DECLARED HERE ON PURPOSE.
 #
 # It serves the dev environment and it is named for that — `studio-dev-seed-…`,
@@ -417,7 +388,7 @@ resource "aws_ssm_parameter" "api_domain" {
 # lifecycle. `envs/dev` is per machine and is torn down by
 # `dev-aws-destroy.sh`; a bucket every developer's stack is seeded from must not
 # be reachable by a teardown, and a third root nothing applies would leave the
-# bucket a design note (#284) rather than a resource.
+# bucket a design note rather than a resource.
 #
 # So: name and tags say DEV, because that is who it serves; the root says PROD,
 # because that is what owns and applies it. `Environment` is overridden below

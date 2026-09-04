@@ -279,11 +279,6 @@ def get_prediction(prediction_id: str) -> dict:
     return _request("GET", f"{API_ROOT}/predictions/{prediction_id}")
 
 
-def predictions_endpoint(model: str) -> str:
-    """The URL a payload will be POSTed to — shown in the approval render."""
-    return f"{API_ROOT}/models/{model}/predictions"
-
-
 def model_schema(model: str) -> tuple[dict, dict]:
     """`(input properties, all component schemas)` for `owner/name`.
 

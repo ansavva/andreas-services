@@ -1,10 +1,7 @@
 """Runs: one submission to a model, as an envelope studio owns and a blob it does not.
 
-A run used to be a folder named `<ts>_<hint>` holding three JSON documents nobody
-was allowed to parse. The consequence was that the app could show a run as a
-folder and nothing else, and that `runs find --character` meant listing every
-project, listing every run in each, reading `request.json` for each, and
-grepping.
+A run is a row — the envelope — plus a folder holding the provider's own
+documents, which studio stores and never parses.
 
 **The split that makes a run presentable without making this service a liar:**
 
@@ -32,10 +29,8 @@ upload the bytes first — and matching on prose is how that stops working.
 
 ## A run is created when it is PLANNED, not when it is submitted
 
-This is the change that made a run approvable, and it altered what the row
-means. `POST /api/runs` used to be called after a person had said yes at a
-terminal, so the existence of the row *was* the record of a submission. It is
-called when the run is planned now, and the row starts at `draft`.
+`POST /api/runs` is called when the run is planned, and the row starts at
+`draft`: the existence of the row is not the record of a submission.
 
 What that buys is the whole of the feature: a plan that can be read, edited and
 linked to before anything bills, and an **approval that is an artifact** rather
@@ -320,9 +315,9 @@ def create_run():
     before the *approval* too, which is what gives an approval something to be
     attached to: a plan with an address, editable, linkable, and hashable.
 
-    That does mean a row no longer asserts that anything happened, which is why
-    a draft is hidden from listings and left out of the project's run count until
-    it is submitted. See the module docstring.
+    A row does not assert that anything happened, which is why a draft is hidden
+    from listings and left out of the project's run count until it is submitted.
+    See the module docstring.
 
     One transaction writes the envelope, the project's listing row, the character
     usage rows, the run's folder and its `output/` folder. The sends and the
@@ -432,9 +427,8 @@ def create_draft(body: dict, held) -> dict:
 
     written = catalog.put_sends(record["id"], send_entries)
     assignments = {"plan_digest": catalog.plan_digest(plan, written)}
-    # Projected onto the listing row, which is the whole point of it: comparing
-    # payloads used to mean one `GET /api/runs/<id>` per candidate run, so the
-    # duplicate-submission guard lived in a per-machine file instead. See
+    # Projected onto the listing row so the duplicate-submission guard is one
+    # query rather than one `GET /api/runs/<id>` per candidate run. See
     # `catalog.submission_fingerprint`.
     fingerprint = catalog.submission_fingerprint(model, plan, written)
 
@@ -617,9 +611,8 @@ def resolve_run():
     timestamp and 29 runs collapsed to 19 labels. So a run is found by `latest`,
     by its id, or by the filters on `GET /api/runs`.
 
-    **The project segment is an id too.** It used to accept a bare slug, because
-    that is what a person typed; slugs are gone, and a free-text name is not
-    something an address may resolve when two projects may share one.
+    **The project segment is an id too.** A free-text name is not something an
+    address may resolve when two projects may share one.
     """
     held = support.memberships()
     support.member_of(g.library, held)

@@ -64,6 +64,37 @@ resource "aws_s3_bucket_versioning" "this" {
 }
 
 # Server-side encryption at rest (SSE-S3 / AES256 — free, always-on).
+# Versioning is what makes every delete a recoverable tombstone, and without a
+# bound it keeps every superseded version forever: the prod bucket held 2.6 GB
+# of noncurrent bytes behind 1.2 GB of live media before this rule existed.
+# Thirty days is the recovery window; after it a noncurrent version expires and
+# a delete marker with nothing behind it is removed. Neither touches a current
+# object, so the API role still cannot destroy anything a row names.
+resource "aws_s3_bucket_lifecycle_configuration" "this" {
+  bucket = aws_s3_bucket.this.id
+
+  depends_on = [aws_s3_bucket_versioning.this]
+
+  rule {
+    id     = "expire-noncurrent-versions"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = var.noncurrent_version_expiration_days
+    }
+
+    expiration {
+      expired_object_delete_marker = true
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+}
+
 resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
   bucket = aws_s3_bucket.this.id
   rule {
@@ -75,7 +106,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
 }
 
 # CORS, and it exists for exactly ONE request: the presigned PUT a browser sends
-# when someone uploads into a folder (#294). That PUT is cross-origin, it carries
+# when someone uploads into a folder. That PUT is cross-origin, it carries
 # a `Content-Type` S3 has to be told to accept, and so it preflights — without a
 # rule here the browser never sends the body and the upload fails with no status
 # attached. Reads need nothing: the app draws media with `<img src>` and

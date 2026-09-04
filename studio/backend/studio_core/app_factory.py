@@ -52,7 +52,7 @@ UNAUTHENTICATED_PATHS = frozenset({"/api/health"})
 # Paths answered for a known caller, about no library in particular.
 #
 # **Two sets rather than one**, because identifying the caller and scoping the
-# request to a library are two decisions and `/api/libraries` (#291) needs
+# request to a library are two decisions and `/api/libraries` needs
 # opposite answers to them. It is the route that says which libraries the caller
 # is in, so it cannot require that answer to have been found already — and the
 # caller it matters most for is the one in *no* library, whom `_resolve_library`
@@ -79,8 +79,8 @@ LIBRARY_UNSCOPED_PATHS = frozenset({"/api/libraries"})
 # this service that carries no message at all.
 #
 # Named constants rather than literals in the `CORS(...)` call below because
-# `tests/test_cors_agreement.py` asserts them against both the registered routes
-# and the Terraform local — the convention is now a check (#297).
+# `tests/unit/test_cors_agreement.py` asserts them against both the registered routes
+# and the Terraform local — the convention is a check.
 # **PUT is still allowed nowhere, and six entity routes wanted it.**
 #
 # `docs/ENTITY_MODEL.md` spells them as PUT — a profile, a reference index, a

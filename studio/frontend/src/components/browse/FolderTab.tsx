@@ -85,14 +85,14 @@ export function useLocalBrowserNav(rootId: string, param = "folder"): BrowserNav
  * belongs to the tab rather than to the page, and switching away genuinely
  * discards it.
  *
- * ## The chip row is where the folder tabs went
+ * ## The chip row, not a tab per folder
  *
- * A character's root children each used to get a tab of their own, beside
- * Profile and References. That made a *listing* into navigation: the strip grew
- * and shrank as folders were created and deleted, every one of those tabs showed
- * a folder the browser one tab over already held, and at 390px the seven of them
- * wrapped into three rows of underline. They are shortcuts now — one scrolling
- * row of a fixed shape, with the browser still the only place a folder opens.
+ * A tab per root child would make a *listing* into navigation: the strip would
+ * grow and shrink as folders were created and deleted, every one of those tabs
+ * would show a folder the browser one tab over already held, and at 390px seven
+ * of them wrap into three rows of underline. Chips are shortcuts — one
+ * scrolling row of a fixed shape, with the browser still the only place a
+ * folder opens.
  */
 export function FolderTab({
   rootId,

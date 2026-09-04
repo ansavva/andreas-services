@@ -135,11 +135,8 @@ interface Props {
 /**
  * What the destination picker is open on.
  *
- * **One shape, where there used to be two.** A folder and a set of files needed
- * different endpoints while a folder's address was a prefix and a file's was a
- * key — the two counted different things and refused for different reasons. They
- * are all node ids now, so a mixed selection is one call and this is one branch
- * fewer.
+ * **One shape for folders and files alike.** They are all node ids, so a mixed
+ * selection is one call and this is one branch fewer.
  *
  * `verb` rides along rather than being separate state so the two cannot drift:
  * there is no way to have a picker open with no operation chosen, or to close
@@ -150,7 +147,7 @@ interface Props {
  *
  * Under this many, the cost of being wrong is a handful of frames still on
  * screen and the two-press button is proportionate. At or above it, the count
- * has to be typed — a selection is invisible once it is gone, and "select all"
+ * has to be typed — a selection is invisible once cleared, and "select all"
  * followed by "delete" is two presses from emptying a folder.
  */
 const BULK_GATE = 5;
@@ -185,12 +182,10 @@ type PickerTarget = {
  * The file layer, whole: listing, selection, upload, text page, and every
  * write a person can make.
  *
- * This was the body of `BrowsePage` and is a component so that a character's and
+ * A component rather than the body of `BrowsePage` so that a character's and
  * a project's **Files** tab is the same browser rather than a second one that
- * drifts. Nothing about its behaviour changed in the entity rework except the
- * addresses it writes with: every write here takes node ids, where the nine
- * name-path routes it used to call took a slash-joined path that a rename
- * invalidated mid-flight.
+ * drifts. Every write here takes node ids, so a rename cannot invalidate a
+ * request mid-flight.
  */
 export function FolderBrowser({
   nav,
@@ -226,10 +221,9 @@ export function FolderBrowser({
   /**
    * The listing, straight from the folder the caller names.
    *
-   * `useFolder` used to sit here resolving an *object* address to its parent,
-   * because `/o/<id>` rendered this component with the file open over it. The
-   * viewer is its own screen now, so this only ever shows a folder and the
-   * resolution — and the request it cost on every cold link — is gone with it.
+   * The viewer is its own screen, so this only ever shows a folder: no
+   * resolving an object address to its parent, and no request for it on a
+   * cold link.
    */
   const { data, loading, error, reload } = useFolder(
     folder,
@@ -407,10 +401,8 @@ export function FolderBrowser({
   );
 
   /*
-   * The writes that used to live here — rename, delete and describe for the
-   * pane that was open over this listing — moved to `ViewerPage` with the
-   * viewer itself. They were never about the folder; they acted on one node and
-   * then had to reconcile a listing they happened to be rendered inside.
+   * Rename, delete and describe for one file live with the viewer, not here:
+   * they act on one node and have nothing to reconcile against a listing.
    */
 
   /**
@@ -449,8 +441,8 @@ export function FolderBrowser({
   // Escape drops the selection, but only when it is the frontmost thing. The
   // move picker binds Escape to its own close, and it is often open *on* the
   // selection — so clearing it there would be Escape cancelling the move by
-  // emptying what was being moved. The reel and the text page used to be in
-  // this list and are their own screen now, where this component is unmounted.
+  // emptying what was being moved. The viewer and the text page are their own
+  // screens, where this component is unmounted, so they are not in this list.
   const overlayOpen = pickerTarget !== null;
   useEffect(() => {
     if (overlayOpen || selection.count === 0) return;
@@ -530,12 +522,12 @@ export function FolderBrowser({
       {/*
         Two rows, not one.
 
-        These are two different kinds of control and they used to share a line:
-        where you are (back, breadcrumbs) and what you can do here (sort, copy the
-        prefix, delete, new folder, play). On any real path the breadcrumbs took
-        the width and the buttons wrapped underneath them anyway — in whatever
-        order the flex run happened to break — so a folder deep in a project
-        opened onto a bar that looked different from the one at the root.
+        These are two different kinds of control: where you are (back,
+        breadcrumbs) and what you can do here (sort, copy the prefix, delete,
+        new folder). On one line, any real path's breadcrumbs take the width
+        and the buttons wrap underneath them anyway — in whatever order the
+        flex run happens to break — so a folder deep in a project opens onto a
+        bar that looks different from the one at the root.
       */}
       <div className="flex min-w-0 items-center gap-2">
         {/*
@@ -779,10 +771,10 @@ export function FolderBrowser({
       )}
 
       {/* **The selection bar sits over BOTH lists, not inside the grid.**
-          It used to live in the `Photos & video` section, which was right while
-          only images could be selected — a folder holding nothing but
-          `result.json` files then had no bar at all, and "Select all" under a
-          heading that says "Photos" would now also take the text files. */}
+          Text files are selectable too, so inside the `Photos & video` section
+          a folder holding nothing but `result.json` files would have no bar at
+          all, and "Select all" under a heading that says "Photos" would also
+          take the text files. */}
       {selection.count > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-none border border-line bg-card px-3 py-2">
           <Text
@@ -847,7 +839,7 @@ export function FolderBrowser({
 
           {/* Under five, the armed button — the cost of being wrong is a
                 handful of frames still on screen. Above it, the count has to
-                be typed: a selection is invisible once it is gone, and
+                be typed: a selection is invisible once cleared, and
                 "select all" then "delete" is two presses from emptying a
                 folder. */}
           {selection.count < BULK_GATE ? (

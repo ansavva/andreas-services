@@ -129,10 +129,8 @@ The same selectors exist on the runner: `--pick`, `--pick-tag`, and `--slots`
 (positions **within the resolved selection** — slot N is the Nth image actually
 sent, which is what `[ImageN]` refers to).
 
-**Order is gone, and nothing replaced it.** A `REF#` row carried one, maintained
-by `curate renumber` before that and by filename numbering before that. A
-selection comes back in name order — stable, so two calls agree, which is all a
-payload needs from it.
+**There is no stored order.** A selection comes back in name order — stable,
+so two calls agree, which is all a payload needs from it.
 
 **Describe every image you add.** An undescribed image is invisible to whoever
 chooses the set, so it may as well not be there:
@@ -142,9 +140,7 @@ studio describe <node> --text "Three-quarter right, looking off camera." \
   --tag default --tag face --tag three-quarter
 ```
 
-**`sync-refs` is gone and cannot come back.** It reconciled the bible's index
-against what was in the folder, which was a job only because the two were
-separate things that could disagree. There is one place a picture says what it
+**There is no index to reconcile.** There is one place a picture says what it
 is, and it is the picture.
 
 ### Curating the pools
@@ -158,17 +154,9 @@ studio curate dedupe <name> --pool reference        # remove byte-identical copi
 studio curate move   <name> <file> --from reference --to archive
 ```
 
-**Moving an image no longer moves anything else, and that is the change worth
-knowing.** Run records, scene manifests and chains stored S3 keys, so moving an
-object invalidated every document that cited it — which is what once left 69
-records pointing at reference images that no longer existed, and why a `rewrite`
-command existed to find them. Every record names a **node id** now. A rename or
-a move is a row write; nothing that cited the image stops resolving, so there is
-nothing to reconcile and no `rewrite` command to run.
-
-`set-refs` is gone. It physically rebuilt `reference/` because the folder *was*
-the set being sent; the `default` tag is now, so choosing is a tag edit and not
-a file move.
+**Moving an image moves nothing else.** Every record names a **node id**, so a
+rename or a move is a row write and nothing that cited the image stops
+resolving. Choosing what is sent is a tag edit (`default`), not a file move.
 
 ## The bible is structured YAML — one schema, every character
 
@@ -180,7 +168,7 @@ headings out of prose:
 
 | Key | Holds |
 |---|---|
-| `schema_version` `name` | the record's identity |
+| `name` | the record's identity |
 | `identity` | the card — age, build, height read, `signature_features[]`, home turf, register, speech |
 | `face` | structure, skin, eyes, eyebrows, nose, mouth/jaw, facial hair, hair, ears |
 | `body` | silhouette, arms, chest/shoulders, neck, lower body/hands, body hair, posture |
@@ -247,12 +235,6 @@ attribute on the character's row: not a path segment, not claimed, and not
 something anything resolves. No object is copied, no record is rewritten, the
 root folder does not move — it is named by the character's id — and every
 image, run and binding still resolves, because all of them name node ids.
-
-That is the whole of what this used to be. It moved objects whose basenames
-carried the slug, rewrote the bible's paths, and patched every run, scene,
-movie and project record that cited one of those keys — and a `--dry-run` was
-worth having because the plan was large enough to want reading first. Then,
-briefly, it was four writes in one transaction, because the slug was claimed.
 
 **It does NOT refuse a destination another character already uses**, and it used
 to. Two characters called the same thing are two rows that look alike in a list;
@@ -382,7 +364,7 @@ may be inferred:
 Both of these have been broken in practice, in the same session:
 
 - a shoot was submitted on the strength of a multiple-choice answer rather than
-  a shown payload, using a `--yes` flag that no longer exists;
+  a shown payload;
 - its result was then written straight into a character's face group, which
   nobody had agreed to.
 
@@ -408,13 +390,9 @@ left edge. This is not pedantry: the wording it replaced said "turned to THEIR
 LEFT so the viewer sees the LEFT side of the face", which instructs two opposite
 rotations at once, and both three-quarters duly came back facing the same way.
 
-**The one-command turnaround is gone, and it is worth knowing what went with
-it.** It rendered all fourteen at once, each one chained off an ANCHOR —
-the first render — with every later prompt told in prose to take its wardrobe and
-background from it. That chaining was the only thing holding those two constant
-across a set, and it is gone: a template is picked for **one** run now, and
-holding a set consistent is done by looking at the results and re-running the
-ones that drifted.
+**A template is picked for one run at a time.** Nothing chains a set off an
+anchor render, so holding wardrobe and background constant across a set is done
+by looking at the results and re-running the ones that drifted.
 
 Each render is one recorded run built from three things: a **angle image** (a
 generic, anonymous, untextured figure that says only how to stand), the
@@ -512,10 +490,8 @@ studio character images <name>                           # every image, and its 
 studio character pool <name> seed --group current        # any pool, any subfolder
 ```
 
-`reference` used to be refused here on the grounds that pools are material and
-references are identity — true of the rows, and not of the folder they sit in. A
-file can sit in `reference/body/` with no row naming it, and with `refs` reading
-the index and `pool` refusing the pool, nothing could see it. Twelve such files
+`reference` is a pool here like any other: a file can sit in `reference/body/`
+with no tag naming it, and this is how it is seen. Twelve such files
 sat unnoticed in one library. `--unreferenced` is the question that finds them,
 and it compares **node ids** rather than filenames.
 

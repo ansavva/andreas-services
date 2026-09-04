@@ -1,20 +1,13 @@
 """Browsing the library: folder listings, the recursive reel, and text.
 
-**Listings no longer list S3.** Folders, files, names, sizes and timestamps are
-rows in the catalog (#309–#311); `presign` is the only S3 call left in the
-listing path, and it is handed a `blob_key` that never leaves this module. What
-that retires is stated where each workaround used to live — `_sort_records` for
-the date-tie break, `_folder_entry` for "a folder has no LastModified",
-`reel_items` for the twenty-thousand-object walk.
+**Listings never list S3.** Folders, files, names, sizes and timestamps are
+rows in the catalog; `presign` is the only S3 call in the listing path, and it
+is handed a `blob_key` that never leaves this module.
 
 **Every route here is addressed by node id, and there is no second scheme.**
-`?prefix=` and `?key=` are both gone. The name path survived this long for two
-reasons and the entity model answered both: share links made of names now point
-at `/f/<node_id>`, and *shared* material — the phrasebook and the `config/angle/`
-angle images — had no node to be addressed by, which is the single exception that kept
-`keys.clean_key` alive. The phrasebook is `TERM#` rows and the angle images are
-ordinary nodes in a `config/` folder, so the exception closed and the function
-went with it.
+Share links point at `/f/<node_id>`, and shared material — the phrasebook and
+the angle images — is rows and nodes like everything else, so nothing needs a
+name path or a raw key to be addressed by.
 
 A name path is still **composed** here, as the `key` a response reports and the
 `prefix` a breadcrumb carries. That is a rendering of the tree for a person to
@@ -35,12 +28,11 @@ from studio_core.services import catalog, keys
 logger = logging.getLogger(__name__)
 
 #: The kinds the sparse `reel` attribute is written onto, and therefore the only
-#: kinds `by-recent` can answer for. Named for the attribute rather than for the
-#: endpoint that used to be built on it.
+#: kinds `by-recent` can answer for. Named for the attribute.
 REEL_KINDS = frozenset({"image", "video"})
 
-#: Every listing pages now, where only the recursive one did. A folder is one
-#: page, so this costs a one-element `next_cursor: null` and buys one shape.
+#: Every listing pages. A folder is one page, so this costs a `next_cursor:
+#: null` and buys one shape.
 DEFAULT_PAGE_SIZE = 200
 MAX_PAGE_SIZE = 1000
 
@@ -57,8 +49,8 @@ ENTRY_KINDS = frozenset({catalog.KIND_FOLDER, "image", "video", "text", "other"}
 
 # The four orders every listing endpoint accepts. `newest` is the default
 # because this is a library of generated output: what you came to look at is
-# almost always what the pipeline produced most recently, and the old behaviour
-# — name ascending — buried it under whatever happened to sort first.
+# almost always what the pipeline produced most recently, and name ascending
+# would bury it under whatever happened to sort first.
 SORTS = frozenset({"newest", "oldest", "name", "name_desc"})
 DEFAULT_SORT = "newest"
 
@@ -89,8 +81,7 @@ def _csv(raw: str | None) -> list[str]:
 
     Spelled out rather than `raw.split(",")` because the bare form makes
     `?tag=a,b` ask for one tag literally named `a,b`, which is a filter that
-    silently matches nothing — the exact bug `routes/characters` carried on its
-    own tag filter until somebody counted the images a shoot actually sent.
+    silently matches nothing.
     """
     return [part.strip().lower() for part in (raw or "").split(",") if part.strip()]
 
@@ -111,11 +102,9 @@ def _clean_tags(raw: str | None) -> frozenset:
 # ───────────────────────── locating a folder ─────────────────────────
 #
 # **A listing is a query on `pk = NODE#<parent>`, so an id is the thing it
-# already needs.** The `prefix` address that used to sit beside it had to be
-# walked from the library root one `GetItem` per segment before the listing could
-# start, and it existed because every share link this service ever handed out was
-# a path of names. #313 moved the SPA onto ids and the entity model finished the
-# job: ids in URLs everywhere, so every link survives every rename.
+# already needs.** A name path would have to be walked from the library root one
+# `GetItem` per segment before the listing could start. Ids in URLs everywhere,
+# so every link survives every rename.
 
 
 def _node_at(lib: str, node_id: str | None) -> dict:
@@ -130,8 +119,8 @@ def _node_at(lib: str, node_id: str | None) -> dict:
     Forgiving on purpose — `browse` is the read side, and a read that names
     nothing is empty rather than wrong.
 
-    **No `node` at all is the library root**, which is what the empty `prefix`
-    meant before it and is the request the app makes first. It is also the one
+    **No `node` at all is the library root**, which is the request the app
+    makes first. It is also the one
     address a client cannot hold in advance: `/api/libraries` deliberately
     reports id, name and role and not the root node, so "open the library" has to
     be answerable without one.
@@ -148,8 +137,7 @@ def _node_at(lib: str, node_id: str | None) -> dict:
 def _breadcrumbs(record: dict) -> list[dict]:
     """Ancestor trail for a folder, root first, each entry navigable.
 
-    **Walks `parent_id` rather than splitting a prefix** (#311). The old form cut
-    the string on `/` because the path *was* the S3 key; a name path is now a
+    **Walks `parent_id` rather than splitting a name path.** A name path is a
     rendering of the tree rather than a location in it, so the tree is what is
     asked. The root is the node with no `parent_id` — the same missing pointer
     that makes it unrenamable — and it is the crumb that reads as `/`.
@@ -157,14 +145,11 @@ def _breadcrumbs(record: dict) -> list[dict]:
     **This costs one `GetItem` per level, sequentially**, because each parent's
     id is only known once its child has been read. Depth in this library is four
     or five, so that is four or five sub-millisecond reads; there is no batch
-    that would help, since a batch needs the keys up front. The `prefix` form of
-    a request pays it twice — once walking down to resolve the path and once
-    walking back up — which is another reason `?node=` is the cheaper address.
+    that would help, since a batch needs the keys up front.
 
     Each crumb carries the `id` of the node it names, for the same reason every
     row below does: a crumb is a navigation target, and one that could only be
-    followed by re-resolving its path would be the last thing sending the SPA
-    back to `/api/resolve`.
+    followed by re-resolving its path would send the SPA back to `/api/resolve`.
     """
     walked = record
     ancestors = [record]
@@ -190,8 +175,7 @@ def _name_path(record: dict) -> str:
 
     **Composed by walking, never read off the row**, for the reason `_file_entry`
     gives: `path` names ancestors by *id* and `blob_key` is the attribute that
-    must not leave. So a node addressed by `?node=` still answers with the same
-    kind of string a node addressed by `?key=` was asked for, and neither answer
+    must not leave. So the answer is a string a person can read, and it never
     leaks where the bytes actually sit.
 
     The root contributes no segment — it is the empty prefix everywhere else —
@@ -215,7 +199,7 @@ def _timestamp(record: dict) -> str:
     """The one date a row reports, and the one every order here sorts on.
 
     `updated_at`, because the field is called `last_modified` and that is what it
-    means; `created_at` only for a row old enough to predate the pair. Using one
+    means; `created_at` only for a row carrying no `updated_at`. Using one
     value for both the display and the sort is deliberate — a listing ordered by
     a date it does not show is the kind of thing that reads as a bug forever.
     """
@@ -233,11 +217,7 @@ def is_abandoned_upload(record: dict) -> bool:
 
     `create_node` mints `blob_key` immediately, and `_file_entry` presigns any
     row carrying one. So without this an abandoned upload is **a tile the grid
-    draws and cannot load** — which is what #442 reported and what
-    `routes/nodes` claimed was impossible. That claim was true under #294, when
-    a listing came from `ListObjectsV2` and an object that did not exist could
-    not appear in one; #424 moved listings onto the catalog and nothing
-    revisited it.
+    draws and cannot load**.
 
     **A row with no `blob_key` at all is a different thing and still lists.**
     Nothing signs for it, so it draws an item with no preview rather than a
@@ -245,10 +225,9 @@ def is_abandoned_upload(record: dict) -> bool:
     without_a_url` pins that on purpose. Only the combination is a defect: a key
     promised, and no bytes behind it.
 
-    **A hidden row is not a collected one.** `catalog gc` deletes blobs no row
-    names; this is a row no blob answers, and nothing collects it. Hiding it
-    stops a user seeing a broken tile and leaves the row to accumulate — the
-    lesser of the two, and #442 carries the rest.
+    **A hidden row is not a collected one.** This is a row no blob answers, and
+    nothing collects it. Hiding it stops a user seeing a broken tile and leaves
+    the row to accumulate — the lesser of the two.
     """
     return bool(record.get("blob_key")) and "size" not in record
 
@@ -257,21 +236,13 @@ def _file_entry(record: dict, prefix: str) -> dict:
     """One file row as a listing entry, presigned.
 
     **`key` is the name path, never `blob_key`.** That is `routes/nodes`' rule
-    and it holds here for the same reason: prod stores `characters/<slug>/…`
-    keys written years before the catalog beside `blobs/<node-id>` keys written
-    after it, and both stay correct only while nothing outside `services.catalog`
-    parses one. `path` is withheld for the weaker reason `_view` gives — it is a
-    materialised index of ancestor ids that a move rebuilds.
+    and it holds here for the same reason: every key in prod is
+    `<owner_kind>/<owner_id>/…`, and it stays correct only while nothing outside
+    `services.catalog` parses one. `path` is withheld for the weaker reason
+    that it is a materialised index of ancestor ids that a move rebuilds.
 
-    For everything written before the catalog the name path and the blob key are
-    the same string, which is what let the read path move onto rows first (#309).
-    #316 did not retire the name-path routes — it made them catalog writes that
-    still take a name path — so that coincidence is still load-bearing for
-    anything written before the table. The two are not the same string for
-    anything written since, and nothing here may assume they are.
-
-    `size`, `content_type` and the timestamp come off the row (#311). `kind` and
-    `language` are still classified from the extension, because `content_type`
+    `size`, `content_type` and the timestamp come off the row. `kind` and
+    `language` are classified from the extension, because `content_type`
     is what an uploader claimed and the extension is what the browser will
     actually try to decode.
     """
@@ -285,20 +256,17 @@ def _file_entry(record: dict, prefix: str) -> dict:
         "last_modified": _timestamp(record),
         "kind": keys.kind(name),
     }
-    # **The MD5 of the bytes.** Served because `studio curate dedupe` was
-    # DOWNLOADING every same-size candidate to compute exactly this — hashing a
-    # forty-image pool to find no duplicates was forty downloads. It is a
-    # comparison of two served values instead, and it has to survive the move
-    # off `support.view`, which is where a listing used to get it.
+    # **The MD5 of the bytes.** Served so `studio curate dedupe` can compare two
+    # served values instead of downloading every same-size candidate to hash it.
     if record.get("parent_id"):
         entry["parent_id"] = record["parent_id"]
     if record.get("checksum"):
         entry["checksum"] = record["checksum"]
     if record.get("entity"):
         entry["entity"] = record["entity"]
-    # Off the row, and only when there is one: the viewer shows a caption where
-    # it used to show a filename and a byte count, and a listing that omitted
-    # them would make the viewer fetch each node again to find out.
+    # Off the row, and only when there is one: the viewer shows a caption, and a
+    # listing that omitted them would make the viewer fetch each node again to
+    # find out.
     if record.get("description"):
         entry["description"] = record["description"]
     if record.get("tags"):
@@ -308,7 +276,7 @@ def _file_entry(record: dict, prefix: str) -> dict:
     if blob_key:
         entry["url"] = s3.presign(blob_key)
     # No `url` at all when there is no blob: a placeholder whose bytes never
-    # landed (#294 mints the row before the upload) has nothing to sign for, and
+    # landed (the row is minted before the upload) has nothing to sign for, and
     # a signed URL onto a missing object is a broken tile rather than an absent
     # one.
 
@@ -320,18 +288,14 @@ def _file_entry(record: dict, prefix: str) -> dict:
 def _folder_entry(record: dict, prefix: str) -> dict:
     """One folder row as a listing entry.
 
-    It carries `last_modified` now, and that is the retirement of a documented
-    constraint rather than a new field for its own sake: a delimited listing
-    returned common prefixes, a common prefix is not an object, and an object is
-    the only thing S3 dates — so the date orders used to fall back to the
-    folder's name and `docs/WEB_APP.md` warned against HEADing every prefix to
-    invent one. A folder is a row now and is stamped like any other.
+    It carries `last_modified` because a folder is a row and is stamped like
+    any other, so the date orders never fall back to a folder's name.
     """
     return {
         "id": record["node_id"],
-        # `kind` where a folder entry used to be told apart by carrying `prefix`
-        # instead of `key`. One array of entries needs one discriminator, and an
-        # absent field is a worse one than a present value.
+        # `kind` rather than telling a folder apart by carrying `prefix` instead
+        # of `key`: one array of entries needs one discriminator, and an absent
+        # field is a worse one than a present value.
         "kind": catalog.KIND_FOLDER,
         "prefix": f"{prefix}{record['name']}/",
         "name": record["name"],
@@ -346,15 +310,11 @@ def _folder_entry(record: dict, prefix: str) -> dict:
 def _sort_records(records: list[dict], sort: str) -> None:
     """Order node records in place — files and folders, the same way.
 
-    **The key tie-break is gone**, and it was load-bearing right up until it was
-    not. S3's `LastModified` has one-second resolution and a run writes its whole
-    output inside one second, so a date sort over a listing tied almost
-    everywhere: `_sort_files` had to sort by key first and by date second, two
-    passes over a stable sort, or `newest` handed back `frame_9, frame_8,
-    frame_7` for every run. `catalog._now` stamps microseconds, so two rows
-    written in the same second still order correctly and there is nothing left to
-    break. Equal timestamps now mean equal instants rather than equal seconds,
-    and Python's stable sort leaves those in the order the query returned them.
+    **No tie-break.** `catalog._now` stamps microseconds, so two rows written
+    in the same second still order correctly — a run writes its whole output
+    inside one second, and a one-second clock would tie almost everywhere.
+    Equal timestamps mean equal instants, and Python's stable sort leaves those
+    in the order the query returned them.
     """
     if sort == "name":
         records.sort(key=lambda record: record["name"].lower())
@@ -373,7 +333,7 @@ def _records_for(entries: list[dict]) -> list[dict]:
     alone. Those come from `catalog.records`: one query plus `ceil(n / 100)`
     batched reads. Widening the projection instead would make this one query and
     put a mutable copy of every file's metadata on a second item, which every
-    rename and every text edit would then have to keep in step (#280).
+    rename and every text edit would then have to keep in step.
     """
     full = catalog.records([entry["node_id"] for entry in entries])
     records = []
@@ -408,18 +368,10 @@ def entries(
 ) -> dict:
     """Everything under one node: one level or the whole branch, filtered.
 
-    **One read where there were three**, and the three were split by caller
-    rather than by meaning. `GET /api/nodes?parent=` answered the pipeline with
-    bare records; `GET /api/tree` answered the SPA with folders and files in
-    separate arrays; `GET /api/reel` answered the SPA again with the same branch
-    flattened, media-only and paged. Every one of them was "what is under this
-    node", and the differences between them are arguments: how deep, which
-    kinds, how many at a time.
-
-    So they are arguments. `depth=1` is the folder listing, `depth=all` the
-    branch, `kind=image,video` the reel, and `tag=` the thing none of them could
-    do — which is what a character's identity images are now that a `REF#` row
-    is not what says so.
+    **One read, and the differences are arguments**: how deep, which kinds, how
+    many at a time. `depth=1` is the folder listing, `depth=all` the branch,
+    `kind=image,video` the reel, and `tag=` is how a character's identity images
+    are found.
 
     `depth` rather than a second endpoint is `PROPFIND`'s `Depth: 0 | 1 |
     infinity`, and it is worth borrowing rather than reinventing: a filesystem
@@ -648,8 +600,7 @@ def _page_size(raw: int | str | None) -> int:
 # `/api/asset` re-signs what a listing handed out; `GET /api/nodes/<id>/text`
 # reads what its `PATCH` writes back. Both take a node record the route has
 # already resolved and membership-checked, and neither takes a string of any
-# kind — the last raw S3 key in this service went with the shared material that
-# needed it (see the module docstring).
+# kind.
 
 
 def blob_at(record: dict) -> dict:
@@ -715,10 +666,8 @@ def text_object(record: dict) -> dict:
     own and must not modify.
 
     Run metadata (`request.json`, `response.json`, `prompt.json`) reaches a
-    person through here and is **never parsed on the way**. That rule used to
-    cover the whole of a run and now covers exactly the part it is true of: the
-    envelope is studio's and is validated, the payload is the provider's and is
-    bytes.
+    person through here and is **never parsed on the way**: the envelope is
+    studio's and is validated, the payload is the provider's and is bytes.
     """
     blob_at(record)
     name = record["name"]

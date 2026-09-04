@@ -26,9 +26,9 @@ interface Props {
   /**
    * The node id, which is what a re-sign addresses.
    *
-   * Not optional and not the key: `/api/asset` signs by node, and passing a
-   * name path is what left every expired tile broken for anything uploaded
-   * through the app (#432).
+   * Not optional and not the key: `/api/asset` signs by node, and a name path
+   * would leave every expired tile broken for anything uploaded through the
+   * app.
    */
   nodeId: string;
   url: string;
@@ -42,11 +42,10 @@ interface Props {
   /**
    * Whether this is a video, when the caller knows.
    *
-   * **Omitting it no longer means "image".** It used to default to `false`, so
-   * every caller that could not know — `HeroImage` is `{node, url}` and carries
-   * no kind, which is `EntityCard`, `EntityRow` and the project's input pool —
-   * silently rendered an `.mp4` through `<img>` and drew a broken image. The
-   * runs list did it too, and that is how this was found.
+   * **Omitting it does not mean "image".** A `false` default would make every
+   * caller that cannot know — `HeroImage` is `{node, url}` and carries no
+   * kind, which is `EntityCard`, `EntityRow` and the project's input pool —
+   * silently render an `.mp4` through `<img>` and draw a broken image.
    *
    * Left undefined, the kind is read off the object's extension instead. An
    * explicit value always wins, because a caller with a real `kind` field knows

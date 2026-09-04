@@ -27,11 +27,9 @@ the profile names are chosen to match what is already on disk.
 **Nothing secret goes in `config`.** Every value in it is a resource name or an
 id: the same five `dev-up.sh` exports into a shell, and the same ones sitting
 unencrypted in SSM under `/studio/prod/`. Passwords stay in `<profile>.env` at
-mode 600, and `REPLICATE_API_TOKEN` is **not a profile field and is no longer
-read by this package at all** — generation moved into the API (#536), so the
-provider credential is the API's: an SSM SecureString in prod, and
-`~/.config/andreas-services/studio/dev.env` for a local one under `dev-up.sh`.
-It was never environment-scoped, which is why it was never a profile field.
+mode 600. `REPLICATE_API_TOKEN` is not a profile field and this package never
+reads it: the provider credential is the API's — an SSM SecureString in prod,
+`~/.config/andreas-services/studio/dev.env` for a local API under `dev-up.sh`.
 
 ## An explicit profile wins, including over the environment
 
@@ -68,12 +66,10 @@ selected. What a profile changes is that the target is now stated rather than
 inferred — `studio whoami` names it, and `studio profile show` says where each
 value came from.
 
-**A profile is not a permission boundary and must not be mistaken for one** —
-though there is far less behind it than there was. This used to warn that the
-maintenance commands reached S3 and DynamoDB under your own IAM key. Those
-commands are deleted; the only AWS call left in this package is `aws_session()`
-below, which `profile sync` uses to read a stack's Terraform outputs and prod's
-SSM parameters. Selecting `prod` still does not narrow what that key can do.
+**A profile is not a permission boundary and must not be mistaken for one.**
+The only AWS call in this package is `aws_session()` below, which `profile sync`
+uses to read a stack's Terraform outputs and prod's SSM parameters under your
+own IAM key. Selecting `prod` does not narrow what that key can do.
 """
 
 from __future__ import annotations
@@ -334,8 +330,8 @@ def missing(field: str) -> str:
         f"         studio --profile dev <command>     # this machine's dev stack\n"
         f"         studio --profile prod <command>    # the deployed library\n"
         f"       Create them once with: studio profile sync dev\n"
-        f"       There is deliberately no default: this used to fall back to\n"
-        f"       production, which is not a thing to guess at."
+        f"       There is deliberately no default: production is not a thing\n"
+        f"       to guess at."
     )
 
 
@@ -465,23 +461,16 @@ def aws_session():
 
     **This is the whole of the CLI's remaining AWS surface, and it is here
     rather than in `adapters/` on purpose.** `adapters/s3.py` and
-    `adapters/ddb.py` held the clients that `catalog verify | gc | reseat`,
-    `backfill-plans`, `drop-fictional` and `dev-seed` reached the library
-    through; all of those are gone — the API records a sweep row instead of
-    leaving orphans to be found by a bucket scan, the migrations are over, and
-    seeding is its own project under `scripts/dev_seed/`. Nothing in `adapters/`
-    opens an AWS client now, which is what #308 was actually asking for.
+    Nothing in `adapters/` opens an AWS client; seeding a dev stack, the one
+    job that needs one, is its own project under `scripts/dev_seed/`.
 
     `sync` cannot go through the API for the reason nothing else here needs an
     exception: it is how the CLI *finds* the API. Reading a dev stack's
     Terraform outputs and prod's SSM parameters is the step that produces the
     URL every other command then talks to.
 
-    boto3's own chain resolves the credentials. The `aws configure
-    export-credentials` bridge that used to wrap this is deleted with the module
-    that held it: it was mandatory under the `aws login` sessions neither boto3
-    nor the Terraform provider could see, and since August 2026 the credential
-    is a long-lived access key that boto3 reads natively.
+    boto3's own chain resolves the credentials: a long-lived access key in
+    `~/.aws/credentials` or the environment, read natively.
     """
     try:
         import boto3

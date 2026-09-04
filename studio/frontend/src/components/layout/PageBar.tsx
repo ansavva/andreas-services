@@ -23,7 +23,7 @@ interface Props {
    * a button cannot.
    */
   crumbs?: Crumb[];
-  /** The title block — a heading, a slug, whatever badges the page carries. */
+  /** The title block — a heading, whatever badges the page carries. */
   children?: ReactNode;
   /** This page's own controls. Delete lives here on the pages that have one. */
   actions?: ReactNode;
@@ -39,9 +39,9 @@ interface Props {
  * the name was. Two groups give it one place on a wide screen and one place on a
  * narrow one.
  *
- * **A hairline under it, not a card around it.** The title block used to end
- * where the next section's own margin began, so on a page of stacked bordered
- * cards the heading read as one more card. One rule at the bottom is what
+ * **A hairline under it, not a card around it.** A title block that simply
+ * ends where the next section's margin begins reads, on a page of stacked
+ * bordered cards, as one more card. One rule at the bottom is what
  * separates "what this page is" from "what is on it" — and it is the same rule
  * every section boundary in the app is drawn with now, so a page reads as one
  * column divided rather than a stack of boxes.

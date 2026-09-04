@@ -548,7 +548,8 @@ def test_a_review_sheet_lands_in_the_scene_not_only_on_disk(library, scene, no_n
     # the working directory. It used to be a key nobody but the API could open.
     assert out.startswith("node-")
     assert named(out) == "shot-01.png"
-    assert store.node_owner(out)["kind"] == "project"
+    # Filed under the project: the blob key is stamped from the owner.
+    assert library.fake.nodes[out]["blob_key"].startswith(f"projects/{library.project}/")
 
 
 def test_a_review_sheet_still_keeps_a_local_copy_when_asked(library, scene, no_network, tmp_path):

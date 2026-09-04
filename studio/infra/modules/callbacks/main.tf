@@ -80,12 +80,11 @@ locals {
 
 # THE DEAD-LETTER QUEUE PRESERVES THE REPORT, NOT THE BYTES.
 #
-# **This comment used to claim more than it can deliver and the correction is the
-# important part.** It said a message here is "a generation that was paid for and
-# whose output was never stored", implying the DLQ is how that output is
-# eventually recovered. It is not: Replicate serves outputs on time-limited URLs
-# and **deletes the files themselves after about an hour**, so a message that
-# reaches this queue very often names bytes that are already unreachable.
+# A message here is a generation that was paid for and whose output was never
+# stored — but the DLQ is NOT how that output is eventually recovered. Replicate
+# serves outputs on time-limited URLs and **deletes the files themselves after
+# about an hour**, so a message that reaches this queue very often names bytes
+# that are already unreachable.
 #
 # What the DLQ actually preserves is the *report* — which prediction, for which
 # run, and the provider's own account of it — and that is worth keeping. What
@@ -402,7 +401,6 @@ resource "aws_lambda_function" "worker" {
   environment {
     variables = {
       STUDIO_MEDIA_BUCKET              = var.media_bucket_name
-      STUDIO_MEDIA_ROOT_PREFIX         = var.media_root_prefix
       STUDIO_CATALOG_TABLE             = var.catalog_table_name
       STUDIO_REPLICATE_TOKEN_PARAMETER = var.replicate_token_parameter
     }

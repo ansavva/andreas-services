@@ -165,10 +165,10 @@ export function RunPage() {
    * The route answers with the whole updated run, and a re-GET would re-sign
    * every send and every output URL to show one badge changing.
    *
-   * **It used to carry approve, revoke and submit too**, and carries neither
-   * approve nor submit now: those are one act performed inside `RunBar`, which
-   * owns its own busy and error state because the two calls it makes have to be
-   * told apart — a refusal on the first means nothing was sent.
+   * **Neither approve nor submit comes through here**: those are one act
+   * performed inside `RunBar`, which owns its own busy and error state because
+   * the two calls it makes have to be told apart — a refusal on the first means
+   * nothing was sent.
    */
   const decide = useCallback(
     async (act: () => Promise<RunRecord>) => {
@@ -245,9 +245,8 @@ export function RunPage() {
 
       {/* **Split like the provider's own playground, and output-first when it
           cannot split.** What made the run on the left, what came back on the
-          right — the run page used to stack them, so on any screen the thing a
-          person opened the page for sat below a fact table, an approval bar and
-          whatever bindings there were.
+          right. Stacked, the thing a person opened the page for would sit below
+          a fact table, an approval bar and whatever bindings there were.
 
           The output section is FIRST IN THE DOM on purpose. Below `lg` that is
           the whole mechanism: one column, result at the top, no `order`
@@ -413,10 +412,9 @@ export function RunPage() {
             on it. A rule above each cell separates them for the same cost as a
             border and reads as one table rather than seven objects. */}
 
-                {/* **Above the outputs, because it is what the outputs came from.** The
-            page used to open on the result of a submission with no account of the
-            intent behind it, which is the wrong way round for the one screen a
-            person opens to ask "what was this?" */}
+                {/* **Above the outputs, because it is what the outputs came from.**
+            A result with no account of the intent behind it is the wrong way
+            round for the one screen a person opens to ask "what was this?" */}
                 {showEditor ? (
                   <RunPlanEditor
                     run={data}

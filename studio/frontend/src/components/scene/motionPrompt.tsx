@@ -52,7 +52,7 @@ export const PROMPT_FIELDS: Array<{
   { key: "avoid", label: "Avoid" },
 ];
 
-export function cameraLine(camera: MotionPrompt["camera"]): string {
+function cameraLine(camera: MotionPrompt["camera"]): string {
   if (!camera) return "";
   return [
     camera.shot,

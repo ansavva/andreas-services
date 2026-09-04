@@ -37,12 +37,7 @@ import { ObjectPage } from "./pages/ObjectPage";
  * /auth/callback          where Cognito Managed Login returns with ?code=
  * ```
  *
- * **There is no legacy redirect any more.** Studio used to hand out the S3 key
- * as the URL and match those paths by *exclusion*, which is what reserved `/f/`
- * and `/o/` and what kept every other top-level segment unusable. That bridge is
- * removed with this rework rather than carried: no back-compat is required, and
- * removing it is what makes `/c/`, `/p/`, `/s/` and `/m/` available. An
- * unrecognised path therefore goes to home instead of to a resolver.
+ * An unrecognised path goes to home.
  *
  * `/f` and `/f/:nodeId` are one screen. The library root has no id a URL could
  * carry before the first request answers — see `utils/location` — so the browser

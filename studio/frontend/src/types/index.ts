@@ -1,6 +1,6 @@
 /** Shapes returned by the studio API. Mirrors `studio_core.services`. */
 
-export type MediaKind = "image" | "video" | "text" | "other";
+type MediaKind = "image" | "video" | "text" | "other";
 
 /**
  * Mirrors `browse.SORTS`. `newest` is the default on both sides: this is a
@@ -83,10 +83,9 @@ export interface NodeRecord {
 /**
  * The entity a node belongs to: what the app renders as "in <name>".
  *
- * A `name`, which is the only label an entity has. It was a `slug` beside a
- * display name; both collapsed into this. It is mutable — a rename moves it —
- * which is exactly why nothing here stores it: it is re-read with the node
- * every time.
+ * A `name`, which is the only label an entity has. It is mutable — a rename
+ * moves it — which is exactly why nothing here stores it: it is re-read with
+ * the node every time.
  *
  * **The owner is the DEEPEST entity, which is often a run**, and a run has no
  * name — so `name` is null there and the id is all there is to show. This
@@ -97,23 +96,6 @@ export interface NodeOwner {
   kind: "character" | "project" | "run" | "scene" | "movie";
   id: string;
   name: string | null;
-}
-
-/**
- * A node as `GET /api/resolve` and `GET /api/nodes/<id>` report it.
- *
- * Deliberately NOT a `FileEntry`. That is what a listing hands out — it carries
- * a presigned `url` because the route that builds it expands a POINTER to a
- * node into what a page can draw. A node addressed by its own id reports its
- * own fields and nothing signed, so anything wanting to display one asks
- * `MediaThumb` to sign from the id.
- */
-export interface NodeView {
-  id: string;
-  name: string;
-  kind: "file" | "folder";
-  size?: number;
-  content_type?: string | null;
 }
 
 export interface FileEntry {
@@ -145,10 +127,8 @@ export interface FileEntry {
    *
    * Absent, not empty, when nothing has been written: the API drops null
    * attributes, and "there is no description" is one state rather than two.
-   * These used to live on the `REF#` row that made a file one character's
-   * reference, so the same picture had words inside a reference grid and none
-   * anywhere else. `group` and `order` stayed on that row, because they are
-   * facts about the set rather than about the picture.
+   * On the node rather than on any membership row, so the same picture has the
+   * same words wherever it is drawn.
    */
   description?: string;
   tags?: string[];
@@ -273,10 +253,8 @@ export interface TextResponse {
 /**
  * What a bulk move reports.
  *
- * One shape for folders and files alike, which is the whole of what
- * `POST /api/nodes/move` bought: a folder used to have its own endpoint because
- * its address was a prefix and a file's was a key, and the two counted different
- * things. An id is an id, so a mixed selection is one call.
+ * One shape for folders and files alike: an id is an id, so a mixed selection
+ * is one call to `POST /api/nodes/move`.
  *
  * `skipped` is not an error — a node already sitting in the destination is
  * nothing to do, and refusing the whole request over one would make a
@@ -383,9 +361,8 @@ export interface CharacterSummary {
   name: string;
   hero: HeroImage | null;
   /**
-   * `default` is how many of its images a generation is shown — what
-   * `counts.references` was, counted off the tag rather than off a row class
-   * that no longer exists. Both come out of one branch walk.
+   * `default` is how many of its images a generation is shown, counted off the
+   * tag. Both come out of one branch walk.
    */
   counts: { default: number; files: number };
   updated: string;
@@ -454,7 +431,6 @@ export interface CharacterRecord {
   /** A node id, not a signed URL — see `HeroImage`. */
   hero: string | null;
   profile: CharacterProfile;
-  schema_version?: number;
 }
 
 /**
@@ -462,9 +438,9 @@ export interface CharacterRecord {
  *
  * `order` is an attribute gapped by 1000, so inserting between two entries is
  * one write and touches neither neighbour. `group` is an attribute, so
- * regrouping copies no bytes. Both used to be encoded in the filename
- * (`<name>_<group>_<n>.png`), which is why the file this names can now be called
- * anything and renamed freely: the row names its **node id**.
+ * regrouping copies no bytes. Neither is encoded in the filename, which is why
+ * the file this names can be called anything and renamed freely: the row names
+ * its **node id**.
  */
 /**
  * One shared block of the reference spec — prose an angle template cites by name.
@@ -529,10 +505,9 @@ export interface TemplateLibrary {
 /**
  * One image of a resolved selection, in the position the model will see it in.
  *
- * **Everything but `slot` and `node` is nullable, and this used to declare none
- * of it.** `name` was missing entirely — the route sends it because a person
- * reviewing a payload has to know which picture is `[Image3]` — and `url` is
- * null for a reference whose node carries no blob.
+ * **Everything but `slot` and `node` is nullable.** The route sends `name`
+ * because a person reviewing a payload has to know which picture is
+ * `[Image3]`, and `url` is null for a reference whose node carries no blob.
  */
 export interface SelectionEntry {
   /** 1-based position in the resolved list. What `[Image3]` counts. */
@@ -552,21 +527,6 @@ export interface SelectionResponse {
   source: string;
 }
 
-/**
- * How many reference images each engine will accept.
- *
- * Held here rather than fetched because it is the *refusal* that has to be
- * authoritative and that lives in the API — this is only what lets the
- * References grid say "18 of 14" before a shoot is attempted. If an engine's cap
- * moves, the worst this does is warn slightly early or slightly late; it can
- * never let an over-cap set through, because it is not the check.
- */
-export const ENGINE_CAPS: ReadonlyArray<{ engine: string; cap: number }> = [
-  { engine: "Kling", cap: 7 },
-  { engine: "Seedance", cap: 9 },
-  { engine: "Nano Banana", cap: 14 },
-];
-
 /** One row of `GET /api/projects`. */
 export interface ProjectSummary {
   id: string;
@@ -577,7 +537,7 @@ export interface ProjectSummary {
 }
 
 /** Maintained on the record as runs land — never a scan over the runs folder. */
-export interface ProjectCounts {
+interface ProjectCounts {
   runs: number;
   scenes: number;
   movies: number;
@@ -605,8 +565,8 @@ export interface ProjectRecord {
 }
 
 export type RunStatus =
-  // Before anything is submitted. A run is created when it is PLANNED now, so
-  // the row no longer says that anything happened — see `RunRecord.plan`.
+  // Before anything is submitted. A run is created when it is PLANNED, so the
+  // row does not say that anything happened — see `RunRecord.plan`.
   | "draft"
   | "approved"
   | "discarded"
@@ -620,7 +580,7 @@ export type RunStatus =
   | "adopted";
 
 /** The states that come before a submission, mirrored from `catalog.py`. */
-export const UNSUBMITTED_RUN_STATUSES: readonly RunStatus[] = [
+const UNSUBMITTED_RUN_STATUSES: readonly RunStatus[] = [
   "draft",
   "approved",
   "discarded",
@@ -639,11 +599,11 @@ export const isUnsubmitted = (status: RunStatus): boolean =>
  * know about would be *non*-terminal here, which errs toward asking again
  * rather than toward showing a stale answer for ever.
  */
-export const TERMINAL_RUN_STATUSES: readonly RunStatus[] = [
+const TERMINAL_RUN_STATUSES: readonly RunStatus[] = [
   "succeeded",
   "failed",
   "cancelled",
-  // A discarded draft is gone. A draft is NOT here — it can still be approved
+  // A discarded draft is final. A draft is NOT here — it can still be approved
   // and submitted, so the run page has to keep watching one.
   "discarded",
   "adopted",
@@ -683,10 +643,10 @@ export interface RunCost {
  * completes, so there is nothing to keep in step, and drawing a grid from
  * envelopes would be a batch read over hundreds of payloads.
  *
- * **Every field here must be one the API actually writes into the listing row.**
- * This declared `slug` and the row never carried one — the CLI's equivalent
- * formatter crashed on it and this table rendered an empty column. A run has no
- * label at all: it is a machine event, addressed by its id or by `latest`.
+ * **Every field here must be one the API actually writes into the listing row**
+ * — a declared field the row never carries renders as an empty column. A run
+ * has no label at all: it is a machine event, addressed by its id or by
+ * `latest`.
  */
 export interface RunSummary {
   id: string;
@@ -821,12 +781,12 @@ export interface RunSend extends RunAsset {
   order: number;
   /** The model input this binds to, e.g. `image_input`, `start_image`. */
   field: string;
-  /** `null` on a run backfilled from a model no longer in the registry. */
+  /** `null` on a run backfilled from a model the registry does not list. */
   role: "start" | "end" | "reference" | "input" | null;
   source: RunSendSource;
 }
 
-export interface RunSendSource {
+interface RunSendSource {
   kind: "character" | "run" | "input-pool" | "project" | "object";
   character?: string;
   /** The reference group a character's image was filed under, e.g. `face`. */
@@ -861,7 +821,7 @@ export interface RunPlan {
   note?: string | null;
 }
 
-export interface RunApproval {
+interface RunApproval {
   /**
    * The Cognito sub of whoever approved it — or the literal `backfill`, for a
    * run approved before approvals were recorded. Naming the mechanism rather
@@ -922,7 +882,7 @@ export interface CreateRunBody {
  * `order` is the position in the list and `source` is derived by the API from
  * where the node sits, so neither is sent. See `RunSend` for what comes back.
  */
-export interface RunSendInput {
+interface RunSendInput {
   field: string;
   role: RunSend["role"];
   node: string;
@@ -977,7 +937,7 @@ export interface SnapshotProp {
  * index signature is a union and why anything walking this has to skip that key
  * rather than trust every value to be an object.
  */
-export interface ModelSnapshot {
+interface ModelSnapshot {
   [prop: string]: SnapshotProp | string | undefined;
   refreshed?: string;
 }
@@ -1184,10 +1144,9 @@ export interface Shot {
   /**
    * The runs this shot was rendered by BEFORE the current one, newest first.
    *
-   * A shot holds one `run`, so a retry — a reworded beat, a take that came out
-   * wrong — used to erase the only pointer to what it replaced. The run itself
-   * survived in the project and was reachable by nobody. Written by the API on
-   * every shot write, never by a client.
+   * A shot holds one `run`, so without this a retry — a reworded beat, a take
+   * that came out wrong — would erase the only pointer to what it replaced.
+   * Written by the API on every shot write, never by a client.
    */
   takes?: Take[];
   /**
@@ -1213,8 +1172,8 @@ export interface ShotRun {
   role?: string;
 }
 
-/** A run that used to be a shot's, kept so it can still be opened and watched. */
-export interface Take {
+/** A shot's earlier run, kept so it can still be opened and watched. */
+interface Take {
   run: string | null;
   runref?: string | null;
   node?: string | null;
@@ -1253,10 +1212,10 @@ export interface SceneRecord extends SceneSummary {
   /**
    * Earlier cuts of this scene, newest first.
    *
-   * Each assemble writes its own node now, so re-cutting after re-rendering a
-   * shot leaves both takes side by side. It used to overwrite one node and rely
-   * on S3 object versioning, which is recoverable but not *visible* — a version
-   * has no node, so nothing lists it, draws it or links to it.
+   * Each assemble writes its own node, so re-cutting after re-rendering a shot
+   * leaves both takes side by side. Overwriting one node would leave the older
+   * cut only as an S3 object version, which is recoverable but not *visible* —
+   * a version has no node, so nothing lists it, draws it or links to it.
    */
   cuts?: RunAsset[];
   /** Which movies cut this scene. */

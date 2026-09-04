@@ -20,19 +20,17 @@ import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog"
  * One character: who they are, what they look like, and everything filed under
  * them.
  *
- * ## Four tabs, where there were seven
+ * ## Four tabs, not one per folder
  *
- * The root's children — `reference/`, `corpus/`, `seed/`, `archive/` and
- * anything made by hand — each used to get a tab beside Profile and References.
- * The reasoning was sound and the result was not: nothing requires any of those
- * folders, so a fixed list would have been exactly the rigidity the entity model
- * removed (ENTITY_MODEL.md, "the folder layout is convention, not schema") — but
- * building the strip from the listing made *navigation out of data*. It grew and
- * shrank as folders came and went, every folder tab showed what Files already
- * held, and at 390px the seven of them wrapped into three rows of underline.
- *
- * The folders are shortcut chips at the top of Files now. `FolderTab` builds
- * them from the same listing, so nothing about the convention hardened.
+ * The root's children — `reference/`, `seed/`, `archive/` and anything made by
+ * hand — are shortcut chips at the top of Files, not tabs. Nothing requires
+ * any of those folders, so a fixed tab list would be exactly the rigidity the
+ * entity model refuses (ENTITY_MODEL.md, "the folder layout is convention, not
+ * schema") — and a strip built from the listing makes *navigation out of
+ * data*: it grows and shrinks as folders come and go, every folder tab shows
+ * what Files already holds, and at 390px seven of them wrap into three rows
+ * of underline. `FolderTab` builds the chips from the same listing, so nothing
+ * about the convention hardens.
  *
  * ## There is no Identity tab, and there should not be one
  *
@@ -48,9 +46,8 @@ import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog"
  * The identity fields and the bible are both on the character record and both
  * write with `rev`, and they are still two routes: renaming is one write that
  * moves no bytes, a bible edit is a whole-document replace. That split is right
- * and it is not a person's problem — it used to surface as a Save on the
- * identity card and a second Save on the form under it, each with its own
- * "revision N" beside it, both showing the same number.
+ * and it is not a person's problem, so there is one Save and one "revision N",
+ * not one of each per write.
  *
  * They cannot go in parallel. Both are compare-and-swap on the same row, so the
  * identity write bumps `rev` and a profile write carrying the number read before
@@ -70,8 +67,8 @@ export function CharacterPage() {
    * The 409 message, as the API worded it.
    *
    * **A string rather than a boolean, because the API words it.** A 409 here is
-   * a `rev` that moved under the write — names stopped being unique, so there
-   * is no longer a second reason for one — and the page shows what the API said
+   * a `rev` that moved under the write — names are not unique, so there is no
+   * second reason for one — and the page shows what the API said
    * rather than inventing its own sentence. The offered re-read is the fix.
    */
   const [conflict, setConflict] = useState<string | null>(null);
@@ -176,9 +173,7 @@ export function CharacterPage() {
           />
         }
       >
-        {/* One line, because there is one label. The mono caption under this
-            was the slug, and it survived the slug removal as `record.name` a
-            second time — so the bar drew the character's name twice. */}
+        {/* One line, because there is one label. */}
         <Text variant="display">{record.name}</Text>
       </PageBar>
 

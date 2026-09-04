@@ -102,42 +102,31 @@ resource "aws_iam_role_policy" "logs" {
 # happened. So the role gained `PutObject` and `DeleteObject`, scoped to the same
 # root the read grants use.
 #
-# READ THIS BEFORE RELYING ON THAT SCOPE. `media_root_prefix` is now empty —
-# the pipeline dropped the `media/` wrapper it used to write under, so the
-# browsable root is the bucket itself and `${var.media_root_prefix}*` expands to
-# `*`. The prefix therefore confines nothing today, and it is a write-capable
-# role: what it can read, it can also overwrite and delete. That is a real
-# widening of the blast radius over the read-only era, and the only reason it is
-# acceptable is that the bucket's entire contents are exactly what studio is for.
-# Set the prefix to a real value and both halves narrow again, together.
+# READ THIS BEFORE RELYING ON THAT SCOPE. The grants cover the whole bucket —
+# the browsable root is the bucket itself — and this is a write-capable role:
+# what it can read, it can also overwrite and delete. The only reason that is
+# acceptable is that the bucket's entire contents are exactly what studio is
+# for.
 #
-# What still holds the line:
+# What holds the line:
 #
 #   * Every key that reaches `PutObject`, `DeleteObject` or `CopyObject` comes
-#     off a node record's `blob_key`, never off a request. This bullet used to
-#     name `services/keys.py` and `assert_inside_root` as the line of defence;
-#     #312 deleted that function along with six other string helpers, and what
-#     replaced it is the catalog — `services/manage` resolves a name path to a
-#     node and passes that node's key, and nothing outside `services/catalog`
-#     composes one, so "delete everything" is not expressible through the API.
-#     `keys.clean_key` still validates exactly one parameter, `GET /api/asset?key=`,
-#     which reads and cannot write. See `clients/aws/s3.py`.
-#   * There is no multipart grant. **There IS now a path that creates an object
-#     out of bytes the caller supplied**, and this paragraph used to say there
-#     was not — #294 was the separate decision this note asked for.
+#     off a node record's `blob_key`, never off a request: `services/manage`
+#     resolves a name path to a node and passes that node's key, and nothing
+#     outside `services/catalog` composes one, so "delete everything" is not
+#     expressible through the API. `/api/asset` signs by node id and reads only.
+#     See `clients/aws/s3.py`.
+#   * There is no multipart grant. The one path that creates an object out of
+#     bytes the caller supplied never goes through this role at all:
 #     `POST /api/nodes/<id>/upload-url` signs a PUT, so the bytes go to S3
-#     directly and never through this role at all. What bounds it is the
-#     signature rather than this policy: one key (`blobs/<node_id>`, never one
-#     the caller names), one exact content length, one content type, and a TTL
-#     shorter than a read URL's. A signed URL cannot be redirected at another
-#     object without invalidating itself.
-#     The `PutObject` this role grants has exactly two callers left: `put_text`,
-#     which overwrites a text file that already exists, and the destination half
-#     of `copy_objects`. The
-#     zero-byte folder marker went with the listings that read it (#316, #317) —
-#     `manage.create_folder` writes one row and no objects — and a rename or a
-#     move is a catalog transaction that touches no bytes at all. Favourites are
-#     gone with the feature.
+#     directly. What bounds it is the signature rather than this policy: one
+#     key (`blobs/<node_id>`, never one the caller names), one exact content
+#     length, one content type, and a TTL shorter than a read URL's. A signed
+#     URL cannot be redirected at another object without invalidating itself.
+#     The `PutObject` this role grants has exactly two callers: `put_text`,
+#     which overwrites a text file that already exists, and the destination
+#     half of a copy. A folder is one row and no objects, and a rename or a
+#     move is a catalog transaction that touches no bytes at all.
 #   * `s3:DeleteObjectVersion` is deliberately absent, and the bucket IS
 #     versioned (`modules/media`). So a delete through this role writes a
 #     tombstone it cannot then reach past: every erasure it can perform is
@@ -157,34 +146,24 @@ data "aws_iam_policy_document" "media_access" {
     effect    = "Allow"
     actions   = ["s3:ListBucket"]
     resources = ["arn:aws:s3:::${var.media_bucket_name}"]
-
-    condition {
-      test     = "StringLike"
-      variable = "s3:prefix"
-      # A listing of the root arrives with `s3:prefix` absent or empty, so the
-      # bare root is listed alongside the wildcard. `distinct` because an empty
-      # root collapses two of the three into the same value.
-      values = distinct(["${var.media_root_prefix}*", var.media_root_prefix, ""])
-    }
   }
 
   statement {
     sid       = "ReadMediaObjects"
     effect    = "Allow"
     actions   = ["s3:GetObject"]
-    resources = ["arn:aws:s3:::${var.media_bucket_name}/${var.media_root_prefix}*"]
+    resources = ["arn:aws:s3:::${var.media_bucket_name}/*"]
   }
 
   statement {
     sid       = "ManageMediaObjects"
     effect    = "Allow"
     actions   = ["s3:PutObject", "s3:DeleteObject"]
-    resources = ["arn:aws:s3:::${var.media_bucket_name}/${var.media_root_prefix}*"]
+    resources = ["arn:aws:s3:::${var.media_bucket_name}/*"]
   }
 }
 
-# Renamed from `media_read`, which is no longer what it grants. An inline role
-# policy carries no data, so replacing it costs nothing.
+# Inline: a role policy carries no data, so replacing it costs nothing.
 resource "aws_iam_role_policy" "media_access" {
   name   = "${local.api_name}-media-access"
   role   = aws_iam_role.api.id
@@ -318,7 +297,7 @@ resource "aws_iam_role_policy" "catalog_access" {
 # it is known before anything is created. The ARN is built from it below rather
 # than passed in.
 #
-# What this costs is the dependency edge — the policy no longer *references* the
+# What this costs is the dependency edge — the policy does not *reference* the
 # parameter, so Terraform will not order them. That is acceptable here and would
 # not be everywhere: an IAM grant naming a parameter that does not exist yet is
 # inert rather than wrong, and the parameter is created in the same apply.
@@ -366,8 +345,7 @@ resource "aws_lambda_function" "api" {
   # 15s was ample while every request was one listing. A subtree operation is a
   # chunked `TransactWriteItems` — a move rewriting `path` on every descendant, a
   # delete removing two items per node — and `STUDIO_MAX_FOLDER_OBJECTS` bounds
-  # that at 2000. (It used to be a `CopyObject` per key, server-side but still one
-  # round trip each; since #316 a rename and a move move no bytes.) The Lambda
+  # that at 2000. The Lambda
   # refuses anything larger rather than relying on this number, so the timeout is
   # the backstop and the config value is the contract.
   #
@@ -400,7 +378,6 @@ resource "aws_lambda_function" "api" {
   environment {
     variables = {
       STUDIO_MEDIA_BUCKET         = var.media_bucket_name
-      STUDIO_MEDIA_ROOT_PREFIX    = var.media_root_prefix
       STUDIO_ALLOWED_ORIGIN       = var.allowed_origin
       STUDIO_CATALOG_TABLE        = var.catalog_table_name
       STUDIO_COGNITO_USER_POOL_ID = var.cognito_user_pool_id

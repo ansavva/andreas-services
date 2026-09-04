@@ -1,21 +1,18 @@
 """The character record — a row with a UUID, and the `studio character` tree.
 
-One 1,235-line module until #305, then five, and now four: `base` (the record,
-its pools, its node helpers), `profile` (the bible and its local round trip),
-`refs` (what a model gets shown, which is tags) and `pools` (corpus/seed/
-archive). `cli` assembles the command group.
+Four modules: `base` (the record, its pools, its node helpers), `profile` (the
+bible and its local round trip), `refs` (what a model gets shown, which is
+tags) and `pools` (corpus/seed/archive). `cli` assembles the command group.
 
-**`rename.py` is gone.** It listed four pools, `PATCH`ed every basename carrying
-the slug, rewrote the bible's index to match, and then swept every run document
-in every project rewriting the paths they had recorded. A rename is one
-`PATCH /api/characters/<id>` now, and the module has nothing left to do.
+A rename is one `PATCH /api/characters/<id>`: nothing else names the
+character by its label.
 
 **This file re-exports what the rest of the pipeline imports**, so
-`CHARACTER.load_profile` and its neighbours keep working from `engine/` and
-`domain/curate.py`. Two names are new and are the seam those modules are written
-against: `resolve(slug_or_id)` returns the record — the thing every command
-starts from — and `selection_nodes` returns the entries a model would be shown,
-resolved by the API rather than here.
+`CHARACTER.load_profile` and its neighbours work from `engine/` and
+`domain/curate.py`. Two names are the seam those modules are written against:
+`resolve(name_or_id)` returns the record — the thing every command starts from
+— and `selection_nodes` returns the entries a model would be shown, resolved
+by the API rather than here.
 """
 
 from studio_pipeline.domain.characters.base import (

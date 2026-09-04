@@ -19,14 +19,12 @@ time-limited bucket access that must not outlive the request, and a key or a
 path is invalidated by the first rename. Presigning happens at submit time and
 is never stored.
 
-WHAT THIS MODULE STOPPED DOING, AND WHY THAT IS THE WHOLE POINT
----------------------------------------------------------------
-It used to walk `characters/<slug>/reference/` itself, read the bible's index,
-resolve `--pick` against basenames, apply `default_set`, and then check the
-result against the engine's cap. Every one of those steps also existed in the
-SPA, written separately, and the two could disagree about which images a
-generation actually saw — a disagreement nobody can audit after the fact,
-because the run recorded the outcome and not the reasoning.
+WHY THE API RESOLVES A SELECTION, NOT THIS MODULE
+-------------------------------------------------
+The SPA selects references too. If each client walked the folder, applied the
+tags and checked the engine's cap separately, the two could disagree about
+which images a generation actually saw — a disagreement nobody can audit after
+the fact, because the run records the outcome and not the reasoning.
 
 Resolution is now `GET /api/characters/<id>/selection` and both halves of studio
 call it. What is left here is the translation: the API refuses an over-cap
@@ -36,18 +34,16 @@ that only says "too many" leaves you guessing which four to drop.
 
 WHY THERE IS NO "SEND EVERYTHING" MODE
 --------------------------------------
-`--character` used to mean "send the whole reference folder", which worked only
-while the folder was kept small enough to fit the smallest engine cap. It is not
-kept small any more — it is a library. So a selection is either named
+A reference folder is a library, not a set sized to the smallest engine cap.
+So a selection is either named
 (`--pick` / `--pick-tag`) or comes from the character's `default_set`, and if the
 result still exceeds the model's cap the caller REFUSES rather than silently
 dropping images. Which images a generation saw is not something to leave to
 whatever a listing happened to return.
 
-That rule is now enforced in ONE place instead of two. It used to be checked
-here *and* implied by whatever `resolve_selection` returned; passing `limit=cap`
-to the route makes the API the only thing that decides, so the CLI cannot be
-lenient where the SPA is strict.
+That rule is enforced in ONE place: passing `limit=cap` to the route makes the
+API the only thing that decides, so the CLI cannot be lenient where the SPA is
+strict.
 """
 
 import contextlib
@@ -114,8 +110,8 @@ def character_record(character: str) -> dict:
 def character_ids(names) -> list[str]:
     """Slugs a person typed -> the ids a run record stores.
 
-    A run's `characters` are ids, so the association survives a rename — which
-    is exactly what `runs find --character` used to lose. Resolved here rather
+    A run's `characters` are ids, so the association survives a rename.
+    Resolved here rather
     than in `submit.py` because "what does this name refer to" is this module's
     subject and nothing else's.
     """

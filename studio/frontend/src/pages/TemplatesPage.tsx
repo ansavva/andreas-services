@@ -192,8 +192,8 @@ const CHARACTER_FIELDS = [
 ];
 const POSITIONS = [1, 2, 3];
 
-//: `angle` and `torso` were the pose plates and are gone — they distorted the
-//: thing they existed to record. `anchor` went with the chaining it described.
+//: The one computed slot. No pose plates — they distort the thing they exist
+//: to record.
 const SLOT = ["identity"];
 
 /** The block a citation names, whichever way it is spelled. */
@@ -626,10 +626,8 @@ function TemplateEditor({
 
   return (
     <Card.Root>
-      {/* **No plate.** A template used to carry an `illustration` — a picture
-          of the orientation it shot — because every template WAS an orientation
-          of a standard set. A template is any prompt somebody wrote now, and
-          most will never have such a picture; a field that only fourteen rows
+      {/* **No plate.** A template is any prompt somebody wrote, and most will
+          never have a picture of what they shoot; a field that only a few rows
           could fill is a field that reads as missing on everything else. */}
       <div className="flex items-start gap-3">
         <div className="flex flex-1 flex-col gap-2">

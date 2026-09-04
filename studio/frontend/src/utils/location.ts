@@ -9,18 +9,12 @@
  * | `/s/<scene_id>` · `/m/<movie_id>` | a scene, a movie |
  * | `/f/<node_id>` · `/o/<node_id>` | the folder browser, one open file |
  *
- * **Ids everywhere, so every link survives every rename.** That was already true
- * of `/f/` and `/o/` (#313) and it is now true of the entities too, which is the
- * whole reason a character is a row with a UUID rather than a folder called by
- * its slug: renaming one used to invalidate every address anybody held.
+ * **Ids everywhere, so every link survives every rename.** That is the whole
+ * reason a character is a row with a UUID rather than a folder called by its
+ * name: renaming a folder would invalidate every address anybody held.
  *
- * **The legacy resolver is gone.** Studio used to hand out the S3 key as the URL
- * — `/projects/<project>/runs/…/output/clip.mp4` — and `LegacyRedirect` matched
- * those by exclusion and asked the API what they named. It was always a bridge
- * with a lifetime, and the entity rework is where it ends: no back-compat is
- * carried, so an unrecognised path lands on home rather than being resolved.
- * That also frees the top-level namespace the bridge was occupying, which is how
- * `/c/`, `/p/`, `/s/` and `/m/` became available at all.
+ * An unrecognised path lands on home; nothing here resolves a path by asking
+ * the API.
  *
  * **CloudFront still needs no change.** Its viewer-request function routes by
  * *location* — `/assets/…` and `/index.html` pass through, everything else
@@ -41,8 +35,8 @@ export const HOME_PATH = "/";
  * The two entity indexes, which the header links to.
  *
  * Home still lists both, and these are not a demotion of it: a list you scroll
- * to reach is not navigation, and "where are my characters" was previously
- * answerable only by going home and looking down the page. They render the same
+ * to reach is not navigation, and "where are my characters" deserves a better
+ * answer than going home and looking down the page. They render the same
  * sections home does, unabridged.
  */
 export const CHARACTERS_PATH = "/characters";
@@ -57,7 +51,7 @@ export const TEMPLATES_PATH = "/templates";
 /** A folder node id, or `null` for the library root. */
 export type FolderId = string | null;
 
-export type Target = { kind: "folder"; id: FolderId } | { kind: "object"; id: string };
+type Target = { kind: "folder"; id: FolderId } | { kind: "object"; id: string };
 
 /**
  * The in-app path for a folder.

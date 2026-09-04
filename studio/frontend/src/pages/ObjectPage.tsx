@@ -83,11 +83,10 @@ export function ObjectPage() {
    * reel the panel stayed open as the column scrolled, so captioning ten clips
    * was one press and nine flicks. On a page it is one file at a time.
    *
-   * **It used to replace the details column, and rename was a second surface
-   * beside it.** One drawer holds all three of the file's own fields now: two
-   * controls that opened two overlays to edit one row told a reader nothing
-   * about which to press, and the column swap meant the read-only details
-   * vanished exactly while they were being edited.
+   * **One drawer holds all three of the file's own fields.** Two controls
+   * opening two overlays to edit one row would tell a reader nothing about
+   * which to press, and a panel that swapped into the details column would
+   * make the read-only details vanish exactly while they were being edited.
    */
   const [editing, setEditing] = useState(false);
 
@@ -226,10 +225,10 @@ export function ObjectPage() {
   /**
    * Delete, then step out.
    *
-   * The file cannot stay — its bytes are gone — and advancing to the next one on
-   * its own is how the wrong thing gets deleted twice, so this leaves rather
-   * than stepping. `replace`, because the address it is leaving names something
-   * that no longer exists and should not be one back-press away.
+   * The file cannot stay — its bytes are deleted — and advancing to the next
+   * one on its own is how the wrong thing gets deleted twice, so this leaves
+   * rather than stepping. `replace`, because the address it is leaving names
+   * something deleted and should not be one back-press away.
    */
   const remove = useCallback(
     async (file: FileEntry) => {
@@ -250,9 +249,8 @@ export function ObjectPage() {
   /**
    * A text file gets the code viewer, not the player.
    *
-   * `/o/<id>` has always been the address of a `prompt.json` or a `profile.yaml`
-   * as well as of a frame — the browser used to branch on it inline, and this
-   * screen inherits that. It reads from `all` rather than `items` because a
+   * `/o/<id>` is the address of a `prompt.json` or a `profile.yaml` as well as
+   * of a frame. It reads from `all` rather than `items` because a
    * filmstrip of a YAML file is nothing, so the sequence deliberately excludes
    * it.
    */
@@ -377,8 +375,7 @@ export function ObjectPage() {
             // Edit and delete, and only those two. They have to be reachable
             // while the player is fullscreen, where the header below is not
             // painted; everything else on the header is a thing you do with the
-            // page in front of you. Rename used to be the first of the pair and
-            // is now one field inside the second.
+            // page in front of you. Rename is one field inside the second.
             actions={
               <ObjectActions
                 file={current}
@@ -448,12 +445,10 @@ export function ObjectPage() {
                 setEditing(false);
               }}
               onKeepEditing={() => setEditWarning(false)}
-              // **No second panel any more.** A `ReferenceFields` used to sit
-              // here when the node was in a character's reference pool, editing
-              // the group, the position and a caption that lived on the `REF#`
-              // row. All three are the file's own `tags` and `description` now,
-              // which the panel below already edits — so the second form was a
-              // second way to say the same thing about the same file.
+              // **No second panel for a reference.** Group, position and
+              // caption are the file's own `tags` and `description`, which this
+              // panel already edits — a second form would be a second way to
+              // say the same thing about the same file.
             />
           </Drawer.Panel>
         </Drawer.Root>

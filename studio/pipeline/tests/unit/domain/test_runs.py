@@ -19,6 +19,7 @@ from click.testing import CliRunner
 from studio_pipeline import cli
 from studio_pipeline.adapters import entities as E
 from studio_pipeline.domain import runs as R
+from tests.support.fake_api import add_run_output
 
 
 # ── the invariant ───────────────────────────────────────────────────────────
@@ -136,14 +137,14 @@ def _output(library, name: str, body: bytes = b"jpeg-out"):
     **`R.upload_output` is gone and this is not a replacement for it.** That
     function downloaded a provider's file and pushed it up from this machine; the
     API does both now, off a callback. What survives is the route it used —
-    `POST /api/runs/<id>/outputs` — which is still how an artifact that already
-    exists locally is filed, and which is all these tests need to arrange a run
-    that has produced something.
+    `POST /api/runs/<id>/outputs` — spelled by the suite's own helper rather
+    than the adapter, because filing an output is the API's act and all these
+    tests need is a run that has produced something.
     """
     from tests.conftest import _confirm
 
-    signed = E.add_run_output(library.run, name, len(body),
-                              "image/png" if name.endswith(".png") else "image/jpeg")
+    signed = add_run_output(library.run, name, len(body),
+                            "image/png" if name.endswith(".png") else "image/jpeg")
     _confirm(library.fake, signed, body)
     return signed["node"]
 

@@ -83,9 +83,8 @@ const SUMMARISED = ["identity", "face", "body", "wardrobe", "consistency"] as co
  * for changes about as often as the section does.
  *
  * A key that is not here still renders, in the order the record gave it, marked
- * off-schema. That is what `corpus` was for months: a legacy key from the
- * pre-catalog migration, sitting in the form as an equal, refused by the API on
- * every save, and looking like part of the product.
+ * off-schema — otherwise a stray key sits in the form as an equal, refused by
+ * the API on every save, and looks like part of the product.
  */
 const SECTIONS: ReadonlyArray<{ key: string; hint: string }> = [
   {
@@ -166,8 +165,8 @@ const OTHER = {
  * The record's keys in the manifest's order, grouped, with the unknown last.
  *
  * Ordered here rather than trusted from the record because a DynamoDB map has no
- * order worth relying on — the sections arrived in whatever order the item was
- * serialised in, which is why `voice` used to sit above `face`.
+ * order worth relying on — the sections arrive in whatever order the item was
+ * serialised in, which can put `voice` above `face`.
  *
  * A group with nothing in it is dropped rather than drawn empty: a character
  * written before a section existed should read as a shorter form, not a form
@@ -186,12 +185,10 @@ function groupSections(keys: readonly string[]) {
 /**
  * The character record, as one form: who they are on top, then the bible.
  *
- * **Not a textarea over YAML, and that is the point of the whole rework.** The
- * profile used to be a document in a bucket whose shape studio was forbidden to
- * know, so the only honest editor was a text box. It is a validated map on a row
- * now, so it can be a form — and the difference is not cosmetic: a field cannot
- * be saved with a YAML syntax error in it, and two people describing two
- * different sections stop overwriting each other's document.
+ * **Not a textarea over YAML.** The profile is a validated map on a row, so it
+ * can be a form — and the difference is not cosmetic: a field cannot be saved
+ * with a YAML syntax error in it, and two people describing two different
+ * sections do not overwrite each other's document.
  *
  * **The form is still built from the value, not from a schema written out here.**
  * The sections the API validates are the pipeline's to change, and a frontend
@@ -212,11 +209,11 @@ function groupSections(keys: readonly string[]) {
  *
  * ## Sections collapse, and every section is one box deep
  *
- * A bible is long. Every top-level key used to be an open bordered card, any map
- * inside it another, and any list of maps a third with a fourth around each
- * entry — four nested boxes drawn with the same border on the same background,
- * which is depth signalled by repeating one signal. On a 390px screen it also
- * spent 72px of the width on padding.
+ * A bible is long. A bordered card per top-level key, another per map inside
+ * it, and a third and fourth around each entry of a list of maps is four
+ * nested boxes drawn with the same border on the same background — depth
+ * signalled by repeating one signal — and on a 390px screen 72px of the width
+ * spent on padding.
  *
  * So: **one `Card.Root` per top-level section, and nothing nested inside it.**
  * Depth below that is a title over a `Separator`, and repeated entries are
@@ -365,10 +362,9 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
       {/*
         One bar, one revision number, and it follows the page down.
 
-        There used to be two of each: a Save on the identity card and a second on
-        the bible below it, with a "revision N" beside both showing the same
-        number. They are still two writes — the page chains them — and that is not
-        something a person should have to hold.
+        Identity and bible are two writes — the page chains them — and that is
+        not something a person should have to hold, so there is not a Save and a
+        "revision N" on each.
 
         Sticky because a bible is longer than a screen, and a save you have to
         scroll back up to reach is one people stop making. Three items, so it
@@ -705,9 +701,8 @@ function Chevron({ open }: { open: boolean }) {
  *
  * **Renaming here moves nothing.** No object is copied, no run document is
  * rewritten, and every reference, binding and default-set entry keeps pointing at
- * the same node ids: the slug is a label on one row, and the root folder's name
- * changes in the same transaction. It was a sweep over four pools plus a rewrite
- * pass over every run that cited the old path.
+ * the same node ids: the name is a label on one row, and the root folder's name
+ * changes in the same transaction.
  */
 function RecordFields({
   value,
@@ -718,11 +713,9 @@ function RecordFields({
 }) {
   return (
     <>
-      {/* **One field, where there were two.** A character carried a `slug` —
-          library-unique, the address a person typed — beside a display name for
-          prose, and keeping them in step was the reader's problem. Identity is a
-          UUID and this is a label: not unique, not an address, and renaming it
-          copies no objects and strands nothing. */}
+      {/* **One field.** Identity is a UUID and this is a label: not unique,
+          not an address, and renaming it copies no objects and strands
+          nothing. */}
       <Field.Root name="name">
         <Field.Label>Name</Field.Label>
         <Input value={value.name} onValueChange={(name) => onChange({ ...value, name })} />

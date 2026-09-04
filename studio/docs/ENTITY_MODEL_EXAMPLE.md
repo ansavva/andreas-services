@@ -59,7 +59,6 @@ JSON; the table stores DynamoDB's typed form).
   "sk": "META",
   "lib": "lib-6c2f4a91-8e3d-4b17-9f02-1a5c7d3e9b44",
   "name": "Subject A",
-  "schema_version": 2,
   "rev": 4,
   "created": "2026-03-02T11:04:18.442119+00:00",
   "updated": "2026-08-19T09:41:02.883740+00:00",
@@ -533,9 +532,7 @@ named by it. The claim is gone and the folder is named by the character's id, so
 neither has anything to say about what the character is called.
 
 **No object is copied. No record anywhere is rewritten. Every node keeps its id,
-and the root folder does not move.** Before the entity model this was a `PATCH`
-per slugged basename in four pools, plus a rewrite pass over every run document
-that cited the old path.
+and the root folder does not move.**
 
 There is no 409 for a name another character already has. A duplicate is two rows
 that look alike in a list.
@@ -824,37 +821,14 @@ subject-a  (char-9f3c1e57-…)  rev 4
 then a person decides it is identity (hard rule #2b).
 
 ```bash
-$ studio character add-refs subject-a --to face --from-run rooftop-teaser/latest
-copied 1 file into subject-a/reference/face/
+$ studio download rooftop-teaser/latest#1 --dest /tmp/promote
+$ studio upload --folder subject-a/reference /tmp/promote/three-quarter-left.png
   node-9a06d3c5-…  three-quarter-left.png
-attached as reference (group face, order 1500)
-# POST /api/nodes/copy  →  POST /api/characters/<id>/references
+# POST /api/nodes/<id>/upload-url  →  POST /api/nodes/<id>/confirm-upload
 
-$ studio character refs subject-a --group face
-  order  node             name                      description
-   1000  node-a18f2b60-…  front-neutral.png         Front, neutral, flat daylight.
-   1500  node-9a06d3c5-…  three-quarter-left.png    Three-quarter left, neutral…
-# GET /api/characters/<id>/references?group=face
-
-$ studio character set-ref-desc subject-a node-9a06d3c5-… "Three-quarter left, neutral expression, flat daylight."
-described 1 reference
-# PATCH /api/characters/<id>/references/<node>
-
-$ studio character describe-refs subject-a --from descriptions.json
-described 12 references in one write
-# PATCH /api/characters/<id>/references
-
-$ studio character order subject-a --group face node-9a06d3c5-… --after node-a18f2b60-…
-reordered
-# PATCH /api/characters/<id>/references/<node>  {after}
-
-$ studio character regroup subject-a node-b93e07d1-… --to body
-moved to group body — no object was written
-# PATCH /api/characters/<id>/references/<node>  {group}
-
-$ studio character default-set subject-a node-a18f2b60-… node-9a06d3c5-… node-b93e07d1-…
-default set: 3 references
-# PATCH /api/characters/<id>/default-set
+$ studio describe node-9a06d3c5-… --text "Three-quarter left, neutral expression, flat daylight." \
+    --tag default --tag face --tag three-quarter
+# PATCH /api/nodes/<id>  {description, tags}
 
 $ studio character selection subject-a --tag face --limit 7
 slot 1  node-a18f2b60-…  face  Front, neutral, flat daylight.
@@ -896,7 +870,7 @@ $ studio projects rename rooftop-teaser launch-teaser
 renamed — 0 objects copied
 # PATCH /api/projects/<id>
 
-$ studio projects add-inputs rooftop-teaser ./plate.png
+$ studio projects add-inputs ./plate.png rooftop-teaser
 added 1 → position 5
 # POST /api/nodes  →  upload-url  →  confirm-upload
 
@@ -963,11 +937,3 @@ through `GET /api/resolve?path=` against the character's root folder — an
 **address**, not a key. The S3 key behind that last one is
 `characters/char-9f3c1e57-…/node-9a06d3c5-….png`, and nothing but
 `services/catalog.py` ever sees it.
-
-### 3.5 Commands that stop existing
-
-```bash
-$ studio curate renumber …     # gone — order is a row attribute
-$ studio rewrite check         # gone — records name node ids; nothing can dangle
-$ studio character sync-refs   # gone — the index cannot drift from the folder
-```

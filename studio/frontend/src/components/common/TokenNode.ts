@@ -1,5 +1,5 @@
 import { $applyNodeReplacement, TextNode } from "lexical";
-import type { EditorConfig, LexicalNode, NodeKey, SerializedTextNode } from "lexical";
+import type { EditorConfig, NodeKey, SerializedTextNode } from "lexical";
 
 /**
  * A `{placeholder}` in a prompt template, drawn as a pill and treated as one thing.
@@ -87,8 +87,4 @@ export function $createTokenNode(text: string, kind: "block" | "computed"): Toke
   const node = new TokenNode(text, kind);
   node.setMode("token");
   return $applyNodeReplacement(node);
-}
-
-export function $isTokenNode(node: LexicalNode | null | undefined): node is TokenNode {
-  return node instanceof TokenNode;
 }

@@ -2289,3 +2289,16 @@ def _unique(fake: FakeApi, parent_id: str, name: str) -> str:
         if not fake._child(parent_id, candidate):
             return candidate
     raise AssertionError("unreachable")
+
+
+def add_run_output(run_id: str, name: str, size: int, content_type: str) -> dict:
+    """A node under a run's `output/`, plus a signed PUT for its bytes.
+
+    `POST /api/runs/<id>/outputs` through the real adapter, so the fixture
+    arranges a run that has produced something the way the API does. The
+    pipeline no longer spells this route: the API files a run's output for
+    itself off the provider's callback, and the wrapper that used to live in
+    `adapters/entities.py` had no caller but this suite.
+    """
+    return api.post(f"/api/runs/{run_id}/outputs",
+                    {"name": name, "size": size, "content_type": content_type})

@@ -15,7 +15,7 @@ const SKIP_SECONDS = 5;
  */
 const SMALL_GLYPH = "size-4 fill-none stroke-current stroke-[1.5]";
 
-export interface PlayerTransportProps {
+interface PlayerTransportProps {
   /** The playback this transport drives. One `useMediaPlayback` per player. */
   playback: MediaPlayback;
   /**

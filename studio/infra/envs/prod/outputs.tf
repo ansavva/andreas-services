@@ -1,8 +1,3 @@
-output "app_url" {
-  description = "Public URL of the studio app"
-  value       = module.hosting.app_url
-}
-
 output "app_bucket_name" {
   description = "S3 bucket the deploy workflow syncs the built SPA into"
   value       = module.hosting.app_bucket_id
@@ -11,16 +6,6 @@ output "app_bucket_name" {
 output "cloudfront_distribution_id" {
   description = "CloudFront distribution ID (for cache invalidation in CI)"
   value       = module.hosting.distribution_id
-}
-
-output "api_function_name" {
-  description = "API Lambda function name"
-  value       = module.compute.api_function_name
-}
-
-output "api_ecr_repository_url" {
-  description = "ECR repository the deploy workflow pushes the API image to"
-  value       = module.compute.ecr_repository_url
 }
 
 output "api_domain" {
@@ -46,11 +31,6 @@ output "cognito_auth_domain" {
 output "media_bucket_name" {
   description = "The media bucket the pipeline writes and the API reads"
   value       = module.media.bucket_name
-}
-
-output "media_uri" {
-  description = "s3:// URI for the root of the media tree"
-  value       = module.media.media_uri
 }
 
 output "catalog_table_name" {
@@ -81,15 +61,6 @@ output "callback_queue_url" {
   value       = module.callbacks.queue_url
 }
 
-output "callback_dlq_url" {
-  description = <<-EOT
-    Where a callback goes after five failed attempts. Worth an output rather than
-    console archaeology: a message here is a generation that was paid for and
-    whose output was never stored.
-  EOT
-  value       = module.callbacks.dlq_url
-}
-
 output "callback_worker_function_name" {
   description = "The queue consumer; the deploy workflow pins its image alongside the API's"
   value       = module.callbacks.worker_function_name
@@ -115,20 +86,6 @@ output "render_queue_url" {
     holds this.
   EOT
   value       = module.render.queue_url
-}
-
-output "render_dlq_url" {
-  description = <<-EOT
-    Where a render job goes after five failed attempts. Nothing here is
-    perishable — every input is already in the media bucket — but a message means
-    a `RENDER#` row is stuck at `running` and somebody is polling it.
-  EOT
-  value       = module.render.dlq_url
-}
-
-output "render_ecr_repository_url" {
-  description = "The SECOND image repository. `Dockerfile.render` is the API's plus ffmpeg."
-  value       = module.render.ecr_repository_url
 }
 
 output "render_worker_function_name" {

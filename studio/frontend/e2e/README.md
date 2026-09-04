@@ -61,7 +61,7 @@ the script never makes it.
 
 Every flow `runs.spec.ts` covers POSTs to a path that also has a GET: `/api/runs`
 is the listing and the create, `/api/nodes` is the browse and the mkdir,
-`/api/characters/<id>/references` is the library and the attach. `stubApi`
+`/api/nodes/copy` is what promotes an output into a character. `stubApi`
 dispatched on `url.pathname` alone until those flows existed, which would have
 answered each of them with the other one's body — a green test against a stub
 doing the opposite of the thing under test. Writes are matched first and answered

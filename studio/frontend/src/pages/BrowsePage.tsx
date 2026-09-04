@@ -28,10 +28,10 @@ import {
  * this page is — the listing, the selection and the uploads live in
  * `FolderBrowser`, which a character's and a project's Files tab render too.
  *
- * **`/o/` is not this page any more.** It used to be: an object address
- * rendered this browser with the file open over it, which is why opening a run
- * output landed you in the file tree. Opening a file is a navigation to
- * `ViewerPage` now, and this page's job stops at the folder.
+ * **`/o/` is not this page.** Opening a file is a navigation to `ViewerPage`,
+ * and this page's job stops at the folder — an object address that rendered
+ * this browser with the file open over it would land a run output in the file
+ * tree.
  */
 export function BrowsePage() {
   const location = useLocation();
@@ -58,7 +58,7 @@ export function BrowsePage() {
 
   /**
    * `replace` is for the one navigation that is not a journey: leaving a folder
-   * because it no longer exists. Pushing there would leave the deleted folder as
+   * because it has been deleted. Pushing there would leave the deleted folder as
    * the entry behind you, so back would load an empty listing of something you
    * just destroyed. Every other move between folders is a real history entry,
    * because the browser's back button has to retrace browsing.

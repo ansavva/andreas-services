@@ -105,10 +105,8 @@ printf '\nConfirm the stack at any time with:\n  ./studio/scripts/dev-aws-setup.
 # an empty stack looks identical to a broken one from the app.
 printf '\nThe bucket, table and pool are empty. Nothing has been seeded into them.\n'
 # `dev-aws-seed.sh` is NOT called from here, deliberately. It needs the test
-# account to exist — the library it writes has to have a member — and the
-# fixture it downloads is #284 and has not been published, so calling it would
-# end every provisioning run on a failure that is nobody's fault. Print the
-# order instead; wire it up when there is something to load.
+# account to exist — the library it writes has to have a member — which
+# `dev-user.sh` creates after this script. Print the order instead.
 printf '\nThen, in order:\n'
 printf '  ./studio/scripts/dev-user.sh      # its one test account\n'
 printf '  ./studio/scripts/dev-aws-seed.sh  # load the published fixture\n'

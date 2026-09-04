@@ -32,35 +32,10 @@ def catalog_table():
     the same reason, because studio has one environment and local development
     points at it.
 
-    **Every listing reads it as of #309.** It used to be inert — listings came
-    from S3 and an unset variable was harmless — and it is now the difference
-    between a browsable library and an empty one.
+    **Every listing reads it**: an unset variable is the difference between a
+    browsable library and an empty one.
     """
     return os.environ.get("STUDIO_CATALOG_TABLE", "studio-prod-catalog")
-
-
-def media_root_prefix():
-    """The prefix inside the bucket this service may read.
-
-    Every key and prefix the API accepts is validated against this, so it is the
-    one place the browsable surface is defined.
-
-    **Empty means the whole bucket, and that is what prod runs.** The pipeline used
-    to wrap everything in `media/`; it now writes `characters/`, `projects/` and
-    `phrasebook/` at the top level, so there is no longer a wrapper to confine
-    browsing to. The knob stays because the confinement it drives is real — set
-    it to `some/prefix/` and both this API and the Lambda's IAM policy narrow to
-    it — but a value of `""` (or `"/"`, which as an S3 prefix would match
-    nothing) means the root. Anything else is returned slash-terminated because
-    two comparisons expect it that way: `keys.clean_key`'s root check, and the
-    prefix the Lambda's IAM policy is scoped to. Nothing lists any more (#316,
-    #317), so the termination stopped being about an argument to `ListObjectsV2`
-    and is about those two.
-    """
-    value = os.environ.get("STUDIO_MEDIA_ROOT_PREFIX", "").strip()
-    if value in ("", "/"):
-        return ""
-    return value if value.endswith("/") else value + "/"
 
 
 def presign_ttl_seconds():
@@ -109,7 +84,7 @@ def max_bulk_keys():
     transaction per node with the blobs going in a single call at the end — so
     the number bounds a per-node cost it was never chosen for. `manage._bulk`
     states that arithmetic where the cap is enforced; what the number should be
-    is #431, open and undecided, and not a thing to settle in passing here.
+    is undecided, and not a thing to settle in passing here.
 
     A larger selection is refused rather than silently split: a partially applied
     bulk delete is the worst possible outcome to report back to a UI.
@@ -124,16 +99,12 @@ def max_folder_objects():
     has a wall clock, so this guards a request that would time out halfway
     through and leave the tree in two places at once. For those it is a
     **refusal** — half a move reported as a whole one is the outcome there is no
-    recovering from. (A folder *rename* was a `CopyObject` per key once and is
-    not bounded by this at all since #316: it rewrites one row and nothing
-    beneath it moves.)
+    recovering from. (A folder *rename* is not bounded by this at all: it
+    rewrites one row and nothing beneath it moves.)
 
     The reel reads the same number and **truncates** instead, saying so in
     `truncated`: a page of a library is allowed to be shorter than the library.
-    That is what retires `STUDIO_MAX_WALK_OBJECTS` (20,000), which bounded a walk
-    over S3 *objects* — the reel enumerates rows now (#310), so there is one
-    number for how much of a subtree this service will hold in memory rather than
-    two that had drifted an order of magnitude apart.
+    One number bounds how much of a subtree this service will hold in memory.
     """
     return int(os.environ.get("STUDIO_MAX_FOLDER_OBJECTS", "2000"))
 
@@ -185,17 +156,6 @@ def webhook_base_url():
     return os.environ.get("STUDIO_WEBHOOK_BASE_URL", "").strip().rstrip("/")
 
 
-def callback_queue_url():
-    """The SQS queue a received callback is enqueued onto, or `""`.
-
-    Read by the local consumer (`handlers/local/consumer`) and by nothing else
-    in this process: the receiver Lambda reads its own environment directly
-    because it imports none of this, and the prod worker is driven by an event
-    source mapping rather than by a poll.
-    """
-    return os.environ.get("STUDIO_CALLBACK_QUEUE_URL", "").strip()
-
-
 def webhook_tolerance_seconds():
     """How far out of date a webhook's timestamp may be before it is refused.
 
@@ -216,7 +176,7 @@ def max_output_bytes():
     streams the download to disk and then sends it in one PUT, so the object's
     ETag stays the MD5 of its bytes and `s3.content_hash` keeps working — a
     multipart upload would produce a hash-of-hashes and every output would lose
-    the checksum #535 added.
+    its checksum.
     """
     return int(os.environ.get("STUDIO_MAX_OUTPUT_BYTES", str(5 * 1024**3)))
 

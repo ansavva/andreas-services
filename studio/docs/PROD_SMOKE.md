@@ -20,10 +20,9 @@ a mystery failure.
 
 What is left for a human is the one thing CI cannot grant itself: **a password.**
 
-## What it now also proves: the provider credential
+## What it also proves: the provider credential
 
-**Generation moved into the API (#536), so the deployed function holds a secret
-for the first time** — a `SecureString` at `/studio/prod/replicate-api-token`,
+**The deployed function holds a secret** — a `SecureString` at `/studio/prod/replicate-api-token`,
 read at call time under the Lambda's own role rather than injected as an
 environment variable. That is a new IAM grant, and a new IAM grant is the one
 class of failure this suite exists for: moto does not enforce IAM and the
@@ -110,7 +109,7 @@ stdin rather than as an argument, so it never lands in `ps`.
 **No IAM change is needed.** The CI role already carries `cognito-idp:*` and
 `dynamodb:*` on `*` (`../../infra/envs/shared/main.tf`), which is what the seeder
 uses. The only resource-scoped statement in that policy is the SSM one, and
-`/studio/*` has been on it since #240.
+`/studio/*` is on it.
 
 ## The step
 
@@ -184,5 +183,5 @@ fixture whose address is outside `.test`.
 | Seed: `already opens on a different root node` | The fixture's `library.root_node` was changed after the library was created. Repointing would strand everything under the old root; resolve by hand. |
 | Suite: `Sign-in failed (NotAuthorizedException)` | Wrong password **or** no such account; the pool sets `prevent_user_existence_errors` and will not say which. If the seed step was green, suspect a rotation that only half landed. |
 | Suite: `ISOLATION VIOLATED` | As above — a second membership, caught at the fixture instead of the seeder. Nothing was written. |
-| Suite: `Could not read the catalog` on a listing | The API role is missing a DynamoDB action. This is the failure the whole job exists to catch; `backend/tests/test_iam_agreement.py` names which calls need which grant. |
+| Suite: `Could not read the catalog` on a listing | The API role is missing a DynamoDB action. This is the failure the whole job exists to catch; `backend/tests/unit/test_iam_agreement.py` names which calls need which grant. |
 | Suite: a 401 on every call | The Lambda's `STUDIO_COGNITO_*` environment no longer matches the pool. `update-lambda` owns that map and **replaces** it wholesale — a dropped line unsets a variable. |

@@ -7,12 +7,9 @@ now also carries `PutObject` and `DeleteObject`, because studio is where the
 library actually gets tidied — a run that produced nothing worth keeping is
 noticed in the browser, not in the pipeline.
 
-**Nothing here lists any more.** `list_folder`, `walk_all`, `exists`,
-`prefix_exists` and `put_folder_marker` went with #316 and #317: a folder is a
-row, a name is unique because a condition expression says so, and "what is in
-this folder" is a query on the catalog. That is the point of the milestone
-rather than a side effect — the listing was the expensive half of every write,
-and the zero-byte marker existed only to make an empty folder visible to one.
+**Nothing here lists.** A folder is a row, a name is unique because a
+condition expression says so, and "what is in this folder" is a query on the
+catalog.
 
 What is left is bytes, and four things bound them:
 
@@ -77,13 +74,12 @@ def reset_client():
 def copy(source_key: str, dest_key: str) -> None:
     """Server-side copy within the media bucket. The whole of a copy.
 
-    **It used to be the first half of a rename**, and of a move, and of a folder
-    rename — one call per key, followed by a delete. Those are transactions now
-    (#316), so the one caller left is `services.manage.copy_objects`, which is
-    the only operation in the service that is *supposed* to duplicate bytes. Each
+    A rename and a move are row transactions, so the one caller is
+    `services.manage.copy_objects`, the only operation in the service that is
+    *supposed* to duplicate bytes. Each
     copy gets its own object rather than a second row on one key: `delete_node`
     does not ask whether a blob is still referenced, so a shared key would mean
-    deleting one copy destroys the other's. Copy-on-write is #334.
+    deleting one copy destroys the other's.
 
     Server-side, so a 200 MB video never travels through the Lambda.
     """
@@ -136,8 +132,7 @@ def put_text(key: str, body: bytes, content_type: str) -> None:
     caller is `services.manage.update_text`, which has already established that
     the node is a text file carrying a blob, small enough to hold in memory. S3 has
     no partial write and no conditional put, so this is a whole-object replace —
-    the previous contents are gone unless the bucket is versioned, which is one
-    more reason to turn versioning on.
+    the previous contents survive only as a noncurrent version.
     """
     try:
         client().put_object(

@@ -130,10 +130,9 @@ def panel_slug(manifest: dict, shot: dict, panel: dict) -> str:
 def panel_storyboard_name(shot: dict, panel: dict, ext: str) -> str:
     """A panel's FILE NAME inside the scene's `storyboard/` folder.
 
-    A name, not a key. It used to build `projects/<p>/scenes/<s>/storyboard/…`,
-    which asserted where the folder was; the scene record names its own folder
-    node and `SC.scene_folder` resolves the child by name, so the only thing
-    left to decide here is what to call the file.
+    A name, not a key: the scene record names its own folder node and
+    `SC.scene_folder` resolves the child by name, so the only thing to decide
+    here is what to call the file.
     """
     return f"{shot['id']}-p{panel['n']}{ext}"
 
@@ -515,13 +514,12 @@ def review_sheet(manifest: dict, label: str, items: list[tuple[str, str]],
     directory, and it sits beside the panels it was built from. `--review-sheet
     DIR` still keeps a local copy for whoever IS at that machine.
 
-    `cache` is accepted and no longer read. It memoised a download per node,
-    because every tile used to come down to this machine to be laid out; the
-    worker reads them out of S3 instead, so there is nothing left to memoise. The
-    parameter stays because both callers pass one and it costs nothing — see
-    `turnaround.review_sheet`, which is in the same position.
+    `cache` is accepted and not read: the worker reads the tiles out of S3, so
+    there is nothing to memoise on this side. The parameter stays because both
+    callers pass one and it costs nothing — see `turnaround.review_sheet`,
+    which is in the same position.
     """
-    # **A render job, because Pillow is not in this wheel any more.** The tiles
+    # **A render job, because Pillow is not in this wheel.** The tiles
     # are already nodes, so nothing is uploaded to build this — the worker reads
     # the same images the payload will bind and lays them out.
     result = RENDER.submit("sheet", {
@@ -560,10 +558,8 @@ def _sheet_items(entry: dict, bindings: dict) -> list[tuple[str, str]]:
 def _resolve(ref: str, project: str | None) -> dict:
     """A sceneref -> the scene RECORD.
 
-    One value where this returned three. `resolve_scene` used to hand back
-    `(project, scene_id)` and every caller immediately read the manifest back
-    out of the bucket; the record carries its own project, its own folder node
-    and its shots, so there is nothing left to pair it with.
+    The record carries its own project, its own folder node and its shots, so
+    there is nothing to pair it with.
     """
     try:
         return SC.resolve_scene(ref, project)
@@ -716,15 +712,14 @@ def run_board(ref: str, opts) -> int:
                                           os.path.splitext(outs[0]["name"] or "")[1])
         # The run keeps its own output; the board holds a copy of the panel as it
         # was when approved. A real copy — two blobs, two lifetimes — because a
-        # second row on one blob is copy-on-write (#334) and the delete route
+        # second row on one blob is copy-on-write and the delete route
         # destroys the shared bytes when either row goes.
         storyboard = SC.scene_folder(manifest, SC.STORYBOARD_FOLDER)
         # **The panel being replaced still holds the name.** A stale panel is
-        # re-rendered under the same `<shot>-p<n>` file name, so the rename
-        # collided with the copy it was superseding and no stale panel could ever
-        # be re-boarded — the render billed, the copy landed, and the rename
-        # refused. The old copy is what the new one replaces, so it goes; the
-        # run that produced it keeps its own output either way.
+        # re-rendered under the same `<shot>-p<n>` file name, so the copy would
+        # collide with the one it supersedes — after the render billed. The old
+        # copy is what the new one replaces, so it goes; the run that produced
+        # it keeps its own output either way.
         # **Renamed aside, never deleted.** Every panel's bindings are resolved
         # before the submit loop starts, and a panel's inputs include the panels
         # before it — so deleting the copy this one supersedes dangles a
@@ -801,13 +796,11 @@ def run_render(ref: str, opts) -> int:
     # GATE 1
     #
     # **A dry run leaves a DRAFT per shot, exactly as `studio run --dry-run`
-    # does.** It used to render each payload to the terminal and keep nothing,
-    # so the thing hard rule #2 asks a person to READ had no address: it could
-    # not be opened in the app, linked to, or approved later. `studio run` was
-    # given drafts and this path was left behind, which is why every shot of a
-    # real scene ended up submitted as a standalone run — and a standalone run
-    # is not recorded on its shot, so `scenes assemble` then refused to cut a
-    # scene whose shots had all plainly rendered. See `cmd_attach`.
+    # does.** The thing hard rule #2 asks a person to READ needs an address: a
+    # draft can be opened in the app, linked to, and approved later, and a
+    # payload printed to a terminal cannot. A shot submitted as a standalone
+    # run is not recorded on its shot, and `scenes assemble` then refuses to
+    # cut a scene whose shots have all plainly rendered — see `cmd_attach`.
     sheet_cache: dict[str, str] = {}
     drafts: list[tuple[dict, dict]] = []
     for shot, entry, args, payload, bindings in prepared:
@@ -853,10 +846,9 @@ def run_render(ref: str, opts) -> int:
             print(f"  FAILED — {exc}", file=sys.stderr)
             failed.append((shot["id"], str(exc)))
             continue
-        # The run by ID on both fields. `run` used to be `<project>/<run_id>`
-        # and `runref` the same with `#1` — two strings that a project rename
-        # invalidated. An id needs no project and survives every rename, which
-        # is the property `PUT /api/scenes/<id>/shots` is storing.
+        # The run by ID on both fields, never `<project>/<run_id>`: an id needs
+        # no project and survives every rename, which is the property
+        # `PUT /api/scenes/<id>/shots` is storing.
         made = dict(run=record["id"], runref=f"{record['id']}#1", rendered=R._now())
         # **Find the shot in the CURRENT manifest — never mutate the captured
         # one and save.** This is the same rule the board loop above states at
@@ -867,10 +859,10 @@ def run_render(ref: str, opts) -> int:
         # start, and saving a FRESH read of the manifest wrote back shots that
         # had never seen the update.
         #
-        # Every shot billed, printed its run id in the report below, and was
-        # recorded without one — #497 in the neighbouring loop, unfixed in this
-        # one. `scenes handoff` and `scenes assemble` then found nothing to
-        # carry forward from a shot that had definitely been rendered.
+        # Otherwise every shot bills, prints its run id in the report below,
+        # and is recorded without one — and `scenes handoff` and `scenes
+        # assemble` find nothing to carry forward from a shot that has
+        # definitely been rendered.
         shots_now = SC.scene_shots(manifest)
         for current in shots_now:
             if current["id"] == shot["id"]:
@@ -988,7 +980,7 @@ def run_attach(ref: str, opts) -> int:
     # Read the CURRENT manifest and write into that — never the captured copy.
     # `select_shots` hands back copies and `save_shots` replaces the list
     # wholesale, so mutating `shot` and saving a fresh read drops the update.
-    # This is #497, and the render loop below made the same mistake twice.
+    # The render loop below has the same shape and the same rule.
     shots_now = SC.scene_shots(manifest)
     for current in shots_now:
         if current["id"] == shot["id"]:

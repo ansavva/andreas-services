@@ -22,14 +22,12 @@ interface Props {
  * `prompt.json` and `scene.json`, the subject `profile.yaml` files,
  * `phrasebook/wording.yaml` and the reference captions.
  *
- * **It is a page rather than a modal, and it can be edited.** Both changed
- * together. It used to be a small centred card over a dimmed backdrop, which is
- * the right shape for a confirmation and the wrong one for a document: a
- * `profile.yaml` is a thing you sit and read, and reading it through a letterbox
- * with the folder listing showing around the edges is worse than the file
- * deserves. So it fills the viewport, the way opening a clip does, and the URL
- * already pointed at it — `/characters/<name>/profile.yaml` was a share link
- * before this and still is.
+ * **It is a page rather than a modal, and it can be edited.** A small centred
+ * card over a dimmed backdrop is the right shape for a confirmation and the
+ * wrong one for a document: a `profile.yaml` is a thing you sit and read, and
+ * reading it through a letterbox with the folder listing showing around the
+ * edges is worse than the file deserves. So it fills the viewport, the way
+ * opening a clip does, and `/o/<id>` is its share link.
  *
  * Two decisions inside the editor are worth knowing:
  *
@@ -126,9 +124,8 @@ export function TextPage({ file, onClose, onSaved }: Props) {
     setSaving(true);
     setSaveError(null);
 
-    // By node id in both directions now. The read and the write used to address
-    // the same file through two different resolvers — an id here, a name path
-    // there — which is the last of what #432 left open.
+    // By node id in both directions, so the read and the write address the
+    // same file through one resolver.
     saveNodeText(file.id, draft)
       .then(() => {
         // The saved draft becomes the file: staying in the editor is what you
@@ -171,7 +168,7 @@ export function TextPage({ file, onClose, onSaved }: Props) {
           </Badge>
         )}
 
-        {/* Rendered/raw is a *reading* choice, so it is gone while editing —
+        {/* Rendered/raw is a *reading* choice, so it is hidden while editing —
             there is only one way to edit markdown and it is as markdown. */}
         {isMarkdown && !editing && (
           <Button intent="secondary" size="sm" onClick={() => setRaw((value) => !value)}>

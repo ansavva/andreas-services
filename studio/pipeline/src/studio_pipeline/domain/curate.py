@@ -19,34 +19,17 @@ command is a DRY RUN unless you pass --apply.
   studio curate move <name> face/front-neutral.webp --from reference --to archive
   studio curate groups <name>
 
-MOVING AN IMAGE NO LONGER MOVES ANYTHING ELSE
----------------------------------------------
-**This section used to be headed "MOVING AN IMAGE STILL MOVES ITS RECORDS", and
-it was the largest unfinished thing in the pipeline.** It said, correctly at the
-time, that a record did not name a node — it named a **path** — so renaming
-`face/<name>_3.png` left every run that cited it pointing at a path that no
-longer resolved. `domain/rewrite.py` existed to sweep those documents, every
-command here called `rewrite.apply_moves`, and skipping that step is what once
-left 69 records pointing at reference images that no longer existed.
+MOVING AN IMAGE MOVES NOTHING ELSE
+----------------------------------
+Records name **node ids**. A node id survives a rename, a reparent, a regroup
+and a move of the character it belongs to, because none of those touch it. So
+there is nothing to sweep after a move: every command here ends after the
+operation itself.
 
-Records name **node ids** now. A node id survives a rename, a reparent, a
-regroup and a move of the character it belongs to, because none of those touch
-it. So there is nothing to sweep: `rewrite.py` is deleted, `rewrite check` is
-deleted, and every call to `apply_moves` in this module is deleted. It is the
-single largest simplification in the entity model, and this module is where it
-shows most — three commands that each ended in a document-rewriting pass now
-end after the operation itself.
-
-WHAT ELSE IS NO LONGER HERE
----------------------------
-`renumber` closed holes in a reference group's numbering, because ORDER WAS THE
-TRAILING NUMBER IN A FILENAME. Order is `order` on the `REF#` row, gapped by
-1000, so there are no holes to close and nothing to renumber — the command has
-no work left to do at all. Explicit ordering is `studio character order`.
-
-`regroup` moved reference images into a purpose subfolder and rewrote every
-record citing them. A group is an attribute of a row, so it moved to
-`studio character regroup`, where it is one `PATCH` and writes no object.
+Order and group are attributes of the row, not of the filename or the folder,
+so there is no `renumber` and no `regroup` here: explicit ordering is
+`studio character order`, and regrouping is `studio character regroup`, one
+`PATCH` that writes no object.
 
 `set-refs` rebuilt `reference/` from chosen numbers, because the folder WAS the
 set that got sent. The `default_set` names what is sent; choosing is
@@ -94,13 +77,10 @@ def digest(entry: dict) -> str:
     signs is one. So the hash arrives with the listing and this is a dictionary
     read.
 
-    **It used to download the file.** `hashlib.md5(store.read_node(node_id))` —
-    an HTTPS round trip out of the bucket per candidate, on a command whose whole
-    job is to compare images that are probably not duplicates.
-
-    A node written before the checksum was recorded has none, and those are read
-    the old way rather than skipped: silently declining to compare two files is
-    how a dedupe reports "no duplicates" over a pool full of them.
+    A node with no recorded checksum is downloaded and hashed rather than
+    skipped — an HTTPS round trip per candidate, but silently declining to
+    compare two files is how a dedupe reports "no duplicates" over a pool full
+    of them.
     """
     if entry.get("checksum"):
         return entry["checksum"]
@@ -218,7 +198,7 @@ def cmd_dedupe(name, apply, group, pool):
         print("\nDRY RUN — nothing changed")
         return
     # No detach step: the tag is an attribute of the file, so deleting the file
-    # deletes it. What used to be two writes that could half-happen is one.
+    # deletes it. One write, nothing to half-happen.
     store.delete_nodes([entry["id"] for entry, _ in dupes])
     print("\nAPPLIED")
 
@@ -355,11 +335,9 @@ def cmd_move(name, file, apply, src_pool, dst_pool, dst_group):
 def cmd_groups(name):
     """What the reference index holds, group by group, against the engine caps.
 
-    **Off the tags on the character's images.**
-    It used to list the subfolders of `reference/` and count the files in each,
-    which made a group a folder and a folder a group — so an image filed in the
-    wrong place was in the wrong group, and one filed loose was in no group at
-    all. A group is a TAG now, and the folders are just folders.
+    **Off the tags on the character's images.** A group is a TAG, and the
+    folders are just folders: an image filed in the wrong place is still in
+    its group, and one filed loose is not in none.
     """
     record = resolve(name)
     counts: dict[str, int] = {}

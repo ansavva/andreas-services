@@ -75,7 +75,7 @@ export function shotAssets(shot: Shot): RunAsset[] {
   ];
 }
 
-export interface ViewerFeed {
+interface ViewerFeed {
   /** The drawable sequence — what the reel scrolls through. */
   items: FileEntry[];
   /**
@@ -173,12 +173,10 @@ export function useViewerFeed(
     }
 
     if (source.in === "refs") {
-      // **The character's `default` images, by name.** It used to be the
-      // reference index in group-then-order order, which was "the order a shoot
-      // would send them in" — a real fact while a `REF#` row carried an order.
-      // Nothing carries one now, and a selection comes back by name for the same
-      // reason this does: stable beats meaningful when the only requirement is
-      // that two reads agree.
+      // **The character's `default` images, by name.** Nothing carries a
+      // shoot order, and a selection comes back by name for the same reason
+      // this does: stable beats meaningful when the only requirement is that
+      // two reads agree.
       const record = await getCharacter(source.id);
       const listed = await listNodes(
         { node: record.root },

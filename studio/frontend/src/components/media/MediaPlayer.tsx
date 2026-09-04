@@ -76,13 +76,13 @@ export interface MediaPlayerControls {
   toggleFullscreen: () => void;
 }
 
-export interface MediaPlayerProps {
+interface MediaPlayerProps {
   /**
    * The node id, which is what a re-sign addresses.
    *
-   * Not the key: `/api/asset` signs by node, and passing a name path is what
-   * left every expired tile broken for anything uploaded through the app
-   * (#432). It is also the playback key, so one player is one node.
+   * Not the key: `/api/asset` signs by node, and a name path would leave every
+   * expired tile broken for anything uploaded through the app. It is also the
+   * playback key, so one player is one node.
    */
   nodeId: string;
   /** Presigned inline GET. Re-signed through `useSignedSrc` when it expires. */

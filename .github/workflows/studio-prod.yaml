@@ -155,13 +155,12 @@ jobs:
           # references `${ecr_repo}:latest`. Once the repository exists it does
           # nothing.
           #
-          # "Does nothing" was too generous. `-target` makes Terraform refuse
+          # "Does nothing" is too generous. `-target` makes Terraform refuse
           # any plan whose state contains resources moved by a `moved` block
           # outside the target set — "Moved resource instances excluded by
-          # targeting" — so a `moved` block anywhere in this configuration
-          # failed this step, and with it every studio deploy, while the full
-          # apply that would have consumed the move never ran. That is what
-          # happened to the media bucket rename in #259.
+          # targeting" — so run unconditionally, a `moved` block anywhere in
+          # this configuration fails this step, and with it every studio
+          # deploy, while the full apply that would consume the move never runs.
           #
           # So skip it once the repository is there. The bootstrap keeps working
           # on a fresh account (no repository, and no prior state for a `moved`
@@ -429,11 +428,6 @@ jobs:
           # rather than merging into it, so this document must be complete:
           # dropping a line here unsets that variable on the next deploy.
           #
-          # An EMPTY root prefix is the correct value, not a missing one: the
-          # pipeline dropped its `media/` wrapper and now writes
-          # `characters/`, `projects/` and `phrasebook/` at the top level, so
-          # the browsable root is the bucket itself.
-          #
           # The Cognito ids are here because the Lambda validates the JWT
           # itself — the gateway authorizer's claims cannot reach Flask through
           # Mangum. They are the same two parameters the frontend build and
@@ -445,7 +439,6 @@ jobs:
           # where `lambda:GetFunctionConfiguration` would expose it. The step
           # above is what puts the value there, from the environment secret.
           jq -n --arg bucket "${MEDIA_BUCKET}" \
-                --arg prefix "" \
                 --arg origin "https://studio.andreas.services" \
                 --arg table "${CATALOG_TABLE}" \
                 --arg pool "${POOL_ID}" \
@@ -454,7 +447,6 @@ jobs:
                 --arg renderq "${RENDER_QUEUE}" \
             '{Variables: {
               STUDIO_MEDIA_BUCKET:              $bucket,
-              STUDIO_MEDIA_ROOT_PREFIX:         $prefix,
               STUDIO_ALLOWED_ORIGIN:            $origin,
               STUDIO_CATALOG_TABLE:             $table,
               STUDIO_COGNITO_USER_POOL_ID:      $pool,
@@ -479,11 +471,9 @@ jobs:
           # worker running last week's image would close runs with last week's
           # closing logic, silently and correctly-looking.
           jq -n --arg bucket "${MEDIA_BUCKET}" \
-                --arg prefix "" \
                 --arg table "${CATALOG_TABLE}" \
             '{Variables: {
               STUDIO_MEDIA_BUCKET:              $bucket,
-              STUDIO_MEDIA_ROOT_PREFIX:         $prefix,
               STUDIO_CATALOG_TABLE:             $table,
               STUDIO_REPLICATE_TOKEN_PARAMETER: "/studio/prod/replicate-api-token"
             }}' > /tmp/env-worker.json
@@ -504,11 +494,9 @@ jobs:
           # a variable somebody later assumes it can. No queue URL either: it is
           # driven by an event source mapping and never reads one.
           jq -n --arg bucket "${MEDIA_BUCKET}" \
-                --arg prefix "" \
                 --arg table "${CATALOG_TABLE}" \
             '{Variables: {
               STUDIO_MEDIA_BUCKET:      $bucket,
-              STUDIO_MEDIA_ROOT_PREFIX: $prefix,
               STUDIO_CATALOG_TABLE:     $table
             }}' > /tmp/env-render.json
 

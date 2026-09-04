@@ -106,10 +106,10 @@ def normalise(plan: dict, name: str) -> dict:
     `node`, …) are initialised to None and are the tools' to write, never the
     author's.
 
-    **It no longer takes a project and no longer returns a manifest.** A scene's
-    project, id, timings, stitch and output are on the record and the API owns
-    every one of them; returning copies here would be a second truth for a
-    rename or a re-cut to leave behind.
+    **Takes no project and returns no manifest.** A scene's project, id,
+    timings, stitch and output are on the record and the API owns every one of
+    them; returning copies here would be a second truth for a rename or a re-cut
+    to leave behind.
     """
     defaults = dict(plan.get("defaults") or {})
 
@@ -119,11 +119,9 @@ def normalise(plan: dict, name: str) -> dict:
             raise PlanError(f"shot {i} must be an object, not a {type(raw).__name__}.")
         # **SPARSE: only what the author named, plus what is derived.**
         #
-        # This used to fill every field with a default — `beat: ""`, `panels:
-        # []`, `run: None` — which was harmless in the pipeline, where
-        # `storyboard.merge` folded the existing shot in before anything was
-        # sent. Server-side there is no pre-pass: `catalog.put_shots` merges with
-        # `entry.get(field, previous.get(field))`, so **naming a field wins**.
+        # `catalog.put_shots` merges with `entry.get(field, previous.get(field))`,
+        # so **naming a field wins** — a default such as `panels: []` or
+        # `run: None` would overwrite recorded work.
         # A revision that renamed a beat would have arrived carrying `panels: []`
         # and `run: None` and wiped the boarded panel and the rendered run
         # underneath it.
@@ -151,12 +149,9 @@ def normalise(plan: dict, name: str) -> dict:
         # **Recorded by the render commands, never authored — and only carried
         # when the author actually named one.**
         #
-        # This used to write every recorded field unconditionally, `None`
-        # included, which was harmless in the pipeline because `storyboard.merge`
-        # ran first and folded the existing work in before anything was sent.
-        # Server-side there is no such pre-pass: `catalog.put_shots` merges with
-        # `entry.get(field, previous.get(field))`, so **naming a field wins** —
-        # and a `run: None` from here beat the run id already on the row. A plan
+        # `catalog.put_shots` merges with `entry.get(field, previous.get(field))`,
+        # so **naming a field wins** — a `run: None` written unconditionally
+        # would beat the run id already on the row. A plan
         # revision would have silently unlinked every rendered shot it touched.
         for k in SHOT_RECORDED:
             if k in raw:
@@ -260,10 +255,8 @@ def _normalise_opens(raw: dict, n: int) -> dict:
 def scene_frames(record: dict, max_n: int | None = None) -> list[str]:
     """The scene's OWN images as NODE IDS, in order — a shot's references.
 
-    Derived, not stored. It used to live in a separate `chains/<scene>.json`,
-    written alongside the scene and kept in sync by hand — which is the shape of
-    every bug this repo has had to write a migrator for. A planned scene already
-    records both halves: shot 1's opening panel is the seed, and every later
+    Derived, not stored: a planned scene already records both halves — shot 1's
+    opening panel is the seed, and every later
     shot's `opens_on.node` is the handoff frame produced by the shot before it.
 
     The seed anchors the look the whole scene inherits and the newest frames
@@ -541,10 +534,9 @@ def panel_prompt(record: dict, panel: dict) -> str:
 def unrenderable(plan_doc: dict) -> list[str]:
     """What in this plan could not be shot as it stands. **Advisory, never fatal.**
 
-    The checks `validate` used to make and no longer does, kept because they are
-    still the right thing to tell somebody who just handed over a finished plan —
-    a shot with no words in it anywhere is nearly always a typo, not a deliberate
-    blank. Returned as a list so the caller decides: the ingest path prints them
+    Separate from `validate` because they are the right thing to tell somebody
+    who just handed over a finished plan, not a reason to refuse it — a shot with
+    no words in it anywhere is nearly always a typo, not a deliberate blank. Returned as a list so the caller decides: the ingest path prints them
     and refuses, and a save from a plan editor ignores them.
 
     **Three ways a shot can say what to render, and the pipeline's validator knew
@@ -574,11 +566,9 @@ TAKE_FIELDS = ("run", "runref", "node", "rendered")
 def keep_take(previous: dict, merged: dict) -> list[dict]:
     """The runs a shot has been rendered by, newest-current-first behind it.
 
-    **A retry used to erase its predecessor.** A shot holds one `run`, so
-    re-rendering it — a wording change, a beat that came out wrong, a wedged run
-    resubmitted — overwrote the only pointer to the take before it. The run
-    itself survived in the project and was reachable by nobody: the board drew
-    the new take, and the old one existed at an id you had to have written down.
+    A shot holds one `run`, so a re-render — a wording change, a beat that came
+    out wrong, a wedged run resubmitted — would otherwise leave the take before
+    it reachable only by an id you had written down.
 
     So the displaced take is pushed here rather than dropped. It is kept as the
     four fields that let it be drawn and opened and no more; the run is the

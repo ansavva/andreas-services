@@ -26,12 +26,12 @@ resource "aws_cognito_user_pool" "main" {
   #
   # AWS accepts `username_configuration` only at pool creation, so the provider
   # marks it ForceNew: the apply that added this destroyed the pool and both
-  # accounts in it. #374 asked for the decision to be recorded next to the pool
-  # either way, so here it is.
+  # accounts in it. The decision is recorded next to the pool, so here it is.
   #
   # **The case for leaving it alone, which was real.** Unlike humbugg's pool,
-  # this one sets `allow_admin_create_user_only = true` above. #374's harm is
-  # two accounts for one address — reproduced on a scratch pool: same address in
+  # this one sets `allow_admin_create_user_only = true` above. The harm of a
+  # case-sensitive username is two accounts for one address — reproduced on a
+  # scratch pool: same address in
   # two casings, two accounts, two distinct subs — and producing it needs a
   # stranger who can register. Here nobody can. A mixed-case sign-in against
   # this pool could only ever fail to authenticate; the person retyped it. So
@@ -54,7 +54,7 @@ resource "aws_cognito_user_pool" "main" {
   # exists for exactly this. See `docs/POOL_REPLACEMENT.md`.
   #
   # **What this does NOT survive.** The old `USER#<sub>` rows are left behind
-  # pointing at subs that no longer exist. They are inert — authorisation reads
+  # pointing at subs the new pool does not have. They are inert — authorisation reads
   # the caller's own sub — but they are litter, and the runbook deletes them.
   username_configuration {
     case_sensitive = false

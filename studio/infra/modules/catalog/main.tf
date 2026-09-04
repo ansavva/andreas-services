@@ -81,7 +81,7 @@ resource "aws_dynamodb_table" "catalog" {
   # of that index's key attributes, so what the attribute is *named* decides who
   # is in the index. `reel` is written onto file nodes whose content type is an
   # image or a video, and onto nothing else. Folder nodes, entity records,
-  # membership rows and slug claims all carry `lib` and stay out.
+  # membership rows and name claims all carry `lib` and stay out.
   #
   # That is a fix, not just accommodation for the new entity rows. Hashing the
   # index on `lib` put every folder in the library into the reel's enumeration,
@@ -121,13 +121,10 @@ resource "aws_dynamodb_table" "catalog" {
     projection_type = "ALL"
   }
 
-  # Newest/oldest across a library, genuinely paginated. This is the index the
-  # reel moved onto (#310), and it retired two things at once: the walk over up
-  # to 20,000 S3 objects that `STUDIO_MAX_WALK_OBJECTS` bounded, and the key
-  # tie-break that walk needed because `LastModified` has one-second resolution
-  # and a run writes its whole output inside one second. `created_at` is a real
-  # microsecond timestamp, so ties stopped being the common case — see
-  # `browse._sort_records`, which documents the tie-break as gone.
+  # Newest/oldest across a library, genuinely paginated: the reel's index.
+  # `created_at` is a real microsecond timestamp, so ties are not the common
+  # case that S3's one-second `LastModified` makes of a run writing its whole
+  # output inside one second — see `browse._sort_records`.
   #
   # **Hashed on `reel`, not on `lib`, which makes it sparse.** See that
   # attribute above for why the rename is the whole mechanism. Changing a GSI's

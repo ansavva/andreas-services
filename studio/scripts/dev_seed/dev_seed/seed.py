@@ -26,15 +26,12 @@ test_dev_seed.py` pins that with a test rather than a comment, the way
 `test_dev_scripts.py` pins the same property for the loader; read what it does
 and does not catch before adding an import here.
 
-THE OTHER HALF OF `dev-aws-seed.sh`
------------------------------------
-That script (#285) shipped first and its header carries "THE CONTRACT WITH
-#284", which specifies `catalog.json` and `manifest.json` field by field. Its
-author constructed the schema because #284 only sketched it; this module is the
-writer that makes the contract two-sided. It is not asserted here in prose — a
-test builds a fixture with this module and runs it through the loader's own
-`fixture_problems` shell function, so a disagreement is a red test rather than
-a bad publish.
+THE FIXTURE CONTRACT
+--------------------
+`publish` writes `catalog.json` and `manifest.json`; `load` reads them. The
+schema is not asserted here in prose — a test builds a fixture with `publish`
+and runs it through `problems`, so a disagreement is a red test rather than a
+bad publish.
 
     v1/catalog.json    the node tree: path, kind, created_at, source, content_type
     v1/manifest.json   version, object count, total bytes, per-object sha256
@@ -62,19 +59,16 @@ anything.
 
 WHAT IS WORTH PROMOTING
 -----------------------
-#284 is explicit that a session's output must not be promoted wholesale: a
-fixture's job is to exercise the shapes the app cares about, and an exploratory
-session will not produce them by accident. Six to eight objects — stills at two
-or three aspect ratios, one short video, a run folder with `request.json` and
-`result.json`, a folder nested three deep, one deliberately awkward name, and an
-empty folder.
+A session's output must not be promoted wholesale: a fixture's job is to
+exercise the shapes the app cares about, and an exploratory session will not
+produce them by accident. Six to eight objects — stills at two or three aspect
+ratios, one short video, a run folder with `request.json` and `result.json`, a
+folder nested three deep, one deliberately awkward name, and an empty folder.
 
-(#284 says "a zero-byte folder marker, which is what a folder made in the
-console looks like". That predates the catalog. A folder is a row now, not a
-marker object, and the loader's contract has no way to express a marker — a
-folder node may not carry a `source`. The shape that survives the translation is
-a **childless folder node**, which is what the app sees either way, and naming
-an empty folder with `--path` promotes exactly that.)
+(A folder is a row, not a marker object, and the loader's contract has no way
+to express a marker — a folder node may not carry a `source`. An empty folder
+is a **childless folder node**, which is what the app sees, and naming one
+with `--path` promotes exactly that.)
 
 Nothing here picks for you. `--path` is required and repeatable, `--max-objects`
 caps what a folder can expand into, and there is no `--all`.
@@ -106,16 +100,13 @@ from dev_seed import aws
 from dev_seed import derive as CM
 from dev_seed.aws import die
 
-# `studio/` from here: scripts/dev_seed/dev_seed/seed.py -> up three.
-# `studio_pipeline.STUDIO_DIR` searched upward for the directory holding both
-# `backend/` and `pipeline/`, which is the right rule for a package that can be
-# installed anywhere. This file is *in* the repo and only ever runs from it, so
-# a count is honest here where it was not there.
+# `studio/` from here: scripts/dev_seed/dev_seed/seed.py -> up three. This file
+# is *in* the repo and only ever runs from it, so a fixed count is honest.
 STUDIO_DIR = pathlib.Path(__file__).resolve().parents[3]
 
 #: The one "tree" `name_positions` reports under. An entity root is a child of
-#: the library root now, so there is no `characters/` or `projects/` folder to
-#: name the group after — every top-level folder is somebody's slug.
+#: the library root, so there is no `characters/` or `projects/` folder to name
+#: the group after — every top-level folder is somebody's name.
 ENTITY_ROOTS = "entity roots"
 
 #: The shared seed bucket. Publisher and loader name it once between them, and
@@ -126,7 +117,7 @@ SEED_BUCKET = os.environ.get("STUDIO_DEV_SEED_BUCKET") or "studio-dev-seed-us-ea
 #: original, because a fixture is reviewed in a diff.
 FIXTURE_DIR = STUDIO_DIR / "fixtures" / "dev-seed"
 
-#: The default cap on a promotion. #284 asks for six to eight objects and the
+#: The default cap on a promotion. Six to eight objects is the aim and the
 #: reason is arithmetic: every machine downloads this on every fresh stack. The
 #: cap exists because `--path` on a folder takes its whole subtree, which is the
 #: one way a careful selection turns into a wholesale one by accident.
@@ -147,16 +138,15 @@ TEXT_MAX_BYTES = 256 * 1024
 def source() -> tuple[str, str]:
     """The dev stack this machine is pointed at, or a refusal.
 
-    **The `prod` refusal is the first thing that happens, and it is the guard
-    the first version of #284 needed.** That version copied production media
-    into a shared bucket, which is the mistake the whole issue was rewritten to
-    avoid: production material is not purpose-made for dev, and a fixture every
-    machine downloads is the last place it belongs. `dev-aws-seed.sh` makes the
-    same refusal on the same two names for the mirror-image reason.
+    **The `prod` refusal is the first thing that happens.** Production material
+    is not purpose-made for dev, and a fixture every machine downloads is the
+    last place it belongs. `dev-aws-seed.sh` makes the same refusal on the same
+    two names for the mirror-image reason.
 
-    Both values come from the environment (`STUDIO_S3_BUCKET`,
-    `STUDIO_CATALOG_TABLE`), pinned by `dev-setup.sh` from the dev stack's
-    Terraform outputs.
+    Both values resolve as `aws.value` does: `STUDIO_S3_BUCKET` and
+    `STUDIO_CATALOG_TABLE` from the environment if set, otherwise the
+    `s3_bucket` and `catalog_table` fields of the `dev` profile (or
+    `STUDIO_PROFILE`) in the file `studio profile sync` writes.
     """
     bucket, table = aws.bucket(), aws.table()
     for name in (bucket, table):
@@ -305,48 +295,10 @@ def expand(paths: dict[str, str], wanted: list[str]) -> dict:
 
 # ── hard rule #1 ────────────────────────────────────────────────────────────
 
-#: **The dev subjects that may be named in this repository.**
-#:
-#: This used to be a REGEX over the *shape* of a name —
-#: `^(?:<[a-z]+>|subject-[a-z0-9-]+|demo|sample|fixture|example)$` — with a
-#: second one refusing anything Title Cased. Both are gone, because the rule
-#: they enforced is gone: hard rule #1 is env-scoped now (see `studio/CLAUDE.md`).
-#: A dev subject exists only in a per-machine dev stack and in the shared
-#: fixture, and naming one is fine. A PRODUCTION character is still never named.
-#:
-#: A shape test could not express that distinction — `mira` and `demo` are the
-#: same string to a regex, which the old docstring admitted at length — so the
-#: gate moved to where the distinction actually lives: a list, edited
-#: deliberately. Adding a subject is a reviewed diff on this line, which is a
-#: better gate than a pattern that let every lowercase first name through and
-#: refused every capitalised one.
-#:
-#: The mechanical half of "this is dev material" is NOT here. It is `source()`,
-#: which refuses to read a bucket or table whose name contains `prod` before
-#: anything else happens — so a fixture is dev-origin by construction and this
-#: list only decides WHICH dev subjects are publishable.
-#: Top-level folders this repo PUTS THERE ITSELF, which are not name positions
-#: at all — nobody's slug, no entity's root, and nothing a person chose.
-#:
-#: **Leaving `config` out of this broke the publisher the moment the loader
-#: started working.** The angle images are ordinary nodes under `config/`, pushed
-#: by `studio config sync`. `dev-aws-seed.sh` pushed them BEFORE it wrote the
-#: library, so the push failed on every fresh stack and `config/` never existed
-#: — which is the only reason the name check had never seen it. Fixing that
-#: ordering made the angle images land, and the very next `dev-seed publish` refused
-#: the stack over a folder the loader had just created.
-#:
-#: `catalog_gc.SHARED_PREFIXES` is the same idea for the same two names, on the
-#: delete side.
 #: Sort-key prefixes in the `LIB#<lib>` partition that a fixture CARRIES.
-#:
-#: **That partition was invisible to this command.** `read_library`'s scan
-#: matched `sk == "META"` or a `CHAR#`/`PROJ#` prefix, so every other row filed
-#: under the library itself fell through the `elif` chain — which meant the
-#: phrasebook's `TERM#` rows had never travelled in a fixture, despite
-#: `phrasebook` sitting in `SHARED_ROOTS` above. That constant is about
-#: top-level FOLDER NAMES in the node tree, which is a different thing entirely,
-#: and the coincidence of names is what let this go unnoticed.
+#: `read_library` matches these alongside `META` and the `CHAR#`/`PROJ#` rows;
+#: `SHARED_ROOTS` below is about top-level FOLDER NAMES in the node tree, which
+#: is a different thing despite `phrasebook` appearing in both.
 #:
 #: `SPEC#` is how a reference prompt is written and `TERM#` is the wording list.
 #: Both are library configuration a fresh stack is useless without: with no
@@ -356,8 +308,26 @@ def expand(paths: dict[str, str], wanted: list[str]) -> dict:
 #: about to strand in the stack it happened in; it means nothing anywhere else.
 SETTINGS_PREFIXES = ("SPEC#", "TERM#")
 
+#: Top-level folders this repo PUTS THERE ITSELF, which are not name positions
+#: at all — nobody's name, no entity's root, and nothing a person chose. The
+#: angle images are ordinary nodes under `config/`, pushed by `studio config
+#: sync`; `phrasebook/` is the wording list's folder. `catalog_gc.SHARED_PREFIXES`
+#: is the same idea for the same two names, on the delete side.
 SHARED_ROOTS = frozenset({"config", "phrasebook"})
 
+#: **The dev subjects that may be named in this repository.**
+#:
+#: Hard rule #1 is env-scoped (see `studio/CLAUDE.md`): a dev subject exists
+#: only in a per-machine dev stack and in the shared fixture, and naming one is
+#: fine. A PRODUCTION character is never named. No shape test can express that
+#: distinction — `mira` and `demo` are the same string to a regex — so the gate
+#: is a list, edited deliberately. Adding a subject is a reviewed diff on this
+#: line.
+#:
+#: The mechanical half of "this is dev material" is NOT here. It is `source()`,
+#: which refuses to read a bucket or table whose name contains `prod` before
+#: anything else happens — so a fixture is dev-origin by construction and this
+#: list only decides WHICH dev subjects are publishable.
 DEV_SUBJECTS = frozenset({
     "jason",                                  # the seed fixture's subject
     "subject-a", "subject-b",                 # what the test fixtures use
@@ -373,8 +343,8 @@ DEV_SUBJECTS = frozenset({
 #:
 #: **2 is published and cannot be rewritten**, so it is translated on the way in
 #: rather than refused: its entities carry a `slug` plus a `display_name` or a
-#: `title`, and a character carries `references` and `default_set`. All four
-#: became one `name` and a tag on the file, so `_modernise` folds them.
+#: `title`, and a character carries `references` and `default_set`. Version 3
+#: has one `name` and a tag on the file, so `_modernise` folds them.
 FIXTURE_VERSIONS = (2, 3)
 
 
@@ -382,28 +352,26 @@ def _modernise(catalog: dict) -> dict:
     """A version-2 fixture read as a version-3 one. **Translated, not refused.**
 
     `v1` is published, `dev-aws-seed.sh` fetches it by default, and a fixture is
-    data this repo cannot rewrite — so the loader is what absorbs the change,
-    which is the ordinary shape of a migration.
+    data this repo cannot rewrite — so the loader is what absorbs the shape.
 
-    Four fields became two things:
+    Four fields become two things:
 
         slug + display_name / title   ->  one free-text `name`
         references + default_set      ->  tags on the FILE
 
-    A reference's `group` was the second half of what made an image identity —
-    `default` said it was sent and the group said what it showed — so a promoted
-    reference becomes `default` plus its group, on the node. That is the same
-    fold the live migration did, restated here for documents.
+    A reference's `group` is the second half of what makes an image identity —
+    `default` says it is sent and the group says what it shows — so a promoted
+    reference becomes `default` plus its group, on the node.
 
     A version-3 catalog passes through untouched.
     """
     if int(catalog.get("version") or 0) >= 3:
         return catalog
 
-    # A version-2 project named the characters it involves by SLUG, which was
-    # library-unique. Names are not, so version 3 names them by ROOT PATH — the
-    # identifier a fixture already uses for an entity, and unique by
-    # construction because a path is.
+    # A version-2 project names the characters it involves by slug. Names are
+    # not unique, so version 3 names them by ROOT PATH — the identifier a
+    # fixture already uses for an entity, and unique by construction because a
+    # path is.
     root_of = {entity.get("slug"): entity.get("root")
                for entity in catalog.get("entities") or []}
 
@@ -447,22 +415,15 @@ TITLE_TOKEN = re.compile(r"\b[A-Z][a-z]{2,}\b")
 def name_positions(paths: dict[str, str]) -> dict[str, list[str]]:
     """Every segment sitting where the layout says a NAME goes.
 
-    **This moved up one level with the entity model, and the guard got
-    stronger.** It used to look for the segment under `characters/` and the
-    segment under `projects/`, because those two folders were the whole layout
-    and `paths.py` built them. There is no `characters/` folder any more: an
-    entity's root folder is a child of the LIBRARY root, and its name is its
-    slug.
+    An entity's root folder is a child of the LIBRARY root, so the position
+    where a name is provably a name is the FIRST segment of every path, and
+    every one of them is checked. Nothing is skipped for being in an
+    unrecognised tree — a folder a person made by hand at the top level is
+    checked like any other.
 
-    So the position where a name is provably a name is now the FIRST segment of
-    every path, and every one of them is checked. Nothing is skipped for being
-    in an unrecognised tree — which is what the old shape did, silently, for any
-    folder a person had made by hand at the top level.
-
-    Grouped under one key rather than two, because there is no longer a folder
-    name that tells a character apart from a project. That distinction lives in
-    the entity rows, and a fixture carries none — see the module docstring on
-    why no ids are published.
+    Grouped under one key, because no folder name tells a character apart from
+    a project. That distinction lives in the entity rows, and a fixture carries
+    none — see the module docstring on why no ids are published.
     """
     found = collections.defaultdict(set)
     for path in paths.values():
@@ -478,31 +439,25 @@ def name_problems(all_paths: dict[str, str], library: dict | None = None) -> lis
     **WHAT IT CHECKS.** Two things: every segment in a name position anywhere in
     the source library, and every ENTITY RECORD'S `name`, is in `DEV_SUBJECTS`.
 
-    **The second one is new and it is what keeps this guard working.** It read
-    path segments alone, which was sound while an entity's root folder was named
-    by its slug — the name was IN the path. Entity roots are named by their ids
-    now, so a fixture published from a modern stack has `char-<uuid>` as its
-    first segment and the guard would inspect UUIDs and find nothing, while
-    `catalog.json` carried the real name in its `name` field straight into git.
-    That is hard rule #1 broken in the one place nobody was reading, which is
-    exactly the sentence this rule already carries about S3 keys.
+    **The second one is what keeps this guard working.** Entity roots are named
+    by their ids, so a fixture published from a modern stack has `char-<uuid>`
+    as its first segment; a guard over path segments alone would inspect UUIDs
+    and find nothing, while `catalog.json` carried the real name in its `name`
+    field straight into git — hard rule #1 broken in the one place nobody was
+    reading.
 
-    Path positions are still checked as well, because a stack seeded or driven
-    before that change has slug-named roots and the names are still there. **The whole stack, not just the
-    selection** — #284 is explicit that generating naturally and sanitising
-    afterwards is the wrong order, because by then the name is already in the
-    bucket, the run JSON and the keys. So the property is "this stack was
-    *driven* with subjects that may be published", and a stack with one
-    unlisted name in a corner of it fails whether or not that corner is being
-    promoted.
+    Path positions are checked as well, because a stack may hold name-named
+    roots and the names are still there. **The whole stack, not just the
+    selection** — generating naturally and sanitising afterwards is the wrong
+    order, because by then the name is already in the bucket, the run JSON and
+    the keys. So the property is "this stack was *driven* with subjects that
+    may be published", and a stack with one unlisted name in a corner of it
+    fails whether or not that corner is being promoted.
 
-    **THIS IS NARROWER THAN IT LOOKS, AND DELIBERATELY SO.** It used to be two
-    checks — a shape regex over the name positions and a Title-Case refusal over
-    every published segment — and both are deleted rather than adapted. The
-    Title-Case check has no meaning under an allowlist: it existed to catch a
-    name that the shape test would otherwise wave through, and a list has no
-    such gap. Keeping it would only have refused `<Name>`-shaped folders that
-    are now perfectly publishable.
+    **THIS IS NARROWER THAN IT LOOKS, AND DELIBERATELY SO.** There is no
+    Title-Case refusal over published segments: under an allowlist it would
+    have no meaning, and would only refuse `<Name>`-shaped folders that are
+    perfectly publishable.
 
     **WHAT IT CANNOT CATCH.** None of these is hypothetical:
 
@@ -588,7 +543,7 @@ def entities(library: dict, paths: dict[str, str],
     same reason: a `REF#` row naming an image that was not promoted is a row
     pointing at nothing.
 
-    `schema_version`, `profile` and `counts` are carried through as they stand.
+    `profile` and `counts` are carried through as they stand.
     They are the record's own, and a fixture that normalised them would seed a
     library subtly unlike the one it was promoted from.
     """
@@ -604,15 +559,13 @@ def entities(library: dict, paths: dict[str, str],
         root = path_of(row.get("root"))
         if root is None:
             continue
-        # **One label, and no reference index.** This emitted `slug` plus a
-        # `display_name` or a `title`, and for a character a `references` list
-        # and a `default_set` — four fields that became one `name` and a tag on
-        # the file. `_modernise` reads the old shape back; nothing writes it.
+        # **One label, and no reference index.** Version 3 has one `name` and a
+        # tag on the file; `_modernise` reads the version-2 shape back, nothing
+        # writes it.
         entity = {"kind": row["kind"], "name": row.get("name") or "", "root": root}
 
         if row["kind"] == "character":
             entity.update(
-                schema_version=row.get("schema_version"),
                 hero=path_of(row.get("hero")),
                 profile=row.get("profile") or {},
             )
@@ -656,23 +609,19 @@ def build(library: dict, paths: dict[str, str], selected: set[str],
     **`version` is 3 and `entities` is always present**, even when it is empty.
     An empty list and a missing key load identically, so writing the key anyway
     is what makes "this fixture describes no entities" a statement rather than
-    an omission. This document used to say `1` and carry no entities at all —
-    see `read_library`.
+    an omission.
 
-    **Version 3 is what dropping slugs made necessary**, and the loader still
-    reads 2: an entity carries one free-text `name` where it carried a `slug`
-    plus a `display_name` or a `title`, a project names its characters by ROOT
-    PATH rather than by slug, and a character carries no `references` and no
-    `default_set` — identity is a tag on the file, so it travels on the node.
+    **Version 3**, which the loader reads alongside 2: an entity carries one
+    free-text `name`, a project names its characters by ROOT PATH, and a
+    character carries no `references` and no `default_set` — identity is a tag
+    on the file, so it travels on the node.
     """
     nodes, objects = [], {}
     for node_id in sorted(selected, key=lambda n: paths[n]):
         row, path = library["nodes"][node_id], paths[node_id]
         node = {"path": path, "kind": row["kind"], "created_at": row["created_at"]}
-        # **Identity travels here now.** It was a `REF#` row beside the character
-        # and a `default_set` on its record; both said which pictures a
-        # generation is shown, and both said it somewhere other than on the
-        # picture.
+        # **Identity travels here.** Which pictures a generation is shown is a
+        # tag on the picture, not a row beside the character.
         if row.get("tags"):
             node["tags"] = sorted(set(row["tags"]))
         if row["kind"] == "file":
@@ -725,42 +674,25 @@ def document(doc: dict) -> bytes:
 
 # ── loading a fixture into this stack ───────────────────────────────────────
 #
-# The other half of `publish`, and it used to be 1000 lines of bash
-# (`scripts/dev-aws-seed.sh`, #285). It is here now for one measured reason:
-# **the shell version moved 12.4 MB out of S3 and back into it, one `aws`
-# process per object, and took 71 seconds to do 0.6 seconds of work.**
+# The other half of `publish`. One process, server-side copies and batched
+# writes: a per-object `aws` process pays ~0.4s of interpreter startup each,
+# and a transaction per node costs 2.5s where a batch costs 0.1s.
 #
-#     download + upload, per-object CLI     71s      what this replaces
-#     server-side copy, per-object CLI      23s      the CLI startup, alone
-#     server-side copy, one process         0.5s     what this does
-#     59 node writes as transactions        2.5s     what this replaces
-#     59 node writes via batch_write_item   0.1s     what this does
-#
-# Nothing about S3 or DynamoDB was slow. The cost was entirely a shell script
-# paying ~0.4s of Python interpreter startup per object — the irony being that
-# `uuid5_url` was reimplemented in bash specifically so the script would "never
-# need Python".
-#
-# **The bytes never leave S3 now.** `copy_object` is a server-side copy, so the
-# fixture is not pulled through this machine at all. The old script checksummed
-# every object locally before writing anything, on the reasoning that the
-# manifest checksum is the only thing that says the fixture is the fixture. That
-# check is gone: it cost the entire round trip, it duplicated a verify pass that
-# ran immediately afterwards anyway, and the recovery from a bad load into a DEV
-# stack is `dev-aws-reset.sh`. `manifest.json` is still published and still
+# **The bytes never leave S3.** `copy_object` is a server-side copy, so the
+# fixture is not pulled through this machine at all. Nothing checksums objects
+# locally before writing: that would cost the entire round trip and duplicate
+# the verify pass that runs immediately afterwards, and the recovery from a bad
+# load into a DEV stack is `dev-aws-reset.sh`. `manifest.json` is published and
 # describes the bytes; nothing reads it back on the way in.
 #
-# **A re-seed overwrites rather than skipping.** The shell version put
-# `attribute_not_exists(pk)` on every item and read a refusal as "already
-# seeded", which is what made a second run a no-op. `batch_write_item` takes no
+# **A re-seed overwrites rather than skipping.** `batch_write_item` takes no
 # conditions, so a second run rewrites the same rows with the same values —
 # idempotent by value instead of by condition. The difference shows only if
 # somebody edited a seeded row and re-ran the loader, and "refill this stack
 # from the fixture" is what the command means.
 
-#: uuid5 over a URL, matching `maintenance/derive` and the shell loader it
-#: replaces. `test_dev_seed` pins the three derivations against the values the
-#: bash implementation produced, so a stack seeded by either is the same stack.
+#: uuid5 over a URL. `test_dev_seed` pins the three derivations against fixed
+#: values, so a stack seeded by any version of the loader is the same stack.
 NAMESPACE = uuid.NAMESPACE_URL
 
 #: How many items `batch_write_item` takes at once. DynamoDB's limit, not ours.
@@ -853,13 +785,8 @@ def fixture_documents(s3, seed_bucket: str, version: str) -> tuple[dict, dict]:
 def problems(catalog: dict, manifest: dict) -> list[str]:
     """Every reason this fixture cannot be loaded, one per line.
 
-    **The port of `fixture_problems`, and the contract stopped being two-sided
-    when it moved.** The shell validator and this module used to be separate
-    implementations of one schema, with `test_dev_seed` feeding the publisher's
-    output through the loader's own jq to prove they agreed. That test was
-    guarding against drift between two things; there is one thing now, so the
-    agreement is structural rather than asserted. The failure cases it
-    parametrised moved here with it.
+    The publisher and the loader share this one validator, so their agreement
+    on the schema is structural rather than asserted.
 
     All of them at once rather than the first: a fixture is fixed by editing it
     in git and re-publishing, so a list is one round trip and a first-failure is
@@ -924,10 +851,8 @@ def problems(catalog: dict, manifest: dict) -> list[str]:
     # root is a real library — but anything it DOES say has to resolve, or the
     # loader would write a record pointing at a folder that is not there.
     entities = _modernise(catalog).get("entities") or []
-    # **Duplicate names are NOT a problem**, and it used to be the first thing
-    # checked here: a slug was library-unique, so two entities claiming one was
-    # a fixture that could not load. A name is a label — the loader writes no
-    # claim row and nothing resolves an entity by it.
+    # **Duplicate names are NOT a problem.** A name is a label — the loader
+    # writes no claim row and nothing resolves an entity by it.
     # Keyed on the ROOT, not the name: a name is a label and two characters may
     # share one, so a fixture that named an involvement by it could not say
     # which. A root is a path, and a path is unique.
@@ -996,11 +921,10 @@ def rows(catalog: dict, manifest: dict, bucket: str, lib: str,
          owner: str) -> list[dict]:
     """Every DynamoDB item the fixture becomes, in one list.
 
-    Built whole and written in batches rather than a transaction per node. The
-    shell loader did one `TransactWriteItems` per node for the atomicity of its
-    two items — which is real, but it is atomicity between two rows that this
-    function writes from one source in one pass, so nothing can observe the gap
-    on a stack being seeded from empty. It cost 2.5 seconds against 0.1.
+    Built whole and written in batches rather than a transaction per node: the
+    two rows a node becomes are written from one source in one pass, so nothing
+    can observe the gap on a stack being seeded from empty, and a transaction
+    per node costs 2.5 seconds against 0.1.
 
     A version-2 fixture is translated on the way in — see `_modernise`.
     """
@@ -1009,10 +933,9 @@ def rows(catalog: dict, manifest: dict, bucket: str, lib: str,
     root = node_id(bucket, "")
     owners = owner_of(catalog)
     # **An entity's root folder is NAMED BY THE ENTITY ID**, so this is needed
-    # before the node loop rather than during the entity loop below. It used to
-    # take the slug; a folder name is unique among its siblings, so naming
-    # entity roots by a free-text label would refuse the second character called
-    # `Anna` — the uniqueness dropping slugs was meant to remove, by a side door.
+    # before the node loop rather than during the entity loop below. A folder
+    # name is unique among its siblings, so naming entity roots by a free-text
+    # label would refuse the second character called `Anna`.
     entity_roots = {
         entity["root"]: CM.entity_id(entity["kind"], node_id(bucket, entity["root"]))
         for entity in catalog.get("entities") or [] if entity.get("root")
@@ -1077,7 +1000,6 @@ def rows(catalog: dict, manifest: dict, bucket: str, lib: str,
             # an invariant between them that drifted. `_modernise` folded them
             # into `default` plus a group tag on the file itself.
             record.update(
-                schema_version=entity.get("schema_version") or 2,
                 hero=node_id(bucket, entity["hero"]) if entity.get("hero") else None,
                 profile=entity.get("profile") or {})
         else:
@@ -1086,11 +1008,8 @@ def rows(catalog: dict, manifest: dict, bucket: str, lib: str,
                 hero=node_id(bucket, entity["hero"]) if entity.get("hero") else None,
                 counts=entity.get("counts") or {})
         items.append({k: v for k, v in record.items() if v is not None})
-        # **The library index row, keyed on the ID.** It was `CHARSLUG#<slug>`
-        # and it claimed the name as well as listing the entity; a name is a
-        # label now, so what remains is a pure list index — and the listing
-        # queries `begins_with(sk, "CHAR#")`, which a `CHARSLUG#` row does not
-        # match. A stack seeded with the old row lists nothing at all.
+        # **The library index row, keyed on the ID.** A name is a label, so this
+        # is a pure list index; the listing queries `begins_with(sk, "CHAR#")`.
         items.append({"pk": f"LIB#{lib}", "sk": f"{prefix}#{eid}",
                       "entity": eid, "created": stamp})
 
@@ -1259,8 +1178,8 @@ def cmd_tree(library):
               help="the shared seed bucket")
 @click.option("--library", help="library id, if this stack somehow holds more than one")
 @click.option("--max-objects", default=MAX_OBJECTS, show_default=True,
-              help="refuse a selection that expands past this many files. #284 "
-                   "asks for six to eight: every machine downloads this.")
+              help="refuse a selection that expands past this many files. Six "
+                   "to eight is the aim: every machine downloads this.")
 @click.option("--dev-subjects-only", is_flag=True,
               help="ATTEST that this dev stack was DRIVEN with listed dev "
                    "subjects (see DEV_SUBJECTS) from the first generation — not "
@@ -1354,7 +1273,7 @@ def cmd_publish(wanted, paths_from, fixture_version, seed_bucket, library,
 
     # Bytes first, then `catalog.json`, then `manifest.json`. The order is the
     # loader's diagnostics read backwards: it reads catalog.json first and says
-    # "#284 has not landed" when it is absent, which is the right message for a
+    # "never published" when it is absent, which is the right message for a
     # bucket that has never been published to and the wrong one for a publish
     # that was interrupted. Writing catalog.json before manifest.json means an
     # interrupted publish leaves the state whose message is accurate — "catalog

@@ -105,11 +105,10 @@ export function ProjectPage() {
           opening a modal — the reasoning is in that file — so the armed label
           is the only thing standing between a click and 29 runs. It says the
           count for that reason, and the count comes off the record rather
-          than a second fetch.
-
-          The `ms-auto` this used to hang the button off is gone with the bar:
-          it pinned the control to whichever line the flex run broke at, which
-          on a phone moved a destructive button around under the title. */}
+          than a second fetch. It sits in the bar's actions slot rather than
+          hanging off an `ms-auto`, which would pin it to whichever line the
+          flex run broke at and, on a phone, move a destructive button around
+          under the title. */}
       <PageBar
         crumbs={[{ label: "Projects", to: PROJECTS_PATH }]}
         actions={
@@ -125,10 +124,7 @@ export function ProjectPage() {
           />
         }
       >
-        {/* One line, because there is one label. The mono caption under this
-            was the slug — the address a person typed — and it survived the slug
-            removal as `record.name` a second time, so the bar drew the project's
-            name twice. */}
+        {/* One line, because there is one label. */}
         <Text variant="display">{record.name}</Text>
       </PageBar>
 

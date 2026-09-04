@@ -30,21 +30,6 @@ variable "media_bucket_name" {
   type        = string
 }
 
-variable "media_root_prefix" {
-  description = <<-EOT
-    The prefix inside the bucket the API may reach. Empty means the whole bucket,
-    which is what prod uses now that the pipeline writes `characters/`,
-    `projects/` and `phrasebook/` at the top level instead of wrapping them in
-    `media/`. Any other value must end in a slash.
-  EOT
-  type        = string
-
-  validation {
-    condition     = var.media_root_prefix == "" || endswith(var.media_root_prefix, "/")
-    error_message = "media_root_prefix must be empty (the whole bucket) or end in a slash, or the IAM prefix conditions match too much."
-  }
-}
-
 variable "allowed_origin" {
   description = "Origin allowed by the API's CORS policy (the app's own origin)"
   type        = string
@@ -57,7 +42,7 @@ variable "catalog_table_name" {
     `media_bucket_name` does: this module declares no table of its own, and
     taking the name from the module is what orders the two.
 
-    A name here that no longer matches the table is not a plan-time error — it
+    A name here that does not match the table is not a plan-time error — it
     is a runtime `ResourceNotFoundException` on the first query.
   EOT
   type        = string
@@ -65,7 +50,7 @@ variable "catalog_table_name" {
 
 variable "catalog_table_arn" {
   description = <<-EOT
-    ARN of the catalog table, used to scope the API role's item grants. Take it
+    ARN of the catalog table, which scopes the API role's item grants. Take it
     from `modules/catalog`'s output rather than rebuilding it from the name:
     that is what gives the policy a real dependency edge on the table it grants
     access to.

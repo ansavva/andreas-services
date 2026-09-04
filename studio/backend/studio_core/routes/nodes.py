@@ -1,12 +1,7 @@
 """The file layer: list, read, create, rename, move, copy, delete, upload, edit.
 
-**Ids only.** Every route here takes a node id, and the name-path routes that
-used to sit beside them in `routes/manage.py` are gone — `/api/folder`,
-`/api/object`, `/api/objects/*` and `PATCH /api/text?key=`. What kept them alive
-was that every share link this service had ever issued was a path of names; ids
-in URLs everywhere is what retired them, and the whole of `manage.py` went with
-the second addressing scheme rather than staying as a file a reader had to work
-out the address convention of.
+**Ids only.** Every route here takes a node id; there is no name-path
+addressing, so a share link survives every rename and move.
 
 `GET /api/resolve?path=` survives that and is the reason it can: it turns a name
 path into an id **once**, so `<folder>/reference/face/<file>` keeps working as an
@@ -36,7 +31,7 @@ every other folder in a character or a project may be renamed, moved or deleted
 freely, because reference-ness and run-ness are row attributes rather than
 locations. The root is different only because a record names it.
 
-## What comes from `before_request` (#351)
+## What comes from `before_request`
 
 `g.caller_sub` and `g.library` are set on every request before any route here
 runs, so nothing in this file verifies a token or reads a header to decide which
@@ -86,10 +81,10 @@ def list_nodes():
     wants them apart splits on `kind` in a line; a caller that wants them in one
     order — every recursive listing — cannot put them back together.
 
-    `owner` is no longer resolved for a listing. It was affordable at one level
-    because every child of a folder shares the parent's owner, and that trick
-    does not survive a branch; `GET /api/nodes/<id>/owner` answers for one node,
-    and a listing that needs the entity already knows which one it asked under.
+    `owner` is not resolved for a listing: every child of a folder shares the
+    parent's owner at one level, and that trick does not survive a branch.
+    `GET /api/nodes/<id>/owner` answers for one node, and a listing that needs
+    the entity already knows which one it asked under.
     """
     held = support.memberships()
     under = request.args.get("under")
@@ -257,10 +252,9 @@ def update_node(node_id: str):
     which is what tells the UI to keep the rename field open rather than closing
     it and reporting success.
 
-    **Renaming an entity's root folder here does not rename the entity**, and it
-    no longer has anything to do with it: an entity root is NAMED BY ITS ID, so
-    the two were separated entirely when slugs went. Changing what a character is
-    called is `PATCH /api/characters/<id>`, one field on one row.
+    **Renaming an entity's root folder here does not rename the entity**: an
+    entity root is NAMED BY ITS ID. Changing what a character is called is
+    `PATCH /api/characters/<id>`, one field on one row.
     """
     body = support.body()
     name = body.get("name")
@@ -580,7 +574,7 @@ def confirm_upload(node_id: str):
 
     Until this runs the node is a placeholder, and `browse.is_abandoned_upload`
     keeps it out of a listing — a row naming a key with nothing behind it draws a
-    tile that will not load, which is the state #442 reported.
+    tile that will not load.
     """
     held = support.memberships()
     record = support.node_at(node_id, held)

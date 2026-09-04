@@ -8,11 +8,6 @@ output "media_bucket_arn" {
   value       = aws_s3_bucket.media.arn
 }
 
-output "media_uri" {
-  description = "Convenience s3:// URI for the root of the development media tree."
-  value       = "s3://${aws_s3_bucket.media.id}/"
-}
-
 output "catalog_table_name" {
   description = "Name of the development catalog table; the local API reads it from its environment."
   value       = aws_dynamodb_table.catalog.name

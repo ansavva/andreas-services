@@ -10,9 +10,8 @@ interface Props {
    * The pointer, not a bare URL.
    *
    * A presigned URL expires, and re-signing addresses a **node** — so a row
-   * handed only a `url` can never repair itself. This used to be
-   * `thumbUrl: string | null` for exactly that reason: nothing on the row knew
-   * which node the picture was.
+   * handed only a `url` can never repair itself, because nothing on the row
+   * would know which node the picture was.
    */
   thumb: { node: string; url: string } | null;
   /** A position in the cut. Movies number their scenes; a project's listings do not. */

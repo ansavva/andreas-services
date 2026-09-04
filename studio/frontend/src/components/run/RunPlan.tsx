@@ -13,7 +13,7 @@ import { PromptFields } from "../scene/motionPrompt";
 import { ApiError } from "../../apis/client";
 import { approveRun, submitRun } from "../../apis/studio";
 import type { RunAsset, RunRecord, RunSend } from "../../types";
-import { formatDate, formatTextContent } from "../../utils/format";
+import { formatDate } from "../../utils/format";
 import { getUserEmail, getUserSub } from "../../auth/oauth";
 
 /**
@@ -233,38 +233,6 @@ function describe(send: RunSend): string {
   }
 }
 
-/**
- * The prompt, as the document it is.
- *
- * `formatTextContent` re-indents JSON for reading and is the only thing done to
- * it — no field is looked up and nothing branches on the shape. A structured
- * prompt is authored as JSON by `studio prompt`, and flattening one into a
- * paragraph would throw away the structure that makes it re-editable.
- */
-/**
- * A prompt document, drawn the one way.
- *
- * Exported because a scene's shot carries the same thing — a compiled prompt
- * document — and was drawing it as a definition list of Subject / Action /
- * Style while the run screen drew it as the document it is. Two renderings of
- * one artifact is how they drift.
- */
-export function Prompt({ prompt }: { prompt: unknown }) {
-  const text =
-    typeof prompt === "string" ? prompt : JSON.stringify(prompt, null, 2);
-  return (
-    // `whitespace-pre-wrap break-words`, not `overflow-auto` alone: a prompt is
-    // prose, and at 390px an unwrapped one runs off the right edge and has to be
-    // scrolled sideways a line at a time. A structured prompt keeps its
-    // indentation, which is what `pre-wrap` preserves and `normal` would not.
-    <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-none border border-line bg-card p-3 font-mono text-xs leading-relaxed text-ink">
-      <code>
-        {formatTextContent(text, typeof prompt === "string" ? "text" : "json")}
-      </code>
-    </pre>
-  );
-}
-
 const ARMED_MS = 4000;
 
 /**
@@ -296,18 +264,13 @@ export function ArmedButton({
   /** At rest. A word or two — what pressing does. */
   idle: string;
   /**
-   * Armed. Short, and still says it spends.
-   *
-   * **This used to be a sentence**, and the surrounding block used to be three
-   * more: what a re-run is, what it copies, where the page goes afterwards. A
-   * control explained at that length reads as a warning nobody finishes. The
-   * explanation moved to the tooltip; what stays on the button is the fact that
-   * the next press costs money, which is the half a person needs at the moment
-   * they press it.
+   * Armed. Short, and still says it spends: the explanation is in the tooltip,
+   * and what stays on the button is that the next press costs money, which is
+   * the half a person needs at the moment they press it.
    */
   armed: string;
   busy: string;
-  /** The sentence that used to sit beside the button, on hover and on focus. */
+  /** The explanation, on hover and on focus. */
   tooltip: string;
   /** Runs on the second press. Rejecting leaves the button disarmed. */
   onFire: () => Promise<unknown>;
@@ -410,11 +373,9 @@ function named(by: string, me: { sub: string | null; email: string | null }): st
 /**
  * Running a draft — **one armed press, and that press is the approval.**
  *
- * This used to be an approve `Dialog`, a Revoke button and a separate Submit,
- * with three sentences describing which of the digest's three states the run was
- * in. The separate approve step was redundant in a UI where the payload is on
- * screen: the page renders the plan, the ordered images and — since the payload
- * preview — the exact document a draft would send. Asking for a yes over that
+ * There is no separate approve step, because it would be redundant in a UI
+ * where the payload is on screen: the page renders the plan, the ordered images
+ * and the exact document a draft would send. Asking for a yes over that
  * and then asking again under a different word is what teaches somebody to click
  * through the first one.
  *
@@ -482,11 +443,9 @@ export function RunBar({
         </Alert.Root>
       )}
 
-      {/* **The button and nothing else.** Three sentences used to sit around it
-          — what it sends, that one press arms and the second runs, that the run
-          closes itself. A control explained at that length reads as a warning
-          nobody finishes, and the payload it describes is already on the page.
-          What it does is on hover; what it costs is on the armed press. */}
+      {/* **The button and nothing else.** The payload it describes is already
+          on the page. What it does is on hover; what it costs is on the armed
+          press. */}
       <ArmedButton
         idle="Run"
         armed="Press again — this spends"

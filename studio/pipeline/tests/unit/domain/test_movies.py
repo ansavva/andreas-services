@@ -128,16 +128,6 @@ def test_scene_characters_is_read_off_the_row_and_never_recomputed(library):
     assert MV.scene_characters({"characters": None}) == []
 
 
-def test_a_movie_folder_is_named_by_the_row_not_derived_from_the_slug(library):
-    """So renaming a movie strands nothing."""
-    record = E.create_movie(project=library.project, name="the-cut")
-    inner = MV.movie_folder(record, "scenes")
-
-    assert store.node(inner)["name"] == "scenes"
-    # Idempotent: asking twice is the same folder, not a second one.
-    assert MV.movie_folder(record, "scenes") == inner
-
-
 # ── create ──────────────────────────────────────────────────────────────────
 
 
@@ -240,7 +230,7 @@ def test_each_scene_is_copied_in_rather_than_referenced(library, cut_scene, monk
 
     record = MV.create(PROJECTS.resolve("porch-teaser"), "the-cut", ["porch-teaser/one"])
 
-    copied = store.children_of(MV.movie_folder(record, "scenes"))
+    copied = store.children_of(store.child(record["folder"], "scenes")["id"])
     assert [node["name"] for node in copied] == ["scene-01.mp4"]
     # A different node from the scene's own output — the copy, not a pointer.
     assert copied[0]["id"] != scene["output"]["node"]

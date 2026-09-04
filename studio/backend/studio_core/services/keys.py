@@ -10,10 +10,10 @@ phrasebook is `TERM#` rows and the angle images are nodes in a `config/` folder 
 the exception it justified closed with it. One addressing scheme, no
 exceptions.
 
-What that deletion cost, stated so nobody restores it by accident: nothing. In
-prod `config.media_root_prefix()` was empty, so the root check passed
-everything, and the traversal rules were guarding a string that is no longer
-built from user input anywhere in this service.
+What that deletion cost, stated so nobody restores it by accident: nothing. The
+browsable root is the whole bucket — there is no root prefix knob any more — so
+the root check passed everything, and the traversal rules were guarding a string
+that is no longer built from user input anywhere in this service.
 
 **`clean_name` keeps every refusal it has.** None of them was ever about S3: a
 slash is refused so a rename cannot become a move by punctuation, `.` and `..`

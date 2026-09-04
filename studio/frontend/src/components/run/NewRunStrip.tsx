@@ -30,7 +30,7 @@ import { runPath } from "../../utils/location";
  * is the authority. (It also substitutes `output` for an empty stem, which this
  * deliberately does not: an empty box means "no name", not "call it output".)
  */
-export function outputStem(raw: string): string {
+function outputStem(raw: string): string {
   return raw
     .trim()
     .toLowerCase()
@@ -59,7 +59,7 @@ function isScalar(value: unknown): value is string | number | boolean {
  * an empty list standing in for "no images yet" — and seeding it would write an
  * empty array into a payload that the send rows are what fill.
  */
-export function seedPlan(entry: ModelEntry): RunPlan {
+function seedPlan(entry: ModelEntry): RunPlan {
   const images = entry.images ?? {};
   const skip = new Set(
     ["refreshed", "prompt", images.refs, images.start, images.end].filter(

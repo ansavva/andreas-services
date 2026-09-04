@@ -485,6 +485,119 @@ def check_references(skills: set[str]) -> dict[str, list[str]]:
     return stale
 
 
+# --------------------------------------------------------------------------
+# the docs: the same rot, one directory over
+# --------------------------------------------------------------------------
+
+REPO_ROOT = studio_pipeline.STUDIO_DIR.parent
+
+#: Prose that describes the code and the CLI without being a skill. Held to the
+#: checks a code skill is held to — a `studio …` line names a real command, a
+#: path names a real file, a link resolves — plus one of their own: an `/api/…`
+#: path names a registered route. `docs/POOL_REPLACEMENT.md` is a runbook that
+#: names files it tells you to create, so it is left out.
+DOCS = [
+    *sorted((studio_pipeline.STUDIO_DIR / "docs").glob("*.md")),
+    studio_pipeline.STUDIO_DIR / "CLAUDE.md",
+    studio_pipeline.STUDIO_DIR / "README.md",
+    studio_pipeline.STUDIO_DIR / "infra" / "README.md",
+    studio_pipeline.STUDIO_DIR / "config" / "README.md",
+    studio_pipeline.STUDIO_DIR / "frontend" / "e2e" / "README.md",
+    REPO_ROOT / ".claude" / "skills" / "studio" / "SKILL.md",
+]
+DOCS = [d for d in DOCS if d.name != "POOL_REPLACEMENT.md"]
+
+#: A backticked path worth checking: it has a directory in it, or it carries a
+#: source-file suffix. A bare `request.json` is a data file in the library, not
+#: a file in the repo, and is not checked.
+_DOC_PATH = re.compile(
+    r"`((?:\.{0,2}/)?(?:[\w.-]+/)*[\w.-]+\.(?:py|tsx?|sh|tf|ya?ml|json|md|lock))`"
+)
+_SOURCE_SUFFIX = (".py", ".ts", ".tsx", ".sh", ".tf", ".yml", ".yaml")
+_API_PATH = re.compile(r"`(?:(?:GET|POST|PUT|PATCH|DELETE) )?(/api/[A-Za-z0-9_\-/<>:.]*)")
+_ROUTE_DECORATOR = re.compile(
+    r'@\w+\.(?:route|get|post|put|patch|delete)\(\s*"([^"]+)"'
+)
+_URL_PREFIX = re.compile(r'url_prefix\s*=\s*"([^"]*)"')
+_PLACEHOLDER_SEGMENT = re.compile(r"<[^>]+>")
+
+
+@functools.lru_cache(maxsize=1)
+def _repo_files() -> frozenset[str]:
+    skip = {".venv", "node_modules", "__pycache__", ".git", "dist", ".terraform"}
+    return frozenset(
+        p.relative_to(REPO_ROOT).as_posix()
+        for p in REPO_ROOT.rglob("*")
+        if p.is_file() and not skip & set(p.parts)
+    )
+
+
+def _doc_path_exists(rel: str) -> bool:
+    while rel.startswith("./") or rel.startswith("../"):
+        rel = rel[2:] if rel.startswith("./") else rel[3:]
+    tail = rel.lstrip("/")
+    return any(f == tail or f.endswith("/" + tail) for f in _repo_files())
+
+
+def check_doc_paths(text: str) -> list[str]:
+    out = []
+    for rel in sorted(set(_DOC_PATH.findall(text))):
+        bare = "/" not in rel
+        if bare and not rel.endswith(_SOURCE_SUFFIX):
+            continue
+        if not _doc_path_exists(rel):
+            out.append(f"names no file in the repo: `{rel}`")
+    return out
+
+
+@functools.lru_cache(maxsize=1)
+def _routes() -> frozenset[str]:
+    """Every registered route, `<x>` standing for any placeholder segment."""
+    found = set()
+    routes_dir = studio_pipeline.STUDIO_DIR / "backend" / "studio_core" / "routes"
+    for path in routes_dir.glob("*.py"):
+        text = path.read_text()
+        prefix = _URL_PREFIX.search(text)
+        pre = prefix.group(1) if prefix else ""
+        for m in _ROUTE_DECORATOR.finditer(text):
+            found.add(_PLACEHOLDER_SEGMENT.sub("<x>", pre + m.group(1)).rstrip("/"))
+    return frozenset(found)
+
+
+def check_api_paths(text: str) -> list[str]:
+    out = []
+    routes = _routes()
+    for raw in sorted(set(_API_PATH.findall(text))):
+        path = raw.split("?")[0].rstrip("/")
+        if path in ("/api", "/api/..."):
+            continue
+        norm = _PLACEHOLDER_SEGMENT.sub("<x>", path)
+        if norm in routes or any(r.startswith(norm + "/") for r in routes):
+            continue
+        # `/api/**` and `/api/*` are globs over the whole surface, not a route.
+        if norm.endswith("*"):
+            continue
+        out.append(f"names no route: `{raw}`")
+    return out
+
+
+def lint_docs() -> dict[str, list[str]]:
+    failures: dict[str, list[str]] = {}
+    for doc in DOCS:
+        if not doc.exists():
+            continue
+        text = doc.read_text()
+        problems = (check_commands_exist(text)
+                    + check_invocation_shape(text)
+                    + check_no_script_era(text)
+                    + check_doc_paths(text)
+                    + check_api_paths(text)
+                    + check_links(doc, text))
+        if problems:
+            failures[str(doc.relative_to(REPO_ROOT))] = problems
+    return failures
+
+
 def main(verbose: bool = False) -> int:
     skills = sorted(SKILLS_DIR.glob("*/SKILL.md"))
     if not skills:
@@ -521,8 +634,12 @@ def main(verbose: bool = False) -> int:
     for where, refs in check_references({s.parent.name for s in skills}).items():
         failures[where] = [f"names a skill that does not exist: {r}" for r in refs]
 
+    docs_failures = lint_docs()
+    failures.update(docs_failures)
+    checked_docs = sum(1 for d in DOCS if d.exists())
+
     if failures:
-        print(f"\n{len(failures)} skill(s) out of step with the CLI:\n", file=sys.stderr)
+        print(f"\n{len(failures)} file(s) out of step with the code:\n", file=sys.stderr)
         for name, problems in sorted(failures.items()):
             print(f"  {name}", file=sys.stderr)
             for p in problems:
@@ -531,7 +648,7 @@ def main(verbose: bool = False) -> int:
               "\n  docs/PIPELINE.md#the-modules, and link to it.\n", file=sys.stderr)
         return 1
 
-    print(f"lint_skills: {checked} skills ok")
+    print(f"lint_skills: {checked} skills ok, {checked_docs} docs ok")
     return 0
 
 

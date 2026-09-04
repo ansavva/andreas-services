@@ -1,33 +1,17 @@
 """What every part of the character record needs: the record, and its pools.
 
-**Nothing here builds a key any more, and that is the whole of the change.**
-This module used to hold `pool_folder(name, pool)` returning
-`characters/<name>/reference`, `group_prefix` returning `<name>_face_`, and
-`pool_max_index` scanning those basenames for the highest trailing number — a
-naming scheme that made the slug a primary key, the folder a schema, and the
-filename an ordering. All three are gone:
-
-===========================  =============================================
-`profile_key(name)`          the bible is a field on the record, not an
-                             object in the bucket (`profile.py`)
-`group_prefix(name, group)`  a reference's group is an attribute of its
-                             `REF#` row, so a filename carries nothing
-`pool_max_index(...)`        numbering existed to order references; order
-                             is an attribute of the row, gapped by 1000
-`pool_folder(name, pool)`    a name path; it is a **node** now, resolved
-                             under the record's `root` and made if absent
-===========================  =============================================
-
-`put_file` went the same way and came back as `upload_file`: it took a name
-path and now takes the id of the folder to write into, because every caller
-already holds a node and none of them should be composing a string that the
-next rename invalidates.
+**Nothing here builds a key.** The bible is a field on the record, not an
+object in the bucket (`profile.py`); a reference's group and order are tags on
+the file, so a filename carries nothing; and a pool is a **node**, resolved
+under the record's `root` and made if absent. `upload_file` takes the id of
+the folder to write into, because every caller already holds a node and none
+of them should be composing a string that the next rename invalidates.
 
 **The four pools are a convention, not a schema.** `POOLS` is what
 `POST /api/characters` creates with a new character and what the CLI prints
 back. Nothing afterwards requires any of them to exist: a person may rename
 `reference/`, delete `archive/` or add their own folder, and an image is a
-reference because a `REF#` row says so rather than because of where it sits.
+reference because a tag on it says so rather than because of where it sits.
 `pool_folder` therefore *ensures* rather than *asserts* — the self-healing the
 spec's layout section describes.
 
@@ -46,15 +30,11 @@ from studio_pipeline.domain import TEMPLATES_DIR
 from studio_pipeline.domain import paths as P
 from studio_pipeline.errors import die
 
-# `TEMPLATES_DIR`, not `__file__` arithmetic. This module used to be
-# `domain/characters.py`, one level up, so `dirname(__file__) + "templates"`
-# happened to be right; as a package it is one segment too deep. The same
-# expression in `engine/turnaround.py` broke for exactly that reason. See
-# `STUDIO_DIR` in the root `CLAUDE.md`: counting path segments is right for one
-# file's depth only.
+# `TEMPLATES_DIR`, not `__file__` arithmetic: counting path segments is right
+# for one file's depth only, and breaks the first time a module moves.
 TEMPLATE = str(TEMPLATES_DIR / "profile.yaml")
 # Working copies for `edit` live in the repo (git-ignored) so they are easy to
-# open in an editor: <repo>/local/characters/<slug>.yaml
+# open in an editor: <repo>/local/characters/<name>.yaml
 LOCAL_DIR = str(STUDIO_DIR / "local" / "characters")
 NAME_RE = P.NAME_RE
 
@@ -74,9 +54,8 @@ IMG_EXTS = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".bmp"}
 #   archive/    retired material. NEVER referenced unless the user asks for it
 #               by name — that is the whole point of it having a name.
 #
-# It is a tuple of names rather than the `{pool: {"folder": pool}}` map it was:
-# the map existed so a pool could one day have a different folder name from its
-# own, and nothing ever wanted that. The project's `input/` pool
+# A tuple of names, not a `{pool: {"folder": pool}}` map: nothing wants a pool
+# to have a different folder name from its own. The project's `input/` pool
 # (`projects.py`) is a separate thing entirely — working material for a piece
 # of work, not anything about a character.
 POOLS = P.CHAR_POOLS
@@ -85,10 +64,8 @@ POOLS = P.CHAR_POOLS
 def resolve(character: str) -> dict:
     """An id, or a name matched client-side -> the character record.
 
-    **An id is one call; a name is two**, and that is the cost of dropping
-    slugs. A slug was library-unique, so `GET /api/characters/slug:<slug>`
-    resolved one server-side against a claim row. A name is a free-text label:
-    it identifies nothing, two characters may share one, and the API will not
+    **An id is one call; a name is two.** A name is a free-text label: it
+    identifies nothing, two characters may share one, and the API will not
     resolve it — so this lists and matches, and refuses an ambiguous name with
     the ids rather than picking one.
 
@@ -110,9 +87,9 @@ def pool_folder(record: dict, pool: str) -> dict:
 
     **Ensuring, not asserting.** The pools are a starting layout; a route or a
     command that cannot find its conventional folder is entitled to make one
-    and never to guess, because nothing structural hangs off the folder any
-    more. Deleting `archive/` and then archiving something used to be an error
-    about a missing prefix; it is now a folder appearing.
+    and never to guess, because nothing structural hangs off the folder.
+    Deleting `archive/` and then archiving something is a folder appearing, not
+    an error.
     """
     return store.ensure_child_folder(record["root"], pool)
 
@@ -125,9 +102,9 @@ def pool_nodes(record: dict, pool: str, group: str | None = None) -> list[dict]:
     reading bytes and reading a whole subtree's worth is what it is trying to
     avoid.
 
-    The natural sort survives the entity model even though ordering does not
-    depend on filenames any more: a person reading `character pool <slug> seed`
-    still wants `_2` before `_10`, and `store.files_of` is where that lives.
+    The natural sort stays even though ordering does not depend on filenames:
+    a person reading `character pool <name> seed` wants `_2` before `_10`, and
+    `store.files_of` is where that lives.
     """
     folder = pool_folder(record, pool)
     if group:
@@ -164,15 +141,13 @@ def upload_file(parent_id: str, local: str, name: str | None = None,
                 content_type: str | None = None) -> dict:
     """Upload one local file INTO a folder node, and return the node it made.
 
-    **Takes an id, where `put_file` took a name path.** The old signature made
-    every caller compose `characters/<slug>/reference/<group>/<basename>`, which
-    is three facts a rename can invalidate and one that a person chose; this
-    takes the folder the caller already resolved and the basename the file
-    already has.
+    **Takes an id, not a name path.** A path like
+    `characters/<name>/reference/<group>/<basename>` is three facts a rename
+    can invalidate and one that a person chose; this takes the folder the
+    caller already resolved and the basename the file already has.
 
-    The basename is kept. Renaming an arriving file threw away the only thing
-    its name recorded, and the numbering it used to be rewritten into is a row
-    attribute now.
+    The basename is kept. Renaming an arriving file would throw away the only
+    thing its name records, and ordering is a row attribute.
     """
     source = Path(local)
     filename = name or source.name

@@ -166,9 +166,8 @@ def test_editing_a_bible_writes_it_back_onto_the_record(library, tmp_path, monke
     assert pushed.exit_code == 0, f"{pushed.output}\n{pushed.exception!r}"
     assert E.get_character(library.character)["profile"]["rendering"][
         "default_style"] == "Painterly"
-    # The document carries `schema_version` and the record's `profile` must not:
-    # the API stamps the version and refuses a bible holding it. This round trip
-    # sent it straight back until the verb fix made anything read the body.
+    # The record's `profile` holds sections only; the API refuses a bible
+    # carrying anything else, so the round trip must not smuggle a key back.
     assert "schema_version" not in E.get_character(library.character)["profile"]
 
 
