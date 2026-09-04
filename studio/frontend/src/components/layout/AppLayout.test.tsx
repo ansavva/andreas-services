@@ -5,6 +5,10 @@ import { afterEach, expect, it, vi } from "vitest";
 vi.mock("../../apis/studio", () => ({
   getCharacters: vi.fn().mockResolvedValue([]),
   getProjects: vi.fn().mockResolvedValue([]),
+  // The create bar in the top bar reads these. See `CreateBar.test.tsx`.
+  getModels: vi.fn().mockResolvedValue({}),
+  getProject: vi.fn().mockResolvedValue({ id: "proj-1", name: "A project", characters: [] }),
+  getTemplates: vi.fn().mockResolvedValue({ blocks: {}, templates: [] }),
 }));
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({ email: "person@example.com", logout: vi.fn() }),

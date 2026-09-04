@@ -80,6 +80,7 @@ export function CreateModeStrip({
             key={each}
             role="group"
             aria-label={words.label}
+            data-role-cell={each}
             className={`flex min-w-0 flex-1 items-center gap-3 border-r border-line px-3 py-2 ${
               on ? "bg-surface-alt" : ""
             }`}

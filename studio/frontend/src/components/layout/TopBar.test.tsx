@@ -5,6 +5,12 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 vi.mock("../../apis/studio", () => ({
   getCharacters: vi.fn().mockResolvedValue([]),
   getProjects: vi.fn().mockResolvedValue([]),
+  // The create bar's reads. Out of scope here — `CreateBar.test.tsx` is its
+  // suite — but present, because an accessed name missing from the factory
+  // is a vitest error about the mock rather than an empty bar.
+  getModels: vi.fn().mockResolvedValue({}),
+  getProject: vi.fn().mockResolvedValue({ id: "proj-1", name: "A project", characters: [] }),
+  getTemplates: vi.fn().mockResolvedValue({ blocks: {}, templates: [] }),
 }));
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({ email: "person@example.com", logout: vi.fn() }),
@@ -12,6 +18,7 @@ vi.mock("../../context/AuthContext", () => ({
 // Out of scope here — see `LibrarySwitcher.test.tsx` for its own behaviour.
 vi.mock("../common/LibrarySwitcher", () => ({ LibrarySwitcher: () => null }));
 
+import { CreateBarProvider } from "../../context/CreateBarContext";
 import { SidebarProvider } from "../../context/SidebarContext";
 import { TestProviders } from "../../test-providers";
 import { TopBar } from "./TopBar";
@@ -25,8 +32,10 @@ function open() {
     <TestProviders>
       <MemoryRouter>
         <SidebarProvider>
-          <TopBar />
-          <Address />
+          <CreateBarProvider>
+            <TopBar />
+            <Address />
+          </CreateBarProvider>
         </SidebarProvider>
       </MemoryRouter>
     </TestProviders>,
