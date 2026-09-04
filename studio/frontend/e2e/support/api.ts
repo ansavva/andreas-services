@@ -113,6 +113,15 @@ const projectRuns = fixture<{
   runs: Array<{ id: string; status: string; fingerprint?: string }>;
   cursor: string | null;
 }>("project-runs");
+/**
+ * The same page as `projectRuns`, in the feed's shape — `?view=feed`. `plan`
+ * is what `?q=` searches, so the stub filters it the way the API does: the
+ * prompt's string leaves, case-insensitively, never its keys.
+ */
+const projectRunsFeed = fixture<{
+  runs: Array<{ id: string; plan: { prompt: unknown } | null }>;
+  cursor: string | null;
+}>("project-runs-feed");
 const draftRun = fixture<Run>("run-draft");
 const imageRun = fixture<
   Run & {
@@ -399,6 +408,19 @@ function runFor(id: string): Record<string, unknown> {
   return RUNS.get(decodeURIComponent(id)) ?? RUN;
 }
 
+/** A plan's prompt as one lower-cased string — its string leaves, not its keys. */
+function promptText(plan: { prompt: unknown } | null): string {
+  const parts: string[] = [];
+  const walk = (value: unknown): void => {
+    if (typeof value === "string") parts.push(value);
+    else if (Array.isArray(value)) value.forEach(walk);
+    else if (value && typeof value === "object")
+      Object.values(value as Record<string, unknown>).forEach(walk);
+  };
+  walk(plan?.prompt);
+  return parts.join(" ").toLowerCase();
+}
+
 /** The run id in a `/api/runs/<id>/...` path. */
 function runIdIn(path: string): string {
   return /\/api\/runs\/([^/]+)/.exec(path)?.[1] ?? "";
@@ -550,6 +572,20 @@ export async function stubApi(page: Page): Promise<void> {
     // project would put a "this has been run before" banner on every draft.
     if (path.endsWith("/api/runs")) {
       const fingerprint = url.searchParams.get("fingerprint");
+      // The feed's shape, and the prompt search over it. `q` is answered here
+      // and not on the listing because the listing row carries no plan to
+      // search — the API reads envelopes for it, and this stub has them.
+      if (url.searchParams.get("view") === "feed") {
+        const needle = (url.searchParams.get("q") ?? "").trim().toLowerCase();
+        return json(route, {
+          runs: needle
+            ? projectRunsFeed.runs.filter((run) =>
+                promptText(run.plan).includes(needle),
+              )
+            : projectRunsFeed.runs,
+          cursor: null,
+        });
+      }
       return json(route, {
         runs: fingerprint
           ? projectRuns.runs.filter((run) => run.fingerprint === fingerprint)

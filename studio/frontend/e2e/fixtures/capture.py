@@ -256,6 +256,13 @@ def authoring(bearer: str, library: str, character: dict) -> None:
     )
     write("project-runs", listing)
     runs = listing["runs"]
+    # The same page in the feed's shape: plan, sends and outputs signed, cast by
+    # name. Two fixtures because the route answers two shapes and the specs
+    # should see both as the API writes them, not one derived from the other.
+    write(
+        "project-runs-feed",
+        get(f"/api/runs?project={project['id']}&include=drafts&view=feed", bearer, library),
+    )
 
     draft = newest(runs, status="draft")
     done = newest(runs, status="succeeded", kind="image")

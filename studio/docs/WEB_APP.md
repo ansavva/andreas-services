@@ -801,7 +801,7 @@ the entity's id.
 | `GET \| PATCH \| DELETE /api/projects/<id>` | One project, `rev`-guarded like a character |
 | `PATCH /api/projects/<id>/characters` | `{characters: [...]}` → replaces the involvement links |
 | `GET /api/projects/<id>/inputs` · `/runs` · `/scenes` · `/movies` | The working pool, and the three tiers |
-| `GET \| POST /api/runs` | Query by `project`, `character`, `status`, `since`; or create a draft. **Refuses a URL-shaped binding** |
+| `GET \| POST /api/runs` | Query by `project`, `character`, `status`, `model`, `kind`, `since`, `fingerprint`, `q`; or create a draft. **Refuses a URL-shaped binding.** `?view=feed` expands each row for the feed — see below |
 | `GET /api/runs/resolve` | A run by `ref` |
 | `GET \| PATCH \| DELETE /api/runs/<id>` | The envelope, with outputs and bindings expanded |
 | `GET /api/runs/<id>/payload` · `POST /api/runs/<id>/plan/preview` | The payload a submit would send, assembled from the plan |
@@ -820,6 +820,59 @@ the entity's id.
 | `GET /api/tags` · `PATCH \| DELETE /api/tags/<name>` | The tag vocabulary |
 | `GET \| POST /api/phrasebook` · `DELETE /api/phrasebook/<model>/<avoid>` | The wording lists, as `TERM#` rows |
 | `POST /api/prompt` | Checks a structured video prompt |
+
+**`GET /api/runs` answers two shapes, and the wider one is opt-in.** A listing
+row is the projection the `PROJ#<id>` / `RUN#<created>#<id>` item carries —
+`id, project, status, kind, model, created, cost, thumb, fingerprint?` — and
+every consumer of it is cheap *because* it reads no envelope: the runs grid,
+the CLI's `runs list`, and the duplicate-submission check (`?fingerprint=`,
+one query). The feed is the one screen that wants the whole run per row
+without a fetch per row, so it asks with **`?view=feed`** and each row becomes:
+
+```jsonc
+{
+  "id": "run-…", "lib": "lib-…", "project": "proj-…",
+  "status": "running", "kind": "image",
+  "engine": "studio-media-gpt-image-2", "model": "openai/gpt-image-2",
+  "created": "…", "updated": "…", "submitted": "…", "completed": null,
+  "cost": { "currency": null, "amount": null, "predict_time": 98.2 },
+  "error": null, "fingerprint": "sha256:…",          // present or absent, like the listing row — never null
+  "plan": { "version": 1, "origin": "authored", "prompt": "…", "params": { "aspect_ratio": "3:4" } },
+  "characters": ["char-…"],
+  "cast": [{ "id": "char-…", "name": "<name>" }],
+  "sends":   [{ "order": 1, "field": "input_images", "role": "reference",
+                "source": { "kind": "character", "character": "char-…" },
+                "node": "node-…", "name": "seed-01.jpg", "size": 167810,
+                "content_type": "image/jpeg", "url": "https://…presigned" }],
+  "outputs": [{ "node": "node-…", "name": "frame.png", "size": 2172168,
+                "content_type": "image/png", "url": "https://…presigned" }],
+  "thumb": { "node": "node-…", "url": "https://…presigned" }
+}
+```
+
+An allowlist, like every view here: no `approval`, no `plan_digest`, no
+`stale` — those are the run page's. `cast` is what `GET /api/runs/<id>`
+answers as ids, named: the record's own `characters`, else the owners of what
+it bound, read off the sends' recorded provenance rather than by walking each
+node's ancestry. `?character=` answers with envelopes and `?project=` with
+rows; the feed projects both to this one shape. A page costs one batched read
+for the envelopes, **one query per run for its sends**, one batched read over
+every node the page points at and one for the cast's names; signing is local
+(~0.04 ms a URL, measured) and is not what bounds the page —
+`STUDIO_MAX_FEED_ROWS` is.
+
+**`?q=<text>` is a prompt search, and the catalog has no text index.** It
+matches the plan's prompt case-insensitively as a substring — the string
+leaves of a structured prompt, never its keys, so `camera` does not match
+every video prompt ever written — within whatever `project` / `character` /
+library scope and cheap filters (`status`, `model`, `kind`, `since`,
+`include=drafts`) the request names. It reads envelopes to do it, so one call
+scans at most `STUDIO_MAX_SEARCH_SCAN` rows past the cursor and hands back
+what matched: **a page may come back shorter than `limit`, or empty, with
+`cursor` still set, and that means "keep going"**. The cursor always advances,
+so a query matching nothing ends in `ceil(runs / scan)` calls rather than one
+call reading the project. Composes with `view=feed`, which reuses the
+envelopes the search read.
 
 **Everything above is `PATCH` where a REST habit would reach for `PUT`**,
 including the whole-document writes (`/profile`, `/shots`, `/text`). `PUT` is
@@ -879,6 +932,8 @@ missing from any of them is a CORS failure no Flask configuration can rescue.
 | `STUDIO_MAX_UPLOAD_BYTES` | 5 GiB | S3's single-PUT ceiling, declared at signing time |
 | `STUDIO_PRESIGN_TTL_SECONDS` | 900 | A read URL's requested life |
 | `STUDIO_UPLOAD_TTL_SECONDS` | 300 | An upload URL's — deliberately shorter |
+| `STUDIO_MAX_FEED_ROWS` | 50 | One `GET /api/runs?view=feed` page. A larger `limit` is **clamped**, and `cursor` says so |
+| `STUDIO_MAX_SEARCH_SCAN` | 200 | How many runs one `GET /api/runs?q=` call reads looking for a match. Bounds the call, not the answer — the cursor carries on |
 
 `STUDIO_MAX_FOLDER_OBJECTS` means two different things, deliberately. For a
 **subtree operation** it is a **refusal** — an operation that stopped halfway

@@ -25,6 +25,7 @@ import type {
   MediaListing,
   FileEntry,
   FolderEntry,
+  RunFeedPage,
   RunPage,
   RunPlan,
   RunRecord,
@@ -810,32 +811,54 @@ export function getProjectMovies(id: string) {
  * under the project's partition, so a page is a query rather than an offset into
  * a result that had to be built first.
  */
-export function getRuns(
-  params: {
-    project?: string;
-    character?: string;
-    model?: string;
-    status?: string;
-    /**
-     * `"drafts"` un-hides drafts, which the route otherwise keeps out of a
-     * listing that names no status. Pass it whenever the caller means EVERY
-     * run — a screen offering "Any status" and then quietly dropping one is
-     * worse than a screen that never offered the choice.
-     */
-    include?: string;
-    /**
-     * **The one filter that is not for a screen.** It answers "has this exact
-     * payload already gone out here", which is a question about money rather
-     * than about what to draw — pass `include: "drafts"` with it, or the draft
-     * being asked about is itself hidden from the answer.
-     */
-    fingerprint?: string;
-    since?: string;
-    limit?: string;
-    cursor?: string;
-  } = {},
-) {
-  return apiGet<RunPage>("/api/runs", params);
+// A type alias rather than an interface: an alias carries the implicit index
+// signature `apiGet`'s `Record<string, string | undefined>` asks for.
+type RunsQuery = {
+  project?: string;
+  character?: string;
+  model?: string;
+  status?: string;
+  /**
+   * `"drafts"` un-hides drafts, which the route otherwise keeps out of a
+   * listing that names no status. Pass it whenever the caller means EVERY
+   * run — a screen offering "Any status" and then quietly dropping one is
+   * worse than a screen that never offered the choice.
+   */
+  include?: string;
+  /**
+   * **The one filter that is not for a screen.** It answers "has this exact
+   * payload already gone out here", which is a question about money rather
+   * than about what to draw — pass `include: "drafts"` with it, or the draft
+   * being asked about is itself hidden from the answer.
+   */
+  fingerprint?: string;
+  since?: string;
+  /**
+   * A prompt search: case-insensitive substring over the plan's prompt, within
+   * whatever scope and filters the rest of the query names. The catalog has no
+   * text index, so one call scans a bounded number of rows — **a page may come
+   * back short, or empty, with `cursor` still set, and that means keep
+   * going**, not "nothing more". See `docs/WEB_APP.md#the-entity-routes`.
+   */
+  q?: string;
+  limit?: string;
+  cursor?: string;
+};
+
+/**
+ * `GET /api/runs`, in either of its two shapes.
+ *
+ * Without `view` it is the listing — `RunSummary` rows, the projection the
+ * grid, the duplicate-submission check and the CLI read, cheap because it
+ * reads no envelope. `view: "feed"` asks for `RunFeedRow`s: the plan, every
+ * send and every output signed, the cast by name, from one call and no fetch
+ * per row. The feed page is clamped server-side (`STUDIO_MAX_FEED_ROWS`, 50)
+ * and says so in `cursor`, so a caller pages rather than raising `limit`.
+ */
+export function getRuns(params: RunsQuery & { view: "feed" }): Promise<RunFeedPage>;
+export function getRuns(params?: RunsQuery & { view?: undefined }): Promise<RunPage>;
+export function getRuns(params: RunsQuery & { view?: "feed" } = {}) {
+  return apiGet<RunPage | RunFeedPage>("/api/runs", params);
 }
 
 /**
