@@ -210,27 +210,27 @@ COUNT_FIELD = {ENTITY_RUN: "runs", ENTITY_SCENE: "scenes", ENTITY_MOVIE: "movies
 # a submission this service is willing to have an opinion on — while the
 # provider's own response stays an undecoded blob beside it.
 RUN_STATUSES = frozenset({
-    "draft", "approved", "pending", "running", "succeeded", "failed",
+    "draft", "pending", "running", "succeeded", "failed",
     "cancelled", "discarded", "adopted",
 })
 
 #: A synthetic run wrapping an artifact that already existed — `studio runs
 #: adopt`, which files a pre-scheme file so history is uniform. **Nothing was
 #: submitted and nothing billed**, so it is the one way out of the unsubmitted
-#: states that the approval gate does not stand in front of.
+#: states that is not a submission and is not counted as one.
 ADOPTED = "adopted"
 
-#: The three that come BEFORE a submission. A run is created when it is PLANNED
-#: — which is what makes a plan editable, viewable and approvable — so the
-#: existence of a row does not say anything happened.
+#: The two that come BEFORE a submission. A run is created when it is PLANNED
+#: — which is what makes a plan editable and viewable — so the existence of a
+#: row does not say anything happened.
 #:
-#: `draft` and `discarded` are kept out of every default listing and out of the
-#: project's run count for exactly that reason: a grid mixing intentions with
-#: submissions is a grid nobody can read. `approved` is shown, because it is
-#: about to happen and somebody should be able to see it waiting.
-UNSUBMITTED_RUN_STATUSES = frozenset({"draft", "approved", "discarded"})
+#: Both are kept out of every default listing and out of the project's run
+#: count for exactly that reason: a grid mixing intentions with submissions is
+#: a grid nobody can read.
+UNSUBMITTED_RUN_STATUSES = frozenset({"draft", "discarded"})
 
-#: What a default listing hides. Narrower than the set above on purpose.
+#: What a default listing hides. The same set, named for the other reason a
+#: caller reads it.
 HIDDEN_RUN_STATUSES = frozenset({"draft", "discarded"})
 
 # The states a run does not come back from. Studio owns this word, so it owns
@@ -303,8 +303,8 @@ def _now() -> str:
 
 
 #: The same clock every row is stamped with, for the callers outside this module
-#: that need one: an approval records WHEN, and so does a cut. A timestamp minted
-#: anywhere else would be a second clock to reconcile.
+#: that need one: a submission records WHEN, and so does a cut. A timestamp
+#: minted anywhere else would be a second clock to reconcile.
 now = _now
 
 
@@ -1814,9 +1814,10 @@ def _member_sk(kind: str, entity_id: str) -> str:
 #: a reference `order` and a `cost.amount` nested two deep.
 #:
 #: **It is `digest.plain_numbers` and not a function of this module's own**,
-#: because `plan_digest` needs the identical walk for a different reason: a value
-#: hashed before the round trip and rehashed after it must produce one digest.
-#: Two implementations of that walk is two ways for a payload to hash twice.
+#: because the fingerprint needs the identical walk for a different reason: a
+#: value hashed before the round trip and rehashed after it must produce one
+#: hash. Two implementations of that walk is two ways for a payload to hash
+#: twice.
 _numbers = digest.plain_numbers
 
 
@@ -2677,7 +2678,7 @@ def update_project_entity(
     # **A `None` assignment is reported as a `None`, because that is what was
     # written.** `_update` turns one into a REMOVE, so the row genuinely loses
     # the attribute; filtering it out of the reply would hand the caller back
-    # the value it had just cleared — a plan edit that cleared an `approval`
+    # the value it had just cleared — a write that cleared a run's `error`
     # would still show one.
     #
     # `update_entity` above still filters. It is left alone deliberately: it
@@ -3055,7 +3056,7 @@ def put_sends(run_id: str, entries: list[dict]) -> list[dict]:
             for index, entry in enumerate(entries, 1)]
 
 
-# ──────────────────────── the plan digest ────────────────────────
+# ──────────────────────── the submission fingerprint ────────────────────────
 #
 # Both derivations live in `services/digest.py` and are re-exported at the top
 # of this module, so `catalog.plan_digest` and `catalog.submission_fingerprint`

@@ -11,7 +11,7 @@ import { AutoTextarea } from "../common/AutoTextarea";
  * were a list of typed key/value pairs, so getting `aspect_ratio` right meant
  * knowing that this model spells it `16:9`, the next one `1024x1024` and a third
  * `match_input_image` — and finding out was a 400 arriving after the plan had
- * been written and the approval given. `GET /api/models/<name>/schema` is a live
+ * been written and read. `GET /api/models/<name>/schema` is a live
  * provider read and `services/schema.py` checks the payload against the same
  * document, so what is offered here is what the model will accept today.
  *
@@ -28,7 +28,7 @@ import { AutoTextarea } from "../common/AutoTextarea";
  *   be a second, worse opinion about a schema this app does not own.
  *
  * **A prop nobody set is not written.** Absent and "the default, written down"
- * are different records: `params` is inside the digest an approval names, so
+ * are different records: `params` is inside the fingerprint, so
  * filling every default in would turn "the model chose" into "a person chose"
  * on the one document that is supposed to say which.
  */
@@ -108,7 +108,7 @@ function order(spec: SchemaProp): number {
  * Several models take an optional key of their own — `openai_api_key` on the
  * GPT Image entries — and drawing it is worse than useless: a plan is a
  * RECORD. It is written to the catalog, rebuilt into the payload, hashed into
- * the approval digest and rendered back on the run page, so a key typed here
+ * the fingerprint and rendered back on the run page, so a key typed here
  * would be a secret stored in a row and shown to everyone who can read the run.
  * Studio's provider credential lives on the API and nowhere else.
  *

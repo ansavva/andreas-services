@@ -4,9 +4,9 @@ Two classes of thing are pinned here.
 
 **The gates.** These are the two commands in a scene's life that spend money.
 `--dry-run` must render every payload and create no prediction; the confirm must
-be the only way through; and no `--yes` flag may exist on either — an approval
-flag is the door an agent walks through while believing some earlier exchange
-counted as approval. The dry-run assertion in particular exists because that
+be the only way through; and no `--yes` flag may exist on either — a yes-flag
+is the door an agent walks through while believing some earlier exchange
+counted as being told to. The dry-run assertion in particular exists because that
 exact gate was once broken by a `json` vs `json_` attribute and `--help` still
 passed.
 
@@ -171,7 +171,7 @@ def test_declining_the_confirm_submits_nothing(library, scene, no_network, monke
 
 
 @pytest.mark.parametrize("command", ["board", "render"])
-def test_no_approval_flag_exists(command):
+def test_no_yes_flag_exists(command):
     """There is no way to answer the gate from a command line, by design."""
     help_text = run("scenes", command, "--help").output
     assert "--yes" not in help_text
@@ -571,10 +571,10 @@ def test_an_end_frame_drops_the_references_where_the_model_demands_it(
     request is rejected. Nothing in the live schema says so; it surfaced as an
     E006 after a submit.
 
-    A shot bracketed by two approved compositions has already said what the
+    A shot bracketed by two finished compositions has already said what the
     references would have said, so the references give way — and it is reported,
     because a payload that quietly loses images is not the one that was
-    approved.
+    read.
     """
     m = board_ready(library, scene)
     shot = m["shots"][1]
@@ -655,8 +655,8 @@ def a_model_that_answers(fake_api):
 
 
 def _board(monkeypatch, ref, **kw):
-    """`scenes board` with the approval answered, which is the only thing a test
-    may answer for a person — the payload it approves is the fixture's own."""
+    """`scenes board` with the confirm answered, which is the only thing a test
+    may answer for a person — the payload it answers for is the fixture's own."""
     monkeypatch.setattr("click.confirm", lambda *_a, **_k: True)
     opts = SimpleNamespace(project=None, dry_run=False, dest=None, review_sheet=None,
                            shot=(), panel=None, redo=False, **kw)
@@ -756,10 +756,10 @@ def test_a_stale_panel_re_renders_over_the_copy_it_supersedes(
 
 
 def _render(monkeypatch, ref, confirm=True, **kw):
-    """`scenes render` with the approval answered.
+    """`scenes render` with the confirm answered.
 
     Answering the confirm is the only thing a test may decide for a person, and
-    the payload it approves is the fixture's own — see `_board`.
+    the payload it answers for is the fixture's own — see `_board`.
     """
     monkeypatch.setattr("click.confirm", lambda *_a, **_k: confirm)
     opts = SimpleNamespace(project=None, dry_run=False, dest=None, review_sheet=None,
@@ -959,7 +959,7 @@ def test_a_dry_run_leaves_a_draft_per_shot(library, scene, no_network):
     r = run("scenes", "render", SCENE, "--shot", "1", "--dry-run")
     assert r.exit_code == 0, f"{r.output}\n{r.exception!r}"
     assert "draft(s) written" in r.output
-    assert "studio runs approve run-" in r.output
+    assert "studio runs submit run-" in r.output
 
 
 def test_a_dry_run_still_bills_nothing(library, scene, no_network):
@@ -971,7 +971,7 @@ def test_a_dry_run_still_bills_nothing(library, scene, no_network):
 
 
 def test_the_dry_run_prints_how_to_put_the_run_back_on_the_shot(library, scene, no_network):
-    """Approving and submitting a draft leaves the scene none the wiser.
+    """Submitting a draft leaves the scene none the wiser.
 
     The command that closes that loop is the one nobody could guess, so the
     dry run names it rather than leaving it to be discovered by an assemble

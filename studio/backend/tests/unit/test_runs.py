@@ -23,7 +23,7 @@ import pytest
 
 from studio_core import config
 from studio_core.services import catalog, layout
-from tests.conftest import CATALOG_LIBRARY, CATALOG_OWNER
+from tests.conftest import CATALOG_LIBRARY
 
 
 def _item(client, pk, sk):
@@ -72,22 +72,14 @@ def _child(parent_id, name):
     return catalog.node(catalog.child_by_name(parent_id, name)["node_id"])
 
 
-def _approve(api, run):
-    """Approve a draft with the digest its creation handed back."""
-    resp = api.post(f"/api/runs/{run['id']}/approve", json={"digest": run["plan_digest"]})
-    assert resp.status_code == 200, resp.get_data(as_text=True)
-    return resp.get_json()
-
-
 def _submitted(api, project, **body):
-    """A run that has actually been submitted — draft, approved, then pending.
+    """A run that has actually been submitted — draft, then pending.
 
-    Every test that wants a run in a post-submission state goes through the gate
-    rather than around it, because going around it is the thing the gate exists
-    to make impossible.
+    Every test that wants a run in a post-submission state moves it through the
+    same transition the clients use, because that transition is where a run is
+    counted.
     """
     run = _create(api, project, **body)
-    _approve(api, run)
     resp = api.patch(f"/api/runs/{run['id']}", json={"status": "pending"})
     assert resp.status_code == 200, resp.get_data(as_text=True)
     return run
@@ -104,9 +96,9 @@ def test_creating_a_run_writes_envelope_listing_row_folder_and_output(empty_api,
     prediction that times out, or a process that is killed, leaves an envelope
     with the exact input beside it rather than nothing at all.
 
-    **It is now recorded before the APPROVAL too, which is why it starts at
-    `draft`.** That is what gives an approval something to attach to: a payload
-    with an address, that can be read, edited and hashed before it bills.
+    **It is recorded before the decision to send, which is why it starts at
+    `draft`.** That gives the payload an address: it can be read, edited and
+    hashed before it bills.
     """
     project = _project(empty_api)
 
@@ -675,36 +667,35 @@ def test_a_run_in_another_library_is_403(empty_api, catalog_table):
     assert CATALOG_LIBRARY != "lib-0002"
 
 
-# ─────────────────── the approval gate, and what makes it real ───────────────────
+# ─────────────────── the draft, and what leaving it means ───────────────────
 #
-# Hard rule #2 says: never submit without approval of the FULL payload, and
-# re-approve after ANY edit. It was a sentence in a document, enforced by a
-# `click.confirm` in a terminal that left no trace — so nothing could check that
-# the payload somebody said yes to was the payload that went out. These are the
-# tests that make it checkable.
+# There is no approve step. Hard rule #2 — nothing runs unless a person tells it
+# to — is kept by the clients, and the API's part is that a draft is a plan with
+# an address, readable and editable until the moment it is sent, and sent once.
 
 
-def test_a_run_cannot_be_submitted_without_an_approval(empty_api):
-    """The gate, in one assertion.
+def test_a_draft_is_submitted_on_its_own_say_so(empty_api):
+    """No approval, no digest to match: the transition out of `draft` is the act.
 
-    It lives at the API rather than in the CLI because the API is the only thing
-    *both* halves of studio pass through — the same argument that moved hard rule
-    #3 here. A check the CLI made alone would be a rule the SPA did not have.
+    The route that used to refuse this (`not_approved`) is gone, and this holds
+    it gone — a gate reintroduced by accident would fail here first.
     """
     project = _project(empty_api)
     run = _create(empty_api, project)
+    assert "approval" not in run and "plan_digest" not in run
 
     resp = empty_api.patch(f"/api/runs/{run['id']}", json={"status": "pending"})
 
-    assert resp.status_code == 409
-    assert resp.get_json()["error"] == "not_approved"
-    assert catalog.entity(catalog.ENTITY_RUN, run["id"])["status"] == "draft"
+    assert resp.status_code == 200
+    assert catalog.entity(catalog.ENTITY_RUN, run["id"])["status"] == "pending"
+    read = empty_api.get(f"/api/runs/{run['id']}").get_json()
+    assert "approval" not in read and "plan_digest" not in read and "stale" not in read
 
 
 def test_the_payload_preview_follows_the_plan(empty_api):
-    """**What approval is supposed to be reading, before anything is sent.**
+    """**What a person reads before anything is sent.**
 
-    Hard rule #2 asks a person to approve the full payload, and a draft has no
+    Hard rule #2 asks a person to read the full payload, and a draft has no
     `request.json` to read — that document records what was actually sent and is
     written after dispatch. So the payload a draft would send was unreadable in
     the app, and editing the plan appeared to change nothing.
@@ -732,37 +723,17 @@ def test_the_payload_preview_is_refused_once_the_run_has_been_submitted(empty_ap
     """
     project = _project(empty_api)
     run = _create(empty_api, project, plan={"prompt": "a rooftop at dawn"})
-    _approve(empty_api, run)
     empty_api.patch(f"/api/runs/{run['id']}", json={"status": "pending"})
 
     resp = empty_api.get(f"/api/runs/{run['id']}/payload")
     assert resp.status_code == 409
 
 
-def test_approving_then_editing_the_plan_refuses_the_submission(empty_api):
-    """**Approve-then-edit is the failure this whole mechanism exists to catch.**
-
-    A payload is approved, a prompt is reworded, and the run goes out carrying
-    words nobody read. Hard rule #2's "re-approve after **any** edit" said not to
-    do that and nothing checked it; the digest is what checks it.
-    """
-    project = _project(empty_api)
-    run = _create(empty_api, project, plan={"prompt": "a rooftop at dawn"})
-    _approve(empty_api, run)
-
-    empty_api.patch(f"/api/runs/{run['id']}/plan", json={"plan": {"prompt": "a rooftop at dusk"}})
-
-    resp = empty_api.patch(f"/api/runs/{run['id']}", json={"status": "pending"})
-    assert resp.status_code == 409
-    assert resp.get_json()["error"] == "not_approved", "an edit returns the run to draft"
-
-
-def test_editing_the_images_also_drops_the_approval(empty_api):
+def test_editing_the_images_replaces_the_sends(empty_api):
     """A payload is its prompt **and** its pictures.
 
     Swapping a reference image changes what the model is shown as surely as
-    rewording the prompt does, and an approval that survived it would be an
-    approval of something else.
+    rewording the prompt does, and the run stays a draft with the new picture.
     """
     project = _project(empty_api)
     character = _character(empty_api)
@@ -771,7 +742,6 @@ def test_editing_the_images_also_drops_the_approval(empty_api):
     second = _uploaded(empty_api, reference["node_id"], "b.webp")
 
     run = _create(empty_api, project, bindings={"image_input": [first["node_id"]]})
-    _approve(empty_api, run)
 
     resp = empty_api.patch(
         f"/api/runs/{run['id']}/sends",
@@ -779,16 +749,16 @@ def test_editing_the_images_also_drops_the_approval(empty_api):
                          "node": second["node_id"]}]},
     )
     assert resp.status_code == 200
-    assert resp.get_json()["approval"] is None
     assert resp.get_json()["status"] == "draft"
+    assert [send["node"] for send in resp.get_json()["sends"]] == [second["node_id"]]
 
 
-def test_reordering_the_images_drops_the_approval(empty_api):
+def test_reordering_the_images_moves_the_fingerprint(empty_api):
     """**A reorder is a real edit**, because position is cited by the prompt.
 
     A production prompt in this library reads "the FIRST image is an existing
     plate of him". Swapping two references changes which picture that sentence
-    is about, so an approval taken before the swap cannot survive it.
+    is about, so the reordered draft is a different submission.
     """
     project = _project(empty_api)
     character = _character(empty_api)
@@ -800,7 +770,6 @@ def test_reordering_the_images_drops_the_approval(empty_api):
         empty_api, project,
         bindings={"image_input": [one["node_id"], two["node_id"]]},
     )
-    approved = _approve(empty_api, run)
 
     resp = empty_api.patch(
         f"/api/runs/{run['id']}/sends",
@@ -809,60 +778,18 @@ def test_reordering_the_images_drops_the_approval(empty_api):
             {"field": "image_input", "role": "reference", "node": one["node_id"]},
         ]},
     )
-    assert resp.get_json()["plan_digest"] != approved["plan_digest"]
-    assert resp.get_json()["approval"] is None
-
-
-def test_approving_a_digest_that_has_moved_on_is_refused(empty_api):
-    """Compare-and-swap, not a write.
-
-    The client sends the digest of what it just showed somebody. If the row has
-    moved since, approving would record a yes to a payload nobody saw — so it
-    is a 409 carrying the current digest, and the client re-renders.
-    """
-    project = _project(empty_api)
-    run = _create(empty_api, project, plan={"prompt": "a rooftop"})
-
-    resp = empty_api.post(f"/api/runs/{run['id']}/approve", json={"digest": "sha256:nonsense"})
-
-    assert resp.status_code == 409
-    assert resp.get_json()["error"] == "stale_digest"
-    assert resp.get_json()["digest"] == run["plan_digest"]
-
-
-def test_approving_without_a_digest_is_refused(empty_api):
-    """**You approve a payload, not a run.** A bare approve is the flag hard rule
-    #2 refuses to have — a door an agent walks through believing some earlier
-    exchange counted as approval."""
-    project = _project(empty_api)
-    run = _create(empty_api, project)
-
-    assert empty_api.post(f"/api/runs/{run['id']}/approve", json={}).status_code == 400
-
-
-def test_an_approval_records_who_and_when(empty_api):
-    project = _project(empty_api)
-    run = _create(empty_api, project)
-
-    approval = _approve(empty_api, run)["approval"]
-
-    assert approval["by"] == CATALOG_OWNER
-    assert approval["digest"] == run["plan_digest"]
-    assert approval["at"]
-
-
-def test_an_approval_can_be_revoked(empty_api):
-    project = _project(empty_api)
-    run = _create(empty_api, project)
-    _approve(empty_api, run)
-
-    resp = empty_api.delete(f"/api/runs/{run['id']}/approve")
-
-    assert resp.status_code == 200
+    assert resp.get_json()["fingerprint"] != run["fingerprint"]
     assert resp.get_json()["status"] == "draft"
-    assert empty_api.patch(
-        f"/api/runs/{run['id']}", json={"status": "pending"}
-    ).status_code == 409
+
+
+def test_the_approve_routes_are_gone(empty_api):
+    """Decision 2026-09-04: no approve step anywhere. The routes 404 or 405."""
+    project = _project(empty_api)
+    run = _create(empty_api, project)
+
+    assert empty_api.post(f"/api/runs/{run['id']}/approve", json={}).status_code in (404, 405)
+    assert empty_api.delete(f"/api/runs/{run['id']}/approve").status_code in (404, 405)
+    assert catalog.entity(catalog.ENTITY_RUN, run["id"])["status"] == "draft"
 
 
 def test_a_submitted_runs_plan_cannot_be_rewritten(empty_api):
@@ -901,61 +828,6 @@ def test_drafts_are_hidden_from_a_listing_and_askable_for(empty_api):
     assert {run["id"] for run in both["runs"]} == {submitted["id"], draft["id"]}
 
 
-def test_an_approval_records_whether_the_yes_was_relayed(empty_api):
-    """`via` is what tells a clicked yes from one an agent passed on.
-
-    The CLI had no non-interactive path, on the reasoning that an approval flag
-    is a door an agent walks through. It never was one — `yes |` clears a
-    confirm — so the only thing the absence achieved was a row identical to a
-    person clicking the button. Recording HOW the yes arrived makes the two
-    legible, and `relayed` is the weaker claim.
-    """
-    project = _project(empty_api)
-
-    typed = _create(empty_api, project, plan={"prompt": "a rooftop"})
-    resp = empty_api.post(f"/api/runs/{typed['id']}/approve",
-                          json={"digest": typed["plan_digest"]})
-    assert resp.status_code == 200
-    assert resp.get_json()["approval"]["via"] == "interactive"
-
-    passed_on = _create(empty_api, project, plan={"prompt": "a stairwell"})
-    resp = empty_api.post(f"/api/runs/{passed_on['id']}/approve",
-                          json={"digest": passed_on["plan_digest"], "via": "relayed"})
-    assert resp.status_code == 200
-    assert resp.get_json()["approval"]["via"] == "relayed"
-
-    # It survives the read, because the app draws it.
-    stored = empty_api.get(f"/api/runs/{passed_on['id']}").get_json()
-    assert stored["approval"]["via"] == "relayed"
-
-
-def test_via_refuses_a_value_it_does_not_understand(empty_api):
-    """An unrecognised `via` is refused rather than stored.
-
-    The field's whole job is to be trustworthy when read back, so a caller
-    inventing a third word — or misspelling one of the two — must fail loudly
-    instead of writing a claim nothing else can interpret.
-    """
-    project = _project(empty_api)
-    run = _create(empty_api, project, plan={"prompt": "a rooftop"})
-
-    resp = empty_api.post(f"/api/runs/{run['id']}/approve",
-                          json={"digest": run["plan_digest"], "via": "clicked"})
-
-    assert resp.status_code == 400
-    assert empty_api.get(f"/api/runs/{run['id']}").get_json()["status"] == "draft"
-
-
-def test_a_run_reports_whether_its_approval_has_gone_stale(empty_api):
-    """`stale` is computed, never stored — a cached answer is the one thing a
-    gate must not trust."""
-    project = _project(empty_api)
-    run = _create(empty_api, project, plan={"prompt": "a rooftop"})
-    _approve(empty_api, run)
-
-    assert empty_api.get(f"/api/runs/{run['id']}").get_json()["stale"] is False
-
-
 def test_a_send_records_why_the_image_was_sent(empty_api):
     """The half `bindings` never held.
 
@@ -988,9 +860,9 @@ def test_a_write_answers_the_same_shape_a_read_does(empty_api):
     stored row rather than the document `GET` builds — and the SPA swaps a
     write's response straight into the page rather than re-reading, deliberately:
     a re-GET would re-sign every URL to show one badge change. So saving an edit
-    replaced four drawable images with four placeholders, and approving a
-    finished run would have done the same to its outputs. Found by saving an edit
-    on a dev stack and looking at it.
+    replaced four drawable images with four placeholders, and submitting a
+    run would have done the same to its outputs. Found by saving an edit on a
+    dev stack and looking at it.
     """
     project = _project(empty_api)
     character = _character(empty_api)
@@ -1013,29 +885,6 @@ def test_a_write_answers_the_same_shape_a_read_does(empty_api):
     assert written["sends"][0]["url"], "a send comes back drawable"
     assert written["sends"][0]["source"] == read["sends"][0]["source"]
     assert set(written) == set(read), "the same keys, so a page can swap one in"
-
-
-def test_approving_answers_the_drawable_shape_too(empty_api):
-    """The same rule on the route the page has been calling since approvals
-    existed — its sends were raw there as well, and a draft has no outputs, which
-    is why nobody had seen it."""
-    project = _project(empty_api)
-    character = _character(empty_api)
-    picture = _uploaded(
-        empty_api, _child(character["root"], "reference")["node_id"], "front.webp")
-
-    run = _create(
-        empty_api, project,
-        plan={"prompt": "a porch", "params": {}},
-        sends=[{"field": "image_input", "role": "reference", "node": picture["node_id"]}],
-    )
-    digest = empty_api.get(f"/api/runs/{run['id']}").get_json()["plan_digest"]
-
-    approved = empty_api.post(
-        f"/api/runs/{run['id']}/approve", json={"digest": digest}).get_json()
-
-    assert approved["sends"][0]["url"]
-    assert approved["approval"]["digest"] == digest
 
 
 def test_a_send_naming_a_url_is_refused(empty_api):
@@ -1070,30 +919,27 @@ def test_a_send_with_an_unknown_role_is_refused(empty_api):
     assert resp.status_code == 400
 
 
-def test_the_gate_is_on_leaving_the_draft_states_not_on_reaching_pending(empty_api):
+def test_counting_is_on_leaving_the_draft_states_not_on_reaching_pending(empty_api):
     """**The near-miss this test exists to hold shut.**
 
-    `engine/submit.py` writes `running` when it does not poll and `succeeded`
-    when it does. It never writes `pending`. A gate that checked for `pending`
-    would therefore have been enforced by the test suite and bypassed by the only
-    caller in existence — the worst possible outcome, because it reads as
-    working.
+    A caller may write `running` or `succeeded` straight onto a draft and never
+    pass through `pending`. A count that keyed on `pending` would be enforced by
+    the test suite and missed by such a caller — the worst possible outcome,
+    because it reads as working.
     """
     project = _project(empty_api)
 
     for status in ("running", "succeeded", "failed"):
         run = _create(empty_api, project)
         resp = empty_api.patch(f"/api/runs/{run['id']}", json={"status": status})
-        assert resp.status_code == 409, f"{status} slipped past the gate"
-        assert resp.get_json()["error"] == "not_approved"
+        assert resp.status_code == 200, f"{status} was refused"
+
+    counts = empty_api.get(f"/api/projects/{project['id']}").get_json()["counts"]
+    assert counts["runs"] == 3
 
 
-def test_a_submitted_run_moves_on_without_re_approval(empty_api):
-    """Once it has gone out, the statuses are the machine reporting facts.
-
-    Asking for an approval to record that a prediction failed would be asking a
-    person to say yes to something that already happened.
-    """
+def test_a_submitted_run_moves_on(empty_api):
+    """Once it has gone out, the statuses are the machine reporting facts."""
     project = _project(empty_api)
     run = _submitted(empty_api, project)
 
@@ -1108,7 +954,6 @@ def test_a_submitted_run_moves_on_without_re_approval(empty_api):
 def test_a_run_is_counted_once_however_many_statuses_it_moves_through(empty_api):
     project = _project(empty_api)
     run = _create(empty_api, project)
-    _approve(empty_api, run)
 
     for status in ("running", "succeeded"):
         empty_api.patch(f"/api/runs/{run['id']}", json={"status": status})
@@ -1281,7 +1126,6 @@ def test_a_run_id_resolves_with_no_project(empty_api):
 def test_latest_resolves_to_the_newest_submitted_run(empty_api):
     project = _project(empty_api)
     first = _create(empty_api, project, plan={"params": {}, "prompt": "one"})
-    _approve(empty_api, first)
     empty_api.patch(f"/api/runs/{first['id']}", json={"status": "succeeded"})
 
     found = empty_api.get(
@@ -1297,7 +1141,6 @@ def test_latest_skips_a_draft_unless_it_is_asked_for(empty_api):
     """
     project = _project(empty_api)
     submitted = _create(empty_api, project, plan={"params": {}, "prompt": "one"})
-    _approve(empty_api, submitted)
     empty_api.patch(f"/api/runs/{submitted['id']}", json={"status": "succeeded"})
     draft = _create(empty_api, project, plan={"params": {}, "prompt": "two"})
 
@@ -1317,7 +1160,6 @@ def test_the_project_segment_is_an_id(empty_api):
     """
     project = _project(empty_api, name="porch-teaser")
     run = _create(empty_api, project)
-    _approve(empty_api, run)
     empty_api.patch(f"/api/runs/{run['id']}", json={"status": "succeeded"})
 
     assert empty_api.get(
@@ -1384,10 +1226,9 @@ def _run_with_cast(api, count=1):
 def test_a_plan_TEMPLATE_is_expanded_at_save_and_kept_beside_the_prompt(api):
     """**Expanded at save, and the plan keeps both.**
 
-    A template expanded at SUBMIT would mean the payload a person approved is
-    not the payload that gets sent, and `plan_digest` — the whole mechanism that
-    makes hard rule #2 something other than a promise — would be hashing the
-    wrong string. The template is kept beside the prompt so the prompt stays
+    A template expanded at SUBMIT would mean the payload a person read is not
+    the payload that gets sent, and the fingerprint would be hashing the wrong
+    string. The template is kept beside the prompt so the prompt stays
     re-editable: without it, filling one in once leaves the next editor a wall
     of finished prose with no way back to what was written.
     """
@@ -1440,8 +1281,7 @@ def test_citing_a_character_the_run_does_not_bind_is_a_400_naming_the_range(api)
 
 
 def test_the_preview_expands_and_writes_NOTHING(api):
-    """It is called on every change, which is why it cannot be the save — the
-    save withdraws the approval."""
+    """It is called on every change, which is why it cannot be the save."""
     run = _run_with_cast(api)
     before = api.get(f"/api/runs/{run['id']}").get_json()["plan"]
 

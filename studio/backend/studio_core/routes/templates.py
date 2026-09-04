@@ -23,8 +23,7 @@ a person wrote, picked for a run — which is what every one of those angles
 already was, with a fourteen-at-a-time fan-out on top of it.
 
 Hard rule #2 is untouched by everything here. This is what a payload would SAY;
-nothing on these routes creates a run, and the approval gate is still on the run
-that sends one.
+nothing on these routes creates a run, let alone sends one.
 """
 
 import logging

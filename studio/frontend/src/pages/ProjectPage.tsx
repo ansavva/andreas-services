@@ -1,25 +1,30 @@
-import { useCallback, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useCallback, useMemo, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { Badge, Tabs, Text } from "@ansavva/design-system";
 
 import {
   deleteProject,
+  getCharacters,
   getProject,
   getProjectMovies,
   getProjectScenes,
 } from "../apis/studio";
+import { ApertureSpinner } from "../components/common/Aperture";
 import { EmptyState } from "../components/common/EmptyState";
 import { PageLoading } from "../components/common/PageLoading";
 import { SectionLoading } from "../components/common/SectionLoading";
+import { SettingsIcon } from "../components/common/icons";
 import { FolderTab } from "../components/browse/FolderTab";
+import { CharacterChipLink } from "../components/character/CharacterChip";
 import { PageBar } from "../components/layout/PageBar";
 import { EntityRow } from "../components/entity/EntityRow";
 import { ProjectDetails } from "../components/project/ProjectDetails";
-import { RunsTable } from "../components/project/RunsTable";
-import { NewRunStrip } from "../components/run/NewRunStrip";
+import { RunFeed } from "../components/project/RunFeed";
+import { RunLightbox } from "../components/run/RunLightbox";
+import { useInFlightRuns } from "../hooks/useInFlightRuns";
 import { useResource } from "../hooks/useResource";
-import type { ProjectRecord } from "../types";
+import type { HeroImage, ProjectRecord } from "../types";
 import { formatDate } from "../utils/format";
 import { PROJECTS_PATH, moviePath, runPath, scenePath } from "../utils/location";
 import { useSearchParamState } from "../hooks/useSearchParamState";
@@ -27,7 +32,14 @@ import { LoadError } from "../components/common/LoadError";
 import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog";
 
 /**
- * One project: what it is, what has been run in it, and everything under it.
+ * One project: the feed of what has been run in it, and everything under it.
+ *
+ * **Runs is the default tab and the feed is the page.** A project is where
+ * things get made, so what it opens on is the making — every run, newest
+ * first, grouped by day, with the create bar live above it. Scenes, Movies and
+ * Files keep their screens as tabs; Settings, behind the gear at the far end
+ * of the strip, is what the Overview tab used to be: the name, the
+ * description, who is involved, and Delete.
  *
  * The five tabs are fixed here where a character's are not, and the difference
  * is real rather than an inconsistency. A character's tabs after References are
@@ -36,6 +48,14 @@ import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog"
  * files. The five starting folders (`runs/`, `scenes/`, `movies/`, `chains/`,
  * `input/`) are still only a convention, and they show up where all folders do:
  * inside Files.
+ *
+ * ## The opened run is this page, with a lightbox over it
+ *
+ * `/p/<project>/r/<run>` renders this same component with `runId` set, and
+ * `RunLightbox` sits over the feed rather than replacing it — closing it is
+ * the feed again, scrolled where it was, with the tab and the filters still
+ * in the address. The two-column run page that used to answer that URL is
+ * gone.
  *
  * ## There is no Inputs tab, and there should not be one
  *
@@ -49,14 +69,35 @@ import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog"
  * each position beside its node.
  */
 export function ProjectPage() {
-  const { projectId = "" } = useParams();
+  const { projectId = "", runId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const [tab, setTab] = useSearchParamState("tab", "overview");
+  const [tabParam, setTab] = useSearchParamState("tab", "runs");
+  // `?tab=overview` was the old default and is in old links; it is Settings now.
+  const tab = tabParam === "overview" ? "settings" : tabParam;
   /** The delete dialog, opened from the page bar's menu rather than drawn loose. */
   const [deleteOpen, setDeleteOpen] = useState(false);
   const load = useCallback(() => getProject(projectId), [projectId]);
   const project = useResource(["project", projectId], load);
+
+  // The card image per character, for the chips — the listing the sidebar's
+  // search already reads, so it costs no request of its own.
+  const characters = useResource(["characters"], useCallback(() => getCharacters(), []));
+  const heroes = useMemo<Record<string, HeroImage | null>>(
+    () => Object.fromEntries((characters.data ?? []).map((each) => [each.id, each.hero])),
+    [characters.data],
+  );
+
+  const running = useInFlightRuns()[projectId] ?? 0;
+
+  const openRun = useCallback(
+    (row: { id: string }, output?: number) =>
+      navigate(runPath(projectId, row.id) + location.search, {
+        state: output === undefined ? undefined : { output },
+      }),
+    [location.search, navigate, projectId],
+  );
 
   if (project.loading) return <PageLoading label="Loading project" />;
 
@@ -78,62 +119,110 @@ export function ProjectPage() {
 
   return (
     <>
-      {/* **Delete lives behind `⋯` now, and the noun still spells out the
-          cascade.** `ConfirmDestroyDialog` types the name because a project
-          takes its runs, scenes and movies with it — the same reasoning as
-          before, opened from the menu instead of drawn loose beside the
-          title.
-
-          **`New run` is the page's primary now, not a strip above the Runs
-          tab.** It still opens the same drawer — `NewRunStrip` — because what
-          it makes belongs to the project either way; only the trigger moved,
-          to the one place every other entity's create control lives. */}
-      <PageBar
-        crumbs={[{ label: "Projects", to: PROJECTS_PATH }]}
-        title={record.name}
-        primary={<NewRunStrip projectId={record.id} characters={record.characters} />}
-        menu={[{ label: "Delete", danger: true, onSelect: () => setDeleteOpen(true) }]}
-      />
-
-      <ConfirmDestroyDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        label="Delete"
-        title={`Delete ${record.name}?`}
-        summary={deleteSummary(held, counts)}
-        confirmWord={record.name}
-        onConfirm={async () => {
-          await deleteProject(record.id, "delete", held > 0);
-          navigate(PROJECTS_PATH);
-        }}
-      />
-
       {/* `defaultValue` as well as `value`, which the package requires even
           when controlled: it seeds `useControllableState`, and Tabs does not
           introspect its List to guess a first tab. */}
-      <Tabs.Root value={tab} defaultValue="overview" onValueChange={setTab}>
-        {/* Scrolls rather than wraps, like the character page's: a tab strip
-            that grows a second row draws a second underline, which reads as two
-            strips. Six of these wrapped at 390px, and five is not far enough
-            under that to change the rule. */}
-        <Tabs.List className="overflow-x-auto border-b border-line">
-          <Tabs.Tab value="overview">Overview</Tabs.Tab>
-          <Tabs.Tab value="runs">Runs</Tabs.Tab>
-          <Tabs.Tab value="scenes">Scenes</Tabs.Tab>
-          <Tabs.Tab value="movies">Movies</Tabs.Tab>
-          <Tabs.Tab value="files">Files</Tabs.Tab>
-        </Tabs.List>
+      <Tabs.Root value={tab} defaultValue="runs" onValueChange={setTab}>
+        {/* **Delete lives behind `⋯`, and the noun still spells out the
+            cascade.** `ConfirmDestroyDialog` types the name because a project
+            takes its runs, scenes and movies with it.
 
-        <Tabs.Panel value="overview" className="flex flex-col gap-4">
+            **Nothing here makes a run.** The create bar in the top bar is
+            where a run is authored, on every screen; the page's own primary
+            slot holds who the project is about instead, per the mockup. */}
+        <PageBar
+          crumbs={[{ label: "Projects", to: PROJECTS_PATH }]}
+          title={record.name}
+          meta={
+            <>
+              <Badge intent="neutral" className="rounded-none font-mono tabular-nums">
+                {counts.runs} {counts.runs === 1 ? "run" : "runs"}
+              </Badge>
+              {running > 0 && (
+                <Badge intent="warning" className="rounded-none gap-1.5 font-mono tabular-nums">
+                  <ApertureSpinner size="sm" label={`${running} running`} className="size-3.5" />
+                  {running} running
+                </Badge>
+              )}
+            </>
+          }
+          primary={
+            record.characters.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-2" aria-label="Characters">
+                {record.characters.map((each) => (
+                  <CharacterChipLink
+                    key={each.id}
+                    id={each.id}
+                    name={each.name}
+                    hero={heroes[each.id] ?? null}
+                  />
+                ))}
+              </div>
+            ) : undefined
+          }
+          menu={[{ label: "Delete", danger: true, onSelect: () => setDeleteOpen(true) }]}
+          tabs={
+            // Scrolls rather than wraps, like the character page's: a tab
+            // strip that grows a second row draws a second underline, which
+            // reads as two strips. Settings sits at the far end, after a gap,
+            // because it is about the project rather than in it.
+            <Tabs.List className="overflow-x-auto border-b border-line">
+              <Tabs.Tab value="runs">Runs</Tabs.Tab>
+              <Tabs.Tab value="scenes">Scenes</Tabs.Tab>
+              <Tabs.Tab value="movies">Movies</Tabs.Tab>
+              <Tabs.Tab value="files">Files</Tabs.Tab>
+              <Tabs.Tab value="settings" className="ml-auto gap-1.5">
+                <SettingsIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+                Settings
+              </Tabs.Tab>
+            </Tabs.List>
+          }
+        />
+
+        <ConfirmDestroyDialog
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          label="Delete"
+          title={`Delete ${record.name}?`}
+          summary={deleteSummary(held, counts)}
+          confirmWord={record.name}
+          onConfirm={async () => {
+            await deleteProject(record.id, "delete", held > 0);
+            navigate(PROJECTS_PATH);
+          }}
+        />
+
+        <Tabs.Panel value="runs">
+          <RunFeed
+            projectId={record.id}
+            characters={record.characters}
+            heroes={heroes}
+            onOpen={openRun}
+          />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="scenes">
+          <ScenesTab projectId={record.id} />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="movies">
+          <MoviesTab projectId={record.id} />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="files">
+          <FolderTab rootId={record.root} label={record.name} />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="settings" className="flex flex-col gap-4">
           <div className="flex flex-wrap gap-2">
             <Badge intent="neutral" className="font-mono tabular-nums">
-              {record.counts.runs} runs
+              {counts.runs} runs
             </Badge>
             <Badge intent="neutral" className="font-mono tabular-nums">
-              {record.counts.scenes} scenes
+              {counts.scenes} scenes
             </Badge>
             <Badge intent="neutral" className="font-mono tabular-nums">
-              {record.counts.movies} movies
+              {counts.movies} movies
             </Badge>
           </div>
 
@@ -150,46 +239,20 @@ export function ProjectPage() {
             }
           />
 
-          {/* The top border and padding need a block box, which `caption` is
-              by default as of design-system 0.17.0 — this used to carry
-              `className="block"` to get one. */}
           <Text variant="caption" tone="muted" className="border-t border-line pt-2 font-mono">
             Created {formatDate(record.created)} · updated {formatDate(record.updated)}
           </Text>
         </Tabs.Panel>
-
-        {/* The strip sits above the table rather than in the page bar, because
-            what it makes is a run in THIS project — and because the page bar's
-            one action deletes the project. */}
-        <Tabs.Panel value="runs" className="flex flex-col gap-4">
-          {/* **One reading, not a choice of two.** The Grid view — the file
-              browser scoped to `runs/`, in Media view — is gone: "which runs
-              failed" and "what did this project make" are different questions
-              with different owners, and the second is Files' job, one tab
-              over, on exactly the same folder. A run's OUTPUTS live there; a
-              run's own fields — status, model, cost, when — live here.
-
-              `New run` moved to the page bar's primary slot, so there is
-              nothing left to draw above the table at all. */}
-          <RunsTable
-            projectId={record.id}
-            characters={record.characters}
-            to={(run) => runPath(record.id, run.id)}
-          />
-        </Tabs.Panel>
-
-        <Tabs.Panel value="scenes">
-          <ScenesTab projectId={record.id} />
-        </Tabs.Panel>
-
-        <Tabs.Panel value="movies">
-          <MoviesTab projectId={record.id} />
-        </Tabs.Panel>
-
-        <Tabs.Panel value="files">
-          <FolderTab rootId={record.root} label={record.name} />
-        </Tabs.Panel>
       </Tabs.Root>
+
+      {runId && (
+        <RunLightbox
+          projectId={record.id}
+          runId={runId}
+          characters={record.characters}
+          heroes={heroes}
+        />
+      )}
     </>
   );
 }

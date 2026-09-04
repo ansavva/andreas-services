@@ -24,7 +24,7 @@ interface Props {
  * **Both routes existed and neither had a caller**, so every empty state in
  * this app told you to go and type a CLI command. That is a reasonable thing
  * for a pipeline to say about *generating* something, which costs money and has
- * a payload to approve — and an unreasonable thing to say about creating an
+ * a payload to read — and an unreasonable thing to say about creating an
  * empty record with a name.
  *
  * One component for both because the shape is the same — a name and one extra

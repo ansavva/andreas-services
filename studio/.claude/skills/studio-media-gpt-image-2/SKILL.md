@@ -10,7 +10,7 @@ two GPT Image entries. **The default for a character frame**: reference images
 are held at high fidelity automatically, which is the property identity work
 turns on. No OpenAI key needed; it bills through Replicate.
 
-> Invocation, the approval gate, run recording and validation are shared —
+> Invocation, hard rule #2, run recording and validation are shared —
 > see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model gpt-image-2 …`,
 > and `studio models show gpt-image-2` for the live schema. This page covers
 > only what is specific to this model. [`gpt-image-1.5`](../studio-media-gpt-image-1-5/SKILL.md) is the sibling that does transparent backgrounds.

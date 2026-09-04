@@ -42,9 +42,6 @@ function record(over: Partial<RunRecord> = {}): RunRecord {
     sends: [],
     characters: ["char-1"],
     plan: null,
-    plan_digest: "sha256:abc",
-    approval: null,
-    stale: false,
     payload: { prompt: null, request: null, response: null },
     ...over,
   } as RunRecord;

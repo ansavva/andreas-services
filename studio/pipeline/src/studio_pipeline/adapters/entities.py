@@ -250,7 +250,7 @@ def create_run(*, project: str, kind: str, engine: str, model: str,
                characters: list[str] | None = None,
                prompt: dict | None = None, plan: dict | None = None,
                sends: list[dict] | None = None, name: str | None = None) -> dict:
-    """Create the run as a DRAFT, before the approval and before the submission.
+    """Create the run as a DRAFT, before the submission.
 
     The ordering is the whole point and predates this route: `request.json` was
     written before the submit and `result.json` only after it came back, which
@@ -262,19 +262,19 @@ def create_run(*, project: str, kind: str, engine: str, model: str,
     400 — hard rule #3, enforced for the SPA as well as for the CLI rather than
     in `runs.py` where only one caller went through it.
 
-    **It comes back `draft`, and nothing may be submitted until it is approved.**
-    The ordering moved one step earlier than the paragraph above describes: the
-    record is written before the *approval* too, which is what gives an approval
-    something to attach to. `sends` supersedes `bindings` and carries what the
-    map could not — each image's role and where it came from — and either is
-    accepted so that a caller can be moved over one at a time.
+    **It comes back `draft`, and nothing is sent until `submit_run`.** There is
+    no approve step between the two: a person reads the draft and says to send
+    it, and the submit call is that act. `sends` supersedes `bindings` and
+    carries what the map could not — each image's role and where it came from —
+    and either is accepted so that a caller can be moved over one at a time.
 
     **`name` is what the OUTPUT FILE will be called, and it is recorded here
     because nothing else will be in a position to say.** The download used to
     happen in this process, so the filename was an argument to it; it happens in
     the API now, driven by a webhook that arrives with no request body at all. It
-    is deliberately not part of `plan`: `plan_digest` hashes the plan, so a
-    rename would void an approval over something the provider is never sent.
+    is deliberately not part of `plan`: the fingerprint hashes the plan, so a
+    rename would make two identical payloads read as different over something
+    the provider is never sent.
     """
     body = {"project": project, "kind": kind, "engine": engine, "model": model,
             "input": input, "bindings": bindings or {}}
@@ -284,34 +284,13 @@ def create_run(*, project: str, kind: str, engine: str, model: str,
 
 
 def patch_run_plan(run_id: str, plan: dict) -> dict:
-    """Rewrite a draft's authored half. **Clears any approval, every time.**
-
-    That is hard rule #2's "re-approve after **any** edit", and it is the API's
-    doing rather than this function's — stated here because a caller that edits
-    a plan needs to know its approval is gone, and finding out at submit time is
-    finding out too late.
-    """
+    """Rewrite a draft's authored half. The fingerprint moves with it."""
     return api.patch(f"/api/runs/{run_id}/plan", {"plan": plan})
 
 
 def patch_run_sends(run_id: str, sends: list[dict]) -> dict:
-    """Replace the ordered images a draft binds. Clears any approval, every time."""
+    """Replace the ordered images a draft binds. The fingerprint moves with it."""
     return api.patch(f"/api/runs/{run_id}/sends", {"sends": sends})
-
-
-def approve_run(run_id: str, digest: str, via: str = "interactive") -> dict:
-    """Record that a person read THIS payload and said yes to it.
-
-    **The digest is what makes it an approval rather than a timestamp.** The API
-    recomputes the digest of what is actually on the row and refuses a mismatch,
-    so an approval cannot outlive the payload it was given for. A 409 here means
-    the plan moved and has to be read again — never that the API is unavailable.
-
-    `via` says how the yes arrived: `interactive` for one typed at this terminal,
-    `relayed` for one a person gave elsewhere and an agent passed on. The record
-    is weaker in the second case and says so.
-    """
-    return api.post(f"/api/runs/{run_id}/approve", {"digest": digest, "via": via})
 
 
 def query_runs(*, project: str | None = None, character: str | None = None,
@@ -368,7 +347,7 @@ def patch_run(run_id: str, *, status: str | None = None,
 
 
 def submit_run(run_id: str) -> dict:
-    """Send an approved run to the provider. **The call that spends money.**
+    """Send a draft to the provider. **The call that spends money.**
 
     **This replaced the whole billing half of `engine/submit.py`.** The CLI used
     to hold the Replicate token, mint the presigned URLs, create the prediction
@@ -376,9 +355,9 @@ def submit_run(run_id: str) -> dict:
     terminal nobody could close and a killed process left a run wedged. All of
     that is one call now, and what waits for the answer is a webhook.
 
-    The API refuses this unless the run is approved and the approval still
-    matches the payload, which is hard rule #2's gate standing in front of the
-    money rather than behind it.
+    There is no approve step in front of this. Hard rule #2 is that a person
+    read the payload and said to send it, and this call is that act — the API
+    takes a `draft` straight to `pending`.
 
     The reply carries the run, and `callback`, which says how this submission
     will be closed:

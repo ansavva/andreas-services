@@ -1,43 +1,49 @@
 import { Outlet } from "react-router-dom";
 
-import { AppHeader } from "./AppHeader";
+import { CreateBarProvider } from "../../context/CreateBarContext";
+import { SidebarProvider } from "../../context/SidebarContext";
+import { AppSidebar } from "./AppSidebar";
+import { TopBar } from "./TopBar";
 
 /**
- * The shell every screen renders inside.
+ * The shell every screen renders inside: the sidebar down the left, the top
+ * bar across the content column, and the page under it.
  *
- * **This replaces seven copies of the same wrapper.** Character, project, run,
- * scene and movie each carried a private `Shell` — an identical
- * `mx-auto max-w-7xl` column with an `AppHeader` at the top — and home and the
- * browser open-coded the same thing. Seven copies is seven places a change to
- * the page frame has to be repeated, and the reason they existed at all was
- * that there was nowhere above a page to put it. A layout route is that place.
+ * **Content runs full width now.** It was a `mx-auto max-w-7xl` column under
+ * a top nav; the sidebar took the nav, and a cap on the content beside a
+ * 256px rail spends the width twice. The page padding is the mockup's 24px,
+ * halved at the sides on a phone, where 24px of margin on a 390px screen is
+ * 12% of the picture.
  *
- * It renders the header **outside** the content column rather than inside it,
- * which is what lets the bar be full-bleed and sticky while the content stays
- * measured. Doing it the other way needs negative margins to escape the
- * column's padding, and those break the moment the padding changes.
+ * **The column is spaced on a 24px line.** `gap-6` between sections and `py-6`
+ * top and bottom, so a section boundary always lands on the same rhythm
+ * whatever the page above it did.
  *
- * The contextual half of the header — the breadcrumb and a page's own actions —
+ * The contextual half of the chrome — the breadcrumb and a page's own actions —
  * is `PageBar`, which each page renders as its first child. It is not lifted
  * here on purpose: it belongs to the page, changes with the page's own data,
  * and hoisting it would mean every screen pushing state up into a context to
  * have it rendered back down.
  *
- * **The column is spaced on a 24px line.** `gap-6` between sections, `py-6`
- * top and bottom, and the header's own `py-3` is half of it — so a section
- * boundary always lands on the same rhythm whatever the page above it did.
- * Replicate's grid is the same number arrived at the same way (`lh` = 24px);
- * what studio takes from it is the single spacing step, not the unit.
- * Horizontal padding stays smaller than vertical on a phone, because 24px of
- * side margin on a 390px screen is 12% of the picture.
+ * `SidebarProvider` sits here rather than in `App`, because it is the shell's
+ * own state: `/auth/callback` renders outside this layout and has no sidebar
+ * to collapse. `CreateBarProvider` for the same reason — the bar is the top
+ * bar's, and the feed's actions reach it from inside the page.
  */
 export function AppLayout() {
   return (
-    <div className="flex min-h-full flex-col">
-      <AppHeader />
-      <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6">
-        <Outlet />
-      </main>
-    </div>
+    <SidebarProvider>
+      <CreateBarProvider>
+        <div className="flex min-h-full">
+          <AppSidebar />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <TopBar />
+            <main className="flex flex-1 flex-col gap-6 px-4 py-6 md:px-6">
+              <Outlet />
+            </main>
+          </div>
+        </div>
+      </CreateBarProvider>
+    </SidebarProvider>
   );
 }

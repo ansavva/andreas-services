@@ -10,8 +10,8 @@ Nothing is stored, no run is created, nothing bills. That is what makes it safe
 to call on every keystroke of an editor, and it is why the verb is POST despite
 being a read — the input is a document, not a query string.
 
-Hard rule #2 is untouched. This says what a payload *would* be; the approval gate
-is on the run that sends one.
+Hard rule #2 is untouched. This says what a payload *would* be; sending one is
+`POST /api/runs/<id>/submit`, on a person's say-so.
 """
 
 import logging

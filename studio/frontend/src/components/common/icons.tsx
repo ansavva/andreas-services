@@ -200,6 +200,59 @@ export const AccountIcon = ({ className }: Props) => (
   </Glyph>
 );
 
+// --- the shell -------------------------------------------------------------
+
+export const HomeIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M3 11.5 12 4l9 7.5V20H3Z" />
+  </Glyph>
+);
+
+/** A board with a header row and a first column — a project is a table of runs. */
+export const ProjectsIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <rect x="3" y="5" width="18" height="14" />
+    <path d="M3 10h18M9 5v14" />
+  </Glyph>
+);
+
+/** A sheet with two ruled lines: a template is text with holes in it. */
+export const TemplateIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M4 4h16v16H4Z" />
+    <path d="M8 9.5h8M8 13.5h8" />
+  </Glyph>
+);
+
+/** Three bars. The one glyph a phone user reads as "the menu". */
+export const MenuIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M4 7h16M4 12h16M4 17h16" />
+  </Glyph>
+);
+
+/** A panel with its left rail drawn — the sidebar's own toggle. */
+export const SidebarIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <rect x="3" y="5" width="18" height="14" />
+    <path d="M9 5v14" />
+    <path d="m16.5 9.5-2.5 2.5 2.5 2.5" />
+  </Glyph>
+);
+
+/**
+ * A person in a ring — the ACCOUNT, as distinct from `AccountIcon`, which the
+ * Characters section wears. Two person glyphs in one 64px rail have to differ,
+ * and the ring is what says "you" rather than "them".
+ */
+export const ProfileIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="10" r="3" />
+    <path d="M6.5 18.5a6 6 0 0 1 11 0" />
+  </Glyph>
+);
+
 // --- the viewer ------------------------------------------------------------
 
 export const SoundOnIcon = ({ className }: Props) => (
@@ -253,5 +306,126 @@ export const PlayIcon = ({ className }: Props) => (
 export const PauseIcon = ({ className }: Props) => (
   <Glyph className={className}>
     <path d="M9 5v14M15 5v14" />
+  </Glyph>
+);
+
+// --- the run feed and the opened run -------------------------------------
+
+/** The project's Settings tab — the old Overview, behind a gear. */
+export const SettingsIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" />
+  </Glyph>
+);
+
+/** Run again — the same payload as a fresh attempt. */
+export const RerunIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M19 12a7 7 0 1 1-2.1-5" />
+    <path d="M19 4v4.5h-4.5" />
+  </Glyph>
+);
+
+/** Enlarge and restore — the arrows leave the frame at both corners. */
+export const UpscaleIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M4 20l6-6M4 14v6h6" />
+    <path d="M20 4l-6 6M14 4h6v6" />
+  </Glyph>
+);
+
+/** Put this picture into the create bar. */
+export const UseInPromptIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <rect x="4" y="4" width="16" height="16" />
+    <path d="M12 8v8M8 12h8" />
+  </Glyph>
+);
+
+/** File an output as a character's identity. */
+export const PromoteIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <circle cx="9" cy="8" r="3.5" />
+    <path d="M3 20a6 6 0 0 1 12 0" />
+    <path d="M18 8v6M15 11h6" />
+  </Glyph>
+);
+
+/** A start frame — the first frame of a clip. */
+export const StartFrameIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <rect x="4" y="5" width="16" height="14" />
+    <path d="M4 9h16" />
+  </Glyph>
+);
+
+export const ChevronLeftIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="m14.5 6-6 6 6 6" />
+  </Glyph>
+);
+
+export const ChevronRightIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="m9.5 6 6 6-6 6" />
+  </Glyph>
+);
+
+// --- the create bar ----------------------------------------------------------
+
+/** A film frame: the VIDEO half of the kind switch. */
+export const VideoIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <rect x="3" y="5" width="18" height="14" />
+    <path d="M3 10h18M3 14h18M8 5v14M16 5v14" />
+  </Glyph>
+);
+
+/** Two sliders: the parameters behind the bar. */
+export const SlidersIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M3 7h18M3 17h18" />
+    <circle cx="8" cy="7" r="2.5" />
+    <circle cx="16" cy="17" r="2.5" />
+  </Glyph>
+);
+
+/** An arrow leaving: Send. */
+export const SendIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M4 12h15M13 6l6 6-6 6" />
+  </Glyph>
+);
+
+/** An eye: the preview. */
+export const EyeIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z" />
+    <circle cx="12" cy="12" r="3" />
+  </Glyph>
+);
+
+/** A padlock: keep the attached images for the next send. */
+export const LockIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <rect x="5" y="11" width="14" height="10" />
+    <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+  </Glyph>
+);
+
+/** A person: a reference image, and a character with no picture yet. */
+export const PersonIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <circle cx="12" cy="8" r="4" />
+    <path d="M4 21a8 8 0 0 1 16 0" />
+  </Glyph>
+);
+
+/** A frame with its bottom bar: the end frame of a clip. */
+export const FrameEndIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <rect x="3" y="5" width="18" height="14" />
+    <path d="M3 15h18" />
   </Glyph>
 );

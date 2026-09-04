@@ -132,12 +132,12 @@ export function isAuthenticated(): boolean {
 /**
  * The `sub` claim off the ID token.
  *
- * Not decoration: a run's approval records WHO said yes as a Cognito sub, and a
- * sub is unreadable — "Approved by d4f85488-…" tells a person nothing about
- * whether it was them. Comparing it against this is what lets the run screen
- * say a name instead. It stays a comparison rather than a lookup because the
- * API resolves no directory, so the only identity the browser can name for
- * certain is the one holding the token.
+ * Not decoration: a record naming WHO did something names a Cognito sub, and a
+ * sub is unreadable — "by d4f85488-…" tells a person nothing about whether it
+ * was them. Comparing it against this is what lets a screen say a name
+ * instead. It stays a comparison rather than a lookup because the API resolves
+ * no directory, so the only identity the browser can name for certain is the
+ * one holding the token.
  */
 export function getUserSub(): string | null {
   const idToken = getIdToken();

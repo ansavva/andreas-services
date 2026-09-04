@@ -19,8 +19,8 @@ documents `scripts/dev-aws-seed.sh` loads.
 
 IT GENERATES NOTHING, SO IT COSTS NOTHING
 -----------------------------------------
-No model is called, no `REPLICATE_API_TOKEN` is read, and there is no hard-rule-#2
-approval gate here — **the approval already happened**, at the moment the human
+No model is called, no `REPLICATE_API_TOKEN` is read, and hard rule #2 has
+nothing to ask here — **a person already said to run these**, at the moment they
 ran the generations that filled the dev stack. This is a copy. `tests/
 test_dev_seed.py` pins that with a test rather than a comment, the way
 `test_dev_scripts.py` pins the same property for the loader; read what it does

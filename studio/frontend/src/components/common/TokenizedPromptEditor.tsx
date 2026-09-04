@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { MutableRefObject } from "react";
 import { createPortal } from "react-dom";
 
@@ -21,7 +28,10 @@ import {
   $getRoot,
   $getSelection,
   $isRangeSelection,
+  COMMAND_PRIORITY_HIGH,
+  KEY_ENTER_COMMAND,
   TextNode,
+  $setSelection,
 } from "lexical";
 
 import { $createTokenNode, TokenNode } from "./TokenNode";
@@ -120,10 +130,9 @@ function nextPlaceholder(text: string, from = 0) {
  * ## The invariant everything here protects
  *
  * **The value is a plain string and the round trip is byte-exact.** Assembly is
- * `string.Formatter().vformat` over `{name}`, and `plan_digest` hashes the
- * prompt into the approval — so an editor that normalised one space or dropped
- * one trailing newline would silently stale every approval already given, for a
- * change nobody made.
+ * `string.Formatter().vformat` over `{name}`, and the fingerprint hashes the
+ * prompt — so an editor that normalised one space or dropped one trailing
+ * newline would silently move every fingerprint, for a change nobody made.
  *
  * That invariant is held by construction rather than by care: a pill is a
  * `TextNode` whose text IS `{name}`, so `root.getTextContent()` is the string.
@@ -147,16 +156,56 @@ export function TokenizedPromptEditor({
   onValueChange,
   tokens,
   ariaLabel,
+  placeholder = "Write the angle's prompt… type { for a placeholder.",
+  className = "rounded-none border border-line p-2",
+  contentClassName = "min-h-24",
+  onSubmit,
+  focusKey,
+  blurKey,
 }: {
   value: string;
   onValueChange: (next: string) => void;
   tokens: PromptToken[];
   ariaLabel?: string;
+  placeholder?: string;
+  /** The box around the editor. The create bar hands it no border of its own. */
+  className?: string;
+  /** Sizing for the editable itself: a min height, a max height and a scroll. */
+  contentClassName?: string;
+  /**
+   * Enter sends, Shift+Enter breaks the line.
+   *
+   * Only when given: the template editor keeps Enter as a newline, because a
+   * template is paragraphs. The create bar is a chat box and Enter is what a
+   * chat box means by it. The `{` menu still takes Enter first while it is
+   * open — choosing a pill must not send the prompt half-written.
+   */
+  onSubmit?: () => void;
+  /** Focus the editor whenever this changes. What "load a run into the bar" does. */
+  focusKey?: number;
+  /**
+   * Bump to take focus OUT of the editor. A plain `.blur()` on the element
+   * does not hold: Lexical keeps its selection and puts focus back when the
+   * next update commits (`$updateDOMSelection`), so leaving has to go through
+   * `editor.blur()`, which drops the selection first.
+   */
+  blurKey?: number;
 }) {
   const kinds = useMemo(
-    () => Object.fromEntries(tokens.map((t) => [t.name, t.kind])) as Record<string, "block" | "computed">,
+    () =>
+      Object.fromEntries(tokens.map((t) => [t.name, t.kind])) as Record<
+        string,
+        "block" | "computed"
+      >,
     [tokens],
   );
+
+  /**
+   * Whether the `{` menu is open — read by the Enter handler, which must yield
+   * to it. A ref rather than state: the handler is a Lexical command listener
+   * and the menu toggles many times a second while a name is typed.
+   */
+  const menuOpen = useRef(false);
 
   // **The string the editor and the caller last agreed on.**
   //
@@ -185,29 +234,36 @@ export function TokenizedPromptEditor({
         theme: {},
       }}
     >
-      <div className="rounded-none border border-line p-2">
-        <PlainTextPlugin
-          contentEditable={
-            <ContentEditable
-              aria-label={ariaLabel ?? "Prompt"}
-              // `whitespace-pre-wrap`: blank lines are part of the prompt now —
-              // they survive assembly and reach the model — so the editor has to
-              // show them rather than collapse them like ordinary HTML.
-              className="min-h-24 whitespace-pre-wrap font-mono text-sm leading-6 outline-none"
-            />
-          }
-          placeholder={
-            <span className="text-muted">
-              Write the angle's prompt… type {"{"} for a placeholder.
-            </span>
-          }
-          ErrorBoundary={LexicalErrorBoundary}
-        />
+      <div className={className}>
+        {/* `relative` on a box with no padding of its own, so the placeholder
+            can sit exactly where the first character will land. */}
+        <div className="relative">
+          <PlainTextPlugin
+            contentEditable={
+              <ContentEditable
+                aria-label={ariaLabel ?? "Prompt"}
+                // `whitespace-pre-wrap`: blank lines are part of the prompt now —
+                // they survive assembly and reach the model — so the editor has to
+                // show them rather than collapse them like ordinary HTML.
+                className={`${contentClassName} whitespace-pre-wrap font-mono text-sm leading-6 outline-none`}
+              />
+            }
+            placeholder={
+              <span className="pointer-events-none absolute inset-x-0 top-0 truncate font-mono text-sm leading-6 text-muted">
+                {placeholder}
+              </span>
+            }
+            ErrorBoundary={LexicalErrorBoundary}
+          />
+        </div>
         {/* Cmd-Z. Lexical ships no history unless it is asked for, so undo did
             nothing at all — in a box whose whole purpose is trying wordings out. */}
         <HistoryPlugin />
         <Hydrate value={value} held={held} />
         <Pillify kinds={kinds} />
+        {onSubmit && <SubmitOnEnter onSubmit={onSubmit} menuOpen={menuOpen} />}
+        <Focus focusKey={focusKey} />
+        <Blur blurKey={blurKey} />
         <OnChangePlugin
           ignoreSelectionChange
           onChange={(state) =>
@@ -219,10 +275,81 @@ export function TokenizedPromptEditor({
             })
           }
         />
-        <Typeahead tokens={tokens} kinds={kinds} />
+        <Typeahead tokens={tokens} kinds={kinds} menuOpen={menuOpen} />
       </div>
     </LexicalComposer>
   );
+}
+
+/**
+ * Enter sends; Shift+Enter is still a line break.
+ *
+ * Registered at `COMMAND_PRIORITY_HIGH`, above the `{` menu's own Enter and
+ * above the plain-text plugin's, so it is asked first — and it declines when
+ * the menu is open, so the keystroke falls through to the menu and picks the
+ * highlighted pill instead of sending a half-written citation. It declines on
+ * Shift too, which leaves the newline to the plugin that always drew one.
+ */
+function SubmitOnEnter({
+  onSubmit,
+  menuOpen,
+}: {
+  onSubmit: () => void;
+  menuOpen: MutableRefObject<boolean>;
+}) {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(
+    () =>
+      editor.registerCommand<KeyboardEvent | null>(
+        KEY_ENTER_COMMAND,
+        (event) => {
+          if (
+            event === null ||
+            event.shiftKey ||
+            event.isComposing ||
+            menuOpen.current
+          )
+            return false;
+          event.preventDefault();
+          onSubmit();
+          return true;
+        },
+        COMMAND_PRIORITY_HIGH,
+      ),
+    [editor, menuOpen, onSubmit],
+  );
+
+  return null;
+}
+
+/** Leave the editor when asked to — a press outside the bar asks. */
+function Blur({ blurKey }: { blurKey: number | undefined }) {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    if (blurKey === undefined || blurKey === 0) return;
+    // `editor.blur()` alone does not hold: it takes the DOM selection away
+    // but the editor state keeps its own, and the next commit's
+    // `$updateDOMSelection` puts the DOM selection — and focus — back to
+    // match. Drop the state's selection first, so there is nothing to restore.
+    editor.update(() => $setSelection(null), { discrete: true });
+    editor.blur();
+  }, [editor, blurKey]);
+
+  return null;
+}
+
+/** Focus the editor when asked to — loading a run into the bar asks. */
+function Focus({ focusKey }: { focusKey: number | undefined }) {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    if (focusKey === undefined || focusKey === 0) return;
+    editor.focus();
+  }, [editor, focusKey]);
+
+  return null;
 }
 
 /**
@@ -305,7 +432,9 @@ function Pillify({ kinds }: { kinds: Record<string, "block" | "computed"> }) {
           found.start === 0
             ? node.splitText(found.end)[0]
             : node.splitText(found.start, found.end)[1];
-        target?.replace($createTokenNode(found.token, kinds[found.name] ?? "computed"));
+        target?.replace(
+          $createTokenNode(found.token, kinds[found.name] ?? "computed"),
+        );
       }),
     [editor, kinds],
   );
@@ -342,22 +471,39 @@ class TokenOption extends MenuOption {
 function Typeahead({
   tokens,
   kinds,
+  menuOpen,
 }: {
   tokens: PromptToken[];
   kinds: Record<string, "block" | "computed">;
+  /** Written here, read by `SubmitOnEnter` — the one thing the two share. */
+  menuOpen: MutableRefObject<boolean>;
 }) {
   const [editor] = useLexicalComposerContext();
   const [query, setQuery] = useState<string | null>(null);
+
+  // **Open means "has options to pick from"**, not "the trigger matched".
+  // The plugin reports open on the brace alone, before anything narrows, and
+  // an empty list is closed for Enter's purposes: the menu draws nothing, so
+  // there is nothing to pick and the keystroke should send.
+  const [resolved, setResolved] = useState(false);
+  const onOpen = useCallback(() => setResolved(true), []);
+  const onClose = useCallback(() => setResolved(false), []);
 
   const options = useMemo(
     () =>
       tokens
         .filter((t) => !t.legacy)
-        .filter((t) => t.name.toLowerCase().includes((query ?? "").toLowerCase()))
+        .filter((t) =>
+          t.name.toLowerCase().includes((query ?? "").toLowerCase()),
+        )
         .slice(0, 8)
         .map((token) => new TokenOption(token)),
     [query, tokens],
   );
+
+  useEffect(() => {
+    menuOpen.current = resolved && options.length > 0;
+  }, [menuOpen, options.length, resolved]);
 
   // `promptTriggerMatch`, not a second copy of it. There WAS a second copy, and
   // when the regex grew the group that refuses `{{`, that copy went on reading
@@ -371,7 +517,11 @@ function Typeahead({
   );
 
   const select = useCallback(
-    (option: TokenOption, nodeToReplace: TextNode | null, closeMenu: () => void) => {
+    (
+      option: TokenOption,
+      nodeToReplace: TextNode | null,
+      closeMenu: () => void,
+    ) => {
       editor.update(() => {
         const pill = $createTokenNode(
           `{${option.token.name}}`,
@@ -395,12 +545,17 @@ function Typeahead({
       options={options}
       onQueryChange={setQuery}
       onSelectOption={select}
+      onOpen={onOpen}
+      onClose={onClose}
       triggerFn={trigger}
       // A `{` typed immediately after a pill is the commonest case there is —
       // a template is mostly citations — and the default suppresses the menu
       // when the caret sits against a text entity, which every pill is.
       ignoreEntityBoundary
-      menuRenderFn={(anchorElementRef, { selectedIndex, selectOptionAndCleanUp, setHighlightedIndex }) =>
+      menuRenderFn={(
+        anchorElementRef,
+        { selectedIndex, selectOptionAndCleanUp, setHighlightedIndex },
+      ) =>
         anchorElementRef.current === null || options.length === 0
           ? null
           : createPortal(

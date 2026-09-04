@@ -200,7 +200,7 @@ def test_every_callback_accepts_the_parameters_click_will_pass():
 
 
 def test_dry_run_actually_renders_a_payload(library, monkeypatch):
-    """`--dry-run` is the approval gate. It has to work.
+    """`--dry-run` is what a person reads before saying to submit. It has to work.
 
     It read `args.json` while Click had stored the flag as `json_` (`json` is not
     a legal attribute name for it), so every `studio run --dry-run` raised
@@ -258,7 +258,7 @@ def test_input_pool_numbers_actually_bind(library, monkeypatch):
 #: Backend `services/` modules the CLI's unit suite loads for real rather than
 #: approximating: `tests/support/fake_api.py` imports each one so that a test
 #: gets the API's own answer to "is this plan coherent", "will this prompt
-#: render" and "what was this approval an approval OF".
+#: render" and "is this the same payload as that one".
 SHARED_SERVICES = ("digest", "prompt", "registry", "storyboard")
 
 _SERVICES = studio_pipeline.STUDIO_DIR / "backend" / "studio_core" / "services"
@@ -291,8 +291,8 @@ def _imported_roots(source: pathlib.Path) -> set[str]:
 def test_a_shared_backend_service_stays_loadable_from_here(name):
     """**The precondition the fake's `_backend_service` rests on.**
 
-    Each of these is loaded, not copied — which is what stopped `plan_digest`
-    being a second implementation of `catalog.plan_digest`, the copy whose own
+    Each of these is loaded, not copied — which is what stopped the fingerprint
+    being a second implementation of the backend's, the copy whose own
     comment admitted nothing held the two together and which `routes/runs.py`
     records as one of three, one of them silently disagreeing.
 

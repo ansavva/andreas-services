@@ -17,7 +17,7 @@ import type { ModelSchema } from "../../types";
  * Two things are worth pinning here and neither is visible in a screenshot:
  * **what the form refuses to draw** — the prompt, and anything uri-shaped, which
  * is a send and never a param (hard rule #3) — and **that an untouched prop
- * writes nothing**, because `params` is inside the digest an approval names.
+ * writes nothing**, because `params` is inside the fingerprint.
  */
 
 const schema: ModelSchema = {
@@ -213,7 +213,7 @@ describe("the schema, read", () => {
     /**
      * Found on a real schema — `openai_api_key` on the GPT Image entries, drawn
      * as an ordinary optional string. A plan is a record: it is stored in the
-     * catalog, hashed into the approval digest and rendered back on the run
+     * catalog, hashed into the fingerprint and rendered back on the run
      * page, so a key typed into it would be a secret written to a row and shown
      * to everyone who can read the run. Studio's provider credential lives on
      * the API.

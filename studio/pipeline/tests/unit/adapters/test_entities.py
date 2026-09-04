@@ -95,17 +95,11 @@ WIRE_SURFACE = {
     # this package's job while this package was what received one; a callback
     # consumer receives it now (#536), and the wrapper that spelled the route
     # outlived its last caller by two PRs.
-    # The plan and its approval. `plan` and `sends` are the authored half a run
-    # gained; `approve` is the one that carries a digest, so that a yes names the
-    # payload it was a yes to and dies when that payload changes.
-    #
-    # POST only. The SPA withdraws an approval — `DELETE` on the same route —
-    # and nothing at a terminal does: `runs edit` writes the plan or the sends,
-    # and the API voids the approval as a consequence of the write rather than
-    # as a second call somebody has to remember to make.
+    # The plan. `plan` and `sends` are the authored half a run gained; `runs
+    # edit` writes one or the other. NOT `/api/runs/<id>/approve`: there is no
+    # approve step (decision 2026-09-04) — submitting is the act.
     "/api/runs/<id>/plan",
     "/api/runs/<id>/sends",
-    "/api/runs/<id>/approve",
     # **The route that spends money**, and the two either side of it. Generation
     # moved into the API, so the CLI asks it to submit rather than calling
     # Replicate itself — and reads a model's live schema and README through it

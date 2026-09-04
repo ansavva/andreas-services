@@ -23,7 +23,7 @@ presigned URLs minted at submit time.
   studio run --model kling --project <project> --input-file input.json \
       --character <name> --start-run <project>/latest#1 --name <file> --poll
 
-`--dry-run` renders the payload for approval and submits nothing. Nothing bills
+`--dry-run` renders the payload for a person to read and submits nothing. Nothing bills
 without it having been shown first.
 """
 
@@ -203,7 +203,7 @@ def build_payload(entry: dict, args) -> dict:
     # default the other two silently did not have.
     #
     # **They are visible, not implicit.** Whatever lands here is in the payload
-    # `submit.render` prints and a person approves under hard rule #2 — so a
+    # `submit.render` prints and a person reads under hard rule #2 — so a
     # wrong default is something you read before you spend, not something you
     # discover on an invoice. That is what makes setting one safe at all.
     for field, value in REG.defaults(entry).items():
@@ -222,7 +222,7 @@ def _ephemeral_entry(model: str) -> dict:
     """A registry entry for a model that is not in the registry, held in memory.
 
     Built by the same inference `studio add-model` proposes, off the same live
-    schema, so a trial submission is validated, rendered for approval and
+    schema, so a trial submission is validated, rendered for reading and
     recorded exactly like a registered one. Nothing is written to `models.json`
     — onboarding is still a deliberate act with a skill page attached, and this
     is the step BEFORE deciding whether that is worth doing.
@@ -285,7 +285,7 @@ def _refuse_a_duplicate(record: dict, args) -> None:
               "can involve several."))
 @click.option("--dest", help="Also keep a local copy in this directory.")
 @click.option("--again", is_flag=True, help="Submit even though this exact payload was submitted before.")
-@click.option("--dry-run", is_flag=True, help="Show the payload for approval; submit nothing, bill nothing.")
+@click.option("--dry-run", is_flag=True, help="Show the payload; submit nothing, bill nothing.")
 @click.option("--end-key", help="Node id (or name path) of the last frame (video).")
 @click.option("--end-run", help="An earlier run's output as the last frame (video).")
 @click.option("--extra", help="JSON object of model-specific inputs.")
@@ -322,7 +322,7 @@ def cmd_run(**options):
         # Evaluating one before onboarding it had no supported path: the
         # alternative was calling Replicate outside the harness entirely, which
         # is how a four-way upscaler comparison ended up with no run records,
-        # no schema validation and no approval render. A registry key never
+        # no schema validation and no payload render. A registry key never
         # contains a slash, so the two cannot be confused — and a typo like
         # `nano-bannana-pro` still fails here rather than reaching a provider.
         if "/" not in args.model:
@@ -373,14 +373,14 @@ def cmd_run(**options):
         # **A dry run now leaves a DRAFT, and that is the whole of its upgrade.**
         # It rendered a payload to a terminal and kept nothing, so the thing hard
         # rule #2 asks a person to read had no address: it could not be opened in
-        # the app, linked to, or approved later. The draft costs a row and no
+        # the app, linked to, or submitted later. The draft costs a row and no
         # bytes, bills nothing, is hidden from every listing, and is what
-        # `studio runs approve` then acts on.
+        # `studio runs submit` then acts on.
         #
         # `json_`, not `json` — `--json` cannot be a Python attribute name, so
         # Click was given the safe spelling and this line read the unsafe one.
         # It made `--dry-run` raise AttributeError, which is the command the
-        # approval rule tells everyone to use before spending money.
+        # rule tells everyone to use before spending money.
         try:
             record = SUB.draft(entry, payload, bindings, args)
         except SUB.SubmitError as e:
@@ -388,7 +388,7 @@ def cmd_run(**options):
         _refuse_a_duplicate(record, args)
         print(SUB.render(entry, record["id"], payload, bindings, args.json_))
         print(f"\ndraft {record['id']} — nothing submitted, nothing billed.\n"
-              f"       approve it:  studio runs approve {record['id']}\n"
+              f"       submit it:   studio runs submit {record['id']}\n"
               f"       discard it:  studio runs discard {record['id']}",
               file=sys.stderr)
         return 0

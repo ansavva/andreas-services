@@ -256,6 +256,13 @@ def authoring(bearer: str, library: str, character: dict) -> None:
     )
     write("project-runs", listing)
     runs = listing["runs"]
+    # The same page in the feed's shape: plan, sends and outputs signed, cast by
+    # name. Two fixtures because the route answers two shapes and the specs
+    # should see both as the API writes them, not one derived from the other.
+    write(
+        "project-runs-feed",
+        get(f"/api/runs?project={project['id']}&include=drafts&view=feed", bearer, library),
+    )
 
     draft = newest(runs, status="draft")
     done = newest(runs, status="succeeded", kind="image")
@@ -302,8 +309,7 @@ def created(bearer: str, library: str, project: str, entry: dict) -> None:
 
     - `created-run` is the 201 body, which is **not** a run envelope. It carries
       the handful of values the caller could not have known — the id, the
-      `plan_digest` the next call approves against, the fingerprint — and
-      nothing else.
+      fingerprint — and nothing else.
     - `created-run-record` is `GET /api/runs/<id>` on that same draft, which is
       what the app reads the moment it navigates to the run it just made.
 

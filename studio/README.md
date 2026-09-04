@@ -28,8 +28,7 @@ local work runs against this machine's dev stack.
   references, its folders and files), `/p/<id>` a project (overview, runs,
   scenes, movies, inputs, files), `/p/<id>/r/<run_id>` one run — its envelope,
   outputs and payloads — `/s/<id>` a scene, `/m/<id>` a movie. `/characters`,
-  `/projects` and `/templates` are the lists. Home shows characters, projects
-  and the most recent media; a recent tile opens a feed of everything beneath it.
+  `/projects` and `/templates` are the lists. Home is characters and projects.
 - **Browse** the folder tree at `/f` (the library root) or `/f/<id>`, newest
   first; the order is switchable and travels in the URL as `?sort=`. The grid
   shows every image and video in a folder; videos paint their own first frame
@@ -55,10 +54,10 @@ local work runs against this machine's dev stack.
   S3** on a signed PUT (`POST /api/nodes/<id>/upload-url`, then
   `POST /api/nodes/<id>/confirm-upload`), so the Lambda's 6 MB request limit
   never applies. HEIC is refused with a message: no browser but Safari draws it.
-- **Plan, approve and submit runs** from a run page, through the same API the
-  CLI uses. The payload is shown in full before the yes, and
-  `POST /api/runs/<id>/submit` refuses a run whose plan has changed since it was
-  approved — hard rule #2 in `CLAUDE.md`.
+- **Plan and submit runs** from the create bar and the project's feed, through
+  the same API the CLI uses. The payload is on screen before the button, and
+  pressing it is the act — there is no separate approve step. Hard rule #2 in
+  `CLAUDE.md`.
 - **Switch library.** An account can be a member of more than one.
 - **Download** any single file (`GET /api/nodes/<id>/download-url`).
 

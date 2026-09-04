@@ -11,7 +11,6 @@ import { MoviePage } from "./pages/MoviePage";
 import { ProjectPage } from "./pages/ProjectPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
-import { RunPage } from "./pages/RunPage";
 import { ScenePage } from "./pages/ScenePage";
 import { ObjectPage } from "./pages/ObjectPage";
 
@@ -28,8 +27,8 @@ import { ObjectPage } from "./pages/ObjectPage";
  * /                       home — characters, projects, and the recent reel
  * /characters /projects   one list each, which the header links to
  * /c/<char_id>            character: profile, references, its folders, files
- * /p/<proj_id>            project: overview, runs, scenes, movies, inputs, files
- * /p/<proj_id>/r/<run_id> one run — its envelope, outputs and payloads
+ * /p/<proj_id>            project: the runs feed, scenes, movies, files, settings
+ * /p/<proj_id>/r/<run_id> one run, opened in a lightbox over that same feed
  * /s/<scene_id>           scene
  * /m/<movie_id>           movie
  * /f          /f/<id>     the folder browser: the library root, or one folder
@@ -76,7 +75,11 @@ export function StudioRoutes() {
 
         <Route path="/c/:characterId" element={<CharacterPage />} />
         <Route path="/p/:projectId" element={<ProjectPage />} />
-        <Route path="/p/:projectId/r/:runId" element={<RunPage />} />
+        {/* The opened run is the project page with `runId` set: `ProjectPage`
+            draws `RunLightbox` over its feed, so closing the run is the feed
+            again rather than a second load of it. The two-column `RunPage`
+            that used to answer this address is gone. */}
+        <Route path="/p/:projectId/r/:runId" element={<ProjectPage />} />
         <Route path="/s/:sceneId" element={<ScenePage />} />
         <Route path="/m/:movieId" element={<MoviePage />} />
 

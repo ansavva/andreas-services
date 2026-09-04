@@ -24,7 +24,12 @@ import { ConfirmDeleteButton } from "../components/common/ConfirmDeleteButton";
 import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog";
 import { FormBar } from "../components/common/FormBar";
 import { EmptyState } from "../components/common/EmptyState";
-import { ChevronDownIcon, PlusIcon } from "../components/common/icons";
+import { EntityRow } from "../components/entity/EntityRow";
+import {
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  PlusIcon,
+} from "../components/common/icons";
 import { LoadError } from "../components/common/LoadError";
 import { PageLoading } from "../components/common/PageLoading";
 import { TagSelect } from "../components/common/TagSelect";
@@ -70,7 +75,10 @@ import { ENTITY_GRID } from "../utils/grid";
 export function TemplatesPage() {
   const navigate = useNavigate();
   const load = useCallback(() => getTemplates(), []);
-  const { data, loading, error, reload, setData } = useResource(["templates"], load);
+  const { data, loading, error, reload, setData } = useResource(
+    ["templates"],
+    load,
+  );
 
   // Which tab is active decides what "New" makes — lifted here, out of
   // `LibraryTabs`, because the button that makes one now lives in the page's
@@ -112,10 +120,12 @@ export function TemplatesPage() {
           <Button
             size="sm"
             onClick={() =>
-              tab === "blocks" ? setCreatingBlock(true) : setCreatingTemplate(true)
+              tab === "blocks"
+                ? setCreatingBlock(true)
+                : setCreatingTemplate(true)
             }
           >
-            <PlusIcon className="size-4" />
+            <PlusIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
             {tab === "blocks" ? "New block" : "New template"}
           </Button>
         }
@@ -136,7 +146,10 @@ export function TemplatesPage() {
 }
 
 type SetData = (
-  next: TemplateLibrary | null | ((current: TemplateLibrary | null) => TemplateLibrary | null),
+  next:
+    | TemplateLibrary
+    | null
+    | ((current: TemplateLibrary | null) => TemplateLibrary | null),
 ) => void;
 
 function LibraryTabs({
@@ -158,7 +171,14 @@ function LibraryTabs({
   creatingBlock: boolean;
   setCreatingBlock: (next: boolean) => void;
 }) {
-  const names = useMemo(() => Object.keys(library.blocks).sort(), [library.blocks]);
+  const names = useMemo(
+    () => Object.keys(library.blocks).sort(),
+    [library.blocks],
+  );
+  // Which template is open, in the address like every other "which one" in
+  // the app — so a reload and a shared link land on the same editor.
+  const [openId, setOpenId] = useSearchParamState("template", "");
+  const opened = library.templates.find((each) => each.id === openId) ?? null;
 
   return (
     <Tabs.Root value={tab} defaultValue="templates" onValueChange={setTab}>
@@ -172,7 +192,9 @@ function LibraryTabs({
           <NewTemplateForm
             onCreated={(saved) => {
               setData((current) =>
-                current ? { ...current, templates: [...current.templates, saved] } : current,
+                current
+                  ? { ...current, templates: [...current.templates, saved] }
+                  : current,
               );
               setCreatingTemplate(false);
             }}
@@ -192,16 +214,59 @@ function LibraryTabs({
             }
             action={
               <Button size="sm" onClick={() => setCreatingTemplate(true)}>
-                <PlusIcon className="size-4" />
+                <PlusIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
                 New template
               </Button>
             }
           />
         )}
 
-        {library.templates.map((template) => (
-          <TemplateEditor key={template.id} template={template} library={library} setData={setData} />
-        ))}
+        {/* A list first, like every other listing: one row per template by
+            name, and the editor only for the one that is open. Fourteen open
+            editors stacked was fourteen screens to find one. */}
+        {!creatingTemplate &&
+          opened === null &&
+          library.templates.length > 0 && (
+            <div className="flex flex-col gap-2" aria-label="Templates">
+              {library.templates.map((template) => (
+                <EntityRow
+                  key={template.id}
+                  title={template.name}
+                  subtitle={template.prompt.trim().split("\n")[0] ?? ""}
+                  mono
+                  onOpen={() => setOpenId(template.id)}
+                  trailing={
+                    template.tags.length > 0 ? (
+                      <Text variant="caption" family="mono" tone="muted">
+                        {template.tags.join(" · ")}
+                      </Text>
+                    ) : undefined
+                  }
+                />
+              ))}
+            </div>
+          )}
+
+        {!creatingTemplate && opened !== null && (
+          <>
+            <div>
+              <Button
+                size="sm"
+                intent="secondary"
+                onClick={() => setOpenId("")}
+              >
+                <ChevronLeftIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+                All templates
+              </Button>
+            </div>
+            <TemplateEditor
+              key={opened.id}
+              template={opened}
+              library={library}
+              setData={setData}
+            />
+          </>
+        )}
       </Tabs.Panel>
 
       <Tabs.Panel value="blocks" className="flex flex-col gap-3 pt-3">
@@ -211,7 +276,7 @@ function LibraryTabs({
             hint="A block is shared prose a template cites by name — add one to give a template something to point at."
             action={
               <Button size="sm" onClick={() => setCreatingBlock(true)}>
-                <PlusIcon className="size-4" />
+                <PlusIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
                 New block
               </Button>
             }
@@ -235,7 +300,13 @@ function LibraryTabs({
                 onCreated={(saved) => {
                   setData((current) =>
                     current
-                      ? { ...current, blocks: { ...current.blocks, [saved.name]: saved.text } }
+                      ? {
+                          ...current,
+                          blocks: {
+                            ...current.blocks,
+                            [saved.name]: saved.text,
+                          },
+                        }
                       : current,
                   );
                   setCreatingBlock(false);
@@ -272,7 +343,8 @@ function LibraryTabs({
  * that into something visible now rather than a refusal later.
  */
 function citations(prompt: string): string[] {
-  const found = prompt.match(/\{[a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*\}/g) ?? [];
+  const found =
+    prompt.match(/\{[a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*\}/g) ?? [];
   return Array.from(new Set(found.map((token) => token.slice(1, -1))));
 }
 
@@ -299,8 +371,14 @@ function citations(prompt: string): string[] {
  * multi-character prompt has ever needed, and a fourth is typed by hand.
  */
 const CHARACTER_FIELDS = [
-  "top", "style", "age", "identity_block",
-  "build.face", "build.body", "must.face", "must.body",
+  "top",
+  "style",
+  "age",
+  "identity_block",
+  "build.face",
+  "build.body",
+  "must.face",
+  "must.body",
 ];
 const POSITIONS = [1, 2, 3];
 
@@ -370,16 +448,24 @@ function NewBlockForm({
   }, [name, onCreated, text]);
 
   return (
-    <div className={`flex h-full flex-col gap-2 border border-line p-2 ${className}`.trim()}>
+    <div
+      className={`flex h-full flex-col gap-2 border border-line p-2 ${className}`.trim()}
+    >
       <Field.Root name="new-block-name" invalid={problem !== null}>
         <Field.Label>Name</Field.Label>
-        <Field.Description>Cited as {`{block.${name || "name"}}`}.</Field.Description>
+        <Field.Description>
+          Cited as {`{block.${name || "name"}}`}.
+        </Field.Description>
         <Input value={name} onValueChange={setName} className="font-mono" />
         {problem ? <Field.Error>{problem}</Field.Error> : null}
       </Field.Root>
       <Field.Root name="new-block-text">
         <Field.Label>Text</Field.Label>
-        <AutoTextarea value={text} onValueChange={setText} className="font-mono" />
+        <AutoTextarea
+          value={text}
+          onValueChange={setText}
+          className="font-mono"
+        />
       </Field.Root>
       {failed ? (
         <Alert.Root intent="danger">
@@ -395,7 +481,12 @@ function NewBlockForm({
         >
           {saving ? "Creating…" : "Create"}
         </Button>
-        <Button intent="secondary" size="sm" onClick={onCancel} disabled={saving}>
+        <Button
+          intent="secondary"
+          size="sm"
+          onClick={onCancel}
+          disabled={saving}
+        >
           Cancel
         </Button>
       </div>
@@ -429,7 +520,9 @@ function BlockEditor({
       // The row we just wrote, swapped in — rather than refetching the whole
       // library to show one paragraph somebody is still reading.
       setData((current) =>
-        current ? { ...current, blocks: { ...current.blocks, [name]: saved.text } } : current,
+        current
+          ? { ...current, blocks: { ...current.blocks, [name]: saved.text } }
+          : current,
       );
     } catch (problem) {
       setFailed(problem instanceof Error ? problem.message : String(problem));
@@ -454,7 +547,9 @@ function BlockEditor({
         return { ...current, blocks };
       });
     } catch (problem) {
-      setRemoveFailed(problem instanceof Error ? problem.message : String(problem));
+      setRemoveFailed(
+        problem instanceof Error ? problem.message : String(problem),
+      );
       setSaving(false);
     }
   }, [name, setData]);
@@ -463,8 +558,14 @@ function BlockEditor({
     // `h-full`, and no `items-start` on the grid: the cells in a row are as tall
     // as the tallest, so a one-line block beside a paragraph leaves a hole
     // rather than a short box. Ragged bottoms read as a layout fault.
-    <div className={`flex h-full flex-col border border-line ${open ? "md:col-span-full" : ""}`}>
-      <Collapsible.Root open={open} onOpenChange={setOpen} className="flex flex-1 flex-col">
+    <div
+      className={`flex h-full flex-col border border-line ${open ? "md:col-span-full" : ""}`}
+    >
+      <Collapsible.Root
+        open={open}
+        onOpenChange={setOpen}
+        className="flex flex-1 flex-col"
+      >
         {/*
           The trigger carries the name and the count; delete sits beside it
           rather than inside it — a delete control nested in the disclosure's
@@ -505,7 +606,12 @@ function BlockEditor({
               onConfirm={remove}
             />
           ) : (
-            <ConfirmDeleteButton tone="text" noun={`{${name}}`} onConfirm={remove} disabled={saving} />
+            <ConfirmDeleteButton
+              tone="text"
+              noun={`{${name}}`}
+              onConfirm={remove}
+              disabled={saving}
+            />
           )}
         </div>
 
@@ -525,7 +631,11 @@ function BlockEditor({
           answered nothing and took a full row to do it.
         */}
         {!open ? (
-          <Text variant="caption" tone="muted" className="line-clamp-6 whitespace-pre-wrap px-2 pb-2">
+          <Text
+            variant="caption"
+            tone="muted"
+            className="line-clamp-6 whitespace-pre-wrap px-2 pb-2"
+          >
             {text}
           </Text>
         ) : null}
@@ -550,13 +660,22 @@ function BlockEditor({
               </Text>
             ) : null}
             <Field.Root name={`block-${name}`}>
-              <AutoTextarea value={draft} onValueChange={setDraft} className="font-mono" />
+              <AutoTextarea
+                value={draft}
+                onValueChange={setDraft}
+                className="font-mono"
+              />
             </Field.Root>
             {/* Close is kept off the save row: it shuts the expander, not the
                 form. Nothing is lost by closing — the draft lives on this
                 component, which stays mounted, until it is saved or reverted. */}
             <div className="flex justify-end">
-              <Button intent="secondary" size="sm" onClick={() => setOpen(false)} disabled={saving}>
+              <Button
+                intent="secondary"
+                size="sm"
+                onClick={() => setOpen(false)}
+                disabled={saving}
+              >
                 Close
               </Button>
             </div>
@@ -617,7 +736,9 @@ function NewTemplateForm({
       });
       onCreated(saved);
     } catch (problem_) {
-      setFailed(problem_ instanceof Error ? problem_.message : String(problem_));
+      setFailed(
+        problem_ instanceof Error ? problem_.message : String(problem_),
+      );
     } finally {
       setSaving(false);
     }
@@ -637,10 +758,19 @@ function NewTemplateForm({
         </Alert.Root>
       ) : null}
       <div className="flex gap-2">
-        <Button size="sm" disabled={!name.trim() || saving} onClick={() => void create()}>
+        <Button
+          size="sm"
+          disabled={!name.trim() || saving}
+          onClick={() => void create()}
+        >
           {saving ? "Creating…" : "Create"}
         </Button>
-        <Button size="sm" intent="secondary" disabled={saving} onClick={onCancel}>
+        <Button
+          size="sm"
+          intent="secondary"
+          disabled={saving}
+          onClick={onCancel}
+        >
           Cancel
         </Button>
       </div>
@@ -685,7 +815,9 @@ function TemplateEditor({
   // from the character. Both are placeholders in the template and only one of
   // them is editable, which is why the pill says which it is.
   const promptTokens = useMemo<PromptToken[]>(() => {
-    const blocks = Object.entries(library.blocks).sort(([a], [b]) => a.localeCompare(b));
+    const blocks = Object.entries(library.blocks).sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
     return [
       ...blocks.map(([name, text]) => ({
         name: `block.${name}`,
@@ -699,10 +831,17 @@ function TemplateEditor({
           hint: `character ${at}`,
         })),
       ),
-      ...SLOT.map((name) => ({ name: `slot.${name}`, kind: "computed" as const })),
+      ...SLOT.map((name) => ({
+        name: `slot.${name}`,
+        kind: "computed" as const,
+      })),
       // Not offered, still drawn — every template written before the namespaces
       // uses the bare spelling and has to keep looking like what it is.
-      ...blocks.map(([name]) => ({ name, kind: "block" as const, legacy: true })),
+      ...blocks.map(([name]) => ({
+        name,
+        kind: "block" as const,
+        legacy: true,
+      })),
     ];
   }, [library.blocks]);
   const unknown = useMemo(
@@ -773,10 +912,16 @@ function TemplateEditor({
             <Field.Root name={`template-tags-${template.id}`}>
               <Field.Label>Tags</Field.Label>
               <Field.Description>
-                What its output is tagged with when it is promoted. Templates keep
-                their own list — a file&rsquo;s tags are a different vocabulary.
+                What its output is tagged with when it is promoted. Templates
+                keep their own list — a file&rsquo;s tags are a different
+                vocabulary.
               </Field.Description>
-              <TagSelect scope="template" value={tags} onChange={setTags} manage />
+              <TagSelect
+                scope="template"
+                value={tags}
+                onChange={setTags}
+                manage
+              />
             </Field.Root>
           </div>
         </div>
@@ -792,7 +937,9 @@ function TemplateEditor({
               current
                 ? {
                     ...current,
-                    templates: current.templates.filter((each) => each.id !== template.id),
+                    templates: current.templates.filter(
+                      (each) => each.id !== template.id,
+                    ),
                   }
                 : current,
             );
@@ -849,18 +996,23 @@ function TemplateEditor({
         {unknown.length > 0 ? (
           <Alert.Root intent="warning">
             <Alert.Title>
-              No block provides {unknown.length === 1 ? "this name" : "these names"}
+              No block provides{" "}
+              {unknown.length === 1 ? "this name" : "these names"}
             </Alert.Title>
             <Alert.Description>
-              {unknown.join(", ")} — drafting this template will be refused until the
-              block exists or the template stops citing it.
+              {unknown.join(", ")} — drafting this template will be refused
+              until the block exists or the template stops citing it.
             </Alert.Description>
           </Alert.Root>
         ) : null}
 
         <Field.Root name={`description-${template.id}`}>
           <Field.Label>Description</Field.Label>
-          <AutoTextarea minRows={2} value={description} onValueChange={setDescription} />
+          <AutoTextarea
+            minRows={2}
+            value={description}
+            onValueChange={setDescription}
+          />
         </Field.Root>
       </div>
       <FormBar

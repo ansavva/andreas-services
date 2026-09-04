@@ -27,11 +27,8 @@ const STATUS_INTENT: Record<
   RunStatus,
   "neutral" | "success" | "danger" | "warning"
 > = {
-  // Unsubmitted. `approved` is a warning rather than a success on purpose: it
-  // means money is about to be spent and has not been yet, which is a state
-  // worth noticing rather than a job well done.
+  // Unsubmitted.
   draft: "neutral",
-  approved: "warning",
   discarded: "neutral",
   pending: "neutral",
   running: "warning",

@@ -1,4 +1,4 @@
-"""`SEND#` rows and the plan digest — the two halves of an approval.
+"""`SEND#` rows and the plan digest — what a run sends, and what makes it "the same".
 
 A run recorded WHAT it sent (`bindings`, a `{field: [node, …]}` map) and lost
 WHY. `engine/submit.py::gather` decides that an image is a start frame or a
@@ -11,8 +11,8 @@ list and the prompt cites positions in it, so a send that came back in the wrong
 place makes plate *n* the wrong plate. That is why the sort key is zero-padded
 and why `put_sends` renumbers rather than merging.
 
-The digest is what makes hard rule #2's "re-approve after **any** edit"
-checkable rather than remembered.
+The digest is the hash under the submission fingerprint — the duplicate guard —
+so what it includes is the definition of "the same payload".
 """
 
 from studio_core import config
@@ -134,7 +134,7 @@ def test_the_digest_changes_when_two_images_swap_places():
     """**Reordering is a real edit, not a cosmetic one.**
 
     A prompt that says "the FIRST image is an existing plate" means something
-    different after a swap, so an approval taken before it must not survive it.
+    different after a swap, so the two must not share a fingerprint.
     """
     plan = {"prompt": "the first image is the plate"}
     forwards = catalog.plan_digest(plan, [_send("node-a"), _send("node-b")])
@@ -151,11 +151,11 @@ def test_the_digest_changes_when_a_role_changes():
 
 
 def test_the_digest_ignores_source():
-    """**Provenance is for a reader, and re-deriving it must not void approval.**
+    """**Provenance is for a reader, and re-deriving it must not move the hash.**
 
     `source` says which character group an image came from. Nothing about the
-    payload changes if a later backfill describes that more accurately, so an
-    approval taken before must survive it.
+    payload changes if a later backfill describes that more accurately, so the
+    fingerprint must survive it.
     """
     plan = {"prompt": "x"}
     one = catalog.plan_digest(plan, [_send("node-a", kind="object")])
@@ -165,13 +165,13 @@ def test_the_digest_ignores_source():
 
 
 def test_the_digest_survives_a_round_trip_through_dynamodb(catalog_table):
-    """**The failure this exists to prevent is an approval that goes stale by
-    being read back.**
+    """**The failure this exists to prevent is a hash that moves by being read
+    back.**
 
     Every number comes out of the table as a `Decimal`, and `Decimal("0.5")`
-    does not serialise like `0.5`. Without the normalisation, approving a run
+    does not serialise like `0.5`. Without the normalisation, drafting a run
     and then reloading it would compute a different digest for an identical
-    payload, and every submit would be refused as stale.
+    payload, and every duplicate check would miss.
     """
     plan = {"prompt": "x", "params": {"guidance": 0.5, "steps": 30}}
     entries = [_send("node-a", role="start", field="image")]

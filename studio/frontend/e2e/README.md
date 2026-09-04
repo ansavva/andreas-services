@@ -38,12 +38,12 @@ normalised at all. **Re-take it on a freshly seeded stack only** — off a stack
 somebody has since worked in, those assertions quietly become a snapshot of one
 developer's afternoon.
 
-The **authoring** group — `project`, `project-runs`, `run-draft`, `run-image`,
+The **authoring** group — `project`, `project-runs`, `project-runs-feed`, `run-draft`, `run-image`,
 `created-run`, `created-run-record`, `models`, `model-schema`, `references`,
 `character-tree`, `reference-tree` — is the opposite. The seed holds no project,
-no runs and nothing ever submitted, so the three screens `runs.spec.ts` is about
-have nothing in it to be captured from; it needs a stack that **has** been worked
-in. Which project and which runs is discovery — the first project, its newest
+no runs and nothing ever submitted, so the two screens `runs.spec.ts` is about —
+a project's feed and a run opened over it — have nothing in it to be captured
+from; it needs a stack that **has** been worked in. Which project and which runs is discovery — the first project, its newest
 draft, its newest succeeded image run — with `STUDIO_E2E_PROJECT` and
 `STUDIO_E2E_SCHEMA_MODEL` to steer it.
 
@@ -73,6 +73,14 @@ that is not the usual one: the `unsorted` group folder and the copy a promotion
 makes **do not exist until the run under test creates them**. `unsorted` is
 absent from the captured `reference/` listing deliberately, so the spec walks the
 branch that creates a group folder rather than the branch that finds one.
+
+**`project-runs-feed.json` was hand-projected once, and should be re-taken.**
+`GET /api/runs?view=feed` landed before any stack could be captured from, so
+the file holds the backend's `_feed_row` applied by hand to the two captured
+envelopes (`run-draft`, `run-image`) — captured rows, projected, nothing typed
+from memory. The two runs in `project-runs` with no captured envelope are not
+in it. `capture.py --runs` now takes it off the API like the rest; do that at
+the next capture and this paragraph goes.
 
 ## The one fixture that is made rather than taken
 

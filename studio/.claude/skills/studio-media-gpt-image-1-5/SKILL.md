@@ -9,7 +9,7 @@ description: Render still images with OpenAI's GPT Image 1.5 (openai/gpt-image-1
 [`gpt-image-2`](../studio-media-gpt-image-2/SKILL.md) for most work, but it keeps two
 capabilities its successor dropped, and those are the reason to choose it.
 
-> Invocation, the approval gate, run recording and validation are shared —
+> Invocation, hard rule #2, run recording and validation are shared —
 > see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model gpt-image-1.5 …`,
 > and `studio models show gpt-image-1.5` for the live schema. This page covers
 > only what is specific to this model. [`gpt-image-2`](../studio-media-gpt-image-2/SKILL.md) is the newer sibling.

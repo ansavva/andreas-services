@@ -399,5 +399,5 @@ def expand_parts(template: str, profiles: list, blocks: dict,
     #
     # Trailing space per line still goes — it is invisible, it is never
     # deliberate, and it would make two otherwise identical prompts hash to
-    # different approval digests.
+    # different fingerprints.
     return "\n".join(line.rstrip() for line in text.strip().splitlines()), spans

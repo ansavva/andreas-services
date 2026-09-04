@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 
-import { Alert, Chip, Field, Input, Text } from "@ansavva/design-system";
+import { Alert, Field, Input, Text } from "@ansavva/design-system";
 
 import { EmptyState } from "../common/EmptyState";
 
@@ -10,6 +10,7 @@ import { useResource } from "../../hooks/useResource";
 import type { ProjectRecord } from "../../types";
 import { AutoTextarea } from "../common/AutoTextarea";
 import { FormBar } from "../common/FormBar";
+import { CharacterChipToggle } from "../character/CharacterChip";
 
 interface Props {
   record: ProjectRecord;
@@ -175,21 +176,17 @@ function Involvement({ record, onSaved }: Props) {
           {(data ?? []).map((character) => {
             const on = involved.has(character.id);
             return (
-              // The COMPONENT form, where AppHeader's nav takes the helper:
-              // this is already a plain `<button aria-pressed>`, which is
-              // exactly what `Chip` renders. `pressed` is controlled and
-              // presentational here — the truth is `involved`, which the
-              // parent owns.
-              <Chip
+              // `pressed` is controlled and presentational here — the truth
+              // is `involved`, which the parent owns. The chip carries the
+              // character's avatar, the same one the project header draws.
+              <CharacterChipToggle
                 key={character.id}
+                name={character.name}
+                hero={character.hero}
                 pressed={on}
-                size="sm"
                 disabled={busy}
                 onClick={() => void toggle(character.id)}
-                className="disabled:opacity-60"
-              >
-                {character.name}
-              </Chip>
+              />
             );
           })}
         </div>

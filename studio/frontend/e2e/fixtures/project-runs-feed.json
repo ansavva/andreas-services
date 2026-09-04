@@ -1,0 +1,142 @@
+{
+  "cursor": null,
+  "runs": [
+    {
+      "cast": [],
+      "characters": [],
+      "completed": null,
+      "cost": null,
+      "created": "2026-08-31T17:38:29.395688+00:00",
+      "engine": "studio-media-seedance",
+      "error": null,
+      "fingerprint": "sha256:419c6c2459a9e3a07cf9c02a41e2731e",
+      "id": "run-9d85b085-1fab-4024-9026-eeb2ab35b0ab",
+      "kind": "video",
+      "lib": "lib-160af8b7-bf45-5fd0-b4d1-8bd7e52fac07",
+      "model": "bytedance/seedance-2.0",
+      "outputs": [],
+      "plan": {
+        "origin": "authored",
+        "params": {
+          "aspect_ratio": "16:9",
+          "duration": 5,
+          "generate_audio": true,
+          "resolution": "720p"
+        },
+        "prompt": "",
+        "version": 1
+      },
+      "project": "proj-69e3a948-1bfd-48ee-8646-263265fd4289",
+      "sends": [],
+      "status": "draft",
+      "submitted": null,
+      "thumb": null,
+      "updated": "2026-08-31T17:38:29.577736+00:00"
+    },
+    {
+      "cast": [
+        {
+          "id": "char-57399438-f54b-5b36-8d84-3fd4dcbf34cc",
+          "name": "jason"
+        }
+      ],
+      "characters": [
+        "char-57399438-f54b-5b36-8d84-3fd4dcbf34cc"
+      ],
+      "completed": "2026-08-30T15:26:10.846731+00:00",
+      "cost": {
+        "amount": null,
+        "currency": null,
+        "predict_time": 98.20748283
+      },
+      "created": "2026-08-30T15:22:00.060151+00:00",
+      "engine": "studio-media-gpt-image-2",
+      "error": null,
+      "fingerprint": "sha256:068385405b756b296d389e69a3690571",
+      "id": "run-33e44241-23cb-49fa-88a4-dfa2312d1e0e",
+      "kind": "image",
+      "lib": "lib-160af8b7-bf45-5fd0-b4d1-8bd7e52fac07",
+      "model": "openai/gpt-image-2",
+      "outputs": [
+        {
+          "content_type": "image/png",
+          "name": "jason-3q-hands-behind-head.png",
+          "node": "node-a0cefc42-b294-4570-9e3e-47bd9c015ef8",
+          "size": 2172168,
+          "url": "/e2e-asset.png"
+        }
+      ],
+      "plan": {
+        "origin": "authored",
+        "params": {
+          "aspect_ratio": "2:3",
+          "output_format": "png",
+          "quality": "high"
+        },
+        "prompt": "A studio photograph of the man in the reference images, shirtless, wearing black jeans. Both arms raised with his hands clasped behind his head, elbows out wide. Turned to a three-quarter angle to camera. Plain black seamless background. Controlled studio lighting: warm key from camera left, soft fill, and a subtle rim light separating his shoulders from the background. Sharp focus on the face, natural skin texture, torso in frame.",
+        "version": 1
+      },
+      "project": "proj-69e3a948-1bfd-48ee-8646-263265fd4289",
+      "sends": [
+        {
+          "content_type": "image/jpeg",
+          "created": "2026-08-30T15:22:00.127569+00:00",
+          "field": "input_images",
+          "name": "seed-01.jpg",
+          "node": "node-f342d48b-725a-4e99-a305-63a3f3f56965",
+          "order": 1,
+          "role": "reference",
+          "size": 167810,
+          "source": {
+            "character": "char-57399438-f54b-5b36-8d84-3fd4dcbf34cc",
+            "group": "face",
+            "kind": "character",
+            "order": 1000
+          },
+          "url": "/e2e-asset.png"
+        },
+        {
+          "content_type": "image/jpeg",
+          "created": "2026-08-30T15:22:00.127663+00:00",
+          "field": "input_images",
+          "name": "seed-02.jpg",
+          "node": "node-e6994393-a38c-4b6e-9fd5-869d4a598f32",
+          "order": 2,
+          "role": "reference",
+          "size": 84012,
+          "source": {
+            "character": "char-57399438-f54b-5b36-8d84-3fd4dcbf34cc",
+            "group": "face",
+            "kind": "character",
+            "order": 2000
+          },
+          "url": "/e2e-asset.png"
+        },
+        {
+          "content_type": "image/jpeg",
+          "created": "2026-08-30T15:22:00.127692+00:00",
+          "field": "input_images",
+          "name": "seed-03.jpg",
+          "node": "node-770b3582-2dda-4b6f-ab72-55b9798f436e",
+          "order": 3,
+          "role": "reference",
+          "size": 171796,
+          "source": {
+            "character": "char-57399438-f54b-5b36-8d84-3fd4dcbf34cc",
+            "group": "face",
+            "kind": "character",
+            "order": 3000
+          },
+          "url": "/e2e-asset.png"
+        }
+      ],
+      "status": "succeeded",
+      "submitted": "2026-08-30T15:24:29.065258+00:00",
+      "thumb": {
+        "node": "node-a0cefc42-b294-4570-9e3e-47bd9c015ef8",
+        "url": "/e2e-asset.png"
+      },
+      "updated": "2026-08-30T15:26:11.153834+00:00"
+    }
+  ]
+}

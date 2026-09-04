@@ -31,10 +31,10 @@ afterEach(cleanup);
 /**
  * **The invariant the whole component exists to protect.**
  *
- * Assembly is `string.Formatter().vformat` over `{name}`, and `plan_digest`
- * hashes the prompt into the approval. An editor that normalised one space, or
- * dropped one trailing newline, would silently stale every approval already
- * given — for a change nobody made, on a payload nobody edited.
+ * Assembly is `string.Formatter().vformat` over `{name}`, and the fingerprint
+ * hashes the prompt. An editor that normalised one space, or dropped one
+ * trailing newline, would silently move every fingerprint — for a change
+ * nobody made, on a payload nobody edited.
  */
 it.each([
   ["a bare line", "A studio portrait of the person, front on."],

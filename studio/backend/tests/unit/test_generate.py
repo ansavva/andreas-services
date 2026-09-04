@@ -15,9 +15,9 @@ generation moved here. What that move bought, and what these tests are about:
 id and a real decodable PNG; a dud token and an autouse socket guard sit behind
 it. See that file for why there are three guards and how they fail differently.
 
-The gate itself — approved, and the digest still matching — is tested in
-`test_runs.py`, where the state machine lives. What is tested here is that the
-submit route stands behind it rather than beside it.
+The state machine is tested in `test_runs.py`. What is tested here is that the
+submit route sends a draft once, preflights before it declares anything, and
+closes what comes back.
 """
 
 import json
@@ -54,64 +54,45 @@ def _draft(api, project, **body):
     return resp.get_json()
 
 
-def _approved(api, project, **body):
-    run = _draft(api, project, **body)
-    resp = api.post(f"/api/runs/{run['id']}/approve", json={"digest": run["plan_digest"]})
-    assert resp.status_code == 200, resp.get_data(as_text=True)
-    return run
+# ── a draft is sent once ────────────────────────────────────────────────────
 
 
-# ── the gate stands in front of the money ───────────────────────────────────
+def test_a_draft_is_submitted_directly(empty_api, monkeypatch):
+    """**No approve step.** A draft goes straight to the provider on POST.
 
-
-def test_an_unapproved_run_cannot_be_submitted(empty_api):
-    """**Hard rule #2, at the route that spends.**
-
-    The refusal is the same `_refuse_submission` that guards `PATCH /api/runs/
-    <id>`, called from here rather than copied — so there is one answer to "may
-    this be sent" instead of two that have to agree.
+    Hard rule #2 is kept by whoever calls this — the CLI on an explicit
+    `studio runs submit`, the SPA on Send — and the route's part is to send
+    what it is handed, once. An edit right before is simply what is sent.
     """
+    sent = {}
+
+    def capture(model, payload, *, webhook=None):
+        sent["payload"] = payload
+        return {"id": "pred-1", "status": "starting"}
+
+    monkeypatch.setattr(replicate, "create_prediction", capture)
     project = _project(empty_api)
     run = _draft(empty_api, project)
-
-    resp = empty_api.post(f"/api/runs/{run['id']}/submit")
-
-    assert resp.status_code == 409
-    assert resp.get_json()["error"] == "not_approved"
-    assert catalog.entity(catalog.ENTITY_RUN, run["id"])["status"] == "draft", (
-        "a refused submission leaves the run exactly as it was"
-    )
-
-
-def test_a_payload_edited_after_approval_cannot_be_submitted(empty_api):
-    """Approve, reword, submit — the failure the digest exists to catch.
-
-    It has actually happened in this repository, which is why hard rule #2 says
-    re-approve after *any* edit and why that sentence is now a check.
-    """
-    project = _project(empty_api)
-    run = _approved(empty_api, project)
-
+    assert "approval" not in run and "plan_digest" not in run
     empty_api.patch(f"/api/runs/{run['id']}/plan", json={
         "plan": {"version": 1, "origin": "authored", "prompt": "a porch at DAWN",
                  "params": {}}})
 
     resp = empty_api.post(f"/api/runs/{run['id']}/submit")
 
-    # An edit returns the run to `draft` and drops the approval, so this reports
-    # the state it is actually in rather than a stale digest.
-    assert resp.status_code == 409
-    assert resp.get_json()["error"] == "not_approved"
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    assert resp.get_json()["status"] == "running"
+    assert sent["payload"]["prompt"] == "a porch at DAWN"
 
 
 def test_a_run_cannot_be_submitted_twice(empty_api):
     """**The cheapest way to buy the same prediction twice**, refused first.
 
-    Checked before the approval is even looked at: a second POST to this route is
-    a duplicate submission whatever the run's approval says.
+    A second POST to this route is a duplicate submission whatever else is true
+    of the run.
     """
     project = _project(empty_api)
-    run = _approved(empty_api, project)
+    run = _draft(empty_api, project)
     assert empty_api.post(f"/api/runs/{run['id']}/submit").status_code == 200
 
     resp = empty_api.post(f"/api/runs/{run['id']}/submit")
@@ -120,20 +101,20 @@ def test_a_run_cannot_be_submitted_twice(empty_api):
     assert "already been sent" in resp.get_json()["error"]
 
 
-def test_a_payload_the_model_refuses_leaves_the_run_approved(empty_api, monkeypatch):
+def test_a_payload_the_model_refuses_leaves_the_run_a_draft(empty_api, monkeypatch):
     """**Preflight runs BEFORE `pending`, and that is the whole of this test.**
 
     A run moved to `pending` and then refused would read as "went out and never
     answered" — the one state that means a prediction may be billing somewhere.
     A payload the model will not accept has to leave the run exactly as it was:
-    approved, editable, and submittable again once it is fixed.
+    a draft, editable, and submittable again once it is fixed.
     """
     monkeypatch.setattr(
         "studio_core.services.schema.fetch",
         lambda model: ({"prompt": {"type": "string"}}, {}),
     )
     project = _project(empty_api)
-    run = _approved(empty_api, project, plan={
+    run = _draft(empty_api, project, plan={
         "version": 1, "origin": "authored", "prompt": "a porch",
         "params": {"no_such_knob": True},
     })
@@ -143,7 +124,7 @@ def test_a_payload_the_model_refuses_leaves_the_run_approved(empty_api, monkeypa
     assert resp.status_code == 400
     assert "no_such_knob" in resp.get_json()["error"]
     record = catalog.entity(catalog.ENTITY_RUN, run["id"])
-    assert record["status"] == "approved", "refused before anything was declared"
+    assert record["status"] == "draft", "refused before anything was declared"
     # `.get`, because an attribute cleared to `None` is REMOVEd from the row —
     # a record read back has no key at all rather than a null one.
     assert record.get("prediction_id") is None
@@ -155,12 +136,12 @@ def test_a_payload_the_model_refuses_leaves_the_run_approved(empty_api, monkeypa
 def test_submitting_declares_the_run_then_calls_the_provider(empty_api):
     """`pending` before the provider, `running` with the prediction id after.
 
-    The order is the safety: the transition the approval gate guards happens
-    first, so a process that dies in between leaves a row that says a submission
-    went out — rather than a draft that says nothing happened.
+    The order is the safety: the transition out of `draft` happens first, so a
+    process that dies in between leaves a row that says a submission went out —
+    rather than a draft that says nothing happened.
     """
     project = _project(empty_api)
-    run = _approved(empty_api, project)
+    run = _draft(empty_api, project)
 
     body = empty_api.post(f"/api/runs/{run['id']}/submit").get_json()
 
@@ -173,7 +154,7 @@ def test_a_submitted_run_is_counted_once(empty_api):
     """A draft is not a run the project made. The transition out of it is."""
     project = _project(empty_api)
     before = empty_api.get(f"/api/projects/{project['id']}").get_json()
-    run = _approved(empty_api, project)
+    run = _draft(empty_api, project)
 
     mid = empty_api.get(f"/api/projects/{project['id']}").get_json()
     assert mid["counts"]["runs"] == before["counts"]["runs"], "a draft counts for nothing"
@@ -193,11 +174,11 @@ def test_the_response_says_how_this_run_will_be_closed(empty_api, monkeypatch):
     """
     project = _project(empty_api)
 
-    run = _approved(empty_api, project)
+    run = _draft(empty_api, project)
     assert empty_api.post(f"/api/runs/{run['id']}/submit").get_json()["callback"] == "poll"
 
     monkeypatch.setenv("STUDIO_WEBHOOK_BASE_URL", "https://callbacks.example")
-    other = _approved(empty_api, project, plan={
+    other = _draft(empty_api, project, plan={
         "version": 1, "origin": "authored", "prompt": "a different porch",
         "params": {}})
     assert empty_api.post(f"/api/runs/{other['id']}/submit").get_json()["callback"] == "webhook"
@@ -207,8 +188,7 @@ def test_a_webhook_url_is_never_part_of_the_payload(empty_api, monkeypatch):
     """**It is a sibling of `input`, not a field in it**, and both halves matter.
 
     Inside `input` it would be a field the model's schema rejects, and — worse —
-    a change to the payload after somebody approved it, which is precisely what
-    `plan_digest` exists to make impossible.
+    a change to the payload after somebody read it.
     """
     monkeypatch.setenv("STUDIO_WEBHOOK_BASE_URL", "https://callbacks.example")
     sent = {}
@@ -219,7 +199,7 @@ def test_a_webhook_url_is_never_part_of_the_payload(empty_api, monkeypatch):
 
     monkeypatch.setattr(replicate, "create_prediction", capture)
     project = _project(empty_api)
-    run = _approved(empty_api, project)
+    run = _draft(empty_api, project)
 
     empty_api.post(f"/api/runs/{run['id']}/submit")
 
@@ -232,7 +212,7 @@ def test_a_webhook_url_is_never_part_of_the_payload(empty_api, monkeypatch):
 
 
 def _running(empty_api, project, **body):
-    run = _approved(empty_api, project, **body)
+    run = _draft(empty_api, project, **body)
     empty_api.post(f"/api/runs/{run['id']}/submit")
     return catalog.entity(catalog.ENTITY_RUN, run["id"])
 
@@ -404,7 +384,7 @@ def test_reconciling_a_run_that_never_went_out_is_a_conflict(empty_api):
     """Nothing to ask the provider about. The fix is to submit it, and saying so
     beats reporting a missing prediction."""
     project = _project(empty_api)
-    run = _approved(empty_api, project)
+    run = _draft(empty_api, project)
 
     resp = empty_api.post(f"/api/runs/{run['id']}/reconcile")
 
@@ -418,10 +398,10 @@ def test_reconciling_a_run_that_never_went_out_is_a_conflict(empty_api):
 def test_the_payload_comes_from_the_plan_and_nothing_else(empty_api):
     """**A payload assembled a second time would be a second opinion.**
 
-    Approving one thing and sending another is the exact gap the digest exists to
-    close, so `payload_of` is an allowlist of the plan's two halves rather than a
-    denylist of the rest: a field added to the plan later cannot silently become
-    part of a payload somebody approved as something else.
+    Reading one thing and sending another is the gap this closes, so
+    `payload_of` is an allowlist of the plan's two halves rather than a denylist
+    of the rest: a field added to the plan later cannot silently become part of
+    a payload somebody read as something else.
     """
     payload = generate.payload_of({"plan": {
         "version": 1,
@@ -657,7 +637,6 @@ def _with_sends(api, project, nodes):
         {"field": "image_input", "role": "reference", "node": node}
         for node in nodes
     ])
-    api.post(f"/api/runs/{run['id']}/approve", json={"digest": run["plan_digest"]})
     api.post(f"/api/runs/{run['id']}/submit")
     return catalog.entity(catalog.ENTITY_RUN, run["id"])
 

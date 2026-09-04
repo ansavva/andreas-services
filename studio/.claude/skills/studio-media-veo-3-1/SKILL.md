@@ -103,8 +103,9 @@ text.** This is the opposite of Kling and Seedance, where an `avoid` clause in t
 prompt is the only option. Doing it the Kling way here wastes prompt tokens on
 something the model has a dedicated field for.
 
-**Show the user the exact prompt and get approval before submitting** — every run
-bills. `--dry-run` renders the payload without spending.
+**Show the user the exact payload and submit only when told** — every run
+bills, and the submit command is the act. `--dry-run` renders the payload
+without spending.
 
 ### Holding a seed
 
