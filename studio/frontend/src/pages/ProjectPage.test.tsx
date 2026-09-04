@@ -13,10 +13,6 @@ vi.mock("../apis/studio", () => ({
   getProjectScenes: vi.fn().mockResolvedValue([]),
   getProjectMovies: vi.fn().mockResolvedValue([]),
   getCharacters: vi.fn().mockResolvedValue([]),
-  // The Runs tab's composer strip reads the registry. Answering with nothing
-  // keeps this file about the page: the strip has its own suite.
-  getModels: vi.fn().mockResolvedValue({}),
-  createRun: vi.fn(),
   deleteProject: vi.fn(),
   patchProject: vi.fn(),
   setProjectCharacters: vi.fn(),
@@ -98,24 +94,6 @@ it("names its tabs, and offers no Inputs tab", async () => {
   const tabs = screen.getAllByRole("tab").map((tab) => tab.textContent);
   expect(tabs).toEqual(["Overview", "Runs", "Scenes", "Movies", "Files"]);
   expect(tabs).not.toContain("Inputs");
-});
-
-/**
- * Authoring a run is reachable from every tab, not only Runs.
- *
- * **`New run` moved into the page bar**, where every other entity's create
- * control lives — it used to sit above the runs list and vanish on every other
- * tab, which made "make a run" a thing you could only do from one specific
- * place in the project rather than a thing the project itself offers.
- */
-it("offers the run composer from the page bar, on every tab", async () => {
-  await open(`/p/${ID}?tab=runs`);
-  fireEvent.click(screen.getByRole("button", { name: "New run" }));
-  expect(screen.getByRole("button", { name: "Create run" })).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-
-  fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
-  await waitFor(() => expect(screen.getByRole("button", { name: "New run" })).toBeTruthy());
 });
 
 /**

@@ -1,5 +1,5 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { Fragment, useCallback, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
 import {
   Alert,
@@ -32,7 +32,6 @@ import { ArmedButton, InFlightBar, RunBar, RunPlan } from "../components/run/Run
 import { PromotePanel } from "../components/run/PromotePanel";
 import { useRunAgain } from "../components/run/RunAgainButton";
 import { formatCost } from "../utils/cost";
-import { RunPlanEditor } from "../components/run/RunPlanEditor";
 import { useArmed } from "../hooks/useArmed";
 import { useDisclosure } from "../hooks/useDisclosure";
 import { useResource } from "../hooks/useResource";
@@ -110,46 +109,6 @@ export function RunPage() {
   // The in-flight bar's "check now", and nothing else — see `decide`.
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
-  /**
-   * Whether the plan is being edited rather than read.
-   *
-   * A mode rather than an always-editable form, because this page is read far
-   * more often than it is written and a run's plan is the thing a person is
-   * about to send — a page whose prompt sits in a text box invites a keystroke
-   * into the document somebody is about to say yes to.
-   */
-  /**
-   * **Opened in the editor when whoever navigated here said so.** A draft made
-   * by the composer strip has an empty plan and exists only to be filled in, so
-   * landing on its read view — a page saying a run predates the plan, with an
-   * "Edit the plan" button under it — would be a step nobody wants. The state is
-   * carried by the navigation rather than by the URL: it describes one arrival,
-   * not the page, and a shared link should open what everyone else sees.
-   */
-  const arrived = useLocation().state as { editing?: boolean } | null;
-  const [editing, setEditing] = useState(Boolean(arrived?.editing));
-
-  /**
-   * **Re-read on every change of run, because this page does not remount.**
-   *
-   * `useState`'s initial value is evaluated once per MOUNT, and moving from one
-   * run to another is the same route pattern — React Router re-renders this
-   * component rather than remounting it. So `Duplicate`, which navigates from a
-   * run page to the draft it just made, handed `editing` to a `useState` that
-   * had already run: the draft opened read-only, with an "Edit the plan" button
-   * under it, which is the one thing a clone made to be changed should not do.
-   * Arriving from anywhere else worked, because that was a real mount.
-   *
-   * Keyed on the run rather than on the state so it also CLOSES the editor when
-   * the run changes — carrying an open editor onto a different run would be a
-   * form pointing at a plan nobody opened it for.
-   */
-  const openedFor = useRef<string | null>(null);
-  useEffect(() => {
-    if (openedFor.current === runId) return;
-    openedFor.current = runId;
-    setEditing(Boolean(arrived?.editing));
-  }, [runId, arrived]);
 
   /**
    * Which output has its promote panel open — a node id, or nothing.
@@ -236,13 +195,6 @@ export function RunPage() {
     );
   }
 
-  /**
-   * The editor is for a plan that can still change, so a submitted run never
-   * gets one — including when `state.editing` said to open it. The state
-   * describes an intention at the moment of navigation and the run is what
-   * decides whether it is possible.
-   */
-  const showEditor = editing && isUnsubmitted(data.status);
 
   // A draft: the primary is `RunBar` whole — its own button and its own
   // failure alert, so nothing else has to repeat that logic. Anything else
@@ -508,48 +460,17 @@ export function RunPage() {
                 {/* **Above the outputs, because it is what the outputs came from.**
             A result with no account of the intent behind it is the wrong way
             round for the one screen a person opens to ask "what was this?" */}
-                {showEditor ? (
-                  <RunPlanEditor
-                    run={data}
-                    onSaved={(updated) => {
-                      setData(updated);
-                      setEditing(false);
-                    }}
-                    // The record moved and the edit is not finished — the cast
-                    // is the one thing changed from inside the editor.
-                    onChanged={setData}
-                    onCancel={() => setEditing(false)}
-                  />
-                ) : (
-                  <>
-                    <RunPlan
-                      run={data}
-                      onView={(asset) => navigate(objectPath(asset.node, RUN))}
-                    />
-                    {/* **Only while nothing has been sent.** `PATCH /plan` refuses a
-                submitted run — its plan is what went out, and a plan edited
-                afterwards would sit beside `request.json` describing something
-                that was never sent — so the button is absent rather than present
-                and answered with a 409. */}
-                    {/* Delete moved to the page bar's menu, arm-in-place —
-                        `Edit the plan` is the one thing left here. */}
-                    {isUnsubmitted(data.status) && (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                          intent="secondary"
-                          size="sm"
-                          onClick={() => setEditing(true)}
-                        >
-                          Edit the plan
-                        </Button>
-                      </div>
-                    )}
-                  </>
-                )}
+                {/* The plan is read here and written in the create bar:
+                    Edit on a feed row loads it there. Nothing on this page
+                    edits it any more. */}
+                <RunPlan
+                  run={data}
+                  onView={(asset) => navigate(objectPath(asset.node, RUN))}
+                />
 
                 {/* Read before the button that spends, which is the only place
                     it can do its job. */}
-                {!showEditor && isUnsubmitted(data.status) && (
+                {isUnsubmitted(data.status) && (
                   <DuplicateNotice run={data} />
                 )}
 

@@ -121,66 +121,6 @@ test.beforeEach(async ({ page }) => {
 });
 
 /* -------------------------------------------------------------------------
- * Authoring a new run
- * ---------------------------------------------------------------------- */
-
-test("the composer strip makes a draft and lands in its editor", async ({
-  page,
-}) => {
-  stubOnly("it would create a real draft in the dev stack");
-  const calls = log(page);
-  await page.goto(`/p/${PROJECT}?tab=runs`);
-
-  // Closed until asked for, and it opens in the place the button stood.
-  await page.getByRole("button", { name: "New run" }).click();
-
-  const kinds = page.getByRole("group", { name: "Kind" });
-  // `exact`, because the runs filter above the strip has a Model box of its own
-  // — and the two mean opposite things: one narrows a listing, the other picks
-  // what a new run will be rendered by.
-  const model = page.getByRole("combobox", { name: "Model", exact: true });
-
-  // The kind filters the model list, which is the whole reason the toggle is
-  // beside the Select rather than somewhere else: a video model offered under
-  // `kind: image` is a 400 at submit, after the plan has been written.
-  await kinds.getByRole("button", { name: "Video" }).click();
-  await model.click();
-  await expect(page.getByRole("option", { name: "seedance" })).toBeVisible();
-  await expect(page.getByRole("option", { name: "gpt-image-2" })).toHaveCount(0);
-  await page.keyboard.press("Escape");
-
-  await kinds.getByRole("button", { name: "Image" }).click();
-  await model.click();
-  await page.getByRole("option", { name: "gpt-image-2", exact: true }).click();
-
-  // Nothing has been created yet: choosing a model is not creating a run, and a
-  // strip that wrote a row per keystroke would fill the project with drafts.
-  expect(wrote(calls)).toEqual([]);
-
-  await page.getByRole("button", { name: "Create run" }).click();
-
-  await page.waitForURL(new RegExp(`/p/${PROJECT}/r/${CREATED_RUN}$`));
-  const created = wrote(calls);
-  expect(spell(created)).toEqual(["POST /api/runs"]);
-  // The Replicate `owner/name`, never the registry key — `POST /api/runs`
-  // records the model the provider is called by.
-  expect(created[0]!.body).toMatchObject({
-    project: PROJECT,
-    kind: "image",
-    model: "openai/gpt-image-2",
-    engine: "studio-media-gpt-image-2",
-  });
-
-  // Landed IN the editor rather than on the read view of an empty plan, which
-  // is what `state.editing` buys and why it is router state and not a query
-  // parameter.
-  await expect(page.getByText("Editing the plan")).toBeVisible();
-  // The live schema drew the params form: `aspect_ratio` is an `allOf` naming a
-  // component, so its presence is also the `$ref` resolution working end to end.
-  await expect(page.getByLabel("Aspect ratio")).toBeVisible();
-});
-
-/* -------------------------------------------------------------------------
  * The one act: arm, then run
  * ---------------------------------------------------------------------- */
 

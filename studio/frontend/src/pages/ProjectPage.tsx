@@ -17,7 +17,6 @@ import { PageBar } from "../components/layout/PageBar";
 import { EntityRow } from "../components/entity/EntityRow";
 import { ProjectDetails } from "../components/project/ProjectDetails";
 import { RunsTable } from "../components/project/RunsTable";
-import { NewRunStrip } from "../components/run/NewRunStrip";
 import { useResource } from "../hooks/useResource";
 import type { ProjectRecord } from "../types";
 import { formatDate } from "../utils/format";
@@ -84,14 +83,12 @@ export function ProjectPage() {
           before, opened from the menu instead of drawn loose beside the
           title.
 
-          **`New run` is the page's primary now, not a strip above the Runs
-          tab.** It still opens the same drawer — `NewRunStrip` — because what
-          it makes belongs to the project either way; only the trigger moved,
-          to the one place every other entity's create control lives. */}
+          **No `New run` here.** Runs are made from the create bar at the top
+          of every screen, which targets this project while its route is
+          open. */}
       <PageBar
         crumbs={[{ label: "Projects", to: PROJECTS_PATH }]}
         title={record.name}
-        primary={<NewRunStrip projectId={record.id} characters={record.characters} />}
         menu={[{ label: "Delete", danger: true, onSelect: () => setDeleteOpen(true) }]}
       />
 

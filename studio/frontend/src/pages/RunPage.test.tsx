@@ -117,10 +117,10 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-async function open(state?: { editing?: boolean }) {
+async function open() {
   render(
     <MemoryRouter
-      initialEntries={[{ pathname: `/p/${PROJECT}/r/${RUN}`, state }]}
+      initialEntries={[`/p/${PROJECT}/r/${RUN}`]}
     >
       <Routes>
         <Route path="/p/:projectId/r/:runId" element={<RunPage />} />
@@ -351,24 +351,6 @@ it("does not call a run its own duplicate, nor count another draft", async () =>
 });
 
 /**
- * Arriving with the editor already open.
- *
- * The composer strip makes a draft with an empty plan and exists only to be
- * filled in, so landing on its read view — a page saying the run predates the
- * plan, with an Edit button under it — would be a step nobody wants. Carried by
- * the navigation rather than the URL: it describes one arrival, not the page.
- */
-it("opens in the editor when the navigation asked for it", async () => {
-  read.mockResolvedValue(record({ status: "draft" }));
-  await open({ editing: true });
-
-  expect(await screen.findByText("Editing the plan")).toBeTruthy();
-  // The armed spend control is hidden behind the form: a Run button beside
-  // unsaved words is a yes to whichever of the two you were not looking at.
-  expect(screen.queryByRole("button", { name: /this spends/ })).toBeNull();
-});
-
-/**
  * **Promote to reference, and only from a picture.**
  *
  * A reference is what every later render of a character is checked against, so a
@@ -458,11 +440,3 @@ describe("what an empty Outputs says", () => {
 });
 
 
-it("ignores an editing arrival on a run that has been sent", async () => {
-  /** `PATCH /plan` refuses a submitted run; the state describes an intention
-   * and the run decides whether it is possible. */
-  read.mockResolvedValue(record({ status: "succeeded" }));
-  await open({ editing: true });
-
-  expect(screen.queryByText("Editing the plan")).toBeNull();
-});
