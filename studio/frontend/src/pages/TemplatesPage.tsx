@@ -115,7 +115,7 @@ export function TemplatesPage() {
               tab === "blocks" ? setCreatingBlock(true) : setCreatingTemplate(true)
             }
           >
-            <PlusIcon className="size-4" />
+            <PlusIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
             {tab === "blocks" ? "New block" : "New template"}
           </Button>
         }
@@ -192,7 +192,7 @@ function LibraryTabs({
             }
             action={
               <Button size="sm" onClick={() => setCreatingTemplate(true)}>
-                <PlusIcon className="size-4" />
+                <PlusIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
                 New template
               </Button>
             }
@@ -211,7 +211,7 @@ function LibraryTabs({
             hint="A block is shared prose a template cites by name — add one to give a template something to point at."
             action={
               <Button size="sm" onClick={() => setCreatingBlock(true)}>
-                <PlusIcon className="size-4" />
+                <PlusIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
                 New block
               </Button>
             }
