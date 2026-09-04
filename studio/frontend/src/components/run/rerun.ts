@@ -1,4 +1,21 @@
-import type { CreateRunBody, RunRecord } from "../../types";
+import type { CreateRunBody, RunAsset, RunFeedRow, RunRecord, RunSend } from "../../types";
+
+/**
+ * What a re-run needs to read off a run — the fields the envelope and the
+ * feed row share, plus the two only the envelope carries.
+ *
+ * A feed row is a `RunRecord` projected (`WEB_APP.md`, `?view=feed`): the same
+ * plan, the same ordered sends, the same model. What it lacks is `output_name`
+ * and the legacy `bindings` map, and both are optional here for that reason —
+ * a row re-run keeps the pipeline's default filename, which is what a person
+ * pressing Rerun in a feed expects.
+ */
+export type RerunSource = Pick<RunRecord | RunFeedRow, "project" | "kind" | "model" | "characters" | "plan"> & {
+  engine?: string | null;
+  output_name?: string | null;
+  sends?: RunSend[];
+  bindings?: Record<string, RunAsset[]>;
+};
 
 /**
  * The body that re-runs a run: the same payload, as a fresh draft.
@@ -16,10 +33,10 @@ import type { CreateRunBody, RunRecord } from "../../types";
  * one a person wrote. `RunPlanEditor` preserves it through an edit; this
  * preserves it through a copy.
  *
- * Nothing here decides to spend. It builds a draft; the armed Run gesture on the
- * new run's page is the act, and that is the money.
+ * Nothing here decides to spend. It builds a draft; the armed gesture that
+ * follows is the act, and that is the money.
  */
-export function rerunBodyOf(run: RunRecord): CreateRunBody {
+export function rerunBodyOf(run: RerunSource): CreateRunBody {
   return {
     project: run.project,
     kind: run.kind,
@@ -47,7 +64,7 @@ export function rerunBodyOf(run: RunRecord): CreateRunBody {
  * null because the map never carried one. Guessing a role from a field name here
  * would be a second copy of the registry.
  */
-function imagesOf(run: RunRecord): Pick<CreateRunBody, "sends" | "bindings"> {
+function imagesOf(run: RerunSource): Pick<CreateRunBody, "sends" | "bindings"> {
   if (run.sends?.length) {
     return {
       sends: run.sends.map(({ field, role, node }) => ({ field, role, node })),

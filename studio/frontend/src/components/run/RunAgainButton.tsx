@@ -4,9 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { Alert, Tooltip, buttonClass } from "@ansavva/design-system";
 
 import { createRun, submitRun } from "../../apis/studio";
-import { ArmedButton } from "./RunPlan";
-import { rerunBodyOf } from "./rerun";
-import type { RunRecord } from "../../types";
+import { ArmedButton } from "./ArmedButton";
+import { rerunBodyOf, type RerunSource } from "./rerun";
 import { runPath } from "../../utils/location";
 
 /**
@@ -38,7 +37,7 @@ import { runPath } from "../../utils/location";
  * reading a payload and saying to send it, which is what a second press on a
  * button that has just told you it spends is. No approve step, no recorded yes.
  */
-export function useRunAgain(run: RunRecord) {
+export function useRunAgain(run: RerunSource & { id: string }) {
   const navigate = useNavigate();
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -58,9 +57,7 @@ export function useRunAgain(run: RunRecord) {
     setFailure(null);
     try {
       const created = await createRun(rerunBodyOf(run));
-      // Straight into the editor: a draft cloned to be changed is one nobody
-      // wants to land on read-only and then press a second button to open.
-      navigate(runPath(run.project, created.id), { state: { editing: true } });
+      navigate(runPath(run.project, created.id));
     } catch (err) {
       setFailure((err as Error).message);
     }
@@ -103,7 +100,7 @@ export function useRunAgain(run: RunRecord) {
  * directly (its page bar wants the pieces apart), but it stays the composed
  * form for anywhere else a run screen offers both at once.
  */
-export function RunAgainButton({ run }: { run: RunRecord }) {
+export function RunAgainButton({ run }: { run: RerunSource & { id: string } }) {
   const { duplicate, fire, failure } = useRunAgain(run);
 
   return (

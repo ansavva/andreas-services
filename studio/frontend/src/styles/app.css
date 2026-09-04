@@ -376,3 +376,34 @@ input.h-10,
     --header-h: 72px;
   }
 }
+
+/*
+ * A run in flight draws full-size placeholder tiles that shimmer, with the
+ * aperture spinner over them and the elapsed time counting up. The sweep runs
+ * between two rungs of the chrome ramp — `card` and `surface-alt` — so it is
+ * the same two surfaces every other empty box in the app is drawn in, only
+ * moving. Reduced motion gets the still card fill, for the reason the spinner
+ * gets a still mark: the point of the setting is that nothing loops.
+ */
+@keyframes studio-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+.studio-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-card) 0%,
+    var(--color-surface-alt) 50%,
+    var(--color-card) 100%
+  );
+  background-size: 200% 100%;
+  animation: studio-shimmer 1.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-shimmer {
+    animation: none;
+    background: var(--color-card);
+  }
+}
