@@ -369,6 +369,8 @@ export const ChevronLeftIcon = ({ className }: Props) => (
 export const ChevronRightIcon = ({ className }: Props) => (
   <Glyph className={className}>
     <path d="m9.5 6 6 6-6 6" />
+  </Glyph>
+);
 
 // --- the create bar ----------------------------------------------------------
 

@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CreateBarProvider, useCreateBarLast } from "../../context/CreateBarContext";
+import { CreateBarProvider, useCreateBarState } from "../../context/CreateBarContext";
 import { SidebarProvider, useShellSidebar } from "../../context/SidebarContext";
 import { TestProviders } from "../../test-providers";
 import type { RunFeedRow, RunRecord } from "../../types";
@@ -106,12 +106,12 @@ function record(over: Partial<RunRecord> = {}): RunRecord {
 function Probe() {
   const location = useLocation();
   const { collapsed } = useShellSidebar();
-  const bar = useCreateBarLast();
+  const bar = useCreateBarState();
   return (
     <>
       <output data-testid="address">{location.pathname + location.search}</output>
       <output data-testid="collapsed">{String(collapsed)}</output>
-      <output data-testid="attachments">{bar.attachments.map((a) => `${a.role}:${a.ref.node}`).join(",")}</output>
+      <output data-testid="attachments">{bar.attachments[bar.kind].map((a) => `${a.role}:${a.ref.node}`).join(",")}</output>
     </>
   );
 }

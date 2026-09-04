@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CreateBarProvider, useCreateBarLast } from "../../context/CreateBarContext";
+import { CreateBarProvider, useCreateBarState } from "../../context/CreateBarContext";
 import { TestProviders } from "../../test-providers";
 import type { RunFeedRow } from "../../types";
 
@@ -69,15 +69,17 @@ function row(over: Partial<RunFeedRow> = {}): RunFeedRow {
   };
 }
 
-/** What the create bar was last told — the stub context, read back. */
+/** What the create bar now holds for its current kind — the real provider, read back. */
 function Probe() {
-  const last = useCreateBarLast();
+  const state = useCreateBarState();
+  const kind = state.kind;
+  const held = state.attachments[kind];
   return (
     <output data-testid="bar">
       {JSON.stringify({
-        kind: last.kind,
-        seed: last.seed && { model: last.seed.model, prompt: last.seed.prompt, kind: last.seed.kind, attachments: last.seed.attachments?.length },
-        attachments: last.attachments.map((a) => `${a.role}:${a.ref.node}`),
+        kind,
+        seed: { model: state.model[kind], prompt: state.prompt, kind, attachments: held.length },
+        attachments: held.map((a) => `${a.role}:${a.ref.node}`),
       })}
     </output>
   );

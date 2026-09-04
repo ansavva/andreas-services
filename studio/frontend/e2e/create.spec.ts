@@ -43,7 +43,7 @@ test("Enter on the create bar makes a draft and submits it; Shift+Enter breaks t
   const calls = log(page);
   await page.goto(`/p/${PROJECT}`);
 
-  const box = page.getByRole("textbox", { name: "Prompt" });
+  const box = page.getByRole("textbox", { name: "Prompt", exact: true });
   await expect(box).toBeVisible();
   await box.click();
   await page.keyboard.type("A plain studio portrait, front on.");
