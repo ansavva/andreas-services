@@ -10,9 +10,11 @@ function redirectFor(path: string) {
 describe('legacy product-path redirects', () => {
   it.each([
     ['/login', 'https://app.humbugg.com/login'],
-    ['/signup', 'https://app.humbugg.com/signup'],
-    ['/confirm', 'https://app.humbugg.com/confirm'],
-    ['/forgot-password', 'https://app.humbugg.com/forgot-password'],
+    // Sign-up, confirm and forgot-password are all Managed Login's hosted
+    // page now — the app has no screen for any of them but `/login`.
+    ['/signup', 'https://app.humbugg.com/login'],
+    ['/confirm', 'https://app.humbugg.com/login'],
+    ['/forgot-password', 'https://app.humbugg.com/login'],
     ['/join/abc123', 'https://app.humbugg.com/join/abc123'],
     ['/app', 'https://app.humbugg.com/'],
     ['/app/settings', 'https://app.humbugg.com/settings'],
@@ -23,7 +25,7 @@ describe('legacy product-path redirects', () => {
 
   it('carries the query string across', () => {
     expect(redirectFor('/confirm?email=a%40b.com').location).toBe(
-      'https://app.humbugg.com/confirm?email=a%40b.com',
+      'https://app.humbugg.com/login?email=a%40b.com',
     );
   });
 });
