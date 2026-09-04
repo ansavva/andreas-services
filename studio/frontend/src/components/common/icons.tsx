@@ -200,6 +200,59 @@ export const AccountIcon = ({ className }: Props) => (
   </Glyph>
 );
 
+// --- the shell -------------------------------------------------------------
+
+export const HomeIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M3 11.5 12 4l9 7.5V20H3Z" />
+  </Glyph>
+);
+
+/** A board with a header row and a first column — a project is a table of runs. */
+export const ProjectsIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <rect x="3" y="5" width="18" height="14" />
+    <path d="M3 10h18M9 5v14" />
+  </Glyph>
+);
+
+/** A sheet with two ruled lines: a template is text with holes in it. */
+export const TemplateIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M4 4h16v16H4Z" />
+    <path d="M8 9.5h8M8 13.5h8" />
+  </Glyph>
+);
+
+/** Three bars. The one glyph a phone user reads as "the menu". */
+export const MenuIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M4 7h16M4 12h16M4 17h16" />
+  </Glyph>
+);
+
+/** A panel with its left rail drawn — the sidebar's own toggle. */
+export const SidebarIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <rect x="3" y="5" width="18" height="14" />
+    <path d="M9 5v14" />
+    <path d="m16.5 9.5-2.5 2.5 2.5 2.5" />
+  </Glyph>
+);
+
+/**
+ * A person in a ring — the ACCOUNT, as distinct from `AccountIcon`, which the
+ * Characters section wears. Two person glyphs in one 64px rail have to differ,
+ * and the ring is what says "you" rather than "them".
+ */
+export const ProfileIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="10" r="3" />
+    <path d="M6.5 18.5a6 6 0 0 1 11 0" />
+  </Glyph>
+);
+
 // --- the viewer ------------------------------------------------------------
 
 export const SoundOnIcon = ({ className }: Props) => (

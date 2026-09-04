@@ -28,8 +28,7 @@ local work runs against this machine's dev stack.
   references, its folders and files), `/p/<id>` a project (overview, runs,
   scenes, movies, inputs, files), `/p/<id>/r/<run_id>` one run — its envelope,
   outputs and payloads — `/s/<id>` a scene, `/m/<id>` a movie. `/characters`,
-  `/projects` and `/templates` are the lists. Home shows characters, projects
-  and the most recent media; a recent tile opens a feed of everything beneath it.
+  `/projects` and `/templates` are the lists. Home is characters and projects.
 - **Browse** the folder tree at `/f` (the library root) or `/f/<id>`, newest
   first; the order is switchable and travels in the URL as `?sort=`. The grid
   shows every image and video in a folder; videos paint their own first frame

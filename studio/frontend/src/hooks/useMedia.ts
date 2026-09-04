@@ -18,15 +18,6 @@ export function useMedia(
   folderId: FolderId,
   sort: SortOrder,
   enabled: boolean,
-  /**
-   * How many per page. The API's own default is 200.
-   *
-   * Home shows twelve and never pages, so it asks for twelve: the response and
-   * the presigning shrink with it. What does NOT shrink is the enumeration —
-   * the endpoint reads the branch, sorts it and slices, because `total` and the
-   * cursor are defined against the whole of it. See the note in `HomePage`.
-   */
-  pageSize?: number,
 ) {
   const [items, setItems] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -57,7 +48,6 @@ export function useMedia(
         forFolder === null ? {} : { node: forFolder },
         forSort,
         next ?? undefined,
-        pageSize,
       );
       if (query.current.id !== id) return;
 
@@ -71,7 +61,7 @@ export function useMedia(
       inFlight.current = false;
       setLoading(false);
     }
-  }, [pageSize]);
+  }, []);
 
   useEffect(() => {
     const id = query.current.id + 1;

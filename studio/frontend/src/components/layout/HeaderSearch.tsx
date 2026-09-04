@@ -28,17 +28,17 @@ import { characterPath, projectPath } from "../../utils/location";
  * and a scene or a movie is reached through the project that owns it. Searching
  * a nameless thing by name is a box that always comes back empty.
  *
- * **Two homes now, one component.** `AppHeader` draws this inline above `md`
- * and, below it, inside a `Drawer` a search `IconButton` opens — there being
- * no room for a 192px box beside three nav chips at 390px. `className`
- * replaces the wrapper's own sizing (`hidden … md:block` at rest; the drawer
- * passes `w-full` and never hides it) and `autoFocus` is what makes opening
- * the drawer land the caret without a second tap — a keyboard appearing over
- * a box nobody can type into yet is the mobile version of a focus ring nobody
+ * **Two homes, one component.** `TopBar` draws this inline above `md` and,
+ * below it, inside a `Drawer` a search `IconButton` opens — there being no
+ * room for the box beside the create bar at 390px. `className` replaces the
+ * wrapper's own sizing (`hidden … md:block` at rest; the drawer passes
+ * `w-full` and never hides it) and `autoFocus` is what makes opening the
+ * drawer land the caret without a second tap — a keyboard appearing over a
+ * box nobody can type into yet is the mobile version of a focus ring nobody
  * can see.
  */
 export function HeaderSearch({
-  className = "hidden w-48 md:block lg:w-64",
+  className = "hidden w-64 md:block lg:w-80",
   autoFocus = false,
 }: {
   className?: string;
