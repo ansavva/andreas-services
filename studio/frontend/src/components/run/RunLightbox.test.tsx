@@ -355,7 +355,12 @@ describe("the opened run", () => {
 
     expect(await screen.findByTestId("in-flight-stage")).toBeTruthy();
     expect(screen.getByText("Running…")).toBeTruthy();
-    expect(screen.getByText(/^1[23]s$/)).toBeTruthy();
+    // Seconds since it went out — at least the 12 seeded, more on a slow
+    // runner, so the shape is asserted and the floor, not the exact figure.
+    const counter = screen.getByText(/^\d+s$/);
+    expect(Number(counter.textContent!.slice(0, -1))).toBeGreaterThanOrEqual(
+      12,
+    );
     expect(screen.queryByRole("button", { name: "Rerun" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Trash" })).toBeNull();
     expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();

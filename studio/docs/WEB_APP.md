@@ -363,7 +363,7 @@ page and a plain textarea over its literal bytes, and never offers fields.
   `["runs", "feed", …]` cache, so opening a run costs no second listing.
   `getRun` is fetched for what a row does not carry: the folder, the
   prediction id and the payload nodes. A cold link with nothing cached draws
-  the row off the record (`rowOfRecord`). The two-column `pages/RunPage.tsx`
+  the row off the record (`rowOfRecord`). The two-column run page
   that used to answer this address is deleted.
 - **An opened run shows three different kinds of thing, and conflating them is
   the one mistake to avoid.** The *envelope* is studio's and safe to render as
