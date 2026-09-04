@@ -120,10 +120,9 @@ function nextPlaceholder(text: string, from = 0) {
  * ## The invariant everything here protects
  *
  * **The value is a plain string and the round trip is byte-exact.** Assembly is
- * `string.Formatter().vformat` over `{name}`, and `plan_digest` hashes the
- * prompt into the approval — so an editor that normalised one space or dropped
- * one trailing newline would silently stale every approval already given, for a
- * change nobody made.
+ * `string.Formatter().vformat` over `{name}`, and the fingerprint hashes the
+ * prompt — so an editor that normalised one space or dropped one trailing
+ * newline would silently move every fingerprint, for a change nobody made.
  *
  * That invariant is held by construction rather than by care: a pill is a
  * `TextNode` whose text IS `{name}`, so `root.getTextContent()` is the string.

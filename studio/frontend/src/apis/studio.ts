@@ -595,9 +595,9 @@ export function deleteTemplate(templateId: string) {
 /**
  * What a run plan's template would become, expanded against this run's cast.
  *
- * Writes nothing, so the editor can call it on every change — the save is what
- * withdraws the approval, and what a prompt will SAY is exactly the thing that
- * tells you whether it is right.
+ * Writes nothing, so the editor can call it on every change — the save is the
+ * write, and what a prompt will SAY is exactly the thing that tells you whether
+ * it is right.
  */
 export function previewPlanPrompt(runId: string, template: string) {
   return apiSend<{
@@ -843,10 +843,10 @@ export function getRuns(
  *
  * Only `project`, `kind` and `model` are required; a draft with no plan and no
  * sends is legal, and is what the composer strip makes before the editor fills
- * it in. The digest and the fingerprint are recomputed server-side from what
- * actually landed and come back on the 201 — never derived here, because
- * `plan_digest` has had three implementations in this repository and one of them
- * silently disagreed.
+ * it in. The fingerprint is recomputed server-side from what actually landed
+ * and comes back on the 201 — never derived here, because the hash under it has
+ * had three implementations in this repository and one of them silently
+ * disagreed.
  */
 export function createRun(body: CreateRunBody) {
   return apiSend<CreatedRun>("POST", "/api/runs", body);
@@ -900,7 +900,7 @@ export function getRun(id: string) {
 /**
  * The payload a DRAFT would send, rebuilt from the plan as it stands.
  *
- * Hard rule #2 asks a person to approve the full payload, and a draft has no
+ * Hard rule #2 asks a person to read the full payload, and a draft has no
  * `request.json` — that document records what was actually sent and is written
  * after dispatch. So the run whose payload most needs reading was the one whose
  * payload tab was empty, and an edit to the plan appeared to change nothing.
@@ -908,7 +908,7 @@ export function getRun(id: string) {
  * Answered by the API rather than assembled here on purpose: `payload_of` is
  * the single allowlist of what reaches a provider, and a second copy in this
  * file is exactly how a field added to the plan later becomes part of a payload
- * somebody approved as something else.
+ * somebody read as something else.
  */
 export function getRunPayloadPreview(id: string) {
   return apiGet<{ request: Record<string, unknown>; prompt: unknown }>(
@@ -917,37 +917,21 @@ export function getRunPayloadPreview(id: string) {
 }
 
 /**
- * Approve a draft — record that somebody read THIS payload and said yes to it.
+ * Send a draft to the model. **This is the call that spends money, and calling
+ * it is the decision.**
  *
- * **The digest is the whole of it.** It is sent, not stored: the API recomputes
- * the digest of what is actually on the row and answers 409 `stale_digest` if
- * the two disagree, so an approval cannot outlive the payload it was given for.
- * Approve-then-edit is the failure hard rule #2 names and that nothing checked
- * until this existed.
- */
-export function approveRun(id: string, digest: string) {
-  return apiSend<RunRecord>(
-    "POST",
-    `/api/runs/${encodeURIComponent(id)}/approve`,
-    {
-      digest,
-    },
-  );
-}
-
-/**
- * Send an approved run to the model. **This is the call that spends money.**
+ * **There is no approve step in front of it.** There was: `approveRun` sent a
+ * digest of the payload on screen and the API refused a submit whose plan had
+ * moved since. Decision 2026-09-04 removed it everywhere — a recorded yes was
+ * never a stronger claim than the press that submits, and the payload is on the
+ * page. Hard rule #2 is carried by who presses, not by a row.
  *
  * **The app could not do this at all until generation moved into the API.** The
- * spending lived in the CLI, holding the provider token, so a run approved on
- * this page then had to be sent from a terminal — the page could show the
- * payload, record the yes, and not act on it. It is one route now, and the
- * credential stays server-side where the SPA can never hold one.
- *
- * Refused with 409 unless the run is approved and the approval still matches the
- * payload. That is the same gate `runs submit` passes through, called from the
- * same place, so the app and the CLI cannot come to disagree about what may be
- * sent.
+ * spending lived in the CLI, holding the provider token, so a run planned on
+ * this page then had to be sent from a terminal. It is one route now, and the
+ * credential stays server-side where the SPA can never hold one. Refused with
+ * 409 once the run has already gone out — the same route `runs submit` calls,
+ * so the app and the CLI cannot come to disagree about what may be sent.
  *
  * It returns as soon as the provider has accepted the prediction — the run comes
  * back `running`, not `succeeded`. What closes it is a callback, minutes later,
@@ -978,12 +962,10 @@ export function reconcileRun(id: string) {
 }
 
 /**
- * Rewrite a draft's authored half. **Clears the approval, every time.**
+ * Rewrite a draft's authored half. The fingerprint moves with it.
  *
- * That is not this function's doing — the route does it — but a caller needs to
- * know, because finding out at submit time is finding out too late. Refused
- * outright once the run has been submitted: a plan edited afterwards would sit
- * beside `request.json` describing something that was never sent.
+ * Refused outright once the run has been submitted: a plan edited afterwards
+ * would sit beside `request.json` describing something that was never sent.
  */
 export function patchRunPlan(id: string, plan: RunPlan) {
   return apiSend<RunRecord>(
@@ -995,7 +977,7 @@ export function patchRunPlan(id: string, plan: RunPlan) {
   );
 }
 
-/** Replace the ordered images a draft binds. Clears the approval, every time. */
+/** Replace the ordered images a draft binds. The fingerprint moves with it. */
 export function patchRunSends(
   id: string,
   sends: { field: string; role: string | null; node: string }[],

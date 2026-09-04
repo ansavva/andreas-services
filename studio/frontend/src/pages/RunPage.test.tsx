@@ -32,11 +32,6 @@ vi.mock("../apis/studio", () => ({
   // Empty unless a case says otherwise.
   getRuns: vi.fn().mockResolvedValue({ runs: [], cursor: null }),
   deleteRun: vi.fn().mockResolvedValue({ id: "run-1", files: "keep" }),
-  // Reached through the components this page mounts rather than by the page
-  // itself: `RunBar` spends, `RunPlanEditor` writes. Present so the factory is
-  // a complete stand-in for the module — a missing name is `undefined` and
-  // fails at the call, which reads as a bug in the page.
-  approveRun: vi.fn(),
   // The cast editor and the template picker, both mounted by `RunPlanEditor`.
   // Unmocked they are `undefined` at the first render, and a `useResource`
   // handed `undefined` never settles — which does not fail the suite, it hangs
@@ -93,9 +88,6 @@ function record(over: Partial<RunRecord> = {}): RunRecord {
     // tell "absent" from "cleared".
     sends: [],
     plan: null,
-    plan_digest: null,
-    approval: null,
-    stale: false,
     payload: { prompt: null, request: null, response: null },
     ...over,
   } as RunRecord;

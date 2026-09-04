@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { Alert, Tooltip, buttonClass } from "@ansavva/design-system";
 
-import { approveRun, createRun, submitRun } from "../../apis/studio";
+import { createRun, submitRun } from "../../apis/studio";
 import { ArmedButton } from "./RunPlan";
 import { rerunBodyOf } from "./rerun";
 import type { RunRecord } from "../../types";
@@ -20,31 +20,31 @@ import { runPath } from "../../utils/location";
  * them still share one `failure` message rather than each carrying its own.
  *
  * **A run cannot be re-submitted, and that is not a gap being worked around.** A
- * run row records one submission: its request, its response, its outputs and the
- * approval the payload was sent under. Sending it twice would overwrite the
+ * run row records one submission: its request, its response and its outputs.
+ * Sending it twice would overwrite the
  * record of the first, so what "again" means is a second run, and the app makes
  * one the way the CLI does — a new draft carrying the same plan and the same
  * ordered images, byte for byte (see `rerunBodyOf`).
  *
- * **One gesture, and the page reseats onto the new attempt.** Create, approve,
- * submit, then swap the address to the new run id — a client-side push into the
+ * **One gesture, and the page reseats onto the new attempt.** Create, submit,
+ * then swap the address to the new run id — a client-side push into the
  * same page component, so the outputs empty, the in-flight bar appears and the
  * polling resumes without a load. The previous attempt is untouched and browser
  * Back returns to it.
  *
- * The arm-then-fire press IS the approval, exactly as it is in `RunBar`: the
- * payload being approved is the one this page is rendering above the button, and
- * the run created from it is byte-identical to it. Hard rule #2 is about a person
- * reading a payload and saying yes to it, which is what a second press on a
- * button that has just told you it spends is.
+ * The arm-then-fire press IS the act, exactly as it is in `RunBar`: the payload
+ * being sent is the one this page is rendering above the button, and the run
+ * created from it is byte-identical to it. Hard rule #2 is about a person
+ * reading a payload and saying to send it, which is what a second press on a
+ * button that has just told you it spends is. No approve step, no recorded yes.
  */
 export function useRunAgain(run: RunRecord) {
   const navigate = useNavigate();
   const [failure, setFailure] = useState<string | null>(null);
 
   /**
-   * **Clone into a draft, and stop there.** Nothing is approved and nothing is
-   * sent, so this spends nothing.
+   * **Clone into a draft, and stop there.** Nothing is sent, so this spends
+   * nothing.
    *
    * The gap this closes: `Run again` re-sends a payload byte-identical to this
    * one, which is the right thing when the run was right and you want another
@@ -71,8 +71,8 @@ export function useRunAgain(run: RunRecord) {
    *
    * Create is the only step whose failure leaves nothing behind — there is no
    * new run, so this stays put and says why. Once the draft exists it is the
-   * thing to look at whatever happened next: approve or submit failing lands a
-   * person on a normal unsubmitted run, in front of `RunBar`, which is the
+   * thing to look at whatever happened next: submit failing lands a person on
+   * a normal unsubmitted run, in front of `RunBar`, which is the
    * recovery path for exactly this and states the refusal in its own words when
    * they press it. Nothing has been billed unless submit returned.
    */
@@ -87,7 +87,6 @@ export function useRunAgain(run: RunRecord) {
     }
 
     try {
-      await approveRun(created.id, created.plan_digest);
       await submitRun(created.id);
     } catch {
       /* the new run's own bar is the recovery — see above */

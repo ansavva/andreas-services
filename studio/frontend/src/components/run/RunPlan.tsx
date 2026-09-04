@@ -11,10 +11,8 @@ import {
 import { Frame, SendRow, Slot } from "../scene/Sends";
 import { PromptFields } from "../scene/motionPrompt";
 import { ApiError } from "../../apis/client";
-import { approveRun, submitRun } from "../../apis/studio";
+import { submitRun } from "../../apis/studio";
 import type { RunAsset, RunRecord, RunSend } from "../../types";
-import { formatDate } from "../../utils/format";
-import { getUserEmail, getUserSub } from "../../auth/oauth";
 import { useArmed } from "../../hooks/useArmed";
 
 /**
@@ -319,62 +317,15 @@ export function ArmedButton({
   );
 }
 
-/** A stale or refused approval, said in terms of what to do about it. */
-function hintFor(code: string | undefined): string | null {
-  if (code === "stale_digest")
-    return "The plan above has been re-read — check it and run again.";
-  if (code === "not_approved")
-    return "The approval did not stick; run again to write a fresh one.";
-  return null;
-}
-
-/** The caller's own address, so an approval by them does not read as a stranger's. */
-function named(by: string, me: { sub: string | null; email: string | null }): string {
-  return me.sub && by === me.sub ? (me.email ?? "you") : by;
-}
-
 /**
- * Who said yes, and how — for a run that has already gone out.
+ * Running a draft — **one armed press, and that press is the act.**
  *
- * **Extracted so it can stand on its own in the page bar body.** `RunBar`'s
- * own non-draft branch used to be the only place this rendered; now
- * `RunPage` reaches for it directly whenever a run's `primary` slot holds
- * `Run again` instead of `RunBar` — the two mean the same run screen, just
- * with the money button moved out to make room for `Duplicate` in the menu.
- * Renders nothing for a run with no approval to report.
- */
-export function ApprovalNote({ run }: { run: RunRecord }) {
-  const me = { sub: getUserSub(), email: getUserEmail() };
-  if (!run.approval) return null;
-  return (
-    <Text variant="caption" tone="muted">
-      {run.approval.by === "backfill"
-        ? "Approved before approvals were recorded — stamped by the backfill at the moment this run was created."
-        : `Approved by ${named(run.approval.by, me)} on ${formatDate(run.approval.at)}.${
-            run.approval.via === "relayed"
-              ? " Relayed — the yes was given elsewhere and passed on by an agent, not entered here."
-              : ""
-          }`}
-    </Text>
-  );
-}
-
-/**
- * Running a draft — **one armed press, and that press is the approval.**
- *
- * This used to be an approve `Dialog`, a Revoke button and a separate Submit,
- * with three sentences describing which of the digest's three states the run was
- * in. The separate approve step was redundant in a UI where the payload is on
- * screen: the page renders the plan, the ordered images and — since the payload
- * preview — the exact document a draft would send. Asking for a yes over that
- * and then asking again under a different word is what teaches somebody to click
- * through the first one.
- *
- * **The mechanism is untouched.** `POST /approve` carries the digest this page
- * is rendering and runs immediately before `POST /submit`, so the API's
- * compare-and-swap still refuses a payload that moved underneath — a 409 that
- * reaches the alert below rather than a submission. Every other caller, the CLI
- * included, is unaffected.
+ * This used to be an approve `Dialog`, a Revoke button and a separate Submit;
+ * then one press that wrote an approval and submitted. Decision 2026-09-04:
+ * there is no approve step anywhere, so this calls `POST /submit` and nothing
+ * before it. The page renders the plan, the ordered images and — since the
+ * payload preview — the exact document a draft would send; a person reads that
+ * and presses. Hard rule #2 is the press, not a row.
  */
 export function RunBar({
   run,
@@ -383,29 +334,24 @@ export function RunBar({
 }: {
   run: RunRecord;
   onRan: (next: RunRecord) => void;
-  /** Re-read after a refusal: the digest the page holds is the stale one. */
+  /** Re-read after a refusal: the record the page holds may be behind. */
   onReload: () => void;
 }) {
-  const [failure, setFailure] = useState<{ message: string; hint: string | null } | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
 
   const fire = useCallback(async () => {
     setFailure(null);
     try {
-      // Approve THEN submit, in that order and never merged: a refusal on the
-      // first means nothing was sent, which is the distinction the alert draws.
-      await approveRun(run.id, run.plan_digest ?? "");
       onRan(await submitRun(run.id));
     } catch (err) {
-      const error = err as ApiError;
-      setFailure({ message: error.message, hint: hintFor(error.code) });
+      setFailure((err as ApiError).message);
       onReload();
     }
-  }, [onRan, onReload, run.id, run.plan_digest]);
+  }, [onRan, onReload, run.id]);
 
-  if (run.status !== "draft" && run.status !== "approved") {
-    // Sent already. What is left to say is who said yes, and how.
-    return <ApprovalNote run={run} />;
-  }
+  // Sent already. A run row records one submission, so there is nothing to
+  // press here; what a submitted run offers instead is `Run again`.
+  if (run.status !== "draft") return null;
 
   return (
     // No frame: a bordered card around one button is chrome for its own sake.
@@ -414,10 +360,7 @@ export function RunBar({
       {failure && (
         <Alert.Root intent="danger">
           <Alert.Title>Could not submit the run</Alert.Title>
-          <Alert.Description>
-            {failure.message}
-            {failure.hint ? ` ${failure.hint}` : ""}
-          </Alert.Description>
+          <Alert.Description>{failure}</Alert.Description>
         </Alert.Root>
       )}
 
@@ -432,7 +375,7 @@ export function RunBar({
         busy="Running…"
         tooltip={`Sends the prompt, the parameters and the ${run.sends.length} image${
           run.sends.length === 1 ? "" : "s"
-        } above, in that order. Records your approval and starts billing.`}
+        } above, in that order. Sends it and starts billing.`}
         onFire={fire}
       />
     </section>

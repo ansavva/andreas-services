@@ -47,8 +47,8 @@ function castNeededBy(prompt: string): number {
  * ## It fills the box and stops
  *
  * Choosing does not save and does not submit. The prompt lands in the editor as
- * text a person then reads, changes and approves — which is where hard rule #2
- * has always put the decision. A picker that saved would make "look at a
+ * text a person then reads, changes and says to send — which is where hard
+ * rule #2 has always put the decision. A picker that saved would make "look at a
  * template" and "commit to it" the same gesture.
  *
  * ## Nothing here is blocked

@@ -204,7 +204,7 @@ test("the Runs tab is the list, with no reading to switch away from", async ({
   await expect(page).not.toHaveURL(/runs=/);
 });
 
-test("one press on Run arms it and approves nothing", async ({ page }) => {
+test("one press on Run arms it and sends nothing", async ({ page }) => {
   stubOnly("the second press would submit a real generation");
   const calls = log(page);
   await page.goto(`/p/${PROJECT}/r/${DRAFT_RUN}`);
@@ -220,7 +220,7 @@ test("one press on Run arms it and approves nothing", async ({ page }) => {
   expect(wrote(calls)).toEqual([]);
 });
 
-test("the second press approves and then submits, in that order", async ({
+test("the second press submits, and calls nothing before it", async ({
   page,
 }) => {
   stubOnly("this is the call that spends");
@@ -231,15 +231,11 @@ test("the second press approves and then submits, in that order", async ({
   await run.click();
   await page.getByRole("button", { name: /Press again/ }).click();
 
-  // Approve BEFORE submit, always: the API refuses a submission that is not
-  // approved, and the digest is what ties the yes to this exact payload.
+  // One write. There is no approve step (decision 2026-09-04): the press is the
+  // act, and the API takes a draft straight to the provider.
   await expect
     .poll(() => spell(wrote(calls)))
-    .toEqual([
-      `POST /api/runs/${DRAFT_RUN}/approve`,
-      `POST /api/runs/${DRAFT_RUN}/submit`,
-    ]);
-  expect(wrote(calls)[0]!.body.digest).toBeTruthy();
+    .toEqual([`POST /api/runs/${DRAFT_RUN}/submit`]);
 });
 
 /* -------------------------------------------------------------------------
@@ -267,12 +263,11 @@ test("Run again takes two presses, and the first sends nothing", async ({
 
   await page.getByRole("button", { name: /Press again/ }).click();
 
-  // Create, approve, submit — then the address follows the new attempt, so the
+  // Create, submit — then the address follows the new attempt, so the
   // previous one keeps its outputs and Back returns to it.
   await page.waitForURL(new RegExp(`/p/${PROJECT}/r/${CREATED_RUN}$`));
   expect(spell(wrote(calls))).toEqual([
     "POST /api/runs",
-    `POST /api/runs/${CREATED_RUN}/approve`,
     `POST /api/runs/${CREATED_RUN}/submit`,
   ]);
 

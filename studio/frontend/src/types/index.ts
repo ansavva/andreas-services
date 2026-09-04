@@ -567,7 +567,6 @@ export type RunStatus =
   // Before anything is submitted. A run is created when it is PLANNED, so the
   // row does not say that anything happened — see `RunRecord.plan`.
   | "draft"
-  | "approved"
   | "discarded"
   // After. `adopted` is a synthetic run wrapping an artifact that already
   // existed; nothing was submitted and nothing billed.
@@ -581,7 +580,6 @@ export type RunStatus =
 /** The states that come before a submission, mirrored from `catalog.py`. */
 const UNSUBMITTED_RUN_STATUSES: readonly RunStatus[] = [
   "draft",
-  "approved",
   "discarded",
 ];
 
@@ -602,8 +600,8 @@ const TERMINAL_RUN_STATUSES: readonly RunStatus[] = [
   "succeeded",
   "failed",
   "cancelled",
-  // A discarded draft is final. A draft is NOT here — it can still be approved
-  // and submitted, so the run page has to keep watching one.
+  // A discarded draft is final. A draft is NOT here — it can still be
+  // submitted, so the run page has to keep watching one.
   "discarded",
   "adopted",
 ];
@@ -732,10 +730,9 @@ export interface RunRecord {
    * rebuilt it from the recorded request.
    */
   plan: RunPlan | null;
-  /** A hash over the plan AND the ordered sends — what an approval names. */
-  plan_digest: string | null;
   /**
-   * What makes two submissions the same one — `plan_digest` plus the model.
+   * What makes two submissions the same one — the model, the plan and the
+   * ordered sends, hashed.
    *
    * Answers "has this exact payload already gone out here" through
    * `GET /api/runs?fingerprint=`, which is why it is on the listing row too.
@@ -745,19 +742,11 @@ export interface RunRecord {
   /**
    * What the output file is called. **A filename, not an identity.**
    *
-   * Outside `plan` on purpose: `plan_digest` hashes the plan, so a rename would
-   * otherwise void an approval over something the provider is never sent.
+   * Outside `plan` on purpose: the fingerprint hashes the plan, so a rename
+   * would otherwise make two identical payloads read as different over
+   * something the provider is never sent.
    */
   output_name?: string | null;
-  /** Who said yes, when, and to which payload. `null` until somebody has. */
-  approval: RunApproval | null;
-  /**
-   * Whether the payload moved after it was approved.
-   *
-   * Computed by the API on every read rather than stored — a gate that trusted
-   * a cached answer would pass the exact case it exists to catch.
-   */
-  stale: boolean;
   characters: string[];
   folder: string;
   outputs: RunAsset[];
@@ -804,8 +793,8 @@ export interface RunPlan {
    * What was TYPED, when the prompt was written as a template.
    *
    * Kept beside the expanded `prompt` rather than instead of it. The expansion
-   * happens at save so `plan_digest` covers exactly what reaches the model — a
-   * template expanded at submit would mean the payload somebody approved is not
+   * happens at save so the fingerprint covers exactly what reaches the model —
+   * a template expanded at submit would mean the payload somebody read is not
    * the payload sent — and the template is kept so the prompt stays editable
    * instead of becoming a wall of finished prose with no way back.
    */
@@ -820,27 +809,6 @@ export interface RunPlan {
   note?: string | null;
 }
 
-interface RunApproval {
-  /**
-   * The Cognito sub of whoever approved it — or the literal `backfill`, for a
-   * run approved before approvals were recorded. Naming the mechanism rather
-   * than a person is deliberate: nobody approved a run made last August in a
-   * browser, and a row implying they had would be undetectable later.
-   */
-  by: string;
-  at: string;
-  digest: string;
-  /**
-   * How the yes arrived. `interactive` is a person at the control — the app's
-   * approve button, or a terminal confirm. `relayed` is somebody saying yes
-   * where studio cannot see it, passed on by an agent with `--relayed`.
-   *
-   * It is a WEAKER claim and the app says so rather than drawing both the same.
-   * Absent on rows recorded before the field existed, which is why it is
-   * optional and why a missing value is not read as `interactive`.
-   */
-  via?: "interactive" | "relayed";
-}
 
 /** A page of runs. `cursor` is `null` when there is nothing after this page. */
 export interface RunPage {
@@ -892,8 +860,8 @@ interface RunSendInput {
  * handful of fields whose values the caller could not have known, and nothing
  * else: no status history, no outputs, no expanded assets.
  *
- * `plan_digest` is here so the next call can be `approveRun(id, plan_digest)`
- * without a read in between, and `fingerprint` so a duplicate check is one query.
+ * `fingerprint` is here so a duplicate check is one query without a read in
+ * between.
  */
 export interface CreatedRun {
   id: string;
@@ -901,7 +869,6 @@ export interface CreatedRun {
   status: RunStatus;
   folder: string;
   payload: { request: string | null; response: string | null; prompt: string | null };
-  plan_digest: string;
   fingerprint: string;
   /** The rows as written, renumbered from 1. `source` is null on every one. */
   sends: Array<RunSendInput & { order: number; source: RunSendSource | null }>;

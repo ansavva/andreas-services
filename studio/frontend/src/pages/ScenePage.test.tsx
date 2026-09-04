@@ -611,8 +611,8 @@ it("says nothing when the scene has not been cut into anything", async () => {
 // ─────────────── the links out, and the takes kept ───────────────
 //
 // Every picture on this board came from a run and none of them said which. A
-// sample that came out wrong was a dead end: the run holds the prompt, the
-// payload and the approval that produced it, and there was no way to reach it.
+// sample that came out wrong was a dead end: the run holds the prompt and the
+// payload that produced it, and there was no way to reach it.
 
 it("links a sample panel to the run that rendered it", async () => {
   draw(

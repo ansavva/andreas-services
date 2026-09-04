@@ -28,7 +28,7 @@ interface Props {
  * grid mixing intentions with submissions is a grid nobody can read. That is a
  * fair default for a route; it is not one a control labelled `Any status` may
  * apply silently. Drafts are the one thing a person has to be able to FIND — an
- * unapproved payload nobody can see is a queue nobody works through — and the
+ * unsent payload nobody can see is a queue nobody works through — and the
  * `draft` badge is what keeps the grid readable once they are in it.
  *
  * `discarded` is absent: it is gone, and offering a filter for it would suggest
@@ -36,7 +36,6 @@ interface Props {
  */
 const STATUSES: RunStatus[] = [
   "draft",
-  "approved",
   "pending",
   "running",
   "succeeded",
@@ -98,7 +97,7 @@ export function RunsTable({ projectId, characters, to }: Props) {
         // "Any status" means any. The route hides drafts from a listing that
         // names no status, so a filter reading `Any status` was returning
         // everything EXCEPT the runs waiting to be looked at — a project holding
-        // nothing but unapproved payloads drew an empty grid and read `runs 0`,
+        // nothing but unsent payloads drew an empty grid and read `runs 0`,
         // which is indistinguishable from nothing having been planned. Asking
         // for a specific status still narrows to exactly it.
         ...(status ? { status } : { include: "drafts" }),

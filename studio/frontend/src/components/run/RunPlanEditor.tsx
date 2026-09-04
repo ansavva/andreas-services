@@ -83,12 +83,10 @@ interface Row {
  * Edit an unsubmitted run — the half of the plan that has had routes and no
  * hands since runs gained one.
  *
- * **Everything here withdraws the approval, and that is the API's doing rather
- * than this component's.** `PATCH /plan` and `PATCH /sends` each recompute the
- * digest, clear `approval` and return the run to `draft`. Hard rule #2 says
- * re-approve after *any* edit; this is what makes that mechanical instead of
- * remembered, and the copy below says so before anything is typed rather than
- * after it is saved.
+ * **An edited draft is a payload nobody has read yet.** `PATCH /plan` and
+ * `PATCH /sends` each move the fingerprint and leave the run a `draft`. Hard
+ * rule #2 says show it again after *any* edit; the copy below says so before
+ * anything is typed rather than after it is saved.
  *
  * **Two routes, so only what moved is written.** Rewording a prompt leaves the
  * send rows alone and reordering the images leaves the plan alone — which
@@ -208,7 +206,7 @@ export function RunPlanEditor({
    * **The template when there is one, the prompt when there is not.**
    *
    * A plan that was written as a template keeps both — the expanded text
-   * because `plan_digest` has to cover what reaches the model, and the template
+   * because the fingerprint has to cover what reaches the model, and the template
    * because otherwise the next edit opens onto finished prose with no way back
    * to what was typed. This is the half a person edits.
    */
@@ -310,7 +308,7 @@ export function RunPlanEditor({
    *
    * **An empty `props` map is a failure wearing a 200.** `services/schema.py`
    * answers `{}, {}` when the provider cannot be reached, deliberately, so that a
-   * fetch that 500s never stops a payload a person already approved — which
+   * fetch that 500s never stops a payload a person has already read — which
    * means "this model takes no inputs" and "nobody could ask" arrive here as the
    * same body. No model takes no inputs, so this reads it as the second.
    */
@@ -682,13 +680,13 @@ export function RunPlanEditor({
         <Text variant="title">Editing the plan</Text>
         {/* A note, not a status — it reads as a phrase in body font, sentence
             case, rather than the lowercase mono a state like "draft" gets. */}
-        <Badge intent="warning">Withdraws the approval</Badge>
+        <Badge intent="warning">Read it again before sending</Badge>
       </div>
 
       <Text variant="caption" tone="muted" className="max-w-prose">
-        Saving any change here returns this run to a draft and clears who
-        approved it. Nothing can be submitted on a yes given to a different
-        payload.
+        Saving any change here changes the payload this run would send. Read
+        the plan again before you run it — a yes given to a different payload
+        is not a yes to this one.
       </Text>
 
       {error && (
@@ -757,8 +755,8 @@ export function RunPlanEditor({
             prompt plus a description plus tags, and the only thing that could
             use one rendered all fourteen at once. Choosing here does not save
             and does not submit — the prompt lands as text a person reads,
-            changes and approves, which is where hard rule #2 has always put
-            the decision.
+            changes and then says to send, which is where hard rule #2 has
+            always put the decision.
 
             Offered whatever this run binds. Whether a template needs a cast is
             a property of its prose — one built from blocks alone needs none —
@@ -875,8 +873,8 @@ export function RunPlanEditor({
           placeholder="What this run is for"
         />
         <Field.Description>
-          For a reader. It is part of the plan, so it is part of what an
-          approval names.
+          For a reader. It is part of the plan, so it is part of what goes
+          out.
         </Field.Description>
       </Field.Root>
 

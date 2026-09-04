@@ -8,11 +8,10 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../apis/studio", () => ({
-  approveRun: vi.fn(),
   submitRun: vi.fn(),
 }));
 
-import { approveRun, submitRun } from "../../apis/studio";
+import { submitRun } from "../../apis/studio";
 import { ApiError } from "../../apis/client";
 import { InFlightBar, RunBar, RunPlan } from "./RunPlan";
 import type { RunRecord, RunSend } from "../../types";
@@ -24,7 +23,7 @@ import type { RunRecord, RunSend } from "../../types";
  * nobody notices: that a reconstructed plan says so, that an image's provenance
  * is drawn rather than reduced back to the field name — which is all `bindings`
  * could ever say — and that the one control leading to money takes two presses
- * and writes an approval before it sends anything.
+ * and calls submit, and nothing before it.
  */
 
 afterEach(cleanup);
@@ -57,9 +56,6 @@ function record(over: Partial<RunRecord> = {}): RunRecord {
     bindings: {},
     sends: [],
     plan: null,
-    plan_digest: "sha256:abc",
-    approval: null,
-    stale: false,
     payload: { prompt: null, request: null, response: null },
     ...over,
   } as RunRecord;
@@ -177,24 +173,20 @@ describe("the plan", () => {
 });
 
 /**
- * **The control that spends money — one act, two presses, and no dialog.**
+ * **The control that spends money — one act, two presses, no dialog, and no
+ * approve step.**
  *
  * The app could not submit at all until generation moved into the API, and when
  * it could, it asked twice: a dialog to approve, then a separate Submit button.
- * That was modelled on `runs approve` + `runs submit`, but the CLI's ordinary
- * gesture is `studio run`, which drafts, approves and submits in one — so the
- * page was asking for the same yes under two words, and a second confirm on the
- * thing that matters is what teaches somebody to click through the first.
- *
- * **Nothing mechanical was dropped with it**, and these cases are what says so:
- * the approval row is still written, with the digest of the payload the page is
- * rendering, and a refusal of it sends nothing. The old suite's argument about
- * the states the Submit button must be absent from is answered structurally now
- * — a run that has gone out renders no button at all.
+ * Then one press that wrote an approval and submitted. Decision 2026-09-04
+ * removed the approval itself: the press calls `submitRun` and nothing before
+ * it, because a recorded yes was never a stronger claim than the press, and the
+ * payload is on the page. The old suite's argument about the states the Submit
+ * button must be absent from is answered structurally — a run that has gone
+ * out renders no button at all.
  */
 describe("the run bar", () => {
   const bar = { onRan: vi.fn(), onReload: vi.fn() };
-  const approve = vi.mocked(approveRun);
   const submit = vi.mocked(submitRun);
 
   /**
@@ -250,61 +242,37 @@ describe("the run bar", () => {
 
     press(1);
 
-    expect(approve).not.toHaveBeenCalled();
     expect(submit).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: /Press again/ })).toBeTruthy();
   });
 
-  it("approves the payload on screen, then submits it, in that order", async () => {
+  it("submits the payload on screen on the second press, and nothing else", async () => {
     /**
-     * **The digest is the one off the record this page loaded** — never
-     * recomputed here. `plan_digest` has had three implementations in this
-     * repository and one of them silently disagreed; a client that derived its
-     * own would be a fourth.
+     * One call. There is no approve in front of it and no digest to send: the
+     * API takes a draft straight to the provider, and the press is the act.
      */
-    const order: string[] = [];
     const sent = record({ status: "running" });
-    approve.mockImplementation(async () => {
-      order.push("approve");
-      return record({ status: "approved" });
-    });
-    submit.mockImplementation(async () => {
-      order.push("submit");
-      return sent;
-    });
+    submit.mockResolvedValue(sent);
 
     const onRan = vi.fn();
-    render(
-      <RunBar
-        run={record({ status: "draft", plan_digest: "sha256:abc" })}
-        {...bar}
-        onRan={onRan}
-      />,
-    );
+    render(<RunBar run={record({ status: "draft" })} {...bar} onRan={onRan} />);
 
     press(2);
 
-    await waitFor(() => expect(order).toEqual(["approve", "submit"]));
-    expect(approve).toHaveBeenCalledWith("run-1", "sha256:abc");
-    expect(onRan).toHaveBeenCalledWith(sent);
+    await waitFor(() => expect(onRan).toHaveBeenCalledWith(sent));
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(submit).toHaveBeenCalledWith("run-1");
   });
 
-  it("sends nothing when the approval is refused, and says why inline", async () => {
+  it("says why inline when the API refuses, and re-reads the run", async () => {
     /**
-     * The failure hard rule #2 names, and the reason the digest exists: the plan
-     * moved after this page drew it — in another tab, or from a terminal — so
-     * the yes on offer is a yes to something nobody here has read.
-     *
      * **The API's own sentence, not its code.** `support.structured` answers
-     * both; printing `stale_digest` at a person is what the `code`/`message`
-     * split exists to stop. The code only decides what to add.
+     * both; printing a code at a person is what the `code`/`message` split
+     * exists to stop. And a refusal means the record this page holds may be
+     * behind — sent from another tab, or a terminal — so it is re-read.
      */
-    approve.mockRejectedValue(
-      new ApiError(
-        "The plan changed after it was approved.",
-        409,
-        "stale_digest",
-      ),
+    submit.mockRejectedValue(
+      new ApiError("run run-1 is running; it has already been sent.", 409, "conflict"),
     );
     const onReload = vi.fn();
     render(
@@ -314,11 +282,10 @@ describe("the run bar", () => {
     press(2);
 
     await waitFor(() =>
-      expect(screen.getByText(/changed after it was approved/)).toBeTruthy(),
+      expect(screen.getByText(/already been sent/)).toBeTruthy(),
     );
-    expect(submit).not.toHaveBeenCalled();
     expect(onReload).toHaveBeenCalled();
-    expect(screen.queryByText("stale_digest")).toBeNull();
+    expect(screen.queryByText("conflict")).toBeNull();
   });
 
   it("offers no run at all once one has gone out", () => {
@@ -333,50 +300,17 @@ describe("the run bar", () => {
     expect(screen.queryByRole("button", { name: /run/i })).toBeNull();
   });
 
-  it("keeps saying who approved a run after it went out", () => {
-    render(
-      <RunBar
-        run={record({
-          status: "succeeded",
-          approval: {
-            by: "sub-1",
-            at: "2026-08-20T00:00:00Z",
-            digest: "sha256:abc",
-            via: "relayed",
-          },
-        })}
-        {...bar}
-      />,
-    );
-
-    expect(screen.getByText(/Approved by sub-1/)).toBeTruthy();
-    // A relayed yes was given elsewhere and passed on by an agent. It reads as
-    // the weaker claim it is, or the row is indistinguishable from a person
-    // pressing the button.
-    expect(screen.getByText(/Relayed/)).toBeTruthy();
-  });
-
-  it("names the backfill rather than pretending a person approved it", () => {
+  it("renders nothing at all for a run that has gone out", () => {
     /**
-     * Nobody approved a run made last August in a browser. The stamp names
-     * the mechanism so a future reader can tell the difference, which a row
-     * carrying somebody's sub could not.
+     * There used to be an approval note here — who said yes, when, and whether
+     * it was relayed. No approval is recorded any more, so there is nothing to
+     * say; the fact table above already carries the timestamps.
      */
-    render(
-      <RunBar
-        run={record({
-          status: "succeeded",
-          approval: {
-            by: "backfill",
-            at: "2026-08-01T00:00:00Z",
-            digest: "sha256:abc",
-          },
-        })}
-        {...bar}
-      />,
+    const { container } = render(
+      <RunBar run={record({ status: "succeeded" })} {...bar} />,
     );
 
-    expect(screen.getByText(/before approvals were recorded/)).toBeTruthy();
+    expect(container.textContent).toBe("");
   });
 
   /* Whether the bar is drawn at all while the plan is being edited is the page's

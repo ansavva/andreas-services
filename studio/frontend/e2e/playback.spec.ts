@@ -428,7 +428,7 @@ test("the current tile's selection ring is not clipped", async ({ page }) => {
  * result sits in the right-hand column beside what produced it, the way the
  * provider's own playground reads. Below it there is one column and the OUTPUT
  * LEADS — the run page used to stack input first, so on a phone the thing a
- * person opened the page for sat under a fact table, an approval bar and every
+ * person opened the page for sat under a fact table, a run bar and every
  * binding the run had.
  *
  * The output section is first in the DOM at both widths, which is what makes

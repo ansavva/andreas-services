@@ -28,7 +28,7 @@ import { PageBar } from "../components/layout/PageBar";
 import { Backlinks } from "../components/common/Backlinks";
 import { EntityRow } from "../components/entity/EntityRow";
 import { OutputPanel } from "../components/media/OutputPanel";
-import { ApprovalNote, ArmedButton, InFlightBar, RunBar, RunPlan } from "../components/run/RunPlan";
+import { ArmedButton, InFlightBar, RunBar, RunPlan } from "../components/run/RunPlan";
 import { PromotePanel } from "../components/run/PromotePanel";
 import { useRunAgain } from "../components/run/RunAgainButton";
 import { formatCost } from "../utils/cost";
@@ -114,9 +114,9 @@ export function RunPage() {
    * Whether the plan is being edited rather than read.
    *
    * A mode rather than an always-editable form, because this page is read far
-   * more often than it is written and a run's plan is the thing an approval
-   * names — a page whose prompt sits in a text box invites a keystroke into the
-   * document somebody is about to say yes to.
+   * more often than it is written and a run's plan is the thing a person is
+   * about to send — a page whose prompt sits in a text box invites a keystroke
+   * into the document somebody is about to say yes to.
    */
   /**
    * **Opened in the editor when whoever navigated here said so.** A draft made
@@ -176,10 +176,8 @@ export function RunPage() {
    * The route answers with the whole updated run, and a re-GET would re-sign
    * every send and every output URL to show one badge changing.
    *
-   * **Neither approve nor submit comes through here**: those are one act
-   * performed inside `RunBar`, which owns its own busy and error state because
-   * the two calls it makes have to be told apart — a refusal on the first means
-   * nothing was sent.
+   * **Submit does not come through here**: `RunBar` owns that call and its
+   * own busy and error state.
    */
   const decide = useCallback(
     async (act: () => Promise<RunRecord>) => {
@@ -215,8 +213,8 @@ export function RunPage() {
    * Delete, armed in place inside the menu — `ItemActions`' own machine,
    * reused rather than copied. Only reachable while the run is unsubmitted
    * (a menu item, not the control, is what enforces that): nothing has been
-   * spent on a draft, discarded run or approved-but-unsent run, and a mis-click
-   * undoing one should cost nothing either.
+   * spent on a draft or a discarded run, and a mis-click undoing one should
+   * cost nothing either.
    */
   const runDelete = useArmed({
     onFire: async () => {
@@ -246,11 +244,11 @@ export function RunPage() {
    */
   const showEditor = editing && isUnsubmitted(data.status);
 
-  // A draft or an approved-not-yet-sent run: the primary is `RunBar` whole —
-  // its own button and its own failure alert, so nothing else has to repeat
-  // that logic. Anything else that can still act on itself gets `Run again`
-  // as the primary and `Duplicate` behind the menu.
-  const canSubmit = data.status === "draft" || data.status === "approved";
+  // A draft: the primary is `RunBar` whole — its own button and its own
+  // failure alert, so nothing else has to repeat that logic. Anything else
+  // that can still act on itself gets `Run again` as the primary and
+  // `Duplicate` behind the menu.
+  const canSubmit = data.status === "draft";
 
   return (
     <>
@@ -330,25 +328,20 @@ export function RunPage() {
         }}
       />
 
-      {/* The run-again failure and the approval note both belong to the
-          submitted side of this page — the primary above only holds the
-          button, so what it would have shown beside itself lives here. */}
-      {!canSubmit && (
-        <>
-          {runAgain.failure && (
-            <Alert.Root intent="danger">
-              <Alert.Title>Could not create the run</Alert.Title>
-              <Alert.Description>{runAgain.failure}</Alert.Description>
-            </Alert.Root>
-          )}
-          <ApprovalNote run={data} />
-        </>
+      {/* The run-again failure belongs to the submitted side of this page —
+          the primary above only holds the button, so what it would have shown
+          beside itself lives here. */}
+      {!canSubmit && runAgain.failure && (
+        <Alert.Root intent="danger">
+          <Alert.Title>Could not create the run</Alert.Title>
+          <Alert.Description>{runAgain.failure}</Alert.Description>
+        </Alert.Root>
       )}
 
       {/* **Split like the provider's own playground, and output-first when it
           cannot split.** What made the run on the left, what came back on the
           right. Stacked, the thing a person opened the page for would sit below
-          a fact table, an approval bar and whatever bindings there were.
+          a fact table, a run bar and whatever bindings there were.
 
           The output section is FIRST IN THE DOM on purpose. Below `lg` that is
           the whole mechanism: one column, result at the top, no `order`
@@ -561,8 +554,8 @@ export function RunPage() {
                 )}
 
                 {/* **`Run`/`Run again` moved to the page bar's `primary`,
-                    and the failure or approval note that used to sit beside
-                    them moved with the concept rather than the markup — see
+                    and the failure that used to sit beside them moved with
+                    the concept rather than the markup — see
                     the block right after `PageBar` above.** Neither is
                     redrawn here: this used to be where `RunBar` and
                     `RunAgainButton` sat, and both are one control now instead
@@ -638,11 +631,11 @@ export function RunPage() {
                   <Text variant="caption" tone="muted">
                     {sent
                       ? "Exactly what went to the provider and exactly what came back. Studio stores these and decodes neither."
-                      : "Nothing has gone to the provider yet. What follows is what WOULD go, rebuilt from the plan every time you open this — it is what an approval is of. The stored documents below are written at submit time."}
+                      : "Nothing has gone to the provider yet. What follows is what WOULD go, rebuilt from the plan every time you open this — it is what you are saying yes to. The stored documents below are written at submit time."}
                   </Text>
 
                   {/* **A draft's payload, so it can be read before it is
-                      approved.** Hard rule #2 asks a person to approve the full
+                      sent.** Hard rule #2 asks a person to read the full
                       payload and the page could not show one: a draft has no
                       `request.json`, because that records what was actually
                       sent. Built by the API from the same allowlist `submit`
@@ -725,8 +718,8 @@ function isPromotable(asset: RunAsset): boolean {
  * decision stays with the person.
  *
  * Drafts and discarded runs are not twins: nothing was sent for either, so
- * neither cost anything. An approved one is counted — it is cleared to send, and
- * two runs racing to spend on one payload is exactly the case this is for.
+ * neither cost anything. A submitted one is counted, and two runs racing to
+ * spend on one payload is exactly the case this is for.
  *
  * It clears itself on an edit without being told to: the fingerprint moves with
  * the plan, so the query asks about a payload nothing else has.

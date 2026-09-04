@@ -302,8 +302,7 @@ def created(bearer: str, library: str, project: str, entry: dict) -> None:
 
     - `created-run` is the 201 body, which is **not** a run envelope. It carries
       the handful of values the caller could not have known — the id, the
-      `plan_digest` the next call approves against, the fingerprint — and
-      nothing else.
+      fingerprint — and nothing else.
     - `created-run-record` is `GET /api/runs/<id>` on that same draft, which is
       what the app reads the moment it navigates to the run it just made.
 

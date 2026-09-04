@@ -18,8 +18,7 @@ import type { ModelEntry, RunPlan, RunRecord, RunSend } from "../../types";
  * What these hold up is the part a screenshot cannot: that **only the half that
  * moved is written**. Each `PATCH` is a full replace of its half, so a save that
  * sent both every time would rewrite the send rows of a run whose prompt was the
- * only thing touched — and every rewrite of either half clears the approval, so
- * the cost of the extra call is a yes withdrawn for nothing.
+ * only thing touched — a write over rows nobody changed.
  */
 
 const patchRunPlan = vi.fn();
@@ -140,9 +139,6 @@ function draft(over: Partial<RunRecord> = {}): RunRecord {
       params: { aspect_ratio: "9:16" },
       note: null,
     },
-    plan_digest: "sha256:abc",
-    approval: null,
-    stale: false,
     payload: { prompt: null, request: null, response: null },
     ...over,
   } as RunRecord;
@@ -339,10 +335,10 @@ describe("editing a plan", () => {
     expect(parsed.action).toBe("he turns");
   });
 
-  it("says that saving withdraws the approval, before anything is typed", () => {
+  it("says to read the plan again before sending, before anything is typed", () => {
     editor();
 
-    expect(screen.getByText("Withdraws the approval")).toBeTruthy();
+    expect(screen.getByText("Read it again before sending")).toBeTruthy();
   });
 });
 
@@ -546,7 +542,7 @@ describe("adding a character's references", () => {
      * is the first character bound to THIS run — because a slug is an attribute
      * a rename swaps, and every record here names entity ids for that reason.
      *
-     * Both halves are saved: `plan_digest` has to cover what reaches the model,
+     * Both halves are saved: the fingerprint has to cover what reaches the model,
      * so the API expands at save; the template survives so the next edit opens
      * onto what was written rather than onto finished prose.
      */

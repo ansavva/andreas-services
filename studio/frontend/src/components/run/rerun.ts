@@ -5,7 +5,7 @@ import type { CreateRunBody, RunRecord } from "../../types";
  *
  * **Byte-identical on purpose, and that is the whole design.** No provenance
  * note is appended and nothing is re-labelled, because `note` is inside the
- * plan and the plan is inside `plan_digest` and `fingerprint` — so a note saying
+ * plan and the plan is inside `fingerprint` — so a note saying
  * "re-run of X" would make every re-run a different submission, and the
  * duplicate warning that reads `?fingerprint=` would never fire on the one case
  * it exists for. What distinguishes the attempts is that they are two runs, with
@@ -17,7 +17,7 @@ import type { CreateRunBody, RunRecord } from "../../types";
  * preserves it through a copy.
  *
  * Nothing here decides to spend. It builds a draft; the armed Run gesture on the
- * new run's page is the approval, and the submit after it is the money.
+ * new run's page is the act, and that is the money.
  */
 export function rerunBodyOf(run: RunRecord): CreateRunBody {
   return {
@@ -40,7 +40,7 @@ export function rerunBodyOf(run: RunRecord): CreateRunBody {
  * the three fields it was authored with; all of that is derived — the API
  * re-derives `source` from where the node sits, and re-signs the URL — so
  * sending it back would be asserting a provenance this app did not work out.
- * The three that remain are exactly what `plan_digest` hashes.
+ * The three that remain are exactly what the fingerprint hashes.
  *
  * A run that predates sends has only `bindings`, and the fallback emits that map
  * instead: the API reads it through `sends_from_bindings`, with the role left

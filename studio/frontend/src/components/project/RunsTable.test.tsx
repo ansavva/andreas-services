@@ -75,7 +75,7 @@ it("asks for drafts when no status is named, because the control says Any status
   );
 });
 
-it("shows a project holding nothing but unapproved payloads", async () => {
+it("shows a project holding nothing but unsent payloads", async () => {
   library([run({ id: "run-waiting", status: "draft" })]);
   open();
 

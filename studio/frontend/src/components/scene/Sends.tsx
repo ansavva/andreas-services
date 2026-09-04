@@ -241,8 +241,8 @@ export function Frame({
    *
    * **Every picture on this board came from somewhere and none of them said
    * where.** A sample, a start frame, a reference and the clip are all run
-   * output, and the run holds the prompt, the payload and the approval that
-   * made them — the things you want the moment a tile looks wrong. The board
+   * output, and the run holds the prompt and the payload that made them — the
+   * things you want the moment a tile looks wrong. The board
    * had one link, on the shot, so a sample that came out badly was a dead end.
    */
   run?: string | null;

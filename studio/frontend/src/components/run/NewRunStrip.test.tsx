@@ -68,7 +68,6 @@ function created(over: Partial<CreatedRun> = {}): CreatedRun {
     status: "draft",
     folder: "node-run",
     payload: { request: null, response: null, prompt: null },
-    plan_digest: "d1",
     fingerprint: "f1",
     sends: [],
     created: "2026-08-31T00:00:00Z",

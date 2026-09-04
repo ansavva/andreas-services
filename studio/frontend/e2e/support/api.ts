@@ -126,7 +126,7 @@ const imageRun = fixture<
   }
 >("run-image");
 /** The 201 of `POST /api/runs` — not an envelope. See `CreatedRun`. */
-const createdRun = fixture<{ id: string; plan_digest: string }>("created-run");
+const createdRun = fixture<{ id: string; fingerprint: string }>("created-run");
 /** `GET /api/runs/<id>` on that same draft, which is what the app reads next. */
 const createdRunRecord = fixture<Run>("created-run-record");
 const models = fixture<{
@@ -345,7 +345,6 @@ export const RUN: Record<string, unknown> = {
   bindings: {},
   sends: [],
   plan: null,
-  approval: null,
   scenes: [],
   characters: [],
   outputs: [
@@ -425,19 +424,15 @@ async function written(
   path: string,
   body: Record<string, unknown>,
 ): Promise<boolean> {
-  // A new draft. The 201 is not an envelope — it carries the id, the digest the
-  // next call approves against, and little else.
+  // A new draft. The 201 is not an envelope — it carries the id, the
+  // fingerprint, and little else.
   if (method === "POST" && path.endsWith("/api/runs")) {
     await json(route, createdRun, 201);
     return true;
   }
 
-  // The two halves of the one armed press. Both answer with the run, moved on:
-  // `RunBar` swaps what submit returns straight into the page.
-  if (method === "POST" && path.endsWith("/approve")) {
-    await json(route, { ...runFor(runIdIn(path)), status: "approved" });
-    return true;
-  }
+  // The one armed press. Answers with the run, moved on: `RunBar` swaps what
+  // submit returns straight into the page. No approve route — there is none.
   if (method === "POST" && path.endsWith("/submit")) {
     await json(route, {
       ...runFor(runIdIn(path)),
