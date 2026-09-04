@@ -512,6 +512,25 @@ def list_runs():
     per-machine file to answer because the alternative was a `GET
     /api/runs/<id>` per candidate. Projected onto the listing row it is one
     query — and unlike the file it sees a second machine, and a colleague.
+
+    **`?view=feed` expands the page; nothing else does.** The listing row is a
+    deliberate projection — status, model, kind, a thumbnail — and every
+    consumer of it (the runs grid, the CLI's `runs list`, the fingerprint
+    query above) is cheap *because* it never reads an envelope. The feed is the
+    one screen that wants the whole run per row without a fetch per row, so it
+    asks, and gets `feed_row`'s shape: the plan, every send and every output as
+    presigned assets, the cast by name. Not the default, because a default that
+    made the duplicate-submission check read fifty envelopes and sign two
+    hundred URLs to answer a yes/no would be paying the feed's bill on every
+    call. The page is clamped at `config.max_feed_rows` and says so in `cursor`.
+
+    **`?q=` is a prompt search, and the catalog has no text index.** It reads
+    envelopes for the rows the cheap filters left, matches the plan's prompt
+    case-insensitively, and keeps the page honest by bounding how far one call
+    looks: `_searched` scans at most `config.max_search_scan` rows past the
+    cursor and hands back what matched, so a query matching nothing still ends
+    in a bounded number of calls rather than one call reading the project.
+    `cursor` is opaque in both modes and means "the next row to look at".
     """
     held = support.memberships()
     support.member_of(g.library, held)
@@ -546,21 +565,27 @@ def list_runs():
         runs = [run for run in runs
                 if run.get("status") not in catalog.HIDDEN_RUN_STATUSES]
 
+    feed = args.get("view") == "feed"
+    if args.get("view") not in (None, "", "feed"):
+        raise ValidationError("view must be 'feed' when given")
     limit = _limit(args.get("limit"))
+    if feed:
+        limit = min(limit, config.max_feed_rows()) if limit else config.max_feed_rows()
     offset = _limit(args.get("cursor")) or 0
-    window = runs[offset : offset + limit] if limit else runs[offset:]
 
-    thumbs = catalog.records(
-        [run["thumb"] for run in window if isinstance(run.get("thumb"), str)]
-    )
-    for run in window:
-        node = thumbs.get(run.get("thumb") or "")
-        if node and node.get("blob_key"):
-            run["thumb"] = {"node": node["node_id"], "url": s3.presign(node["blob_key"])}
-        elif "thumb" in run:
-            run["thumb"] = None
+    query = (args.get("q") or "").strip()
+    envelopes: dict[str, dict] = {}
+    if query:
+        window, next_offset, envelopes = _searched(runs, query, offset, limit)
+    else:
+        window = runs[offset : offset + limit] if limit else runs[offset:]
+        next_offset = offset + len(window)
 
-    next_offset = offset + len(window)
+    if feed:
+        window = feed_rows(window, envelopes)
+    else:
+        _thumbs(window)
+
     return jsonify(
         {"runs": window, "cursor": str(next_offset) if next_offset < len(runs) else None}
     ), 200
@@ -576,6 +601,191 @@ def _limit(raw) -> int:
     if value < 0:
         raise ValidationError("limit and cursor must not be negative")
     return value
+
+
+def _thumbs(window: list[dict]) -> None:
+    """The plain listing's one asset: the first output, signed, in place."""
+    thumbs = catalog.records(
+        [run["thumb"] for run in window if isinstance(run.get("thumb"), str)]
+    )
+    for run in window:
+        node = thumbs.get(run.get("thumb") or "")
+        if node and node.get("blob_key"):
+            run["thumb"] = {"node": node["node_id"], "url": s3.presign(node["blob_key"])}
+        elif "thumb" in run:
+            run["thumb"] = None
+
+
+# ─────────────────────────── the feed projection ───────────────────────────
+
+
+def _is_envelope(row: dict) -> bool:
+    """Whether a listing entry is already the record, not the projection.
+
+    `?character=` answers with envelopes (one `by-sk` query, one batched read)
+    while `?project=` answers with listing rows, and the feed has to draw both
+    the same. `folder` is on every envelope and never on a row; `plan` would
+    not do, because a `None` attribute is REMOVEd and an envelope with no plan
+    has no key for it.
+    """
+    return "folder" in row
+
+
+def _envelopes(rows: list[dict], known: dict[str, dict]) -> dict[str, dict]:
+    """The records behind a set of rows — read once, one batch per hundred."""
+    found = dict(known)
+    for row in rows:
+        if _is_envelope(row):
+            found.setdefault(row["id"], row)
+    wanted = [row["id"] for row in rows if row["id"] not in found]
+    if wanted:
+        found.update(catalog.entities_by_id(KIND, wanted))
+    return found
+
+
+def prompt_text(plan) -> str:
+    """What a plan's prompt SAYS, as one case-folded string, for matching.
+
+    A prompt is prose or a structured document (`studio-media-prompt` writes
+    JSON: camera, subject, action, …). Only the string leaves are searched —
+    the keys are the schema's words, and matching on `camera` would match every
+    structured prompt ever written. `plan` is studio's own authored half, so
+    reading it is not the decoding `request.json` is protected from.
+    """
+    parts: list[str] = []
+
+    def walk(value) -> None:
+        if isinstance(value, str):
+            parts.append(value)
+        elif isinstance(value, dict):
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(plan.get("prompt") if isinstance(plan, dict) else None)
+    return " ".join(parts).casefold()
+
+
+def _searched(rows: list[dict], query: str, offset: int, limit: int):
+    """The rows past `offset` whose prompt contains `query`, and where to look next.
+
+    **Every call advances.** The scan is bounded by `config.max_search_scan`,
+    so the next cursor is at least one row on and at most the scan's length on,
+    whether or not anything matched — which is what makes paging a rare match
+    terminate. A page may therefore come back shorter than `limit`, or empty,
+    with a cursor still set; that is "keep going", not "nothing more". When
+    `limit` fills mid-scan, the cursor points just past the last row returned so
+    nothing is skipped and nothing is repeated.
+
+    The envelopes read here are handed back so a `view=feed` over the same
+    page does not read them twice.
+    """
+    scan = rows[offset : offset + config.max_search_scan()]
+    envelopes = _envelopes(scan, {})
+    needle = query.casefold()
+
+    matched: list[dict] = []
+    for index, row in enumerate(scan):
+        record = envelopes.get(row["id"])
+        if record is None or needle not in prompt_text(record.get("plan")):
+            continue
+        matched.append(row)
+        if limit and len(matched) == limit:
+            return matched, offset + index + 1, envelopes
+    return matched, offset + len(scan), envelopes
+
+
+def feed_rows(window: list[dict], known: dict[str, dict]) -> list[dict]:
+    """The feed's page: one `feed_row` per listing entry, read in batches.
+
+    Four reads for a page rather than four per row: one batched read for the
+    envelopes, one `sends` query per run (the one thing that cannot batch — a
+    run's sends are its own partition), one batched read over every node the
+    page points at, one batched read for the cast's names. Signing is local.
+    """
+    envelopes = _envelopes(window, known)
+    send_lists = {row["id"]: catalog.sends(row["id"]) for row in window}
+
+    node_ids: list[str] = []
+    for row in window:
+        record = envelopes.get(row["id"]) or {}
+        node_ids += [entry["node"] for entry in send_lists[row["id"]]]
+        node_ids += record.get("outputs") or []
+    nodes = catalog.records(node_ids)
+
+    drafts = [
+        _feed_row(row, envelopes.get(row["id"]) or {}, send_lists[row["id"]], nodes)
+        for row in window
+    ]
+    cast_ids = [member for entry in drafts for member in entry["cast"]]
+    names = catalog.entities_by_id(catalog.ENTITY_CHARACTER, cast_ids)
+    for entry in drafts:
+        entry["cast"] = [
+            {"id": char_id, "name": (names.get(char_id) or {}).get("name")}
+            for char_id in entry["cast"]
+        ]
+    return drafts
+
+
+def _feed_row(row: dict, record: dict, send_entries: list[dict], nodes: dict) -> dict:
+    """One feed row. **An allowlist**, like every view in this service.
+
+    Everything the feed draws from a single list call and nothing it does not:
+    the authored half (`plan`), what went in (`sends`, each with its role,
+    provenance and a signed URL), what came out (`outputs`, all of them, signed),
+    the timings a row needs to say "sent 12s ago" and count up while it runs,
+    the cost, and who it is about. Nothing about the approval and no digest —
+    those are the run page's, and a row that carried them would have to be kept
+    in step with a gate the feed never operates.
+
+    `cast` is left as ids here and named by `feed_rows`, which reads the names
+    once for the page. It is what `_cast` answers — the record's own
+    `characters`, else the owners of what it bound — computed from the sends'
+    recorded provenance rather than by walking each node's ancestry, because
+    the page already holds that answer.
+    """
+    sends = [
+        {**entry,
+         "source": entry.get("source")
+         or _source_for(entry["node"], nodes.get(entry["node"])),
+         **support.asset(entry["node"], nodes.get(entry["node"]))}
+        for entry in send_entries
+    ]
+    outputs = [support.asset(node_id, nodes.get(node_id))
+               for node_id in record.get("outputs") or []]
+
+    cast = list(record.get("characters") or [])
+    if not cast:
+        for entry in sends:
+            owner = (entry.get("source") or {}).get("character")
+            if owner and owner not in cast:
+                cast.append(owner)
+
+    first = next((asset for asset in outputs if asset.get("url")), None)
+    return {
+        "id": row["id"],
+        "lib": row.get("lib") or record.get("lib"),
+        "project": row.get("project") or record.get("project"),
+        "status": record.get("status") or row.get("status"),
+        "kind": record.get("kind") or row.get("kind"),
+        "model": record.get("model") or row.get("model"),
+        "engine": record.get("engine"),
+        "created": row.get("created") or record.get("created"),
+        "updated": record.get("updated"),
+        "submitted": record.get("submitted"),
+        "completed": record.get("completed"),
+        "cost": record.get("cost"),
+        "error": record.get("error"),
+        "fingerprint": record.get("fingerprint") or row.get("fingerprint"),
+        "plan": record.get("plan"),
+        "characters": record.get("characters") or [],
+        "cast": cast,
+        "sends": sends,
+        "outputs": outputs,
+        "thumb": {"node": first["node"], "url": first["url"]} if first else None,
+    }
 
 
 def _run(run_id: str, held: dict) -> dict:

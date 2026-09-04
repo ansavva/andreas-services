@@ -256,3 +256,31 @@ def max_image_bytes():
     minutes of wall clock — which is the same reason the sheet job is there.
     """
     return int(os.environ.get("STUDIO_MAX_IMAGE_BYTES", str(32 * 1024 * 1024)))
+
+
+def max_feed_rows():
+    """How many runs one `GET /api/runs?view=feed` page will expand.
+
+    A feed row is not a listing row: it carries the plan, every send and every
+    output as presigned assets, and the cast's names. Signing is local and
+    costs nothing measurable — ~0.04 ms a URL — but the sends are one query
+    per run and the envelopes one batched read per hundred, so a page is a
+    page of catalog reads. The plain listing is unbounded because it reads one
+    partition; this view **clamps** a larger `limit` and says so with `cursor`
+    rather than refusing, for the same reason the reel truncates: a page of a
+    project is allowed to be shorter than the project.
+    """
+    return int(os.environ.get("STUDIO_MAX_FEED_ROWS", "50"))
+
+
+def max_search_scan():
+    """How many runs one `GET /api/runs?q=` call will read looking for a match.
+
+    The catalog has no text index, so a prompt search reads envelopes and
+    filters in memory. Unbounded, a query matching nothing would read every
+    run in the project in one call; bounded, each call advances the cursor by
+    at most this many rows and hands back whatever matched, so a client pages
+    to the end in `ceil(runs / scan)` calls however rare the match. Two batched
+    reads' worth by default.
+    """
+    return int(os.environ.get("STUDIO_MAX_SEARCH_SCAN", "200"))
