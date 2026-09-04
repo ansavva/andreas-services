@@ -843,7 +843,7 @@ without a fetch per row, so it asks with **`?view=feed`** and each row becomes:
   "engine": "studio-media-gpt-image-2", "model": "openai/gpt-image-2",
   "created": "…", "updated": "…", "submitted": "…", "completed": null,
   "cost": { "currency": null, "amount": null, "predict_time": 98.2 },
-  "error": null, "fingerprint": "sha256:…",
+  "error": null, "fingerprint": "sha256:…",          // present or absent, like the listing row — never null
   "plan": { "version": 1, "origin": "authored", "prompt": "…", "params": { "aspect_ratio": "3:4" } },
   "characters": ["char-…"],
   "cast": [{ "id": "char-…", "name": "<name>" }],
