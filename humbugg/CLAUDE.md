@@ -42,7 +42,7 @@ humbugg/
 │   ├── Humbugg.Api/             # controllers → services → DynamoDB repositories
 │   └── Humbugg.Api.Tests/       # matching and domain tests
 ├── marketing/                  # Marketing site — React Router v7 SSR (www.humbugg.com)
-│   ├── app/                     # routes, including the legacy → app redirects
+│   ├── app/                     # routes (React Router file conventions)
 │   ├── src/                     # pages, Layout, config
 │   └── vite.config.ts
 ├── app/                        # Product app — Expo + Expo Router (app.humbugg.com)
