@@ -594,7 +594,7 @@ function Prompt({ row }: { row: RunFeedRow }) {
   const text = promptText(row.plan?.prompt);
   if (!text) {
     return (
-      <Text variant="body" tone="muted">
+      <Text variant="body" tone="muted" className="shrink-0">
         {row.plan ? "No prompt." : "This run predates the plan."}
       </Text>
     );
@@ -602,7 +602,12 @@ function Prompt({ row }: { row: RunFeedRow }) {
   return (
     <Text
       variant="body"
-      className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words"
+      // **`shrink-0`, and it is load-bearing.** `overflow-y-auto` makes this a
+      // scroll container, which sets its `min-height` to 0 instead of `auto` —
+      // so as a flex child of a rail whose content is taller than the lightbox,
+      // it is the one item flexbox can shrink, and it shrank to nothing. The
+      // prompt was in the DOM at zero height on every opened run.
+      className="max-h-48 shrink-0 overflow-y-auto whitespace-pre-wrap break-words"
     >
       {text}
     </Text>

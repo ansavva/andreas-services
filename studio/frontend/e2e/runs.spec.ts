@@ -235,8 +235,15 @@ test("a tile opens the run in a lightbox, collapses the rail, and Esc returns to
   await expect(page).toHaveURL(new RegExp(`/p/${PROJECT}/r/${IMAGE_RUN}\\?tab=runs$`));
   await expect(lightbox(page)).toBeVisible();
   await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
-  // The rail draws the run: its status, its model, its cast.
+  // The rail draws the run: its prompt, its status, its model, its cast.
   const rail = lightbox(page).getByRole("complementary", { name: "Run details" });
+  // **`toBeVisible`, and it is not a formality.** The prompt scrolls, which
+  // makes it a scroll container, which gives it `min-height: 0` — so it was the
+  // one flex child a rail taller than the lightbox could shrink, and it shrank
+  // to zero on every opened run. The text was in the DOM the whole time; only
+  // its box was gone, which is exactly what this assertion reads and
+  // `toHaveText` would not.
+  await expect(rail.getByText(/A studio photograph of the man/)).toBeVisible();
   await expect(rail.getByText("succeeded")).toBeVisible();
   await expect(rail.getByText("openai/gpt-image-2")).toBeVisible();
   await expect(rail.getByRole("link", { name: /jason/ })).toBeVisible();
