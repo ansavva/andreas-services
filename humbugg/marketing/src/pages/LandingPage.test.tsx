@@ -14,13 +14,13 @@ function renderAt(url: string) {
 }
 
 describe('LandingPage', () => {
-  it('leads with the pitch and sends the CTA to the app signup', () => {
+  it('leads with the pitch and sends the CTA to the app sign-in', () => {
     renderAt('/');
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('More wonder.');
     // The conversion path: this href silently regressing is the failure worth pinning.
     expect(screen.getByRole('link', { name: 'Create your exchange' })).toHaveAttribute(
       'href',
-      `${APP_ORIGIN}/signup`,
+      `${APP_ORIGIN}/login`,
     );
   });
 

@@ -27,7 +27,7 @@ export function Shell({ children, compact = false }: { children: ReactNode; comp
                 unreachable from a phone entirely, because the footer carries only policy links. */}
             <Link className="nav-link inline-flex" to="/pricing">Pricing</Link>
             <a className="nav-link hidden sm:inline-flex" href={appUrl('/login')}>Sign in</a>
-            <a className={buttonClass()} href={appUrl('/signup')}>Start a group</a>
+            <a className={buttonClass()} href={appUrl('/login')}>Start a group</a>
           </nav>
         </div>
       </header>

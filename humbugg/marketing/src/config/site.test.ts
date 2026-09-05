@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { APP_ORIGIN, CANONICAL_ORIGIN, appUrl, canonicalUrl, legacyAppPath } from './site';
+import { APP_ORIGIN, CANONICAL_ORIGIN, appUrl, canonicalUrl } from './site';
 
 describe('canonical site URLs', () => {
   it('default to the humbugg.com www host', () => {
@@ -12,26 +12,6 @@ describe('canonical site URLs', () => {
 describe('product app URLs', () => {
   it('default to the app subdomain', () => {
     expect(APP_ORIGIN).toBe('https://app.humbugg.com');
-    expect(appUrl('/signup')).toBe('https://app.humbugg.com/signup');
-  });
-});
-
-describe('legacyAppPath', () => {
-  it('keeps /login and /join one-to-one', () => {
-    expect(legacyAppPath('/login')).toBe('/login');
-    expect(legacyAppPath('/join/abc123')).toBe('/join/abc123');
-  });
-
-  it('sends the auth screens Managed Login removed to /login', () => {
-    expect(legacyAppPath('/signup')).toBe('/login');
-    expect(legacyAppPath('/confirm')).toBe('/login');
-    expect(legacyAppPath('/forgot-password')).toBe('/login');
-  });
-
-  it('drops the /app prefix the product app no longer uses', () => {
-    expect(legacyAppPath('/app')).toBe('/');
-    expect(legacyAppPath('/app/')).toBe('/');
-    expect(legacyAppPath('/app/settings')).toBe('/settings');
-    expect(legacyAppPath('/app/groups/abc123')).toBe('/groups/abc123');
+    expect(appUrl('/login')).toBe('https://app.humbugg.com/login');
   });
 });
