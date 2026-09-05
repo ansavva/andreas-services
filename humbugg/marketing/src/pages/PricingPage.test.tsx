@@ -74,7 +74,7 @@ describe('PricingPage', () => {
     renderWith();
     expect(screen.getByRole('link', { name: 'Start free' })).toHaveAttribute(
       'href',
-      `${APP_ORIGIN}/signup`,
+      `${APP_ORIGIN}/login`,
     );
     expect(screen.getByRole('link', { name: 'Upgrade an exchange' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Start Work' })).toBeInTheDocument();

@@ -22,7 +22,7 @@ describe('Shell', () => {
     // The product lives on another origin: these must be absolute anchors, never
     // react-router links that would resolve as marketing routes.
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', `${APP_ORIGIN}/login`);
-    expect(screen.getByRole('link', { name: 'Start a group' })).toHaveAttribute('href', `${APP_ORIGIN}/signup`);
+    expect(screen.getByRole('link', { name: 'Start a group' })).toHaveAttribute('href', `${APP_ORIGIN}/login`);
   });
 
   it('brands home and renders the page body', () => {

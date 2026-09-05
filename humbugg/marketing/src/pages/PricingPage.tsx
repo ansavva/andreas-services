@@ -148,7 +148,7 @@ function PlanColumn({ plan }: { plan: PlanCard }) {
       <div className="mt-8">
         <a
           className={buttonClass({ intent: featured ? 'primary' : 'secondary' })}
-          href={appUrl(plan.code === 'free' ? '/signup' : '/')}
+          href={appUrl(plan.code === 'free' ? '/login' : '/')}
         >
           {plan.code === 'free'
             ? 'Start free'

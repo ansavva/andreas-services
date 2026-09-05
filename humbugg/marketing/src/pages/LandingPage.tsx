@@ -40,7 +40,7 @@ export default function LandingPage() {
               Bring everyone together, collect wish lists, set thoughtful exclusions, and make a private draw in one calm place.
             </p>
             <div className="mt-9 flex flex-wrap gap-3">
-              <a className={buttonClass({ size: 'lg' })} href={appUrl('/signup')}>Create your exchange</a>
+              <a className={buttonClass({ size: 'lg' })} href={appUrl('/login')}>Create your exchange</a>
               <Button size="lg" intent="secondary" onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}>See how it works</Button>
             </div>
             <p className="mt-5 text-sm text-muted">Free to use · No credit card · Private assignments</p>
@@ -82,7 +82,7 @@ export default function LandingPage() {
       <section className="bg-primary text-primary-text">
         <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-8 px-5 py-16 sm:flex-row sm:items-center lg:px-8">
           <div><p className="text-sm font-semibold uppercase tracking-[.2em] text-primary-text/70">Ready when you are</p><h2 className="mt-2 font-heading text-3xl font-semibold sm:text-4xl">Make this year’s exchange feel effortless.</h2></div>
-          <a className={buttonClass({ intent: 'secondary', size: 'lg' })} href={appUrl('/signup')}>Start your group</a>
+          <a className={buttonClass({ intent: 'secondary', size: 'lg' })} href={appUrl('/login')}>Start your group</a>
         </div>
       </section>
     </Shell>
