@@ -56,17 +56,17 @@ humbugg/app/
 Paths are relative to `app.humbugg.com`. `(auth)` and `(protected)` are route
 **groups** — they add no path segment, they only decide what shares a layout.
 
-| File | Path | Was |
-| --- | --- | --- |
-| `src/app/(auth)/login.tsx` | `/login` | `/login` |
-| `src/app/auth/callback.tsx` | `/auth/callback` | — (new with Managed Login) |
-| `src/app/join/[groupId].tsx` | `/join/:groupId` | `/join/:groupId` |
-| `src/app/(protected)/index.tsx` | `/` | `/app` |
-| `src/app/(protected)/groups/[groupId].tsx` | `/groups/:id` | `/app/groups/:id` |
-| `src/app/(protected)/settings.tsx` | `/settings` | `/app/settings` |
+| File | Path |
+| --- | --- |
+| `src/app/(auth)/login.tsx` | `/login` |
+| `src/app/auth/callback.tsx` | `/auth/callback` |
+| `src/app/join/[groupId].tsx` | `/join/:groupId` |
+| `src/app/(protected)/index.tsx` | `/` |
+| `src/app/(protected)/groups/[groupId].tsx` | `/groups/:id` |
+| `src/app/(protected)/settings.tsx` | `/settings` |
 
-`/signup`, `/confirm` and `/forgot-password` are gone: they are Cognito Managed
-Login pages now, and `/login` is a button that launches the hosted flow. See
+There is no `/signup`, `/confirm` or `/forgot-password`: they are Cognito Managed
+Login pages, and `/login` is a button that launches the hosted flow. See
 [`../docs/auth-managed-login.md`](../docs/auth-managed-login.md).
 
 `src/app/(protected)/_layout.tsx` is the redirect guard that replaced the web
