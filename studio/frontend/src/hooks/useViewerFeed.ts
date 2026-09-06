@@ -1,6 +1,14 @@
 import { useCallback, useMemo } from "react";
 
-import { getAsset, getCharacter, getNode, getRun, getScene, listNodes } from "../apis/studio";
+import {
+  getAsset,
+  getCharacter,
+  getFavorites,
+  getNode,
+  getRun,
+  getScene,
+  listNodes,
+} from "../apis/studio";
 import type { FileEntry, RunAsset, Shot, SortOrder } from "../types";
 import type { ViewerSource } from "../utils/location";
 import { useMedia } from "./useMedia";
@@ -170,6 +178,15 @@ export function useViewerFeed(
       // The current cut and every earlier one — the page draws them all.
       const cut = [...(scene.output ? [scene.output] : []), ...(scene.cuts ?? [])];
       return dedupe([...cut, ...shots.flatMap(shotAssets)].map(fromAsset));
+    }
+
+    if (source.in === "fav") {
+      // **The favorites grid, in the order the grid draws it.** Already the
+      // shape the viewer wants — a favorite entry is a listing row with one
+      // extra field — so there is nothing to adapt, unlike a run's or a
+      // scene's pointers above.
+      const page = await getFavorites();
+      return page.entries;
     }
 
     if (source.in === "refs") {

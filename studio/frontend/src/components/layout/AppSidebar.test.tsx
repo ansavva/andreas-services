@@ -52,17 +52,27 @@ beforeEach(() => {
 });
 
 describe("the sections", () => {
-  it("lists the five destinations, in the mockup's order", () => {
+  it("lists the six destinations, in the mockup's order", () => {
     open();
     const nav = screen.getByRole("navigation", { name: "Sections" });
     const labels = within(nav)
       .getAllByRole("link")
       .map((link) => link.textContent);
-    expect(labels).toEqual(["Home", "Characters", "Projects", "Files", "Templates"]);
+    expect(labels).toEqual([
+      "Home",
+      // Second, under Home: it is what studio opens on and the one section
+      // that is about the person rather than about the library.
+      "Favorites",
+      "Characters",
+      "Projects",
+      "Files",
+      "Templates",
+    ]);
   });
 
   it.each([
     ["/", "Home"],
+    ["/favorites", "Favorites"],
     ["/characters", "Characters"],
     ["/c/char-1", "Characters"],
     ["/projects", "Projects"],

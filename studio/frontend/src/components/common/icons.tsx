@@ -145,6 +145,30 @@ export const CheckIcon = ({ className }: Props) => (
   </Glyph>
 );
 
+/**
+ * The heart, in the two states a favorite has.
+ *
+ * **Two glyphs rather than one with a fill toggle**, because the default frame
+ * is `fill-none stroke-current` and a filled heart wants the opposite pair. A
+ * caller that passed `fill-current` to the outline would get a filled shape
+ * with a stroke half a pixel outside it, which is visibly a different size from
+ * the empty one — and a control that changes size when pressed is one people
+ * press again to check.
+ */
+export const HeartIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M12 20s-7.5-4.35-7.5-9.75A4.25 4.25 0 0 1 12 7.5a4.25 4.25 0 0 1 7.5 2.75C19.5 15.65 12 20 12 20Z" />
+  </Glyph>
+);
+
+export const HeartFilledIcon = ({
+  className = "size-5 fill-current stroke-none",
+}: Props) => (
+  <Glyph className={className}>
+    <path d="M12 20s-7.5-4.35-7.5-9.75A4.25 4.25 0 0 1 12 7.5a4.25 4.25 0 0 1 7.5 2.75C19.5 15.65 12 20 12 20Z" />
+  </Glyph>
+);
+
 export const WarningIcon = ({ className }: Props) => (
   <Glyph className={className}>
     <path d="M12 4 2.5 20.5h19L12 4Z" />

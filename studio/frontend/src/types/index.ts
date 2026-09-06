@@ -231,6 +231,28 @@ export interface NodeListing {
   next_cursor: string | null;
 }
 
+/**
+ * One page of the favorites grid — `GET /api/favorites`.
+ *
+ * A `FileEntry` like any other listing row, plus when it was picked. It is not
+ * a `MediaListing`: there is no folder and therefore no `prefix`, no sort to
+ * report (the order is the order they were picked in) and no tag facet, because
+ * the rows share nothing but the person who chose them.
+ */
+export interface FavoriteEntry extends FileEntry {
+  /** When the heart was first pressed. A second press does not move it. */
+  favorited_at: string;
+}
+
+export interface FavoriteListing {
+  entries: FavoriteEntry[];
+  total: number;
+  /** True when there are more favorites than one read admits. */
+  truncated: boolean;
+  /** An offset into the list, the same cursor every listing here uses. */
+  next_cursor: string | null;
+}
+
 export interface AssetResponse {
   key: string;
   name: string;

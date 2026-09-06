@@ -18,6 +18,7 @@ from studio_core.errors import (
 )
 from studio_core.routes.browse import bp as browse_bp
 from studio_core.routes.characters import bp as characters_bp
+from studio_core.routes.favorites import bp as favorites_bp
 from studio_core.routes.images import bp as images_bp
 from studio_core.routes.libraries import bp as libraries_bp
 from studio_core.routes.models import bp as models_bp
@@ -260,6 +261,10 @@ def create_app() -> Flask:
     # How a reference prompt is written, as rows. Its own blueprint rather
     # than part of `characters` because the spec belongs to the LIBRARY: one
     # set of angles describes every character in it.
+    # What one PERSON picked out, which is why it is not a tag and not a field
+    # on a node: a favorite is a fact about the caller, and two members of one
+    # library are entitled to disagree about it. See `services/favorites.py`.
+    app.register_blueprint(favorites_bp)
     app.register_blueprint(tags_bp)
     app.register_blueprint(templates_bp)
     # Drafting a character's reference angles. It writes RUNS, so it could

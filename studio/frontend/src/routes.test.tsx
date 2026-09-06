@@ -27,6 +27,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("./components/layout/AppLayout", () => ({ AppLayout: () => <Outlet /> }));
 
 vi.mock("./pages/HomePage", () => ({ HomePage: () => <div>home</div> }));
+vi.mock("./pages/FavoritesPage", () => ({ FavoritesPage: () => <div>favorites</div> }));
 vi.mock("./pages/CharactersPage", () => ({ CharactersPage: () => <div>characters</div> }));
 vi.mock("./pages/ProjectsPage", () => ({ ProjectsPage: () => <div>projects</div> }));
 vi.mock("./pages/CharacterPage", () => ({ CharacterPage: () => <div>character</div> }));
@@ -56,6 +57,9 @@ function at(path: string) {
 describe("the route table", () => {
   it.each([
     ["/", "home"],
+    // The one address in the table that names nothing: a favorite is a fact
+    // about the caller, so the collection is whoever is signed in.
+    ["/favorites", "favorites"],
     ["/characters", "characters"],
     ["/projects", "projects"],
     ["/c/char-9f3c1e57-2a44-4d81-b6e0-77c21f8a4d15", "character"],

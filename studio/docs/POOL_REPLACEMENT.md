@@ -36,6 +36,14 @@ So the library — every character, every project, every run, scene and movie, a
 every byte in S3 — is untouched by a pool replacement. What breaks is the ability
 to *reach* it, and that is two rows.
 
+**Favorites are `USER#` rows too, and this count predates them.** A favorite is
+`USER#<sub>` / `FAV#<lib>#<node_id>`, so a pool replacement strands one per
+favorited file alongside the memberships. Nothing else changes — a favorite
+names a node id, and node ids survive everything — but the rewrite below has to
+carry them or the person signs back in to an empty favorites screen. Re-count
+before an apply rather than trusting the table above; the `USER#` scan already
+returns them.
+
 ## Before the apply
 
 ```bash

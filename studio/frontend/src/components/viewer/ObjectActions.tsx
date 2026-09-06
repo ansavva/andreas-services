@@ -3,6 +3,7 @@ import { IconButton } from "@ansavva/design-system";
 import { getAsset } from "../../apis/studio";
 import type { FileEntry } from "../../types";
 import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
+import { FavoriteButton } from "../common/FavoriteButton";
 import { CopyKeyButton } from "../common/CopyKeyButton";
 import { CloseIcon, DownloadIcon, PencilIcon } from "../common/icons";
 
@@ -77,6 +78,11 @@ export function ObjectActions({
   onToggleEditing,
   onClose,
 }: Props) {
+  // A text file has no heart. The favorites screen is a grid of media and the
+  // API refuses anything else, so offering the control on a `prompt.json` would
+  // be a button whose only outcome is a 400 — see `services/favorites.py`.
+  const favoritable = file.kind === "image" || file.kind === "video";
+
   async function download() {
     // Signed with `response-content-disposition: attachment` server-side. A
     // plain <a download> would be ignored here, because the presigned URL is
@@ -88,6 +94,13 @@ export function ObjectActions({
   if (variant === "media") {
     return (
       <>
+        {/* **In both variants, and it is the only control that is.** Everything
+            else here splits by whether there is a page to read — copy, download
+            and close are page things; edit and delete are the two that have to
+            survive fullscreen. A heart is neither: it is what the person is
+            doing while they look at the picture, which is exactly the moment
+            the frame owns the screen. */}
+        {favoritable && <FavoriteButton id={file.id} name={file.name} intent="overlay" size="sm" />}
         {onToggleEditing && (
           <IconButton
             label={editing ? "Hide details" : "Edit details"}
@@ -110,6 +123,8 @@ export function ObjectActions({
 
   return (
     <>
+      {favoritable && <FavoriteButton id={file.id} name={file.name} />}
+
       <CopyKeyButton value={file.key} />
 
       {onToggleEditing && (

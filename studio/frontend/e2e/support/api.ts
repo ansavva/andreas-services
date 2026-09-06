@@ -455,12 +455,52 @@ function runIdIn(path: string): string {
  * stub that invented a `{}` for an unrecognised write would turn a missing
  * fixture into a flow that appears to succeed.
  */
+/**
+ * The favorites one browser run holds, in memory.
+ *
+ * **State rather than a fixture, and it is the only stub here that has any.**
+ * Every other route answers a captured artefact, because every other route
+ * answers a library that exists before the run starts. A favorite is made
+ * during the run — the spec presses a heart and then expects to find the file
+ * on the home screen — so what it asserts is that a write and a later read
+ * agree, and a fixture cannot hold that up. Reset per page by `stubApi`.
+ */
+let favorited: string[] = [];
+
+/** A favorited node as the grid's entry, off whatever listing already holds it. */
+function favoriteEntry(id: string) {
+  const known = reel.entries.find((item) => item.id === id);
+  return {
+    id,
+    key: known?.key ?? `favorited/${id}`,
+    name: known?.name ?? `${id}.webp`,
+    size: known?.size ?? 1,
+    last_modified: known?.last_modified ?? "2026-08-31T12:00:00+00:00",
+    kind: known?.kind ?? "image",
+    content_type: known?.content_type ?? "image/webp",
+    url: known?.url ?? PIXEL_PATH,
+    favorited_at: "2026-08-31T12:00:00+00:00",
+  };
+}
+
 async function written(
   route: Route,
   method: string,
   path: string,
   body: Record<string, unknown>,
 ): Promise<boolean> {
+  // The heart. `POST` means favorited, `DELETE` means not — no toggle, so the
+  // stub does not have to model one either.
+  if (path.includes("/api/favorites/")) {
+    const id = path.split("/").pop()!;
+    favorited =
+      method === "POST"
+        ? [id, ...favorited.filter((each) => each !== id)]
+        : favorited.filter((each) => each !== id);
+    await json(route, { node: id, favorite: method === "POST" }, method === "POST" ? 201 : 200);
+    return true;
+  }
+
   // A new draft. The 201 is not an envelope — it carries the id, the
   // fingerprint, and little else.
   if (method === "POST" && path.endsWith("/api/runs")) {
@@ -529,6 +569,7 @@ async function written(
  * path in it says which fixture to capture.
  */
 export async function stubApi(page: Page): Promise<void> {
+  favorited = [];
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const method = request.method();
@@ -555,6 +596,15 @@ export async function stubApi(page: Page): Promise<void> {
     }
 
     if (path.endsWith("/api/libraries")) return json(route, libraries);
+    if (path.endsWith("/api/favorites")) {
+      if (url.searchParams.get("view") === "ids") return json(route, { ids: favorited });
+      return json(route, {
+        entries: favorited.map(favoriteEntry),
+        total: favorited.length,
+        truncated: false,
+        next_cursor: null,
+      });
+    }
     // Before `/api/characters`, which does not match it, but keeping the spec
     // next to the listings it is a sibling of.
     if (path.endsWith("/api/templates")) return json(route, templates);

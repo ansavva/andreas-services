@@ -9,6 +9,7 @@ import { useInFlightRuns } from "../../hooks/useInFlightRuns";
 import { useResource } from "../../hooks/useResource";
 import {
   CHARACTERS_PATH,
+  FAVORITES_PATH,
   HOME_PATH,
   PROJECTS_PATH,
   TEMPLATES_PATH,
@@ -20,6 +21,7 @@ import { LibrarySwitcher } from "../common/LibrarySwitcher";
 import {
   AccountIcon,
   FolderIcon,
+  HeartIcon,
   HomeIcon,
   ProjectsIcon,
   SidebarIcon,
@@ -46,6 +48,9 @@ export const DESTINATIONS: ReadonlyArray<{
   under: readonly string[];
 }> = [
   { to: HOME_PATH, label: "Home", icon: <HomeIcon />, under: [] },
+  // Exact, like Home: `/favorites` has nothing under it — a favorited file
+  // opens at `/o/<id>`, which is Files, because that is where a file lives.
+  { to: FAVORITES_PATH, label: "Favorites", icon: <HeartIcon />, under: [] },
   { to: CHARACTERS_PATH, label: "Characters", icon: <AccountIcon />, under: ["/c/"] },
   { to: PROJECTS_PATH, label: "Projects", icon: <ProjectsIcon />, under: ["/p/", "/s/", "/m/"] },
   { to: folderPath(null), label: "Files", icon: <FolderIcon />, under: ["/f/", "/o/", "/o"] },

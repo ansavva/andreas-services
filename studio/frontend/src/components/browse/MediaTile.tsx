@@ -1,14 +1,16 @@
 import { Checkbox } from "@ansavva/design-system";
 
 import type { FileEntry } from "../../types";
+import { useFavorites } from "../../hooks/useFavorites";
 import { MediaThumb } from "../media/MediaThumb";
+import { FavoriteButton } from "../common/FavoriteButton";
 import { CheckIcon } from "../common/icons";
 
 interface Props {
   file: FileEntry;
-  selected: boolean;
+  selected?: boolean;
   /** True once anything in the grid is selected. See the note on `onClick`. */
-  selectionActive: boolean;
+  selectionActive?: boolean;
   onOpen: () => void;
   /**
    * Where opening this tile goes, as an address.
@@ -21,7 +23,15 @@ interface Props {
    * button, which is why this is not required.
    */
   to?: string;
-  onToggleSelect: (extend: boolean) => void;
+  /**
+   * Where a press on the checkbox goes — **and whether there is a checkbox.**
+   *
+   * Optional, because a grid with nothing to do to a selection should not offer
+   * one: the favorites screen has no move, copy or delete toolbar behind it, so
+   * a checkbox there is a control that collects an answer nobody asks for. The
+   * browser passes this and gets the full selecting tile.
+   */
+  onToggleSelect?: (extend: boolean) => void;
 }
 
 /**
@@ -35,12 +45,14 @@ interface Props {
  */
 export function MediaTile({
   file,
-  selected,
-  selectionActive,
+  selected = false,
+  selectionActive = false,
   onOpen,
   to,
   onToggleSelect,
 }: Props) {
+  const favorite = useFavorites().isFavorite(file.id);
+
   /**
    * Selection mode still wins over the browser, and only for shift.
    *
@@ -53,7 +65,7 @@ export function MediaTile({
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     if (event.shiftKey && !selectionActive) return;
     event.preventDefault();
-    if (selectionActive) onToggleSelect(event.shiftKey);
+    if (selectionActive && onToggleSelect) onToggleSelect(event.shiftKey);
     else onOpen();
   };
 
@@ -122,6 +134,7 @@ export function MediaTile({
           anything is selected (the mode has to be legible) and wherever there
           is no pointer to hover with, because on touch the hidden state is the
           only state. */}
+      {onToggleSelect && (
       <Checkbox.Root
         checked={selected}
         onClick={(event) => {
@@ -140,6 +153,24 @@ export function MediaTile({
           <CheckIcon className="size-3.5 fill-none stroke-current stroke-[3]" />
         </Checkbox.Indicator>
       </Checkbox.Root>
+      )}
+
+      {/* Opposite corner from the checkbox, and it follows the same rule about
+          when it is drawn: hidden until hovered, always there on touch — with
+          one exception that is the whole point of a favorite. **A filled heart
+          stays visible**, because it is not a control offering itself, it is
+          the answer to "have I already picked this one", and a grid that only
+          shows that on hover cannot be read at a glance.
+
+          A sibling of the tile rather than a child, for `Checkbox.Root`'s
+          reason: both are buttons, and one may not contain the other. */}
+      <div
+        className={`absolute right-1.5 top-1.5 transition-opacity
+                    focus-within:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100
+                    ${favorite ? "opacity-100" : "opacity-0"}`}
+      >
+        <FavoriteButton id={file.id} name={file.name} intent="overlay" size="sm" />
+      </div>
     </div>
   );
 }

@@ -386,8 +386,8 @@ def entries(
     sort = clean_sort(raw_sort)
     wanted_kinds = _clean_kinds(kinds)
     wanted_tags = _clean_tags(tags)
-    limit = _page_size(page_size)
-    offset = _offset(cursor)
+    limit = clean_page_size(page_size)
+    offset = clean_cursor(cursor)
 
     folder = _node_at(lib, under)
     breadcrumbs = _breadcrumbs(folder)
@@ -571,7 +571,13 @@ def _folder_prefixes(
     return prefixes
 
 
-def _offset(cursor: str | None) -> int:
+def clean_cursor(cursor: str | None) -> int:
+    """A page cursor as an offset into a sorted result, or a refusal.
+
+    Public because a second listing reads it: `services/favorites.py` pages the
+    same way, and two implementations of one cursor is two things to keep in
+    step.
+    """
     if cursor in (None, ""):
         return 0
     try:
@@ -583,7 +589,7 @@ def _offset(cursor: str | None) -> int:
     return value
 
 
-def _page_size(raw: int | str | None) -> int:
+def clean_page_size(raw: int | str | None) -> int:
     if raw in (None, ""):
         return DEFAULT_PAGE_SIZE
     try:
@@ -689,3 +695,64 @@ def text_object(record: dict) -> dict:
         "truncated": truncated,
         "content": body.decode("utf-8", errors="replace"),
     }
+
+
+# ─────────────── rows that share no folder, as listing entries ───────────────
+#
+# Every listing above is about one place: a folder, or one branch of the tree,
+# so the name path is either already in hand or shared by everything in the
+# window. A favorites grid is the first read in this service where the rows have
+# nothing in common — one row per pick, from anywhere in the library — and it
+# still owes each of them the same entry shape, `key` included.
+
+
+def name_prefixes(records: list[dict]) -> dict[str, str]:
+    """The name path of each row's own folder, keyed by node id. **One batch read.**
+
+    A row's `path` is its ancestors *as ids*, so the walk `_name_path` makes one
+    `GetItem` at a time is already answered — what is missing is only the names,
+    and every name for every row comes back in one `BatchGetItem`. That is the
+    difference between a grid of forty favorites costing four reads and costing
+    a hundred and sixty sequential ones.
+
+    The root contributes no segment, exactly as `_name_path` has it: it is the
+    empty prefix everywhere else in this service, and a file directly under it
+    is just its own name.
+    """
+    wanted = {
+        ancestor
+        for record in records
+        for ancestor in _ancestor_ids(record)
+    }
+    names = {
+        node_id: found["name"]
+        for node_id, found in catalog.records(sorted(wanted)).items()
+    }
+    return {
+        record["node_id"]: "".join(
+            # An ancestor whose record is missing is named by its id rather than
+            # dropped — `_folder_prefixes` makes the same choice, and for the
+            # same reason: a gap in the path is a lie about where the file sits.
+            f"{names.get(ancestor, ancestor)}/"
+            for ancestor in _ancestor_ids(record)
+        )
+        for record in records
+    }
+
+
+def _ancestor_ids(record: dict) -> list[str]:
+    """A row's ancestors, root excluded, oldest first."""
+    parts = [part for part in (record.get("path") or "").split("/") if part]
+    # The root is `parts[0]` and is the one ancestor with no name in a path.
+    return parts[1:]
+
+
+def file_entries(records: list[dict]) -> list[dict]:
+    """File rows from anywhere in the library, as presigned listing entries.
+
+    **Presigns one per row, so slice before calling it** — the same rule
+    `entries` follows above, and the reason it signs after windowing rather
+    than before.
+    """
+    prefixes = name_prefixes(records)
+    return [_file_entry(record, prefixes[record["node_id"]]) for record in records]
