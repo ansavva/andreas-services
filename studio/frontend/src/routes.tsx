@@ -6,6 +6,7 @@ import { AuthCallbackPage } from "./pages/AuthCallbackPage";
 import { BrowsePage } from "./pages/BrowsePage";
 import { CharacterPage } from "./pages/CharacterPage";
 import { CharactersPage } from "./pages/CharactersPage";
+import { FavoritesPage } from "./pages/FavoritesPage";
 import { HomePage } from "./pages/HomePage";
 import { MoviePage } from "./pages/MoviePage";
 import { ProjectPage } from "./pages/ProjectPage";
@@ -24,7 +25,8 @@ import { ObjectPage } from "./pages/ObjectPage";
  * every move. Slugs appear on the page and never in the path.
  *
  * ```
- * /                       home — characters, projects, and the recent reel
+ * /                       home — favorites, characters and projects
+ * /favorites              every image and video this person picked out
  * /characters /projects   one list each, which the header links to
  * /c/<char_id>            character: profile, references, its folders, files
  * /p/<proj_id>            project: the runs feed, scenes, movies, files, settings
@@ -63,6 +65,11 @@ export function StudioRoutes() {
           instead of seven copies inside them. */}
       <Route element={<AppLayout />}>
         <Route path="/" element={<HomePage />} />
+
+        {/* A favorite is a fact about the CALLER, so this address carries no
+            id — the collection is whoever is signed in. It is the one route in
+            the table that names nothing. */}
+        <Route path="/favorites" element={<FavoritesPage />} />
 
         <Route path="/characters" element={<CharactersPage />} />
         <Route path="/projects" element={<ProjectsPage />} />

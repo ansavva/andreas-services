@@ -82,6 +82,20 @@ from memory. The two runs in `project-runs` with no captured envelope are not
 in it. `capture.py --runs` now takes it off the API like the rest; do that at
 the next capture and this paragraph goes.
 
+## The one stub that holds STATE
+
+Every other branch in `support/api.ts` answers a captured artefact, because
+every other branch answers a library that already exists when the run starts.
+Favorites do not: `favorites.spec.ts` presses a heart on one screen and then
+expects to find the file on another, so what it asserts is that a write and a
+later read agree — and no fixture can hold that up. `stubApi` therefore keeps a
+`favorited` array for the life of one page, resets it per page, and answers
+`GET /api/favorites` from it.
+
+That is the exception, not a new pattern. Anything that exists before the run
+starts is still captured; this is state the run itself creates, which is the
+same reason `unsorted` and the promoted copy are synthesised above.
+
 ## The one fixture that is made rather than taken
 
 `e2e-asset.mp4` — five seconds of one colour at 64x36, 1,741 bytes — is

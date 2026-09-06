@@ -45,9 +45,17 @@ is also where `dev_storage` earns its existence. Read
 ```
 Library      pk = LIB#<lib_id>        sk = META
 Membership   pk = USER#<sub>          sk = LIB#<lib_id>
+Favorite     pk = USER#<sub>          sk = FAV#<lib>#<node_id>
 Node         pk = NODE#<parent_id>    sk = NAME#<name>     ← by parent
 Node         pk = NODE#<node_id>      sk = META            ← by id
 ```
+
+**`USER#<sub>` holds two kinds of row, so every read of it says which.** A
+favorite is a fact about the person rather than about the library, so it is
+filed beside their memberships — and `catalog.libraries_for` therefore queries
+`begins_with(sk, "LIB#")`. Without that guard a favorite reads as a membership
+of a library named `<lib>#<node_id>`, and the caller then appears to be in more
+than one library on *every* route.
 
 **A node is two items, so every write is a `TransactWriteItems`.** The by-parent
 item makes a folder listable and makes a name unique inside it; the by-id item

@@ -41,6 +41,7 @@ import type {
   TemplateLibrary,
   TagInUse,
   TagScope,
+  FavoriteListing,
   PromptTemplate,
   TemplateBody,
   SpecBlock,
@@ -548,6 +549,51 @@ export function deleteTag(scope: TagScope, name: string) {
   return apiSend<{ name: string; changed: number }>(
     "DELETE",
     `/api/tags/${encodeURIComponent(name)}?scope=${scope}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Favorites — one PERSON's picks
+//
+// Not a tag and not a field on a node: a tag is a fact about the picture and
+// everyone in the library sees it, while a favorite is a fact about the caller
+// and two members are entitled to disagree. `POST` means favorited and `DELETE`
+// means not — there is no toggle route, because a toggle needs both ends to
+// agree on the current state first, and two tabs or one double-tap break that.
+// ---------------------------------------------------------------------------
+
+/** One page of the favorites grid, newest pick first. */
+export function getFavorites(cursor?: string, limit?: number) {
+  return apiGet<FavoriteListing>("/api/favorites", {
+    cursor,
+    limit: limit === undefined ? undefined : String(limit),
+  });
+}
+
+/**
+ * Every favorited node id, and nothing else.
+ *
+ * **What draws the heart everywhere except the grid.** A tile in the browser, a
+ * run's output, the open file — all any of them needs is whether an id is in
+ * this set, and asking per tile would be a request per tile. One read answers
+ * the whole app, and `useFavorites` is the one caller.
+ */
+export function getFavoriteIds() {
+  return apiGet<{ ids: string[] }>("/api/favorites", { view: "ids" });
+}
+
+/** Favorite one image or video. Idempotent, and keeps the first press's time. */
+export function addFavorite(id: string) {
+  return apiSend<{ node: string; favorite: true; favorited_at: string }>(
+    "POST",
+    `/api/favorites/${encodeURIComponent(id)}`,
+  );
+}
+
+export function removeFavorite(id: string) {
+  return apiSend<{ node: string; favorite: false }>(
+    "DELETE",
+    `/api/favorites/${encodeURIComponent(id)}`,
   );
 }
 

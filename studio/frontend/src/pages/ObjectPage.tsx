@@ -28,6 +28,7 @@ import { useViewerFeed } from "../hooks/useViewerFeed";
 import { DEFAULT_SORT, isSortOrder, type FileEntry, type SortOrder } from "../types";
 import type { ViewerSource } from "../utils/location";
 import {
+  FAVORITES_PATH,
   HOME_PATH,
   characterPath,
   folderPath,
@@ -541,6 +542,10 @@ function useSourceCrumbs(source: ViewerSource | null): Crumb[] | undefined {
       return [{ label: scene.data?.name ?? "Scene", to: scenePath(source.id) }];
     case "refs":
       return [{ label: character.data?.name ?? "Character", to: characterPath(source.id) }];
+    // The one context whose crumb needs no fetch: it names no entity, so
+    // there is nothing to look up and the label is the screen's own name.
+    case "fav":
+      return [{ label: "Favorites", to: FAVORITES_PATH }];
     case "run":
       return [{ label: "Home", to: HOME_PATH }];
   }
@@ -566,6 +571,8 @@ function home(source: ReturnType<typeof sourceFromParam>): string {
       return scenePath(source.id);
     case "refs":
       return characterPath(source.id);
+    case "fav":
+      return FAVORITES_PATH;
     case "run":
       return HOME_PATH;
   }

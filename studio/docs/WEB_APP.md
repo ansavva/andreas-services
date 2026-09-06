@@ -71,7 +71,7 @@ only authority on whether a name is free.
 | Auth | AWS Cognito (admin-create-only user pool); **Cognito Managed Login** (hosted pages at `studio-auth.andreas.services`) with the authorization-code flow + PKCE on the SPA, Cognito authorizer on every `/api` route. The `studio` CLI signs in with SRP directly — see `infra/modules/auth`. |
 | Data | **DynamoDB, single-table** (`studio-prod-catalog`) — one item pair per node, three `ALL`-projected GSIs (`by-sk`, `by-path`, `by-recent`). No cache. Listings are a query. |
 | Blobs | S3, addressed only by a row's opaque `blob_key`. Never listed. |
-| Routing | By node id. `/f/<id>` is a folder, `/o/<id>` is one open file. |
+| Routing | By node id. `/f/<id>` is a folder, `/o/<id>` is one open file. `/favorites` is the one address naming nothing — a favorite is a fact about the caller. |
 | Media | Presigned S3 GET URLs, direct from the browser to S3 |
 | Infra | Terraform in `studio/infra/` (`modules/` + `envs/prod` + a per-machine `envs/dev`) |
 
@@ -314,7 +314,7 @@ page and a plain textarea over its literal bytes, and never offers fields.
 
 - **The shell is a sidebar and a top bar, and every screen renders inside
   `AppLayout`.** `AppSidebar` is the design system's `Sidebar` — 256px, or a
-  64px icon rail — holding the five sections (`DESTINATIONS`), the five most
+  64px icon rail — holding the six sections (`DESTINATIONS`), the five most
   recently updated projects, the library switcher and the account menu. The
   collapse state is `SidebarContext`'s, not the package's own, so the opened
   run can collapse the rail from a route element: `useShellSidebar()` gives
@@ -324,6 +324,14 @@ page and a plain textarea over its literal bytes, and never offers fields.
   opens the same `SidebarContents` in a `Drawer`, and search sits behind an
   icon. `--header-h` in `app.css` is the bar's height at both widths; content
   is full width with the mockup's `px-6`, no `max-w-*` cap.
+- **The heart is one control reading one cached set, wherever it is drawn.**
+  `FavoriteButton` takes a node id and asks `useFavorites`, which holds every
+  favorited id under one React Query key — so a grid of two hundred tiles is one
+  request between them, and pressing any of them updates all of them. The press
+  is optimistic and rolls back on failure: a heart that waits on a round trip
+  reads as a press that did not register, and the second press people then make
+  undoes the first. `aria-pressed` carries the state and the label never
+  changes, because what the control is *for* does not.
 - **The logo is a function, not a file, and the favicon is generated from it.**
   `src/utils/aperture.ts` solves a six-blade iris at any openness;
   `components/common/Aperture.tsx` draws it twice from that one construction —
@@ -841,6 +849,43 @@ the entity's id.
 | `POST /api/nodes/<id>/upload-url` | `{size, content_type}` → a presigned PUT for `blobs/<id>`. Signed length and type |
 | `POST /api/nodes/<id>/confirm-upload` | `HeadObject`s the blob and writes `size`/`content_type` onto the row |
 | `GET /api/asset?node=&disposition=` | A fresh presigned URL for one node's bytes — what the SPA calls on an expired tile |
+| `GET /api/favorites?view=&cursor=&limit=` | **This caller's favorites**, newest pick first. The default is the grid — presigned entries, `total`, `truncated`, `next_cursor`; `view=ids` is the id set alone |
+| `POST \| DELETE /api/favorites/<node_id>` | Favorite an image or a video, or stop. Idempotent both ways; **no toggle route** |
+
+### Favorites, which are the only per-CALLER thing in this API
+
+Everything else this service stores is a fact about the library: a name, a tag,
+a description, a run. A favorite is a fact about the **person** — two members of
+one library are entitled to disagree about it completely — so it is a row in the
+caller's own partition, `USER#<sub>` / `FAV#<lib>#<node_id>`, and nothing can
+read or write anybody else's. That is why it is not a tag called `favorite`: the
+tag vocabulary is shared and library-wide, and a shared favorite is a different
+feature.
+
+**Home opens on them.** The Recent grid that used to sit there was retired
+because twelve tiles cost an enumeration of the whole library; this answers
+"what did I keep" instead of "what happened last", and it costs one query on one
+partition because the answer is filed under the person rather than searched for
+across the tree. Hydration is `ceil(n / 100)` batched reads and only the page is
+presigned — `browse.file_entries` builds each row's name path from the ancestor
+ids the row already carries, so a grid of favorites from forty different folders
+is one extra batched read rather than a walk per tile.
+
+**Images and video only.** `POST` refuses a folder and refuses a text file, from
+`browse.REEL_KINDS` — the same set the sparse `reel` index covers, so there are
+not two answers to "what is media" in this service.
+
+**`POST` and `DELETE`, never a toggle.** A toggle needs the client and the
+server to agree on the current state before it fires, which two tabs and one
+double-tap reliably break. Both verbs are idempotent, and a second `POST` keeps
+the first one's `favorited_at` so a grid does not reshuffle under a double-tap.
+
+**A favorited file that is then deleted leaves a row nothing collects.** The
+delete cannot reach it — the row is in a partition keyed on a person the deleter
+is not — so the pointer is skipped on the way out and the reported counts are of
+live favorites. Finding every member's favorites for one node *is* answerable
+(`by-sk`, `sk = FAV#<lib>#<node>`), and doing it inside every delete is the
+fan-out write this trade avoids.
 
 ### The entity routes
 

@@ -86,6 +86,7 @@ parses it.
 |---|---|---|---|
 | Library | `LIB#<lib>` | `META` | exists |
 | Membership | `USER#<sub>` | `LIB#<lib>` | exists |
+| **Favorite** | `USER#<sub>` | `FAV#<lib>#<node_id>` | one PERSON's picks, per library |
 | Node — by parent | `NODE#<parent_id>` | `NAME#<name>` | exists |
 | Node — by id | `NODE#<node_id>` | `META` | exists |
 | **Character** | `CHAR#<char_id>` | `META` | the record |

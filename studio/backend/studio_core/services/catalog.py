@@ -43,6 +43,7 @@ One node type. A folder is a node with no blob; a file is a node with one.
 | Block | `LIB#<lib>` | `SPEC#BLOCK#<name>` | shared prose, cited BY NAME in a prompt |
 | Template | `LIB#<lib>` | `SPEC#TEMPLATE#<template_id>` | the record |
 | Sweep | `LIB#<lib>` | `SWEEP#<opened>#<id>#<n>` | blobs a delete is about to strand |
+| Favorite | `USER#<sub>` | `FAV#<lib>#<node_id>` | one person's picks, per library |
 
 **An id is the identity; a name is a label.** Every entity has a `v4` UUID that
 never changes, and the name is a mutable free-text attribute — not unique, not
@@ -433,11 +434,20 @@ def libraries_for(sub: str) -> list[dict]:
     `LIB#<id>`/`META` item, and fetching it here would be a read per library for
     a caller that may only want to check access. Whoever needs the names asks
     for them.
+
+    **`begins_with(sk, "LIB#")`, and it is load-bearing.** `USER#<sub>` is no
+    longer a partition of memberships alone — a favorite is filed there too, as
+    `FAV#<lib>#<node_id>` — and this function reads a library id off the sort
+    key by splitting on the first `#`. Without the guard a favorited node would
+    come back as a membership of a library called `<lib>#<node_id>`, and
+    `_resolve_library` would then refuse every request from anybody who had
+    favorited anything, because the caller would appear to be in more than one
+    library. Every read on this partition has to say which rows it wants.
     """
     items = _query(
         TableName=config.catalog_table(),
-        KeyConditionExpression="pk = :pk",
-        ExpressionAttributeValues={":pk": {"S": _user_pk(sub)}},
+        KeyConditionExpression="pk = :pk AND begins_with(sk, :lib)",
+        ExpressionAttributeValues={":pk": {"S": _user_pk(sub)}, ":lib": {"S": "LIB#"}},
     )
     rows = [_attributes(item) for item in items]
     return [
@@ -3357,3 +3367,110 @@ def update_render(render_id: str, **assignments) -> dict:
     _write([(_update({"pk": {"S": _render_pk(render_id)}, "sk": {"S": META}},
                      assignments), NotFoundError(render_id))])
     return render(render_id)
+
+
+# ──────────────────────────── favorites ────────────────────────────
+#
+# **A favorite is one person's, so it is filed under the person.** `USER#<sub>`
+# already holds the caller's memberships and is the one partition every request
+# reads anyway; a `FAV#` row beside them is one query away and needs no index.
+#
+# **The sort key carries no timestamp, and that is the decision.** Ordering
+# newest-first is what `favorited_at` is for, sorted in memory over one person's
+# picks — a list bounded by the thing being displayed rather than by the
+# library. What the deterministic key buys is worth more than the free order:
+# adding is idempotent without a read, removing addresses the row from the node
+# id alone, and `by-sk` can be asked `sk = FAV#<lib>#<node>` for everyone who
+# favorited one node. A key with a timestamp in it can do none of the three.
+#
+# A favorite item carries `lib` and no `path`, so it stays out of `by-path`; it
+# carries no `reel`, so it stays out of `by-recent`. It is in `by-sk`, like
+# every item in this table.
+
+
+def _favorite_sk(lib: str, node_id: str) -> str:
+    return f"FAV#{lib}#{node_id}"
+
+
+def favorites(sub: str, lib: str) -> list[dict]:
+    """One person's favorites in one library, newest first.
+
+    `{node_id, favorited_at}` and nothing else: what a favorite row *is* is a
+    pointer, and the file it points at is read from `records` by whoever is
+    drawing it. Copying a name onto this row would be a second copy of a
+    mutable attribute for every rename to keep in step — the reason
+    `children` is a projection too.
+
+    **Sorted here rather than by the table.** See the section note above.
+    """
+    items = _query(
+        TableName=config.catalog_table(),
+        KeyConditionExpression="pk = :pk AND begins_with(sk, :fav)",
+        ExpressionAttributeValues={
+            ":pk": {"S": _user_pk(sub)},
+            ":fav": {"S": f"FAV#{lib}#"},
+        },
+    )
+    rows = [
+        {
+            "node_id": row["node_id"],
+            "favorited_at": row.get("favorited_at") or "",
+        }
+        for row in (_attributes(item) for item in items)
+        if row.get("node_id")
+    ]
+    # Newest first, and the node id breaks a tie — two rows written in the same
+    # microsecond would otherwise order differently between two reads, which is
+    # a grid that reshuffles itself for no reason a person can see.
+    rows.sort(key=lambda row: (row["favorited_at"], row["node_id"]), reverse=True)
+    return rows
+
+
+def add_favorite(sub: str, lib: str, node_id: str) -> dict:
+    """Mark one node as this caller's favorite. Idempotent, and no read first.
+
+    `if_not_exists(favorited_at, :now)` is what makes pressing the heart twice
+    harmless *and* stable: the second press keeps the first press's timestamp,
+    so a favorites grid does not reorder itself when somebody double-taps.
+
+    No `attribute_exists` condition, because there is no row to require — this
+    is the write that creates one, and `_update`'s guard exists for updates to
+    records that were read first.
+    """
+    stamp = _now()
+    try:
+        response = dynamodb.client().update_item(
+            TableName=config.catalog_table(),
+            Key={"pk": {"S": _user_pk(sub)}, "sk": {"S": _favorite_sk(lib, node_id)}},
+            UpdateExpression=(
+                "SET node_id = :node, lib = :lib, "
+                "favorited_at = if_not_exists(favorited_at, :now)"
+            ),
+            ExpressionAttributeValues={
+                ":node": {"S": node_id},
+                ":lib": {"S": lib},
+                ":now": {"S": stamp},
+            },
+            ReturnValues="ALL_NEW",
+        )
+    except ClientError as exc:
+        logger.warning("Could not favorite %s: %s", node_id, exc)
+        raise UpstreamError("Could not write to the catalog") from exc
+    written = _attributes(response.get("Attributes") or {})
+    return {"node_id": node_id, "favorited_at": written.get("favorited_at", stamp)}
+
+
+def remove_favorite(sub: str, lib: str, node_id: str) -> None:
+    """Take one node off this caller's favorites.
+
+    Unconditional: removing a favorite that is already gone is a request that
+    has been satisfied, which is `tags.remove`'s rule and the same reason.
+    """
+    try:
+        dynamodb.client().delete_item(
+            TableName=config.catalog_table(),
+            Key={"pk": {"S": _user_pk(sub)}, "sk": {"S": _favorite_sk(lib, node_id)}},
+        )
+    except ClientError as exc:
+        logger.warning("Could not unfavorite %s: %s", node_id, exc)
+        raise UpstreamError("Could not write to the catalog") from exc

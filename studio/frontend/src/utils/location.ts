@@ -3,7 +3,8 @@
  *
  * | URL | What it is |
  * |---|---|
- * | `/` | Home — characters, projects, and what was made most recently |
+ * | `/` | Home — favorites, characters and projects |
+ * | `/favorites` | every image and video this person picked out |
  * | `/c/<char_id>` · `/p/<proj_id>` | a character, a project |
  * | `/p/<proj_id>/r/<run_id>` | one run, inside the project that owns it |
  * | `/s/<scene_id>` · `/m/<movie_id>` | a scene, a movie |
@@ -27,7 +28,8 @@
  *
  * It is the entity index rather than the library's file listing, which is the
  * one visible reversal in the new shell: the file browser is still one click
- * away at `/f`, but what studio opens on is characters and projects.
+ * away at `/f`, but what studio opens on is what somebody picked out, and then
+ * the characters and projects it came from.
  */
 export const HOME_PATH = "/";
 
@@ -41,6 +43,17 @@ export const HOME_PATH = "/";
  */
 export const CHARACTERS_PATH = "/characters";
 export const PROJECTS_PATH = "/projects";
+/**
+ * The favorites screen — every image and video this person picked out.
+ *
+ * A real address rather than only a section of home, for the reason the two
+ * indexes above are: home leads with it, and a list you scroll to reach is not
+ * navigation. Home shows the first row and links here for the rest.
+ *
+ * **No id in it, and there could not be one.** A favorite is a fact about the
+ * caller, so the collection is whoever is signed in — there is nothing to name.
+ */
+export const FAVORITES_PATH = "/favorites";
 /**
  * The reference spec belongs to the LIBRARY, not to a character: one set of
  * angles describes every character in it. So it is a section, beside the two
@@ -81,7 +94,14 @@ export function folderPath(id: FolderId): string {
  */
 export type ViewerSource =
   | { in: "f" | "recursive"; id: FolderId }
-  | { in: "run" | "scene" | "refs"; id: string };
+  | { in: "run" | "scene" | "refs"; id: string }
+  /**
+   * The favorites grid. **The one source with no id at all**, because there is
+   * nothing to name: the collection is whoever is signed in. It is spelled
+   * `id: null` rather than dropped from the shape so every reader keeps one
+   * field to switch on.
+   */
+  | { in: "fav"; id: null };
 
 /** The `?in=` value: `f`, `f:<node>`, `run:<id>`, … */
 export function sourceParam({ in: kind, id }: ViewerSource): string {
@@ -96,6 +116,7 @@ export function sourceFromParam(value: string | null): ViewerSource | null {
   // `id || null`, not `id ?? null`: `f:` with nothing after it is how an
   // encoder that interpolated a null folder spells the library root, and "" is
   // not a node anything can look up.
+  if (kind === "fav") return { in: "fav", id: null };
   if (kind === "f" || kind === "recursive") return { in: kind, id: id || null };
   if (kind === "run" || kind === "scene" || kind === "refs") {
     return id ? { in: kind, id } : null;

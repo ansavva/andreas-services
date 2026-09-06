@@ -1,4 +1,5 @@
 import { CharactersSection, ProjectsSection } from "../components/entity/EntitySections";
+import { FavoritesSection } from "../components/favorites/FavoritesSection";
 import { PageBar } from "../components/layout/PageBar";
 
 /**
@@ -16,15 +17,24 @@ import { PageBar } from "../components/layout/PageBar";
  * the project feed answers the same question per project, where the answer is
  * cheap and has a plan beside it. The file tree is one click away at `/f`.
  *
- * **The two lists are components, not markup here.** `/characters` and
- * `/projects` are real screens the sidebar links to, and they render exactly
- * these — so home is where both meet rather than the only place either exists.
+ * **Favorites lead, and they are the one grid of media home draws.** The Recent
+ * grid answered "what did the last hour produce" and cost a walk of the whole
+ * library to do it; this answers "what did I keep", and it costs one query on
+ * one partition — the caller's own — because a favorite is a row filed under
+ * the person rather than a property of the library to be searched for. The
+ * first two rows are here and `/favorites` has the rest.
+ *
+ * **The three lists are components, not markup here.** `/favorites`,
+ * `/characters` and `/projects` are real screens the sidebar links to, and they
+ * render exactly these — so home is where all three meet rather than the only
+ * place any of them exists.
  */
 export function HomePage() {
   return (
     <>
       <PageBar title="Home" />
 
+      <FavoritesSection variant="preview" />
       <CharactersSection />
       <ProjectsSection />
     </>
