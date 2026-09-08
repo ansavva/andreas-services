@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { Badge, Button, Collapsible, buttonClass } from "@ansavva/design-system";
 
@@ -34,6 +34,23 @@ interface Props {
  */
 export function FilterBar({ activeCount, onClear, children, label = "Filter" }: Props) {
   const [open, setOpen] = useState(false);
+  const [settled, setSettled] = useState(false);
+
+  // The panel is done animating, so its clip can come off — see the note on
+  // the wrapper below. Closing takes it back immediately; opening waits out
+  // the package's 200ms grid-rows transition. A timer rather than
+  // `transitionend`, because the package turns the transition OFF under
+  // `prefers-reduced-motion` and the event would then never fire, leaving
+  // every dropdown in the panel clipped for exactly the people least likely
+  // to work out why.
+  useEffect(() => {
+    if (!open) {
+      setSettled(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setSettled(true), 250);
+    return () => window.clearTimeout(timer);
+  }, [open]);
 
   return (
     <Collapsible.Root open={open} onOpenChange={setOpen} className="contents">
@@ -73,7 +90,28 @@ export function FilterBar({ activeCount, onClear, children, label = "Filter" }: 
           second row after everything else had been made narrow enough.
           `basis-0` gives it no base size and `min-w-0` lets it actually reach
           zero, so closed it claims nothing. */}
-      <div className={open ? "basis-full" : "min-w-0 basis-0"}>
+      {/* **And the clip that hid the tag list.** `Collapsible.Panel` animates
+          by putting its content in a `grid-rows-[0fr→1fr]` box whose inner
+          wrapper is `overflow-hidden` — the only way that idiom can collapse
+          at all. Every dropdown a field in here opens is inline and
+          absolutely positioned (the package portals nothing but Dialog,
+          Drawer, Alert and Toast), so all of them were being cut off at the
+          panel's own bottom edge: the file browser's tag picker showed a
+          sliver of its first row, and the Runs table's Status, Character and
+          Since surfaces were invisible below the fold of a one-line panel.
+
+          So the clip comes off once the panel has finished opening, and goes
+          back on the instant it starts to close — the two states where it is
+          load-bearing are the closed panel and the animating one, and neither
+          is a state anybody can open a dropdown in. Reaching through the
+          package's markup for it is deliberate: `Collapsible.Panel`'s own
+          `className` lands on the innermost div, one level BELOW the wrapper
+          that carries the clip. */}
+      <div
+        className={`${open ? "basis-full" : "min-w-0 basis-0"} ${
+          settled ? "[&>[role=region]>div]:overflow-visible" : ""
+        }`}
+      >
         <Collapsible.Panel>
           <div className="flex flex-wrap items-end gap-2 border border-line bg-card p-3">
             {children}
