@@ -74,12 +74,12 @@ async function open() {
 
 describe("the tab strip", () => {
   it("is a FIXED list, and none of it is a folder", async () => {
-    // The count is not the point and has changed twice now — Runs and Projects
-    // joined when the character stopped being a dead end, and Shoot joined when
-    // a reference set could be made without a terminal. What must not come back
-    // is a strip built from the folder listing: it grew and shrank as folders
-    // came and went, every folder tab showed what Files already held, and at
-    // 390px seven of them wrapped into three rows of underline. The character's
+    // The count is not the point and has changed more than once — Runs and
+    // Projects came and went again, and Shoot joined when a reference set
+    // could be made without a terminal. What must not come back is a strip
+    // built from the folder listing: it grew and shrank as folders came and
+    // went, every folder tab showed what Files already held, and at 390px
+    // seven of them wrapped into three rows of underline. The character's
     // root children are `reference`, `corpus`, `seed` and `archive`, and none of
     // those may appear here — `seed` in particular, which Shoot now reads from
     // and which is exactly the kind of tab this test exists to keep out.
@@ -90,8 +90,10 @@ describe("the tab strip", () => {
     // folder names below it: it was Files with `default` pre-filled, which is a
     // preset of the tab beside it rather than a place of its own. `Shoot` went
     // with the turnaround — it rendered fourteen angles at once, and a template
-    // is picked for one run from the plan editor.
-    expect(tabs).toEqual(["Profile", "Files", "Runs", "Projects"]);
+    // is picked for one run from the plan editor. Runs and Projects are gone
+    // again too — a second way to browse work that already has a home on the
+    // run and project pages.
+    expect(tabs).toEqual(["Profile", "Files"]);
     expect(tabs).not.toContain("Identity");
     expect(tabs).not.toContain("reference");
     expect(tabs).not.toContain("seed");

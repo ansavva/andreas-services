@@ -9,7 +9,6 @@ import { ApiError } from "../apis/client";
 import { deleteCharacter, getCharacter, patchCharacter, setCharacterProfile } from "../apis/studio";
 import { FolderTab } from "../components/browse/FolderTab";
 import { PageBar } from "../components/layout/PageBar";
-import { CharacterProjects, CharacterRuns } from "../components/character/CharacterWork";
 import { ProfileForm } from "../components/character/ProfileForm";
 import { useResource } from "../hooks/useResource";
 import { CHARACTERS_PATH } from "../utils/location";
@@ -21,7 +20,7 @@ import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog"
  * One character: who they are, what they look like, and everything filed under
  * them.
  *
- * ## Four tabs, where there were seven
+ * ## Two tabs, where there were seven
  *
  * The root's children — `reference/`, `corpus/`, `seed/`, `archive/` and
  * anything made by hand — each used to get a tab beside Profile and References.
@@ -43,6 +42,15 @@ import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog"
  * preset filter of the tab beside it is a second way of looking at the same
  * listing dressed as a place. The filter is in Files, where every other way of
  * narrowing the listing is, and it is one press from the same result.
+ *
+ * ## Runs and Projects are gone from here again
+ *
+ * They had a tab each: `GET /characters/<id>/runs` and `/projects` existed
+ * with no caller, so the pair got a tab to answer "what has this character
+ * been in" for the first time. Dropped back out of the view — a character
+ * page is who they are and what they look like, not a second way to browse
+ * work that already has a home on the run and project pages. The routes stay;
+ * `CharacterWork.tsx`, which drew these two tabs, does not.
  *
  * ## Two writes, one button
  *
@@ -176,11 +184,6 @@ export function CharacterPage() {
         <Tabs.List className="overflow-x-auto border-b border-line">
           <Tabs.Tab value="profile">Profile</Tabs.Tab>
           <Tabs.Tab value="files">Files</Tabs.Tab>
-          {/* The reverse questions. Both routes existed with no caller, so a
-              character was a dead end: who it is, what it looks like, and
-              nothing about the work it appears in. */}
-          <Tabs.Tab value="runs">Runs</Tabs.Tab>
-          <Tabs.Tab value="projects">Projects</Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="profile">
@@ -196,14 +199,6 @@ export function CharacterPage() {
             conflict={conflict}
             onReload={character.reload}
           />
-        </Tabs.Panel>
-
-        <Tabs.Panel value="runs">
-          <CharacterRuns characterId={record.id} />
-        </Tabs.Panel>
-
-        <Tabs.Panel value="projects">
-          <CharacterProjects characterId={record.id} />
         </Tabs.Panel>
 
         <Tabs.Panel value="files">
