@@ -22,7 +22,6 @@ import { useNow } from "../../hooks/useNow";
 import { useSearchParamState } from "../../hooks/useSearchParamState";
 import type { HeroImage, RunAsset, RunFeedRow, RunStatus } from "../../types";
 import { formatCost } from "../../utils/cost";
-import { assetLabel } from "../../utils/format";
 import { ApertureSpinner } from "../common/Aperture";
 import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { EmptyState } from "../common/EmptyState";
@@ -39,7 +38,6 @@ import { LoadError } from "../common/LoadError";
 import { pressInApp } from "../common/pressInApp";
 import { SectionLoading } from "../common/SectionLoading";
 import { CharacterChipLink } from "../character/CharacterChip";
-import { MediaThumb } from "../media/MediaThumb";
 import { ArmedButton } from "../run/ArmedButton";
 import {
   elapsedSince,
@@ -49,6 +47,7 @@ import {
 } from "../run/feedTime";
 import { ratioOf } from "../run/aspect";
 import { OutputTile } from "../run/OutputTile";
+import { SendThumbs } from "../run/SendThumbs";
 import { ParamChips } from "../run/ParamChips";
 import { PromoteDrawer } from "../run/PromoteDrawer";
 import { promptText } from "../run/seed";
@@ -515,23 +514,7 @@ function FeedRow({
 
         <Prompt row={row} />
 
-        {row.sends.length > 0 && (
-          <div className="flex flex-wrap gap-1.5" aria-label="Sent">
-            {row.sends.map((send) => (
-              <MediaThumb
-                key={send.node}
-                nodeId={send.node}
-                url={send.url}
-                name={send.name}
-                aspect="square"
-                // Whole, not cropped — see the opened run's rail.
-                fit="contain"
-                title={`${send.role ?? send.field} · ${assetLabel(send.name)}`}
-                className="size-20 border border-line"
-              />
-            ))}
-          </div>
-        )}
+        <SendThumbs sends={row.sends} size="size-20" />
 
         {row.cast.length > 0 && (
           <div className="flex flex-wrap gap-1.5" aria-label="Cast">
