@@ -738,20 +738,6 @@ export function getCharacterSelection(
   );
 }
 
-/** Runs that used this character — one query, not a walk. */
-export function getCharacterRuns(id: string, cursor?: string) {
-  return apiGet<RunPage>(`/api/characters/${encodeURIComponent(id)}/runs`, {
-    cursor,
-  });
-}
-
-/** Projects this character is involved in — a question with no answer before. */
-export function getCharacterProjects(id: string) {
-  return apiGet<ProjectSummary[]>(
-    `/api/characters/${encodeURIComponent(id)}/projects`,
-  );
-}
-
 export function getProjects() {
   return apiGet<ProjectSummary[]>("/api/projects");
 }
