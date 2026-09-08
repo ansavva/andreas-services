@@ -32,7 +32,7 @@ import {
   type RunRecord,
 } from "../../types";
 import { formatCost } from "../../utils/cost";
-import { formatBytes } from "../../utils/format";
+import { assetLabel, formatBytes } from "../../utils/format";
 import { folderPath, projectPath, runPath } from "../../utils/location";
 import { ApertureSpinner } from "../common/Aperture";
 import { EmptyState } from "../common/EmptyState";
@@ -387,7 +387,7 @@ function Opened({
                 tone="muted"
                 className="tabular-nums"
               >
-                {asset.name}
+                {assetLabel(asset.name)}
                 {asset.size ? ` · ${formatBytes(asset.size)}` : ""}
               </Text>
             </>
@@ -485,7 +485,7 @@ function Opened({
                 // word over the picture — at this size a label hides what it
                 // labels.
                 fit="contain"
-                title={`${send.role ?? send.field} · ${send.name}`}
+                title={`${send.role ?? send.field} · ${assetLabel(send.name)}`}
                 className="size-28 rounded-none border border-line"
               />
             ))}
@@ -987,7 +987,10 @@ export function rowOfRecord(
   record: RunRecord,
   characters: Array<{ id: string; name: string }>,
 ): RunFeedRow {
-  const first = record.outputs[0];
+  // The first output that can actually be DRAWN, which is what the API's own
+  // `_feed_row` picks for `thumb` — `outputs[0]` was a second answer to the
+  // same question, and it disagreed whenever that output's node was gone.
+  const first = record.outputs.find((asset) => asset.url);
   return {
     id: record.id,
     lib: record.lib,
@@ -1011,6 +1014,6 @@ export function rowOfRecord(
     })),
     sends: record.sends,
     outputs: record.outputs,
-    thumb: first ? { node: first.node, url: first.url } : null,
+    thumb: first?.url ? { node: first.node, url: first.url } : null,
   };
 }

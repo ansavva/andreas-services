@@ -12,6 +12,7 @@ import {
 
 import type { AttachRole, Attachment } from "../../context/CreateBarContext";
 import type { ModelEntry, RunKind, SnapshotProp } from "../../types";
+import { assetLabel } from "../../utils/format";
 import {
   FrameEndIcon,
   LockIcon,
@@ -213,17 +214,19 @@ export function AttachmentThumb({
     // lighter ground so a transparent PNG does not read as a black square.
     <div
       className="relative h-24 shrink-0 overflow-hidden border border-line bg-surface-alt"
-      title={`${ROLE_WORDS[role].label} · ${ref.name}`}
+      // `ref.name` is absent when the node it names has been deleted — see
+      // `AttachRef`. The chip stays, so it can be seen and removed.
+      title={`${ROLE_WORDS[role].label} · ${assetLabel(ref.name)}`}
     >
       <img
-        src={ref.url}
+        src={ref.url ?? undefined}
         alt=""
         className="h-full w-auto max-w-48 object-contain"
       />
       <IconButton
         intent="overlay"
         size="sm"
-        label={`Remove ${ref.name}`}
+        label={`Remove ${assetLabel(ref.name)}`}
         className="absolute right-0 top-0 size-5 rounded-none bg-overlay-scrim/70"
         onClick={onDetach}
       >

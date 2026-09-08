@@ -82,10 +82,15 @@ interface MediaPlayerProps {
    * playback key, so one player is one node.
    */
   nodeId: string;
-  /** Presigned inline GET. Re-signed through `useSignedSrc` when it expires. */
-  url: string;
+  /**
+   * Presigned inline GET. Re-signed through `useSignedSrc` when it expires,
+   * and **absent when the node it names is gone** — see `RunAsset`, and
+   * `MediaThumb`'s `url`, which carries the reasoning. `useSignedSrc` reports
+   * that as `failed`, which is the `Unavailable` panel below.
+   */
+  url?: string | null;
   /** What the file is called. Names the play and close controls. */
-  name: string;
+  name?: string;
   isVideo?: boolean;
   /** The poster box's ratio. `auto` where the caller sized the box itself. */
   aspect?: keyof typeof ASPECTS;
@@ -181,7 +186,7 @@ interface MediaPlayerProps {
 export function MediaPlayer({
   nodeId,
   url,
-  name,
+  name = "",
   isVideo = false,
   aspect = "video",
   fit = "contain",

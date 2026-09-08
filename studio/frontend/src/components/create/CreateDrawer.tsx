@@ -10,6 +10,7 @@ import {
 } from "../../apis/studio";
 import type { AttachRef } from "../../context/CreateBarContext";
 import { useResource } from "../../hooks/useResource";
+import { assetLabel } from "../../utils/format";
 import { EmptyState } from "../common/EmptyState";
 import { CheckIcon, CloseIcon, PersonIcon } from "../common/icons";
 import { LoadError } from "../common/LoadError";
@@ -252,9 +253,12 @@ function OutputTiles({
 
   // Images only: a reference, a start frame or an edit is a picture, and a
   // clip cannot be one. The feed is newest first, so the tiles are too.
+  // `output.url` as well as the kind: this is a PICKER, and a node the catalog
+  // no longer holds comes back as its id alone — nothing to draw, and nothing
+  // worth offering to attach. The other two tile sets already filter on it.
   const refs: AttachRef[] = feed.data.runs.flatMap((run) =>
     run.outputs.flatMap((output, index) =>
-      isImage(output.content_type, output.name)
+      output.url && isImage(output.content_type, output.name)
         ? [
             {
               node: output.node,
@@ -280,10 +284,10 @@ function isImageName(name: string): boolean {
 
 function isImage(
   contentType: string | null | undefined,
-  name: string,
+  name: string | undefined,
 ): boolean {
   if (contentType) return contentType.startsWith("image/");
-  return isImageName(name);
+  return isImageName(name ?? "");
 }
 
 /**
@@ -307,10 +311,10 @@ function Tiles({
             pressed={on}
             size="sm"
             className="relative h-40 w-[7.5rem] shrink-0 overflow-hidden rounded-none p-0"
-            aria-label={`Attach ${ref.name}`}
+            aria-label={`Attach ${assetLabel(ref.name)}`}
             onClick={() => onAttach(ref)}
           >
-            <img src={ref.url} alt="" className="size-full object-cover" />
+            <img src={ref.url ?? undefined} alt="" className="size-full object-cover" />
             {on && (
               <span className="absolute left-1.5 top-1.5 inline-flex size-5 items-center justify-center bg-primary text-primary-text">
                 <CheckIcon className="size-3 fill-none stroke-current stroke-[2.5]" />
@@ -330,12 +334,12 @@ function Tiles({
 export function captionOf(ref: AttachRef): string {
   switch (ref.kind) {
     case "run":
-      return `run ${(ref.run ?? "").replace(/^run-/, "").slice(0, 4)} · ${ref.name}`;
+      return `run ${(ref.run ?? "").replace(/^run-/, "").slice(0, 4)} · ${assetLabel(ref.name)}`;
     case "input-pool":
-      return `input · ${ref.name}`;
+      return `input · ${assetLabel(ref.name)}`;
     case "character":
-      return `identity · ${ref.name}`;
+      return `identity · ${assetLabel(ref.name)}`;
     case "object":
-      return ref.name;
+      return assetLabel(ref.name);
   }
 }

@@ -710,13 +710,24 @@ export interface RunSummary {
  * **node**, never a URL and never a path. A URL-shaped binding is refused by the
  * API — that is hard rule #3, enforced for both halves of studio rather than
  * only for the CLI.
+ *
+ * **`node` is the only field that is always there**, and this is not defensive
+ * typing. `routes/support.asset` reports a pointer at a node the catalog cannot
+ * find as its id alone — the honest answer, and what keeps a run whose send was
+ * deleted openable instead of a 404. `name` and `url` are then simply absent,
+ * and `url` is `null` for a node that carries no blob.
+ *
+ * Typed `name: string; url: string` here until a production project holding one
+ * such run reached the feed and took the whole page down with it: `MediaThumb`
+ * did `new URL(undefined)`, then `undefined.split("?")` in the fallback. The
+ * types were the reason nothing on the way there had a reason to check.
  */
 export interface RunAsset {
   node: string;
-  name: string;
+  name?: string;
   size?: number;
   content_type?: string | null;
-  url: string;
+  url?: string | null;
 }
 
 /**

@@ -22,6 +22,7 @@ import { useNow } from "../../hooks/useNow";
 import { useSearchParamState } from "../../hooks/useSearchParamState";
 import type { HeroImage, RunAsset, RunFeedRow, RunStatus } from "../../types";
 import { formatCost } from "../../utils/cost";
+import { assetLabel } from "../../utils/format";
 import { ApertureSpinner } from "../common/Aperture";
 import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { EmptyState } from "../common/EmptyState";
@@ -514,7 +515,7 @@ function FeedRow({
                 aspect="square"
                 // Whole, not cropped — see the opened run's rail.
                 fit="contain"
-                title={`${send.role ?? send.field} · ${send.name}`}
+                title={`${send.role ?? send.field} · ${assetLabel(send.name)}`}
                 className="size-20 rounded-none border border-line"
               />
             ))}
