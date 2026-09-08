@@ -512,3 +512,10 @@ export const ImagePlusIcon = ({ className }: Props) => (
     <path d="m21 16-5-5-6 6-2-2-5 5M18 3v6M15 6h6" />
   </Glyph>
 );
+
+/** Two arrows passing: swap the start and end frames. */
+export const SwapIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M16 3l4 4-4 4M20 7H8M8 21l-4-4 4-4M4 17h12" />
+  </Glyph>
+);

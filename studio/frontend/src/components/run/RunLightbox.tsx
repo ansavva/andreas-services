@@ -723,7 +723,7 @@ function ActionGrid({
         {asset && still && (
           <Cell
             icon={<PlayIcon className="size-4 fill-current stroke-none" />}
-            label="Animate"
+            label="Start frame"
             onClick={() => actions.animate(asset, output)}
           />
         )}

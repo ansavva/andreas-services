@@ -120,7 +120,7 @@ export function OutputTile({
         {!video && (
           <OverlayAction
             icon={<PlayIcon className="size-3.5 fill-current stroke-none" />}
-            label="Animate"
+            label="Start frame"
             onClick={() => actions.animate(asset, index)}
           />
         )}

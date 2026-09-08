@@ -85,28 +85,29 @@ test("Enter on the create bar makes a draft and submits it; Shift+Enter breaks t
   expect(escaped(calls, page)).toEqual([]);
 });
 
-test("a tile opens the picker under it, and a pressed picture lands in the tile", async ({
+test("a tile opens the picker above the sheet, and a pressed picture lands in the row", async ({
   page,
 }) => {
   const calls = log(page);
   await page.goto(`/p/${PROJECT}`);
 
-  // Reference is the first tile the still model offers. Pressing it is what
-  // opens the picker — there is no separate control.
-  const tile = page.getByRole("group", { name: "Reference" });
-  await tile.getByRole("button", { name: "Reference" }).click();
+  // Image refs is the tile the still model offers. Pressing it is what opens
+  // the picker — there is no separate control.
+  await page.getByRole("group", { name: "Image refs" }).getByRole("button", { name: "Image refs" }).click();
 
-  // The picker opens on the cast's identity images, read off `/selection` —
-  // the route the stub used to answer with a character record, which crashed
-  // the sheet on the first press.
-  const picker = page.locator("[data-create-drawer]");
+  // The picker is the library's own navigation: it opens on the project's
+  // folder, and Media is every picture under it.
+  const picker = page.getByRole("region", { name: "Choose image refs" });
   await expect(picker).toBeVisible();
+  await picker.getByRole("button", { name: "Media" }).click();
   const first = picker.getByRole("button", { name: /^Attach / }).first();
   await expect(first).toBeVisible();
   await first.click();
 
-  // The picture is in the tile now, with its own way off.
-  await expect(tile.getByRole("button", { name: /^Remove / })).toBeVisible();
+  // The picture is in the row now, captioned by its position, with its own way off.
+  const strip = page.locator("[data-mode-strip]");
+  await expect(strip.getByText("Image 1")).toBeVisible();
+  await expect(strip.getByRole("button", { name: /^Remove / })).toBeVisible();
   // Attaching is not a send: nothing was written.
   expect(wrote(calls)).toEqual([]);
   expect(escaped(calls, page)).toEqual([]);

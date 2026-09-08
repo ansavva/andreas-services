@@ -8,7 +8,6 @@ npm run e2e:live       # the same specs against dev-up.sh and the seeded stack.
 python e2e/fixtures/capture.py            # re-take every fixture off the real API
 python e2e/fixtures/capture.py --seed     # only the published-seed group
 python e2e/fixtures/capture.py --runs     # only the run-authoring group
-python e2e/fixtures/capture.py --picker   # only what the create sheet's picker reads
 python e2e/fixtures/capture.py --video    # just the MP4; needs no API and no token
 ```
 
@@ -47,14 +46,6 @@ a project's feed and a run opened over it — have nothing in it to be captured
 from; it needs a stack that **has** been worked in. Which project and which runs is discovery — the first project, its newest
 draft, its newest succeeded image run — with `STUDIO_E2E_PROJECT` and
 `STUDIO_E2E_SCHEMA_MODEL` to steer it.
-
-The **picker** group — `character-selection`, `project-inputs` — is what the
-create sheet's picker reads when a tile is pressed, off the same project and
-character as the authoring group. `--picker` re-takes those two alone, which
-matters: re-taking the authoring group off a stack that has moved on rewrites
-`project-runs` with whatever is there now, and `runs.spec.ts` asserts against
-what was there. Before this group existed the stub answered a selection with
-the character record, and the first press on a tile crashed the sheet.
 
 So a bare `capture.py` does both and the second half refuses, loudly, on a fresh
 stack. That is the two groups disagreeing about which stack they want, said out

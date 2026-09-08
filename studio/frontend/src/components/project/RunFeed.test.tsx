@@ -280,7 +280,7 @@ describe("the actions", () => {
     });
   });
 
-  it("Use in prompt attaches the output as a reference; Animate switches to video with it as the start", async () => {
+  it("Use in prompt attaches the output as a reference; Start frame switches to video with it as the start", async () => {
     await draw([row()]);
     await screen.findByRole("article");
 
@@ -289,7 +289,7 @@ describe("the actions", () => {
     );
     expect(bar().attachments).toEqual(["reference:node-o2"]);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Animate" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Start frame" })[0]!);
     expect(bar().kind).toBe("video");
     expect(bar().attachments).toEqual(["start:node-o1"]);
     expect(bar().seed.kind).toBe("video");

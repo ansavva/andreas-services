@@ -2,7 +2,7 @@
 //
 // **Why a context and not the bar's own `useState`.** The bar sits in `TopBar`
 // and the things that fill it — Edit on a feed row, Use-in-prompt on a tile,
-// Animate on an output, Use as → Reference in the opened run — sit in route
+// Start frame on an output, Use as → Reference in the opened run — sit in route
 // elements nowhere near it. One provider above both is what lets a tile hand
 // an image to a bar it cannot see, the same reason `SidebarContext` exists.
 //
@@ -129,6 +129,8 @@ interface CreateBarStateValue extends CreateBarState {
   detach(index: number): void;
   /** Take every attachment off the current kind. */
   clearAttachments(): void;
+  /** The start frame becomes the end frame and vice versa. A no-op unless both are held. */
+  swapFrames(): void;
   /** After a send: the prompt goes, the images go unless kept. */
   sent(): void;
 }
@@ -283,6 +285,24 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const swapFrames = useCallback(
+    () =>
+      setState((current) => {
+        const held = current.attachments.video;
+        if (!held.some((each) => each.role === "start") || !held.some((each) => each.role === "end"))
+          return current;
+        const swapped = held.map((each) =>
+          each.role === "start"
+            ? { ...each, role: "end" as const }
+            : each.role === "end"
+              ? { ...each, role: "start" as const }
+              : each,
+        );
+        return { ...current, attachments: { ...current.attachments, video: swapped } };
+      }),
+    [],
+  );
+
   const value = useMemo<CreateBarStateValue>(
     () => ({
       ...state,
@@ -296,6 +316,7 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
       setKeep,
       detach,
       clearAttachments,
+      swapFrames,
       sent,
     }),
     [
@@ -309,6 +330,7 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
       setKeep,
       detach,
       clearAttachments,
+      swapFrames,
       sent,
     ],
   );

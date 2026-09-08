@@ -53,7 +53,7 @@ import {
 import { TemplateList } from "../run/TemplateList";
 import { AttachTiles } from "./AttachTiles";
 import { ModelChip, ModelList, ParamChipRow, ParamRows, chipClass } from "./CreateChips";
-import { CreateDrawer } from "./CreateDrawer";
+import { AttachPicker } from "./AttachPicker";
 import { CreateSettings } from "./CreateSettings";
 import { castOf, defaultEntry, findEntry, sendsOf } from "./roles";
 import { seedPlan } from "./seedPlan";
@@ -464,6 +464,25 @@ export function CreateBar() {
         </Alert.Root>
       )}
 
+      {/* The picker: a second sheet ABOVE this one while a tile is
+          highlighted, holding the library's file navigation. Absolute off the
+          sheet's own box, so the sheet neither grows nor moves. */}
+      <div className="relative">
+        {bar.role !== null && entry && (
+          <div className="absolute inset-x-0 bottom-full mb-2">
+            <AttachPicker
+              key={bar.role}
+              role={bar.role}
+              projectRoot={project.data?.root ?? null}
+              attached={new Set(attachments.map((each) => each.ref.node))}
+              onAttach={(ref: AttachRef) => {
+                if (bar.role) attach(ref, bar.role);
+              }}
+              onClose={() => bar.setRole(null)}
+            />
+          </div>
+        )}
+
       {/* The sheet. `bg-sheet` over a blur rather than a solid: media
           scrolling under it stays faintly visible, which is what says
           "floating over the feed" rather than "the page ends here". */}
@@ -532,27 +551,11 @@ export function CreateBar() {
             role={bar.role}
             onRole={bar.setRole}
             onDetach={bar.detach}
+            onSwapFrames={bar.swapFrames}
             onClear={bar.clearAttachments}
             keep={bar.keep}
             onKeep={bar.setKeep}
           />
-        )}
-
-        {/* The picker, under the tiles, while a role is highlighted. It
-            grows the sheet upward — the sheet is stuck to the bottom — so
-            nothing on the page moves. */}
-        {bar.role !== null && target && entry && (
-          <div className="max-h-72 overflow-y-auto rounded-md bg-fill-faint">
-            <CreateDrawer
-              projectId={target}
-              cast={projectCast}
-              attached={new Set(attachments.map((each) => each.ref.node))}
-              onAttach={(ref: AttachRef) => {
-                if (bar.role) attach(ref, bar.role);
-              }}
-              onClose={() => bar.setRole(null)}
-            />
-          </div>
         )}
 
         <div className="px-1">
@@ -564,6 +567,7 @@ export function CreateBar() {
             placeholder={placeholder}
             className=""
             family="body"
+            menuSide="up"
             // Two lines at rest; eight before it scrolls.
             contentClassName="min-h-12 max-h-48 overflow-y-auto"
             onSubmit={() => void send()}
@@ -716,6 +720,7 @@ export function CreateBar() {
         </div>
 
         {projectPicker && <div className="md:hidden">{projectPicker}</div>}
+      </div>
       </div>
     </div>
   );

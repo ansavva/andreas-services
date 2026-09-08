@@ -29,15 +29,17 @@ vi.mock("../../apis/studio", () => ({
   patchRunPlan: vi.fn(),
   deleteRun: vi.fn(),
   getRuns: vi.fn(),
-  // The settings popover and the drawer, when they open.
+  // The settings rows and the picker, when they open.
   getModelSchema: vi.fn().mockRejectedValue(new Error("no registry in tests")),
-  getCharacters: vi.fn().mockResolvedValue([]),
-  getCharacterSelection: vi
-    .fn()
-    .mockResolvedValue({ selection: [], cap: null, source: "default" }),
-  getProjectInputs: vi
-    .fn()
-    .mockResolvedValue({ folder: "node-in", inputs: [] }),
+  getFolder: vi.fn().mockResolvedValue({
+    prefix: "",
+    sort: "name",
+    depth: "1",
+    tags: [],
+    breadcrumbs: [],
+    folders: [],
+    files: [],
+  }),
 }));
 
 import {
@@ -177,13 +179,13 @@ it("the kind switch changes the tiles, the chips and the model", async () => {
     Array.from(strip().querySelectorAll("[data-role-cell]")).map((cell) =>
       cell.getAttribute("aria-label"),
     );
-  expect(labels()).toEqual(["Reference", "Edit"]);
+  expect(labels()).toEqual(["Input image", "Image refs"]);
   // The still model's snapshot has a resolution and no duration.
   expect(screen.getByRole("button", { name: "Resolution: 2K" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: /^Duration/ })).toBeNull();
 
   fireEvent.click(screen.getByRole("button", { name: "Video" }));
-  expect(labels()).toEqual(["Animate", "End frame", "Reference"]);
+  expect(labels()).toEqual(["Start frame", "End frame", "Image refs"]);
   // The duration is the snapshot's enum, as a chip reading the default.
   expect(screen.getByRole("button", { name: "Duration: 5s" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: /^Resolution/ })).toBeNull();
@@ -365,8 +367,8 @@ it("attachments show as thumbs in their role cell with a way off; a frame switch
   api.attach(FACE, "reference");
   await waitFor(() => expect(strip()).toBeTruthy());
 
-  const reference = within(strip()).getByRole("group", { name: "Reference" });
-  expect(within(reference).getByTitle(/^Reference · /)).toBeTruthy();
+  const reference = within(strip()).getByRole("group", { name: "Image refs" });
+  expect(within(reference).getByTitle(/^Image refs · /)).toBeTruthy();
   expect(
     within(reference).getByRole("button", { name: "Remove face-01.png" }),
   ).toBeTruthy();
@@ -374,11 +376,11 @@ it("attachments show as thumbs in their role cell with a way off; a frame switch
   api.attach({ ...FACE, node: "node-frame", name: "out-2.png" }, "start");
   await waitFor(() =>
     expect(
-      within(strip()).getByRole("group", { name: "Animate" }),
+      within(strip()).getByRole("group", { name: "Start frame" }),
     ).toBeTruthy(),
   );
   expect(
-    within(within(strip()).getByRole("group", { name: "Animate" })).getByRole(
+    within(within(strip()).getByRole("group", { name: "Start frame" })).getByRole(
       "button",
       {
         name: "Remove out-2.png",
