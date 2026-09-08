@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -38,6 +38,7 @@ import { useResource } from "../../hooks/useResource";
 import type { CreatedRun, RunSummary } from "../../types";
 import { formatDate } from "../../utils/format";
 import {
+  CloseIcon,
   ArrowUpIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -127,6 +128,16 @@ export function CreateBar() {
   const toast = useToast();
 
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const promptBox = useRef<HTMLDivElement>(null);
+  const [promptFocused, setPromptFocused] = useState(false);
+  // Whether the prompt at rest has more than its two lines — the fade is
+  // drawn only then, so a short prompt is not dimmed for nothing.
+  const [promptOverflows, setPromptOverflows] = useState(false);
+  useEffect(() => {
+    const content = promptBox.current?.querySelector<HTMLElement>("[contenteditable]");
+    if (!content) return;
+    setPromptOverflows(content.scrollHeight > content.clientHeight + 1);
+  }, [bar.prompt, promptFocused]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetView, setSheetView] = useState<"settings" | "models">("settings");
@@ -420,8 +431,16 @@ export function CreateBar() {
     />
   );
 
+  if (!bar.shown) return null;
+
   return (
-    <div className="flex flex-col gap-2" data-create-bar="">
+    <div
+      className="flex flex-col gap-2"
+      data-create-bar=""
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && bar.dismissible && !event.defaultPrevented) bar.dismiss();
+      }}
+    >
       {held && (
         <Alert.Root intent="warning">
           <Alert.Title>This request has been run here before</Alert.Title>
@@ -512,6 +531,14 @@ export function CreateBar() {
               </Popover.Content>
             </Popover.Root>
 
+            {/* Where the sheet is not always drawn — the opened run — the
+                way to put it away. Escape does the same. */}
+            {bar.dismissible && (
+              <IconButton size="sm" label="Put the sheet away" onClick={bar.dismiss}>
+                <CloseIcon />
+              </IconButton>
+            )}
+
 
           </div>
         </div>
@@ -531,7 +558,19 @@ export function CreateBar() {
           />
         )}
 
-        <div className="px-1">
+        {/* Two lines at rest, faded where more is cut off; eight once the
+            caret is in it, then it scrolls. A long prompt at rest was making
+            the sheet half the viewport. Focus is tracked on the box rather
+            than read off the editor: React hears `focusin`/`focusout`. */}
+        <div
+          ref={promptBox}
+          className="px-1"
+          onFocusCapture={() => setPromptFocused(true)}
+          onBlurCapture={(event) => {
+            if (!promptBox.current?.contains(event.relatedTarget as Node | null))
+              setPromptFocused(false);
+          }}
+        >
           <TokenizedPromptEditor
             value={bar.prompt}
             onValueChange={bar.setPrompt}
@@ -541,8 +580,15 @@ export function CreateBar() {
             className=""
             family="body"
             menuSide="up"
-            // Two lines at rest; eight before it scrolls.
-            contentClassName="min-h-12 max-h-48 overflow-y-auto"
+            contentClassName={
+              promptFocused
+                ? "min-h-12 max-h-48 overflow-y-auto"
+                : `min-h-12 max-h-12 overflow-hidden ${
+                    promptOverflows
+                      ? "[mask-image:linear-gradient(to_bottom,black_40%,transparent)]"
+                      : ""
+                  }`
+            }
             onSubmit={() => void send()}
             focusKey={bar.focus}
           />

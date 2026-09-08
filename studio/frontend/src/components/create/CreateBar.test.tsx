@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -418,4 +419,27 @@ it("the sheet is always drawn, and a press elsewhere folds nothing", async () =>
   expect(strip()).toBeTruthy();
   expect(editor().textContent).toContain("A portrait.");
   expect(screen.getByRole("button", { name: "Remove face-01.png" })).toBeTruthy();
+});
+
+it("on the opened run the sheet stays away until something calls it up, and × puts it back", async () => {
+  // Not `open()`: that waits for the placeholder, and there is no sheet to
+  // hold one yet — its absence is the point.
+  render(
+    <MemoryRouter initialEntries={[`/p/${PROJECT}/r/run-0001`]}>
+      <CreateBarProvider>
+        <CreateBar />
+        <Driver />
+      </CreateBarProvider>
+    </MemoryRouter>,
+    { wrapper: TestProviders },
+  );
+  await screen.findByTestId("address");
+  expect(document.querySelector("[data-create-bar]")).toBeNull();
+
+  act(() => api.loadRun({ project: PROJECT, kind: "image", prompt: "Again, but warmer." }));
+  await waitFor(() => expect(document.querySelector("[data-create-bar]")).toBeTruthy());
+  expect(screen.getByRole("textbox", { name: "Prompt" }).textContent).toContain("Again, but warmer.");
+
+  fireEvent.click(screen.getByRole("button", { name: "Put the sheet away" }));
+  await waitFor(() => expect(document.querySelector("[data-create-bar]")).toBeNull());
 });

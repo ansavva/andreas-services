@@ -442,7 +442,14 @@ page and a plain textarea over its literal bytes, and never offers fields.
   `AttachPicker`, a second sheet ABOVE this one with the library's own
   navigation — Folders and Media views, tags, crumbs, `Project` / `Library`
   jumps — and pressing a picture there attaches it to that role. Then the
-  prompt, borderless, its `{` menu opening upward. Then the chip row (`CreateChips`):
+  prompt, borderless, its `{` menu opening upward — two lines at rest, faded
+  where more is cut off, eight with the caret in it.
+
+  **On the opened run the sheet is not drawn** until Edit, Rerun, Use as
+  reference or a tile calls it up (`summoned` in the context; `SheetSlot`
+  in `AppLayout`), and × or Escape puts it away again: that screen is a
+  fixed-height viewer, and a sheet over it covered the filmstrip and the
+  transport with nothing able to scroll them back. Then the chip row (`CreateChips`):
   the model, opening `ModelList` (search + notes, one kind at a time), and one
   chip per input the model has out of a fixed six — aspect ratio, resolution,
   duration, quality, outputs, audio — each a glyph and a value opening a

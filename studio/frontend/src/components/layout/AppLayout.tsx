@@ -1,6 +1,6 @@
 import { Outlet } from "react-router-dom";
 
-import { CreateBarProvider } from "../../context/CreateBarContext";
+import { CreateBarProvider, useCreateBarState } from "../../context/CreateBarContext";
 import { SidebarProvider } from "../../context/SidebarContext";
 import { CreateBar } from "../create/CreateBar";
 import { AppSidebar } from "./AppSidebar";
@@ -45,17 +45,34 @@ export function AppLayout() {
             <main className="flex flex-1 flex-col gap-6 px-4 py-6 md:px-6">
               <Outlet />
             </main>
-            {/* `pointer-events-none` on the strip, back on for the panel: the
-                strip spans the column so the panel can centre in it, and a
-                click in the strip's margins must reach the feed under it. */}
-            <div className="pointer-events-none sticky bottom-0 z-30 px-2 pb-2 md:px-6 md:pb-4">
-              <div className="pointer-events-auto mx-auto w-full max-w-3xl">
-                <CreateBar />
-              </div>
-            </div>
+            <SheetSlot />
           </div>
         </div>
       </CreateBarProvider>
     </SidebarProvider>
+  );
+}
+
+/**
+ * The create sheet's strip at the column's foot — or nothing.
+ *
+ * Nothing on the opened run until something calls the sheet up (Edit, Rerun,
+ * Use as reference, a tile): that screen is a fixed-height viewer, so a sheet
+ * drawn over it covers the filmstrip and the transport with nothing able to
+ * scroll them back into view. `shown` is the context's word on it.
+ *
+ * `pointer-events-none` on the strip, back on for the panel: the strip spans
+ * the column so the panel can centre in it, and a click in the strip's
+ * margins must reach the feed under it.
+ */
+function SheetSlot() {
+  const { shown } = useCreateBarState();
+  if (!shown) return null;
+  return (
+    <div className="pointer-events-none sticky bottom-0 z-30 px-2 pb-2 md:px-6 md:pb-4">
+      <div className="pointer-events-auto mx-auto w-full max-w-3xl">
+        <CreateBar />
+      </div>
+    </div>
   );
 }
