@@ -98,12 +98,17 @@ test("the object screen is a page in the app shell, not an overlay", async ({
   await page.goto(at(CLIP_ITEM.id));
 
   // The three things that make it a page: the shell's own navigation above it,
-  // a `PageBar` naming the file, and the neighbours drawn underneath rather
+  // a crumb saying where it sits, and the neighbours drawn underneath rather
   // than scrolled through in the dark.
+  //
+  // Not the filename — the object screen stopped drawing one (`ObjectFacts`),
+  // and a `getByText` on it now matches the tail of the `key` line instead,
+  // which is an assertion that passes without meaning what it says.
   await expect(
     page.getByRole("navigation", { name: /sections/i }).first(),
   ).toBeVisible();
-  await expect(page.getByText(CLIP_ITEM.name).first()).toBeVisible();
+  // Scoped to `main`: the sidebar carries a "Files" link of its own.
+  await expect(page.locator("main").getByRole("link", { name: "Files" })).toBeVisible();
   await expect(page.getByLabel("Neighbours")).toBeVisible();
   await expect(
     page.getByRole("region", { name: "File details" }),
@@ -233,7 +238,8 @@ test("a cold link with no context shows the file and says what it belongs to", a
   // would have added stripped off.
   await page.goto(`/o/${STILL.id}`);
 
-  await expect(page.getByText(STILL.name).first()).toBeVisible();
+  // The picture itself, not its name: see the note in the app-shell test above
+  // for why a `getByText` on the filename no longer proves anything.
   await expect(page.locator("main img").first()).toBeVisible();
 
   // One pane is not a sequence, so there is no strip — and the way back is the
@@ -340,10 +346,16 @@ for (const [label, width] of [
  * `tile.scrollIntoView({ block: "nearest", inline: "center" })`, and
  * `block: "nearest"` does not mean "do not scroll vertically" — when the strip
  * sits below the fold, as it does at 390px, the browser scrolls every
- * scrollable ancestor to reveal it. `window.scrollY` settled at 85 and the
- * file's own name went under the sticky header, on the one width where a name
- * is hardest to spare. Scrolling the strip by hand fixes that, and the second
- * half of this test is what stops the fix from being "never scroll at all".
+ * scrollable ancestor to reveal it. `window.scrollY` settled at 85 and the top
+ * of the content column went under the sticky header. Scrolling the strip by
+ * hand fixes that, and the second half of this test is what stops the fix from
+ * being "never scroll at all".
+ *
+ * **What is asserted on top is Close, not the filename.** The name was the
+ * page's `<h2>` when this was written and is not drawn at all now — see
+ * `ObjectFacts`. Close is the better subject anyway: it sits in the same first
+ * row, and a control you cannot press is a worse outcome than a word you
+ * cannot read.
  */
 test("opening an object does not scroll the page, and the strip still centres", async ({
   page,
@@ -358,25 +370,19 @@ test("opening an object does not scroll the page, and the strip still centres", 
 
   await expect.poll(async () => page.evaluate(() => window.scrollY)).toBe(0);
 
-  // The name is the thing the old behaviour hid: assert it is genuinely on top
-  // at its own centre, not merely present in the DOM.
+  // Genuinely on top at its own centre, not merely present in the DOM.
   await expect
     .poll(async () =>
-      page.evaluate((name) => {
-        // `<h2>` now — the object screen's title is `PageBar`'s `display`
-        // variant, matching every other routed page's heading, where it used
-        // to be a `title`-variant `<h4>` this page alone carried.
-        const title = [...document.querySelectorAll("h2")].find(
-          (el) => el.textContent?.trim() === name,
-        );
-        if (!title) return "missing";
-        const box = title.getBoundingClientRect();
+      page.evaluate(() => {
+        const close = document.querySelector('button[aria-label="Close (Esc)"]');
+        if (!close) return "missing";
+        const box = close.getBoundingClientRect();
         const hit = document.elementFromPoint(
           Math.round(box.x + box.width / 2),
           Math.round(box.y + box.height / 2),
         );
-        return hit === title || title.contains(hit) ? "on top" : "covered";
-      }, target.name),
+        return hit === close || close.contains(hit) ? "on top" : "covered";
+      }),
     )
     .toBe("on top");
 

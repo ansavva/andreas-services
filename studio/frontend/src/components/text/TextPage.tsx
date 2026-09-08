@@ -28,7 +28,7 @@ interface Props {
  * **It is `AppLayout` with a `PageBar` now, not a `fixed inset-0` takeover.**
  * It used to fill the viewport and lock the body's own scroll the way the old
  * media viewer did, because there was no page to put it on. `ObjectPage`
- * became an ordinary page for the same reason (`ObjectHeader`'s own note), and
+ * became an ordinary page for the same reason (`ObjectAside`'s own note), and
  * this follows: a `profile.yaml` is a thing you sit and read, and reading it
  * behind its own header — with the same crumb back to the folder every other
  * screen draws — is the app's one shape rather than a second one for text.

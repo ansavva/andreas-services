@@ -14,13 +14,13 @@ import {
   getScene,
   renameNode,
 } from "../apis/studio";
-import type { Crumb } from "../components/layout/PageBar";
+import { PageBar, type Crumb } from "../components/layout/PageBar";
 import { MediaPlayer, type MediaPlayerControls } from "../components/media/MediaPlayer";
 import { TextPage } from "../components/text/TextPage";
 import { FileDetailsPanel } from "../components/viewer/FileDetailsPanel";
 import { Filmstrip } from "../components/viewer/Filmstrip";
 import { ObjectActions } from "../components/viewer/ObjectActions";
-import { ObjectDetails, ObjectHeader } from "../components/viewer/ObjectHeader";
+import { ObjectControls, ObjectDetails } from "../components/viewer/ObjectAside";
 import { OwnerLink } from "../components/viewer/OwnerLink";
 import { useKeyboardNav } from "../hooks/useKeyboardNav";
 import { useResource } from "../hooks/useResource";
@@ -296,9 +296,9 @@ export function ObjectPage() {
   });
 
   if (open && isText) {
-    // Same crumb `ObjectHeader` draws for the media case — `TextPage` grew its
-    // own `PageBar` once it stopped being a `fixed inset-0` takeover, and a
-    // page inside `AppLayout` needs to say where it sits like every other one.
+    // Same crumb the media case draws — `TextPage` grew its own `PageBar`
+    // once it stopped being a `fixed inset-0` takeover, and a page inside
+    // `AppLayout` needs to say where it sits like every other one.
     return <TextPage file={open} onClose={close} onSaved={feed.reload} crumbs={crumbs} />;
   }
 
@@ -361,23 +361,40 @@ export function ObjectPage() {
 
   return (
     <>
-      <ObjectHeader
-        file={current}
-        position={position}
-        crumbs={crumbs}
-        onDelete={removeThis}
-        editing={editing}
-        onToggleEditing={toggleEditing}
-        onClose={close}
-      />
+      {/*
+        Crumbs and nothing else. The name, the facts and the controls that used
+        to fill this bar are all in the column beside the player now — see
+        `ObjectAside`. What a bar can say that the column cannot is where the
+        page sits.
+      */}
+      <PageBar crumbs={crumbs} />
 
       {/*
-        One column on a phone, two from `lg`. The player leads in both, because
-        it is what the address names — the words beside it on a wide screen sit
-        under it on a narrow one rather than pushing the picture off the fold.
+        One column on a phone, two from `lg`, and the DOM order is the phone's.
+
+        Everything done to the file and everything it says about itself —
+        Copy/Edit/Download/Close, its description, its tags, its properties —
+        is in the right column on a wide screen, which is what `lg:col-start-2`
+        and the explicit rows below put there; the player takes the left column
+        across both rows. On a phone there is one column and the three children
+        fall in source order: the controls first, so what acts on the file is
+        reachable without scrolling past it, then the player, then everything
+        that describes it. Placing them rather than reordering keeps that a
+        property of the source and not of a `lg:order-*` a reader has to run in
+        their head.
       */}
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-6">
-        <div className="flex min-w-0 flex-col gap-3">
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:grid-rows-[auto_minmax(0,1fr)] lg:gap-x-6 lg:gap-y-3">
+        <ObjectControls
+          file={current}
+          position={position}
+          onDelete={removeThis}
+          editing={editing}
+          onToggleEditing={toggleEditing}
+          onClose={close}
+          className="lg:col-start-2 lg:row-start-1"
+        />
+
+        <div className="flex min-w-0 flex-col gap-3 lg:col-start-1 lg:row-span-2 lg:row-start-1">
           {/*
             Not keyed on the node, deliberately: stepping from one clip to the
             next keeps the player mounted and playing, which is the one thing
@@ -426,7 +443,7 @@ export function ObjectPage() {
           />
         </div>
 
-        <aside className="flex min-w-0 flex-col gap-4">
+        <aside className="flex min-w-0 flex-col gap-4 lg:col-start-2 lg:row-start-2">
           <ObjectDetails
             file={current}
             // A link that arrived with no context: say what the file belongs
