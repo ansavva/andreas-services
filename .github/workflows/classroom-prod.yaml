@@ -232,12 +232,21 @@ jobs:
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           echo "ECR_REGISTRY=${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> "$GITHUB_ENV"
 
+      # THIS STEP OWNS THE LAMBDA'S ENVIRONMENT, NOT TERRAFORM.
+      #
+      # The Lambda carries `lifecycle { ignore_changes = [environment] }` (the
+      # repo-wide convention), so Terraform sets these on FIRST CREATION only
+      # and every later change has to be made here. A variable added to the
+      # Terraform and not to this list is silently absent in prod.
+      #
+      # `--environment` REPLACES the whole map rather than merging into it, so
+      # every variable the API needs must be listed on this one line.
       - name: Update Lambda env vars
         run: |
           set -euo pipefail
           aws lambda update-function-configuration \
             --function-name "${{ env.LAMBDA_FN }}" \
-            --environment "Variables={CLASSROOM_PAGES_TABLE=classroom-prod-pages,CLASSROOM_PUBLIC_SITE_URL=https://classroom.andreas.services}" \
+            --environment "Variables={CLASSROOM_PAGES_TABLE=classroom-prod-pages,CLASSROOM_PUBLIC_SITE_URL=https://classroom.andreas.services,CLASSROOM_LESSONS_BUCKET=classroom-prod-lessons-us-east-1,CLASSROOM_ALLOWED_ORIGIN=https://classroom-admin.andreas.services}" \
             --region "${{ env.AWS_REGION }}" >/dev/null
           aws lambda wait function-updated \
             --function-name "${{ env.LAMBDA_FN }}" --region "${{ env.AWS_REGION }}"
