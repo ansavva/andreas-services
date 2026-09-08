@@ -1,11 +1,10 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
   Alert,
   Button,
-  Collapsible,
   Combobox,
   Drawer,
   IconButton,
@@ -39,7 +38,6 @@ import type { CreatedRun, RunSummary } from "../../types";
 import { formatDate } from "../../utils/format";
 import {
   ArrowUpIcon,
-  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   EyeIcon,
@@ -106,14 +104,16 @@ const UP_RIGHT = "bottom-full top-auto left-auto right-0 mb-2 mt-0";
  * bottom, and nothing about it is folded: the mode switch top-left, the
  * three icons top-right, a tile per image role, the prompt, and a row of chips
  * for the model and the settings worth a press — each a glyph and a value
- * that opens a short menu upward. Enter sends. The round arrow is Send.
+ * that opens a short menu upward — and a gear holding every setting as rows.
+ * Enter sends. The round arrow is Send.
  *
  * **There is no approve step.** Hard rule #2 is carried by the person
  * pressing Send over a prompt they can read.
  *
- * **Below `md` the chip row collapses** to the model, a gear and Send, the way
- * ElevenLabs' phone runner does: the gear opens a bottom sheet holding the
- * mode switch, the same settings as labelled rows, and the model's full form.
+ * **When the row is too narrow for the chips they collapse into the gear**,
+ * the way ElevenLabs' phone runner does: the model, the gear and Send. Below
+ * `md` the gear opens a bottom sheet — the mode switch, a Model box, and every
+ * setting as a row; above it, a panel of the same rows.
  *
  * **The state is not here.** `CreateBarContext` holds it so the feed can load
  * a run into the panel from a route element; this component reads it, draws
@@ -131,6 +131,7 @@ export function CreateBar() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetView, setSheetView] = useState<"settings" | "models">("settings");
+  const sheetRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [held, setHeld] = useState<Held | null>(null);
@@ -570,7 +571,11 @@ export function CreateBar() {
           />
         </div>
 
-        <div className="flex items-center gap-1">
+        {/* `@container`: the chips show only when the row is wide enough for
+            them (`@min-[40rem]`), and collapse into the gear otherwise. A
+            container query rather than `md:`, because a narrow window with the
+            sidebar open is the phone's problem at a desktop breakpoint. */}
+        <div className="@container flex items-center gap-1">
           {/* Off a project page the panel has to be told where a run goes.
               On one, the route says. Inline above `md`; a row of its own
               under the chips on a phone. */}
@@ -592,25 +597,28 @@ export function CreateBar() {
               entry={entry}
               params={params}
               onParams={setParams}
-              className="max-md:hidden"
+              className="hidden @min-[40rem]:flex"
             />
           )}
 
-          {/* What the chips do not carry, as the model's form — ElevenLabs'
-              `More options ›`. Above `md` only; the sheet holds it below. */}
+          {/* The gear, above `md`: every setting as rows, in a panel hung
+              from the chip row. The same rows the phone sheet draws — the six
+              chips' and the rest of the schema's — so when the chips have
+              collapsed into it nothing is out of reach. */}
           {entry && (
             <Popover.Root open={settingsOpen} onOpenChange={setSettingsOpen}>
               <Popover.Trigger
-                aria-label="More options"
+                aria-label="Settings"
+                title="Settings"
                 className={`${chipClass} max-md:hidden`}
               >
-                More options
-                <ChevronRightIcon className="size-3.5 shrink-0 fill-none stroke-current stroke-[1.5]" />
+                <SettingsIcon className={GLYPH} />
               </Popover.Trigger>
               <Popover.Content
-                label="More options"
-                className="bottom-full top-auto mb-2 mt-0 max-h-[70vh] w-[min(30rem,calc(100vw-2rem))] max-w-none overflow-y-auto"
+                label="Settings"
+                className="bottom-full top-auto left-auto right-0 mb-2 mt-0 max-h-[70vh] w-[min(26rem,calc(100vw-2rem))] max-w-none overflow-y-auto"
               >
+                <ParamRows entry={entry} params={params} onParams={setParams} />
                 <CreateSettings entry={entry} params={params} onParams={setParams} />
               </Popover.Content>
             </Popover.Root>
@@ -631,17 +639,16 @@ export function CreateBar() {
             <Drawer.Trigger
               aria-label="Settings"
               title="Settings"
-              className={`${chipClass} md:hidden`}
+              className={`${chipClass} bg-fill md:hidden`}
             >
               <SettingsIcon className={GLYPH} />
             </Drawer.Trigger>
             <Drawer.Backdrop />
-            <Drawer.Panel className="max-h-[85vh] overflow-y-auto rounded-t-lg">
+            <Drawer.Panel ref={sheetRef} className="max-h-[85vh] overflow-y-auto rounded-t-lg pt-0">
               <Drawer.Title className="sr-only">
                 {sheetView === "models" ? "Select a model" : "Settings"}
               </Drawer.Title>
-              {/* The grab handle every phone sheet has. */}
-              <span aria-hidden="true" className="mx-auto -mt-1 mb-3 block h-1 w-12 rounded-pill bg-fill-active" />
+              <SheetHandle panel={sheetRef} onDismiss={() => setSheetOpen(false)} />
               {entry && sheetView === "models" ? (
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center gap-2">
@@ -683,15 +690,7 @@ export function CreateBar() {
                         </Button>
                       </div>
                       <ParamRows entry={entry} params={params} onParams={setParams} />
-                      <Collapsible.Root>
-                        <Collapsible.Trigger className={`${chipClass} -ml-2 gap-1`}>
-                          More options
-                          <ChevronDownIcon className="size-3.5 shrink-0 fill-none stroke-current stroke-[1.5]" />
-                        </Collapsible.Trigger>
-                        <Collapsible.Panel className="pt-3">
-                          <CreateSettings entry={entry} params={params} onParams={setParams} />
-                        </Collapsible.Panel>
-                      </Collapsible.Root>
+                      <CreateSettings entry={entry} params={params} onParams={setParams} />
                     </>
                   )}
                 </div>
@@ -733,4 +732,69 @@ function pillClass(on: boolean): string {
       ? "bg-fill-active text-ink hover:bg-fill-active active:bg-fill-active"
       : "text-muted hover:bg-fill hover:text-ink"
   }`;
+}
+
+/**
+ * The grab strip at the top of the phone sheet, and the drag that dismisses
+ * it.
+ *
+ * **The gesture lives on the strip, not the sheet.** A finger on the rows is
+ * scrolling them, and the browser claims a vertical touch there for the
+ * scroll (`pointercancel`) before this could read it; the strip is
+ * `touch-action: none`, so a touch on it is ours from the first pixel. The
+ * sheet follows the finger downward — never up — and lets go past 96px, or
+ * past 24px with a flick; short of that it snaps back. Escape and the
+ * backdrop still close it, so this is the phone's affordance rather than the
+ * only one.
+ */
+function SheetHandle({
+  panel,
+  onDismiss,
+}: {
+  panel: React.RefObject<HTMLDivElement | null>;
+  onDismiss: () => void;
+}) {
+  const start = useRef<{ y: number; at: number } | null>(null);
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    start.current = { y: event.clientY, at: performance.now() };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    if (panel.current) panel.current.style.transition = "none";
+  };
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const from = start.current;
+    const sheet = panel.current;
+    if (!from || !sheet) return;
+    const dy = Math.max(0, event.clientY - from.y);
+    sheet.style.transform = dy > 0 ? `translateY(${dy}px)` : "";
+  };
+  const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const from = start.current;
+    const sheet = panel.current;
+    start.current = null;
+    if (!from || !sheet) return;
+    const dy = event.clientY - from.y;
+    const speed = dy / Math.max(1, performance.now() - from.at);
+    sheet.style.transition = "transform 160ms ease-out";
+    if (dy > 96 || (dy > 24 && speed > 0.6)) {
+      sheet.style.transform = "translateY(100%)";
+      window.setTimeout(onDismiss, 150);
+    } else {
+      sheet.style.transform = "";
+    }
+  };
+
+  return (
+    <div
+      role="presentation"
+      className="-mx-4 mb-2 flex h-8 cursor-grab touch-none items-center justify-center active:cursor-grabbing"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+    >
+      <span aria-hidden="true" className="block h-1 w-12 rounded-pill bg-fill-active" />
+    </div>
+  );
 }

@@ -5,6 +5,7 @@ import { Button, Dropdown, Input, Popover, Text } from "@ansavva/design-system";
 import { getModelSchema } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
 import type { ModelEntry, ModelSchema, RunKind, SchemaProp, SnapshotProp } from "../../types";
+import { humaniseKey } from "../../utils/format";
 import {
   AspectIcon,
   CheckIcon,
@@ -18,7 +19,7 @@ import {
   SoundOnIcon,
 } from "../common/icons";
 import { EmptyState } from "../common/EmptyState";
-import { enumOf } from "../run/SchemaParams";
+import { describedProps, enumOf } from "../run/SchemaParams";
 
 /**
  * The chip row under the prompt: the model, then the handful of settings a
@@ -190,11 +191,12 @@ export function ParamChipRow({
   entry,
   params,
   onParams,
-  className = "",
+  className = "flex",
 }: {
   entry: ModelEntry;
   params: Record<string, unknown>;
   onParams: (next: Record<string, unknown>) => void;
+  /** Carries the display: the row decides when the chips are drawn at all. */
   className?: string;
 }) {
   const schema = useLiveSchema(entry.model);
@@ -202,7 +204,7 @@ export function ParamChipRow({
   if (chips.length === 0) return null;
 
   return (
-    <div className={`flex min-w-0 items-center gap-0.5 ${className}`} data-param-chips="">
+    <div className={`min-w-0 items-center gap-0.5 ${className}`} data-param-chips="">
       {chips.map((chip) => (
         <ParamChip
           key={chip.name}
@@ -425,7 +427,7 @@ export function ModelChip({
       <Popover.Trigger
         aria-label={`Model: ${entry.key}`}
         title="Model"
-        className={`${chipClass} text-ink`}
+        className={`${chipClass} text-ink max-md:bg-fill`}
       >
         <ModelIcon className={GLYPH} />
         <span className="max-w-40 truncate">{entry.key}</span>
@@ -451,9 +453,38 @@ export function ModelChip({
 }
 
 /**
- * The chip row's settings as labelled rows — the phone sheet's body. Each row
- * is the same chip the desktop row draws, so a value set on either is the
- * same value.
+ * One setting as a row: the word on the left, the control on the right —
+ * the shape ElevenLabs' sheet gives every setting, and the shape both the
+ * phone sheet and the desktop `More options` panel draw here. A form with a
+ * label, a mono key, a full-width select and a paragraph under each was the
+ * old `SchemaParams` shape, and it is not this.
+ */
+export function SettingRow({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  /** The schema's description, a hover away rather than a paragraph. */
+  hint?: string | undefined;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="flex min-h-12 items-center justify-between gap-3 border-b border-line last:border-b-0"
+      data-setting-row=""
+    >
+      <Text as="span" variant="body" title={hint}>
+        {label}
+      </Text>
+      <span className="flex shrink-0 items-center rounded-sm bg-fill">{children}</span>
+    </div>
+  );
+}
+
+/**
+ * The chip row's six, as rows. Each is the same `ParamChip` the desktop row
+ * draws, so a value set on either is the same value.
  */
 export function ParamRows({
   entry,
@@ -471,28 +502,189 @@ export function ParamRows({
   return (
     <div className="flex flex-col" data-param-rows="">
       {chips.map((chip) => (
-        <div
-          key={chip.name}
-          className="flex min-h-12 items-center justify-between gap-3 border-b border-line last:border-b-0"
-        >
-          <Text as="span" variant="body">
-            {chip.spec.label}
-          </Text>
-          <span className="rounded-sm bg-fill">
-            <ParamChip
-              chip={chip}
-              value={params[chip.name]}
-              menuSide="down"
-              onChange={(next) => {
-                const out = { ...params };
-                if (next === undefined) delete out[chip.name];
-                else out[chip.name] = next;
-                onParams(out);
-              }}
-            />
-          </span>
-        </div>
+        <SettingRow key={chip.name} label={chip.spec.label}>
+          <ParamChip
+            chip={chip}
+            value={params[chip.name]}
+            menuSide="down"
+            onChange={(next) => onParams(withParam(params, chip.name, next))}
+          />
+        </SettingRow>
       ))}
     </div>
+  );
+}
+
+/** `params` with one value set, or with it unset when `next` is undefined. */
+function withParam(
+  params: Record<string, unknown>,
+  name: string,
+  next: unknown,
+): Record<string, unknown> {
+  const out = { ...params };
+  if (next === undefined) delete out[name];
+  else out[name] = next;
+  return out;
+}
+
+/**
+ * Everything the model takes that has no chip, as rows — `More options`.
+ *
+ * Read off the LIVE schema through `describedProps`, which already drops the
+ * prompt, the image fields (sends, never params — hard rule #3), and any
+ * credential-shaped name; `skip` adds the six chips so nothing is offered
+ * twice. What each row's control is follows the input's shape: a listed or
+ * short-ranged value is a menu, a yes/no is a switch, and anything else is a
+ * small box. The model's own default is what an empty control shows, and an
+ * untouched row writes nothing — see `ParamChip`.
+ */
+export function SettingRows({
+  schema,
+  skip,
+  params,
+  onParams,
+}: {
+  schema: ModelSchema;
+  skip: ReadonlySet<string>;
+  params: Record<string, unknown>;
+  onParams: (next: Record<string, unknown>) => void;
+}) {
+  const rows = describedProps(schema, skip);
+  if (rows.length === 0) return null;
+  const schemas = schema.schemas ?? {};
+
+  return (
+    <div className="flex flex-col" data-setting-rows="">
+      {rows.map(({ name, spec, kind }) => {
+        const label = humaniseKey(name);
+        const hint = typeof spec.description === "string" ? spec.description : undefined;
+        const value = params[name];
+        const set = (next: unknown) => onParams(withParam(params, name, next));
+        const choices =
+          kind === "enum"
+            ? (enumOf(spec, schemas) ?? [])
+            : kind === "number"
+              ? rangeChoices(spec)
+              : [];
+
+        if (kind === "boolean") {
+          return (
+            <SettingRow key={name} label={label} hint={hint}>
+              <SwitchChip
+                label={label}
+                on={(value ?? spec.default) === true}
+                onChange={set}
+              />
+            </SettingRow>
+          );
+        }
+        if (choices.length > 0) {
+          return (
+            <SettingRow key={name} label={label} hint={hint}>
+              <ValueChip
+                label={label}
+                value={value}
+                modelDefault={spec.default}
+                choices={choices}
+                onChange={set}
+              />
+            </SettingRow>
+          );
+        }
+        return (
+          <SettingRow key={name} label={label} hint={hint}>
+            <Input
+              aria-label={label}
+              type={kind === "number" ? "number" : "text"}
+              value={value === undefined || value === null ? "" : String(value)}
+              placeholder={
+                spec.default === undefined || spec.default === null
+                  ? "Default"
+                  : `Default · ${String(spec.default)}`
+              }
+              className="h-8 w-36 border-0 bg-transparent px-2 text-right text-sm"
+              onValueChange={(text: string) =>
+                set(
+                  text === ""
+                    ? undefined
+                    : kind === "number" && text.trim() !== "" && !Number.isNaN(Number(text))
+                      ? Number(text)
+                      : text,
+                )
+              }
+            />
+          </SettingRow>
+        );
+      })}
+    </div>
+  );
+}
+
+/** A yes/no as the same chip the audio chip is: a word that flips. */
+function SwitchChip({
+  label,
+  on,
+  onChange,
+}: {
+  label: string;
+  on: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <Button
+      intent="secondary"
+      size="sm"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      className={chipClass}
+      onClick={() => onChange(!on)}
+    >
+      {on ? "On" : "Off"}
+    </Button>
+  );
+}
+
+/** A listed value as a chip with no glyph: the value, a chevron, a menu. */
+function ValueChip({
+  label,
+  value,
+  modelDefault,
+  choices,
+  onChange,
+}: {
+  label: string;
+  value: unknown;
+  modelDefault: unknown;
+  choices: unknown[];
+  onChange: (next: unknown) => void;
+}) {
+  const shown = value === undefined ? modelDefault : value;
+  const text = shown === undefined || shown === null ? "Auto" : String(shown);
+  return (
+    <Dropdown.Root>
+      <Dropdown.Trigger aria-label={`${label}: ${text}`} className={chipClass}>
+        {text}
+        <ChevronDownIcon className="size-3.5 shrink-0 fill-none stroke-current stroke-[1.5] text-muted" />
+      </Dropdown.Trigger>
+      <Dropdown.Content className="right-0 left-auto max-h-80 overflow-y-auto">
+        <Dropdown.Label>{label}</Dropdown.Label>
+        <MenuItem on={value === undefined} onSelect={() => onChange(undefined)}>
+          Default
+          {modelDefault !== undefined && modelDefault !== null && (
+            <span className="ml-1 text-muted">· {String(modelDefault)}</span>
+          )}
+        </MenuItem>
+        {choices.map((choice) => (
+          <MenuItem
+            key={String(choice)}
+            on={value !== undefined && String(value) === String(choice)}
+            onSelect={() => onChange(choice)}
+          >
+            {String(choice)}
+          </MenuItem>
+        ))}
+      </Dropdown.Content>
+    </Dropdown.Root>
   );
 }
