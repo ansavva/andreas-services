@@ -4,8 +4,8 @@ import type { ModelEntry, RunKind, RunSendInput } from "../../types";
 /**
  * The roles each kind's strip offers, in the order the mockup draws them.
  *
- * Image mode: Reference, Edit. Video mode: Animate (the start frame), End
- * frame, Reference. Nothing about frames on an image run — a still has no
+ * Image mode: Image refs, Input image. Video mode: Start frame, End frame,
+ * Image refs — the models' own words, which ElevenLabs uses too. Nothing about frames on an image run — a still has no
  * start — and `input` on a video would be a second word for its start frame.
  */
 export const ROLES_BY_KIND: Record<RunKind, readonly AttachRole[]> = {
@@ -13,15 +13,20 @@ export const ROLES_BY_KIND: Record<RunKind, readonly AttachRole[]> = {
   video: ["start", "end", "reference"],
 };
 
-/** What each role is called on the strip, and what it is for. */
-export const ROLE_WORDS: Record<AttachRole, { label: string; hint: string }> = {
+/** What each role is called on the strip, what it is for, and how the picker asks for one. */
+export const ROLE_WORDS: Record<AttachRole, { label: string; hint: string; choose: string }> = {
   reference: {
-    label: "Reference",
-    hint: "Who and what the render is checked against. Order is send order.",
+    label: "Image refs",
+    hint: "Reference images: who and what the render is checked against. Order is send order.",
+    choose: "Choose image refs",
   },
-  input: { label: "Edit", hint: "The image an edit starts from, like “make the coat black”." },
-  start: { label: "Animate", hint: "The image the clip starts from." },
-  end: { label: "End frame", hint: "How the clip ends." },
+  input: {
+    label: "Input image",
+    hint: "The image an edit starts from, like “make the coat black”.",
+    choose: "Choose an input image",
+  },
+  start: { label: "Start frame", hint: "The image the clip starts from.", choose: "Choose a start frame" },
+  end: { label: "End frame", hint: "How the clip ends.", choose: "Choose an end frame" },
 };
 
 /**

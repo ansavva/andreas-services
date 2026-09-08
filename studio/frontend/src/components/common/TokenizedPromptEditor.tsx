@@ -165,6 +165,7 @@ export function TokenizedPromptEditor({
   focusKey,
   blurKey,
   family = "mono",
+  menuSide = "down",
 }: {
   value: string;
   onValueChange: (next: string) => void;
@@ -190,6 +191,13 @@ export function TokenizedPromptEditor({
    * sentence typed into a chat box and mono reads as a terminal.
    */
   family?: "mono" | "body";
+  /**
+   * Which way the `{` menu opens. Lexical hangs it under the caret and flips
+   * it upward only when the EDITOR is taller than the menu — a two-line box
+   * at the foot of the viewport never is, so the menu ran off the bottom of
+   * the screen. The create sheet says `up`.
+   */
+  menuSide?: "down" | "up";
   /** Focus the editor whenever this changes. What "load a run into the bar" does. */
   focusKey?: number;
   /**
@@ -284,7 +292,7 @@ export function TokenizedPromptEditor({
             })
           }
         />
-        <Typeahead tokens={tokens} kinds={kinds} menuOpen={menuOpen} />
+        <Typeahead tokens={tokens} kinds={kinds} menuOpen={menuOpen} menuSide={menuSide} />
       </div>
     </LexicalComposer>
   );
@@ -481,11 +489,13 @@ function Typeahead({
   tokens,
   kinds,
   menuOpen,
+  menuSide,
 }: {
   tokens: PromptToken[];
   kinds: Record<string, "block" | "computed">;
   /** Written here, read by `SubmitOnEnter` — the one thing the two share. */
   menuOpen: MutableRefObject<boolean>;
+  menuSide: "down" | "up";
 }) {
   const [editor] = useLexicalComposerContext();
   const [query, setQuery] = useState<string | null>(null);
@@ -571,7 +581,11 @@ function Typeahead({
               <ul
                 role="listbox"
                 aria-label="Insert a placeholder"
-                className="m-0 max-h-64 w-72 list-none overflow-auto border border-line bg-card p-1 shadow-lg"
+                className={`m-0 max-h-64 w-72 list-none overflow-auto rounded-md border border-line bg-card p-1 shadow-lg ${
+                  // Above the anchor, which Lexical puts just under the caret
+                  // line; the margin clears that line.
+                  menuSide === "up" ? "absolute bottom-full left-0 mb-7" : ""
+                }`}
               >
                 {options.map((option, index) => (
                   <li

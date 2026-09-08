@@ -432,21 +432,29 @@ page and a plain textarea over its literal bytes, and never offers fields.
   `AppLayout`; its state is `CreateBarContext`, so a feed row or a tile can
   fill it from a route element: `useCreateBar()` is `{ loadRun, attach,
   setKind }` and nothing else. Top-left the IMAGE/VIDEO switch; top-right the
-  template and preview icons. Under them one tile per role the selected model
-  has a field for (`AttachTiles`, `create/roles.ts`) — Reference and Edit;
-  Animate (start), End frame, Reference — and pressing a tile opens
-  `CreateDrawer` under it, whose tiles (cast identity images, the input pool,
-  the project's outputs) attach to that role; what is attached is drawn in
-  the tile. Then the prompt, borderless. Then the chip row (`CreateChips`):
+  template and preview icons. Under them the row of what the run will be
+  handed (`AttachTiles`, `create/roles.ts`): pictures first, in send order
+  and captioned by position (`Image 1`), a chosen frame standing where its
+  tile stood with a ⇄ between the two, then a ghost tile per role the
+  selected model has a field for — Start frame, End frame, Image refs, Input
+  image, the models' own words — dimmed when the registry's
+  `start_excludes_refs` / `max_refs` rule blocks it. Pressing a tile opens
+  `AttachPicker`, a second sheet ABOVE this one with the library's own
+  navigation — Folders and Media views, tags, crumbs, `Project` / `Library`
+  jumps — and pressing a picture there attaches it to that role. Then the
+  prompt, borderless, its `{` menu opening upward. Then the chip row (`CreateChips`):
   the model, opening `ModelList` (search + notes, one kind at a time), and one
   chip per input the model has out of a fixed six — aspect ratio, resolution,
   duration, quality, outputs, audio — each a glyph and a value opening a
   short menu of the live schema's choices (the snapshot's until it lands),
   writing only on a choice so an untouched chip leaves the param absent.
-  `More options` is `CreateSettings`: `SchemaParams` over what is left. **Below
-  `md` the row is the model, a gear and Send**; the gear opens a bottom
-  `Drawer` with the switch, a Model box that pages the sheet to `ModelList`,
-  the same chips as labelled rows (`ParamRows`), and `More options` collapsed.
+  The gear is every setting as rows (`SettingRow`): the six chips' rows
+  (`ParamRows`) and the rest of the schema (`CreateSettings` → `SettingRows`)
+  — a menu for a listed value, On/Off for a yes/no, a small box otherwise.
+  **The chips collapse into the gear when the row is too narrow for them**
+  (a container query on the row, 40rem); below `md` the gear opens a bottom
+  `Drawer` — draggable shut by its grab strip — with the switch, a Model box
+  that pages the sheet to `ModelList`, and the same rows.
   Send is `createRun` (plan +
   sends together, then `PATCH /plan` with `template` when the prompt cites
   anything, so the API expands it), one `?fingerprint=` read that holds the

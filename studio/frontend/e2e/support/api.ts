@@ -144,14 +144,6 @@ const models = fixture<{
 const modelSchema = fixture<{ model: string }>("model-schema");
 const characterTree = fixture<Listing<Node>>("character-tree");
 const referenceTree = fixture<Listing<Node>>("reference-tree");
-/**
- * What the create sheet's picker reads when a tile is pressed: the cast's
- * identity images and the project's input pool. Its third source, the
- * project's outputs, is `projectRunsFeed`. Captured with `--picker`, off the
- * same project and character as the rest of this group.
- */
-const characterSelection = fixture<unknown>("character-selection");
-const projectInputs = fixture<unknown>("project-inputs");
 
 export const PROJECT = project.id;
 /** An unsubmitted run — the one the editor and the run bar are exercised on. */
@@ -618,18 +610,13 @@ export async function stubApi(page: Page): Promise<void> {
     if (path.endsWith("/api/templates")) return json(route, templates);
     if (path.endsWith("/api/characters")) return json(route, characters);
     // Before the character itself, which would otherwise swallow it — the old
-    // dispatch answered a reference library with a character record, and the
-    // picker's first press crashed on a character record standing in for a
-    // selection.
-    if (/\/api\/characters\/[^/]+\/selection$/.test(path))
-      return json(route, characterSelection);
+    // dispatch answered a reference library with a character record.
     if (path.includes("/api/characters/")) return json(route, character);
     if (path.endsWith("/api/projects")) return json(route, projects);
     // The record only. `/api/projects/<id>/scenes` and its siblings keep
     // falling through to the 501 — a project record standing in for a scenes
     // listing is exactly the silent wrong answer this file exists to refuse.
     if (/\/api\/projects\/[^/]+$/.test(path)) return json(route, project);
-    if (/\/api\/projects\/[^/]+\/inputs$/.test(path)) return json(route, projectInputs);
     // The registry: the map, one entry, or one entry's LIVE schema. A model
     // name is `owner/name`, so the id is the rest of the path rather than one
     // segment.
