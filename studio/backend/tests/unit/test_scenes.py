@@ -57,7 +57,10 @@ def _movie(api, project, name="launch-cut", **body):
 
 
 def _child(parent_id, name):
-    return catalog.node(catalog.child_by_name(parent_id, name)["node_id"])
+    """A named child folder, made if a test hasn't put one there — a character
+    no longer starts holding `reference/` and the rest, so this resolves-or-
+    creates by name, the same rule `folder_under` applies in production."""
+    return layout.folder_under(parent_id, name)
 
 
 # ──────────────────────────── scenes ────────────────────────────
@@ -441,7 +444,7 @@ def test_a_plans_reference_block_comes_back_as_images(empty_api):
     # makes an image a character's identity is that it sits in the character's
     # tree carrying `default`. Promoting one is a copy into the tree, which is
     # what `add-refs --from-run` always did — it copied and then attached.
-    pool = catalog.child_by_name(character["root"], "reference")["node_id"]
+    pool = layout.folder_under(character["root"], "reference")["node_id"]
     made_node = empty_api.post(
         "/api/nodes", json={"parent": pool, "name": "plate_front.png", "kind": "file"},
     ).get_json()

@@ -218,10 +218,10 @@ def test_no_route_string_lives_outside_the_adapters():
 
 # ── characters ──────────────────────────────────────────────────────────────
 
-def test_creating_a_character_creates_its_starting_layout(library):
+def test_creating_a_character_makes_no_starting_layout(library):
+    """A character starts holding nothing but its root — see `services/layout.py`."""
     record = E.create_character("subject-c")
-    children = {c["name"] for c in library.fake._children(record["root"])}
-    assert children == {"reference", "corpus", "seed", "archive"}
+    assert library.fake._children(record["root"]) == []
     assert record["rev"] == 1
 
 

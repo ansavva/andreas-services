@@ -266,11 +266,12 @@ there is no scan. `backend/tests/unit/test_sweeps.py`.
 
 ```
 <character>/                    # a character's folder; its record names it `root`
+│                                # created empty; the four below appear on first use
 ├── seed/                       # source photos
 ├── corpus/                     # the wider photo set
 ├── reference/                  # where its identity images conventionally sit
 └── archive/                    # superseded output kept around
-<project>/                      # a project's folder
+<project>/                      # a project's folder, created holding all five below
 ├── runs/<run id>/              # the run's documents
 │   └── output/                 # the generated .jpeg / .webp / .mp4
 ├── scenes/<scene_id>/          # storyboard/ + shots/ + output/
@@ -280,9 +281,11 @@ there is no scan. `backend/tests/unit/test_sweeps.py`.
 config/angle/                   # the angle images; source of truth is the repo
 ```
 
-`services/layout.py` holds the two shapes: `CHARACTER_LAYOUT` is `reference`,
-`corpus`, `seed`, `archive`; `PROJECT_LAYOUT` is `runs`, `scenes`, `movies`,
-`chains`, `input`.
+`services/layout.py` holds `PROJECT_LAYOUT` — `runs`, `scenes`, `movies`,
+`chains`, `input` — which `POST /api/projects` still creates with a new
+project. A character has no matching constant: `reference`, `corpus`, `seed`
+and `archive` are names the pipeline's `pool_folder` resolves-or-creates on
+first use, not anything `POST /api/characters` creates.
 
 **No `characters/` or `projects/` wrapper**, and no `profile.yaml`,
 `project.json`, `scene.json` or `movie.json`. Each of those is a row. An

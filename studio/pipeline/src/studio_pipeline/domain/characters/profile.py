@@ -260,10 +260,13 @@ def cmd_show(name, json_, profile_):
 @click.option("--turnaround", is_flag=True,
               help="Go straight into the standard reference set (asks before it bills).")
 def cmd_create(name, dry_run, from_profile, model, project, turnaround):
-    """Create a character: the record, its library index row, its root and four pools.
+    """Create a character: the record, its library index row and its root.
 
-    **One transaction.** Either the whole character exists or none of it does;
-    no write has to invent a pool because it happened to need one first.
+    **One transaction, and no starting pools.** Either the whole character
+    exists or none of it does. `reference/`, `corpus/`, `seed/` and `archive/`
+    used to be part of it; they no longer are, and the first write that needs
+    one makes it — the printed names below are a suggestion, not a promise
+    that they already exist.
     """
     src = from_profile or TEMPLATE
     if not os.path.isfile(src):

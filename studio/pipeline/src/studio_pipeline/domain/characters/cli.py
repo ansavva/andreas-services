@@ -16,13 +16,16 @@ was hard rule #1 broken in the one place nobody looked.
                  default_set, profile          — one row, queryable
     the rows     one REF# per reference: group, order, description, tags,
                  naming a NODE ID
-    the tree     a folder node the record names as `root`, starting with
-                 reference/  corpus/  seed/  archive/
+    the tree     a folder node the record names as `root`, empty until
+                 something is filed into reference/  corpus/  seed/  archive/
 
-**The four folders are a starting layout, not a schema.** The record holds one
-node id and no map of blessed folder names, so a person may rename `reference/`,
-delete `archive/` or add their own — and nothing breaks, because an image is a
-reference when a row says so rather than because of where it sits.
+**Those four names are a convention, not a schema, and not even a starting
+layout any more.** A character is created holding nothing — the record holds
+one node id and no map of blessed folder names — and a pool appears the first
+time something is filed into it, the way `pool_folder` resolves-or-creates by
+name. A person may rename `reference/`, delete `archive/` or add their own —
+and nothing breaks, because an image is a reference when a row says so rather
+than because of where it sits.
 
 WHAT A SLUG IS NOW
 ------------------

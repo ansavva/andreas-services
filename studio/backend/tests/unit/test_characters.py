@@ -60,19 +60,26 @@ def _uploaded(api, parent_id, name, body=b"webp-bytes"):
 
 
 def _child(parent_id, name):
-    return catalog.node(catalog.child_by_name(parent_id, name)["node_id"])
+    """The child folder called `name`, made if a test hasn't put one there yet.
+
+    A character no longer starts holding `reference/`, `corpus/` and the rest,
+    so a test that wants a pool to upload into resolves-or-creates it exactly
+    as `pool_folder` does on the pipeline side — `layout.folder_under` is the
+    same rule.
+    """
+    return layout.folder_under(parent_id, name)
 
 
 # ──────────────────────── create, as one transaction ────────────────────────
 
 
 def test_creating_a_character_writes_every_item_in_one_transaction(empty_api, catalog_table):
-    """**Twelve items, or none of them.**
+    """**Four items, or none of them.**
 
-    The record, the library index row, and two each for the root and the four
-    starting pools. That atomicity is what makes "create a character" something a person
-    can retry after a timeout without inspecting what survived — which is the
-    whole argument for one table rather than three.
+    The record, the library index row, and two for the root. That atomicity is
+    what makes "create a character" something a person can retry after a
+    timeout without inspecting what survived — which is the whole argument for
+    one table rather than three.
 
     Asserted item by item against the raw client, because the shape of these rows
     is the schema and `services.catalog` is the only module allowed to know it.
@@ -107,27 +114,29 @@ def test_creating_a_character_writes_every_item_in_one_transaction(empty_api, ca
     assert _item(catalog_table, f"NODE#{CATALOG_ROOT}",
                  f"NAME#{character['id']}") is not None
 
-    assert sorted(
-        entry["name"] for entry in catalog.children(character["root"])
-    ) == sorted(layout.CHARACTER_LAYOUT)
+    # No starting pools: a character is created holding nothing but its root.
+    assert catalog.children(character["root"]) == []
 
 
-def test_the_starting_pools_are_a_layout_and_not_a_schema(empty_api):
-    """**Rename `reference/`, delete `archive/`, add your own — nothing breaks.**
+def test_pool_folders_are_ordinary_and_the_record_names_none_of_them(empty_api):
+    """**A character starts empty; `reference/`, once made, is an ordinary folder.**
 
-    They exist because an empty character is unhelpful, and nothing afterwards
-    requires them: an image is a reference when a `REF#` row says so, not because
-    of the folder it sits in. This is the assertion that keeps somebody from
-    reintroducing a `folders` map on the record the next time a route needs to
-    find `reference/`.
+    Nothing pre-creates it — a person or the pipeline's `pool_folder` makes one
+    the first time something is filed into it, the way `runs/` appears for a
+    project. Once it exists, rename it, delete it, add your own: nothing
+    breaks, because an image is a reference when a `REF#` row says so, not
+    because of the folder it sits in. This is the assertion that keeps
+    somebody from reintroducing a `folders` map on the record the next time a
+    route needs to find `reference/`.
     """
     character = _create(empty_api)
-    reference = _child(character["root"], "reference")
+    reference = empty_api.post(
+        "/api/nodes",
+        json={"parent": character["root"], "name": "reference", "kind": "folder"},
+    ).get_json()
 
-    assert empty_api.delete(f"/api/nodes/{_child(character['root'], 'archive')['node_id']}") \
-        .status_code == 200
     assert empty_api.patch(
-        f"/api/nodes/{reference['node_id']}", json={"name": "portraits"}
+        f"/api/nodes/{reference['id']}", json={"name": "portraits"}
     ).status_code == 200
 
     # The record still names one node id and no folder names at all.

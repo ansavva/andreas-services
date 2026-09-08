@@ -215,7 +215,8 @@ def source_png(library):
 
     buffer = io.BytesIO()
     Image.new("RGB", (4, 4), "white").save(buffer, "PNG")
-    corpus = library.fake._child(library.character_root, "corpus")
+    corpus = library.fake._child(library.character_root, "corpus") or \
+        library.fake._create_node(library.character_root, "corpus", "folder")
     return library.fake.put_file(corpus["id"], "photo.png",
                                  buffer.getvalue())["id"]
 
@@ -333,7 +334,7 @@ def _png_node(library, folder: str, name: str) -> str:
     Image.new("RGB", (4, 4), "white").save(buffer, "PNG")
     parent = library.fake._child(library.character_root, folder)
     if parent is None:
-        parent = library.fake.make_folder(library.character_root, folder)
+        parent = library.fake._create_node(library.character_root, folder, "folder")
     return library.fake.put_file(parent["id"], name, buffer.getvalue())["id"]
 
 

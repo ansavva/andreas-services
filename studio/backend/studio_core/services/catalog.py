@@ -2182,21 +2182,19 @@ def create_character(
     *,
     name: str,
     profile: dict,
-    layout: tuple,
 ) -> dict:
-    """A character, its library index row, its root folder and its pools — one write.
+    """A character, its library index row and its root folder — one write.
 
-    **Twelve items in one `TransactWriteItems`**: the record, the index row, and
-    two each for the root and the four starting pools. Either all of it exists or
-    none of it does, which is the property that makes "creating a character"
-    something a person can retry after a timeout without inspecting what
-    survived.
+    **Four items in one `TransactWriteItems`**: the record, the index row, and
+    two for the root. Either all of it exists or none of it does, which is the
+    property that makes "creating a character" something a person can retry
+    after a timeout without inspecting what survived.
 
-    **The four pools are a starting layout, not a schema.** They exist because an
-    empty character is unhelpful; nothing afterwards requires them. Rename
-    `reference/`, delete `archive/`, add one of your own — all ordinary file
-    operations, and none of them breaks anything, because an image is identity
-    when it carries the `default` tag and not because of the folder it sits in.
+    **No starting pools.** A character used to be created holding `reference/`,
+    `corpus/`, `seed/` and `archive/` as well; nothing ever required them to
+    exist, so they are gone from the create and left to appear on first use —
+    an image is identity when it carries the `default` tag, never because of
+    the folder it sits in.
 
     **Nothing here can collide.** A name is a free-text label and the root
     folder is named by the id, so both keys are minted UUIDs and the only
@@ -2208,7 +2206,7 @@ def create_character(
 
     char_id = _mint(ENTITY_CHARACTER)
     now = _now()
-    root, tree = _tree_steps(parent, char_id, layout)
+    root, tree = _tree_steps(parent, char_id, ())
 
     record = {
         "id": char_id,

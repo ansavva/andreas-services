@@ -471,16 +471,17 @@ Location: /api/characters/char-9f3c1e57-2a44-4d81-b6e0-77c21f8a4d15
 }
 ```
 
-Twelve items in one `TransactWriteItems`: the record, the library index row, and two
-items each for the root folder and the four starting pool folders. Either all of
-it exists or none of it does.
+Four items in one `TransactWriteItems`: the record, the library index row, and two
+items for the root folder. Either all of it exists or none of it does.
 
-**The four pools are a starting layout, not a schema.** They are created because
-an empty character is unhelpful; nothing afterwards requires them. Rename
-`reference/`, delete `archive/`, add `wardrobe-refs/` — all ordinary file
-operations, and none of them breaks anything, because an image is a reference
-when a `REF#` row says so and not because of the folder it sits in. The record
-holds one node id, `root`, and no map of blessed folder names. See
+**No starting pools.** `reference/`, `corpus/`, `seed/` and `archive/` used to
+be created here as a matching starting layout; a character now starts holding
+nothing but its root. Rename `reference/`, delete `archive/`, add
+`wardrobe-refs/` — all ordinary file operations on folders that appear the
+first time something is filed into one, and none of it breaks anything,
+because an image is a reference when a `REF#` row says so and not because of
+the folder it sits in. The record holds one node id, `root`, and no map of
+blessed folder names. See
 [the layout section](ENTITY_MODEL.md#the-folder-layout-is-convention-not-schema).
 
 ```http
