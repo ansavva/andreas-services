@@ -129,7 +129,7 @@ terminal:
 Copy the `whsec_...` signing secret displayed by Stripe into
 `HUMBUGG_STRIPE_WEBHOOK_SECRET` in `backend/.env`, then restart the backend.
 
-The frontend runs at `http://localhost:5173`, the API at
+The frontend runs at `http://localhost:5176`, the API at
 `http://localhost:5001`, and the Mailpit inbox at `http://localhost:8025`.
 Product messages are captured only by Mailpit. AWS Cognito sends signup and
 recovery codes to the address entered during testing. The development S3

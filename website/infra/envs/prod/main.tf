@@ -48,15 +48,15 @@ module "auth" {
   auth_certificate_arn = data.aws_acm_certificate.wildcard.arn
   route53_zone_id      = data.aws_route53_zone.main.zone_id
 
-  # localhost entries let `npm run dev` drive the real hosted pages; the dev
-  # server is Vite's default port.
+  # localhost entries let `npm run dev` drive the real hosted pages; :5175 is
+  # website's dev port in the root CLAUDE.md's table.
   callback_urls = [
     "https://${local.www_domain}/admin/callback",
-    "http://localhost:5173/admin/callback",
+    "http://localhost:5175/admin/callback",
   ]
   logout_urls = [
     "https://${local.www_domain}/admin/login",
-    "http://localhost:5173/admin/login",
+    "http://localhost:5175/admin/login",
   ]
 
   tags = local.common_tags

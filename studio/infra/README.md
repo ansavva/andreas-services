@@ -309,7 +309,7 @@ tags or not at all.
 `auth`, `storage` (`modules/dev_storage`), `callbacks` and `render`, and nothing
 else. No hosting, no CloudFront, no REST API Gateway, no custom domain, no ECR,
 no container Lambda. The dev backend is Flask on `:8000` under `dev-up.sh` and
-the SPA is Vite on `:5173`, both talking to real AWS resources — a per-machine
+the SPA is Vite on `:5173` — or the next free of the stack's `spa_ports` (5178–5180) — both talking to real AWS resources — a per-machine
 CloudFront distribution would cost twenty minutes per apply and per destroy to
 prove nothing.
 
@@ -380,7 +380,7 @@ aws sts get-caller-identity                          # confirm the access key re
 ./studio/scripts/dev-token.sh                        # prove sign-in works; prints a token
 ./studio/scripts/dev-aws-seed.sh                     # load the fixture — see below
 ./studio/scripts/dev-setup.sh                        # write the env files, install toolchains
-./studio/scripts/dev-up.sh                           # backend :8000, frontend :5173
+./studio/scripts/dev-up.sh                           # backend :8000, frontend :5173 (busy → 5178, 5179, 5180)
 ```
 
 `dev-aws-seed.sh` is listed after `dev-user.sh` because the library it writes

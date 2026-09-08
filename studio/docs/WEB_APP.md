@@ -1085,7 +1085,7 @@ aws sts get-caller-identity                          # confirm the access key re
 ```
 
 ```bash
-# Both surfaces together (backend :8000, frontend :5173).
+# Both surfaces together (backend :8000, frontend :5173 busy → 5178, 5179, 5180).
 ./studio/scripts/dev-up.sh
 ```
 
