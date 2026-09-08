@@ -159,6 +159,22 @@ def live_prefix(page_id: str) -> str:
     return f"lesson/{page_id}/"
 
 
+def preview_prefix(preview_id: str) -> str:
+    """Where a lesson is staged so she can look at it before her class can.
+
+    Under `lesson/` like a published one, because that is the only prefix
+    CloudFront serves and the only way her relative paths — `images/pie.svg`,
+    `js/quiz.js` — resolve the way they will for a student. The isolation comes
+    from the id being an unguessable ULID that is never handed out, not from the
+    location.
+
+    **A separate id rather than the page's own is the whole point.** Previewing
+    an edit to a LIVE lesson must not push that edit to the class already
+    holding its link, so a preview cannot write to `lesson/<page-id>/`.
+    """
+    return f"lesson/{preview_id}/"
+
+
 def presign_upload(page_id: str, path: str) -> dict:
     """A URL the browser can PUT one file to, and the key it will land on."""
     safe = clean_path(path)
@@ -215,36 +231,46 @@ def clear_draft(page_id: str) -> int:
     return _delete_prefix(draft_prefix(page_id))
 
 
-def publish(page_id: str) -> int:
-    """Copy the draft onto the live prefix. Returns the number of files served.
+def stage_preview(page_id: str, preview_id: str) -> int:
+    """Copy the draft to its preview location. Returns the number of files."""
+    return _copy_prefix(draft_prefix(page_id), preview_prefix(preview_id))
 
-    The live prefix is emptied first rather than copied over: a lesson that
-    loses a file between uploads must lose it for students too, and a merge
-    would leave the old one served alongside the new.
+
+def discard_preview(preview_id: str) -> int:
+    return _delete_prefix(preview_prefix(preview_id))
+
+
+def _copy_prefix(source: str, destination: str) -> int:
+    """Replace everything at `destination` with everything at `source`.
+
+    The destination is emptied first rather than merged into: a lesson that
+    loses a file between uploads must lose it here too, and a merge would leave
+    the old one served alongside the new.
     """
-    draft = draft_prefix(page_id)
-    live = live_prefix(page_id)
-    keys = _list_keys(draft)
+    keys = _list_keys(source)
     if not keys:
         raise ValueError("nothing has been uploaded for this page yet")
-    if f"{draft}{INDEX_FILE}" not in keys:
+    if f"{source}{INDEX_FILE}" not in keys:
         raise ValueError(
             f"a lesson needs an {INDEX_FILE} at the top level; upload one and try again"
         )
 
-    _delete_prefix(live)
+    _delete_prefix(destination)
     for key in keys:
-        relative = key[len(draft):]
         client().copy_object(
             Bucket=bucket(),
-            Key=f"{live}{relative}",
+            Key=f"{destination}{key[len(source):]}",
             CopySource={"Bucket": bucket(), "Key": key},
-            # The copy keeps the source's content type; stated rather than
-            # assumed, because a copy that lost it would serve every page as a
-            # download.
+            # Stated rather than assumed: a copy that lost the content type
+            # would serve every page as a download.
             MetadataDirective="COPY",
         )
     return len(keys)
+
+
+def publish(page_id: str) -> int:
+    """Copy the draft onto the live prefix. Returns the number of files served."""
+    return _copy_prefix(draft_prefix(page_id), live_prefix(page_id))
 
 
 def withdraw(page_id: str) -> int:
@@ -252,6 +278,9 @@ def withdraw(page_id: str) -> int:
     return _delete_prefix(live_prefix(page_id))
 
 
-def delete_everything(page_id: str) -> int:
-    """Both prefixes, for a page being deleted outright."""
-    return _delete_prefix(draft_prefix(page_id)) + _delete_prefix(live_prefix(page_id))
+def delete_everything(page_id: str, preview_id: str = "") -> int:
+    """Every prefix a page owns, for one being deleted outright."""
+    removed = _delete_prefix(draft_prefix(page_id)) + _delete_prefix(live_prefix(page_id))
+    if preview_id:
+        removed += discard_preview(preview_id)
+    return removed

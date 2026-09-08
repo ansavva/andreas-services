@@ -184,3 +184,78 @@ def test_health_is_the_only_public_route(client):
     assert client.get("/api/public/health").status_code == 200
     # The old anonymous JSON reader is gone; students read from CloudFront.
     assert client.get("/api/public/pages/anything").status_code == 404
+
+
+# --- preview ---------------------------------------------------------------
+
+
+def preview(client, page_id):
+    return client.post(
+        f"/api/pages/{page_id}/preview", headers=as_teacher(TEACHER)
+    )
+
+
+def test_preview_stages_the_draft_at_its_own_url(client, lessons_bucket):
+    page = create(client, title="Check me").get_json()
+    upload(lessons_bucket, page["id"], "index.html")
+    upload(lessons_bucket, page["id"], "js/quiz.js", b"x")
+
+    response = preview(client, page["id"])
+    assert response.status_code == 200
+    previewed = response.get_json()
+
+    # Its own id, NOT the page's — the whole reason this is separate.
+    assert previewed["preview_url"] is not None
+    assert f"/lesson/{page['id']}/" not in previewed["preview_url"]
+    assert previewed["share_url"] is None  # previewing does not publish
+
+
+def test_previewing_a_live_lesson_does_not_touch_what_students_read(
+    client, lessons_bucket
+):
+    """The reason a preview cannot write to `lesson/<page-id>/`."""
+    page = create(client, title="Live").get_json()
+    upload(lessons_bucket, page["id"], "index.html", b"<h1>v1</h1>")
+    publish(client, page["id"])
+
+    # She edits and previews, but has not re-published.
+    sign(client, page["id"], ["index.html"])
+    upload(lessons_bucket, page["id"], "index.html", b"<h1>v2 draft</h1>")
+    preview(client, page["id"])
+
+    served = lessons_bucket.get_object(
+        Bucket="classroom-test-lessons", Key=f"lesson/{page['id']}/index.html"
+    )
+    assert served["Body"].read() == b"<h1>v1</h1>", "students saw an unpublished edit"
+
+
+def test_the_preview_link_is_stable_across_previews(client, lessons_bucket):
+    """So she can leave the tab open and reload it."""
+    page = create(client, title="Stable").get_json()
+    upload(lessons_bucket, page["id"], "index.html")
+
+    first = preview(client, page["id"]).get_json()["preview_url"]
+    upload(lessons_bucket, page["id"], "index.html", b"<h1>changed</h1>")
+    second = preview(client, page["id"]).get_json()["preview_url"]
+    assert first == second
+
+
+def test_previewing_nothing_is_refused(client):
+    page = create(client, title="Empty").get_json()
+    response = preview(client, page["id"])
+    assert response.status_code == 400
+    assert "uploaded" in response.get_json()["error"]
+
+
+def test_delete_removes_the_preview_too(client, lessons_bucket):
+    page = create(client, title="Bin").get_json()
+    upload(lessons_bucket, page["id"], "index.html")
+    preview_url = preview(client, page["id"]).get_json()["preview_url"]
+    preview_id = preview_url.rstrip("/").rsplit("/", 1)[-1]
+
+    client.delete(f"/api/pages/{page['id']}", headers=as_teacher(TEACHER))
+
+    listing = lessons_bucket.list_objects_v2(
+        Bucket="classroom-test-lessons", Prefix=f"lesson/{preview_id}/"
+    )
+    assert listing.get("KeyCount", 0) == 0

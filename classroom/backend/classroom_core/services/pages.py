@@ -37,7 +37,17 @@ def serialize(item: dict) -> dict:
         "created_at": item.get("created_at"),
         "updated_at": item.get("updated_at"),
         "share_url": share_url(item["page_id"]) if item.get("published") else None,
+        # Only once staged, so the UI never offers a link to nothing.
+        "preview_url": (
+            lesson_url(item["preview_id"]) if item.get("preview_id") else None
+        ),
     }
+
+
+def lesson_url(lesson_id: str) -> str:
+    """A URL under the student host for anything served from `lesson/<id>/`."""
+    base = config.public_site_base()
+    return f"{base}/lesson/{lesson_id}/" if base else f"/lesson/{lesson_id}/"
 
 
 def share_url(page_id: str) -> str:
@@ -48,8 +58,7 @@ def share_url(page_id: str) -> str:
     `lesson/<id>/index.html` with no lookup, which is what lets her images and
     stylesheets resolve by relative path exactly as they did on her machine.
     """
-    base = config.public_site_base()
-    return f"{base}/lesson/{page_id}/" if base else f"/lesson/{page_id}/"
+    return lesson_url(page_id)
 
 
 def list_pages(teacher_id: str) -> list[dict]:
@@ -116,7 +125,7 @@ def delete_page(teacher_id: str, page_id: str) -> bool:
     """
     if store.get_page(teacher_id, page_id) is None:
         return False
-    lessons.delete_everything(page_id)
+    lessons.delete_everything(page_id, store.get_page(teacher_id, page_id).get("preview_id", ""))
     store.delete_page(teacher_id, page_id)
     return True
 
@@ -178,6 +187,31 @@ def finish_upload(teacher_id: str, page_id: str) -> dict | None:
 
     saved = serialize(store.put_page(item))
     saved["files"] = files
+    return saved
+
+
+def stage_preview(teacher_id: str, page_id: str) -> dict | None:
+    """Put the current draft somewhere she can look at it, and return the link.
+
+    **Not `lesson/<page-id>/`.** Previewing an edit to a lesson that is already
+    live must not push that edit to the class holding its link, so the preview
+    goes to its own unguessable id — minted once and kept, so the link stays
+    stable across previews and she can leave the tab open.
+
+    Restaged on every call: the point of a preview is to show what is uploaded
+    NOW.
+    """
+    item = store.get_page(teacher_id, page_id)
+    if item is None:
+        return None
+
+    preview_id = item.get("preview_id") or store.new_id()
+    files = lessons.stage_preview(page_id, preview_id)
+
+    item["preview_id"] = preview_id
+    item["updated_at"] = store.now_iso()
+    saved = serialize(store.put_page(item))
+    saved["file_count"] = files
     return saved
 
 

@@ -1,14 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Alert, Button, Card, Field, Input, Spinner, Text } from "@ansavva/design-system";
+import {
+  Alert,
+  AlertDialog,
+  Button,
+  Card,
+  Field,
+  Input,
+  Spinner,
+  Text,
+} from "@ansavva/design-system";
 
 import {
   completeUpload,
   createPage,
+  deletePage,
   getPage,
   listFiles,
   putToS3,
   signUploads,
+  stagePreview,
   updatePage,
 } from "../api";
 import { collectLessonFiles, LessonFilesError, type LessonFile } from "../lessonFiles";
@@ -37,6 +48,9 @@ export function PageEditorPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const filePicker = useRef<HTMLInputElement>(null);
   const folderPicker = useRef<HTMLInputElement>(null);
@@ -57,13 +71,20 @@ export function PageEditorPage() {
   const saveTitle = useCallback(async () => {
     setSaving(true);
     setError(null);
+    setSaved(false);
     try {
       if (isNew) {
+        // The one navigation that stays: a new lesson has no URL until it is
+        // created, and she needs to land on it to upload files.
         const page = await createPage({ title });
         navigate(`/pages/${page.id}`, { replace: true });
       } else if (pageId) {
         await updatePage(pageId, { title });
-        navigate("/");
+        // Deliberately does NOT go back to the list. Saving a name is one step
+        // of the work she is in the middle of, not the end of it — she still
+        // has files to upload, a preview to look at, or a publish to do.
+        setSaved(true);
+        window.setTimeout(() => setSaved(false), 2500);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not save that page.");
@@ -71,6 +92,38 @@ export function PageEditorPage() {
       setSaving(false);
     }
   }, [isNew, pageId, title, navigate]);
+
+  const openPreview = useCallback(async () => {
+    if (!pageId) return;
+    setPreviewing(true);
+    setError(null);
+    try {
+      const page = await stagePreview(pageId);
+      if (page.preview_url) {
+        // Opened rather than embedded: it is a different origin, which is what
+        // keeps a lesson's scripts away from this app. An iframe would work,
+        // but a tab is what a student actually sees.
+        window.open(page.preview_url, "_blank", "noopener");
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Could not build a preview.");
+    } finally {
+      setPreviewing(false);
+    }
+  }, [pageId]);
+
+  const remove = useCallback(async () => {
+    if (!pageId) return;
+    setConfirmDelete(false);
+    setSaving(true);
+    try {
+      await deletePage(pageId);
+      navigate("/");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Could not delete that lesson.");
+      setSaving(false);
+    }
+  }, [pageId, navigate]);
 
   /**
    * Sign, PUT, then confirm.
@@ -262,7 +315,7 @@ export function PageEditorPage() {
           </Card.Root>
         )}
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             className="rounded-pill"
             onClick={() => void saveTitle()}
@@ -270,16 +323,74 @@ export function PageEditorPage() {
           >
             {saving ? "Saving…" : isNew ? "Create lesson" : "Save"}
           </Button>
+
+          {!isNew && (
+            <Button
+              intent="secondary"
+              className="rounded-pill"
+              onClick={() => void openPreview()}
+              disabled={previewing || files.length === 0}
+            >
+              {previewing ? "Preparing…" : "Preview as student"}
+            </Button>
+          )}
+
           <Button
             intent="secondary"
             className="rounded-pill"
             onClick={() => navigate("/")}
             disabled={saving}
           >
-            {isNew ? "Cancel" : "Done"}
+            {isNew ? "Cancel" : "Back to lessons"}
           </Button>
+
+          {saved && (
+            <Text variant="caption" tone="muted">
+              Saved
+            </Text>
+          )}
+
+          {!isNew && (
+            // Pushed to the far end, away from Save. Deleting a lesson takes
+            // its files and its link with it.
+            <div className="ml-auto">
+              <Button
+                intent="ghost"
+                className="rounded-pill"
+                onClick={() => setConfirmDelete(true)}
+                disabled={saving}
+              >
+                Delete lesson
+              </Button>
+            </div>
+          )}
         </div>
       </div>
+
+      <AlertDialog.Root
+        open={confirmDelete}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDelete(false);
+        }}
+      >
+        <AlertDialog.Backdrop />
+        <AlertDialog.Popup>
+          <AlertDialog.Title>Delete “{title.trim() || "this lesson"}”?</AlertDialog.Title>
+          <AlertDialog.Description>
+            {files.length > 0
+              ? `This removes the lesson and all ${files.length} of its files. Any student holding the link will lose it. This cannot be undone.`
+              : "This cannot be undone."}
+          </AlertDialog.Description>
+          <div className="mt-4 flex justify-end gap-2">
+            <AlertDialog.Close className="border-line hover:bg-surface-alt text-ink cursor-pointer rounded-pill border px-4 py-2 text-sm font-medium">
+              Keep it
+            </AlertDialog.Close>
+            <Button intent="danger" className="rounded-pill" onClick={() => void remove()}>
+              Delete
+            </Button>
+          </div>
+        </AlertDialog.Popup>
+      </AlertDialog.Root>
     </div>
   );
 }

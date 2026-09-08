@@ -67,6 +67,18 @@ def finish_upload(page_id):
     return ok(result) if result else not_found("page not found")
 
 
+@bp.post("/<page_id>/preview")
+def preview_page(page_id):
+    """Stage the current draft at an unguessable URL and return it.
+
+    Separate from publishing on purpose: this must never touch what a class is
+    already reading. See `services/pages.stage_preview`.
+    """
+    teacher = current_teacher()
+    result = pages.stage_preview(teacher["id"], page_id)
+    return ok(result) if result else not_found("page not found")
+
+
 @bp.put("/<page_id>")
 def update_page(page_id):
     teacher = current_teacher()

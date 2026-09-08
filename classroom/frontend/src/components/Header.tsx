@@ -50,14 +50,22 @@ export function Header() {
                 right edge of the header, so the menu ran off the side of the
                 window and was clipped. `left-auto right-0` hangs it from the
                 right edge instead, so it opens inward. */}
-            <Dropdown.Content className="left-auto right-0">
+            {/* The package's own spacing is tuned for a dense menu of actions.
+                This one is a person's address and a single control, so it reads
+                as cramped at that density — more room around both, and a
+                rounded corner matching the app's cards. */}
+            <Dropdown.Content className="right-0 left-auto min-w-[15rem] rounded-lg py-2">
               {email && (
                 <>
-                  <Dropdown.Label>{email}</Dropdown.Label>
-                  <Dropdown.Divider />
+                  <Dropdown.Label className="text-ink px-4 py-2.5 text-sm font-medium normal-case">
+                    {email}
+                  </Dropdown.Label>
+                  <Dropdown.Divider className="my-1" />
                 </>
               )}
-              <Dropdown.Item onClick={signOut}>Sign out</Dropdown.Item>
+              <Dropdown.Item className="px-4 py-2.5" onClick={signOut}>
+                Sign out
+              </Dropdown.Item>
             </Dropdown.Content>
           </Dropdown.Root>
         )}
