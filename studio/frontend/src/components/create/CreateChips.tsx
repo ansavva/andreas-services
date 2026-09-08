@@ -1,6 +1,14 @@
-import { useCallback, useMemo, useState, type ReactElement } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 
-import { Button, Dropdown, Input, Popover, Text } from "@ansavva/design-system";
+import { Button, Dropdown, IconButton, Input, Popover, Text } from "@ansavva/design-system";
 
 import { getModelSchema } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
@@ -10,6 +18,8 @@ import {
   AspectIcon,
   CheckIcon,
   ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   ClockIcon,
   DiamondIcon,
   LayersIcon,
@@ -222,6 +232,149 @@ export function ParamChipRow({
   );
 }
 
+/**
+ * What a listed value hands the settings panel when it is pressed there.
+ *
+ * **A menu inside a scrolling panel is a menu with its bottom cut off.** The
+ * package's `Dropdown` is absolutely positioned rather than portalled, and the
+ * settings popover is `max-h-[70vh] overflow-y-auto` — so `Output format`
+ * opened its list *inside* that scroll box and the last choices were clipped by
+ * it. Reported exactly that way, and true of every listed setting in the panel.
+ *
+ * So in the panel a listed value does not open a menu at all: it pages the
+ * panel to its choices and back, which is what the phone sheet already does for
+ * the model. In the create bar's own chip row there is nothing to clip against,
+ * so there the chips keep their menus — which is why this is a context a
+ * surface opts into rather than a prop every chip carries.
+ */
+export interface Picking {
+  label: string;
+  /** What is set now — `undefined` means the model's own default. */
+  value: unknown;
+  modelDefault: unknown;
+  choices: readonly unknown[];
+  format?: (value: unknown) => string;
+  onChange: (next: unknown) => void;
+}
+
+const PickContext = createContext<((picking: Picking) => void) | null>(null);
+
+/** Wraps a surface where a listed value pages instead of opening a menu. */
+export function SettingsPickProvider({
+  onPick,
+  children,
+}: {
+  onPick: (picking: Picking) => void;
+  children: ReactNode;
+}) {
+  return <PickContext.Provider value={onPick}>{children}</PickContext.Provider>;
+}
+
+/** The panel's way of asking for a value, or null where a menu is fine. */
+function usePick(): ((picking: Picking) => void) | null {
+  return useContext(PickContext);
+}
+
+/** A value that pages rather than opening: the value, a chevron, no menu. */
+function PickRow({
+  label,
+  text,
+  onPress,
+}: {
+  label: string;
+  text: string;
+  onPress: () => void;
+}) {
+  return (
+    <Button
+      intent="secondary"
+      size="sm"
+      aria-label={`${label}: ${text}`}
+      title={label}
+      className={chipClass}
+      onClick={onPress}
+    >
+      {text}
+      <ChevronRightIcon className="size-3.5 shrink-0 fill-none stroke-current stroke-[1.5] text-muted" />
+    </Button>
+  );
+}
+
+/**
+ * One setting's choices, in the panel's own body — the view `Picking` asks for.
+ *
+ * A back arrow and the setting's name, then Default and every choice as a row
+ * with the check on the right. The same list the menu drew, at the panel's full
+ * width and scrolling with it rather than inside it.
+ */
+export function SettingsChoices({
+  picking,
+  onBack,
+}: {
+  picking: Picking;
+  onBack: () => void;
+}) {
+  const format = picking.format ?? ((each: unknown) => String(each));
+  const pick = (next: unknown) => {
+    picking.onChange(next);
+    onBack();
+  };
+  return (
+    <div className="flex flex-col gap-2" data-settings-choices="">
+      <div className="flex items-center gap-2">
+        <IconButton size="sm" label="Back to settings" onClick={onBack}>
+          <ChevronLeftIcon />
+        </IconButton>
+        <Text as="span" variant="body" weight="medium">
+          {picking.label}
+        </Text>
+      </div>
+      <div className="flex flex-col">
+        <ChoiceRow on={picking.value === undefined} onSelect={() => pick(undefined)}>
+          Default
+          {picking.modelDefault !== undefined && picking.modelDefault !== null && (
+            <span className="ml-1 text-muted">· {format(picking.modelDefault)}</span>
+          )}
+        </ChoiceRow>
+        {picking.choices.map((choice) => (
+          <ChoiceRow
+            key={String(choice)}
+            on={picking.value !== undefined && String(picking.value) === String(choice)}
+            onSelect={() => pick(choice)}
+          >
+            {format(choice)}
+          </ChoiceRow>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** One choice: a full-width row, the check on the right, like the menu's. */
+function ChoiceRow({
+  on,
+  onSelect,
+  children,
+}: {
+  on: boolean;
+  onSelect: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Button
+      intent="ghost"
+      size="md"
+      onClick={onSelect}
+      // A row rather than a control: full width, its words at the left, and the
+      // check at the right the way a native menu draws one.
+      className="min-h-11 w-full justify-start gap-6 px-2 text-left text-sm font-normal"
+    >
+      <span className="flex-1">{children}</span>
+      {on && <CheckIcon className={`${GLYPH} text-ink`} />}
+    </Button>
+  );
+}
+
 /** One chip. A boolean flips on press; anything else opens its menu. */
 export function ParamChip({
   chip,
@@ -236,6 +389,7 @@ export function ParamChip({
   menuSide?: keyof typeof MENU_SIDE;
 }) {
   const { spec } = chip;
+  const pick = usePick();
   const shown = value === undefined ? chip.modelDefault : value;
   const format = spec.format ?? ((each: unknown) => String(each));
 
@@ -261,6 +415,27 @@ export function ParamChip({
 
   const Icon = spec.icon;
   const text = shown === undefined || shown === null ? "Auto" : format(shown);
+
+  // Inside the settings panel this pages rather than opening — see `Picking`.
+  if (pick) {
+    return (
+      <PickRow
+        label={spec.label}
+        text={text}
+        onPress={() =>
+          pick({
+            label: spec.label,
+            value,
+            modelDefault: chip.modelDefault,
+            choices: chip.choices ?? [],
+            format,
+            onChange,
+          })
+        }
+      />
+    );
+  }
+
   return (
     <Dropdown.Root>
       <Dropdown.Trigger
@@ -659,8 +834,20 @@ function ValueChip({
   choices: unknown[];
   onChange: (next: unknown) => void;
 }) {
+  const pick = usePick();
   const shown = value === undefined ? modelDefault : value;
   const text = shown === undefined || shown === null ? "Auto" : String(shown);
+
+  if (pick) {
+    return (
+      <PickRow
+        label={label}
+        text={text}
+        onPress={() => pick({ label, value, modelDefault, choices, onChange })}
+      />
+    );
+  }
+
   return (
     <Dropdown.Root>
       <Dropdown.Trigger aria-label={`${label}: ${text}`} className={chipClass}>

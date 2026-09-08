@@ -54,9 +54,9 @@ import {
 import { TemplateList } from "../run/TemplateList";
 import { SheetHandle } from "../common/SheetHandle";
 import { AttachTiles } from "./AttachTiles";
-import { ModelChip, ModelList, ParamChipRow, ParamRows, chipClass } from "./CreateChips";
+import { ModelChip, ModelList, ParamChipRow, chipClass } from "./CreateChips";
 import { AttachPicker } from "./AttachPicker";
-import { CreateSettings } from "./CreateSettings";
+import { SettingsPanel } from "./CreateSettings";
 import { castOf, defaultEntry, findEntry, sendsOf } from "./roles";
 import { seedPlan } from "./seedPlan";
 import { runPath, projectPath } from "../../utils/location";
@@ -664,8 +664,7 @@ export function CreateBar() {
                 label="Settings"
                 className="bottom-full top-auto left-auto right-0 mb-2 mt-0 max-h-[70vh] w-[min(26rem,calc(100vw-2rem))] max-w-none overflow-y-auto"
               >
-                <ParamRows entry={entry} params={params} onParams={setParams} />
-                <CreateSettings entry={entry} params={params} onParams={setParams} />
+                <SettingsPanel entry={entry} params={params} onParams={setParams} />
               </Popover.Content>
             </Popover.Root>
           )}
@@ -735,8 +734,7 @@ export function CreateBar() {
                           <ChevronRightIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5] text-muted" />
                         </Button>
                       </div>
-                      <ParamRows entry={entry} params={params} onParams={setParams} />
-                      <CreateSettings entry={entry} params={params} onParams={setParams} />
+                      <SettingsPanel entry={entry} params={params} onParams={setParams} />
                     </>
                   )}
                 </div>

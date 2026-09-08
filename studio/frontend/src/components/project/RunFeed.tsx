@@ -423,9 +423,14 @@ function FeedRow({
   return (
     <article
       aria-label={`Run ${relativeTime(row.created, now)}`}
-      // The outputs column is capped: on a wide screen a half-column clip
-      // would be a metre tall, and the plan would sit a screen away from it.
-      className="grid gap-4 border-t border-line pt-4 md:grid-cols-[minmax(0,48rem)_minmax(20rem,32rem)] md:gap-6"
+      // **The outputs column takes the rest of the width; the plan is what is
+      // capped.** It used to be the other way round — `minmax(0,48rem)` for the
+      // outputs — so a row was 80rem wide however wide the window was, and a
+      // 2000px screen drew a quarter of itself empty down the right-hand side
+      // of every row. What the cap was protecting against is a clip blown up to
+      // half a column; that is the tile grid's job below, and it does it by
+      // fitting MORE tiles across rather than bigger ones.
+      className="grid gap-4 border-t border-line pt-4 md:grid-cols-[minmax(0,1fr)_minmax(20rem,32rem)] md:gap-6"
     >
       {/* Outputs. The grid is by kind: four stills across, two clips.
 
@@ -437,12 +442,18 @@ function FeedRow({
           black as part of the picture, and a press there landed on the hover
           overlay below rather than on the picture. Rows keep their own height;
           the slack stays at the foot of the column. */}
+      {/* **`auto-fill` with a floor, not a fixed count.** Four across of
+          whatever width meant a still was 190px on a 1400px screen and 370px on
+          a 2400px one; now the tile has a size and the row has as many as fit —
+          six across on a wide screen, two on a phone. The floors differ because
+          the shapes do: a still is portrait and reads small, a clip is wide and
+          does not. */}
       <div
-        className={
+        className={`grid content-start gap-2 ${
           video
-            ? "grid grid-cols-1 content-start gap-2 sm:grid-cols-2"
-            : "grid grid-cols-2 content-start gap-2 sm:grid-cols-4"
-        }
+            ? "grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(18rem,1fr))]"
+            : "grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(11rem,1fr))]"
+        }`}
       >
         {flying ? (
           <InFlightTiles row={row} now={now} />
