@@ -151,6 +151,7 @@ resource "aws_lambda_function" "api" {
       CLASSROOM_PAGES_TABLE     = var.pages_table_name
       CLASSROOM_PUBLIC_SITE_URL = var.public_site_url
       CLASSROOM_LESSONS_BUCKET  = var.lessons_bucket_name
+      CLASSROOM_ALLOWED_ORIGIN  = var.allowed_origin
     }
   }
 
