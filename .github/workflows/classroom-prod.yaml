@@ -274,6 +274,13 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      # @ansavva/design-system comes from GitHub Packages, which has no
+      # anonymous read. A job-level `permissions:` block REPLACES the default
+      # set rather than adding to it, so declaring the two above silently drops
+      # the default `packages: read` and `npm ci` fails with a 403 that reads
+      # like a registry outage. Every other service's frontend job lists it for
+      # the same reason.
+      packages: read
 
     steps:
       - uses: actions/checkout@v7
