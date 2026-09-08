@@ -128,7 +128,7 @@ export function Filmstrip({
                  a box-shadow ring paints outside the box exactly like the
                  outline it replaces, which is why `p-1.5` on the scroller still
                  clears it at the first and last tile. */
-              className={`relative w-16 shrink-0 cursor-pointer rounded-none
+              className={`relative w-16 shrink-0 cursor-pointer
                           focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary
                           ${current ? "ring-2 ring-primary" : "opacity-70 hover:opacity-100"}`}
             >
@@ -141,7 +141,7 @@ export function Filmstrip({
                 name={item.name}
                 isVideo={item.kind === "video"}
                 aspect="square"
-                className="rounded-none"
+                className=""
               />
             </button>
           );

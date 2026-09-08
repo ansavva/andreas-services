@@ -4,42 +4,40 @@ import { Drawer, Sidebar, iconButtonClass } from "@ansavva/design-system";
 
 import { MenuIcon, SearchIcon } from "../common/icons";
 import { SidebarContents } from "./AppSidebar";
-import { CreateBarSlot } from "./CreateBarSlot";
 import { HeaderSearch } from "./HeaderSearch";
 
 /**
- * The bar across the top of every screen: the create bar, then search.
+ * The bar across the top of every screen: the search, and on a phone the way
+ * to the sidebar.
+ *
+ * **48px, and nothing in it grows.** The create bar used to live here, and
+ * the header was the tallest thing on the page for it; the bar is a sheet at
+ * the foot of the column now, so this is the slim strip ElevenLabs draws — a
+ * search box and the room around it. `--header-h` in `app.css` is this
+ * number: the lightbox and the folder browser's sticky strip read it.
  *
  * **Full width and sticky**, beside the sidebar rather than above it — the
- * sidebar is the app's spine and runs the full height; this bar belongs to the
- * content column. `bg-bg` and not a translucent blur: the page background is
- * the token, and media scrolling under a frosted bar reads as a rendering
- * fault on a grid of dark frames.
- *
- * **72px above `md`, 56px below, and `--header-h` in `app.css` is that
- * number at both widths — exactly, not at least.** The lightbox and the
- * folder browser's sticky strip read the variable, so the header is `h` and
- * never grows: the create bar's active state, and a prompt taller than one
- * line, float over the page from inside their slot rather than pushing it.
+ * sidebar is the app's spine and runs the full height; this bar belongs to
+ * the content column. `bg-bg` and not a translucent blur: the page background
+ * is the token, and media scrolling under a frosted strip this thin reads as
+ * a rendering fault.
  *
  * Below `md` the sidebar is not drawn, so this bar carries the way to it: a
  * menu button opening the same contents in a `Drawer`, and the search behind
- * an icon rather than inline — a 390px row has no room for the box.
+ * an icon rather than inline.
  */
 export function TopBar() {
   return (
     <header
-      className="sticky top-0 z-30 flex h-[var(--header-h)] items-center gap-3 border-b
-                 border-line bg-bg px-4 md:px-6"
+      className="sticky top-0 z-30 flex h-[var(--header-h)] items-center gap-2 bg-bg px-3 md:px-6"
     >
       <MobileMenu />
 
-      <CreateBarSlot />
+      {/* Centred, the way ElevenLabs sets its ⌘K box. Hidden below `md`;
+          `MobileSearch` stands in for it there. */}
+      <HeaderSearch className="mx-auto hidden w-72 shrink-0 md:block lg:w-96" />
 
-      {/* Hidden below `md`: a 320px box cannot share a 390px row with the
-          create bar. `MobileSearch` is what stands in for it there. */}
-      <HeaderSearch className="hidden w-64 shrink-0 md:block lg:w-80" />
-      <MobileSearch />
+      <MobileSearch className="ml-auto" />
     </header>
   );
 }
@@ -61,7 +59,7 @@ function MobileMenu() {
       <Drawer.Trigger
         aria-label="Menu"
         title="Menu"
-        className={iconButtonClass({ size: "md", className: "rounded-none md:hidden" })}
+        className={iconButtonClass({ size: "md", className: "md:hidden" })}
       >
         <MenuIcon />
       </Drawer.Trigger>
@@ -90,13 +88,13 @@ function MobileMenu() {
  * The same `Combobox` full-width once it opens, autofocused so the keyboard is
  * already up when the panel lands.
  */
-function MobileSearch() {
+function MobileSearch({ className = "" }: { className?: string }) {
   return (
     <Drawer.Root side="top">
       <Drawer.Trigger
         aria-label="Search"
         title="Search"
-        className={iconButtonClass({ size: "md", className: "rounded-none md:hidden" })}
+        className={iconButtonClass({ size: "md", className: `md:hidden ${className}` })}
       >
         <SearchIcon />
       </Drawer.Trigger>

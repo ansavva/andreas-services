@@ -445,3 +445,66 @@ export const FrameEndIcon = ({ className }: Props) => (
     <path d="M3 15h18" />
   </Glyph>
 );
+
+// --- the create panel's chip row ------------------------------------------
+//
+// ElevenLabs' runner names each setting with a glyph and a value and no word
+// (`▭ 16:9`, `⤢ 720p`, `◷ 4s`). These are those glyphs; the word is the
+// control's `aria-label`.
+
+/** A wide rectangle: the aspect ratio. */
+export const AspectIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <rect x="3" y="7" width="18" height="10" rx="1.5" />
+  </Glyph>
+);
+
+/** Two arrows pushing a corner out: resolution. */
+export const ResolutionIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M14 4h6v6M4 20l7-7M20 4l-7 7M4 14v6h6" />
+  </Glyph>
+);
+
+/** A clock face: a clip's duration. */
+export const ClockIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 7.5V12l3 2" />
+  </Glyph>
+);
+
+/** A diamond: quality. */
+export const DiamondIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M12 3l9 8-9 10-9-10 9-8Z" />
+    <path d="M3 11h18" />
+  </Glyph>
+);
+
+/** Three stacked sheets: how many outputs. */
+export const LayersIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="m12 4 8 4-8 4-8-4 8-4Z" />
+    <path d="m4 12 8 4 8-4M4 16l8 4 8-4" />
+  </Glyph>
+);
+
+/** Four cells: the model — a registry entry, one of a set. */
+export const ModelIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <rect x="4" y="4" width="7" height="7" rx="1.5" />
+    <rect x="13" y="4" width="7" height="7" rx="1.5" />
+    <rect x="4" y="13" width="7" height="7" rx="1.5" />
+    <rect x="13" y="13" width="7" height="7" rx="1.5" />
+  </Glyph>
+);
+
+/** A picture with a plus: attach a reference. */
+export const ImagePlusIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M14 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6" />
+    <circle cx="8.5" cy="10" r="1.5" />
+    <path d="m21 16-5-5-6 6-2-2-5 5M18 3v6M15 6h6" />
+  </Glyph>
+);

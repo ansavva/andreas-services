@@ -98,7 +98,7 @@ export function ItemActions({
         // the ghost intent's resting `ink` until you reach for it.
         className={iconButtonClass({
           size: "sm",
-          className: "shrink-0 rounded-none text-muted hover:text-ink",
+          className: "shrink-0 text-muted hover:text-ink",
         })}
       >
         <DotsIcon />

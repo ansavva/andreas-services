@@ -149,7 +149,7 @@ export function DestinationPicker({
           ))}
         </Breadcrumbs.Root>
 
-        <div className="min-h-40 flex-1 overflow-auto rounded-none border border-line">
+        <div className="min-h-40 flex-1 overflow-auto border border-line">
           {loading && <SectionLoading label="Loading folders" />}
 
           {!loading && (

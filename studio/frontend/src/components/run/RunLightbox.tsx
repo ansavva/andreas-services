@@ -220,7 +220,7 @@ export function RunLightbox({ projectId, runId, characters, heroes }: Props) {
             intent="secondary"
             size="sm"
             onClick={close}
-            className="rounded-none"
+            className=""
           >
             Back to the project
           </Button>
@@ -310,7 +310,7 @@ function Opened({
             size="sm"
             intent="overlay"
             onClick={onClose}
-            className="rounded-none"
+            className=""
           >
             <CloseIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
           </IconButton>
@@ -321,7 +321,7 @@ function Opened({
             size="sm"
             intent="overlay"
             onClick={onPrev}
-            className="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-none"
+            className="absolute left-3 top-1/2 z-10 -translate-y-1/2"
           >
             <ChevronLeftIcon className="size-5 fill-none stroke-current stroke-[1.5]" />
           </IconButton>
@@ -332,7 +332,7 @@ function Opened({
             size="sm"
             intent="overlay"
             onClick={onNext}
-            className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-none"
+            className="absolute right-3 top-1/2 z-10 -translate-y-1/2"
           >
             <ChevronRightIcon className="size-5 fill-none stroke-current stroke-[1.5]" />
           </IconButton>
@@ -346,7 +346,7 @@ function Opened({
           {flying ? (
             <div
               data-testid="in-flight-stage"
-              className={`studio-shimmer flex w-full max-w-xl flex-col items-center justify-center gap-2 rounded-none border border-warning/50 ${
+              className={`studio-shimmer flex w-full max-w-xl flex-col items-center justify-center gap-2 border border-warning/50 ${
                 row.kind === "video" ? "aspect-video" : "aspect-[3/4]"
               }`}
             >
@@ -421,7 +421,7 @@ function Opened({
                 aria-label={`Output ${i + 1} of ${row.outputs.length}`}
                 aria-current={i === output ? "true" : undefined}
                 onClick={() => setOutput(i)}
-                className={`w-14 shrink-0 rounded-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                className={`w-14 shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                   i === output
                     ? "ring-2 ring-primary"
                     : "opacity-70 hover:opacity-100"
@@ -433,7 +433,7 @@ function Opened({
                   name={each.name}
                   isVideo={isVideoAsset(each) || row.kind === "video"}
                   aspect="square"
-                  className="rounded-none"
+                  className=""
                 />
               </button>
             ))}
@@ -450,7 +450,7 @@ function Opened({
       >
         <div className="flex flex-wrap items-center gap-1.5">
           <StatusBadge status={row.status} />
-          <Badge intent="neutral" className="rounded-none font-mono">
+          <Badge intent="neutral" className="font-mono">
             {row.kind}
           </Badge>
           <Text
@@ -486,7 +486,7 @@ function Opened({
                 // labels.
                 fit="contain"
                 title={`${send.role ?? send.field} · ${assetLabel(send.name)}`}
-                className="size-28 rounded-none border border-line"
+                className="size-28 border border-line"
               />
             ))}
           </div>
@@ -550,7 +550,7 @@ function Opened({
           onOpenChange={setRequestOpen}
           className="mt-auto border-y border-line"
         >
-          <Collapsible.Trigger className="w-full justify-between rounded-none">
+          <Collapsible.Trigger className="w-full justify-between">
             <span className="text-muted">Request</span>
             <Text
               variant="caption"
@@ -778,7 +778,7 @@ function ActionGrid({
 }
 
 const CELL =
-  "flex h-10 w-full items-center justify-start gap-3 rounded-none border-0 border-b border-line px-2 text-sm font-medium";
+  "flex h-10 w-full items-center justify-start gap-3 border-0 border-b border-line px-2 text-sm font-medium";
 
 function Cell({
   icon,
@@ -926,12 +926,12 @@ function RunStrip({
               aria-current={current ? "true" : undefined}
               aria-label={`Run ${relativeTime(row.created, Date.now())}${current ? " (open)" : ""}`}
               onClick={() => onSelect(row)}
-              className={`relative w-16 shrink-0 rounded-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+              className={`relative w-16 shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                 current ? "ring-2 ring-primary" : "opacity-70 hover:opacity-100"
               }`}
             >
               {inFlight(row.status) ? (
-                <span className="studio-shimmer flex aspect-square items-center justify-center rounded-none border border-warning/50">
+                <span className="studio-shimmer flex aspect-square items-center justify-center border border-warning/50">
                   <ApertureSpinner
                     size="sm"
                     label={`Run ${row.status}`}
@@ -945,10 +945,10 @@ function RunStrip({
                   name={row.outputs[0]?.name ?? row.id}
                   isVideo={row.kind === "video"}
                   aspect="square"
-                  className="rounded-none"
+                  className=""
                 />
               ) : (
-                <span className="flex aspect-square items-center justify-center rounded-none border border-line bg-card">
+                <span className="flex aspect-square items-center justify-center border border-line bg-card">
                   <Text variant="caption" family="mono" tone="muted">
                     {row.status}
                   </Text>

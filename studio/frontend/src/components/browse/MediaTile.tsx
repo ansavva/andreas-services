@@ -69,7 +69,7 @@ export function MediaTile({
     else onOpen();
   };
 
-  const surface = `relative block h-full w-full overflow-hidden rounded-none border bg-card
+  const surface = `relative block h-full w-full overflow-hidden border bg-card
                     focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary
                     ${selected ? "border-primary ring-2 ring-primary" : "border-line"}`;
 

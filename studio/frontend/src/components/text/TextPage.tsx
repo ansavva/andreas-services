@@ -262,7 +262,7 @@ export function TextPage({ file, onClose, onSaved, crumbs }: Props) {
             onValueChange={setDraft}
             spellCheck={false}
             aria-label={`Contents of ${file.name}`}
-            className="min-h-[60vh] rounded-none font-mono text-xs leading-relaxed"
+            className="min-h-[60vh] font-mono text-xs leading-relaxed"
           />
         ) : (
           data &&

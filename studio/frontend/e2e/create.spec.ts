@@ -85,26 +85,29 @@ test("Enter on the create bar makes a draft and submits it; Shift+Enter breaks t
   expect(escaped(calls, page)).toEqual([]);
 });
 
-test("a template picked lands in the box FILLED, and there is no preview to open", async ({
+test("a tile opens the picker under it, and a pressed picture lands in the tile", async ({
   page,
 }) => {
-  test.skip(LIVE, "the fill would read a real bible from the dev stack");
   const calls = log(page);
   await page.goto(`/p/${PROJECT}`);
 
-  const box = page.getByRole("textbox", { name: "Prompt", exact: true });
-  await box.click();
-  await page.getByRole("button", { name: "Template", exact: true }).click();
-  await page.getByRole("button", { name: /Face, front/ }).first().click();
+  // Reference is the first tile the still model offers. Pressing it is what
+  // opens the picker — there is no separate control.
+  const tile = page.getByRole("group", { name: "Reference" });
+  await tile.getByRole("button", { name: "Reference" }).click();
 
-  // The template travelled; the ANSWER is what the box holds.
-  await expect.poll(() => spell(wrote(calls))).toEqual([
-    "POST /api/templates/expand",
-  ]);
-  await expect(box).toContainText(EXPANDED);
-  // No citation is left to read behind an icon, which is why there is no icon.
-  await expect(box).not.toContainText("{block.");
-  await expect(page.getByRole("button", { name: "Preview" })).toHaveCount(0);
+  // The picker opens on the cast's identity images, read off `/selection` —
+  // the route the stub used to answer with a character record, which crashed
+  // the sheet on the first press.
+  const picker = page.locator("[data-create-drawer]");
+  await expect(picker).toBeVisible();
+  const first = picker.getByRole("button", { name: /^Attach / }).first();
+  await expect(first).toBeVisible();
+  await first.click();
 
+  // The picture is in the tile now, with its own way off.
+  await expect(tile.getByRole("button", { name: /^Remove / })).toBeVisible();
+  // Attaching is not a send: nothing was written.
+  expect(wrote(calls)).toEqual([]);
   expect(escaped(calls, page)).toEqual([]);
 });

@@ -319,11 +319,17 @@ page and a plain textarea over its literal bytes, and never offers fields.
   collapse state is `SidebarContext`'s, not the package's own, so the opened
   run can collapse the rail from a route element: `useShellSidebar()` gives
   `{ collapsed, setCollapsed, toggle }`, mirrored into `localStorage` under
-  `SIDEBAR_STORAGE_KEY`. `TopBar` is full width and sticky — `CreateBarSlot`,
-  which mounts `CreateBar`, and then `HeaderSearch`. Below `md` the sidebar is not drawn: a menu `IconButton`
-  opens the same `SidebarContents` in a `Drawer`, and search sits behind an
-  icon. `--header-h` in `app.css` is the bar's height at both widths; content
-  is full width with the mockup's `px-6`, no `max-w-*` cap.
+  `SIDEBAR_STORAGE_KEY`. `TopBar` is a 48px sticky strip holding
+  `HeaderSearch` and nothing that grows; `--header-h` in `app.css` is that
+  number. Below `md` the sidebar is not drawn: a menu `IconButton` opens the
+  same `SidebarContents` in a `Drawer`, and search sits behind an icon.
+  Content is full width with `px-6`, no `max-w-*` cap, and `AppLayout` mounts
+  `CreateBar` after `main` as a sheet stuck to the viewport's bottom — sticky,
+  not fixed, so it takes the column's width beside the rail for free and
+  falls in after the last row when the page is scrolled to its end. The
+  shell's look is modelled on ElevenLabs (2026-09): 8/12/16px corners,
+  surfaces told apart by fill rather than border, the sheet frosted over the
+  feed.
 - **The heart is one control reading one cached set, wherever it is drawn.**
   `FavoriteButton` takes a node id and asks `useFavorites`, which holds every
   favorited id under one React Query key — so a grid of two hundred tiles is one
@@ -417,26 +423,31 @@ page and a plain textarea over its literal bytes, and never offers fields.
   Video outputs get no control: a reference is a picture a later render is
   checked against.
 - **None of these flows uses a dialog, and that is a requirement rather than a
-  style.** Creating a run is the create bar at the top of every screen,
+  style.** Creating a run is the create sheet at the foot of every screen,
   promoting is an inline panel, and every gesture that spends or destroys is
   arm-then-fire in the button itself. `ConfirmDestroyDialog` remains for
   entity deletion and nothing on the run surface reaches for it.
-- **The create bar is one box at the top of every screen, and Enter sends.**
-  `components/create/CreateBar.tsx` in `TopBar`'s `CreateBarSlot`; its state is
-  `CreateBarContext`, mounted in `AppLayout`, so a feed row or a tile can fill
-  it from a route element: `useCreateBar()` is `{ loadRun, attach, setKind }`
-  and nothing else. The kind switch picks IMAGE or VIDEO and the strip under
-  the bar is that kind's roles — Reference and Edit; Animate (start), End
-  frame, Reference, Duration — each drawn only where the selected model's
-  registry `images` has a field for it (`create/roles.ts`). Highlighting a
-  role opens `CreateDrawer`, whose tiles (cast identity images, the input pool,
-  the project's outputs) attach to that role. Parameters are `CreateSettings`
-  behind the sliders icon: the kind's models and `SchemaParams` over the live
-  schema, seeded from the snapshot by `seedPlan`. **Below `md` it is the
-  prompt, the kind switch and Send and nothing else** — the header is
-  `--header-h` exactly and the resting bar has to fit inside it — and the rest
-  arrives when the bar goes active, which on a phone also takes it out of its
-  246px slot to the width of the screen. Send is `createRun` (plan +
+- **The create sheet floats at the foot of every screen, always fully drawn,
+  and Enter sends.** `components/create/CreateBar.tsx`, mounted by
+  `AppLayout`; its state is `CreateBarContext`, so a feed row or a tile can
+  fill it from a route element: `useCreateBar()` is `{ loadRun, attach,
+  setKind }` and nothing else. Top-left the IMAGE/VIDEO switch; top-right the
+  template and preview icons. Under them one tile per role the selected model
+  has a field for (`AttachTiles`, `create/roles.ts`) — Reference and Edit;
+  Animate (start), End frame, Reference — and pressing a tile opens
+  `CreateDrawer` under it, whose tiles (cast identity images, the input pool,
+  the project's outputs) attach to that role; what is attached is drawn in
+  the tile. Then the prompt, borderless. Then the chip row (`CreateChips`):
+  the model, opening `ModelList` (search + notes, one kind at a time), and one
+  chip per input the model has out of a fixed six — aspect ratio, resolution,
+  duration, quality, outputs, audio — each a glyph and a value opening a
+  short menu of the live schema's choices (the snapshot's until it lands),
+  writing only on a choice so an untouched chip leaves the param absent.
+  `More options` is `CreateSettings`: `SchemaParams` over what is left. **Below
+  `md` the row is the model, a gear and Send**; the gear opens a bottom
+  `Drawer` with the switch, a Model box that pages the sheet to `ModelList`,
+  the same chips as labelled rows (`ParamRows`), and `More options` collapsed.
+  Send is `createRun` (plan +
   sends together, then `PATCH /plan` with `template` when the prompt cites
   anything, so the API expands it into `prompt` — the template is the
   instruction and is not stored), one `?fingerprint=` read that holds the
@@ -751,13 +762,16 @@ children types its name; `useArmed`, the arm/disarm machine both of those (and
 is not a page's own error state.
 
 **Two of these used to be local and are the package's now** (design-system
-0.17.0): `Chip`/`chipClass` for the square bordered toggle, and — replacing a
+0.17.0): `Chip`/`chipClass` for the bordered toggle, and — replacing a
 `dangerButtonClass` helper that re-derived the fill — `Button intent="danger"`
 with `wrap` for a label that is a sentence. Reach for the package's.
 
 Nine rules keep every screen speaking that vocabulary, #589-#596:
 
-1. **Square corners** — `rounded-none`; `rounded-pill` stays a shape, not a corner.
+1. **Corners on the scale** — `rounded-sm`/`-md`/`-lg` (8/12/16px, set in
+   `styles/app.css`) and `rounded-pill` for a shape; never `xl`/`2xl`/`full`
+   or an arbitrary value. `rounded-none` is for a video frame. (Was "studio
+   is square" until the 2026-09 shell redesign after ElevenLabs.)
 2. **No ghost intent** — `secondary` is `Button`'s quiet weight.
 3. **Semantic colour only** — no raw `neutral-*` ramp class. A control drawn
    over MEDIA uses the package's `overlay-*` roles (`IconButton

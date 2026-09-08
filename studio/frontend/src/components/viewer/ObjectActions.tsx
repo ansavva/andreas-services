@@ -191,11 +191,11 @@ function DeleteMenu({ onDelete }: { onDelete: () => Promise<unknown> }) {
       <Dropdown.Trigger
         aria-label="More actions"
         title="More actions"
-        className={iconButtonClass({ size: "sm", className: "rounded-none" })}
+        className={iconButtonClass({ size: "sm", className: "" })}
       >
         <DotsIcon />
       </Dropdown.Trigger>
-      <Dropdown.Content className="left-auto right-0 rounded-none">
+      <Dropdown.Content className="left-auto right-0">
         <Dropdown.Item
           disabled={destroy.busy}
           {...destroy.handlers}

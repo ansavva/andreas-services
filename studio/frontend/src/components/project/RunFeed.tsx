@@ -478,7 +478,7 @@ function FeedRow({
       <div className="flex min-w-0 flex-col gap-2.5">
         <div className="flex flex-wrap items-center gap-1.5">
           <StatusBadge status={row.status} />
-          <Badge intent="neutral" className="rounded-none font-mono">
+          <Badge intent="neutral" className="font-mono">
             {row.kind}
           </Badge>
           <Text
@@ -516,7 +516,7 @@ function FeedRow({
                 // Whole, not cropped — see the opened run's rail.
                 fit="contain"
                 title={`${send.role ?? send.field} · ${assetLabel(send.name)}`}
-                className="size-20 rounded-none border border-line"
+                className="size-20 border border-line"
               />
             ))}
           </div>
@@ -568,7 +568,7 @@ export function StatusBadge({ status }: { status: RunStatus }) {
   return (
     <Badge
       intent={STATUS_INTENT[status]}
-      className="rounded-none gap-1.5 font-mono"
+      className="gap-1.5 font-mono"
     >
       {inFlight(status) && (
         <ApertureSpinner
@@ -599,7 +599,7 @@ function InFlightTiles({ row, now }: { row: RunFeedRow; now: number }) {
           key={i}
           data-testid="in-flight-tile"
           style={{ aspectRatio: ratio }}
-          className={`studio-shimmer flex flex-col items-center justify-center gap-2 rounded-none border ${
+          className={`studio-shimmer flex flex-col items-center justify-center gap-2 border ${
             i === 0 ? "border-warning/50" : "border-line"
           }`}
         >
@@ -644,7 +644,7 @@ function DraftTiles({ row }: { row: RunFeedRow }) {
           key={i}
           data-testid="draft-tile"
           style={{ aspectRatio: ratio }}
-          className="flex flex-col items-center justify-center rounded-none border border-dashed border-line bg-surface-alt/40"
+          className="flex flex-col items-center justify-center border border-dashed border-line bg-surface-alt/40"
         >
           {i === 0 && (
             <Text variant="caption" tone="muted">
@@ -763,7 +763,7 @@ function RowActions({
           onFire={actions.rerun}
           intent="secondary"
           icon={<RerunIcon className={GLYPH} />}
-          className="rounded-none"
+          className=""
         />
       )}
       <Action
@@ -778,7 +778,7 @@ function RowActions({
           className={buttonClass({
             intent: "secondary",
             size: "sm",
-            className: "rounded-none",
+            className: "",
           })}
         >
           <FolderIcon className={GLYPH} />
@@ -790,7 +790,7 @@ function RowActions({
           noun="this run"
           tone="text"
           onConfirm={actions.remove}
-          className="rounded-none"
+          className=""
         />
       )}
       <Dropdown.Root>
@@ -798,7 +798,7 @@ function RowActions({
           className={buttonClass({
             intent: "secondary",
             size: "sm",
-            className: "rounded-none",
+            className: "",
           })}
         >
           <DotsIcon className="size-4 fill-current stroke-none" />
@@ -833,7 +833,7 @@ function Action({
       intent="secondary"
       size="sm"
       onClick={onClick}
-      className="rounded-none"
+      className=""
     >
       {icon}
       {label}
