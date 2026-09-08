@@ -17,6 +17,8 @@ export interface PageSummary {
   published: boolean;
   /** How many files this lesson is made of. Zero until she uploads. */
   file_count: number;
+  /** Where she can look at the current draft. Null until she previews once. */
+  preview_url: string | null;
   created_at: string;
   updated_at: string;
   share_url: string | null;
@@ -102,6 +104,16 @@ export function updatePage(
 
 export function deletePage(id: string): Promise<{ deleted: string }> {
   return authed<{ deleted: string }>(`/pages/${id}`, { method: "DELETE" });
+}
+
+/**
+ * Stage the current draft at its own unguessable URL and return the page.
+ *
+ * Deliberately not the published URL: previewing an edit to a lesson that is
+ * already live must not push it to the class already holding its link.
+ */
+export function stagePreview(id: string): Promise<Page> {
+  return authed<Page>(`/pages/${id}/preview`, { method: "POST" });
 }
 
 export async function listFiles(id: string): Promise<string[]> {
