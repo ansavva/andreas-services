@@ -9,7 +9,7 @@ from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 
 from classroom_core import config
-from classroom_core.auth import Unauthenticated
+from classroom_core.auth import AuthUnavailable, Unauthenticated
 from classroom_core.routes.pages import bp as pages_bp
 from classroom_core.routes.public import bp as public_bp
 
@@ -99,6 +99,14 @@ def create_app() -> Flask:
     @app.errorhandler(Unauthenticated)
     def handle_unauthenticated(error):
         return jsonify({"error": str(error)}), 401
+
+    @app.errorhandler(AuthUnavailable)
+    def handle_auth_unavailable(error):
+        # 502, not 401: the caller's token may be perfectly good and we simply
+        # could not reach Cognito to check it. A 401 would tell a signed-in
+        # teacher to sign in again, which cannot fix our dependency.
+        logger.exception("Cognito key set unreachable")
+        return jsonify({"error": str(error)}), 502
 
     @app.errorhandler(KeyError)
     def handle_missing_field(error):

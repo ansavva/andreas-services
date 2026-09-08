@@ -152,6 +152,11 @@ resource "aws_lambda_function" "api" {
       CLASSROOM_PUBLIC_SITE_URL = var.public_site_url
       CLASSROOM_LESSONS_BUCKET  = var.lessons_bucket_name
       CLASSROOM_ALLOWED_ORIGIN  = var.allowed_origin
+
+      # The API validates the ID token itself — the gateway authorizer's claims
+      # cannot reach Flask through WsgiToAsgi. See backend/classroom_core/auth.py.
+      CLASSROOM_COGNITO_USER_POOL_ID = var.cognito_user_pool_id
+      CLASSROOM_COGNITO_CLIENT_ID    = var.cognito_client_id
     }
   }
 

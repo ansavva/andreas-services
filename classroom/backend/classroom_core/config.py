@@ -32,3 +32,27 @@ def allowed_origins() -> list[str]:
     """
     raw = os.environ.get("CLASSROOM_ALLOWED_ORIGIN", "http://localhost:5174")
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
+def cognito_user_pool_id() -> str:
+    """The pool whose tokens this API accepts. No default, deliberately.
+
+    A pool id that is merely WRONG rejects every caller; one naming a different
+    pool would admit that pool's users. There is no value worth guessing, so an
+    unset variable is a refusal rather than a fallback.
+    """
+    return os.environ.get("CLASSROOM_COGNITO_USER_POOL_ID", "")
+
+
+def cognito_client_id() -> str:
+    """The app client a token's `aud` must match. No default, as above."""
+    return os.environ.get("CLASSROOM_COGNITO_CLIENT_ID", "")
+
+
+def aws_region() -> str:
+    """Region for the Cognito issuer URL. Lambda always sets AWS_REGION."""
+    return (
+        os.environ.get("AWS_REGION")
+        or os.environ.get("AWS_DEFAULT_REGION")
+        or "us-east-1"
+    )
