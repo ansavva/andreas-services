@@ -132,6 +132,10 @@ module "compute" {
   # Who may call the API from a browser — the ADMIN host, and only that.
   allowed_origin = "https://${local.admin_domain_name}"
 
+  # The API verifies every ID token against this pool and client itself.
+  cognito_user_pool_id = module.auth.user_pool_id
+  cognito_client_id    = module.auth.user_pool_client_id
+
   tags = local.common_tags
 }
 
@@ -232,6 +236,13 @@ resource "aws_ssm_parameter" "api_url" {
   name  = "/${local.project}/${local.environment}/api-url"
   type  = "String"
   value = module.api_gateway.invoke_url
+  tags  = local.common_tags
+}
+
+resource "aws_ssm_parameter" "cognito_user_pool_id" {
+  name  = "/${local.project}/${local.environment}/cognito-user-pool-id"
+  type  = "String"
+  value = module.auth.user_pool_id
   tags  = local.common_tags
 }
 

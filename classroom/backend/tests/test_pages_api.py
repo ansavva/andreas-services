@@ -4,7 +4,7 @@ from tests.conftest import OTHER_TEACHER, TEACHER, as_teacher, live_keys, upload
 
 
 def create(client, **payload):
-    return client.post("/api/pages", json=payload, environ_overrides=as_teacher(TEACHER))
+    return client.post("/api/pages", json=payload, headers=as_teacher(TEACHER))
 
 
 def test_create_then_list_and_fetch(client):
@@ -17,7 +17,7 @@ def test_create_then_list_and_fetch(client):
     # A page starts as an empty directory: no files, nothing to serve.
     assert page["file_count"] == 0
 
-    listing = client.get("/api/pages", environ_overrides=as_teacher(TEACHER))
+    listing = client.get("/api/pages", headers=as_teacher(TEACHER))
     assert [p["id"] for p in listing.get_json()["pages"]] == [page["id"]]
 
 
@@ -30,7 +30,7 @@ def test_title_is_required(client):
 def test_a_teacher_cannot_reach_another_teachers_page(client):
     page = create(client, title="Mine").get_json()
     response = client.get(
-        f"/api/pages/{page['id']}", environ_overrides=as_teacher(OTHER_TEACHER)
+        f"/api/pages/{page['id']}", headers=as_teacher(OTHER_TEACHER)
     )
     assert response.status_code == 404
 
@@ -42,7 +42,7 @@ def sign(client, page_id, paths):
     return client.post(
         f"/api/pages/{page_id}/uploads",
         json={"paths": paths},
-        environ_overrides=as_teacher(TEACHER),
+        headers=as_teacher(TEACHER),
     )
 
 
@@ -88,7 +88,7 @@ def test_a_new_upload_replaces_the_previous_one(client, lessons_bucket):
     sign(client, page["id"], ["index.html"])
 
     listing = client.get(
-        f"/api/pages/{page['id']}/files", environ_overrides=as_teacher(TEACHER)
+        f"/api/pages/{page['id']}/files", headers=as_teacher(TEACHER)
     )
     assert listing.get_json()["files"] == []
 
@@ -100,7 +100,7 @@ def publish(client, page_id, value=True):
     return client.put(
         f"/api/pages/{page_id}",
         json={"published": value},
-        environ_overrides=as_teacher(TEACHER),
+        headers=as_teacher(TEACHER),
     )
 
 
@@ -154,7 +154,7 @@ def test_republishing_serves_the_new_upload(client, lessons_bucket):
     upload(lessons_bucket, page["id"], "index.html", b"<h1>v2</h1>")
     client.post(
         f"/api/pages/{page['id']}/uploads/complete",
-        environ_overrides=as_teacher(TEACHER),
+        headers=as_teacher(TEACHER),
     )
 
     assert live_keys(lessons_bucket, page["id"]) == ["index.html"]
@@ -170,12 +170,12 @@ def test_delete_removes_the_files_too(client, lessons_bucket):
     publish(client, page["id"])
 
     response = client.delete(
-        f"/api/pages/{page['id']}", environ_overrides=as_teacher(TEACHER)
+        f"/api/pages/{page['id']}", headers=as_teacher(TEACHER)
     )
     assert response.status_code == 200
     assert live_keys(lessons_bucket, page["id"]) == []
     assert (
-        client.get(f"/api/pages/{page['id']}", environ_overrides=as_teacher(TEACHER)).status_code
+        client.get(f"/api/pages/{page['id']}", headers=as_teacher(TEACHER)).status_code
         == 404
     )
 

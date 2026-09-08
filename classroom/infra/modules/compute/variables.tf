@@ -55,3 +55,13 @@ variable "allowed_origin" {
   description = "Origin the browser API accepts — the admin app's host. Never \"*\": lessons run untrusted scripts."
   type        = string
 }
+
+variable "cognito_user_pool_id" {
+  description = "Pool whose ID tokens the API accepts; also the JWKS issuer"
+  type        = string
+}
+
+variable "cognito_client_id" {
+  description = "App client a token's `aud` must match"
+  type        = string
+}
