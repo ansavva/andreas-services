@@ -89,15 +89,18 @@ export function OutputTile({
         >
           <DownloadIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
         </IconButton>
-        <IconButton
-          label="Use in prompt"
-          size="sm"
-          intent="overlay"
-          className={`bg-overlay-scrim/60 ${LIVE}`}
-          onClick={() => actions.useInPrompt(asset, index)}
-        >
-          <UseInPromptIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
-        </IconButton>
+        {/* A still only — a reference is a picture, and a clip cannot be one. */}
+        {!video && (
+          <IconButton
+            label="Use in prompt"
+            size="sm"
+            intent="overlay"
+            className={`bg-overlay-scrim/60 ${LIVE}`}
+            onClick={() => actions.useInPrompt(asset, index)}
+          >
+            <UseInPromptIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+          </IconButton>
+        )}
       </div>
 
       {/* The foot: what to MAKE from this output. One row along the bottom

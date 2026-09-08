@@ -713,7 +713,9 @@ function ActionGrid({
           label="Edit"
           onClick={actions.edit}
         />
-        {asset && (
+        {/* A still only: every role a tile stands for is a picture, and a
+            clip attached as one was sent to a field that refuses it. */}
+        {asset && still && (
           <Cell
             icon={<UseInPromptIcon className={GLYPH} />}
             label="Use as reference"

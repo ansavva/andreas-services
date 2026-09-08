@@ -403,6 +403,10 @@ describe("the shape of the frames", () => {
     const tile = screen.getAllByRole("button", { name: /^Open Output/ })[0]!;
     const box = tile.querySelector("span[style]") as HTMLElement;
     expect(box.style.aspectRatio).toBe("9 / 16");
+    // A clip is not a reference — a reference is a picture — so the tile
+    // offers no way to attach it as one. It did, and the send was refused.
+    expect(screen.queryByRole("button", { name: "Use in prompt" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Start frame" })).toBeNull();
   });
 });
 
