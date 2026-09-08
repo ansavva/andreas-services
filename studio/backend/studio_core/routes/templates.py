@@ -35,6 +35,7 @@ import re
 from studio_core.errors import ValidationError
 from studio_core.routes import support
 from studio_core.services import catalog
+from studio_core.services import template as templating
 
 logger = logging.getLogger(__name__)
 
@@ -171,3 +172,49 @@ def delete_block(name: str):
     support.member_of(g.library, held)
     catalog.delete_spec_block(g.library, name)
     return jsonify({"name": name, "deleted": True}), 200
+
+
+@bp.post("/templates/expand")
+def expand_template():
+    """What a template WOULD say, filled from a named cast. Writes nothing.
+
+    **The picker needs this because there is no run yet.** Choosing a template
+    in the create bar happens before anything has been drafted, so a fill
+    addressed by run id has nothing to address — which is why the one that was
+    (`POST /api/runs/<id>/plan/preview`) is gone and this replaced it. The cast
+    travels as ids, and the fill is the same call `PATCH /plan` makes:
+    `templating.expand`, the one fill there is, so what the box shows is what a
+    draft made from it would carry.
+
+    Membership is checked per character rather than only on the library: an id
+    is shareable, and filling a prompt from a bible in a library the caller is
+    not in would leak the bible through the prose it produces.
+
+    Hard rule #2 is untouched — nothing here creates a run, let alone sends one.
+    """
+    body = support.body()
+    held = support.memberships()
+    support.member_of(g.library, held)
+
+    template = body.get("template")
+    if not isinstance(template, str):
+        raise ValidationError("template must be a string")
+
+    named = body.get("characters", [])
+    if not isinstance(named, list) or not all(
+            isinstance(each, str) and each for each in named):
+        raise ValidationError("characters must be a list of character ids")
+
+    profiles = [
+        support.entity_at(catalog.ENTITY_CHARACTER, g.library, each,
+                          held).get("profile") or {}
+        for each in named
+    ]
+    blocks = catalog.templates(g.library)["blocks"]
+    prompt = templating.expand(template, profiles, blocks)
+    # **The prompt, and not where each citation landed.** `expand_parts` also
+    # reports spans, and the surface that wanted them — a preview beside an
+    # editor, marking which words came from which citation — is gone: the box
+    # holds the prose and a person edits it directly. A field nothing reads is
+    # a claim about the answer that nothing keeps true.
+    return jsonify({"prompt": prompt, "characters": len(profiles)}), 200

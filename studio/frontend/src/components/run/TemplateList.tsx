@@ -10,9 +10,10 @@ import { LoadError } from "../common/LoadError";
 
 interface Props {
   /**
-   * Called with the chosen template's prompt. The caller puts it in the box; it
-   * does NOT save, because picking a template is the start of an edit rather
-   * than the end of one.
+   * Called with the chosen template's prompt, as written — citations and all.
+   * FILLING it is the caller's, because only the caller knows the cast; the
+   * create bar expands it before it reaches the box. It does NOT save, because
+   * picking a template is the start of an edit rather than the end of one.
    */
   onPick: (prompt: string) => void;
   /** How many characters this run binds. `{character.1.…}` is the first of them. */
@@ -63,8 +64,8 @@ function castNeededBy(prompt: string): number {
  * never needed one. And gating the ROWS is barely better: a person who wants a
  * template that cites a character they have not added yet wants to add the
  * character, not to be told they may not look. So every row is pickable, a row
- * that needs more cast than the run has says so, and the editor names the
- * citation that did not expand and offers the fix beside it.
+ * that needs more cast than the run has says so, and a pick whose fill is
+ * refused leaves the template in the box with the refusal named beside it.
  *
  * ## What it does NOT copy
  *
@@ -126,10 +127,11 @@ export function TemplateList({ onPick, cast }: Props) {
               {entry.prompt.trim().split("\n")[0]}
             </Text>
             {/* **Said, not enforced.** Every template is pickable: it
-                lands in the box, the preview names the citation that
-                will not expand, and the cast is editable right there.
-                Blocking the pick instead would be this screen deciding
-                which of its own problems a person is allowed to see. */}
+                lands in the box, filled where it can be and left as
+                written where it cannot, and the cast is editable right
+                there. Blocking the pick instead would be this screen
+                deciding which of its own problems a person is allowed
+                to see. */}
             {short && (
               <Text variant="caption" tone="muted">
                 Cites character {needs}; this run binds{" "}

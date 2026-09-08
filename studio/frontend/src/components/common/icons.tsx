@@ -422,14 +422,6 @@ export const SendIcon = ({ className }: Props) => (
   </Glyph>
 );
 
-/** An eye: the preview. */
-export const EyeIcon = ({ className }: Props) => (
-  <Glyph className={className}>
-    <path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z" />
-    <circle cx="12" cy="12" r="3" />
-  </Glyph>
-);
-
 /** A padlock: keep the attached images for the next send. */
 export const LockIcon = ({ className }: Props) => (
   <Glyph className={className}>

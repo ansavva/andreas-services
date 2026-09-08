@@ -845,13 +845,17 @@ interface RunSendSource {
 
 export interface RunPlan {
   /**
-   * What was TYPED, when the prompt was written as a template.
+   * Citations to fill into `prompt` — **sent, never stored.**
    *
-   * Kept beside the expanded `prompt` rather than instead of it. The expansion
-   * happens at save so the fingerprint covers exactly what reaches the model —
-   * a template expanded at submit would mean the payload somebody read is not
-   * the payload sent — and the template is kept so the prompt stays editable
-   * instead of becoming a wall of finished prose with no way back.
+   * `PATCH /plan` expands it and writes the result as `prompt`; the template
+   * itself does not survive the write, so a plan read back never carries one.
+   * Expanding at save is what keeps the fingerprint over exactly what reaches
+   * the model — a template expanded at submit would mean the payload somebody
+   * read is not the payload sent.
+   *
+   * It was stored for a while, so the prompt could be re-opened as what was
+   * written. Nothing ever read it back, and it sat inside the fingerprint,
+   * where it made two identical submissions hash differently.
    */
   template?: string;
   version: number;

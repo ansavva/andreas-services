@@ -478,3 +478,75 @@ def test_two_templates_may_share_a_name(empty_api):
 
     assert resp.status_code == 200
     assert len(empty_api.get("/api/templates").get_json()["templates"]) == 2
+
+
+# ──────────────────── filling one before a run exists ────────────────────
+
+
+def _cast(api, count=1):
+    """`count` character(s), each with a wardrobe. Their ids, in order."""
+    ids = []
+    for n, top in enumerate(("crew-neck tee", "work jacket")[:count]):
+        made = api.post("/api/characters", json={
+            "name": f"subject-{'ab'[n]}",
+            "profile": {"wardrobe": {"tops": [{"item": top, "colour": "charcoal"}]},
+                        "rendering": {"default_style": "Realistic"}},
+        }).get_json()
+        ids.append(made["id"])
+    return ids
+
+
+def test_a_template_is_filled_from_a_cast_named_by_id_with_no_run(empty_api):
+    """**What the picker needs, and why a fill addressed by run id could not.**
+
+    Choosing a template in the create bar happens before anything is drafted, so
+    there is no run to fill against — and the box has to hold the finished
+    prompt rather than the citations, because the box is the only preview there
+    is now.
+    """
+    empty_api.patch("/api/templates/blocks/face_only", json={"text": BLOCK})
+    ids = _cast(empty_api)
+
+    got = empty_api.post("/api/templates/expand", json={
+        "template": "{block.face_only} He wears {character.1.top}.",
+        "characters": ids,
+    }).get_json()
+
+    assert got["characters"] == 1
+    assert got["prompt"].startswith(BLOCK)
+    assert "charcoal crew-neck tee" in got["prompt"]
+
+
+def test_filling_a_template_writes_nothing(empty_api, catalog_table):
+    """A read dressed as a POST, because the template travels in a body.
+
+    Hard rule #2 is untouched: nothing here creates a run, and nothing here
+    edits the template it was handed.
+    """
+    empty_api.patch(f"/api/templates/{FACE}", json=TEMPLATE)
+    ids = _cast(empty_api)
+    empty_api.post("/api/templates/expand",
+                   json={"template": "A different prompt entirely.",
+                         "characters": ids})
+
+    stored = _item(catalog_table, f"LIB#{CATALOG_LIBRARY}", f"SPEC#TEMPLATE#{FACE}")
+    assert stored["prompt"]["S"] == TEMPLATE["prompt"]
+
+
+def test_a_citation_the_cast_cannot_answer_is_a_400_naming_it(empty_api):
+    """The picker keeps the template and says this, rather than swallowing it —
+    a prompt written against two characters is picked on a one-character run
+    every day, and the fix is to add the character."""
+    ids = _cast(empty_api)
+    resp = empty_api.post("/api/templates/expand", json={
+        "template": "{character.2.top}", "characters": ids,
+    })
+
+    assert resp.status_code == 400
+    assert "1 character(s)" in resp.get_json()["error"]
+
+
+def test_a_cast_that_is_not_a_list_of_ids_is_refused(empty_api):
+    resp = empty_api.post("/api/templates/expand",
+                          json={"template": "x", "characters": "subject-a"})
+    assert resp.status_code == 400

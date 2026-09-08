@@ -1087,18 +1087,29 @@ def _profiles(record: dict) -> list:
 
 
 def _expanded(plan: dict, record: dict) -> dict:
-    """Fill a plan's `template` into its `prompt`, if it carries one.
+    """Fill a plan's `template` into its `prompt`, if the body carries one.
 
-    **Expanded at SAVE, and the plan keeps both.** A template expanded at submit
-    would mean the payload a person read is not the payload that gets sent, and
-    the fingerprint would be hashing the wrong string. Expanding here keeps it
-    over exactly what reaches the model.
+    **Expanded at SAVE**, which is the part that has always mattered: a template
+    expanded at submit would mean the payload a person read is not the payload
+    that gets sent, and the fingerprint would be hashing the wrong string.
+    Nothing re-expands on its own — a character edited later does not silently
+    move a drafted prompt — because re-expanding takes a save.
 
-    The template is kept beside it so the prompt stays re-editable: without it,
-    filling a template in once would leave the next editor a wall of finished
-    prose with no way back to what was written. Nothing re-expands on its own —
-    a character edited later does not silently move a drafted prompt — because
-    re-expanding takes a save.
+    **The template is an INSTRUCTION, not a field, and does not survive into the
+    record.** It used to be stored beside the prompt so the prompt stayed
+    re-editable — the argument being that filling one in once would leave the
+    next editor a wall of finished prose with no way back to what was written.
+    Two things retired that:
+
+    - **Nothing read it back.** The editor that would have re-opened a template
+      is gone; the create bar seeds from `plan.prompt`, and the picker now fills
+      a template before it ever reaches the box, so the prose IS what a person
+      edits. A field written and never read is a claim nothing keeps true.
+    - **It was inside the fingerprint.** `plan_digest` hashes the whole plan, so
+      two runs sending byte-identical prompts to the same model hashed
+      differently depending on whether the prompt had been written as a
+      template — a silent false negative on the one guard that exists to stop
+      the same generation being billed twice.
     """
     template = plan.get("template")
     if template is None:
@@ -1106,31 +1117,9 @@ def _expanded(plan: dict, record: dict) -> dict:
     if not isinstance(template, str):
         raise ValidationError("plan.template must be a string")
     blocks = catalog.templates(record["lib"])["blocks"]
-    return {**plan, "prompt": templating.expand(template, _profiles(record), blocks)}
-
-
-@bp.post("/runs/<run_id>/plan/preview")
-def preview_plan(run_id: str):
-    """What a template would become, without writing anything.
-
-    The editor calls it on every change, which is the same shape the turnaround
-    preview has and for the same reason: what a prompt will SAY is the thing
-    that tells you whether it is right, so it cannot sit behind a save.
-    """
-    body = support.body()
-    held = support.memberships()
-    record = _run(run_id, held)
-
-    template = body.get("template")
-    if not isinstance(template, str):
-        raise ValidationError("template must be a string")
-    blocks = catalog.templates(record["lib"])["blocks"]
-    prompt, spans = templating.expand_parts(template, _profiles(record), blocks)
-    # The spans say WHERE each citation landed. An expanded prompt is a wall of
-    # prose in which nothing marks which words came from which citation, and
-    # that is the one question a reader of it has.
-    return jsonify({"prompt": prompt, "spans": spans,
-                    "characters": len(_cast(record))}), 200
+    filled = {**plan, "prompt": templating.expand(template, _profiles(record), blocks)}
+    filled.pop("template")
+    return filled
 
 
 @bp.patch("/runs/<run_id>/sends")
