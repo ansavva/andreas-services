@@ -101,3 +101,17 @@ export function formatTextContent(content: string, language: string): string {
     return content;
   }
 }
+
+/**
+ * What to call a file whose node is gone.
+ *
+ * `RunAsset` carries no `name` when the catalog cannot find the node a record
+ * points at — the API reports the pointer as its id alone, deliberately, so a
+ * run whose send was deleted stays openable. Every label built from that name
+ * would otherwise read `reference · undefined`, which looks like a bug in the
+ * page rather than the fact it is: the picture is not there any more. Spelled
+ * the way the feed's cast chips already spell theirs (`deleted character`).
+ */
+export function assetLabel(name: string | null | undefined): string {
+  return name || "deleted file";
+}

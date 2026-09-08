@@ -31,14 +31,31 @@ interface Props {
    * app.
    */
   nodeId: string;
-  url: string;
+  /**
+   * The presigned URL, or nothing at all.
+   *
+   * **Absent is a real answer, not a caller's mistake.** A record may point at a
+   * node the catalog no longer holds — a deleted send, an output whose file went
+   * — and the API reports that pointer as the bare `{node}` it honestly is, with
+   * no `name` and no `url`. Every tile below the API therefore has to be able to
+   * draw "there is nothing here", which is the `Unavailable` state a dead
+   * signature already reaches through `onError`.
+   *
+   * It was typed `string` and the runtime disagreed: a project holding one run
+   * with a deleted send crashed the whole feed in `looksLikeVideo` —
+   * `new URL(undefined)` throws, and the fallback did `undefined.split("?")`.
+   */
+  url: string | null | undefined;
   /**
    * What the file is called — used for the hover caption and nothing else.
    *
    * **Not the alt text.** See the `<img>` below: these are decorative inside
    * controls that already carry the name.
+   *
+   * Optional for the same reason `url` is: a pointer at a node that is gone
+   * carries no name either.
    */
-  name: string;
+  name?: string;
   /**
    * Whether this is a video, when the caller knows.
    *
@@ -136,8 +153,10 @@ interface Props {
  */
 const VIDEO_EXTENSIONS = /\.(mp4|mov|webm|m4v)$/i;
 
-function looksLikeVideo(name: string, url: string): boolean {
+function looksLikeVideo(name: string, url: string | null | undefined): boolean {
   if (VIDEO_EXTENSIONS.test(name)) return true;
+  // Nothing to read a kind off. The tile draws `Unavailable` either way.
+  if (!url) return false;
   try {
     return VIDEO_EXTENSIONS.test(new URL(url).pathname);
   } catch {
@@ -150,7 +169,7 @@ function looksLikeVideo(name: string, url: string): boolean {
 export function MediaThumb({
   nodeId,
   url,
-  name,
+  name = "",
   isVideo: isVideoProp,
   aspect = "square",
   ratio,

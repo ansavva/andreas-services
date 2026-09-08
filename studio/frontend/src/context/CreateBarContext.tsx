@@ -32,8 +32,19 @@ export type AttachRole = "reference" | "start" | "end" | "input";
  */
 export interface AttachRef {
   node: string;
-  url: string;
-  name: string;
+  /**
+   * The thumbnail's URL, and the name beside it — both absent when the node the
+   * ref names is gone.
+   *
+   * **The node is what a send is made of; these two are only how it is drawn.**
+   * A run loaded into the bar from a row whose send was deleted keeps that
+   * attachment rather than quietly dropping it: an image vanishing from a
+   * re-run without a word changes what gets sent, and the chip that says
+   * `Unavailable` is the thing that lets a person notice and remove it. See
+   * `RunAsset`, which is where the absence comes from.
+   */
+  url?: string | null;
+  name?: string;
   kind: "run" | "character" | "input-pool" | "object";
   run?: string;
   /** 1-based, matching what a runref's `#2` means. */

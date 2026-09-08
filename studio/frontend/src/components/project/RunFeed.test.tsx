@@ -31,7 +31,7 @@ vi.mock("../../apis/studio", () => ({
   }),
 }));
 
-import { createRun, deleteRun, getRuns, submitRun } from "../../apis/studio";
+import { createRun, deleteRun, getAsset, getRuns, submitRun } from "../../apis/studio";
 import { RunFeed, expectedOutputs } from "./RunFeed";
 
 const list = vi.mocked(getRuns);
@@ -403,5 +403,56 @@ describe("the shape of the frames", () => {
     const tile = screen.getAllByRole("button", { name: /^Open Output/ })[0]!;
     const box = tile.querySelector("span[style]") as HTMLElement;
     expect(box.style.aspectRatio).toBe("9 / 16");
+  });
+});
+
+describe("a pointer at a node that is gone", () => {
+  /**
+   * The whole feed used to die on this, and it took two production projects
+   * with it: `GET /api/runs?view=feed` reports a send whose node the catalog
+   * cannot find as the bare `{node}` it honestly is — no `name`, no `url` —
+   * and `MediaThumb` did `new URL(undefined)`, caught the throw, and then did
+   * `undefined.split("?")` in the fallback. `Cannot read properties of
+   * undefined (reading 'split')`, and nothing on the page rendered.
+   */
+  it("draws the row, with the send marked unavailable rather than crashing it", async () => {
+    await draw([
+      row({
+        sends: [
+          // Exactly what `GET /api/runs?view=feed` answers for a send whose
+          // node the catalog cannot find: the pointer, its role, and the
+          // `{kind: "object"}` fallback `_source_for` supplies. No name, no url.
+          {
+            node: "node-gone",
+            order: 1,
+            field: "input_images",
+            role: "reference",
+            source: { kind: "object" },
+          },
+        ],
+      }),
+    ]);
+
+    const article = await screen.findByRole("article");
+    // The row is there, and so is everything after the sends.
+    expect(within(article).getByText("a portrait, 85mm")).toBeTruthy();
+    expect(within(article).getAllByRole("button", { name: /^Open Output/ })).toHaveLength(2);
+
+    const sent = within(article).getByLabelText("Sent");
+    expect(within(sent).getByText("Unavailable")).toBeTruthy();
+    // Not `reference · undefined`.
+    expect(sent.querySelector("[title]")?.getAttribute("title")).toBe(
+      "reference · deleted file",
+    );
+  });
+
+  it("draws an output the same way, and asks for no re-sign", async () => {
+    await draw([
+      row({ outputs: [{ node: "node-gone" }], thumb: null }),
+    ]);
+
+    const article = await screen.findByRole("article");
+    expect(within(article).getByText("Unavailable")).toBeTruthy();
+    expect(vi.mocked(getAsset)).not.toHaveBeenCalled();
   });
 });

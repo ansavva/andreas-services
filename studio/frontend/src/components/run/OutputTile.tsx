@@ -1,6 +1,7 @@
 import { IconButton } from "@ansavva/design-system";
 
 import type { RunAsset, RunFeedRow } from "../../types";
+import { assetLabel } from "../../utils/format";
 import {
   DownloadIcon,
   PlayIcon,
@@ -80,7 +81,7 @@ export function OutputTile({
       {/* Top corners: fetch the bytes, or hand the picture to the bar. */}
       <div className={`absolute right-2 top-2 flex gap-1 ${HIDDEN}`}>
         <IconButton
-          label={`Download ${asset.name}`}
+          label={`Download ${assetLabel(asset.name)}`}
           size="sm"
           intent="overlay"
           className={`rounded-none bg-overlay-scrim/60 ${LIVE}`}

@@ -31,8 +31,10 @@ function fromAsset(asset: RunAsset): FileEntry {
   const type = asset.content_type ?? "";
   return {
     id: asset.node,
-    key: asset.name,
-    name: asset.name,
+    // Both empty when the node is gone — `drawable` below drops the entry
+    // before anything tries to open it. See `RunAsset`.
+    key: asset.name ?? "",
+    name: asset.name ?? "",
     size: asset.size ?? 0,
     content_type: type,
     last_modified: "",

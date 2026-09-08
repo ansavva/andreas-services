@@ -18,14 +18,21 @@ import { getAsset } from "../apis/studio";
  * key, and anything uploaded through the app has its bytes at `blobs/<id>` —
  * a name path handed there could never be re-signed, and every expired tile
  * would stay broken.
+ *
+ * **No URL at all is `failed` from the first render, and costs no request.**
+ * That is what the API answers with when a record still points at a node the
+ * catalog no longer holds — a bare `{node}`, no `name`, no `url` — and there is
+ * nothing to re-sign: `GET /api/asset` addresses the same missing node and
+ * would 404 once per dead tile. Reporting it as failed draws `Unavailable`,
+ * which is the truthful thing and the state a dead signature already reaches.
  */
-export function useSignedSrc(nodeId: string, initialUrl: string) {
-  const [src, setSrc] = useState(initialUrl);
+export function useSignedSrc(nodeId: string, initialUrl: string | null | undefined) {
+  const [src, setSrc] = useState(initialUrl ?? undefined);
   const [attempted, setAttempted] = useState(false);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    setSrc(initialUrl);
+    setSrc(initialUrl ?? undefined);
     setAttempted(false);
     setFailed(false);
   }, [initialUrl, nodeId]);
@@ -41,5 +48,5 @@ export function useSignedSrc(nodeId: string, initialUrl: string) {
       .catch(() => setFailed(true));
   }, [attempted, nodeId]);
 
-  return { src, failed, onError };
+  return { src, failed: failed || !initialUrl, onError };
 }
