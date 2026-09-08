@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { getModelSchema } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
@@ -7,7 +7,14 @@ import { EmptyState } from "../common/EmptyState";
 import { LoadError } from "../common/LoadError";
 import { SectionLoading } from "../common/SectionLoading";
 import { describedProps } from "../run/SchemaParams";
-import { SettingRows, resolveChips } from "./CreateChips";
+import {
+  ParamRows,
+  SettingRows,
+  SettingsChoices,
+  SettingsPickProvider,
+  resolveChips,
+  type Picking,
+} from "./CreateChips";
 
 /**
  * More options: what the chip row does not carry, as rows.
@@ -76,5 +83,39 @@ export function CreateSettings({
     <div data-create-settings="">
       <SettingRows schema={schema.data} skip={skip} params={params} onParams={onParams} />
     </div>
+  );
+}
+
+/**
+ * The settings panel, whole: the chips as rows, then More options — and one
+ * setting's choices in place of both when a listed value is pressed.
+ *
+ * **One component for the popover and the phone sheet**, because the paging is
+ * the same answer to two different clippings: on the phone a menu anchored to a
+ * row at the foot of the screen opens off the bottom of it, and on a pointer
+ * the panel is a scroll box that cuts a nested menu off — reported as `Output
+ * format` losing its last choices. Neither happens to a view that IS the panel.
+ * It is also the pattern the sheet already used for the model list.
+ */
+export function SettingsPanel({
+  entry,
+  params,
+  onParams,
+}: {
+  entry: ModelEntry;
+  params: Record<string, unknown>;
+  onParams: (next: Record<string, unknown>) => void;
+}) {
+  const [picking, setPicking] = useState<Picking | null>(null);
+
+  if (picking) {
+    return <SettingsChoices picking={picking} onBack={() => setPicking(null)} />;
+  }
+
+  return (
+    <SettingsPickProvider onPick={setPicking}>
+      <ParamRows entry={entry} params={params} onParams={onParams} />
+      <CreateSettings entry={entry} params={params} onParams={onParams} />
+    </SettingsPickProvider>
   );
 }
