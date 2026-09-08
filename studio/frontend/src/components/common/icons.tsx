@@ -210,6 +210,39 @@ export const DotsIcon = ({ className = "size-5 fill-current stroke-none" }: Prop
   </Glyph>
 );
 
+/**
+ * The same three dots stood up.
+ *
+ * **Vertical over a picture, horizontal in a row.** A `⋯` sits under a line of
+ * text and reads as its continuation; over a frame it reads as a caption. The
+ * upright form is what every photo grid uses for the same reason, and it is
+ * what tells a tile's menu apart from the row menus below the grid at a
+ * glance.
+ */
+export const DotsVerticalIcon = ({ className = "size-5 fill-current stroke-none" }: Props) => (
+  <Glyph className={className}>
+    <circle cx="12" cy="5" r="1.6" />
+    <circle cx="12" cy="12" r="1.6" />
+    <circle cx="12" cy="19" r="1.6" />
+  </Glyph>
+);
+
+/** A folder with a plus — making one. */
+export const FolderPlusIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+    <path d="M12 11v5M9.5 13.5h5" />
+  </Glyph>
+);
+
+/** Bytes going up — the inverse of `DownloadIcon`. */
+export const UploadIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M12 16V4M8 8l4-4 4 4" />
+    <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+  </Glyph>
+);
+
 export const SearchIcon = ({ className }: Props) => (
   <Glyph className={className}>
     <circle cx="10.5" cy="10.5" r="6.5" />

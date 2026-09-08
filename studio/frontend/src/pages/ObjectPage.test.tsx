@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FileEntry, RunRecord, FolderListing } from "../types";
+import { CreateBarProvider, useCreateBarState } from "../context/CreateBarContext";
 import { TestProviders } from "../test-providers";
 
 /**
@@ -92,13 +93,26 @@ beforeEach(() => {
   tree.mockResolvedValue(listing([file("node-a", "a.png"), file(OPEN, "b.png"), file("node-c", "c.png")]));
 });
 
+/** What the create bar holds for its current kind — the real provider, read back. */
+function Probe() {
+  const state = useCreateBarState();
+  return (
+    <output data-testid="bar">
+      {state.attachments[state.kind].map((held) => `${held.role}:${held.ref.node}`).join(",")}
+    </output>
+  );
+}
+
 function open(path: string) {
   render(
     <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/o" element={<ObjectPage />} />
-        <Route path="/o/:nodeId" element={<ObjectPage />} />
-      </Routes>
+      <CreateBarProvider>
+        <Routes>
+          <Route path="/o" element={<ObjectPage />} />
+          <Route path="/o/:nodeId" element={<ObjectPage />} />
+        </Routes>
+        <Probe />
+      </CreateBarProvider>
     </MemoryRouter>,
     { wrapper: TestProviders },
   );
@@ -359,12 +373,37 @@ describe("deleting the open file", () => {
     open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
     await waitFor(() => expect(screen.getByText(/2 of 3/)).toBeTruthy());
 
-    fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "More actions" })[0]!);
     const item = screen.getByRole("menuitem", { name: "Delete" });
     fireEvent.click(item);
     expect(destroy).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("menuitem", { name: /confirm/i }));
     await waitFor(() => expect(destroy).toHaveBeenCalledWith([OPEN]));
+  });
+});
+
+/**
+ * The picture on screen, handed to the create bar — the shortcut from the one
+ * place a person is already looking at the reference they want.
+ */
+describe("using the open file as a reference", () => {
+  it("attaches the open picture, in the role that accumulates", async () => {
+    open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
+    await waitFor(() => expect(screen.getByText(/2 of 3/)).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Use as reference" }));
+
+    expect(screen.getByTestId("bar")).toHaveProperty("textContent", `reference:${OPEN}`);
+  });
+
+  it("offers nothing on a clip — a reference is a picture", async () => {
+    tree.mockResolvedValue(
+      listing([file(OPEN, "b.mp4", { kind: "video", content_type: "video/mp4" })]),
+    );
+    open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
+    await waitFor(() => expect(screen.getByText(/1 of 1/)).toBeTruthy());
+
+    expect(screen.queryByRole("button", { name: "Use as reference" })).toBeNull();
   });
 });

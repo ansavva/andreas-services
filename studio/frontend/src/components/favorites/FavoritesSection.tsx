@@ -4,15 +4,19 @@ import { Link } from "react-router-dom";
 import { Button, Text } from "@ansavva/design-system";
 
 import { getFavorites } from "../../apis/studio";
-import { FAVORITES_GRID_KEY } from "../../hooks/useFavorites";
+import { useCreateBar } from "../../context/CreateBarContext";
+import { FAVORITES_GRID_KEY, useFavorites } from "../../hooks/useFavorites";
 import { useResource } from "../../hooks/useResource";
 import type { FavoriteEntry } from "../../types";
+import { downloadNode } from "../../utils/download";
 import { MEDIA_GRID } from "../../utils/grid";
 import { FAVORITES_PATH, objectPath } from "../../utils/location";
 import { EmptyState } from "../common/EmptyState";
 import { LoadError } from "../common/LoadError";
 import { SectionLoading } from "../common/SectionLoading";
 import { linkButtonClass } from "../common/linkButtonClass";
+import { DownloadIcon, HeartFilledIcon, UseInPromptIcon } from "../common/icons";
+import type { MenuAction } from "../common/ActionMenu";
 import { MediaTile } from "../browse/MediaTile";
 
 /**
@@ -27,6 +31,9 @@ const HOME_TILES = 16;
 
 /** What "Show more" adds on the favorites screen itself. */
 const PAGE = 60;
+
+/** Every tile-menu line's glyph, at the size a line of text carries. */
+const MENU_GLYPH = "size-4 shrink-0 fill-none stroke-current stroke-[1.5]";
 
 /**
  * The favorites grid, at two sizes.
@@ -66,6 +73,41 @@ export function FavoritesSection({
   const items: FavoriteEntry[] = data?.entries ?? [];
   const total = data?.total ?? 0;
 
+  const bar = useCreateBar();
+  const favorites = useFavorites();
+
+  const tileActions = useCallback(
+    (file: FavoriteEntry): MenuAction[] => [
+      ...(file.kind === "image"
+        ? [
+            {
+              key: "reference",
+              label: "Use as reference",
+              icon: <UseInPromptIcon className={MENU_GLYPH} />,
+              onSelect: () =>
+                bar.attach(
+                  { node: file.id, url: file.url, name: file.name, kind: "object" },
+                  "reference",
+                ),
+            },
+          ]
+        : []),
+      {
+        key: "favorite",
+        label: "Remove from favorites",
+        icon: <HeartFilledIcon className="size-4 fill-current stroke-none" />,
+        onSelect: () => favorites.setFavorite(file.id, false),
+      },
+      {
+        key: "download",
+        label: "Download",
+        icon: <DownloadIcon className={MENU_GLYPH} />,
+        onSelect: () => void downloadNode(file.id),
+      },
+    ],
+    [bar, favorites],
+  );
+
   return (
     <section className="flex flex-col gap-3" aria-label="Favorites">
       {variant === "preview" && (
@@ -96,7 +138,10 @@ export function FavoritesSection({
           // no favorites is the one screen where a person cannot work out what
           // to do from what is in front of them — the control that fills it is
           // on a different page.
-          hint="Press the heart on any image or video to keep it here."
+          // The gesture moved: the heart over a tile became a line in the
+          // tile's own `⋮`, so the sentence that names it has to move with it
+          // or it sends people looking for a control that is not there.
+          hint="Open any image or video's ⋯ menu and add it to favorites."
         />
       )}
 
@@ -111,6 +156,12 @@ export function FavoritesSection({
               // asks for. `MediaTile` draws one only when given somewhere to
               // send it.
               onOpen={() => undefined}
+              // What this screen can do to a picture, which is less than the
+              // browser can: there is no folder here to move it within and no
+              // rename field to open. Taking it off the screen is the one this
+              // grid owes — it is where the heart used to be.
+              actions={tileActions(file)}
+              draggableRef={file.kind === "image"}
               // The viewer steps through the favorites, not through the folder
               // each one happens to live in — `?in=fav`. Opening a picture from
               // here and finding yourself in somebody's `reference` folder is

@@ -3,6 +3,7 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import type { FolderListing } from "../../types";
+import { CreateBarProvider } from "../../context/CreateBarContext";
 import { TestProviders } from "../../test-providers";
 
 vi.mock("../../apis/studio", () => ({
@@ -47,7 +48,12 @@ function open(initial = "/c/char-root-1?tab=files") {
   render(
     <TestProviders>
       <MemoryRouter initialEntries={[initial]}>
-        <FolderTab rootId={ROOT_ID} label="jason" />
+        {/* The browser hands a picture to the create bar — see the tile's
+            `Use as reference`. Nothing here presses it; the provider is what
+            the grid needs to render at all. */}
+        <CreateBarProvider>
+          <FolderTab rootId={ROOT_ID} label="jason" />
+        </CreateBarProvider>
         <SearchProbe />
       </MemoryRouter>
     </TestProviders>,
@@ -68,16 +74,35 @@ it("draws no chip row above the browser", async () => {
   expect(screen.queryByText("Top")).toBeNull();
 });
 
-it("draws no ← Back control, only the trail", async () => {
+it("draws no ← Back control, and no trail at the entity's own root", async () => {
   open();
   await screen.findByText("reference");
 
   expect(screen.queryByRole("button", { name: /back/i })).toBeNull();
-  // The boundary crumb, real breadcrumbs — see FolderBrowser.
-  expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toHaveProperty(
-    "textContent",
-    "jason",
+  // **One crumb is no trail.** Inside a Files tab that crumb is the entity's
+  // name, printed under a page whose title is the same name — it said nothing
+  // until there is somewhere to go back to. Below a folder it is drawn: see
+  // the case under this one.
+  expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).toBeNull();
+});
+
+it("draws the trail once there is somewhere above to go", async () => {
+  list.mockResolvedValue(
+    listing({
+      breadcrumbs: [
+        { id: ROOT_ID, name: ROOT_ID, prefix: "characters/jason" },
+        { id: "node-ref", name: "reference", prefix: "characters/jason/reference" },
+      ],
+      folders: [],
+    }),
   );
+  open();
+
+  const trail = await screen.findByRole("navigation", { name: "Breadcrumb" });
+  // The boundary crumb takes the entity's label in place of the id its root
+  // folder is stored under — see `boundaryLabel`.
+  expect(trail.textContent).toContain("jason");
+  expect(trail.textContent).toContain("reference");
 });
 
 it("sort is URL state, namespaced as fsort", async () => {

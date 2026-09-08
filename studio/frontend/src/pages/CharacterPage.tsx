@@ -15,6 +15,7 @@ import { CHARACTERS_PATH } from "../utils/location";
 import type { CharacterIdentity, CharacterProfile, CharacterRecord } from "../types";
 import { useSearchParamState } from "../hooks/useSearchParamState";
 import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog";
+import { TrashIcon } from "../components/common/icons";
 
 /**
  * One character: who they are, what they look like, and everything filed under
@@ -153,7 +154,12 @@ export function CharacterPage() {
       <PageBar
         crumbs={[{ label: "Characters", to: CHARACTERS_PATH }]}
         title={record.name}
-        menu={[{ label: "Delete", danger: true, onSelect: () => setDeleteOpen(true) }]}
+        menu={[{
+              label: "Delete",
+              icon: <TrashIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5]" />,
+              danger: true,
+              onSelect: () => setDeleteOpen(true),
+            }]}
       />
 
       <ConfirmDestroyDialog

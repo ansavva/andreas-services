@@ -812,7 +812,7 @@ it("types the name before deleting the scene, then lands on its project", async 
   draw(record());
   await screen.findByText("Light flex");
 
-  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+  fireEvent.click(screen.getAllByRole("button", { name: "More actions" })[0]!);
   fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
 
   const dialog = await screen.findByRole("alertdialog");

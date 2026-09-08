@@ -1,10 +1,9 @@
-import { useState } from "react";
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { Breadcrumbs, Dropdown, Text, iconButtonClass } from "@ansavva/design-system";
+import { Breadcrumbs, Text } from "@ansavva/design-system";
 
-import { DotsIcon } from "../common/icons";
+import { ActionMenu } from "../common/ActionMenu";
 
 /** One step above the current page. The current page itself is never a crumb. */
 export interface Crumb {
@@ -12,30 +11,23 @@ export interface Crumb {
   to: string;
 }
 
-/** One entry in the overflow menu behind the `⋯` trigger. */
+/**
+ * One entry in the overflow menu behind the `⋯` trigger.
+ *
+ * **The arming escape hatches are gone**, and nothing lost them: `ActionMenu`
+ * draws this menu now and carries `danger` itself, which is what those two
+ * props (`onClick` + `itemProps`) existed to let a caller hand-roll. No page
+ * used them; every one of the four passes a Delete that opens its own
+ * `ConfirmDestroyDialog`.
+ */
 interface PageBarMenuItem {
   label: string;
-  /** Fires and closes the menu. Omit for an item that manages its own click — see `onClick`. */
-  onSelect?: () => void;
-  /**
-   * The escape hatch `onSelect` cannot cover: an item that arms in place rather
-   * than firing on the first press.
-   *
-   * `ItemActions`' delete item is the model — call `event.preventDefault()`
-   * while unarmed to keep the menu open, and let it through once armed so the
-   * menu closes the way any other selection does. `onSelect` is skipped when
-   * this is given, so a caller does not have to fire the same action twice.
-   */
-  onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  /** A glyph beside the word, as every menu line in the app now carries. */
+  icon: ReactElement;
+  onSelect: () => void;
   /** Red label — for an item that destroys something. */
   danger?: boolean;
   disabled?: boolean;
-  /**
-   * Passed straight to the underlying `Dropdown.Item` — `useArmed`'s
-   * `handlers` (`onBlur`, `onKeyDown`) for an item that arms in place, so it
-   * disarms on blur and on Escape the same way `ItemActions`' does.
-   */
-  itemProps?: Record<string, unknown>;
 }
 
 interface Props {
@@ -55,12 +47,7 @@ interface Props {
    * beside the page's `PageBar` call and toggle it from `onSelect`.
    */
   menu?: PageBarMenuItem[];
-  /**
-   * Told when the menu opens or closes — for a caller with an arm-in-place
-   * item, so it can disarm when the menu is dismissed rather than leaving a
-   * half-pressed delete live behind a closed menu. Mirrors `ItemActions`'
-   * `onOpenChange`.
-   */
+  /** Told when the menu opens or closes. */
   onMenuOpenChange?: (open: boolean) => void;
   /**
    * Icon buttons that have to stay reachable — a copy, a download, a close.
@@ -118,7 +105,6 @@ export function PageBar({
   tabs,
 }: Props) {
   const navigate = useNavigate();
-  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <div className={`flex flex-col gap-3 ${tabs ? "" : "border-b border-line pb-3"}`}>
@@ -176,40 +162,22 @@ export function PageBar({
               {actions}
               {primary}
               {menu && menu.length > 0 && (
-                <Dropdown.Root
-                  open={menuOpen}
-                  onOpenChange={(next: boolean) => {
-                    setMenuOpen(next);
-                    onMenuOpenChange?.(next);
-                  }}
-                >
-                  <Dropdown.Trigger
-                    aria-label="More actions"
-                    title="More actions"
-                    className={iconButtonClass({ size: "sm", className: "" })}
-                  >
-                    <DotsIcon />
-                  </Dropdown.Trigger>
-                  {/* Right-aligned: this trigger is the last thing on the
-                      bar's own right edge, so a menu hung from its LEFT edge —
-                      the design system's default — grows off the side of a
-                      phone. `ItemActions` right-aligns its own for the same
-                      reason. */}
-                  <Dropdown.Content className="left-auto right-0">
-                    {menu.map((item) => (
-                      <Dropdown.Item
-                        key={item.label}
-                        disabled={item.disabled}
-                        onSelect={item.onClick ? undefined : item.onSelect}
-                        onClick={item.onClick}
-                        className={item.danger ? "text-danger" : undefined}
-                        {...item.itemProps}
-                      >
-                        {item.label}
-                      </Dropdown.Item>
-                    ))}
-                  </Dropdown.Content>
-                </Dropdown.Root>
+                <ActionMenu
+                  label={typeof title === "string" ? title : "this page"}
+                  triggerLabel="More actions"
+                  onOpenChange={onMenuOpenChange}
+                  actions={menu.map((item) => ({
+                    key: item.label,
+                    label: item.label,
+                    icon: item.icon,
+                    danger: item.danger,
+                    disabled: item.disabled,
+                    // A page's danger item opens its own confirmation rather
+                    // than arming in the menu — see the prop's docblock — so it
+                    // is `danger` for the colour and fires on the first press.
+                    onSelect: item.onSelect,
+                  }))}
+                />
               )}
             </div>
           )}

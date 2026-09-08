@@ -11,6 +11,7 @@ vi.mock("../../apis/studio", () => ({
 }));
 
 import { getFavoriteIds, getFavorites } from "../../apis/studio";
+import { CreateBarProvider } from "../../context/CreateBarContext";
 import { TestProviders } from "../../test-providers";
 import type { FavoriteEntry } from "../../types";
 import { FavoritesSection } from "./FavoritesSection";
@@ -50,7 +51,10 @@ function show(variant: "preview" | "full" = "full") {
   render(
     <TestProviders>
       <MemoryRouter>
-        <FavoritesSection variant={variant} />
+        {/* A tile's menu can hand a picture to the create bar. */}
+        <CreateBarProvider>
+          <FavoritesSection variant={variant} />
+        </CreateBarProvider>
       </MemoryRouter>
     </TestProviders>,
   );
@@ -61,7 +65,7 @@ it("says what would put something here, because the control is on another page",
   show();
 
   await screen.findByText("Nothing favorited yet.");
-  expect(screen.getByText(/Press the heart/)).toBeTruthy();
+  expect(screen.getByText(/add it to favorites/)).toBeTruthy();
 });
 
 it("opens each tile into the favorites feed, not into the folder it lives in", async () => {

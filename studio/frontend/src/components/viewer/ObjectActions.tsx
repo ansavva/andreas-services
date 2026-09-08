@@ -1,14 +1,12 @@
-import { useState } from "react";
+import { IconButton } from "@ansavva/design-system";
 
-import { Dropdown, IconButton, iconButtonClass } from "@ansavva/design-system";
-
-import { getAsset } from "../../apis/studio";
-import { useArmed } from "../../hooks/useArmed";
+import { downloadNode } from "../../utils/download";
 import type { FileEntry } from "../../types";
+import { ActionMenu } from "../common/ActionMenu";
 import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { FavoriteButton } from "../common/FavoriteButton";
 import { CopyKeyButton } from "../common/CopyKeyButton";
-import { CloseIcon, DotsIcon, DownloadIcon, PencilIcon } from "../common/icons";
+import { CloseIcon, DownloadIcon, PencilIcon, TrashIcon, UseInPromptIcon } from "../common/icons";
 
 interface Props {
   file: FileEntry;
@@ -50,6 +48,16 @@ interface Props {
   onToggleEditing?: () => void;
   /** Leaves the screen. Only the page header offers it; Esc does it everywhere. */
   onClose?: () => void;
+  /**
+   * Attach the open picture to the create bar as a reference.
+   *
+   * **Absent on a clip and in fullscreen.** A reference is a picture, so the
+   * page supplies this for an image and nothing else; and the `media` variant
+   * leaves it out because the sheet it attaches to is not painted while the
+   * frame owns the screen — a control whose whole feedback is a tile appearing
+   * somewhere you cannot see.
+   */
+  onUseAsReference?: () => void;
 }
 
 /**
@@ -80,19 +88,12 @@ export function ObjectActions({
   editing = false,
   onToggleEditing,
   onClose,
+  onUseAsReference,
 }: Props) {
   // A text file has no heart. The favorites screen is a grid of media and the
   // API refuses anything else, so offering the control on a `prompt.json` would
   // be a button whose only outcome is a 400 — see `services/favorites.py`.
   const favoritable = file.kind === "image" || file.kind === "video";
-
-  async function download() {
-    // Signed with `response-content-disposition: attachment` server-side. A
-    // plain <a download> would be ignored here, because the presigned URL is
-    // cross-origin to this app.
-    const asset = await getAsset(file.id, "attachment");
-    window.location.assign(asset.url);
-  }
 
   if (variant === "media") {
     return (
@@ -126,7 +127,30 @@ export function ObjectActions({
 
   return (
     <>
-      {favoritable && <FavoriteButton id={file.id} name={file.name} />}
+      {/*
+        **`sm` throughout, which it was not before this row grew a seventh
+        control.** The details column is a fixed 20rem and the position sits at
+        its end, so the icons have about 267px: six at the default 44 fitted,
+        seven did not, and the `⋯` wrapped onto a line of its own — one icon
+        under the row it belongs to, which reads as a mistake rather than as a
+        second row. At `sm` the seven measure 236 and fit.
+
+        It also makes the row uniform for the first time. `CopyKeyButton` and
+        the `⋯` were already 32 beside five 44s, so the mixed heights were
+        visible here before anything was added. The `media` variant has always
+        been `sm` for the same reason — a row of controls beside a picture is
+        not the place for the touch-target default.
+      */}
+      {/* First, because it is the one control here that starts something rather
+          than filing, fetching or leaving — the same reason it is the first of
+          the still's actions in the run's rail. */}
+      {onUseAsReference && (
+        <IconButton label="Use as reference" size="sm" onClick={onUseAsReference}>
+          <UseInPromptIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+        </IconButton>
+      )}
+
+      {favoritable && <FavoriteButton id={file.id} name={file.name} size="sm" />}
 
       <CopyKeyButton value={file.key} />
 
@@ -134,87 +158,44 @@ export function ObjectActions({
         <IconButton
           label={editing ? "Hide details" : "Edit details"}
           pressed={editing}
+          size="sm"
           onClick={onToggleEditing}
         >
-          <PencilIcon />
+          <PencilIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
         </IconButton>
       )}
 
-      <IconButton label="Download" onClick={() => void download()}>
-        <DownloadIcon />
+      <IconButton label="Download" size="sm" onClick={() => void downloadNode(file.id)}>
+        <DownloadIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
       </IconButton>
 
       {onClose && (
-        <IconButton label="Close (Esc)" onClick={onClose}>
-          <CloseIcon />
+        <IconButton label="Close (Esc)" size="sm" onClick={onClose}>
+          <CloseIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
         </IconButton>
       )}
 
       {/* Last, and behind a menu: every other page keeps its destructive
-          control off the row of things pressed on every visit. */}
-      {onDelete && <DeleteMenu onDelete={onDelete} />}
+          control off the row of things pressed on every visit. `ActionMenu`
+          carries the arming — the same two presses this file used to spell out
+          for itself, and the same ones every other `⋯` in the app now runs on. */}
+      {onDelete && (
+        <ActionMenu
+          label={file.name}
+          triggerLabel="More actions"
+          actions={[
+            {
+              key: "delete",
+              label: "Delete",
+              armedLabel: "Confirm — delete this file",
+              icon: <TrashIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5]" />,
+              danger: true,
+              arm: true,
+              onSelect: onDelete,
+            },
+          ]}
+        />
+      )}
     </>
-  );
-}
-
-/**
- * Delete, armed in place, behind the row's own `⋯`.
- *
- * **Right-aligned, because the trigger is the last thing in the row.** A menu
- * anchored to the trigger's LEFT edge — the design system's default — grows
- * rightwards off the screen on a phone, where the row is nearly the viewport's
- * width and this is its final button. `left-auto right-0` hangs it from the
- * right edge instead, so it opens leftwards over the row it belongs to.
- * `ItemActions` right-aligns its own for the same reason.
- */
-function DeleteMenu({ onDelete }: { onDelete: () => Promise<unknown> }) {
-  const [open, setOpen] = useState(false);
-  const destroy = useArmed({
-    onFire: async () => {
-      try {
-        await onDelete();
-      } finally {
-        setOpen(false);
-      }
-    },
-  });
-
-  return (
-    <Dropdown.Root
-      open={open}
-      onOpenChange={(next: boolean) => {
-        setOpen(next);
-        // A half-pressed delete is never left live behind a closed menu.
-        if (!next) destroy.disarm();
-      }}
-    >
-      <Dropdown.Trigger
-        aria-label="More actions"
-        title="More actions"
-        className={iconButtonClass({ size: "sm", className: "" })}
-      >
-        <DotsIcon />
-      </Dropdown.Trigger>
-      <Dropdown.Content className="left-auto right-0">
-        <Dropdown.Item
-          disabled={destroy.busy}
-          {...destroy.handlers}
-          onClick={(event: React.MouseEvent) => {
-            // Arming must not close the menu — the confirmation *is* the item.
-            if (!destroy.armed) event.preventDefault();
-            destroy.press();
-          }}
-          className={destroy.armed || destroy.busy ? "text-danger" : undefined}
-        >
-          <span aria-live="assertive">
-            {destroy.busy
-              ? "Deleting…"
-              : destroy.armed
-                ? "Confirm — delete this file"
-                : "Delete"}
-          </span>
-        </Dropdown.Item>
-      </Dropdown.Content>
-    </Dropdown.Root>
   );
 }

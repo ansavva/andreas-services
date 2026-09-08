@@ -22,6 +22,7 @@ import { Filmstrip } from "../components/viewer/Filmstrip";
 import { ObjectActions } from "../components/viewer/ObjectActions";
 import { ObjectControls, ObjectDetails } from "../components/viewer/ObjectAside";
 import { OwnerLink } from "../components/viewer/OwnerLink";
+import { useCreateBar } from "../context/CreateBarContext";
 import { useKeyboardNav } from "../hooks/useKeyboardNav";
 import { useResource } from "../hooks/useResource";
 import { useViewerFeed } from "../hooks/useViewerFeed";
@@ -76,6 +77,7 @@ export function ObjectPage() {
 
   const feed = useViewerFeed(source, nodeId, sort);
   const crumbs = useSourceCrumbs(source);
+  const bar = useCreateBar();
 
   /**
    * The player's own container and controls, held in state rather than in refs.
@@ -343,6 +345,23 @@ export function ObjectPage() {
   const removeThis = () => remove(current);
 
   /**
+   * The open picture, attached to the create bar as a reference.
+   *
+   * **A still only.** A reference is a picture; a clip attached as one is sent
+   * to a field that refuses it, which is the rule `OutputTile` and the run's
+   * rail already carry. The bar's own picker walks the same tree, so this is a
+   * shortcut rather than a second way in — but it is the shortcut from the one
+   * place a person is already looking at the picture they want.
+   */
+  const attachAsReference = isVideo
+    ? undefined
+    : () =>
+        bar.attach(
+          { node: current.id, url: current.url, name: current.name, kind: "object" },
+          "reference",
+        );
+
+  /**
    * Every way of putting the drawer away asks the form first.
    *
    * The backdrop, Escape and the panel's own Close all arrive here, so a form
@@ -392,6 +411,7 @@ export function ObjectPage() {
           editing={editing}
           onToggleEditing={toggleEditing}
           onClose={close}
+          onUseAsReference={attachAsReference}
           className="lg:col-start-2 lg:row-start-1"
         />
 

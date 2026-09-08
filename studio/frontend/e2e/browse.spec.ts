@@ -143,6 +143,11 @@ test("the character page opens its seed pool", async ({ page }) => {
  * **The fixture carries the id-shaped folder name for this reason.** It was
  * captured before slugs were removed and still said `jason`, against which this
  * spec passes even with the label wired to nothing at all.
+ *
+ * **A folder deep, because the root draws no trail.** One crumb inside a Files
+ * tab is the entity's own name under a page title that is already that name, so
+ * it is not drawn until there is somewhere above to go — which is also the
+ * first moment the boundary label matters.
  */
 test("the Files tab names its boundary crumb after the character", async ({
   page,
@@ -152,7 +157,18 @@ test("the Files tab names its boundary crumb after the character", async ({
 
   // The LAST one: `PageBar` draws a breadcrumb of its own above the tabs.
   const crumbs = page.getByRole("navigation", { name: "Breadcrumb" }).last();
-  await expect(crumbs).toHaveText(CHARACTER_NAME);
+  await expect(crumbs).toHaveCount(0);
+
+  // Into the first folder the tab lists, whatever it is called.
+  // The first folder the tab lists, whatever it is called: a folder row is a
+  // button named after itself, and the row comes before its own `⋯`.
+  const folderList = page.locator("section", {
+    has: page.getByRole("heading", { name: "Folders" }),
+  });
+  await folderList.waitFor();
+  await folderList.getByRole("button").first().click();
+
+  await expect(crumbs).toContainText(CHARACTER_NAME);
   await expect(crumbs).not.toContainText(CHARACTER);
 });
 
