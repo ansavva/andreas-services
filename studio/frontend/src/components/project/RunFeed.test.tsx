@@ -464,6 +464,25 @@ describe("a pointer at a node that is gone", () => {
     expect(sent.querySelector("[title]")?.getAttribute("title")).toBe(
       "reference · deleted file",
     );
+    // **And it is not a link.** The object behind it is gone, so the only
+    // place a link could lead is an error page — see `SendThumbs`.
+    expect(within(sent).queryByRole("link")).toBeNull();
+  });
+
+  /**
+   * **A send opens, and ⌘-click opens it in a tab.** They were pictures and
+   * nothing else: a press did nothing at all, on the feed row and in the
+   * opened run alike, while everything around them opened. A real `<a href>`
+   * is what gives the browser its own gestures back — see `SendThumbs`.
+   */
+  it("links each sent picture to the file, with no sequence around it", async () => {
+    await draw([row()]);
+    const article = await screen.findByRole("article");
+
+    const link = within(within(article).getByLabelText("Sent")).getByRole("link");
+    // `/o/<node>` and no `?in=`: a send comes from somewhere else, so there is
+    // no feed here to walk.
+    expect(link.getAttribute("href")).toBe("/o/node-s1");
   });
 
   it("draws an output the same way, and asks for no re-sign", async () => {

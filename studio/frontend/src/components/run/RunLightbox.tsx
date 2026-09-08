@@ -57,6 +57,7 @@ import { SectionLoading } from "../common/SectionLoading";
 import { CharacterChipLink } from "../character/CharacterChip";
 import { MediaPlayer } from "../media/MediaPlayer";
 import { MediaThumb } from "../media/MediaThumb";
+import { SendThumbs } from "./SendThumbs";
 import { StatusBadge, useFeedFilters, useRunFeed } from "../project/RunFeed";
 import { elapsedSince, inFlight, relativeTime } from "./feedTime";
 import { ParamChips } from "./ParamChips";
@@ -471,26 +472,7 @@ function Opened({
 
         <Prompt row={row} />
 
-        {row.sends.length > 0 && (
-          <div className="flex flex-wrap gap-1.5" aria-label="Sent">
-            {row.sends.map((send) => (
-              <MediaThumb
-                key={send.node}
-                nodeId={send.node}
-                url={send.url}
-                name={send.name}
-                aspect="square"
-                // Whole, not cropped: what went in is what a person is
-                // checking the output against. The role is the tooltip, not a
-                // word over the picture — at this size a label hides what it
-                // labels.
-                fit="contain"
-                title={`${send.role ?? send.field} · ${assetLabel(send.name)}`}
-                className="size-28 border border-line"
-              />
-            ))}
-          </div>
-        )}
+        <SendThumbs sends={row.sends} size="size-28" />
 
         <ParamChips params={row.plan?.params} model={row.model} />
 
