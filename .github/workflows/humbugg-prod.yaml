@@ -851,10 +851,14 @@ jobs:
             'https://humbugg.com/join/example?source=apex')
           test "$apex" = "308 https://www.humbugg.com/join/example?source=apex"
 
-          # Already-sent invite links land on www, which forwards them to the app.
-          forwarded=$(curl --silent --output /dev/null --write-out '%{http_code} %{redirect_url}' \
+          # www does NOT forward /join to the app any more — #606 dropped the
+          # last legacy redirects, since nobody had been sent a pre-split link.
+          # An invite link is app.humbugg.com/join/... from the day it is made;
+          # the marketing site answers the path with its own not-found page. A
+          # 301 back here would mean the legacy machinery had quietly returned.
+          forwarded=$(curl --silent --output /dev/null --write-out '%{http_code}' \
             'https://www.humbugg.com/join/example')
-          test "$forwarded" = "301 https://app.humbugg.com/join/example"
+          test "$forwarded" = "404"
 
           # --- Product app: the SPA fallback must answer a deep link, not just / ---
           curl --fail --retry 5 --retry-delay 5 https://app.humbugg.com/ >/dev/null
