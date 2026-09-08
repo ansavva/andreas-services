@@ -68,7 +68,7 @@ export function CreateDrawer({
       <IconButton
         size="sm"
         label="Close"
-        className="absolute right-3 top-3 rounded-none"
+        className="absolute right-3 top-3"
         onClick={onClose}
       >
         <CloseIcon />
@@ -89,7 +89,7 @@ export function CreateDrawer({
               aria-selected={source === value}
               pressed={source === value}
               size="sm"
-              className="gap-2 rounded-none pl-1.5"
+              className="gap-2 pl-1.5"
               onClick={() => setPicked(value)}
             >
               {hero ? (
@@ -112,7 +112,7 @@ export function CreateDrawer({
           aria-selected={source === "inputs"}
           pressed={source === "inputs"}
           size="sm"
-          className="rounded-none"
+          className=""
           onClick={() => setPicked("inputs")}
         >
           Inputs
@@ -122,7 +122,7 @@ export function CreateDrawer({
           aria-selected={source === "outputs"}
           pressed={source === "outputs"}
           size="sm"
-          className="rounded-none"
+          className=""
           onClick={() => setPicked("outputs")}
         >
           This project's outputs
@@ -310,7 +310,7 @@ function Tiles({
             key={ref.node}
             pressed={on}
             size="sm"
-            className="relative h-40 w-[7.5rem] shrink-0 overflow-hidden rounded-none p-0"
+            className="relative h-40 w-[7.5rem] shrink-0 overflow-hidden p-0"
             aria-label={`Attach ${assetLabel(ref.name)}`}
             onClick={() => onAttach(ref)}
           >

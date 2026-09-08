@@ -5,6 +5,7 @@
     python studio/frontend/e2e/fixtures/capture.py            # both groups
     python studio/frontend/e2e/fixtures/capture.py --seed     # the seed group
     python studio/frontend/e2e/fixtures/capture.py --runs     # the authoring group
+    python studio/frontend/e2e/fixtures/capture.py --picker   # only what the create sheet's picker reads
 
 TWO GROUPS, AND NO ONE STACK IS RIGHT FOR BOTH
 -----------------------------------------------
@@ -69,6 +70,19 @@ draft and then deletes it again (`?files=delete`). A draft costs nothing and
 sends nothing — `submit` is the call that spends, and this never makes it. If
 the delete fails, the stack is left holding one abandoned draft; the script says
 so rather than hiding it.
+
+One read has a side effect worth knowing: `GET /api/projects/<id>/inputs`
+makes the project's `input/` folder when it is missing. An empty folder,
+nothing in it, and the app would make the same one on its first visit.
+
+THE PICKER GROUP
+----------------
+`character-selection` and `project-inputs` are what the create sheet's picker
+reads when a tile is pressed (its third source, the project's outputs, is
+`project-runs-feed`). They are taken off the SAME project and character the
+authoring group uses, so `--picker` re-takes them alone without touching a
+fixture the run specs assert against — the authoring group re-captured off a
+stack that has moved on rewrites `project-runs` with whatever is there now.
 
 ONE FIXTURE IS SYNTHESISED, AND IT IS STILL NOT FETCHED
 -------------------------------------------------------
@@ -343,6 +357,15 @@ def created(bearer: str, library: str, project: str, entry: dict) -> None:
             )
 
 
+def picker(bearer: str, library: str, character: dict, project: str) -> None:
+    """What the create sheet's picker reads. See the header."""
+    write(
+        "character-selection",
+        get(f"/api/characters/{character['id']}/selection", bearer, library),
+    )
+    write("project-inputs", get(f"/api/projects/{project}/inputs", bearer, library))
+
+
 def seed_group(bearer: str, library: str) -> dict:
     """The published seed, as the API describes it. See the header."""
     libraries = get("/api/libraries", bearer, None)
@@ -375,8 +398,9 @@ def main() -> None:
     if "--video" in sys.argv:
         return
 
-    seed = "--runs" not in sys.argv
-    runs = "--seed" not in sys.argv
+    only_picker = "--picker" in sys.argv
+    seed = "--runs" not in sys.argv and not only_picker
+    runs = "--seed" not in sys.argv and not only_picker
 
     bearer = token()
     library = get("/api/libraries", bearer, None)[0]["id"]
@@ -392,6 +416,11 @@ def main() -> None:
 
     if runs:
         authoring(bearer, library, character)
+    if runs or only_picker:
+        # The same project the authoring fixtures name — read back off disk when
+        # it is not being re-taken, so the picker's answers are that project's.
+        project = json.loads((HERE / "project.json").read_text())["id"]
+        picker(bearer, library, character, project)
 
 
 if __name__ == "__main__":

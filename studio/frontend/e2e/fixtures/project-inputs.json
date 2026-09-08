@@ -1,0 +1,13 @@
+{
+  "folder": "node-d1d3ce37-ac39-4bec-880c-8c3af23184ff",
+  "inputs": [
+    {
+      "content_type": "image/png",
+      "id": "node-e6b779d1-6448-4beb-90d5-5f2ef7c57c29",
+      "name": "edge-probe-input.png",
+      "position": 1,
+      "size": 70,
+      "url": "/e2e-asset.png"
+    }
+  ]
+}

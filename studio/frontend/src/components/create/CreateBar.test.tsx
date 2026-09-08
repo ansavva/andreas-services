@@ -157,8 +157,6 @@ async function open(path = `/p/${PROJECT}`) {
 
 const editor = () => screen.getByRole("textbox", { name: "Prompt" });
 
-/** Focus lands in the bar — what wakes it. React hears `focusin`, not `focus`. */
-const wake = () => fireEvent.focusIn(editor());
 /** Focus leaves for somewhere outside the bar. */
 const leave = () => fireEvent.focusOut(editor(), { relatedTarget: null });
 const strip = () => document.querySelector("[data-mode-strip]") as HTMLElement;
@@ -168,9 +166,8 @@ function fill(prompt: string) {
   api.loadRun({ project: PROJECT, kind: "image", prompt });
 }
 
-it("the kind switch changes the strip and the model", async () => {
+it("the kind switch changes the tiles, the chips and the model", async () => {
   await open();
-  wake();
   fill("A portrait.");
   await waitFor(() => expect(strip()).toBeTruthy());
 
@@ -179,13 +176,15 @@ it("the kind switch changes the strip and the model", async () => {
       cell.getAttribute("aria-label"),
     );
   expect(labels()).toEqual(["Reference", "Edit"]);
-  expect(screen.queryByText("Duration")).toBeNull();
+  // The still model's snapshot has a resolution and no duration.
+  expect(screen.getByRole("button", { name: "Resolution: 2K" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /^Duration/ })).toBeNull();
 
   fireEvent.click(screen.getByRole("button", { name: "Video" }));
   expect(labels()).toEqual(["Animate", "End frame", "Reference"]);
-  expect(screen.getByText("Duration")).toBeTruthy();
-  // The duration is the snapshot's enum, inline.
-  expect(screen.getByRole("button", { name: "5s" })).toBeTruthy();
+  // The duration is the snapshot's enum, as a chip reading the default.
+  expect(screen.getByRole("button", { name: "Duration: 5s" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /^Resolution/ })).toBeNull();
 
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
   await waitFor(() => expect(createRun).toHaveBeenCalled());
@@ -288,7 +287,6 @@ it("a template pick fills the prompt", async () => {
     ],
   });
   await open();
-  wake();
   fill("draft");
   fireEvent.click(await screen.findByRole("button", { name: "Template" }));
   fireEvent.click(await screen.findByRole("button", { name: /Face front/ }));
@@ -300,7 +298,6 @@ it("a template pick fills the prompt", async () => {
 
 it("attachments show as thumbs in their role cell with a way off; a frame switches to video", async () => {
   await open();
-  wake();
   api.attach(FACE, "reference");
   await waitFor(() => expect(strip()).toBeTruthy());
 
@@ -345,32 +342,16 @@ it("off a project page, the bar asks which project and lands there after sending
   expect(screen.getByTestId("address").textContent).toBe(`/p/${PROJECT}`);
 });
 
-it("the chrome follows focus: a press elsewhere collapses it, whatever the bar holds", async () => {
+it("the sheet is always drawn, and a press elsewhere folds nothing", async () => {
   await open();
   fill("A portrait.");
   api.attach(FACE, "reference");
-  wake();
   await waitFor(() => expect(strip()).toBeTruthy());
 
   leave();
-  await waitFor(() => expect(strip()).toBeNull());
-  // What it holds is not lost, only folded: the prompt stays in the row and
-  // the image it would send is counted.
-  expect(editor().textContent).toContain("A portrait.");
-  expect(screen.getByText("1 image")).toBeTruthy();
-
-  wake();
-  await waitFor(() => expect(strip()).toBeTruthy());
-  expect(screen.queryByText("1 image")).toBeNull();
-});
-
-it("a press on something that takes no focus still folds it", async () => {
-  // macOS: a click on a button leaves focus where it was, so the editor keeps
-  // the caret while the person is plainly done with the bar.
-  await open();
-  wake();
-  await waitFor(() => expect(strip()).toBeTruthy());
-
   fireEvent.pointerDown(document.body);
-  await waitFor(() => expect(strip()).toBeNull());
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(strip()).toBeTruthy();
+  expect(editor().textContent).toContain("A portrait.");
+  expect(screen.getByRole("button", { name: "Remove face-01.png" })).toBeTruthy();
 });

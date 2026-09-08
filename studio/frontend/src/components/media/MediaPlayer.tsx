@@ -336,7 +336,7 @@ export function MediaPlayer({
 
   const media = `h-full w-full ${FITS[fit]}`;
   const box = [
-    "relative isolate block overflow-hidden rounded-none bg-overlay-scrim",
+    "relative isolate block overflow-hidden bg-overlay-scrim",
     isFullscreen ? "" : ASPECTS[aspect],
     className,
   ].join(" ");
@@ -415,7 +415,7 @@ export function MediaPlayer({
         <Text
           variant="caption"
           family="mono"
-          className="pointer-events-none absolute bottom-1.5 right-1.5 z-10 rounded-none
+          className="pointer-events-none absolute bottom-1.5 right-1.5 z-10
                      bg-overlay-scrim/80 px-1.5 py-0.5 text-overlay-ink"
         >
           {formatDuration(duration)}

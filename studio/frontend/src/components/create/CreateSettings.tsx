@@ -1,56 +1,41 @@
 import { useCallback, useMemo } from "react";
 
-import { Field, Select, Text } from "@ansavva/design-system";
+import { Text } from "@ansavva/design-system";
 
 import { getModelSchema } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
-import type { ModelEntry, RunKind } from "../../types";
+import type { ModelEntry } from "../../types";
+import { EmptyState } from "../common/EmptyState";
 import { LoadError } from "../common/LoadError";
 import { SectionLoading } from "../common/SectionLoading";
-import { SchemaParams } from "../run/SchemaParams";
+import { SchemaParams, describedProps } from "../run/SchemaParams";
+import { resolveChips } from "./CreateChips";
 
 /**
- * The parameters behind the sliders icon: which model, and what it takes.
+ * More options: what the chip row does not carry, as the model's own form.
  *
- * **The model list is the kind's.** A video model offered under an image run
- * is a 400 at submit, after the plan has been written, so the switch on the
- * bar filters this list and switching it picks that kind's default.
- *
- * **The form is the live schema, seeded from the snapshot.** `SchemaParams`
+ * **The form is the live schema, minus what has a chip.** `SchemaParams`
  * draws `GET /api/models/<name>/schema` — the same document
  * `services/schema.py` checks the payload against — so what is offered is
  * what the model will accept today; the values it starts from are the
- * snapshot defaults `seedPlan` wrote into the bar's params. The image fields
- * are skipped: those are sends, drawn on the strip, never params (hard rule
- * #3).
+ * snapshot defaults `seedPlan` wrote into the panel's params. Skipped: the
+ * prompt (its editor is above), the image fields (those are sends, drawn as
+ * tiles, never params — hard rule #3), and every input that already has a
+ * chip, so nothing is offered twice. The model itself is not here either: it
+ * is the first chip, and the sheet's own row.
  *
  * No cost here. The registry entry carries no price, and a number invented
  * from a model's typical run time would be a claim this app cannot back.
  */
 export function CreateSettings({
-  kind,
-  models,
   entry,
   params,
-  onModel,
   onParams,
 }: {
-  kind: RunKind;
-  models: Record<string, ModelEntry>;
   entry: ModelEntry;
   params: Record<string, unknown>;
-  /** The Replicate `owner/name` of the chosen model. */
-  onModel: (model: string) => void;
   onParams: (next: Record<string, unknown>) => void;
 }) {
-  const offered = useMemo(
-    () =>
-      Object.values(models)
-        .filter((each) => each.kind === kind)
-        .sort((a, b) => a.key.localeCompare(b.key)),
-    [kind, models],
-  );
-
   const model = entry.model;
   const schema = useResource(
     ["model-schema", model],
@@ -59,12 +44,13 @@ export function CreateSettings({
 
   const skip = useMemo(() => {
     const images = entry.images ?? {};
-    return new Set(
-      ["prompt", images.refs, images.start, images.end].filter(
+    return new Set([
+      ...["prompt", images.refs, images.start, images.end].filter(
         (key): key is string => typeof key === "string",
       ),
-    );
-  }, [entry.images]);
+      ...resolveChips(entry, schema.data ?? null).map((chip) => chip.name),
+    ]);
+  }, [entry, schema.data]);
 
   const values = useMemo(
     () =>
@@ -76,20 +62,6 @@ export function CreateSettings({
 
   return (
     <div className="flex flex-col gap-4" data-create-settings="">
-      <Field.Root name="model">
-        <Field.Label>Model</Field.Label>
-        {/* Labelled by the registry key, which is what the skills and the CLI
-            call it. The Replicate id is what gets sent. */}
-        <Select
-          options={offered.map((each) => ({
-            value: each.model,
-            label: each.key,
-          }))}
-          value={model}
-          onValueChange={onModel}
-        />
-      </Field.Root>
-
       {entry.note && (
         <Text variant="caption" tone="muted">
           {entry.note}
@@ -104,6 +76,8 @@ export function CreateSettings({
         />
       ) : schema.loading || !schema.data ? (
         <SectionLoading label="Loading the model's inputs" />
+      ) : describedProps(schema.data, skip).length === 0 ? (
+        <EmptyState title="Nothing more to set — the chips carry every input this model takes." />
       ) : (
         <SchemaParams
           schema={schema.data}

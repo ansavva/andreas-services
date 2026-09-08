@@ -88,7 +88,7 @@ export function MoviePage() {
           <button
             type="button"
             onClick={() => navigate(objectPath(data.output!.node))}
-            className="w-full max-w-2xl overflow-hidden rounded-none border border-line bg-card
+            className="w-full max-w-2xl overflow-hidden border border-line bg-card
                        focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <MediaThumb

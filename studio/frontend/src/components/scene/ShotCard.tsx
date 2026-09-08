@@ -106,7 +106,7 @@ export function ShotCard({
     // board where a stack of filled cards reads as a pile. The rule is on the
     // BOTTOM: the section heading already draws one above the first shot, and
     // a `border-t` here would have put two hairlines twelve pixels apart.
-    <article className="flex flex-col gap-3 rounded-none border-b border-line py-3">
+    <article className="flex flex-col gap-3 border-b border-line py-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <Text
           variant="body"

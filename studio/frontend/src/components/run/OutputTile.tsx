@@ -59,7 +59,7 @@ export function OutputTile({
   const label = `Output ${index + 1} of ${row.outputs.length}`;
 
   return (
-    <div className="group relative overflow-hidden rounded-none border border-line bg-card">
+    <div className="group relative overflow-hidden border border-line bg-card">
       {/* The tile is the opening button; its frame is on the wrapper above. */}
       <button
         type="button"
@@ -84,7 +84,7 @@ export function OutputTile({
           label={`Download ${assetLabel(asset.name)}`}
           size="sm"
           intent="overlay"
-          className={`rounded-none bg-overlay-scrim/60 ${LIVE}`}
+          className={`bg-overlay-scrim/60 ${LIVE}`}
           onClick={() => void actions.download(asset)}
         >
           <DownloadIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
@@ -93,7 +93,7 @@ export function OutputTile({
           label="Use in prompt"
           size="sm"
           intent="overlay"
-          className={`rounded-none bg-overlay-scrim/60 ${LIVE}`}
+          className={`bg-overlay-scrim/60 ${LIVE}`}
           onClick={() => actions.useInPrompt(asset, index)}
         >
           <UseInPromptIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
@@ -178,7 +178,7 @@ function OverlayAction({
       label={label}
       size="sm"
       intent="overlay"
-      className={`rounded-none bg-overlay-scrim/60 ${LIVE}`}
+      className={`bg-overlay-scrim/60 ${LIVE}`}
       onClick={onClick}
     >
       {icon}

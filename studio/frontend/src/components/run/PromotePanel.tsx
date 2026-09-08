@@ -369,7 +369,7 @@ export function PromotePanel({
 
   if (done) {
     return (
-      <section className="flex flex-col gap-2 rounded-none border border-line bg-card p-3">
+      <section className="flex flex-col gap-2 border border-line bg-card p-3">
         <Alert.Root intent="success">
           <Alert.Title>
             {done.already
@@ -414,7 +414,7 @@ export function PromotePanel({
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-none border-line bg-card p-3">
+    <section className="flex flex-col gap-3 border-line bg-card p-3">
       <Text variant="title">
         {name ? `Add to ${name}'s references` : "Add to a character's references"}
       </Text>
@@ -493,7 +493,7 @@ export function PromotePanel({
           name={asset.name}
           aspect="square"
           fit="contain"
-          className="w-28 rounded-none"
+          className="w-28"
           title="Open this picture in a new tab"
         />
       </a>

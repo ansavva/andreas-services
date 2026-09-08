@@ -132,12 +132,12 @@ export function EntityRow({
           name=""
           isVideo={thumb.isVideo}
           aspect="auto"
-          className="size-14 shrink-0 rounded-none border border-line"
+          className="size-14 shrink-0 border border-line"
         />
       )}
       {thumb && "placeholder" in thumb && (
         <span
-          className="flex size-14 shrink-0 items-center justify-center rounded-none border border-line
+          className="flex size-14 shrink-0 items-center justify-center border border-line
                      bg-surface-alt font-mono text-xs text-muted"
         >
           {thumb.placeholder}
@@ -172,7 +172,7 @@ export function EntityRow({
   );
 
   const main =
-    "flex min-w-0 flex-1 items-center gap-3 rounded-none px-2 py-2 text-left " +
+    "flex min-w-0 flex-1 items-center gap-3 px-2 py-2 text-left " +
     "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary";
 
   return (
@@ -180,7 +180,7 @@ export function EntityRow({
     // link rather than inside it. `group` is for the checkbox, which hides
     // until the row is hovered.
     <div
-      className={`group flex w-full flex-wrap items-center gap-2 rounded-none border-b transition-colors
+      className={`group flex w-full flex-wrap items-center gap-2 border-b transition-colors
                   ${openable ? "hover:bg-surface-alt" : ""}
                   ${selected ? "border-primary ring-1 ring-primary" : "border-line"}`}
     >
