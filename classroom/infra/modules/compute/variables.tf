@@ -40,3 +40,18 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "lessons_bucket_name" {
+  description = "Bucket holding every lesson's uploaded files; the API signs uploads into it"
+  type        = string
+}
+
+variable "lessons_bucket_arn" {
+  description = "ARN of the lesson bucket, scoping the API's S3 grant"
+  type        = string
+}
+
+variable "allowed_origin" {
+  description = "Origin the browser API accepts — the admin app's host. Never \"*\": lessons run untrusted scripts."
+  type        = string
+}

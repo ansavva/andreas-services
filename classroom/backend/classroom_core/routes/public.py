@@ -1,48 +1,27 @@
-"""The anonymous student-facing reader.
+"""The one unauthenticated route left: a health check.
 
-This is the only unauthenticated route in the service. It returns a published
-page's sanitized HTML together with a restrictive Content-Security-Policy.
+**The student reader used to live here** — `GET /api/public/pages/<slug>`
+returned a page's sanitized HTML as JSON and the SPA rendered it. That is gone,
+along with the sanitizer it depended on.
 
-The CSP is the second of the two XSS layers described in ``utils.html``. The
-sanitizer should already have removed anything executable; this header means
-that even if something slipped past it, the browser will not run it. ``script-src
-'none'`` blocks inline and remote script alike, and ``sandbox`` drops the page
-into an opaque origin so it cannot reach our cookies or storage.
+Students now open a lesson's files directly from a separate host
+(`classroom.andreas.services`), served out of S3 by CloudFront exactly as the
+teacher uploaded them. The reasoning is in `infra/modules/lesson_hosting`: her
+lessons are interactive, so their scripts must run, and once scripts run the
+only thing that can keep her session safe is that the lesson is on a different
+ORIGIN to the app she signs in to. No amount of sanitizing substitutes for that,
+and any amount of sanitizing would have destroyed her formatting.
+
+So there is no application code between a student and a lesson any more, which
+is also why this file no longer sets a Content-Security-Policy: the headers are
+CloudFront's now.
 """
 
-from flask import Blueprint, jsonify
+from flask import Blueprint
 
-from classroom_core.routes._shared import not_found, ok
-from classroom_core.services import pages
+from classroom_core.routes._shared import ok
 
 bp = Blueprint("public", __name__, url_prefix="/api/public")
-
-_READER_CSP = (
-    "default-src 'none'; "
-    "img-src https: data:; "
-    "style-src 'unsafe-inline'; "
-    "font-src https:; "
-    "script-src 'none'; "
-    "frame-ancestors 'none'; "
-    "form-action 'none'; "
-    "base-uri 'none'; "
-    "sandbox allow-popups"
-)
-
-
-@bp.get("/pages/<slug>")
-def read_page(slug):
-    page = pages.get_published_page(slug)
-    if page is None:
-        # Deliberately the same answer for "never existed" and "withdrawn", so
-        # the endpoint does not confirm that a slug is real to someone probing.
-        return not_found("page not found")
-
-    response = jsonify(page)
-    response.headers["Content-Security-Policy"] = _READER_CSP
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Referrer-Policy"] = "no-referrer"
-    return response, 200
 
 
 @bp.get("/health")

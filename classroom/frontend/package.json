@@ -12,15 +12,19 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "lint": "eslint src --report-unused-disable-directives --max-warnings 0",
-    "test": "vitest run"
+    "test": "vitest run",
+    "brand": "node tool/reconcile-cognito-branding.ts",
+    "brand:check": "node tool/reconcile-cognito-branding.ts --check"
   },
   "dependencies": {
+    "@fontsource/open-sans": "^5.3.0",
+    "jszip": "^3.10.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^6.30.3"
   },
   "devDependencies": {
-    "@ansavva/design-system": "0.17.0",
+    "@ansavva/design-system": "0.19.0",
     "@eslint/js": "^9.17.0",
     "@tailwindcss/vite": "^4.3.2",
     "@types/react": "^19.2.0",

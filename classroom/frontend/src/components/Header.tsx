@@ -1,7 +1,22 @@
 import { Link } from "react-router-dom";
-import { Button, Text } from "@ansavva/design-system";
+import { Avatar, Dropdown, Text } from "@ansavva/design-system";
 
 import { useAuth } from "../context/AuthContext";
+
+/**
+ * Initials for the circle.
+ *
+ * The pool stores an email and no name, so that is what there is to work with.
+ * `anita.brown@school.test` gives "AB"; `teacher@classroom.test` gives "T".
+ * Deliberately never more than two letters — three stops fitting the circle at
+ * this size.
+ */
+function initialsFor(email: string): string {
+  const [local = ""] = email.split("@");
+  const parts = local.split(/[._-]+/).filter(Boolean);
+  const letters = parts.slice(0, 2).map((part) => part[0] ?? "");
+  return (letters.join("") || local[0] || "?").toUpperCase();
+}
 
 export function Header() {
   const { signedIn, email, signOut } = useAuth();
@@ -14,17 +29,37 @@ export function Header() {
             Classroom
           </Text>
         </Link>
+
         {signedIn && (
-          <div className="flex items-center gap-3">
-            {email && (
-              <Text variant="caption" tone="muted">
-                {email}
-              </Text>
-            )}
-            <Button intent="ghost" size="sm" onClick={signOut}>
-              Sign out
-            </Button>
-          </div>
+          // The address and sign-out live behind the circle rather than beside
+          // it. Sign out is the one irreversible control in the header and it
+          // was sitting one stray click from "New page"; the address is
+          // reassurance a teacher wants occasionally, not a permanent fixture.
+          <Dropdown.Root>
+            <Dropdown.Trigger
+              aria-label={email ? `Account: ${email}` : "Account"}
+              className="cursor-pointer rounded-pill"
+            >
+              <Avatar.Root size="sm">
+                <Avatar.Fallback>{initialsFor(email ?? "?")}</Avatar.Fallback>
+              </Avatar.Root>
+            </Dropdown.Trigger>
+
+            {/* `Dropdown.Content` is `absolute left-0` by default, which anchors
+                it to the trigger's LEFT edge — and this trigger sits at the
+                right edge of the header, so the menu ran off the side of the
+                window and was clipped. `left-auto right-0` hangs it from the
+                right edge instead, so it opens inward. */}
+            <Dropdown.Content className="left-auto right-0">
+              {email && (
+                <>
+                  <Dropdown.Label>{email}</Dropdown.Label>
+                  <Dropdown.Divider />
+                </>
+              )}
+              <Dropdown.Item onClick={signOut}>Sign out</Dropdown.Item>
+            </Dropdown.Content>
+          </Dropdown.Root>
         )}
       </div>
     </header>

@@ -34,11 +34,7 @@ def table(table_name: str):
 
 
 def ensure_local_table_exists(table_name: str):
-    """Create the single classroom table when running against DynamoDB Local.
-
-    GSI1 indexes a page by its public slug so an anonymous read is a single
-    query rather than a scan.
-    """
+    """Create the single classroom table when running against DynamoDB Local."""
     handle = table(table_name)
     try:
         handle.load()
@@ -54,18 +50,6 @@ def ensure_local_table_exists(table_name: str):
             AttributeDefinitions=[
                 {"AttributeName": "PK", "AttributeType": "S"},
                 {"AttributeName": "SK", "AttributeType": "S"},
-                {"AttributeName": "GSI1PK", "AttributeType": "S"},
-                {"AttributeName": "GSI1SK", "AttributeType": "S"},
-            ],
-            GlobalSecondaryIndexes=[
-                {
-                    "IndexName": "GSI1",
-                    "KeySchema": [
-                        {"AttributeName": "GSI1PK", "KeyType": "HASH"},
-                        {"AttributeName": "GSI1SK", "KeyType": "RANGE"},
-                    ],
-                    "Projection": {"ProjectionType": "ALL"},
-                }
             ],
             BillingMode="PAY_PER_REQUEST",
         )

@@ -12,6 +12,16 @@
       "autoPort": false
     },
     {
+      "name": "classroom",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": [
+        "-c",
+        "unset PORT; exec ./classroom/scripts/dev-up.sh"
+      ],
+      "port": 5174,
+      "autoPort": false
+    },
+    {
       "name": "website",
       "runtimeExecutable": "/bin/sh",
       "runtimeArgs": [

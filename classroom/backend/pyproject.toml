@@ -13,14 +13,20 @@ Flask-Cors = "5.0.0"
 Werkzeug = "3.0.4"
 mangum = "0.17.0"
 asgiref = "3.8.1"
-# Rust-backed HTML sanitizer (ammonia). Chosen over a pure-Python cleaner
-# because this is the XSS boundary for pages students load — see
-# classroom_core/utils/html.py.
-nh3 = "0.2.18"
+
+# `nh3` (the ammonia HTML sanitizer) was removed when lessons moved to S3.
+# Nothing sanitizes a lesson any more — her uploads are served byte for byte so
+# her styling and her interactive scripts survive — and what makes that safe is
+# that they are served from a different ORIGIN to the app. See
+# infra/modules/lesson_hosting.
 
 [tool.poetry.group.dev.dependencies]
-moto = {version = "4.2.14", extras = ["dynamodb"]}
+moto = {version = "4.2.14", extras = ["dynamodb", "s3"]}
 pytest = "7.4.3"
+# Verifies Cognito ID tokens in the LOCAL dev server only — in production that
+# is API Gateway's job and this package is absent from the image. Deliberately
+# not a main dependency: see classroom_core/handlers/local/api/api_dev_server.py.
+PyJWT = {version = "2.10.1", extras = ["crypto"]}
 
 [build-system]
 requires = ["poetry-core"]

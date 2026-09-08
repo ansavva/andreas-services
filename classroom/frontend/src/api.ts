@@ -14,21 +14,22 @@ const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? "/api";
 export interface PageSummary {
   id: string;
   title: string;
-  slug: string;
   published: boolean;
+  /** How many files this lesson is made of. Zero until she uploads. */
+  file_count: number;
   created_at: string;
   updated_at: string;
   share_url: string | null;
 }
 
-export interface Page extends PageSummary {
-  html: string;
-}
+/** A page carries no HTML: its content is a directory of files in S3. */
+export type Page = PageSummary;
 
-export interface PublicPage {
-  title: string;
-  html: string;
-  updated_at: string;
+export interface SignedUpload {
+  path: string;
+  key: string;
+  url: string;
+  content_type: string;
 }
 
 export class ApiError extends Error {
@@ -88,17 +89,13 @@ export function getPage(id: string): Promise<Page> {
   return authed<Page>(`/pages/${id}`);
 }
 
-export function createPage(input: {
-  title: string;
-  html: string;
-  published?: boolean;
-}): Promise<Page> {
+export function createPage(input: { title: string }): Promise<Page> {
   return authed<Page>("/pages", { method: "POST", body: JSON.stringify(input) });
 }
 
 export function updatePage(
   id: string,
-  input: Partial<{ title: string; html: string; published: boolean }>,
+  input: Partial<{ title: string; published: boolean }>,
 ): Promise<Page> {
   return authed<Page>(`/pages/${id}`, { method: "PUT", body: JSON.stringify(input) });
 }
@@ -107,9 +104,51 @@ export function deletePage(id: string): Promise<{ deleted: string }> {
   return authed<{ deleted: string }>(`/pages/${id}`, { method: "DELETE" });
 }
 
-/** The student reader. Deliberately unauthenticated — no token is attached. */
-export async function readPublicPage(slug: string): Promise<PublicPage> {
-  const response = await fetch(`${API_URL}/public/pages/${encodeURIComponent(slug)}`);
-  if (!response.ok) throw new ApiError(await errorMessage(response), response.status);
-  return (await response.json()) as PublicPage;
+export async function listFiles(id: string): Promise<string[]> {
+  const { files } = await authed<{ files: string[] }>(`/pages/${id}/files`);
+  return files;
 }
+
+/**
+ * Ask the API to sign a PUT for each file, then send the bytes STRAIGHT TO S3.
+ *
+ * The content never passes through our API: a zipped worksheet with its images
+ * runs to tens of megabytes and API Gateway stops at 10MB, so routing it
+ * through the Lambda would fail on exactly the lessons that matter most.
+ */
+export async function signUploads(
+  id: string,
+  paths: string[],
+): Promise<SignedUpload[]> {
+  const { uploads } = await authed<{ uploads: SignedUpload[] }>(
+    `/pages/${id}/uploads`,
+    { method: "POST", body: JSON.stringify({ paths }) },
+  );
+  return uploads;
+}
+
+/**
+ * `Content-Type` must match what the API signed, exactly.
+ *
+ * A presigned URL signs that header, so sending a different one — or letting
+ * the browser pick — fails with a signature error that reads like a bug in the
+ * signing rather than a mismatch here.
+ */
+export async function putToS3(upload: SignedUpload, blob: Blob): Promise<void> {
+  const response = await fetch(upload.url, {
+    method: "PUT",
+    headers: { "Content-Type": upload.content_type },
+    body: blob,
+  });
+  if (!response.ok) {
+    throw new ApiError(`Upload of ${upload.path} failed (HTTP ${response.status}).`, response.status);
+  }
+}
+
+/** Tell the API the PUTs are done, so it can count what actually landed. */
+export function completeUpload(id: string): Promise<Page & { files: string[] }> {
+  return authed<Page & { files: string[] }>(`/pages/${id}/uploads/complete`, {
+    method: "POST",
+  });
+}
+

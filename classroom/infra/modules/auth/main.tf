@@ -92,15 +92,76 @@ resource "aws_cognito_user_pool_client" "main" {
   prevent_user_existence_errors = "ENABLED"
 }
 
-# Managed Login hosts sign-in, password reset, forced first-password change and
-# TOTP enrolment, so this service writes none of those screens.
-resource "aws_cognito_user_pool_domain" "main" {
-  domain          = var.auth_domain
-  user_pool_id    = aws_cognito_user_pool.main.id
-  certificate_arn = var.auth_certificate_arn
+# CLASSROOM'S BRAND ON THE HOSTED PAGES.
+#
+# The sign-in, reset, forced-first-password and TOTP screens are Cognito's, so
+# they cannot load `app.css`. This is the only way to stop a teacher meeting a
+# stock AWS form on the way into a page that looks nothing like it.
+#
+# A branding record also has to EXIST for a `managed_login_version = 2` domain
+# to serve anything at all — see the domain below — so this resource is
+# load-bearing twice over.
+#
+# `managed-login-settings.json` IS GENERATED, from the design system's
+# `theme.css` plus `frontend/src/styles/app.css`, via `npm run brand` in
+# `classroom/frontend`; `npm run brand:check` gates the two against drift on
+# every PR. The stylesheets are the only source — the derived button states are
+# live `color-mix()` blends with no hex to copy, so the tool re-implements the
+# blend rather than keeping a second table of colours.
+#
+# NO ASSETS: classroom has no logo, so `form.logo` stays disabled and Cognito's
+# own illustrations stay off. Adding one is ForceNew on this resource, which
+# briefly leaves the domain without a style — so it is a deliberate act, not a
+# drive-by.
+resource "aws_cognito_managed_login_branding" "main" {
+  user_pool_id = aws_cognito_user_pool.main.id
+  client_id    = aws_cognito_user_pool_client.main.id
+
+  settings = file("${path.module}/managed-login-settings.json")
 }
 
+# Managed Login hosts sign-in, password reset, forced first-password change and
+# TOTP enrolment, so this service writes none of those screens.
+#
+# Two shapes, and which one is in force is decided entirely by which variable
+# the environment set. `envs/prod` gives a custom host on the shared wildcard
+# certificate; `envs/dev` gives a prefix and takes Cognito's own domain. The
+# preconditions are what stop a half-configured third shape: a custom domain
+# with no certificate applies for several minutes and then fails.
+resource "aws_cognito_user_pool_domain" "main" {
+  domain          = var.auth_domain != "" ? var.auth_domain : var.auth_domain_prefix
+  user_pool_id    = aws_cognito_user_pool.main.id
+  certificate_arn = var.auth_domain != "" ? var.auth_certificate_arn : null
+
+  # Version 2 is the styleable Managed Login. Version 1 is the old hosted UI,
+  # which ignores the branding record entirely — so this line and the resource
+  # above only work as a pair.
+  managed_login_version = 2
+
+  lifecycle {
+    precondition {
+      condition     = (var.auth_domain != "") != (var.auth_domain_prefix != "")
+      error_message = "Set exactly one of auth_domain (a custom host) or auth_domain_prefix (a default Cognito domain)."
+    }
+    precondition {
+      condition     = var.auth_domain == "" || (var.auth_certificate_arn != "" && var.route53_zone_id != "")
+      error_message = "auth_domain also requires auth_certificate_arn and route53_zone_id."
+    }
+  }
+
+  # **Branding must exist before the domain.** A managed-login (v2) domain with
+  # no branding style serves "Login pages unavailable. Please contact an
+  # administrator." — an outage, not a fallback. Never let Terraform order the
+  # domain first.
+  depends_on = [aws_cognito_managed_login_branding.main]
+}
+
+# A Cognito custom domain is a CloudFront distribution Cognito owns, so it needs
+# an alias record pointing at it. The default-domain case resolves under
+# `amazoncognito.com` and has nothing to publish, hence the count.
 resource "aws_route53_record" "auth" {
+  count = var.auth_domain != "" ? 1 : 0
+
   zone_id = var.route53_zone_id
   name    = var.auth_domain
   type    = "A"
@@ -112,3 +173,17 @@ resource "aws_route53_record" "auth" {
     evaluate_target_health = false
   }
 }
+
+# The count above changed this resource's ADDRESS, not the record itself.
+# Without this, prod's next apply destroys and recreates the auth A record —
+# a window in which classroom-auth.andreas.services does not resolve and
+# nobody can sign in. Terraform ignores it where the old address never
+# existed, which is every dev stack.
+moved {
+  from = aws_route53_record.auth
+  to   = aws_route53_record.auth[0]
+}
+
+# For the `<prefix>.auth.<region>.amazoncognito.com` host `outputs.tf` composes.
+# Unused in the custom-domain case, and free either way.
+data "aws_region" "current" {}
