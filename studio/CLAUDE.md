@@ -141,7 +141,7 @@ long-lived IAM key the root [CLAUDE.md](../CLAUDE.md) describes.
 ./studio/scripts/dev-aws-setup.sh                    # once per machine: provision the stack
 ./studio/scripts/dev-user.sh --generate-password     # once per machine: its test account
 ./studio/scripts/dev-setup.sh                        # the pipeline half — installs uv, syncs the dev profile
-./studio/scripts/dev-up.sh                           # the app half — backend :8000, frontend :5173
+./studio/scripts/dev-up.sh                           # the app half — backend :8000, frontend :5173 (busy → 5178, 5179, 5180)
 ./studio/scripts/dev-token.sh                        # prove sign-in works; prints a token
 ./studio/scripts/dev-aws-seed.sh                     # load the fixture
 uv run --project studio/scripts/dev_seed dev-seed tree     # what this stack holds

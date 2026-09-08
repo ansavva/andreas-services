@@ -141,7 +141,7 @@ export function PayloadPreview({ runId }: { runId: string }) {
       <Text variant="caption" tone="muted" className="font-mono">
         request.json — what this run would send
       </Text>
-      <pre className="max-h-96 overflow-y-auto whitespace-pre-wrap break-words rounded-none border border-line bg-card p-3 font-mono text-xs leading-relaxed text-ink">
+      <pre className="max-h-96 overflow-y-auto whitespace-pre-wrap break-words border border-line bg-card p-3 font-mono text-xs leading-relaxed text-ink">
         <code>{JSON.stringify(data.request, null, 2)}</code>
       </pre>
     </div>

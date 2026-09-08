@@ -40,8 +40,8 @@ See [root terraform README](../../infra/README.md) for details.
 - **Purpose**: Local development only
 - **Resources**: Cognito User Pool + S3 bucket
 - **State**: `s3://andreas-services-terraform-state/storybook/dev/terraform.tfstate`
-- **Frontend**: localhost:5173
-- **Backend**: localhost:3000
+- **Frontend**: localhost:5177
+- **Backend**: localhost:8003
 
 ### Production
 - **Purpose**: Live hosted application
@@ -97,7 +97,7 @@ terraform output  # Use for GitHub Actions secrets
 ```hcl
 # Dev
 module "auth" {
-  callback_urls = ["http://localhost:5173"]
+  callback_urls = ["http://localhost:5177"]
 }
 
 # Prod

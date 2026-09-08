@@ -19,5 +19,5 @@ export function linkButtonClass(tone: "accent" | "muted" = "accent", className =
     tone === "accent"
       ? "text-sm text-accent underline underline-offset-2 hover:opacity-80"
       : "text-left text-muted underline-offset-2 hover:text-ink hover:underline";
-  return `rounded-none ${base} ${className}`.trim();
+  return `${base} ${className}`.trim();
 }

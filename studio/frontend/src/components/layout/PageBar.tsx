@@ -186,7 +186,7 @@ export function PageBar({
                   <Dropdown.Trigger
                     aria-label="More actions"
                     title="More actions"
-                    className={iconButtonClass({ size: "sm", className: "rounded-none" })}
+                    className={iconButtonClass({ size: "sm", className: "" })}
                   >
                     <DotsIcon />
                   </Dropdown.Trigger>
@@ -195,7 +195,7 @@ export function PageBar({
                       the design system's default — grows off the side of a
                       phone. `ItemActions` right-aligns its own for the same
                       reason. */}
-                  <Dropdown.Content className="left-auto right-0 rounded-none">
+                  <Dropdown.Content className="left-auto right-0">
                     {menu.map((item) => (
                       <Dropdown.Item
                         key={item.label}

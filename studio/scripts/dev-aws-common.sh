@@ -259,6 +259,10 @@ load_dev_stack_outputs() {
   DEV_AUTH_DOMAIN="$(jq -r '.outputs.cognito_auth_domain.value // empty' <<<"$state_json")"
   DEV_BUCKET="$(jq -r '.outputs.media_bucket_name.value // empty' <<<"$state_json")"
   DEV_TABLE="$(jq -r '.outputs.catalog_table_name.value // empty' <<<"$state_json")"
+  # The ports the SPA may be served from, space-separated in the order to try.
+  # A stack applied before `spa_ports` existed registered `:5173` alone, which
+  # is what the default says — not in the required list below for that reason.
+  DEV_SPA_PORTS="$(jq -r '(.outputs.spa_ports.value // [5173]) | map(tostring) | join(" ")' <<<"$state_json")"
   # WHERE REPLICATE CALLS BACK FOR THIS MACHINE, AND THE QUEUE IT LANDS ON.
   #
   # Replicate cannot reach `http://localhost:8000`, so a generation submitted

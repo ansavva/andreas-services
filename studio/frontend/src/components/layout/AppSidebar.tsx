@@ -104,14 +104,16 @@ export function SidebarContents({
         </Sidebar.Logo>
         <Sidebar.Title>Studio</Sidebar.Title>
         {toggle && (
-          <Sidebar.Toggle className={`rounded-none ${collapsed ? "ml-0" : ""}`}>
+          <Sidebar.Toggle className={`${collapsed ? "ml-0" : ""}`}>
             <SidebarIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
           </Sidebar.Toggle>
         )}
       </Sidebar.Head>
 
       <Sidebar.Nav label="Sections">
-        <Sidebar.Section title="Library">
+        {/* No title: these six are the app, not a section of it — ElevenLabs
+            labels only the list under them. */}
+        <Sidebar.Section>
           {DESTINATIONS.map((each) => (
             <NavItem
               key={each.to}
@@ -184,7 +186,7 @@ function NavItem({
       icon={icon}
       active={active}
       onClick={onClick}
-      className="rounded-none"
+      className=""
     />
   );
 }

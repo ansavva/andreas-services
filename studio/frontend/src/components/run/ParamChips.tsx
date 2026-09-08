@@ -24,7 +24,7 @@ export function ParamChips({
       {entries.map(([key, value]) => (
         <span
           key={key}
-          className="inline-flex items-baseline gap-1.5 whitespace-nowrap rounded-none border border-line bg-card px-2 py-0.5"
+          className="inline-flex items-baseline gap-1.5 whitespace-nowrap border border-line bg-card px-2 py-0.5"
         >
           {/* `inline` on BOTH: this pair is a `key value` pill sharing one
               line — the minority case `Text`'s `inline` prop exists for. */}
@@ -37,7 +37,7 @@ export function ParamChips({
         </span>
       ))}
       {model && (
-        <span className="inline-flex items-baseline whitespace-nowrap rounded-none border border-line bg-card px-2 py-0.5">
+        <span className="inline-flex items-baseline whitespace-nowrap border border-line bg-card px-2 py-0.5">
           <Text variant="caption" family="mono" inline>
             {model}
           </Text>

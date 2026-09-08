@@ -87,7 +87,7 @@ export function OutputPanel({
             name={asset.name}
             aspect={sole ? "auto" : "square"}
             fit="contain"
-            className="w-full rounded-none"
+            className="w-full"
           />
         </a>
       )}

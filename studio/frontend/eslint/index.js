@@ -6,7 +6,7 @@
  * each one enforces and the PR that added it. No dependency added: this is
  * plain ESLint rule objects, wired in as a local plugin.
  */
-import noRoundedCorners from "./rules/no-rounded-corners.js";
+import radiusScale from "./rules/radius-scale.js";
 import noNeutralRamp from "./rules/no-neutral-ramp.js";
 import noHandRolledButton from "./rules/no-hand-rolled-button.js";
 import noGlyphOnlyChild from "./rules/no-glyph-only-child.js";
@@ -14,7 +14,7 @@ import noEmptyStateProse from "./rules/no-empty-state-prose.js";
 
 export default {
   rules: {
-    "no-rounded-corners": noRoundedCorners,
+    "radius-scale": radiusScale,
     "no-neutral-ramp": noNeutralRamp,
     "no-hand-rolled-button": noHandRolledButton,
     "no-glyph-only-child": noGlyphOnlyChild,

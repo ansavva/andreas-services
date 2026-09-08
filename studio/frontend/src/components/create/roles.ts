@@ -4,8 +4,8 @@ import type { ModelEntry, RunKind, RunSendInput } from "../../types";
 /**
  * The roles each kind's strip offers, in the order the mockup draws them.
  *
- * Image mode: Reference, Edit. Video mode: Animate (the start frame), End
- * frame, Reference. Nothing about frames on an image run — a still has no
+ * Image mode: Image refs, Input image. Video mode: Start frame, End frame,
+ * Image refs — the models' own words, which ElevenLabs uses too. Nothing about frames on an image run — a still has no
  * start — and `input` on a video would be a second word for its start frame.
  */
 export const ROLES_BY_KIND: Record<RunKind, readonly AttachRole[]> = {
@@ -13,15 +13,20 @@ export const ROLES_BY_KIND: Record<RunKind, readonly AttachRole[]> = {
   video: ["start", "end", "reference"],
 };
 
-/** What each role is called on the strip, and what it is for. */
-export const ROLE_WORDS: Record<AttachRole, { label: string; hint: string }> = {
+/** What each role is called on the strip, what it is for, and how the picker asks for one. */
+export const ROLE_WORDS: Record<AttachRole, { label: string; hint: string; choose: string }> = {
   reference: {
-    label: "Reference",
-    hint: "Who and what the render is checked against. Order is send order.",
+    label: "Image refs",
+    hint: "Reference images: who and what the render is checked against. Order is send order.",
+    choose: "Choose image refs",
   },
-  input: { label: "Edit", hint: "The image an edit starts from, like “make the coat black”." },
-  start: { label: "Animate", hint: "The image the clip starts from." },
-  end: { label: "End frame", hint: "How the clip ends." },
+  input: {
+    label: "Input image",
+    hint: "The image an edit starts from, like “make the coat black”.",
+    choose: "Choose an input image",
+  },
+  start: { label: "Start frame", hint: "The image the clip starts from.", choose: "Choose a start frame" },
+  end: { label: "End frame", hint: "How the clip ends.", choose: "Choose an end frame" },
 };
 
 /**
@@ -30,10 +35,12 @@ export const ROLE_WORDS: Record<AttachRole, { label: string; hint: string }> = {
  *
  * Read off the registry entry's `images`, never guessed: the frame-first
  * workflow's whole bargain is that a start frame lands on the field the model
- * calls its start frame. `input` — the image an edit starts from — takes the
- * model's single-image field where it has one (an upscaler's `image`) and its
- * reference list otherwise, since that is the only place an image model
- * without one can be handed a picture.
+ * calls its start frame. `input` — the image an edit operates on — is the
+ * model's single-image field (an upscaler's `image`) and nothing else: it
+ * used to fall back to the reference list, which drew an `Input image` tile
+ * on every model with refs and sent the picture to the same field `Image
+ * refs` does — two words for one input. A model with no such field has no
+ * such tile.
  */
 export function fieldFor(role: AttachRole, entry: ModelEntry | null): string | null {
   const images = entry?.images ?? {};
@@ -45,7 +52,7 @@ export function fieldFor(role: AttachRole, entry: ModelEntry | null): string | n
     case "reference":
       return images.refs ?? null;
     case "input":
-      return images.start ?? images.refs ?? null;
+      return images.start ?? null;
   }
 }
 

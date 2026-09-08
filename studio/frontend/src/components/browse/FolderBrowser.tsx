@@ -797,7 +797,7 @@ export function FolderBrowser({
             if (event.key === "Escape") setNewFolder(null);
           }}
           aria-label="New folder"
-          className="flex flex-wrap items-center gap-2 rounded-none border border-line bg-card p-3"
+          className="flex flex-wrap items-center gap-2 border border-line bg-card p-3"
         >
           <Text variant="caption" tone="muted">
             New folder in {prefix ?? "…"}
@@ -867,7 +867,7 @@ export function FolderBrowser({
       {selection.count > 0 && (
         <div
           className="sticky top-[var(--header-h)] z-20 flex flex-wrap items-center gap-2
-                     rounded-none border border-line bg-card px-3 py-2"
+                     border border-line bg-card px-3 py-2"
         >
           <Text
             variant="caption"
@@ -895,7 +895,7 @@ export function FolderBrowser({
                 width the strip has to fit at 390px. */}
           <Tooltip.Root>
             <Tooltip.Trigger
-              className={iconButtonClass({ size: "sm", className: "rounded-none" })}
+              className={iconButtonClass({ size: "sm", className: "" })}
               aria-label={`Copy ${selectedNoun("file", "files")} to…`}
               onClick={() =>
                 setPickerTarget({
@@ -914,7 +914,7 @@ export function FolderBrowser({
 
           <Tooltip.Root>
             <Tooltip.Trigger
-              className={iconButtonClass({ size: "sm", className: "rounded-none" })}
+              className={iconButtonClass({ size: "sm", className: "" })}
               aria-label={`Move ${selectedNoun("file", "files")}`}
               onClick={() =>
                 setPickerTarget({
@@ -1156,12 +1156,12 @@ function FolderMenu({
       <Dropdown.Trigger
         aria-label="More"
         title="More"
-        className={iconButtonClass({ size: "sm", className: "rounded-none shrink-0" })}
+        className={iconButtonClass({ size: "sm", className: "shrink-0" })}
       >
         <DotsIcon />
       </Dropdown.Trigger>
 
-      <Dropdown.Content className="left-auto right-0 rounded-none">
+      <Dropdown.Content className="left-auto right-0">
         {/* Below `sm` only — see the docblock above. */}
         <div className="sm:hidden">
           <Dropdown.Item disabled={disabled} onSelect={() => uploadInput.current?.click()}>

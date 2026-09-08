@@ -54,11 +54,11 @@ export function EntityCard({ name, hero, counts, to }: Props) {
       // what goes is the rounding and the fill that made each one an object
       // floating on the page instead of a cell in a grid. Hover and focus are
       // the row's, so the two shapes answer a pointer the same way.
-      className="flex w-full items-center gap-3 rounded-none border border-line p-2 text-left
+      className="flex w-full items-center gap-3 border border-line p-2 text-left
                  transition-colors hover:bg-surface-alt
                  focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
     >
-      <span className="size-16 shrink-0 overflow-hidden rounded-none border border-line bg-surface-alt">
+      <span className="size-16 shrink-0 overflow-hidden border border-line bg-surface-alt">
         {hero ? (
           <MediaThumb nodeId={hero.node} url={hero.url} name="" aspect="auto" />
         ) : (

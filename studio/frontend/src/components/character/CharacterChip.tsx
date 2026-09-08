@@ -29,14 +29,14 @@ export function CharacterAvatar({ hero, name }: { hero: HeroImage | null; name: 
         name={name}
         isVideo={false}
         aspect="square"
-        className="size-[22px] shrink-0 rounded-none border border-line"
+        className="size-[22px] shrink-0 border border-line"
       />
     );
   }
   return (
     <span
       aria-hidden="true"
-      className="flex size-[22px] shrink-0 items-center justify-center rounded-none border border-dashed border-line text-muted"
+      className="flex size-[22px] shrink-0 items-center justify-center border border-dashed border-line text-muted"
     >
       <AccountIcon className="size-3 fill-none stroke-current stroke-[1.5]" />
     </span>
@@ -75,7 +75,7 @@ export function CharacterChipLink({
     <a
       href={to}
       onClick={onClick}
-      className={chipClass({ size: "sm", className: "rounded-none pl-1.5 text-ink" })}
+      className={chipClass({ size: "sm", className: "pl-1.5 text-ink" })}
     >
       <CharacterAvatar hero={hero} name={name} />
       <span className="truncate">{name}</span>
@@ -107,7 +107,7 @@ export function CharacterChipToggle({
       size="sm"
       disabled={disabled}
       onClick={onClick}
-      className="rounded-none pl-1.5 disabled:opacity-60"
+      className="pl-1.5 disabled:opacity-60"
     >
       <CharacterAvatar hero={hero} name={name} />
       <span className="truncate">{name}</span>

@@ -36,7 +36,7 @@ export default defineConfig(({ command }) => ({
       : [],
   },
   server: {
-    port: Number(process.env.PORT || 5173),
+    port: Number(process.env.PORT || 5176),
     open: true,
   },
   test: {

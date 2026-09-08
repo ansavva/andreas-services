@@ -33,7 +33,7 @@ export function UploadStatus({ items, onClearFinished }: Props) {
   return (
     <section
       aria-label="Uploads"
-      className="flex flex-col gap-2 rounded-none border border-line bg-card p-3"
+      className="flex flex-col gap-2 border border-line bg-card p-3"
     >
       {items.map((item) => (
         <div key={item.key} className="flex flex-col gap-1">

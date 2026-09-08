@@ -25,7 +25,7 @@
 cd frontend
 export NODE_AUTH_TOKEN=$(gh auth token)   # read:packages scope
 npm ci
-npm run dev        # http://localhost:5173
+npm run dev        # http://localhost:5175
 ```
 
 Marketing + blog pages render without a backend. The intake/newsletter forms and
@@ -36,7 +36,7 @@ For local form/admin calls, run DynamoDB Local and the backend in separate
 terminals, then set:
 
 ```bash
-WEBSITE_API_URL=http://localhost:8000/api
+WEBSITE_API_URL=http://localhost:8002/api
 ```
 
 Type-check / lint / build:
@@ -57,7 +57,7 @@ In another terminal:
 
 ```bash
 cd backend
-poetry run python -m website_core.handlers.local.api.api_dev_server  # http://localhost:8000
+poetry run python -m website_core.handlers.local.api.api_dev_server  # http://localhost:8002
 poetry run pytest        # moto-backed unit tests
 ```
 

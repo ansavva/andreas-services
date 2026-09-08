@@ -151,17 +151,21 @@ function nextPlaceholder(text: string, from = 0) {
  * It takes its tokens as a prop and knows nothing about reference angles, so a
  * run's prompt editor can hand it a different list.
  */
+const FAMILY = { mono: "font-mono text-sm", body: "font-body text-base" } as const;
+
 export function TokenizedPromptEditor({
   value,
   onValueChange,
   tokens,
   ariaLabel,
   placeholder = "Write the angle's prompt… type { for a placeholder.",
-  className = "rounded-none border border-line p-2",
+  className = "border border-line p-2",
   contentClassName = "min-h-24",
   onSubmit,
   focusKey,
   blurKey,
+  family = "mono",
+  menuSide = "down",
 }: {
   value: string;
   onValueChange: (next: string) => void;
@@ -181,6 +185,19 @@ export function TokenizedPromptEditor({
    * open — choosing a pill must not send the prompt half-written.
    */
   onSubmit?: () => void;
+  /**
+   * `mono` for a template — a document a person reads character by character,
+   * placeholders and all. `body` for the create sheet, where the prompt is a
+   * sentence typed into a chat box and mono reads as a terminal.
+   */
+  family?: "mono" | "body";
+  /**
+   * Which way the `{` menu opens. Lexical hangs it under the caret and flips
+   * it upward only when the EDITOR is taller than the menu — a two-line box
+   * at the foot of the viewport never is, so the menu ran off the bottom of
+   * the screen. The create sheet says `up`.
+   */
+  menuSide?: "down" | "up";
   /** Focus the editor whenever this changes. What "load a run into the bar" does. */
   focusKey?: number;
   /**
@@ -245,11 +262,11 @@ export function TokenizedPromptEditor({
                 // `whitespace-pre-wrap`: blank lines are part of the prompt now —
                 // they survive assembly and reach the model — so the editor has to
                 // show them rather than collapse them like ordinary HTML.
-                className={`${contentClassName} whitespace-pre-wrap font-mono text-sm leading-6 outline-none`}
+                className={`${contentClassName} whitespace-pre-wrap ${FAMILY[family]} leading-6 outline-none`}
               />
             }
             placeholder={
-              <span className="pointer-events-none absolute inset-x-0 top-0 truncate font-mono text-sm leading-6 text-muted">
+              <span className={`pointer-events-none absolute inset-x-0 top-0 truncate ${FAMILY[family]} leading-6 text-muted`}>
                 {placeholder}
               </span>
             }
@@ -275,7 +292,7 @@ export function TokenizedPromptEditor({
             })
           }
         />
-        <Typeahead tokens={tokens} kinds={kinds} menuOpen={menuOpen} />
+        <Typeahead tokens={tokens} kinds={kinds} menuOpen={menuOpen} menuSide={menuSide} />
       </div>
     </LexicalComposer>
   );
@@ -472,11 +489,13 @@ function Typeahead({
   tokens,
   kinds,
   menuOpen,
+  menuSide,
 }: {
   tokens: PromptToken[];
   kinds: Record<string, "block" | "computed">;
   /** Written here, read by `SubmitOnEnter` — the one thing the two share. */
   menuOpen: MutableRefObject<boolean>;
+  menuSide: "down" | "up";
 }) {
   const [editor] = useLexicalComposerContext();
   const [query, setQuery] = useState<string | null>(null);
@@ -562,7 +581,11 @@ function Typeahead({
               <ul
                 role="listbox"
                 aria-label="Insert a placeholder"
-                className="m-0 max-h-64 w-72 list-none overflow-auto rounded-none border border-line bg-card p-1 shadow-lg"
+                className={`m-0 max-h-64 w-72 list-none overflow-auto rounded-md border border-line bg-card p-1 shadow-lg ${
+                  // Above the anchor, which Lexical puts just under the caret
+                  // line; the margin clears that line.
+                  menuSide === "up" ? "absolute bottom-full left-0 mb-7" : ""
+                }`}
               >
                 {options.map((option, index) => (
                   <li
@@ -579,7 +602,7 @@ function Typeahead({
                       setHighlightedIndex(index);
                       selectOptionAndCleanUp(option);
                     }}
-                    className={`flex cursor-pointer items-baseline gap-2 rounded-none px-2 py-1 ${
+                    className={`flex cursor-pointer items-baseline gap-2 px-2 py-1 ${
                       selectedIndex === index ? "bg-surface-alt" : ""
                     }`}
                   >

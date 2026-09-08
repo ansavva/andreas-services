@@ -280,7 +280,7 @@ describe("the actions", () => {
     });
   });
 
-  it("Use in prompt attaches the output as a reference; Animate switches to video with it as the start", async () => {
+  it("Use in prompt attaches the output as a reference; Start frame switches to video with it as the start", async () => {
     await draw([row()]);
     await screen.findByRole("article");
 
@@ -289,7 +289,7 @@ describe("the actions", () => {
     );
     expect(bar().attachments).toEqual(["reference:node-o2"]);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Animate" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Start frame" })[0]!);
     expect(bar().kind).toBe("video");
     expect(bar().attachments).toEqual(["start:node-o1"]);
     expect(bar().seed.kind).toBe("video");
@@ -403,6 +403,10 @@ describe("the shape of the frames", () => {
     const tile = screen.getAllByRole("button", { name: /^Open Output/ })[0]!;
     const box = tile.querySelector("span[style]") as HTMLElement;
     expect(box.style.aspectRatio).toBe("9 / 16");
+    // A clip is not a reference — a reference is a picture — so the tile
+    // offers no way to attach it as one. It did, and the send was refused.
+    expect(screen.queryByRole("button", { name: "Use in prompt" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Start frame" })).toBeNull();
   });
 });
 

@@ -67,3 +67,13 @@ output "render_queue_url" {
   value       = module.render.queue_url
 }
 
+
+output "spa_ports" {
+  description = <<-EOT
+    The ports this stack will accept the SPA from — each a Cognito callback
+    and a bucket CORS origin. `dev-up.sh` reads it and serves Vite on the first
+    one that is free, so a stack applied with a different list is what decides,
+    not the script's guess.
+  EOT
+  value       = var.spa_ports
+}

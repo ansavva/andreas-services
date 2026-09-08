@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -29,15 +30,17 @@ vi.mock("../../apis/studio", () => ({
   patchRunPlan: vi.fn(),
   deleteRun: vi.fn(),
   getRuns: vi.fn(),
-  // The settings popover and the drawer, when they open.
+  // The settings rows and the picker, when they open.
   getModelSchema: vi.fn().mockRejectedValue(new Error("no registry in tests")),
-  getCharacters: vi.fn().mockResolvedValue([]),
-  getCharacterSelection: vi
-    .fn()
-    .mockResolvedValue({ selection: [], cap: null, source: "default" }),
-  getProjectInputs: vi
-    .fn()
-    .mockResolvedValue({ folder: "node-in", inputs: [] }),
+  getFolder: vi.fn().mockResolvedValue({
+    prefix: "",
+    sort: "name",
+    depth: "1",
+    tags: [],
+    breadcrumbs: [],
+    folders: [],
+    files: [],
+  }),
 }));
 
 import {
@@ -159,8 +162,6 @@ async function open(path = `/p/${PROJECT}`) {
 
 const editor = () => screen.getByRole("textbox", { name: "Prompt" });
 
-/** Focus lands in the bar — what wakes it. React hears `focusin`, not `focus`. */
-const wake = () => fireEvent.focusIn(editor());
 /** Focus leaves for somewhere outside the bar. */
 const leave = () => fireEvent.focusOut(editor(), { relatedTarget: null });
 const strip = () => document.querySelector("[data-mode-strip]") as HTMLElement;
@@ -170,9 +171,8 @@ function fill(prompt: string) {
   api.loadRun({ project: PROJECT, kind: "image", prompt });
 }
 
-it("the kind switch changes the strip and the model", async () => {
+it("the kind switch changes the tiles, the chips and the model", async () => {
   await open();
-  wake();
   fill("A portrait.");
   await waitFor(() => expect(strip()).toBeTruthy());
 
@@ -180,14 +180,16 @@ it("the kind switch changes the strip and the model", async () => {
     Array.from(strip().querySelectorAll("[data-role-cell]")).map((cell) =>
       cell.getAttribute("aria-label"),
     );
-  expect(labels()).toEqual(["Reference", "Edit"]);
-  expect(screen.queryByText("Duration")).toBeNull();
+  expect(labels()).toEqual(["Image refs"]);
+  // The still model's snapshot has a resolution and no duration.
+  expect(screen.getByRole("button", { name: "Resolution: 2K" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /^Duration/ })).toBeNull();
 
   fireEvent.click(screen.getByRole("button", { name: "Video" }));
-  expect(labels()).toEqual(["Animate", "End frame", "Reference"]);
-  expect(screen.getByText("Duration")).toBeTruthy();
-  // The duration is the snapshot's enum, inline.
-  expect(screen.getByRole("button", { name: "5s" })).toBeTruthy();
+  expect(labels()).toEqual(["Start frame", "End frame", "Image refs"]);
+  // The duration is the snapshot's enum, as a chip reading the default.
+  expect(screen.getByRole("button", { name: "Duration: 5s" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /^Resolution/ })).toBeNull();
 
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
   await waitFor(() => expect(createRun).toHaveBeenCalled());
@@ -294,7 +296,6 @@ it("a template pick lands filled, not as the citations it was written with", asy
     characters: 1,
   });
   await open();
-  wake();
   fill("draft");
   fireEvent.click(await screen.findByRole("button", { name: "Template" }));
   fireEvent.click(await screen.findByRole("button", { name: /Face front/ }));
@@ -323,7 +324,6 @@ it("a template with nothing to cite is not sent to the API to be filled", async 
     ],
   });
   await open();
-  wake();
   fill("draft");
   fireEvent.click(await screen.findByRole("button", { name: "Template" }));
   fireEvent.click(await screen.findByRole("button", { name: /Face front/ }));
@@ -351,7 +351,6 @@ it("a fill the API refuses leaves the template in the box and says why", async (
     new Error("this prompt cites {character.2.top}, and this run binds 0."),
   );
   await open();
-  wake();
   fill("draft");
   fireEvent.click(await screen.findByRole("button", { name: "Template" }));
   fireEvent.click(await screen.findByRole("button", { name: /Two up/ }));
@@ -364,12 +363,11 @@ it("a fill the API refuses leaves the template in the box and says why", async (
 
 it("attachments show as thumbs in their role cell with a way off; a frame switches to video", async () => {
   await open();
-  wake();
   api.attach(FACE, "reference");
   await waitFor(() => expect(strip()).toBeTruthy());
 
-  const reference = within(strip()).getByRole("group", { name: "Reference" });
-  expect(within(reference).getByTitle(/^Reference · /)).toBeTruthy();
+  const reference = within(strip()).getByRole("group", { name: "Image refs" });
+  expect(within(reference).getByTitle(/^Image refs · /)).toBeTruthy();
   expect(
     within(reference).getByRole("button", { name: "Remove face-01.png" }),
   ).toBeTruthy();
@@ -377,11 +375,11 @@ it("attachments show as thumbs in their role cell with a way off; a frame switch
   api.attach({ ...FACE, node: "node-frame", name: "out-2.png" }, "start");
   await waitFor(() =>
     expect(
-      within(strip()).getByRole("group", { name: "Animate" }),
+      within(strip()).getByRole("group", { name: "Start frame" }),
     ).toBeTruthy(),
   );
   expect(
-    within(within(strip()).getByRole("group", { name: "Animate" })).getByRole(
+    within(within(strip()).getByRole("group", { name: "Start frame" })).getByRole(
       "button",
       {
         name: "Remove out-2.png",
@@ -409,32 +407,39 @@ it("off a project page, the bar asks which project and lands there after sending
   expect(screen.getByTestId("address").textContent).toBe(`/p/${PROJECT}`);
 });
 
-it("the chrome follows focus: a press elsewhere collapses it, whatever the bar holds", async () => {
+it("the sheet is always drawn, and a press elsewhere folds nothing", async () => {
   await open();
   fill("A portrait.");
   api.attach(FACE, "reference");
-  wake();
   await waitFor(() => expect(strip()).toBeTruthy());
 
   leave();
-  await waitFor(() => expect(strip()).toBeNull());
-  // What it holds is not lost, only folded: the prompt stays in the row and
-  // the image it would send is counted.
+  fireEvent.pointerDown(document.body);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(strip()).toBeTruthy();
   expect(editor().textContent).toContain("A portrait.");
-  expect(screen.getByText("1 image")).toBeTruthy();
-
-  wake();
-  await waitFor(() => expect(strip()).toBeTruthy());
-  expect(screen.queryByText("1 image")).toBeNull();
+  expect(screen.getByRole("button", { name: "Remove face-01.png" })).toBeTruthy();
 });
 
-it("a press on something that takes no focus still folds it", async () => {
-  // macOS: a click on a button leaves focus where it was, so the editor keeps
-  // the caret while the person is plainly done with the bar.
-  await open();
-  wake();
-  await waitFor(() => expect(strip()).toBeTruthy());
+it("on the opened run the sheet stays away until something calls it up, and × puts it back", async () => {
+  // Not `open()`: that waits for the placeholder, and there is no sheet to
+  // hold one yet — its absence is the point.
+  render(
+    <MemoryRouter initialEntries={[`/p/${PROJECT}/r/run-0001`]}>
+      <CreateBarProvider>
+        <CreateBar />
+        <Driver />
+      </CreateBarProvider>
+    </MemoryRouter>,
+    { wrapper: TestProviders },
+  );
+  await screen.findByTestId("address");
+  expect(document.querySelector("[data-create-bar]")).toBeNull();
 
-  fireEvent.pointerDown(document.body);
-  await waitFor(() => expect(strip()).toBeNull());
+  act(() => api.loadRun({ project: PROJECT, kind: "image", prompt: "Again, but warmer." }));
+  await waitFor(() => expect(document.querySelector("[data-create-bar]")).toBeTruthy());
+  expect(screen.getByRole("textbox", { name: "Prompt" }).textContent).toContain("Again, but warmer.");
+
+  fireEvent.click(screen.getByRole("button", { name: "Put the sheet away" }));
+  await waitFor(() => expect(document.querySelector("[data-create-bar]")).toBeNull());
 });

@@ -45,15 +45,13 @@ function open() {
 afterEach(cleanup);
 beforeEach(() => vi.clearAllMocks());
 
-it("leaves the create bar its place, before the search", () => {
+it("holds the search and no create bar — that is a sheet at the foot of the column now", () => {
   open();
   const header = screen.getByRole("banner");
-  const slot = header.querySelector("[data-create-bar-slot]");
-  expect(slot).toBeTruthy();
-  const search = within(header).getAllByRole("combobox", {
-    name: "Find a character or project",
-  })[0]!;
-  expect(slot!.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(header.querySelector("[data-create-bar]")).toBeNull();
+  expect(
+    within(header).getAllByRole("combobox", { name: "Find a character or project" }).length,
+  ).toBeGreaterThan(0);
 });
 
 it("offers a search control below md, where HeaderSearch's own box is hidden", () => {

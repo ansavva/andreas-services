@@ -114,7 +114,7 @@ export function TemplateList({ onPick, cast }: Props) {
             key={entry.id}
             type="button"
             onClick={() => onPick(entry.prompt)}
-            className="flex flex-col gap-1 rounded-none border border-line p-3 text-left
+            className="flex flex-col gap-1 border border-line p-3 text-left
                        transition-colors hover:bg-surface-alt
                        focus-visible:outline-2 focus-visible:-outline-offset-2
                        focus-visible:outline-primary"

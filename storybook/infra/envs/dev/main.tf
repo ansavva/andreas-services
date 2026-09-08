@@ -23,11 +23,11 @@ module "auth" {
   environment = local.environment
 
   callback_urls = [
-    "http://localhost:5173" # Local frontend only
+    "http://localhost:5177" # Local frontend only
   ]
 
   logout_urls = [
-    "http://localhost:5173"
+    "http://localhost:5177"
   ]
 
   tags = local.common_tags
@@ -43,7 +43,7 @@ module "storage" {
   environment = local.environment
 
   cors_allowed_origins = [
-    "http://localhost:5173"
+    "http://localhost:5177"
   ]
 
   create_frontend_bucket = false

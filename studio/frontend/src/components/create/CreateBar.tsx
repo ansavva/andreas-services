@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
   Alert,
-  Badge,
   Button,
   Combobox,
+  Drawer,
+  IconButton,
   Popover,
+  Text,
   Toggle,
   ToggleGroup,
   iconButtonClass,
@@ -36,9 +38,12 @@ import { useResource } from "../../hooks/useResource";
 import type { CreatedRun, RunSummary } from "../../types";
 import { formatDate } from "../../utils/format";
 import {
+  CloseIcon,
+  ArrowUpIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   ImageIcon,
-  SendIcon,
-  SlidersIcon,
+  SettingsIcon,
   TemplateIcon,
   VideoIcon,
 } from "../common/icons";
@@ -47,8 +52,9 @@ import {
   type PromptToken,
 } from "../common/TokenizedPromptEditor";
 import { TemplateList } from "../run/TemplateList";
-import { CreateDrawer } from "./CreateDrawer";
-import { CreateModeStrip } from "./CreateModeStrip";
+import { AttachTiles } from "./AttachTiles";
+import { ModelChip, ModelList, ParamChipRow, ParamRows, chipClass } from "./CreateChips";
+import { AttachPicker } from "./AttachPicker";
 import { CreateSettings } from "./CreateSettings";
 import { castOf, defaultEntry, findEntry, sendsOf } from "./roles";
 import { seedPlan } from "./seedPlan";
@@ -83,26 +89,36 @@ interface Held {
   twin: RunSummary;
 }
 
+const GLYPH = "size-4 fill-none stroke-current stroke-[1.5]";
+
+/** Popovers hang UP from the panel: it sits at the bottom of the viewport. */
+const UP_RIGHT = "bottom-full top-auto left-auto right-0 mb-2 mt-0";
+
 /**
- * The create bar: what every screen makes runs from.
+ * The create panel: what every screen makes runs from.
  *
- * **One box at the top, always.** The old flow was a `New run` button, a
- * drawer asking three questions, a navigation to a draft's page and an editor
- * there; this is the tokenized prompt editor with the kind switch beside it,
- * the images under it and the parameters behind an icon. Enter sends. There
- * is no approve step — hard rule #2 is carried by the person pressing Send
- * over a prompt they can read.
+ * **A frosted sheet floating over the feed, always fully drawn** — the shape
+ * ElevenLabs' runner has. It was a one-line box in the header that grew when
+ * focused; a 72px header could hold nothing else, and the mode strip, the
+ * picker and the settings each appeared and vanished with the caret. Now the
+ * shell mounts it at the foot of the content column, sticky to the viewport's
+ * bottom, and nothing about it is folded: the mode switch top-left, the
+ * three icons top-right, a tile per image role, the prompt, and a row of chips
+ * for the model and the settings worth a press — each a glyph and a value
+ * that opens a short menu upward — and a gear holding every setting as rows.
+ * Enter sends. The round arrow is Send.
  *
- * **At rest it is one row.** The action row, the mode strip and the drawer
- * appear while the bar is *active* — focus is inside it, or one of its own
- * popovers or the duplicate warning is open — and go the moment a press lands
- * anywhere else, whatever the bar still holds. The prompt stays readable in
- * the row; images it holds are counted beside the settings icon so a Send
- * from the collapsed row is never a surprise.
+ * **There is no approve step.** Hard rule #2 is carried by the person
+ * pressing Send over a prompt they can read.
+ *
+ * **When the row is too narrow for the chips they collapse into the gear**,
+ * the way ElevenLabs' phone runner does: the model, the gear and Send. Below
+ * `md` the gear opens a bottom sheet — the mode switch, a Model box, and every
+ * setting as a row; above it, a panel of the same rows.
  *
  * **The state is not here.** `CreateBarContext` holds it so the feed can load
- * a run into the bar from a route element; this component reads it, draws it,
- * and does the one thing the context cannot: send.
+ * a run into the panel from a route element; this component reads it, draws
+ * it, and does the one thing the context cannot: send.
  */
 export function CreateBar() {
   const bar = useCreateBarState();
@@ -111,36 +127,26 @@ export function CreateBar() {
   const queryClient = useQueryClient();
   const toast = useToast();
 
-  const [focused, setFocused] = useState(false);
-  const [blurKey, setBlurKey] = useState(0);
-  const root = useRef<HTMLDivElement>(null);
-
-  // Focus leaving is not enough to know a press landed elsewhere: on macOS a
-  // click on a button does not take focus, so pressing a feed tile left the
-  // caret in the editor and the chrome open. A press anywhere outside the
-  // bar folds it and takes the caret with it, so typing does not carry on
-  // into a bar that looks closed. Its popovers render inside it, so a press
-  // in one is a press inside.
-  useEffect(() => {
-    const onPress = (event: PointerEvent) => {
-      const bar = root.current;
-      if (!bar || bar.contains(event.target as Node | null)) return;
-      setFocused(false);
-      // Through Lexical, not `.blur()` on the element: the editor would put
-      // focus straight back when its next update commits.
-      setBlurKey((key) => key + 1);
-    };
-    document.addEventListener("pointerdown", onPress, true);
-    return () => document.removeEventListener("pointerdown", onPress, true);
-  }, []);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const promptBox = useRef<HTMLDivElement>(null);
+  const [promptFocused, setPromptFocused] = useState(false);
+  // Whether the prompt at rest has more than its two lines — the fade is
+  // drawn only then, so a short prompt is not dimmed for nothing.
+  const [promptOverflows, setPromptOverflows] = useState(false);
+  useEffect(() => {
+    const content = promptBox.current?.querySelector<HTMLElement>("[contenteditable]");
+    if (!content) return;
+    setPromptOverflows(content.scrollHeight > content.clientHeight + 1);
+  }, [bar.prompt, promptFocused]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetView, setSheetView] = useState<"settings" | "models">("settings");
+  const sheetRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [held, setHeld] = useState<Held | null>(null);
 
   const attachments = bar.attachments[bar.kind];
-  const active = focused || templatesOpen || settingsOpen || held !== null;
 
   // The registry is per-deploy, so the key carries no id.
   const models = useResource(
@@ -157,10 +163,9 @@ export function CreateBar() {
     bar.onProject ? null : ["projects"],
     useCallback(() => getProjects(), []),
   );
-  // Blocks for the `{` menu. Lazily: a bar nobody has touched
-  // has no reason to read the template library.
+  // Blocks for the `{` menu and the preview.
   const templates = useResource(
-    active ? ["templates"] : null,
+    ["templates"],
     useCallback(() => getTemplates(), []),
   );
 
@@ -261,10 +266,10 @@ export function CreateBar() {
    * Send: a draft, then the duplicate question, then the submit.
    *
    * **The draft is created whole.** `POST /api/runs` takes the plan and the
-   * sends together, so what the fingerprint hashes is what was in the bar. A
-   * prompt that cites a block or a character goes through `PATCH /plan` too,
-   * because that is the route that expands a template into the prompt the
-   * model sees — creation stores the plan as given.
+   * sends together, so what the fingerprint hashes is what was in the panel.
+   * A prompt that cites a block or a character goes through `PATCH /plan`
+   * too, because that is the route that expands a template into the prompt
+   * the model sees — creation stores the plan as given.
    *
    * The template is the instruction and not a field: `PATCH /plan` expands it
    * into `prompt` and stores only that, so what the fingerprint covers is the
@@ -388,296 +393,432 @@ export function CreateBar() {
       ? "Describe what to make…"
       : "Pick a project, then describe what to make…";
 
+  const setParams = (next: Record<string, unknown>) => {
+    if (entry) bar.setParams(entry.model, next);
+  };
+
+  const kindSwitch = (
+    // IMAGE / VIDEO. Single-select and never empty: a run is one or the other,
+    // and the tiles under the switch are drawn from it.
+    <ToggleGroup.Root
+      aria-label="Kind"
+      value={[bar.kind]}
+      onValueChange={(next: string[]) => {
+        const chosen = next[0];
+        if (chosen === "image" || chosen === "video") setKind(chosen);
+      }}
+      size="sm"
+      className="gap-0.5 rounded-sm bg-fill p-0.5"
+    >
+      <Toggle value="image" className={pillClass(bar.kind === "image")}>
+        <ImageIcon className={GLYPH} />
+        Image
+      </Toggle>
+      <Toggle value="video" className={pillClass(bar.kind === "video")}>
+        <VideoIcon className={GLYPH} />
+        Video
+      </Toggle>
+    </ToggleGroup.Root>
+  );
+
+  const projectPicker = !bar.onProject && (
+    <Combobox
+      aria-label="Project"
+      options={projectOptions}
+      value={target ?? null}
+      placeholder="Project"
+      onValueChange={(next: string) => bar.setProject(next || null)}
+    />
+  );
+
+  if (!bar.shown) return null;
+
   return (
     <div
-      // The slot keeps its resting height whatever the bar is doing. Once
-      // active the box FLOATS over the page: the action row, the strip, the
-      // drawer and a taller prompt all grow downwards over the content, and
-      // nothing beneath the sticky header moves. 50px is the resting box: a
-      // 44px control row, its 2px of vertical padding and the two borders.
-      ref={root}
-      className="relative min-h-[50px] min-w-0 flex-1"
+      className="flex flex-col gap-2"
       data-create-bar=""
-      onFocus={() => setFocused(true)}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null))
-          setFocused(false);
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && bar.dismissible && !event.defaultPrevented) bar.dismiss();
       }}
     >
-      <div
-        // Active, the box leaves the slot: `absolute` over the page above
-        // `md`, and on a phone `fixed` to the viewport's own edges. The slot
-        // is 246px between the menu button and the search icon, which is a
-        // reasonable resting bar and a hopeless composer — the mode strip and
-        // the picker drawer both live in here. It covers the two icons beside
-        // it while it is open, which is what folding it puts back.
-        className={
-          active
-            ? "absolute inset-x-0 top-0 z-30 flex flex-col max-md:fixed max-md:inset-x-2 max-md:top-2"
-            : "flex flex-col"
-        }
-      >
-        <div
-          className={`flex flex-col rounded-none border bg-card ${active ? "border-ink" : "border-line"}`}
-        >
-          {/* **`flex-wrap`, for one width: 390px.** The row holds the kind
-              toggles, the prompt, two popover triggers and Send, and at
-              390px — where it is also sharing the header with the menu button
-              and the search icon — those come to more than there is. The
-              prompt is the item that gave way: it was rendered 0px wide, so
-              the one control this bar exists for could not be typed in, and
-              Send overlapped the search icon. Below `md` the two triggers
-              take a line of their own (`order-last basis-full`) and only once
-              the bar is active and floating; at rest it is one row, which is
-              what keeps it inside a 56px header. */}
-          <div className="flex flex-wrap items-start gap-2 py-0.5 pl-0.5 pr-2">
-            {/* IMAGE / VIDEO. Single-select and never empty: a run is one or
-              the other, and the strip under the bar is drawn from it. */}
-            <ToggleGroup.Root
-              aria-label="Kind"
-              value={[bar.kind]}
-              onValueChange={(next: string[]) => {
-                const chosen = next[0];
-                if (chosen === "image" || chosen === "video") setKind(chosen);
+      {held && (
+        <Alert.Root intent="warning">
+          <Alert.Title>This request has been run here before</Alert.Title>
+          <Alert.Description>
+            <span>
+              Another run in this project sent exactly this prompt, these
+              parameters and these images on {formatDate(held.twin.created)}.
+              Sending again bills again — a model answers differently every
+              time, so a second attempt is often the point.{" "}
+            </span>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button size="sm" disabled={busy} onClick={() => void send(true)}>
+                Send anyway
+              </Button>
+              <Button
+                size="sm"
+                intent="secondary"
+                disabled={busy}
+                onClick={() => void discard()}
+              >
+                Discard
+              </Button>
+              <Button
+                size="sm"
+                intent="secondary"
+                onClick={() => navigate(runPath(held.twin.project, held.twin.id))}
+              >
+                Open the earlier run
+              </Button>
+            </div>
+          </Alert.Description>
+        </Alert.Root>
+      )}
+
+      {failure && (
+        <Alert.Root intent="danger">
+          <Alert.Title>Could not send this run</Alert.Title>
+          <Alert.Description>{failure}</Alert.Description>
+        </Alert.Root>
+      )}
+
+      {/* The picker: a second sheet ABOVE this one while a tile is
+          highlighted, holding the library's file navigation. Absolute off the
+          sheet's own box, so the sheet neither grows nor moves. */}
+      <div className="relative">
+        {bar.role !== null && entry && (
+          <div className="absolute inset-x-0 bottom-full mb-2">
+            <AttachPicker
+              key={bar.role}
+              role={bar.role}
+              projectRoot={project.data?.root ?? null}
+              attached={new Set(attachments.map((each) => each.ref.node))}
+              onAttach={(ref: AttachRef) => {
+                if (bar.role) attach(ref, bar.role);
               }}
-              // `sm`: two 32px squares. At 390px the row also holds the menu
-              // button and the search icon, and two 44s would push it over.
-              size="sm"
-              className="mt-1 shrink-0 gap-0 border-r border-line pr-1"
-            >
-              <Toggle
-                value="image"
-                iconOnly
-                label="Image"
-                className="rounded-none"
-              >
-                <ImageIcon />
-              </Toggle>
-              <Toggle
-                value="video"
-                iconOnly
-                label="Video"
-                className="rounded-none"
-              >
-                <VideoIcon />
-              </Toggle>
-            </ToggleGroup.Root>
-
-            {/* Off a project page the bar has to be told where a run goes. On
-              one, the route says. Inline above `md`; on a phone the picker
-              takes a row of its own under the prompt, below. */}
-            {!bar.onProject && (
-              <div className="hidden w-40 shrink-0 self-center md:block">
-                <Combobox
-                  aria-label="Project"
-                  options={projectOptions}
-                  value={target ?? null}
-                  placeholder="Project"
-                  onValueChange={(next: string) => bar.setProject(next || null)}
-                />
-              </div>
-            )}
-
-            {/* `basis-24`: never narrower than a couple of words, and the
-                first thing to take the space left over. */}
-            <div className="min-w-0 flex-1 basis-24 py-2.5 md:basis-auto">
-              <TokenizedPromptEditor
-                value={bar.prompt}
-                onValueChange={bar.setPrompt}
-                tokens={tokens}
-                ariaLabel="Prompt"
-                placeholder={placeholder}
-                className=""
-                // One line at rest; eight before it scrolls.
-                contentClassName="min-h-6 max-h-48 overflow-y-auto"
-                onSubmit={() => void send()}
-                focusKey={bar.focus}
-                blurKey={blurKey}
-              />
-            </div>
-
-            {!active && attachments.length > 0 && (
-              <Badge size="sm" className="mt-3 shrink-0 rounded-none">
-                {attachments.length}{" "}
-                {attachments.length === 1 ? "image" : "images"}
-              </Badge>
-            )}
-
-            {/* Both popovers, together: inline above `md`, and below it
-                a full-width line under the prompt that appears with the bar's
-                active state. `order-last` keeps Send where it is rather than
-                letting it move between lines as the bar opens. */}
-            <div
-              className={`${active ? "flex" : "hidden"} order-last basis-full items-start justify-end gap-2
-                          md:order-none md:flex md:basis-auto`}
-            >
-              <Popover.Root open={templatesOpen} onOpenChange={setTemplatesOpen}>
-                <Popover.Trigger
-                  aria-label="Template"
-                  title="Start from a template"
-                  className={iconButtonClass({
-                    size: "sm",
-                    pressed: templatesOpen,
-                    className: "mt-1.5 rounded-none",
-                  })}
-                >
-                  <TemplateIcon />
-                </Popover.Trigger>
-                <Popover.Content
-                  label="Templates"
-                  className="left-auto right-0 w-[min(28rem,calc(100vw-2rem))] max-w-none rounded-none p-0"
-                >
-                  <TemplateList
-                    cast={cast.length}
-                    onPick={(prompt: string) => void pickTemplate(prompt)}
-                  />
-                </Popover.Content>
-              </Popover.Root>
-
-              <Popover.Root open={settingsOpen} onOpenChange={setSettingsOpen}>
-                <Popover.Trigger
-                  aria-label="Settings"
-                  title="Settings"
-                  className={iconButtonClass({
-                    size: "sm",
-                    pressed: settingsOpen,
-                    className: "mt-1.5 rounded-none",
-                  })}
-                >
-                  <SlidersIcon />
-                </Popover.Trigger>
-                <Popover.Content
-                  label="Settings"
-                  className="left-auto right-0 w-[min(40rem,calc(100vw-2rem))] max-w-none rounded-none"
-                >
-                  {entry && (
-                    <CreateSettings
-                      kind={bar.kind}
-                      models={models.data ?? {}}
-                      entry={entry}
-                      params={params}
-                      onModel={bar.setModel}
-                      onParams={(next: Record<string, unknown>) =>
-                        bar.setParams(entry.model, next)
-                      }
-                    />
-                  )}
-                </Popover.Content>
-              </Popover.Root>
-            </div>
-
-            {/* The word is hidden below `md`, not the button: the icon carries
-                the meaning at 390px, and leaving the text in the DOM keeps the
-                accessible name and the busy state a screen reader hears. */}
-            <Button
-              size="sm"
-              className="mt-1.5 inline-flex shrink-0 items-center gap-1.5"
-              disabled={!canSend}
-              onClick={() => void send()}
-            >
-              <SendIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
-              <span className="sr-only md:not-sr-only">
-                {busy ? "Sending…" : "Send"}
-              </span>
-            </Button>
+              onClose={() => bar.setRole(null)}
+            />
           </div>
+        )}
 
-          {/* Below `md` the picker is a row of its own, and only while the bar
-              is active: at rest it made the resting bar two rows tall — 103px
-              inside a 56px header, which clipped the top row off the screen.
-              Nothing is hidden by it, because the prompt's own placeholder is
-              "Pick a project, then describe what to make…" until one is set. */}
-          {!bar.onProject && active && (
-            <div className="border-t border-line px-2 py-1 md:hidden">
-              <Combobox
-                aria-label="Project"
-                options={projectOptions}
-                value={target ?? null}
-                placeholder="Project"
-                onValueChange={(next: string) => bar.setProject(next || null)}
-              />
-            </div>
-          )}
+      {/* The sheet. `bg-sheet` over a blur rather than a solid: media
+          scrolling under it stays faintly visible, which is what says
+          "floating over the feed" rather than "the page ends here". */}
+      <div
+        className="flex flex-col gap-3 rounded-lg bg-sheet p-3 shadow-[0_12px_48px_rgba(0,0,0,0.55)]
+                   ring-1 ring-line backdrop-blur-xl"
+      >
+        <div className="flex items-center justify-between gap-2">
+          {kindSwitch}
+
+          <div className="flex items-center gap-0.5">
+            <Popover.Root open={templatesOpen} onOpenChange={setTemplatesOpen}>
+              <Popover.Trigger
+                aria-label="Template"
+                title="Start from a template"
+                className={iconButtonClass({ size: "sm", pressed: templatesOpen })}
+              >
+                <TemplateIcon />
+              </Popover.Trigger>
+              <Popover.Content
+                label="Templates"
+                className={`${UP_RIGHT} w-[min(28rem,calc(100vw-2rem))] max-w-none p-0`}
+              >
+                <TemplateList
+                  cast={cast.length}
+                  onPick={(prompt: string) => void pickTemplate(prompt)}
+                />
+              </Popover.Content>
+            </Popover.Root>
+
+            {/* Where the sheet is not always drawn — the opened run — the
+                way to put it away. Escape does the same. */}
+            {bar.dismissible && (
+              <IconButton size="sm" label="Put the sheet away" onClick={bar.dismiss}>
+                <CloseIcon />
+              </IconButton>
+            )}
+
+
+          </div>
         </div>
 
-        {active && entry && (
-          <div className="flex flex-col rounded-none border border-t-0 border-line bg-card">
-            <CreateModeStrip
+        {entry && (
+          <AttachTiles
+            kind={bar.kind}
+            entry={entry}
+            attachments={attachments}
+            role={bar.role}
+            onRole={bar.setRole}
+            onDetach={bar.detach}
+            onSwapFrames={bar.swapFrames}
+            onClear={bar.clearAttachments}
+            keep={bar.keep}
+            onKeep={bar.setKeep}
+          />
+        )}
+
+        {/* Two lines at rest, faded where more is cut off; eight once the
+            caret is in it, then it scrolls. A long prompt at rest was making
+            the sheet half the viewport. Focus is tracked on the box rather
+            than read off the editor: React hears `focusin`/`focusout`. */}
+        <div
+          ref={promptBox}
+          className="px-1"
+          onFocusCapture={() => setPromptFocused(true)}
+          onBlurCapture={(event) => {
+            if (!promptBox.current?.contains(event.relatedTarget as Node | null))
+              setPromptFocused(false);
+          }}
+        >
+          <TokenizedPromptEditor
+            value={bar.prompt}
+            onValueChange={bar.setPrompt}
+            tokens={tokens}
+            ariaLabel="Prompt"
+            placeholder={placeholder}
+            className=""
+            family="body"
+            menuSide="up"
+            contentClassName={
+              promptFocused
+                ? "min-h-12 max-h-48 overflow-y-auto"
+                : `min-h-12 max-h-12 overflow-hidden ${
+                    promptOverflows
+                      ? "[mask-image:linear-gradient(to_bottom,black_40%,transparent)]"
+                      : ""
+                  }`
+            }
+            onSubmit={() => void send()}
+            focusKey={bar.focus}
+          />
+        </div>
+
+        {/* `@container`: the chips show only when the row is wide enough for
+            them (`@min-[40rem]`), and collapse into the gear otherwise. A
+            container query rather than `md:`, because a narrow window with the
+            sidebar open is the phone's problem at a desktop breakpoint. */}
+        <div className="@container flex items-center gap-1">
+          {/* Off a project page the panel has to be told where a run goes.
+              On one, the route says. Inline above `md`; a row of its own
+              under the chips on a phone. */}
+          {projectPicker && (
+            <div className="hidden w-44 shrink-0 md:block">{projectPicker}</div>
+          )}
+
+          {entry && (
+            <ModelChip
               kind={bar.kind}
+              models={models.data ?? {}}
               entry={entry}
-              attachments={attachments}
-              role={bar.role}
-              onRole={bar.setRole}
-              onDetach={bar.detach}
-              onClear={bar.clearAttachments}
-              keep={bar.keep}
-              onKeep={bar.setKeep}
-              params={params}
-              onParams={(next: Record<string, unknown>) =>
-                bar.setParams(entry.model, next)
-              }
+              onModel={bar.setModel}
             />
-            {bar.role !== null && target && (
-              <CreateDrawer
-                projectId={target}
-                cast={projectCast}
-                attached={new Set(attachments.map((each) => each.ref.node))}
-                onAttach={(ref: AttachRef) => {
-                  if (bar.role) attach(ref, bar.role);
-                }}
-                onClose={() => bar.setRole(null)}
-              />
-            )}
-          </div>
-        )}
+          )}
 
-        {held && (
-          <Alert.Root intent="warning" className="mt-2 rounded-none">
-            <Alert.Title>This request has been run here before</Alert.Title>
-            <Alert.Description>
-              <span>
-                Another run in this project sent exactly this prompt, these
-                parameters and these images on {formatDate(held.twin.created)}.
-                Sending again bills again — a model answers differently every
-                time, so a second attempt is often the point.{" "}
-              </span>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => void send(true)}
-                >
-                  Send anyway
-                </Button>
-                <Button
-                  size="sm"
-                  intent="secondary"
-                  disabled={busy}
-                  onClick={() => void discard()}
-                >
-                  Discard
-                </Button>
-                <Button
-                  size="sm"
-                  intent="secondary"
-                  onClick={() =>
-                    navigate(runPath(held.twin.project, held.twin.id))
-                  }
-                >
-                  Open the earlier run
-                </Button>
-              </div>
-            </Alert.Description>
-          </Alert.Root>
-        )}
+          {entry && (
+            <ParamChipRow
+              entry={entry}
+              params={params}
+              onParams={setParams}
+              className="hidden @min-[40rem]:flex"
+            />
+          )}
 
-        {failure && (
-          <Alert.Root intent="danger" className="mt-2 rounded-none">
-            <Alert.Title>Could not send this run</Alert.Title>
-            <Alert.Description>{failure}</Alert.Description>
-          </Alert.Root>
-        )}
+          {/* The gear, above `md`: every setting as rows, in a panel hung
+              from the chip row. The same rows the phone sheet draws — the six
+              chips' and the rest of the schema's — so when the chips have
+              collapsed into it nothing is out of reach. */}
+          {entry && (
+            <Popover.Root open={settingsOpen} onOpenChange={setSettingsOpen}>
+              <Popover.Trigger
+                aria-label="Settings"
+                title="Settings"
+                className={`${chipClass} max-md:hidden`}
+              >
+                <SettingsIcon className={GLYPH} />
+              </Popover.Trigger>
+              <Popover.Content
+                label="Settings"
+                className="bottom-full top-auto left-auto right-0 mb-2 mt-0 max-h-[70vh] w-[min(26rem,calc(100vw-2rem))] max-w-none overflow-y-auto"
+              >
+                <ParamRows entry={entry} params={params} onParams={setParams} />
+                <CreateSettings entry={entry} params={params} onParams={setParams} />
+              </Popover.Content>
+            </Popover.Root>
+          )}
+
+          {/* The phone's gear: the sheet. Two views — the settings as rows,
+              and "Select a model" in its place when the Model row is pressed,
+              the way ElevenLabs pages the same sheet rather than stacking a
+              picker over it. */}
+          <Drawer.Root
+            side="bottom"
+            open={sheetOpen}
+            onOpenChange={(next: boolean) => {
+              setSheetOpen(next);
+              if (!next) setSheetView("settings");
+            }}
+          >
+            <Drawer.Trigger
+              aria-label="Settings"
+              title="Settings"
+              className={`${chipClass} bg-fill md:hidden`}
+            >
+              <SettingsIcon className={GLYPH} />
+            </Drawer.Trigger>
+            <Drawer.Backdrop />
+            <Drawer.Panel ref={sheetRef} className="max-h-[85vh] overflow-y-auto rounded-t-lg pt-0">
+              <Drawer.Title className="sr-only">
+                {sheetView === "models" ? "Select a model" : "Settings"}
+              </Drawer.Title>
+              <SheetHandle panel={sheetRef} onDismiss={() => setSheetOpen(false)} />
+              {entry && sheetView === "models" ? (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <IconButton size="sm" label="Back to settings" onClick={() => setSheetView("settings")}>
+                      <ChevronLeftIcon />
+                    </IconButton>
+                    <Text as="span" variant="body" weight="medium">
+                      Select a model
+                    </Text>
+                  </div>
+                  <ModelList
+                    kind={bar.kind}
+                    models={models.data ?? {}}
+                    entry={entry}
+                    autoFocus
+                    onModel={(model) => {
+                      bar.setModel(model);
+                      setSheetView("settings");
+                    }}
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  <div className="[&>div]:w-full [&>div>button]:flex-1">{kindSwitch}</div>
+                  {entry && (
+                    <>
+                      <div className="flex flex-col gap-1.5">
+                        <Text as="span" variant="body">
+                          Model
+                        </Text>
+                        <Button
+                          intent="secondary"
+                          size="md"
+                          className="w-full justify-between rounded-md border border-line bg-transparent px-3 font-normal"
+                          onClick={() => setSheetView("models")}
+                        >
+                          <span className="truncate">{entry.key}</span>
+                          <ChevronRightIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5] text-muted" />
+                        </Button>
+                      </div>
+                      <ParamRows entry={entry} params={params} onParams={setParams} />
+                      <CreateSettings entry={entry} params={params} onParams={setParams} />
+                    </>
+                  )}
+                </div>
+              )}
+            </Drawer.Panel>
+          </Drawer.Root>
+
+          <span className="flex-1" />
+
+          {/* Round, white, an arrow — the one filled control on the sheet.
+              The word is for assistive tech; the shape is the word for
+              everyone else. */}
+          <Button
+            size="sm"
+            aria-label={busy ? "Sending…" : "Send"}
+            title="Send (Enter)"
+            className="size-9 shrink-0 rounded-pill p-0"
+            disabled={!canSend}
+            onClick={() => void send()}
+          >
+            <ArrowUpIcon className="size-5 fill-none stroke-current stroke-2" />
+          </Button>
+        </div>
+
+        {projectPicker && <div className="md:hidden">{projectPicker}</div>}
       </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One half of the mode switch. The package's pressed state is the primary
+ * fill — white on this palette — and ElevenLabs' is a lighter grey in the
+ * same track, so the pressed classes are overridden here.
+ */
+function pillClass(on: boolean): string {
+  return `h-7 gap-1.5 rounded-md px-2.5 text-sm ${
+    on
+      ? "bg-fill-active text-ink hover:bg-fill-active active:bg-fill-active"
+      : "text-muted hover:bg-fill hover:text-ink"
+  }`;
+}
+
+/**
+ * The grab strip at the top of the phone sheet, and the drag that dismisses
+ * it.
+ *
+ * **The gesture lives on the strip, not the sheet.** A finger on the rows is
+ * scrolling them, and the browser claims a vertical touch there for the
+ * scroll (`pointercancel`) before this could read it; the strip is
+ * `touch-action: none`, so a touch on it is ours from the first pixel. The
+ * sheet follows the finger downward — never up — and lets go past 96px, or
+ * past 24px with a flick; short of that it snaps back. Escape and the
+ * backdrop still close it, so this is the phone's affordance rather than the
+ * only one.
+ */
+function SheetHandle({
+  panel,
+  onDismiss,
+}: {
+  panel: React.RefObject<HTMLDivElement | null>;
+  onDismiss: () => void;
+}) {
+  const start = useRef<{ y: number; at: number } | null>(null);
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    start.current = { y: event.clientY, at: performance.now() };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    if (panel.current) panel.current.style.transition = "none";
+  };
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const from = start.current;
+    const sheet = panel.current;
+    if (!from || !sheet) return;
+    const dy = Math.max(0, event.clientY - from.y);
+    sheet.style.transform = dy > 0 ? `translateY(${dy}px)` : "";
+  };
+  const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const from = start.current;
+    const sheet = panel.current;
+    start.current = null;
+    if (!from || !sheet) return;
+    const dy = event.clientY - from.y;
+    const speed = dy / Math.max(1, performance.now() - from.at);
+    sheet.style.transition = "transform 160ms ease-out";
+    if (dy > 96 || (dy > 24 && speed > 0.6)) {
+      sheet.style.transform = "translateY(100%)";
+      window.setTimeout(onDismiss, 150);
+    } else {
+      sheet.style.transform = "";
+    }
+  };
+
+  return (
+    <div
+      role="presentation"
+      className="-mx-4 mb-2 flex h-8 cursor-grab touch-none items-center justify-center active:cursor-grabbing"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+    >
+      <span aria-hidden="true" className="block h-1 w-12 rounded-pill bg-fill-active" />
     </div>
   );
 }

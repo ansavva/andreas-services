@@ -155,7 +155,7 @@ export function MediaPicker({ noun, startId, taken, onSubmit, onClose }: Props) 
 
         <TagFilter value={tags} onChange={setTags} searching={searching} />
 
-        <div className="min-h-48 flex-1 overflow-auto rounded-none border border-line">
+        <div className="min-h-48 flex-1 overflow-auto border border-line">
           {loading && <SectionLoading label="Loading folder" />}
 
           {!loading && (
@@ -282,7 +282,7 @@ function Tile({
       aria-pressed={chosen}
       aria-label={already ? `${file.name} — already sent` : file.name}
       title={file.name}
-      className={`relative flex flex-col gap-1 rounded-none border p-1 text-left transition-colors
+      className={`relative flex flex-col gap-1 border p-1 text-left transition-colors
                   disabled:cursor-default disabled:opacity-40
                   focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary
                   ${chosen ? "border-primary ring-2 ring-primary" : "border-line hover:bg-surface-alt"}`}
@@ -294,7 +294,7 @@ function Tile({
         isVideo={file.kind === "video"}
         aspect="portrait"
         dimmed={chosen}
-        className="w-full rounded-none"
+        className="w-full"
       />
       <Text variant="caption" tone="muted" className="truncate">
         {already ? "already sent" : file.name}
@@ -304,7 +304,7 @@ function Tile({
         // one round mark left, and it read as a different vocabulary from the
         // ordinals everywhere else (a movie's cut order, a folder's index).
         <span
-          className="absolute right-2 top-2 flex size-6 items-center justify-center rounded-none
+          className="absolute right-2 top-2 flex size-6 items-center justify-center
                      bg-primary font-mono text-xs tabular-nums text-primary-text"
         >
           {position + 1}

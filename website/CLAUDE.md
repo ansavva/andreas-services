@@ -105,7 +105,7 @@ npm run dev            # RR SSR dev server (needs WEBSITE_API_URL for forms/admi
 cd ../backend
 poetry install
 docker compose up dynamodb                  # local DynamoDB on :8001
-poetry run python -m website_core.handlers.local.api.api_dev_server  # :8000
+poetry run python -m website_core.handlers.local.api.api_dev_server  # :8002
 poetry run pytest                         # backend unit tests (moto)
 ```
 

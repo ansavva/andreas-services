@@ -335,11 +335,15 @@ export const PauseIcon = ({ className }: Props) => (
 
 // --- the run feed and the opened run -------------------------------------
 
-/** The project's Settings tab — the old Overview, behind a gear. */
+/**
+ * A cog: settings — the project's Settings tab, and the create sheet's gear
+ * on a phone. It was a circle with eight rays, which reads as a sun; a gear
+ * has teeth, and ElevenLabs' is this one.
+ */
 export const SettingsIcon = ({ className }: Props) => (
   <Glyph className={className}>
+    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
     <circle cx="12" cy="12" r="3" />
-    <path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" />
   </Glyph>
 );
 
@@ -443,5 +447,75 @@ export const FrameEndIcon = ({ className }: Props) => (
   <Glyph className={className}>
     <rect x="3" y="5" width="18" height="14" />
     <path d="M3 15h18" />
+  </Glyph>
+);
+
+// --- the create panel's chip row ------------------------------------------
+//
+// ElevenLabs' runner names each setting with a glyph and a value and no word
+// (`▭ 16:9`, `⤢ 720p`, `◷ 4s`). These are those glyphs; the word is the
+// control's `aria-label`.
+
+/** A wide rectangle: the aspect ratio. */
+export const AspectIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <rect x="3" y="7" width="18" height="10" rx="1.5" />
+  </Glyph>
+);
+
+/** Two arrows pushing a corner out: resolution. */
+export const ResolutionIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M14 4h6v6M4 20l7-7M20 4l-7 7M4 14v6h6" />
+  </Glyph>
+);
+
+/** A clock face: a clip's duration. */
+export const ClockIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 7.5V12l3 2" />
+  </Glyph>
+);
+
+/** A diamond: quality. */
+export const DiamondIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M12 3l9 8-9 10-9-10 9-8Z" />
+    <path d="M3 11h18" />
+  </Glyph>
+);
+
+/** Three stacked sheets: how many outputs. */
+export const LayersIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="m12 4 8 4-8 4-8-4 8-4Z" />
+    <path d="m4 12 8 4 8-4M4 16l8 4 8-4" />
+  </Glyph>
+);
+
+/** Four cells: the model — a registry entry, one of a set. */
+export const ModelIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <rect x="4" y="4" width="7" height="7" rx="1.5" />
+    <rect x="13" y="4" width="7" height="7" rx="1.5" />
+    <rect x="4" y="13" width="7" height="7" rx="1.5" />
+    <rect x="13" y="13" width="7" height="7" rx="1.5" />
+  </Glyph>
+);
+
+/** A picture with a plus: attach a reference. */
+export const ImagePlusIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M14 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6" />
+    <circle cx="8.5" cy="10" r="1.5" />
+    <path d="m21 16-5-5-6 6-2-2-5 5M18 3v6M15 6h6" />
+  </Glyph>
+);
+
+/** Two arrows passing: swap the start and end frames. */
+export const SwapIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M16 3l4 4-4 4M20 7H8M8 21l-4-4 4-4M4 17h12" />
   </Glyph>
 );

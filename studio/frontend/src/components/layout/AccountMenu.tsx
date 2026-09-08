@@ -31,11 +31,11 @@ export function AccountMenu({ collapsed = false }: { collapsed?: boolean }) {
         title={name}
         className={
           collapsed
-            ? iconButtonClass({ size: "md", className: "rounded-none" })
+            ? iconButtonClass({ size: "md", className: "" })
             : buttonClass({
                 intent: "secondary",
                 size: "md",
-                className: "w-full justify-between rounded-none px-2",
+                className: "w-full justify-between px-2",
               })
         }
       >
@@ -50,7 +50,7 @@ export function AccountMenu({ collapsed = false }: { collapsed?: boolean }) {
         <ProfileIcon />
       </Dropdown.Trigger>
 
-      <Dropdown.Content className="bottom-full top-auto mb-1 mt-0 rounded-none">
+      <Dropdown.Content className="bottom-full top-auto mb-1 mt-0">
         {email && (
           <Dropdown.Item disabled className="font-mono text-xs">
             {email}

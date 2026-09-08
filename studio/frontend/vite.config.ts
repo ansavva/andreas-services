@@ -22,6 +22,11 @@ const webFirstExtensions = [
   ".json",
 ];
 
+// The dev port is read off the environment `dev-up.sh` exports. Declared here
+// rather than pulling in `@types/node` for one property: this file is the only
+// one the app compiles that runs under Node.
+declare const process: { env: Record<string, string | undefined> };
+
 export default defineConfig({
   plugins: [tailwindcss(), react()],
   resolve: { extensions: webFirstExtensions },
@@ -34,7 +39,10 @@ export default defineConfig({
     include: ["@ansavva/design-system"],
     rollupOptions: { resolve: { extensions: webFirstExtensions } },
   },
-  server: { port: 5173 },
+  // `dev-up.sh` picks the port against what the dev stack accepts and exports
+  // it; `strictPort` because a hop to the next free port lands on one Cognito
+  // has never heard of, and the sign-in fails a screen later with no clue.
+  server: { port: Number(process.env.STUDIO_DEV_PORT ?? 5173), strictPort: true },
 
   // What is tested here is addressing, in both directions.
   //

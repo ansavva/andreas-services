@@ -23,8 +23,8 @@ export default tseslint.config(
       // docs/WEB_APP.md's "UI vocabulary" section for the one-line summary of
       // all nine and the PRs that established them.
 
-      // R1 corner radius — studio is square.
-      "studio/no-rounded-corners": "error",
+      // R1 corner radius — a step on the design system's scale, never a number.
+      "studio/radius-scale": "error",
       // R3 raw ramp tokens — colour goes through a semantic role.
       "studio/no-neutral-ramp": "error",
       // R5 literal glyphs — an icon is an SVG, not a character.

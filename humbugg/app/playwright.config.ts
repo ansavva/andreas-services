@@ -20,7 +20,7 @@ export default defineConfig({
   reporter: process.env.CI ? 'list' : [['list'], ['html', { open: 'never' }]],
   globalSetup: live ? './e2e/support/live-setup.mjs' : undefined,
   use: {
-    baseURL: live ? 'http://localhost:8081' : 'http://localhost:4173',
+    baseURL: live ? 'http://localhost:8081' : 'http://localhost:4174',
     trace: 'retain-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
@@ -37,8 +37,8 @@ export default defineConfig({
         //    without it an export silently reuses whichever EXPO_PUBLIC_* values the
         //    previous export inlined (measured: same bundle hash across env changes).
         command:
-          'npx expo export -p web --output-dir dist-e2e --clear && npx serve -s dist-e2e -l 4173 --no-clipboard',
-        url: 'http://localhost:4173',
+          'npx expo export -p web --output-dir dist-e2e --clear && npx serve -s dist-e2e -l 4174 --no-clipboard',
+        url: 'http://localhost:4174',
         reuseExistingServer: !process.env.CI,
         timeout: 300_000,
         env: {

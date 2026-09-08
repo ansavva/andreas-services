@@ -2,7 +2,7 @@
 //
 // **Why a context and not the bar's own `useState`.** The bar sits in `TopBar`
 // and the things that fill it — Edit on a feed row, Use-in-prompt on a tile,
-// Animate on an output, Use as → Reference in the opened run — sit in route
+// Start frame on an output, Use as → Reference in the opened run — sit in route
 // elements nowhere near it. One provider above both is what lets a tile hand
 // an image to a bar it cannot see, the same reason `SidebarContext` exists.
 //
@@ -112,6 +112,14 @@ interface CreateBarState {
   keep: boolean;
   /** Bumped when something loads the bar, so it can take focus. */
   focus: number;
+  /**
+   * Whether something has called the sheet up since the run on screen was
+   * opened. On the opened run the sheet is not drawn until Edit, Rerun,
+   * Use as reference or a tile attaches something — it would cover the
+   * filmstrip and the transport with a prompt about some other run.
+   * Reset every time a different run opens. Read as `shown`.
+   */
+  summoned: boolean;
 }
 
 interface CreateBarStateValue extends CreateBarState {
@@ -129,6 +137,14 @@ interface CreateBarStateValue extends CreateBarState {
   detach(index: number): void;
   /** Take every attachment off the current kind. */
   clearAttachments(): void;
+  /** The start frame becomes the end frame and vice versa. A no-op unless both are held. */
+  swapFrames(): void;
+  /** Whether the sheet is drawn at all — false on the opened run until something calls it up. */
+  shown: boolean;
+  /** Whether the sheet can be put away — only where it is not always drawn. */
+  dismissible: boolean;
+  /** Put the sheet away, on the screen where it can be. */
+  dismiss(): void;
   /** After a send: the prompt goes, the images go unless kept. */
   sent(): void;
 }
@@ -163,6 +179,7 @@ const EMPTY: CreateBarState = {
   role: null,
   keep: false,
   focus: 0,
+  summoned: false,
 };
 
 export function CreateBarProvider({ children }: { children: ReactNode }) {
@@ -174,6 +191,12 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
   // The route's project, wherever under it the page is — a run opened at
   // `/p/<project>/r/<run>` is still that project's.
   const routeProject = useMatch("/p/:projectId/*")?.params.projectId ?? null;
+  // The opened run — the one screen the sheet stays out of until it is
+  // called up. Keyed on the run so a different run opening puts it away again.
+  const openedRun = useMatch("/p/:projectId/r/:runId")?.params.runId ?? null;
+  useEffect(() => {
+    setState((current) => (current.summoned ? { ...current, summoned: false } : current));
+  }, [openedRun]);
 
   // The last project used is whichever one the person was last IN, so leaving
   // it for Home keeps the bar pointed where they were working.
@@ -200,6 +223,7 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
         project: seed.project,
         role: null,
         focus: current.focus + 1,
+        summoned: true,
       };
     });
   }, []);
@@ -215,7 +239,12 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
           : [...held, { ref, role }];
       // No focus bump: a tile pressed in the drawer must not pull the caret
       // away from the drawer it was pressed in.
-      return { ...current, kind, attachments: { ...current.attachments, [kind]: next } };
+      return {
+        ...current,
+        kind,
+        attachments: { ...current.attachments, [kind]: next },
+        summoned: true,
+      };
     });
   }, []);
 
@@ -283,11 +312,37 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const swapFrames = useCallback(
+    () =>
+      setState((current) => {
+        const held = current.attachments.video;
+        if (!held.some((each) => each.role === "start") || !held.some((each) => each.role === "end"))
+          return current;
+        const swapped = held.map((each) =>
+          each.role === "start"
+            ? { ...each, role: "end" as const }
+            : each.role === "end"
+              ? { ...each, role: "start" as const }
+              : each,
+        );
+        return { ...current, attachments: { ...current.attachments, video: swapped } };
+      }),
+    [],
+  );
+
+  const dismiss = useCallback(
+    () => setState((current) => ({ ...current, summoned: false, role: null })),
+    [],
+  );
+
   const value = useMemo<CreateBarStateValue>(
     () => ({
       ...state,
       target: routeProject ?? state.project,
       onProject: routeProject !== null,
+      shown: openedRun === null || state.summoned,
+      dismissible: openedRun !== null,
+      dismiss,
       setPrompt,
       setModel,
       setParams,
@@ -296,11 +351,14 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
       setKeep,
       detach,
       clearAttachments,
+      swapFrames,
       sent,
     }),
     [
       state,
       routeProject,
+      openedRun,
+      dismiss,
       setPrompt,
       setModel,
       setParams,
@@ -309,6 +367,7 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
       setKeep,
       detach,
       clearAttachments,
+      swapFrames,
       sent,
     ],
   );

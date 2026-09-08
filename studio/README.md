@@ -117,7 +117,7 @@ aws sts get-caller-identity                          # confirm the access key re
 ./studio/scripts/dev-aws-setup.sh                    # once per machine
 ./studio/scripts/dev-user.sh --generate-password     # its one test account
 ./studio/scripts/dev-setup.sh                        # the pipeline — installs uv, syncs the dev profile
-./studio/scripts/dev-up.sh                           # the app — backend :8000, frontend :5173
+./studio/scripts/dev-up.sh                           # the app — backend :8000, frontend :5173 (busy → 5178, 5179, 5180)
 ```
 
 [`CLAUDE.md`](./CLAUDE.md) is the index over both halves and holds the hard

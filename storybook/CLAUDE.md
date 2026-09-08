@@ -56,7 +56,7 @@ A single Route53 A-alias record for `storybook.andreas.services` is added by the
 ## Local Development
 
 ```bash
-# Backend (writes to DynamoDB Local on :8001)
+# Backend (writes to DynamoDB Local on :8004)
 cd storybook/backend
 poetry install
 docker compose up dynamodb
@@ -142,7 +142,7 @@ The backend reads table names from env vars (`STORYBOOK_*_TABLE`) wired up by th
 - `storybook-prod-model-projects`, `storybook-prod-generation-history`, `storybook-prod-training-runs`
 
 All accessed via boto3 directly from the Lambdas.
-Local app runs use DynamoDB Local via `DYNAMODB_ENDPOINT_URL=http://localhost:8001`;
+Local app runs use DynamoDB Local via `DYNAMODB_ENDPOINT_URL=http://localhost:8004`;
 production leaves that unset and uses AWS DynamoDB.
 `storybook_core.repositories.dynamodb` owns boto3/local table bootstrap; repository modules
 own Storybook persistence operations.
