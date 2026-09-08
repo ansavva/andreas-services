@@ -639,22 +639,26 @@ export function deleteTemplate(templateId: string) {
 }
 
 /**
- * What a run plan's template would become, expanded against this run's cast.
+ * What a template would say, filled from a cast named by id.
  *
- * Writes nothing, so the editor can call it on every change — the save is the
- * write, and what a prompt will SAY is exactly the thing that tells you whether
- * it is right.
+ * **The picker's fill, and it happens before there is a run.** Choosing a
+ * template in the create bar puts the FINISHED prompt in the box rather than
+ * the citations it was written with, so the words a person reads before
+ * pressing Send are the words the model gets. There is no draft yet, so the
+ * cast travels as ids.
+ *
+ * The same `expand` a draft's save runs, in the API, deliberately: a second
+ * implementation of "what does this person usually wear" would disagree with
+ * the first invisibly, because a run records the outcome and not the reasoning.
+ *
+ * It writes nothing. A template citing a character the run does not bind is a
+ * 400 naming the citation — the caller keeps the template text and says so.
  */
-export function previewPlanPrompt(runId: string, template: string) {
-  return apiSend<{
-    prompt: string;
-    /** Where each `{character.N.field}` landed in `prompt`, so it can be marked. */
-    spans: Array<{ name: string; start: number; end: number }>;
-    characters: number;
-  }>(
+export function expandTemplate(template: string, characters: string[]) {
+  return apiSend<{ prompt: string; characters: number }>(
     "POST",
-    `/api/runs/${encodeURIComponent(runId)}/plan/preview`,
-    { template },
+    "/api/templates/expand",
+    { template, characters },
   );
 }
 

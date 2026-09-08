@@ -1223,14 +1223,14 @@ def _run_with_cast(api, count=1):
                          "prompt": "x", "params": {}})
 
 
-def test_a_plan_TEMPLATE_is_expanded_at_save_and_kept_beside_the_prompt(api):
-    """**Expanded at save, and the plan keeps both.**
+def test_a_plan_TEMPLATE_is_expanded_at_save_and_NOT_kept(api):
+    """**Expanded at save, and the template does not survive the write.**
 
     A template expanded at SUBMIT would mean the payload a person read is not
     the payload that gets sent, and the fingerprint would be hashing the wrong
-    string. The template is kept beside the prompt so the prompt stays
-    re-editable: without it, filling one in once leaves the next editor a wall
-    of finished prose with no way back to what was written.
+    string — so the fill stays here. What went is STORING the template beside
+    the prompt: nothing ever read it back, and it sat inside the fingerprint,
+    where it made two identical submissions look different.
     """
     run = _run_with_cast(api)
     got = api.patch(f"/api/runs/{run['id']}/plan", json={"plan": {
@@ -1238,8 +1238,34 @@ def test_a_plan_TEMPLATE_is_expanded_at_save_and_kept_beside_the_prompt(api):
         "template": "He wears {character.1.top}.",
     }}).get_json()
 
-    assert got["plan"]["template"] == "He wears {character.1.top}."
+    assert "template" not in got["plan"]
     assert got["plan"]["prompt"].startswith("He wears Wearing a plain charcoal crew-neck tee")
+    # And it is gone from the RECORD, not merely from the reply.
+    assert "template" not in api.get(f"/api/runs/{run['id']}").get_json()["plan"]
+
+
+def test_a_prompt_hashes_the_same_however_it_was_WRITTEN(api):
+    """**The reason the template stopped being stored.**
+
+    `plan_digest` hashes the whole plan, so a stored template put the way a
+    prompt was authored inside the fingerprint. Two runs sending byte-identical
+    prompts to the same model then hashed differently — a silent false negative
+    on the one guard that stops the same generation being billed twice.
+    """
+    templated = _run_with_cast(api)
+    filled = api.patch(f"/api/runs/{templated['id']}/plan", json={"plan": {
+        "version": 1, "origin": "authored", "params": {},
+        "template": "He wears {character.1.top}.",
+    }}).get_json()
+
+    typed = _run_with_cast(api)
+    prose = api.patch(f"/api/runs/{typed['id']}/plan", json={"plan": {
+        "version": 1, "origin": "authored", "params": {},
+        "prompt": filled["plan"]["prompt"],
+    }}).get_json()
+
+    assert prose["plan"]["prompt"] == filled["plan"]["prompt"]
+    assert prose["fingerprint"] == filled["fingerprint"]
 
 
 def test_a_plan_WITHOUT_a_template_is_written_exactly_as_it_arrives(api):
@@ -1278,19 +1304,6 @@ def test_citing_a_character_the_run_does_not_bind_is_a_400_naming_the_range(api)
     }})
     assert resp.status_code == 400
     assert "1 character(s)" in resp.get_json()["error"]
-
-
-def test_the_preview_expands_and_writes_NOTHING(api):
-    """It is called on every change, which is why it cannot be the save."""
-    run = _run_with_cast(api)
-    before = api.get(f"/api/runs/{run['id']}").get_json()["plan"]
-
-    got = api.post(f"/api/runs/{run['id']}/plan/preview",
-                   json={"template": "He wears {character.1.top}."}).get_json()
-
-    assert got["characters"] == 1
-    assert "crew-neck tee" in got["prompt"]
-    assert api.get(f"/api/runs/{run['id']}").get_json()["plan"] == before
 
 
 def test_a_run_that_records_no_character_still_has_a_CAST(api):

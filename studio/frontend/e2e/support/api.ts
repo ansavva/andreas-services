@@ -90,6 +90,17 @@ const seedFolder = fixture<Listing<Node>>("seed-folder");
 const reel = fixture<Listing<Item>>("reel");
 const templates = fixture<unknown>("templates");
 
+/**
+ * The prompt `POST /api/templates/expand` answers with — prose, no citations.
+ *
+ * Not a captured fixture, and it does not pretend to be: it stands for
+ * "whatever the API filled", which is the only part of the pick a browser can
+ * check. That it is filled CORRECTLY is `backend/tests/unit/test_templates.py`.
+ */
+export const EXPANDED =
+  "A studio portrait of the person, front on. THE FACE COMES FROM THE " +
+  "REFERENCE IMAGES. Wearing a plain charcoal crew-neck tee, unbranded.";
+
 export const LIBRARY = libraries[0].id;
 export const CHARACTER = characters[0].id;
 export const CHARACTER_ROOT = character.root;
@@ -498,6 +509,16 @@ async function written(
         ? [id, ...favorited.filter((each) => each !== id)]
         : favorited.filter((each) => each !== id);
     await json(route, { node: id, favorite: method === "POST" }, method === "POST" ? 201 : 200);
+    return true;
+  }
+
+  // **What a template BECOMES.** Only the API can say: the fill reads each
+  // character's bible and lives in `services/template.py`, which is where it
+  // is tested. What a browser can say is that picking a template sends the
+  // template and puts the ANSWER in the box — so the stub answers with a
+  // sentence no template in the fixture contains.
+  if (method === "POST" && path.endsWith("/api/templates/expand")) {
+    await json(route, { prompt: EXPANDED, characters: 1 });
     return true;
   }
 

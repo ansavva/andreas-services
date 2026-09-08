@@ -23,6 +23,7 @@ vi.mock("../../apis/studio", () => ({
   getProject: vi.fn(),
   getProjects: vi.fn().mockResolvedValue([]),
   getTemplates: vi.fn(),
+  expandTemplate: vi.fn(),
   createRun: vi.fn(),
   submitRun: vi.fn(),
   patchRunPlan: vi.fn(),
@@ -41,6 +42,7 @@ vi.mock("../../apis/studio", () => ({
 
 import {
   createRun,
+  expandTemplate,
   getModels,
   getProject,
   getRuns,
@@ -274,7 +276,40 @@ it("holds a draft whose payload already went out here, and Send anyway submits i
   expect(createRun).toHaveBeenCalledTimes(1);
 });
 
-it("a template pick fills the prompt", async () => {
+it("a template pick lands filled, not as the citations it was written with", async () => {
+  vi.mocked(getTemplates).mockResolvedValue({
+    blocks: { scale: "Shot at eye level." },
+    templates: [
+      {
+        id: "tpl-1",
+        name: "Face front",
+        prompt: "A face, front on. {block.scale} {character.1.top}",
+        description: "",
+        tags: [],
+      },
+    ],
+  });
+  vi.mocked(expandTemplate).mockResolvedValue({
+    prompt: "A face, front on. Shot at eye level. Wearing a plain grey T-shirt",
+    characters: 1,
+  });
+  await open();
+  wake();
+  fill("draft");
+  fireEvent.click(await screen.findByRole("button", { name: "Template" }));
+  fireEvent.click(await screen.findByRole("button", { name: /Face front/ }));
+
+  await waitFor(() =>
+    expect(editor().textContent).toContain("Wearing a plain grey T-shirt"),
+  );
+  // The citations are gone from the box: what is in it is what goes out.
+  expect(editor().textContent).not.toContain("{block.scale}");
+  expect(vi.mocked(expandTemplate).mock.calls[0]![0]).toBe(
+    "A face, front on. {block.scale} {character.1.top}",
+  );
+});
+
+it("a template with nothing to cite is not sent to the API to be filled", async () => {
   vi.mocked(getTemplates).mockResolvedValue({
     blocks: {},
     templates: [
@@ -296,6 +331,35 @@ it("a template pick fills the prompt", async () => {
   await waitFor(() =>
     expect(editor().textContent).toContain("A face, front on."),
   );
+  expect(expandTemplate).not.toHaveBeenCalled();
+});
+
+it("a fill the API refuses leaves the template in the box and says why", async () => {
+  vi.mocked(getTemplates).mockResolvedValue({
+    blocks: {},
+    templates: [
+      {
+        id: "tpl-1",
+        name: "Two up",
+        prompt: "{character.2.top}",
+        description: "",
+        tags: [],
+      },
+    ],
+  });
+  vi.mocked(expandTemplate).mockRejectedValue(
+    new Error("this prompt cites {character.2.top}, and this run binds 0."),
+  );
+  await open();
+  wake();
+  fill("draft");
+  fireEvent.click(await screen.findByRole("button", { name: "Template" }));
+  fireEvent.click(await screen.findByRole("button", { name: /Two up/ }));
+
+  expect(
+    await screen.findByText(/this run binds 0/),
+  ).toBeTruthy();
+  expect(editor().textContent).toContain("{character.2.top}");
 });
 
 it("attachments show as thumbs in their role cell with a way off; a frame switches to video", async () => {

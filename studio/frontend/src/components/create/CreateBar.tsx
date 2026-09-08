@@ -8,7 +8,6 @@ import {
   Button,
   Combobox,
   Popover,
-  Text,
   Toggle,
   ToggleGroup,
   iconButtonClass,
@@ -19,6 +18,7 @@ import {
 import {
   createRun,
   deleteRun,
+  expandTemplate,
   getModels,
   getProject,
   getProjects,
@@ -36,19 +36,16 @@ import { useResource } from "../../hooks/useResource";
 import type { CreatedRun, RunSummary } from "../../types";
 import { formatDate } from "../../utils/format";
 import {
-  EyeIcon,
   ImageIcon,
   SendIcon,
   SlidersIcon,
   TemplateIcon,
   VideoIcon,
 } from "../common/icons";
-import { PromptPreview } from "../common/PromptPreview";
 import {
   TokenizedPromptEditor,
   type PromptToken,
 } from "../common/TokenizedPromptEditor";
-import { unfilledIn } from "../common/UnfilledMarks";
 import { TemplateList } from "../run/TemplateList";
 import { CreateDrawer } from "./CreateDrawer";
 import { CreateModeStrip } from "./CreateModeStrip";
@@ -136,7 +133,6 @@ export function CreateBar() {
     document.addEventListener("pointerdown", onPress, true);
     return () => document.removeEventListener("pointerdown", onPress, true);
   }, []);
-  const [previewOpen, setPreviewOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -144,8 +140,7 @@ export function CreateBar() {
   const [held, setHeld] = useState<Held | null>(null);
 
   const attachments = bar.attachments[bar.kind];
-  const active =
-    focused || previewOpen || templatesOpen || settingsOpen || held !== null;
+  const active = focused || templatesOpen || settingsOpen || held !== null;
 
   // The registry is per-deploy, so the key carries no id.
   const models = useResource(
@@ -162,7 +157,7 @@ export function CreateBar() {
     bar.onProject ? null : ["projects"],
     useCallback(() => getProjects(), []),
   );
-  // Blocks for the `{` menu and the preview. Lazily: a bar nobody has touched
+  // Blocks for the `{` menu. Lazily: a bar nobody has touched
   // has no reason to read the template library.
   const templates = useResource(
     active ? ["templates"] : null,
@@ -205,9 +200,62 @@ export function CreateBar() {
     ];
   }, [cast, templates.data]);
 
-  const unfilled = useMemo(() => unfilledIn(bar.prompt), [bar.prompt]);
   const prompt = bar.prompt.trim();
   const canSend = Boolean(entry && target && prompt !== "") && !busy;
+
+  /**
+   * A template picked lands FILLED, not as the citations it was written with.
+   *
+   * **The box is the preview now.** A template is mostly `{block.…}` and
+   * `{character.N.…}`, so picking one used to put a prompt in the bar that
+   * said almost nothing about what the model would be told; reading it took a
+   * second popover holding a second rendering of the same prompt. Filling at
+   * the pick collapses the two: what is in the box is what goes out, and it is
+   * editable prose rather than a citation a person cannot see inside.
+   *
+   * **Filled by the API, never here.** `POST /api/templates/expand` runs the
+   * same `expand` a draft's save runs. Filling blocks in the client would be a
+   * second opinion about what a run was told to render, and the disagreement
+   * would be invisible afterwards because a run records the outcome and not the
+   * reasoning.
+   *
+   * **A fill that cannot be done leaves the template.** A prompt citing
+   * `{character.2.…}` against a one-character run is a 400 naming the
+   * citation; the words land in the box as written so the cast can be added
+   * and the prompt sent, and the refusal is said rather than swallowed.
+   *
+   * **The box is written once, when the answer is known.** Putting the raw
+   * template in first and replacing it on the reply loses a race: the editor
+   * echoes each value it is given back through `onValueChange`, and the echo
+   * of the template arrives after the filled prompt was set — so the box ends
+   * up holding the citations again.
+   */
+  const pickTemplate = useCallback(
+    async (template: string) => {
+      setTemplatesOpen(false);
+      // Nothing to fill, nothing to ask: a template of plain prose is its own
+      // finished prompt.
+      if (!template.includes("{")) {
+        bar.setPrompt(template);
+        return;
+      }
+      try {
+        const filled = await expandTemplate(template, cast);
+        bar.setPrompt(filled.prompt);
+      } catch (err) {
+        bar.setPrompt(template);
+        toast.add({
+          intent: "warning",
+          title: "Left as written",
+          description: (err as Error).message,
+          // Nothing dismisses it on a timer: it names a citation the person
+          // has to do something about before this prompt is worth sending.
+          duration: 0,
+        });
+      }
+    },
+    [bar, cast, toast],
+  );
 
   /**
    * Send: a draft, then the duplicate question, then the submit.
@@ -217,6 +265,10 @@ export function CreateBar() {
    * prompt that cites a block or a character goes through `PATCH /plan` too,
    * because that is the route that expands a template into the prompt the
    * model sees — creation stores the plan as given.
+   *
+   * The template is the instruction and not a field: `PATCH /plan` expands it
+   * into `prompt` and stores only that, so what the fingerprint covers is the
+   * words the model gets however they were written.
    *
    * **Then one cheap read.** `?fingerprint=` is one query on the listing row.
    * A twin that was actually sent holds the draft and asks; a draft or a
@@ -369,12 +421,12 @@ export function CreateBar() {
           className={`flex flex-col rounded-none border bg-card ${active ? "border-ink" : "border-line"}`}
         >
           {/* **`flex-wrap`, for one width: 390px.** The row holds the kind
-              toggles, the prompt, three popover triggers and Send, and at
+              toggles, the prompt, two popover triggers and Send, and at
               390px — where it is also sharing the header with the menu button
               and the search icon — those come to more than there is. The
               prompt is the item that gave way: it was rendered 0px wide, so
               the one control this bar exists for could not be typed in, and
-              Send overlapped the search icon. Below `md` the three triggers
+              Send overlapped the search icon. Below `md` the two triggers
               take a line of their own (`order-last basis-full`) and only once
               the bar is active and floating; at rest it is one row, which is
               what keeps it inside a 56px header. */}
@@ -451,7 +503,7 @@ export function CreateBar() {
               </Badge>
             )}
 
-            {/* The three popovers, together: inline above `md`, and below it
+            {/* Both popovers, together: inline above `md`, and below it
                 a full-width line under the prompt that appears with the bar's
                 active state. `order-last` keeps Send where it is rather than
                 letting it move between lines as the bar opens. */}
@@ -477,38 +529,7 @@ export function CreateBar() {
                 >
                   <TemplateList
                     cast={cast.length}
-                    onPick={(prompt: string) => {
-                      bar.setPrompt(prompt);
-                      setTemplatesOpen(false);
-                    }}
-                  />
-                </Popover.Content>
-              </Popover.Root>
-
-              <Popover.Root open={previewOpen} onOpenChange={setPreviewOpen}>
-                <Popover.Trigger
-                  aria-label="Preview"
-                  title="Preview the prompt as sent"
-                  className={iconButtonClass({
-                    size: "sm",
-                    pressed: previewOpen,
-                    className: "mt-1.5 rounded-none",
-                  })}
-                >
-                  <EyeIcon />
-                </Popover.Trigger>
-                <Popover.Content
-                  label="Preview"
-                  className="left-auto right-0 w-[min(40rem,calc(100vw-2rem))] max-w-none rounded-none"
-                >
-                  {unfilled.length > 0 && (
-                    <Text variant="caption" tone="muted" className="mb-2 block">
-                      {unfilled.length} unfilled: {unfilled.join(" ")}
-                    </Text>
-                  )}
-                  <PromptPreview
-                    prompt={bar.prompt}
-                    blocks={templates.data?.blocks ?? {}}
+                    onPick={(prompt: string) => void pickTemplate(prompt)}
                   />
                 </Popover.Content>
               </Popover.Root>

@@ -438,9 +438,11 @@ page and a plain textarea over its literal bytes, and never offers fields.
   arrives when the bar goes active, which on a phone also takes it out of its
   246px slot to the width of the screen. Send is `createRun` (plan +
   sends together, then `PATCH /plan` with `template` when the prompt cites
-  anything, so the API expands it), one `?fingerprint=` read that holds the
+  anything, so the API expands it into `prompt` — the template is the
+  instruction and is not stored), one `?fingerprint=` read that holds the
   draft behind a warning if the same payload already went out here, then
-  `submitRun`. It targets the route's project, else the last one used
+  `submitRun`. A template picked from the library never reaches that path: it
+  is filled by `POST /api/templates/expand` before it lands in the box. It targets the route's project, else the last one used
   (`CREATE_PROJECT_STORAGE_KEY`) behind a picker. `NewRunStrip` and
   `RunPlanEditor` are gone; a draft is edited by loading it back into the bar.
 - **A run closes itself, so the feed has something to poll and a reason to.**
@@ -910,7 +912,7 @@ fan-out write this trade avoids.
 | `GET \| POST /api/runs` | Query by `project`, `character`, `status`, `model`, `kind`, `since`, `fingerprint`, `q`; or create a draft. **Refuses a URL-shaped binding.** `?view=feed` expands each row for the feed — see below |
 | `GET /api/runs/resolve` | A run by `ref` |
 | `GET \| PATCH \| DELETE /api/runs/<id>` | The envelope, with outputs and bindings expanded |
-| `GET /api/runs/<id>/payload` · `POST /api/runs/<id>/plan/preview` | The payload a submit would send, assembled from the plan |
+| `GET /api/runs/<id>/payload` | The payload a submit would send, assembled from the plan |
 | `PATCH /api/runs/<id>/plan` · `PATCH /api/runs/<id>/sends` | Replace half the plan; each moves the fingerprint. Refused once submitted |
 | `POST /api/runs/<id>/submit` | **Sends a draft to the provider.** The one route in this service that spends money; calling it is the decision — there is no approve step |
 | `POST /api/runs/<id>/reconcile` | Asks the provider what happened and closes the run — for a callback that never arrived |
@@ -923,6 +925,7 @@ fan-out write this trade avoids.
 | `GET \| POST /api/movies` · `GET \| PATCH \| DELETE /api/movies/<id>` · `PATCH /api/movies/<id>/scenes` | The tier above |
 | `GET /api/models` · `GET /api/models/<name>` · `/schema` · `/readme` | The model registry |
 | `GET /api/templates` · `PATCH \| DELETE /api/templates/<id>` · `PATCH \| DELETE /api/templates/blocks/<name>` | The template library |
+| `POST /api/templates/expand` | `{template, characters: [id]}` → the finished prompt. What the create bar's picker fills with, before there is a run to fill against |
 | `GET /api/tags` · `PATCH \| DELETE /api/tags/<name>` | The tag vocabulary |
 | `GET \| POST /api/phrasebook` · `DELETE /api/phrasebook/<model>/<avoid>` | The wording lists, as `TERM#` rows |
 | `POST /api/prompt` | Checks a structured video prompt |
