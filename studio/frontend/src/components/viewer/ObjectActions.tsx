@@ -1,18 +1,22 @@
-import { IconButton } from "@ansavva/design-system";
+import { useState } from "react";
+
+import { Dropdown, IconButton, iconButtonClass } from "@ansavva/design-system";
 
 import { getAsset } from "../../apis/studio";
+import { useArmed } from "../../hooks/useArmed";
 import type { FileEntry } from "../../types";
 import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { FavoriteButton } from "../common/FavoriteButton";
 import { CopyKeyButton } from "../common/CopyKeyButton";
-import { CloseIcon, DownloadIcon, PencilIcon } from "../common/icons";
+import { CloseIcon, DotsIcon, DownloadIcon, PencilIcon } from "../common/icons";
 
 interface Props {
   file: FileEntry;
   /**
-   * `page` is Copy, Edit, Download and Close, in the page bar's `actions`.
-   * `media` is the two that have to be reachable while the player owns the
-   * screen, over the frame, only while it is fullscreen.
+   * `page` is Copy, Edit, Download, Close and a `⋯` holding Delete, under the
+   * file's facts in the details column. `media` is the two that have to be
+   * reachable while the player owns the screen, over the frame, only while it
+   * is fullscreen.
    *
    * They are not the same set on purpose. In fullscreen there is no page to
    * read, so the controls over the frame are the two that *change* the file —
@@ -22,13 +26,14 @@ interface Props {
    */
   variant?: "page" | "media";
   /**
-   * The media variant's own delete, arming in place over the frame.
+   * Deletes the file, and arms before it fires in both variants — as a `⋯`
+   * menu item on the page, as `ConfirmDeleteButton` over the frame.
    *
-   * **The page variant no longer takes this.** Delete moved to `PageBar`'s
-   * menu — `ObjectHeader` builds that item itself, with the same `useArmed`
-   * machine, because a `role="menu"` may only hold menu items and
-   * `ConfirmDeleteButton` renders a `<button>`. This prop stays for
-   * `variant="media"`, where the fullscreen frame has no menu to hold it.
+   * **The two are the same decision drawn twice**, because a `role="menu"` may
+   * only hold menu items and `ConfirmDeleteButton` renders a `<button>`, and
+   * because fullscreen has no menu to hold one: a `Drawer.Root` can aim its
+   * portal at the fullscreen element and a `Dropdown` has no such seam. Both
+   * run `useArmed`, so the number of presses and the timeout are one rule.
    */
   onDelete?: () => Promise<unknown>;
   /**
@@ -61,14 +66,12 @@ interface Props {
  * owns the drawer and aims it — so what is left here is the button that asks
  * for it.
  *
- * **Delete stays `ConfirmDeleteButton` over the media, and becomes a page bar
- * menu item everywhere else.** The two used to be the same control at two
- * sizes; they diverged once the page bar had a menu to hold one. Over the
- * frame there is no menu — `Drawer.Root`'s `container` trick reaches
- * fullscreen for the editor, but a `Dropdown` has no such seam — so the
- * `media` variant keeps the arm-in-place button it always had. The `page`
- * variant draws no delete at all; `ObjectHeader` builds that item with the
- * same arming machine `ItemActions`' menu delete runs on.
+ * **Delete stays `ConfirmDeleteButton` over the media, and is a `⋯` menu item
+ * everywhere else.** That menu used to be `PageBar`'s, built by `ObjectHeader`
+ * because the row lived in the bar; the row is in the details column now, so
+ * it carries its own — `DeleteMenu` below, on the arming machine `ItemActions`
+ * runs on. Over the frame there is no menu at all, so the `media` variant
+ * keeps the arm-in-place button it always had.
  */
 export function ObjectActions({
   file,
@@ -141,13 +144,77 @@ export function ObjectActions({
         <DownloadIcon />
       </IconButton>
 
-      {/* Delete is `ObjectHeader`'s menu item now, not a fifth icon here. */}
-
       {onClose && (
         <IconButton label="Close (Esc)" onClick={onClose}>
           <CloseIcon />
         </IconButton>
       )}
+
+      {/* Last, and behind a menu: every other page keeps its destructive
+          control off the row of things pressed on every visit. */}
+      {onDelete && <DeleteMenu onDelete={onDelete} />}
     </>
+  );
+}
+
+/**
+ * Delete, armed in place, behind the row's own `⋯`.
+ *
+ * **Right-aligned, because the trigger is the last thing in the row.** A menu
+ * anchored to the trigger's LEFT edge — the design system's default — grows
+ * rightwards off the screen on a phone, where the row is nearly the viewport's
+ * width and this is its final button. `left-auto right-0` hangs it from the
+ * right edge instead, so it opens leftwards over the row it belongs to.
+ * `ItemActions` right-aligns its own for the same reason.
+ */
+function DeleteMenu({ onDelete }: { onDelete: () => Promise<unknown> }) {
+  const [open, setOpen] = useState(false);
+  const destroy = useArmed({
+    onFire: async () => {
+      try {
+        await onDelete();
+      } finally {
+        setOpen(false);
+      }
+    },
+  });
+
+  return (
+    <Dropdown.Root
+      open={open}
+      onOpenChange={(next: boolean) => {
+        setOpen(next);
+        // A half-pressed delete is never left live behind a closed menu.
+        if (!next) destroy.disarm();
+      }}
+    >
+      <Dropdown.Trigger
+        aria-label="More actions"
+        title="More actions"
+        className={iconButtonClass({ size: "sm", className: "rounded-none" })}
+      >
+        <DotsIcon />
+      </Dropdown.Trigger>
+      <Dropdown.Content className="left-auto right-0 rounded-none">
+        <Dropdown.Item
+          disabled={destroy.busy}
+          {...destroy.handlers}
+          onClick={(event: React.MouseEvent) => {
+            // Arming must not close the menu — the confirmation *is* the item.
+            if (!destroy.armed) event.preventDefault();
+            destroy.press();
+          }}
+          className={destroy.armed || destroy.busy ? "text-danger" : undefined}
+        >
+          <span aria-live="assertive">
+            {destroy.busy
+              ? "Deleting…"
+              : destroy.armed
+                ? "Confirm — delete this file"
+                : "Delete"}
+          </span>
+        </Dropdown.Item>
+      </Dropdown.Content>
+    </Dropdown.Root>
   );
 }

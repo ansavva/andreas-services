@@ -190,7 +190,12 @@ export function PageBar({
                   >
                     <DotsIcon />
                   </Dropdown.Trigger>
-                  <Dropdown.Content className="rounded-none">
+                  {/* Right-aligned: this trigger is the last thing on the
+                      bar's own right edge, so a menu hung from its LEFT edge —
+                      the design system's default — grows off the side of a
+                      phone. `ItemActions` right-aligns its own for the same
+                      reason. */}
+                  <Dropdown.Content className="left-auto right-0 rounded-none">
                     {menu.map((item) => (
                       <Dropdown.Item
                         key={item.label}
