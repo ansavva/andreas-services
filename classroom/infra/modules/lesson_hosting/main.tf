@@ -204,6 +204,25 @@ resource "aws_route53_record" "lessons" {
   name    = var.domain_name
   type    = each.value
 
+  # UPSERT, because this name CHANGED OWNER between modules.
+  #
+  # `classroom.andreas.services` was the app distribution's record, in
+  # `module.hosting`. It is this module's now. Terraform did not treat that as a
+  # move: `module.hosting` created its new record under the new name
+  # (`classroom-admin`) and simply stopped tracking the old one, which was left
+  # behind in Route53 owned by nothing. This resource then failed to create with
+  # `InvalidChangeBatch: ... but it already exists`, and the alias sat pointing
+  # at a distribution that no longer serves it.
+  #
+  # `depends_on = [module.hosting]` in `envs/prod` does not help: it orders
+  # CREATES, and there was no destroy to order — the stale record was orphaned,
+  # not scheduled for deletion.
+  #
+  # An UPSERT takes the name over regardless of what is there, which is exactly
+  # what a change of owner needs, and it makes a re-run idempotent instead of
+  # requiring a hand-deleted record first.
+  allow_overwrite = true
+
   alias {
     name                   = aws_cloudfront_distribution.lessons.domain_name
     zone_id                = aws_cloudfront_distribution.lessons.hosted_zone_id
