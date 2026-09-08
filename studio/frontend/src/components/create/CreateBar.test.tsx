@@ -295,7 +295,6 @@ it("a template pick lands filled, not as the citations it was written with", asy
     characters: 1,
   });
   await open();
-  wake();
   fill("draft");
   fireEvent.click(await screen.findByRole("button", { name: "Template" }));
   fireEvent.click(await screen.findByRole("button", { name: /Face front/ }));
@@ -351,7 +350,6 @@ it("a fill the API refuses leaves the template in the box and says why", async (
     new Error("this prompt cites {character.2.top}, and this run binds 0."),
   );
   await open();
-  wake();
   fill("draft");
   fireEvent.click(await screen.findByRole("button", { name: "Template" }));
   fireEvent.click(await screen.findByRole("button", { name: /Two up/ }));

@@ -432,7 +432,7 @@ page and a plain textarea over its literal bytes, and never offers fields.
   `AppLayout`; its state is `CreateBarContext`, so a feed row or a tile can
   fill it from a route element: `useCreateBar()` is `{ loadRun, attach,
   setKind }` and nothing else. Top-left the IMAGE/VIDEO switch; top-right the
-  template and preview icons. Under them the row of what the run will be
+  template icon. Under them the row of what the run will be
   handed (`AttachTiles`, `create/roles.ts`): pictures first, in send order
   and captioned by position (`Image 1`), a chosen frame standing where its
   tile stood with a ⇄ between the two, then a ghost tile per role the

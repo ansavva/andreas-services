@@ -9,6 +9,7 @@ import {
   Drawer,
   IconButton,
   Popover,
+  Text,
   Toggle,
   ToggleGroup,
   iconButtonClass,
@@ -40,7 +41,6 @@ import {
   ArrowUpIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  EyeIcon,
   ImageIcon,
   SettingsIcon,
   TemplateIcon,
@@ -126,7 +126,6 @@ export function CreateBar() {
   const queryClient = useQueryClient();
   const toast = useToast();
 
-  const [previewOpen, setPreviewOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -508,37 +507,11 @@ export function CreateBar() {
               >
                 <TemplateList
                   cast={cast.length}
-                  onPick={(prompt: string) => {
-                    bar.setPrompt(prompt);
-                    setTemplatesOpen(false);
-                  }}
+                  onPick={(prompt: string) => void pickTemplate(prompt)}
                 />
               </Popover.Content>
             </Popover.Root>
 
-            <Popover.Root open={previewOpen} onOpenChange={setPreviewOpen}>
-              <Popover.Trigger
-                aria-label="Preview"
-                title="Preview the prompt as sent"
-                className={iconButtonClass({ size: "sm", pressed: previewOpen })}
-              >
-                <EyeIcon />
-              </Popover.Trigger>
-              <Popover.Content
-                label="Preview"
-                className={`${UP_RIGHT} w-[min(40rem,calc(100vw-2rem))] max-w-none`}
-              >
-                {unfilled.length > 0 && (
-                  <Text variant="caption" tone="muted" className="mb-2">
-                    {unfilled.length} unfilled: {unfilled.join(" ")}
-                  </Text>
-                )}
-                <PromptPreview
-                  prompt={bar.prompt}
-                  blocks={templates.data?.blocks ?? {}}
-                />
-              </Popover.Content>
-            </Popover.Root>
 
           </div>
         </div>

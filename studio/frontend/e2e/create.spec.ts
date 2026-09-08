@@ -112,3 +112,27 @@ test("a tile opens the picker above the sheet, and a pressed picture lands in th
   expect(wrote(calls)).toEqual([]);
   expect(escaped(calls, page)).toEqual([]);
 });
+
+test("a template picked lands in the box FILLED, and there is no preview to open", async ({
+  page,
+}) => {
+  test.skip(LIVE, "the fill would read a real bible from the dev stack");
+  const calls = log(page);
+  await page.goto(`/p/${PROJECT}`);
+
+  const box = page.getByRole("textbox", { name: "Prompt", exact: true });
+  await box.click();
+  await page.getByRole("button", { name: "Template", exact: true }).click();
+  await page.getByRole("button", { name: /Face, front/ }).first().click();
+
+  // The template travelled; the ANSWER is what the box holds.
+  await expect.poll(() => spell(wrote(calls))).toEqual([
+    "POST /api/templates/expand",
+  ]);
+  await expect(box).toContainText(EXPANDED);
+  // No citation is left to read behind an icon, which is why there is no icon.
+  await expect(box).not.toContainText("{block.");
+  await expect(page.getByRole("button", { name: "Preview" })).toHaveCount(0);
+
+  expect(escaped(calls, page)).toEqual([]);
+});
