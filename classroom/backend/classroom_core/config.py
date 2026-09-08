@@ -21,3 +21,14 @@ def public_site_base() -> str:
 def dynamodb_endpoint_url() -> str:
     """DynamoDB endpoint override used by local dev against DynamoDB Local."""
     return os.environ.get("DYNAMODB_ENDPOINT_URL", "")
+
+
+def allowed_origins() -> list[str]:
+    """Origins the browser API accepts, from ``CLASSROOM_ALLOWED_ORIGIN``.
+
+    Comma-separated, so a stack can allow a deployed host and a local one at
+    once. Defaults to the local app rather than to ``"*"``: an unset variable
+    should fail closed and be obvious, not quietly open the API to every origin.
+    """
+    raw = os.environ.get("CLASSROOM_ALLOWED_ORIGIN", "http://localhost:5174")
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]

@@ -45,7 +45,9 @@ resource "aws_cloudfront_function" "spa_fallback" {
       }
 
       // The SPA is mounted at the root, so every extension-less path is a
-      // client-side route — including /p/<slug>, the link students follow.
+      // client-side route. **No student ever reaches this distribution** — a
+      // lesson is served from its own host out of the lesson bucket (see
+      // modules/lesson_hosting). This one serves the teacher's app only.
       request.uri = '/index.html';
       return request;
     }

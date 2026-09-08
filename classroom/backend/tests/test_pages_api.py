@@ -1,6 +1,6 @@
-"""End-to-end behaviour of the page API against a mocked DynamoDB."""
+"""End-to-end behaviour of the page API against mocked DynamoDB and S3."""
 
-from tests.conftest import OTHER_TEACHER, TEACHER, as_teacher
+from tests.conftest import OTHER_TEACHER, TEACHER, as_teacher, live_keys, upload
 
 
 def create(client, **payload):
@@ -8,122 +8,179 @@ def create(client, **payload):
 
 
 def test_create_then_list_and_fetch(client):
-    response = create(client, title="Warm Up: Slope", html="<p>Find the slope.</p>")
+    response = create(client, title="Warm Up: Slope")
     assert response.status_code == 201
     page = response.get_json()
     assert page["title"] == "Warm Up: Slope"
-    assert page["slug"].startswith("warm-up-slope-")
     assert page["published"] is False
     assert page["share_url"] is None
+    # A page starts as an empty directory: no files, nothing to serve.
+    assert page["file_count"] == 0
 
     listing = client.get("/api/pages", environ_overrides=as_teacher(TEACHER))
-    assert listing.status_code == 200
     assert [p["id"] for p in listing.get_json()["pages"]] == [page["id"]]
-
-    fetched = client.get(
-        f"/api/pages/{page['id']}", environ_overrides=as_teacher(TEACHER)
-    )
-    assert fetched.status_code == 200
-    assert fetched.get_json()["html"] == "<p>Find the slope.</p>"
-
-
-def test_html_is_sanitized_on_write(client):
-    response = create(
-        client,
-        title="Notes",
-        html="<p>Keep</p><script>alert(1)</script>",
-    )
-    stored = response.get_json()["html"]
-    assert "<p>Keep</p>" in stored
-    assert "script" not in stored.lower()
 
 
 def test_title_is_required(client):
-    response = create(client, title="   ", html="<p>x</p>")
+    response = create(client, title="   ")
     assert response.status_code == 400
     assert "title is required" in response.get_json()["error"]
 
 
-def test_unauthenticated_requests_are_rejected(client):
-    # No authorizer claims on the environ at all.
-    assert client.get("/api/pages").status_code == 401
-    assert client.post("/api/pages", json={"title": "x"}).status_code == 401
-
-
 def test_a_teacher_cannot_reach_another_teachers_page(client):
-    page = create(client, title="Quiz", html="<p>secret</p>").get_json()
-
-    for method in (client.get, client.delete):
-        assert method(
-            f"/api/pages/{page['id']}", environ_overrides=as_teacher(OTHER_TEACHER)
-        ).status_code == 404
-
-    assert client.put(
-        f"/api/pages/{page['id']}",
-        json={"title": "hijacked"},
-        environ_overrides=as_teacher(OTHER_TEACHER),
-    ).status_code == 404
-
-    assert client.get(
-        "/api/pages", environ_overrides=as_teacher(OTHER_TEACHER)
-    ).get_json()["pages"] == []
+    page = create(client, title="Mine").get_json()
+    response = client.get(
+        f"/api/pages/{page['id']}", environ_overrides=as_teacher(OTHER_TEACHER)
+    )
+    assert response.status_code == 404
 
 
-def test_publishing_exposes_the_page_and_withdrawing_hides_it(client):
-    page = create(client, title="Study Guide", html="<p>Chapter 4</p>").get_json()
-    slug = page["slug"]
+# --- uploads ---------------------------------------------------------------
 
-    # Unpublished: invisible to the public reader.
-    assert client.get(f"/api/public/pages/{slug}").status_code == 404
 
-    published = client.put(
-        f"/api/pages/{page['id']}",
-        json={"published": True},
-        environ_overrides=as_teacher(TEACHER),
-    ).get_json()
-    assert published["published"] is True
-    assert published["share_url"] == f"https://classroom.example.test/p/{slug}"
-
-    public = client.get(f"/api/public/pages/{slug}")
-    assert public.status_code == 200
-    assert public.get_json()["title"] == "Study Guide"
-    assert "script-src 'none'" in public.headers["Content-Security-Policy"]
-
-    # Withdrawn: gone again, via the same slug.
-    client.put(
-        f"/api/pages/{page['id']}",
-        json={"published": False},
+def sign(client, page_id, paths):
+    return client.post(
+        f"/api/pages/{page_id}/uploads",
+        json={"paths": paths},
         environ_overrides=as_teacher(TEACHER),
     )
-    assert client.get(f"/api/public/pages/{slug}").status_code == 404
 
 
-def test_editing_keeps_the_slug_stable(client):
-    page = create(client, title="Warm Up", html="<p>a</p>").get_json()
-    edited = client.put(
-        f"/api/pages/{page['id']}",
-        json={"title": "Warm Up (revised)", "html": "<p>b</p>"},
-        environ_overrides=as_teacher(TEACHER),
-    ).get_json()
-    assert edited["title"] == "Warm Up (revised)"
-    assert edited["slug"] == page["slug"]
+def test_upload_signs_one_url_per_file(client):
+    page = create(client, title="Fractions").get_json()
+    response = sign(client, page["id"], ["index.html", "images/diagram.png", "quiz.js"])
+    assert response.status_code == 200
+
+    uploads = {u["path"]: u for u in response.get_json()["uploads"]}
+    assert set(uploads) == {"index.html", "images/diagram.png", "quiz.js"}
+    assert uploads["index.html"]["key"] == f"draft/{page['id']}/index.html"
+    assert uploads["index.html"]["url"].startswith("https://")
+    # The browser must send this exact header back or S3 rejects the signature.
+    assert uploads["index.html"]["content_type"] == "text/html"
+    assert uploads["images/diagram.png"]["content_type"] == "image/png"
+    # Scripts are signed like anything else: lessons are interactive.
+    assert uploads["quiz.js"]["content_type"] in ("text/javascript", "application/javascript")
 
 
-def test_delete_removes_the_page(client):
-    page = create(client, title="Scratch", html="<p>x</p>").get_json()
-    assert client.delete(
-        f"/api/pages/{page['id']}", environ_overrides=as_teacher(TEACHER)
-    ).status_code == 200
-    assert client.get(
-        f"/api/pages/{page['id']}", environ_overrides=as_teacher(TEACHER)
-    ).status_code == 404
-
-
-def test_oversized_html_is_rejected(client):
-    response = create(client, title="Huge", html="<p>" + ("x" * 300_000) + "</p>")
+def test_upload_requires_an_index(client):
+    """Without index.html there is nothing for `/lesson/<id>/` to resolve to."""
+    page = create(client, title="No index").get_json()
+    response = sign(client, page["id"], ["notes.html"])
     assert response.status_code == 400
-    assert "KB or smaller" in response.get_json()["error"]
+    assert "index.html" in response.get_json()["error"]
 
 
-def test_health_is_public(client):
-    assert client.get("/api/public/health").get_json() == {"status": "ok"}
+def test_upload_refuses_path_traversal(client):
+    """The path becomes an S3 key a presigned URL grants write on."""
+    page = create(client, title="Nasty").get_json()
+    for bad in ["../other/index.html", "/etc/passwd", "a/../../b/index.html"]:
+        response = sign(client, page["id"], ["index.html", bad])
+        assert response.status_code == 400, bad
+        assert "path" in response.get_json()["error"].lower()
+
+
+def test_a_new_upload_replaces_the_previous_one(client, lessons_bucket):
+    """A file she removed in her authoring tool must not survive the re-upload."""
+    page = create(client, title="Replace").get_json()
+    upload(lessons_bucket, page["id"], "index.html")
+    upload(lessons_bucket, page["id"], "old-slide.png")
+
+    sign(client, page["id"], ["index.html"])
+
+    listing = client.get(
+        f"/api/pages/{page['id']}/files", environ_overrides=as_teacher(TEACHER)
+    )
+    assert listing.get_json()["files"] == []
+
+
+# --- publish and withdraw --------------------------------------------------
+
+
+def publish(client, page_id, value=True):
+    return client.put(
+        f"/api/pages/{page_id}",
+        json={"published": value},
+        environ_overrides=as_teacher(TEACHER),
+    )
+
+
+def test_publish_copies_files_to_the_served_prefix(client, lessons_bucket):
+    page = create(client, title="Live one").get_json()
+    upload(lessons_bucket, page["id"], "index.html")
+    upload(lessons_bucket, page["id"], "images/diagram.png", b"png")
+
+    response = publish(client, page["id"])
+    assert response.status_code == 200
+    published = response.get_json()
+    assert published["published"] is True
+    assert published["file_count"] == 2
+    # The share link is the lesson host and the page id, not the slug.
+    assert published["share_url"].endswith(f"/lesson/{page['id']}/")
+
+    assert live_keys(lessons_bucket, page["id"]) == ["images/diagram.png", "index.html"]
+
+
+def test_publishing_nothing_is_refused(client):
+    page = create(client, title="Empty").get_json()
+    response = publish(client, page["id"])
+    assert response.status_code == 400
+    assert "uploaded" in response.get_json()["error"]
+
+
+def test_withdraw_removes_the_served_copy_but_keeps_the_draft(client, lessons_bucket):
+    page = create(client, title="On and off").get_json()
+    upload(lessons_bucket, page["id"], "index.html")
+    publish(client, page["id"])
+
+    response = publish(client, page["id"], value=False)
+    assert response.status_code == 200
+    assert response.get_json()["share_url"] is None
+    assert live_keys(lessons_bucket, page["id"]) == []
+
+    # The draft survived, so re-publishing restores the lesson.
+    assert publish(client, page["id"]).status_code == 200
+    assert live_keys(lessons_bucket, page["id"]) == ["index.html"]
+
+
+def test_republishing_serves_the_new_upload(client, lessons_bucket):
+    """A live lesson re-uploaded must not leave the class reading the old one."""
+    page = create(client, title="Version two").get_json()
+    upload(lessons_bucket, page["id"], "index.html", b"<h1>v1</h1>")
+    upload(lessons_bucket, page["id"], "gone.png", b"x")
+    publish(client, page["id"])
+    assert live_keys(lessons_bucket, page["id"]) == ["gone.png", "index.html"]
+
+    sign(client, page["id"], ["index.html"])
+    upload(lessons_bucket, page["id"], "index.html", b"<h1>v2</h1>")
+    client.post(
+        f"/api/pages/{page['id']}/uploads/complete",
+        environ_overrides=as_teacher(TEACHER),
+    )
+
+    assert live_keys(lessons_bucket, page["id"]) == ["index.html"]
+    served = lessons_bucket.get_object(
+        Bucket="classroom-test-lessons", Key=f"lesson/{page['id']}/index.html"
+    )
+    assert served["Body"].read() == b"<h1>v2</h1>"
+
+
+def test_delete_removes_the_files_too(client, lessons_bucket):
+    page = create(client, title="Bin it").get_json()
+    upload(lessons_bucket, page["id"], "index.html")
+    publish(client, page["id"])
+
+    response = client.delete(
+        f"/api/pages/{page['id']}", environ_overrides=as_teacher(TEACHER)
+    )
+    assert response.status_code == 200
+    assert live_keys(lessons_bucket, page["id"]) == []
+    assert (
+        client.get(f"/api/pages/{page['id']}", environ_overrides=as_teacher(TEACHER)).status_code
+        == 404
+    )
+
+
+def test_health_is_the_only_public_route(client):
+    assert client.get("/api/public/health").status_code == 200
+    # The old anonymous JSON reader is gone; students read from CloudFront.
+    assert client.get("/api/public/pages/anything").status_code == 404

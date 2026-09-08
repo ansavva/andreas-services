@@ -90,6 +90,13 @@ jobs:
       - name: Test
         run: cd classroom/frontend && npm test
 
+      # The Cognito hosted pages are styled from a JSON document that is
+      # GENERATED from the stylesheets. Nothing at runtime notices when the two
+      # drift — the sign-in page just quietly stops matching the app — so the
+      # check belongs here, where a stale file fails the PR.
+      - name: Cognito branding matches the stylesheets
+        run: cd classroom/frontend && npm run brand:check
+
       - name: Build
         run: cd classroom/frontend && npx vite build
 
@@ -114,9 +121,12 @@ jobs:
       - name: Terraform fmt check
         run: terraform -chdir=classroom/infra/envs/prod fmt -check -recursive ../../
 
+      # `dev` is the per-machine development stack the scripts/dev-aws-*.sh
+      # suite applies. It is never applied by CI — no workflow holds a machine
+      # id — but it is a root config like prod and breaks the same way.
       - name: Terraform validate (all classroom envs)
         run: |
-          for env in prod; do
+          for env in prod dev; do
             terraform -chdir=classroom/infra/envs/$env init -backend=false -input=false
             terraform -chdir=classroom/infra/envs/$env validate
           done

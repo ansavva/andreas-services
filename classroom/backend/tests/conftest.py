@@ -9,11 +9,13 @@ import os
 
 import boto3
 import pytest
-from moto import mock_dynamodb
+from moto import mock_dynamodb, mock_s3
 
 TABLE_NAME = "classroom-test-pages"
+LESSONS_BUCKET = "classroom-test-lessons"
 
 os.environ.setdefault("CLASSROOM_PAGES_TABLE", TABLE_NAME)
+os.environ.setdefault("CLASSROOM_LESSONS_BUCKET", LESSONS_BUCKET)
 os.environ.setdefault("CLASSROOM_PUBLIC_SITE_URL", "https://classroom.example.test")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "testing")
@@ -35,18 +37,6 @@ def dynamodb_table():
             AttributeDefinitions=[
                 {"AttributeName": "PK", "AttributeType": "S"},
                 {"AttributeName": "SK", "AttributeType": "S"},
-                {"AttributeName": "GSI1PK", "AttributeType": "S"},
-                {"AttributeName": "GSI1SK", "AttributeType": "S"},
-            ],
-            GlobalSecondaryIndexes=[
-                {
-                    "IndexName": "GSI1",
-                    "KeySchema": [
-                        {"AttributeName": "GSI1PK", "KeyType": "HASH"},
-                        {"AttributeName": "GSI1SK", "KeyType": "RANGE"},
-                    ],
-                    "Projection": {"ProjectionType": "ALL"},
-                }
             ],
             BillingMode="PAY_PER_REQUEST",
         )
@@ -58,7 +48,29 @@ def dynamodb_table():
 
 
 @pytest.fixture
-def client(dynamodb_table):
+def lessons_bucket():
+    """A mocked lesson bucket, so publish/withdraw move real objects."""
+    with mock_s3():
+        boto3.client("s3", region_name="us-east-1").create_bucket(Bucket=LESSONS_BUCKET)
+        from classroom_core.repositories import lessons as lessons_module
+
+        lessons_module._client = None
+        yield boto3.client("s3", region_name="us-east-1")
+
+
+def upload(s3, page_id, path, body=b"<h1>hi</h1>"):
+    """Put a file where a presigned browser upload would have put it."""
+    s3.put_object(Bucket=LESSONS_BUCKET, Key=f"draft/{page_id}/{path}", Body=body)
+
+
+def live_keys(s3, page_id):
+    listing = s3.list_objects_v2(Bucket=LESSONS_BUCKET, Prefix=f"lesson/{page_id}/")
+    prefix = f"lesson/{page_id}/"
+    return sorted(o["Key"][len(prefix):] for o in listing.get("Contents", []))
+
+
+@pytest.fixture
+def client(dynamodb_table, lessons_bucket):
     from classroom_core.app_factory import create_app
 
     app = create_app()

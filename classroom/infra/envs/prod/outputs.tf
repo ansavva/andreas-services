@@ -1,6 +1,21 @@
-output "site_url" {
-  description = "Public site URL"
-  value       = "https://${local.domain_name}"
+output "admin_url" {
+  description = "Where a teacher signs in and manages her lessons"
+  value       = "https://${local.admin_domain_name}"
+}
+
+output "lesson_base_url" {
+  description = "Where students open a lesson; share links are built from this"
+  value       = module.lesson_hosting.lesson_base_url
+}
+
+output "lessons_bucket" {
+  description = "S3 bucket holding every lesson's uploaded files"
+  value       = module.lessons.bucket_id
+}
+
+output "lesson_distribution_id" {
+  description = "Lesson CloudFront distribution, for invalidating a re-uploaded lesson"
+  value       = module.lesson_hosting.distribution_id
 }
 
 output "api_url" {

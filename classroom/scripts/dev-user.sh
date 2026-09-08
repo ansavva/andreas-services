@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# Converge this machine's dev-pool teacher account.
+#
+# The dev Cognito pool is `allow_admin_create_user_only`, like prod's, so the
+# one account in it is created here. `dev-token.sh` signs in as exactly this
+# account, and both read `CLASSROOM_DEV_USER_EMAIL` from `dev-aws-common.sh` so
+# they cannot drift onto two different people.
+#
+# **Its `sub` is the only thing that makes a page findable.** Every page is
+# keyed `TEACHER#<sub>`, so deleting and recreating this account orphans every
+# page it wrote — which is why `dev-aws-reset.sh` empties the table whenever it
+# empties the pool.
+#
+# Nothing here writes to prod. The pool comes from this machine's Terraform
+# state, and a machine with no dev stack is told to run `dev-aws-setup.sh`
+# rather than being pointed at anything else. Provisioning a REAL teacher into
+# the prod pool is the `admin-create-user` call in classroom/README.md, kept
+# separate on purpose: this one overwrites a password on every run.
+#
+# Usage:
+#   ./classroom/scripts/dev-user.sh           # create or converge
+#   ./classroom/scripts/dev-user.sh --check   # read-only: does it exist?
+#
+# The password comes from CLASSROOM_DEV_USER_PASSWORD if exported, else
+# ~/.config/andreas-services/classroom/dev.env, else a no-echo prompt. There is
+# no default and there will not be one.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=dev-aws-common.sh
+source "$SCRIPT_DIR/dev-aws-common.sh"
+
+CHECK_ONLY=0
+GENERATE=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    # For a non-interactive provisioning run: mint a policy-valid password into
+    # dev.env rather than prompting. Never printed, and a re-run reuses what is
+    # already there.
+    --generate-password) GENERATE=true ;;
+    --profile) [[ $# -ge 2 ]] || die "--profile requires a value."; AWS_PROFILE_VALUE="$2"; shift ;;
+    --region) [[ $# -ge 2 ]] || die "--region requires a value."; AWS_REGION_VALUE="$2"; shift ;;
+    --check) CHECK_ONLY=1 ;;
+    --help|-h)
+      printf 'Usage: %s [--profile NAME] [--region REGION] [--check] [--generate-password]\n' "$0"
+      exit 0
+      ;;
+    *) die "Unknown option: $1" ;;
+  esac
+  shift
+done
+
+for command in aws jq; do require_command "$command"; done
+# --check must not mint a machine ID as a side effect, for the reason
+# dev-aws-setup.sh gives: asking whether a machine is set up should not be what
+# sets it up.
+load_machine_id false
+load_aws_identity
+load_dev_stack_outputs
+load_dev_user_email
+
+log "Cognito user pool: $DEV_POOL_ID"
+log "Account: $CLASSROOM_DEV_USER_EMAIL"
+
+user_exists() {
+  aws_dev cognito-idp admin-get-user \
+    --user-pool-id "$DEV_POOL_ID" --username "$CLASSROOM_DEV_USER_EMAIL" >/dev/null 2>&1
+}
+
+if [[ "$CHECK_ONLY" -eq 1 ]]; then
+  # Deliberately does NOT check the password. Verifying it means signing in,
+  # which mints a token and needs the secret — that is `dev-token.sh`'s job, and
+  # a read-only check should not require a credential to answer "does this
+  # account exist".
+  user_exists || die "No '$CLASSROOM_DEV_USER_EMAIL' in $DEV_POOL_ID. Run ./classroom/scripts/dev-user.sh."
+  ok "The dev teacher account exists."
+  exit 0
+fi
+
+load_dev_user_password true "$GENERATE"
+
+if user_exists; then
+  log "Account exists; converging its password."
+else
+  # MessageAction=SUPPRESS because the password is set below and there is
+  # nothing to email — and because `.test` is unroutable, so an invite would
+  # bounce into Cognito's own bounce accounting rather than reach anyone.
+  aws_dev cognito-idp admin-create-user \
+    --user-pool-id "$DEV_POOL_ID" \
+    --username "$CLASSROOM_DEV_USER_EMAIL" \
+    --user-attributes Name=email,Value="$CLASSROOM_DEV_USER_EMAIL" Name=email_verified,Value=true \
+    --message-action SUPPRESS >/dev/null
+  log "Account created."
+fi
+
+# --permanent, so there is no FORCE_CHANGE_PASSWORD challenge for a headless
+# SRP sign-in to get stuck behind. The value arrives through the environment
+# rather than on the command line: an argument is visible in `ps` to every
+# other process on the machine for as long as the call takes.
+aws_dev cognito-idp admin-set-user-password \
+  --user-pool-id "$DEV_POOL_ID" \
+  --username "$CLASSROOM_DEV_USER_EMAIL" \
+  --password "$CLASSROOM_DEV_USER_PASSWORD" \
+  --permanent ||
+  die "admin-set-user-password failed. If it rejected the password it did not meet the pool policy: 12+ characters, upper, lower and a digit."
+
+ok "The dev teacher account is ready."
+printf '\nSign in as it at http://localhost:5174 after ./classroom/scripts/dev-up.sh,\n'
+printf 'or mint an ID token for curl with:\n  ./classroom/scripts/dev-token.sh\n'

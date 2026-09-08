@@ -3,13 +3,16 @@ locals {
 }
 
 # One table holds every page, keyed by its owning teacher so a teacher's list is
-# a single query. GSI1 indexes the public slug so an anonymous student read is
-# also a single query rather than a scan.
+# a single query.
 #
-# The GSI1 attributes are written only while a page is published — the write
-# path REMOVEs them on withdrawal — so an unpublished page falls out of the
-# public lookup with no filter expression. See backend/classroom_core/
-# repositories/store.py.
+# **Metadata only.** A page's content is a directory of files in S3 — see
+# modules/lessons — and this table holds what a directory cannot: the title, the
+# publication state, the timestamps and the file count.
+#
+# There is no secondary index. GSI1 used to map a public slug to a page so an
+# anonymous student read was a single query; students now open a lesson's files
+# straight from CloudFront and never reach the API, so the index had no queries
+# left. See backend/classroom_core/repositories/store.py.
 resource "aws_dynamodb_table" "pages" {
   name         = local.pages_table
   billing_mode = "PAY_PER_REQUEST"
@@ -24,23 +27,6 @@ resource "aws_dynamodb_table" "pages" {
     name = "SK"
     type = "S"
   }
-  attribute {
-    name = "GSI1PK"
-    type = "S"
-  }
-  attribute {
-    name = "GSI1SK"
-    type = "S"
-  }
-
-  # GSI1 — public slug lookup (SLUG#<slug>), sparse over published pages only.
-  global_secondary_index {
-    name            = "GSI1"
-    hash_key        = "GSI1PK"
-    range_key       = "GSI1SK"
-    projection_type = "ALL"
-  }
-
   # A teacher's pages are the only copy of work they may have spent an evening
   # on, and this table is small enough that continuous backups cost almost
   # nothing.

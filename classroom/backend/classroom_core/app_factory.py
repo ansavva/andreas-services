@@ -8,6 +8,7 @@ from flask.json.provider import DefaultJSONProvider
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 
+from classroom_core import config
 from classroom_core.auth import Unauthenticated
 from classroom_core.routes.pages import bp as pages_bp
 from classroom_core.routes.public import bp as public_bp
@@ -71,9 +72,23 @@ def create_app() -> Flask:
     app.wsgi_app = ApiPathMiddleware(app.wsgi_app)
     app.wsgi_app = BodyLengthMiddleware(app.wsgi_app)
 
+    # THE ADMIN APP, AND NOTHING ELSE.
+    #
+    # This was `"*"`, which was harmless while the only browser code on our
+    # domains was ours. It is not harmless now: lessons run the teacher's own
+    # JavaScript, and `*` would let a script in any lesson call this API from
+    # a page she has open.
+    #
+    # It cannot reach her session — her tokens are in `localStorage` on the
+    # admin origin and a lesson runs on a different one — so this is the second
+    # layer rather than the first. But an API that answers every origin is one
+    # mistake away from mattering.
+    #
+    # `CLASSROOM_ALLOWED_ORIGIN` is set per environment: the admin host in prod,
+    # `http://localhost:5174` under `dev-up.sh`.
     CORS(
         app,
-        resources={r"/api/*": {"origins": "*"}},
+        resources={r"/api/*": {"origins": config.allowed_origins()}},
         allow_headers=["Content-Type", "X-Amz-Date", "Authorization", "X-Api-Key"],
         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     )

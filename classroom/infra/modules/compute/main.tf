@@ -99,6 +99,45 @@ resource "aws_iam_role_policy" "api_dynamodb" {
   })
 }
 
+# WHAT THE API DOES TO THE LESSON BUCKET, AND NOTHING MORE.
+#
+# It never reads a lesson's bytes and never serves one — CloudFront does that.
+# What it needs is:
+#
+#   PutObject     to sign the presigned PUTs the teacher's browser uploads with
+#   GetObject +   to COPY a lesson from its draft prefix to the live one when
+#   PutObject     she publishes (a server-side copy reads and writes)
+#   DeleteObject  to withdraw a lesson, and to clear a draft on re-upload
+#   ListBucket    to enumerate a lesson's files, which publish and withdraw
+#                 both need in order to act on all of them
+#
+# Scoped to this bucket only. A presigned URL inherits the signer's permissions,
+# so anything granted here is something a teacher's browser can be handed.
+resource "aws_iam_role_policy" "api_lessons" {
+  name = "${local.api_name}-lessons"
+  role = aws_iam_role.api.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+        ]
+        Resource = ["${var.lessons_bucket_arn}/*"]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = [var.lessons_bucket_arn]
+      },
+    ]
+  })
+}
+
 resource "aws_lambda_function" "api" {
   function_name = local.api_name
   role          = aws_iam_role.api.arn
@@ -111,6 +150,8 @@ resource "aws_lambda_function" "api" {
     variables = {
       CLASSROOM_PAGES_TABLE     = var.pages_table_name
       CLASSROOM_PUBLIC_SITE_URL = var.public_site_url
+      CLASSROOM_LESSONS_BUCKET  = var.lessons_bucket_name
+      CLASSROOM_ALLOWED_ORIGIN  = var.allowed_origin
     }
   }
 

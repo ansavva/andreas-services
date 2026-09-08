@@ -1,30 +1,30 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  Alert,
-  Button,
-  Field,
-  Input,
-  Spinner,
-  Text,
-  Textarea,
-} from "@ansavva/design-system";
+import { Alert, Button, Card, Field, Input, Spinner, Text } from "@ansavva/design-system";
 
-import { createPage, getPage, updatePage } from "../api";
+import {
+  completeUpload,
+  createPage,
+  getPage,
+  listFiles,
+  putToS3,
+  signUploads,
+  updatePage,
+} from "../api";
+import { collectLessonFiles, LessonFilesError, type LessonFile } from "../lessonFiles";
 
 /**
- * Author or edit one page.
+ * Name a lesson and upload the files that make it.
  *
- * The HTML box is deliberately a plain textarea rather than a rich editor. What
- * a teacher pastes here is most often already HTML — exported from a worksheet,
- * copied from another site — and a WYSIWYG layer would fight that paste rather
- * than accept it. The preview below is the feedback loop instead.
+ * **There is no editor here, deliberately.** She authors the lesson in whatever
+ * tool she already uses and this publishes what that tool produced, untouched —
+ * her styling, her layout and her interactive scripts all survive, because
+ * nothing rewrites or sanitizes them. What makes that safe is that lessons are
+ * served from a different origin to this app; see `infra/modules/lesson_hosting`.
  *
- * The preview renders the *unsaved* draft, so it deliberately does NOT use
- * `dangerouslySetInnerHTML`: the draft has not been through the server's
- * sanitizer yet, and rendering it live would execute anything the teacher
- * pasted, in their own session. It is shown as escaped source until saved; the
- * reader at /p/<slug> is where sanitized output is rendered for real.
+ * Three ways in, one code path: `collectLessonFiles` turns a single `.html`, a
+ * `.zip`, or a chosen folder into the same list of (path, blob) before anything
+ * is signed.
  */
 export function PageEditorPage() {
   const { pageId } = useParams<{ pageId: string }>();
@@ -32,17 +32,21 @@ export function PageEditorPage() {
   const isNew = pageId === undefined;
 
   const [title, setTitle] = useState("");
-  const [html, setHtml] = useState("");
+  const [files, setFiles] = useState<string[]>([]);
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+
+  const filePicker = useRef<HTMLInputElement>(null);
+  const folderPicker = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isNew || !pageId) return;
-    getPage(pageId)
-      .then((page) => {
+    Promise.all([getPage(pageId), listFiles(pageId)])
+      .then(([page, uploaded]) => {
         setTitle(page.title);
-        setHtml(page.html);
+        setFiles(uploaded);
       })
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : "Could not load that page."),
@@ -50,15 +54,15 @@ export function PageEditorPage() {
       .finally(() => setLoading(false));
   }, [isNew, pageId]);
 
-  const save = useCallback(async () => {
+  const saveTitle = useCallback(async () => {
     setSaving(true);
     setError(null);
     try {
       if (isNew) {
-        const page = await createPage({ title, html });
+        const page = await createPage({ title });
         navigate(`/pages/${page.id}`, { replace: true });
       } else if (pageId) {
-        await updatePage(pageId, { title, html });
+        await updatePage(pageId, { title });
         navigate("/");
       }
     } catch (err: unknown) {
@@ -66,7 +70,61 @@ export function PageEditorPage() {
     } finally {
       setSaving(false);
     }
-  }, [isNew, pageId, title, html, navigate]);
+  }, [isNew, pageId, title, navigate]);
+
+  /**
+   * Sign, PUT, then confirm.
+   *
+   * Uploads run a few at a time rather than all at once: a lesson can be two
+   * hundred files, and firing that many parallel PUTs at a school connection
+   * makes every one of them slower and some of them fail.
+   */
+  const upload = useCallback(
+    async (chosen: File[]) => {
+      if (!pageId) return;
+      setError(null);
+      let lessonFiles: LessonFile[];
+      try {
+        lessonFiles = await collectLessonFiles(chosen);
+      } catch (err: unknown) {
+        setError(
+          err instanceof LessonFilesError
+            ? err.message
+            : "Could not read those files.",
+        );
+        return;
+      }
+
+      setProgress({ done: 0, total: lessonFiles.length });
+      try {
+        const signed = await signUploads(
+          pageId,
+          lessonFiles.map((f) => f.path),
+        );
+        const byPath = new Map(lessonFiles.map((f) => [f.path, f.blob]));
+
+        let done = 0;
+        const queue = [...signed];
+        const worker = async () => {
+          for (let next = queue.shift(); next; next = queue.shift()) {
+            const blob = byPath.get(next.path);
+            if (blob) await putToS3(next, blob);
+            done += 1;
+            setProgress({ done, total: signed.length });
+          }
+        };
+        await Promise.all([worker(), worker(), worker(), worker()]);
+
+        const page = await completeUpload(pageId);
+        setFiles(page.files);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "The upload did not finish.");
+      } finally {
+        setProgress(null);
+      }
+    },
+    [pageId],
+  );
 
   if (loading) {
     return (
@@ -77,9 +135,9 @@ export function PageEditorPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
+    <div className="mx-auto max-w-3xl px-4 py-8">
       <Text variant="display" family="heading">
-        {isNew ? "New page" : "Edit page"}
+        {isNew ? "New lesson" : "Lesson"}
       </Text>
 
       {error && (
@@ -90,54 +148,137 @@ export function PageEditorPage() {
         </div>
       )}
 
-      <div className="mt-6 flex flex-col gap-5">
+      <div className="mt-6 flex flex-col gap-6">
         <Field.Root name="title">
-          <Field.Label>Title</Field.Label>
+          <Field.Label>Name</Field.Label>
           <Input
             value={title}
             onValueChange={setTitle}
             placeholder="Warm Up: Solving for x"
           />
           <Field.Description>
-            Students see this at the top of the page.
+            Just for your own list — students never see it.
           </Field.Description>
         </Field.Root>
 
-        <Field.Root name="html">
-          <Field.Label>Page content (HTML)</Field.Label>
-          <Textarea
-            value={html}
-            onValueChange={setHtml}
-            rows={16}
-            placeholder="<h2>Today's warm up</h2><p>Solve for x…</p>"
-          />
-          <Field.Description>
-            Headings, lists, tables, images and links are kept. Scripts, iframes
-            and embedded forms are stripped when the page is saved.
-          </Field.Description>
-        </Field.Root>
+        {isNew ? (
+          <Alert.Root intent="info">
+            <Alert.Description>
+              Give the lesson a name and save it. You can upload its files on the
+              next screen.
+            </Alert.Description>
+          </Alert.Root>
+        ) : (
+          <Card.Root>
+            <Card.Title>Lesson files</Card.Title>
+            <Text tone="muted">
+              Upload the lesson exactly as your program saved it — one HTML file,
+              a zip, or the whole folder. It needs to contain{" "}
+              <strong>index.html</strong>, which is the page students open.
+              Uploading again replaces everything.
+            </Text>
 
-        <div className="flex gap-2">
-          <Button onClick={() => void save()} disabled={saving || !title.trim()}>
-            {saving ? "Saving…" : "Save"}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                className="rounded-pill"
+                disabled={progress !== null}
+                onClick={() => filePicker.current?.click()}
+              >
+                Choose files
+              </Button>
+              <Button
+                intent="secondary"
+                className="rounded-pill"
+                disabled={progress !== null}
+                onClick={() => folderPicker.current?.click()}
+              >
+                Choose a folder
+              </Button>
+            </div>
+
+            {/* Two inputs because `webkitdirectory` is a property of the input,
+                not of the click — one picker cannot offer both. Hidden, and
+                driven by the buttons above, so the styling is the design
+                system's rather than the browser's. */}
+            <input
+              ref={filePicker}
+              type="file"
+              multiple
+              accept=".html,.htm,.zip,image/*,text/css,text/javascript,font/*"
+              className="hidden"
+              onChange={(event) => {
+                void upload([...(event.target.files ?? [])]);
+                event.target.value = "";
+              }}
+            />
+            <input
+              ref={folderPicker}
+              type="file"
+              // Non-standard but supported everywhere this app runs; it is the
+              // only way a browser will hand over a directory tree.
+              {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+              multiple
+              className="hidden"
+              onChange={(event) => {
+                void upload([...(event.target.files ?? [])]);
+                event.target.value = "";
+              }}
+            />
+
+            {progress && (
+              <div className="mt-4 flex items-center gap-3">
+                <Spinner />
+                <Text variant="caption" tone="muted">
+                  Uploading {progress.done} of {progress.total}…
+                </Text>
+              </div>
+            )}
+
+            {!progress && files.length > 0 && (
+              <div className="mt-4">
+                <Text variant="caption" tone="muted">
+                  {files.length} file{files.length === 1 ? "" : "s"} uploaded
+                </Text>
+                <ul className="border-line mt-2 max-h-56 overflow-auto rounded-lg border">
+                  {files.map((path) => (
+                    <li
+                      key={path}
+                      className="border-line text-ink border-b px-3 py-1.5 font-mono text-xs last:border-b-0"
+                    >
+                      {path}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {!progress && files.length === 0 && (
+              <div className="mt-4">
+                <Text variant="caption" tone="muted">
+                  Nothing uploaded yet.
+                </Text>
+              </div>
+            )}
+          </Card.Root>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            className="rounded-pill"
+            onClick={() => void saveTitle()}
+            disabled={saving || !title.trim()}
+          >
+            {saving ? "Saving…" : isNew ? "Create lesson" : "Save"}
           </Button>
-          <Button intent="secondary" onClick={() => navigate("/")} disabled={saving}>
-            Cancel
+          <Button
+            intent="secondary"
+            className="rounded-pill"
+            onClick={() => navigate("/")}
+            disabled={saving}
+          >
+            {isNew ? "Cancel" : "Done"}
           </Button>
         </div>
-
-        {html.trim() && (
-          <div>
-            <Text variant="title">Draft source</Text>
-            <Text variant="caption" tone="muted">
-              Shown as source, not rendered — an unsaved draft has not been
-              sanitized yet. Save and open the share link to see the real page.
-            </Text>
-            <pre className="bg-surface-alt mt-2 max-h-80 overflow-auto rounded-lg p-3 text-xs">
-              {html}
-            </pre>
-          </div>
-        )}
       </div>
     </div>
   );

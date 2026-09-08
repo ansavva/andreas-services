@@ -2,3 +2,9 @@ tests/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# The local dev server, which stands in for API Gateway on a developer's
+# machine (see classroom_core/handlers/local/api/api_dev_server.py). It has no
+# business in the Lambda image, and its PyJWT import is a dev-group dependency
+# `poetry install --only main` above does not install.
+classroom_core/handlers/local/
