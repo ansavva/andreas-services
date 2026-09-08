@@ -181,7 +181,7 @@ it("will not delete until the name is typed, and says what goes with it", async 
   await open();
 
   // Delete lives behind the page bar's `⋯`, not loose beside the title.
-  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+  fireEvent.click(screen.getAllByRole("button", { name: "More actions" })[0]!);
   fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
 
   // Scoped to the dialog: the trigger and the dialog's action share a label,

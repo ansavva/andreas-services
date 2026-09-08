@@ -15,6 +15,7 @@ import { useResource } from "../hooks/useResource";
 import { useProjectCrumb } from "../hooks/useProjectCrumb";
 import { formatDate } from "../utils/format";
 import { objectPath, projectPath, scenePath } from "../utils/location";
+import { TrashIcon } from "../components/common/icons";
 
 /**
  * One movie: the scenes it is cut from, in order, and the finished piece.
@@ -62,7 +63,12 @@ export function MoviePage() {
             </Text>
           </>
         }
-        menu={[{ label: "Delete", danger: true, onSelect: () => setDeleteOpen(true) }]}
+        menu={[{
+              label: "Delete",
+              icon: <TrashIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5]" />,
+              danger: true,
+              onSelect: () => setDeleteOpen(true),
+            }]}
       />
 
       <ConfirmDestroyDialog

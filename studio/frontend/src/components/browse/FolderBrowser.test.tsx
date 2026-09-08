@@ -3,6 +3,7 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import type { FolderListing } from "../../types";
+import { CreateBarProvider, useCreateBarState } from "../../context/CreateBarContext";
 import { TestProviders } from "../../test-providers";
 
 vi.mock("../../apis/studio", () => ({
@@ -15,10 +16,11 @@ vi.mock("../../apis/studio", () => ({
   renameNode: vi.fn(),
 }));
 
-import { getFolder } from "../../apis/studio";
+import { deleteNodes, getFolder } from "../../apis/studio";
 import { FolderBrowser, type BrowserNav } from "./FolderBrowser";
 
 const list = vi.mocked(getFolder);
+const destroy = vi.mocked(deleteNodes);
 
 const FOLDER_ID = "node-folder";
 const FILE_A = "node-file-a";
@@ -66,11 +68,24 @@ function nav(over: Partial<BrowserNav> = {}): BrowserNav {
   };
 }
 
+/** What the create bar holds for its current kind — the real provider, read back. */
+function BarProbe() {
+  const state = useCreateBarState();
+  return (
+    <output data-testid="bar">
+      {state.attachments[state.kind].map((held) => `${held.role}:${held.ref.node}`).join(",")}
+    </output>
+  );
+}
+
 function open(initial = "/f", navOverride: Partial<BrowserNav> = {}) {
   render(
     <TestProviders>
       <MemoryRouter initialEntries={[initial]}>
-        <FolderBrowser nav={nav(navOverride)} />
+        <CreateBarProvider>
+          <FolderBrowser nav={nav(navOverride)} />
+          <BarProbe />
+        </CreateBarProvider>
         <SearchProbe />
       </MemoryRouter>
     </TestProviders>,
@@ -87,7 +102,7 @@ it("the ⋯ menu holds this folder's own actions", async () => {
   open();
   await screen.findByText("a.png");
 
-  fireEvent.click(screen.getByRole("button", { name: "More" }));
+  fireEvent.click(screen.getAllByRole("button", { name: "More" })[0]!);
 
   expect(screen.getByRole("menuitem", { name: "New folder…" })).toBeTruthy();
   expect(screen.getByRole("menuitem", { name: "Copy path" })).toBeTruthy();
@@ -100,7 +115,7 @@ it("New folder… opens the inline form, from the menu", async () => {
   open();
   await screen.findByText("a.png");
 
-  fireEvent.click(screen.getByRole("button", { name: "More" }));
+  fireEvent.click(screen.getAllByRole("button", { name: "More" })[0]!);
   fireEvent.click(screen.getByRole("menuitem", { name: "New folder…" }));
 
   expect(screen.getByRole("form", { name: "New folder" })).toBeTruthy();
@@ -163,6 +178,71 @@ it("selecting a file shows the sticky strip, announced politely", async () => {
   expect(screen.getByRole("button", { name: "Select none" })).toBeTruthy();
 
   // The ⋯ menu no longer offers "Select all" while the strip already does.
-  fireEvent.click(screen.getByRole("button", { name: "More" }));
+  fireEvent.click(screen.getAllByRole("button", { name: "More" })[0]!);
   expect(screen.queryByRole("menuitem", { name: "Select all" })).toBeNull();
+});
+
+/**
+ * Open a tile's `⋮`.
+ *
+ * **Two triggers per tile, and the first is the one to press.** `ActionMenu`
+ * draws the pointer's `Dropdown` and the phone's `Drawer` and hides one of them
+ * in CSS, which jsdom does not apply — so both are found, and the dropdown is
+ * the one whose items are `menuitem`s.
+ */
+function openTileMenu(name: string) {
+  fireEvent.click(screen.getAllByRole("button", { name: `Actions for ${name}` })[0]!);
+}
+
+it("a picture in the grid is attached to the create bar as a reference", async () => {
+  open();
+  await screen.findByText("a.png");
+
+  openTileMenu("a.png");
+  fireEvent.click(screen.getByRole("menuitem", { name: "Use as reference" }));
+
+  // The node, in the role that accumulates — pressing a second tile adds to
+  // this rather than replacing it.
+  expect(screen.getByTestId("bar")).toHaveProperty(
+    "textContent",
+    `reference:${FILE_A}`,
+  );
+});
+
+it("a clip's menu offers no reference — a reference is a picture", async () => {
+  list.mockResolvedValue(
+    listing({
+      files: [
+        {
+          id: "node-clip",
+          key: "root/clip.mp4",
+          name: "clip.mp4",
+          size: 100,
+          last_modified: "2026-08-01T00:00:00Z",
+          kind: "video",
+          content_type: "video/mp4",
+          url: "https://example.com/clip.mp4",
+        },
+      ],
+    }),
+  );
+  open();
+  await screen.findByText("clip.mp4");
+
+  openTileMenu("clip.mp4");
+  expect(screen.queryByRole("menuitem", { name: "Use as reference" })).toBeNull();
+  // The lines that are not about being a picture are still there.
+  expect(screen.getByRole("menuitem", { name: "Download" })).toBeTruthy();
+});
+
+it("deleting from a tile's menu arms first, and the first press deletes nothing", async () => {
+  open();
+  await screen.findByText("a.png");
+
+  openTileMenu("a.png");
+  fireEvent.click(screen.getByRole("menuitem", { name: "Delete a.png" }));
+  expect(destroy).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole("menuitem", { name: /confirm/i }));
+  await waitFor(() => expect(destroy).toHaveBeenCalledWith([FILE_A]));
 });

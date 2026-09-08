@@ -28,6 +28,8 @@ interface ControlsProps {
   editing?: boolean;
   onToggleEditing?: () => void;
   onClose?: () => void;
+  /** Hand the open picture to the create bar. Absent on a clip — see `ObjectActions`. */
+  onUseAsReference?: () => void;
   className?: string;
 }
 
@@ -53,6 +55,7 @@ export function ObjectControls({
   editing = false,
   onToggleEditing,
   onClose,
+  onUseAsReference,
   className,
 }: ControlsProps) {
   return (
@@ -66,6 +69,7 @@ export function ObjectControls({
           editing={editing}
           onToggleEditing={onToggleEditing}
           onClose={onClose}
+          onUseAsReference={onUseAsReference}
         />
       </div>
 

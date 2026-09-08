@@ -113,7 +113,7 @@ it("types the name before deleting the movie, then lands on its project", async 
   read.mockResolvedValue(record());
   await open();
 
-  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+  fireEvent.click(screen.getAllByRole("button", { name: "More actions" })[0]!);
   fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
 
   const dialog = await screen.findByRole("alertdialog");

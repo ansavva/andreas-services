@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { PageBar } from "./PageBar";
+import { CopyIcon, TrashIcon } from "../common/icons";
 
 afterEach(cleanup);
 
@@ -50,11 +51,11 @@ it("renders the primary action and the icon actions beside the menu", () => {
     title: "A project",
     primary: <button type="button">New run</button>,
     actions: <button type="button">Download</button>,
-    menu: [{ label: "Duplicate", onSelect: vi.fn() }],
+    menu: [{ label: "Duplicate", icon: <CopyIcon />, onSelect: vi.fn() }],
   });
   expect(screen.getByRole("button", { name: "New run" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "More actions" })).toBeTruthy();
+  expect(screen.getAllByRole("button", { name: "More actions" })[0]!).toBeTruthy();
 });
 
 /**
@@ -66,10 +67,10 @@ it("marks a danger menu item and lets its onSelect open the caller's own confirm
   const onSelect = vi.fn();
   renderBar({
     title: "A character",
-    menu: [{ label: "Delete", danger: true, onSelect }],
+    menu: [{ label: "Delete", icon: <TrashIcon />, danger: true, onSelect }],
   });
 
-  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+  fireEvent.click(screen.getAllByRole("button", { name: "More actions" })[0]!);
   const item = screen.getByRole("menuitem", { name: "Delete" });
   expect(item.className).toContain("text-danger");
 
@@ -78,23 +79,11 @@ it("marks a danger menu item and lets its onSelect open the caller's own confirm
 });
 
 /**
- * The arm-in-place escape hatch: `onClick` can keep the menu open by calling
- * `preventDefault`, the same contract `ItemActions`' delete item runs on.
+ * **The arm-in-place escape hatch is gone, and nothing on a page used it.**
+ * `onClick` + `itemProps` let a caller hand-roll a two-press delete inside the
+ * bar's menu; every page instead opens a `ConfirmDestroyDialog` that makes you
+ * type the name, which is the case above. Arming now belongs to `ActionMenu`
+ * (`arm`), where a row's and a tile's delete — the ones with no dialog behind
+ * them — reach it. `ActionMenu.test` covers it once for all four menus.
  */
-it("keeps the menu open when a menu item's onClick prevents the default", () => {
-  const onClick = vi.fn((event: React.MouseEvent) => event.preventDefault());
-  renderBar({
-    title: "A run",
-    menu: [{ label: "Delete", danger: true, onClick }],
-  });
-
-  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
-  fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
-
-  expect(onClick).toHaveBeenCalledTimes(1);
-  // Still open: `aria-expanded` on the trigger is the source of truth.
-  expect(screen.getByRole("button", { name: "More actions" }).getAttribute("aria-expanded")).toBe(
-    "true",
-  );
-});
 

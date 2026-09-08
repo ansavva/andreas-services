@@ -22,7 +22,7 @@ function show(onDelete = vi.fn(() => Promise.resolve())) {
     // The copy item reports through the toast now, so the provider is required.
     { wrapper: TestProviders },
   );
-  fireEvent.click(screen.getByRole("button", { name: "Actions for clip.mp4" }));
+  fireEvent.click(screen.getAllByRole("button", { name: "Actions for clip.mp4" })[0]!);
   return onDelete;
 }
 

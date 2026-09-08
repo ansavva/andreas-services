@@ -116,6 +116,19 @@ function Probe() {
 
 const bar = () => JSON.parse(screen.getByTestId("bar").textContent ?? "{}");
 
+/**
+ * Open one output tile's `⋮`, where every action on an output now lives.
+ *
+ * **Two triggers per tile, and the first is the one to press.** `ActionMenu`
+ * draws the pointer's `Dropdown` and the phone's `Drawer` and hides one of them
+ * in CSS, which jsdom does not apply — so both are found, and the dropdown is
+ * the one whose items are `menuitem`s.
+ */
+function openTileMenu(tile: number) {
+  const triggers = screen.getAllByRole("button", { name: /^Actions for Output/ });
+  fireEvent.click(triggers[tile * 2]!);
+}
+
 afterEach(cleanup);
 beforeEach(() => {
   vi.clearAllMocks();
@@ -280,16 +293,16 @@ describe("the actions", () => {
     });
   });
 
-  it("Use in prompt attaches the output as a reference; Start frame switches to video with it as the start", async () => {
+  it("Use as reference attaches the output; Start frame switches to video with it as the start", async () => {
     await draw([row()]);
     await screen.findByRole("article");
 
-    fireEvent.click(
-      screen.getAllByRole("button", { name: "Use in prompt" })[1]!,
-    );
+    openTileMenu(1);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Use as reference" }));
     expect(bar().attachments).toEqual(["reference:node-o2"]);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Start frame" })[0]!);
+    openTileMenu(0);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Start frame" }));
     expect(bar().kind).toBe("video");
     expect(bar().attachments).toEqual(["start:node-o1"]);
     expect(bar().seed.kind).toBe("video");
@@ -299,9 +312,10 @@ describe("the actions", () => {
     await draw([row()]);
     await screen.findByRole("article");
 
-    // The registry has to have answered first — the button reads it.
+    // The registry has to have answered first — the item reads it.
     await waitFor(() => {
-      fireEvent.click(screen.getAllByRole("button", { name: "Upscale" })[0]!);
+      openTileMenu(0);
+      fireEvent.click(screen.getByRole("menuitem", { name: "Upscale" }));
       expect(bar().seed?.model).toBe("topazlabs/image-upscale");
     });
     expect(bar().attachments).toEqual(["start:node-o1"]);
@@ -403,10 +417,12 @@ describe("the shape of the frames", () => {
     const tile = screen.getAllByRole("button", { name: /^Open Output/ })[0]!;
     const box = tile.querySelector("span[style]") as HTMLElement;
     expect(box.style.aspectRatio).toBe("9 / 16");
-    // A clip is not a reference — a reference is a picture — so the tile
-    // offers no way to attach it as one. It did, and the send was refused.
-    expect(screen.queryByRole("button", { name: "Use in prompt" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Start frame" })).toBeNull();
+    // A clip is not a reference — a reference is a picture — so the tile's
+    // menu offers no way to attach it as one. It did, and the send was refused.
+    openTileMenu(0);
+    expect(screen.queryByRole("menuitem", { name: "Use as reference" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Start frame" })).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "Run again with this" })).toBeTruthy();
   });
 });
 

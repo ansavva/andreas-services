@@ -1,8 +1,8 @@
-import type { ReactElement } from "react";
+import { useState, type DragEvent, type ReactElement } from "react";
 
 import { Button, IconButton } from "@ansavva/design-system";
 
-import type { AttachRole, Attachment } from "../../context/CreateBarContext";
+import type { AttachRef, AttachRole, Attachment } from "../../context/CreateBarContext";
 import type { ModelEntry, RunKind } from "../../types";
 import { assetLabel } from "../../utils/format";
 import {
@@ -15,6 +15,7 @@ import {
   SwapIcon,
   TrashIcon,
 } from "../common/icons";
+import { isNodeDrag, readNodeDrag } from "./dragRef";
 import { ROLES_BY_KIND, ROLE_WORDS, fieldFor } from "./roles";
 
 const ROLE_ICONS: Record<AttachRole, (props: { className?: string }) => ReactElement> = {
@@ -47,6 +48,13 @@ const GLYPH = "size-4 shrink-0 fill-none stroke-current stroke-[1.5]";
  *
  * Nothing here is a `<button>` inside a `<button>`: the picture is a button,
  * its × a sibling.
+ *
+ * **Each cell is also where a dragged picture lands.** A tile in the library's
+ * grid can be dragged straight onto the role it should fill, which is the one
+ * thing the buttons on those tiles cannot express — a button has to pick a role
+ * for you, and it picks `reference`. A blocked cell refuses the drop rather
+ * than taking it and failing at send: no `preventDefault`, so the cursor says
+ * no. See `dragRef.ts` for why the decision is made from the type list.
  */
 export function AttachTiles({
   kind,
@@ -57,6 +65,7 @@ export function AttachTiles({
   onDetach,
   onSwapFrames,
   onClear,
+  onDropRef,
   keep,
   onKeep,
 }: {
@@ -71,9 +80,14 @@ export function AttachTiles({
   /** The start frame becomes the end frame and vice versa. */
   onSwapFrames: () => void;
   onClear: () => void;
+  /** A picture dragged onto a role tile. The bar decides what `attach` does with it. */
+  onDropRef: (ref: AttachRef, role: AttachRole) => void;
   keep: boolean;
   onKeep: (keep: boolean) => void;
 }) {
+  /** The cell a drag is currently over, drawn as that cell's highlighted state. */
+  const [over, setOver] = useState<AttachRole | null>(null);
+
   const roles = ROLES_BY_KIND[kind].filter((each) => fieldFor(each, entry) !== null);
   if (roles.length === 0) return null;
 
@@ -108,8 +122,57 @@ export function AttachTiles({
     return null;
   };
 
+  /**
+   * The four handlers that make one cell a target.
+   *
+   * `dragover` fires continuously and must `preventDefault` on **every** one of
+   * them or the browser keeps its default handling — `FolderBrowser`'s upload
+   * zone carries the same note. `dragleave` is filtered through `contains`
+   * because it fires on every crossing between a cell's own children, and a
+   * highlight toggled off by each of those flickers; the cell's group element
+   * has no box (`display: contents`) and is still an element in the tree, so
+   * the containment test works.
+   */
+  const dropTarget = (of: AttachRole) => {
+    const refused = blocked(of) !== null;
+    return {
+      onDragEnter: (event: DragEvent) => {
+        if (!isNodeDrag(event) || refused) return;
+        event.preventDefault();
+        setOver(of);
+      },
+      onDragOver: (event: DragEvent) => {
+        if (!isNodeDrag(event) || refused) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+      },
+      onDragLeave: (event: DragEvent) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+        setOver((current) => (current === of ? null : current));
+      },
+      onDrop: (event: DragEvent) => {
+        setOver(null);
+        if (refused) return;
+        const ref = readNodeDrag(event);
+        if (!ref) return;
+        event.preventDefault();
+        // The sheet under these cells takes a drop as a reference; a drop that
+        // named its role has already been answered here.
+        event.stopPropagation();
+        onDropRef(ref, of);
+      },
+    };
+  };
+
   const frameTile = (of: "start" | "end", holding: { attachment: Attachment; index: number } | undefined) => (
-    <div key={of} role="group" aria-label={ROLE_WORDS[of].label} data-role-cell={of} className="contents">
+    <div
+      key={of}
+      role="group"
+      aria-label={ROLE_WORDS[of].label}
+      data-role-cell={of}
+      className="contents"
+      {...dropTarget(of)}
+    >
       {holding ? (
         <Thumb
           attachment={holding.attachment}
@@ -118,7 +181,12 @@ export function AttachTiles({
           onDetach={() => onDetach(holding.index)}
         />
       ) : (
-        <Ghost role={of} on={role === of} blocked={blocked(of)} onPress={() => onRole(role === of ? null : of)} />
+        <Ghost
+          role={of}
+          on={role === of || over === of}
+          blocked={blocked(of)}
+          onPress={() => onRole(role === of ? null : of)}
+        />
       )}
     </div>
   );
@@ -137,7 +205,13 @@ export function AttachTiles({
         {roles.includes("end") && frameTile("end", end)}
 
         {roles.includes("input") && (
-          <div role="group" aria-label={ROLE_WORDS.input.label} data-role-cell="input" className="contents">
+          <div
+            role="group"
+            aria-label={ROLE_WORDS.input.label}
+            data-role-cell="input"
+            className="contents"
+            {...dropTarget("input")}
+          >
             {input ? (
               <Thumb
                 attachment={input.attachment}
@@ -148,7 +222,7 @@ export function AttachTiles({
             ) : (
               <Ghost
                 role="input"
-                on={role === "input"}
+                on={role === "input" || over === "input"}
                 blocked={null}
                 onPress={() => onRole(role === "input" ? null : "input")}
               />
@@ -157,7 +231,13 @@ export function AttachTiles({
         )}
 
         {roles.includes("reference") && (
-          <div role="group" aria-label={ROLE_WORDS.reference.label} data-role-cell="reference" className="contents">
+          <div
+            role="group"
+            aria-label={ROLE_WORDS.reference.label}
+            data-role-cell="reference"
+            className="contents"
+            {...dropTarget("reference")}
+          >
             {refs.map(({ attachment, index }, position) => (
               <Thumb
                 key={`${attachment.ref.node}-${index}`}
@@ -169,7 +249,7 @@ export function AttachTiles({
             ))}
             <Ghost
               role="reference"
-              on={role === "reference"}
+              on={role === "reference" || over === "reference"}
               blocked={blocked("reference")}
               onPress={() => onRole(role === "reference" ? null : "reference")}
             />

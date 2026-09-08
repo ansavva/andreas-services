@@ -5,7 +5,6 @@ import {
   Alert,
   Breadcrumbs,
   Button,
-  Dropdown,
   Input,
   Text,
   Toggle,
@@ -26,13 +25,15 @@ import { EmptyState } from "../common/EmptyState";
 import { FilterBar } from "../common/FilterBar";
 import { LoadError } from "../common/LoadError";
 import { PageLoading } from "../common/PageLoading";
-import { useArmed } from "../../hooks/useArmed";
+import { useCreateBar } from "../../context/CreateBarContext";
+import { useFavorites } from "../../hooks/useFavorites";
 import { copyLabel, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { useFolder } from "../../hooks/useFolder";
 import { useSearchParamState } from "../../hooks/useSearchParamState";
 import { useSelection } from "../../hooks/useSelection";
 import { useUploads } from "../../hooks/useUploads";
 import type { Crumb as FolderCrumb, EntryKind, FileEntry, SortOrder } from "../../types";
+import { downloadNode } from "../../utils/download";
 import { MEDIA_GRID } from "../../utils/grid";
 import type { FolderId } from "../../utils/location";
 import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
@@ -50,8 +51,26 @@ import { SortControl } from "./SortControl";
 import { TagFilter } from "./TagFilter";
 import { UploadButton } from "./UploadButton";
 import { UploadStatus } from "./UploadStatus";
-import { CopyIcon, DotsIcon, FolderIcon, FolderIntoIcon, ImageIcon } from "../common/icons";
+import {
+  CheckIcon,
+  ClipboardIcon,
+  CopyIcon,
+  DownloadIcon,
+  FolderIcon,
+  FolderIntoIcon,
+  FolderPlusIcon,
+  HeartFilledIcon,
+  HeartIcon,
+  ImageIcon,
+  TrashIcon,
+  UploadIcon,
+  UseInPromptIcon,
+} from "../common/icons";
+import { ActionMenu, type MenuAction } from "../common/ActionMenu";
 import { BULK_GATE, ConfirmDestroyDialog } from "../common/ConfirmDestroyDialog";
+
+/** Every tile-menu line's glyph, at the size a line of text carries. */
+const MENU_GLYPH = "size-4 shrink-0 fill-none stroke-current stroke-[1.5]";
 
 /**
  * How the browser is addressed, supplied by whoever is showing it.
@@ -432,6 +451,31 @@ export function FolderBrowser({
   const uploads = useUploads(hereId, reload);
   const toast = useToast();
 
+  /**
+   * Hand a picture in this listing to the create bar, as a reference.
+   *
+   * **The library IS the reference shelf, so browsing it has to be a way to
+   * pick one.** The sheet's own picker walks the same tree from inside the
+   * create bar, and it is the right surface when the sheet is where you already
+   * are — but a person looking through a character's seed folder for the four
+   * frames worth using was reaching them by opening the picker and walking back
+   * down to the folder already on screen. This is the same `attach` the run's
+   * outputs use (`useRunActions.useInPrompt`), from the other grid.
+   *
+   * `reference` accumulates rather than replaces, so pressing four tiles
+   * attaches four pictures — see `holdsOne`.
+   */
+  const bar = useCreateBar();
+  const favorites = useFavorites();
+  const attachAsReference = useCallback(
+    (file: FileEntry) =>
+      bar.attach(
+        { node: file.id, url: file.url, name: file.name, kind: "object" },
+        "reference",
+      ),
+    [bar],
+  );
+
   /** "3 files", "1 key" — the count and its noun, agreeing about plurality. */
   const selectedNoun = useCallback(
     (one: string, many: string) =>
@@ -482,6 +526,78 @@ export function FolderBrowser({
       toast.add({ intent: "success", title: `Deleted ${name}` });
     },
     [run, toast],
+  );
+
+  /**
+   * What a picture's `⋮` offers — the lines that used to be glyphs over the
+   * frame, plus the ones a media tile never had at all.
+   *
+   * **Rename is not here, and that is not an oversight.** A rename is an inline
+   * field the width of the row it replaces (`RenameForm`, opened from
+   * `ItemActions`), and a 150px tile in a grid has nowhere to put one. Move,
+   * copy and delete all reach their own surfaces — a picker or an armed
+   * confirmation — so those come along.
+   *
+   * The order is what you do with a picture before what you do to it, and the
+   * destructive line is last and armed.
+   */
+  const tileActions = useCallback(
+    (file: FileEntry): MenuAction[] => {
+      const favorite = favorites.isFavorite(file.id);
+      return [
+        // A still only: every role a tile stands for is a picture, and a clip
+        // attached as one is sent to a field that refuses it.
+        ...(file.kind === "image"
+          ? [
+              {
+                key: "reference",
+                label: "Use as reference",
+                icon: <UseInPromptIcon className={MENU_GLYPH} />,
+                onSelect: () => attachAsReference(file),
+              },
+            ]
+          : []),
+        {
+          key: "favorite",
+          label: favorite ? "Remove from favorites" : "Add to favorites",
+          icon: favorite ? (
+            <HeartFilledIcon className="size-4 fill-current stroke-none" />
+          ) : (
+            <HeartIcon className={MENU_GLYPH} />
+          ),
+          onSelect: () => favorites.toggle(file.id),
+        },
+        {
+          key: "download",
+          label: "Download",
+          icon: <DownloadIcon className={MENU_GLYPH} />,
+          onSelect: () => void downloadNode(file.id),
+        },
+        {
+          key: "move",
+          label: "Move…",
+          icon: <FolderIntoIcon className={MENU_GLYPH} />,
+          onSelect: () =>
+            setPickerTarget({ verb: "move", ids: [file.id], noun: file.name }),
+        },
+        {
+          key: "copy",
+          label: "Copy to…",
+          icon: <CopyIcon className={MENU_GLYPH} />,
+          onSelect: () =>
+            setPickerTarget({ verb: "copy", ids: [file.id], noun: file.name }),
+        },
+        {
+          key: "delete",
+          label: `Delete ${file.name}`,
+          icon: <TrashIcon className={MENU_GLYPH} />,
+          danger: true,
+          arm: true,
+          onSelect: () => deleteOne(file.id, file.name),
+        },
+      ];
+    },
+    [attachAsReference, deleteOne, favorites],
   );
 
   /**
@@ -643,8 +759,14 @@ export function FolderBrowser({
         title — and this row said exactly that a second time underneath it,
         one rule down. A Files tab has no address of its own to hang a
         `PageBar` on, so it keeps drawing this trail as its only one.
+
+        **A trail of one crumb is not drawn**, because inside a Files tab that
+        one crumb is the entity's own name — printed under a page whose title
+        is that same name, two lines apart. It says nothing until there is
+        somewhere to go back to: at `<name>/seed/original` the trail is the way
+        up, and at the root it was the name twice.
       */}
-      {showTrail && (
+      {showTrail && crumbs.length > 1 && (
         <Breadcrumbs.Root>
           {crumbs.map((crumb, index, all) => {
             // The boundary crumb is the browser's own root, and inside a
@@ -1016,6 +1138,8 @@ export function FolderBrowser({
                 onToggleSelect={(extend) =>
                   selection.toggleAt(indexOf.get(file.id) ?? 0, extend)
                 }
+                actions={tileActions(file)}
+                draggableRef={file.kind === "image"}
               />
             ))}
           </div>
@@ -1120,27 +1244,61 @@ function FolderMenu({
   showSelectAll,
   onSelectAll,
 }: FolderMenuProps) {
-  const [open, setOpen] = useState(false);
   const { status, copy } = useCopyToClipboard();
-  const { armed, busy, press, disarm, handlers } = useArmed({ onFire: onDeleteFolder });
   const uploadInput = useRef<HTMLInputElement>(null);
 
-  const change = useCallback(
-    (next: boolean) => {
-      setOpen(next);
-      if (!next) disarm();
+  const actions: MenuAction[] = [
+    {
+      key: "upload",
+      label: "Upload…",
+      icon: <UploadIcon className={MENU_GLYPH} />,
+      disabled,
+      // Below `sm` only — above it the toolbar draws Upload as a button, and
+      // the menu offering the same thing twice on one row is the duplication
+      // this line exists to avoid at the width where the button is gone.
+      className: "sm:hidden",
+      onSelect: () => uploadInput.current?.click(),
     },
-    [disarm],
-  );
-
-  const deleteLabel = busy
-    ? "Deleting…"
-    : armed
-      ? `Confirm — delete ${atRoot ? "this folder" : folderName}`
-      : "Delete folder";
+    {
+      key: "new-folder",
+      label: "New folder…",
+      icon: <FolderPlusIcon className={MENU_GLYPH} />,
+      disabled,
+      onSelect: onNewFolder,
+    },
+    {
+      key: "copy-path",
+      label: copyLabel(status, "Copy path"),
+      icon: <ClipboardIcon className={MENU_GLYPH} />,
+      keepOpen: true,
+      onSelect: () => void copy(prefix ?? ""),
+    },
+    ...(showSelectAll
+      ? [
+          {
+            key: "select-all",
+            label: "Select all",
+            icon: <CheckIcon className={MENU_GLYPH} />,
+            onSelect: onSelectAll,
+          },
+        ]
+      : []),
+    {
+      key: "delete-folder",
+      label: "Delete folder",
+      armedLabel: `Confirm — delete ${atRoot ? "this folder" : folderName}`,
+      icon: <TrashIcon className={MENU_GLYPH} />,
+      danger: true,
+      arm: true,
+      disabled: disabled || atRoot,
+      onSelect: onDeleteFolder,
+    },
+  ];
 
   return (
-    <Dropdown.Root open={open} onOpenChange={change}>
+    <>
+      {/* Outside the menu, because the menu unmounts its panel when it closes
+          and the file dialog's `change` lands after that. */}
       <input
         ref={uploadInput}
         type="file"
@@ -1152,56 +1310,7 @@ function FolderMenu({
           if (picked.length > 0) onUploadFiles(picked);
         }}
       />
-
-      <Dropdown.Trigger
-        aria-label="More"
-        title="More"
-        className={iconButtonClass({ size: "sm", className: "shrink-0" })}
-      >
-        <DotsIcon />
-      </Dropdown.Trigger>
-
-      <Dropdown.Content className="left-auto right-0">
-        {/* Below `sm` only — see the docblock above. */}
-        <div className="sm:hidden">
-          <Dropdown.Item disabled={disabled} onSelect={() => uploadInput.current?.click()}>
-            Upload…
-          </Dropdown.Item>
-        </div>
-
-        <Dropdown.Item disabled={disabled} onSelect={onNewFolder}>
-          New folder…
-        </Dropdown.Item>
-
-        {/* Kept open, like `ItemActions`' own copy item — the label changing to
-            "Copied" IS the feedback, and closing the menu would take it away
-            before it could be read. */}
-        <Dropdown.Item
-          onClick={(event: React.MouseEvent) => {
-            event.preventDefault();
-            void copy(prefix ?? "");
-          }}
-        >
-          <span aria-live="polite">{copyLabel(status, "Copy path")}</span>
-        </Dropdown.Item>
-
-        {showSelectAll && <Dropdown.Item onSelect={onSelectAll}>Select all</Dropdown.Item>}
-
-        {/* Arms in place, exactly as `ItemActions`' delete item does: the menu
-            stays open on the first press so the red label can be read, and
-            closes on the second — which is also the fire. */}
-        <Dropdown.Item
-          disabled={disabled || atRoot || busy}
-          {...handlers}
-          onClick={(event: React.MouseEvent) => {
-            if (!armed) event.preventDefault();
-            press();
-          }}
-          className={armed ? "text-danger" : ""}
-        >
-          <span aria-live="assertive">{deleteLabel}</span>
-        </Dropdown.Item>
-      </Dropdown.Content>
-    </Dropdown.Root>
+      <ActionMenu label={folderName} triggerLabel="More" actions={actions} />
+    </>
   );
 }

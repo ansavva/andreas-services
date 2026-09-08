@@ -19,6 +19,7 @@ import { useProjectCrumb } from "../hooks/useProjectCrumb";
 import type { RunAsset, Shot } from "../types";
 import { formatDate } from "../utils/format";
 import { moviePath, objectPath, projectPath, runPath } from "../utils/location";
+import { TrashIcon } from "../components/common/icons";
 
 /**
  * One scene: the plan, the shots, and the take they were stitched into.
@@ -157,7 +158,12 @@ export function ScenePage() {
             </Text>
           </>
         }
-        menu={[{ label: "Delete", danger: true, onSelect: () => setDeleteOpen(true) }]}
+        menu={[{
+              label: "Delete",
+              icon: <TrashIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5]" />,
+              danger: true,
+              onSelect: () => setDeleteOpen(true),
+            }]}
       />
 
       <ConfirmDestroyDialog

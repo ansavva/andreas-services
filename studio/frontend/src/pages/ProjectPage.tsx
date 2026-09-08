@@ -14,7 +14,7 @@ import { ApertureSpinner } from "../components/common/Aperture";
 import { EmptyState } from "../components/common/EmptyState";
 import { PageLoading } from "../components/common/PageLoading";
 import { SectionLoading } from "../components/common/SectionLoading";
-import { SettingsIcon } from "../components/common/icons";
+import { SettingsIcon, TrashIcon } from "../components/common/icons";
 import { FolderTab } from "../components/browse/FolderTab";
 import { CharacterChipLink } from "../components/character/CharacterChip";
 import { PageBar } from "../components/layout/PageBar";
@@ -160,7 +160,12 @@ export function ProjectPage() {
               </div>
             ) : undefined
           }
-          menu={[{ label: "Delete", danger: true, onSelect: () => setDeleteOpen(true) }]}
+          menu={[{
+              label: "Delete",
+              icon: <TrashIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5]" />,
+              danger: true,
+              onSelect: () => setDeleteOpen(true),
+            }]}
           tabs={
             // Scrolls rather than wraps, like the character page's: a tab
             // strip that grows a second row draws a second underline, which
