@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Start the backend, both frontends, and the Stripe webhook listener as one
-# local development session: marketing site on :5173, product app on :8081.
+# local development session: marketing site on :5176, product app on :8081.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

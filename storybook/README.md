@@ -28,7 +28,7 @@ docker compose up dynamodb
 python -m storybook_core.handlers.local.api.api_dev_server
 ```
 
-The local backend writes to DynamoDB Local on `localhost:8001` and creates the
+The local backend writes to DynamoDB Local on `localhost:8004` and creates the
 `storybook-*` tables on startup. Copy `.env.example` to `.env` for non-DynamoDB
 values.
 

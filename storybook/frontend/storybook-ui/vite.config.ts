@@ -7,4 +7,6 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tsconfigPaths(), tailwindcss()],
   base: '/app/',
+  // :5177 — every service's dev ports are one table in the root CLAUDE.md.
+  server: { port: 5177, strictPort: true },
 })

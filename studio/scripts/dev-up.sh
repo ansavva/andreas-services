@@ -8,7 +8,8 @@
 #
 #   ./studio/scripts/dev-up.sh
 #
-# Backend on :8000, frontend on :5173. Ctrl+C stops both.
+# Backend on :8000, frontend on the first free port the stack accepts (:5173
+# first). Ctrl+C stops both.
 
 set -euo pipefail
 
@@ -29,7 +30,7 @@ fi
 eval "$(aws configure export-credentials --format env)"
 
 export AWS_DEFAULT_REGION="${AWS_REGION:-us-east-1}"
-export STUDIO_ALLOWED_ORIGIN="http://localhost:5173"
+# `STUDIO_ALLOWED_ORIGIN` is exported once the frontend's port is chosen, below.
 
 # ---------------------------------------------------------------------------
 # What the API now needs before it can answer anything at all.
@@ -77,9 +78,9 @@ if ! dev_stack="$(
   load_machine_id false
   load_aws_identity
   load_dev_stack_outputs
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$DEV_POOL_ID" "$DEV_CLIENT_ID" \
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$DEV_POOL_ID" "$DEV_CLIENT_ID" \
     "$DEV_BUCKET" "$DEV_TABLE" "$DEV_CALLBACK_URL" "$DEV_CALLBACK_QUEUE" \
-    "$DEV_RENDER_QUEUE"
+    "$DEV_RENDER_QUEUE" "$DEV_SPA_PORTS"
 )"; then
   echo "Could not read this machine's dev stack." >&2
   echo "  The API verifies every request's token against the dev pool, so it" >&2
@@ -88,7 +89,49 @@ if ! dev_stack="$(
   exit 1
 fi
 IFS=$'\t' read -r POOL_ID CLIENT_ID MEDIA_BUCKET CATALOG_TABLE \
-  CALLBACK_URL CALLBACK_QUEUE RENDER_QUEUE <<<"$dev_stack"
+  CALLBACK_URL CALLBACK_QUEUE RENDER_QUEUE SPA_PORTS <<<"$dev_stack"
+
+# WHICH PORT THE FRONTEND GETS.
+#
+# The stack registers a short list of localhost ports (`spa_ports`, `:5173`
+# first) as Cognito callbacks and bucket CORS origins. The first free one is
+# the one — another project's dev server on `:5173` used to leave Vite hopping
+# to `:5175` on its own, where Cognito refused the callback and the API
+# refused the origin, and nothing said why. `STUDIO_DEV_PORT` names one
+# instead, and is refused rather than obeyed if the stack does not know it or
+# something else holds it: a port the pool has not heard of cannot sign in.
+# By connecting, on both address families, rather than by `lsof`: Vite binds
+# `localhost` — v4 and v6 — and a server bound to `::1` alone (another
+# project's dev server was) is invisible to an `lsof -iTCP` walk on macOS and
+# still takes the port.
+port_in_use() {
+  nc -z -w1 127.0.0.1 "$1" >/dev/null 2>&1 || nc -z -w1 ::1 "$1" >/dev/null 2>&1
+}
+FRONTEND_PORT=""
+if [ -n "${STUDIO_DEV_PORT:-}" ]; then
+  case " $SPA_PORTS " in
+    *" $STUDIO_DEV_PORT "*) ;;
+    *) echo "STUDIO_DEV_PORT=$STUDIO_DEV_PORT is not one this stack accepts ($SPA_PORTS)." >&2
+       echo "  Cognito would refuse the sign-in callback. Re-apply with a list that" >&2
+       echo "  names it, or unset STUDIO_DEV_PORT." >&2; exit 1 ;;
+  esac
+  if port_in_use "$STUDIO_DEV_PORT"; then
+    echo "Port $STUDIO_DEV_PORT is already in use. Stop what holds it, or unset STUDIO_DEV_PORT" >&2
+    echo "  to take the first free one of: $SPA_PORTS" >&2; exit 1
+  fi
+  FRONTEND_PORT="$STUDIO_DEV_PORT"
+else
+  for candidate in $SPA_PORTS; do
+    if ! port_in_use "$candidate"; then FRONTEND_PORT="$candidate"; break; fi
+    echo "Port $candidate is in use — trying the next one this stack accepts."
+  done
+  if [ -z "$FRONTEND_PORT" ]; then
+    echo "Every port this stack accepts is in use: $SPA_PORTS" >&2
+    echo "  Stop one of them, or re-apply the stack with more in \`spa_ports\`." >&2; exit 1
+  fi
+fi
+export STUDIO_DEV_PORT="$FRONTEND_PORT"
+export STUDIO_ALLOWED_ORIGIN="http://localhost:$FRONTEND_PORT"
 
 export STUDIO_COGNITO_USER_POOL_ID="$POOL_ID"
 export STUDIO_COGNITO_CLIENT_ID="$CLIENT_ID"
@@ -245,8 +288,10 @@ fi
 (cd studio/backend && poetry run python -m studio_core.handlers.local.consumer.render_consumer) &
 pids+=($!)
 
-echo "Frontend → http://localhost:5173"
-(cd studio/frontend && npm run dev) &
+echo "Frontend → http://localhost:$FRONTEND_PORT"
+# `--strictPort`: the port was chosen above against what the stack accepts, and
+# a silent hop past it is the failure this whole block exists to stop.
+(cd studio/frontend && npm run dev -- --port "$FRONTEND_PORT" --strictPort) &
 pids+=($!)
 
 wait

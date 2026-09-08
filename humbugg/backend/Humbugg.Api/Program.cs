@@ -277,7 +277,7 @@ public sealed record HumbuggSettings(
     string MailerAuthMode = "none",
     string MailerServiceId = "humbugg",
     string AppBucket = "",
-    string AvatarBaseUrl = "http://localhost:5173",
+    string AvatarBaseUrl = "http://localhost:5176",
     string? S3EndpointUrl = null,
     string BillingRecordsTable = "humbugg-billing",
     string WishesTable = "humbugg-wishes",
@@ -288,7 +288,7 @@ public sealed record HumbuggSettings(
 {
     public static HumbuggSettings FromEnvironment()
     {
-        var appBaseUrl = (Environment.GetEnvironmentVariable("APP_BASE_URL") ?? "http://localhost:5173").TrimEnd('/');
+        var appBaseUrl = (Environment.GetEnvironmentVariable("APP_BASE_URL") ?? "http://localhost:5176").TrimEnd('/');
         return new(
             Environment.GetEnvironmentVariable("AWS_REGION") ?? Environment.GetEnvironmentVariable("AWS_DEFAULT_REGION") ?? "us-east-1",
             Environment.GetEnvironmentVariable("COGNITO_REGION") ?? "us-east-1",
@@ -340,9 +340,9 @@ public sealed record HumbuggSettings(
                 "which writes the table names from Terraform outputs into humbugg/backend/.env.");
 
     // Local development runs two distinct browser origins against one backend: the Vite
-    // marketing dev server on :5173 and the Expo web dev server on :8081.
+    // marketing dev server on :5176 and the Expo web dev server on :8081.
     private static readonly string[] DefaultCorsOrigins =
-        ["http://localhost:5173", "http://localhost:8081"];
+        ["http://localhost:5176", "http://localhost:8081"];
 
     // CORS_ORIGINS is a comma-separated list because the surfaces that call this API live on
     // separate hosts (www., app., and both dev servers) and Lambda env vars are flat strings.

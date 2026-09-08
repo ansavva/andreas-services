@@ -134,7 +134,7 @@ To start components separately:
 
 ```bash
 ./humbugg/scripts/dev-up-backend.sh                     # http://localhost:5001
-./humbugg/scripts/dev-up-marketing.sh                         # http://localhost:5173
+./humbugg/scripts/dev-up-marketing.sh                         # http://localhost:5176
 ./humbugg/scripts/dev-up-app.sh                         # http://localhost:8081
 ./humbugg/scripts/dev-up-stripe.sh                      # forwards billing webhooks
 ./humbugg/scripts/dev-logs-backend.sh                   # follows backend logs
@@ -164,7 +164,7 @@ create shared or committed values manually.
 authenticates anyone:
 
 ```
-VITE_APP_BASE_URL=http://localhost:5173
+VITE_APP_BASE_URL=http://localhost:5176
 VITE_APP_ORIGIN=http://localhost:8081
 VITE_API_BASE_URL=http://127.0.0.1:5001
 ```
@@ -190,7 +190,7 @@ an existing `.env.local`.
 
 The app calls the backend **cross-origin** in development as well as production,
 so the backend's `CORS_ORIGINS` must list `http://localhost:8081` alongside
-`http://localhost:5173`.
+`http://localhost:5176`.
 
 ## Testing
 

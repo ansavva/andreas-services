@@ -3,7 +3,7 @@ import os
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "local")
 os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "local")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
-os.environ.setdefault("DYNAMODB_ENDPOINT_URL", "http://localhost:8001")
+os.environ.setdefault("DYNAMODB_ENDPOINT_URL", "http://localhost:8004")
 
 # These table names are LOCAL ONLY. They are created by ensure_local_tables_exist()
 # against DynamoDB Local on the endpoint above, with the throwaway credentials set

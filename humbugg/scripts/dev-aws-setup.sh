@@ -128,7 +128,7 @@ remove_env "$backend_env" COGNITO_ISSUER_URL
 # The marketing site no longer authenticates anyone, so it gets no Cognito
 # values — only its own origin and where to send someone who wants to sign in.
 marketing_env="$HUMBUGG_DIR/marketing/.env.local"
-upsert_env "$marketing_env" VITE_APP_BASE_URL "http://localhost:5173"
+upsert_env "$marketing_env" VITE_APP_BASE_URL "http://localhost:5176"
 upsert_env "$marketing_env" VITE_APP_ORIGIN "http://localhost:8081"
 # The pricing page reads the plan catalogue from the API (#158). Production needs no variable —
 # `site.ts` defaults to api.humbugg.com — so this exists only to point local development at the

@@ -318,12 +318,12 @@ module "auth" {
 
   callback_urls = [
     "https://${local.domain_name}/app",
-    "http://localhost:5173/app"
+    "http://localhost:5177/app"
   ]
 
   logout_urls = [
     "https://${local.domain_name}/app",
-    "http://localhost:5173/app"
+    "http://localhost:5177/app"
   ]
 
   tags = local.common_tags
@@ -341,7 +341,7 @@ module "storage" {
 
   cors_allowed_origins = [
     "https://${local.domain_name}",
-    "http://localhost:5173"
+    "http://localhost:5177"
   ]
 
   create_frontend_bucket = true
@@ -387,7 +387,7 @@ module "compute" {
 
   cors_allowed_origins = [
     "https://${local.domain_name}",
-    "http://localhost:5173"
+    "http://localhost:5177"
   ]
 
   tags = local.common_tags

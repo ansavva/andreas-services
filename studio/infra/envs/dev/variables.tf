@@ -46,17 +46,30 @@ variable "machine_name" {
   type        = string
 }
 
-variable "spa_origins" {
+variable "spa_ports" {
   description = <<-EOT
-    Where the local SPA is served from, allowed to send the presigned upload PUT
-    at this machine's media bucket. Vite's port is pinned in
-    `frontend/vite.config.ts` and `dev-up.sh` prints the same URL, so the default
-    is right on every machine and `dev-aws-common.sh` does not pass it.
+    The localhost ports the SPA may be served from — every one of them is a
+    registered Cognito callback and an allowed origin on the media bucket's
+    CORS rule, so `dev-up.sh` can take the first free one instead of the one
+    pinned in `frontend/vite.config.ts`. Another project's dev server on
+    `:5173` used to mean studio could not sign in at all: Vite hopped to
+    `:5175` on its own, and Cognito refused the callback.
 
-    It has a default for that reason, unlike every other variable in this file:
-    those identify the machine and must not be guessable, this one is the same
-    everywhere. Override it only if you serve the SPA somewhere else.
+    Four rather than one because a redirect URI has to be known to the pool in
+    advance, and re-applying this stack to change ports is the wrong price for
+    a port clash. Order matters: it is the order `dev-up.sh` tries them in.
+    The three fallbacks sit past every other service's dev port — the root
+    CLAUDE.md's table — so studio never falls onto classroom's or website's.
+
+    It has a default for the reason `spa_origins` did before it: every other
+    variable in this file identifies the machine and must not be guessable,
+    this one is the same everywhere.
   EOT
-  type        = list(string)
-  default     = ["http://localhost:5173"]
+  type        = list(number)
+  default     = [5173, 5178, 5179, 5180]
+
+  validation {
+    condition     = length(var.spa_ports) > 0 && alltrue([for p in var.spa_ports : p > 1024 && p < 65536])
+    error_message = "spa_ports must name at least one unprivileged port."
+  }
 }

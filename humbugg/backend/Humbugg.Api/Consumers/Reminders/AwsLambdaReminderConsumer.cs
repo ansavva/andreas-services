@@ -88,7 +88,7 @@ internal sealed class AwsLambdaReminderConsumer(IReminderProcessor processor)
     internal static HumbuggSettings SettingsFromEnvironment()
     {
         var appBaseUrl = (Environment.GetEnvironmentVariable("APP_BASE_URL")
-            ?? "http://localhost:5173").TrimEnd('/');
+            ?? "http://localhost:5176").TrimEnd('/');
         var required = AwsLambdaEmailStatusConsumer.RequiredTable;
 
         return new HumbuggSettings(

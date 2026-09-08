@@ -18,7 +18,7 @@ class AppConfig:
 
     APP_URL = os.getenv("APP_URL")
     FLASK_ENV = os.getenv("FLASK_ENV", "production")
-    PORT = int(os.getenv("PORT", "3000"))
+    PORT = int(os.getenv("PORT", "8003"))
 
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     STABILITY_API_KEY = os.getenv("STABILITY_API_KEY")
