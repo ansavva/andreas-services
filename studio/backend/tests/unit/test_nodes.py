@@ -31,7 +31,7 @@ from studio_core import config
 from studio_core.clients.aws import s3
 from studio_core.app_factory import create_app
 from studio_core.errors import NotFoundError
-from studio_core.services import catalog, identity
+from studio_core.services import catalog, identity, layout
 from tests.conftest import CATALOG_LIBRARY, CATALOG_OWNER, CATALOG_ROOT
 
 OTHER_LIBRARY = "lib-0002"
@@ -1158,8 +1158,14 @@ def _project(name="rooftop-teaser"):
 
 
 def _child(parent_id, name):
-    """One named child of a folder, as a full record."""
-    return catalog.node(catalog.child_by_name(parent_id, name)["node_id"])
+    """One named child of a folder, as a full record — made if it isn't there.
+
+    A character no longer starts holding `reference/` and the rest, so this
+    resolves-or-creates by name, the same rule `pool_folder` applies on the
+    pipeline side and `folder_under` already applies to a project's own
+    conventional folders.
+    """
+    return layout.folder_under(parent_id, name)
 
 
 def test_a_node_view_carries_the_entity_it_belongs_to(catalog_table, signed_in):
@@ -1173,10 +1179,12 @@ def test_a_node_view_carries_the_entity_it_belongs_to(catalog_table, signed_in):
     which carries `entity` and answers for itself.
     """
     character = _character()
+    _child(character["root"], "archive")
+    _child(character["root"], "reference")
 
     listing = _get(f"/api/nodes?under={character['root']}&sort=name").get_json()["entries"]
 
-    assert [entry["name"] for entry in listing] == ["archive", "corpus", "reference", "seed"]
+    assert [entry["name"] for entry in listing] == ["archive", "reference"]
     for entry in listing:
         assert entry["owner"] == {
             "kind": "character",
@@ -1253,6 +1261,7 @@ def test_resolve_reports_the_owner_too(catalog_table, signed_in):
     slug it used to take could not survive two characters sharing a name.
     """
     character = _character()
+    _child(character["root"], "reference")
 
     resolved = _get(f"/api/resolve?path={character['id']}/reference").get_json()
 

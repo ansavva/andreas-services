@@ -7,13 +7,15 @@ under the record's `root` and made if absent. `upload_file` takes the id of
 the folder to write into, because every caller already holds a node and none
 of them should be composing a string that the next rename invalidates.
 
-**The four pools are a convention, not a schema.** `POOLS` is what
-`POST /api/characters` creates with a new character and what the CLI prints
-back. Nothing afterwards requires any of them to exist: a person may rename
-`reference/`, delete `archive/` or add their own folder, and an image is a
-reference because a tag on it says so rather than because of where it sits.
-`pool_folder` therefore *ensures* rather than *asserts* — the self-healing the
-spec's layout section describes.
+**The four pools are a convention, not a schema — and not even something
+`POST /api/characters` creates any more.** `POOLS` is what the CLI prints back
+as a suggestion; a character is created holding none of them, and a pool
+appears the first time something is filed into it. Nothing afterwards requires
+any of them to exist: a person may rename `reference/`, delete `archive/` or
+add their own folder, and an image is a reference because a tag on it says so
+rather than because of where it sits. `pool_folder` therefore *ensures* rather
+than *asserts* — the self-healing the spec's layout section describes, and now
+the only thing that ever makes one of these folders at all.
 
 Nothing here reaches AWS. `entities` and `store` are both HTTP.
 """
@@ -40,8 +42,8 @@ NAME_RE = P.NAME_RE
 
 IMG_EXTS = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".bmp"}
 
-# A character starts with FOUR folders, and what distinguishes them is what
-# they are FOR:
+# A character starts with none of these; they are FOUR CONVENTIONAL NAMES, made
+# on first use, and what distinguishes them is what they are FOR:
 #
 #   reference/  imagery that says who the character IS. The `REF#` rows point
 #               at files that conventionally live here, in purpose subfolders,

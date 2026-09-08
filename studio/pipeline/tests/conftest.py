@@ -354,7 +354,9 @@ def library(fake_api):
     lib.character = subject_a["id"]
     root = subject_a["root"]
     lib.character_root = root
-    reference = fake_api._child(root, "reference")
+    # A character no longer starts holding `reference/`; the fixture makes it,
+    # the way `pool_folder` would the first time something is filed into it.
+    reference = fake_api._create_node(root, "reference", "folder")
     lib.reference = reference["id"]
 
     face = fake_api._create_node(reference["id"], "face", "folder")
@@ -379,8 +381,8 @@ def library(fake_api):
     subject_b = E.create_character("subject-b",
                                    profile=copy.deepcopy(PROFILE))
     lib.character_b = subject_b["id"]
-    b_face = fake_api._create_node(
-        fake_api._child(subject_b["root"], "reference")["id"], "face", "folder")
+    b_reference = fake_api._create_node(subject_b["root"], "reference", "folder")
+    b_face = fake_api._create_node(b_reference["id"], "face", "folder")
     lib.b_face_1 = fake_api.put_file(b_face["id"], "front.jpeg", b"jpeg-b")["id"]
     S.describe_node(lib.b_face_1, description="front", tags=["default", "face"])
 

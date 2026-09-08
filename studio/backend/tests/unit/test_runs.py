@@ -69,7 +69,10 @@ def _create(api, project, **body):
 
 
 def _child(parent_id, name):
-    return catalog.node(catalog.child_by_name(parent_id, name)["node_id"])
+    """A named child folder, made if a test hasn't put one there — a character
+    no longer starts holding `reference/` and the rest, so this resolves-or-
+    creates by name, the same rule `folder_under` applies in production."""
+    return layout.folder_under(parent_id, name)
 
 
 def _submitted(api, project, **body):

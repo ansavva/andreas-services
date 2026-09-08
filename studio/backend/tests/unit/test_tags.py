@@ -5,7 +5,7 @@ invisible to whoever typed the next one. That is a vocabulary nobody can see,
 which is a vocabulary everybody spells differently.
 """
 
-from studio_core.services import catalog
+from studio_core.services import catalog, layout
 
 
 def _create(api, name="subject-a"):
@@ -15,7 +15,9 @@ def _create(api, name="subject-a"):
 
 
 def _tagged(api, character, name, tags):
-    pool = catalog.node(catalog.child_by_name(character["root"], "reference")["node_id"])
+    # A character no longer starts holding `reference/`; resolve-or-create it,
+    # same rule `pool_folder` applies on the pipeline side.
+    pool = layout.folder_under(character["root"], "reference")
     node = api.post(
         "/api/nodes", json={"parent": pool["node_id"], "name": name, "kind": "file"}
     ).get_json()

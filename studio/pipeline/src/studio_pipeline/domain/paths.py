@@ -18,11 +18,13 @@ person writes and what `GET /api/resolve?path=` turns into a node. That is an
 **address**, not a key — resolving one is a lookup against the tree as it is
 now, where building a key would assert where something must be.
 
-**The starting layout names.** `CHAR_POOLS` and `PROJECT_DIRS` are what the API
-creates with a new entity and what the CLI prints back. They are convention:
-nothing afterwards requires them, a person may rename or delete any of them, and
-an image is a reference because a tag on it says so rather than because of the
-folder it sits in.
+**The starting layout names.** `PROJECT_DIRS` is what the API still creates with
+a new project. `CHAR_POOLS` is not created with a new character any more — a
+character starts holding nothing — but the names are still what `pool_folder`
+resolves-or-creates on first use and what the CLI prints back as a suggestion.
+Both are convention: nothing afterwards requires them, a person may rename or
+delete any of them, and an image is a reference because a tag on it says so
+rather than because of the folder it sits in.
 
 **The angle images.** `config/angle/{body,face}/*.png` belong to no character
 and no project. They are **ordinary nodes**: the library is created with a
@@ -41,9 +43,10 @@ import re
 CONFIG = "config"
 ANGLE_GROUPS = ("body", "face")
 
-# The four folders a new character starts with. `reference` is not structural —
-# reference-ness is a tag on the file, not a location — so these are a starting
-# layout and nothing more. See the spec's "the folder layout is convention, not
+# The four conventional pools of a character — no longer created with it.
+# `reference` is not structural — reference-ness is a tag on the file, not a
+# location — so these names are convention and nothing more, made on first use
+# by `pool_folder`. See the spec's "the folder layout is convention, not
 # schema".
 CHAR_POOLS = ("reference", "corpus", "seed", "archive")
 

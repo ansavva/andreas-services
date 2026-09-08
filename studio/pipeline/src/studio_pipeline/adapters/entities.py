@@ -80,11 +80,13 @@ def list_characters(query: str | None = None) -> list[dict]:
 
 
 def create_character(name: str, profile: dict | None = None) -> dict:
-    """Create a character and its starting folder layout in one transaction.
+    """Create a character: the record, its library index row and its root.
 
-    The four pool folders come back already made — they are part of the create,
-    not something the first write lazily discovers. **There is no conflict to
-    raise**: a name is a label, so two characters may share one.
+    **No pool folders come back made.** `reference/`, `corpus/`, `seed/` and
+    `archive/` used to be part of the create; nothing ever required them to
+    exist, so they are gone from it and left for the first write that needs
+    one — `base.pool_folder` resolves-or-creates by name. **There is no
+    conflict to raise**: a name is a label, so two characters may share one.
     """
     body = {"name": name}
     if profile is not None:

@@ -894,7 +894,9 @@ class FakeApi:
         # by a free-text label would refuse the second character called `Anna`.
         root = self._create_node(self.root["id"], char_id, "folder")
         root["entity"] = char_id
-        self._layout(root["id"], ("reference", "corpus", "seed", "archive"))
+        # No starting pools: the service creates a character holding nothing
+        # but its root now. `reference/`, `corpus/`, `seed/` and `archive/`
+        # appear on first use, the way `pool_folder` already resolves them.
         record = {"id": char_id, "lib": self.lib, "name": name,
                   "schema_version": 2, "rev": 1,
                   "created": _now(), "updated": _now(),

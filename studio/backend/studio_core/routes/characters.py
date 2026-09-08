@@ -43,7 +43,7 @@ from studio_core.errors import ConflictError, ForbiddenError, NotFoundError, Val
 from studio_core.routes import projects as project_routes
 from studio_core.routes import support
 from studio_core import config
-from studio_core.services import browse, catalog, keys, layout, manage, registry
+from studio_core.services import browse, catalog, keys, manage, registry
 
 logger = logging.getLogger(__name__)
 
@@ -224,11 +224,17 @@ def list_characters():
 
 @bp.post("/characters")
 def create_character():
-    """A character, its index row, its root folder and its four pools — one write.
+    """A character, its index row and its root folder — one write, no pools.
 
-    **201, and the whole of it exists or none of it does.** Twelve items in one
+    **201, and the whole of it exists or none of it does.** Four items in one
     `TransactWriteItems`; a create that timed out is a create a person can simply
     repeat.
+
+    **No starting layout.** A character used to be created holding
+    `reference/`, `corpus/`, `seed/` and `archive/`; it no longer is. Nothing
+    ever required them to exist, and `pool_folder` on the pipeline side already
+    resolves-or-creates one by name the first time something is filed into it —
+    see `services/layout.py`.
 
     **There is no 409.** A name is a free-text label and both keys are minted
     UUIDs, so nothing here can collide and there is nothing for a client to
@@ -244,7 +250,6 @@ def create_character():
         root,
         name=keys.clean_label(body.get("name")),
         profile=clean_profile(body.get("profile")),
-        layout=layout.CHARACTER_LAYOUT,
     )
     return jsonify(record), 201, {"Location": f"/api/characters/{record['id']}"}
 

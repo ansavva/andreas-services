@@ -1,4 +1,4 @@
-"""The folder layout every entity starts with — convention, and nothing else.
+"""The folder layout a project starts with — convention, and nothing else.
 
 **An entity record holds exactly one node id: `root`** (a run, scene or movie
 calls it `folder`). It does not enumerate `reference/`, `corpus/`, `runs/` or
@@ -24,8 +24,12 @@ became a `CHAR#`/`REF#` row, and is now a **tag on the file**: an image is
 identity because it carries `default`, and what it shows is `face` or `body`
 beside it. Neither the folder nor a row says so, which means a move, a copy or a
 rename cannot change what a picture is. `corpus/`, `seed/` and `archive/` were
-never anything but folders with conventions attached, and they are now exactly
-that.
+never anything but folders with conventions attached, and are exactly that now
+— including the fact that a character is no longer created holding any of
+them. `POST /api/characters` writes the record and its root and stops there;
+`reference/` and the rest appear the first time something is filed into one —
+the pipeline's `pool_folder` resolves-or-creates by name, the same rule
+`folder_under` below applies to a project's own conventional folders.
 
 ## Resolution is by name, at write time, and self-healing
 
@@ -54,9 +58,10 @@ convention here.
 from studio_core.errors import ConflictError, NotFoundError
 from studio_core.services import catalog
 
-# What a character is created holding. Four folders, because an empty character
-# is unhelpful — not because anything afterwards requires them.
-CHARACTER_LAYOUT = ("reference", "corpus", "seed", "archive")
+# A character is created holding no pools at all — see the module docstring.
+# `reference/`, `corpus/`, `seed/` and `archive/` are still the conventional
+# names the pipeline's `pool_folder` resolves-or-creates on first use; there is
+# no constant for them here because nothing in this service creates them.
 
 # What a project is created holding. `chains/` is an ad-hoc frame sequence with
 # no scene behind it, and is deliberately an ordinary folder rather than a sixth

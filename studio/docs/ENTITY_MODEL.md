@@ -194,12 +194,11 @@ row, an image is identity because a row says so, **not because of which folder i
 sits in**. `corpus/`, `seed/` and `archive/` were never anything but folders with
 conventions attached; they can now be exactly that.
 
-So the layout lives in **one constant in the API**, applied at creation and
-never recorded:
+So a project's layout lives in **one constant in the API**, applied at creation
+and never recorded:
 
 ```python
 # services/layout.py — convention. Nothing depends on it existing afterwards.
-CHARACTER_LAYOUT = ("reference", "corpus", "seed", "archive")
 PROJECT_LAYOUT   = ("runs", "scenes", "movies", "chains", "input")
 
 RUN_PARENT   = "runs"      # where POST /api/runs puts a new run's folder
@@ -208,8 +207,16 @@ MOVIE_PARENT = "movies"
 INPUT_FOLDER = "input"     # what GET /api/projects/<id>/inputs reads
 ```
 
-Creating a character creates those four folders **as a starting layout**, because
-an empty character is unhelpful. Nothing afterwards requires them.
+Creating a project creates those five folders **as a starting layout**, because
+an empty project is unhelpful. Nothing afterwards requires them.
+
+**A character is created holding none of these.** `reference/`, `corpus/`,
+`seed/` and `archive/` used to be a matching `CHARACTER_LAYOUT` constant,
+created the same way at character creation; that constant is gone, and a
+character now starts with nothing but its root. The names survive purely as a
+convention the pipeline's `pool_folder` resolves-or-creates the first time
+something is filed into one — nothing ever required them to exist any earlier
+than that.
 
 **Resolution is by name, at write time, and self-healing.** `POST /api/runs`
 resolves `runs` under the project's root and creates it if it is absent. If

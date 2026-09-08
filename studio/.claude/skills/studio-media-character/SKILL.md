@@ -47,9 +47,11 @@ validated map on the record, which is why `studio character show` prints it
 without touching S3 and why the web app can render it as a form rather than as
 a textarea full of YAML.
 
-**These four folders are a starting layout, not a schema.** Rename one, delete
-one, add your own — an image is a reference because a row says so, never because
-of the folder it sits in.
+**These four names are a convention, not a schema — and not even a starting
+layout.** A character is created holding none of them; each appears the first
+time something is filed into it. Rename one, delete one, add your own — an
+image is a reference because a row says so, never because of the folder it
+sits in.
 
 A character holds **no production history**. Runs, chains, scenes and movies
 belong to a project (see the **`studio-media-s3`** skill), because one piece of
