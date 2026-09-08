@@ -353,9 +353,12 @@ page and a plain textarea over its literal bytes, and never offers fields.
   in flight, and `useInFlightRuns` reads those same cached pages for the
   "N running" badge in the project header and the spinner beside the project
   in the sidebar — which is why both are only ever right about projects open
-  this session. Hover a tile for its own actions (download, Use in prompt,
-  Again / Upscale / Animate / Promote — `OutputTile`); the run's are icon+word
-  in its column (Rerun, Edit, Folder, Trash, More). Every one of them is
+  this session. Hover a tile for its own actions, as glyphs in its corners
+  (download, Use in prompt, Again / Upscale / Animate / Promote —
+  `OutputTile`); a press anywhere else on it opens the run at that output,
+  which is what the tile is mostly for, so the overlays take a press only
+  while they are visible. The run's own actions are icon+word in its column
+  (Rerun, Edit, Folder, Trash, More). Every one of them is
   `useRunActions`, which the opened run's grid draws too, so a gesture means
   one thing in both places. Settings, behind the gear at the end of the strip,
   is what Overview was; `?tab=overview` still lands there.
@@ -429,7 +432,11 @@ page and a plain textarea over its literal bytes, and never offers fields.
   role opens `CreateDrawer`, whose tiles (cast identity images, the input pool,
   the project's outputs) attach to that role. Parameters are `CreateSettings`
   behind the sliders icon: the kind's models and `SchemaParams` over the live
-  schema, seeded from the snapshot by `seedPlan`. Send is `createRun` (plan +
+  schema, seeded from the snapshot by `seedPlan`. **Below `md` it is the
+  prompt, the kind switch and Send and nothing else** — the header is
+  `--header-h` exactly and the resting bar has to fit inside it — and the rest
+  arrives when the bar goes active, which on a phone also takes it out of its
+  246px slot to the width of the screen. Send is `createRun` (plan +
   sends together, then `PATCH /plan` with `template` when the prompt cites
   anything, so the API expands it), one `?fingerprint=` read that holds the
   draft behind a warning if the same payload already went out here, then

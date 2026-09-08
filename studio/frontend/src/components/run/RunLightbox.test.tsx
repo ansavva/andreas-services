@@ -274,6 +274,38 @@ describe("the opened run", () => {
     await waitFor(() => expect(address()).toBe("/p/proj-1/r/run-1?tab=runs"));
   });
 
+  /**
+   * **Stepping keeps the screen; it does not rebuild it.**
+   *
+   * The opened run carried `key={row.id}`, which reset the output index by
+   * discarding everything under it — so each press of Left/Right unmounted
+   * every picture on the screen, the strip of the whole project included, and
+   * every one of them was fetched again. It reads as the page reloading.
+   *
+   * Asserted on the DOM node's IDENTITY rather than on its presence: a
+   * remount puts an equivalent element back, and only `toBe` tells the two
+   * apart. The output index still has to reset, so both halves are here —
+   * one of them is what the `key` was for.
+   */
+  it("steps to another run without rebuilding the strip, and starts it at its first output", async () => {
+    await draw();
+    await screen.findByTestId("stage");
+
+    fireEvent.click(screen.getByRole("button", { name: "Output 2 of 2" }));
+    expect(screen.getByTestId("stage").textContent).toBe("image: out-2.png");
+
+    const strip = screen.getByLabelText("Runs in this project");
+    const tile = within(strip).getAllByRole("button", { name: /^Run / })[1]!;
+
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    await waitFor(() => expect(address()).toBe("/p/proj-1/r/run-1?tab=runs"));
+
+    const after = within(screen.getByLabelText("Runs in this project"))
+      .getAllByRole("button", { name: /^Run / })[1]!;
+    expect(after).toBe(tile);
+    expect(screen.getByTestId("stage").textContent).toBe("image: out-1.png");
+  });
+
   it("switches the stage between the run's outputs", async () => {
     await draw();
     await screen.findByTestId("stage");

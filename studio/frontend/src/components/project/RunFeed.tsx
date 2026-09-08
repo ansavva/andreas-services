@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -35,6 +35,7 @@ import {
 } from "../common/icons";
 import { linkButtonClass } from "../common/linkButtonClass";
 import { LoadError } from "../common/LoadError";
+import { pressInApp } from "../common/pressInApp";
 import { SectionLoading } from "../common/SectionLoading";
 import { CharacterChipLink } from "../character/CharacterChip";
 import { MediaThumb } from "../media/MediaThumb";
@@ -425,12 +426,21 @@ function FeedRow({
       // would be a metre tall, and the plan would sit a screen away from it.
       className="grid gap-4 border-t border-line pt-4 md:grid-cols-[minmax(0,48rem)_minmax(20rem,32rem)] md:gap-6"
     >
-      {/* Outputs. The grid is by kind: four stills across, two clips. */}
+      {/* Outputs. The grid is by kind: four stills across, two clips.
+
+          **`content-start`, and it is load-bearing.** This column is a cell of
+          the article's own grid, so it is stretched to whatever the plan beside
+          it is tall — and a grid whose rows are free to grow hands that height
+          to its one row of tiles. Every still became a 100px picture at the top
+          of a 360px box: two thirds of every tile was black, the eye read the
+          black as part of the picture, and a press there landed on the hover
+          overlay below rather than on the picture. Rows keep their own height;
+          the slack stays at the foot of the column. */}
       <div
         className={
           video
-            ? "grid grid-cols-1 gap-2 sm:grid-cols-2"
-            : "grid grid-cols-2 gap-2 sm:grid-cols-4"
+            ? "grid grid-cols-1 content-start gap-2 sm:grid-cols-2"
+            : "grid grid-cols-2 content-start gap-2 sm:grid-cols-4"
         }
       >
         {flying ? (
@@ -712,6 +722,7 @@ function RowActions({
 }) {
   const client = useQueryClient();
   const toast = useToast();
+  const navigate = useNavigate();
   const flying = inFlight(row.status);
   const draft = row.status === "draft";
 
@@ -762,6 +773,7 @@ function RowActions({
       {actions.folderHref && !flying && (
         <a
           href={actions.folderHref}
+          onClick={pressInApp(navigate, actions.folderHref)}
           className={buttonClass({
             intent: "secondary",
             size: "sm",

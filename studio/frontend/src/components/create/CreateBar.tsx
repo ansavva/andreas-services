@@ -353,16 +353,32 @@ export function CreateBar() {
       }}
     >
       <div
+        // Active, the box leaves the slot: `absolute` over the page above
+        // `md`, and on a phone `fixed` to the viewport's own edges. The slot
+        // is 246px between the menu button and the search icon, which is a
+        // reasonable resting bar and a hopeless composer — the mode strip and
+        // the picker drawer both live in here. It covers the two icons beside
+        // it while it is open, which is what folding it puts back.
         className={
           active
-            ? "absolute inset-x-0 top-0 z-30 flex flex-col"
+            ? "absolute inset-x-0 top-0 z-30 flex flex-col max-md:fixed max-md:inset-x-2 max-md:top-2"
             : "flex flex-col"
         }
       >
         <div
           className={`flex flex-col rounded-none border bg-card ${active ? "border-ink" : "border-line"}`}
         >
-          <div className="flex items-start gap-2 py-0.5 pl-0.5 pr-2">
+          {/* **`flex-wrap`, for one width: 390px.** The row holds the kind
+              toggles, the prompt, three popover triggers and Send, and at
+              390px — where it is also sharing the header with the menu button
+              and the search icon — those come to more than there is. The
+              prompt is the item that gave way: it was rendered 0px wide, so
+              the one control this bar exists for could not be typed in, and
+              Send overlapped the search icon. Below `md` the three triggers
+              take a line of their own (`order-last basis-full`) and only once
+              the bar is active and floating; at rest it is one row, which is
+              what keeps it inside a 56px header. */}
+          <div className="flex flex-wrap items-start gap-2 py-0.5 pl-0.5 pr-2">
             {/* IMAGE / VIDEO. Single-select and never empty: a run is one or
               the other, and the strip under the bar is drawn from it. */}
             <ToggleGroup.Root
@@ -410,7 +426,9 @@ export function CreateBar() {
               </div>
             )}
 
-            <div className="min-w-0 flex-1 py-2.5">
+            {/* `basis-24`: never narrower than a couple of words, and the
+                first thing to take the space left over. */}
+            <div className="min-w-0 flex-1 basis-24 py-2.5 md:basis-auto">
               <TokenizedPromptEditor
                 value={bar.prompt}
                 onValueChange={bar.setPrompt}
@@ -433,91 +451,103 @@ export function CreateBar() {
               </Badge>
             )}
 
-            <Popover.Root open={templatesOpen} onOpenChange={setTemplatesOpen}>
-              <Popover.Trigger
-                aria-label="Template"
-                title="Start from a template"
-                className={iconButtonClass({
-                  size: "sm",
-                  pressed: templatesOpen,
-                  className: "mt-1.5 rounded-none",
-                })}
-              >
-                <TemplateIcon />
-              </Popover.Trigger>
-              <Popover.Content
-                label="Templates"
-                className="left-auto right-0 w-[min(28rem,calc(100vw-2rem))] max-w-none rounded-none p-0"
-              >
-                <TemplateList
-                  cast={cast.length}
-                  onPick={(prompt: string) => {
-                    bar.setPrompt(prompt);
-                    setTemplatesOpen(false);
-                  }}
-                />
-              </Popover.Content>
-            </Popover.Root>
-
-            <Popover.Root open={previewOpen} onOpenChange={setPreviewOpen}>
-              <Popover.Trigger
-                aria-label="Preview"
-                title="Preview the prompt as sent"
-                className={iconButtonClass({
-                  size: "sm",
-                  pressed: previewOpen,
-                  className: "mt-1.5 rounded-none",
-                })}
-              >
-                <EyeIcon />
-              </Popover.Trigger>
-              <Popover.Content
-                label="Preview"
-                className="left-auto right-0 w-[min(40rem,calc(100vw-2rem))] max-w-none rounded-none"
-              >
-                {unfilled.length > 0 && (
-                  <Text variant="caption" tone="muted" className="mb-2 block">
-                    {unfilled.length} unfilled: {unfilled.join(" ")}
-                  </Text>
-                )}
-                <PromptPreview
-                  prompt={bar.prompt}
-                  blocks={templates.data?.blocks ?? {}}
-                />
-              </Popover.Content>
-            </Popover.Root>
-
-            <Popover.Root open={settingsOpen} onOpenChange={setSettingsOpen}>
-              <Popover.Trigger
-                aria-label="Settings"
-                title="Settings"
-                className={iconButtonClass({
-                  size: "sm",
-                  pressed: settingsOpen,
-                  className: "mt-1.5 rounded-none",
-                })}
-              >
-                <SlidersIcon />
-              </Popover.Trigger>
-              <Popover.Content
-                label="Settings"
-                className="left-auto right-0 w-[min(40rem,calc(100vw-2rem))] max-w-none rounded-none"
-              >
-                {entry && (
-                  <CreateSettings
-                    kind={bar.kind}
-                    models={models.data ?? {}}
-                    entry={entry}
-                    params={params}
-                    onModel={bar.setModel}
-                    onParams={(next: Record<string, unknown>) =>
-                      bar.setParams(entry.model, next)
-                    }
+            {/* The three popovers, together: inline above `md`, and below it
+                a full-width line under the prompt that appears with the bar's
+                active state. `order-last` keeps Send where it is rather than
+                letting it move between lines as the bar opens. */}
+            <div
+              className={`${active ? "flex" : "hidden"} order-last basis-full items-start justify-end gap-2
+                          md:order-none md:flex md:basis-auto`}
+            >
+              <Popover.Root open={templatesOpen} onOpenChange={setTemplatesOpen}>
+                <Popover.Trigger
+                  aria-label="Template"
+                  title="Start from a template"
+                  className={iconButtonClass({
+                    size: "sm",
+                    pressed: templatesOpen,
+                    className: "mt-1.5 rounded-none",
+                  })}
+                >
+                  <TemplateIcon />
+                </Popover.Trigger>
+                <Popover.Content
+                  label="Templates"
+                  className="left-auto right-0 w-[min(28rem,calc(100vw-2rem))] max-w-none rounded-none p-0"
+                >
+                  <TemplateList
+                    cast={cast.length}
+                    onPick={(prompt: string) => {
+                      bar.setPrompt(prompt);
+                      setTemplatesOpen(false);
+                    }}
                   />
-                )}
-              </Popover.Content>
-            </Popover.Root>
+                </Popover.Content>
+              </Popover.Root>
 
+              <Popover.Root open={previewOpen} onOpenChange={setPreviewOpen}>
+                <Popover.Trigger
+                  aria-label="Preview"
+                  title="Preview the prompt as sent"
+                  className={iconButtonClass({
+                    size: "sm",
+                    pressed: previewOpen,
+                    className: "mt-1.5 rounded-none",
+                  })}
+                >
+                  <EyeIcon />
+                </Popover.Trigger>
+                <Popover.Content
+                  label="Preview"
+                  className="left-auto right-0 w-[min(40rem,calc(100vw-2rem))] max-w-none rounded-none"
+                >
+                  {unfilled.length > 0 && (
+                    <Text variant="caption" tone="muted" className="mb-2 block">
+                      {unfilled.length} unfilled: {unfilled.join(" ")}
+                    </Text>
+                  )}
+                  <PromptPreview
+                    prompt={bar.prompt}
+                    blocks={templates.data?.blocks ?? {}}
+                  />
+                </Popover.Content>
+              </Popover.Root>
+
+              <Popover.Root open={settingsOpen} onOpenChange={setSettingsOpen}>
+                <Popover.Trigger
+                  aria-label="Settings"
+                  title="Settings"
+                  className={iconButtonClass({
+                    size: "sm",
+                    pressed: settingsOpen,
+                    className: "mt-1.5 rounded-none",
+                  })}
+                >
+                  <SlidersIcon />
+                </Popover.Trigger>
+                <Popover.Content
+                  label="Settings"
+                  className="left-auto right-0 w-[min(40rem,calc(100vw-2rem))] max-w-none rounded-none"
+                >
+                  {entry && (
+                    <CreateSettings
+                      kind={bar.kind}
+                      models={models.data ?? {}}
+                      entry={entry}
+                      params={params}
+                      onModel={bar.setModel}
+                      onParams={(next: Record<string, unknown>) =>
+                        bar.setParams(entry.model, next)
+                      }
+                    />
+                  )}
+                </Popover.Content>
+              </Popover.Root>
+            </div>
+
+            {/* The word is hidden below `md`, not the button: the icon carries
+                the meaning at 390px, and leaving the text in the DOM keeps the
+                accessible name and the busy state a screen reader hears. */}
             <Button
               size="sm"
               className="mt-1.5 inline-flex shrink-0 items-center gap-1.5"
@@ -525,11 +555,18 @@ export function CreateBar() {
               onClick={() => void send()}
             >
               <SendIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
-              {busy ? "Sending…" : "Send"}
+              <span className="sr-only md:not-sr-only">
+                {busy ? "Sending…" : "Send"}
+              </span>
             </Button>
           </div>
 
-          {!bar.onProject && (
+          {/* Below `md` the picker is a row of its own, and only while the bar
+              is active: at rest it made the resting bar two rows tall — 103px
+              inside a 56px header, which clipped the top row off the screen.
+              Nothing is hidden by it, because the prompt's own placeholder is
+              "Pick a project, then describe what to make…" until one is set. */}
+          {!bar.onProject && active && (
             <div className="border-t border-line px-2 py-1 md:hidden">
               <Combobox
                 aria-label="Project"

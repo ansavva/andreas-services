@@ -52,6 +52,7 @@ import {
   UseInPromptIcon,
 } from "../common/icons";
 import { LoadError } from "../common/LoadError";
+import { pressInApp } from "../common/pressInApp";
 import { SectionLoading } from "../common/SectionLoading";
 import { CharacterChipLink } from "../character/CharacterChip";
 import { MediaPlayer } from "../media/MediaPlayer";
@@ -178,10 +179,15 @@ export function RunLightbox({ projectId, runId, characters, heroes }: Props) {
         height: "calc(100dvh - var(--header-h))",
       }}
     >
-      {/* `key` resets the output index and the Request row per run. */}
+      {/* **No `key` here, and that is the fix rather than an omission.** It
+          used to carry `key={row.id}`, which reset the output index per run by
+          throwing the whole opened run away and building a new one — the rail,
+          the outputs and the strip of every run in the project included. Every
+          picture on the screen unmounted and re-fetched on each press of
+          Left/Right, which reads as the page reloading. `Opened` resets the
+          index itself now; see the reset in it. */}
       {row ? (
         <Opened
-          key={row.id}
           row={row}
           record={record.data}
           recordError={record.error}
@@ -266,6 +272,24 @@ function Opened({
   );
   const [requestOpen, setRequestOpen] = useState(Boolean(state.request));
 
+  /**
+   * Stepping to another run starts at its first output, with the Request row
+   * shut — the two things a `key` on this component used to reset, at the
+   * price of remounting everything under it.
+   *
+   * Adjusted DURING the render rather than in an effect: React re-runs this
+   * component immediately with the new state and nothing paints twice, so the
+   * stage never shows the wrong output for a frame. `location.state` is read
+   * only on the first open — a step carries none, and re-applying a stale one
+   * would send every Left/Right back to the output the FIRST run opened on.
+   */
+  const [openedId, setOpenedId] = useState(row.id);
+  if (openedId !== row.id) {
+    setOpenedId(row.id);
+    setOutput(0);
+    setRequestOpen(false);
+  }
+
   const actions = useRunActions(row);
   const flying = inFlight(row.status);
   const now = useNow(flying);
@@ -314,7 +338,11 @@ function Opened({
           </IconButton>
         )}
 
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 md:p-8">
+        {/* `pt-14` on a phone: the stage's own Close sits at `top-3`, and the
+            media's chrome — fullscreen, sound — is drawn along the top of the
+            picture. At `p-4` the picture starts under the Close and the two
+            overlapped. Above `md` the padding already separates them. */}
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 pt-14 md:p-8">
           {flying ? (
             <div
               data-testid="in-flight-stage"
@@ -639,6 +667,7 @@ function ActionGrid({
   actions: ReturnType<typeof useRunActions>;
   onPromote: () => void;
 }) {
+  const navigate = useNavigate();
   const flying = inFlight(row.status);
   const draft = row.status === "draft";
   const still = asset !== null && !isVideoAsset(asset) && row.kind !== "video";
@@ -722,6 +751,7 @@ function ActionGrid({
         {folder && !flying && (
           <a
             href={folder}
+            onClick={pressInApp(navigate, folder)}
             className={buttonClass({
               intent: "secondary",
               size: "sm",

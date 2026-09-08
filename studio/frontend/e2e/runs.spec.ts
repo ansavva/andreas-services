@@ -377,3 +377,71 @@ test("only an image output offers to become a reference", async ({ page }) => {
   await expect(lightbox(page).locator("video")).toHaveCount(1);
   await expect(promote()).toHaveCount(0);
 });
+
+/* -------------------------------------------------------------------------
+ * Pressing the picture
+ * ---------------------------------------------------------------------- */
+
+/**
+ * **A press on an output's picture opens the run, wherever on it the press
+ * lands.**
+ *
+ * Two faults stacked into one: the tile stretched to whatever the plan beside
+ * it was tall, so most of it was black rather than picture, and the hover
+ * controls over it were `opacity-0` with their pointer events left on. A press
+ * low on a still therefore ran Animate or Upscale on it, and one in the corner
+ * started a download — which navigates the window, so the app came back cold.
+ * On a touch screen, where the hover state may never arrive, that was every
+ * press the tile got.
+ *
+ * Asserted through the browser's own hit-testing (`click({ position })`), which
+ * is the only thing that can see an invisible control over a picture: in jsdom
+ * there is no cascade and the handler on the tile is reached either way.
+ */
+test("a press at the foot of an output opens the run rather than a control hidden over it", async ({
+  page,
+}) => {
+  stubOnly("the feed fixture is what the tile is drawn from");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/p/${PROJECT}?tab=runs`);
+
+  const tile = page.getByRole("button", { name: "Open Output 1 of 1" });
+  const box = (await tile.boundingBox())!;
+
+  // The tile is the picture and nothing else: it used to sit at the top of a
+  // frame stretched to the height of the plan column, and the slack was black.
+  const frame = (await tile.locator("..").boundingBox())!;
+  expect(frame.height).toBeLessThan(box.height + 8);
+
+  // Low and to the left: the hover controls are a strip along the bottom
+  // RIGHT of the picture, and a hover turns them live, so this is the press
+  // that used to land on Animate.
+  await tile.click({ position: { x: 8, y: box.height - 20 } });
+  await expect(page).toHaveURL(new RegExp(`/p/${PROJECT}/r/${IMAGE_RUN}`));
+  await expect(lightbox(page)).toBeVisible();
+});
+
+/**
+ * **Folder is a link, and a link inside the app is the router's.**
+ *
+ * It was a bare `<a href="/o/…">`, so the one control that says "show me where
+ * this lives" also threw the session away: the bundle re-ran, every query
+ * started empty and every picture on the screen was fetched again. The probe
+ * is a value on `window` — a full document load is the only thing that can
+ * take it away.
+ */
+test("Folder navigates in the app rather than reloading it", async ({ page }) => {
+  stubOnly("the folder link is built from the captured run's outputs");
+  await page.goto(`/p/${PROJECT}/r/${IMAGE_RUN}`);
+  await expect(lightbox(page)).toBeVisible();
+
+  await page.evaluate(() => {
+    (window as unknown as { probe?: string }).probe = "kept";
+  });
+  await lightbox(page).getByRole("link", { name: "Folder" }).click();
+
+  await expect(page).toHaveURL(/\/f\//);
+  expect(
+    await page.evaluate(() => (window as unknown as { probe?: string }).probe),
+  ).toBe("kept");
+});

@@ -1,4 +1,4 @@
-import { Button, IconButton } from "@ansavva/design-system";
+import { IconButton } from "@ansavva/design-system";
 
 import type { RunAsset, RunFeedRow } from "../../types";
 import {
@@ -28,10 +28,15 @@ import type { useRunActions } from "./useRunActions";
  * node delete would leave the run's record pointing at bytes that are gone.
  * Trash is on the run, in its action row.
  *
- * The icon-only controls are `IconButton intent="overlay"` — the package's
- * roles for a glyph over a photograph. The labelled row at the foot lays its
- * own scrim down first, which is what makes a WORD legible over arbitrary
- * pixels; the package leaves that to the caller on purpose.
+ * **Every control is a glyph in a corner, and the picture is the rest.** The
+ * foot used to be a 2x2 grid of labelled buttons, which on a 150px tile in a
+ * four-across feed covered a third of the frame — and a hover turns those
+ * buttons live, so a press aimed at the picture under them ran Animate or
+ * Upscale on it instead of opening it. The word was worth a scrim of its own
+ * when a run had a column to itself; here it is worth less than the picture.
+ * `IconButton intent="overlay"` is the package's role for a glyph over a
+ * photograph, `label` is the accessible name and the tooltip both, and every
+ * one of these actions is offered again, in words, in the opened run.
  */
 export function OutputTile({
   row,
@@ -73,15 +78,12 @@ export function OutputTile({
       </button>
 
       {/* Top corners: fetch the bytes, or hand the picture to the bar. */}
-      <div
-        className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100
-                   group-hover:opacity-100 motion-reduce:transition-none"
-      >
+      <div className={`absolute right-2 top-2 flex gap-1 ${HIDDEN}`}>
         <IconButton
           label={`Download ${asset.name}`}
           size="sm"
           intent="overlay"
-          className="rounded-none bg-overlay-scrim/60"
+          className={`rounded-none bg-overlay-scrim/60 ${LIVE}`}
           onClick={() => void actions.download(asset)}
         >
           <DownloadIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
@@ -90,21 +92,21 @@ export function OutputTile({
           label="Use in prompt"
           size="sm"
           intent="overlay"
-          className="rounded-none bg-overlay-scrim/60"
+          className={`rounded-none bg-overlay-scrim/60 ${LIVE}`}
           onClick={() => actions.useInPrompt(asset, index)}
         >
           <UseInPromptIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
         </IconButton>
       </div>
 
-      {/* The foot: what to MAKE from this output. */}
+      {/* The foot: what to MAKE from this output. One row along the bottom
+          edge, so what it covers is a strip rather than half the frame. */}
       <div
-        className="absolute inset-x-2 bottom-2 grid grid-cols-2 gap-1.5 opacity-0 transition-opacity
-                   group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
+        className={`absolute inset-x-2 bottom-2 flex flex-wrap justify-end gap-1 ${HIDDEN}`}
       >
         <OverlayAction
           icon={<RerunIcon className={GLYPH} />}
-          label="Again"
+          label="Run again with this"
           onClick={() => actions.outputAgain(asset, index)}
         />
         {!video && (
@@ -136,8 +138,30 @@ export function OutputTile({
 const GLYPH = "size-3.5 fill-none stroke-current stroke-[1.5]";
 
 /**
- * A labelled control over media: the scrim is laid down here, under the
- * package's secondary fill, so the word reads over any frame.
+ * A group of controls that is not there yet.
+ *
+ * **`pointer-events-none` is the half that was missing.** `opacity-0` hides a
+ * control and leaves it clickable, so the two overlays above — four buttons
+ * across the foot of every still, two in the corner — were catching presses
+ * aimed at the picture under them. Pressing a run's output ran Animate or
+ * Upscale on it instead of opening it, which on a touch screen (where a hover
+ * state may never arrive at all) is every press the tile gets.
+ *
+ * The group never takes a press back, at any width: it is a strip across the
+ * whole picture, and letting hover make IT live would put an invisible sheet
+ * over the frame between the glyphs. `LIVE` is what wakes the buttons.
+ */
+const HIDDEN =
+  "pointer-events-none opacity-0 transition-opacity group-hover:opacity-100 " +
+  "group-focus-within:opacity-100 motion-reduce:transition-none";
+
+/** The other half, on each control: alive exactly when the group is visible. */
+const LIVE =
+  "pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto";
+
+/**
+ * One glyph over media: the same treatment as the two in the top corner, so
+ * the tile carries one kind of control rather than two.
  */
 function OverlayAction({
   icon,
@@ -149,14 +173,14 @@ function OverlayAction({
   onClick: () => void;
 }) {
   return (
-    <Button
-      intent="secondary"
+    <IconButton
+      label={label}
       size="sm"
+      intent="overlay"
+      className={`rounded-none bg-overlay-scrim/60 ${LIVE}`}
       onClick={onClick}
-      className="rounded-none border border-overlay-muted bg-overlay-scrim/65 text-overlay-ink hover:bg-overlay-hover"
     >
       {icon}
-      {label}
-    </Button>
+    </IconButton>
   );
 }
