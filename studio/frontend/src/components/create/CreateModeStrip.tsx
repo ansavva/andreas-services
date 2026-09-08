@@ -107,9 +107,12 @@ export function CreateModeStrip({
             role="group"
             aria-label={words.label}
             data-role-cell={each}
-            className={`flex min-w-0 flex-1 items-center gap-3 border-r border-line px-3 py-2 ${
-              on ? "bg-surface-alt" : ""
-            }`}
+            // `basis-full` below `md`: two cells sharing a phone's width give
+            // the name about 90px and the slot beside it 64, and the name is
+            // not a truncating element — it ran straight over the slot. One
+            // role per line there; the row is only a row where it fits.
+            className={`flex min-w-0 flex-1 basis-full items-center gap-3 border-r border-line px-3 py-2
+                        md:basis-auto ${on ? "bg-surface-alt" : ""}`}
           >
             {/* The word alone; what the role means is a hover away. */}
             <div className="flex min-w-0 flex-1 items-center">
@@ -159,7 +162,9 @@ export function CreateModeStrip({
         />
       )}
 
-      <div className="flex shrink-0 flex-col justify-center gap-1 px-2">
+      {/* A column beside the roles where they sit in a row, and a row of its
+          own under them where each role has taken a line. */}
+      <div className="flex shrink-0 justify-center gap-1 px-2 py-1 max-md:w-full max-md:justify-end md:flex-col md:py-0">
         <IconButton
           size="sm"
           pressed={keep}
