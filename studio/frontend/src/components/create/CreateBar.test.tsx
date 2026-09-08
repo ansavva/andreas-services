@@ -179,7 +179,7 @@ it("the kind switch changes the tiles, the chips and the model", async () => {
     Array.from(strip().querySelectorAll("[data-role-cell]")).map((cell) =>
       cell.getAttribute("aria-label"),
     );
-  expect(labels()).toEqual(["Input image", "Image refs"]);
+  expect(labels()).toEqual(["Image refs"]);
   // The still model's snapshot has a resolution and no duration.
   expect(screen.getByRole("button", { name: "Resolution: 2K" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: /^Duration/ })).toBeNull();

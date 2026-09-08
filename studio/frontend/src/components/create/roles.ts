@@ -35,10 +35,12 @@ export const ROLE_WORDS: Record<AttachRole, { label: string; hint: string; choos
  *
  * Read off the registry entry's `images`, never guessed: the frame-first
  * workflow's whole bargain is that a start frame lands on the field the model
- * calls its start frame. `input` — the image an edit starts from — takes the
- * model's single-image field where it has one (an upscaler's `image`) and its
- * reference list otherwise, since that is the only place an image model
- * without one can be handed a picture.
+ * calls its start frame. `input` — the image an edit operates on — is the
+ * model's single-image field (an upscaler's `image`) and nothing else: it
+ * used to fall back to the reference list, which drew an `Input image` tile
+ * on every model with refs and sent the picture to the same field `Image
+ * refs` does — two words for one input. A model with no such field has no
+ * such tile.
  */
 export function fieldFor(role: AttachRole, entry: ModelEntry | null): string | null {
   const images = entry?.images ?? {};
@@ -50,7 +52,7 @@ export function fieldFor(role: AttachRole, entry: ModelEntry | null): string | n
     case "reference":
       return images.refs ?? null;
     case "input":
-      return images.start ?? images.refs ?? null;
+      return images.start ?? null;
   }
 }
 
