@@ -1,5 +1,7 @@
 import { useNavigate } from "react-router-dom";
 
+import { Text } from "@ansavva/design-system";
+
 import type { RunSend } from "../../types";
 import { assetLabel } from "../../utils/format";
 import { objectPath } from "../../utils/location";
@@ -7,13 +9,34 @@ import { pressInApp } from "../common/pressInApp";
 import { MediaThumb } from "../media/MediaThumb";
 
 /**
- * What a run was sent — the pictures that went in, as links.
+ * The order the roles are drawn in, and what each one is called under a
+ * picture.
  *
- * **They were pictures and nothing else, and that was the bug.** A press did
- * nothing at all: no open, no new tab, no way through to the file the run was
- * checked against. The output tiles beside them open, the character chip opens,
- * the folder cell opens; the one thing a person is most likely to want to look
- * at closely was inert.
+ * **The create sheet's own words and the create sheet's own order** — Start
+ * frame, End frame, then the references in send order — because it is the same
+ * fact read back: what this run was handed and as what. `Image refs` is the
+ * plural on a tile row, so a single picture takes the numbered form the sheet
+ * captions its own tiles with (`Image 1`).
+ */
+const ROLE_ORDER: Record<string, number> = { start: 0, end: 1, input: 2, reference: 3 };
+const ROLE_WORD: Record<string, string> = {
+  start: "Start frame",
+  end: "End frame",
+  input: "Input",
+};
+
+/**
+ * What a run was sent — the pictures that went in, as what, and as links.
+ *
+ * **The role is on the picture now, not in a tooltip.** These were a flat row
+ * of squares with `reference · seed-01.jpg` hidden in a `title`: invisible on
+ * a touch screen, and on a pointer only if you knew to hover. A video run
+ * carrying a start frame, an end frame and three references drew five
+ * identical thumbs in the order they happened to be sent, so the one question
+ * this block exists to answer — which picture was the start frame — was the
+ * one thing it did not say. Now each one carries its word, and they are
+ * grouped: frames first, then the references in send order, numbered the way a
+ * prompt cites them.
  *
  * **A real `<a href>`, so the browser's own gestures work.** ⌘-click and
  * middle-click open a new tab and Copy address yields a link — `pressInApp`
@@ -42,25 +65,63 @@ export function SendThumbs({
   const navigate = useNavigate();
   if (sends.length === 0) return null;
 
+  // **Sorted for reading, never for sending.** `order` is what the model was
+  // handed and it is preserved inside a role — the references stay in their
+  // send order, which is what `Image 2` means — but the frames come first,
+  // because "which one was the start" is the question a person opens a video
+  // run with.
+  const ordered = [...sends].sort((a, b) => {
+    const byRole =
+      (ROLE_ORDER[a.role ?? ""] ?? 4) - (ROLE_ORDER[b.role ?? ""] ?? 4);
+    return byRole !== 0 ? byRole : a.order - b.order;
+  });
+
+  let references = 0;
+
   return (
     <div className="flex flex-wrap gap-1.5" aria-label="Sent">
-      {sends.map((send) => {
-        // Whole, not cropped: what went in is what a person is checking the
-        // output against. The role is the tooltip, not a word over the picture
-        // — at this size a label hides what it labels.
-        const title = `${send.role ?? send.field} · ${assetLabel(send.name)}`;
+      {ordered.map((send) => {
+        // A reference's number is its position among the references, which is
+        // how a prompt cites it — not its position among every send.
+        if (send.role === "reference") references += 1;
+        const word =
+          send.role === "reference"
+            ? `Image ${references}`
+            : (ROLE_WORD[send.role ?? ""] ?? send.field);
+
+        const title = `${word} · ${assetLabel(send.name)}`;
         const thumb = (
-          <MediaThumb
-            nodeId={send.node}
-            url={send.url}
-            name={send.name}
-            aspect="square"
-            fit="contain"
-            title={send.url ? undefined : title}
-            className={`${size} border border-line`}
-          />
+          <span className="flex flex-col gap-1">
+            {/* Whole, not cropped: what went in is what a person is checking
+                the output against. */}
+            <MediaThumb
+              nodeId={send.node}
+              url={send.url}
+              name={send.name}
+              aspect="square"
+              fit="contain"
+              className={`${size} border border-line`}
+            />
+            {/* Under the picture rather than over it: at this size a caption
+                laid on the frame hides what it labels, and these are small
+                enough that every pixel of the picture is doing work. */}
+            <Text
+              variant="caption"
+              tone="muted"
+              className={`${size === "size-28" ? "w-28" : "w-20"} truncate text-center`}
+            >
+              {word}
+            </Text>
+          </span>
         );
-        if (!send.url) return <span key={send.node}>{thumb}</span>;
+
+        if (!send.url) {
+          return (
+            <span key={send.node} title={title}>
+              {thumb}
+            </span>
+          );
+        }
 
         const to = objectPath(send.node);
         return (
@@ -68,7 +129,7 @@ export function SendThumbs({
             key={send.node}
             href={to}
             title={title}
-            aria-label={`Open ${assetLabel(send.name)}`}
+            aria-label={`Open ${word} — ${assetLabel(send.name)}`}
             onClick={pressInApp(navigate, to)}
             className="block shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >

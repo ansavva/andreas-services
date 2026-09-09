@@ -242,7 +242,9 @@ describe("the opened run", () => {
     expect(
       within(rail).getByRole("link", { name: /jason/ }).getAttribute("href"),
     ).toBe("/c/char-1");
-    expect(within(rail).getByTitle("reference · seed-01.jpg")).toBeTruthy();
+    // The role is on the picture, in the create sheet's own words — a
+    // reference is `Image N` where N is its place among the references.
+    expect(within(rail).getByTitle("Image 1 · seed-01.jpg")).toBeTruthy();
     await waitFor(() =>
       expect(within(rail).getByText(/prediction 9c1e2f3a…/)).toBeTruthy(),
     );

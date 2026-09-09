@@ -479,10 +479,12 @@ describe("a pointer at a node that is gone", () => {
 
     const sent = within(article).getByLabelText("Sent");
     expect(within(sent).getByText("Unavailable")).toBeTruthy();
-    // Not `reference · undefined`.
+    // Not `Image 1 · undefined`. The role is drawn under the thumb as well,
+    // so a send whose node is gone still says what it was for.
     expect(sent.querySelector("[title]")?.getAttribute("title")).toBe(
-      "reference · deleted file",
+      "Image 1 · deleted file",
     );
+    expect(within(sent).getByText("Image 1")).toBeTruthy();
     // **And it is not a link.** The object behind it is gone, so the only
     // place a link could lead is an error page — see `SendThumbs`.
     expect(within(sent).queryByRole("link")).toBeNull();
@@ -494,6 +496,41 @@ describe("a pointer at a node that is gone", () => {
    * opened run alike, while everything around them opened. A real `<a href>`
    * is what gives the browser its own gestures back — see `SendThumbs`.
    */
+  /**
+   * **Which one was the start frame** — the question a video run is opened
+   * with, and the one thing a flat row of identical squares could not answer.
+   * The role was a `title` and nothing else: invisible on a touch screen, and
+   * on a pointer only if you knew to hover.
+   */
+  it("says what each picture was sent as, frames first and references numbered", async () => {
+    await draw([
+      row({
+        sends: [
+          // Out of order on purpose: `order` is what the model was handed, and
+          // the reading order is not it.
+          { node: "node-r2", name: "b.jpg", url: "/b.jpg", order: 4, field: "input_images", role: "reference", source: { kind: "object" } },
+          { node: "node-end", name: "end.png", url: "/end.png", order: 2, field: "end_image", role: "end", source: { kind: "object" } },
+          { node: "node-r1", name: "a.jpg", url: "/a.jpg", order: 3, field: "input_images", role: "reference", source: { kind: "object" } },
+          { node: "node-start", name: "start.png", url: "/start.png", order: 1, field: "start_image", role: "start", source: { kind: "object" } },
+        ],
+      }),
+    ]);
+    const sent = within(await screen.findByRole("article")).getByLabelText("Sent");
+
+    expect(
+      within(sent)
+        .getAllByRole("link")
+        .map((link) => link.getAttribute("title")),
+    ).toEqual([
+      "Start frame · start.png",
+      "End frame · end.png",
+      // Numbered by their place among the REFERENCES, in send order — which is
+      // what `Image 2` means in a prompt.
+      "Image 1 · a.jpg",
+      "Image 2 · b.jpg",
+    ]);
+  });
+
   it("links each sent picture to the file, with no sequence around it", async () => {
     await draw([row()]);
     const article = await screen.findByRole("article");

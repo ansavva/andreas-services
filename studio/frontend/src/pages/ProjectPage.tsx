@@ -139,7 +139,7 @@ export function ProjectPage() {
                 {counts.runs} {counts.runs === 1 ? "run" : "runs"}
               </Badge>
               {running > 0 && (
-                <Badge intent="warning" className="gap-1.5 font-mono tabular-nums">
+                <Badge intent="neutral" className="gap-1.5 font-mono tabular-nums">
                   <ApertureSpinner size="sm" label={`${running} running`} className="size-3.5" />
                   {running} running
                 </Badge>

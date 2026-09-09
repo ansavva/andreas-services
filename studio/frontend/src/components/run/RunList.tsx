@@ -25,13 +25,13 @@ import { formatCost } from "../../utils/cost";
  */
 const STATUS_INTENT: Record<
   RunStatus,
-  "neutral" | "success" | "danger" | "warning"
+  "neutral" | "success" | "danger"
 > = {
   // Unsubmitted.
   draft: "neutral",
   discarded: "neutral",
   pending: "neutral",
-  running: "warning",
+  running: "neutral",
   succeeded: "success",
   failed: "danger",
   cancelled: "neutral",
