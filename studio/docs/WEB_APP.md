@@ -358,8 +358,9 @@ page and a plain textarea over its literal bytes, and never offers fields.
   applied on Enter; status, character, model and since ride in the address
   like the browser's own filters. A run in flight fills its row with
   full-size `studio-shimmer` tiles carrying the aperture spinner and the
-  seconds since it went out, the feed polls (`FEED_POLL_MS`) while any row is
-  in flight, and `useInFlightRuns` reads those same cached pages for the
+  seconds since it went out, `useRunWatch` asks after each row that is still
+  out — one `GET /api/runs/<id>` every `RUN_WATCH_MS`, patched into the cached
+  pages when the status moves — and `useInFlightRuns` reads those same pages for the
   "N running" badge in the project header and the spinner beside the project
   in the sidebar — which is why both are only ever right about projects open
   this session. A tile carries one `⋮` — `ActionMenu`, a dropdown on a pointer
@@ -526,7 +527,15 @@ page and a plain textarea over its literal bytes, and never offers fields.
   The prediction is closed by Replicate calling the API back, which is why
   `TERMINAL_RUN_STATUSES` exists: a client that knows which states can still
   change stops asking on its own — the feed through `inFlight`, the opened
-  run's record through `isTerminal`. A run stuck at `running` long after it
+  run's record through `isTerminal`. **What is polled is the RUN, never the
+  listing.** The feed carried the interval until it was measured: refetching an
+  infinite query re-runs every page it holds, so a feed scrolled to three pages
+  made three `?view=feed` calls every five seconds — each re-reading an envelope
+  per row and re-signing every send and every output on it — to learn that one
+  prediction had landed. `useRunWatch` polls `["run", <id>]`, the opened run's
+  own key, so a run watched from the feed and read in the lightbox is one
+  request; the record that reports the landing carries the outputs, so the page
+  the run sits on is patched rather than re-read. A run stuck at `running` long after it
   should have settled is `POST /api/runs/<id>/reconcile`, which the app no
   longer offers a button for: the CLI's `studio runs reconcile` is the tool.
 - **The API takes the ID token, never the access token.** A REST

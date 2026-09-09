@@ -42,6 +42,7 @@ import {
   RUN_ID,
   RUN_PROJECT,
   CHARACTER_ROOT,
+  fixture,
   stubApi,
 } from "./support/api";
 import { escaped, log, spell, wrote } from "./support/calls";
@@ -110,6 +111,92 @@ test("the project opens on the feed, one row per run, with a prompt search in th
   await search.press("Enter");
   await expect(page).toHaveURL(/[?&]q=studio\+photograph/);
   await expect(page.locator("article")).toHaveCount(1);
+  expect(wrote(calls)).toEqual([]);
+});
+
+/**
+ * **A run in flight is polled by ITSELF, and the feed is not re-read.**
+ *
+ * The feed used to carry the `refetchInterval`, and refetching an infinite
+ * query re-runs every page it holds — so watching one prediction land cost a
+ * `?view=feed` call per loaded page every five seconds, each re-reading an
+ * envelope per row and re-signing every send and output on it. What replaced it
+ * is `useRunWatch`: one `GET /api/runs/<id>` per row still out, and the record
+ * that reports the landing carries the outputs, so the page it sits on is
+ * patched rather than re-read.
+ *
+ * The claim is a COUNT, which is the only way to see this from outside: the
+ * listing is asked for once and the run is asked for repeatedly. It waits on
+ * the second poll rather than on a clock, so nothing here depends on how fast
+ * the machine is — only on the interval eventually elapsing.
+ */
+test("a run in flight polls itself, and the feed is read once", async ({
+  page,
+}) => {
+  stubOnly("the feed fixture is a projection of two captured runs");
+  const calls = log(page);
+
+  // The captured succeeded run, put back into flight — and landing again once
+  // the poll has been seen twice.
+  const feed = fixture<{ runs: Array<Record<string, unknown>> }>(
+    "project-runs-feed",
+  );
+  const landed = feed.runs[1]!;
+  const flying = {
+    ...landed,
+    status: "running",
+    outputs: [],
+    thumb: null,
+    completed: null,
+  };
+  const record = fixture<Record<string, unknown>>("run-image");
+  let done = false;
+
+  // Registered after `stubApi`, so these win: Playwright matches the most
+  // recently added route first.
+  await page.route(
+    (url) => url.pathname.endsWith("/api/runs"),
+    (route, request) =>
+      new URL(request.url()).searchParams.get("view") === "feed"
+        ? route.fulfill({
+            contentType: "application/json",
+            body: JSON.stringify({ runs: [flying], cursor: null }),
+          })
+        : route.fallback(),
+  );
+  await page.route(
+    (url) => url.pathname === `/api/runs/${landed.id as string}`,
+    (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(
+          done ? record : { ...record, status: "running", outputs: [] },
+        ),
+      }),
+  );
+
+  await page.goto(`/p/${PROJECT}`);
+  await expect(page.getByTestId("in-flight-tile").first()).toBeVisible();
+
+  const feedCalls = () =>
+    calls.filter(
+      (call) => call.path.endsWith("/api/runs") && call.query.get("view") === "feed",
+    ).length;
+  const runCalls = () =>
+    calls.filter((call) => call.path === `/api/runs/${landed.id as string}`).length;
+
+  // The interval fired at least once on top of the first read.
+  await expect.poll(runCalls, { timeout: 20_000 }).toBeGreaterThan(1);
+  expect(feedCalls()).toBe(1);
+
+  // And the landing arrives on that same per-run poll: the outputs draw, and
+  // the listing is still never asked again.
+  done = true;
+  await expect(page.getByRole("button", { name: "Open Output 1 of 1" })).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(page.getByTestId("in-flight-tile")).toHaveCount(0);
+  expect(feedCalls()).toBe(1);
   expect(wrote(calls)).toEqual([]);
 });
 
