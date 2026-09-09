@@ -10,6 +10,7 @@ export function loader() {
   <url><loc>${canonicalUrl('/privacy')}</loc><lastmod>${updated}</lastmod><changefreq>yearly</changefreq><priority>0.3</priority></url>
   <url><loc>${canonicalUrl('/billing')}</loc><lastmod>${updated}</lastmod><changefreq>yearly</changefreq><priority>0.3</priority></url>
   <url><loc>${canonicalUrl('/refunds')}</loc><lastmod>${updated}</lastmod><changefreq>yearly</changefreq><priority>0.3</priority></url>
+  <url><loc>${canonicalUrl('/sub-processors')}</loc><lastmod>${updated}</lastmod><changefreq>yearly</changefreq><priority>0.3</priority></url>
 </urlset>`, {
     headers: { 'Content-Type': 'application/xml; charset=utf-8' },
   });
