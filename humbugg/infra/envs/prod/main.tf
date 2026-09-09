@@ -76,11 +76,14 @@ module "compute" {
 
   dynamodb_table_arns      = module.storage.dynamodb_table_arns
   email_messages_table_arn = module.storage.email_messages_table_arn
-  avatars_bucket_arn       = module.storage.app_bucket_arn
-  mailer_status_queue_arn  = data.aws_ssm_parameter.mailer_status_queue_arn.value
-  cognito_user_pool_id     = module.auth.user_pool_id
-  cognito_user_pool_arn    = module.auth.user_pool_arn
-  cognito_client_id        = module.auth.user_pool_client_id
+  # app_files, not app: the SPA bundle and user uploads live in separate buckets, and
+  # the Lambda writes avatars to the files one (HUMBUGG_APP_BUCKET). Granting it against
+  # the hosting bucket made every avatar upload a 500 — AccessDenied on PutObject.
+  avatars_bucket_arn      = module.storage.app_files_bucket_arn
+  mailer_status_queue_arn = data.aws_ssm_parameter.mailer_status_queue_arn.value
+  cognito_user_pool_id    = module.auth.user_pool_id
+  cognito_user_pool_arn   = module.auth.user_pool_arn
+  cognito_client_id       = module.auth.user_pool_client_id
 
   api_throttling_rate_limit  = var.api_throttling_rate_limit
   api_throttling_burst_limit = var.api_throttling_burst_limit
