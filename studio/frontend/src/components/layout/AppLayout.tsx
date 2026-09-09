@@ -99,16 +99,12 @@ function SheetSlot() {
   }, [shown, expand]);
 
   return (
-    // **The padding belongs to the sheet, not to the slot.** Expanded, the
-    // sheet is a card floating over the feed and the inset is what makes it
-    // read that way. Collapsed, the same inset left a strip hovering a
-    // centimetre off the bottom of the window with a stripe of feed showing
-    // under it — a handle is a thing you pull from the EDGE, so it sits on it.
-    <div
-      className={`pointer-events-none sticky bottom-0 z-30 ${
-        shown ? "px-2 pb-2 md:px-6 md:pb-4" : ""
-      }`}
-    >
+    // **No inset, in either state.** The sheet used to float as a card with a
+    // gap under it, which left a stripe of feed showing beneath something that
+    // is anchored to the bottom of the window — and once it is the thing a
+    // handle on the edge pulls up, the gap contradicts the gesture. It is a
+    // drawer: it sits on the edge, and only its top corners are rounded.
+    <div className="pointer-events-none sticky bottom-0 z-30">
       <div className="pointer-events-auto mx-auto w-full max-w-3xl">
         {shown ? (
           <CreateBar />

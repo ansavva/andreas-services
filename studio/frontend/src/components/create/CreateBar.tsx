@@ -524,9 +524,15 @@ export function CreateBar() {
 
       {/* The sheet. `bg-sheet` over a blur rather than a solid: media
           scrolling under it stays faintly visible, which is what says
-          "floating over the feed" rather than "the page ends here". */}
+          "floating over the feed" rather than "the page ends here".
+
+          **Rounded at the top only, and sitting on the window's edge.** It was
+          a card with a gap under it, which put a stripe of feed below
+          something anchored to the bottom of the screen — and once the thing
+          that opens it is a handle on that edge, the gap argues with the
+          gesture. */}
       <div
-        className="flex flex-col gap-3 rounded-lg bg-sheet p-3 shadow-[0_12px_48px_rgba(0,0,0,0.55)]
+        className="flex flex-col gap-3 rounded-t-lg bg-sheet p-3 shadow-[0_-8px_48px_rgba(0,0,0,0.55)]
                    ring-1 ring-line backdrop-blur-xl"
       >
         <div className="flex items-center justify-between gap-2">

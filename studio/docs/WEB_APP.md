@@ -447,12 +447,14 @@ page and a plain textarea over its literal bytes, and never offers fields.
   or a copy on the browse page.
 - **The create sheet collapses to a handle, and the handle pulls it back up.**
   The `⌄` on the sheet (and Escape inside it) drops it on every screen;
-  `SheetSlot` then draws the sheet's own frame as a 24px strip **on the bottom
-  edge** — the slot's inset belongs to the expanded sheet, which is a card
-  floating over the feed; a handle is pulled from the edge, so it sits on it,
-  rounded at the top only. Same place, same width, a `⌃` on it: what comes back
-  is plainly what went away. The whole strip is the press, so the target is the
-  sheet's width however short it is drawn; `c` reaches it from the keyboard. The decision is remembered
+  `SheetSlot` then draws the sheet's own frame as a 24px strip. **Both states
+  sit on the bottom edge**, rounded at the top only: the sheet used to float as
+  a card with a gap under it, which put a stripe of feed below something
+  anchored to the bottom of the window — and once the thing that opens it is a
+  handle on that edge, the gap argues with the gesture. Same place, same width,
+  a `⌃` on it: what comes back is plainly what went away. The whole strip is
+  the press, so the target is the sheet's width however short it is drawn; `c`
+  reaches it from the keyboard. The decision is remembered
   (`CREATE_COLLAPSED_STORAGE_KEY`) because the point of collapsing it is to
   browse without it. **Anything that fills the bar opens it** — `attach` and
   `loadRun` clear `collapsed` — since a picture attached to a sheet nobody can
