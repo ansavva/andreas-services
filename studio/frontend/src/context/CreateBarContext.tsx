@@ -108,8 +108,6 @@ interface CreateBarState {
   project: string | null;
   /** The highlighted role — the one the drawer supplies images for. */
   role: AttachRole | null;
-  /** Keep the attached images after a send. */
-  keep: boolean;
   /** Bumped when something loads the bar, so it can take focus. */
   focus: number;
   /**
@@ -132,11 +130,8 @@ interface CreateBarStateValue extends CreateBarState {
   setParams(model: string, params: Record<string, unknown>): void;
   setProject(project: string | null): void;
   setRole(role: AttachRole | null): void;
-  setKeep(keep: boolean): void;
   /** Take one attachment off the current kind. */
   detach(index: number): void;
-  /** Take every attachment off the current kind. */
-  clearAttachments(): void;
   /** The start frame becomes the end frame and vice versa. A no-op unless both are held. */
   swapFrames(): void;
   /** Whether the sheet is drawn at all — false on the opened run until something calls it up. */
@@ -177,7 +172,6 @@ const EMPTY: CreateBarState = {
   attachments: { image: [], video: [] },
   project: null,
   role: null,
-  keep: false,
   focus: 0,
   summoned: false,
 };
@@ -279,7 +273,6 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
     (role: AttachRole | null) => setState((current) => ({ ...current, role })),
     [],
   );
-  const setKeep = useCallback((keep: boolean) => setState((current) => ({ ...current, keep })), []);
   const detach = useCallback(
     (index: number) =>
       setState((current) => ({
@@ -291,23 +284,22 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
       })),
     [],
   );
-  const clearAttachments = useCallback(
-    () =>
-      setState((current) => ({
-        ...current,
-        attachments: { ...current.attachments, [current.kind]: [] },
-      })),
-    [],
-  );
+  /**
+   * After a send: the prompt goes, and so do the images.
+   *
+   * **There is no "keep these" any more.** A padlock beside the tiles held them
+   * for the next send and a bin next to it emptied them, which is two controls
+   * and a piece of state for something the tiles already do one at a time —
+   * every tile carries its own ×, and attaching again is a press. Dropped on
+   * request; what is left is the one behaviour a send should have.
+   */
   const sent = useCallback(
     () =>
       setState((current) => ({
         ...current,
         prompt: "",
         role: null,
-        attachments: current.keep
-          ? current.attachments
-          : { ...current.attachments, [current.kind]: [] },
+        attachments: { ...current.attachments, [current.kind]: [] },
       })),
     [],
   );
@@ -348,9 +340,7 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
       setParams,
       setProject,
       setRole,
-      setKeep,
       detach,
-      clearAttachments,
       swapFrames,
       sent,
     }),
@@ -364,9 +354,7 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
       setParams,
       setProject,
       setRole,
-      setKeep,
       detach,
-      clearAttachments,
       swapFrames,
       sent,
     ],
