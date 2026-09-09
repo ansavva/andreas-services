@@ -242,7 +242,7 @@ function RecentProjects({
               <ApertureSpinner
                 size="sm"
                 label={`${running[project.id]} running in ${project.name}`}
-                className="size-3.5 text-warning"
+                className="size-3.5 text-muted"
               />
             </span>
           )}

@@ -78,14 +78,17 @@ const STATUSES: RunStatus[] = [
   "cancelled",
 ];
 
-const STATUS_INTENT: Record<
-  RunStatus,
-  "neutral" | "success" | "danger" | "warning"
-> = {
+/**
+ * **In flight is `neutral`, not `warning`.** A run that is still going is not a
+ * problem, and gold over a wall of media read as one — in a palette whose whole
+ * rule is that the chrome carries almost no chroma. The shimmer and the ticking
+ * elapsed time are what say "working".
+ */
+const STATUS_INTENT: Record<RunStatus, "neutral" | "success" | "danger"> = {
   draft: "neutral",
   discarded: "neutral",
-  pending: "warning",
-  running: "warning",
+  pending: "neutral",
+  running: "neutral",
   succeeded: "success",
   failed: "danger",
   cancelled: "neutral",
@@ -498,7 +501,7 @@ function FeedRow({
             className="ml-auto tabular-nums"
           >
             {flying ? (
-              <span className="text-warning">
+              <span className="text-muted">
                 sent {relativeTime(row.submitted, now)}
               </span>
             ) : (
@@ -593,18 +596,16 @@ function InFlightTiles({ row, now }: { row: RunFeedRow; now: number }) {
           key={i}
           data-testid="in-flight-tile"
           style={{ aspectRatio: ratio }}
-          className={`studio-shimmer flex flex-col items-center justify-center gap-2 border ${
-            i === 0 ? "border-warning/50" : "border-line"
-          }`}
+          className="studio-shimmer flex flex-col items-center justify-center gap-2 border border-line"
         >
           {i === 0 && (
             <>
               <ApertureSpinner
                 size="lg"
                 label={`Run ${row.status}`}
-                className="text-warning"
+                className="text-muted"
               />
-              <Text variant="body" weight="medium" className="text-warning">
+              <Text variant="body" weight="medium" tone="muted">
                 {row.status === "pending" ? "Sending…" : "Running…"}
               </Text>
               <Text

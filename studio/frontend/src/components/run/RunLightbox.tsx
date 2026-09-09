@@ -367,16 +367,16 @@ function Opened({
           {flying ? (
             <div
               data-testid="in-flight-stage"
-              className={`studio-shimmer flex w-full max-w-xl flex-col items-center justify-center gap-2 border border-warning/50 ${
+              className={`studio-shimmer flex w-full max-w-xl flex-col items-center justify-center gap-2 border border-line ${
                 row.kind === "video" ? "aspect-video" : "aspect-[3/4]"
               }`}
             >
               <ApertureSpinner
                 size="lg"
                 label={`Run ${row.status}`}
-                className="text-warning"
+                className="text-muted"
               />
-              <Text variant="body" weight="medium" className="text-warning">
+              <Text variant="body" weight="medium" tone="muted">
                 {row.status === "pending" ? "Sending…" : "Running…"}
               </Text>
               <Text
@@ -480,7 +480,7 @@ function Opened({
             className="ml-auto tabular-nums"
           >
             {flying ? (
-              <span className="text-warning">
+              <span className="text-muted">
                 sent {relativeTime(row.submitted, now)}
               </span>
             ) : (
@@ -975,11 +975,11 @@ function RunStrip({
               }`}
             >
               {inFlight(row.status) ? (
-                <span className="studio-shimmer flex aspect-square items-center justify-center border border-warning/50">
+                <span className="studio-shimmer flex aspect-square items-center justify-center border border-line">
                   <ApertureSpinner
                     size="sm"
                     label={`Run ${row.status}`}
-                    className="text-warning"
+                    className="text-muted"
                   />
                 </span>
               ) : thumb ? (
