@@ -36,7 +36,15 @@ import { RunFeed, expectedOutputs } from "./RunFeed";
 
 const list = vi.mocked(getRuns);
 
-const NOW = Date.now();
+/**
+ * A fixed instant, and the clock the components read is set to it.
+ *
+ * **"26 hours ago" is not always yesterday.** Between midnight and 02:00 it
+ * lands two days back, so the grouping case below failed for two hours a day
+ * and passed in CI, which runs in UTC. The offsets are what these tests are
+ * about; when they are measured from is not — so it is midday, fixed.
+ */
+const NOW = new Date("2026-09-09T12:00:00").getTime();
 const ago = (seconds: number) => new Date(NOW - seconds * 1_000).toISOString();
 
 function row(over: Partial<RunFeedRow> = {}): RunFeedRow {
@@ -129,7 +137,17 @@ function openTileMenu(tile: number) {
   fireEvent.click(triggers[tile * 2]!);
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
+
+beforeEach(() => {
+  // `shouldAdvanceTime` so the query client's own timers still run — the
+  // clock is fixed for what the rows are dated against, not stopped.
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(NOW);
+});
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -157,6 +175,7 @@ async function draw(rows: RunFeedRow[], path = "/p/proj-1?tab=runs") {
 
 describe("the feed", () => {
   it("asks for the feed shape, drafts included, and groups the rows by day", async () => {
+
     await draw([
       row({ id: "run-a", created: ago(60) }),
       row({ id: "run-b", created: ago(60 * 60 * 26) }),

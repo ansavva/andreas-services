@@ -445,6 +445,21 @@ page and a plain textarea over its literal bytes, and never offers fields.
   it is not a question about the action: it is the file browser's own folder
   walk, opened to answer "which folder", the same way it answers it for a move
   or a copy on the browse page.
+- **The create sheet collapses to a handle, and the handle pulls it back up.**
+  The `⌄` on the sheet (and Escape inside it) drops it on every screen;
+  `SheetSlot` then draws the sheet's own frame as a 24px strip. **Both states
+  sit on the bottom edge**, rounded at the top only: the sheet used to float as
+  a card with a gap under it, which put a stripe of feed below something
+  anchored to the bottom of the window — and once the thing that opens it is a
+  handle on that edge, the gap argues with the gesture. Same place, same width,
+  a `⌃` on it: what comes back is plainly what went away. The whole strip is
+  the press, so the target is the sheet's width however short it is drawn; `c`
+  reaches it from the keyboard. The decision is remembered
+  (`CREATE_COLLAPSED_STORAGE_KEY`) because the point of collapsing it is to
+  browse without it. **Anything that fills the bar opens it** — `attach` and
+  `loadRun` clear `collapsed` — since a picture attached to a sheet nobody can
+  see is the one outcome this must not have. `collapsed` is a person's decision
+  about every screen; `summoned` stays what it was, the opened run's own rule.
 - **The create sheet floats at the foot of every screen, always fully drawn,
   and Enter sends.** `components/create/CreateBar.tsx`, mounted by
   `AppLayout`; its state is `CreateBarContext`, so a feed row or a tile can

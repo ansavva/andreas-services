@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it } from "vitest";
 
 import {
+  CREATE_COLLAPSED_STORAGE_KEY,
   CREATE_PROJECT_STORAGE_KEY,
   CreateBarProvider,
   useCreateBar,
@@ -28,11 +29,14 @@ const FRAME: AttachRef = {
 };
 
 let api: CreateBarApi;
+/** The state half — what the bar itself reads, and what puts it away. */
+let own: ReturnType<typeof useCreateBarState>;
 
 /** The provider's state, as JSON, and the api handed out for the test to drive. */
 function Probe() {
   api = useCreateBar();
   const bar = useCreateBarState();
+  own = bar;
   return (
     <pre data-testid="state">
       {JSON.stringify({
@@ -46,6 +50,7 @@ function Probe() {
         onProject: bar.onProject,
         role: bar.role,
         focus: bar.focus,
+        shown: bar.shown,
       })}
     </pre>
   );
@@ -68,6 +73,7 @@ function mount(path = "/") {
 afterEach(cleanup);
 beforeEach(() => {
   window.localStorage.removeItem(CREATE_PROJECT_STORAGE_KEY);
+  window.localStorage.removeItem(CREATE_COLLAPSED_STORAGE_KEY);
 });
 
 it("loadRun fills the bar whole and asks for focus", () => {
@@ -136,4 +142,54 @@ it("the route's project is the target and is remembered; off a project the last 
   mount("/");
   expect(state().target).toBe("proj-9");
   expect(state().onProject).toBe(false);
+});
+
+/**
+ * Collapsing the sheet — a decision about every screen, and a remembered one.
+ *
+ * It used to be answerable on the opened run alone, where the sheet is not
+ * drawn until something calls it up. The sheet covers whatever you are looking
+ * at everywhere else too, and "I want the feed to myself" is the same sentence
+ * there.
+ */
+it("collapse drops the sheet, remembers it, and expand brings it back focused", () => {
+  mount();
+  expect(state().shown).toBe(true);
+
+  act(() => own.collapse());
+  expect(state().shown).toBe(false);
+  // Remembered, because the point of collapsing it is to browse without it.
+  expect(window.localStorage.getItem(CREATE_COLLAPSED_STORAGE_KEY)).toBe("1");
+
+  const focus = state().focus;
+  act(() => own.expand());
+  expect(state().shown).toBe(true);
+  // Opened to type in, so the caret goes with it.
+  expect(state().focus).toBe(focus + 1);
+  expect(window.localStorage.getItem(CREATE_COLLAPSED_STORAGE_KEY)).toBeNull();
+});
+
+it("a collapsed sheet stays collapsed across a reload", () => {
+  window.localStorage.setItem(CREATE_COLLAPSED_STORAGE_KEY, "1");
+  mount();
+  expect(state().shown).toBe(false);
+});
+
+/**
+ * **The one outcome this must not have**: a picture attached to a sheet nobody
+ * can see. Every route into the bar — a tile's `Use as reference`, a row's
+ * Edit, Rerun — brings it back with what it filled.
+ */
+it("anything that fills the bar opens it", () => {
+  mount();
+  act(() => own.collapse());
+  expect(state().shown).toBe(false);
+
+  act(() => api.attach(FACE, "reference"));
+  expect(state().shown).toBe(true);
+  expect(state().attachments.image).toEqual([{ ref: FACE, role: "reference" }]);
+
+  act(() => own.collapse());
+  act(() => api.loadRun({ project: "proj-1", kind: "image" }));
+  expect(state().shown).toBe(true);
 });

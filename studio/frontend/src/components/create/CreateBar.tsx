@@ -38,8 +38,8 @@ import { useResource } from "../../hooks/useResource";
 import type { CreatedRun, RunSummary } from "../../types";
 import { formatDate } from "../../utils/format";
 import {
-  CloseIcon,
   ArrowUpIcon,
+  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   ImageIcon,
@@ -457,7 +457,9 @@ export function CreateBar() {
       className="flex flex-col gap-2"
       data-create-bar=""
       onKeyDown={(event) => {
-        if (event.key === "Escape" && bar.dismissible && !event.defaultPrevented) bar.dismiss();
+        // Escape inside the sheet collapses it — inside, so it never competes
+        // with the Escape a viewer, a drawer or a menu binds for itself.
+        if (event.key === "Escape" && !event.defaultPrevented) bar.collapse();
       }}
     >
       {held && (
@@ -522,9 +524,15 @@ export function CreateBar() {
 
       {/* The sheet. `bg-sheet` over a blur rather than a solid: media
           scrolling under it stays faintly visible, which is what says
-          "floating over the feed" rather than "the page ends here". */}
+          "floating over the feed" rather than "the page ends here".
+
+          **Rounded at the top only, and sitting on the window's edge.** It was
+          a card with a gap under it, which put a stripe of feed below
+          something anchored to the bottom of the screen — and once the thing
+          that opens it is a handle on that edge, the gap argues with the
+          gesture. */}
       <div
-        className="flex flex-col gap-3 rounded-lg bg-sheet p-3 shadow-[0_12px_48px_rgba(0,0,0,0.55)]
+        className="flex flex-col gap-3 rounded-t-lg bg-sheet p-3 shadow-[0_-8px_48px_rgba(0,0,0,0.55)]
                    ring-1 ring-line backdrop-blur-xl"
       >
         <div className="flex items-center justify-between gap-2">
@@ -550,13 +558,14 @@ export function CreateBar() {
               </Popover.Content>
             </Popover.Root>
 
-            {/* Where the sheet is not always drawn — the opened run — the
-                way to put it away. Escape does the same. */}
-            {bar.dismissible && (
-              <IconButton size="sm" label="Put the sheet away" onClick={bar.dismiss}>
-                <CloseIcon />
-              </IconButton>
-            )}
+            {/* **On every screen now, not just the opened run.** The sheet is
+                drawn over whatever you are looking at, and "I want the feed to
+                myself" was answerable on exactly one screen. The chevron points
+                the way it moves: down to the handle it leaves at the foot of
+                the column, which pulls it back up. Escape does the same. */}
+            <IconButton size="sm" label="Collapse the create panel" onClick={bar.collapse}>
+              <ChevronDownIcon />
+            </IconButton>
 
 
           </div>

@@ -421,7 +421,7 @@ it("the sheet is always drawn, and a press elsewhere folds nothing", async () =>
   expect(screen.getByRole("button", { name: "Remove face-01.png" })).toBeTruthy();
 });
 
-it("on the opened run the sheet stays away until something calls it up, and × puts it back", async () => {
+it("on the opened run the sheet stays away until something calls it up, and collapses again", async () => {
   // Not `open()`: that waits for the placeholder, and there is no sheet to
   // hold one yet — its absence is the point.
   render(
@@ -440,6 +440,6 @@ it("on the opened run the sheet stays away until something calls it up, and × p
   await waitFor(() => expect(document.querySelector("[data-create-bar]")).toBeTruthy());
   expect(screen.getByRole("textbox", { name: "Prompt" }).textContent).toContain("Again, but warmer.");
 
-  fireEvent.click(screen.getByRole("button", { name: "Put the sheet away" }));
+  fireEvent.click(screen.getByRole("button", { name: "Collapse the create panel" }));
   await waitFor(() => expect(document.querySelector("[data-create-bar]")).toBeNull());
 });

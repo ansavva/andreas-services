@@ -1,8 +1,10 @@
+import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 
 import { CreateBarProvider, useCreateBarState } from "../../context/CreateBarContext";
 import { SidebarProvider } from "../../context/SidebarContext";
 import { CreateBar } from "../create/CreateBar";
+import { ChevronUpIcon } from "../common/icons";
 import { AppSidebar } from "./AppSidebar";
 import { TopBar } from "./TopBar";
 
@@ -54,24 +56,79 @@ export function AppLayout() {
 }
 
 /**
- * The create sheet's strip at the column's foot — or nothing.
+ * The create sheet at the column's foot — or the handle it collapses to.
  *
- * Nothing on the opened run until something calls the sheet up (Edit, Rerun,
- * Use as reference, a tile): that screen is a fixed-height viewer, so a sheet
- * drawn over it covers the filmstrip and the transport with nothing able to
- * scroll them back into view. `shown` is the context's word on it.
+ * Nothing but the handle on the opened run until something calls the sheet up
+ * (Edit, Rerun, Use as reference, a tile): that screen is a fixed-height
+ * viewer, so a sheet drawn over it covers the filmstrip and the transport with
+ * nothing able to scroll them back into view. `shown` is the context's word on
+ * that and on a sheet somebody collapsed.
  *
- * `pointer-events-none` on the strip, back on for the panel: the strip spans
- * the column so the panel can centre in it, and a click in the strip's
+ * **Collapsed, it is a handle rather than nothing.** It behaves like the
+ * drawer it looks like: the sheet drops to a strip in the same place, the same
+ * width, with a chevron pointing back up — so the thing that comes back is
+ * plainly the thing that went away, and it comes back where it went. `c`
+ * reaches it from the keyboard.
+ *
+ * `pointer-events-none` on the strip, back on for what is in it: the strip
+ * spans the column so the sheet can centre in it, and a click in the strip's
  * margins must reach the feed under it.
  */
 function SheetSlot() {
-  const { shown } = useCreateBarState();
-  if (!shown) return null;
+  const { shown, expand } = useCreateBarState();
+
+  /**
+   * `c` opens the sheet — and only when nothing is being typed into.
+   *
+   * The guard is `useKeyboardNav`'s, for the same reason: a bare letter is a
+   * letter to a text box, and the prompt editor is a contenteditable rather
+   * than an input, so the tag test alone would swallow it mid-prompt.
+   */
+  useEffect(() => {
+    if (shown) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "c" || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      if (target?.isContentEditable) return;
+      event.preventDefault();
+      expand();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [shown, expand]);
+
   return (
-    <div className="pointer-events-none sticky bottom-0 z-30 px-2 pb-2 md:px-6 md:pb-4">
+    // **No inset, in either state.** The sheet used to float as a card with a
+    // gap under it, which left a stripe of feed showing beneath something that
+    // is anchored to the bottom of the window — and once it is the thing a
+    // handle on the edge pulls up, the gap contradicts the gesture. It is a
+    // drawer: it sits on the edge, and only its top corners are rounded.
+    <div className="pointer-events-none sticky bottom-0 z-30">
       <div className="pointer-events-auto mx-auto w-full max-w-3xl">
-        <CreateBar />
+        {shown ? (
+          <CreateBar />
+        ) : (
+          /* The sheet's own frame, as little of it as a handle needs: `bg-sheet`
+             over a blur so what is left reads as the sheet pushed down rather
+             than as a new control that appeared, rounded at the top only
+             because it is sitting on the window's edge, and 24px tall — it is a
+             handle, and the run it belongs to is behind it. The whole strip is
+             the press, so the target is the width of the sheet however short it
+             is drawn. */
+          // eslint-disable-next-line studio/no-hand-rolled-button -- the sheet's own frame collapsed, not a control in it.
+          <button
+            type="button"
+            aria-label="Open the create panel (c)"
+            title="Open the create panel (c)"
+            onClick={expand}
+            className="flex h-6 w-full items-center justify-center rounded-t-lg bg-sheet
+                       ring-1 ring-line backdrop-blur-xl transition-colors hover:bg-fill
+                       focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
+          >
+            <ChevronUpIcon className="size-4 fill-none stroke-current stroke-[1.5] text-muted" />
+          </button>
+        )}
       </div>
     </div>
   );
