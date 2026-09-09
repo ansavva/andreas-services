@@ -392,3 +392,4 @@ PR that was verified locally the loose way.
 - [`threat-model.md`](threat-model.md) — invitations, assignments, payments, Work tenancy
 - [`gdpr-compliance.md`](gdpr-compliance.md) and [`data-retention-deletion.md`](data-retention-deletion.md)
 - [`analytics.md`](analytics.md), [`email-operations.md`](email-operations.md), [`stripe-setup.md`](stripe-setup.md), [`support-email.md`](support-email.md)
+- [`launch-evidence.md`](launch-evidence.md) — the payment/limits/email matrix for #160: automated rows with the test that was run, operator rows for what needs a browser or a real inbox
