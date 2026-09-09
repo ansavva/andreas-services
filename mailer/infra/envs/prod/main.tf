@@ -25,5 +25,6 @@ module "platform" {
   route53_zone_id        = data.aws_route53_zone.main.zone_id
   humbugg_role_name      = var.humbugg_role_name
   humbugg_sender_address = "no-reply@humbugg.com"
+  alert_email            = var.alert_email
   tags                   = local.common_tags
 }

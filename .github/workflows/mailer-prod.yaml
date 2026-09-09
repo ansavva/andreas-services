@@ -148,6 +148,10 @@ jobs:
         with:
           terraform_wrapper: false
       - name: Apply
+        env:
+          # Where alarms mail. Empty until the secret exists; the platform module
+          # then creates the SNS topic with no subscription.
+          TF_VAR_alert_email: ${{ secrets.MAILER_ALERT_EMAIL }}
         run: |
           terraform -chdir=mailer/infra/envs/prod init -input=false
           terraform -chdir=mailer/infra/envs/prod apply -auto-approve -input=false

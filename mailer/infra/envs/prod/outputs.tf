@@ -41,3 +41,7 @@ output "humbugg_status_queue_arn" {
 output "humbugg_auth_configuration_set" {
   value = module.platform.humbugg_auth_configuration_set
 }
+
+output "alerts_topic_arn" {
+  value = module.platform.alerts_topic_arn
+}
