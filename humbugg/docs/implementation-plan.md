@@ -249,9 +249,11 @@ anyone who can sign up point Humbugg's mail at a stranger. The IAM grant is `Adm
 pool ARN alone: the admin API family also contains `AdminDeleteUser`, so a wildcard there would let
 a compromised API delete the pool to send an email.
 
-**Launch** — live Stripe mode (#159), the payment and email matrix (#160), runbooks (#161), the beta
-(#162), the checklist (#163), pricing pages (#158), and the three GDPR obligations (#190, #191,
-#192). None can start before Free is finished.
+**Launch** — live Stripe mode (#159), the payment and email matrix (#160), runbooks (#161 —
+**done pending merge**, `docs/runbooks.md`), the beta
+(#162), the checklist (#163), pricing pages (#158), and the three GDPR obligations (#190, #191 —
+**done pending merge**, `docs/breach-response.md` — and #192). None can start before Free is
+finished.
 
 **Work** — ten issues, correctly cold. It is two tiers away. Do not start it until a stranger can
 complete a Free exchange unaided.
@@ -392,3 +394,5 @@ PR that was verified locally the loose way.
 - [`threat-model.md`](threat-model.md) — invitations, assignments, payments, Work tenancy
 - [`gdpr-compliance.md`](gdpr-compliance.md) and [`data-retention-deletion.md`](data-retention-deletion.md)
 - [`analytics.md`](analytics.md), [`email-operations.md`](email-operations.md), [`stripe-setup.md`](stripe-setup.md), [`support-email.md`](support-email.md)
+- [`runbooks.md`](runbooks.md) — operating procedures: billing, email, support inbox, deletion requests, the emergency reveal, credential rotation, health/alerts/rollback
+- [`breach-response.md`](breach-response.md) — GDPR Art. 33/34 breach detection, triage, containment and notification

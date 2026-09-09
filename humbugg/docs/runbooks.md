@@ -13,8 +13,8 @@ Read first: [`../CLAUDE.md`](../CLAUDE.md) (AWS profile, GitHub access), `threat
 `email-operations.md`, `support-email.md`, `data-retention-deletion.md`, `gdpr-compliance.md`.
 
 Keep out of this file and everything you write while following it: personal inbox addresses,
-credentials, webhook URLs, AWS account ids. `grep -nE '@gmail|AKIA|whsec_|sk_|[0-9]{12}'` over
-this file should return nothing.
+credentials, webhook URLs, AWS account ids. A pattern match for those shapes over this file
+should return nothing.
 
 ---
 
