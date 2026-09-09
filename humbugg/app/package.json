@@ -19,11 +19,11 @@
     "a11y:check": "node tool/accessibility-audit.ts"
   },
   "dependencies": {
-    "@ansavva/design-system": "0.18.0",
-    "@ansavva/tokens": "^0.6.0",
+    "@ansavva/design-system": "^0.21.6",
+    "@ansavva/tokens": "^0.6.1",
     "@expo-google-fonts/archivo": "^0.4.2",
     "@expo-google-fonts/lily-script-one": "^0.4.1",
-    "@expo-google-fonts/spectral": "^0.4.1",
+    "@expo-google-fonts/open-sans": "^0.4.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~57.0.12",
     "expo-auth-session": "~57.0.10",
@@ -52,14 +52,14 @@
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@testing-library/react-native": "^13.2.0",
-    "amazon-cognito-identity-js": "^6.3.12",
-    "serve": "^14.2.4",
     "@types/jest": "^29.5.14",
     "@types/react": "~19.2.2",
     "@types/react-dom": "~19.2.1",
+    "amazon-cognito-identity-js": "^6.3.12",
     "jest": "^29.7.0",
     "jest-expo": "~57.0.0",
     "react-test-renderer": "19.2.3",
+    "serve": "^14.2.4",
     "typescript": "~6.0.3"
   },
   "jest": {

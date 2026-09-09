@@ -29,6 +29,8 @@
 import type { ThemeOverrides } from '@ansavva/design-system';
 import { colors } from '@ansavva/tokens';
 
+import { radii } from './radii';
+
 import humbugg from './brand-colors.json';
 
 /**
@@ -45,27 +47,6 @@ import humbugg from './brand-colors.json';
  * the only way to keep the sign-in page and the app one colour.
  */
 
-/**
- * The provider's theme.
- *
- * `light` is a genuine partial override: only the roles Humbugg changes.
- * `success` / `warning` / `danger` / `dangerHover` are absent because the web
- * app never overrode them either — it reads the package's own values through
- * `var(--color-danger)` and friends.
- *
- * `dark` is the light TOKENS with the same Humbugg roles on top, which pins the
- * whole app to one scheme. Humbugg has exactly one visual scheme today: the web
- * app's `styles.css` defines no `[data-theme='dark']` block at all, and the
- * package's dark defaults are a different brand entirely (navy and gold).
- * Leaving `dark` unset would mean an OS-dark user sees a Humbugg that is not
- * Humbugg; inventing a dark palette here would be a redesign, which this port
- * explicitly is not. When Humbugg designs a dark scheme, this is the one line
- * to change.
- */
-export const humbuggTheme: ThemeOverrides = {
-  light: humbugg,
-  dark: { ...colors.light, ...humbugg },
-};
 
 /**
  * Every colour the app draws with, resolved once.
@@ -94,27 +75,62 @@ export const brand = {
  *
  * React Native resolves exactly ONE family name — it cannot take a CSS stack —
  * so a font is a real asset that has to be loaded through `expo-font` before it
- * can be named. That is why these are `Spectral_600SemiBold` rather than
- * `Spectral, Georgia, serif`: the weight is part of the family, and asking for
+ * can be named. That is why these are `OpenSans_600SemiBold` rather than
+ * `Open Sans, sans-serif`: the weight is part of the family, and asking for
  * `fontWeight: '600'` on top of it would double-apply on some platforms.
  *
- * The design system's own native leaves reach for the platform SANS
- * (`lib/native-typography.native.ts` — iOS `System`, Android `sans-serif`) and
- * offer no font seam, so Humbugg's headings are set at our call sites through
- * `theme/styles.ts`. It was the platform serif until design-system 0.18.0,
- * whose base theme dropped the display face entirely: `fonts.heading` and
- * `fonts.body` are now the same stack, because a distinct heading family is a
- * brand decision the base declines to make. Humbugg makes it — Spectral, below
- * — and `ThemeProvider` still cannot carry it: `ThemeOverrides` is `light`/
- * `dark` colour records and nothing else, so fonts AND radii reach the native
- * leaves only through `@ansavva/tokens` itself.
+ * HEADINGS ARE SANS. Humbugg set them in Spectral until this change; it now
+ * runs on one text family, Open Sans, with weight and size doing the work a
+ * second family used to. The only face left that is not Open Sans is the
+ * wordmark, which is a logo rather than type.
+ *
+ * `heading` and `body` go to `ThemeProvider` as well as to `theme/styles.ts`,
+ * so the design system's own components set in Open Sans too. They did not until
+ * design-system 0.21.0: the native leaves set no body family at all and fell
+ * through to the platform sans, which put every Button label, Field label and
+ * Input value in San Francisco beside Humbugg's own copy. `pill`-shaped
+ * glyphs — Select's chevron, Checkbox's tick — deliberately keep the platform
+ * face, so a tick never depends on the brand face having that character.
  */
 export const fonts = {
-  heading: 'Spectral_600SemiBold',
-  headingMedium: 'Spectral_500Medium',
-  body: 'Archivo_400Regular',
-  bodyMedium: 'Archivo_500Medium',
-  bodySemibold: 'Archivo_600SemiBold',
-  bodyBold: 'Archivo_700Bold',
+  heading: 'OpenSans_600SemiBold',
+  headingMedium: 'OpenSans_500Medium',
+  body: 'OpenSans_400Regular',
+  bodyMedium: 'OpenSans_500Medium',
+  bodySemibold: 'OpenSans_600SemiBold',
+  bodyBold: 'OpenSans_700Bold',
   wordmark: 'LilyScriptOne_400Regular',
 } as const;
+
+/**
+ * The provider's theme.
+ *
+ * Last in the file because it now reads `fonts` below as well as the colours
+ * above — a const cannot reference a later one at module scope.
+ *
+ * `light` is a genuine partial override: only the roles Humbugg changes.
+ * `success` / `warning` / `danger` / `dangerHover` are absent because the web
+ * app never overrode them either — it reads the package's own values through
+ * `var(--color-danger)` and friends.
+ *
+ * `dark` is the light TOKENS with the same Humbugg roles on top, which pins the
+ * whole app to one scheme. Humbugg has exactly one visual scheme today: the web
+ * app's `styles.css` defines no `[data-theme='dark']` block at all, and the
+ * package's dark defaults are a different brand entirely (navy and gold).
+ * Leaving `dark` unset would mean an OS-dark user sees a Humbugg that is not
+ * Humbugg; inventing a dark palette here would be a redesign, which this port
+ * explicitly is not. When Humbugg designs a dark scheme, this is the one line
+ * to change.
+ */
+export const humbuggTheme: ThemeOverrides = {
+  light: humbugg,
+  dark: { ...colors.light, ...humbugg },
+  // Corners and faces, through the same provider as the colours (0.19.0 added
+  // `radii` and `fonts`, 0.21.0 made `fonts.body` reach every control). Both
+  // are read at render time by the native leaves, so a Button, an Input, a
+  // Field label and Humbugg's own text now round and set alike. `pill` is
+  // pinned by the package and is not ours to pass — Switch, Avatar and Badge
+  // are drawing a shape, not rounding a corner.
+  radii: { none: radii.none, xs: radii.xs, sm: radii.sm, md: radii.md, lg: radii.lg },
+  fonts: { heading: fonts.heading, body: fonts.body },
+};

@@ -113,13 +113,6 @@ export default function DashboardScreen() {
           </Card>
           <CreateGroup onCreated={(id) => router.push(`/groups/${id}`)} />
         </View>
-        <Text style={styles.smallMuted}>
-          Manage your photo, display name, and account in{' '}
-          <Link href="/settings" style={styles.link}>
-            Settings
-          </Link>
-          .
-        </Text>
       </View>
     </Shell>
   );

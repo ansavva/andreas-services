@@ -11,17 +11,18 @@
 // the original). Static colours are safe here — see the note on `brand` in
 // `theme.ts` for why.
 //
-// RADII ARE THE ONE EXCEPTION, and deliberately so. They come from
-// `@ansavva/tokens` rather than from a converted literal, because a corner is
-// the one thing here the design system's own components also draw — a hard 16
-// in this file next to a `radii.lg` inside `Button` is how the two halves of a
-// screen come to disagree. As of tokens 0.6.0 every step but `pill` is 0, so
-// this app is square; `marketing/src/styles.css` reaches for the same scale
-// through `var(--radius-*)` and the two platforms move together. A pill stays
-// a pill on both — it is a shape, not a corner.
+// RADII ARE THE ONE EXCEPTION, and deliberately so. They come from a scale
+// rather than from converted literals, because a corner is the one thing here
+// the design system's own components also draw — a hard 16 in this file next
+// to a `radii.lg` inside `Button` is how the two halves of a screen come to
+// disagree. The scale is Humbugg's own (`./radii`): `@ansavva/tokens` has been
+// square since 0.6.0, and `humbuggTheme` hands the same scale to the design
+// system through `ThemeProvider`, so both halves still move together.
+// `marketing/src/styles.css` states the same numbers as `--radius-*` for the
+// web half. A pill stays a pill on both — it is a shape, not a corner.
 import { StyleSheet } from 'react-native';
 
-import { radii } from '@ansavva/tokens';
+import { radii } from './radii';
 
 import { brand, fonts } from './theme';
 
@@ -78,6 +79,12 @@ export const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: alpha(brand.line, 80),
     backgroundColor: brand.bg,
+    // The account menu hangs out of this band, and react-native-web gives every
+    // View `z-index: 0` — a stacking context each, so the menu's own z-index is
+    // sealed inside the header and the scrolling body, a later sibling, painted
+    // over it. Raising the band itself is what puts the menu above the page.
+    zIndex: 1,
+    elevation: 1,
   },
   headerInner: {
     width: '100%',
@@ -113,17 +120,47 @@ export const styles = StyleSheet.create({
     letterSpacing: 2.16, // .18em at 12px
     textTransform: 'uppercase',
   },
-  /** `font-heading text-5xl font-semibold leading-tight` */
-  displayXl: { color: brand.ink, fontFamily: fonts.heading, fontSize: 48, lineHeight: 53 },
-  /** `font-heading text-4xl font-semibold` */
-  displayLg: { color: brand.ink, fontFamily: fonts.heading, fontSize: 36, lineHeight: 42 },
-  /** `font-heading text-3xl font-semibold` */
-  displayMd: { color: brand.ink, fontFamily: fonts.heading, fontSize: 30, lineHeight: 36 },
+  // Headings are Open Sans SemiBold — the same weight the marketing site's
+  // `font-semibold` heading classes carry, so the two surfaces match. The
+  // negative tracking is the sans tax: Spectral
+  // carried these sizes on its own proportions, and a bold grotesque set at 48
+  // without it reads wide and loose. It scales with the size and stops at the
+  // ones that are display type — 20px and below are set normally.
+  /** `font-heading text-5xl font-semibold leading-tight tracking-tight` */
+  displayXl: {
+    color: brand.ink,
+    fontFamily: fonts.heading,
+    fontSize: 48,
+    lineHeight: 53,
+    letterSpacing: -1.2, // -.025em
+  },
+  /** `font-heading text-4xl font-semibold tracking-tight` */
+  displayLg: {
+    color: brand.ink,
+    fontFamily: fonts.heading,
+    fontSize: 36,
+    lineHeight: 42,
+    letterSpacing: -0.9,
+  },
+  /** `font-heading text-3xl font-semibold tracking-tight` */
+  displayMd: {
+    color: brand.ink,
+    fontFamily: fonts.heading,
+    fontSize: 30,
+    lineHeight: 36,
+    letterSpacing: -0.6,
+  },
   /** `font-heading text-2xl font-semibold` */
-  heading: { color: brand.ink, fontFamily: fonts.heading, fontSize: 24, lineHeight: 30 },
+  heading: {
+    color: brand.ink,
+    fontFamily: fonts.heading,
+    fontSize: 24,
+    lineHeight: 30,
+    letterSpacing: -0.36,
+  },
   /** `font-heading text-xl font-semibold` */
   headingSm: { color: brand.ink, fontFamily: fonts.heading, fontSize: 20, lineHeight: 26 },
-  /** Body copy — Archivo at the browser default 16px. */
+  /** Body copy — Open Sans at the browser default 16px. */
   body: { color: brand.ink, fontFamily: fonts.body, fontSize: 16, lineHeight: 24 },
   /** `text-muted` body copy — `leading-7` where the source used it. */
   bodyMuted: { color: brand.muted, fontFamily: fonts.body, fontSize: 16, lineHeight: 28 },

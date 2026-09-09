@@ -103,8 +103,9 @@ ports itself.
 components, re-stated once as `StyleSheet` objects with the same radii, spacing,
 weights and shadows. Put new ones there rather than inlining literals.
 
-**Fonts are a real step, not a token.** Spectral, Archivo and Lily Script One are
-loaded through `expo-font` in the root layout; React Native resolves one
+**Fonts are a real step, not a token.** Open Sans — headings included, the
+serif came out — and Lily Script One for the wordmark are loaded through `expo-font`
+in the root layout; React Native resolves one
 registered family name per style, so each weight is its own registration. Import
 them **per weight** (`@expo-google-fonts/archivo/400Regular`) — the family root
 re-exports all eighteen and Metro follows the whole barrel into the bundle.
