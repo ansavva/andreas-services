@@ -417,6 +417,22 @@ page and a plain textarea over its literal bytes, and never offers fields.
   arms and says what the second will do; the second runs. See `useArmed`, the
   one arm/disarm machine `ArmedButton`, the lightbox's `ArmedCell`,
   `ConfirmDeleteButton` and `ItemActions` all run on.
+- **A run says what it was SENT, as what.** The pictures under the prompt — in
+  the feed row and in the opened run's rail — are `SendThumbs`: frames first,
+  then the references in send order, each captioned with the create sheet's own
+  word for the role (`Start frame`, `End frame`, `Image 1`, `Image 2`). They
+  were a flat row of identical squares with `reference · seed-01.jpg` in a
+  `title`, invisible on a touch screen and on a pointer only if you knew to
+  hover — so the one question a video run is opened with, which picture was the
+  start frame, was the one thing the block did not answer. Each is a link to
+  the file (`/o/<id>`, no `?in=`); a send whose node is gone keeps its thumb and
+  its word and is not a link.
+- **A run in flight is neutral, not gold.** `warning` was the badge intent and
+  the in-flight tile's border, and a saturated amber over a wall of media reads
+  as "something is wrong with this run" — in a palette whose rule is that the
+  chrome carries almost no chroma and the media is the only saturated thing on
+  screen. The shimmer sweeping the tile and the elapsed time ticking under it
+  are what say "working".
 - **A run's output can be copied into a character, from the tile's menu or the
   opened run's rail.** Both carry `Copy into a character`, which opens
   `PromoteDrawer` — `PromotePanel` in a drawer beside the picture it is about,
