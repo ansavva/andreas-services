@@ -19,6 +19,7 @@ import {
 
 import { getRuns, submitRun } from "../../apis/studio";
 import { useNow } from "../../hooks/useNow";
+import { useRunWatch } from "../../hooks/useRunWatch";
 import { useSearchParamState } from "../../hooks/useSearchParamState";
 import type { HeroImage, RunAsset, RunFeedRow, RunStatus } from "../../types";
 import { formatCost } from "../../utils/cost";
@@ -52,9 +53,6 @@ import { ParamChips } from "../run/ParamChips";
 import { PromoteDrawer } from "../run/PromoteDrawer";
 import { promptText } from "../run/seed";
 import { useRunActions } from "../run/useRunActions";
-
-/** How often the feed re-reads while a run in it can still move. */
-export const FEED_POLL_MS = 5_000;
 
 /**
  * What the filter offers, and `draft` is on it deliberately.
@@ -160,12 +158,20 @@ export function useFeedFilters() {
  * Left/Right and the filmstrip step through the rows already loaded, from the
  * same cache, so opening a run costs no second listing.
  *
- * Polls while a row is in flight, at the interval the old run page used, and
- * stops on its own when nothing can change — `inFlight` is what decides.
+ * **The pages are never re-read on a timer.** Refetching an infinite query
+ * re-runs every page it holds, so watching one run land used to cost a
+ * `?view=feed` call per loaded page every five seconds — each re-reading an
+ * envelope per row and re-signing every send and output on it. `useRunWatch`
+ * asks after the rows that are actually out, one `GET /api/runs/<id>` each,
+ * and writes what comes back into these pages. See the hook for the rest.
  */
 export function useRunFeed(projectId: string, filters: FeedFilters) {
+  const key = useMemo(
+    () => ["runs", "feed", projectId, filters],
+    [filters, projectId],
+  );
   const query = useInfiniteQuery({
-    queryKey: ["runs", "feed", projectId, filters],
+    queryKey: key,
     queryFn: ({ pageParam }) =>
       getRuns({
         project: projectId,
@@ -182,18 +188,14 @@ export function useRunFeed(projectId: string, filters: FeedFilters) {
       }),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.cursor,
-    refetchInterval: (state) => {
-      const pages = state.state.data?.pages ?? [];
-      return pages.some((page) => page.runs.some((run) => inFlight(run.status)))
-        ? FEED_POLL_MS
-        : false;
-    },
   });
 
   const rows = useMemo(
     () => (query.data?.pages ?? []).flatMap((page) => page.runs),
     [query.data],
   );
+
+  useRunWatch(key, rows);
 
   return { ...query, rows };
 }
