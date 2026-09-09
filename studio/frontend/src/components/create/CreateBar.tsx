@@ -571,13 +571,10 @@ export function CreateBar() {
             onRole={bar.setRole}
             onDetach={bar.detach}
             onSwapFrames={bar.swapFrames}
-            onClear={bar.clearAttachments}
             // A picture dragged out of the library's grid and dropped on a
             // role tile. `attach` is the same call the tiles' own button
             // makes; what the drop adds is that the gesture NAMES the role.
             onDropRef={attach}
-            keep={bar.keep}
-            onKeep={bar.setKeep}
           />
         )}
 

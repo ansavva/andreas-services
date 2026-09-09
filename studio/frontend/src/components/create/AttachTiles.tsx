@@ -9,11 +9,9 @@ import {
   CloseIcon,
   FrameEndIcon,
   ImagePlusIcon,
-  LockIcon,
   PencilIcon,
   StartFrameIcon,
   SwapIcon,
-  TrashIcon,
 } from "../common/icons";
 import { isNodeDrag, readNodeDrag } from "./dragRef";
 import { ROLES_BY_KIND, ROLE_WORDS, fieldFor } from "./roles";
@@ -64,10 +62,7 @@ export function AttachTiles({
   onRole,
   onDetach,
   onSwapFrames,
-  onClear,
   onDropRef,
-  keep,
-  onKeep,
 }: {
   kind: RunKind;
   entry: ModelEntry;
@@ -79,11 +74,8 @@ export function AttachTiles({
   onDetach: (index: number) => void;
   /** The start frame becomes the end frame and vice versa. */
   onSwapFrames: () => void;
-  onClear: () => void;
   /** A picture dragged onto a role tile. The bar decides what `attach` does with it. */
   onDropRef: (ref: AttachRef, role: AttachRole) => void;
-  keep: boolean;
-  onKeep: (keep: boolean) => void;
 }) {
   /** The cell a drag is currently over, drawn as that cell's highlighted state. */
   const [over, setOver] = useState<AttachRole | null>(null);
@@ -193,8 +185,7 @@ export function AttachTiles({
 
   return (
     <div className="flex items-center gap-2" data-mode-strip="">
-      {/* `min-w-0` + `overflow-x-auto`: the row scrolls rather than wraps,
-          and the keep/clear controls stay put beside it. */}
+      {/* `min-w-0` + `overflow-x-auto`: the row scrolls rather than wraps. */}
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
         {roles.includes("start") && frameTile("start", start)}
         {start && end && (
@@ -257,25 +248,6 @@ export function AttachTiles({
         )}
       </div>
 
-      {attachments.length > 0 && (
-        <div className="flex shrink-0 items-center gap-0.5">
-          <IconButton
-            size="sm"
-            pressed={keep}
-            label={
-              keep
-                ? "Keep these images for the next send (on)"
-                : "Keep these images for the next send"
-            }
-            onClick={() => onKeep(!keep)}
-          >
-            <LockIcon />
-          </IconButton>
-          <IconButton size="sm" label="Clear images" onClick={onClear}>
-            <TrashIcon />
-          </IconButton>
-        </div>
-      )}
     </div>
   );
 }

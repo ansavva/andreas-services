@@ -304,7 +304,16 @@ function Opened({
     <>
       {/* The stage: the output large, the run's other outputs under it, and
           the project's runs along the bottom. */}
-      <div className="relative flex min-h-[60dvh] min-w-0 flex-1 flex-col md:min-h-0">
+      {/*
+        **`80dvh` on a phone, where it was `60`.** The stage is the picture, its
+        name and the run's other outputs, and the picture is what is left after
+        the other two — so at `60dvh` a portrait still came out a letterboxed
+        band with black either side of it, on the device where it was already
+        smallest. The stage is taller than the leftover height now and the
+        column scrolls past it, which is what a phone does with this screen
+        anyway: the strip and the details were always below the fold.
+      */}
+      <div className="relative flex min-h-[80dvh] min-w-0 flex-1 flex-col md:min-h-0">
         <div className="absolute right-3 top-3 z-10 flex gap-1">
           <IconButton
             label="Close (Esc)"
@@ -316,13 +325,21 @@ function Opened({
             <CloseIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
           </IconButton>
         </div>
+        {/*
+          **Hidden below `md`, where they were landing on the picture.**
+          `top-1/2` is the middle of the STAGE, and on a phone the stage is the
+          picture plus its name plus the run's other outputs — so the halfway
+          mark fell across the foot of the frame, and the Next chevron sat on
+          the picture it was meant to step past. The strip under the stage
+          carries the same two steps at that width, with room for them.
+        */}
         {onPrev && (
           <IconButton
             label="Previous run (←)"
             size="sm"
             intent="overlay"
             onClick={onPrev}
-            className="absolute left-3 top-1/2 z-10 -translate-y-1/2"
+            className="absolute left-3 top-1/2 z-10 hidden -translate-y-1/2 md:flex"
           >
             <ChevronLeftIcon className="size-5 fill-none stroke-current stroke-[1.5]" />
           </IconButton>
@@ -333,17 +350,20 @@ function Opened({
             size="sm"
             intent="overlay"
             onClick={onNext}
-            className="absolute right-3 top-1/2 z-10 -translate-y-1/2"
+            className="absolute right-3 top-1/2 z-10 hidden -translate-y-1/2 md:flex"
           >
             <ChevronRightIcon className="size-5 fill-none stroke-current stroke-[1.5]" />
           </IconButton>
         )}
 
-        {/* `pt-14` on a phone: the stage's own Close sits at `top-3`, and the
+        {/* `pt-12` on a phone: the stage's own Close sits at `top-3`, and the
             media's chrome — fullscreen, sound — is drawn along the top of the
             picture. At `p-4` the picture starts under the Close and the two
-            overlapped. Above `md` the padding already separates them. */}
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 pt-14 md:p-8">
+            overlapped. Above `md` the padding already separates them.
+
+            `p-2` at the sides rather than `p-4`: a phone is 390px and every
+            pixel of it spent on margin is a pixel off the picture. */}
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-2 pt-12 md:p-8">
           {flying ? (
             <div
               data-testid="in-flight-stage"
@@ -886,9 +906,15 @@ function RunStrip({
       className="flex items-center gap-1 border-t border-line px-2 py-2"
       aria-label="Runs in this project"
     >
+      {/* **`secondary`, so they read as controls.** As ghosts they were two
+          bare chevrons floating at the ends of the strip with nothing to say
+          they could be pressed — and the disabled one was a grey mark hanging
+          in space. This is also the only way to step runs on a phone, where
+          the stage's own arrows are not drawn. */}
       <IconButton
         label="Previous run"
         size="sm"
+        intent="secondary"
         disabled={!onPrev}
         onClick={() => onPrev?.()}
       >
@@ -950,6 +976,7 @@ function RunStrip({
       <IconButton
         label="Next run"
         size="sm"
+        intent="secondary"
         disabled={!onNext}
         onClick={() => onNext?.()}
       >
