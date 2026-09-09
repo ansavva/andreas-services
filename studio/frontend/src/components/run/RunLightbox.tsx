@@ -461,7 +461,6 @@ function Opened({
           </div>
         )}
 
-        {strip}
       </div>
 
       {/* The rail: the run this output came from, and what to do with it. */}
@@ -607,6 +606,15 @@ function Opened({
           </Collapsible.Panel>
         </Collapsible.Root>
       </aside>
+
+      {/*
+        **The project's runs, last in the flex — so the direction places it.**
+        Below `md` the lightbox is a column and this lands at the foot of the
+        page, horizontal; from `md` it is a row and this lands hard against the
+        right edge, vertical. One element, because it is one list: what changes
+        between the two is which way it scrolls, which is a class.
+      */}
+      {strip}
 
       {promoting && (
         <PromoteDrawer
@@ -859,11 +867,20 @@ function ArmedCell({
 }
 
 /**
- * The project's runs along the bottom of the stage, this one marked.
+ * The project's other runs, this one marked.
  *
- * One tile per RUN — its first output, or a shimmer while it is out — from
- * the rows the feed has loaded. Pressing one opens it here; the arrows are the
- * step Left/Right take, drawn so the shortcut can be found.
+ * One tile per RUN — its first output, or a shimmer while it is out — from the
+ * rows the feed has loaded. Pressing one opens it here; the arrows are the step
+ * Left/Right take, drawn so the shortcut can be found.
+ *
+ * **It scrolls the way the screen is shaped.** It used to be a horizontal band
+ * across the foot of the stage at every width, which on a wide screen put a
+ * scroller under the picture and left the right-hand edge of the window empty —
+ * and on a phone put it between the picture and the run's own details, so it
+ * was in the way of the thing you opened the run to read. It is the last child
+ * of the lightbox's flex now: a row along the bottom below `md`, a column down
+ * the right edge above it. The tiles, the marking and the centring are the same
+ * either way; what differs is the axis.
  */
 function RunStrip({
   rows,
@@ -888,22 +905,37 @@ function RunStrip({
     if (!el || !tile) return;
     // Centre the current tile by scrolling the strip alone — never the page.
     // See `Filmstrip` for why `scrollIntoView` is the wrong tool here.
+    //
+    // **On whichever axis this one is scrolling.** The list is a row on a phone
+    // and a column from `md`, and centring on the wrong axis is a no-op that
+    // leaves the open run off screen — so the axis is read off the element
+    // rather than assumed.
     const tileBox = tile.getBoundingClientRect();
     const stripBox = el.getBoundingClientRect();
+    const vertical = el.scrollHeight > el.clientHeight;
     const left =
       el.scrollLeft +
       (tileBox.left - stripBox.left) -
       (el.clientWidth - tileBox.width) / 2;
-    if (typeof el.scrollTo === "function")
-      el.scrollTo({ left, behavior: "smooth" });
-    else el.scrollLeft = left;
+    const top =
+      el.scrollTop +
+      (tileBox.top - stripBox.top) -
+      (el.clientHeight - tileBox.height) / 2;
+    if (typeof el.scrollTo === "function") {
+      el.scrollTo(vertical ? { top, behavior: "smooth" } : { left, behavior: "smooth" });
+    } else if (vertical) {
+      el.scrollTop = top;
+    } else {
+      el.scrollLeft = left;
+    }
   }, [currentId]);
 
   if (rows.length < 2) return null;
 
   return (
     <div
-      className="flex items-center gap-1 border-t border-line px-2 py-2"
+      className="flex shrink-0 items-center gap-1 border-t border-line p-2
+                 md:w-[6.25rem] md:flex-col md:border-l md:border-t-0"
       aria-label="Runs in this project"
     >
       {/* **`secondary`, so they read as controls.** As ghosts they were two
@@ -918,11 +950,13 @@ function RunStrip({
         disabled={!onPrev}
         onClick={() => onPrev?.()}
       >
-        <ChevronLeftIcon className="size-5 fill-none stroke-current stroke-[1.5]" />
+        {/* The chevron turns with the list: ← along a row, ↑ up a column. */}
+        <ChevronLeftIcon className="size-5 fill-none stroke-current stroke-[1.5] md:rotate-90" />
       </IconButton>
       <div
         ref={strip}
-        className="no-scrollbar flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto p-1.5"
+        className="no-scrollbar flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto p-1.5
+                   md:min-h-0 md:w-full md:flex-col md:overflow-x-hidden md:overflow-y-auto"
       >
         {rows.map((row) => {
           const current = row.id === currentId;
@@ -936,7 +970,7 @@ function RunStrip({
               aria-current={current ? "true" : undefined}
               aria-label={`Run ${relativeTime(row.created, Date.now())}${current ? " (open)" : ""}`}
               onClick={() => onSelect(row)}
-              className={`relative w-16 shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+              className={`relative w-16 shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary md:w-full ${
                 current ? "ring-2 ring-primary" : "opacity-70 hover:opacity-100"
               }`}
             >
@@ -980,7 +1014,7 @@ function RunStrip({
         disabled={!onNext}
         onClick={() => onNext?.()}
       >
-        <ChevronRightIcon className="size-5 fill-none stroke-current stroke-[1.5]" />
+        <ChevronRightIcon className="size-5 fill-none stroke-current stroke-[1.5] md:rotate-90" />
       </IconButton>
     </div>
   );
