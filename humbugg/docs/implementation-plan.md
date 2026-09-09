@@ -182,10 +182,9 @@ and every `sub` in it are untouched. The clock on this ticket was real for a dif
 signed-in user is signed out once at cut-over, which at the zero accounts the pool actually held
 cost nothing. Part of cross-service epic #363.
 
-**#373 — an authenticated round trip against this machine's dev pool.** The cheapest real safety win
-available. Humbugg is the only service with a per-machine dev pool and the test user was seeded in
-#372. Today nothing anywhere in this repo proves a signed-in request works, and every app here
-degrades *quietly* to signed-out when its pool configuration resolves empty. Part of epic #370.
+**#373 — an authenticated round trip against this machine's dev pool. DONE.** `app/e2e/session.spec.ts`,
+live tier only: a real access token reaches `GET /api/me` and its `sub` matches the profile, the same
+account's ID token is refused, and no token is refused. Part of epic #370.
 
 ---
 

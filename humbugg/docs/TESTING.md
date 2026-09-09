@@ -15,7 +15,7 @@ answer, and this file is where it lives.
 | Backend integration | `backend/Humbugg.Api.IntegrationTests/` | **local only, never CI** | real dev-stack AWS | `HUMBUGG_INTEGRATION=1` |
 | App unit | `app/src/**/*.test.ts(x)` | every PR | jest-expo mocks | — |
 | App browser, stubbed | `app/e2e/*.spec.ts` | every PR | committed fixtures | — |
-| App browser, live | same specs | local only | dev backend + dev Cognito | `E2E_LIVE=1` |
+| App browser, live | same specs, plus an API round trip (`session.spec.ts`, #373) | local only | dev backend + dev Cognito | `E2E_LIVE=1` |
 | Marketing unit | `marketing/**/*.test.ts(x)` | every PR | jsdom | — |
 | Prod smoke | `humbugg-prod.yaml` post-deploy jobs | after deploy | live prod | — |
 

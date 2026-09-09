@@ -21,7 +21,12 @@ export default defineConfig({
   globalSetup: live ? './e2e/support/live-setup.mjs' : undefined,
   use: {
     baseURL: live ? 'http://localhost:8081' : 'http://localhost:4174',
-    trace: 'retain-on-failure',
+    // CI never runs the live tier (E2E_LIVE=1 is local-only), but session.spec.ts's
+    // requests carry a real dev-stack bearer token — no trace/screenshot/video to
+    // capture it in an artifact, on the off chance CI is ever set alongside it.
+    trace: process.env.CI ? 'off' : 'retain-on-failure',
+    screenshot: 'off',
+    video: 'off',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: live
