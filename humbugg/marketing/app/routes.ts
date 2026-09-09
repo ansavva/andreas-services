@@ -7,6 +7,7 @@ export default [
   route('privacy', 'routes/privacy.tsx'),
   route('billing', 'routes/billing.tsx'),
   route('refunds', 'routes/refunds.tsx'),
+  route('sub-processors', 'routes/sub-processors.tsx'),
   route('robots.txt', 'routes/robots[.]txt.ts'),
   route('sitemap.xml', 'routes/sitemap[.]xml.ts'),
 ] satisfies RouteConfig;

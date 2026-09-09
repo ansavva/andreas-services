@@ -365,6 +365,11 @@ assignment contents, addresses, or the invite secret.
 
 ## 8. Operational response
 
+Day-to-day runbooks for every operational scenario, not just security incidents, live in
+[`docs/runbooks.md`](runbooks.md). A suspected personal-data breach — anything that might need
+Art. 33/34 notification — follows [`docs/breach-response.md`](breach-response.md) instead of
+just this section.
+
 - **Suspected invite leak:** organizer rotates the invite (`POST /api/groups/{id}/invite`), which
   invalidates the old secret immediately. If a group is compromised, reset the draw and/or delete the
   group. No plaintext secret is recoverable from storage (only the hash is stored).
