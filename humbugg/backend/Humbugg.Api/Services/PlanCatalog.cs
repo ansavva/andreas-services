@@ -30,7 +30,8 @@ public sealed record PlanCatalogOptions(
     string? PlusProductId = null,
     string? PlusPriceId = null,
     string? WorkProductId = null,
-    string? WorkPriceId = null);
+    string? WorkPriceId = null,
+    bool WorkEnabled = false);
 
 public sealed class PlanCatalog : IPlanCatalog
 {
@@ -47,7 +48,9 @@ public sealed class PlanCatalog : IPlanCatalog
             [PlanCode.Work] = new(PlanCode.Work, "Work", options.WorkParticipantLimit, true, options.WorkPriceCents, "USD",
                 BillingCadence.Annual, Clean(options.WorkProductId), Clean(options.WorkPriceId))
         };
-        All = [plans[PlanCode.Free], plans[PlanCode.Plus], plans[PlanCode.Work]];
+        All = options.WorkEnabled
+            ? [plans[PlanCode.Free], plans[PlanCode.Plus], plans[PlanCode.Work]]
+            : [plans[PlanCode.Free], plans[PlanCode.Plus]];
     }
 
     public IReadOnlyList<PlanDefinition> All { get; }
@@ -99,8 +102,7 @@ public sealed class PlanCatalog : IPlanCatalog
         var plus = Get(PlanCode.Plus);
         if (activeParticipantCount >= plus.ParticipantLimit)
             throw ApiException.Conflict(
-                $"Plus supports up to {plus.ParticipantLimit:N0} total participants, including the organizer. " +
-                "Upgrade to Work to add participant 51 or run a larger exchange.");
+                $"Plus exchanges hold up to {plus.ParticipantLimit:N0} participants, organizer included.");
     }
 
     public static PlanCatalog FromEnvironment() => new(new PlanCatalogOptions(
@@ -112,7 +114,8 @@ public sealed class PlanCatalog : IPlanCatalog
         Environment.GetEnvironmentVariable("HUMBUGG_PLUS_PRODUCT_ID"),
         Environment.GetEnvironmentVariable("HUMBUGG_PLUS_PRICE_ID"),
         Environment.GetEnvironmentVariable("HUMBUGG_WORK_PRODUCT_ID"),
-        Environment.GetEnvironmentVariable("HUMBUGG_WORK_PRICE_ID")));
+        Environment.GetEnvironmentVariable("HUMBUGG_WORK_PRICE_ID"),
+        WorkEnabledFlag("HUMBUGG_WORK_ENABLED")));
 
     private static int PositiveInt(string name, int fallback)
     {
@@ -128,6 +131,13 @@ public sealed class PlanCatalog : IPlanCatalog
         if (string.IsNullOrWhiteSpace(value)) return fallback;
         if (long.TryParse(value, out var parsed) && parsed >= 0) return parsed;
         throw new InvalidOperationException($"{name} must be a non-negative integer number of cents.");
+    }
+
+    private static bool WorkEnabledFlag(string name)
+    {
+        var value = Environment.GetEnvironmentVariable(name);
+        return string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
+            value == "1";
     }
 
     private static void Validate(PlanCatalogOptions options)
