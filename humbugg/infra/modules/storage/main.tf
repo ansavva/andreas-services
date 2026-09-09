@@ -79,6 +79,7 @@ resource "aws_dynamodb_table" "profiles" {
   }
 
   server_side_encryption { enabled = true }
+  point_in_time_recovery { enabled = true }
   tags = var.tags
 }
 
@@ -93,6 +94,7 @@ resource "aws_dynamodb_table" "groups" {
   }
 
   server_side_encryption { enabled = true }
+  point_in_time_recovery { enabled = true }
   tags = var.tags
 }
 
@@ -129,6 +131,7 @@ resource "aws_dynamodb_table" "groupmembers" {
   }
 
   server_side_encryption { enabled = true }
+  point_in_time_recovery { enabled = true }
   tags = var.tags
 }
 
@@ -153,6 +156,7 @@ resource "aws_dynamodb_table" "wishes" {
   }
 
   server_side_encryption { enabled = true }
+  point_in_time_recovery { enabled = true }
   tags = var.tags
 }
 
@@ -167,6 +171,7 @@ resource "aws_dynamodb_table" "draws" {
   }
 
   server_side_encryption { enabled = true }
+  point_in_time_recovery { enabled = true }
   tags = var.tags
 }
 
@@ -218,6 +223,8 @@ resource "aws_dynamodb_table" "analytics_events" {
   tags = var.tags
 }
 
+# No point-in-time recovery: rows are TTL'd delivery state, not exchange data — nothing here is
+# worth restoring.
 resource "aws_dynamodb_table" "email_messages" {
   name         = "${var.project}-${var.environment}-email-messages"
   billing_mode = "PAY_PER_REQUEST"
