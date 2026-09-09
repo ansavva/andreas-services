@@ -103,7 +103,7 @@ export function OutputTile({
       ? [
           {
             key: "promote",
-            label: "Promote",
+            label: "Copy into a character…",
             icon: <PromoteIcon className={GLYPH} />,
             onSelect: onPromote,
           },

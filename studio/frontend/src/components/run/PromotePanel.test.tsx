@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,9 +12,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../apis/studio", () => ({
   getCharacters: vi.fn(),
   getCharacter: vi.fn(),
-  listNodes: vi.fn(),
   getFolder: vi.fn(),
-  createNode: vi.fn(),
+  getTags: vi.fn().mockResolvedValue([]),
   copyNodes: vi.fn(),
   describeNode: vi.fn(),
 }));
@@ -22,29 +22,27 @@ import { ApiError } from "../../apis/client";
 import {
   describeNode,
   copyNodes,
-  createNode,
   getCharacter,
   getCharacters,
-  listNodes,
   getFolder,
 } from "../../apis/studio";
-import { PromotePanel, promoteToReference } from "./PromotePanel";
+import { PromotePanel, copyIntoCharacter } from "./PromotePanel";
 import { TestProviders } from "../../test-providers";
-import type {
-  CopiedNodes,
-  NodeRecord,
-  RunAsset,
-  FolderListing,
-} from "../../types";
+import type { CopiedNodes, NodeRecord, RunAsset, FolderListing } from "../../types";
 
 /**
- * Promote to reference — **a real copy, then attach the COPY.**
+ * Copying a run's output into a character — **a real copy, then the tags.**
  *
- * What these pin is the order and the identity of what gets the `REF#` row.
- * Attaching the ORIGINAL would make the run's own output the character's
- * identity, which is the one thing the copy exists to prevent: the run keeps its
- * output, and every record citing it stays correct, only because the two are
- * different blobs.
+ * What these pin is the order and the identity of what gets described.
+ * Describing the ORIGINAL would put a run's own output into a character, which
+ * is the one thing the copy exists to prevent: the run keeps its output, and
+ * every record citing it stays correct, only because the two are different
+ * blobs.
+ *
+ * **The `default` tag is nobody's default any more.** This flow used to write
+ * it on every copy, which made one press mean both "keep this under the
+ * character" and "this is who the character is". The second is hard rule #2b's
+ * decision and is now a tag somebody types.
  *
  * Placeholder slugs only (hard rule #1). No character in this library is named
  * in this repository.
@@ -55,14 +53,14 @@ beforeEach(() => vi.clearAllMocks());
 
 const list = vi.mocked(getCharacters);
 const read = vi.mocked(getCharacter);
-const references = vi.mocked(listNodes);
 const tree = vi.mocked(getFolder);
-const create = vi.mocked(createNode);
 const copy = vi.mocked(copyNodes);
-const attach = vi.mocked(describeNode);
+const describe_ = vi.mocked(describeNode);
 
 const CHAR = "char-1";
 const OUTPUT = "node-out";
+const ROOT = "node-root";
+const FOLDER = "node-ref";
 
 const asset: RunAsset = {
   node: OUTPUT,
@@ -71,18 +69,18 @@ const asset: RunAsset = {
   url: "https://example.invalid/frame.webp",
 };
 
-/** A `getFolder` answer holding the folders named. */
-function folders(named: Record<string, string>): FolderListing {
+/** A `getFolder` answer: its own name path, and the folders under it. */
+function listing(prefix: string, named: Record<string, string> = {}): FolderListing {
   return {
-    prefix: "",
+    prefix,
     sort: "name",
     depth: "1" as const,
     tags: {},
-    breadcrumbs: [],
+    breadcrumbs: [{ id: prefix === "characters/c1" ? ROOT : FOLDER, name: prefix, prefix }],
     folders: Object.entries(named).map(([name, id]) => ({
       id,
       kind: "folder" as const,
-      prefix: name,
+      prefix: `${prefix}/${name}`,
       name,
       last_modified: null,
     })),
@@ -96,124 +94,89 @@ function node(id: string, name: string): NodeRecord {
 
 /** What `POST /api/nodes/copy` answers with — whole records, never bare ids. */
 function copied(id: string, name: string): CopiedNodes {
-  return { destination: "node-group", copied: 1, nodes: [node(id, name)] };
+  return { destination: FOLDER, copied: 1, nodes: [node(id, name)] };
 }
 
-/** The happy path's stubs: both folders already there, one copy, one attach. */
+/** The store as the panel walks it: a root, one folder in it, a copy, a describe. */
 function stubStore(over: { copyName?: string } = {}) {
-  read.mockResolvedValue({ id: CHAR, root: "node-root" } as never);
-  tree.mockImplementation(async () => folders({ reference: "node-ref" }));
-  references.mockResolvedValue({ tags: { face: 2 } } as never);
+  read.mockResolvedValue({ id: CHAR, root: ROOT } as never);
+  tree.mockImplementation(async (where) =>
+    where.node === ROOT
+      ? listing("characters/c1", { reference: FOLDER })
+      : listing("characters/c1/reference"),
+  );
   copy.mockResolvedValue(copied("node-copy", over.copyName ?? "frame.webp"));
-  attach.mockResolvedValue({ id: "node-copy" } as never);
+  describe_.mockResolvedValue({ id: "node-copy" } as never);
 }
 
-describe("promoteToReference", () => {
-  it("ensures the pool, copies, then TAGS the copy — in that order", async () => {
+describe("copyIntoCharacter", () => {
+  it("copies into the folder it was given, then describes the COPY", async () => {
     const order: string[] = [];
-    read.mockImplementation(async () => {
-      order.push("character");
-      return { id: CHAR, root: "node-root" } as never;
-    });
-    tree.mockImplementation(async (where) => {
-      order.push(`list ${where.node}`);
-      return folders({ reference: "node-ref" });
-    });
     copy.mockImplementation(async () => {
       order.push("copy");
       return copied("node-copy", "frame (2).webp");
     });
-    attach.mockImplementation(async () => {
-      order.push("tag");
+    describe_.mockImplementation(async () => {
+      order.push("describe");
       return { id: "node-copy" } as never;
     });
 
-    const result = await promoteToReference({
-      character: CHAR,
+    const result = await copyIntoCharacter({
       node: OUTPUT,
-      group: "unsorted",
+      folder: FOLDER,
+      where: "A subject/reference",
+      tags: ["face"],
     });
 
-    // **One folder, not two.** The group was a `<group>/` subfolder AND a column
-    // on the row; it is a tag, so the copy lands in `reference/` and the group
-    // is said once.
-    expect(order).toEqual(["character", "list node-root", "copy", "tag"]);
-    expect(copy).toHaveBeenCalledWith([OUTPUT], "node-ref");
+    expect(order).toEqual(["copy", "describe"]);
+    // **No folder is ensured and none is guessed.** The destination is the id
+    // the picker handed back; this used to create a `reference/` pool of its own.
+    expect(copy).toHaveBeenCalledWith([OUTPUT], FOLDER);
     // **The COPY's id**, and the name the destination decided — `frame.webp`
     // was taken, so it landed as `frame (2).webp` and nothing here guessed it.
-    expect(attach).toHaveBeenCalledWith(
-      "node-copy",
-      expect.objectContaining({ tags: ["default", "unsorted"] }),
-    );
-    expect(attach).not.toHaveBeenCalledWith(
-      CHAR,
-      expect.objectContaining({ node: OUTPUT }),
-    );
+    expect(describe_).toHaveBeenCalledWith("node-copy", { tags: ["face"] });
     expect(result.copy).toEqual({ id: "node-copy", name: "frame (2).webp" });
   });
 
-  it("takes the existing folder when the create loses a race", async () => {
-    /**
-     * `store.ensure_child_folder`'s shape: a 409 means something else created it
-     * between the listing and the create, and the node it made is the right
-     * answer. Idempotent by construction rather than by retrying.
-     */
-    read.mockResolvedValue({ id: CHAR, root: "node-root" } as never);
-    let listed = 0;
-    tree.mockImplementation(async () => {
-      listed += 1;
-      // Absent on the first look, there on the re-list after the conflict.
-      // **`reference/` is the only folder ensured now** — the `<group>/` one is
-      // gone, because the group is a tag rather than a place.
-      return listed === 1 ? folders({}) : folders({ reference: "node-raced" });
-    });
-    create.mockRejectedValue(new ApiError("name already taken", 409, "conflict"));
-    references.mockResolvedValue({ tags: {} } as never);
-    copy.mockResolvedValue({
-      ...copied("node-copy", "frame.webp"),
-      destination: "node-raced",
-    });
-    attach.mockResolvedValue({ id: "node-copy" } as never);
+  it("writes no tag nobody asked for — `default` least of all", async () => {
+    stubStore();
 
-    await promoteToReference({ character: CHAR, node: OUTPUT, group: "unsorted" });
+    await copyIntoCharacter({ node: OUTPUT, folder: FOLDER, where: "x", tags: ["face"] });
 
-    expect(copy).toHaveBeenCalledWith([OUTPUT], "node-raced");
+    const written = describe_.mock.calls[0]![1] as { tags: string[] };
+    expect(written.tags).toEqual(["face"]);
+    expect(written.tags).not.toContain("default");
   });
 
-  it("reports an attach failure as a copy that landed somewhere", async () => {
+  it("describes nothing at all when there is nothing to say", async () => {
     stubStore();
-    attach.mockRejectedValue(new ApiError("that node is gone", 400));
+
+    await copyIntoCharacter({ node: OUTPUT, folder: FOLDER, where: "x" });
+
+    // A copy with no tags and no description is one request, not two: the write
+    // would carry an empty tag list, which is a change nobody asked for.
+    expect(copy).toHaveBeenCalled();
+    expect(describe_).not.toHaveBeenCalled();
+  });
+
+  it("reports a describe failure as a copy that landed somewhere", async () => {
+    stubStore();
+    describe_.mockRejectedValue(new ApiError("that node is gone", 400));
 
     await expect(
-      promoteToReference({ character: CHAR, node: OUTPUT, group: "face" }),
+      copyIntoCharacter({
+        node: OUTPUT,
+        folder: FOLDER,
+        where: "A subject/reference",
+        tags: ["face"],
+      }),
     ).rejects.toMatchObject({
-      name: "AttachFailed",
+      name: "DescribeFailed",
       copy: { id: "node-copy" },
-      group: "face",
+      where: "A subject/reference",
     });
-  });
-
-  it("re-tagging is not a conflict, so there is no `already` branch to take", async () => {
-    // Attaching a node twice was a 409 — the row either existed or did not.
-    // Writing a tag onto a file that already carries it is the same write, so a
-    // second promotion of the same picture is quietly correct rather than a
-    // state this has to report.
-    stubStore();
-
-    const result = await promoteToReference({
-      character: CHAR,
-      node: OUTPUT,
-      group: "unsorted",
-    });
-
-    expect(result.already).toBe(false);
-    expect(attach).toHaveBeenCalledWith(
-      "node-copy",
-      expect.objectContaining({ tags: ["default", "unsorted"] }),
-    );
   });
 });
-
 
 describe("the panel", () => {
   function open(runCharacters: string[] = [CHAR]) {
@@ -239,59 +202,55 @@ describe("the panel", () => {
         updated: "2026-08-20T00:00:00Z",
       },
     ]);
-    references.mockResolvedValue({
-      groups: {},
-      counts: { face: 2 },
-    } as never);
   });
 
-  it("defaults the group to unsorted and says what pressing will do", async () => {
-    /**
-     * The CLI's default — `refs.py`'s `UNSORTED` — spelled the same way.
-     *
-     * The sentence is asserted for its MEANING rather than its mechanism. It
-     * used to describe a copy into a `reference/<group>/` folder and "marks the
-     * copy as identity", which is what the code does; what the reader is
-     * deciding is whether later shots should look like this picture, and that
-     * is what has to be on screen before they press.
-     */
-    open();
-
-    expect(
-      await screen.findByText(/References are the pictures studio works from/i),
-    ).toBeTruthy();
-    expect(
-      (screen.getByLabelText("Group") as HTMLInputElement).placeholder,
-    ).toBe("unsorted");
-  });
-
-  /** The button is disabled until the character list has landed and one is picked. */
-  async function armed() {
-    const button = (await screen.findByRole("button", {
-      name: "Add reference",
-    })) as HTMLButtonElement;
-    await waitFor(() => expect(button.disabled).toBe(false));
-    return button;
+  /** Walk the picker: open it, step into the folder, take it. */
+  async function chooseFolder() {
+    fireEvent.click(await screen.findByRole("button", { name: /Choose a folder/ }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(await within(dialog).findByRole("button", { name: "reference" }));
+    fireEvent.click(await within(dialog).findByRole("button", { name: /^Copy here/ }));
   }
 
-  it("promotes into the run's sole character without being asked which", async () => {
+  it("asks for a folder rather than a group, and will not copy without one", async () => {
     /**
-     * A run records who it was of, and one of them is not a guess. Two would
-     * be — an image of two people is a reference of whichever the person says —
-     * which is why the preselect is exactly the sole case.
+     * **There is no "group" any more.** It was a tag with a special name
+     * pretending to be a place; where a picture goes is a folder, and which it
+     * is is a choice rather than a convention this app knows.
      */
     stubStore();
     open();
 
-    fireEvent.click(await armed());
+    // Four labelled fields and a button, and no prose around them.
+    expect(await screen.findByText("Copy into A subject")).toBeTruthy();
+    expect(screen.getByText("Folder")).toBeTruthy();
+    expect(screen.queryByLabelText("Group")).toBeNull();
 
-    await waitFor(() =>
-      expect(attach).toHaveBeenCalledWith(
-        "node-copy",
-        expect.objectContaining({ tags: ["default", "unsorted"] }),
-      ),
-    );
-    expect(await screen.findByText(/Added to .*'s references/)).toBeTruthy();
+    const button = (await screen.findByRole("button", {
+      name: "Copy",
+    })) as HTMLButtonElement;
+    // The character is preselected — the folder is not, and it is required.
+    expect(button.disabled).toBe(true);
+  });
+
+  it("copies into the folder that was picked, with the tags that were typed", async () => {
+    /**
+     * A run records who it was of, and one of them is not a guess. Two would
+     * be — a picture of two people belongs to whichever the person says — which
+     * is why the preselect is exactly the sole case.
+     */
+    stubStore();
+    open();
+
+    await chooseFolder();
+    fireEvent.click(await screen.findByRole("button", { name: "Copy" }));
+
+    await waitFor(() => expect(copy).toHaveBeenCalledWith([OUTPUT], FOLDER));
+    // Nothing typed, so nothing described.
+    expect(describe_).not.toHaveBeenCalled();
+    // Said from the character down, never as the id its root folder is named
+    // after.
+    expect(await screen.findByText(/Copied into A subject\/reference/)).toBeTruthy();
   });
 
   /**
@@ -305,6 +264,7 @@ describe("the panel", () => {
    * render later. Nothing in the app can report that.
    */
   it("keeps reporting dirty across a re-render with a new callback identity", async () => {
+    stubStore();
     const reports: boolean[] = [];
     const view = render(
       <MemoryRouter>
@@ -339,23 +299,26 @@ describe("the panel", () => {
     expect(reports.at(-1)).toBe(true);
   });
 
-  it("names where the copy landed when the attach fails", async () => {
+  it("names where the copy landed when the describe fails", async () => {
     /**
      * Nothing is rolled back — the bytes are real, and a component deleting
      * media on its own initiative is worse than a file in the wrong state. So
-     * the partial state is reported in the words a person would go looking with,
-     * which is the same partial state the CLI tolerates.
+     * the partial state is reported in the words a person would go looking
+     * with, which is the same partial state the CLI tolerates.
      */
     stubStore();
-    attach.mockRejectedValue(new ApiError("the row would not write", 500));
+    describe_.mockRejectedValue(new ApiError("the row would not write", 500));
     open();
 
-    fireEvent.click(await armed());
+    await chooseFolder();
+    fireEvent.change(
+      screen.getByPlaceholderText("Optional — what the image shows"),
+      { target: { value: "a face" } },
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Copy" }));
 
-    // The one message that still names a folder: the copy is really there and
-    // the reader has to go and find it.
     expect(
-      await screen.findByText(/“frame.webp”.*reference\/unsorted\/ folder/),
+      await screen.findByText(/A subject\/reference as “frame.webp”/),
     ).toBeTruthy();
     expect(screen.getByText(/run's own copy is fine/)).toBeTruthy();
   });

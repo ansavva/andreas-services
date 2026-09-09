@@ -290,26 +290,29 @@ test("the Request row loads a payload document only when it is pressed", async (
 });
 
 /* -------------------------------------------------------------------------
- * Promote to reference
+ * Copying an output into a character
  * ---------------------------------------------------------------------- */
 
-test("promoting copies into the pool and TAGS the copy", async ({
+test("copying an output puts the COPY in the chosen folder, and tags that", async ({
   page,
 }) => {
-  stubOnly("it would write a reference into the dev character");
+  stubOnly("it would write a picture into the dev character");
   const calls = log(page);
   await page.goto(`/p/${PROJECT}/r/${IMAGE_RUN}`);
   await expect(lightbox(page)).toBeVisible();
 
-  // Scoped to the lightbox: the feed's tiles under it carry a Promote of their
-  // own in their hover overlay, and the drawer's submit says what it adds.
-  const trigger = lightbox(page).getByRole("button", { name: "Promote", exact: true });
-  const submit = page.getByRole("button", { name: "Add reference", exact: true });
+  // Scoped to the lightbox: the feed's tiles under it carry the same action in
+  // their own menus.
+  const trigger = lightbox(page).getByRole("button", {
+    name: "Copy into a character",
+    exact: true,
+  });
+  const submit = page.getByRole("button", { name: "Copy", exact: true });
 
   await expect(submit).toHaveCount(0);
   await trigger.click();
-  await expect(page.getByText(/Add to .+ references/)).toBeVisible();
-  await expect(submit).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: /^Copy into / })).toBeVisible();
+
   // The run names one character, so it is preselected — two would be a choice
   // this cannot make, and one is the case that should cost no clicks. Scoped
   // to the drawer: the feed's filter under it has a Character select too.
@@ -318,57 +321,67 @@ test("promoting copies into the pool and TAGS the copy", async ({
     drawer.getByRole("combobox", { name: "Character", exact: true }),
   ).toContainText("jason");
 
+  // **The folder is chosen, not conventional.** There is no group and no pool
+  // this app creates: the picker walks the character's own tree and the id it
+  // hands back is where the copy goes.
+  await expect(submit).toBeDisabled();
+  await drawer.getByRole("button", { name: /Choose a folder/ }).click();
+  const picker = page.getByRole("dialog").filter({ hasText: "Copy" }).last();
+  await picker.getByRole("button", { name: "reference" }).click();
+  await picker.getByRole("button", { name: /^Copy here/ }).click();
+  await expect(submit).toBeEnabled();
+
+  // **A tag, because tagging is now the only way a picture becomes identity.**
+  // `default` used to be written on every promotion; nothing writes it now, so
+  // this is a person saying it in as many words.
+  const tagBox = drawer.getByRole("textbox", { name: "Add a tag" });
+  await tagBox.fill("default");
+  await tagBox.press("Enter");
+  // The suggestion list stays open over the form until it is dismissed.
+  await tagBox.press("Escape");
+
   // Everything before the press is setup. What the order assertion is about is
   // what the press itself does.
   calls.length = 0;
   await submit.click();
-  await expect(
-    page.getByText(/Added to .+ references/),
-  ).toBeVisible();
+  await expect(page.getByText(/Copied into/)).toBeVisible();
 
   expect(escaped(calls, page)).toEqual([]);
 
   const promotion = calls.filter((call) =>
-    /\/api\/(characters\/|nodes$|nodes\/copy$|nodes\/node-)/.test(call.path),
+    /\/api\/(nodes\/copy$|nodes\/node-)/.test(call.path),
   );
   expect(spell(promotion)).toEqual([
-    // The character, for its root folder.
-    `GET /api/characters/${CHARACTER}`,
-    // **One folder ensured, not two.** The group was a `<group>/` subfolder and
-    // a column on a row; it is a tag, so only `reference/` is resolved.
-    "GET /api/nodes",
-    // Only then the bytes, and only then the identity — which is a tag written
-    // onto the COPY, never onto the run's own output.
+    // The bytes, into the folder that was picked.
     "POST /api/nodes/copy",
+    // Then the copy is described — and only because a tag was typed.
     `PATCH /api/nodes/${COPY}`,
   ]);
 
-  // **One listing, of the root.** `under`, where the folder listing said `node`.
-  expect(promotion[1]!.query.get("under")).toBe(CHARACTER_ROOT);
-
-  // The run's own output, into the pool — not by name.
-  const copy = promotion[2]!.body;
+  // The run's own output, into the chosen folder — not by name.
+  const copy = promotion[0]!.body;
   expect(copy.ids).toEqual([OUTPUT.node]);
   expect(copy.destination).toBe(REFERENCE_POOL);
 
-  // **The whole point.** The tag lands on the copy the destination made, not on
-  // the run's own output — two blobs with independent lifetimes, so untagging or
-  // deleting the promoted image later cannot reach back into the run.
-  expect(promotion[3]!.path.endsWith(`/api/nodes/${COPY}`)).toBe(true);
-  expect(promotion[3]!.path.endsWith(OUTPUT.node)).toBe(false);
-  expect(promotion[3]!.body.tags).toEqual(["default", "unsorted"]);
+  // **The whole point.** What is described is the copy the destination made,
+  // not the run's own output — two blobs with independent lifetimes, so
+  // re-tagging or deleting the copy later cannot reach back into the run.
+  expect(promotion[1]!.path.endsWith(`/api/nodes/${COPY}`)).toBe(true);
+  expect(promotion[1]!.path.endsWith(OUTPUT.node)).toBe(false);
+  expect(promotion[1]!.body.tags).toEqual(["default"]);
 });
 
-test("only an image output offers to become a reference", async ({ page }) => {
+test("only an image output offers to be copied into a character", async ({ page }) => {
   stubOnly("the run fixtures are what put an image and a clip side by side");
-  const promote = () => lightbox(page).getByRole("button", { name: "Promote", exact: true });
+  const promote = () =>
+    lightbox(page).getByRole("button", { name: "Copy into a character", exact: true });
 
   await page.goto(`/p/${PROJECT}/r/${IMAGE_RUN}`);
   await expect(lightbox(page)).toBeVisible();
   await expect(promote()).toHaveCount(1);
 
-  // The synthesised run in `support/api.ts` outputs the MP4. A reference is a
-  // picture every later render is checked against, so a clip cannot be one —
+  // The synthesised run in `support/api.ts` outputs the MP4. What a character
+  // is kept and matched against is pictures, so a clip is not offered —
   // and this is the same lightbox, the same grid, and one different content
   // type. Its project is not in any feed fixture, so the row is drawn off the
   // record: the cold-link path.

@@ -749,7 +749,7 @@ function ActionGrid({
         {asset && isPromotable(asset) && (
           <Cell
             icon={<PromoteIcon className={GLYPH} />}
-            label="Promote"
+            label="Copy into a character"
             onClick={onPromote}
           />
         )}

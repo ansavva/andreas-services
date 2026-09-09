@@ -362,11 +362,14 @@ page and a plain textarea over its literal bytes, and never offers fields.
   in flight, and `useInFlightRuns` reads those same cached pages for the
   "N running" badge in the project header and the spinner beside the project
   in the sidebar — which is why both are only ever right about projects open
-  this session. Hover a tile for its own actions, as glyphs in its corners
-  (download, Use in prompt, Again / Upscale / Animate / Promote —
-  `OutputTile`); a press anywhere else on it opens the run at that output,
-  which is what the tile is mostly for, so the overlays take a press only
-  while they are visible. The run's own actions are icon+word in its column
+  this session. A tile carries one `⋮` — `ActionMenu`, a dropdown on a pointer
+  and a bottom sheet below `md` — holding Run again with this, Use as
+  reference, Start frame, Upscale, Copy into a character and Download
+  (`OutputTile`). It used to be six glyphs in the tile's corners, revealed on
+  hover: `opacity-0` hides a control without disarming it, so a press aimed at
+  the picture ran Animate or Upscale, and on a touch screen — where the hover
+  may never arrive — that was every press the tile got. A press anywhere else
+  opens the run at that output, which is what the tile is mostly for. The run's own actions are icon+word in its column
   (Rerun, Edit, Folder, Trash, More). Every one of them is
   `useRunActions`, which the opened run's grid draws too, so a gesture means
   one thing in both places. Settings, behind the gear at the end of the strip,
@@ -414,22 +417,34 @@ page and a plain textarea over its literal bytes, and never offers fields.
   arms and says what the second will do; the second runs. See `useArmed`, the
   one arm/disarm machine `ArmedButton`, the lightbox's `ArmedCell`,
   `ConfirmDeleteButton` and `ItemActions` all run on.
-- **A run's outputs can be promoted into a character, from the tile or the
-  rail.** An image output's hover overlay and the opened run's grid both
-  carry `Promote`, which opens `PromoteDrawer` — `PromotePanel` in a drawer
-  beside the picture it is about, so the output stays on screen while the
-  form is filled in. It makes a **real copy** into the character's
-  `reference/` pool, then puts the `default` tag on the **copy**, so the run
-  keeps its own output and every record citing it stays correct. Hard rule
-  #2b is satisfied by the press itself — the person choosing the character and
-  the group IS the approval — and the panel states plainly what it will do.
-  Video outputs get no control: a reference is a picture a later render is
-  checked against.
-- **None of these flows uses a dialog, and that is a requirement rather than a
+- **A run's output can be copied into a character, from the tile's menu or the
+  opened run's rail.** Both carry `Copy into a character`, which opens
+  `PromoteDrawer` — `PromotePanel` in a drawer beside the picture it is about,
+  so the output stays on screen while the form is filled in. Three fields: the
+  character, a **folder chosen by browsing that character's own tree**
+  (`DestinationPicker`, the one the file browser moves and copies with), and
+  tags. It makes a **real copy** into that folder and describes the **copy**,
+  so the run keeps its own output and every record citing it stays correct.
+  Video outputs get no control: what a character is matched against is
+  pictures.
+  - **There is no "group" and no pool this app creates.** A group was a tag
+    with a special name pretending to be a place, and the flow used to make a
+    `reference/` folder if one was missing — two conventions the entity model
+    does not have (`ENTITY_MODEL.md`: the folder layout is convention, not
+    schema). Where a picture goes is now a folder somebody picked.
+  - **Nothing writes `default` on your behalf.** Identity is that tag, and
+    tagging is hard rule #2b's separate decision — so the panel suggests it in
+    as many words and a person types it. One press used to mean both "keep
+    this under the character" and "this is who the character is".
+- **No flow here ASKS in a dialog, and that is a requirement rather than a
   style.** Creating a run is the create sheet at the foot of every screen,
-  promoting is an inline panel, and every gesture that spends or destroys is
-  arm-then-fire in the button itself. `ConfirmDestroyDialog` remains for
-  entity deletion and nothing on the run surface reaches for it.
+  copying an output into a character is a panel in a drawer, and every gesture
+  that spends or destroys is arm-then-fire in the button itself.
+  `ConfirmDestroyDialog` remains for entity deletion and nothing on the run
+  surface reaches for it. The one dialog in reach is `DestinationPicker`, and
+  it is not a question about the action: it is the file browser's own folder
+  walk, opened to answer "which folder", the same way it answers it for a move
+  or a copy on the browse page.
 - **The create sheet floats at the foot of every screen, always fully drawn,
   and Enter sends.** `components/create/CreateBar.tsx`, mounted by
   `AppLayout`; its state is `CreateBarContext`, so a feed row or a tile can
