@@ -99,28 +99,38 @@ function SheetSlot() {
   }, [shown, expand]);
 
   return (
-    <div className="pointer-events-none sticky bottom-0 z-30 px-2 pb-2 md:px-6 md:pb-4">
+    // **The padding belongs to the sheet, not to the slot.** Expanded, the
+    // sheet is a card floating over the feed and the inset is what makes it
+    // read that way. Collapsed, the same inset left a strip hovering a
+    // centimetre off the bottom of the window with a stripe of feed showing
+    // under it — a handle is a thing you pull from the EDGE, so it sits on it.
+    <div
+      className={`pointer-events-none sticky bottom-0 z-30 ${
+        shown ? "px-2 pb-2 md:px-6 md:pb-4" : ""
+      }`}
+    >
       <div className="pointer-events-auto mx-auto w-full max-w-3xl">
         {shown ? (
           <CreateBar />
         ) : (
-          /* The sheet's own frame, one row tall: `bg-sheet` over a blur and the
-             same ring, so what is left reads as the sheet pushed down rather
-             than as a new control that appeared. Pressing anywhere on it opens
-             it — the whole strip is the handle, which is what makes it a
-             thumb-sized target on a phone. */
+          /* The sheet's own frame, as little of it as a handle needs: `bg-sheet`
+             over a blur so what is left reads as the sheet pushed down rather
+             than as a new control that appeared, rounded at the top only
+             because it is sitting on the window's edge, and 24px tall — it is a
+             handle, and the run it belongs to is behind it. The whole strip is
+             the press, so the target is the width of the sheet however short it
+             is drawn. */
           // eslint-disable-next-line studio/no-hand-rolled-button -- the sheet's own frame collapsed, not a control in it.
           <button
             type="button"
             aria-label="Open the create panel (c)"
             title="Open the create panel (c)"
             onClick={expand}
-            className="flex h-9 w-full items-center justify-center rounded-lg bg-sheet
-                       shadow-[0_12px_48px_rgba(0,0,0,0.55)] ring-1 ring-line backdrop-blur-xl
-                       transition-colors hover:bg-fill
-                       focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className="flex h-6 w-full items-center justify-center rounded-t-lg bg-sheet
+                       ring-1 ring-line backdrop-blur-xl transition-colors hover:bg-fill
+                       focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
           >
-            <ChevronUpIcon className="size-5 fill-none stroke-current stroke-[1.5] text-muted" />
+            <ChevronUpIcon className="size-4 fill-none stroke-current stroke-[1.5] text-muted" />
           </button>
         )}
       </div>
