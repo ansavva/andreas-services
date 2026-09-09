@@ -144,7 +144,7 @@ used to come from the SSR `loader` are baked in here instead.
 
 | Variable | Purpose | Production |
 | --- | --- | --- |
-| `EXPO_PUBLIC_API_BASE_URL` | the API's own origin | `https://api.humbugg.com/api` |
+| `EXPO_PUBLIC_API_BASE_URL` | the API's origin **and its `/api` prefix** — every route is behind `ANY /api/{proxy+}`, and a bare origin 404s off-route with no CORS headers | `https://api.humbugg.com/api` |
 | `EXPO_PUBLIC_COGNITO_USER_POOL_ID` | user pool | — |
 | `EXPO_PUBLIC_COGNITO_CLIENT_ID` | app client | — |
 | `EXPO_PUBLIC_AWS_REGION` | region | `us-east-1` |

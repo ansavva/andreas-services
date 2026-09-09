@@ -237,7 +237,7 @@ jobs:
       # never constructs an authorize request). Nothing here is deployed.
       - name: Export for web
         env:
-          EXPO_PUBLIC_API_BASE_URL: https://api.humbugg.com
+          EXPO_PUBLIC_API_BASE_URL: https://api.humbugg.com/api
           EXPO_PUBLIC_COGNITO_DOMAIN: auth.humbugg.com
           EXPO_PUBLIC_COGNITO_CLIENT_ID: pr-build-placeholder
         run: cd humbugg/app && npx expo export -p web --source-maps
@@ -249,6 +249,14 @@ jobs:
       # because Tailwind class strings mean nothing in a project with no Tailwind.
       - name: Assert the app build took the native leaf
         run: node humbugg/scripts/assert-design-system-leaves.mjs native humbugg/app/dist
+
+      # Metro inlines EXPO_PUBLIC_* at build time, so the exported bundle is the
+      # only place a wrong API base URL is visible. A bare origin misses the
+      # gateway's /api prefix, 404s off-route with no CORS headers, and breaks
+      # every call from the app as "Failed to fetch" — shipped in #217, unnoticed
+      # until a user could not create a profile.
+      - name: Assert the app's API base URL keeps the /api prefix
+        run: node humbugg/scripts/assert-app-api-base.mjs humbugg/app/dist
 
       # The browser tier, stubbed. Playwright's webServer performs its own export
       # (with --clear: Metro's cache does not key on env) using the e2e values — a
