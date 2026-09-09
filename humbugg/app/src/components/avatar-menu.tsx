@@ -22,6 +22,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '../context/auth-context';
 import { useProfile } from '../context/profile-context';
+import { radii } from '../theme/radii';
 import { styles } from '../theme/styles';
 import { brand, fonts } from '../theme/theme';
 import { Avatar } from './avatar';
@@ -108,7 +109,9 @@ const local = StyleSheet.create({
     gap: 8,
     borderWidth: 1,
     borderColor: brand.line,
-    borderRadius: 999,
+    // The menu's own corner, not a pill: a 999px trigger hanging a `radii.md`
+    // panel off itself is what made the two read as unrelated objects.
+    borderRadius: radii.md,
     backgroundColor: brand.card,
     padding: 4,
     paddingRight: 10,

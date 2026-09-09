@@ -12,13 +12,11 @@ import { ThemeProvider } from '@ansavva/design-system';
 // re-exports all eighteen weights, and Metro follows the whole barrel into the
 // asset graph — the export shipped 7.9 MB of unused `.ttf` before these were
 // narrowed to the seven faces the app actually names.
-import { Archivo_400Regular } from '@expo-google-fonts/archivo/400Regular';
-import { Archivo_500Medium } from '@expo-google-fonts/archivo/500Medium';
-import { Archivo_600SemiBold } from '@expo-google-fonts/archivo/600SemiBold';
-import { Archivo_700Bold } from '@expo-google-fonts/archivo/700Bold';
 import { LilyScriptOne_400Regular } from '@expo-google-fonts/lily-script-one/400Regular';
-import { Spectral_500Medium } from '@expo-google-fonts/spectral/500Medium';
-import { Spectral_600SemiBold } from '@expo-google-fonts/spectral/600SemiBold';
+import { OpenSans_400Regular } from '@expo-google-fonts/open-sans/400Regular';
+import { OpenSans_500Medium } from '@expo-google-fonts/open-sans/500Medium';
+import { OpenSans_600SemiBold } from '@expo-google-fonts/open-sans/600SemiBold';
+import { OpenSans_700Bold } from '@expo-google-fonts/open-sans/700Bold';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -31,17 +29,16 @@ import { humbuggTheme } from '../theme/theme';
 import { brand } from '../theme/theme';
 
 export default function RootLayout() {
-  // Spectral for headings, Archivo for body, Lily Script One for the wordmark —
-  // the same three families the web app pulls from Google Fonts and
-  // `@fontsource`. React Native resolves one registered family name per style,
-  // so each weight is its own registration rather than a `font-weight`.
+  // Open Sans for everything that is type — headings included, since the serif
+  // came out — and Lily Script One for the wordmark, which is a logo. The same
+  // families the marketing site pulls from Google Fonts. React Native resolves
+  // one registered family name per style, so each weight is its own
+  // registration rather than a `font-weight`.
   const [fontsLoaded] = useFonts({
-    Spectral_500Medium,
-    Spectral_600SemiBold,
-    Archivo_400Regular,
-    Archivo_500Medium,
-    Archivo_600SemiBold,
-    Archivo_700Bold,
+    OpenSans_400Regular,
+    OpenSans_500Medium,
+    OpenSans_600SemiBold,
+    OpenSans_700Bold,
     LilyScriptOne_400Regular,
   });
 

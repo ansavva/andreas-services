@@ -11,11 +11,12 @@
  * `app/src/theme/brand-colors.json`; keep the two in step by hand
  * (`npm run brand:check` in `app/` checks that file against Cognito).
  *
- * RADII ARE DELIBERATELY NOT OVERRIDDEN. The base makes every corner except
- * `pill` square, Humbugg follows it, and this file's own rules reach for
- * `var(--radius-*)` rather than literals — so putting rounding back is one
- * `--radius-md` line here, and it moves the hand-written surfaces and the
- * design system's components together. */
+ * RADII ARE OVERRIDDEN, and this is the whole of it. The base makes every
+ * corner except `pill` square; Humbugg is not square. Because this file's own
+ * rules reach for `var(--radius-*)` rather than literals, the four lines below
+ * move the hand-written surfaces and the design system's components together.
+ * The app half states the same numbers in points, in `app/src/theme/radii.ts`
+ * — keep the two in step by hand. */
 @theme {
   --color-ink: #18332b;
   --color-muted: #626e67;
@@ -32,12 +33,16 @@
   --color-primary-hover: #17483a;
   --color-primary-active: #113b30;
   --color-primary-text: #fffdf8;
-  --font-heading: Spectral, Georgia, serif;
-  --font-body: Archivo, ui-sans-serif, system-ui, sans-serif;
+  --radius-xs: 0.25rem; /* 4px */
+  --radius-sm: 0.375rem; /* 6px */
+  --radius-md: 0.625rem; /* 10px — the working radius: controls, panels, popovers */
+  --radius-lg: 0.875rem; /* 14px — cards and page-level surfaces */
+  --font-heading: "Open Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Open Sans", ui-sans-serif, system-ui, sans-serif;
 }
 
 :root {
-  font-family: Archivo, ui-sans-serif, system-ui, sans-serif;
+  font-family: "Open Sans", ui-sans-serif, system-ui, sans-serif;
   color: var(--color-ink);
   background: var(--color-bg);
   font-synthesis: none;
@@ -45,7 +50,7 @@
 html { scroll-behavior: smooth; }
 body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--color-bg); }
 button, input, textarea, select { font: inherit; }
-.font-heading { font-family: Spectral, Georgia, serif; }
+.font-heading { font-family: var(--font-heading); }
 .eyebrow { color: var(--color-muted); font-size: .75rem; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; }
 .nav-link { align-items: center; border-radius: var(--radius-sm); color: var(--color-muted); font-size: .875rem; font-weight: 600; min-height: 2.5rem; padding: 0 .75rem; }
 .nav-link:hover { color: var(--color-ink); background: var(--color-surface-alt); }
@@ -56,9 +61,9 @@ button, input, textarea, select { font: inherit; }
 .hero-grid { background-color: var(--color-bg); background-image: radial-gradient(circle at 82% 18%, color-mix(in srgb, var(--color-accent) 18%, transparent) 0 1px, transparent 2px), linear-gradient(125deg, transparent 55%, color-mix(in srgb, var(--color-primary) 4%, transparent)); background-size: 24px 24px, auto; }
 .hero-card { border: 1px solid var(--color-line); border-radius: var(--radius-lg); padding: 1.75rem; background: var(--color-card); box-shadow: 0 24px 70px color-mix(in srgb, var(--color-ink) 13%, transparent); }
 .hero-card-back { position: absolute; inset: 2.5rem -1.25rem -1.25rem 2.5rem; transform: rotate(4deg); background: var(--color-frame); }
-.avatar-chip { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; flex: 0 0 auto; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--color-primary) 12%, var(--color-card)); color: var(--color-primary); font-family: Spectral, serif; font-weight: 700; }
+.avatar-chip { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; flex: 0 0 auto; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--color-primary) 12%, var(--color-card)); color: var(--color-primary); font-family: var(--font-heading); font-weight: 700; }
 .feature-card { min-height: 18rem; border: 1px solid var(--color-line); border-radius: var(--radius-lg); padding: 2rem; background: var(--color-card); }
-.step-number { display: inline-flex; align-items: center; justify-content: center; width: 3rem; height: 3rem; border-radius: var(--radius-pill); background: var(--color-surface-alt); color: var(--color-primary); font-family: Spectral, serif; font-size: 1.15rem; font-weight: 700; }
+.step-number { display: inline-flex; align-items: center; justify-content: center; width: 3rem; height: 3rem; border-radius: var(--radius-pill); background: var(--color-surface-alt); color: var(--color-primary); font-family: var(--font-heading); font-size: 1.15rem; font-weight: 700; }
 .field-label { display: flex; flex-direction: column; gap: .45rem; color: var(--color-ink); font-size: .875rem; font-weight: 600; }
 .status-message { margin-top: 1rem; border-radius: var(--radius-md); padding: .8rem 1rem; font-size: .875rem; }
 .status-error { background: color-mix(in srgb, var(--color-danger) 12%, transparent); color: var(--color-danger); }
@@ -87,9 +92,9 @@ button, input, textarea, select { font: inherit; }
 @keyframes delete-label-arrive { 0% { opacity: 0; transform: translateY(3px); } 100% { opacity: 1; transform: translateY(0); } }
 @keyframes delete-confirmation-ttl { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 .legal-prose { color: var(--color-ink); line-height: 1.75; }
-.legal-prose h2 { font-family: Spectral, Georgia, serif; font-size: 1.6rem; font-weight: 600; line-height: 1.25; margin-top: 2.5rem; margin-bottom: .5rem; color: var(--color-ink); }
+.legal-prose h2 { font-family: var(--font-heading); font-size: 1.6rem; font-weight: 600; line-height: 1.25; margin-top: 2.5rem; margin-bottom: .5rem; color: var(--color-ink); }
 .legal-prose h2:first-child { margin-top: 0; }
-.legal-prose h3 { font-family: Spectral, Georgia, serif; font-size: 1.2rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: .4rem; color: var(--color-ink); }
+.legal-prose h3 { font-family: var(--font-heading); font-size: 1.2rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: .4rem; color: var(--color-ink); }
 .legal-prose p { margin-top: 1rem; }
 .legal-prose ul { margin-top: 1rem; padding-left: 1.35rem; list-style: disc; }
 .legal-prose li { margin-top: .4rem; }
