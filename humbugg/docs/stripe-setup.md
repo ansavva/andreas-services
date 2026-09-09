@@ -35,7 +35,7 @@ plan defaults (`HUMBUGG_PLUS_PRICE_CENTS=1200`, `HUMBUGG_WORK_PRICE_CENTS=9900`)
 | Product | Price | Billing | Resulting IDs |
 |---|---|---|---|
 | **Humbugg Plus** | $12.00 USD | One-time | `prod_...` (Plus product), `price_...` (Plus price) |
-| **Humbugg Work** | $99.00 USD / year | Recurring (annual) | `prod_...` (Work product), `price_...` (Work price) |
+| **Humbugg Work** (deferred — #638; not served while `HUMBUGG_WORK_ENABLED` is unset) | $99.00 USD / year | Recurring (annual) | `prod_...` (Work product), `price_...` (Work price) |
 
 > TODO (owner action): create these in **Test mode** and copy the four IDs. All
 > four are **test-mode** IDs (`prod_...` / `price_...`, from a test account).
@@ -104,8 +104,8 @@ stays deployable before the Stripe account exists.
 | Publishable key (`pk_test_...`) | `HUMBUGG_STRIPE_PUBLISHABLE_KEY` | `HUMBUGG_STRIPE_PUBLISHABLE_KEY` |
 | Plus product ID | `HUMBUGG_PLUS_PRODUCT_ID` | `HUMBUGG_PLUS_PRODUCT_ID` |
 | Plus price ID | `HUMBUGG_PLUS_PRICE_ID` | `HUMBUGG_PLUS_PRICE_ID` |
-| Work product ID | `HUMBUGG_WORK_PRODUCT_ID` | `HUMBUGG_WORK_PRODUCT_ID` |
-| Work price ID | `HUMBUGG_WORK_PRICE_ID` | `HUMBUGG_WORK_PRICE_ID` |
+| Work product ID (deferred — #638; not served while `HUMBUGG_WORK_ENABLED` is unset) | `HUMBUGG_WORK_PRODUCT_ID` | `HUMBUGG_WORK_PRODUCT_ID` |
+| Work price ID (deferred — #638; not served while `HUMBUGG_WORK_ENABLED` is unset) | `HUMBUGG_WORK_PRICE_ID` | `HUMBUGG_WORK_PRICE_ID` |
 
 The publishable key is also mirrored into `/humbugg/prod/stripe/publishable-key`
 (SSM `String`) by the billing module for discoverability.

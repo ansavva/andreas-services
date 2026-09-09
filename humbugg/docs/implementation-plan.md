@@ -14,7 +14,7 @@ capability as delivered when only its endpoint was, and the Plus milestone curre
 while six of its capabilities have no screen. Check the caller and the screen before you believe
 either.
 
-Last reconciled against the repo on 2026-09-02.
+Last reconciled against the repo on 2026-09-10.
 
 ---
 
@@ -27,7 +27,7 @@ Live at `https://www.humbugg.com` (product app at `app.humbugg.com`, API at `api
 | Foundation | 13 | 0 | Complete |
 | Free | 13 | 0 | **Complete.** #138 closed 2026-09-02 |
 | Plus | 10 | 0 | **Complete, and now reachable.** #574 closed the gap the nine left |
-| Work | 0 | 10 | Deliberately untouched |
+| Work | 0 | 10 | **Deferred** — epic #638 |
 | Launch | 3 | 10 | No longer gated — Free is complete and Plus is reachable |
 
 ### How it got out of order, and why that matters
@@ -253,10 +253,15 @@ a compromised API delete the pool to send an email.
 (#162), the checklist (#163), pricing pages (#158), and the three GDPR obligations (#190, #191,
 #192). None can start before Free is finished.
 
-**Work** — ten issues, correctly cold. It is two tiers away. Do not start it until a stranger can
-complete a Free exchange unaided.
+**Work** — ten issues, deferred under epic #638 (decision 2026-09-09). #587 hid it everywhere a
+customer could see it: `GET /api/plans` returns Free and Plus only unless
+`HUMBUGG_WORK_ENABLED=true`, the marketing and app copy dropped it, and the capacity-limit message
+no longer names it. The plan code, capability checks, and 10,000-participant ceiling stay in the
+code — stored groups still deserialize through them — so re-enabling is the env var plus the
+marketing/app copy this PR removed, not a rebuild. It is still two tiers away as a product; do not
+start the ten issues until a stranger can complete a Free exchange unaided.
 
-*One thing Work now inherits:* the readiness dashboard counts wishes with one DynamoDB Query per
+*One thing Work still inherits:* the readiness dashboard counts wishes with one DynamoDB Query per
 participant, because the wishes table has no group index — `member_id` is the partition key
 precisely so no wish can be addressed without naming its owner, and indexing wish content to build
 an organizer roll-up would trade that away. Ten at a time over 6 or 50 participants is nothing; over
