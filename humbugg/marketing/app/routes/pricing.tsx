@@ -23,7 +23,7 @@ export const meta: MetaFunction = () => [
   {
     name: 'description',
     content:
-      'Humbugg is free for an exchange of up to six. Plus is a one-time upgrade for a bigger one; Work is an annual plan for companies.',
+      'Humbugg is free for an exchange of up to six. Plus is a one-time upgrade for a bigger one.',
   },
   { name: 'robots', content: 'index, follow' },
   { tagName: 'link', rel: 'canonical', href: canonicalUrl('/pricing') },

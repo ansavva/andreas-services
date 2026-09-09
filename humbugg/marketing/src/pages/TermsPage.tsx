@@ -70,7 +70,7 @@ export default function TermsPage() {
 
       <h2>6. Plans and limits</h2>
       <p>
-        Humbugg offers a Free plan and paid Plus and Work plans. Each plan sets how many people can take part in an
+        Humbugg offers a Free plan and a paid Plus plan. Each plan sets how many people can take part in an
         exchange and how the exchange is billed. The current plans, prices, participant limits, and renewal terms are
         described in our <Link to="/billing">Billing Terms</Link>. Paid plans are billed in {SERVICE_CURRENCY}. We may
         change plan features or prices going forward, and we will apply any changes to future charges only, not

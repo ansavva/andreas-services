@@ -5,8 +5,11 @@ import { FALLBACK, LEGAL_PLAN_FACTS, loadPlans, toCards } from './plans';
 const CATALOGUE = [
   { code: 'free', name: 'Free', participant_limit: 6, marketed_as_unlimited: false, price_cents: 0, currency: 'USD', billing_cadence: 'free' as const },
   { code: 'plus', name: 'Plus', participant_limit: 50, marketed_as_unlimited: false, price_cents: 1_200, currency: 'USD', billing_cadence: 'one_time' as const },
-  { code: 'work', name: 'Work', participant_limit: 10_000, marketed_as_unlimited: true, price_cents: 9_900, currency: 'USD', billing_cadence: 'annual' as const },
 ];
+
+// Work is deferred (#638) and the API may still send it back for a stored group that predates the
+// flag — this must never surface on the marketing site regardless.
+const WORK = { code: 'work', name: 'Work', participant_limit: 10_000, marketed_as_unlimited: true, price_cents: 9_900, currency: 'USD', billing_cadence: 'annual' as const };
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -20,8 +23,8 @@ function respondWith(body: unknown, ok = true, status = 200) {
 
 describe('toCards', () => {
   it('orders the plans the way they are sold, whatever order they arrive in', () => {
-    const cards = toCards([CATALOGUE[2], CATALOGUE[0], CATALOGUE[1]]);
-    expect(cards.map((card) => card.code)).toEqual(['free', 'plus', 'work']);
+    const cards = toCards([CATALOGUE[1], CATALOGUE[0]]);
+    expect(cards.map((card) => card.code)).toEqual(['free', 'plus']);
   });
 
   it('drops the cents on a whole amount, because $12.00 reads like a subscription row', () => {
@@ -30,14 +33,20 @@ describe('toCards', () => {
   });
 
   it('says "no limit" where the number is a safety ceiling rather than a boundary', () => {
-    const work = toCards([CATALOGUE[2]])[0];
-    expect(work.limitLabel).toBe('No participant limit');
-    expect(work.limitLabel).not.toContain('10,000');
+    const unlimitedPlus = toCards([{ ...CATALOGUE[1], marketed_as_unlimited: true }])[0];
+    expect(unlimitedPlus.limitLabel).toBe('No participant limit');
+    expect(unlimitedPlus.limitLabel).not.toContain('50');
   });
 
   it('ignores a plan code the pages have no copy for', () => {
     const cards = toCards([...CATALOGUE, { ...CATALOGUE[0], code: 'enterprise' }]);
-    expect(cards.map((card) => card.code)).toEqual(['free', 'plus', 'work']);
+    expect(cards.map((card) => card.code)).toEqual(['free', 'plus']);
+  });
+
+  it('never renders Work, even if the API sends it back', () => {
+    const cards = toCards([...CATALOGUE, WORK]);
+    expect(cards.map((card) => card.code)).toEqual(['free', 'plus']);
+    expect(cards.some((card) => card.code === 'work')).toBe(false);
   });
 });
 
@@ -45,7 +54,13 @@ describe('loadPlans', () => {
   it('reads the catalogue when the API answers', async () => {
     respondWith(CATALOGUE);
     const cards = await loadPlans();
-    expect(cards.map((card) => card.price)).toEqual(['$0', '$12', '$99']);
+    expect(cards.map((card) => card.price)).toEqual(['$0', '$12']);
+  });
+
+  it('drops Work from a live API response rather than rendering it', async () => {
+    respondWith([...CATALOGUE, WORK]);
+    const cards = await loadPlans();
+    expect(cards.map((card) => card.code)).toEqual(['free', 'plus']);
   });
 
   // A pricing page that 500s because the API blinked is worse than one a deploy out of date.
