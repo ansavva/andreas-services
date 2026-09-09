@@ -386,9 +386,76 @@ PR that was verified locally the loose way.
   refusal is a 402 naming what the plan would buy.
 - Auditing is never gated on a plan.
 
+## Launch — where it stands (2026-09-10)
+
+Free and Plus are complete and reachable (see "Where it stands" above); Launch is the milestone
+that matters now. Work moved to epic #638 on 2026-09-09 and no longer appears below.
+
+Full detail — per-check evidence, findings, known limitations, go/no-go — is
+[`launch-checklist.md`](launch-checklist.md) (#163) and [`beta-plan.md`](beta-plan.md) (#162). This
+section is the milestone table and the order, not the reasoning; read those two for that.
+
+### The Launch milestone, 20 issues
+
+| Issue | Title | State |
+|---|---|---|
+| #158 | Public pricing and plan comparison pages | Done |
+| #159 | Choose the merchant identity and activate Stripe live mode | Decision — operator, last in the order below |
+| #160 | Production-readiness payment and email test matrix | Operator, blocked on #159's upstream chain |
+| #161 | Operating and incident runbooks | PR open — #648 |
+| #162 | Run a structured beta | This PR — doc written, stays open (operator rows: recruiting, questionnaire, review-after-beta decision) |
+| #163 | Launch checklist | This PR — doc written, stays open (operator rows throughout) |
+| #190 | GDPR: sub-processor list + DPA confirmation | PR open — #645 (Refs, not Closes: the DPA-acceptance-date checklist is operator) |
+| #191 | GDPR: breach detection & notification runbook | PR open — #648 |
+| #192 | GDPR: cookie/storage disclosure + DSAR intake | PR open — #645 |
+| #365 | Decide the app's sign-in mechanism | Done — Managed Login, `auth-managed-login.md` |
+| #372 | Seed a test user into the dev pool | Done |
+| #373 | An authenticated round trip against the dev pool | PR open — #647 |
+| #375 | Refuse to ship an app bundle that cannot sign anyone in | Done |
+| #585 | No production alerting | PR open — #643 (humbugg), #644 (mailer) |
+| #586 | No test tier crosses API Gateway | Open, no PR — decide whether to widen #373/#647's session spec or keep it separate (the issue's own note) |
+| #587 | Pricing page advertises Work, which cannot be bought | PR open — #646 |
+| #639 | Stripe webhook registered at the apex (403s) | PR open — #647 (doc + smoke detector); the Dashboard edit itself is operator |
+| #640 | Prod runs `HUMBUGG_STRIPE_MODE=disabled` | Operator (env var), doc half in PR #647 |
+| #641 | Google Workspace DKIM record not created | Operator (Google Admin) |
+| #642 | Prod smoke account for an authenticated post-deploy check | Decision recorded 2026-09-09; not yet built — no PR open |
+
+### The order remaining work has to land in
+
+1. **#639 → #640**, in that order. The webhook must point at `api.humbugg.com` before
+   `HUMBUGG_STRIPE_MODE` moves to `test` — otherwise the first test purchase in prod takes payment
+   and the webhook that would grant the entitlement never arrives, reproducing exactly the "paid row
+   without an entitlement" state this file has warned about since Plus shipped.
+2. **PR #647** merges #639's detector and #373's session spec — land it as part of the same step.
+3. **#585 (PR #643, #644) before #160.** #160's payment/email matrix is unverifiable-by-anyone-else
+   without an alarm to prove a failure would have paged. Confirm the SNS subscriptions (operator
+   step in both PR bodies) before treating #585 as closed.
+4. **#160 after #639/#640 are live in prod**, and after #585. It exercises Plus purchase, webhook
+   delivery, refund and the email matrix against real test-mode Stripe and real SES — nothing to
+   exercise until the mode switch lands.
+5. **#159 last.** Nothing upstream can be honestly tested against real money before a merchant
+   identity exists; #160's test-mode evidence is what the go/no-go in #159 is decided against.
+6. **#645, #646, #648** carry no code dependency on the chain above and can land whenever ready —
+   they gate legal disclosure and the runbooks, not the payment path.
+
+### Merging this stack: the dropped-deploy trap applies directly
+
+Six PRs are open against `main` right now (#643–#648). "Traps that have already cost time" above
+describes exactly this shape: `humbugg-prod`'s concurrency group is `cancel-in-progress: false`,
+which queues rather than cancels, but GitHub keeps only **one** pending run per group — a third
+merge in quick succession cancels the second's queued run, and `deploy-infra` only runs when the
+commit touched `humbugg/infra/**` while `update-lambda` proceeds on anything that isn't a `failure`
+(`skipped` included). Two of the six (#643, #644) touch `humbugg/infra/**` directly; the rest touch
+backend, marketing, app or workflow files that the same `update-lambda` / `deploy-frontend-assets` /
+`deploy-app` jobs read on every push regardless — so merging several in a burst can still drop one of
+those deploys even without an infra change in it. Let each deploy finish before merging the next, or
+dispatch `humbugg-prod.yaml` with `run_infra: true` afterward and check the tables, alarms and
+Lambdas actually exist.
+
 ## Related documents
 
 - [`../CLAUDE.md`](../CLAUDE.md) — service context, local development, deploys
 - [`threat-model.md`](threat-model.md) — invitations, assignments, payments, Work tenancy
 - [`gdpr-compliance.md`](gdpr-compliance.md) and [`data-retention-deletion.md`](data-retention-deletion.md)
 - [`analytics.md`](analytics.md), [`email-operations.md`](email-operations.md), [`stripe-setup.md`](stripe-setup.md), [`support-email.md`](support-email.md)
+- [`launch-checklist.md`](launch-checklist.md) (#163) and [`beta-plan.md`](beta-plan.md) (#162) — the Launch detail behind the section above

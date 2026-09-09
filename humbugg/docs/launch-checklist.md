@@ -77,10 +77,18 @@ Status values: **done** · **pending PR #N** · **pending operator** · **blocke
 |---|---|---|---|
 | Authorization invariants (owner/co-organizer/member boundaries) | `humbugg/docs/threat-model.md` §2 | repo | done |
 | Invite-token leakage, enumeration, spam invitation, assignment disclosure, webhook forgery, entitlement tampering scenarios reviewed | `threat-model.md` §3 | repo | done (design); §3.7/§3.8 real-money proof waits on #160 |
-| Edge rate limiting beyond the API Gateway stage throttle | none — RR2 in `threat-model.md` §7: "No edge WAF; the aggregate API Gateway throttle is the only rate control on unauthenticated floods" | repo | blocked on #183 |
+| Edge rate limiting beyond the API Gateway stage throttle | none — RR2 in `threat-model.md` §7: "No edge WAF; the aggregate API Gateway throttle is the only rate control on unauthenticated floods". No `aws_wafv2_*` resource anywhere in the repo | repo | **finding — see below** |
 | Outbound-request SSRF boundary (og:image fetch, #129) | `threat-model.md` §1 "Outbound requests (#129)", `WishUrlSafety` | repo | done |
 | Audit trail for sensitive actions | `humbugg-prod-audit-events`, append-only, `deletion_protection_enabled = true` (`humbugg/infra/modules/storage/main.tf:173-198`) | repo | done |
 | Breach-response procedure | PR #648, `docs/breach-response.md` (GDPR Art. 33/34: detection, severity triage, 72-hour clock, notification templates) | repo | pending PR #648 |
+
+**Finding.** #183 ("Add AWS WAF per-IP rate limiting at the edge") is closed with `stateReason:
+COMPLETED` (closed 2026-07-18). Nothing was built: `grep -rn "wafv2" --include="*.tf" .` across the
+whole repo returns nothing, and `git log --all --grep=183` names no commit. `threat-model.md` RR2 and
+§7 still describe the WAF as future work, unchanged. This is the same pattern
+`docs/implementation-plan.md` names repeatedly — a closed issue is not evidence the thing exists.
+Recorded here as a launch finding; not fixed by this PR. Whoever picks this up should either reopen
+#183 or open a fresh issue — the closed one will keep reading as done otherwise.
 
 ## 7. Backups
 
@@ -155,14 +163,15 @@ pre-launch validation step; its "review after beta" section feeds the go/no-go b
 - **Work is deferred.** No org/tenant model, no Work checkout, no Work screen — epic #638.
 - **No CloudWatch dashboards.** Logs Insights queries and alarms (once #643/#644 land) are the only
   operational visibility.
-- **DMARC is `p=none`.** Nothing enforces SPF/DKIM alignment; #183's WAF work and any DMARC
-  tightening both wait on deliverability monitoring (`humbugg/infra/README.md`).
+- **DMARC is `p=none`.** Nothing enforces SPF/DKIM alignment; tightening it waits on deliverability
+  monitoring (`humbugg/infra/README.md`).
 - **Google Workspace DKIM for `support@humbugg.com` is not configured** — replies from support carry
   no DKIM signature (#641). SES outbound (the product's own mail) is unaffected.
 - **6 of 13 DynamoDB tables have no point-in-time recovery** — `profiles`, `groups`, `groupmembers`,
   `wishes`, `draws` (`email-messages` is TTL'd by design). See the Backups finding above.
-- **No edge WAF.** The API Gateway stage throttle is the only defense against unauthenticated floods
-  (`threat-model.md` RR2, #183).
+- **No edge WAF, despite #183 reading closed-completed.** The API Gateway stage throttle is the only
+  defense against unauthenticated floods (`threat-model.md` RR2). See the Security controls finding
+  above — #183 needs reopening or replacing before this line can honestly change.
 - **No test tier crosses API Gateway before merge.** Every tier below prod smoke stops at a fake, a
   stub, or the dev backend directly — a lost gateway route (as #582 was) is caught only after deploy
   (#586).
