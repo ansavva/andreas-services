@@ -78,6 +78,16 @@ export interface Attachment {
 export const CREATE_PROJECT_STORAGE_KEY = "studio.createBar.project";
 
 /**
+ * Where "I put the sheet away" survives a reload.
+ *
+ * **Remembered, because the point of putting it away is to browse without
+ * it.** A dismissal that came back on the next navigation would be a control
+ * that does nothing you can use — and the sheet is drawn on every screen, so
+ * "every screen" is exactly the scope of the decision.
+ */
+export const CREATE_HIDDEN_STORAGE_KEY = "studio.createBar.hidden";
+
+/**
  * A role that holds ONE image. `start` and `end` are scalar fields on every
  * model that has them, and `input` — the image an edit starts from — is one
  * picture by meaning even where it lands on a list field. Attaching to any of
@@ -118,6 +128,17 @@ interface CreateBarState {
    * Reset every time a different run opens. Read as `shown`.
    */
   summoned: boolean;
+  /**
+   * Put away by hand, on every screen, until it is called back.
+   *
+   * **Separate from `summoned`, which is about one screen.** The opened run
+   * hides the sheet because a prompt about some other run would cover the
+   * filmstrip; this is a person saying they want the feed to themselves. Both
+   * have to be false for the sheet to be drawn, and anything that fills the
+   * sheet clears both — attaching a picture to a sheet nobody can see is the
+   * one outcome this must not have.
+   */
+  hidden: boolean;
 }
 
 interface CreateBarStateValue extends CreateBarState {
@@ -136,16 +157,33 @@ interface CreateBarStateValue extends CreateBarState {
   swapFrames(): void;
   /** Whether the sheet is drawn at all — false on the opened run until something calls it up. */
   shown: boolean;
-  /** Whether the sheet can be put away — only where it is not always drawn. */
-  dismissible: boolean;
-  /** Put the sheet away, on the screen where it can be. */
+  /** Put the sheet away. */
   dismiss(): void;
+  /** Bring it back, with the caret in the prompt. */
+  summon(): void;
   /** After a send: the prompt goes, the images go unless kept. */
   sent(): void;
 }
 
 const ApiContext = createContext<CreateBarApi | null>(null);
 const StateContext = createContext<CreateBarStateValue | null>(null);
+
+function readHidden(): boolean {
+  try {
+    return window.localStorage.getItem(CREATE_HIDDEN_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeHidden(hidden: boolean): void {
+  try {
+    if (hidden) window.localStorage.setItem(CREATE_HIDDEN_STORAGE_KEY, "1");
+    else window.localStorage.removeItem(CREATE_HIDDEN_STORAGE_KEY);
+  } catch {
+    /* private-mode Safari throws on the accessor; losing the memory is the lesser loss */
+  }
+}
 
 function readProject(): string | null {
   try {
@@ -174,12 +212,14 @@ const EMPTY: CreateBarState = {
   role: null,
   focus: 0,
   summoned: false,
+  hidden: false,
 };
 
 export function CreateBarProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<CreateBarState>(() => ({
     ...EMPTY,
     project: readProject(),
+    hidden: readHidden(),
   }));
 
   // The route's project, wherever under it the page is — a run opened at
@@ -218,6 +258,7 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
         role: null,
         focus: current.focus + 1,
         summoned: true,
+        hidden: false,
       };
     });
   }, []);
@@ -238,6 +279,7 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
         kind,
         attachments: { ...current.attachments, [kind]: next },
         summoned: true,
+        hidden: false,
       };
     });
   }, []);
@@ -322,19 +364,37 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const dismiss = useCallback(
-    () => setState((current) => ({ ...current, summoned: false, role: null })),
-    [],
-  );
+  const dismiss = useCallback(() => {
+    writeHidden(true);
+    setState((current) => ({ ...current, summoned: false, hidden: true, role: null }));
+  }, []);
+
+  /**
+   * Bring it back, and put the caret in the prompt.
+   *
+   * `focus` is the bump the bar watches — the same one `loadRun` uses — so
+   * calling the sheet up lands you in the box you called it up to type in.
+   */
+  const summon = useCallback(() => {
+    writeHidden(false);
+    setState((current) => ({
+      ...current,
+      hidden: false,
+      summoned: true,
+      focus: current.focus + 1,
+    }));
+  }, []);
 
   const value = useMemo<CreateBarStateValue>(
     () => ({
       ...state,
       target: routeProject ?? state.project,
       onProject: routeProject !== null,
-      shown: openedRun === null || state.summoned,
-      dismissible: openedRun !== null,
+      // Both have to be clear: `hidden` is a person's decision about every
+      // screen, `summoned` is this screen's own rule about the opened run.
+      shown: !state.hidden && (openedRun === null || state.summoned),
       dismiss,
+      summon,
       setPrompt,
       setModel,
       setParams,
@@ -349,6 +409,7 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
       routeProject,
       openedRun,
       dismiss,
+      summon,
       setPrompt,
       setModel,
       setParams,

@@ -457,7 +457,9 @@ export function CreateBar() {
       className="flex flex-col gap-2"
       data-create-bar=""
       onKeyDown={(event) => {
-        if (event.key === "Escape" && bar.dismissible && !event.defaultPrevented) bar.dismiss();
+        // Escape inside the sheet puts it away — inside, so it never competes
+        // with the Escape a viewer, a drawer or a menu binds for itself.
+        if (event.key === "Escape" && !event.defaultPrevented) bar.dismiss();
       }}
     >
       {held && (
@@ -550,13 +552,14 @@ export function CreateBar() {
               </Popover.Content>
             </Popover.Root>
 
-            {/* Where the sheet is not always drawn — the opened run — the
-                way to put it away. Escape does the same. */}
-            {bar.dismissible && (
-              <IconButton size="sm" label="Put the sheet away" onClick={bar.dismiss}>
-                <CloseIcon />
-              </IconButton>
-            )}
+            {/* **On every screen now, not just the opened run.** The sheet is
+                drawn over whatever you are looking at, and "I want the feed to
+                myself" was answerable on exactly one screen. What it leaves
+                behind is the round button in `AppLayout`'s `SheetSlot`, and
+                the decision is remembered. Escape does the same. */}
+            <IconButton size="sm" label="Put the sheet away" onClick={bar.dismiss}>
+              <CloseIcon />
+            </IconButton>
 
 
           </div>
