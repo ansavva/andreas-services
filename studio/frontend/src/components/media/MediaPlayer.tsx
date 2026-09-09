@@ -50,6 +50,12 @@ const FITS = { cover: "object-cover", contain: "object-contain" } as const;
  * strings are for the fullscreen element, which has no layout above it.
  */
 const FULLSCREEN_TOP = "pt-[max(0.5rem,env(safe-area-inset-top))]";
+
+/**
+ * The pill behind one glyph over media — what replaced the gradient across the
+ * top of every picture. Same treatment as a tile's `⋮` and its heart.
+ */
+const CHROME_SCRIM = "bg-overlay-scrim/60";
 const FULLSCREEN_BOTTOM =
   "pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]";
 
@@ -447,11 +453,24 @@ export function MediaPlayer({
         </Text>
       )}
 
+      {/*
+        **No scrim across the picture — each control carries its own.**
+
+        This row used to sit on a `from-overlay-scrim/80` gradient forty pixels
+        deep, drawn over every still all the time (`showChrome` is
+        unconditional for an image), so the top of every picture in the app was
+        under a dark band. It was there to keep a white glyph legible on a pale
+        frame; a pill behind each glyph does that over the two dozen pixels the
+        glyph occupies instead of over the whole width of the picture. The tile
+        menus and the favorite heart already do it that way.
+
+        A clip keeps its bottom gradient: the transport is a row of text and a
+        scrub bar, not two glyphs, and it is only drawn while the clip plays.
+      */}
       {showChrome && !failed && (
         <div
           className={`pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start
-                      justify-between gap-2 bg-gradient-to-b from-overlay-scrim/80 to-transparent
-                      p-2 pb-10 ${isFullscreen ? FULLSCREEN_TOP : ""}`}
+                      justify-between gap-2 p-2 ${isFullscreen ? FULLSCREEN_TOP : ""}`}
         >
           <div className="pointer-events-auto flex min-w-0 items-center gap-1">{actions}</div>
 
@@ -467,6 +486,7 @@ export function MediaPlayer({
                 size="sm"
                 onClick={playback.toggleMuted}
                 intent="overlay"
+                className={CHROME_SCRIM}
               >
                 {playback.muted ? <SoundOffIcon /> : <SoundOnIcon />}
               </IconButton>
@@ -484,6 +504,7 @@ export function MediaPlayer({
               size="sm"
               onClick={() => void toggle()}
               intent="overlay"
+              className={CHROME_SCRIM}
             >
               {isFullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}
             </IconButton>
@@ -494,6 +515,7 @@ export function MediaPlayer({
                 size="sm"
                 onClick={close}
                 intent="overlay"
+                className={CHROME_SCRIM}
               >
                 <CloseIcon />
               </IconButton>
