@@ -78,6 +78,12 @@ export const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: alpha(brand.line, 80),
     backgroundColor: brand.bg,
+    // The account menu hangs out of this band, and react-native-web gives every
+    // View `z-index: 0` — a stacking context each, so the menu's own z-index is
+    // sealed inside the header and the scrolling body, a later sibling, painted
+    // over it. Raising the band itself is what puts the menu above the page.
+    zIndex: 1,
+    elevation: 1,
   },
   headerInner: {
     width: '100%',

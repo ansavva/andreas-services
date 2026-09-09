@@ -66,9 +66,14 @@ export function AvatarMenu() {
           <Text numberOfLines={1} style={local.triggerLabel}>
             {displayName}
           </Text>
-          <Text aria-hidden style={local.chevron}>
-            ⌄
-          </Text>
+          {/*
+            A drawn chevron rather than a glyph. `⌄` is a font's own outline —
+            hairline-thin, and vertically centred on nothing in particular, so
+            it sat low against the name and changed shape per platform font.
+            Two borders on a rotated square are the same mark at any size, in
+            the label's own colour.
+          */}
+          <View aria-hidden style={local.chevron} />
         </Pressable>
         <Dropdown.Content
           accessibilityLabel="Account"
@@ -109,8 +114,20 @@ const local = StyleSheet.create({
     paddingRight: 10,
   },
   triggerLabel: { maxWidth: 160, color: brand.ink, fontFamily: fonts.bodyMedium, fontSize: 14 },
-  chevron: { color: brand.muted, fontSize: 14, lineHeight: 14 },
-  // `left: undefined` unsets the package's `left: 0` when the two style objects
-  // are flattened, leaving `right: 0` to anchor the menu.
-  anchorRight: { left: undefined, right: 0 },
+  chevron: {
+    width: 7,
+    height: 7,
+    // The rotated square's corner points down; lifting it by half its own
+    // diagonal overhang puts that point on the label's optical centre.
+    marginTop: -3,
+    borderRightWidth: 1.5,
+    borderBottomWidth: 1.5,
+    borderColor: brand.muted,
+    transform: [{ rotate: '45deg' }],
+  },
+  // The package anchors with `left: 0`; `left: 'auto'` is what actually unsets
+  // it. `left: undefined` does not — a flattened `undefined` leaves the earlier
+  // value standing, so the menu stayed pinned to the trigger's left edge and,
+  // this far right in the header, ran off the side of the window.
+  anchorRight: { left: 'auto', right: 0 },
 });
