@@ -115,7 +115,14 @@ function SheetSlot() {
              because it is sitting on the window's edge, and 24px tall — it is a
              handle, and the run it belongs to is behind it. The whole strip is
              the press, so the target is the width of the sheet however short it
-             is drawn. */
+             is drawn.
+
+             **Taller where there is a finger, not where there is a window.**
+             24px is a comfortable target for a pointer and a hard one for a
+             thumb, and it is the input device that decides that — a narrow
+             window on a laptop still has a mouse. `pointer-coarse` is the same
+             test the design system's own `sm` controls use to reach their 44px
+             floor. */
           // eslint-disable-next-line studio/no-hand-rolled-button -- the sheet's own frame collapsed, not a control in it.
           <button
             type="button"
@@ -123,6 +130,7 @@ function SheetSlot() {
             title="Open the create panel (c)"
             onClick={expand}
             className="flex h-6 w-full items-center justify-center rounded-t-lg bg-sheet
+                       pointer-coarse:h-9
                        ring-1 ring-line backdrop-blur-xl transition-colors hover:bg-fill
                        focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
           >

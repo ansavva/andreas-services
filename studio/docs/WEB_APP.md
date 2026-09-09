@@ -447,7 +447,9 @@ page and a plain textarea over its literal bytes, and never offers fields.
   or a copy on the browse page.
 - **The create sheet collapses to a handle, and the handle pulls it back up.**
   The `⌄` on the sheet (and Escape inside it) drops it on every screen;
-  `SheetSlot` then draws the sheet's own frame as a 24px strip. **Both states
+  `SheetSlot` then draws the sheet's own frame as a 24px strip — 36px where the
+  pointer is coarse, because that is a thumb rather than a mouse and the input
+  device decides it, not the window's width. **Both states
   sit on the bottom edge**, rounded at the top only: the sheet used to float as
   a card with a gap under it, which put a stripe of feed below something
   anchored to the bottom of the window — and once the thing that opens it is a
