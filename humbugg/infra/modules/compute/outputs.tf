@@ -47,3 +47,8 @@ output "api_stage_name" {
   description = "Backend HTTP API stage name, for the custom-domain API mapping"
   value       = aws_apigatewayv2_stage.api.name
 }
+
+output "marketing_api_id" {
+  description = "Marketing SSR HTTP API ID, for the 5xx alarm"
+  value       = aws_apigatewayv2_api.marketing.id
+}
