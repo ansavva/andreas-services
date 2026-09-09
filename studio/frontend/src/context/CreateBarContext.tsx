@@ -78,14 +78,14 @@ export interface Attachment {
 export const CREATE_PROJECT_STORAGE_KEY = "studio.createBar.project";
 
 /**
- * Where "I put the sheet away" survives a reload.
+ * Where "I collapsed the sheet" survives a reload.
  *
- * **Remembered, because the point of putting it away is to browse without
- * it.** A dismissal that came back on the next navigation would be a control
- * that does nothing you can use — and the sheet is drawn on every screen, so
- * "every screen" is exactly the scope of the decision.
+ * **Remembered, because the point of collapsing it is to browse without it.**
+ * A collapse that undid itself on the next navigation would be a control that
+ * does nothing you can use — and the sheet is drawn on every screen, so "every
+ * screen" is exactly the scope of the decision.
  */
-export const CREATE_HIDDEN_STORAGE_KEY = "studio.createBar.hidden";
+export const CREATE_COLLAPSED_STORAGE_KEY = "studio.createBar.collapsed";
 
 /**
  * A role that holds ONE image. `start` and `end` are scalar fields on every
@@ -129,16 +129,16 @@ interface CreateBarState {
    */
   summoned: boolean;
   /**
-   * Put away by hand, on every screen, until it is called back.
+   * Collapsed by hand, on every screen, until it is pulled back up.
    *
    * **Separate from `summoned`, which is about one screen.** The opened run
-   * hides the sheet because a prompt about some other run would cover the
+   * keeps the sheet away because a prompt about some other run would cover the
    * filmstrip; this is a person saying they want the feed to themselves. Both
    * have to be false for the sheet to be drawn, and anything that fills the
-   * sheet clears both — attaching a picture to a sheet nobody can see is the
-   * one outcome this must not have.
+   * sheet clears this one — attaching a picture to a sheet nobody can see is
+   * the one outcome this must not have.
    */
-  hidden: boolean;
+  collapsed: boolean;
 }
 
 interface CreateBarStateValue extends CreateBarState {
@@ -157,10 +157,10 @@ interface CreateBarStateValue extends CreateBarState {
   swapFrames(): void;
   /** Whether the sheet is drawn at all — false on the opened run until something calls it up. */
   shown: boolean;
-  /** Put the sheet away. */
-  dismiss(): void;
-  /** Bring it back, with the caret in the prompt. */
-  summon(): void;
+  /** Collapse the sheet to its handle. */
+  collapse(): void;
+  /** Pull it back up, with the caret in the prompt. */
+  expand(): void;
   /** After a send: the prompt goes, the images go unless kept. */
   sent(): void;
 }
@@ -168,18 +168,18 @@ interface CreateBarStateValue extends CreateBarState {
 const ApiContext = createContext<CreateBarApi | null>(null);
 const StateContext = createContext<CreateBarStateValue | null>(null);
 
-function readHidden(): boolean {
+function readCollapsed(): boolean {
   try {
-    return window.localStorage.getItem(CREATE_HIDDEN_STORAGE_KEY) === "1";
+    return window.localStorage.getItem(CREATE_COLLAPSED_STORAGE_KEY) === "1";
   } catch {
     return false;
   }
 }
 
-function writeHidden(hidden: boolean): void {
+function writeCollapsed(collapsed: boolean): void {
   try {
-    if (hidden) window.localStorage.setItem(CREATE_HIDDEN_STORAGE_KEY, "1");
-    else window.localStorage.removeItem(CREATE_HIDDEN_STORAGE_KEY);
+    if (collapsed) window.localStorage.setItem(CREATE_COLLAPSED_STORAGE_KEY, "1");
+    else window.localStorage.removeItem(CREATE_COLLAPSED_STORAGE_KEY);
   } catch {
     /* private-mode Safari throws on the accessor; losing the memory is the lesser loss */
   }
@@ -212,14 +212,14 @@ const EMPTY: CreateBarState = {
   role: null,
   focus: 0,
   summoned: false,
-  hidden: false,
+  collapsed: false,
 };
 
 export function CreateBarProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<CreateBarState>(() => ({
     ...EMPTY,
     project: readProject(),
-    hidden: readHidden(),
+    collapsed: readCollapsed(),
   }));
 
   // The route's project, wherever under it the page is — a run opened at
@@ -258,7 +258,7 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
         role: null,
         focus: current.focus + 1,
         summoned: true,
-        hidden: false,
+        collapsed: false,
       };
     });
   }, []);
@@ -279,7 +279,7 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
         kind,
         attachments: { ...current.attachments, [kind]: next },
         summoned: true,
-        hidden: false,
+        collapsed: false,
       };
     });
   }, []);
@@ -364,22 +364,22 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const dismiss = useCallback(() => {
-    writeHidden(true);
-    setState((current) => ({ ...current, summoned: false, hidden: true, role: null }));
+  const collapse = useCallback(() => {
+    writeCollapsed(true);
+    setState((current) => ({ ...current, summoned: false, collapsed: true, role: null }));
   }, []);
 
   /**
-   * Bring it back, and put the caret in the prompt.
+   * Pull it back up, and put the caret in the prompt.
    *
    * `focus` is the bump the bar watches — the same one `loadRun` uses — so
-   * calling the sheet up lands you in the box you called it up to type in.
+   * opening the sheet lands you in the box you opened it to type in.
    */
-  const summon = useCallback(() => {
-    writeHidden(false);
+  const expand = useCallback(() => {
+    writeCollapsed(false);
     setState((current) => ({
       ...current,
-      hidden: false,
+      collapsed: false,
       summoned: true,
       focus: current.focus + 1,
     }));
@@ -390,11 +390,11 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
       ...state,
       target: routeProject ?? state.project,
       onProject: routeProject !== null,
-      // Both have to be clear: `hidden` is a person's decision about every
+      // Both have to be clear: `collapsed` is a person's decision about every
       // screen, `summoned` is this screen's own rule about the opened run.
-      shown: !state.hidden && (openedRun === null || state.summoned),
-      dismiss,
-      summon,
+      shown: !state.collapsed && (openedRun === null || state.summoned),
+      collapse,
+      expand,
       setPrompt,
       setModel,
       setParams,
@@ -408,8 +408,8 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
       state,
       routeProject,
       openedRun,
-      dismiss,
-      summon,
+      collapse,
+      expand,
       setPrompt,
       setModel,
       setParams,

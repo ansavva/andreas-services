@@ -445,16 +445,18 @@ page and a plain textarea over its literal bytes, and never offers fields.
   it is not a question about the action: it is the file browser's own folder
   walk, opened to answer "which folder", the same way it answers it for a move
   or a copy on the browse page.
-- **The create sheet can be put away, and leaves a round button where it
-  stood.** The `✕` on the sheet (and Escape inside it) hides it on every
-  screen; `SheetSlot` then draws the button, which `c` also reaches, and
-  pressing it brings the sheet back with the caret in the prompt. The decision
-  is remembered (`CREATE_HIDDEN_STORAGE_KEY`) because the point of putting it
-  away is to browse without it. **Anything that fills the bar brings it back**
-  — `attach` and `loadRun` clear `hidden` — since a picture attached to a
-  sheet nobody can see is the one outcome this must not have. `hidden` is a
-  person's decision about every screen; `summoned` stays what it was, the
-  opened run's own rule.
+- **The create sheet collapses to a handle, and the handle pulls it back up.**
+  The `⌄` on the sheet (and Escape inside it) drops it on every screen;
+  `SheetSlot` then draws the sheet's own frame one row tall, in the same place
+  and the same width, with a `⌃` on it — so what comes back is plainly what
+  went away, and it comes back where it went. The whole strip is the press,
+  which is what makes it a thumb-sized target on a phone; `c` reaches it from
+  the keyboard. The decision is remembered
+  (`CREATE_COLLAPSED_STORAGE_KEY`) because the point of collapsing it is to
+  browse without it. **Anything that fills the bar opens it** — `attach` and
+  `loadRun` clear `collapsed` — since a picture attached to a sheet nobody can
+  see is the one outcome this must not have. `collapsed` is a person's decision
+  about every screen; `summoned` stays what it was, the opened run's own rule.
 - **The create sheet floats at the foot of every screen, always fully drawn,
   and Enter sends.** `components/create/CreateBar.tsx`, mounted by
   `AppLayout`; its state is `CreateBarContext`, so a feed row or a tile can

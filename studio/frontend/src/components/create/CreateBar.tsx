@@ -38,8 +38,8 @@ import { useResource } from "../../hooks/useResource";
 import type { CreatedRun, RunSummary } from "../../types";
 import { formatDate } from "../../utils/format";
 import {
-  CloseIcon,
   ArrowUpIcon,
+  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   ImageIcon,
@@ -457,9 +457,9 @@ export function CreateBar() {
       className="flex flex-col gap-2"
       data-create-bar=""
       onKeyDown={(event) => {
-        // Escape inside the sheet puts it away — inside, so it never competes
+        // Escape inside the sheet collapses it — inside, so it never competes
         // with the Escape a viewer, a drawer or a menu binds for itself.
-        if (event.key === "Escape" && !event.defaultPrevented) bar.dismiss();
+        if (event.key === "Escape" && !event.defaultPrevented) bar.collapse();
       }}
     >
       {held && (
@@ -554,11 +554,11 @@ export function CreateBar() {
 
             {/* **On every screen now, not just the opened run.** The sheet is
                 drawn over whatever you are looking at, and "I want the feed to
-                myself" was answerable on exactly one screen. What it leaves
-                behind is the round button in `AppLayout`'s `SheetSlot`, and
-                the decision is remembered. Escape does the same. */}
-            <IconButton size="sm" label="Put the sheet away" onClick={bar.dismiss}>
-              <CloseIcon />
+                myself" was answerable on exactly one screen. The chevron points
+                the way it moves: down to the handle it leaves at the foot of
+                the column, which pulls it back up. Escape does the same. */}
+            <IconButton size="sm" label="Collapse the create panel" onClick={bar.collapse}>
+              <ChevronDownIcon />
             </IconButton>
 
 

@@ -3,7 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it } from "vitest";
 
 import {
-  CREATE_HIDDEN_STORAGE_KEY,
+  CREATE_COLLAPSED_STORAGE_KEY,
   CREATE_PROJECT_STORAGE_KEY,
   CreateBarProvider,
   useCreateBar,
@@ -73,7 +73,7 @@ function mount(path = "/") {
 afterEach(cleanup);
 beforeEach(() => {
   window.localStorage.removeItem(CREATE_PROJECT_STORAGE_KEY);
-  window.localStorage.removeItem(CREATE_HIDDEN_STORAGE_KEY);
+  window.localStorage.removeItem(CREATE_COLLAPSED_STORAGE_KEY);
 });
 
 it("loadRun fills the bar whole and asks for focus", () => {
@@ -145,32 +145,32 @@ it("the route's project is the target and is remembered; off a project the last 
 });
 
 /**
- * Putting the sheet away — a decision about every screen, and a remembered one.
+ * Collapsing the sheet — a decision about every screen, and a remembered one.
  *
  * It used to be answerable on the opened run alone, where the sheet is not
  * drawn until something calls it up. The sheet covers whatever you are looking
  * at everywhere else too, and "I want the feed to myself" is the same sentence
  * there.
  */
-it("dismiss hides the sheet, remembers it, and summon brings it back focused", () => {
+it("collapse drops the sheet, remembers it, and expand brings it back focused", () => {
   mount();
   expect(state().shown).toBe(true);
 
-  act(() => own.dismiss());
+  act(() => own.collapse());
   expect(state().shown).toBe(false);
-  // Remembered, because the point of putting it away is to browse without it.
-  expect(window.localStorage.getItem(CREATE_HIDDEN_STORAGE_KEY)).toBe("1");
+  // Remembered, because the point of collapsing it is to browse without it.
+  expect(window.localStorage.getItem(CREATE_COLLAPSED_STORAGE_KEY)).toBe("1");
 
   const focus = state().focus;
-  act(() => own.summon());
+  act(() => own.expand());
   expect(state().shown).toBe(true);
-  // Called up to type in, so the caret goes with it.
+  // Opened to type in, so the caret goes with it.
   expect(state().focus).toBe(focus + 1);
-  expect(window.localStorage.getItem(CREATE_HIDDEN_STORAGE_KEY)).toBeNull();
+  expect(window.localStorage.getItem(CREATE_COLLAPSED_STORAGE_KEY)).toBeNull();
 });
 
-it("a hidden sheet comes back on a reload only if it was not put away", () => {
-  window.localStorage.setItem(CREATE_HIDDEN_STORAGE_KEY, "1");
+it("a collapsed sheet stays collapsed across a reload", () => {
+  window.localStorage.setItem(CREATE_COLLAPSED_STORAGE_KEY, "1");
   mount();
   expect(state().shown).toBe(false);
 });
@@ -180,16 +180,16 @@ it("a hidden sheet comes back on a reload only if it was not put away", () => {
  * can see. Every route into the bar — a tile's `Use as reference`, a row's
  * Edit, Rerun — brings it back with what it filled.
  */
-it("anything that fills the bar brings it back", () => {
+it("anything that fills the bar opens it", () => {
   mount();
-  act(() => own.dismiss());
+  act(() => own.collapse());
   expect(state().shown).toBe(false);
 
   act(() => api.attach(FACE, "reference"));
   expect(state().shown).toBe(true);
   expect(state().attachments.image).toEqual([{ ref: FACE, role: "reference" }]);
 
-  act(() => own.dismiss());
+  act(() => own.collapse());
   act(() => api.loadRun({ project: "proj-1", kind: "image" }));
   expect(state().shown).toBe(true);
 });

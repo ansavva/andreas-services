@@ -421,6 +421,13 @@ export const StartFrameIcon = ({ className }: Props) => (
   </Glyph>
 );
 
+/** The chevron the collapsed create sheet wears: pull me back up. */
+export const ChevronUpIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="m6 15 6-6 6 6" />
+  </Glyph>
+);
+
 export const ChevronLeftIcon = ({ className }: Props) => (
   <Glyph className={className}>
     <path d="m14.5 6-6 6 6 6" />

@@ -1,12 +1,10 @@
 import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 
-import { Button } from "@ansavva/design-system";
-
 import { CreateBarProvider, useCreateBarState } from "../../context/CreateBarContext";
 import { SidebarProvider } from "../../context/SidebarContext";
 import { CreateBar } from "../create/CreateBar";
-import { PlusIcon } from "../common/icons";
+import { ChevronUpIcon } from "../common/icons";
 import { AppSidebar } from "./AppSidebar";
 import { TopBar } from "./TopBar";
 
@@ -58,30 +56,29 @@ export function AppLayout() {
 }
 
 /**
- * The create sheet's strip at the column's foot — or the button that brings it
- * back.
+ * The create sheet at the column's foot — or the handle it collapses to.
  *
- * Nothing but the button on the opened run until something calls the sheet up
+ * Nothing but the handle on the opened run until something calls the sheet up
  * (Edit, Rerun, Use as reference, a tile): that screen is a fixed-height
  * viewer, so a sheet drawn over it covers the filmstrip and the transport with
  * nothing able to scroll them back into view. `shown` is the context's word on
- * that and on the sheet a person has put away by hand.
+ * that and on a sheet somebody collapsed.
  *
- * **Put away, it leaves a round button where it stood.** A dismissal with
- * nothing left behind is a control that hides the app's main action with no way
- * back, and the sheet is where every run is made. The button sits in the same
- * corner the sheet's own Send does, so the place does not move; `c` reaches it
- * from the keyboard.
+ * **Collapsed, it is a handle rather than nothing.** It behaves like the
+ * drawer it looks like: the sheet drops to a strip in the same place, the same
+ * width, with a chevron pointing back up — so the thing that comes back is
+ * plainly the thing that went away, and it comes back where it went. `c`
+ * reaches it from the keyboard.
  *
  * `pointer-events-none` on the strip, back on for what is in it: the strip
- * spans the column so the panel can centre in it, and a click in the strip's
+ * spans the column so the sheet can centre in it, and a click in the strip's
  * margins must reach the feed under it.
  */
 function SheetSlot() {
-  const { shown, summon } = useCreateBarState();
+  const { shown, expand } = useCreateBarState();
 
   /**
-   * `c` calls the sheet up — and only when nothing is being typed into.
+   * `c` opens the sheet — and only when nothing is being typed into.
    *
    * The guard is `useKeyboardNav`'s, for the same reason: a bare letter is a
    * letter to a text box, and the prompt editor is a contenteditable rather
@@ -95,30 +92,38 @@ function SheetSlot() {
       if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
       if (target?.isContentEditable) return;
       event.preventDefault();
-      summon();
+      expand();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [shown, summon]);
+  }, [shown, expand]);
 
   return (
     <div className="pointer-events-none sticky bottom-0 z-30 px-2 pb-2 md:px-6 md:pb-4">
-      {shown ? (
-        <div className="pointer-events-auto mx-auto w-full max-w-3xl">
+      <div className="pointer-events-auto mx-auto w-full max-w-3xl">
+        {shown ? (
           <CreateBar />
-        </div>
-      ) : (
-        <div className="pointer-events-auto mx-auto flex w-full max-w-3xl justify-end">
-          <Button
-            aria-label="Create (c)"
-            title="Create (c)"
-            onClick={summon}
-            className="size-11 rounded-pill p-0 shadow-[0_8px_32px_rgba(0,0,0,0.45)]"
+        ) : (
+          /* The sheet's own frame, one row tall: `bg-sheet` over a blur and the
+             same ring, so what is left reads as the sheet pushed down rather
+             than as a new control that appeared. Pressing anywhere on it opens
+             it — the whole strip is the handle, which is what makes it a
+             thumb-sized target on a phone. */
+          // eslint-disable-next-line studio/no-hand-rolled-button -- the sheet's own frame collapsed, not a control in it.
+          <button
+            type="button"
+            aria-label="Open the create panel (c)"
+            title="Open the create panel (c)"
+            onClick={expand}
+            className="flex h-9 w-full items-center justify-center rounded-lg bg-sheet
+                       shadow-[0_12px_48px_rgba(0,0,0,0.55)] ring-1 ring-line backdrop-blur-xl
+                       transition-colors hover:bg-fill
+                       focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            <PlusIcon className="size-5 fill-none stroke-current stroke-2" />
-          </Button>
-        </div>
-      )}
+            <ChevronUpIcon className="size-5 fill-none stroke-current stroke-[1.5] text-muted" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }
