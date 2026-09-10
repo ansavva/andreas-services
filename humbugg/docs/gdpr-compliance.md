@@ -37,7 +37,7 @@ the system on user/organizer action or when a legal record reaches the end of it
 | 7 | **Product analytics** | `event_type`, `plan`, `group_id` surrogate, timestamp, allow-listed aggregate dimensions | `humbugg-prod-analytics-events` | Server (`GroupService`) | Retained; **contains no PII by construction** — wishlist/address/email/token/assignment are structurally impossible to record (`docs/analytics.md`) |
 | 8 | **Transactional email metadata** | message id, recipient reference, delivery state | `humbugg-prod-email-messages` | Email pipeline | **90-day TTL** (only TTL in the service) |
 | 9 | **Billing / customer records** | Stripe customer id, payment/entitlement history, invoices | **Stripe** (test mode today; live is #159) | Stripe checkout | Under Stripe + financial-record retention; **not** in the product-profile store; deletion anonymizes the link, never erases the financial record |
-| 10 | **Client-side storage** | Cognito tokens (`localStorage` on web, the OS keychain on a device); functional `sessionStorage` keys | User's browser or device | Product app | Session / until sign-out or cleared — see §6 |
+| 10 | **Client-side storage** | Cognito tokens (`localStorage` on web, the OS keychain on a device); functional `sessionStorage` keys; a Plus purchase intent (`AsyncStorage`) | User's browser or device | Product app | Session / until sign-out, purchase resolution, or cleared — see §6 |
 
 Humbugg does **not** collect special-category data (Art. 9) and does not knowingly serve children.
 
@@ -66,9 +66,21 @@ Humbugg does **not** collect special-category data (Art. 9) and does not knowing
 | **Portability** (Art. 20) | Same export endpoint — structured, machine-readable JSON, provided directly to the data subject | ✅ Shipped (#189) |
 | **Rectification** (Art. 16) | Display name via `PUT /api/me`; wishlist/avoidances/address via `PATCH /api/groups/{id}/members/me`. Email/password are Cognito-managed (password reset, email change flows) | ✅ Self-service for product data; non-self-service identity changes documented via DSAR intake (#192) |
 | **Erasure** (Art. 17) | `DELETE /api/me` → `AccountDeletionService`; per-exchange clear via `DELETE /api/groups/{id}/members/me/private-data`; rules in `docs/data-retention-deletion.md`; audit-actor anonymization (#182, #177) | ✅ Shipped |
-| **Restriction** (Art. 18) | Manual intake at the privacy contact; a user can also clear their own data or leave a group as a self-service equivalent | ⚠️ Documented DSAR intake to be added — **#192** |
-| **Objection** (Art. 21) | Objection to non-essential email = the opt-out toggle (#187). No profiling for marketing. Other objections handled manually | ⚠️ Covered by #187 + DSAR intake **#192** |
+| **Restriction** (Art. 18) | Manual intake at `SUPPORT_EMAIL` (`config/policies.ts`); documented on the Privacy Policy ("Requesting restriction or objection", under "Your choices") and below | ✅ Documented — **#192** |
+| **Objection** (Art. 21) | Objection to non-essential email = the opt-out toggle (#187). No profiling for marketing. Other objections go through the same manual intake as restriction | ✅ Covered by #187 + documented DSAR intake **#192** |
 | **Automated decision-making** (Art. 22) | The **matching engine** (`MatchingService`) assigns givers to recipients automatically | ✅ **Not** Art. 22 territory — see below |
+
+### Manual intake: restriction and objection (#192)
+
+Access, rectification, erasure, and export are self-service, in-product. Restriction (Art. 18),
+objection (Art. 21), and any change that is not self-service — an email or identity change, chiefly
+— go to `SUPPORT_EMAIL` (`config/policies.ts`), and the Privacy Policy documents this under "Your
+choices" → "Requesting restriction or objection". Humbugg may ask the requester to confirm from the
+account's own email address before acting, to keep the same request from a spoofed sender from
+changing someone else's account. The response commitment mirrors Art. 12(3): within one month,
+extendable by two further months for a complex request, with notice of the extension. There is no
+ticketing system yet — the mailbox itself is the intake, which is adequate at pre-launch volume and
+should be revisited if request volume grows past what one inbox can track.
 
 ### The matching engine and Art. 22
 
@@ -129,29 +141,51 @@ SDK**. What the SPA stores:
 | `humbugg:oauthVerifier`, `humbugg:oauthState` (`sessionStorage`) | Carry the PKCE verifier and CSRF state across the redirect to the hosted sign-in page | **Strictly necessary** | Deleted at the end of the sign-in it belongs to |
 | `humbugg:join:{groupId}` (`sessionStorage`) | Preserve an invite token through the sign-in redirect | Functional | Tab session |
 | `humbugg:invite:{groupId}` (`sessionStorage`) | Remember a freshly minted invite URL in the organizer view | Functional | Tab session |
+| `humbugg.plus.intent` (`AsyncStorage`, persists across tab close) | Remember a Plus purchase in progress across the Stripe Checkout round trip | Functional | Cleared when the purchase resolves |
+
+The marketing site (`www.humbugg.com`) sets **nothing** — verified by grepping `humbugg/marketing`
+for `cookie`/`localStorage`/`sessionStorage`, zero hits. Everything in the table above belongs to the
+product app.
 
 **Consent-banner assessment:** under the ePrivacy Directive/PECR, storage that is *strictly necessary*
 to provide a service the user explicitly requested does not require prior consent, and neither do the
 functional keys above (all first-party, no cross-site tracking). Product analytics is emitted
 **server-side** and is PII-free by construction (`docs/analytics.md`), so it sets nothing on the device
 and needs no analytics-consent banner. **Conclusion: no cookie-consent banner is required** for the
-current design. The remaining gap is **transparency**: the Privacy Policy should still disclose what is
-stored and why (tracked in **#192**). If Humbugg ever adds non-essential cookies or a client analytics
-SDK, a consent mechanism becomes mandatory and this assessment must be revisited.
+current design. If Humbugg ever adds non-essential cookies or a client analytics SDK, a consent
+mechanism becomes mandatory and this assessment must be revisited.
+
+**Transparency: done.** The Privacy Policy now discloses this table verbatim under "Cookies and local
+storage" (`marketing/src/pages/PrivacyPage.tsx`) — **#192 closed**.
 
 ---
 
 ## 7. Processors & international transfers
 
-| Processor | Services used | Personal data | DPA | Transfer mechanism |
-|---|---|---|---|---|
-| **AWS** | DynamoDB, S3, SES, CloudFront, Cognito, Lambda | Categories 1-8, 10 above | AWS GDPR DPA (to be recorded — **#190**) | SCCs in the AWS DPA; Humbugg runs in `us-east-1`, so EEA/UK→US transfer relies on SCCs / UK Addendum |
-| **Stripe** | Payments, customer records | Category 9 (billing) | Stripe DPA (to be recorded — **#190**) | SCCs in the Stripe DPA |
+| Processor | Services used | Personal data | DPA / transfer mechanism |
+|---|---|---|---|
+| **Amazon Web Services, Inc. (AWS)** | Hosting, authentication (Cognito), database (DynamoDB), file storage (S3), transactional email (SES) | Account identifiers, verified email address, exchange content, wish lists, addresses, audit records (categories 1-8, 10 above) | AWS GDPR Data Processing Addendum, incorporated in the AWS Service Terms, with EU Standard Contractual Clauses; UK Addendum |
+| **Stripe, Inc.** | Payment processing for Plus | Name, email, billing details as entered on Stripe Checkout — Humbugg never stores card data (category 9) | Stripe Data Processing Agreement, incorporated in the Stripe Services Agreement, with SCCs |
+| **Google LLC (Google Workspace)** | The support mailbox `support@humbugg.com` | Whatever a data subject sends to support | Google Workspace Data Processing Addendum, SCCs |
 
-Both processors are bound by Art. 28 DPAs that incorporate the EU Standard Contractual Clauses. The
-outstanding work is to **record the executed DPAs, pin the transfer mechanism, and publish a
-sub-processor list** reachable from the Privacy Policy — tracked in **#190**. No personal data is sent
+All three are published on the **[Sub-processors](../marketing/src/pages/SubProcessorsPage.tsx)**
+page (`/sub-processors`), reachable from the Privacy Policy's "How we share information" section and
+the new "Cookies and local storage" section. Each is bound by an Art. 28 DPA incorporating the EU
+Standard Contractual Clauses. **Residency posture:** the product stack runs in `us-east-1` — every
+AWS-held category above is a US transfer covered by the AWS DPA's SCCs / UK Addendum; there is no
+secondary AWS region and no data residency choice offered to the user today. No personal data is sent
 to any processor outside this list.
+
+**Operator checklist — record before public launch (the page and this table describe the mechanism;
+these are the actual executed-agreement records, still outstanding):**
+
+- [ ] AWS DPA acceptance recorded (AWS Artifact / Service Terms, date, by whom)
+- [ ] Stripe DPA (Services Agreement §, date)
+- [ ] Google Workspace DPA (Admin console, date)
+
+Publishing the list itself is **done** (#190's page); the checklist above — the record of *when* and
+*by whom* each DPA was actually accepted — remains open, so #190 stays open until an operator fills
+it in.
 
 ---
 
@@ -182,9 +216,9 @@ minimum alerting to actually detect a breach are tracked in **#191**. The privac
 | "Download my data" button on the settings page | **#186** (settings page) | ⏳ Endpoint + typed client method (`api.exportMyData`) ready; button added when #186 merges |
 | Terms/Privacy consent recorded at signup, surfaced in export | **#188** | ⏳ Export DTO field `consent` reserved; populated when #188 lands |
 | Non-essential email opt-out, surfaced in export | **#187** | ⏳ Export DTO field `non_essential_emails_enabled` reserved; populated when #187 lands |
-| Processor DPAs recorded + sub-processor list + transfer mechanism | **#190 (new)** | 🔲 Filed |
+| Sub-processor list published + transfer mechanism pinned | **#190** | ✅ `/sub-processors` page shipped. ⏳ Operator checklist (§7) — DPA acceptance dates/by-whom — still outstanding, so the issue stays open |
 | Breach detection & notification runbook (Art. 33/34) | **#191 (new)** | 🔲 Filed |
-| Cookies/local-storage disclosure + manual DSAR intake (restriction/objection) | **#192 (new)** | 🔲 Filed |
+| Cookies/local-storage disclosure + manual DSAR intake (restriction/objection) | **#192** | ✅ Done — Privacy Policy §8 "Cookies and local storage" + §13 "Requesting restriction or objection" |
 | Appoint/confirm privacy contact; confirm legal entity name in policies | tracked in `config/policies` maintainer note | 🔲 Pre-launch |
 
 ### The data export (this issue)
