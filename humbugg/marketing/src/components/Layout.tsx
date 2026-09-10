@@ -4,6 +4,7 @@ import type { HTMLAttributes, ReactNode } from 'react';
 
 import { LEGAL_LINKS, SERVICE_COUNTRY, SERVICE_CURRENCY } from '../config/policies';
 import { appUrl } from '../config/site';
+import { ThemeToggle } from './ThemeToggle';
 
 export function Brand() {
   return (
@@ -28,6 +29,12 @@ export function Shell({ children, compact = false }: { children: ReactNode; comp
             <Link className="nav-link inline-flex" to="/pricing">Pricing</Link>
             <a className="nav-link hidden sm:inline-flex" href={appUrl('/login')}>Sign in</a>
             <a className={buttonClass()} href={appUrl('/login')}>Start a group</a>
+            {/* Icon-only and `sm`-sized to fit beside "Start a group" even at
+                390px — three 32px squares, not three words. Not hidden at any
+                width: unlike "Sign in", there is no other path to it, so the
+                lesson the Pricing comment above states (never `hidden sm:` a
+                control with no alternate route) applies here too. */}
+            <ThemeToggle />
           </nav>
         </div>
       </header>
