@@ -33,17 +33,33 @@ export const links: LinksFunction = () => [
  * so the HTML arrives with no attribute, and setting it from an effect would
  * paint the cream scheme first and flash.
  *
- * The listener is for the OS preference changing while the page is open. There
- * is no in-app switch, deliberately: the product app cannot have one (the
- * package's native leaves read `useColorScheme()` and offer no override), and a
- * toggle on the brochure that the app cannot honour is worse than neither.
+ * `humbugg:theme` in `localStorage` is an explicit override, written only by
+ * the header's theme control (`src/components/ThemeToggle.tsx`) — read it
+ * first, and when it names `light`/`dark`, paint that and stop: no OS
+ * listener, because an explicit choice must not be clobbered by the system
+ * changing underneath it. Anything else (no key, or `system`, which is never
+ * actually written — see `src/theme.ts`) is today's behaviour unchanged: read
+ * the OS query and keep listening for it to change.
+ *
+ * This mirrors `src/theme.ts`'s read half by hand rather than importing it —
+ * it has to run as a blocking inline script before any module loads. There is
+ * still no switch on the product app: the package's native leaves read
+ * `useColorScheme()` with no override, so this key is marketing-only and the
+ * app keeps following the OS regardless of what a visitor chose here.
  */
 const APPLY_SCHEME = `(function(){
   try {
-    var q = window.matchMedia('(prefers-color-scheme: dark)');
+    var KEY = 'humbugg:theme';
     var set = function (dark) { document.documentElement.dataset.theme = dark ? 'dark' : 'light'; };
-    set(q.matches);
-    q.addEventListener('change', function (e) { set(e.matches); });
+    var stored = null;
+    try { stored = window.localStorage.getItem(KEY); } catch (e) {}
+    if (stored === 'light' || stored === 'dark') {
+      set(stored === 'dark');
+    } else {
+      var q = window.matchMedia('(prefers-color-scheme: dark)');
+      set(q.matches);
+      q.addEventListener('change', function (e) { set(e.matches); });
+    }
   } catch (e) {}
 })();`;
 

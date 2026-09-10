@@ -4,6 +4,7 @@ import type { HTMLAttributes, ReactNode } from 'react';
 
 import { LEGAL_LINKS, SERVICE_COUNTRY, SERVICE_CURRENCY } from '../config/policies';
 import { appUrl } from '../config/site';
+import { ThemeToggle } from './ThemeToggle';
 
 export function Brand() {
   return (
@@ -28,6 +29,15 @@ export function Shell({ children, compact = false }: { children: ReactNode; comp
             <Link className="nav-link inline-flex" to="/pricing">Pricing</Link>
             <a className="nav-link hidden sm:inline-flex" href={appUrl('/login')}>Sign in</a>
             <a className={buttonClass()} href={appUrl('/login')}>Start a group</a>
+            {/* Icon-only and `sm`-sized (three 32px squares), and still `hidden`
+                below `sm` — unlike Pricing's link, this one DOES have another
+                path: the footer mirrors it (below), so hiding the header copy on
+                a narrow screen doesn't repeat the trap the Pricing comment
+                describes. It has to hide there: at 390px "Humbugg" + Pricing +
+                "Start a group" already fill the row, measured by screenshot, not
+                assumed — adding three more icons overflowed the header instead
+                of wrapping it. */}
+            <ThemeToggle className="hidden sm:inline-flex" />
           </nav>
         </div>
       </header>
@@ -42,10 +52,17 @@ export function SiteFooter() {
   return (
     <footer className="border-t border-line/80 bg-bg">
       <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-10 lg:px-8">
-        <nav aria-label="Site" className="flex flex-wrap gap-x-6 gap-y-3">
+        <nav aria-label="Site" className="flex flex-wrap items-center gap-x-6 gap-y-3">
           <Link to="/pricing" className="text-sm font-medium text-muted hover:text-ink hover:underline">
             Pricing
           </Link>
+          {/* The header hides its copy of this control below `sm` — see the
+              comment on it in `Shell` — so this is that control's only path on
+              a narrow screen, the same reasoning "Sign in" never gets to use.
+              Both instances share one preference (`useThemePreference` in
+              `theme.ts`), so this one is never stale even though it mounts
+              independently. */}
+          <ThemeToggle className="sm:hidden" />
         </nav>
         <nav aria-label="Policies" className="flex flex-wrap gap-x-6 gap-y-3">
           {LEGAL_LINKS.map((link) => (
