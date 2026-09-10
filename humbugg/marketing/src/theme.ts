@@ -12,6 +12,8 @@
  * cannot import a module. Keep the two in step by hand if this key or its
  * values change.
  */
+import { useEffect, useState } from 'react';
+
 export type ThemePreference = 'system' | 'light' | 'dark';
 
 export const THEME_STORAGE_KEY = 'humbugg:theme';
@@ -59,6 +61,15 @@ export function applyThemePreference(preference: ThemePreference): void {
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
 }
 
+// Every mounted `useThemePreference()` — the header's control AND the
+// footer's mirror of it, see `components/ThemeToggle.tsx` — subscribes here,
+// so a change made through either one is reflected by both immediately. The
+// native `storage` event doesn't cover this: it fires for OTHER tabs, never
+// the tab that made the write, so two instances on the SAME page would drift
+// without a channel of their own.
+type Listener = (preference: ThemePreference) => void;
+const listeners = new Set<Listener>();
+
 /**
  * Records a preference (or clears it, for `system`) and paints it
  * immediately — no reload, no waiting on the next OS query.
@@ -70,4 +81,41 @@ export function setThemePreference(preference: ThemePreference): void {
     safeWrite(THEME_STORAGE_KEY, preference);
   }
   applyThemePreference(preference);
+  listeners.forEach((listener) => listener(preference));
+}
+
+/**
+ * One preference, shared by every component that calls this — see the
+ * `listeners` note above. Renders `system` on the first pass (server AND
+ * client, so hydration never mismatches — the head script already painted
+ * the real answer before React mounts) and corrects itself from
+ * `localStorage` in an effect.
+ *
+ * While the current choice is "System", this keeps listening for the OS
+ * query to change and re-painting live: the head script's own listener
+ * stops the instant a stored key exists, so once a visitor has chosen
+ * "System" in this tab (rather than simply never having chosen anything),
+ * something still has to react without a reload — for as long as the
+ * choice stays "System".
+ */
+export function useThemePreference(): [ThemePreference, (preference: ThemePreference) => void] {
+  const [preference, setPreference] = useState<ThemePreference>('system');
+
+  useEffect(() => {
+    setPreference(getStoredThemePreference());
+    listeners.add(setPreference);
+    return () => {
+      listeners.delete(setPreference);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (preference !== 'system') return undefined;
+    const query = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = () => applyThemePreference('system');
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, [preference]);
+
+  return [preference, setThemePreference];
 }

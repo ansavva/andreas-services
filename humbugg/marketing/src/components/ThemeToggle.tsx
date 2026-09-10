@@ -1,7 +1,7 @@
 import { Toggle, ToggleGroup } from '@ansavva/design-system';
-import { useEffect, useState, type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 
-import { applyThemePreference, getStoredThemePreference, setThemePreference, type ThemePreference } from '../theme';
+import { useThemePreference, type ThemePreference } from '../theme';
 
 const OPTIONS: ReadonlyArray<{ value: ThemePreference; label: string; icon: ReactElement }> = [
   {
@@ -42,39 +42,23 @@ const OPTIONS: ReadonlyArray<{ value: ThemePreference; label: string; icon: Reac
  * The marketing site's light/dark switch — independent of the product app,
  * which follows the OS with no override (see `app/root.tsx`).
  *
- * Renders `system` on the first pass, on both server and client, and
- * corrects from `localStorage` in an effect: the head script already painted
- * `data-theme` from the real preference before this component ever mounts,
- * so the only risk here is a hydration MISMATCH (server markup says one
- * thing, client render says another), not a flash — reading `localStorage`
- * during render would fix that risk by reintroducing it on every future SSR
- * framework that diffs the client's first render against the server's.
+ * Icon-only and `sm`-sized (three 32px squares) so it can sit beside
+ * "Start a group" in the header without crowding it out; `className` is how
+ * `Layout.tsx` places two of these — one in the header, one mirrored in the
+ * footer for widths too narrow for the header copy — and hides each at the
+ * width the other one owns. Both read the SAME preference, via
+ * `useThemePreference`'s shared subscription (`theme.ts`), so a choice made
+ * through whichever one is visible is what the other shows if the viewport
+ * ever crosses the breakpoint without a reload.
  */
-export function ThemeToggle() {
-  const [preference, setPreference] = useState<ThemePreference>('system');
-
-  useEffect(() => {
-    setPreference(getStoredThemePreference());
-  }, []);
-
-  // While the visible choice is "System", keep painting the OS's live
-  // answer — the head script's own `change` listener stops the instant a
-  // stored key exists, so once a visitor has chosen "System" in this tab
-  // (rather than simply never having chosen anything) something still has
-  // to react to the OS changing without a reload. This effect is that
-  // something, for as long as the choice stays "System".
-  useEffect(() => {
-    if (preference !== 'system') return undefined;
-    const query = window.matchMedia('(prefers-color-scheme: dark)');
-    const onChange = () => applyThemePreference('system');
-    query.addEventListener('change', onChange);
-    return () => query.removeEventListener('change', onChange);
-  }, [preference]);
+export function ThemeToggle({ className }: { className?: string }) {
+  const [preference, setPreference] = useThemePreference();
 
   return (
     <ToggleGroup.Root
       aria-label="Theme"
       size="sm"
+      className={className}
       value={[preference]}
       onValueChange={(next) => {
         // Outside `multiple` mode, ToggleGroup unpresses the already-pressed
@@ -84,7 +68,6 @@ export function ThemeToggle() {
         const chosen = next[0];
         if (!chosen) return;
         setPreference(chosen as ThemePreference);
-        setThemePreference(chosen as ThemePreference);
       }}
     >
       {OPTIONS.map((option) => (

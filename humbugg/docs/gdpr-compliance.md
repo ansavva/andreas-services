@@ -136,6 +136,7 @@ SDK**. What the SPA stores:
 
 | Key / store | Purpose | Category | Lifetime |
 |---|---|---|---|
+| `humbugg:theme` (`localStorage` on the **marketing** site, `www.humbugg.com`) | Remember an explicit light/dark choice made in the header's theme control, overriding the OS default | Functional | Until the visitor chooses "System" again, or clears site data |
 | Cognito tokens (`humbugg.auth.*` in `localStorage` on web, `expo-secure-store` on a device) | Keep the user signed in; authorize API calls | **Strictly necessary** | Until sign-out / token expiry |
 | `humbugg:returnTo` (`sessionStorage`) | Return the user to their destination after auth | Functional | Tab session |
 | `humbugg:oauthVerifier`, `humbugg:oauthState` (`sessionStorage`) | Carry the PKCE verifier and CSRF state across the redirect to the hosted sign-in page | **Strictly necessary** | Deleted at the end of the sign-in it belongs to |
@@ -143,9 +144,8 @@ SDK**. What the SPA stores:
 | `humbugg:invite:{groupId}` (`sessionStorage`) | Remember a freshly minted invite URL in the organizer view | Functional | Tab session |
 | `humbugg.plus.intent` (`AsyncStorage`, persists across tab close) | Remember a Plus purchase in progress across the Stripe Checkout round trip | Functional | Cleared when the purchase resolves |
 
-The marketing site (`www.humbugg.com`) sets **nothing** — verified by grepping `humbugg/marketing`
-for `cookie`/`localStorage`/`sessionStorage`, zero hits. Everything in the table above belongs to the
-product app.
+The marketing site (`www.humbugg.com`) sets **one** key, `humbugg:theme`, and only once a visitor
+uses the theme control — never on a bare visit. Every other row belongs to the product app.
 
 **Consent-banner assessment:** under the ePrivacy Directive/PECR, storage that is *strictly necessary*
 to provide a service the user explicitly requested does not require prior consent, and neither do the

@@ -10,10 +10,17 @@ interface StoredItem {
   lifetime: string;
 }
 
-// The complete inventory of what the product app stores on a device, verified against
-// app/src/auth/oauth.ts, app/src/utils/session-store.ts, and app/src/utils/plus-intent.ts.
-// The marketing site itself sets no cookies and uses no localStorage/sessionStorage.
+// The complete inventory of what the product app and the marketing site store on a device.
+// The app half is verified against app/src/auth/oauth.ts, app/src/utils/session-store.ts, and
+// app/src/utils/plus-intent.ts; the marketing entry is marketing/src/theme.ts, the only key that
+// site writes.
 const STORED_ITEMS: readonly StoredItem[] = [
+  {
+    keys: 'humbugg:theme',
+    store: 'localStorage on the marketing site (www.humbugg.com)',
+    purpose: 'Remembers your light/dark colour-scheme choice, if you picked one instead of following your system setting',
+    lifetime: 'Until you choose "System" again, or clear this site’s data',
+  },
   {
     keys: 'humbugg.auth.accessToken, humbugg.auth.refreshToken, humbugg.auth.idToken, humbugg.auth.expiresAt',
     store: 'localStorage on the web; the device secure store (expo-secure-store) in the native app',
@@ -116,11 +123,13 @@ export default function PrivacyPage() {
         data&rdquo; above). Because nothing here is used to track you across sites or to build an advertising profile,
         Humbugg does not show a cookie-consent banner.
       </p>
-      <p>{BUSINESS_NAME}&rsquo;s marketing site (the pages this policy is published on) sets no cookies and stores
-        nothing in your browser. The table below is what the Humbugg product app itself stores on your device:</p>
+      <p>{BUSINESS_NAME}&rsquo;s marketing site (the pages this policy is published on) sets no cookies. It stores
+        one optional key, for your colour-scheme choice, only if you use the theme switch in the header &mdash; it is
+        never written just by visiting. The table below is everything the marketing site and the Humbugg product app
+        store on your device:</p>
       <div className="mt-6 overflow-x-auto">
         <table className="w-full min-w-[42rem] border-collapse text-left text-sm">
-          <caption className="sr-only">What the Humbugg product app stores on your device</caption>
+          <caption className="sr-only">What the Humbugg marketing site and product app store on your device</caption>
           <thead>
             <tr className="border-b border-line">
               <th scope="col" className="py-3 pr-4 font-semibold text-ink">Key</th>

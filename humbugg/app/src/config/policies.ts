@@ -10,7 +10,7 @@ import type { PlanCode, PolicyConsent } from '../types';
  */
 
 // Policy version + effective date recorded on every policy page.
-export const POLICY_VERSION = '2026.2';
+export const POLICY_VERSION = '2026.3';
 // ISO date the current policies take effect. Placeholder — confirm before publishing.
 export const POLICY_EFFECTIVE_DATE = '2026-09-10';
 
