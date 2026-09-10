@@ -138,6 +138,39 @@ the emitter's structured `analytics_event` lines, or a DynamoDB export to S3 + A
 event catalogue, metric formulas, and reporting queries are in
 [`docs/analytics.md`](../docs/analytics.md).
 
+## Restore
+
+Point-in-time recovery is enabled on every table in `modules/storage` except
+`humbugg-prod-email-messages` (TTL'd delivery state — nothing worth restoring).
+PITR restores to a **new** table, never in place:
+
+```bash
+aws dynamodb restore-table-to-point-in-time \
+  --source-table-name humbugg-prod-groups \
+  --target-table-name humbugg-prod-groups-restored \
+  --restore-date-time <iso>
+```
+
+A live draw spans three tables — `groups`, `groupmembers`, `draws` — so a
+restore that touches any of them must restore all three to the **same**
+`--restore-date-time`, or the recovered group, its membership, and its
+giver→recipient map will not agree with each other.
+
+The restored table only stands in for the original once GSIs, tags, and
+`point_in_time_recovery` itself are recreated on it (a restore does not carry
+`point_in_time_recovery` forward) — `describe-table` against the original is
+the reference for what to reapply.
+
+Cutting the restored table over to production is a Terraform decision, not a
+scripted one: either `moved` the resource address onto the restored table
+(if it's kept as the new source of truth) or reconcile the restored data back
+into the existing table with `import`/manual writes and leave the original
+resource alone. Which one applies depends on what actually happened to the
+data, so there is no one-size-fits-all script — a maintainer decides at
+restore time. `docs/runbooks.md` doesn't exist on this branch yet (it's in
+open PR #648); once it lands, it should link here rather than duplicate this
+section.
+
 ## SES domain authentication
 
 The `email` module repairs or creates the `humbugg.com` SES domain identity in
