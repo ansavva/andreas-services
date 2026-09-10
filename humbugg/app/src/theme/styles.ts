@@ -11,11 +11,11 @@
 // the original).
 //
 // THE SHEET IS BUILT ONCE PER SCHEME, not once. A colour baked into a
-// module-scope `StyleSheet.create` can never follow the OS, so this file exports
-// `useTheme()` rather than a `styles` object: both sheets are created eagerly
-// below and the hook picks one on `useColorScheme()`. Nothing allocates per
-// render. A component with its own local sheet wraps it in `scopedStyles`, which
-// does the same two-sheet trick for it.
+// module-scope `StyleSheet.create` can never follow the scheme, so this file
+// exports `useTheme()` rather than a `styles` object: both sheets are created
+// eagerly below and the hook picks one on `useResolvedScheme()`. Nothing
+// allocates per render. A component with its own local sheet wraps it in
+// `scopedStyles`, which does the same two-sheet trick for it.
 //
 // RADII ARE THE ONE EXCEPTION, and deliberately so. They come from a scale
 // rather than from converted literals, because a corner is the one thing here
@@ -26,10 +26,11 @@
 // system through `ThemeProvider`, so both halves still move together.
 // `marketing/src/styles.css` states the same numbers as `--radius-*` for the
 // web half. A pill stays a pill on both — it is a shape, not a corner.
-import { StyleSheet, useColorScheme } from 'react-native';
+import { StyleSheet } from 'react-native';
 
 import { radii } from './radii';
 
+import { useResolvedScheme } from './scheme-preference';
 import { fonts, palettes, type Palette, type Scheme } from './theme';
 
 /** `color-mix(in srgb, <hex> <pct>%, transparent)` as an rgba string. */
@@ -487,15 +488,17 @@ function build(scheme: Scheme): Theme {
 const themes: Record<Scheme, Theme> = { light: build('light'), dark: build('dark') };
 
 /**
- * The scheme the OS is asking for, resolved at render time.
+ * The scheme in force, resolved at render time.
  *
- * `useColorScheme()` is the same source the design system's native leaves read,
- * so Humbugg's own surfaces and the package's components can never disagree
- * about which scheme is in force. It returns `null` where the platform has no
- * preference; light is the answer then, as it was before dark existed.
+ * `useResolvedScheme()` is the reader's preference resolved against the OS, and
+ * it is the same value `SchemePreferenceProvider` hands the design system as
+ * `ThemeProvider`'s `scheme` — so Humbugg's own surfaces and the package's
+ * components can never disagree about which scheme is in force. It used to read
+ * `useColorScheme()` here directly, which is exactly the seam an in-app switch
+ * could not reach.
  */
 export function useTheme(): Theme {
-  return themes[useColorScheme() === 'dark' ? 'dark' : 'light'];
+  return themes[useResolvedScheme()];
 }
 
 /** The same records without a hook — for tests, and for module-scope reads. */
