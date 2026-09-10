@@ -14,7 +14,20 @@ public sealed class PlanCatalogTests
 
         Assert.Equal(new PlanDefinition(PlanCode.Free, "Free", 6, false, 0, "USD", BillingCadence.Free), plans.Get(PlanCode.Free));
         Assert.Equal(new PlanDefinition(PlanCode.Plus, "Plus", 50, false, 1_200, "USD", BillingCadence.OneTime), plans.Get(PlanCode.Plus));
+        Assert.Equal(
+            new[] { plans.Get(PlanCode.Free), plans.Get(PlanCode.Plus) },
+            plans.All);
+    }
+
+    [Fact]
+    public void WorkEnabledRestoresTheWorkDefinitionInAll()
+    {
+        var plans = new PlanCatalog(new PlanCatalogOptions(WorkEnabled: true));
+
         Assert.Equal(new PlanDefinition(PlanCode.Work, "Work", 10_000, true, 9_900, "USD", BillingCadence.Annual), plans.Get(PlanCode.Work));
+        Assert.Equal(
+            new[] { plans.Get(PlanCode.Free), plans.Get(PlanCode.Plus), plans.Get(PlanCode.Work) },
+            plans.All);
     }
 
     [Fact]
@@ -57,7 +70,7 @@ public sealed class PlanCatalogTests
     }
 
     [Fact]
-    public void PlusAllowsFiftyAndRejectsFiftyOneWithWorkExplanation()
+    public void PlusAllowsFiftyAndRejectsFiftyOneWithoutNamingWork()
     {
         var plans = new PlanCatalog(new());
         plans.EnsureParticipantCapacity(PlanCode.Plus, "plus:group-1", 49);
@@ -66,8 +79,8 @@ public sealed class PlanCatalogTests
             plans.EnsureParticipantCapacity(PlanCode.Plus, "plus:group-1", 50));
 
         Assert.Equal(409, error.StatusCode);
-        Assert.Contains("Work", error.Message);
-        Assert.Contains("51", error.Message);
+        Assert.Equal("Plus exchanges hold up to 50 participants, organizer included.", error.Message);
+        Assert.DoesNotContain("Work", error.Message);
     }
 
     [Fact]

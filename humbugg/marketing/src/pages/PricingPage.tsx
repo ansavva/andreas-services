@@ -37,17 +37,6 @@ const COPY: Record<string, { who: string; lead: string; features: string[] }> = 
       'Add somebody after the draw, changing as few matches as possible',
     ],
   },
-  work: {
-    who: 'For a company running exchanges across teams',
-    lead: 'An organization workspace, with every exchange and every organizer in one place.',
-    features: [
-      'One workspace holding many exchanges at once',
-      'A people directory shared across them',
-      'Administration and roles for whoever runs it',
-      'Your branding on what employees see',
-      'Central billing, on one invoice',
-    ],
-  },
 };
 
 export default function PricingPage({ plans }: { plans: PlanCard[] }) {
@@ -84,7 +73,7 @@ export default function PricingPage({ plans }: { plans: PlanCard[] }) {
             {plans[0]?.currency ?? 'USD'}.
           </p>
 
-          <div className="mt-14 grid gap-6 lg:grid-cols-3">
+          <div className="mt-14 grid gap-6 lg:grid-cols-2">
             {plans.map((plan) => (
               <PlanColumn key={plan.code} plan={plan} />
             ))}
@@ -150,11 +139,7 @@ function PlanColumn({ plan }: { plan: PlanCard }) {
           className={buttonClass({ intent: featured ? 'primary' : 'secondary' })}
           href={appUrl(plan.code === 'free' ? '/login' : '/')}
         >
-          {plan.code === 'free'
-            ? 'Start free'
-            : plan.code === 'plus'
-              ? 'Upgrade an exchange'
-              : 'Start Work'}
+          {plan.code === 'free' ? 'Start free' : 'Upgrade an exchange'}
         </a>
       </div>
     </div>
@@ -174,12 +159,11 @@ function ComparisonTable({ plans }: { plans: PlanCard[] }) {
       values: {
         free: 'You share a private link',
         plus: 'Humbugg emails them, and tracks who has not answered',
-        work: 'Humbugg emails them, from your directory',
       },
     },
     {
       label: 'Chasing people',
-      values: { free: 'You do', plus: 'Automatic reminders', work: 'Automatic reminders' },
+      values: { free: 'You do', plus: 'Automatic reminders' },
     },
     {
       label: 'People per exchange',
@@ -192,15 +176,15 @@ function ComparisonTable({ plans }: { plans: PlanCard[] }) {
     },
     {
       label: 'Exchanges',
-      values: { free: 'One at a time', plus: 'Upgrade each one you need', work: 'As many as you run' },
+      values: { free: 'One at a time', plus: 'Upgrade each one you need' },
     },
     {
       label: 'Who can organize',
-      values: { free: 'You', plus: 'You and co-organizers', work: 'Administrators and organizers' },
+      values: { free: 'You', plus: 'You and co-organizers' },
     },
     {
       label: 'Branding',
-      values: { free: 'Humbugg’s', plus: 'Your greeting and colours', work: 'Your organization’s' },
+      values: { free: 'Humbugg’s', plus: 'Your greeting and colours' },
     },
     {
       label: 'Billing',

@@ -20,16 +20,5 @@
     "billing_cadence": "one_time",
     "product_id": "prod_e2e_plus",
     "price_id": "price_e2e_plus"
-  },
-  {
-    "code": "work",
-    "name": "Work",
-    "participant_limit": 10000,
-    "marketed_as_unlimited": true,
-    "price_cents": 9900,
-    "currency": "USD",
-    "billing_cadence": "annual",
-    "product_id": null,
-    "price_id": null
   }
 ]

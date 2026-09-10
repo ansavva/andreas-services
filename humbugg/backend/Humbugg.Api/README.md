@@ -27,9 +27,10 @@ connects to production tables.
 
 ## Plan configuration
 
-`GET /api/plans` returns the authoritative Free, Plus, and Work contract used by
-the backend. New and legacy groups default to Free. Each group stores its plan,
-while participant limits and prices are read from environment configuration:
+`GET /api/plans` returns the authoritative plan contract used by the backend —
+Free and Plus by default. New and legacy groups default to Free. Each group
+stores its plan, while participant limits and prices are read from environment
+configuration:
 
 | Variable | Default |
 |---|---:|
@@ -38,6 +39,12 @@ while participant limits and prices are read from environment configuration:
 | `HUMBUGG_WORK_PARTICIPANT_LIMIT` | `10000` |
 | `HUMBUGG_PLUS_PRICE_CENTS` | `1200` |
 | `HUMBUGG_WORK_PRICE_CENTS` | `9900` |
+| `HUMBUGG_WORK_ENABLED` | `false` |
+
+`HUMBUGG_WORK_ENABLED` (`true`/`1` to enable, case-insensitive; anything else
+is off) gates whether Work appears in `GET /api/plans`. Work is deferred under
+epic #638 — the plan code, capability checks, and 10,000-participant ceiling
+stay in the code for stored groups, but `All` omits Work until the flag is set.
 
 Stripe product and price identifiers use `HUMBUGG_PLUS_PRODUCT_ID`,
 `HUMBUGG_PLUS_PRICE_ID`, `HUMBUGG_WORK_PRODUCT_ID`, and
