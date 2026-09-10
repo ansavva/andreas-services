@@ -186,6 +186,11 @@ cost nothing. Part of cross-service epic #363.
 live tier only: a real access token reaches `GET /api/me` and its `sub` matches the profile, the same
 account's ID token is refused, and no token is refused. Part of epic #370.
 
+**#642 / #586 — the same round trip against the real gateway. DONE.** `smoke-test` in
+`humbugg-prod.yaml` signs in as the prod smoke account over SRP (`scripts/smoke-session.mjs`) and puts a
+real token through `api.humbugg.com`; #373's dev-stack version has no API Gateway in front of it, so
+this is the only tier that exercises the authorizer with a valid token.
+
 ---
 
 ## Then, in order
