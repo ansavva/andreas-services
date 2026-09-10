@@ -143,6 +143,7 @@ SDK**. What the SPA stores:
 | `humbugg:join:{groupId}` (`sessionStorage`) | Preserve an invite token through the sign-in redirect | Functional | Tab session |
 | `humbugg:invite:{groupId}` (`sessionStorage`) | Remember a freshly minted invite URL in the organizer view | Functional | Tab session |
 | `humbugg.plus.intent` (`AsyncStorage`, persists across tab close) | Remember a Plus purchase in progress across the Stripe Checkout round trip | Functional | Cleared when the purchase resolves |
+| `humbugg.theme` (`AsyncStorage`, persists across tab close) | Remember the reader's appearance choice (light or dark) so the app opens in it | Functional | Until the reader picks System, which removes the key, or clears site data |
 
 The marketing site (`www.humbugg.com`) sets **one** key, `humbugg:theme`, and only once a visitor
 uses the theme control — never on a bare visit. Every other row belongs to the product app.

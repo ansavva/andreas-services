@@ -11,9 +11,9 @@ interface StoredItem {
 }
 
 // The complete inventory of what the product app and the marketing site store on a device.
-// The app half is verified against app/src/auth/oauth.ts, app/src/utils/session-store.ts, and
-// app/src/utils/plus-intent.ts; the marketing entry is marketing/src/theme.ts, the only key that
-// site writes.
+// The app half is verified against app/src/auth/oauth.ts, app/src/utils/session-store.ts,
+// app/src/utils/plus-intent.ts and app/src/utils/theme-preference.ts; the marketing entry is
+// marketing/src/theme.ts, the only key that site writes.
 const STORED_ITEMS: readonly StoredItem[] = [
   {
     keys: 'humbugg:theme',
@@ -56,6 +56,12 @@ const STORED_ITEMS: readonly StoredItem[] = [
     store: 'AsyncStorage — persists across tab close',
     purpose: 'Remembers a Plus purchase you started, across the Stripe Checkout round trip',
     lifetime: 'Cleared when the purchase resolves',
+  },
+  {
+    keys: 'humbugg.theme',
+    store: 'AsyncStorage — persists across tab close',
+    purpose: 'Your appearance choice (light or dark), so the app opens the way you left it',
+    lifetime: 'Until you pick System or clear site data',
   },
 ] as const;
 

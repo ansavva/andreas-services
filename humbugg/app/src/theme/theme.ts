@@ -50,17 +50,17 @@ import humbugg from './brand-colors.json';
  */
 
 
-/** The two schemes. The OS picks; there is no in-app switch — see `useTheme`. */
+/** The two schemes. The reader picks, or defers to the OS — see `scheme-preference.tsx`. */
 export type Scheme = 'light' | 'dark';
 
 /**
  * Every colour the app draws with, resolved per scheme.
  *
  * NO LONGER SAFE TO READ STATICALLY, and that is the whole of this change: a
- * colour baked into a module-scope `StyleSheet.create` cannot follow the OS, and
- * until dark existed both schemes resolved to the same values so nothing noticed.
- * Reach these through `useTheme()` in `theme/styles.ts`, which selects on
- * `useColorScheme()` at render time. The records are still built once, here.
+ * colour baked into a module-scope `StyleSheet.create` cannot follow the scheme,
+ * and until dark existed both schemes resolved to the same values so nothing
+ * noticed. Reach these through `useTheme()` in `theme/styles.ts`, which selects
+ * on `useResolvedScheme()` at render time. The records are still built once, here.
  *
  * The design system's own defaults come from the MATCHING scheme
  * (`colors.dark` under dark), which is what supplies `success` / `warning` /
@@ -166,10 +166,13 @@ export const fonts = {
  * `light`, so `success` / `warning` / `danger` come from the package's DARK
  * defaults rather than its light ones.
  *
- * The scheme itself is the OS's to choose. `useColorScheme()` is what the
- * package's native leaves read, and they offer no seam to force one — so an
- * in-app toggle could move Humbugg's own surfaces and would leave every Button,
- * Input and Select on the system setting. There is deliberately no toggle.
+ * The scheme itself is NOT set here. It is `ThemeProvider`'s own `scheme` prop,
+ * added in design-system 0.22.0 and driven by `SchemePreferenceProvider` — a
+ * theme override says what each scheme looks like, and the provider says which
+ * one is painted. Before 0.22.0 the package's native leaves read
+ * `useColorScheme()` with no seam to force it, so an in-app switch could move
+ * Humbugg's own surfaces and would leave every Button, Input and Select on the
+ * system setting; that is why there was no switch until now.
  */
 export const humbuggTheme: ThemeOverrides = {
   light: humbugg,
