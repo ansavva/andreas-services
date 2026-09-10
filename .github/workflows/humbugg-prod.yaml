@@ -932,3 +932,29 @@ jobs:
             -H 'X-Humbugg-Invite: smoke-test-not-a-real-token' \
             https://api.humbugg.com/api/groups/00000000-0000-0000-0000-000000000000/invitations/00000000/preview)
           test "$managed" != "401"
+
+          # --- Stripe webhook route bypasses the gateway authorizer (#639) ---
+          #
+          # Stripe signs the raw body and cannot present a Cognito JWT, so this route is
+          # its own exact, method-specific entry outside the `ANY /api/{proxy+}` authorizer
+          # (infra/modules/compute/main.tf). A garbage signature reaching the *application*
+          # is a 400 (`StripeGateway.ParseWebhook`'s signature check fails first) when
+          # HUMBUGG_STRIPE_MODE=test/live, or a 409 "temporarily unavailable"
+          # (`EnsureEnabled` runs before the signature check) when it is `disabled` — today's
+          # prod state (#640). Either proves the request reached the app. 401/403/404 would
+          # mean the gateway route itself was lost and the ANY-route authorizer caught it
+          # instead — the same failure the preflight and AllowAnonymous checks above guard.
+          webhook=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            -X POST \
+            -H 'Stripe-Signature: t=1,v1=deadbeef' \
+            -H 'Content-Type: application/json' \
+            -d '{}' \
+            https://api.humbugg.com/api/billing/stripe/webhook)
+          if [[ "$webhook" == "401" || "$webhook" == "403" || "$webhook" == "404" ]]; then
+            echo "Expected the Stripe webhook route to reach the application (400 or 409); got ${webhook} — the gateway route may be lost."
+            exit 1
+          fi
+          if [[ "$webhook" != "400" && "$webhook" != "409" ]]; then
+            echo "Expected the Stripe webhook route to answer 400 (signature rejected) or 409 (billing disabled); got ${webhook}."
+            exit 1
+          fi

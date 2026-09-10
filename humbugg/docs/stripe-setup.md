@@ -44,21 +44,26 @@ For Plus, the repository provides an idempotent provisioning command. After
 authenticating the Stripe CLI against the Humbugg test account, run:
 
 ```bash
-./humbugg/scripts/configure-stripe-plus-test.sh
+./humbugg/scripts/configure-stripe-plus.sh              # test mode (default)
+./humbugg/scripts/configure-stripe-plus.sh --mode live   # do not run — #159 still blocks live mode
 ```
 
 It reuses a tagged Plus product and active `$12 USD` one-time price when they
-already exist, creates only missing resources, verifies the resulting price,
-and prints the two GitHub environment variable assignments. It never accepts
-or stores a secret key.
+already exist, creates only missing resources, verifies the resulting price
+(`livemode == false` in test mode, `== true` in `--mode live`), and prints the two
+GitHub environment variable assignments. It never accepts or stores a secret key.
+`configure-stripe-plus-test.sh` still works — it execs this script with `--mode test`.
 
 ### Register the production test webhook
 
 In the Stripe Dashboard while **Viewing test data**, create an endpoint for:
 
 ```text
-https://humbugg.com/api/billing/stripe/webhook
+https://api.humbugg.com/api/billing/stripe/webhook
 ```
+
+Not `humbugg.com` — that is the marketing CloudFront and answers 403. The route lives on
+the API's own domain (`infra/modules/compute/main.tf`, the `stripe_webhook` route).
 
 Subscribe only to:
 
@@ -82,6 +87,12 @@ Product and price IDs are **configuration, not code** — the backend
 Everything flows from the `humbugg-production` GitHub Actions environment. The
 deploy workflow (`.github/workflows/humbugg-prod.yaml`) injects them; nothing is
 committed to the repo.
+
+`HUMBUGG_STRIPE_MODE` is an operator toggle, not a build-time choice: `disabled`
+(billing dormant — today's prod state, #640), `test` (test keys, Stripe test cards,
+no money ever moves), `live` (blocked until the merchant-identity review in #159
+closes). Moving between them is a GitHub environment variable change plus a redeploy —
+see the rotation procedure below.
 
 ### Secrets — GitHub environment **secrets** → SSM (SecureString) + Lambda env
 
