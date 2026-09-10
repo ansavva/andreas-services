@@ -10,6 +10,7 @@ using Humbugg.Api.Services.Email.Adapters.Http;
 using Humbugg.Api.Services.Email.Adapters.Memory;
 using Humbugg.Api.Services.Email.Core;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using System.Text.Json;
@@ -91,7 +92,30 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
         }
     };
 });
-builder.Services.AddAuthorization();
+// The default policy names JwtBearer explicitly, and that is load-bearing rather than tidy (#656).
+//
+// Behind API Gateway the application is not the first thing to set HttpContext.User:
+// Amazon.Lambda.AspNetCoreServer marshals requestContext.authorizer.jwt.claims into a
+// ClaimsPrincipal with the authentication type "AuthorizerIdentity" and assigns it to the
+// IHttpAuthenticationFeature before the ASP.NET pipeline runs at all
+// (APIGatewayHttpApiV2ProxyFunction.MarshallRequest). An identity with an authentication type is
+// authenticated, and the HTTP API's JWT authorizer takes an ID token as readily as an access one
+// because their audience is the same app client.
+//
+// A schemeless default policy leaves that principal alone: UseAuthentication does not overwrite
+// HttpContext.User when the handler returns a failure carrying no principal, and the authorization
+// middleware only re-authenticates when the policy names schemes. The OnTokenValidated rule above
+// therefore ran, failed, and changed nothing — prod answered an ID token exactly as it answered an
+// access token. Naming the scheme makes the authorization middleware authenticate against
+// JwtBearer and replace HttpContext.User with that result, so a failed validation is a 401 whatever
+// the host put there.
+//
+// DefaultPolicy only, deliberately: a FallbackPolicy would also cover endpoints carrying no
+// authorization metadata at all, which is what /health is.
+builder.Services.AddAuthorization(options =>
+    options.DefaultPolicy = new AuthorizationPolicyBuilder(JwtBearerDefaults.AuthenticationScheme)
+        .RequireAuthenticatedUser()
+        .Build());
 
 builder.Services.AddSingleton<IAmazonDynamoDB>(_ =>
 {
