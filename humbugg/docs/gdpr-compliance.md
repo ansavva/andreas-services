@@ -192,8 +192,7 @@ it in.
 ## 8. Breach notification (Art. 33/34)
 
 Humbugg has the raw materials for detection — the append-only audit trail, CloudWatch, and processor
-breach notices from AWS/Stripe — and a threat model (`docs/threat-model.md`), but **no written breach
-runbook yet**. Required posture:
+breach notices from AWS/Stripe — and a threat model (`docs/threat-model.md`).
 
 - **Art. 33:** notify the supervisory authority within **72 hours** of becoming aware of a qualifying
   breach.
@@ -201,9 +200,9 @@ runbook yet**. Required posture:
   a **high risk** to their rights and freedoms.
 - **Art. 33(5):** keep an internal record of **every** breach, including ones not notified.
 
-A detection/triage/notification runbook (`docs/breach-response.md`), notification templates, and the
-minimum alerting to actually detect a breach are tracked in **#191**. The privacy contact of record is
-`support@humbugg.com`.
+The detection/triage/containment/notification runbook, notification templates, and the severity and
+Art. 34 decision tests are in [`docs/breach-response.md`](breach-response.md) (**#191**). The privacy
+contact of record is `support@humbugg.com`.
 
 ---
 
@@ -217,7 +216,7 @@ minimum alerting to actually detect a breach are tracked in **#191**. The privac
 | Terms/Privacy consent recorded at signup, surfaced in export | **#188** | ⏳ Export DTO field `consent` reserved; populated when #188 lands |
 | Non-essential email opt-out, surfaced in export | **#187** | ⏳ Export DTO field `non_essential_emails_enabled` reserved; populated when #187 lands |
 | Sub-processor list published + transfer mechanism pinned | **#190** | ✅ `/sub-processors` page shipped. ⏳ Operator checklist (§7) — DPA acceptance dates/by-whom — still outstanding, so the issue stays open |
-| Breach detection & notification runbook (Art. 33/34) | **#191 (new)** | 🔲 Filed |
+| Breach detection & notification runbook (Art. 33/34) | **#191** | ✅ `docs/breach-response.md` (pending PR merge) |
 | Cookies/local-storage disclosure + manual DSAR intake (restriction/objection) | **#192** | ✅ Done — Privacy Policy §8 "Cookies and local storage" + §13 "Requesting restriction or objection" |
 | Appoint/confirm privacy contact; confirm legal entity name in policies | tracked in `config/policies` maintainer note | 🔲 Pre-launch |
 
