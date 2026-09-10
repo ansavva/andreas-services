@@ -210,6 +210,11 @@ The short version:
 Coverage is printed on every PR and gates on nothing, deliberately — the
 reasoning is in the map.
 
+**Operating the live service** (billing, email, support inbox, deletion requests, the
+emergency reveal, credential rotation, health/alerts/rollback) is
+[`docs/runbooks.md`](docs/runbooks.md). A suspected personal-data breach follows
+[`docs/breach-response.md`](docs/breach-response.md) instead (GDPR Art. 33/34).
+
 ## Environment Variables (Prod)
 
 All secrets/values live in the `humbugg-production` GitHub Actions environment. The `deploy-infra` job writes the resolved values into SSM Parameter Store under `/humbugg/prod/*`, and the `deploy-backend` + `deploy-frontend` jobs read them at deploy time.
