@@ -83,6 +83,11 @@ everything a machine could take has been taken off it.
 - **The HTTP pipeline** (auth, CORS, error envelopes, model binding, a full flow
   over real tables) → `Humbugg.Api.IntegrationTests/Http/`, in-process via
   `WebApplicationFactory<Program>`.
+  **Unless CI has to catch it.** That tier self-skips without `HUMBUGG_INTEGRATION=1`,
+  so a pipeline rule whose regression must go red on a PR belongs in the unit tier
+  instead, hosting `Program.cs` over stubbed AWS clients — `HostedApi.cs` and
+  `GatewayAuthorizerPrincipalTests` are the pattern. #656 is why: the integration tier
+  already asserted an ID token is refused, passed, and production accepted one anyway.
 - **A screen, context, or util in the app** → colocated `*.test.tsx` under
   `app/src/`. Auth-coupled seams (contexts, session store, redirect) belong here;
   presentational components are exercised more honestly by the browser tier.

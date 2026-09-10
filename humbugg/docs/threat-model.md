@@ -91,6 +91,32 @@ projections (`Private`, `Public`, `Assignment`, `Detail`).
   The full mapping is disclosed only through the audited emergency reveal (§6). **[NOW]**
 - **U5** Identity comes only from the token subject (`CurrentUser.UserId`). No request field
   (`member_id`, `user_id`, …) may be used to assume another identity. **[NOW]**
+- **U6** Authorization requires the **JwtBearer scheme**, named on the default policy. A principal
+  the host populated is not trusted. **[NOW]**
+
+**Why U6 exists (#656).** U1 was written down, enforced locally and in the integration suite, and
+silently not enforced in production for months: `api.humbugg.com` answered an **ID** token exactly as
+it answered an access token. Two layers combined. The API Gateway HTTP API JWT authorizer accepts an
+ID token because `jwt_configuration.audience` is the app client id, which is an ID token's `aud` —
+it is an authenticator, not Humbugg's token-type rule. Then
+`Amazon.Lambda.AspNetCoreServer` (`APIGatewayHttpApiV2ProxyFunction.MarshallRequest`) reads
+`requestContext.authorizer.jwt.claims` and assigns
+`new ClaimsPrincipal(new ClaimsIdentity(claims, "AuthorizerIdentity"))` to the request's
+`IHttpAuthenticationFeature` **before the ASP.NET pipeline runs at all**. `UseAuthentication` does
+not overwrite `HttpContext.User` when the handler returns a failure carrying no principal, and a
+default policy that names no scheme never re-authenticates — so `OnTokenValidated`'s `context.Fail`
+ran, and `[Authorize]` was satisfied by the host's principal regardless. Impact was low (the ID token
+names the same account, so this was never cross-user access), but the invariant was decorative.
+
+The rule that replaces it: **authorization requires the JwtBearer scheme; a host-populated principal
+is not trusted.** Naming the scheme on `DefaultPolicy` makes the authorization middleware
+re-authenticate against JwtBearer and replace `HttpContext.User` with that result, so a token the
+application refuses is a 401 whatever the gateway put in front of it. `FallbackPolicy` is
+deliberately left unset — it would also cover endpoints that carry no authorization metadata, which
+is what `/health` is. Pinned by `GatewayAuthorizerPrincipalTests` in the unit tier, which hosts the
+real `Program.cs` and builds the gateway principal with the hosting package's own marshaller rather
+than an imitation of it, and by the `Authenticated round trip` smoke step in `humbugg-prod.yaml`,
+whose ID-token assertion is what found this.
 
 ### 2.2 Organizer (group owner / creator)
 - **O1** Organizer-only actions — update group, delete group, rotate invite, set exclusions, change
