@@ -14,7 +14,7 @@ import { Text, View } from 'react-native';
 
 import { api } from '../api/client';
 import { useAuth } from '../context/auth-context';
-import { gap, styles } from '../theme/styles';
+import { gap, useTheme } from '../theme/styles';
 import type { GroupDetail, InvitationStatus, ManagedInvitation } from '../types';
 import { FieldLabel } from './field';
 import { isPlusRequired, PanelLoadFailure, PlusLockedNote } from './plus';
@@ -66,6 +66,7 @@ export function InvitationsPanel({
   /** The roster and the counts above change when somebody is invited or an invitation is pulled. */
   onChanged?(): void;
 }) {
+  const { styles } = useTheme();
   const auth = useAuth();
   const [invitations, setInvitations] = useState<ManagedInvitation[] | null>(null);
   const [needsPlus, setNeedsPlus] = useState(false);

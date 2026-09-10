@@ -15,7 +15,7 @@ import { Text, View } from 'react-native';
 
 import { api } from '../api/client';
 import { useAuth } from '../context/auth-context';
-import { gap, styles } from '../theme/styles';
+import { gap, useTheme } from '../theme/styles';
 import type { GroupDetail, ReminderOverview, ReminderSettings, ReminderState } from '../types';
 import { FieldLabel } from './field';
 import { isPlusRequired, PanelLoadFailure, PlusLockedNote } from './plus';
@@ -46,6 +46,7 @@ export function summary(settings: ReminderSettings): string {
 const hour = (value: number) => `${String(value).padStart(2, '0')}:00`;
 
 export function RemindersPanel({ group }: { group: GroupDetail }) {
+  const { styles } = useTheme();
   const auth = useAuth();
   const [overview, setOverview] = useState<ReminderOverview | null>(null);
   const [draft, setDraft] = useState<ReminderSettings | null>(null);
@@ -232,6 +233,7 @@ function Rule({
   checked: boolean;
   onChange(next: boolean): void;
 }) {
+  const { styles } = useTheme();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
       <Checkbox.Root

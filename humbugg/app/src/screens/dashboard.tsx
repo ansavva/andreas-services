@@ -14,13 +14,14 @@ import { recordPolicyConsent } from '../config/policies';
 import { webUrl } from '../config/site';
 import { useAuth } from '../context/auth-context';
 import { useProfile } from '../context/profile-context';
-import { gap, styles } from '../theme/styles';
+import { gap, useTheme } from '../theme/styles';
 import type { GroupSummary, Profile } from '../types';
 import { pickAvatar } from '../utils/image-picker';
 import { sessionKeys, sessionStore } from '../utils/session-store';
 import { todayInputValue, validateGroupForm } from '../utils/validation';
 
 export default function DashboardScreen() {
+  const { styles } = useTheme();
   const auth = useAuth();
   const router = useRouter();
   const { profile, loaded: profileLoaded, setProfile } = useProfile();
@@ -127,6 +128,7 @@ export default function DashboardScreen() {
 // order: nothing exists for a new account until this form is submitted, and the
 // consent rides the very same first `PUT /me` it always did.
 function ProfileSetup({ onSaved }: { onSaved(profile: Profile): void }) {
+  const { styles } = useTheme();
   const auth = useAuth();
   const [name, setName] = useState('');
   const [emailNotifications, setEmailNotifications] = useState(false);
@@ -243,6 +245,7 @@ function ProfileSetup({ onSaved }: { onSaved(profile: Profile): void }) {
 }
 
 function CreateGroup({ onCreated }: { onCreated(id: string): void }) {
+  const { styles } = useTheme();
   const auth = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

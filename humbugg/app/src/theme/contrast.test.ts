@@ -1,4 +1,4 @@
-// Humbugg's colours meet WCAG AA where Humbugg actually paints them (#138).
+// Humbugg's colours meet WCAG AA where Humbugg actually paints them (#138), in BOTH schemes.
 //
 // Contrast is the one accessibility property fully decidable from the palette, so it is checked
 // here rather than left to a manual sweep — and it is checked against `brand-colors.json` itself,
@@ -8,7 +8,18 @@
 //
 // Only pairs the app really renders are listed. A matrix of every colour against every other would
 // fail on combinations nothing draws, and the usual repair for that is to loosen the threshold.
-import brand from './brand-colors.json';
+import brandDark from './brand-colors.dark.json';
+import brandLight from './brand-colors.json';
+
+/**
+ * Both schemes, checked against the same pairs.
+ *
+ * The pairs are the same because the app paints the same things; only the values
+ * differ. Anything true of one palette and not the other is a bug in that
+ * palette, not a reason for the dark scheme to own a shorter list.
+ */
+const palettes = { light: brandLight, dark: brandDark };
+type SchemeName = keyof typeof palettes;
 
 /** Relative luminance, per WCAG 2.2. */
 function luminance(hex: string): number {
@@ -29,7 +40,7 @@ function contrast(foreground: string, background: string): number {
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 }
 
-type Role = keyof typeof brand;
+type Role = keyof typeof brandLight;
 
 /**
  * Foreground/background pairs the app draws, and where.
@@ -66,25 +77,46 @@ const TEXT_PAIRS: Array<[Role, Role, string]> = [
  * 3:1 large-text allowance. If a genuinely large style is ever added it gets its own list rather
  * than a lowered threshold here.
  */
-describe.each(TEXT_PAIRS)('%s on %s', (foreground, background, where) => {
-  it(`meets WCAG AA as ${where}`, () => {
-    expect(Number(contrast(brand[foreground], brand[background]).toFixed(2))).toBeGreaterThanOrEqual(
-      4.5,
-    );
+describe.each(Object.keys(palettes) as SchemeName[])('%s', (scheme) => {
+  const brand = palettes[scheme];
+  describe.each(TEXT_PAIRS)('%s on %s', (foreground, background, where) => {
+    it(`meets WCAG AA as ${where}`, () => {
+      expect(
+        Number(contrast(brand[foreground], brand[background]).toFixed(2)),
+      ).toBeGreaterThanOrEqual(4.5);
+    });
   });
 });
 
 /**
- * A hover state is darker than its resting colour, not merely different.
+ * A hover state moves TOWARD the foreground, not merely away from its resting colour.
  *
- * On native these are pre-computed values rather than live `color-mix()` blends (see `theme.ts`),
- * so nothing derives them and nothing else would notice one being set lighter — which reads as the
- * button going pale under the finger.
+ * This rule used to read "darker than", which was light-scheme reasoning wearing a general name:
+ * on cream, moving toward the ink means going darker. On a dark page the same intent inverts —
+ * a hover that goes darker sinks into the background and reads as the button going dead under the
+ * finger. So the direction is per scheme; the rule is not.
+ *
+ * It matters more here than the ratios do: on native these are PRE-COMPUTED values rather than
+ * live `color-mix()` blends (see `theme.ts`), so nothing derives them and nothing else would
+ * notice one set the wrong way.
  */
-it.each([
-  ['primaryHover', 'primary'],
-  ['primaryActive', 'primaryHover'],
-  ['accentHover', 'accent'],
-] as Array<[Role, Role]>)('%s is darker than %s', (state, resting) => {
-  expect(luminance(brand[state])).toBeLessThan(luminance(brand[resting]));
+describe.each(Object.keys(palettes) as SchemeName[])('%s', (scheme) => {
+  const brand = palettes[scheme];
+  const towardForeground = (state: Role, resting: Role) =>
+    scheme === 'dark'
+      ? expect(luminance(brand[state])).toBeGreaterThan(luminance(brand[resting]))
+      : expect(luminance(brand[state])).toBeLessThan(luminance(brand[resting]));
+
+  it.each([
+    ['primaryHover', 'primary'],
+    ['primaryActive', 'primaryHover'],
+    ['accentHover', 'accent'],
+  ] as Array<[Role, Role]>)('%s moves toward the foreground from %s', (state, resting) => {
+    towardForeground(state, resting);
+  });
+});
+
+/** The two files hold the same thirteen roles — a missing dark role is a silent default. */
+it('states every light role in dark too', () => {
+  expect(Object.keys(brandDark).sort()).toEqual(Object.keys(brandLight).sort());
 });

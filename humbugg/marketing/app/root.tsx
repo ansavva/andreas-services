@@ -23,15 +23,44 @@ export const links: LinksFunction = () => [
   { rel: 'stylesheet', href: stylesheet },
 ];
 
+/**
+ * Turn the scheme on before the first paint.
+ *
+ * The design system's web leaves read `data-theme`, not `prefers-color-scheme`
+ * — a media query alone reaches Humbugg's own custom properties and leaves every
+ * package component on the light ones. So the attribute has to be set, and it
+ * has to be set in a blocking script in `<head>`: this site is server-rendered,
+ * so the HTML arrives with no attribute, and setting it from an effect would
+ * paint the cream scheme first and flash.
+ *
+ * The listener is for the OS preference changing while the page is open. There
+ * is no in-app switch, deliberately: the product app cannot have one (the
+ * package's native leaves read `useColorScheme()` and offer no override), and a
+ * toggle on the brochure that the app cannot honour is worse than neither.
+ */
+const APPLY_SCHEME = `(function(){
+  try {
+    var q = window.matchMedia('(prefers-color-scheme: dark)');
+    var set = function (dark) { document.documentElement.dataset.theme = dark ? 'dark' : 'light'; };
+    set(q.matches);
+    q.addEventListener('change', function (e) { set(e.matches); });
+  } catch (e) {}
+})();`;
+
 export function Layout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#1d5545" />
+        {/* Tells the browser to paint its own furniture — scrollbars, form
+            controls, the canvas behind the page — in whichever scheme is live. */}
+        <meta name="color-scheme" content="light dark" />
+        <meta name="theme-color" content="#fbf8ef" media="(prefers-color-scheme: light)" />
+        <meta name="theme-color" content="#0e1f1a" media="(prefers-color-scheme: dark)" />
         <Meta />
         <Links />
+        <script dangerouslySetInnerHTML={{ __html: APPLY_SCHEME }} />
       </head>
       <body>
         {children}

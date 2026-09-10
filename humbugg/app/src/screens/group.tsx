@@ -5,7 +5,7 @@ import { Button, Checkbox, Input, Select, Textarea } from '@ansavva/design-syste
 import * as Clipboard from 'expo-clipboard';
 import { Link, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Share, Text, View } from 'react-native';
 
 import { api, ApiError } from '../api/client';
 import { ExchangeInstructions, ExchangeSettingsPanel } from '../components/exchange-settings';
@@ -18,8 +18,7 @@ import { Card, LoadingPanel, Shell } from '../components/shell';
 import { StatusMessage } from '../components/status-message';
 import { RecipientWishList, WishListPanel } from '../components/wishlist';
 import { useAuth } from '../context/auth-context';
-import { blends, gap, styles } from '../theme/styles';
-import { brand } from '../theme/theme';
+import { gap, scopedStyles, useTheme } from '../theme/styles';
 import type {
   ExclusionPair,
   GroupDetail,
@@ -32,6 +31,7 @@ import { sessionKeys, sessionStore } from '../utils/session-store';
 import { validateAddressForm } from '../utils/validation';
 
 export default function GroupScreen({ groupId }: { groupId: string }) {
+  const { styles } = useTheme();
   const auth = useAuth();
   const router = useRouter();
   const [group, setGroup] = useState<GroupDetail | null>(null);
@@ -380,6 +380,7 @@ function RemoveMemberButton({
 }
 
 function MetaChip({ children }: { children: React.ReactNode }) {
+  const { styles } = useTheme();
   return (
     <View style={styles.metaChip}>
       <Text style={styles.smallMuted}>{children}</Text>
@@ -398,11 +399,12 @@ function AssignmentCard({
   onClaim(wishId: string, state: WishClaimState, quantity: number): void;
   onRelease(wishId: string): void;
 }) {
+  const { styles } = useTheme();
   const address = Object.values(assignment.address ?? {}).filter(Boolean).join(', ');
   return (
     <View style={styles.assignmentCard}>
       <Text style={styles.assignmentLabel}>Your secret recipient</Text>
-      <Text style={[styles.displayLg, { color: brand.primaryText, marginTop: 8 }]}>
+      <Text style={[styles.displayLg, styles.assignmentHeading, { marginTop: 8 }]}>
         {assignment.display_name}
       </Text>
       <View style={{ marginTop: 28, gap: 20 }}>
@@ -445,6 +447,9 @@ function WishListForm({
   onSave(data: Record<string, unknown>): void;
   onClear(): void;
 }) {
+  const theme = useTheme();
+  const { brand, styles } = theme;
+  const local = localStyles(theme);
   const saved = membership.address ?? {};
   const [wishlist, setWishlist] = useState(membership.wishlist ?? '');
   const [avoidances, setAvoidances] = useState(membership.avoidances ?? '');
@@ -576,6 +581,9 @@ interface OrganizerProps {
 }
 
 function OrganizerPanel(props: OrganizerProps) {
+  const theme = useTheme();
+  const { blends, brand, styles } = theme;
+  const local = localStyles(theme);
   const { group } = props;
   const [first, setFirst] = useState<string | null>(null);
   const [second, setSecond] = useState<string | null>(null);
@@ -829,8 +837,9 @@ function OrganizerPanel(props: OrganizerProps) {
   );
 }
 
-const local = StyleSheet.create({
-  disclosure: { borderWidth: 1, borderColor: brand.line, borderRadius: 12, padding: 16 },
+/** Built once per scheme — see `scopedStyles`. */
+const localStyles = scopedStyles((t) => ({
+  disclosure: { borderWidth: 1, borderColor: t.brand.line, borderRadius: 12, padding: 16 },
   // The web app's `.sr-only`: announced, never drawn.
   srOnly: { position: 'absolute', width: 1, height: 1, overflow: 'hidden', opacity: 0 },
-});
+}));

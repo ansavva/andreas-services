@@ -18,7 +18,7 @@ import { Text, View } from 'react-native';
 
 import { api } from '../api/client';
 import { useAuth } from '../context/auth-context';
-import { blends, gap, styles } from '../theme/styles';
+import { gap, useTheme } from '../theme/styles';
 import type { ExchangeTemplate, GroupDetail } from '../types';
 import { FieldLabel } from './field';
 import { isPlusRequired, PanelLoadFailure, PlusLockedNote } from './plus';
@@ -32,6 +32,7 @@ export function TemplatesPanel({
   group: GroupDetail;
   onApplied(next: GroupDetail): void;
 }) {
+  const { styles } = useTheme();
   const auth = useAuth();
   const [templates, setTemplates] = useState<ExchangeTemplate[] | null>(null);
   const [needsPlus, setNeedsPlus] = useState(false);

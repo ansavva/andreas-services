@@ -16,7 +16,7 @@ import { FieldLabel } from './field';
 import { Card } from './shell';
 import { StatusMessage } from './status-message';
 import { useAuth } from '../context/auth-context';
-import { gap, styles } from '../theme/styles';
+import { gap, useTheme } from '../theme/styles';
 import type { GroupDetail } from '../types';
 
 export function ExchangeSettingsPanel({
@@ -26,6 +26,7 @@ export function ExchangeSettingsPanel({
   group: GroupDetail;
   onSaved(group: GroupDetail): void;
 }) {
+  const { styles } = useTheme();
   const auth = useAuth();
   const [name, setName] = useState(group.name);
   const [description, setDescription] = useState(group.description ?? '');
@@ -150,6 +151,7 @@ export function ExchangeSettingsPanel({
  * than no heading, and most exchanges will never need this.
  */
 export function ExchangeInstructions({ instructions }: { instructions?: string }) {
+  const { styles } = useTheme();
   if (!instructions?.trim()) return null;
   return (
     <Card>

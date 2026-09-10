@@ -39,6 +39,48 @@
   --radius-lg: 0.875rem; /* 14px — cards and page-level surfaces */
   --font-heading: "Open Sans", ui-sans-serif, system-ui, sans-serif;
   --font-body: "Open Sans", ui-sans-serif, system-ui, sans-serif;
+  /* Depth is not a semantic colour. It was drawn in `ink`, which is cream under
+   * dark: every card grew a pale halo instead of a shadow. */
+  --color-shadow: #18332b;
+  --shadow-mark: 18%;
+  --shadow-hero: 13%;
+  --shadow-reveal: 20%;
+}
+
+/* Humbugg's dark scheme — the same thirteen roles inverted.
+ *
+ * `data-theme` rather than `prefers-color-scheme`, because that is the only
+ * switch the design system's web leaves read; `app/root.tsx` sets the attribute
+ * from the OS preference before first paint. The app half states the same
+ * thirteen in `app/src/theme/brand-colors.dark.json` — keep the two in step by
+ * hand, as the light thirteen already are.
+ *
+ * The hover and active states are pinned rather than left to the base's
+ * `color-mix`, so both platforms land on the same value: native pre-computes
+ * them and cannot derive anything.
+ *
+ * This block sits after the `@import` of the package's own theme, which is what
+ * lets it win — same specificity, later in source order. */
+[data-theme='dark'] {
+  --color-ink: #f2ece0;
+  --color-muted: #8b9d93;
+  --color-line: #2b463d;
+  --color-bg: #0e1f1a;
+  --color-card: #142a24;
+  --color-surface-alt: #1b352d;
+  --color-frame: #1b3a31;
+  --color-frame-text: #f2ece0;
+  --color-accent: #c9993f;
+  --color-accent-hover: #dcac52;
+  --color-brand: #7fd0a6;
+  --color-primary: #7fd0a6;
+  --color-primary-hover: #93dab5;
+  --color-primary-active: #a9e4c5;
+  --color-primary-text: #0c1f18;
+  --color-shadow: #000000;
+  --shadow-mark: 45%;
+  --shadow-hero: 50%;
+  --shadow-reveal: 50%;
 }
 
 :root {
@@ -54,12 +96,12 @@ button, input, textarea, select { font: inherit; }
 .eyebrow { color: var(--color-muted); font-size: .75rem; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; }
 .nav-link { align-items: center; border-radius: var(--radius-sm); color: var(--color-muted); font-size: .875rem; font-weight: 600; min-height: 2.5rem; padding: 0 .75rem; }
 .nav-link:hover { color: var(--color-ink); background: var(--color-surface-alt); }
-.brand-mark { display: inline-flex; width: 2.5rem; height: 2.5rem; flex: 0 0 auto; align-items: center; justify-content: center; overflow: hidden; border-radius: var(--radius-md); background: var(--color-primary); color: var(--color-primary-text); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary-text) 16%, transparent), 0 5px 14px color-mix(in srgb, var(--color-primary) 18%, transparent); font-family: "Lily Script One", cursive; font-size: 2rem; line-height: 1; text-indent: -.04em; transform: rotate(-1deg); }
+.brand-mark { display: inline-flex; width: 2.5rem; height: 2.5rem; flex: 0 0 auto; align-items: center; justify-content: center; overflow: hidden; border-radius: var(--radius-md); background: var(--color-primary); color: var(--color-primary-text); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary-text) 16%, transparent), 0 5px 14px color-mix(in srgb, var(--color-shadow) var(--shadow-mark), transparent); font-family: "Lily Script One", cursive; font-size: 2rem; line-height: 1; text-indent: -.04em; transform: rotate(-1deg); }
 .brand-wordmark { color: var(--color-primary); font-family: "Lily Script One", cursive; font-size: 2.35rem; line-height: 1; letter-spacing: -.025em; transition: color .18s ease; }
 .group:hover .brand-wordmark { color: var(--color-primary-hover); }
 .brand-mark-large { width: 4rem; height: 4rem; border-radius: var(--radius-lg); font-size: 3.25rem; }
 .hero-grid { background-color: var(--color-bg); background-image: radial-gradient(circle at 82% 18%, color-mix(in srgb, var(--color-accent) 18%, transparent) 0 1px, transparent 2px), linear-gradient(125deg, transparent 55%, color-mix(in srgb, var(--color-primary) 4%, transparent)); background-size: 24px 24px, auto; }
-.hero-card { border: 1px solid var(--color-line); border-radius: var(--radius-lg); padding: 1.75rem; background: var(--color-card); box-shadow: 0 24px 70px color-mix(in srgb, var(--color-ink) 13%, transparent); }
+.hero-card { border: 1px solid var(--color-line); border-radius: var(--radius-lg); padding: 1.75rem; background: var(--color-card); box-shadow: 0 24px 70px color-mix(in srgb, var(--color-shadow) var(--shadow-hero), transparent); }
 .hero-card-back { position: absolute; inset: 2.5rem -1.25rem -1.25rem 2.5rem; transform: rotate(4deg); background: var(--color-frame); }
 .avatar-chip { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; flex: 0 0 auto; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--color-primary) 12%, var(--color-card)); color: var(--color-primary); font-family: var(--font-heading); font-weight: 700; }
 .feature-card { min-height: 18rem; border: 1px solid var(--color-line); border-radius: var(--radius-lg); padding: 2rem; background: var(--color-card); }
@@ -79,8 +121,16 @@ button, input, textarea, select { font: inherit; }
 .group-meta { display: flex; flex-wrap: wrap; gap: .65rem; color: var(--color-muted); font-size: .875rem; }
 .group-meta span { border: 1px solid var(--color-line); border-radius: var(--radius-pill); padding: .45rem .75rem; background: var(--color-card); }
 .member-row { display: flex; align-items: center; gap: .8rem; border-radius: var(--radius-md); padding: .75rem; background: var(--color-surface-alt); }
-.assignment-card { border-radius: var(--radius-lg); padding: 2rem; background: var(--color-primary); color: var(--color-primary-text); box-shadow: 0 18px 50px color-mix(in srgb, var(--color-primary) 20%, transparent); }
+.assignment-card { border-radius: var(--radius-lg); padding: 2rem; background: var(--color-primary); color: var(--color-primary-text); box-shadow: 0 18px 50px color-mix(in srgb, var(--color-shadow) var(--shadow-reveal), transparent); }
 .assignment-label { margin-bottom: .4rem; color: color-mix(in srgb, var(--color-primary-text) 65%, transparent); font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+/* The reveal inverts rather than translating: filled `primary` is the single
+ * dark block on a cream page, and the same fill on a dark page would be the
+ * brightest thing on screen. Dark raises a panel instead. */
+[data-theme='dark'] .assignment-card { background: var(--color-surface-alt); border: 1px solid var(--color-primary); color: var(--color-ink); }
+[data-theme='dark'] .assignment-label { color: var(--color-muted); }
+/* A popover fill barely separates from the page in either scheme, and light
+ * makes up the difference with a shadow a dark page cannot show. */
+[data-theme='dark'] .select-control { background: var(--color-surface-alt); }
 .select-control { width: 100%; height: 2.5rem; border: 1px solid var(--color-line); border-radius: var(--radius-sm); padding: 0 .65rem; background: var(--color-card); color: var(--color-ink); font-size: .875rem; }
 .pair-chip { border-radius: var(--radius-pill); padding: .4rem .7rem; background: var(--color-surface-alt); color: var(--color-ink); font-size: .75rem; }
 .delete-button { position: relative; overflow: hidden; }

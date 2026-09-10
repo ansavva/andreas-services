@@ -15,7 +15,7 @@ import { Text, View } from 'react-native';
 
 import { api } from '../api/client';
 import { useAuth } from '../context/auth-context';
-import { blends, styles } from '../theme/styles';
+import { useTheme } from '../theme/styles';
 import type { LateParticipantPreview, ParticipantReadiness } from '../types';
 import { isPlusRequired } from './plus';
 import { Card } from './shell';
@@ -34,6 +34,7 @@ export function LateParticipantPanel({
   onAdded(): void;
   onNeedsPlus(): void;
 }) {
+  const { blends, styles } = useTheme();
   const auth = useAuth();
   const [preview, setPreview] = useState<LateParticipantPreview | null>(null);
   const [busy, setBusy] = useState(false);

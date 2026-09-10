@@ -6,10 +6,11 @@
 import { Link } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 
-import { styles } from '../theme/styles';
+import { useTheme } from '../theme/styles';
 
 /** The wordmark, linking home. Matches the web app's `<Brand />`. */
 export function Brand() {
+  const { styles } = useTheme();
   return (
     <Link href="/" asChild>
       <Pressable accessibilityRole="link" accessibilityLabel="Humbugg home">
@@ -21,6 +22,7 @@ export function Brand() {
 
 /** `.brand-mark` — the rotated green square with the script H. */
 export function BrandMark({ large = false }: { large?: boolean }) {
+  const { styles } = useTheme();
   return (
     <View
       accessibilityElementsHidden

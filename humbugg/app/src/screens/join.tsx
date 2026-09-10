@@ -18,7 +18,7 @@ import { BrandMark } from '../components/brand';
 import { Card, Shell } from '../components/shell';
 import { StatusMessage } from '../components/status-message';
 import { useAuth } from '../context/auth-context';
-import { styles } from '../theme/styles';
+import { useTheme } from '../theme/styles';
 import type { InvitationPreview } from '../types';
 import { readInviteSecret } from '../utils/invite';
 import { sessionKeys, sessionStore } from '../utils/session-store';
@@ -51,6 +51,7 @@ function refusal(error: unknown): string {
 }
 
 export default function JoinScreen({ groupId }: { groupId: string }) {
+  const { styles } = useTheme();
   const auth = useAuth();
   const router = useRouter();
   const [invite, setInvite] = useState<string>(() => sessionStore.get(sessionKeys.join(groupId)) ?? '');

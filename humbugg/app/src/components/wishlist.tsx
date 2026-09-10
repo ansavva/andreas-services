@@ -3,15 +3,15 @@
 // reading it after the draw.
 import { Badge, Button, Input, Select, Textarea } from '@ansavva/design-system';
 import { useEffect, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, Text, View } from 'react-native';
 
 import { api } from '../api/client';
 import { FieldLabel } from '../components/field';
 import { Card } from '../components/shell';
 import { StatusMessage } from '../components/status-message';
 import { useAuth } from '../context/auth-context';
-import { blends, gap, styles } from '../theme/styles';
-import { brand } from '../theme/theme';
+import { radii } from '../theme/radii';
+import { gap, scopedStyles, useTheme } from '../theme/styles';
 import type { RecipientWish, Wish, WishClaimState } from '../types';
 import {
   emptyWishForm,
@@ -28,6 +28,9 @@ import {
 } from '../utils/wish';
 
 export function WishListPanel({ groupId }: { groupId: string }) {
+  const theme = useTheme();
+  const { styles } = theme;
+  const local = localStyles(theme);
   const auth = useAuth();
   const [wishes, setWishes] = useState<Wish[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -198,6 +201,9 @@ function WishRow({
   onMoveDown(): void;
   onRemove(): void;
 }) {
+  const theme = useTheme();
+  const { brand, styles } = theme;
+  const local = localStyles(theme);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const price = formatPrice(wish.price_cents, wish.currency);
   const host = linkHost(wish.url);
@@ -300,6 +306,9 @@ function WishForm({
   /** Absent on the edit form: reading a link is for turning a paste into a new wish. */
   groupId?: string;
 }) {
+  const theme = useTheme();
+  const { styles } = theme;
+  const local = localStyles(theme);
   const auth = useAuth();
   const [values, setValues] = useState<WishFormValues>(initial);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -463,6 +472,9 @@ export function RecipientWishList({
   onClaim?(wishId: string, state: WishClaimState, quantity: number): void;
   onRelease?(wishId: string): void;
 }) {
+  const theme = useTheme();
+  const { styles } = theme;
+  const local = localStyles(theme);
   if (wishes.length === 0) {
     return <Text style={styles.assignmentText}>No specific wishes added.</Text>;
   }
@@ -471,7 +483,7 @@ export function RecipientWishList({
       {/* Said once for the list rather than under every item: the reassurance is about the
           feature, not about any particular gift, and repeating it per wish is noise. */}
       {onClaim ? (
-        <Text style={[styles.tiny, { color: blends.assignmentLabel }]}>
+        <Text style={[styles.tiny, styles.assignmentSubtle]}>
           What you mark here is yours alone — they never see it, and it is only for this draw.
         </Text>
       ) : null}
@@ -480,7 +492,7 @@ export function RecipientWishList({
         const host = linkHost(wish.url);
         return (
           <View key={wish.wish_id} style={local.recipientRow}>
-            <Text style={[styles.small, styles.semibold, { color: brand.primaryText }]}>
+            <Text style={[styles.small, styles.semibold, styles.assignmentInk]}>
               {wish.title}
             </Text>
             <View style={local.chips}>
@@ -491,7 +503,7 @@ export function RecipientWishList({
                 </Badge>
               ) : null}
               {wish.quantity > 1 ? <Badge size="sm">×{wish.quantity}</Badge> : null}
-              {price ? <Text style={[styles.tiny, { color: brand.primaryText }]}>{price}</Text> : null}
+              {price ? <Text style={[styles.tiny, styles.assignmentInk]}>{price}</Text> : null}
             </View>
             {host ? (
               <Pressable
@@ -499,13 +511,13 @@ export function RecipientWishList({
                 accessibilityLabel={`Open ${wish.title} on ${host}`}
                 onPress={() => { if (wish.url) void Linking.openURL(wish.url); }}
               >
-                <Text style={[styles.tiny, { color: brand.primaryText, textDecorationLine: 'underline' }]}>
+                <Text style={[styles.tiny, styles.assignmentInk, { textDecorationLine: 'underline' }]}>
                   {host} ↗
                 </Text>
               </Pressable>
             ) : null}
             {wish.details ? (
-              <Text style={[styles.tiny, { color: brand.primaryText }]}>{wish.details}</Text>
+              <Text style={[styles.tiny, styles.assignmentInk]}>{wish.details}</Text>
             ) : null}
             {onClaim && onRelease ? (
               <ClaimControls
@@ -541,6 +553,9 @@ function ClaimControls({
   onClaim(wishId: string, state: WishClaimState, quantity: number): void;
   onRelease(wishId: string): void;
 }) {
+  const theme = useTheme();
+  const { styles } = theme;
+  const local = localStyles(theme);
   // Defaults to the whole wish, which is what a giver almost always means. The picker only exists
   // when there is a choice to make.
   const [quantity, setQuantity] = useState(String(wish.claim?.quantity ?? wish.quantity));
@@ -615,25 +630,48 @@ function formFromWish(wish: Wish): WishFormValues {
   };
 }
 
-const local = StyleSheet.create({
+/** Built once per scheme — see `scopedStyles`. */
+const localStyles = scopedStyles((t) => ({
   row: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'flex-start',
     gap: gap.sm,
     borderWidth: 1,
-    borderColor: brand.line,
+    borderColor: t.brand.line,
     borderRadius: 12,
     padding: gap.md,
   },
   rowActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: gap.xs },
   chips: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: gap.xs },
-  form: { borderWidth: 1, borderColor: brand.line, borderRadius: 12, padding: gap.md },
-  recipientRow: {
-    gap: 6,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.18)',
-    paddingTop: gap.sm,
-  },
+  form: { borderWidth: 1, borderColor: t.brand.line, borderRadius: 12, padding: gap.md },
+  /**
+   * One wish inside the reveal.
+   *
+   * On cream the reveal is a filled `primary` block, so a wish is separated from
+   * the one above it by a hairline drawn in the card's own overlay white — there
+   * is no lighter surface to sit on, and none is needed.
+   *
+   * Dark raises the reveal as a `surfaceAlt` panel instead, and a hairline is not
+   * enough there: the neutral chips a wish carries (`Badge`, and the secondary
+   * claim buttons) paint `surfaceAlt` themselves, which on a `surfaceAlt` panel
+   * is nothing at all. So a wish takes its own `card` ground and the chips have
+   * something to be legible against.
+   */
+  recipientRow: t.scheme === 'dark'
+    ? {
+        gap: 6,
+        borderWidth: 1,
+        borderColor: t.brand.line,
+        borderRadius: radii.md,
+        backgroundColor: t.brand.card,
+        padding: gap.sm,
+      }
+    : {
+        gap: 6,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.18)',
+        paddingTop: gap.sm,
+      },
   srOnly: { position: 'absolute', width: 1, height: 1, overflow: 'hidden', opacity: 0 },
-});
+}));
