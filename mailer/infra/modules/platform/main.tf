@@ -880,12 +880,41 @@ resource "aws_ssm_parameter" "outputs" {
   tags  = var.tags
 }
 
+# Alarm notifications. One SNS topic per service, email (decision 2026-09-09).
+#
+# Every alarm below already existed and none of them notified anyone — the alarms
+# were visible in CloudWatch and nowhere else. Each now sets both `alarm_actions`
+# and `ok_actions`, so a recovery mail closes the loop and a quiet inbox means
+# healthy rather than unmonitored.
+#
+# An email subscription lands in PendingConfirmation and delivers nothing until the
+# recipient clicks the AWS link. Terraform cannot confirm it. See docs/operations.md.
+resource "aws_sns_topic" "alerts" {
+  name = "${local.name}-alerts"
+  tags = var.tags
+}
+
+# Gated so the stack applies before the secret exists; the topic is always created.
+resource "aws_sns_topic_subscription" "alerts_email" {
+  count = var.alert_email != "" ? 1 : 0
+
+  topic_arn = aws_sns_topic.alerts.arn
+  protocol  = "email"
+  endpoint  = var.alert_email
+}
+
+locals {
+  alarm_actions = [aws_sns_topic.alerts.arn]
+}
+
 resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
   for_each = {
     ingress  = aws_lambda_function.ingress.function_name
     sender   = aws_lambda_function.sender.function_name
     feedback = aws_lambda_function.feedback.function_name
   }
+  alarm_actions       = local.alarm_actions
+  ok_actions          = local.alarm_actions
   alarm_name          = "${local.name}-${each.key}-errors"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
@@ -900,6 +929,8 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "dlq" {
+  alarm_actions = local.alarm_actions
+  ok_actions    = local.alarm_actions
   for_each = {
     send     = aws_sqs_queue.humbugg_send_dlq.name
     feedback = aws_sqs_queue.feedback_dlq.name
@@ -919,6 +950,8 @@ resource "aws_cloudwatch_metric_alarm" "dlq" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "queue_age" {
+  alarm_actions       = local.alarm_actions
+  ok_actions          = local.alarm_actions
   alarm_name          = "${local.name}-humbugg-send-oldest-message"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
@@ -933,6 +966,8 @@ resource "aws_cloudwatch_metric_alarm" "queue_age" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "attachment_threat" {
+  alarm_actions       = local.alarm_actions
+  ok_actions          = local.alarm_actions
   alarm_name          = "${local.name}-attachment-threat"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
@@ -946,6 +981,8 @@ resource "aws_cloudwatch_metric_alarm" "attachment_threat" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "attachment_scan_failure" {
+  alarm_actions       = local.alarm_actions
+  ok_actions          = local.alarm_actions
   alarm_name          = "${local.name}-attachment-scan-failure"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
@@ -959,6 +996,8 @@ resource "aws_cloudwatch_metric_alarm" "attachment_scan_failure" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "humbugg_rejects" {
+  alarm_actions       = local.alarm_actions
+  ok_actions          = local.alarm_actions
   alarm_name          = "${local.name}-humbugg-rejects"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
@@ -973,6 +1012,8 @@ resource "aws_cloudwatch_metric_alarm" "humbugg_rejects" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "ses_bounce_rate" {
+  alarm_actions       = local.alarm_actions
+  ok_actions          = local.alarm_actions
   alarm_name          = "${local.name}-ses-bounce-rate"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
@@ -986,6 +1027,8 @@ resource "aws_cloudwatch_metric_alarm" "ses_bounce_rate" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "ses_complaint_rate" {
+  alarm_actions       = local.alarm_actions
+  ok_actions          = local.alarm_actions
   alarm_name          = "${local.name}-ses-complaint-rate"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
