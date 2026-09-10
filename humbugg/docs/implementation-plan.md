@@ -467,3 +467,4 @@ Lambdas actually exist.
 - [`runbooks.md`](runbooks.md) — operating procedures: billing, email, support inbox, deletion requests, the emergency reveal, credential rotation, health/alerts/rollback
 - [`breach-response.md`](breach-response.md) — GDPR Art. 33/34 breach detection, triage, containment and notification
 - [`launch-checklist.md`](launch-checklist.md) (#163) and [`beta-plan.md`](beta-plan.md) (#162) — the Launch detail behind the section above
+- [`launch-evidence.md`](launch-evidence.md) — the payment/limits/email matrix for #160: automated rows with the test that was run, operator rows for what needs a browser or a real inbox
