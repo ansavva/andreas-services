@@ -383,6 +383,20 @@ just this section.
   edge; entitlements never change on an unverified event.
 - **Audit integrity:** treat `humbugg-prod-audit-events` as evidence — restrict IAM to append + read, deny
   delete/update in the table's resource policy, and consider point-in-time recovery.
+- **The production smoke account (#642):** a real, confirmed user in the production pool that the
+  post-deploy `smoke-test` job signs in as, so that one tier crosses the real API Gateway with a
+  real token (#586). It is an ordinary account with no privilege of any kind, and its safety rests
+  on it holding nothing: no group, no membership, no profile row, no personal data — so a
+  compromise of its password discloses an empty account, and the smoke step only ever issues
+  `GET`s, which is a rule in [`TESTING.md`](TESTING.md). Its address is on a reserved `.test`
+  domain (RFC 2606), so no mail can ever reach a real mailbox. Address and password live only in
+  the `humbugg-production` GitHub environment (var `HUMBUGG_SMOKE_USER_EMAIL`, secret
+  `HUMBUGG_SMOKE_USER_PASSWORD`) and neither is written into this repo; both tokens the account
+  mints are `::add-mask::`ed the moment they exist, because this repo's workflow logs are public.
+  **Rotate it** with `aws cognito-idp admin-set-user-password --user-pool-id … --username … 
+  --password … --permanent` and then update that secret — nothing else reads it, and no deploy or
+  Terraform apply is involved. **Disable it** (`admin-disable-user`) if it is ever suspected: the
+  smoke step fails loudly, which is the correct outcome, and no user-facing surface depends on it.
 - **Config tuning:** the rate limit is a Terraform variable. Emergency tightening (lower
   `api_throttling_rate_limit` / `api_throttling_burst_limit` in `humbugg/infra`) is applied via the
   deploy workflow's `run_infra` path.

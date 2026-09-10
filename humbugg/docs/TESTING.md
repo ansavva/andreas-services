@@ -17,12 +17,23 @@ answer, and this file is where it lives.
 | App browser, stubbed | `app/e2e/*.spec.ts` | every PR | committed fixtures | — |
 | App browser, live | same specs, plus an API round trip (`session.spec.ts`, #373) | local only | dev backend + dev Cognito | `E2E_LIVE=1` |
 | Marketing unit | `marketing/**/*.test.ts(x)` | every PR | jsdom | — |
-| Prod smoke | `humbugg-prod.yaml` post-deploy jobs | after deploy | live prod | — |
+| Prod smoke | `humbugg-prod.yaml` post-deploy jobs | after deploy | live prod, anonymously **and signed in** (#642) | — |
 
 The prod smoke jobs (the curl assertions over all three surfaces and the SES
 mailbox-simulator loop) are a **detector, not a gate**: there is no staging, the
 image is already serving, and their unique value is exercising what nothing local
 can — the deployed Lambda's own IAM role, CloudFront behaviors, real SES feedback.
+
+Since #642 that includes an **authenticated** round trip. It is the only tier that
+crosses a real API Gateway with a real token, which is the gap #586 named: every
+other tier stops short of the gateway, so `ANY /api/{proxy+}`'s authorizer — the
+thing that 401ed two `[AllowAnonymous]` endpoints for their whole lives (#582) —
+was exercised by nothing until a change was already serving. `smoke-session.mjs`
+signs in over SRP as the smoke account, and the step asserts that `GET /api/me`
+reaches the application, that `GET /api/me/export` reports the token's own `sub`,
+that `GET /api/groups` answers 200, and that an ID token and no token are both
+refused. It runs against **production**, not a dev stack, because the dev stack has
+no gateway and giving each machine one costs more than it returns (#642).
 
 ## Commands
 
@@ -108,7 +119,22 @@ Each rule traces to a real hazard, most of them already paid for once:
    does not key on env vars; without it the export silently reuses whichever
    `EXPO_PUBLIC_*` values the previous export inlined (measured: identical bundle
    hash across env changes).
-8. **Env-var table names stay cross-checked.** `CiSmokeEnvironmentTests` parses
+8. **The prod smoke account stays empty, and read-only.** It is an ordinary user
+   in the **production** pool, and everything that makes it safe
+   is a property of what it holds: no group, no membership, no profile row, no
+   personal data. So the smoke step only ever **reads** — a new assertion may add
+   a `GET`, never a `POST`/`PUT`/`DELETE`. That is why `GET /api/me` is asserted
+   as *200 or 404* rather than 200: with no profile row the application answers
+   404, and creating one to make the check tidier would put the first piece of
+   data on an account whose whole defence is having none. The identity assertion
+   uses `GET /api/me/export`, which reports the caller's id either way.
+   Credentials live only in the `humbugg-production` environment — var
+   `HUMBUGG_SMOKE_USER_EMAIL`, secret `HUMBUGG_SMOKE_USER_PASSWORD` — and never in
+   the repo — the address included, so there is one place to change it. Rotate
+   with `aws cognito-idp admin-set-user-password --permanent` followed by
+   updating the secret; nothing else has to change. The address is on a reserved
+   `.test` domain (RFC 2606), so no mail can ever be delivered to it.
+9. **Env-var table names stay cross-checked.** `CiSmokeEnvironmentTests` parses
    `Program.cs` `RequiredTable` literals against the PR workflow's `-e` flags —
    written after three PRs sat red for weeks on the same one-line omission. Add a
    table, expect that test to tell you where else it must appear.
