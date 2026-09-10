@@ -31,6 +31,25 @@ output "dynamodb_table_arns" {
   }
 }
 
+output "dynamodb_table_names" {
+  description = "DynamoDB table names used by the Humbugg backend, including the delivery ledger"
+  value = {
+    profiles         = aws_dynamodb_table.profiles.name
+    groups           = aws_dynamodb_table.groups.name
+    groupmembers     = aws_dynamodb_table.groupmembers.name
+    wishes           = aws_dynamodb_table.wishes.name
+    draws            = aws_dynamodb_table.draws.name
+    audit_events     = aws_dynamodb_table.audit_events.name
+    analytics_events = aws_dynamodb_table.analytics_events.name
+    billing          = aws_dynamodb_table.billing.name
+    invitations      = aws_dynamodb_table.invitations.name
+    reminders        = aws_dynamodb_table.reminders.name
+    templates        = aws_dynamodb_table.templates.name
+    questions        = aws_dynamodb_table.questions.name
+    email_messages   = aws_dynamodb_table.email_messages.name
+  }
+}
+
 output "email_messages_table_arn" {
   description = "DynamoDB table ARN used for transactional email idempotency"
   value       = aws_dynamodb_table.email_messages.arn

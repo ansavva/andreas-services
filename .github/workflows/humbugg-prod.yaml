@@ -262,6 +262,9 @@ jobs:
           TF_VAR_stripe_publishable_key: ${{ vars.HUMBUGG_STRIPE_PUBLISHABLE_KEY }}
           TF_VAR_stripe_secret_key: ${{ secrets.HUMBUGG_STRIPE_SECRET_KEY }}
           TF_VAR_stripe_webhook_secret: ${{ secrets.HUMBUGG_STRIPE_WEBHOOK_SECRET }}
+          # Where production alarms mail. Empty until the secret exists; the alerting
+          # module then creates the SNS topic with no subscription.
+          TF_VAR_alert_email: ${{ secrets.HUMBUGG_ALERT_EMAIL }}
         run: terraform -chdir=humbugg/infra/envs/prod apply -auto-approve -input=false
 
       - name: Wait for SES domain authentication

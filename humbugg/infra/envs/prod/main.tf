@@ -218,3 +218,63 @@ module "billing" {
   tags = local.common_tags
 }
 
+module "alerting" {
+  source = "../../modules/alerting"
+
+  project     = local.project
+  environment = local.environment
+
+  alert_email = var.alert_email
+
+  # `email-status` keeps its original threshold of 1: every error is a delivery status
+  # that never reached the ledger. The rest tolerate 2 errors in five minutes so a lone
+  # cold-start failure does not mail anyone. Throttles are alarmed for the request-path
+  # Lambda only — the consumers are asynchronous and retry.
+  lambda_functions = {
+    api = {
+      function_name   = module.compute.lambda_function_name
+      error_threshold = 3
+      throttle_alarm  = true
+    }
+    reminders = {
+      function_name   = module.compute.reminders_lambda_function_name
+      error_threshold = 3
+    }
+    marketing = {
+      function_name   = module.compute.marketing_lambda_function_name
+      error_threshold = 3
+    }
+    "email-status" = {
+      function_name   = module.compute.email_status_lambda_function_name
+      error_threshold = 1
+    }
+  }
+
+  api_ids = {
+    api       = module.compute.api_id
+    marketing = module.compute.marketing_api_id
+  }
+
+  dynamodb_table_names = module.storage.dynamodb_table_names
+
+  tags = local.common_tags
+}
+
+# The alarm predates the module. `moved` keeps the same AWS alarm — it is relocated in
+# state, not replaced, so nothing is destroyed and no alarm history is lost.
+moved {
+  from = module.compute.aws_cloudwatch_metric_alarm.email_status_errors
+  to   = module.alerting.aws_cloudwatch_metric_alarm.lambda_errors["email-status"]
+}
+
+# Published for future consumers — another stack that wants to notify the same place
+# reads this rather than duplicating a topic.
+resource "aws_ssm_parameter" "alerts_topic_arn" {
+  name        = "/humbugg/prod/alerts-topic-arn"
+  description = "SNS topic every Humbugg production alarm publishes to"
+  type        = "String"
+  value       = module.alerting.topic_arn
+
+  tags = local.common_tags
+}
+

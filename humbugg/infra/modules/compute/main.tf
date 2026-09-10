@@ -387,23 +387,8 @@ resource "aws_cloudwatch_log_group" "reminders" {
   tags = var.tags
 }
 
-resource "aws_cloudwatch_metric_alarm" "email_status_errors" {
-  alarm_name          = "${var.project}-${var.environment}-email-status-errors"
-  comparison_operator = "GreaterThanOrEqualToThreshold"
-  evaluation_periods  = 1
-  metric_name         = "Errors"
-  namespace           = "AWS/Lambda"
-  period              = 300
-  statistic           = "Sum"
-  threshold           = 1
-  treat_missing_data  = "notBreaching"
-
-  dimensions = {
-    FunctionName = aws_lambda_function.email_status.function_name
-  }
-
-  tags = var.tags
-}
+# The email-status error alarm moved to modules/alerting, which owns every alarm and
+# the SNS topic they notify. A `moved` block in envs/prod keeps the same AWS alarm.
 
 resource "aws_apigatewayv2_api" "api" {
   name          = "${var.project}-${var.environment}-api"
