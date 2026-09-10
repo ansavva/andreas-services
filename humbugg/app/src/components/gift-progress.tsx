@@ -14,7 +14,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { api, ApiError } from '../api/client';
 import { useAuth } from '../context/auth-context';
-import { gap, styles } from '../theme/styles';
+import { gap, useTheme } from '../theme/styles';
 import type { GiftReceipt, GiftStage, GiftStatus } from '../types';
 import { Card } from './shell';
 import { StatusMessage } from './status-message';
@@ -41,6 +41,7 @@ export function GiftStagePanel({
   busy: boolean;
   onChange(stage: GiftStage): void;
 }) {
+  const { styles } = useTheme();
   return (
     <Card>
       <Text style={styles.eyebrow}>Your gift</Text>
@@ -86,6 +87,7 @@ export function GiftStagePanel({
  * sequence nobody promised.
  */
 export function GiftReceivedPanel({ groupId }: { groupId: string }) {
+  const { styles } = useTheme();
   const auth = useAuth();
   const [receipt, setReceipt] = useState<GiftReceipt | null>(null);
   const [busy, setBusy] = useState(false);

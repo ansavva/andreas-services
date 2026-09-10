@@ -4,9 +4,10 @@
 import { Link } from 'expo-router';
 import { Text, View } from 'react-native';
 
-import { styles } from '../theme/styles';
+import { useTheme } from '../theme/styles';
 
 export default function NotFound() {
+  const { styles } = useTheme();
   return (
     <View style={[styles.screen, { alignItems: 'center', justifyContent: 'center', padding: 20 }]}>
       <Text style={styles.eyebrow}>Page not found</Text>

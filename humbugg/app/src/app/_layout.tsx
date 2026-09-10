@@ -25,10 +25,11 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AuthProvider } from '../context/auth-context';
 import { ProfileProvider } from '../context/profile-context';
+import { useTheme } from '../theme/styles';
 import { humbuggTheme } from '../theme/theme';
-import { brand } from '../theme/theme';
 
 export default function RootLayout() {
+  const { brand } = useTheme();
   // Open Sans for everything that is type — headings included, since the serif
   // came out — and Lily Script One for the wordmark, which is a logo. The same
   // families the marketing site pulls from Google Fonts. React Native resolves
@@ -45,7 +46,13 @@ export default function RootLayout() {
   return (
     <ThemeProvider theme={humbuggTheme}>
       <SafeAreaProvider>
-        <StatusBar style="dark" />
+        {/*
+          The bar's own glyphs, not the page: `dark` means dark icons, which is
+          what a cream page wants and a deep green one cannot carry. `auto`
+          asks the platform to follow the scheme, which is the same answer
+          `useTheme()` gives every surface underneath.
+        */}
+        <StatusBar style="auto" />
         {/*
           Hold the first paint until the faces are registered. Without it the
           first frame renders in the platform's system font and reflows — which

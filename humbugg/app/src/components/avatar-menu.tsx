@@ -18,16 +18,19 @@
 import { Dropdown } from '@ansavva/design-system';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { useAuth } from '../context/auth-context';
 import { useProfile } from '../context/profile-context';
 import { radii } from '../theme/radii';
-import { styles } from '../theme/styles';
-import { brand, fonts } from '../theme/theme';
+import { scopedStyles, useTheme } from '../theme/styles';
+import { fonts } from '../theme/theme';
 import { Avatar } from './avatar';
 
 export function AvatarMenu() {
+  const theme = useTheme();
+  const { styles } = theme;
+  const local = localStyles(theme);
   const auth = useAuth();
   const { profile } = useProfile();
   const router = useRouter();
@@ -101,22 +104,23 @@ export function AvatarMenu() {
   );
 }
 
-const local = StyleSheet.create({
+/** Built once per scheme — see `scopedStyles`. */
+const localStyles = scopedStyles((t) => ({
   backdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 10 },
   trigger: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     borderWidth: 1,
-    borderColor: brand.line,
+    borderColor: t.brand.line,
     // The menu's own corner, not a pill: a 999px trigger hanging a `radii.md`
     // panel off itself is what made the two read as unrelated objects.
     borderRadius: radii.md,
-    backgroundColor: brand.card,
+    backgroundColor: t.brand.card,
     padding: 4,
     paddingRight: 10,
   },
-  triggerLabel: { maxWidth: 160, color: brand.ink, fontFamily: fonts.bodyMedium, fontSize: 14 },
+  triggerLabel: { maxWidth: 160, color: t.brand.ink, fontFamily: fonts.bodyMedium, fontSize: 14 },
   chevron: {
     width: 7,
     height: 7,
@@ -125,7 +129,7 @@ const local = StyleSheet.create({
     marginTop: -3,
     borderRightWidth: 1.5,
     borderBottomWidth: 1.5,
-    borderColor: brand.muted,
+    borderColor: t.brand.muted,
     transform: [{ rotate: '45deg' }],
   },
   // The package anchors with `left: 0`; `left: 'auto'` is what actually unsets
@@ -133,4 +137,4 @@ const local = StyleSheet.create({
   // value standing, so the menu stayed pinned to the trigger's left edge and,
   // this far right in the header, ran off the side of the window.
   anchorRight: { left: 'auto', right: 0 },
-});
+}));

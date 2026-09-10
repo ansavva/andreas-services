@@ -8,10 +8,10 @@
 // own typography and 7px gap are applied on top.
 import { Field as DsField } from '@ansavva/design-system';
 import type { ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
-import { styles } from '../theme/styles';
-import { brand, fonts } from '../theme/theme';
+import { scopedStyles, useTheme } from '../theme/styles';
+import { fonts } from '../theme/theme';
 
 export function FieldLabel({
   label,
@@ -28,6 +28,9 @@ export function FieldLabel({
   invalid?: boolean;
   children: ReactNode;
 }) {
+  const theme = useTheme();
+  const { styles } = theme;
+  const local = localStyles(theme);
   return (
     <DsField.Root invalid={invalid} style={styles.fieldLabel}>
       <DsField.Label>
@@ -51,7 +54,8 @@ export function Stack({ gap = 20, children }: { gap?: number; children: ReactNod
   return <View style={{ gap }}>{children}</View>;
 }
 
-const local = StyleSheet.create({
-  hint: { color: brand.muted, fontFamily: fonts.body },
-  help: { color: brand.muted, fontFamily: fonts.body, fontSize: 12, lineHeight: 16 },
-});
+/** Built once per scheme — see `scopedStyles`. */
+const localStyles = scopedStyles((t) => ({
+  hint: { color: t.brand.muted, fontFamily: fonts.body },
+  help: { color: t.brand.muted, fontFamily: fonts.body, fontSize: 12, lineHeight: 16 },
+}));

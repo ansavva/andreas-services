@@ -19,11 +19,12 @@ import { StatusMessage } from '../components/status-message';
 import { webUrl } from '../config/site';
 import { useAuth } from '../context/auth-context';
 import { useProfile } from '../context/profile-context';
-import { blends, gap, styles } from '../theme/styles';
+import { gap, useTheme } from '../theme/styles';
 import type { Profile } from '../types';
 import { pickAvatar } from '../utils/image-picker';
 
 export default function SettingsScreen() {
+  const { styles } = useTheme();
   const auth = useAuth();
   const { profile, loading, loaded, error, setProfile } = useProfile();
 
@@ -58,6 +59,7 @@ function ProfileSection({
   email: string | null;
   onSaved(profile: Profile): void;
 }) {
+  const { styles } = useTheme();
   const auth = useAuth();
   const [name, setName] = useState(profile?.display_name ?? '');
   const [savingName, setSavingName] = useState(false);
@@ -177,6 +179,7 @@ function ProfileSection({
 }
 
 function NotificationsSection({ profile, onSaved }: { profile: Profile; onSaved(profile: Profile): void }) {
+  const { styles } = useTheme();
   const auth = useAuth();
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ message: string; tone: 'error' | 'success' } | null>(null);
@@ -247,6 +250,7 @@ function NotificationsSection({ profile, onSaved }: { profile: Profile; onSaved(
 }
 
 function AccountSection({ email }: { email: string | null }) {
+  const { styles } = useTheme();
   return (
     <Card>
       <Text style={styles.heading}>Account</Text>
@@ -263,6 +267,7 @@ function AccountSection({ email }: { email: string | null }) {
 }
 
 function DangerZone({ profile }: { profile: Profile }) {
+  const { blends, styles } = useTheme();
   const auth = useAuth();
   const router = useRouter();
   const [open, setOpen] = useState(false);

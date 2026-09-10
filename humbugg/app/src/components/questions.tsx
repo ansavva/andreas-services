@@ -9,12 +9,11 @@
 // and the first divergence between them would be an identity.
 import { Button, Switch, Textarea } from '@ansavva/design-system';
 import { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { api, ApiError } from '../api/client';
 import { useAuth } from '../context/auth-context';
-import { blends, gap, styles } from '../theme/styles';
-import { brand } from '../theme/theme';
+import { gap, scopedStyles, useTheme } from '../theme/styles';
 import type { QuestionAuthor, QuestionThread } from '../types';
 import { Card } from './shell';
 import { StatusMessage } from './status-message';
@@ -57,6 +56,9 @@ const COPY: Record<QuestionSide, {
 };
 
 export function QuestionsPanel({ groupId, side }: { groupId: string; side: QuestionSide }) {
+  const theme = useTheme();
+  const { styles } = theme;
+  const local = localStyles(theme);
   const auth = useAuth();
   const copy = COPY[side];
   const [thread, setThread] = useState<QuestionThread | null>(null);
@@ -190,7 +192,8 @@ function label(author: QuestionAuthor, side: QuestionSide, them: string): string
   return author === side ? 'You' : them;
 }
 
-const local = StyleSheet.create({
+/** Built once per scheme — see `scopedStyles`. */
+const localStyles = scopedStyles((t) => ({
   heading: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -202,6 +205,6 @@ const local = StyleSheet.create({
   bubble: { borderRadius: 12, padding: gap.md, borderWidth: 1 },
   // Mine sits on the brand wash, theirs on the plain surface — a contrast that carries no identity,
   // only "this one is yours".
-  mine: { backgroundColor: blends.primaryWash, borderColor: blends.primaryBorder },
-  theirs: { backgroundColor: brand.surfaceAlt, borderColor: brand.line },
-});
+  mine: { backgroundColor: t.blends.primaryWash, borderColor: t.blends.primaryBorder },
+  theirs: { backgroundColor: t.brand.surfaceAlt, borderColor: t.brand.line },
+}));

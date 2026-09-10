@@ -13,11 +13,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LEGAL_EXTERNAL_LINKS } from '../config/site';
 import { SERVICE_COUNTRY, SERVICE_CURRENCY } from '../config/policies';
 import { useAuth } from '../context/auth-context';
-import { styles } from '../theme/styles';
+import { useTheme } from '../theme/styles';
 import { AvatarMenu } from './avatar-menu';
 import { Brand } from './brand';
 
 export function Shell({ children }: { children: ReactNode }) {
+  const { styles } = useTheme();
   const auth = useAuth();
   return (
     <SafeAreaView edges={['top']} style={styles.screen}>
@@ -48,6 +49,7 @@ export function Shell({ children }: { children: ReactNode }) {
 }
 
 export function SiteFooter() {
+  const { styles } = useTheme();
   const year = new Date().getFullYear();
   return (
     <View style={styles.footer}>
@@ -89,11 +91,13 @@ export function Card({
   style?: StyleProp<ViewStyle>;
   roomy?: boolean;
 }) {
+  const { styles } = useTheme();
   return <DsCard.Root style={[styles.card, roomy && styles.cardRoomy, style]}>{children}</DsCard.Root>;
 }
 
 /** `.loading-panel` — the full-height "please wait" state. */
 export function LoadingPanel({ children }: { children: ReactNode }) {
+  const { styles } = useTheme();
   return (
     <View style={styles.loadingPanel}>
       <Text style={styles.bodyMuted}>{children}</Text>

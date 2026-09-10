@@ -19,10 +19,11 @@ import { FieldLabel } from './field';
 import { Card } from './shell';
 import { StatusMessage } from './status-message';
 import { useAuth } from '../context/auth-context';
-import { blends, gap, styles } from '../theme/styles';
+import { gap, useTheme } from '../theme/styles';
 import type { GroupDetail, RepeatedExchange } from '../types';
 
 export function RepeatExchangePanel({ group }: { group: GroupDetail }) {
+  const { blends, styles } = useTheme();
   const auth = useAuth();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -159,6 +160,7 @@ function Choice({
   checked: boolean;
   onChange(next: boolean): void;
 }) {
+  const { styles } = useTheme();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
       <Checkbox.Root

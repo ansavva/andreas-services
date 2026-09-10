@@ -14,13 +14,12 @@
 // usually has is a subscription's and the wrong assumption is the expensive one.
 import { Badge, Button } from '@ansavva/design-system';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Platform, Pressable, Text, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 
 import { api, ApiError } from '../api/client';
 import { useAuth } from '../context/auth-context';
-import { blends, gap, styles } from '../theme/styles';
-import { brand } from '../theme/theme';
+import { gap, scopedStyles, useTheme } from '../theme/styles';
 import type { GroupDetail, PaymentStatus, PlanDefinition, PlusPurchaseStatus } from '../types';
 import { plusIntent } from '../utils/plus-intent';
 import { Card } from './shell';
@@ -159,6 +158,9 @@ export function PlusUpgradeOffer({
   /** The Free ceiling, for the one line that compares the two plans. Server-sourced like the price. */
   freeLimit?: number | null;
 }) {
+  const theme = useTheme();
+  const { styles } = theme;
+  const local = localStyles(theme);
   const price = plan ? formatPrice(plan.price_cents, plan.currency) : null;
   return (
     <View style={{ gap: gap.md }}>
@@ -229,6 +231,9 @@ export function PlusUpgradeOffer({
 }
 
 function Benefit({ children }: { children: React.ReactNode }) {
+  const theme = useTheme();
+  const { styles } = theme;
+  const local = localStyles(theme);
   return (
     <View style={local.benefit}>
       <Text style={local.tick}>✓</Text>
@@ -286,6 +291,7 @@ export function PlusRefusalCard({
   /** Where to send a native return. The web return is Stripe's own redirect. */
   onNavigate(path: string): void;
 }) {
+  const { blends } = useTheme();
   const plans = usePlanCatalogue();
   const checkout = usePlusCheckout(groupId, () =>
     onNavigate(`/organize/${groupId}?checkout=success`),
@@ -315,6 +321,7 @@ export function PlusRefusalCard({
  * panel is simply absent. That shipped once. This is the third state the guard was missing.
  */
 export function PanelLoadFailure({ title, message }: { title: string; message: string }) {
+  const { styles } = useTheme();
   return (
     <Card>
       <Text style={styles.eyebrow}>{title}</Text>
@@ -345,6 +352,7 @@ export function PlusLockedNote({
   action: string;
   isOwner: boolean;
 }) {
+  const { styles } = useTheme();
   return (
     <Card>
       <Text style={styles.eyebrow}>Part of Plus</Text>
@@ -383,6 +391,9 @@ export function PlusBillingPanel({
   /** Called once Plus is confirmed active, so the screen can reload the plan it already rendered. */
   onEntitled(): void;
 }) {
+  const theme = useTheme();
+  const { blends, styles } = theme;
+  const local = localStyles(theme);
   const auth = useAuth();
   const [status, setStatus] = useState<PlusPurchaseStatus | null>(null);
   const plans = usePlanCatalogue();
@@ -586,6 +597,9 @@ function ReturnBanner({
 }
 
 function Banner({ tone, children }: { tone: 'success' | 'danger' | 'neutral'; children: React.ReactNode }) {
+  const theme = useTheme();
+  const { blends, brand, styles } = theme;
+  const local = localStyles(theme);
   const background =
     tone === 'success' ? blends.primaryWash : tone === 'danger' ? blends.dangerWash : brand.surfaceAlt;
   return (
@@ -601,6 +615,7 @@ function Banner({ tone, children }: { tone: 'success' | 'danger' | 'neutral'; ch
 
 /** What an organizer wants after paying: proof, and a receipt they can file. */
 function PaidSummary({ status }: { status: PlusPurchaseStatus | null }) {
+  const { styles } = useTheme();
   return (
     <View style={{ gap: 8 }}>
       <Text style={styles.small}>
@@ -663,7 +678,8 @@ function formatWhen(iso: string): string {
   return Number.isNaN(when.getTime()) ? iso : when.toLocaleString();
 }
 
-const local = StyleSheet.create({
+/** Built once per scheme — see `scopedStyles`. */
+const localStyles = scopedStyles((t) => ({
   offerHeading: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -672,13 +688,13 @@ const local = StyleSheet.create({
     gap: gap.sm,
   },
   benefit: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  tick: { color: brand.primary, fontFamily: styles.semibold.fontFamily, fontSize: 14, lineHeight: 20 },
+  tick: { color: t.brand.primary, fontFamily: t.styles.semibold.fontFamily, fontSize: 14, lineHeight: 20 },
   banner: { borderRadius: 12, padding: 16 },
   reason: {
     borderRadius: 12,
     padding: 16,
-    backgroundColor: blends.primaryWash,
+    backgroundColor: t.blends.primaryWash,
     borderWidth: 1,
-    borderColor: blends.primaryBorder,
+    borderColor: t.blends.primaryBorder,
   },
-});
+}));
