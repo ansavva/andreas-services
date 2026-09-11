@@ -26,6 +26,11 @@ load_machine_id false
 load_aws_identity
 terraform_init
 
+# The Stripe side of the webhook relay first: Terraform does not know about the
+# endpoint, and once the gateway is gone Stripe would keep retrying into
+# nothing until it disabled the endpoint on its own.
+delete_stripe_webhook_endpoint
+
 state_resources="$(terraform -chdir="$TF_DIR" state list)"
 if [[ -n "$state_resources" ]]; then
   output_machine_id="$(terraform -chdir="$TF_DIR" output -raw machine_id)"

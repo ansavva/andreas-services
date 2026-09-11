@@ -21,7 +21,6 @@ services:
       HUMBUGG_MAILER_BASE_URL: http://host.docker.internal:8026
       HUMBUGG_MAILER_AUTH_MODE: none
       HUMBUGG_MAILER_SERVICE_ID: humbugg
-      HUMBUGG_ENVIRONMENT: development
     ports:
       - "5001:5001"
     extra_hosts:
@@ -31,6 +30,31 @@ services:
       - api-bin:/src/Humbugg.Api/bin
       - api-obj:/src/Humbugg.Api/obj
 
+  # The Stripe webhook consumer: the same image, entered through ConsumerHost
+  # (HUMBUGG_CONSUMER) instead of the API, long-polling this machine's relay
+  # queue and applying each event the way the prod consumer Lambda does. Stripe
+  # cannot reach :5001, so this is how a purchase completes locally; with
+  # Stripe disabled it says so once and idles. Its own bin/obj: two `dotnet
+  # watch` builds in one obj directory trip over each other.
+  webhook-consumer:
+    build:
+      context: .
+      target: development
+    env_file:
+      - ${HUMBUGG_DEV_ENV_FILE:?run humbugg/scripts/dev-up-backend.sh}
+    environment:
+      HUMBUGG_CONSUMER: stripe-webhooks
+      DOTNET_USE_POLLING_FILE_WATCHER: "1"
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+    volumes:
+      - ./Humbugg.Api:/src/Humbugg.Api
+      - consumer-bin:/src/Humbugg.Api/bin
+      - consumer-obj:/src/Humbugg.Api/obj
+
 volumes:
   api-bin:
   api-obj:
+  consumer-bin:
+  consumer-obj:

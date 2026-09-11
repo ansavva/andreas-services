@@ -1,5 +1,6 @@
 using Humbugg.Api.Consumers.EmailStatus;
 using Humbugg.Api.Consumers.Reminders;
+using Humbugg.Api.Consumers.StripeWebhooks;
 
 namespace Humbugg.Api.Consumers;
 
@@ -16,7 +17,9 @@ internal static class ConsumerHost
             [AwsLambdaEmailStatusConsumer.ConsumerName] =
                 AwsLambdaEmailStatusConsumer.RunAsync,
             [AwsLambdaReminderConsumer.ConsumerName] =
-                AwsLambdaReminderConsumer.RunAsync
+                AwsLambdaReminderConsumer.RunAsync,
+            [AwsLambdaStripeWebhookConsumer.ConsumerName] =
+                AwsLambdaStripeWebhookConsumer.RunAsync
         };
 
     /// <summary>

@@ -30,7 +30,7 @@ What it does:
 | Product app (`app/`) | Expo + Expo Router; `expo export -p web` → S3 + CloudFront. Metro, **no Tailwind**, the design system's **native** leaves rendered through react-native-web |
 | Auth | AWS Cognito (User Pool + secretless App Client). Sign-in **and sign-up** are hosted **Managed Login** pages at `auth.humbugg.com`; the app runs authorization code + PKCE through `expo-auth-session` and holds one screen, a button. Refresh-token rotation is on, which is why `ALLOW_REFRESH_TOKEN_AUTH` must never return to the client. The API still validates **access** tokens, unchanged. See [`docs/auth-managed-login.md`](docs/auth-managed-login.md) |
 | Data | DynamoDB — profiles, groups, groupmembers, private draws, reveal audit events, and email delivery IDs. **No email address**: Humbugg stores none, and reads a verified one back from Cognito at send time (`IAccountDirectory`, #137) |
-| Infra | Terraform in `humbugg/infra/` (`modules/` + `envs/prod`) |
+| Infra | Terraform in `humbugg/infra/` (`modules/` + `envs/prod` + per-machine `envs/dev`) |
 
 ## Directory Structure
 
@@ -39,7 +39,7 @@ humbugg/
 ├── backend/                    # ASP.NET Core app + Dockerfile, shipped as container Lambda
 │   ├── Dockerfile
 │   ├── Humbugg.slnx
-│   ├── Humbugg.Api/             # controllers → services → DynamoDB repositories
+│   ├── Humbugg.Api/             # controllers → services → DynamoDB repositories; Consumers/ (Lambda + Compose entry points)
 │   └── Humbugg.Api.Tests/       # matching and domain tests
 ├── marketing/                  # Marketing site — React Router v7 SSR (www.humbugg.com)
 │   ├── app/                     # routes (React Router file conventions)
@@ -50,8 +50,11 @@ humbugg/
 │   ├── src/                     # api client, contexts, theme
 │   └── app.json
 ├── infra/                      # Terraform
-│   ├── modules/                # auth, compute, hosting, storage
-│   └── envs/prod/              # Lambda + API Gateway + Cognito, S3 + CloudFront + Route53 alias
+│   ├── modules/                # auth, compute, hosting, storage, webhook_relay (dev only)
+│   ├── envs/prod/              # Lambda + API Gateway + Cognito, S3 + CloudFront + Route53 alias
+│   └── envs/dev/               # per-machine: Cognito pool, tables, bucket, Stripe webhook relay
+├── seeds/                      # dev.json — who exists on a dev stack and what they are in
+├── scripts/                    # dev-*.sh, dev-seed.mjs, webhook-relay/receiver.mjs (the zip)
 └── CLAUDE.md                   # ← this file
 ```
 
@@ -105,17 +108,41 @@ npm --prefix humbugg/app install
 # Read-only validation of shared tools, .NET, AWS resources, and env files.
 ./humbugg/scripts/dev-setup.sh --check
 
-# Start backend, frontend, and Stripe webhook forwarding together.
+# Start backend (+ the Stripe webhook consumer beside it) and both frontends.
 ./humbugg/scripts/dev-up.sh
+
+# Put seven .test people and two exchanges — one at the Free ceiling, one on
+# Plus — on this machine. Needs dev-up.sh running. seeds/README.md.
+./humbugg/scripts/dev-aws-seed.sh
 ```
 
-The combined launcher retrieves the current Stripe CLI `whsec_...` signing
-secret before the backend starts, writes it into `dev.env`,
-and supervises all three processes. It does not generate Stripe API keys;
-`HUMBUGG_STRIPE_MODE=test`, the test publishable key, and the test secret key
-must already be configured according to `docs/stripe-setup.md`. Ctrl+C stops
-the complete session. Mailer and Mailpit remain a separate shared dependency
-and should be started with `cd mailer && docker compose up --build`.
+The combined launcher supervises three processes — the backend Compose project
+(API plus the webhook consumer), marketing, and app. It does not generate Stripe
+API keys; `HUMBUGG_STRIPE_MODE=test`, the test publishable key, and the test
+secret key must already be configured according to `docs/stripe-setup.md`; with
+Stripe disabled the consumer idles with one log line. Ctrl+C stops the complete
+session. Mailer and Mailpit remain a separate shared dependency and should be
+started with `cd mailer && docker compose up --build`.
+
+**Stripe webhooks take one path in every environment: gateway → receiver →
+queue → the backend image.** `modules/webhook_relay` (studio's
+`modules/callbacks` shape) is an HTTP API Gateway, a dependency-free Node zip
+receiver that only enqueues, and an SQS queue with a DLQ. The consumer is the
+API's own container entered through `ConsumerHost`
+(`HUMBUGG_CONSUMER=stripe-webhooks`, `Consumers/StripeWebhooks/`): in prod a
+Lambda on an event-source mapping, in dev the `webhook-consumer` Compose
+service long-polling this machine's queue. It verifies Stripe's signature with
+the queue's retention as the timestamp window
+(`IBillingService.ProcessQueuedWebhookAsync`), keeps only events carrying its
+`HUMBUGG_ENVIRONMENT` (`dev-<short12>` per machine, because every dev
+endpoint sits in one sandbox; `production` in prod), and applies them through
+the same `ApplyEventAsync` as the HTTP route. `dev-aws-setup.sh` registers the
+dev URL with Stripe and writes the endpoint id and `whsec_` into `dev.env`;
+prod's is registered by hand. `stripe listen` used to relay locally and lost
+every event emitted while it was not running; the queue holds them for 14 days.
+**The dev sandbox must not be production's account**: Stripe fans every event
+to every endpoint in an account, and prod is test-mode until #159.
+`docs/stripe-setup.md` §4.
 
 ### Development scripts
 
@@ -126,13 +153,13 @@ All commands run from the repository root:
 | `scripts/dev-setup.sh` | Idempotently install shared tooling; use `--check` for a read-only prerequisite audit |
 | `humbugg/scripts/dev-setup.sh` | Canonical dependency chain: shared setup → .NET 10 → per-machine AWS setup; accepts `--profile`, `--region`, `--yes`, `--check` |
 | `humbugg/scripts/dev-aws-setup.sh` | Lower-level AWS provision/check command called by canonical setup; accepts `--profile`, `--region`, `--yes`, `--check` |
-| `humbugg/scripts/dev-up.sh` | Preferred full local startup; accepts `--profile`, `--region`, `--forward-to` |
-| `humbugg/scripts/dev-up-backend.sh` | Backend-only startup; exports temporary AWS credentials into Docker Compose without writing them to disk |
+| `humbugg/scripts/dev-up.sh` | Preferred full local startup — backend + webhook consumer, both frontends; accepts `--profile`, `--region` |
+| `humbugg/scripts/dev-up-backend.sh` | Backend startup — the API and the Stripe webhook consumer, two services of one Compose project; exports temporary AWS credentials into Docker Compose without writing them to disk |
 | `humbugg/scripts/dev-up-marketing.sh` | Marketing-site-only startup; exports `VITE_*` from `dev.env` and checks installed dependencies first |
 | `humbugg/scripts/dev-up-app.sh` | Product-app-only startup; exports `EXPO_PUBLIC_*` from `dev.env`; defaults to `--web`, pass `--ios`/`--android` for a simulator |
-| `humbugg/scripts/dev-up-stripe.sh` | Stripe-only listener for the billing webhook's exact event allowlist; copy its `whsec_...` value into `dev.env` and restart the backend when running components separately (`dev-up.sh` does this itself) |
 | `humbugg/scripts/dev-logs-backend.sh` | Follow the backend container logs; accepts Docker Compose log options such as `--tail 200` |
-| `humbugg/scripts/dev-user.sh` | Create or converge the dev-stack test account; `--generate-password` for a non-interactive run, `--check` to report without changing. Both halves live in `dev.env` — `HUMBUGG_DEV_USER_EMAIL` and `HUMBUGG_DEV_USER_PASSWORD`. No address is committed; a reserved `.test` one is what belongs there |
+| `humbugg/scripts/dev-user.sh` | Create or converge the one dev-stack account `HUMBUGG_DEV_USER_EMAIL` names; `--generate-password` for a non-interactive run, `--check` to report without changing. The address should be one of the people in `seeds/dev.json` |
+| `humbugg/scripts/dev-aws-seed.sh` | Create every account in `seeds/dev.json` (one shared password, `HUMBUGG_DEV_USER_PASSWORD`) and load the fixture through the local API — profiles, exchanges, joins, a Plus purchase through Stripe test mode; `--check` reports without writing. Converges; see `seeds/README.md` |
 | `humbugg/scripts/dev-aws-reset.sh` | Destructive data reset scoped to this machine; run with `--dry-run` first; `--skip-cognito` preserves users |
 | `humbugg/scripts/dev-aws-destroy.sh` | Destroy this machine's AWS resources; the persistent UUID is deliberately retained |
 
@@ -147,7 +174,6 @@ To start components separately:
 ./humbugg/scripts/dev-up-backend.sh                     # http://localhost:5001
 ./humbugg/scripts/dev-up-marketing.sh                         # http://localhost:5176
 ./humbugg/scripts/dev-up-app.sh                         # http://localhost:8081
-./humbugg/scripts/dev-up-stripe.sh                      # forwards billing webhooks
 ./humbugg/scripts/dev-logs-backend.sh                   # follows backend logs
 ```
 
