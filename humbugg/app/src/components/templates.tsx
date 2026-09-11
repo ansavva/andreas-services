@@ -131,9 +131,8 @@ export function TemplatesPanel({
   return (
     <Card>
       <Text style={styles.eyebrow}>Templates</Text>
-      <Text style={[styles.heading, { marginTop: 4 }]}>Save this setup, or start from one</Text>
 
-      <View style={{ marginTop: 24, gap: gap.md }}>
+      <View style={{ marginTop: 20, gap: gap.md }}>
         <FieldLabel
           label="Save this exchange as a template"
           help="Its name, description, deadline, greeting, instructions, reminder settings — and who took part, so you can invite them again."

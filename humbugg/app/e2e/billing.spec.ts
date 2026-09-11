@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { fixture, stubApi } from './support/api-stub';
 import { LIVE, signIn } from './support/auth';
 
@@ -16,6 +16,12 @@ interface Group {
   group_id: string;
 }
 
+/** Billing is a section of the Settings tab; a paid return opens it on its own, nothing else does. */
+async function openBilling(page: Page) {
+  await page.getByRole('tab', { name: 'Settings' }).click();
+  await page.getByText('Billing', { exact: true }).click();
+}
+
 test('the organizer sees the price the server sent, not one the app invented', async ({ page }) => {
   stubOnly('the live dev stack has its own plan configuration and may not have Stripe enabled');
   await stubApi(page);
@@ -23,6 +29,7 @@ test('the organizer sees the price the server sent, not one the app invented', a
   const group = fixture<Group>('group');
 
   await page.goto(`/organize/${group.group_id}`);
+  await openBilling(page);
 
   // $12 is `price_cents: 1200` in e2e/fixtures/plans.json. Change the fixture and this must move.
   await expect(page.getByText('$12 once, for this exchange')).toBeVisible();
@@ -37,6 +44,7 @@ test('the offer never implies a renewal or a purchase that covers every exchange
   const group = fixture<Group>('group');
 
   await page.goto(`/organize/${group.group_id}`);
+  await openBilling(page);
 
   await expect(page.getByText(/does not renew/)).toBeVisible();
   await expect(page.getByText(/next exchange starts on Free/)).toBeVisible();
@@ -101,6 +109,7 @@ test('the billing area survives a 390px phone viewport', async ({ page }) => {
   const group = fixture<Group>('group');
 
   await page.goto(`/organize/${group.group_id}`);
+  await openBilling(page);
 
   await expect(page.getByText('This exchange is on Free')).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

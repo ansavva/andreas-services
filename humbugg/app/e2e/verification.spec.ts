@@ -22,7 +22,7 @@ const group = fixture<{ group_id: string }>('group');
 const SCREENS: Array<{ path: string; heading: string }> = [
   { path: '/', heading: 'Your groups' },
   { path: `/groups/${group.group_id}`, heading: 'The exchange circle' },
-  { path: `/organize/${group.group_id}`, heading: 'Who is ready' },
+  { path: `/organize/${group.group_id}`, heading: 'Organizer dashboard' },
   // Not reached by any other spec, which is how it came to be the one screen with no coverage.
   { path: '/settings', heading: 'Your account' },
 ];
@@ -180,19 +180,29 @@ test('every Plus capability offers Plus on a Free exchange instead of failing', 
   await signIn(page);
 
   await page.goto(`/organize/${group.group_id}`);
+
+  // People: the invite form is behind its button, and on Free the button opens the offer.
+  await page.getByText('Invite by email', { exact: true }).click();
   await expect(page.getByText('Sending and tracking invitations is part of Plus.')).toBeVisible();
-  await expect(page.getByText('Automatic reminders are part of Plus.')).toBeVisible();
+  await expect(page.getByLabel('Email addresses')).toBeHidden();
+
+  // Settings: each section says what Plus would add, and hides the form that could only fail.
+  await page.getByRole('tab', { name: 'Settings' }).click();
   await expect(
     page.getByText('Your own greeting and instructions are part of Plus.'),
   ).toBeVisible();
-  await expect(page.getByText('Saving a setup as a template is part of Plus.')).toBeVisible();
-  // No dead forms behind the notices.
-  await expect(page.getByLabel('Email addresses')).toBeHidden();
-  await expect(page.getByLabel('How often, in days')).toBeHidden();
   await expect(page.getByLabel('Greeting')).toBeHidden();
+
+  await page.getByText('Reminders', { exact: true }).click();
+  await expect(page.getByText('Automatic reminders are part of Plus.')).toBeVisible();
+  await expect(page.getByLabel('How often, in days')).toBeHidden();
+
+  await page.getByText('Templates', { exact: true }).click();
+  await expect(page.getByText('Saving a setup as a template is part of Plus.')).toBeVisible();
   await expect(page.getByLabel('Save this exchange as a template')).toBeHidden();
 
   // One purchase, one place to make it. A locked notice that carried its own checkout button would
   // put several on this page — which is how `billing.spec.ts` caught the first attempt.
+  await page.getByText('Billing', { exact: true }).click();
   await expect(page.getByText('$12 once, for this exchange')).toBeVisible();
 });

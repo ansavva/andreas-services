@@ -114,7 +114,16 @@ export function RemindersPanel({ group }: { group: GroupDetail }) {
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={styles.eyebrow}>Reminders</Text>
-          <Text style={[styles.heading, { marginTop: 4 }]}>Chasing, without you doing it</Text>
+          {/* The one fact the organizer opens this for: when the next one goes. The rule itself is
+              said once, under the controls, as what the DRAFT would do — that sentence changes as
+              the settings do, and the saved rule is what "On" already means. */}
+          <Text style={[styles.heading, { marginTop: 4 }]}>
+            {overview.settings.state === 'active' && overview.next_scheduled_at
+              ? `Next one ${when(overview.next_scheduled_at)}`
+              : overview.settings.state === 'paused'
+                ? 'Paused'
+                : 'Off'}
+          </Text>
         </View>
         <Badge intent={overview.settings.state === 'active' ? 'success' : 'neutral'} size="sm">
           {overview.settings.state === 'active'
@@ -124,12 +133,6 @@ export function RemindersPanel({ group }: { group: GroupDetail }) {
               : 'Off'}
         </Badge>
       </View>
-
-      {/* The saved state, not the draft — so this line never describes something nobody agreed to. */}
-      <Text style={[styles.smallMuted, { marginTop: 8 }]}>{summary(overview.settings)}</Text>
-      {overview.next_scheduled_at && overview.settings.state === 'active' ? (
-        <Text style={[styles.tiny, { marginTop: 4 }]}>Next one {when(overview.next_scheduled_at)}.</Text>
-      ) : null}
 
       <View style={{ marginTop: 24, gap: gap.md }}>
         <FieldLabel label="Automatic reminders">
