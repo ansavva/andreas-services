@@ -26,18 +26,15 @@ export function Shell({ children, compact = false }: { children: ReactNode; comp
             {/* Pricing IS a marketing route, so it is the one nav item that is a <Link>.
                 Never `hidden sm:` — it shipped that way for an hour and the pricing page was
                 unreachable from a phone entirely, because the footer carries only policy links. */}
+            {/* First in the row, so the three text actions read as one run and
+                the icon sits apart from them. Still `hidden` below `sm` — unlike
+                Pricing's link, this one DOES have another path: the footer
+                mirrors it (below), so hiding the header copy on a narrow screen
+                doesn't repeat the trap the Pricing comment describes. */}
+            <ThemeToggle className="hidden sm:inline-flex" />
             <Link className="nav-link inline-flex" to="/pricing">Pricing</Link>
             <a className="nav-link hidden sm:inline-flex" href={appUrl('/login')}>Sign in</a>
             <a className={buttonClass()} href={appUrl('/login')}>Start a group</a>
-            {/* Icon-only and `sm`-sized (three 32px squares), and still `hidden`
-                below `sm` — unlike Pricing's link, this one DOES have another
-                path: the footer mirrors it (below), so hiding the header copy on
-                a narrow screen doesn't repeat the trap the Pricing comment
-                describes. It has to hide there: at 390px "Humbugg" + Pricing +
-                "Start a group" already fill the row, measured by screenshot, not
-                assumed — adding three more icons overflowed the header instead
-                of wrapping it. */}
-            <ThemeToggle className="hidden sm:inline-flex" />
           </nav>
         </div>
       </header>
