@@ -44,7 +44,7 @@ export AWS_DEFAULT_REGION="${AWS_REGION:-us-east-1}"
 # exports the whole local API answers 500 before it reaches a route.
 #
 # Read from SSM, the same parameters and by the same method `dev-setup.sh`
-# already uses to write `frontend/.env.local`. They are written there by the
+# already uses to write `dev.env`. They are written there by the
 # deploy workflow from Terraform's outputs, so they cannot drift from what is
 # deployed — and the frontend signing in against one pool while the backend
 # verifies against another is precisely the drift a hardcoded value would
@@ -185,18 +185,25 @@ else
   echo "  and frames cannot be pulled. Re-apply with ./studio/scripts/dev-aws-setup.sh." >&2
 fi
 
+# The per-machine dev.env: DEV_ENV_FILE plus the readers for it. Sourced at
+# top level here (not in the subshell above) so the helpers are in scope; its
+# `die` is not reached from anything this script calls.
+# shellcheck source=dev-aws-common.sh
+source "$ROOT/studio/scripts/dev-aws-common.sh"
+
 # The Replicate token. The API holds the provider credential now — the CLI has
-# none at all — so it is the local Flask process that needs it, and it is read
-# from the same file it has always lived in. In prod the equivalent is an SSM
-# SecureString the Lambda reads under its own role; there is deliberately no
-# per-machine parameter, because a token is not environment-scoped.
-if [ -z "${REPLICATE_API_TOKEN:-}" ] && [ -f "$HOME/.config/andreas-services/studio/dev.env" ]; then
-  # shellcheck disable=SC1091
-  set -a; source "$HOME/.config/andreas-services/studio/dev.env"; set +a
+# none at all — so it is the local Flask process that needs it, read from
+# dev.env by key rather than by sourcing the whole file into this shell. In
+# prod the equivalent is an SSM SecureString the Lambda reads under its own
+# role; there is deliberately no per-machine parameter, because a token is not
+# environment-scoped.
+if [ -z "${REPLICATE_API_TOKEN:-}" ]; then
+  REPLICATE_API_TOKEN="$(read_env "$DEV_ENV_FILE" REPLICATE_API_TOKEN)"
+  export REPLICATE_API_TOKEN
 fi
 if [ -z "${REPLICATE_API_TOKEN:-}" ]; then
   echo "REPLICATE_API_TOKEN is not set, so this API cannot submit a generation." >&2
-  echo "  Put it in ~/.config/andreas-services/studio/dev.env. Everything else works." >&2
+  echo "  Put it in $DEV_ENV_FILE. Everything else works." >&2
 fi
 
 # Where `studio login` and every other CLI call go: the Flask process this
@@ -244,7 +251,7 @@ fi
 # correct thing is to delegate rather than reimplement either check. node_modules
 # matters as much as the env file: vite is a local binary, so without it this
 # script's own `npm run dev` fails the same way `tsc: not found` does.
-if [ ! -f studio/frontend/.env.local ] || [ ! -d studio/frontend/node_modules ]; then
+if [ -z "$(read_env "$DEV_ENV_FILE" VITE_COGNITO_CLIENT_ID)" ] || [ ! -d studio/frontend/node_modules ]; then
   echo "Frontend env or node_modules missing — running dev-setup.sh first."
   ./studio/scripts/dev-setup.sh
 fi
@@ -288,6 +295,10 @@ fi
 (cd studio/backend && poetry run python -m studio_core.handlers.local.consumer.render_consumer) &
 pids+=($!)
 
+# Vite inlines VITE_* and leaves a variable already in the environment alone,
+# so the frontend's values reach it from dev.env without a file next to
+# vite.config — and without the bundler seeing the token that shares the file.
+export_env_prefix "$DEV_ENV_FILE" VITE_
 echo "Frontend → http://localhost:$FRONTEND_PORT"
 # `--strictPort`: the port was chosen above against what the stack accepts, and
 # a silent hop past it is the failure this whole block exists to stop.

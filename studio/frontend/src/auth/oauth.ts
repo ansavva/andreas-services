@@ -47,7 +47,7 @@ export function isAuthConfigured(): boolean {
 function requireConfig(): { domain: string; clientId: string } {
   if (!DOMAIN || !CLIENT_ID) {
     throw new Error(
-      "Cognito is not configured. See frontend/.env.local.example.",
+      "Cognito is not configured. Run studio/scripts/dev-setup.sh; see studio/dev.env.sample.",
     );
   }
   return { domain: DOMAIN, clientId: CLIENT_ID };

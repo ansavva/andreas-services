@@ -16,8 +16,10 @@ respect — see "An explicit profile wins" below.
     ├── config          this file's subject: per-profile TARGETING. Ids and
     │                   names only, nothing secret, safe to read out loud.
     ├── credentials     tokens, keyed by profile (`adapters/auth.py`)
-    ├── dev.env         that profile's account email + password
-    ├── prod.env        likewise
+    ├── dev.env         that profile's account email + password — and, for
+    │                   dev, everything else local: the frontend's VITE_*
+    │                   values and the provider tokens (one file, #666's shape)
+    ├── prod.env        the prod account, likewise
     └── machine-id
 
 `<profile>.env` is not new and is not read here. `dev-aws-common.sh` and
@@ -36,7 +38,7 @@ reads it: the provider credential is the API's — an SSM SecureString in prod,
 | Given | What decides all five values |
 |---|---|
 | `--profile prod`, or `STUDIO_PROFILE=prod` | the profile, and only the profile |
-| neither | the environment, then the current profile, then `studio/.env` |
+| neither | the environment, then the current profile, then `dev.env` |
 
 The first row is the one that matters and it has to be that way round. `dev-up.sh`
 exports `STUDIO_API_URL` and both Cognito ids into the shell it runs in. If an
@@ -235,12 +237,12 @@ def set_current(name: str) -> None:
 
 
 def _legacy(field: str) -> str:
-    """`studio/.env` and the config dir's `dev.env`, via the package's own reader.
+    """The config dir's `dev.env`, via the package's own reader.
 
     Kept for `s3_bucket` and `catalog_table`, which `dev-setup.sh` pinned into
-    `studio/.env` for a year. A checkout that has one of those lines and no
-    synced profile goes on working; `studio profile sync dev` is what replaces
-    it, and `studio profile show` says which one answered.
+    `studio/.env` for a year and which `dev-setup.sh` now drops on import — a
+    hand-added line still answers when no profile is synced, and
+    `studio profile show` says which one answered.
     """
     return (env_value(ENV_VAR[field]) or "").strip()
 
@@ -269,7 +271,7 @@ def resolve(field: str) -> tuple[str, str]:
         return from_profile, f"profile {name}"
     legacy = _legacy(field)
     if legacy:
-        return legacy, "studio/.env"
+        return legacy, "dev.env"
     return "", "unset"
 
 

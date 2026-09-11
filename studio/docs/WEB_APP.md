@@ -1176,18 +1176,20 @@ npm test                                                   # vitest, no AWS need
 `aws sts get-caller-identity` is a trustworthy probe: the CLI, boto3 and the
 Terraform provider all read the same access key.
 
-`dev-setup.sh` writes `frontend/.env.local` **from this machine's dev stack's
-Terraform outputs**, syncs the `dev` profile, and installs
-`frontend/node_modules` — do not hand-copy the example or hand-edit the result;
-the generated file says as much in its own header. Without the env file the app
-shows "Auth is not configured"; without node_modules every local binary is
-missing, and the first one you hit is `tsc: not found`.
+`dev-setup.sh` writes the `VITE_*` block of `~/.config/andreas-services/studio/dev.env`
+**from this machine's dev stack's Terraform outputs**, syncs the `dev` profile,
+and installs `frontend/node_modules` — do not hand-edit the generated block; the
+file says as much in its own header. `dev-up.sh` exports that prefix before
+Vite starts (Vite takes shell variables over `.env` files), so there is no file
+next to `vite.config` at all. Without the values the app shows "Auth is not
+configured"; without node_modules every local binary is missing, and the first
+one you hit is `tsc: not found`.
 
 The script runs from the SessionStart hook and **tolerates a missing stack**,
-warning and carrying on — it still has a toolchain to install. It also warns
-loudly, rather than rewriting, about a `studio/.env` that pins a prod bucket.
-The file is the developer's; silently repointing where their commands write is
-worse than telling them.
+warning and carrying on — it still has a toolchain to install. A `studio/.env`
+or `frontend/.env.local` it finds is imported into `dev.env` and deleted; the
+stack pins a `studio/.env` used to carry are dropped, because the profile
+carries those now.
 
 ## Testing
 
