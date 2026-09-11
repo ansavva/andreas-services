@@ -113,7 +113,7 @@ public sealed class TransactionalEmailTests
         {
             Assert.Contains("<html lang=\"en\">", message.HtmlBody);
             Assert.Contains("<main>", message.HtmlBody);
-            Assert.Contains("<h1>", message.HtmlBody);
+            Assert.Contains("<h1 ", message.HtmlBody);
             Assert.Contains("<a href=", message.HtmlBody);
             Assert.Contains(ActionUrl.AbsoluteUri, message.TextBody);
             Assert.DoesNotContain("unsubscribe", message.HtmlBody, StringComparison.OrdinalIgnoreCase);
