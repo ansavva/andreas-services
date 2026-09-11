@@ -133,12 +133,19 @@ clone:
 ```bash
 ./classroom/scripts/dev-aws-setup.sh   # pool + table + lesson bucket, ~60s
 ./classroom/scripts/dev-user.sh        # its one teacher account
-./classroom/scripts/dev-setup.sh       # frontend/.env.local, poetry, node_modules
+./classroom/scripts/dev-setup.sh       # dev.env, poetry, node_modules
 ./classroom/scripts/dev-up.sh          # app on :5174, API and lessons on :8001
 ```
 
-`dev-user.sh` reads the account's address from
-`~/.config/andreas-services/classroom/dev.env`, which is not committed. Put a
+**Every local value lives in one file, `~/.config/andreas-services/classroom/dev.env`**
+— the frontend's `VITE_*` values and the dev account — documented key by key in
+[`dev.env.sample`](dev.env.sample). There is no `frontend/.env.local` any more;
+`dev-setup.sh` imports and deletes one it finds. It sits outside the repo
+because ignored files vanish on `git clean` and never exist in a fresh worktree,
+while this one is per machine and shared by every checkout on it.
+`CLASSROOM_DEV_ENV_FILE` overrides the location.
+
+`dev-user.sh` reads the account's address from that file. Put a
 `CLASSROOM_DEV_USER_EMAIL=` line in it (a `.test` address, so Cognito can never
 mail a stranger on a typo) and pass `--generate-password` on the first run.
 
@@ -152,8 +159,8 @@ port.
 | --- | --- |
 | `dev-aws-setup.sh` | Applies this machine's Terraform stack. `--check` confirms it without applying. |
 | `dev-user.sh` | Creates or converges the pool's one teacher account. `--check` is read-only. |
-| `dev-setup.sh` | Writes `frontend/.env.local` from the stack; installs both toolchains. |
-| `dev-up.sh` | Runs the app, the API and the lesson server together. |
+| `dev-setup.sh` | Writes `dev.env` from the stack; installs both toolchains. |
+| `dev-up.sh` | Runs the app, the API and the lesson server together; exports `VITE_*` from `dev.env` first. |
 | `dev-token.sh` | Prints an ID token, so `curl` can reach the local API. |
 | `dev-aws-reset.sh` | Empties the table, the lesson bucket (every version) and the pool. |
 | `dev-aws-destroy.sh` | Destroys the stack; keeps the machine id, so setup rebuilds the same names. |

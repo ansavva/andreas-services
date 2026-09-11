@@ -23,21 +23,104 @@ AWS_REGION_VALUE="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
 AWS_PROFILE_ARGS=()
 AWS_PROFILE_RESOLVED=0
 
-# The dev stack's one account. **Neither half of it is committed.** Both
-# `dev-user.sh` and `dev-token.sh` read the address from this one file, so the
-# account created and the account signed in as cannot drift apart. A reserved
-# `.test` address (RFC 2606) is what belongs in it, because it can never be a
-# real mailbox; nothing enforces that, because the value is the developer's.
-DEV_ENV_FILE="$CONFIG_DIR/dev.env"
+# **One file holds every local development value: `$DEV_ENV_FILE`.** The
+# frontend's inlined `VITE_*` values, the dev test account, and any secret the
+# local half needs. It used to be two — `frontend/.env.local` for Vite and this
+# file for the account — and knowing which key went where was the job. Now the
+# readers come to the file: `dev-up.sh` exports the `VITE_*` prefix before Vite
+# starts, and the scripts read it directly.
+#
+# It sits outside the repo. Ignored files still vanish on `git clean -fdx` and
+# never exist in a fresh worktree; this one is per machine, shared by every
+# checkout on it, and holds a password. `CLASSROOM_DEV_ENV_FILE` overrides the
+# location, and every reader honours it.
+#
+# `dev-setup.sh` writes the generated keys; a hand-set key is left alone by
+# every script that touches the file, because `upsert_env` rewrites only the
+# key it is given.
+DEV_ENV_FILE="${CLASSROOM_DEV_ENV_FILE:-$CONFIG_DIR/dev.env}"
+export CLASSROOM_DEV_ENV_FILE="$DEV_ENV_FILE"
+
+# Rewrite exactly one key, creating the file (mode 600) if needed. Comments
+# and every other key survive. A commented placeholder (`#KEY=`, which
+# dev-setup.sh renders for a hand-set key that has no value yet) is taken as
+# the key's slot, so the value lands in its section rather than at the end.
+upsert_env() {
+  local file="$1" key="$2" value="$3" temp
+  mkdir -p "$(dirname "$file")"
+  chmod 700 "$(dirname "$file")"
+  touch "$file"
+  temp="$(mktemp)"
+  awk -v key="$key" -v value="$value" '
+    BEGIN { found = 0 }
+    $0 ~ "^#?" key "=" {
+      if (!found) print key "=" value
+      found = 1
+      next
+    }
+    { print }
+    END { if (!found) print key "=" value }
+  ' "$file" > "$temp"
+  chmod 600 "$temp"
+  mv "$temp" "$file"
+}
+
+# Set a key only when the file has no line for it — a default the user may
+# have already replaced.
+ensure_env() {
+  local file="$1" key="$2" value="$3"
+  [[ -f "$file" ]] && grep -Eq "^${key}=" "$file" && return 0
+  upsert_env "$file" "$key" "$value"
+}
+
+remove_env() {
+  local file="$1" key="$2" temp
+  [[ -f "$file" ]] || return 0
+  temp="$(mktemp)"
+  awk -v key="$key" '$0 !~ "^" key "=" { print }' "$file" > "$temp"
+  chmod 600 "$temp"
+  mv "$temp" "$file"
+}
+
+# The value of one key, empty when absent. Never `source` the file: it holds
+# URLs and secrets whose characters are not all shell-safe.
+read_env() {
+  local file="$1" key="$2"
+  [[ -f "$file" ]] || return 0
+  awk -v key="$key" -F= '$1 == key { sub("^" key "=", ""); print; exit }' "$file"
+}
+
+# Export every key beginning with a prefix into this process. Vite inlines only
+# `VITE_*`, and leaves a variable already in the environment alone, so this is
+# how the frontend's values reach it without the bundler being handed a secret.
+export_env_prefix() {
+  local file="$1" prefix="$2" line key value
+  [[ -f "$file" ]] || return 0
+  while IFS= read -r line; do
+    [[ "$line" =~ ^(${prefix}[A-Za-z0-9_]*)=(.*)$ ]] || continue
+    key="${BASH_REMATCH[1]}"; value="${BASH_REMATCH[2]}"
+    export "$key=$value"
+  done < "$file"
+}
+
+require_dev_env() {
+  [[ -f "$DEV_ENV_FILE" ]] ||
+    die "Missing $DEV_ENV_FILE. Run ./classroom/scripts/dev-setup.sh first."
+}
+
+# The dev stack's one account lives in the same file. **Neither half of it is
+# committed.** Both `dev-user.sh` and `dev-token.sh` read the address from this
+# one file, so the account created and the account signed in as cannot drift
+# apart. A reserved `.test` address (RFC 2606) is what belongs in it, because
+# it can never be a real mailbox; nothing enforces that, because the value is
+# the developer's.
 
 load_dev_user_email() {
   # Environment first, then the config file, and no default anywhere. Mirrors
   # `load_dev_user_password` below, deliberately: the two halves of one account
   # should not come from two kinds of place.
-  if [[ -z "${CLASSROOM_DEV_USER_EMAIL:-}" && -f "$DEV_ENV_FILE" ]]; then
-    # shellcheck source=/dev/null
-    source "$DEV_ENV_FILE"
-  fi
+  [[ -n "${CLASSROOM_DEV_USER_EMAIL:-}" ]] ||
+    CLASSROOM_DEV_USER_EMAIL="$(read_env "$DEV_ENV_FILE" CLASSROOM_DEV_USER_EMAIL)"
   [[ -n "${CLASSROOM_DEV_USER_EMAIL:-}" ]] || die \
     "CLASSROOM_DEV_USER_EMAIL is not set and $DEV_ENV_FILE provides none. Add a
   CLASSROOM_DEV_USER_EMAIL= line to that file. An address in the reserved .test
@@ -274,10 +357,8 @@ load_dev_user_password() {
   # ever inlines it.
   local prompt_allowed="${1:-true}"
   local generate="${2:-false}"
-  if [[ -z "${CLASSROOM_DEV_USER_PASSWORD:-}" && -f "$DEV_ENV_FILE" ]]; then
-    # shellcheck source=/dev/null
-    source "$DEV_ENV_FILE"
-  fi
+  [[ -n "${CLASSROOM_DEV_USER_PASSWORD:-}" ]] ||
+    CLASSROOM_DEV_USER_PASSWORD="$(read_env "$DEV_ENV_FILE" CLASSROOM_DEV_USER_PASSWORD)"
   if [[ -z "${CLASSROOM_DEV_USER_PASSWORD:-}" && "$generate" == "true" ]]; then
     # 24 hex characters plus a fixed upper/lower/digit tail, because the pool
     # requires all three classes and `openssl rand -hex` alone can produce a
@@ -285,21 +366,10 @@ load_dev_user_password() {
     # an existing stack converges the same password rather than minting a second
     # one nothing has recorded.
     require_command openssl
-    umask 077
-    mkdir -p "$CONFIG_DIR"
     # **Rewritten key by key, not overwritten.** Truncating the file would
-    # silently delete the account's own address and leave the next command
-    # asking for an email nobody removed.
-    local generated_env
-    generated_env="$(mktemp)"
-    chmod 600 "$generated_env"
-    [[ -f "$DEV_ENV_FILE" ]] &&
-      grep -v '^CLASSROOM_DEV_USER_PASSWORD=' "$DEV_ENV_FILE" > "$generated_env" || true
-    printf 'CLASSROOM_DEV_USER_PASSWORD=%s\n' "$(openssl rand -hex 12)Aa1" >> "$generated_env"
-    mv "$generated_env" "$DEV_ENV_FILE"
-    chmod 600 "$DEV_ENV_FILE"
-    # shellcheck source=/dev/null
-    source "$DEV_ENV_FILE"
+    # delete the whole stack's configuration along with the account's own address.
+    CLASSROOM_DEV_USER_PASSWORD="$(openssl rand -hex 12)Aa1"
+    upsert_env "$DEV_ENV_FILE" CLASSROOM_DEV_USER_PASSWORD "$CLASSROOM_DEV_USER_PASSWORD"
     ok "Generated the dev account password into $DEV_ENV_FILE (not printed)."
   fi
   if [[ -z "${CLASSROOM_DEV_USER_PASSWORD:-}" ]]; then
