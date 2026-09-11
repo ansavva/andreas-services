@@ -25,8 +25,8 @@ test('the organizer reaches the readiness dashboard from the exchange', async ({
   await page.goto(`/groups/${group.group_id}`);
   await page.getByText('See who is ready →').click();
 
-  await expect(page.getByText('Who is ready', { exact: true })).toBeVisible();
   await expect(page.getByText('Organizer dashboard')).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'People' })).toBeVisible();
 });
 
 test('a deep link to the dashboard renders the roll-up and the roster', async ({ page }) => {
@@ -40,9 +40,8 @@ test('a deep link to the dashboard renders the roll-up and the roster', async ({
   // route as well as the screen itself.
   await page.goto(`/organize/${group.group_id}`);
 
-  await expect(page.getByText('Who is ready', { exact: true })).toBeVisible();
   await expect(page.getByText('Taking part')).toBeVisible();
-  await expect(page.getByText('The full roster')).toBeVisible();
+  await expect(page.getByText('People', { exact: true }).first()).toBeVisible();
   for (const person of readiness.participants) {
     await expect(page.getByText(person.display_name).first()).toBeVisible();
   }
@@ -73,8 +72,8 @@ test('the dashboard survives a 390px phone viewport', async ({ page }) => {
 
   await page.goto(`/organize/${group.group_id}`);
 
-  await expect(page.getByText('Who is ready', { exact: true })).toBeVisible();
-  await expect(page.getByText('The full roster')).toBeVisible();
+  await expect(page.getByText('Taking part')).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'People' })).toBeVisible();
   // Nothing overflows the viewport — a stat tile that does not reflow is the failure this catches.
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);

@@ -229,6 +229,21 @@ const reminders = (settings: Partial<ReminderSettings> = {}): ReminderOverview =
   recent_history: [],
 });
 
+/** The dashboard is two tabs; People is open by default, Settings holds the rest. */
+function openSettings() {
+  fireEvent.press(screen.getByText('Settings'));
+}
+/** A settings section, by its menu label. */
+function openSection(label: string) {
+  openSettings();
+  fireEvent.press(screen.getByText(label));
+}
+/** The row's ⋯ menu, then one of its items. */
+function chooseRowAction(rowLabel: string, item: string) {
+  fireEvent.press(screen.getByLabelText(`Actions for ${rowLabel}`));
+  fireEvent.press(screen.getByText(item));
+}
+
 describe('loading and failure', () => {
   it('holds a loading state until both calls resolve', async () => {
     let release: (value: unknown) => void = () => {};
@@ -238,7 +253,7 @@ describe('loading and failure', () => {
     expect(screen.getByLabelText('Loading')).toBeOnTheScreen();
 
     release(readiness());
-    await waitFor(() => expect(screen.getByText('Who is ready')).toBeOnTheScreen());
+    await waitFor(() => expect(screen.getByText('Taking part')).toBeOnTheScreen());
   });
 
   it('tells a participant why the dashboard is closed to them rather than showing nothing', async () => {
@@ -269,19 +284,24 @@ describe('the empty and settled states', () => {
     render(<OrganizeScreen groupId="group-1" />);
 
     await waitFor(() =>
-      expect(screen.getByText('Nobody has joined yet. Share the invitation link.')).toBeOnTheScreen(),
+      expect(
+        screen.getByText('Nobody has joined yet. Share the invitation link, or invite people by email.'),
+      ).toBeOnTheScreen(),
     );
   });
 
   it('says nobody needs chasing when nobody does', async () => {
     render(<OrganizeScreen groupId="group-1" />);
 
-    await waitFor(() => expect(screen.getByText('Nobody — everyone is ready')).toBeOnTheScreen());
-    expect(screen.getByText('Every participant has done what the exchange asks.')).toBeOnTheScreen();
+    await waitFor(() => expect(screen.getByText('Needs attention (0)')).toBeOnTheScreen());
+    fireEvent.press(screen.getByText('Needs attention (0)'));
+    expect(
+      screen.getByText('Nobody needs a nudge — everyone has done what the exchange asks.'),
+    ).toBeOnTheScreen();
   });
 });
 
-describe('the nudge list', () => {
+describe('the needs-attention filter', () => {
   it('names each person once with every reason they are being chased', async () => {
     mocks.getReadiness.mockResolvedValue(
       readiness({
@@ -302,40 +322,36 @@ describe('the nudge list', () => {
 
     render(<OrganizeScreen groupId="group-1" />);
 
-    await waitFor(() => expect(screen.getByText('1 to chase')).toBeOnTheScreen());
+    await waitFor(() => expect(screen.getByText('Needs attention (1)')).toBeOnTheScreen());
+    // The reasons ride on the person's own row — one row per person, not a nudge list beside a
+    // roster naming them twice.
     expect(
       screen.getByText(
         'Has not written a wishlist · Has not given a mailing address · Has not opened their match',
       ),
     ).toBeOnTheScreen();
+    expect(screen.getAllByText('Sam')).toHaveLength(1);
+
+    fireEvent.press(screen.getByText('Needs attention (1)'));
+    expect(screen.queryByText('Alex')).toBeNull();
+    expect(screen.getByText('Sam')).toBeOnTheScreen();
   });
 
   it('calls out a bounced invitation as an address problem, not a slow reply', async () => {
-    mocks.getReadiness.mockResolvedValue(
-      readiness({
-        pending_invitations: [
-          {
-            invitation_id: 'i-1',
-            email: 'nobody@example.com',
-            status: 'bounced',
-            expires_at: '2026-12-01T00:00:00Z',
-          },
-          {
-            invitation_id: 'i-2',
-            email: 'slow@example.com',
-            status: 'sent',
-            expires_at: '2026-12-01T00:00:00Z',
-          },
-        ],
-      }),
-    );
+    mocks.listInvitations.mockResolvedValue([
+      { invitation_id: 'i-1', email: 'nobody@example.com', status: 'bounced', expires_at: '2026-12-01T12:00:00Z' },
+      { invitation_id: 'i-2', email: 'slow@example.com', status: 'sent', expires_at: '2026-12-01T12:00:00Z', last_sent_at: '2026-11-01T12:00:00Z' },
+    ]);
 
     render(<OrganizeScreen groupId="group-1" />);
 
     await waitFor(() =>
-      expect(screen.getByText('Their invitation bounced — check the address')).toBeOnTheScreen(),
+      expect(screen.getByText('The address did not accept it — check it for a typo')).toBeOnTheScreen(),
     );
-    expect(screen.getByText('Has not accepted their invitation')).toBeOnTheScreen();
+    expect(screen.getByText('Bounced')).toBeOnTheScreen();
+    expect(screen.getByText(/^Invited Nov 1 · expires Dec 1$/)).toBeOnTheScreen();
+    // Both count as needing attention; the roster's one member does not.
+    expect(screen.getByText('Needs attention (2)')).toBeOnTheScreen();
   });
 });
 
@@ -426,11 +442,10 @@ describe('what the roster shows', () => {
 
     render(<OrganizeScreen groupId="group-1" />);
 
-    // Person 000 has no list, so they are named twice — once to chase, once in the roster.
-    await waitFor(() => expect(screen.getAllByText('Person 000')).toHaveLength(2));
+    await waitFor(() => expect(screen.getByText('Person 000')).toBeOnTheScreen());
     expect(screen.getByText('Person 119')).toBeOnTheScreen();
-    // 40 of the 120 are missing a list; the roll-up and the nudge panel must agree on that.
-    expect(screen.getByText('40 to chase')).toBeOnTheScreen();
+    // 40 of the 120 are missing a list; the roll-up and the filter must agree on that.
+    expect(screen.getByText('Needs attention (40)')).toBeOnTheScreen();
     expect(screen.getByText('80 of 120')).toBeOnTheScreen();
   });
 });
@@ -439,6 +454,7 @@ describe('the address setting', () => {
   it('saves the switch and reloads, so the counts follow the setting', async () => {
     render(<OrganizeScreen groupId="group-1" />);
     await waitFor(() => expect(screen.getByText('Not needed')).toBeOnTheScreen());
+    openSettings();
 
     mocks.getReadiness.mockResolvedValue(
       readiness({ requires_address: true, participants: [participant('Alex', { address: 'missing', nudges: ['no_address'] })] }),
@@ -448,14 +464,21 @@ describe('the address setting', () => {
     await waitFor(() =>
       expect(mocks.updateGroup).toHaveBeenCalledWith('token', 'group-1', { requires_address: true }),
     );
-    await waitFor(() => expect(screen.getByText('No address')).toBeOnTheScreen());
+    // The stat row above the tabs follows the setting — and the switch is still where it was, on
+    // Settings: a save must not reload the screen out from under the tab the organizer is on.
+    await waitFor(() => expect(screen.getByText('0 of 1')).toBeOnTheScreen());
+    expect(screen.queryByLabelText('Loading')).toBeNull();
+    expect(screen.getByLabelText('Gifts are posted to a mailing address')).toBeOnTheScreen();
+    fireEvent.press(screen.getByText('People'));
+    expect(screen.getByText('No address')).toBeOnTheScreen();
   });
 
   it('reports a failed save without pretending the setting changed', async () => {
     mocks.updateGroup.mockRejectedValue(new Error('Nope.'));
 
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => screen.getByLabelText('Gifts are posted to a mailing address'));
+    await waitFor(() => screen.getByText('Settings'));
+    openSettings();
     fireEvent.press(screen.getByLabelText('Gifts are posted to a mailing address'));
 
     await waitFor(() => expect(screen.getByText('Nope.')).toBeOnTheScreen());
@@ -501,7 +524,7 @@ describe('mobile and assistive technology', () => {
 
     render(<OrganizeScreen groupId="group-1" />);
 
-    await waitFor(() => expect(screen.getByText('Who is ready')).toBeOnTheScreen());
+    await waitFor(() => expect(screen.getByText('Taking part')).toBeOnTheScreen());
     // Every tile, chip and row survives the narrow layout — the columns change, the content does not.
     expect(screen.getByText('Taking part')).toBeOnTheScreen();
     expect(screen.getByText('Matches opened')).toBeOnTheScreen();
@@ -586,8 +609,10 @@ describe('the billing area', () => {
   it('offers Plus to the owner', async () => {
     mocks.getGroup.mockResolvedValue(owned);
     render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => screen.getByText('Settings'));
+    openSection('Billing');
 
-    await waitFor(() => expect(screen.getByText('This exchange is on Free')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/Upgrade this exchange/)).toBeTruthy());
     expect(screen.getByText('Upgrade this exchange — $12')).toBeTruthy();
   });
 
@@ -605,7 +630,7 @@ describe('the billing area', () => {
 
     render(<OrganizeScreen groupId="group-1" checkout="success" />);
 
-    await waitFor(() => expect(screen.getByText('Plus is on for this exchange')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/Paid once for this exchange/)).toBeTruthy());
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
@@ -617,8 +642,12 @@ describe('the billing area', () => {
     mocks.getGroup.mockResolvedValue({ ...owned, is_owner: false });
     render(<OrganizeScreen groupId="group-1" />);
 
-    await waitFor(() => expect(screen.getByText('Who is ready')).toBeTruthy());
-    expect(screen.queryByText('This exchange is on Free')).toBeNull();
+    await waitFor(() => screen.getByText('Settings'));
+    openSettings();
+    // Not even the menu entry: a co-organizer has no billing, so there is nothing to open.
+    expect(screen.queryByText('Billing')).toBeNull();
+    expect(screen.queryByText('Danger zone')).toBeNull();
+    expect(screen.queryByText(/Upgrade this exchange/)).toBeNull();
     expect(mocks.getPlusPurchaseStatus).not.toHaveBeenCalled();
   });
 });
@@ -640,7 +669,8 @@ describe('managed invitations', () => {
     });
 
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => expect(screen.getByText('Invite people by email')).toBeOnTheScreen());
+    await waitFor(() => expect(screen.getByText('Invite by email')).toBeOnTheScreen());
+    fireEvent.press(screen.getByText('Invite by email'));
 
     fireEvent.changeText(
       screen.getByLabelText('Email addresses'),
@@ -660,7 +690,8 @@ describe('managed invitations', () => {
 
   it('drops a repeated address rather than letting the server refuse the whole batch', async () => {
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => expect(screen.getByText('Invite people by email')).toBeOnTheScreen());
+    await waitFor(() => expect(screen.getByText('Invite by email')).toBeOnTheScreen());
+    fireEvent.press(screen.getByText('Invite by email'));
 
     fireEvent.changeText(
       screen.getByLabelText('Email addresses'),
@@ -679,7 +710,8 @@ describe('managed invitations', () => {
     );
 
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => expect(screen.getByText('Invite people by email')).toBeOnTheScreen());
+    await waitFor(() => expect(screen.getByText('Invite by email')).toBeOnTheScreen());
+    fireEvent.press(screen.getByText('Invite by email'));
 
     fireEvent.changeText(screen.getByLabelText('Email addresses'), 'not-an-address');
     fireEvent.press(await screen.findByText('Send the invitation'));
@@ -691,10 +723,15 @@ describe('managed invitations', () => {
     );
   });
 
-  it('offers Plus instead of a form when the exchange is on Free', async () => {
+  it('offers Plus instead of a form when the exchange is on Free, once asked', async () => {
     mocks.listInvitations.mockRejectedValue(new ApiError(402, 'plus_required', 'Plus required.'));
 
     render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('Invite by email')).toBeOnTheScreen());
+    // Not before: a locked notice above an untouched roster is an advert rather than an answer.
+    expect(screen.queryByText('Sending and tracking invitations is part of Plus.')).toBeNull();
+
+    fireEvent.press(screen.getByText('Invite by email'));
 
     await waitFor(() =>
       expect(screen.getByText('Sending and tracking invitations is part of Plus.')).toBeOnTheScreen(),
@@ -711,12 +748,12 @@ describe('managed invitations', () => {
     render(<OrganizeScreen groupId="group-1" />);
     await waitFor(() => expect(screen.getByText('robin@example.com')).toBeOnTheScreen());
 
-    // One row is actionable, the other is history — so exactly one of each button exists.
-    expect(screen.getAllByText('Send again')).toHaveLength(1);
-    expect(screen.getAllByText('Withdraw')).toHaveLength(1);
-    expect(screen.getByText('Joined')).toBeOnTheScreen();
+    // A joined invitation is a member now — their row is the member's; the address is history and
+    // not listed twice. The open one has a menu with all three actions.
+    expect(screen.queryByText('sam@example.com')).toBeNull();
+    expect(screen.getByLabelText('Actions for robin@example.com')).toBeOnTheScreen();
 
-    fireEvent.press(screen.getByText('Withdraw'));
+    chooseRowAction('robin@example.com', 'Withdraw');
     await waitFor(() =>
       expect(mocks.revokeInvitation).toHaveBeenCalledWith('token', 'group-1', 'i1'),
     );
@@ -731,7 +768,7 @@ describe('managed invitations', () => {
     render(<OrganizeScreen groupId="group-1" />);
     await waitFor(() => expect(screen.getByText('robin@example.com')).toBeOnTheScreen());
 
-    fireEvent.press(screen.getByText('Send again'));
+    chooseRowAction('robin@example.com', 'Send again');
 
     await waitFor(() =>
       expect(screen.getByText('Wait 15 minutes before resending.')).toBeOnTheScreen(),
@@ -750,19 +787,18 @@ describe('co-organizers', () => {
     mocks.getReadiness.mockResolvedValue(readiness({ participants: roster }));
 
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => expect(screen.getByText('The full roster')).toBeOnTheScreen());
+    await waitFor(() => expect(screen.getByText('Robin')).toBeOnTheScreen());
 
-    // The owner has no button at all: the backend refuses to demote them, so offering it would be
-    // a button whose only outcome is a 409.
-    expect(screen.getAllByText('Make organizer')).toHaveLength(1);
-    expect(screen.getAllByText('Remove as organizer')).toHaveLength(1);
+    // The owner has no menu at all: the backend refuses to demote them, so offering it would be
+    // an item whose only outcome is a 409.
+    expect(screen.queryByLabelText('Actions for Alex')).toBeNull();
 
-    fireEvent.press(screen.getByText('Make organizer'));
+    chooseRowAction('Robin', 'Make organizer');
     await waitFor(() =>
       expect(mocks.setOrganizerRole).toHaveBeenCalledWith('token', 'group-1', 'member-Robin', true),
     );
 
-    fireEvent.press(screen.getByText('Remove as organizer'));
+    chooseRowAction('Sam', 'Remove as organizer');
     await waitFor(() =>
       expect(mocks.setOrganizerRole).toHaveBeenCalledWith('token', 'group-1', 'member-Sam', false),
     );
@@ -778,10 +814,11 @@ describe('co-organizers', () => {
     mocks.getReadiness.mockResolvedValue(readiness({ participants: roster }));
 
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => expect(screen.getByText('The full roster')).toBeOnTheScreen());
+    await waitFor(() => expect(screen.getByText('Robin')).toBeOnTheScreen());
 
-    expect(screen.queryByText('Make organizer')).toBeNull();
-    expect(screen.queryByText('Remove as organizer')).toBeNull();
+    // No menu on any row: before a draw the only member action is the owner's.
+    expect(screen.queryByLabelText('Actions for Robin')).toBeNull();
+    expect(screen.queryByLabelText('Actions for Sam')).toBeNull();
   });
 
   it('offers Plus only once the owner has actually tried', async () => {
@@ -789,12 +826,12 @@ describe('co-organizers', () => {
     mocks.setOrganizerRole.mockRejectedValue(new ApiError(402, 'plus_required', 'Plus required.'));
 
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => expect(screen.getByText('The full roster')).toBeOnTheScreen());
+    await waitFor(() => expect(screen.getByText('Robin')).toBeOnTheScreen());
 
     // An upgrade offer above an untouched roster is an advert, not an answer.
     expect(screen.queryByText('Sharing the organizing is part of Plus.')).toBeNull();
 
-    fireEvent.press(screen.getByText('Make organizer'));
+    chooseRowAction('Robin', 'Make organizer');
 
     await waitFor(() =>
       expect(screen.getByText('Sharing the organizing is part of Plus.')).toBeOnTheScreen(),
@@ -816,25 +853,34 @@ describe('scheduled reminders', () => {
     );
 
     render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => screen.getByText('Settings'));
+    openSection('Reminders');
 
+    // Once — as what the draft will do, under the controls. The saved rule is not repeated above
+    // it; the heading there is the one fact worth the space, when the next one goes.
     await waitFor(() =>
       expect(
         screen.getAllByText(
           'Reminds people who have not accepted their invitation and people whose list or address is not finished, every 3 days, between 09:00–21:00 UTC.',
-        ).length,
-      ).toBeGreaterThan(0),
+        ),
+      ).toHaveLength(1),
     );
   });
 
   it('says nothing is sent when it is off, rather than describing a schedule that will not run', async () => {
     render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => screen.getByText('Settings'));
+    openSection('Reminders');
 
     await waitFor(() => expect(screen.getAllByText('Nothing is sent.').length).toBeGreaterThan(0));
+    expect(screen.getAllByText('Off').length).toBeGreaterThan(0);
   });
 
   it('saves the settings and re-describes what it will now do', async () => {
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => expect(screen.getByText('Chasing, without you doing it')).toBeOnTheScreen());
+    await waitFor(() => screen.getByText('Settings'));
+    openSection('Reminders');
+    await waitFor(() => expect(screen.getByLabelText('How often, in days')).toBeOnTheScreen());
 
     fireEvent.changeText(screen.getByLabelText('How often, in days'), '7');
     fireEvent.press(screen.getByText('Save reminder settings'));
@@ -854,7 +900,9 @@ describe('scheduled reminders', () => {
     );
 
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => expect(screen.getByText('Chasing, without you doing it')).toBeOnTheScreen());
+    await waitFor(() => screen.getByText('Settings'));
+    openSection('Reminders');
+    await waitFor(() => expect(screen.getByLabelText('How often, in days')).toBeOnTheScreen());
 
     fireEvent.changeText(screen.getByLabelText('How often, in days'), '90');
     fireEvent.press(screen.getByText('Save reminder settings'));
@@ -870,6 +918,8 @@ describe('scheduled reminders', () => {
     mocks.getReminders.mockRejectedValue(new ApiError(402, 'plus_required', 'Plus required.'));
 
     render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => screen.getByText('Settings'));
+    openSection('Reminders');
 
     await waitFor(() =>
       expect(screen.getByText('Automatic reminders are part of Plus.')).toBeOnTheScreen(),
@@ -883,6 +933,8 @@ describe('scheduled reminders', () => {
     mocks.getReminders.mockRejectedValue(new Error('The reminder service is down.'));
 
     render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => screen.getByText('Settings'));
+    openSection('Reminders');
 
     await waitFor(() =>
       expect(screen.getByText('The reminder service is down.')).toBeOnTheScreen(),
@@ -893,7 +945,9 @@ describe('scheduled reminders', () => {
 describe('exchange customization', () => {
   it('sends the greeting on the field name the API takes', async () => {
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => expect(screen.getByText('Your words on the exchange')).toBeOnTheScreen());
+    await waitFor(() => screen.getByText('Settings'));
+    openSettings();
+    await waitFor(() => expect(screen.getByText('Greeting and instructions')).toBeOnTheScreen());
 
     fireEvent.changeText(screen.getByLabelText('Greeting'), 'Welcome to the Holly Jolly Crew');
     fireEvent.press(screen.getByText('Save your words'));
@@ -913,7 +967,9 @@ describe('exchange customization', () => {
     );
 
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => expect(screen.getByText('Your words on the exchange')).toBeOnTheScreen());
+    await waitFor(() => screen.getByText('Settings'));
+    openSettings();
+    await waitFor(() => expect(screen.getByText('Greeting and instructions')).toBeOnTheScreen());
 
     fireEvent.changeText(screen.getByLabelText('Greeting'), '<b>hi</b>');
     fireEvent.press(screen.getByText('Save your words'));
@@ -937,6 +993,8 @@ describe('exchange customization', () => {
     });
 
     render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => screen.getByText('Settings'));
+    openSettings();
 
     await waitFor(() =>
       expect(
@@ -952,7 +1010,9 @@ describe('exchange customization', () => {
     );
 
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => expect(screen.getByText('Your words on the exchange')).toBeOnTheScreen());
+    await waitFor(() => screen.getByText('Settings'));
+    openSettings();
+    await waitFor(() => expect(screen.getByText('Greeting and instructions')).toBeOnTheScreen());
     fireEvent.press(screen.getByText('Save your words'));
 
     await waitFor(() =>
@@ -998,9 +1058,9 @@ const aTemplate = (overrides: Record<string, unknown> = {}) => ({
 describe('templates', () => {
   it('saves this exchange under a name of its own', async () => {
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() =>
-      expect(screen.getByText('Save this setup, or start from one')).toBeOnTheScreen(),
-    );
+    await waitFor(() => screen.getByText('Settings'));
+    openSection('Templates');
+    await waitFor(() => expect(screen.getByLabelText('Save this exchange as a template')).toBeOnTheScreen());
 
     fireEvent.changeText(screen.getByLabelText('Save this exchange as a template'), 'The usual');
     fireEvent.press(screen.getByText('Save as a template'));
@@ -1016,9 +1076,9 @@ describe('templates', () => {
     mocks.listTemplates.mockResolvedValue([aTemplate()]);
 
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() =>
-      expect(screen.getByText('Save this setup, or start from one')).toBeOnTheScreen(),
-    );
+    await waitFor(() => screen.getByText('Settings'));
+    openSection('Templates');
+    await waitFor(() => expect(screen.getByLabelText('Save this exchange as a template')).toBeOnTheScreen());
 
     fireEvent(screen.getByLabelText('Start this exchange from a template'), 'valueChange', 't1');
 
@@ -1034,9 +1094,9 @@ describe('templates', () => {
     mocks.listTemplates.mockResolvedValue([aTemplate()]);
 
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() =>
-      expect(screen.getByText('Save this setup, or start from one')).toBeOnTheScreen(),
-    );
+    await waitFor(() => screen.getByText('Settings'));
+    openSection('Templates');
+    await waitFor(() => expect(screen.getByLabelText('Save this exchange as a template')).toBeOnTheScreen());
     fireEvent(screen.getByLabelText('Start this exchange from a template'), 'valueChange', 't1');
     await waitFor(() => expect(screen.getByText('This replaces what is here now')).toBeOnTheScreen());
 
@@ -1054,9 +1114,9 @@ describe('templates', () => {
     mocks.listTemplates.mockResolvedValue([aTemplate()]);
 
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() =>
-      expect(screen.getByText('Save this setup, or start from one')).toBeOnTheScreen(),
-    );
+    await waitFor(() => screen.getByText('Settings'));
+    openSection('Templates');
+    await waitFor(() => expect(screen.getByLabelText('Save this exchange as a template')).toBeOnTheScreen());
     fireEvent(screen.getByLabelText('Start this exchange from a template'), 'valueChange', 't1');
     await waitFor(() => expect(screen.getByText('This replaces what is here now')).toBeOnTheScreen());
 
@@ -1075,9 +1135,9 @@ describe('templates', () => {
     mocks.listTemplates.mockResolvedValue([aTemplate()]);
 
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() =>
-      expect(screen.getByText('Save this setup, or start from one')).toBeOnTheScreen(),
-    );
+    await waitFor(() => screen.getByText('Settings'));
+    openSection('Templates');
+    await waitFor(() => expect(screen.getByLabelText('Save this exchange as a template')).toBeOnTheScreen());
     fireEvent(screen.getByLabelText('Start this exchange from a template'), 'valueChange', 't1');
     await waitFor(() => expect(screen.getByText('This replaces what is here now')).toBeOnTheScreen());
 
@@ -1089,6 +1149,8 @@ describe('templates', () => {
     mocks.listTemplates.mockRejectedValue(new ApiError(402, 'plus_required', 'Plus required.'));
 
     render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => screen.getByText('Settings'));
+    openSection('Templates');
 
     await waitFor(() =>
       expect(screen.getByText('Saving a setup as a template is part of Plus.')).toBeOnTheScreen(),
@@ -1114,19 +1176,22 @@ describe('adding somebody after the draw', () => {
   it('offers it only after a draw, and only for somebody sitting out', async () => {
     mocks.getReadiness.mockResolvedValue(readiness({ participants: [participant('Sam')] }));
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => expect(screen.getByText('The full roster')).toBeOnTheScreen());
+    await waitFor(() => expect(screen.getByText('Sam')).toBeOnTheScreen());
 
-    // Before the draw there is nothing to disturb, so nothing is offered.
+    // Before the draw there is nothing to disturb, so nothing is offered. The owner's menu on
+    // Sam holds only the role change.
+    fireEvent.press(screen.getByLabelText('Actions for Sam'));
     expect(screen.queryByText('Add to the draw')).toBeNull();
+    expect(screen.getByText('Make organizer')).toBeOnTheScreen();
   });
 
   it('says how many matches would move before anything moves', async () => {
     mocks.getReadiness.mockResolvedValue(drawn());
 
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => expect(screen.getByText('Add to the draw')).toBeOnTheScreen());
+    await waitFor(() => expect(screen.getByLabelText('Actions for Sam')).toBeOnTheScreen());
 
-    fireEvent.press(screen.getByText('Add to the draw'));
+    chooseRowAction('Sam', 'Add to the draw');
     fireEvent.press(await screen.findByText('See what it would change'));
 
     await waitFor(() =>
@@ -1144,8 +1209,8 @@ describe('adding somebody after the draw', () => {
     mocks.getReadiness.mockResolvedValue(drawn());
 
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => expect(screen.getByText('Add to the draw')).toBeOnTheScreen());
-    fireEvent.press(screen.getByText('Add to the draw'));
+    await waitFor(() => expect(screen.getByLabelText('Actions for Sam')).toBeOnTheScreen());
+    chooseRowAction('Sam', 'Add to the draw');
     fireEvent.press(await screen.findByText('See what it would change'));
     fireEvent.press(await screen.findByText('Yes, change the matches'));
 
@@ -1163,8 +1228,8 @@ describe('adding somebody after the draw', () => {
     );
 
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => expect(screen.getByText('Add to the draw')).toBeOnTheScreen());
-    fireEvent.press(screen.getByText('Add to the draw'));
+    await waitFor(() => expect(screen.getByLabelText('Actions for Sam')).toBeOnTheScreen());
+    chooseRowAction('Sam', 'Add to the draw');
     fireEvent.press(await screen.findByText('See what it would change'));
     fireEvent.press(await screen.findByText('Yes, change the matches'));
 
@@ -1184,8 +1249,8 @@ describe('adding somebody after the draw', () => {
     );
 
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => expect(screen.getByText('Add to the draw')).toBeOnTheScreen());
-    fireEvent.press(screen.getByText('Add to the draw'));
+    await waitFor(() => expect(screen.getByLabelText('Actions for Sam')).toBeOnTheScreen());
+    chooseRowAction('Sam', 'Add to the draw');
     fireEvent.press(await screen.findByText('See what it would change'));
 
     await waitFor(() =>
@@ -1205,7 +1270,7 @@ describe('the manual nudge', () => {
     render(<OrganizeScreen groupId="group-1" />);
     await waitFor(() => expect(screen.getByText('robin@example.com')).toBeOnTheScreen());
 
-    fireEvent.press(screen.getByText('Nudge'));
+    chooseRowAction('robin@example.com', 'Nudge');
 
     await waitFor(() =>
       expect(mocks.sendReminder).toHaveBeenCalledWith(
@@ -1227,7 +1292,7 @@ describe('the manual nudge', () => {
     render(<OrganizeScreen groupId="group-1" />);
     await waitFor(() => expect(screen.getByText('robin@example.com')).toBeOnTheScreen());
 
-    fireEvent.press(screen.getByText('Nudge'));
+    chooseRowAction('robin@example.com', 'Nudge');
 
     await waitFor(() =>
       expect(screen.getByText('Configure reminders before sending one.')).toBeOnTheScreen(),

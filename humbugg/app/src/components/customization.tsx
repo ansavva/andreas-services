@@ -30,9 +30,16 @@ const DEFAULTS: ExchangeCustomization = { greeting: '', instructions: '' };
 export function CustomizationPanel({
   group,
   onSaved,
+  embedded = false,
 }: {
   group: GroupDetail;
   onSaved(next: GroupDetail): void;
+  /**
+   * Rendered inside another card — the Exchange settings — as a titled group of fields rather
+   * than a card of its own. The greeting and instructions describe the exchange; they are not a
+   * separate thing an organizer goes looking for.
+   */
+  embedded?: boolean;
 }) {
   const { styles } = useTheme();
   const auth = useAuth();
@@ -86,15 +93,22 @@ export function CustomizationPanel({
       />
     );
 
+  const Frame = embedded ? View : Card;
   return (
-    <Card>
-      <Text style={styles.eyebrow}>Customization</Text>
-      <Text style={[styles.heading, { marginTop: 4 }]}>Your words on the exchange</Text>
-      <Text style={[styles.smallMuted, { marginTop: 8 }]}>
+    <Frame style={embedded ? { marginTop: 8 } : undefined}>
+      {embedded ? (
+        <Text style={[styles.small, styles.semibold]}>Greeting and instructions</Text>
+      ) : (
+        <>
+          <Text style={styles.eyebrow}>Customization</Text>
+          <Text style={[styles.heading, { marginTop: 4 }]}>Your words on the exchange</Text>
+        </>
+      )}
+      <Text style={[styles.tiny, { marginTop: 4 }]}>
         What people read on the invitation before they join, and at the top of the exchange after.
       </Text>
 
-      <View style={{ marginTop: 24, gap: gap.md }}>
+      <View style={{ marginTop: 16, gap: gap.md }}>
         <FieldLabel label="Greeting" help="One line, at the top. 160 characters at most.">
           <Input
             maxLength={160}
@@ -125,6 +139,6 @@ export function CustomizationPanel({
           </Button>
         </View>
       </View>
-    </Card>
+    </Frame>
   );
 }

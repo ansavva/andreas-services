@@ -489,19 +489,18 @@ export function PlusBillingPanel({
 
   return (
     <Card style={entitled ? undefined : { borderColor: blends.primaryBorder }}>
+      {/* The badge names the plan and the body says what it means; a heading saying "Plus is on
+          for this exchange" between them was the badge a second time. */}
       <View style={local.offerHeading}>
         <View style={{ flex: 1, minWidth: 200 }}>
           <Text style={styles.eyebrow}>Billing</Text>
-          <Text style={[styles.heading, { marginTop: 4 }]}>
-            {entitled ? 'Plus is on for this exchange' : 'This exchange is on Free'}
-          </Text>
         </View>
         <Badge intent={entitled ? 'success' : 'neutral'} size="sm">
           {entitled ? 'Plus' : 'Free'}
         </Badge>
       </View>
 
-      <View style={{ marginTop: 20, gap: gap.md }}>
+      <View style={{ marginTop: 16, gap: gap.md }}>
         <StatusMessage message={loadError} />
         <ReturnBanner phase={phase} resumed={resumed} receiptUrl={status?.receipt_url ?? null} />
 
@@ -585,9 +584,8 @@ function ReturnBanner({
     );
   }
 
-  // Deliberately not a second "Plus is on for this exchange" — the heading directly above says
-  // that. What this adds is the fact the heading cannot carry: that the charge is finished, and
-  // what the organizer came here to do before Plus stopped them.
+  // Not "Plus is on" — the badge says that. What this adds is the fact a badge cannot carry:
+  // that the charge is finished, and what the organizer came here to do before Plus stopped them.
   return (
     <Banner tone="success">
       Payment confirmed. That is the only charge for this exchange — nothing renews.
