@@ -22,6 +22,7 @@ done
 
 for command in aws docker jq; do require_command "$command"; done
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required."
+require_dev_env
 export_temporary_aws_credentials
 export AWS_DEFAULT_REGION="$AWS_REGION_VALUE"
 

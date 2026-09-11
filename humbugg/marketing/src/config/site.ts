@@ -25,14 +25,3 @@ export function canonicalUrl(path = '/') {
 export function appUrl(path = '/') {
   return new URL(path, `${APP_ORIGIN}/`).href;
 }
-
-/**
- * Maps a path this site used to serve onto its equivalent on the product app.
- * The auth and join paths carry over one-to-one; the old `/app` prefix is the
- * app's root, so `/app/settings` becomes `/settings`.
- */
-export function legacyAppPath(pathname: string) {
-  if (pathname === '/app') return '/';
-  if (pathname.startsWith('/app/')) return pathname.slice('/app'.length);
-  return pathname;
-}

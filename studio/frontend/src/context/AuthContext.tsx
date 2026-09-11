@@ -1,11 +1,8 @@
 // Cognito auth over Managed Login's hosted pages.
 //
-// **The context no longer implements any sign-in step, and that is the point.**
-// It used to carry `login`, `completeNewPassword`, `beginReset` and
-// `finishReset` — Amplify SRP calls driven by a four-mode form in
-// `components/auth/LoginForm.tsx`. All four now happen on Cognito's hosted
-// pages, along with TOTP enrolment and the challenge, which the form could not
-// do at all. What is left here is the session: is there one, whose is it, how
+// **The context implements no sign-in step, and that is the point.** Login,
+// new-password, reset, TOTP enrolment and the challenge all happen on Cognito's
+// hosted pages. What is here is the session: is there one, whose is it, how
 // does a request get a token, and how does it end.
 //
 // The pool is still admin-create-only, so there is still no sign-up path — the

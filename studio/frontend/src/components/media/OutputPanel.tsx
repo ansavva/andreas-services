@@ -6,7 +6,7 @@ import { Text } from "@ansavva/design-system";
 import { MediaPlayer } from "./MediaPlayer";
 import { MediaThumb } from "./MediaThumb";
 import type { RunAsset } from "../../types";
-import { formatBytes } from "../../utils/format";
+import { assetLabel, formatBytes } from "../../utils/format";
 
 /**
  * A run's output: watchable here, and openable properly.
@@ -87,7 +87,7 @@ export function OutputPanel({
             name={asset.name}
             aspect={sole ? "auto" : "square"}
             fit="contain"
-            className="w-full rounded-none"
+            className="w-full"
           />
         </a>
       )}
@@ -105,7 +105,7 @@ export function OutputPanel({
       >
         <span className="flex min-w-0 items-center gap-2">
           <Text variant="caption" tone="muted" className="truncate font-mono">
-            {asset.name}
+            {assetLabel(asset.name)}
           </Text>
           {badge}
         </span>

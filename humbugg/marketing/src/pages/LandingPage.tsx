@@ -40,7 +40,7 @@ export default function LandingPage() {
               Bring everyone together, collect wish lists, set thoughtful exclusions, and make a private draw in one calm place.
             </p>
             <div className="mt-9 flex flex-wrap gap-3">
-              <a className={buttonClass({ size: 'lg' })} href={appUrl('/signup')}>Create your exchange</a>
+              <a className={buttonClass({ size: 'lg' })} href={appUrl('/login')}>Create your exchange</a>
               <Button size="lg" intent="secondary" onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}>See how it works</Button>
             </div>
             <p className="mt-5 text-sm text-muted">Free to use · No credit card · Private assignments</p>
@@ -50,17 +50,17 @@ export default function LandingPage() {
             <div className="hero-card relative z-10">
               <div className="flex items-start justify-between border-b border-line pb-5">
                 <div><p className="eyebrow">This year’s exchange</p><h2 className="mt-2 font-heading text-3xl font-semibold">The Holly Jolly Crew</h2></div>
-                <span className="rounded-full bg-surface-alt px-3 py-1 text-xs font-semibold text-primary">Ready</span>
+                <span className="rounded-pill bg-surface-alt px-3 py-1 text-xs font-semibold text-primary">Ready</span>
               </div>
               <div className="my-7 space-y-3">
                 {['Maya', 'Theo', 'Nina', 'Sam', 'Alex'].map((name, index) => (
-                  <div key={name} className="flex items-center gap-3 rounded-xl bg-surface-alt px-4 py-3">
+                  <div key={name} className="flex items-center gap-3 rounded-md bg-surface-alt px-4 py-3">
                     <span className="avatar-chip">{name[0]}</span><span className="font-medium">{name}</span>
                     <span className="ml-auto text-xs text-muted">{index < 4 ? 'Wish list ready' : 'Joined'}</span>
                   </div>
                 ))}
               </div>
-              <div className="rounded-xl bg-primary p-4 text-center font-semibold text-primary-text">5 people · Ready to draw</div>
+              <div className="rounded-md bg-primary p-4 text-center font-semibold text-primary-text">5 people · Ready to draw</div>
             </div>
           </div>
         </div>
@@ -82,7 +82,7 @@ export default function LandingPage() {
       <section className="bg-primary text-primary-text">
         <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-8 px-5 py-16 sm:flex-row sm:items-center lg:px-8">
           <div><p className="text-sm font-semibold uppercase tracking-[.2em] text-primary-text/70">Ready when you are</p><h2 className="mt-2 font-heading text-3xl font-semibold sm:text-4xl">Make this year’s exchange feel effortless.</h2></div>
-          <a className={buttonClass({ intent: 'secondary', size: 'lg' })} href={appUrl('/signup')}>Start your group</a>
+          <a className={buttonClass({ intent: 'secondary', size: 'lg' })} href={appUrl('/login')}>Start your group</a>
         </div>
       </section>
     </Shell>

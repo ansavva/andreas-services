@@ -10,6 +10,7 @@ using Humbugg.Api.Services.Email.Adapters.Http;
 using Humbugg.Api.Services.Email.Adapters.Memory;
 using Humbugg.Api.Services.Email.Core;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using System.Text.Json;
@@ -91,7 +92,30 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
         }
     };
 });
-builder.Services.AddAuthorization();
+// The default policy names JwtBearer explicitly, and that is load-bearing rather than tidy (#656).
+//
+// Behind API Gateway the application is not the first thing to set HttpContext.User:
+// Amazon.Lambda.AspNetCoreServer marshals requestContext.authorizer.jwt.claims into a
+// ClaimsPrincipal with the authentication type "AuthorizerIdentity" and assigns it to the
+// IHttpAuthenticationFeature before the ASP.NET pipeline runs at all
+// (APIGatewayHttpApiV2ProxyFunction.MarshallRequest). An identity with an authentication type is
+// authenticated, and the HTTP API's JWT authorizer takes an ID token as readily as an access one
+// because their audience is the same app client.
+//
+// A schemeless default policy leaves that principal alone: UseAuthentication does not overwrite
+// HttpContext.User when the handler returns a failure carrying no principal, and the authorization
+// middleware only re-authenticates when the policy names schemes. The OnTokenValidated rule above
+// therefore ran, failed, and changed nothing — prod answered an ID token exactly as it answered an
+// access token. Naming the scheme makes the authorization middleware authenticate against
+// JwtBearer and replace HttpContext.User with that result, so a failed validation is a 401 whatever
+// the host put there.
+//
+// DefaultPolicy only, deliberately: a FallbackPolicy would also cover endpoints carrying no
+// authorization metadata at all, which is what /health is.
+builder.Services.AddAuthorization(options =>
+    options.DefaultPolicy = new AuthorizationPolicyBuilder(JwtBearerDefaults.AuthenticationScheme)
+        .RequireAuthenticatedUser()
+        .Build());
 
 builder.Services.AddSingleton<IAmazonDynamoDB>(_ =>
 {
@@ -277,7 +301,7 @@ public sealed record HumbuggSettings(
     string MailerAuthMode = "none",
     string MailerServiceId = "humbugg",
     string AppBucket = "",
-    string AvatarBaseUrl = "http://localhost:5173",
+    string AvatarBaseUrl = "http://localhost:5176",
     string? S3EndpointUrl = null,
     string BillingRecordsTable = "humbugg-billing",
     string WishesTable = "humbugg-wishes",
@@ -288,7 +312,7 @@ public sealed record HumbuggSettings(
 {
     public static HumbuggSettings FromEnvironment()
     {
-        var appBaseUrl = (Environment.GetEnvironmentVariable("APP_BASE_URL") ?? "http://localhost:5173").TrimEnd('/');
+        var appBaseUrl = (Environment.GetEnvironmentVariable("APP_BASE_URL") ?? "http://localhost:5176").TrimEnd('/');
         return new(
             Environment.GetEnvironmentVariable("AWS_REGION") ?? Environment.GetEnvironmentVariable("AWS_DEFAULT_REGION") ?? "us-east-1",
             Environment.GetEnvironmentVariable("COGNITO_REGION") ?? "us-east-1",
@@ -329,7 +353,7 @@ public sealed record HumbuggSettings(
     // tables that have since been deleted outright.
     //
     // The deploy workflow sets all twelve; dev-aws-setup.sh writes all twelve
-    // into humbugg/backend/.env from Terraform outputs. A missing one means the
+    // into ~/.config/andreas-services/humbugg/dev.env from Terraform outputs. A missing one means the
     // environment is genuinely misconfigured, so fail at startup and say which.
     private static string RequiredTable(string variable) =>
         Environment.GetEnvironmentVariable(variable) is { } value && !string.IsNullOrWhiteSpace(value)
@@ -337,12 +361,12 @@ public sealed record HumbuggSettings(
             : throw new InvalidOperationException(
                 $"{variable} is not set. DynamoDB table names are per-environment and have no default. " +
                 "In CI the deploy workflow sets it; locally run humbugg/scripts/dev-aws-setup.sh, " +
-                "which writes the table names from Terraform outputs into humbugg/backend/.env.");
+                "which writes the table names from Terraform outputs into ~/.config/andreas-services/humbugg/dev.env.");
 
     // Local development runs two distinct browser origins against one backend: the Vite
-    // marketing dev server on :5173 and the Expo web dev server on :8081.
+    // marketing dev server on :5176 and the Expo web dev server on :8081.
     private static readonly string[] DefaultCorsOrigins =
-        ["http://localhost:5173", "http://localhost:8081"];
+        ["http://localhost:5176", "http://localhost:8081"];
 
     // CORS_ORIGINS is a comma-separated list because the surfaces that call this API live on
     // separate hosts (www., app., and both dev servers) and Lambda env vars are flat strings.

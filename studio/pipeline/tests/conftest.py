@@ -95,7 +95,7 @@ def _committed_models() -> dict:
     path = _pipeline.STUDIO_DIR / "backend" / "studio_core" / "models.json"
     return json.loads(path.read_text())["models"]
 
-from tests.support.fake_api import BUCKET, FakeApi  # noqa: E402
+from tests.support.fake_api import BUCKET, FakeApi, add_run_output  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -110,12 +110,11 @@ def _isolated_profiles(tmp_path, monkeypatch):
     """
     monkeypatch.setattr(_profiles, "CONFIG_DIR", tmp_path / "config")
     monkeypatch.setattr(_profiles, "CONFIG_FILE", tmp_path / "config" / "config")
-    # The two dotenv files `env_value` falls back to, for the same reason. The
-    # environment variables above already shadow them, so this changes nothing
+    # The dotenv file `env_value` falls back to, for the same reason. The
+    # environment variables above already shadow it, so this changes nothing
     # in the ordinary case — it is what lets a test assert that a value is
     # supplied by NOTHING, which is impossible while a developer's own
-    # `studio/.env` is still on the path.
-    monkeypatch.setattr(_pipeline, "ENV_FILE", tmp_path / "dot.env")
+    # `dev.env` is still on the path.
     monkeypatch.setattr(_pipeline, "DEV_ENV_FILE", tmp_path / "dev.env")
     # **And the stored session, which this suite used to DELETE.**
     #
@@ -354,7 +353,9 @@ def library(fake_api):
     lib.character = subject_a["id"]
     root = subject_a["root"]
     lib.character_root = root
-    reference = fake_api._child(root, "reference")
+    # A character no longer starts holding `reference/`; the fixture makes it,
+    # the way `pool_folder` would the first time something is filed into it.
+    reference = fake_api._create_node(root, "reference", "folder")
     lib.reference = reference["id"]
 
     face = fake_api._create_node(reference["id"], "face", "folder")
@@ -379,8 +380,8 @@ def library(fake_api):
     subject_b = E.create_character("subject-b",
                                    profile=copy.deepcopy(PROFILE))
     lib.character_b = subject_b["id"]
-    b_face = fake_api._create_node(
-        fake_api._child(subject_b["root"], "reference")["id"], "face", "folder")
+    b_reference = fake_api._create_node(subject_b["root"], "reference", "folder")
+    b_face = fake_api._create_node(b_reference["id"], "face", "folder")
     lib.b_face_1 = fake_api.put_file(b_face["id"], "front.jpeg", b"jpeg-b")["id"]
     S.describe_node(lib.b_face_1, description="front", tags=["default", "face"])
 
@@ -402,12 +403,7 @@ def library(fake_api):
                        bindings={"image_input": [lib.face_1, lib.face_2]},
                        characters=[lib.character])
     lib.run = run["id"]
-    # **The fixture goes through the gate rather than around it.** A run is
-    # created as a draft, and the API refuses to move one out of the unsubmitted
-    # states without an approval naming its exact payload — so a fixture that
-    # skipped this step would be seeding a state the service cannot produce.
-    E.approve_run(lib.run, run["plan_digest"])
-    signed = E.add_run_output(lib.run, "output-1.jpeg", 9, "image/jpeg")
+    signed = add_run_output(lib.run, "output-1.jpeg", 9, "image/jpeg")
     _confirm(fake_api, signed, b"jpeg-out")
     E.patch_run(lib.run, status="succeeded", prediction_id="s7k2m9x4qwe1",
                 completed="2026-08-19T09:41:02.883740+00:00",

@@ -18,15 +18,19 @@
 import { Dropdown } from '@ansavva/design-system';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { useAuth } from '../context/auth-context';
 import { useProfile } from '../context/profile-context';
-import { styles } from '../theme/styles';
-import { brand, fonts } from '../theme/theme';
+import { radii } from '../theme/radii';
+import { scopedStyles, useTheme } from '../theme/styles';
+import { fonts } from '../theme/theme';
 import { Avatar } from './avatar';
 
 export function AvatarMenu() {
+  const theme = useTheme();
+  const { styles } = theme;
+  const local = localStyles(theme);
   const auth = useAuth();
   const { profile } = useProfile();
   const router = useRouter();
@@ -66,9 +70,14 @@ export function AvatarMenu() {
           <Text numberOfLines={1} style={local.triggerLabel}>
             {displayName}
           </Text>
-          <Text aria-hidden style={local.chevron}>
-            ⌄
-          </Text>
+          {/*
+            A drawn chevron rather than a glyph. `⌄` is a font's own outline —
+            hairline-thin, and vertically centred on nothing in particular, so
+            it sat low against the name and changed shape per platform font.
+            Two borders on a rotated square are the same mark at any size, in
+            the label's own colour.
+          */}
+          <View aria-hidden style={local.chevron} />
         </Pressable>
         <Dropdown.Content
           accessibilityLabel="Account"
@@ -95,22 +104,37 @@ export function AvatarMenu() {
   );
 }
 
-const local = StyleSheet.create({
+/** Built once per scheme — see `scopedStyles`. */
+const localStyles = scopedStyles((t) => ({
   backdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 10 },
   trigger: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     borderWidth: 1,
-    borderColor: brand.line,
-    borderRadius: 999,
-    backgroundColor: brand.card,
+    borderColor: t.brand.line,
+    // The menu's own corner, not a pill: a 999px trigger hanging a `radii.md`
+    // panel off itself is what made the two read as unrelated objects.
+    borderRadius: radii.md,
+    backgroundColor: t.brand.card,
     padding: 4,
     paddingRight: 10,
   },
-  triggerLabel: { maxWidth: 160, color: brand.ink, fontFamily: fonts.bodyMedium, fontSize: 14 },
-  chevron: { color: brand.muted, fontSize: 14, lineHeight: 14 },
-  // `left: undefined` unsets the package's `left: 0` when the two style objects
-  // are flattened, leaving `right: 0` to anchor the menu.
-  anchorRight: { left: undefined, right: 0 },
-});
+  triggerLabel: { maxWidth: 160, color: t.brand.ink, fontFamily: fonts.bodyMedium, fontSize: 14 },
+  chevron: {
+    width: 7,
+    height: 7,
+    // The rotated square's corner points down; lifting it by half its own
+    // diagonal overhang puts that point on the label's optical centre.
+    marginTop: -3,
+    borderRightWidth: 1.5,
+    borderBottomWidth: 1.5,
+    borderColor: t.brand.muted,
+    transform: [{ rotate: '45deg' }],
+  },
+  // The package anchors with `left: 0`; `left: 'auto'` is what actually unsets
+  // it. `left: undefined` does not — a flattened `undefined` leaves the earlier
+  // value standing, so the menu stayed pinned to the trigger's left edge and,
+  // this far right in the header, ran off the side of the window.
+  anchorRight: { left: 'auto', right: 0 },
+}));

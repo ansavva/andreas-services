@@ -18,15 +18,6 @@ export function useMedia(
   folderId: FolderId,
   sort: SortOrder,
   enabled: boolean,
-  /**
-   * How many per page. The API's own default is 200.
-   *
-   * Home shows twelve and never pages, so it asks for twelve: the response and
-   * the presigning shrink with it. What does NOT shrink is the enumeration —
-   * the endpoint reads the branch, sorts it and slices, because `total` and the
-   * cursor are defined against the whole of it. See the note in `HomePage`.
-   */
-  pageSize?: number,
 ) {
   const [items, setItems] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -57,7 +48,6 @@ export function useMedia(
         forFolder === null ? {} : { node: forFolder },
         forSort,
         next ?? undefined,
-        pageSize,
       );
       if (query.current.id !== id) return;
 
@@ -71,7 +61,7 @@ export function useMedia(
       inFlight.current = false;
       setLoading(false);
     }
-  }, [pageSize]);
+  }, []);
 
   useEffect(() => {
     const id = query.current.id + 1;
@@ -103,6 +93,26 @@ export function useMedia(
     if (!enabled || exhausted || inFlight.current || cursor.current === null) return;
     void fetchPage(query.current.id, cursor.current);
   }, [enabled, exhausted, fetchPage]);
+
+  /**
+   * Start the walk over from its first page.
+   *
+   * For a walk that failed: `loadMore` continues from a cursor, and a failed
+   * first page has none, so a retry button had nothing to call. Supersedes
+   * whatever is in flight the same way a changed folder does — a new id, and
+   * the late page is dropped against it.
+   */
+  const reload = useCallback(() => {
+    const id = query.current.id + 1;
+    query.current = { ...query.current, id };
+    cursor.current = null;
+    inFlight.current = false;
+    setItems([]);
+    setExhausted(false);
+    setTruncated(false);
+    if (!enabled) return;
+    void fetchPage(id, null);
+  }, [enabled, fetchPage]);
 
   /**
    * Forget one item without re-walking the bucket.
@@ -137,5 +147,5 @@ export function useMedia(
     );
   }, []);
 
-  return { items, loading, error, exhausted, truncated, loadMore, dropItem, refreshItem };
+  return { items, loading, error, exhausted, truncated, loadMore, reload, dropItem, refreshItem };
 }

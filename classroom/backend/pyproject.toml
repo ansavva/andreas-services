@@ -1,0 +1,33 @@
+[tool.poetry]
+name = "classroom-api"
+version = "0.1.0"
+description = "Classroom pages API Lambda"
+authors = []
+packages = []
+
+[tool.poetry.dependencies]
+python = "^3.11"
+boto3 = "1.26.137"
+Flask = "3.0.3"
+Flask-Cors = "5.0.0"
+Werkzeug = "3.0.4"
+mangum = "0.17.0"
+asgiref = "3.8.1"
+# The API validates the Cognito ID token itself rather than reading the
+# gateway authorizer's claims — those cannot reach Flask through
+# WsgiToAsgi. See classroom_core/auth.py.
+PyJWT = {version = "2.10.1", extras = ["crypto"]}
+
+# `nh3` (the ammonia HTML sanitizer) was removed when lessons moved to S3.
+# Nothing sanitizes a lesson any more — her uploads are served byte for byte so
+# her styling and her interactive scripts survive — and what makes that safe is
+# that they are served from a different ORIGIN to the app. See
+# infra/modules/lesson_hosting.
+
+[tool.poetry.group.dev.dependencies]
+moto = {version = "4.2.14", extras = ["dynamodb", "s3"]}
+pytest = "7.4.3"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

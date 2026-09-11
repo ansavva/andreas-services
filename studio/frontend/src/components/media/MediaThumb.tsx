@@ -26,27 +26,43 @@ interface Props {
   /**
    * The node id, which is what a re-sign addresses.
    *
-   * Not optional and not the key: `/api/asset` signs by node, and passing a
-   * name path is what left every expired tile broken for anything uploaded
-   * through the app (#432).
+   * Not optional and not the key: `/api/asset` signs by node, and a name path
+   * would leave every expired tile broken for anything uploaded through the
+   * app.
    */
   nodeId: string;
-  url: string;
+  /**
+   * The presigned URL, or nothing at all.
+   *
+   * **Absent is a real answer, not a caller's mistake.** A record may point at a
+   * node the catalog no longer holds — a deleted send, an output whose file went
+   * — and the API reports that pointer as the bare `{node}` it honestly is, with
+   * no `name` and no `url`. Every tile below the API therefore has to be able to
+   * draw "there is nothing here", which is the `Unavailable` state a dead
+   * signature already reaches through `onError`.
+   *
+   * It was typed `string` and the runtime disagreed: a project holding one run
+   * with a deleted send crashed the whole feed in `looksLikeVideo` —
+   * `new URL(undefined)` throws, and the fallback did `undefined.split("?")`.
+   */
+  url: string | null | undefined;
   /**
    * What the file is called — used for the hover caption and nothing else.
    *
    * **Not the alt text.** See the `<img>` below: these are decorative inside
    * controls that already carry the name.
+   *
+   * Optional for the same reason `url` is: a pointer at a node that is gone
+   * carries no name either.
    */
-  name: string;
+  name?: string;
   /**
    * Whether this is a video, when the caller knows.
    *
-   * **Omitting it no longer means "image".** It used to default to `false`, so
-   * every caller that could not know — `HeroImage` is `{node, url}` and carries
-   * no kind, which is `EntityCard`, `EntityRow` and the project's input pool —
-   * silently rendered an `.mp4` through `<img>` and drew a broken image. The
-   * runs list did it too, and that is how this was found.
+   * **Omitting it does not mean "image".** A `false` default would make every
+   * caller that cannot know — `HeroImage` is `{node, url}` and carries no
+   * kind, which is `EntityCard`, `EntityRow` and the project's input pool —
+   * silently render an `.mp4` through `<img>` and draw a broken image.
    *
    * Left undefined, the kind is read off the object's extension instead. An
    * explicit value always wins, because a caller with a real `kind` field knows
@@ -54,6 +70,12 @@ interface Props {
    */
   isVideo?: boolean;
   aspect?: keyof typeof ASPECTS;
+  /**
+   * An exact shape as a CSS `aspect-ratio` value (`"9 / 16"`), which beats
+   * `aspect`. The feed passes the plan's own `aspect_ratio` so a portrait clip
+   * is not cropped into a landscape box.
+   */
+  ratio?: string;
   /** `cover` fills the box and crops; `contain` shows the whole frame. */
   fit?: "cover" | "contain";
   /** Bottom-right overlay. A video's duration fills this when nothing else does. */
@@ -131,8 +153,10 @@ interface Props {
  */
 const VIDEO_EXTENSIONS = /\.(mp4|mov|webm|m4v)$/i;
 
-function looksLikeVideo(name: string, url: string): boolean {
+function looksLikeVideo(name: string, url: string | null | undefined): boolean {
   if (VIDEO_EXTENSIONS.test(name)) return true;
+  // Nothing to read a kind off. The tile draws `Unavailable` either way.
+  if (!url) return false;
   try {
     return VIDEO_EXTENSIONS.test(new URL(url).pathname);
   } catch {
@@ -145,9 +169,10 @@ function looksLikeVideo(name: string, url: string): boolean {
 export function MediaThumb({
   nodeId,
   url,
-  name,
+  name = "",
   isVideo: isVideoProp,
   aspect = "square",
+  ratio,
   fit = "cover",
   badge,
   showName = false,
@@ -200,7 +225,8 @@ export function MediaThumb({
       onPointerLeave={(event) => {
         if (isVideo && event.pointerType === "mouse") preview(false);
       }}
-      className={`relative block overflow-hidden bg-surface-alt ${ASPECTS[aspect]} ${className}`}
+      className={`relative block overflow-hidden bg-surface-alt ${ratio ? "" : ASPECTS[aspect]} ${className}`}
+      style={ratio ? { aspectRatio: ratio } : undefined}
     >
       {failed ? (
         <span className="flex h-full w-full items-center justify-center px-2 text-center text-xs text-muted">
@@ -245,14 +271,14 @@ export function MediaThumb({
         />
       )}
 
-      {/* Square, and mono: a duration is metadata. `bg-neutral-1/80` is the
-          ramp's darkest step at the weight the black literal here used to
-          carry — a scrim over media has to be dark, and the point of the ramp
-          is that "dark" is now a token this app can re-value. */}
+      {/* Square, and mono: a duration is metadata. `bg-overlay-scrim/80` is the
+          media-chrome scrim at the weight the black literal here used to
+          carry — a badge over media has to be dark, and the point of the token
+          is that "dark, over a frame" is one thing this app can re-value. */}
       {(badge ?? (isVideo && !failed)) && (
         <span
-          className="pointer-events-none absolute bottom-1.5 right-1.5 bg-neutral-1/80 px-1.5
-                     py-0.5 font-mono text-[11px] tabular-nums text-neutral-12"
+          className="pointer-events-none absolute bottom-1.5 right-1.5 bg-overlay-scrim/80 px-1.5
+                     py-0.5 font-mono text-[11px] tabular-nums text-overlay-ink"
         >
           {badge ?? (duration ? formatDuration(duration) : "video")}
         </span>
@@ -261,8 +287,8 @@ export function MediaThumb({
       {showName && (
         <span
           className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t
-                     from-neutral-1/85 to-transparent px-2 pb-1.5 pt-6 text-left font-mono text-[11px]
-                     text-neutral-12
+                     from-overlay-scrim/85 to-transparent px-2 pb-1.5 pt-6 text-left font-mono text-[11px]
+                     text-overlay-ink
                      opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
         >
           {name}

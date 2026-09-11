@@ -7,8 +7,53 @@ Investigate immediately when a Mailer Lambda error alarm, DLQ alarm, or
 bounces or complaints affect every application even though configuration sets
 are separated.
 
-The platform deliberately creates no alarm subscription until an operational
-destination is selected. Alarms remain visible in CloudWatch.
+## Where alarms go
+
+Every alarm publishes to `mailer-prod-alerts`, one SNS topic with an email
+subscription (decision 2026-09-09). Both `alarm_actions` and `ok_actions` are set, so
+a recovery mail closes the loop and a quiet inbox means healthy rather than
+unmonitored.
+
+| Alarm | Metric | Threshold |
+| --- | --- | --- |
+| `mailer-prod-{ingress,sender,feedback}-errors` | `AWS/Lambda` `Errors` Sum, 300s | > 0 |
+| `mailer-prod-{send,feedback,status}-dlq-not-empty` | `AWS/SQS` `ApproximateNumberOfMessagesVisible` Max, 300s | > 0 |
+| `mailer-prod-humbugg-send-oldest-message` | `AWS/SQS` `ApproximateAgeOfOldestMessage` Max, 300s | > 900s |
+| `mailer-prod-attachment-threat` | `Mailer` `AttachmentThreat` Sum, 300s | > 0 |
+| `mailer-prod-attachment-scan-failure` | `Mailer` `AttachmentScanFailure` Sum, 300s | > 0 |
+| `mailer-prod-humbugg-rejects` | `Mailer` `Reject` Sum, 300s | > 0 |
+| `mailer-prod-ses-bounce-rate` | `AWS/SES` `Reputation.BounceRate` Avg, 900s | > 0.05 |
+| `mailer-prod-ses-complaint-rate` | `AWS/SES` `Reputation.ComplaintRate` Avg, 900s | > 0.001 |
+
+Humbugg's send and status DLQs live in this stack, so Humbugg's own alerting cannot
+see them. These alarms are where a stuck Humbugg exchange email surfaces.
+
+The address is `TF_VAR_alert_email`, injected in CI from the GitHub secret
+`MAILER_ALERT_EMAIL`. It is `sensitive` and defaults to `""`; the topic is always
+created and the subscription only when the address is non-empty, so the stack applies
+before the secret exists.
+
+**An SNS email subscription delivers nothing until the recipient clicks the AWS
+confirmation link.** Until then it sits in `PendingConfirmation` and every
+notification is discarded — Terraform reports it as created either way. Check it:
+
+```bash
+aws sns list-subscriptions-by-topic \
+  --topic-arn "$(terraform -chdir=infra/envs/prod output -raw alerts_topic_arn)" \
+  --query 'Subscriptions[].[Protocol,Endpoint,SubscriptionArn]' --output table
+```
+
+A `SubscriptionArn` of `PendingConfirmation` means nobody is being told anything. AWS
+expires the link after three days; re-run the deploy to re-send it.
+
+Prove delivery without waiting for a real fault, then put the alarm back:
+
+```bash
+aws cloudwatch set-alarm-state --alarm-name mailer-prod-sender-errors \
+  --state-value ALARM --state-reason test
+aws cloudwatch set-alarm-state --alarm-name mailer-prod-sender-errors \
+  --state-value OK --state-reason test
+```
 
 ## Product-email kill switch
 

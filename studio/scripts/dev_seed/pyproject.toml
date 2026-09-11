@@ -4,10 +4,9 @@
 # `adapters/ddb.py` and `adapters/s3.py` in the CLI: seeding writes the rows and
 # copies the blobs a library is *made of*, server-side, before there is a
 # signed-in session or in many cases a library at all. Every other `studio`
-# command reaches the library through the API and holds no cloud credential
-# (#308). One command needing the opposite does not belong in the same binary as
-# the other ninety-odd — and while it was, the AWS-direct `maintenance/`
-# commands sheltered under the same roof.
+# command reaches the library through the API and holds no cloud credential.
+# One command needing the opposite does not belong in the same binary as the
+# other ninety-odd.
 #
 # So it lives beside the scripts it is actually used with — `dev-aws-setup.sh`,
 # `dev-aws-seed.sh`, `dev-aws-destroy.sh` — and its own dependency set is four

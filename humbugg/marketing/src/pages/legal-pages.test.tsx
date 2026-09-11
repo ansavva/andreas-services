@@ -6,6 +6,7 @@ import { POLICY_VERSION } from '../config/policies';
 import BillingPage from './BillingPage';
 import PrivacyPage from './PrivacyPage';
 import RefundPage from './RefundPage';
+import SubProcessorsPage from './SubProcessorsPage';
 import TermsPage from './TermsPage';
 
 // One test per published policy: each must render under its own title and carry the
@@ -16,6 +17,7 @@ const PAGES = [
   { name: 'Terms of Service', Page: TermsPage },
   { name: 'Refund Policy', Page: RefundPage },
   { name: 'Billing Terms', Page: BillingPage },
+  { name: 'Sub-processors', Page: SubProcessorsPage },
 ] as const;
 
 describe('legal pages', () => {

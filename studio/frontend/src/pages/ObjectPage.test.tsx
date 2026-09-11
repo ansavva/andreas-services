@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FileEntry, RunRecord, FolderListing } from "../types";
+import { CreateBarProvider, useCreateBarState } from "../context/CreateBarContext";
 import { TestProviders } from "../test-providers";
 
 /**
@@ -23,6 +24,8 @@ vi.mock("../apis/studio", () => ({
   getMedia: vi.fn(),
   getRun: vi.fn(),
   getScene: vi.fn(),
+  getCharacter: vi.fn(),
+  listNodes: vi.fn(),
   getNode: vi.fn(),
   getAsset: vi.fn(),
   getNodeOwner: vi.fn().mockResolvedValue(null),
@@ -31,13 +34,27 @@ vi.mock("../apis/studio", () => ({
   renameNode: vi.fn(),
 }));
 
-import { getAsset, getMedia, getNode, getRun, getFolder } from "../apis/studio";
+import {
+  deleteNodes,
+  getAsset,
+  getCharacter,
+  getMedia,
+  getNode,
+  getRun,
+  getScene,
+  getFolder,
+  listNodes,
+} from "../apis/studio";
 import { ObjectPage } from "./ObjectPage";
 
 const tree = vi.mocked(getFolder);
 const walk = vi.mocked(getMedia);
 const run = vi.mocked(getRun);
+const scene = vi.mocked(getScene);
+const character = vi.mocked(getCharacter);
+const listed = vi.mocked(listNodes);
 const node = vi.mocked(getNode);
+const destroy = vi.mocked(deleteNodes);
 const asset = vi.mocked(getAsset);
 
 const FOLDER = "node-folder";
@@ -76,13 +93,26 @@ beforeEach(() => {
   tree.mockResolvedValue(listing([file("node-a", "a.png"), file(OPEN, "b.png"), file("node-c", "c.png")]));
 });
 
+/** What the create bar holds for its current kind — the real provider, read back. */
+function Probe() {
+  const state = useCreateBarState();
+  return (
+    <output data-testid="bar">
+      {state.attachments[state.kind].map((held) => `${held.role}:${held.ref.node}`).join(",")}
+    </output>
+  );
+}
+
 function open(path: string) {
   render(
     <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/o" element={<ObjectPage />} />
-        <Route path="/o/:nodeId" element={<ObjectPage />} />
-      </Routes>
+      <CreateBarProvider>
+        <Routes>
+          <Route path="/o" element={<ObjectPage />} />
+          <Route path="/o/:nodeId" element={<ObjectPage />} />
+        </Routes>
+        <Probe />
+      </CreateBarProvider>
     </MemoryRouter>,
     { wrapper: TestProviders },
   );
@@ -172,7 +202,7 @@ describe("which sequence the address names", () => {
     // asked for is the one on screen — not `node-a`, which page one led with.
     await waitFor(() => expect(screen.getByText(/3 of 3/)).toBeTruthy());
     expect(walk).toHaveBeenCalledTimes(2);
-    expect(screen.queryByText("No images or videos here.")).toBeNull();
+    expect(screen.queryByText("No images or videos yet.")).toBeNull();
   });
 
   it("opens a feed at its first frame when the address carries no id", async () => {
@@ -226,7 +256,7 @@ describe("editing the file's own fields", () => {
     );
 
     // And the way out is offered rather than taken.
-    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    fireEvent.click(screen.getByRole("button", { name: "Leave without saving" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
@@ -264,5 +294,116 @@ describe("walking the feed", () => {
 
     fireEvent.keyDown(window, { key: "ArrowLeft" });
     await waitFor(() => expect(screen.getByText(/1 of 3/)).toBeTruthy());
+  });
+});
+
+/**
+ * **The crumb used to say "Folder", "Scene" or "Character" no matter which one
+ * it was.** It names the real thing now — fetched by the id the `?in=` context
+ * already carries — which is the difference between "where kind of place is
+ * this" and "where am I".
+ */
+describe("the crumb names the real place, not the kind of place", () => {
+  it("names the folder a file was opened from", async () => {
+    node.mockImplementation((id: string) =>
+      Promise.resolve({
+        id,
+        lib: "lib-1",
+        name: "Beach shots",
+        kind: "folder",
+        created_at: "2026-08-01T00:00:00Z",
+      } as never),
+    );
+
+    open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
+
+    const crumb = await screen.findByRole("navigation", { name: "Breadcrumb" });
+    await waitFor(() => expect(crumb.textContent).toBe("Beach shots"));
+  });
+
+  it("names the library root Files, which has no node to fetch", async () => {
+    open(`/o/${OPEN}?in=${encodeURIComponent("f")}`);
+
+    const crumb = await screen.findByRole("navigation", { name: "Breadcrumb" });
+    expect(crumb.textContent).toBe("Files");
+    expect(node).not.toHaveBeenCalled();
+  });
+
+  it("names the scene a frame belongs to", async () => {
+    scene.mockResolvedValue({
+      id: "scene-1",
+      project: "proj-1",
+      name: "Porch at dawn",
+      status: "planned",
+      shots: [],
+      movies: [],
+      created: "2026-08-01T00:00:00Z",
+      // The cut, so the feed holds the frame the address opens on.
+      output: {
+        node: OPEN,
+        name: "cut.mp4",
+        url: "https://example.invalid/cut.mp4",
+        content_type: "video/mp4",
+      },
+    } as never);
+
+    open(`/o/${OPEN}?in=${encodeURIComponent("scene:scene-1")}`);
+
+    const crumb = await screen.findByRole("navigation", { name: "Breadcrumb" });
+    await waitFor(() => expect(crumb.textContent).toBe("Porch at dawn"));
+  });
+
+  it("names the character a reference belongs to", async () => {
+    character.mockResolvedValue({ id: "char-1", name: "Someone", root: "root-1" } as never);
+    listed.mockResolvedValue({
+      entries: [file(OPEN, "b.png")],
+    } as never);
+
+    open(`/o/${OPEN}?in=${encodeURIComponent("refs:char-1")}`);
+
+    const crumb = await screen.findByRole("navigation", { name: "Breadcrumb" });
+    await waitFor(() => expect(crumb.textContent).toBe("Someone"));
+  });
+});
+
+/** Delete lives behind the page bar's `⋯` now, arming in place like `ItemActions`. */
+describe("deleting the open file", () => {
+  it("arms before it deletes, then leaves for the folder it came from", async () => {
+    destroy.mockResolvedValue(undefined as never);
+    open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
+    await waitFor(() => expect(screen.getByText(/2 of 3/)).toBeTruthy());
+
+    fireEvent.click(screen.getAllByRole("button", { name: "More actions" })[0]!);
+    const item = screen.getByRole("menuitem", { name: "Delete" });
+    fireEvent.click(item);
+    expect(destroy).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: /confirm/i }));
+    await waitFor(() => expect(destroy).toHaveBeenCalledWith([OPEN]));
+  });
+});
+
+/**
+ * The picture on screen, handed to the create bar — the shortcut from the one
+ * place a person is already looking at the reference they want.
+ */
+describe("using the open file as a reference", () => {
+  it("attaches the open picture, in the role that accumulates", async () => {
+    open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
+    await waitFor(() => expect(screen.getByText(/2 of 3/)).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Use as reference" }));
+
+    expect(screen.getByTestId("bar")).toHaveProperty("textContent", `reference:${OPEN}`);
+  });
+
+  it("offers nothing on a clip — a reference is a picture", async () => {
+    tree.mockResolvedValue(
+      listing([file(OPEN, "b.mp4", { kind: "video", content_type: "video/mp4" })]),
+    );
+    open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
+    await waitFor(() => expect(screen.getByText(/1 of 1/)).toBeTruthy());
+
+    expect(screen.queryByRole("button", { name: "Use as reference" })).toBeNull();
   });
 });

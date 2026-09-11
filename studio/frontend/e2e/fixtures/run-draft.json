@@ -1,5 +1,4 @@
 {
-  "approval": null,
   "bindings": {},
   "characters": [],
   "counted": false,
@@ -28,12 +27,10 @@
     "prompt": "",
     "version": 1
   },
-  "plan_digest": "sha256:954ae3cb4d01f19ea8ec037f2b89ee9ed0974b2d0f619a3fb70f54d9f63471ed",
   "project": "proj-69e3a948-1bfd-48ee-8646-263265fd4289",
   "rev": 1,
   "scenes": [],
   "sends": [],
-  "stale": false,
   "status": "draft",
   "updated": "2026-08-31T17:38:29.577736+00:00"
 }

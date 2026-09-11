@@ -29,14 +29,14 @@ def subject(studio):
 
 
 def test_a_created_character_is_readable_through_the_api(studio, subject):
-    """`create` writes a record, a slug claim, a root and four pool folders in
-    one transaction — and this is the first test that watches DynamoDB accept
-    that transaction rather than a dict in memory."""
+    """`create` writes a record, a slug claim and a root in one transaction —
+    holding none of the four conventional pools — and this is the first test
+    that watches DynamoDB accept that transaction rather than a dict in
+    memory."""
     shown = studio("character", "show", subject).stdout
 
     assert subject in shown
-    for pool in ("archive", "corpus", "reference", "seed"):
-        assert f"{pool}/" in shown
+    assert "(no folders)" in shown
 
 
 def test_a_character_appears_in_the_listing(studio, subject):

@@ -18,7 +18,7 @@ import type { RunCost } from "../types";
  *   * seconds of model time, which is what the provider does report;
  *   * nothing, which is honest for a run that never reached the provider.
  */
-export function formatCost(cost: RunCost | null, empty = "not reported"): string {
+export function formatCost(cost: RunCost | null, empty = "—"): string {
   if (!cost) return empty;
   if (typeof cost.amount === "number") {
     return `${cost.currency ?? ""} ${cost.amount.toFixed(3)}`.trim();

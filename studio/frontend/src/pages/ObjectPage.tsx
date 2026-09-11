@@ -1,22 +1,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { Drawer, Text, Button } from "@ansavva/design-system";
+import { Drawer, Button } from "@ansavva/design-system";
 
-import { ApertureSpinner } from "../components/common/Aperture";
-import { deleteNodes, describeNode, renameNode } from "../apis/studio";
-import type { Crumb } from "../components/layout/PageBar";
+import { EmptyState } from "../components/common/EmptyState";
+import { LoadError } from "../components/common/LoadError";
+import { PageLoading } from "../components/common/PageLoading";
+import {
+  deleteNodes,
+  describeNode,
+  getCharacter,
+  getNode,
+  getScene,
+  renameNode,
+} from "../apis/studio";
+import { PageBar, type Crumb } from "../components/layout/PageBar";
 import { MediaPlayer, type MediaPlayerControls } from "../components/media/MediaPlayer";
 import { TextPage } from "../components/text/TextPage";
 import { FileDetailsPanel } from "../components/viewer/FileDetailsPanel";
 import { Filmstrip } from "../components/viewer/Filmstrip";
 import { ObjectActions } from "../components/viewer/ObjectActions";
-import { ObjectDetails, ObjectHeader } from "../components/viewer/ObjectHeader";
+import { ObjectControls, ObjectDetails } from "../components/viewer/ObjectAside";
 import { OwnerLink } from "../components/viewer/OwnerLink";
+import { useCreateBar } from "../context/CreateBarContext";
 import { useKeyboardNav } from "../hooks/useKeyboardNav";
+import { useResource } from "../hooks/useResource";
 import { useViewerFeed } from "../hooks/useViewerFeed";
 import { DEFAULT_SORT, isSortOrder, type FileEntry, type SortOrder } from "../types";
+import type { ViewerSource } from "../utils/location";
 import {
+  FAVORITES_PATH,
   HOME_PATH,
   characterPath,
   folderPath,
@@ -63,6 +76,8 @@ export function ObjectPage() {
   const sort: SortOrder = isSortOrder(sortParam) ? sortParam : DEFAULT_SORT;
 
   const feed = useViewerFeed(source, nodeId, sort);
+  const crumbs = useSourceCrumbs(source);
+  const bar = useCreateBar();
 
   /**
    * The player's own container and controls, held in state rather than in refs.
@@ -284,29 +299,40 @@ export function ObjectPage() {
   });
 
   if (open && isText) {
-    return <TextPage file={open} onClose={close} onSaved={feed.reload} />;
+    // Same crumb the media case draws — `TextPage` grew its own `PageBar`
+    // once it stopped being a `fixed inset-0` takeover, and a page inside
+    // `AppLayout` needs to say where it sits like every other one.
+    return <TextPage file={open} onClose={close} onSaved={feed.reload} crumbs={crumbs} />;
   }
 
   if (!current) {
+    // A feed that failed used to look exactly like a feed that was empty —
+    // the error was never read — so a dropped connection said "no images or
+    // videos here" about a folder full of them.
+    if (feed.error) {
+      return (
+        <LoadError
+          what="this file"
+          message={feed.error}
+          onRetry={feed.reload}
+          escape={{ label: "Back", onClick: close }}
+        />
+      );
+    }
+    // `searching` as well as `loading`: between two pages of a walk that has
+    // not found the file yet, nothing is in flight and the feed is not empty —
+    // saying "no images or videos yet" there would be a verdict delivered
+    // mid-search.
+    if (feed.loading || searching) return <PageLoading label="Loading media" />;
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-        {/* `searching` as well as `loading`: between two pages of a walk that
-            has not found the file yet, nothing is in flight and the feed is not
-            empty — saying "no images or videos here" there would be a verdict
-            delivered mid-search. */}
-        {feed.loading || searching ? (
-          <ApertureSpinner size="lg" label="Loading media" />
-        ) : (
-          <>
-            <Text variant="body" tone="muted">
-              No images or videos here.
-            </Text>
-            <Button size="sm" onClick={close}>
-              Back
-            </Button>
-          </>
-        )}
-      </div>
+      <EmptyState
+        title="No images or videos yet."
+        action={
+          <Button size="sm" onClick={close}>
+            Back
+          </Button>
+        }
+      />
     );
   }
 
@@ -317,6 +343,23 @@ export function ObjectPage() {
 
   const renameThis = (name: string) => rename(current, name);
   const removeThis = () => remove(current);
+
+  /**
+   * The open picture, attached to the create bar as a reference.
+   *
+   * **A still only.** A reference is a picture; a clip attached as one is sent
+   * to a field that refuses it, which is the rule `OutputTile` and the run's
+   * rail already carry. The bar's own picker walks the same tree, so this is a
+   * shortcut rather than a second way in — but it is the shortcut from the one
+   * place a person is already looking at the picture they want.
+   */
+  const attachAsReference = isVideo
+    ? undefined
+    : () =>
+        bar.attach(
+          { node: current.id, url: current.url, name: current.name, kind: "object" },
+          "reference",
+        );
 
   /**
    * Every way of putting the drawer away asks the form first.
@@ -338,23 +381,41 @@ export function ObjectPage() {
 
   return (
     <>
-      <ObjectHeader
-        file={current}
-        position={position}
-        crumbs={crumbsFor(source)}
-        onDelete={removeThis}
-        editing={editing}
-        onToggleEditing={toggleEditing}
-        onClose={close}
-      />
+      {/*
+        Crumbs and nothing else. The name, the facts and the controls that used
+        to fill this bar are all in the column beside the player now — see
+        `ObjectAside`. What a bar can say that the column cannot is where the
+        page sits.
+      */}
+      <PageBar crumbs={crumbs} />
 
       {/*
-        One column on a phone, two from `lg`. The player leads in both, because
-        it is what the address names — the words beside it on a wide screen sit
-        under it on a narrow one rather than pushing the picture off the fold.
+        One column on a phone, two from `lg`, and the DOM order is the phone's.
+
+        Everything done to the file and everything it says about itself —
+        Copy/Edit/Download/Close, its description, its tags, its properties —
+        is in the right column on a wide screen, which is what `lg:col-start-2`
+        and the explicit rows below put there; the player takes the left column
+        across both rows. On a phone there is one column and the three children
+        fall in source order: the controls first, so what acts on the file is
+        reachable without scrolling past it, then the player, then everything
+        that describes it. Placing them rather than reordering keeps that a
+        property of the source and not of a `lg:order-*` a reader has to run in
+        their head.
       */}
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-6">
-        <div className="flex min-w-0 flex-col gap-3">
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:grid-rows-[auto_minmax(0,1fr)] lg:gap-x-6 lg:gap-y-3">
+        <ObjectControls
+          file={current}
+          position={position}
+          onDelete={removeThis}
+          editing={editing}
+          onToggleEditing={toggleEditing}
+          onClose={close}
+          onUseAsReference={attachAsReference}
+          className="lg:col-start-2 lg:row-start-1"
+        />
+
+        <div className="flex min-w-0 flex-col gap-3 lg:col-start-1 lg:row-span-2 lg:row-start-1">
           {/*
             Not keyed on the node, deliberately: stepping from one clip to the
             next keeps the player mounted and playing, which is the one thing
@@ -374,19 +435,22 @@ export function ObjectPage() {
             className="h-[min(65dvh,44rem)] border border-line"
             onContainerChange={setStage}
             onControlsChange={setControls}
-            // Edit and delete, and only those two. They have to be reachable
-            // while the player is fullscreen, where the header below is not
-            // painted; everything else on the header is a thing you do with the
-            // page in front of you. Rename used to be the first of the pair and
-            // is now one field inside the second.
+            // **Only while fullscreen.** The page header carries Copy, Edit,
+            // Download and Close now — the same controls this row used to
+            // duplicate over the media on every visit — so drawing it too is
+            // two rows saying the same thing. Fullscreen is the one state
+            // where the header genuinely is not painted, and edit/delete are
+            // the two that still have to be reachable there.
             actions={
-              <ObjectActions
-                file={current}
-                variant="media"
-                onDelete={removeThis}
-                editing={editing}
-                onToggleEditing={toggleEditing}
-              />
+              fullscreen ? (
+                <ObjectActions
+                  file={current}
+                  variant="media"
+                  onDelete={removeThis}
+                  editing={editing}
+                  onToggleEditing={toggleEditing}
+                />
+              ) : undefined
             }
           />
 
@@ -400,7 +464,7 @@ export function ObjectPage() {
           />
         </div>
 
-        <aside className="flex min-w-0 flex-col gap-4">
+        <aside className="flex min-w-0 flex-col gap-4 lg:col-start-2 lg:row-start-2">
           <ObjectDetails
             file={current}
             // A link that arrived with no context: say what the file belongs
@@ -463,22 +527,62 @@ export function ObjectPage() {
 }
 
 /**
- * The one crumb the address can honestly draw.
+ * The one crumb the address can honestly draw — named, not generic.
  *
- * A run is missing on purpose, for the reason `home` gives: `runPath` needs the
- * project id as well and a context carries one id. Home is always valid and the
- * breadcrumb from there is one click.
+ * **This used to say "Folder", "Scene" or "Character" no matter which one it
+ * was**, which told a reader where the KIND of place was and never which
+ * place. The label is the entity's own name now, fetched by the id the
+ * context already carries — `getNode`, `getScene` or `getCharacter`
+ * depending on which source it is, called unconditionally in that order
+ * because hooks cannot be called any other way, and idle (no query, no
+ * request) for whichever two are not the source in hand.
+ *
+ * A run is still missing a crumb of its own, for the reason `home` below
+ * gives: `runPath` needs the project id as well and a context carries one
+ * id. Home is always valid and the breadcrumb from there is one click.
+ *
+ * The library root (`f`/`recursive` with no id) has no node to name — "Files"
+ * is what it is called everywhere else in the app the address bar spells it
+ * out (the header link, `BrowsePage`'s own title) — and a name still loading
+ * falls back to the generic word for what it is, the same way
+ * `useProjectCrumb` shows "Project" until the fetch lands.
  */
-function crumbsFor(source: ReturnType<typeof sourceFromParam>): Crumb[] | undefined {
+function useSourceCrumbs(source: ViewerSource | null): Crumb[] | undefined {
+  const folderId = source && (source.in === "f" || source.in === "recursive") ? source.id : null;
+  const sceneId = source?.in === "scene" ? source.id : null;
+  const characterId = source?.in === "refs" ? source.id : null;
+
+  const folder = useResource(
+    folderId ? ["crumb-folder", folderId] : null,
+    folderId ? () => getNode(folderId) : null,
+  );
+  const scene = useResource(
+    sceneId ? ["crumb-scene", sceneId] : null,
+    sceneId ? () => getScene(sceneId) : null,
+  );
+  const character = useResource(
+    characterId ? ["crumb-character", characterId] : null,
+    characterId ? () => getCharacter(characterId) : null,
+  );
+
   if (!source) return undefined;
   switch (source.in) {
     case "f":
     case "recursive":
-      return [{ label: "Folder", to: folderPath(source.id) }];
+      return [
+        {
+          label: source.id === null ? "Files" : (folder.data?.name ?? "Folder"),
+          to: folderPath(source.id),
+        },
+      ];
     case "scene":
-      return [{ label: "Scene", to: scenePath(source.id) }];
+      return [{ label: scene.data?.name ?? "Scene", to: scenePath(source.id) }];
     case "refs":
-      return [{ label: "Character", to: characterPath(source.id) }];
+      return [{ label: character.data?.name ?? "Character", to: characterPath(source.id) }];
+    // The one context whose crumb needs no fetch: it names no entity, so
+    // there is nothing to look up and the label is the screen's own name.
+    case "fav":
+      return [{ label: "Favorites", to: FAVORITES_PATH }];
     case "run":
       return [{ label: "Home", to: HOME_PATH }];
   }
@@ -504,6 +608,8 @@ function home(source: ReturnType<typeof sourceFromParam>): string {
       return scenePath(source.id);
     case "refs":
       return characterPath(source.id);
+    case "fav":
+      return FAVORITES_PATH;
     case "run":
       return HOME_PATH;
   }

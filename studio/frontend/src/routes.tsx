@@ -6,12 +6,12 @@ import { AuthCallbackPage } from "./pages/AuthCallbackPage";
 import { BrowsePage } from "./pages/BrowsePage";
 import { CharacterPage } from "./pages/CharacterPage";
 import { CharactersPage } from "./pages/CharactersPage";
+import { FavoritesPage } from "./pages/FavoritesPage";
 import { HomePage } from "./pages/HomePage";
 import { MoviePage } from "./pages/MoviePage";
 import { ProjectPage } from "./pages/ProjectPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
-import { RunPage } from "./pages/RunPage";
 import { ScenePage } from "./pages/ScenePage";
 import { ObjectPage } from "./pages/ObjectPage";
 
@@ -25,11 +25,12 @@ import { ObjectPage } from "./pages/ObjectPage";
  * every move. Slugs appear on the page and never in the path.
  *
  * ```
- * /                       home — characters, projects, and the recent reel
+ * /                       home — favorites, characters and projects
+ * /favorites              every image and video this person picked out
  * /characters /projects   one list each, which the header links to
  * /c/<char_id>            character: profile, references, its folders, files
- * /p/<proj_id>            project: overview, runs, scenes, movies, inputs, files
- * /p/<proj_id>/r/<run_id> one run — its envelope, outputs and payloads
+ * /p/<proj_id>            project: the runs feed, scenes, movies, files, settings
+ * /p/<proj_id>/r/<run_id> one run, opened in a lightbox over that same feed
  * /s/<scene_id>           scene
  * /m/<movie_id>           movie
  * /f          /f/<id>     the folder browser: the library root, or one folder
@@ -37,12 +38,7 @@ import { ObjectPage } from "./pages/ObjectPage";
  * /auth/callback          where Cognito Managed Login returns with ?code=
  * ```
  *
- * **There is no legacy redirect any more.** Studio used to hand out the S3 key
- * as the URL and match those paths by *exclusion*, which is what reserved `/f/`
- * and `/o/` and what kept every other top-level segment unusable. That bridge is
- * removed with this rework rather than carried: no back-compat is required, and
- * removing it is what makes `/c/`, `/p/`, `/s/` and `/m/` available. An
- * unrecognised path therefore goes to home instead of to a resolver.
+ * An unrecognised path goes to home.
  *
  * `/f` and `/f/:nodeId` are one screen. The library root has no id a URL could
  * carry before the first request answers — see `utils/location` — so the browser
@@ -70,6 +66,11 @@ export function StudioRoutes() {
       <Route element={<AppLayout />}>
         <Route path="/" element={<HomePage />} />
 
+        {/* A favorite is a fact about the CALLER, so this address carries no
+            id — the collection is whoever is signed in. It is the one route in
+            the table that names nothing. */}
+        <Route path="/favorites" element={<FavoritesPage />} />
+
         <Route path="/characters" element={<CharactersPage />} />
         <Route path="/projects" element={<ProjectsPage />} />
         {/*
@@ -81,7 +82,11 @@ export function StudioRoutes() {
 
         <Route path="/c/:characterId" element={<CharacterPage />} />
         <Route path="/p/:projectId" element={<ProjectPage />} />
-        <Route path="/p/:projectId/r/:runId" element={<RunPage />} />
+        {/* The opened run is the project page with `runId` set: `ProjectPage`
+            draws `RunLightbox` over its feed, so closing the run is the feed
+            again rather than a second load of it. The two-column `RunPage`
+            that used to answer this address is gone. */}
+        <Route path="/p/:projectId/r/:runId" element={<ProjectPage />} />
         <Route path="/s/:sceneId" element={<ScenePage />} />
         <Route path="/m/:movieId" element={<MoviePage />} />
 

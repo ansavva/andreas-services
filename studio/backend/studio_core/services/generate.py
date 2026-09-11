@@ -40,16 +40,16 @@ incident.
 
 ## What did NOT move, and why
 
-**The approval gate stays in `routes/runs.py`.** It is a property of the run row,
-not of the provider, and the route that owns the state machine is the one that
-owns the transition it guards. This module is handed a record whose approval has
-already been checked and whose `plan_digest` still matches; it does not re-derive
-that and it must not.
+**The state machine stays in `routes/runs.py`.** Whether a run may be sent is
+a property of the run row, not of the provider, and the route that owns the
+state machine is the one that owns the transition. This module is handed a
+record that route has already accepted; it does not re-check that and it must
+not.
 
 **The payload render stays in the CLI.** Hard rule #2 is about a person reading
-two documents and answering, and nothing here is in front of a person. What this
+two documents and deciding, and nothing here is in front of a person. What this
 module guarantees is narrower and mechanical: it rebuilds the payload from the
-**plan and from nothing else**, so what is sent is what was approved.
+**plan and from nothing else**, so what is sent is what was read.
 
 **The download does not happen in the request that receives the callback**, and
 that is the other half of the split. `handlers/aws/hook` enqueues the raw body
@@ -146,7 +146,7 @@ def payload_of(record: dict) -> dict:
     Anything else on the plan — `version`, `origin`, `note` — is studio's own
     bookkeeping and is not sent. The filter is an allowlist of the two halves
     rather than a denylist of the rest, so a field added to the plan later cannot
-    silently become part of a payload somebody approved as something else.
+    silently become part of a payload somebody read as something else.
     """
     plan = record.get("plan") or {}
     params = plan.get("params")
@@ -317,7 +317,7 @@ def preflight(entry: dict, payload: dict, bindings: dict,
     """Documented constraints first, then the live schema.
 
     **Runs before the transition to `pending`.** A payload the model will refuse
-    must leave the run exactly as it was — approved, editable, submittable again
+    must leave the run exactly as it was — a draft, editable, submittable again
     once fixed — rather than at `pending` with nothing behind it, which is the
     state that reads as "went out and never answered".
     """

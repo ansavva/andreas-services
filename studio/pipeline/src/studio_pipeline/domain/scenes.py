@@ -18,22 +18,18 @@ A **row**, `scene-<uuid>`, addressed by id and labelled by a free-text name:
                      output/       the stitched scene
                      review/       contact sheets of the board
 
-**`scene.json` is gone.** It was the plan *and* the record in one document in the
-bucket, which meant nothing could query a scene, `latest` had to be found by
-reading every manifest in the project, and the label in the folder name was the
-primary key — so a rename was a tree rewrite. All three go together: a scene is
-listed by `GET /api/scenes?project=`, ordered by `created` on the row, and its
-folder is named by `folder` rather than derived from any label.
+**The row is the record.** A scene is listed by `GET /api/scenes?project=`,
+ordered by `created` on the row, and its folder is named by `folder` rather
+than derived from any label — so a rename touches one field, not a tree.
 
 **Every image a scene holds is a node id.** Panels, handoff frames, the copied
-shots and the cut itself. A key was invalidated by any rename of the file it
-named, which is what left records pointing at images that no longer existed.
+shots and the cut itself. A key is invalidated by any rename of the file it
+names; a node id is not.
 
 THE WORD "SHOT"
 ---------------
 A scene is made of **shots**, and a shot here is one run's output — the unit a
-scene is cut from. It was called a "part" before, which named its position in a
-list rather than what it is. Note the term is loaded elsewhere: a Kling
+scene is cut from. Note the term is loaded elsewhere: a Kling
 `multi_prompt` cut is a shot *inside* one generation, and the `studio-media-shot`
 skill produces a whole still-then-clip chain. The nesting is
 generation cut ⊂ shot ⊂ scene ⊂ movie.
@@ -45,11 +41,9 @@ playable and re-stitchable even as its runs accumulate around it. The shot row
 records the originating run beside the copied node, so lineage is not lost by
 copying — it names both.
 
-That copy is a download plus an upload, so every shot's bytes travel through
-this process, and for a scene they are video. It is accepted for the reason the
-alternative is worse: a second node pointing at one blob is copy-on-write
-(#334), and the API's delete route destroys the shared bytes when either row
-goes. So the copy is real — two blobs, two independent lifetimes.
+The copy is real — two blobs, two independent lifetimes — because the
+alternative is worse: a second node pointing at one blob is copy-on-write, and
+the API's delete route destroys the shared bytes when either row goes.
 
 RE-CUTTING KEEPS THE ONE BEFORE IT
 ---------------------------------
@@ -57,46 +51,27 @@ Each cut is its own node: the first is `<name>.mp4` and later ones take a
 suffix, `<name>-2.mp4` and up. `output` names the newest and `cuts` lists the
 rest, newest first.
 
-**This reverses an earlier decision and is worth saying why.** The cut used to
-replace the file in `output/`, so the folder always showed current state instead
-of accumulating cuts nobody prunes, and a superseded cut survived as an S3
-object version. That is genuinely recoverable and it is not *visible*: an object
-version has no node, so nothing lists it, nothing draws it and nothing links to
-it. A person who re-cut a scene after re-rendering one shot could not put the
-two takes side by side, which is the thing re-cutting is for.
+Accumulating rather than replacing, because a replaced cut is not *visible*: an
+S3 object version has no node, so nothing lists it, nothing draws it and
+nothing links to it. A person who re-cuts a scene after re-rendering one shot
+wants the two takes side by side, which is the thing re-cutting is for. Old
+cuts are deletable like any other node.
 
-The old argument was about tidiness and the new one is about being able to look
-at your own work, so the accumulation is accepted. Old cuts are deletable like
-any other node.
+Nothing is replaced, so nothing depends on object versioning here, and dev
+(which has none — `infra/modules/dev_storage/main.tf` says why) and prod
+behave identically. Versioning still matters in prod for everything a DELETE
+touches — it is what makes every erasure the API can perform a recoverable
+tombstone.
 
-**This paragraph used to end "against dev, a re-cut destroys the previous one",
-and that had stopped being true three paragraphs above it.** It described the
-recovery the OVERWRITE had, not the one this scheme has: the prod bucket versions
-every object and grants no `s3:DeleteObjectVersion`, so a replaced cut survived
-as a version, while a per-machine dev stack has no versioning
-(`infra/modules/dev_storage/main.tf` says why) and a replaced cut was simply
-gone.
+STITCHING IS THE SERVICE'S
+--------------------------
+`assemble` resolves each shot to a video node, enqueues **one render job** and
+waits for it. The worker downloads, copies each shot into `shots/`, stitches,
+uploads the cut and records it on the scene — the last of those because a cut
+that reached the bucket and never reached the record is a failure nobody can
+see.
 
-Neither half applies once each cut is its own node. Nothing is replaced, so there
-is nothing for versioning to rescue, and dev and prod behave identically. Object
-versioning still matters in prod for everything a DELETE touches — it is what
-makes every erasure the API can perform a recoverable tombstone — and it no
-longer has anything to do with re-cutting.
-
-STITCHING MOVED INTO THE SERVICE, AND THIS SECTION USED TO ARGUE THE OPPOSITE
------------------------------------------------------------------------------
-It said: `ffmpeg` ships in this wheel and the Lambda behind the API has none, so
-`assemble` downloads each rendered shot, stitches here and uploads the result —
-"the API owns the record; it does not own the encode". That was sound reasoning
-about a fact, and the fact was an image.
-
-`assemble` now resolves each shot to a video node, enqueues **one render job**
-and waits for it. The worker downloads, copies each shot into `shots/`, stitches,
-uploads the cut and records it on the scene — and it does the last of those
-because a cut that reached the bucket and never reached the record is the exact
-failure `SCENE_FIELDS` was widened to fix.
-
-Two things the old argument got right, kept:
+Two things stay true:
 
 * **The joining rules are shared with a movie.** `backend/studio_core/media/ffmpeg.py`
   is the same layer `movies` goes through, so a scene and a movie join their
@@ -174,12 +149,9 @@ def resolve_scene(ref: str, default_project: str | None = None) -> dict:
     An id resolves directly and needs no project, which is what makes a record
     that stored a scene id self-sufficient.
 
-    **`latest` is now `created` on the row.** It used to read every manifest in
-    the project and take the newest, because a lexical sort over folder names
-    put every name after every timestamp and `latest` would otherwise have
-    quietly meant "alphabetically last" — the exact caller that would have got
-    it wrong being `movies new --scene <project>/latest`. The row carries the
-    timestamp, so there is nothing left to re-derive.
+    **`latest` is `created` on the row**, never a sort over names: a lexical
+    sort would quietly mean "alphabetically last", and `movies new --scene
+    <project>/latest` is the caller that would get it wrong.
     """
     if "/" in ref:
         project, sid = ref.split("/", 1)
@@ -199,14 +171,12 @@ def resolve_scene(ref: str, default_project: str | None = None) -> dict:
         die(f"project {record['name']} has no scenes")
     if sid in ("latest", "last"):
         return with_project(entities.get_scene(found[0]["id"]))
-    # `.get`, not `[...]`: the listing projection did not carry a label until the
-    # API started writing one, so every row created before then has none. Reading
-    # it as a required key turned "this scene predates the fix" into a traceback
-    # on every command that addresses a scene by name.
+    # `.get`, not `[...]`: a listing row may carry no label, and reading it as
+    # a required key turns that into a traceback on every command that
+    # addresses a scene by name.
     #
-    # **A name is not unique.** It was a slug, and one exact match was the normal
-    # case; a duplicate is ordinary now, so the ambiguity branch below is an
-    # answer rather than a corner nobody reaches.
+    # **A name is not unique.** A duplicate is ordinary, so the ambiguity
+    # branch below is an answer rather than a corner nobody reaches.
     hits = [s for s in found if s.get("name") == sid]
     if not hits:
         hits = [s for s in found if sid in (s.get("name") or "")]
@@ -222,10 +192,8 @@ def with_project(record: dict) -> dict:
     """A scene record carrying `project_name` and `label`, for printing.
 
     **Two display fields, added once, because a record holds ids and a person
-    reads names.** The old manifest carried `scene: "<project>/<label>"` as a
-    stored string, which is exactly the coupling the entity model removes — it
-    went stale the moment either was renamed. These are derived on read instead,
-    so they are always current and nothing writes them anywhere.
+    reads names.** Derived on read, never stored: a stored `<project>/<label>`
+    string goes stale the moment either is renamed.
 
     One extra `GET /api/projects/<id>` per resolve, and only when a caller
     actually needs to print something. `resolve_scene` does it because every one
@@ -293,15 +261,12 @@ def save_shots(record: dict, shots: list[dict]) -> dict:
 
     `PUT /api/scenes/<id>/shots` **merges by shot id** rather than replacing, so
     a plan revision never orphans a panel or a run somebody already paid for.
-    That merge used to be this module's job, done against a document it had just
-    read — a check-then-write with a gap in it.
+    The merge is the API's, not a check-then-write on this side.
 
-    **`status` is the API's now, on both halves.** This used to stamp
-    `shot_status` onto every shot before sending and then PATCH the scene with
-    `scene_status` afterwards — two derivations run on one client and stored, so
-    anything else that wrote a shot left them stale and the SPA drew whatever the
-    row said. `PATCH /api/scenes/<id>/shots` derives both, and the response
-    carries them.
+    **`status` is the API's, on both halves.** A status derived on one client
+    and stored goes stale as soon as anything else writes a shot;
+    `PATCH /api/scenes/<id>/shots` derives both `shot_status` and
+    `scene_status`, and the response carries them.
     """
     updated = entities.put_shots(record["id"], shots)
     # `with_project` re-derives the display fields the API does not return.
@@ -369,9 +334,9 @@ def new_scene(project: dict, name: str, plan_path: str | None,
 def _warn_unrenderable(shots: list[dict]) -> None:
     """Say which shots have no words in them. **A warning, never a refusal.**
 
-    `storyboard.validate` used to refuse these, and the API deliberately does
-    not: a shot with a beat and no prompt is a plan in progress, and refusing it
-    would reject a plan editor's first save. At ingest it is nearly always a
+    The API deliberately does not refuse these: a shot with a beat and no
+    prompt is a plan in progress, and refusing it would reject a plan editor's
+    first save. At ingest it is nearly always a
     typo, so it is worth saying — and worth saying without stopping, because
     ingesting a plan you intend to finish is also normal.
     """
@@ -417,9 +382,9 @@ def assemble(record: dict, refs: tuple[str, ...] = (),
     ambiguous runref — because those belong in front of the person and not at the
     far end of a queue.
 
-    The bytes no longer pass through this machine at all, which is the whole
-    saving: a four-shot 1080p scene used to move roughly a gigabyte through a
-    terminal to produce a file that then went back up.
+    The bytes never pass through this machine: a four-shot 1080p scene is
+    roughly a gigabyte, which no terminal should move to produce a file that
+    then goes back up.
     """
     project = record["project"]
     shots = list(scene_shots(record))
@@ -607,9 +572,9 @@ def main():
 @errors.reports(SB.PlanError, P.PathError, api.ApiError)
 def do_new(project, force, from_json, part, shot, name):
     """Start a scene from a plan."""
-    # `--shot`/`--part` used to assemble a cut here. They are kept visible to
-    # the parser and answered with a redirect, because a silent "unknown
-    # option" on a command that still exists reads as a broken install.
+    # `--shot`/`--part` belong to `scenes assemble`. They are kept visible to
+    # the parser here and answered with a redirect, because a silent "unknown
+    # option" on a command that exists reads as a broken install.
     if shot or part:
         die("`scenes new` starts a scene from a plan; it no longer assembles one.\n"
             f"       studio scenes new {project} --name {name}\n"

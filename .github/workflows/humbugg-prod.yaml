@@ -52,6 +52,7 @@ env:
   API_LAMBDA_NAME: humbugg-prod-api
   EMAIL_STATUS_LAMBDA_NAME: humbugg-prod-email-status
   REMINDERS_LAMBDA_NAME: humbugg-prod-reminders
+  STRIPE_WEBHOOKS_LAMBDA_NAME: humbugg-prod-stripe-webhook-consumer
   MARKETING_LAMBDA_NAME: humbugg-prod-marketing
 
 jobs:
@@ -262,6 +263,9 @@ jobs:
           TF_VAR_stripe_publishable_key: ${{ vars.HUMBUGG_STRIPE_PUBLISHABLE_KEY }}
           TF_VAR_stripe_secret_key: ${{ secrets.HUMBUGG_STRIPE_SECRET_KEY }}
           TF_VAR_stripe_webhook_secret: ${{ secrets.HUMBUGG_STRIPE_WEBHOOK_SECRET }}
+          # Where production alarms mail. Empty until the secret exists; the alerting
+          # module then creates the SNS topic with no subscription.
+          TF_VAR_alert_email: ${{ secrets.HUMBUGG_ALERT_EMAIL }}
         run: terraform -chdir=humbugg/infra/envs/prod apply -auto-approve -input=false
 
       - name: Wait for SES domain authentication
@@ -480,6 +484,34 @@ jobs:
               APP_BASE_URL: $app_base_url
             }}' > /tmp/env-humbugg-reminders.json
 
+          # Exactly what the Stripe webhook consumer reads: the two tables ApplyEventAsync
+          # writes, the Stripe settings ParseWebhook verifies with, and the environment the
+          # Checkout metadata is compared against. Keep this and
+          # AwsLambdaStripeWebhookConsumer.SettingsFromEnvironment() in step.
+          jq -n \
+            --arg groups_table "humbugg-prod-groups" \
+            --arg billing_table "humbugg-prod-billing" \
+            --arg stripe_mode "${{ vars.HUMBUGG_STRIPE_MODE || 'disabled' }}" \
+            --arg stripe_publishable_key "${{ vars.HUMBUGG_STRIPE_PUBLISHABLE_KEY }}" \
+            --arg stripe_secret_key "${{ secrets.HUMBUGG_STRIPE_SECRET_KEY }}" \
+            --arg stripe_webhook_secret "${{ secrets.HUMBUGG_STRIPE_WEBHOOK_SECRET }}" \
+            --arg plus_price_cents "${{ vars.HUMBUGG_PLUS_PRICE_CENTS || '1200' }}" \
+            --arg plus_product_id "${{ vars.HUMBUGG_PLUS_PRODUCT_ID }}" \
+            --arg plus_price_id "${{ vars.HUMBUGG_PLUS_PRICE_ID }}" \
+            '{Variables: {
+              HUMBUGG_CONSUMER: "stripe-webhooks",
+              HUMBUGG_GROUPS_TABLE: $groups_table,
+              HUMBUGG_BILLING_TABLE: $billing_table,
+              HUMBUGG_STRIPE_MODE: $stripe_mode,
+              HUMBUGG_STRIPE_PUBLISHABLE_KEY: $stripe_publishable_key,
+              HUMBUGG_STRIPE_SECRET_KEY: $stripe_secret_key,
+              HUMBUGG_STRIPE_WEBHOOK_SECRET: $stripe_webhook_secret,
+              HUMBUGG_PLUS_PRICE_CENTS: $plus_price_cents,
+              HUMBUGG_PLUS_PRODUCT_ID: $plus_product_id,
+              HUMBUGG_PLUS_PRICE_ID: $plus_price_id,
+              HUMBUGG_ENVIRONMENT: "production"
+            }}' > /tmp/env-humbugg-stripe-webhooks.json
+
           # The marketing SSR Lambda no longer authenticates anyone — sign-in moved
           # to the product app — so the Cognito variables it used to receive are
           # gone. Its canonical origin is baked in at build time via
@@ -514,6 +546,15 @@ jobs:
 
           aws lambda wait function-updated \
             --function-name "${REMINDERS_LAMBDA_NAME}" \
+            --region "${{ env.AWS_REGION }}"
+
+          aws lambda update-function-configuration \
+            --function-name "${STRIPE_WEBHOOKS_LAMBDA_NAME}" \
+            --region "${{ env.AWS_REGION }}" \
+            --environment file:///tmp/env-humbugg-stripe-webhooks.json
+
+          aws lambda wait function-updated \
+            --function-name "${STRIPE_WEBHOOKS_LAMBDA_NAME}" \
             --region "${{ env.AWS_REGION }}"
 
           aws lambda update-function-configuration \
@@ -556,6 +597,17 @@ jobs:
 
           aws lambda wait function-updated \
             --function-name "${REMINDERS_LAMBDA_NAME}" \
+            --region "${{ env.AWS_REGION }}"
+
+          aws lambda update-function-code \
+            --function-name "${STRIPE_WEBHOOKS_LAMBDA_NAME}" \
+            --image-uri "${API_ECR_URL}:${{ github.sha }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --output table \
+            --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
+
+          aws lambda wait function-updated \
+            --function-name "${STRIPE_WEBHOOKS_LAMBDA_NAME}" \
             --region "${{ env.AWS_REGION }}"
 
           aws lambda update-function-code \
@@ -711,11 +763,19 @@ jobs:
       # such constraint, and building it early would bake in stale Cognito IDs.
       - name: Export product app for web
         env:
-          EXPO_PUBLIC_API_BASE_URL: https://api.humbugg.com
+          EXPO_PUBLIC_API_BASE_URL: https://api.humbugg.com/api
         run: cd humbugg/app && npx expo export -p web --source-maps
 
       - name: Assert the app build took the native leaf
         run: node humbugg/scripts/assert-design-system-leaves.mjs native humbugg/app/dist
+
+      # Metro inlines EXPO_PUBLIC_* at build time, so the exported bundle is the
+      # only place a wrong API base URL is visible. A bare origin misses the
+      # gateway's /api prefix, 404s off-route with no CORS headers, and breaks
+      # every call from the app as "Failed to fetch" — shipped in #217, unnoticed
+      # until a user could not create a profile.
+      - name: Assert the app's API base URL keeps the /api prefix
+        run: node humbugg/scripts/assert-app-api-base.mjs humbugg/app/dist
 
       # The maps exist only so the assertion above can read them. Publishing them
       # would put the app's readable source on a public origin, so they go before
@@ -832,6 +892,20 @@ jobs:
     # upstream still stops it — that part was right.
     if: ${{ !cancelled() && needs.update-lambda.result != 'failure' && needs.deploy-frontend-assets.result != 'failure' && needs.deploy-app.result != 'failure' && needs.email-feedback-smoke-test.result != 'failure' }}
     runs-on: ubuntu-latest
+    # The authenticated round trip below needs the smoke account's credentials,
+    # which live in this GitHub environment (var HUMBUGG_SMOKE_USER_EMAIL, secret
+    # HUMBUGG_SMOKE_USER_PASSWORD) — a job without `environment:` cannot see them.
+    environment: humbugg-production
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      # A step's `if:` cannot read the `secrets` context — only a job-level `env`
+      # can, which is why the availability of the smoke credentials is reduced to
+      # a boolean here rather than tested inline below. The secret's VALUE stays
+      # out of this block deliberately: a job-level env var is in scope for every
+      # step, and the credential belongs to exactly one of them.
+      SMOKE_AUTH_AVAILABLE: ${{ secrets.HUMBUGG_SMOKE_USER_PASSWORD != '' }}
     steps:
       - name: Verify the three surfaces
         run: |
@@ -851,10 +925,14 @@ jobs:
             'https://humbugg.com/join/example?source=apex')
           test "$apex" = "308 https://www.humbugg.com/join/example?source=apex"
 
-          # Already-sent invite links land on www, which forwards them to the app.
-          forwarded=$(curl --silent --output /dev/null --write-out '%{http_code} %{redirect_url}' \
+          # www does NOT forward /join to the app any more — #606 dropped the
+          # last legacy redirects, since nobody had been sent a pre-split link.
+          # An invite link is app.humbugg.com/join/... from the day it is made;
+          # the marketing site answers the path with its own not-found page. A
+          # 301 back here would mean the legacy machinery had quietly returned.
+          forwarded=$(curl --silent --output /dev/null --write-out '%{http_code}' \
             'https://www.humbugg.com/join/example')
-          test "$forwarded" = "301 https://app.humbugg.com/join/example"
+          test "$forwarded" = "404"
 
           # --- Product app: the SPA fallback must answer a deep link, not just / ---
           curl --fail --retry 5 --retry-delay 5 https://app.humbugg.com/ >/dev/null
@@ -903,6 +981,11 @@ jobs:
             https://api.humbugg.com/api/plans)
           test "$plans" = "200"
 
+          # Work is deferred (#587, #638) and stays hidden until HUMBUGG_WORK_ENABLED is set —
+          # this is the one place that would notice it leaking back into a prod response.
+          plan_codes=$(curl --silent https://api.humbugg.com/api/plans | jq -r '[.[].code] | join(",")')
+          test "$plan_codes" = "free,plus"
+
           invitation=$(curl --silent --output /dev/null --write-out '%{http_code}' \
             -H 'X-Humbugg-Invite: smoke-test-not-a-real-token' \
             https://api.humbugg.com/api/groups/00000000-0000-0000-0000-000000000000/invitation)
@@ -912,3 +995,229 @@ jobs:
             -H 'X-Humbugg-Invite: smoke-test-not-a-real-token' \
             https://api.humbugg.com/api/groups/00000000-0000-0000-0000-000000000000/invitations/00000000/preview)
           test "$managed" != "401"
+
+          # --- Stripe webhook route bypasses the gateway authorizer (#639) ---
+          #
+          # Stripe signs the raw body and cannot present a Cognito JWT, so this route is
+          # its own exact, method-specific entry outside the `ANY /api/{proxy+}` authorizer
+          # (infra/modules/compute/main.tf). A garbage signature reaching the *application*
+          # is a 400 (`StripeGateway.ParseWebhook`'s signature check fails first) when
+          # HUMBUGG_STRIPE_MODE=test/live, or a 409 "temporarily unavailable"
+          # (`EnsureEnabled` runs before the signature check) when it is `disabled` — today's
+          # prod state (#640). Either proves the request reached the app. 401/403/404 would
+          # mean the gateway route itself was lost and the ANY-route authorizer caught it
+          # instead — the same failure the preflight and AllowAnonymous checks above guard.
+          webhook=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            -X POST \
+            -H 'Stripe-Signature: t=1,v1=deadbeef' \
+            -H 'Content-Type: application/json' \
+            -d '{}' \
+            https://api.humbugg.com/api/billing/stripe/webhook)
+          if [[ "$webhook" == "401" || "$webhook" == "403" || "$webhook" == "404" ]]; then
+            echo "Expected the Stripe webhook route to reach the application (400 or 409); got ${webhook} — the gateway route may be lost."
+            exit 1
+          fi
+          if [[ "$webhook" != "400" && "$webhook" != "409" ]]; then
+            echo "Expected the Stripe webhook route to answer 400 (signature rejected) or 409 (billing disabled); got ${webhook}."
+            exit 1
+          fi
+
+      # ── The authenticated round trip (#642, #586) ─────────────────────────────
+      #
+      # Everything above is anonymous, and anonymous was already the covered half.
+      # The other half — a request carrying a real Cognito token through the
+      # `ANY /api/{proxy+}` authorizer and out into the application — is exercised
+      # by no other tier (#586): the unit tiers fake the repositories, the browser
+      # suite answers `/api/**` from committed fixtures, and the live browser tier
+      # talks to a local backend with no gateway in front of it. So it is asserted
+      # here, against the real gateway, with a real account.
+      #
+      # The account is an ordinary prod-pool user on a reserved `.test` address
+      # (RFC 2606), so nothing can ever be delivered to it. It joins no group and
+      # holds no personal data. Its address is the environment var
+      # HUMBUGG_SMOKE_USER_EMAIL and is deliberately not written down here, so
+      # there is one place to change it; humbugg/docs/TESTING.md and
+      # humbugg/docs/threat-model.md §8 carry the rules and the rotation.
+      #
+      # A fork, or any context that cannot see the environment, gets an empty
+      # secret. That is not a production defect, so it notices and skips.
+
+      - name: Note the skipped authenticated round trip
+        if: ${{ env.SMOKE_AUTH_AVAILABLE != 'true' }}
+        run: |
+          echo "::notice::HUMBUGG_SMOKE_USER_PASSWORD is not available in this context; the authenticated round trip did not run."
+
+      - uses: actions/checkout@v7
+        if: ${{ env.SMOKE_AUTH_AVAILABLE == 'true' }}
+
+      - name: Set up Node.js 24
+        if: ${{ env.SMOKE_AUTH_AVAILABLE == 'true' }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: humbugg/scripts/package-lock.json
+
+      - name: Configure AWS credentials
+        if: ${{ env.SMOKE_AUTH_AVAILABLE == 'true' }}
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Read from SSM rather than handed down as an upstream job's output. This
+      # job deliberately runs when its upstream deploy jobs SKIP — see the `if:`
+      # at the top; a path-filtered deploy is precisely when you want to know the
+      # surfaces still answer — and a skipped job's outputs are empty strings. An
+      # empty client id would not fail loudly here; it would fail as "Incorrect
+      # username or password", which sends you looking for the wrong bug. SSM
+      # answers whatever ran upstream, and `put` refuses an empty read.
+      - name: Read the Cognito ids from SSM
+        if: ${{ env.SMOKE_AUTH_AVAILABLE == 'true' }}
+        run: |
+          set -euo pipefail
+          put() {
+            local value
+            value="$(aws ssm get-parameter --name "$2" \
+              --query Parameter.Value --output text)" || exit 1
+            [ -n "$value" ] && [ "$value" != "None" ] ||
+              { echo "::error::$2 resolved empty; refusing to continue." >&2; exit 1; }
+            echo "$1=$value" >> "$GITHUB_ENV"
+          }
+
+          put COGNITO_USER_POOL_ID /humbugg/prod/cognito-user-pool-id
+          put COGNITO_CLIENT_ID    /humbugg/prod/cognito-client-id
+
+      # 22 packages, under a second. The scripts directory has a package.json of
+      # its own so this job does not install humbugg/app's whole Expo toolchain
+      # for one library.
+      - name: Install the smoke script's dependency
+        if: ${{ env.SMOKE_AUTH_AVAILABLE == 'true' }}
+        run: npm ci --prefix humbugg/scripts
+
+      - name: Authenticated round trip
+        if: ${{ env.SMOKE_AUTH_AVAILABLE == 'true' }}
+        env:
+          HUMBUGG_SMOKE_USER_EMAIL: ${{ vars.HUMBUGG_SMOKE_USER_EMAIL }}
+          HUMBUGG_SMOKE_USER_PASSWORD: ${{ secrets.HUMBUGG_SMOKE_USER_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          api=https://api.humbugg.com
+
+          # One JSON line on stdout, captured and never echoed. Masking happens
+          # before the tokens are used for anything, so a later curl error page or
+          # an accidental `set -x` cannot leak one into a log this repo makes public.
+          session="$(node humbugg/scripts/smoke-session.mjs)"
+          echo "::add-mask::${session}"
+          field() {
+            printf '%s' "${session}" | node -e '
+              let s = "";
+              process.stdin.on("data", (c) => (s += c));
+              process.stdin.on("end", () => process.stdout.write(JSON.parse(s)[process.argv[1]] ?? ""));
+            ' "$1"
+          }
+          access="$(field accessToken)"
+          id_token="$(field idToken)"
+          echo "::add-mask::${access}"
+          echo "::add-mask::${id_token}"
+          if [ -z "${access}" ] || [ -z "${id_token}" ]; then
+            echo "The smoke session came back without both tokens."
+            exit 1
+          fi
+
+          # The `sub` claim out of the access token's payload. base64url, and no
+          # signature check: the API verifies the signature by answering at all,
+          # and this only asks WHICH subject it answered for.
+          sub="$(printf '%s' "${access}" | node -e '
+            let s = "";
+            process.stdin.on("data", (c) => (s += c));
+            process.stdin.on("end", () => {
+              const payload = JSON.parse(Buffer.from(s.trim().split(".")[1], "base64url").toString("utf8"));
+              process.stdout.write(payload.sub ?? "");
+            });
+          ')"
+          if [ -z "${sub}" ]; then
+            echo "The access token carries no sub claim."
+            exit 1
+          fi
+
+          # 1. The access token crosses the gateway and the APPLICATION answers.
+          #
+          #    200 or 404, and not 200 alone, because the smoke account has never
+          #    completed profile setup and never will: `GET /api/me` is
+          #    ProfileService.GetAsync, which 404s ("Complete your profile to
+          #    continue.") when no profile row exists, and a row would be the one
+          #    piece of data this account is not allowed to hold. Both codes are
+          #    the application's own; the failure this guards against is 401 or
+          #    403, which is the gateway refusing the request before ASP.NET ever
+          #    sees it — the exact shape of #582. The identity assertion is the
+          #    next one; this is the reachability one.
+          me="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            -H "Authorization: Bearer ${access}" "${api}/api/me")"
+          echo "GET /api/me, access token: ${me}"
+          if [ "${me}" != "200" ] && [ "${me}" != "404" ]; then
+            echo "Expected 200 or 404 (both the application's own answers); got ${me}. A 401 or 403 means the request never reached the application."
+            exit 1
+          fi
+
+          # 2. The application answers AS this account. A status code alone would
+          #    pass on a 200 built for somebody else; comparing the body's subject
+          #    to the token's sub is what makes this about identity rather than
+          #    reachability. The route is the GDPR export rather than the profile
+          #    because it is defined for an account with no profile row — it
+          #    reports the caller's user id either way — and because it reads four
+          #    tables, so it exercises the deployed Lambda's own IAM role, which
+          #    is one of the few things only a post-deploy check can see.
+          export_body="$(mktemp)"
+          exported="$(curl --silent --output "${export_body}" --write-out '%{http_code}' \
+            -H "Authorization: Bearer ${access}" "${api}/api/me/export")"
+          echo "GET /api/me/export, access token: ${exported}"
+          if [ "${exported}" != "200" ]; then
+            echo "Expected 200; got ${exported}."
+            rm -f "${export_body}"
+            exit 1
+          fi
+          subject="$(node -e '
+            let s = "";
+            process.stdin.on("data", (c) => (s += c));
+            process.stdin.on("end", () => process.stdout.write(JSON.parse(s).metadata?.subject_user_id ?? ""));
+          ' < "${export_body}")"
+          rm -f "${export_body}"
+          if [ "${subject}" != "${sub}" ]; then
+            echo "The export names a subject the token does not — identity is not flowing from the token into the application."
+            exit 1
+          fi
+          echo "GET /api/me/export subject_user_id equals the token's sub: yes"
+
+          # 3. A third authenticated route — the collection the app opens with.
+          groups="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            -H "Authorization: Bearer ${access}" "${api}/api/groups")"
+          echo "GET /api/groups, access token: ${groups}"
+          if [ "${groups}" != "200" ]; then
+            echo "Expected 200; got ${groups}."
+            exit 1
+          fi
+
+          # 4. An ID token must not work — and the gateway is not what stops it.
+          #    The JWT authorizer's audience is the client id, and an ID token's
+          #    `aud` IS the client id, so it passes the gateway. The refusal comes
+          #    from Program.cs's OnTokenValidated (`token_use == "access"`). That
+          #    one line is all that stands between a token carrying the account's
+          #    email address and every authenticated route, and nothing else in
+          #    the pipeline is positioned to notice if it goes.
+          id_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            -H "Authorization: Bearer ${id_token}" "${api}/api/me")"
+          echo "GET /api/me, ID token: ${id_status}"
+          if [ "${id_status}" != "401" ]; then
+            echo "Expected 401; got ${id_status}. An ID token is being accepted where only an access token may be."
+            exit 1
+          fi
+
+          # 5. And nothing at all.
+          anon="$(curl --silent --output /dev/null --write-out '%{http_code}' "${api}/api/me")"
+          echo "GET /api/me, no token: ${anon}"
+          if [ "${anon}" != "401" ]; then
+            echo "Expected 401; got ${anon}."
+            exit 1
+          fi

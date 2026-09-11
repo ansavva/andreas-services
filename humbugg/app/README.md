@@ -56,17 +56,17 @@ humbugg/app/
 Paths are relative to `app.humbugg.com`. `(auth)` and `(protected)` are route
 **groups** — they add no path segment, they only decide what shares a layout.
 
-| File | Path | Was |
-| --- | --- | --- |
-| `src/app/(auth)/login.tsx` | `/login` | `/login` |
-| `src/app/auth/callback.tsx` | `/auth/callback` | — (new with Managed Login) |
-| `src/app/join/[groupId].tsx` | `/join/:groupId` | `/join/:groupId` |
-| `src/app/(protected)/index.tsx` | `/` | `/app` |
-| `src/app/(protected)/groups/[groupId].tsx` | `/groups/:id` | `/app/groups/:id` |
-| `src/app/(protected)/settings.tsx` | `/settings` | `/app/settings` |
+| File | Path |
+| --- | --- |
+| `src/app/(auth)/login.tsx` | `/login` |
+| `src/app/auth/callback.tsx` | `/auth/callback` |
+| `src/app/join/[groupId].tsx` | `/join/:groupId` |
+| `src/app/(protected)/index.tsx` | `/` |
+| `src/app/(protected)/groups/[groupId].tsx` | `/groups/:id` |
+| `src/app/(protected)/settings.tsx` | `/settings` |
 
-`/signup`, `/confirm` and `/forgot-password` are gone: they are Cognito Managed
-Login pages now, and `/login` is a button that launches the hosted flow. See
+There is no `/signup`, `/confirm` or `/forgot-password`: they are Cognito Managed
+Login pages, and `/login` is a button that launches the hosted flow. See
 [`../docs/auth-managed-login.md`](../docs/auth-managed-login.md).
 
 `src/app/(protected)/_layout.tsx` is the redirect guard that replaced the web
@@ -103,8 +103,9 @@ ports itself.
 components, re-stated once as `StyleSheet` objects with the same radii, spacing,
 weights and shadows. Put new ones there rather than inlining literals.
 
-**Fonts are a real step, not a token.** Spectral, Archivo and Lily Script One are
-loaded through `expo-font` in the root layout; React Native resolves one
+**Fonts are a real step, not a token.** Open Sans — headings included, the
+serif came out — and Lily Script One for the wordmark are loaded through `expo-font`
+in the root layout; React Native resolves one
 registered family name per style, so each weight is its own registration. Import
 them **per weight** (`@expo-google-fonts/archivo/400Regular`) — the family root
 re-exports all eighteen and Metro follows the whole barrel into the bundle.
@@ -114,9 +115,9 @@ Never hard-code a colour a semantic role covers. → the `design-system-ui` skil
 ## Local development
 
 ```bash
-cp .env.example .env.local     # or let humbugg/scripts/dev-aws-setup.sh write it
 npm install                    # needs NODE_AUTH_TOKEN, see below
-npm run web                    # http://localhost:8081
+../scripts/dev-up-app.sh       # http://localhost:8081; exports EXPO_PUBLIC_* from
+                               # ~/.config/andreas-services/humbugg/dev.env first
 npm run ios                    # or android, for a device/simulator
 ```
 
@@ -144,7 +145,7 @@ used to come from the SSR `loader` are baked in here instead.
 
 | Variable | Purpose | Production |
 | --- | --- | --- |
-| `EXPO_PUBLIC_API_BASE_URL` | the API's own origin | `https://api.humbugg.com/api` |
+| `EXPO_PUBLIC_API_BASE_URL` | the API's origin **and its `/api` prefix** — every route is behind `ANY /api/{proxy+}`, and a bare origin 404s off-route with no CORS headers | `https://api.humbugg.com/api` |
 | `EXPO_PUBLIC_COGNITO_USER_POOL_ID` | user pool | — |
 | `EXPO_PUBLIC_COGNITO_CLIENT_ID` | app client | — |
 | `EXPO_PUBLIC_AWS_REGION` | region | `us-east-1` |

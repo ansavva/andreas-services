@@ -116,14 +116,39 @@ describe("poster, play in place, close back to the poster", () => {
   });
 });
 
-describe("maximize is absent where it cannot work", () => {
-  it("renders no fullscreen button when the API is unavailable", () => {
+/**
+ * **Maximize is offered everywhere now, and answered two ways.**
+ *
+ * It used to be drawn only where `requestFullscreen` works — which is never on
+ * an iPhone, since Safari refuses it on anything but a `<video>` — so the one
+ * device where a picture is smallest was the one with no way to enlarge it.
+ * `useFullscreen` falls back to an in-app expansion there, and jsdom is that
+ * case: it defines no `fullscreenEnabled`.
+ */
+describe("maximize", () => {
+  it("is offered where the API is unavailable, and expands in the app instead", () => {
     render(<MediaPlayer {...CLIP} />);
     fireEvent.click(play());
 
-    // iOS Safari refuses `requestFullscreen` on anything but a <video>. The
-    // correct outcome is a control that was never offered, not one that fails.
-    expect(screen.queryByRole("button", { name: /fullscreen/i })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Fullscreen (f)" }));
+
+    // The app positions the box itself, because the browser has not: the same
+    // state the native path reaches, drawn by us.
+    const exit = screen.getByRole("button", { name: "Exit fullscreen (f)" });
+    expect(exit.closest(".fixed")).toBeTruthy();
+  });
+
+  it("leaves the app's own fullscreen on Escape, and nothing else hears it", () => {
+    const onClose = vi.fn();
+    render(<MediaPlayer {...CLIP} onClose={onClose} />);
+    fireEvent.click(play());
+    fireEvent.click(screen.getByRole("button", { name: "Fullscreen (f)" }));
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(screen.getByRole("button", { name: "Fullscreen (f)" })).toBeTruthy();
+    // One press leaves the picture, not the screen behind it.
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("renders it where the API is available", () => {

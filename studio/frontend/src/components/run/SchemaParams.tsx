@@ -1,6 +1,7 @@
 import { Button, Field, Input, Select, Switch, Text } from "@ansavva/design-system";
 
 import type { ModelSchema, SchemaProp } from "../../types";
+import { humaniseKey } from "../../utils/format";
 import { AutoTextarea } from "../common/AutoTextarea";
 
 /**
@@ -10,7 +11,7 @@ import { AutoTextarea } from "../common/AutoTextarea";
  * were a list of typed key/value pairs, so getting `aspect_ratio` right meant
  * knowing that this model spells it `16:9`, the next one `1024x1024` and a third
  * `match_input_image` — and finding out was a 400 arriving after the plan had
- * been written and the approval given. `GET /api/models/<name>/schema` is a live
+ * been written and read. `GET /api/models/<name>/schema` is a live
  * provider read and `services/schema.py` checks the payload against the same
  * document, so what is offered here is what the model will accept today.
  *
@@ -27,16 +28,16 @@ import { AutoTextarea } from "../common/AutoTextarea";
  *   be a second, worse opinion about a schema this app does not own.
  *
  * **A prop nobody set is not written.** Absent and "the default, written down"
- * are different records: `params` is inside the digest an approval names, so
+ * are different records: `params` is inside the fingerprint, so
  * filling every default in would turn "the model chose" into "a person chose"
  * on the one document that is supposed to say which.
  */
 
 /** Which control a prop gets. `null` means: this form cannot draw it. */
-export type ParamKind = "enum" | "number" | "boolean" | "string";
+type ParamKind = "enum" | "number" | "boolean" | "string";
 
 /** The param values as the editor holds them — text, keyed by prop name. */
-export type ParamValues = Record<string, string | undefined>;
+type ParamValues = Record<string, string | undefined>;
 
 /**
  * An input's allowed values, following a `$ref` when the enum is indirect.
@@ -77,7 +78,7 @@ export function isUriShaped(spec: SchemaProp): boolean {
   return false;
 }
 
-export function kindOf(
+function kindOf(
   spec: SchemaProp,
   schemas: Record<string, SchemaProp>,
 ): ParamKind | null {
@@ -107,14 +108,14 @@ function order(spec: SchemaProp): number {
  * Several models take an optional key of their own — `openai_api_key` on the
  * GPT Image entries — and drawing it is worse than useless: a plan is a
  * RECORD. It is written to the catalog, rebuilt into the payload, hashed into
- * the approval digest and rendered back on the run page, so a key typed here
+ * the fingerprint and rendered back on the run page, so a key typed here
  * would be a secret stored in a row and shown to everyone who can read the run.
  * Studio's provider credential lives on the API and nowhere else.
  *
  * Matched on the name because that is what the schema gives us — nothing in
  * the JSON marks a field as secret.
  */
-export function isCredential(name: string): boolean {
+function isCredential(name: string): boolean {
   return /api[_-]?key|token|secret|password|credential/i.test(name);
 }
 
@@ -224,14 +225,20 @@ function Param({
 
   return (
     <Field.Root name={`param_${name}`}>
-      <Field.Label>{name}</Field.Label>
+      <Field.Label>{humaniseKey(name)}</Field.Label>
+      {/* The raw key, kept visible: it is what the model's own docs and error
+          messages say, and a person cross-checking against those should not
+          have to reverse the label back into it. */}
+      <Text variant="caption" tone="muted" className="font-mono">
+        {name}
+      </Text>
 
       {kind === "enum" ? (
         <Select
           options={[
             // Blank is not a value the model takes; it is how a person says
             // "leave this out", which is the only way to get the default back.
-            { value: "", label: "model default" },
+            { value: "", label: "Model default" },
             ...(enumOf(spec, schemas) ?? []).map((option) => ({
               value: String(option),
               label: String(option),
@@ -247,14 +254,14 @@ function Param({
         // would be written into the plan the moment the form rendered.
         <div className="flex flex-wrap items-center gap-2">
           <Switch.Root
-            aria-label={name}
+            aria-label={humaniseKey(name)}
             checked={value === "true"}
             onCheckedChange={(on: boolean) => onSet(name, on ? "true" : "false")}
           >
             <Switch.Thumb />
           </Switch.Root>
           <Text variant="caption" tone="muted">
-            {value === undefined ? "model default" : value === "true" ? "on" : "off"}
+            {value === undefined ? "Model default" : value === "true" ? "on" : "off"}
           </Text>
           {value !== undefined && (
             <Button
@@ -270,7 +277,7 @@ function Param({
         <Input
           type="number"
           value={value ?? ""}
-          placeholder="model default"
+          placeholder="Model default"
           min={typeof spec.minimum === "number" ? spec.minimum : undefined}
           max={typeof spec.maximum === "number" ? spec.maximum : undefined}
           onValueChange={set}
@@ -278,13 +285,13 @@ function Param({
       ) : multiline ? (
         <AutoTextarea
           value={value ?? ""}
-          placeholder="model default"
+          placeholder="Model default"
           onValueChange={set}
         />
       ) : (
         <Input
           value={value ?? ""}
-          placeholder="model default"
+          placeholder="Model default"
           onValueChange={set}
         />
       )}

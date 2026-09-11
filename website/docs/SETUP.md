@@ -19,25 +19,38 @@
 
 ## Local development
 
+### One env file
+
+Every local value lives in `~/.config/andreas-services/website/dev.env`,
+documented key by key in [`../dev.env.sample`](../dev.env.sample). `scripts/dev-up.sh`
+lays it out from the sample on every run — your values kept, new keys slotted
+in — and exports every key into the API, the
+SSR server and Vite (which inlines only `VITE_*`). It sits outside the repo so
+it survives `git clean` and a fresh worktree, and holds the Cognito client
+secret where no `git add -f` reaches it. `WEBSITE_DEV_ENV_FILE` overrides the
+location.
+
+### Everything at once
+
+```bash
+./website/scripts/dev-up.sh                # DynamoDB Local :8001, API :8002, SSR dev server :5175
+./website/scripts/dev-up.sh --frontend     # just the SSR dev server
+./website/scripts/dev-up.sh --backend      # just DynamoDB Local + the API
+./website/scripts/dev-up.sh --serve-build  # `npm run start` on an existing build, :3000
+```
+
 ### Frontend (SSR)
 
 ```bash
 cd frontend
 export NODE_AUTH_TOKEN=$(gh auth token)   # read:packages scope
 npm ci
-npm run dev        # http://localhost:5173
+../scripts/dev-up.sh --frontend           # http://localhost:5175
 ```
 
 Marketing + blog pages render without a backend. The intake/newsletter forms and
 `/admin` need `WEBSITE_API_URL` (+ `COGNITO_*`, `SESSION_SECRET`) pointing at a
-running backend — set them in `.env` (see `../.env.example`).
-
-For local form/admin calls, run DynamoDB Local and the backend in separate
-terminals, then set:
-
-```bash
-WEBSITE_API_URL=http://localhost:8000/api
-```
+running backend — `dev.env` defaults `WEBSITE_API_URL` to the local one.
 
 Type-check / lint / build:
 
@@ -50,15 +63,8 @@ npm run typecheck && npm run lint && npm run build
 ```bash
 cd backend
 poetry install
-docker compose up dynamodb
-```
-
-In another terminal:
-
-```bash
-cd backend
-poetry run python -m website_core.handlers.local.api.api_dev_server  # http://localhost:8000
-poetry run pytest        # moto-backed unit tests
+../scripts/dev-up.sh --backend   # DynamoDB Local + http://localhost:8002
+poetry run pytest                # moto-backed unit tests
 ```
 
 The dev server writes to DynamoDB Local at `localhost:8001` and creates the

@@ -12,7 +12,7 @@ terraform {
 
 # THE SHARED DEV-SEED BUCKET.
 #
-# One fixture, published once, downloaded per machine (#284, #285). A dev stack
+# One fixture, published once, downloaded per machine. A dev stack
 # is empty when `dev-aws-setup.sh` finishes; `dev-aws-seed.sh` fills it from
 # here, so `dev-up.sh` shows a library that looks like the product instead of a
 # blank page.

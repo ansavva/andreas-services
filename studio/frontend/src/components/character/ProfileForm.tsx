@@ -14,7 +14,9 @@ import {
 } from "@ansavva/design-system";
 
 import type { CharacterIdentity, CharacterProfile, ProfileValue } from "../../types";
+import { humaniseKey } from "../../utils/format";
 import { AutoTextarea } from "../common/AutoTextarea";
+import { FormBar } from "../common/FormBar";
 import { ChevronDownIcon } from "../common/icons";
 
 interface Props {
@@ -362,34 +364,9 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
 
   return (
     <div className="flex flex-col gap-4">
-      {/*
-        One bar, one revision number, and it follows the page down.
-
-        There used to be two of each: a Save on the identity card and a second on
-        the bible below it, with a "revision N" beside both showing the same
-        number. They are still two writes — the page chains them — and that is not
-        something a person should have to hold.
-
-        Sticky because a bible is longer than a screen, and a save you have to
-        scroll back up to reach is one people stop making. Three items, so it
-        stays one row at 390px.
-      */}
-      <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-line bg-bg py-2">
-        <Text variant="caption" tone="muted" className="tabular-nums">
-          revision {rev}
-        </Text>
-        <div className="flex-1" />
-        <Button intent="secondary" size="sm" disabled={!dirty || busy} onClick={revert}>
-          Revert
-        </Button>
-        <Button size="sm" disabled={!dirty || busy} onClick={save}>
-          {busy ? "Saving…" : dirty ? "Save" : "Saved"}
-        </Button>
-      </div>
-
       {conflict && (
         <Alert.Root intent="warning">
-          <Alert.Title>That did not go through</Alert.Title>
+          <Alert.Title>Could not save over a newer version</Alert.Title>
           <Alert.Description>
             {conflict} Your edits are still here and nothing was overwritten. Re-read the record,
             then apply them again.
@@ -404,13 +381,6 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
         </Alert.Root>
       )}
 
-      {error && !conflict && (
-        <Alert.Root intent="danger">
-          <Alert.Title>Could not save</Alert.Title>
-          <Alert.Description>{error}</Alert.Description>
-        </Alert.Root>
-      )}
-
       {/*
         The rail is additive and desktop-only.
 
@@ -421,7 +391,7 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
       */}
       <div className="grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-6">
         <nav aria-label="Profile sections" className="hidden lg:block">
-          {/* `top-14` clears the sticky save bar above it. */}
+          {/* `top-14` clears the app header. */}
           <div className="sticky top-14 flex flex-col gap-1">
             <Button intent="secondary" size="sm" className="justify-start" onClick={toggleAll}>
               {allOpen ? "Collapse all" : "Expand all"}
@@ -443,7 +413,7 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
                 {group.keys.map((section) => (
                   <RailLink
                     key={section}
-                    title={humanise(section)}
+                    title={humaniseKey(section)}
                     open={open.has(section)}
                     dirty={dirtySections.has(section)}
                     onClick={() => goToSection(section)}
@@ -494,7 +464,7 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
                 <ProfileSection
                   key={key}
                   id={key}
-                  title={humanise(key)}
+                  title={humaniseKey(key)}
                   hint={SECTION_HINTS.get(key)}
                   // Only the summary carries one, and only while the sections it
                   // restates are dirty in this session.
@@ -516,6 +486,29 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
               ))}
             </div>
           ))}
+
+          {/*
+            One bar, one revision number.
+
+            There used to be two of each: a Save on the identity card and a
+            second on the bible below it, with a "revision N" beside both showing
+            the same number. They are still two writes — the page chains them —
+            and that is not something a person should have to hold.
+
+            Sticky on a phone because a bible is longer than a screen, and a save
+            you have to scroll to reach is one people stop making. It sat at the
+            top of the form before this, where it slid under the app header.
+          */}
+          <FormBar
+            dirty={dirty}
+            saving={busy}
+            onSave={save}
+            onRevert={revert}
+            meta={`revision ${rev}`}
+            error={conflict ? null : error}
+            errorTitle="Could not save the profile"
+            sticky
+          />
         </div>
       </div>
     </div>
@@ -562,30 +555,23 @@ function ProfileSection({
     // scrolls to it.
     //
     // **The padding reset is an inline style, and it has to be.** `Card.Root`
-    // carries `p-lg`, and the package merges a caller's classes with
-    // `tailwind-merge` — which does not recognise this design system's t-shirt
-    // spacing keys as spacing at all. `twMerge('… p-lg …', 'p-0')` returns
-    // *both*, so which one applies is decided by their order in the generated
-    // stylesheet, and `.p-lg` is emitted after `.p-0`. The className reset
-    // silently lost: the card kept its 24px and the panel below added 24px more,
-    // for 48px a side on a 390px screen. Same trap for `gap-sm` vs `gap-0`.
-    // An inline style is not a preference here, it is the only deterministic
-    // answer — the same reasoning `ConfirmDeleteButton` records for its fill.
-    <Card.Root
-      ref={innerRef}
-      data-section={id}
-      style={{ padding: 0, gap: 0 }}
-      className="scroll-mt-16"
-    >
+    // `p-0 gap-0` as CLASSES, which is only possible as of design-system
+    // 0.17.0. They were an inline `style={{ padding: 0, gap: 0 }}` because the
+    // package merged a caller's classes with a `tailwind-merge` that did not
+    // recognise this design system's t-shirt spacing keys as spacing at all:
+    // `twMerge('… p-lg …', 'p-0')` returned BOTH, and which one applied was
+    // decided by their order in the generated stylesheet, where `.p-lg` comes
+    // after `.p-0`. The reset silently lost — the card kept its 24px and the
+    // panel below added 24px more, 48px a side on a 390px screen. The package
+    // teaches its merge the scale now, so a t-shirt override behaves exactly
+    // as a numeric one always did.
+    <Card.Root ref={innerRef} data-section={id} className="scroll-mt-16 gap-0 p-0">
       <Collapsible.Root open={open} onOpenChange={onOpenChange}>
-        {/* `py` inline for the same reason — the trigger's own `py-sm` beat the
-            `py-md` written here, which quietly made the tap target shorter than
-            intended on the control this page is used through most. `px` is safe
-            as a class: the trigger sets none of its own. */}
-        <Collapsible.Trigger
-          style={{ paddingBlock: "0.75rem" }}
-          className="w-full justify-between px-4 text-base sm:px-6"
-        >
+        {/* `py-3` as a class for the same reason as the card above: the
+            trigger's own `py-sm` used to beat the `py-md` written here, which
+            quietly made the tap target shorter than intended on the control
+            this page is used through most. The merge resolves it now. */}
+        <Collapsible.Trigger className="w-full justify-between px-4 py-3 text-base sm:px-6">
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate">{title}</span>
             {/* Named on the trigger rather than only inside the panel: a section
@@ -603,7 +589,7 @@ function ProfileSection({
               <span
                 role="img"
                 aria-label="unsaved changes"
-                className="size-1.5 shrink-0 rounded-full bg-accent"
+                className="size-1.5 shrink-0 rounded-pill bg-accent"
               />
             )}
           </span>
@@ -668,11 +654,12 @@ function RailLink({
   onClick: () => void;
 }) {
   return (
+    // eslint-disable-next-line studio/no-hand-rolled-button -- a nav-rail row (label + a dot); Button has no slot for the dot.
     <button
       type="button"
       onClick={onClick}
       aria-current={open ? "true" : undefined}
-      className={`flex items-center gap-2 rounded-none px-2 py-1.5 text-left font-body text-sm transition-colors
+      className={`flex items-center gap-2 px-2 py-1.5 text-left font-body text-sm transition-colors
                   focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                     open
                       ? "bg-surface-alt text-ink"
@@ -684,7 +671,7 @@ function RailLink({
         <span
           role="img"
           aria-label="unsaved changes"
-          className="size-1.5 shrink-0 rounded-full bg-accent"
+          className="size-1.5 shrink-0 rounded-pill bg-accent"
         />
       )}
     </button>
@@ -751,7 +738,7 @@ interface NodeProps {
 /** One leaf, one list or one group — chosen by the shape of the value. */
 function ProfileNode({ label, path, value, multiline, onChange, headless = false }: NodeProps) {
   const name = path.join(".");
-  const title = humanise(label);
+  const title = humaniseKey(label);
 
   if (typeof value === "boolean") {
     return (
@@ -979,12 +966,6 @@ function GroupList({
 
 function isMap(value: ProfileValue): value is Record<string, ProfileValue> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** `apparent_age` → `Apparent age`. The keys are the bible's own wording. */
-function humanise(key: string): string {
-  const spaced = key.replace(/_/g, " ");
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
 /**

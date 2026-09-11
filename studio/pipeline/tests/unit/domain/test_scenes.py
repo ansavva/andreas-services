@@ -33,6 +33,7 @@ from studio_pipeline import cli
 from studio_pipeline.adapters import entities as E, store
 from studio_pipeline.domain import projects as PROJECTS
 from studio_pipeline.domain import scenes as SC
+from tests.support.fake_api import add_run_output
 
 
 def _run(*args):
@@ -264,7 +265,7 @@ def test_the_cut_is_a_render_job_and_the_worker_writes_the_record(
         run = E.create_run(project=library.project, kind="video", engine="kling",
                            model="kwaivgi/kling", input={},
                            bindings={})
-        signed = E.add_run_output(run["id"], f"shot-{n}.mp4", 9, "video/mp4")
+        signed = add_run_output(run["id"], f"shot-{n}.mp4", 9, "video/mp4")
         library.fake.s3.put_object(
             Bucket="studio-prod-media-us-east-1",
             Key=signed["url"].removeprefix("memory://"), Body=b"mp4-bytes")

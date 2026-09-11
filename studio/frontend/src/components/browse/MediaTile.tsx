@@ -1,14 +1,17 @@
 import { Checkbox } from "@ansavva/design-system";
 
 import type { FileEntry } from "../../types";
+import { useFavorites } from "../../hooks/useFavorites";
 import { MediaThumb } from "../media/MediaThumb";
-import { CheckIcon } from "../common/icons";
+import { ActionMenu, type MenuAction } from "../common/ActionMenu";
+import { CheckIcon, HeartFilledIcon } from "../common/icons";
+import { startNodeDrag } from "../create/dragRef";
 
 interface Props {
   file: FileEntry;
-  selected: boolean;
+  selected?: boolean;
   /** True once anything in the grid is selected. See the note on `onClick`. */
-  selectionActive: boolean;
+  selectionActive?: boolean;
   onOpen: () => void;
   /**
    * Where opening this tile goes, as an address.
@@ -21,7 +24,34 @@ interface Props {
    * button, which is why this is not required.
    */
   to?: string;
-  onToggleSelect: (extend: boolean) => void;
+  /**
+   * Where a press on the checkbox goes — **and whether there is a checkbox.**
+   *
+   * Optional, because a grid with nothing to do to a selection should not offer
+   * one: the favorites screen has no move, copy or delete toolbar behind it, so
+   * a checkbox there is a control that collects an answer nobody asks for. The
+   * browser passes this and gets the full selecting tile.
+   */
+  onToggleSelect?: (extend: boolean) => void;
+  /**
+   * Everything that can be done to this picture, as the `⋮` menu's lines.
+   *
+   * **Composed by the caller, because what is possible depends on the screen
+   * and not on the tile.** The browser can rename, move and delete; the
+   * favorites grid can do none of those and offers a way off the screen
+   * instead. Empty or absent draws no trigger at all.
+   */
+  actions?: readonly MenuAction[];
+  /**
+   * Whether dragging this tile carries its node — for a drop on the create
+   * sheet's role tiles.
+   *
+   * Off by default, and never true for a clip: every role a tile stands for is
+   * a picture. It is the pointer's accelerator for the menu's `Use as
+   * reference`, not a replacement for it — HTML5 drag-and-drop does not exist
+   * on touch and cannot be reached from a keyboard.
+   */
+  draggableRef?: boolean;
 }
 
 /**
@@ -35,12 +65,16 @@ interface Props {
  */
 export function MediaTile({
   file,
-  selected,
-  selectionActive,
+  selected = false,
+  selectionActive = false,
   onOpen,
   to,
   onToggleSelect,
+  actions,
+  draggableRef = false,
 }: Props) {
+  const favorite = useFavorites().isFavorite(file.id);
+
   /**
    * Selection mode still wins over the browser, and only for shift.
    *
@@ -53,11 +87,11 @@ export function MediaTile({
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     if (event.shiftKey && !selectionActive) return;
     event.preventDefault();
-    if (selectionActive) onToggleSelect(event.shiftKey);
+    if (selectionActive && onToggleSelect) onToggleSelect(event.shiftKey);
     else onOpen();
   };
 
-  const surface = `relative block h-full w-full overflow-hidden rounded-none border bg-card
+  const surface = `relative block h-full w-full overflow-hidden border bg-card
                     focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary
                     ${selected ? "border-primary ring-2 ring-primary" : "border-line"}`;
 
@@ -74,6 +108,12 @@ export function MediaTile({
         <a
           href={to}
           onClick={press}
+          // An anchor drags its own href by default, which would drop a URL
+          // into the sheet rather than a node. `startNodeDrag` overwrites the
+          // payload; the browser still takes the picture under the pointer as
+          // the drag image, which is what makes the gesture read.
+          draggable={draggableRef}
+          onDragStart={draggableRef ? (event) => startNodeDrag(event, file) : undefined}
           title={file.name}
           aria-current={selectionActive && selected ? "true" : undefined}
           className={surface}
@@ -100,6 +140,8 @@ export function MediaTile({
           // photo library makes, and the only way to pick forty tiles on a
           // touch screen without hunting forty checkboxes.
           onClick={press}
+          draggable={draggableRef}
+          onDragStart={draggableRef ? (event) => startNodeDrag(event, file) : undefined}
           title={file.name}
           aria-pressed={selectionActive ? selected : undefined}
           className={surface}
@@ -122,6 +164,7 @@ export function MediaTile({
           anything is selected (the mode has to be legible) and wherever there
           is no pointer to hover with, because on touch the hidden state is the
           only state. */}
+      {onToggleSelect && (
       <Checkbox.Root
         checked={selected}
         onClick={(event) => {
@@ -129,9 +172,10 @@ export function MediaTile({
           onToggleSelect(event.shiftKey);
         }}
         aria-label={`Select ${file.name}`}
-        // The ring is what keeps a checkbox legible over a pale frame; it is
-        // the ramp's darkest step now rather than a black literal.
-        className={`absolute left-1.5 top-1.5 shadow-[0_0_0_1px_var(--color-neutral-1)] transition-opacity
+        // The ring is what keeps a checkbox legible over a pale frame — the
+        // media-chrome scrim, since the frame under it is media this app did
+        // not choose the colour of.
+        className={`absolute left-1.5 top-1.5 shadow-[0_0_0_1px_var(--color-overlay-scrim)] transition-opacity
                     focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100
                     pointer-coarse:opacity-100 ${selectionActive ? "opacity-100" : "opacity-0"}`}
       >
@@ -139,6 +183,53 @@ export function MediaTile({
           <CheckIcon className="size-3.5 fill-none stroke-current stroke-[3]" />
         </Checkbox.Indicator>
       </Checkbox.Root>
+      )}
+
+      {/*
+        The menu, opposite the checkbox, and the only control drawn over the
+        picture now.
+
+        **A heart and a `Use as reference` glyph used to live here**, revealed on
+        hover and permanently drawn on touch, where there is no hover to reveal
+        them with. Two 32px targets over a photograph on a phone is the thing
+        this replaced: the actions are lines with words in them now — a menu on
+        a pointer, a sheet on a phone — and the tile is a picture again. See
+        `ActionMenu`.
+
+        Hidden until hovered, always drawn on touch: the same rule the checkbox
+        beside it follows, and for the same reason.
+      */}
+      {actions && actions.length > 0 && (
+        <ActionMenu
+          label={file.name}
+          actions={actions}
+          overlay
+          vertical
+          className="absolute right-1.5 top-1.5 opacity-0 focus-within:opacity-100
+                     group-hover:opacity-100 pointer-coarse:opacity-100"
+        />
+      )}
+
+      {/*
+        **A filled heart stays, and it is not a control.**
+
+        It answers "have I already picked this one", which is the one thing on
+        this tile that has to be readable without pressing anything — a grid
+        that only shows it on hover cannot be read at a glance. Favoriting and
+        unfavoriting are lines in the menu; this is the state they leave behind,
+        so it is `aria-hidden` and takes no presses. Bottom left, clear of both
+        the checkbox and the menu.
+      */}
+      {favorite && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute bottom-1.5 left-1.5 flex size-5 items-center
+                     justify-center rounded-pill bg-overlay-scrim/70"
+        >
+          <HeartFilledIcon className="size-3 fill-current stroke-none text-danger" />
+        </span>
+      )}
+
     </div>
   );
 }

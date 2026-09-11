@@ -3,13 +3,10 @@
 This module is only wiring: every command is defined in the module that
 implements it, and this attaches them to one root group.
 
-History, because it explains the shape. There used to be nineteen argparse
-parsers invoked by file path, and then a dispatcher that swapped `sys.argv` to
-forward to them. Both are gone — Click resolves the tree itself, so
-`studio runs show --help` is routed rather than rewritten on the way through.
+Click resolves the tree itself, so `studio runs show --help` is routed rather
+than rewritten on the way through.
 
-Nothing about the individual command surfaces changed in that move.
-`tests/contracts/cli_surface_reference.json` is a snapshot of what argparse exposed —
+`tests/contracts/cli_surface_reference.json` is a snapshot of the surface —
 every option, its flags, arity, default, choices, repeatability and help — and
 `test_cli_surface.py` asserts the Click tree still matches it.
 """
@@ -96,8 +93,8 @@ SHORT_HELP = {
 ROOT_HELP = """The studio generation pipeline.
 
 Runs locally and talks to the studio API. Start with `studio login`. Nothing
-here deploys, and nothing here needs an AWS account — that is the point of
-#308. `studio <command> --help` for a command's own options.
+here deploys, and nothing here needs an AWS account. `studio <command> --help`
+for a command's own options.
 
 Every command talks to one named environment. `studio profile list` shows
 them, `studio whoami` says which one you are in, and `--profile` picks one for
@@ -121,11 +118,10 @@ the ones already recorded.
 )
 @click.version_option(package_name="studio-pipeline", prog_name="studio")
 def main(profile_name: str | None) -> None:
-    # **Before any subcommand runs, and before any adapter reads a value.** This
-    # is why `adapters/s3.py` no longer binds its bucket at import time: a
-    # module constant is bound when Python imports
-    # the module, which is before Click has parsed a single argument, so it
-    # could never reflect what was typed here.
+    # **Before any subcommand runs, and before any adapter reads a value.** No
+    # adapter binds a stack value at import time: a module constant is bound
+    # when Python imports the module, which is before Click has parsed a single
+    # argument, so it could never reflect what was typed here.
     #
     # `envvar` rather than a separate read, so `STUDIO_PROFILE=prod studio …`
     # and `studio --profile prod …` are the same code path. That matters because
@@ -138,7 +134,7 @@ def main(profile_name: str | None) -> None:
 # level because that is where a user meets them. Attaching the existing command
 # objects keeps one definition of each.
 # The session commands, registered first because nothing else works without
-# them: after #308 the CLI holds no AWS credentials and every store call is an
+# them: the CLI holds no AWS credentials and every store call is an
 # authenticated HTTP request.
 main.add_command(_profile.main, "profile")
 main.add_command(_session.cmd_login, "login")

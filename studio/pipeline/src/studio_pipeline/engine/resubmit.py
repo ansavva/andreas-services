@@ -1,14 +1,14 @@
 """Submitting a draft that already exists — the second half of a split submission.
 
-`studio run` drafts, approves and submits in one act, because invoking it
-without `--dry-run` is the request to submit. This is the other shape: a draft
-was left by `--dry-run` or by the app, somebody read it and approved it, and now
-it has to go out.
+`studio run` drafts and submits in one act, because invoking it without
+`--dry-run` is the request to submit. This is the other shape: a draft was left
+by `--dry-run` or by the app, somebody read it, and now they have said to send
+it.
 
 **Nothing here decides anything.** The payload is read back off the record rather
 than rebuilt from arguments — a payload assembled a second time would be a second
-opinion about what was approved, and approving one thing while submitting another
-is the exact gap the digest exists to close. So this module reconstructs the
+opinion about what a person read, and reading one thing while submitting another
+is the exact gap the stored plan exists to close. So this module reconstructs the
 provider input from `plan`, the bindings from the run's own sends, and hands both
 to the one submit lifecycle every other caller uses.
 
@@ -82,7 +82,7 @@ def entry_for(record: dict):
 
 
 def submit_draft(record: dict) -> dict:
-    """Send an approved draft. Returns the run record the wait settled on.
+    """Send a draft. Returns the run record the wait settled on.
 
     **The `token` parameter is gone.** Nothing in this package holds a Replicate
     credential; `submit` asks the API, which does. A draft submitted here bills

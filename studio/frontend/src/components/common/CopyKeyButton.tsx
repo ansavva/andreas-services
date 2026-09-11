@@ -19,9 +19,9 @@ interface Props {
   /**
    * What `value` names — the only thing that differs between the labels.
    *
-   * Usually `"key"` or `"prefix"`, but free text so a bulk copy can say what it
-   * is copying ("26 keys"). That is what lets the grid's selection bar use this
-   * button rather than growing a second copy control with its own glyph, its own
+   * Usually `"path"`, but free text so a bulk copy can say what it is copying
+   * ("26 paths"). That is what lets the grid's selection bar use this button
+   * rather than growing a second copy control with its own glyph, its own
    * flash timing and its own idea of what "copied" looks like.
    */
   noun?: string;
@@ -40,7 +40,8 @@ interface Props {
  * `tone`.
  *
  * The name is from when that address was an S3 key. It is a name path now (see
- * `value`), and the name survives because it is what the surrounding components
+ * `value`), and the label already says so — "Copy path", not "Copy key". The
+ * component's own name survives because it is what the surrounding components
  * call this one in their own comments — worth renaming only alongside those.
  *
  * It is always a *sibling* of whatever opens the resource, never a child: every
@@ -54,7 +55,7 @@ interface Props {
  * fill come from the same three rows every other icon control in the monorepo
  * uses. Only `tone` is left here, because only the *surface* is studio's.
  */
-export function CopyKeyButton({ value, noun = "key", tone = "row", className = "" }: Props) {
+export function CopyKeyButton({ value, noun = "path", tone = "row", className = "" }: Props) {
   const { status, copy } = useCopyToClipboard();
   const label = copyLabel(status, `Copy ${noun}`);
 
@@ -86,16 +87,25 @@ export function CopyKeyButton({ value, noun = "key", tone = "row", className = "
  * the object screen's own buttons — it sits in that row and must not read as a
  * different kind of control.
  *
- * **All three used to be written in `white/NN` and `black/NN`**, which is
- * exactly the literal the neutral ramp exists to retire: nothing could re-brand
- * them and nothing could tell a scrim from a hover. `neutral-1` is the ramp's
- * darkest step — what a scrim over unknown media has to be — and the `a` steps
- * are the alpha rungs, for a fill that lands on a surface it cannot see.
+ * **All three used to be written in `white/NN` and `black/NN`**, then in the
+ * raw ramp (`neutral-1`, `neutral-a11`, `neutral-a5`) once that existed, then
+ * in `--color-chrome-*` roles studio defined for itself. Each step was the
+ * same mistake at a higher resolution: a name this app owned, describing a
+ * surface this app cannot see.
+ * `overlay-scrim`/`overlay-muted`/`overlay-ink`/`overlay-hover` are the
+ * PACKAGE's names for it as of design-system 0.17.0 — and unlike the
+ * app-defined set they replace, they deliberately hold one value in both
+ * schemes, because a photograph does not follow the OS colour scheme.
+ *
+ * `chrome` and `tile` rest at `overlay-muted` and lift to `overlay-ink`, which
+ * is why they are still a tone map rather than `IconButton intent="overlay"`:
+ * that intent rests at full `ink`, and a copy affordance on a tile should be
+ * quieter than the media it sits on until you reach for it.
  */
 const toneStyles: Record<Tone, string> = {
   row: "text-muted hover:text-ink",
-  tile: "bg-neutral-1/80 text-neutral-a11 hover:bg-neutral-1/95 hover:text-neutral-12",
-  chrome: "text-neutral-a11 hover:bg-neutral-a5 hover:text-neutral-12",
+  tile: "bg-overlay-scrim/80 text-overlay-muted hover:bg-overlay-scrim/95 hover:text-overlay-ink",
+  chrome: "text-overlay-muted hover:bg-overlay-hover hover:text-overlay-ink",
 };
 
 /** Outcome beats tone: a copied tick is green on a photograph too. */

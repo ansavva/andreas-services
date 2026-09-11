@@ -3,24 +3,19 @@
  *
  * | URL | What it is |
  * |---|---|
- * | `/` | Home — characters, projects, and what was made most recently |
+ * | `/` | Home — favorites, characters and projects |
+ * | `/favorites` | every image and video this person picked out |
  * | `/c/<char_id>` · `/p/<proj_id>` | a character, a project |
  * | `/p/<proj_id>/r/<run_id>` | one run, inside the project that owns it |
  * | `/s/<scene_id>` · `/m/<movie_id>` | a scene, a movie |
  * | `/f/<node_id>` · `/o/<node_id>` | the folder browser, one open file |
  *
- * **Ids everywhere, so every link survives every rename.** That was already true
- * of `/f/` and `/o/` (#313) and it is now true of the entities too, which is the
- * whole reason a character is a row with a UUID rather than a folder called by
- * its slug: renaming one used to invalidate every address anybody held.
+ * **Ids everywhere, so every link survives every rename.** That is the whole
+ * reason a character is a row with a UUID rather than a folder called by its
+ * name: renaming a folder would invalidate every address anybody held.
  *
- * **The legacy resolver is gone.** Studio used to hand out the S3 key as the URL
- * — `/projects/<project>/runs/…/output/clip.mp4` — and `LegacyRedirect` matched
- * those by exclusion and asked the API what they named. It was always a bridge
- * with a lifetime, and the entity rework is where it ends: no back-compat is
- * carried, so an unrecognised path lands on home rather than being resolved.
- * That also frees the top-level namespace the bridge was occupying, which is how
- * `/c/`, `/p/`, `/s/` and `/m/` became available at all.
+ * An unrecognised path lands on home; nothing here resolves a path by asking
+ * the API.
  *
  * **CloudFront still needs no change.** Its viewer-request function routes by
  * *location* — `/assets/…` and `/index.html` pass through, everything else
@@ -33,7 +28,8 @@
  *
  * It is the entity index rather than the library's file listing, which is the
  * one visible reversal in the new shell: the file browser is still one click
- * away at `/f`, but what studio opens on is characters and projects.
+ * away at `/f`, but what studio opens on is what somebody picked out, and then
+ * the characters and projects it came from.
  */
 export const HOME_PATH = "/";
 
@@ -41,12 +37,23 @@ export const HOME_PATH = "/";
  * The two entity indexes, which the header links to.
  *
  * Home still lists both, and these are not a demotion of it: a list you scroll
- * to reach is not navigation, and "where are my characters" was previously
- * answerable only by going home and looking down the page. They render the same
+ * to reach is not navigation, and "where are my characters" deserves a better
+ * answer than going home and looking down the page. They render the same
  * sections home does, unabridged.
  */
 export const CHARACTERS_PATH = "/characters";
 export const PROJECTS_PATH = "/projects";
+/**
+ * The favorites screen — every image and video this person picked out.
+ *
+ * A real address rather than only a section of home, for the reason the two
+ * indexes above are: home leads with it, and a list you scroll to reach is not
+ * navigation. Home shows the first row and links here for the rest.
+ *
+ * **No id in it, and there could not be one.** A favorite is a fact about the
+ * caller, so the collection is whoever is signed in — there is nothing to name.
+ */
+export const FAVORITES_PATH = "/favorites";
 /**
  * The reference spec belongs to the LIBRARY, not to a character: one set of
  * angles describes every character in it. So it is a section, beside the two
@@ -57,7 +64,7 @@ export const TEMPLATES_PATH = "/templates";
 /** A folder node id, or `null` for the library root. */
 export type FolderId = string | null;
 
-export type Target = { kind: "folder"; id: FolderId } | { kind: "object"; id: string };
+type Target = { kind: "folder"; id: FolderId } | { kind: "object"; id: string };
 
 /**
  * The in-app path for a folder.
@@ -87,7 +94,14 @@ export function folderPath(id: FolderId): string {
  */
 export type ViewerSource =
   | { in: "f" | "recursive"; id: FolderId }
-  | { in: "run" | "scene" | "refs"; id: string };
+  | { in: "run" | "scene" | "refs"; id: string }
+  /**
+   * The favorites grid. **The one source with no id at all**, because there is
+   * nothing to name: the collection is whoever is signed in. It is spelled
+   * `id: null` rather than dropped from the shape so every reader keeps one
+   * field to switch on.
+   */
+  | { in: "fav"; id: null };
 
 /** The `?in=` value: `f`, `f:<node>`, `run:<id>`, … */
 export function sourceParam({ in: kind, id }: ViewerSource): string {
@@ -102,6 +116,7 @@ export function sourceFromParam(value: string | null): ViewerSource | null {
   // `id || null`, not `id ?? null`: `f:` with nothing after it is how an
   // encoder that interpolated a null folder spells the library root, and "" is
   // not a node anything can look up.
+  if (kind === "fav") return { in: "fav", id: null };
   if (kind === "f" || kind === "recursive") return { in: kind, id: id || null };
   if (kind === "run" || kind === "scene" || kind === "refs") {
     return id ? { in: kind, id } : null;

@@ -50,11 +50,14 @@ const FITS = { cover: "object-cover", contain: "object-contain" } as const;
  * strings are for the fullscreen element, which has no layout above it.
  */
 const FULLSCREEN_TOP = "pt-[max(0.5rem,env(safe-area-inset-top))]";
+
+/**
+ * The pill behind one glyph over media — what replaced the gradient across the
+ * top of every picture. Same treatment as a tile's `⋮` and its heart.
+ */
+const CHROME_SCRIM = "bg-overlay-scrim/60";
 const FULLSCREEN_BOTTOM =
   "pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]";
-
-/** The chrome buttons all wear the same fill over a media frame. */
-const CHROME_BUTTON = "text-neutral-12 hover:bg-neutral-a5 active:bg-neutral-a6";
 
 /**
  * The three things a keyboard shortcut needs and the DOM cannot reach.
@@ -76,19 +79,24 @@ export interface MediaPlayerControls {
   toggleFullscreen: () => void;
 }
 
-export interface MediaPlayerProps {
+interface MediaPlayerProps {
   /**
    * The node id, which is what a re-sign addresses.
    *
-   * Not the key: `/api/asset` signs by node, and passing a name path is what
-   * left every expired tile broken for anything uploaded through the app
-   * (#432). It is also the playback key, so one player is one node.
+   * Not the key: `/api/asset` signs by node, and a name path would leave every
+   * expired tile broken for anything uploaded through the app. It is also the
+   * playback key, so one player is one node.
    */
   nodeId: string;
-  /** Presigned inline GET. Re-signed through `useSignedSrc` when it expires. */
-  url: string;
+  /**
+   * Presigned inline GET. Re-signed through `useSignedSrc` when it expires,
+   * and **absent when the node it names is gone** — see `RunAsset`, and
+   * `MediaThumb`'s `url`, which carries the reasoning. `useSignedSrc` reports
+   * that as `failed`, which is the `Unavailable` panel below.
+   */
+  url?: string | null;
   /** What the file is called. Names the play and close controls. */
-  name: string;
+  name?: string;
   isVideo?: boolean;
   /** The poster box's ratio. `auto` where the caller sized the box itself. */
   aspect?: keyof typeof ASPECTS;
@@ -184,7 +192,7 @@ export interface MediaPlayerProps {
 export function MediaPlayer({
   nodeId,
   url,
-  name,
+  name = "",
   isVideo = false,
   aspect = "video",
   fit = "contain",
@@ -214,7 +222,7 @@ export function MediaPlayer({
 
   const { src, failed, onError } = useSignedSrc(nodeId, url);
   const near = useNearViewport(containerRef, isVideo);
-  const { isFullscreen, supported, toggle } = useFullscreen(containerRef);
+  const { isFullscreen, native, toggle } = useFullscreen(containerRef);
 
   // The key is the node, and it is `undefined` while the poster is up — which
   // is the whole of "closed" as far as playback is concerned: the hook pauses
@@ -291,6 +299,26 @@ export function MediaPlayer({
     setPlaying(true);
   }, [playback, startMuted]);
 
+  /**
+   * Escape leaves the app's own fullscreen before anything else hears it.
+   *
+   * The browser's fullscreen answers Escape itself; the fallback is an ordinary
+   * element, so without this the key would reach the screen underneath and
+   * close the whole run — leaving the reader two steps from where one press
+   * should have put them. Capture phase, for the same reason.
+   */
+  useEffect(() => {
+    if (!isFullscreen || native) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      void toggle();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [isFullscreen, native, toggle]);
+
   const close = useCallback(() => {
     if (isFullscreen) void toggle();
     setPlaying(false);
@@ -334,9 +362,14 @@ export function MediaPlayer({
 
   const media = `h-full w-full ${FITS[fit]}`;
   const box = [
-    "relative isolate block overflow-hidden rounded-xs bg-neutral-1",
+    "relative isolate block overflow-hidden bg-overlay-scrim",
     isFullscreen ? "" : ASPECTS[aspect],
-    className,
+    // **The app positions the box only when the browser has not.** Native
+    // fullscreen makes the element the whole screen by itself; the fallback is
+    // an ordinary element that has to be told, and it has to sit above the
+    // sheet and the header (`z-30` both).
+    isFullscreen && !native ? "fixed inset-0 z-50 w-screen" : "",
+    isFullscreen ? "" : className,
   ].join(" ");
 
   /**
@@ -392,16 +425,17 @@ export function MediaPlayer({
       {/* The poster's press target is the whole box, which is the size a finger
           wants. The circle is what says it is pressable. */}
       {isVideo && !playing && !failed && (
+        // eslint-disable-next-line studio/no-hand-rolled-button -- a full-bleed hit target the size of the frame.
         <button
           type="button"
           onClick={startPlaying}
           aria-label={`Play ${name}`}
           className="absolute inset-0 z-10 flex cursor-pointer items-center justify-center
-                     bg-neutral-1/20 transition-colors hover:bg-neutral-1/40
+                     bg-overlay-scrim/20 transition-colors hover:bg-overlay-scrim/40
                      focus-visible:outline-2 focus-visible:outline-offset-[-2px]
                      focus-visible:outline-primary"
         >
-          <span className="flex size-14 items-center justify-center rounded-pill bg-neutral-1/70 text-neutral-12">
+          <span className="flex size-14 items-center justify-center rounded-pill bg-overlay-scrim/70 text-overlay-ink">
             <PlayIcon className="size-7 fill-none stroke-current stroke-[1.5]" />
           </span>
         </button>
@@ -412,18 +446,31 @@ export function MediaPlayer({
         <Text
           variant="caption"
           family="mono"
-          className="pointer-events-none absolute bottom-1.5 right-1.5 z-10 rounded-xs
-                     bg-neutral-1/80 px-1.5 py-0.5 text-neutral-12"
+          className="pointer-events-none absolute bottom-1.5 right-1.5 z-10
+                     bg-overlay-scrim/80 px-1.5 py-0.5 text-overlay-ink"
         >
           {formatDuration(duration)}
         </Text>
       )}
 
+      {/*
+        **No scrim across the picture — each control carries its own.**
+
+        This row used to sit on a `from-overlay-scrim/80` gradient forty pixels
+        deep, drawn over every still all the time (`showChrome` is
+        unconditional for an image), so the top of every picture in the app was
+        under a dark band. It was there to keep a white glyph legible on a pale
+        frame; a pill behind each glyph does that over the two dozen pixels the
+        glyph occupies instead of over the whole width of the picture. The tile
+        menus and the favorite heart already do it that way.
+
+        A clip keeps its bottom gradient: the transport is a row of text and a
+        scrub bar, not two glyphs, and it is only drawn while the clip plays.
+      */}
       {showChrome && !failed && (
         <div
           className={`pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start
-                      justify-between gap-2 bg-gradient-to-b from-neutral-1/80 to-transparent
-                      p-2 pb-10 ${isFullscreen ? FULLSCREEN_TOP : ""}`}
+                      justify-between gap-2 p-2 ${isFullscreen ? FULLSCREEN_TOP : ""}`}
         >
           <div className="pointer-events-auto flex min-w-0 items-center gap-1">{actions}</div>
 
@@ -438,35 +485,37 @@ export function MediaPlayer({
                 label={playback.muted ? "Unmute (m)" : "Mute (m)"}
                 size="sm"
                 onClick={playback.toggleMuted}
-                className={CHROME_BUTTON}
+                intent="overlay"
+                className={CHROME_SCRIM}
               >
                 {playback.muted ? <SoundOffIcon /> : <SoundOnIcon />}
               </IconButton>
             )}
 
             {/*
-              Absent rather than broken where it cannot work. iOS Safari refuses
-              `requestFullscreen` on anything but a <video>; `useFullscreen`
-              catches the rejection and reports `supported: false`, and the right
-              outcome is a button that was never offered.
+              **Always offered now.** It used to be drawn only where
+              `requestFullscreen` works, which meant never on an iPhone — Safari
+              refuses it on anything but a `<video>` — so the one device where a
+              picture is smallest was the one with no way to enlarge it.
+              `useFullscreen` falls back to an in-app expansion there; see it.
             */}
-            {supported && (
-              <IconButton
-                label={isFullscreen ? "Exit fullscreen (f)" : "Fullscreen (f)"}
-                size="sm"
-                onClick={() => void toggle()}
-                className={CHROME_BUTTON}
-              >
-                {isFullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}
-              </IconButton>
-            )}
+            <IconButton
+              label={isFullscreen ? "Exit fullscreen (f)" : "Fullscreen (f)"}
+              size="sm"
+              onClick={() => void toggle()}
+              intent="overlay"
+              className={CHROME_SCRIM}
+            >
+              {isFullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}
+            </IconButton>
 
             {(playing || onClose) && (
               <IconButton
                 label={playing ? `Close ${name}` : "Close"}
                 size="sm"
                 onClick={close}
-                className={CHROME_BUTTON}
+                intent="overlay"
+                className={CHROME_SCRIM}
               >
                 <CloseIcon />
               </IconButton>
@@ -478,11 +527,11 @@ export function MediaPlayer({
       {isVideo && playing && !failed && (
         <div
           className={`pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col gap-1
-                      bg-gradient-to-t from-neutral-1/85 to-transparent px-3 pb-3 pt-12
+                      bg-gradient-to-t from-overlay-scrim/85 to-transparent px-3 pb-3 pt-12
                       ${isFullscreen ? FULLSCREEN_BOTTOM : ""}`}
         >
           {playback.blocked && (
-            <Text variant="caption" className="pointer-events-auto text-neutral-12">
+            <Text variant="caption" className="pointer-events-auto text-overlay-ink">
               Your browser blocked sound. Press play, then unmute above.
             </Text>
           )}

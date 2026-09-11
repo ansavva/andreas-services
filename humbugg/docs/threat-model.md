@@ -91,6 +91,32 @@ projections (`Private`, `Public`, `Assignment`, `Detail`).
   The full mapping is disclosed only through the audited emergency reveal (§6). **[NOW]**
 - **U5** Identity comes only from the token subject (`CurrentUser.UserId`). No request field
   (`member_id`, `user_id`, …) may be used to assume another identity. **[NOW]**
+- **U6** Authorization requires the **JwtBearer scheme**, named on the default policy. A principal
+  the host populated is not trusted. **[NOW]**
+
+**Why U6 exists (#656).** U1 was written down, enforced locally and in the integration suite, and
+silently not enforced in production for months: `api.humbugg.com` answered an **ID** token exactly as
+it answered an access token. Two layers combined. The API Gateway HTTP API JWT authorizer accepts an
+ID token because `jwt_configuration.audience` is the app client id, which is an ID token's `aud` —
+it is an authenticator, not Humbugg's token-type rule. Then
+`Amazon.Lambda.AspNetCoreServer` (`APIGatewayHttpApiV2ProxyFunction.MarshallRequest`) reads
+`requestContext.authorizer.jwt.claims` and assigns
+`new ClaimsPrincipal(new ClaimsIdentity(claims, "AuthorizerIdentity"))` to the request's
+`IHttpAuthenticationFeature` **before the ASP.NET pipeline runs at all**. `UseAuthentication` does
+not overwrite `HttpContext.User` when the handler returns a failure carrying no principal, and a
+default policy that names no scheme never re-authenticates — so `OnTokenValidated`'s `context.Fail`
+ran, and `[Authorize]` was satisfied by the host's principal regardless. Impact was low (the ID token
+names the same account, so this was never cross-user access), but the invariant was decorative.
+
+The rule that replaces it: **authorization requires the JwtBearer scheme; a host-populated principal
+is not trusted.** Naming the scheme on `DefaultPolicy` makes the authorization middleware
+re-authenticate against JwtBearer and replace `HttpContext.User` with that result, so a token the
+application refuses is a 401 whatever the gateway put in front of it. `FallbackPolicy` is
+deliberately left unset — it would also cover endpoints that carry no authorization metadata, which
+is what `/health` is. Pinned by `GatewayAuthorizerPrincipalTests` in the unit tier, which hosts the
+real `Program.cs` and builds the gateway principal with the hosting package's own marshaller rather
+than an imitation of it, and by the `Authenticated round trip` smoke step in `humbugg-prod.yaml`,
+whose ID-token assertion is what found this.
 
 ### 2.2 Organizer (group owner / creator)
 - **O1** Organizer-only actions — update group, delete group, rotate invite, set exclusions, change
@@ -365,6 +391,11 @@ assignment contents, addresses, or the invite secret.
 
 ## 8. Operational response
 
+Day-to-day runbooks for every operational scenario, not just security incidents, live in
+[`docs/runbooks.md`](runbooks.md). A suspected personal-data breach — anything that might need
+Art. 33/34 notification — follows [`docs/breach-response.md`](breach-response.md) instead of
+just this section.
+
 - **Suspected invite leak:** organizer rotates the invite (`POST /api/groups/{id}/invite`), which
   invalidates the old secret immediately. If a group is compromised, reset the draw and/or delete the
   group. No plaintext secret is recoverable from storage (only the hash is stored).
@@ -378,6 +409,20 @@ assignment contents, addresses, or the invite secret.
   edge; entitlements never change on an unverified event.
 - **Audit integrity:** treat `humbugg-prod-audit-events` as evidence — restrict IAM to append + read, deny
   delete/update in the table's resource policy, and consider point-in-time recovery.
+- **The production smoke account (#642):** a real, confirmed user in the production pool that the
+  post-deploy `smoke-test` job signs in as, so that one tier crosses the real API Gateway with a
+  real token (#586). It is an ordinary account with no privilege of any kind, and its safety rests
+  on it holding nothing: no group, no membership, no profile row, no personal data — so a
+  compromise of its password discloses an empty account, and the smoke step only ever issues
+  `GET`s, which is a rule in [`TESTING.md`](TESTING.md). Its address is on a reserved `.test`
+  domain (RFC 2606), so no mail can ever reach a real mailbox. Address and password live only in
+  the `humbugg-production` GitHub environment (var `HUMBUGG_SMOKE_USER_EMAIL`, secret
+  `HUMBUGG_SMOKE_USER_PASSWORD`) and neither is written into this repo; both tokens the account
+  mints are `::add-mask::`ed the moment they exist, because this repo's workflow logs are public.
+  **Rotate it** with `aws cognito-idp admin-set-user-password --user-pool-id … --username … 
+  --password … --permanent` and then update that secret — nothing else reads it, and no deploy or
+  Terraform apply is involved. **Disable it** (`admin-disable-user`) if it is ever suspected: the
+  smoke step fails loudly, which is the correct outcome, and no user-facing surface depends on it.
 - **Config tuning:** the rate limit is a Terraform variable. Emergency tightening (lower
   `api_throttling_rate_limit` / `api_throttling_burst_limit` in `humbugg/infra`) is applied via the
   deploy workflow's `run_infra` path.

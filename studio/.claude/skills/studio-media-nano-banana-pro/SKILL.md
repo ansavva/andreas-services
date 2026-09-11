@@ -11,7 +11,7 @@ frame — that is [`gpt-image-2`](../studio-media-gpt-image-2/SKILL.md); reach
 here when a frame needs 4K, more than a handful of blended references, or a
 tunable safety filter.
 
-> Invocation, the approval gate, run recording and validation are shared —
+> Invocation, hard rule #2, run recording and validation are shared —
 > see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model nano-banana-pro …`,
 > and `studio models show nano-banana-pro` for the live schema. This page covers
 > only what is specific to this model. [`nano-banana-2`](../studio-media-nano-banana-2/SKILL.md) is the fast/cheap sibling.
@@ -39,9 +39,9 @@ invisible SynthID watermark.
 
 Nano Banana Pro is popular and hits capacity. `allow_fallback_model: true`
 reroutes to **`bytedance/seedream-5`** — a *different model* than the one
-approved, billed at its own price.
+shown, billed at its own price.
 
-That makes it an approval-gate violation, not a retry knob. On `E003
+That makes it a hard rule #2 violation, not a retry knob. On `E003
 ModelRateLimitError` the payload is fine: retry it **unchanged**, or switch model
 deliberately. The limit can persist — five consecutive rejections inside a
 ten-minute window, minutes after succeeding.

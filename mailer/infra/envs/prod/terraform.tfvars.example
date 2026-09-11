@@ -1,2 +1,7 @@
 aws_region        = "us-east-1"
 humbugg_role_name = "humbugg-prod-api-role"
+
+# Where alarms mail. Injected in CI, not set here:
+#   TF_VAR_alert_email  <- secrets.MAILER_ALERT_EMAIL
+# Empty creates the SNS topic with no subscription.
+# alert_email = "ops@example.com"

@@ -65,9 +65,8 @@ def _summary(membership: dict) -> dict:
 
     `id` rather than the `lib` the catalog returns: outside `services.catalog` a
     library is a thing with an id, and the attribute name the table partitions
-    on is not part of the API. `created_at` is dropped for the same reason it is
-    not in #291's shape — the date a membership was granted is not something a
-    picker shows.
+    on is not part of the API. `created_at` is dropped because the date a membership
+    was granted is not something a picker shows.
     """
     lib = membership["lib"]
     try:

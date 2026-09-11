@@ -1,6 +1,14 @@
 import { useCallback, useMemo } from "react";
 
-import { getAsset, getCharacter, getNode, getRun, getScene, listNodes } from "../apis/studio";
+import {
+  getAsset,
+  getCharacter,
+  getFavorites,
+  getNode,
+  getRun,
+  getScene,
+  listNodes,
+} from "../apis/studio";
 import type { FileEntry, RunAsset, Shot, SortOrder } from "../types";
 import type { ViewerSource } from "../utils/location";
 import { useMedia } from "./useMedia";
@@ -23,8 +31,10 @@ function fromAsset(asset: RunAsset): FileEntry {
   const type = asset.content_type ?? "";
   return {
     id: asset.node,
-    key: asset.name,
-    name: asset.name,
+    // Both empty when the node is gone — `drawable` below drops the entry
+    // before anything tries to open it. See `RunAsset`.
+    key: asset.name ?? "",
+    name: asset.name ?? "",
     size: asset.size ?? 0,
     content_type: type,
     last_modified: "",
@@ -75,7 +85,7 @@ export function shotAssets(shot: Shot): RunAsset[] {
   ];
 }
 
-export interface ViewerFeed {
+interface ViewerFeed {
   /** The drawable sequence — what the reel scrolls through. */
   items: FileEntry[];
   /**
@@ -172,13 +182,20 @@ export function useViewerFeed(
       return dedupe([...cut, ...shots.flatMap(shotAssets)].map(fromAsset));
     }
 
+    if (source.in === "fav") {
+      // **The favorites grid, in the order the grid draws it.** Already the
+      // shape the viewer wants — a favorite entry is a listing row with one
+      // extra field — so there is nothing to adapt, unlike a run's or a
+      // scene's pointers above.
+      const page = await getFavorites();
+      return page.entries;
+    }
+
     if (source.in === "refs") {
-      // **The character's `default` images, by name.** It used to be the
-      // reference index in group-then-order order, which was "the order a shoot
-      // would send them in" — a real fact while a `REF#` row carried an order.
-      // Nothing carries one now, and a selection comes back by name for the same
-      // reason this does: stable beats meaningful when the only requirement is
-      // that two reads agree.
+      // **The character's `default` images, by name.** Nothing carries a
+      // shoot order, and a selection comes back by name for the same reason
+      // this does: stable beats meaningful when the only requirement is that
+      // two reads agree.
       const record = await getCharacter(source.id);
       const listed = await listNodes(
         { node: record.root },

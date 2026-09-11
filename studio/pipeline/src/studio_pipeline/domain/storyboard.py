@@ -10,7 +10,7 @@ nobody checks.
 What is left is what only a local command has any use for:
 
   * `load_plan` reads a JSON file off disk, which the API cannot do;
-  * `check_scene_slug` refuses a `<project>/<slug>` typed at a prompt before a
+  * `check_scene_name` refuses an empty name typed at a prompt before a
     request is spent finding out;
   * `scene_frames`, `resolve_roles`, `panel_roles`, `is_supplied`,
     `panel_prompt`, `board_order` and `sheet_captions` are read by
@@ -47,8 +47,8 @@ import json
 
 
 # The plan shape. Bumped when a field changes meaning, not when one is added.
-# v3 is the entity model: every image is a node id, and the fields the scene
-# record owns are gone from here.
+# v3: every image is a node id, and the fields the scene record owns are not
+# in the plan.
 VERSION = 3
 
 #: What a panel is FOR, which is the same question as "does this bind".
@@ -97,12 +97,9 @@ def load_plan(path: str) -> dict:
 def check_scene_name(name: str) -> str:
     """A scene's name: a label, and nothing more.
 
-    **Two rules died here.** It refused anything shaped like a run id, because a
-    scene folder was once `<timestamp>_<slug>` and a new scene named that way
-    would have been indistinguishable from one of them; and it enforced the slug
-    character class, because the name became a path segment. A scene is a row
-    with a UUID, its folder is named by that id, and its name is a free-text
-    label — so the only thing left worth refusing is an empty one.
+    A scene is a row with a UUID, its folder is named by that id, and its name
+    is a free-text label that is never a path segment — so the only thing worth
+    refusing is an empty one.
     """
     folded = " ".join((name or "").split())
     if not folded:
@@ -117,11 +114,10 @@ def check_scene_name(name: str) -> str:
 def scene_frames(record: dict, max_n: int | None = None) -> list[str]:
     """The scene's OWN images as NODE IDS, in order — a shot's references.
 
-    Derived, not stored. It used to live in a separate `chains/<slug>.json`,
-    written alongside the scene and kept in sync by hand — which is the shape of
-    every bug this repo has had to write a migrator for. A planned scene already
-    records both halves: shot 1's opening panel is the seed, and every later
-    shot's `opens_on.node` is the handoff frame produced by the shot before it.
+    Derived, not stored: a second list kept in sync by hand is a bug waiting to
+    happen. A planned scene already records both halves: shot 1's opening panel
+    is the seed, and every later shot's `opens_on.node` is the handoff frame
+    produced by the shot before it.
 
     The seed anchors the look the whole scene inherits and the newest frames
     carry the current state, so when a cap forces a choice both ends are kept and

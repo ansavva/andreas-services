@@ -1,0 +1,155 @@
+@import "tailwindcss";
+@import "@ansavva/design-system/theme.css";
+
+/* Let Tailwind scan the design-system source for the utility classes its
+   components use — they live in node_modules, which Tailwind does not scan by
+   default, so without this every component renders unstyled. */
+@source "../../node_modules/@ansavva/design-system";
+
+/* ---------------------------------------------------------------------------
+   CLASSROOM'S BRAND.
+
+   Everything here is the design system's theming seam — custom properties
+   overridden AFTER `theme.css` is imported. There is no hex at a call site and
+   there must not become one; see the design-system-ui skill, rule 4.
+
+   The package's 0.18.0 default is monochrome and square by design, so that it
+   states no brand for a consumer to fight. This is classroom's answer to it:
+   rounded, warm and green, in the register of the teaching materials it is used
+   to write.
+   --------------------------------------------------------------------------- */
+
+/* Open Sans, self-hosted rather than fetched from Google Fonts. A school
+   network is exactly the place where a third-party font request is slow,
+   blocked, or a privacy question — and a bundled font cannot fail differently
+   in a classroom than it did on the teacher's laptop. 400/600/700 only: the
+   design system asks for regular, semibold and bold and nothing else. */
+@import "@fontsource/open-sans/400.css";
+@import "@fontsource/open-sans/400-italic.css";
+@import "@fontsource/open-sans/600.css";
+@import "@fontsource/open-sans/700.css";
+
+:root {
+  /* ONE FAMILY, HEADINGS INCLUDED.
+
+     `--font-heading` used to be Georgia. It is Open Sans now because a second
+     face was doing nothing the weight scale could not: a page of teaching
+     material is short, and the serif read as decoration rather than hierarchy.
+     `--font-mono` is left alone — code in a worksheet has to line up. */
+  --font-body: "Open Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-heading: var(--font-body);
+
+  /* CORNERS.
+
+     0.18.0 set every radius except `pill` to 0, which is a deliberate default
+     and the wrong one here — square corners read as a developer tool. These are
+     measured off the reference the brief named: 8px on inputs, 16px on cards,
+     and generous rounding everywhere else. `--radius-pill` is the package's and
+     is not overridden. */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+
+  /* COLOUR.
+
+     A mint green fill carrying deep-teal text, rather than white text on a
+     saturated green. Measured at 6.9:1, comfortably past AA, and it is the
+     combination that makes the reference read as friendly rather than
+     corporate — a light fill is an invitation, a heavy one is a warning.
+
+     `--color-primary-hover` and `--color-primary-active` are NOT set: on web
+     they are `color-mix()` blends of `--color-primary`, so they follow this
+     automatically. (On React Native they would not — see the design-system-ui
+     skill — but classroom is web only.) */
+  --color-primary: #67e0a6;
+  --color-primary-text: #173e3e;
+
+  /* Warm off-white rather than the package's neutral grey ramp: paper, not
+     screen. The line colour is warmed to match, or borders read blue against
+     it. */
+  --color-bg: #fbfaf7;
+  --color-card: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f4f3ee;
+  --color-line: #e4e2da;
+  --color-ink: #2c2f35;
+  --color-muted: #5f6570;
+
+  /* LIGHT ONLY, AND SAYS SO.
+
+     The package's dark mode is opt-in — `[data-theme='dark']` on a root element
+     — and nothing here sets it, so every component reads the light tokens.
+     `color-scheme` tells the BROWSER the same thing: without it, a visitor
+     whose OS is in dark mode gets a near-black canvas and dark-mode scrollbars
+     and form controls underneath light components, and `--color-ink` headings
+     land on it unreadable. That was a real bug, not a hypothetical.
+
+     One scheme, stated. A classroom projector and a printed worksheet are both
+     light; a teacher tool that infers the room's lighting from the laptop's OS
+     setting is guessing. */
+  color-scheme: light;
+}
+
+/* theme.css deliberately paints no `body` — the canvas belongs to the app, and
+   an unpainted body is transparent, which means it borrows whatever the browser
+   is using. */
+body {
+  background-color: var(--color-bg);
+  color: var(--color-ink);
+}
+
+/* The student reader renders teacher-authored HTML. It arrives sanitized, but
+   it is still arbitrary markup, so it gets typographic defaults of its own
+   rather than inheriting whatever the app happens to set. Scoped to the one
+   container that holds it. */
+.page-body {
+  line-height: 1.65;
+}
+.page-body h1,
+.page-body h2,
+.page-body h3 {
+  font-family: var(--font-heading);
+  /* 700 rather than 600: with one family for headings and body, weight is the
+     only thing separating them, so it has to be unambiguous. */
+  font-weight: 700;
+  margin: 1.4em 0 0.5em;
+}
+.page-body h1 { font-size: 1.75rem; }
+.page-body h2 { font-size: 1.4rem; }
+.page-body h3 { font-size: 1.15rem; }
+.page-body p { margin: 0.85em 0; }
+.page-body ul,
+.page-body ol { margin: 0.85em 0; padding-left: 1.5rem; }
+.page-body ul { list-style: disc; }
+.page-body ol { list-style: decimal; }
+.page-body li { margin: 0.3em 0; }
+.page-body blockquote {
+  margin: 1em 0;
+  padding-left: 1rem;
+  border-left: 3px solid var(--color-line);
+  color: var(--color-muted);
+}
+.page-body pre {
+  overflow-x: auto;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-alt);
+}
+.page-body code { font-family: var(--font-mono); font-size: 0.9em; }
+.page-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+  display: block;
+  overflow-x: auto;
+}
+.page-body th,
+.page-body td {
+  border: 1px solid var(--color-line);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+.page-body th { background: var(--color-surface-alt); font-weight: 600; }
+.page-body img { max-width: 100%; height: auto; border-radius: var(--radius-md); }
+.page-body hr { margin: 1.5em 0; border: 0; border-top: 1px solid var(--color-line); }

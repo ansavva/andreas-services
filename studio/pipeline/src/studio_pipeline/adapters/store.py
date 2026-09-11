@@ -1,26 +1,17 @@
-"""The media store, addressed by path and reached through the API (#302).
+"""The media store, addressed by path or node id and reached through the API.
 
-**This is the seam that ends direct AWS access from the pipeline.** Call sites
-say "the object at `characters/<name>/reference/face_01.png`"; this resolves that
-name path to a node through `GET /api/resolve` and moves bytes through presigned
-URLs the API hands out. No boto3, no bucket name, no credentials.
+**This is the seam that keeps direct AWS access out of the pipeline.** Call
+sites say "the object at `characters/<name>/reference/face_01.png`"; this
+resolves that name path to a node through `GET /api/resolve` and moves bytes
+through presigned URLs the API hands out. No boto3, no bucket name, no
+credentials. Nothing under `adapters/` opens an AWS client; seeding, which
+must, lives in `scripts/dev_seed/`, its own project.
 
-## Why a path-addressed facade rather than rewriting every call site to use ids
+## Why a path-addressed facade as well as ids
 
-Twenty-five modules and seventy-one boto3 calls addressed the tree by key when
-this was written, and every `SKILL.md` described the CLI in those terms.
-Rewriting all of them to carry node ids in one change would have been a refactor
-nobody could review, so this kept the vocabulary the pipeline already had — a
-path — and changed only what sits underneath it, and the call sites migrated one
-area at a time.
-
-**They have, and now so has everything else.** This used to end by naming what
-still opened an S3 client — `adapters/s3.py`, `adapters/ddb.py` borrowing its
-session, and the `maintenance/` commands that reconciled the bucket against the
-table. All of them are deleted: the migrations finished, the orphan sweep moved
-into the API, and seeding moved to `scripts/dev_seed/`, its own project. Nothing
-under `adapters/` opens an AWS client. The census above is the history of why
-this module exists, not a count of what is left to do.
+A path is what a person types and what every `SKILL.md` describes the CLI in
+terms of. The record side of the pipeline carries node ids; the person-facing
+side keeps the path vocabulary and this module sits underneath both.
 
 **The path is not a key.** It is the name path the API resolves: the same string
 a person types and the same one `paths.py` builds. That it currently equals the
@@ -35,34 +26,20 @@ out of the Lambda's 6 MB request limit, and it is also **hard rule #3 intact**:
 anything handed to a model is an S3 object reached by a short-lived presigned
 URL, never an upload from disk.
 
-## One way in, and there used to be two
+## One way in
 
-Everything in the bucket is now addressed the same way: a node id, or a name
-path the API resolves to one. There is no second scheme and no exception.
-
-**There was, and it is worth knowing what closed it.** `phrasebook/wording.yaml`
-and the `config/angle/` angle images belonged to no character and no project, had no
-catalog node, and were reached by raw key through `GET /api/asset?key=` by a
-pair of `shared_*` functions here. That parameter was the last raw S3 key in the
-service and the sole reason `keys.clean_key` survived on the API side.
-
-Both halves went with the entity model rather than one of them: the phrasebook
-is `TERM#` rows, so there is no document to address, and the angle images are ordinary
-nodes in a `config/` folder the library is created with. So `shared_read`,
-`shared_presign` and the `shared:<key>` marker `submit` carried them under are
-all deleted, and an angle image is now *recorded* in a run's bindings like every other
-image — which the marker could not do, and said so.
+Everything in the bucket is addressed the same way: a node id, or a name path
+the API resolves to one. There is no second scheme and no exception — the
+phrasebook is `TERM#` rows, so there is no document to address, and the angle
+images are ordinary nodes in a `config/` folder the library is created with,
+so a run *records* an angle image in its bindings like every other image.
 
 ## What is deliberately not here
 
-No `delete`, no `move`, no `rename`. Those are catalog operations now — a move
-rewrites rows and touches no object — and they belong on the API's node routes,
-which the migrating call sites call directly. A byte mover that also pretended
-to move things would invite exactly the key-shuffling this replaces.
-
-`copy` is here and is the exception that proves it: it moves bytes, twice, and
-says so. See its docstring for why it is not the cheap catalog operation it
-looks like.
+No path-addressed `delete`, `move` or `rename`. Those are catalog operations —
+a move rewrites rows and touches no object — and they belong on the API's node
+routes, by id, in the second half of this module. A byte mover that also
+pretended to move things would invite key-shuffling.
 """
 
 from __future__ import annotations
@@ -99,10 +76,7 @@ def natural_key(name: str):
     references in the wrong order, and the prompt would name the wrong one.
 
     It lives here because the API returns children *name-ascending*, which is
-    DynamoDB's lexical sort-key order. The natural ordering is the CLI's, and
-    always was. `adapters/s3.py` re-exports it — but not, as this used to say,
-    to spare its callers a churn: that module counted them and there are none.
-    The re-export is kept for its own `_list`, on the weaker ground it states.
+    DynamoDB's lexical sort-key order. The natural ordering is the CLI's.
     """
     return [int(part) if part.isdigit() else part.lower() for part in _NUM_RE.split(name)]
 
@@ -203,11 +177,9 @@ def files(path: str) -> list[dict]:
 
     Three decisions, made once. Each has already been a bug or a near one:
 
-    - **The kind filter is now explicit where it used to be structural.**
-      `list_objects_v2` with a delimiter put folders in `CommonPrefixes`, a
-      separate field, so a caller got files whether it filtered or not. The
-      catalog returns both in one list keyed by `kind`, and dropping the filter
-      lists a subfolder as if it were an object.
+    - **The kind filter is explicit.** The catalog returns files and folders in
+      one list keyed by `kind`, and dropping the filter lists a subfolder as if
+      it were an object.
     - **The natural sort is load-bearing.** `children` is name-ascending, which
       is DynamoDB's lexical order: `_10` before `_2`. These names become
       `[Image1]..[ImageN]` positionally, so lexical order hands a model the
@@ -288,22 +260,6 @@ def size(path: str) -> int:
     reporting 0 is the honest answer, not a failure.
     """
     return int(resolve(path).get("size") or 0)
-
-
-def copy(source: str, destination: str, *, content_type: str) -> dict:
-    """Copy one file's bytes to another path.
-
-    **The bytes travel through this process**, which a server-side
-    `CopyObject` did not. That is the cost, and it is accepted here rather than
-    hidden: the alternative is a second node pointing at one blob, which is
-    copy-on-write (#334, deferred) and carries a hazard already written into the
-    API's delete route — the day two rows share a key, deleting one destroys the
-    other's bytes.
-
-    So this is a real copy: two blobs, two independent lifetimes. Fine for the
-    images it is used for; reconsider before pointing it at video.
-    """
-    return write(destination, read(source), content_type=content_type)
 
 
 def read(path: str) -> bytes:
@@ -426,19 +382,19 @@ def _put(url: str, body: bytes, headers: dict) -> None:
 
 # ── the tree, addressed by node id ──────────────────────────────────────────
 #
-# **The half of this module that survives the entity model.** Everything above
-# takes a name path, which is what a person types and what `GET /api/resolve`
-# turns into a node. Everything below takes a node id, which is what a *record*
-# holds — a run names its folder, a reference names its image, a character names
-# its root — and a record that named a path would be stranded by the first
-# rename, which is the whole disease `docs/ENTITY_MODEL.md` sets out to cure.
+# Everything above takes a name path, which is what a person types and what
+# `GET /api/resolve` turns into a node. Everything below takes a node id, which
+# is what a *record* holds — a run names its folder, a reference names its
+# image, a character names its root — and a record that named a path would be
+# stranded by the first rename, which is the whole disease
+# `docs/ENTITY_MODEL.md` sets out to cure.
 #
 # So the two halves are not duplicates and neither is scaffolding. A path is an
 # address a human uses once; an id is an identity a row keeps forever.
 
 
 def node(node_id: str) -> dict:
-    """One node's record by id. Raises `api.NotFound` if it is gone."""
+    """One node's record by id. Raises `api.NotFound` if there is none."""
     return api.get(f"/api/nodes/{node_id}")
 
 
@@ -630,31 +586,6 @@ def upload_into(parent_id: str, name: str, source: Path, *, content_type: str) -
     return write_into(parent_id, name, Path(source).read_bytes(), content_type=content_type)
 
 
-def upload_to_url(signed: dict, source: Path) -> dict:
-    """PUT a local file at a URL some entity route already signed, then confirm it.
-
-    `POST /api/runs/<id>/outputs`, `POST /api/scenes/<id>/output` and
-    `POST /api/movies/<id>/output` mint the node and the URL together, so the
-    *placeholder* half of the dance `write_into` performs has already happened
-    server-side and repeating it would make a second node.
-
-    **The confirm half has not, and skipping it is what emptied every `output/`
-    folder in prod.** An entity route calls `create_node` and stops; only
-    `confirm-upload` runs `HeadObject` and writes `size` and `content_type` onto
-    the row. Without it the node stays a placeholder for ever —
-    `browse.is_abandoned_upload` keys on `size` being absent and keeps it out of
-    every listing and out of the reel, so a run's output was in S3, named by the
-    run's `outputs`, drawn on the run page, and invisible in the folder it lived
-    in. This function is where the two paths rejoin: `write_into` confirms and so
-    does this, so there is no upload in the package that does not.
-
-    The docstring used to say the dance "has already happened server-side" with
-    no such qualification, which is the sentence the bug hid behind.
-    """
-    _put(signed["url"], Path(source).read_bytes(), signed.get("headers") or {})
-    return node_confirm(signed["node"])
-
-
 def rename_node(node_id: str, name: str) -> dict:
     """Rename in place. **No object is written** — a name is a column."""
     return api.patch(f"/api/nodes/{node_id}", {"name": name})
@@ -685,17 +616,12 @@ def reparent_node(node_id: str, parent_id: str) -> dict:
     return api.patch(f"/api/nodes/{node_id}", {"parent": parent_id})
 
 
-def move_nodes(ids: list[str], destination: str) -> dict:
-    """Move many nodes into a folder. Rows only; the blobs never budge."""
-    return api.post("/api/nodes/move", {"ids": list(ids), "destination": destination})
-
-
 def copy_nodes(ids: list[str], destination: str) -> dict:
     """Copy many nodes into a folder.
 
-    A real copy — two blobs, two independent lifetimes — for the reason `copy`
-    gives: a second row pointing at one blob is copy-on-write (#334), and the
-    delete route destroys the shared bytes when either row goes.
+    A real copy — two blobs, two independent lifetimes: a second row pointing
+    at one blob is copy-on-write, and the delete route destroys the shared
+    bytes when either row goes.
     """
     return api.post("/api/nodes/copy", {"ids": list(ids), "destination": destination})
 
@@ -703,18 +629,6 @@ def copy_nodes(ids: list[str], destination: str) -> dict:
 def delete_nodes(ids: list[str]) -> dict:
     """Delete nodes and their blobs. The one operation here that destroys bytes."""
     return api.request("DELETE", "/api/nodes", {"ids": list(ids)})
-
-
-def node_owner(node_id: str) -> dict | None:
-    """Which entity a node belongs to, derived from its ancestry.
-
-    `{kind, id, name}` or None. Derived rather than stored, so a move that
-    changes the owner is visible immediately even though the blob key it was
-    stamped with is not rewritten — see the spec's note on key drift and
-    `catalog reseat`.
-    """
-    found = api.get(f"/api/nodes/{node_id}/owner")
-    return found or None
 
 
 def node_text(node_id: str) -> str:

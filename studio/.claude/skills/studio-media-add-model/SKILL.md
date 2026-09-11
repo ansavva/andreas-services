@@ -90,7 +90,7 @@ family for using the pipeline, it is what `add-model` records in the registry's
 — and match their shape. They are the specification; this list is the checklist.
 
 A model page carries only what is **specific to this model**. The runner,
-the approval rule, the run store and S3-only origin are `studio-media-core`'s to
+hard rule #2, the run store and S3-only origin are `studio-media-core`'s to
 explain, and repeating them here is how they drift.
 
 | Section | What goes in it |

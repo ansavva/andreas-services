@@ -37,17 +37,6 @@ const COPY: Record<string, { who: string; lead: string; features: string[] }> = 
       'Add somebody after the draw, changing as few matches as possible',
     ],
   },
-  work: {
-    who: 'For a company running exchanges across teams',
-    lead: 'An organization workspace, with every exchange and every organizer in one place.',
-    features: [
-      'One workspace holding many exchanges at once',
-      'A people directory shared across them',
-      'Administration and roles for whoever runs it',
-      'Your branding on what employees see',
-      'Central billing, on one invoice',
-    ],
-  },
 };
 
 export default function PricingPage({ plans }: { plans: PlanCard[] }) {
@@ -84,7 +73,7 @@ export default function PricingPage({ plans }: { plans: PlanCard[] }) {
             {plans[0]?.currency ?? 'USD'}.
           </p>
 
-          <div className="mt-14 grid gap-6 lg:grid-cols-3">
+          <div className="mt-14 grid gap-6 lg:grid-cols-2">
             {plans.map((plan) => (
               <PlanColumn key={plan.code} plan={plan} />
             ))}
@@ -108,14 +97,14 @@ function PlanColumn({ plan }: { plan: PlanCard }) {
   const featured = plan.code === 'plus';
   return (
     <div
-      className={`flex flex-col rounded-2xl border bg-card p-8 ${
+      className={`flex flex-col rounded-lg border bg-card p-8 ${
         featured ? 'border-primary shadow-lg' : 'border-line'
       }`}
     >
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="font-heading text-2xl font-semibold text-ink">{plan.name}</h2>
         {featured ? (
-          <span className="rounded-full bg-surface-alt px-3 py-1 text-xs font-semibold text-primary">
+          <span className="rounded-pill bg-surface-alt px-3 py-1 text-xs font-semibold text-primary">
             Most chosen
           </span>
         ) : null}
@@ -139,7 +128,7 @@ function PlanColumn({ plan }: { plan: PlanCard }) {
       <ul className="mt-6 flex-1 space-y-3 text-sm text-ink">
         {copy?.features.map((feature) => (
           <li key={feature} className="flex gap-3">
-            <span aria-hidden="true" className="mt-[.35rem] h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+            <span aria-hidden="true" className="mt-[.35rem] h-1.5 w-1.5 shrink-0 rounded-pill bg-primary" />
             <span>{feature}</span>
           </li>
         ))}
@@ -148,13 +137,9 @@ function PlanColumn({ plan }: { plan: PlanCard }) {
       <div className="mt-8">
         <a
           className={buttonClass({ intent: featured ? 'primary' : 'secondary' })}
-          href={appUrl(plan.code === 'free' ? '/signup' : '/')}
+          href={appUrl(plan.code === 'free' ? '/login' : '/')}
         >
-          {plan.code === 'free'
-            ? 'Start free'
-            : plan.code === 'plus'
-              ? 'Upgrade an exchange'
-              : 'Start Work'}
+          {plan.code === 'free' ? 'Start free' : 'Upgrade an exchange'}
         </a>
       </div>
     </div>
@@ -174,12 +159,11 @@ function ComparisonTable({ plans }: { plans: PlanCard[] }) {
       values: {
         free: 'You share a private link',
         plus: 'Humbugg emails them, and tracks who has not answered',
-        work: 'Humbugg emails them, from your directory',
       },
     },
     {
       label: 'Chasing people',
-      values: { free: 'You do', plus: 'Automatic reminders', work: 'Automatic reminders' },
+      values: { free: 'You do', plus: 'Automatic reminders' },
     },
     {
       label: 'People per exchange',
@@ -192,15 +176,15 @@ function ComparisonTable({ plans }: { plans: PlanCard[] }) {
     },
     {
       label: 'Exchanges',
-      values: { free: 'One at a time', plus: 'Upgrade each one you need', work: 'As many as you run' },
+      values: { free: 'One at a time', plus: 'Upgrade each one you need' },
     },
     {
       label: 'Who can organize',
-      values: { free: 'You', plus: 'You and co-organizers', work: 'Administrators and organizers' },
+      values: { free: 'You', plus: 'You and co-organizers' },
     },
     {
       label: 'Branding',
-      values: { free: 'Humbugg’s', plus: 'Your greeting and colours', work: 'Your organization’s' },
+      values: { free: 'Humbugg’s', plus: 'Your greeting and colours' },
     },
     {
       label: 'Billing',

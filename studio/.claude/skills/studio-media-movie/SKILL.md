@@ -75,9 +75,9 @@ studio movies outputs <project>/latest --presign
 `<project>/<scene_id>`, `<project>/latest`, or a unique fragment of the id. A
 scene has exactly one output, so there is no `#N`.
 
-No approval gate applies here: a movie bills nothing. It is a stitch over material
-already in the library. (The gate covers what is sent to a model — see the repo
-CLAUDE.md.)
+Hard rule #2 does not apply here: a movie bills nothing. It is a stitch over
+material already in the library. (The rule covers what is sent to a model — see
+the repo CLAUDE.md.)
 
 ## What it leaves behind
 

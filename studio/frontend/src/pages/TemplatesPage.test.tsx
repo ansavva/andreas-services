@@ -1,4 +1,11 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -70,13 +77,14 @@ it("keeps the blocks on their OWN tab, and previews them beside the prompt", asy
   read.mockResolvedValue(SPEC);
   show();
   // By NAME. The id is the row's key and the route's address — minted for a
-  // create, never shown and never typed.
-  expect(await screen.findByText(/Face, front/)).toBeTruthy();
+  // create, never shown and never typed. The list comes first; the row opens
+  // the editor.
+  fireEvent.click(await screen.findByText(/Face, front/));
 
   // The prose is on screen — expanded into the preview, not as an editor.
-  expect(screen.getByLabelText("Assembled preview").textContent).toContain(
-    "THE FACE COMES FROM THE REFERENCE IMAGES.",
-  );
+  expect(
+    (await screen.findByLabelText("Assembled preview")).textContent,
+  ).toContain("THE FACE COMES FROM THE REFERENCE IMAGES.");
   expect(screen.queryByRole("button", { name: /\{face_only\}/ })).toBeNull();
 
   await blocksTab();
@@ -94,8 +102,10 @@ it("lists EVERY block, not only the ones some template happens to cite", async (
   });
   show();
   await blocksTab();
-  expect(screen.getByRole("button", { name: /\{orphan\}/ })).toBeTruthy();
-  expect(screen.getByText("0 templates")).toBeTruthy();
+  expect(
+    screen.getByRole("button", { name: /\{orphan\}/, expanded: false }),
+  ).toBeTruthy();
+  expect(screen.getByText("(0 templates)")).toBeTruthy();
 });
 
 it("says how many templates a block reaches BEFORE it is edited", async () => {
@@ -107,12 +117,16 @@ it("says how many templates a block reaches BEFORE it is edited", async () => {
     blocks: SPEC.blocks,
     templates: [
       SPEC.templates[0]!,
-      { ...SPEC.templates[0]!, name: "Face, back", prompt: "Back. {block.face_only}" },
+      {
+        ...SPEC.templates[0]!,
+        name: "Face, back",
+        prompt: "Back. {block.face_only}",
+      },
     ],
   });
   show();
   await blocksTab();
-  expect(screen.getByText("2 templates")).toBeTruthy();
+  expect(screen.getByText("(2 templates)")).toBeTruthy();
 });
 
 it("says what to do when a library holds no templates at all", async () => {
@@ -122,7 +136,7 @@ it("says what to do when a library holds no templates at all", async () => {
    */
   read.mockResolvedValue({ blocks: {}, templates: [] });
   show();
-  expect(await screen.findByText(/holds no templates/i)).toBeTruthy();
+  expect(await screen.findByText(/No templates yet/i)).toBeTruthy();
   expect(screen.getByText(/templates push/)).toBeTruthy();
 });
 
@@ -147,6 +161,7 @@ it("names a placeholder no block provides, while it is still being typed", async
     ],
   });
   show();
+  fireEvent.click(await screen.findByText(/Face, front/));
 
   // In WORDS. A Badge here is neutral chrome with an intent dot by design, so a
   // red-vs-grey pill would have carried the warning on hue alone.
@@ -172,17 +187,19 @@ it("saves one block without refetching the whole spec", async () => {
   fireEvent.change(box, { target: { value: "edited" } });
   fireEvent.click(screen.getAllByText("Save")[0]!);
 
-  await waitFor(() => expect(savedBlock).toHaveBeenCalledWith("face_only", "edited"));
+  await waitFor(() =>
+    expect(savedBlock).toHaveBeenCalledWith("face_only", "edited"),
+  );
   expect(read).toHaveBeenCalledTimes(1);
 });
 
 it("does not offer to save until something has changed", async () => {
   read.mockResolvedValue(SPEC);
   show();
+  fireEvent.click(await screen.findByText(/Face, front/));
   const save = (await screen.findAllByText("Save"))[0] as HTMLButtonElement;
   expect(save.disabled).toBe(true);
 });
-
 
 it("creates a block, which is the same call as editing one", async () => {
   /**
@@ -191,11 +208,14 @@ it("creates a block, which is the same call as editing one", async () => {
    * this is a form, not a second endpoint.
    */
   read.mockResolvedValue(SPEC);
-  savedBlock.mockResolvedValue({ name: "backdrop_body", text: "White seamless." });
+  savedBlock.mockResolvedValue({
+    name: "backdrop_body",
+    text: "White seamless.",
+  });
   show();
   await blocksTab();
 
-  fireEvent.click(screen.getByText("+ New block"));
+  fireEvent.click(screen.getByRole("button", { name: "New block" }));
   fireEvent.change(screen.getByLabelText("Name"), {
     target: { value: "backdrop_body" },
   });
@@ -207,7 +227,12 @@ it("creates a block, which is the same call as editing one", async () => {
   await waitFor(() =>
     expect(savedBlock).toHaveBeenCalledWith("backdrop_body", "White seamless."),
   );
-  expect(await screen.findByRole("button", { name: /\{backdrop_body\}/ })).toBeTruthy();
+  expect(
+    await screen.findByRole("button", {
+      name: /\{backdrop_body\}/,
+      expanded: false,
+    }),
+  ).toBeTruthy();
 });
 
 it("refuses a name no template could ever cite", async () => {
@@ -220,11 +245,17 @@ it("refuses a name no template could ever cite", async () => {
   show();
   await blocksTab();
 
-  fireEvent.click(screen.getByText("+ New block"));
-  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "2fast" } });
-  fireEvent.change(screen.getByLabelText("Text"), { target: { value: "prose" } });
+  fireEvent.click(screen.getByRole("button", { name: "New block" }));
+  fireEvent.change(screen.getByLabelText("Name"), {
+    target: { value: "2fast" },
+  });
+  fireEvent.change(screen.getByLabelText("Text"), {
+    target: { value: "prose" },
+  });
 
-  expect(screen.getByText(/Lowercase letters, digits and underscores/)).toBeTruthy();
+  expect(
+    screen.getByText(/Lowercase letters, digits and underscores/),
+  ).toBeTruthy();
   expect((screen.getByText("Create") as HTMLButtonElement).disabled).toBe(true);
 });
 
@@ -233,8 +264,10 @@ it("will not silently overwrite a block that already exists", async () => {
   show();
   await blocksTab();
 
-  fireEvent.click(screen.getByText("+ New block"));
-  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "face_only" } });
+  fireEvent.click(screen.getByRole("button", { name: "New block" }));
+  fireEvent.change(screen.getByLabelText("Name"), {
+    target: { value: "face_only" },
+  });
   expect(screen.getByText(/already holds that name/)).toBeTruthy();
 });
 
@@ -251,17 +284,21 @@ it("deletes a block, and says how many templates it will break first", async () 
   await blocksTab();
 
   fireEvent.click(screen.getByRole("button", { name: /\{face_only\}/ }));
-  const arm = screen.getByRole("button", { name: /Delete/ });
-  fireEvent.click(arm);
-  expect(screen.getByText(/1 template\(s\) cite it/)).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: /1 template\(s\) cite it/ }));
+  // A cited block takes templates down with it, so it types its name rather
+  // than arming in place — the gate a project or a character gets, not a file's.
+  fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+  const dialog = await screen.findByRole("alertdialog");
+  expect(dialog.textContent).toContain("1 template cites it");
+  fireEvent.change(within(dialog).getByLabelText("Confirm"), {
+    target: { value: "face_only" },
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
 
   await waitFor(() => expect(removeBlock).toHaveBeenCalledWith("face_only"));
   await waitFor(() =>
     expect(screen.queryByRole("button", { name: /\{face_only\}/ })).toBeNull(),
   );
 });
-
 
 it("renames a template by its ID, not by the name it had", async () => {
   /**
@@ -277,6 +314,7 @@ it("renames a template by its ID, not by the name it had", async () => {
     name: "Face, straight on",
   });
   show();
+  fireEvent.click(await screen.findByText(/Face, front/));
 
   const box = await screen.findByDisplayValue("Face, front");
   fireEvent.change(box, { target: { value: "Face, straight on" } });
@@ -287,5 +325,22 @@ it("renames a template by its ID, not by the name it had", async () => {
       "template-face-front",
       expect.objectContaining({ name: "Face, straight on" }),
     ),
+  );
+});
+
+it("templates are a list first; a row opens its editor, and All templates closes it", async () => {
+  read.mockResolvedValue(SPEC);
+  show();
+
+  // Rows by name, no editor open.
+  expect(await screen.findByText(/Face, front/)).toBeTruthy();
+  expect(screen.queryByLabelText("Assembled preview")).toBeNull();
+
+  fireEvent.click(screen.getByText(/Face, front/));
+  expect(await screen.findByLabelText("Assembled preview")).toBeTruthy();
+
+  fireEvent.click(screen.getByRole("button", { name: "All templates" }));
+  await waitFor(() =>
+    expect(screen.queryByLabelText("Assembled preview")).toBeNull(),
   );
 });

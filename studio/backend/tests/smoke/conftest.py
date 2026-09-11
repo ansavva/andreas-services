@@ -309,7 +309,7 @@ def scratch(api, root_node):
     it. The sweep is one listing of one folder inside this library and touches
     nothing that is not named `smoke-…`.
     """
-    for entry in api.get("/api/tree", node=root_node)["folders"]:
+    for entry in api.get("/api/nodes", under=root_node, kind="folder")["entries"]:
         if entry["name"].startswith(SCRATCH_PREFIX):
             api.delete(f"/api/nodes/{entry['id']}")
 

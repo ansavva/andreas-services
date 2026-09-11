@@ -8,8 +8,6 @@
 #   * Prose goes in the value, not in headings. Lists are lists, so prompts and
 #     checks can iterate them.
 
-schema_version: 1
-
 name: <name>                    # what the character is called; free text
 
 # --- the card: short phrases, one line each -----------------------------------

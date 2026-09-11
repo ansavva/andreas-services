@@ -26,6 +26,11 @@ test.beforeEach(async ({ page }) => {
 /** The first angle's prompt box, with the caret put at the end of its first paragraph. */
 async function prompt(page: import("@playwright/test").Page) {
   await page.goto("/templates");
+  // The tab is a list first; the row opens the editor.
+  await page
+    .getByText(/^Face, front$/)
+    .first()
+    .click();
   const box = page.getByLabel("Prompt for Face, front");
   await expect(box).toBeVisible();
   await box.click();
@@ -61,7 +66,9 @@ test("undo takes back what was typed", async ({ page }) => {
   await expect(box).not.toContainText("DELETE ME");
 });
 
-test("`{` opens the menu and NARROWS it as the name is typed", async ({ page }) => {
+test("`{` opens the menu and NARROWS it as the name is typed", async ({
+  page,
+}) => {
   /**
    * Two bugs. The trigger was `+`, a key nobody can guess with nothing on the
    * page to name it. And a second copy of the trigger parse read the wrong
@@ -105,7 +112,10 @@ test("choosing from the menu inserts a NAMESPACED pill and no stray brace", asyn
    */
   const box = await prompt(page);
   await page.keyboard.type(` {block.${UNCITED.slice(0, 4)}`);
-  await page.getByRole("option", { name: new RegExp(UNCITED) }).first().click();
+  await page
+    .getByRole("option", { name: new RegExp(UNCITED) })
+    .first()
+    .click();
 
   await expect(box.locator(`[data-token="block.${UNCITED}"]`)).toHaveCount(1);
   // The brace and the half-typed name are consumed by the insertion, not left
@@ -113,7 +123,9 @@ test("choosing from the menu inserts a NAMESPACED pill and no stray brace", asyn
   await expect(box).not.toContainText(`{block.${UNCITED.slice(0, 4)}{`);
 });
 
-test("a placeholder typed out in full becomes a pill by itself", async ({ page }) => {
+test("a placeholder typed out in full becomes a pill by itself", async ({
+  page,
+}) => {
   /**
    * The menu is the shortcut, not the entrance. When it was the only way in,
    * anyone who did not know the trigger could not insert one at all.
@@ -123,7 +135,9 @@ test("a placeholder typed out in full becomes a pill by itself", async ({ page }
   await expect(box.locator(`[data-token="${UNCITED}"]`)).toHaveCount(1);
 });
 
-test("dismissing the menu leaves what was typed, rather than eating it", async ({ page }) => {
+test("dismissing the menu leaves what was typed, rather than eating it", async ({
+  page,
+}) => {
   /**
    * The hand-rolled menu held the query in React state and threw the trigger
    * away, so everything typed after an accidental trigger went somewhere
@@ -135,8 +149,14 @@ test("dismissing the menu leaves what was typed, rather than eating it", async (
   await expect(box).toContainText("{zzz");
 });
 
-test("the preview writes each block out and says which block it was", async ({ page }) => {
+test("the preview writes each block out and says which block it was", async ({
+  page,
+}) => {
   await page.goto("/templates");
+  await page
+    .getByText(/^Face, front$/)
+    .first()
+    .click();
   const preview = page.getByLabel("Assembled preview").first();
   await expect(preview).toBeVisible();
   // The prose of a block the template only CITES.
@@ -146,43 +166,59 @@ test("the preview writes each block out and says which block it was", async ({ p
 
 test("the blocks live on their own tab", async ({ page }) => {
   await page.goto("/templates");
-  await expect(page.getByRole("button", { name: /\{scale_face\}/ })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: /\{scale_face\}/ }),
+  ).toHaveCount(0);
   await page.getByRole("tab", { name: /Blocks/ }).click();
-  await expect(page.getByRole("button", { name: /\{scale_face\}/ })).toHaveCount(1);
+  await expect(
+    page.getByRole("button", { name: /\{scale_face\}/ }),
+  ).toHaveCount(1);
 });
 
 test("a block can be closed again after it is opened", async ({ page }) => {
   await page.goto("/templates");
   await page.getByRole("tab", { name: /Blocks/ }).click();
-  // By `aria-expanded`, not by name: the delete control inside an opened block
-  // names the block too, so a name match is ambiguous the moment it opens.
+  // By `aria-expanded`, not by name: the delete control beside it names the
+  // block too, so a name match is ambiguous whether the block is open or not.
   const header = page
     .locator("button[aria-expanded]")
     .filter({ hasText: "{build_intro}" });
+  // `Collapsible.Panel` hides its content with `inert` rather than unmounting
+  // it, so the box stays in the DOM collapsed and a visibility check on it is
+  // not trustworthy — `inert` on the panel it controls is the real signal.
+  const panelId = await header.getAttribute("aria-controls");
+  const panel = page.locator(`#${panelId}`);
 
   await header.click();
-  const box = page.getByRole("textbox").filter({ hasText: /THE BUILD IS/ });
-  await expect(box).toHaveCount(1);
+  await expect(header).toHaveAttribute("aria-expanded", "true");
+  await expect(panel).not.toHaveAttribute("inert");
 
   await header.click();
-  await expect(box).toHaveCount(0);
+  await expect(header).toHaveAttribute("aria-expanded", "false");
+  await expect(panel).toHaveAttribute("inert");
 });
 
-test("Close and Escape both get you out of an opened block", async ({ page }) => {
+test("Close and Escape both get you out of an opened block", async ({
+  page,
+}) => {
   await page.goto("/templates");
   await page.getByRole("tab", { name: /Blocks/ }).click();
-  // By `aria-expanded`, not by name: the delete control inside an opened block
-  // names the block too, so a name match is ambiguous the moment it opens.
+  // By `aria-expanded`, not by name: the delete control beside it names the
+  // block too, so a name match is ambiguous whether the block is open or not.
   const header = page
     .locator("button[aria-expanded]")
     .filter({ hasText: "{build_intro}" });
-  const box = page.getByRole("textbox").filter({ hasText: /THE BUILD IS/ });
+  // Scoped to this block's own panel — every block's Close button shares the
+  // same name, and every panel is mounted whether open or collapsed.
+  const panelId = await header.getAttribute("aria-controls");
+  const panel = page.locator(`#${panelId}`);
+  const box = panel.getByRole("textbox").filter({ hasText: /THE BUILD IS/ });
 
   await header.click();
-  await page.getByRole("button", { name: "Close", exact: true }).click();
-  await expect(box).toHaveCount(0);
+  await panel.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(header).toHaveAttribute("aria-expanded", "false");
 
   await header.click();
   await box.press("Escape");
-  await expect(box).toHaveCount(0);
+  await expect(header).toHaveAttribute("aria-expanded", "false");
 });

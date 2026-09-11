@@ -76,11 +76,14 @@ module "compute" {
 
   dynamodb_table_arns      = module.storage.dynamodb_table_arns
   email_messages_table_arn = module.storage.email_messages_table_arn
-  avatars_bucket_arn       = module.storage.app_bucket_arn
-  mailer_status_queue_arn  = data.aws_ssm_parameter.mailer_status_queue_arn.value
-  cognito_user_pool_id     = module.auth.user_pool_id
-  cognito_user_pool_arn    = module.auth.user_pool_arn
-  cognito_client_id        = module.auth.user_pool_client_id
+  # app_files, not app: the SPA bundle and user uploads live in separate buckets, and
+  # the Lambda writes avatars to the files one (HUMBUGG_APP_BUCKET). Granting it against
+  # the hosting bucket made every avatar upload a 500 — AccessDenied on PutObject.
+  avatars_bucket_arn      = module.storage.app_files_bucket_arn
+  mailer_status_queue_arn = data.aws_ssm_parameter.mailer_status_queue_arn.value
+  cognito_user_pool_id    = module.auth.user_pool_id
+  cognito_user_pool_arn   = module.auth.user_pool_arn
+  cognito_client_id       = module.auth.user_pool_client_id
 
   api_throttling_rate_limit  = var.api_throttling_rate_limit
   api_throttling_burst_limit = var.api_throttling_burst_limit
@@ -211,6 +214,101 @@ module "billing" {
   stripe_publishable_key = var.stripe_publishable_key
   stripe_secret_key      = var.stripe_secret_key
   stripe_webhook_secret  = var.stripe_webhook_secret
+
+  tags = local.common_tags
+}
+
+# THE STRIPE WEBHOOK PATH, THE SAME ONE DEV RUNS.
+#
+# Stripe posts to this module's gateway, not to the API's route; the receiver
+# queues it and the consumer — the API's own image, entered through
+# ConsumerHost like the email-status and reminder Lambdas — verifies and
+# applies it. Dev is identical with a Compose service where the Lambda is. The
+# module header has the reasoning; the decision was that prod and dev do not
+# get to take different paths to the same code.
+#
+# The Stripe endpoint pointing at `webhook_endpoint_url` is registered by hand
+# (docs/stripe-setup.md §3) — the URL is known only after this applies. The
+# API's `/api/billing/stripe/webhook` route stays: harmless, and the smoke
+# test still proves the gateway reaches the application through it.
+module "webhook_relay" {
+  source = "../../modules/webhook_relay"
+
+  name_prefix = "${local.project}-${local.environment}"
+
+  create_consumer    = true
+  consumer_image_uri = "${module.compute.ecr_repository_url}:latest"
+  consumer_role_arn  = module.compute.api_role_arn
+  consumer_role_name = module.compute.api_role_name
+  alarm_topic_arn    = module.alerting.topic_arn
+
+  tags = local.common_tags
+}
+
+module "alerting" {
+  source = "../../modules/alerting"
+
+  project     = local.project
+  environment = local.environment
+
+  alert_email = var.alert_email
+
+  # `email-status` keeps its original threshold of 1: every error is a delivery status
+  # that never reached the ledger. The rest tolerate 2 errors in five minutes so a lone
+  # cold-start failure does not mail anyone. Throttles are alarmed for the request-path
+  # Lambda only — the consumers are asynchronous and retry.
+  lambda_functions = {
+    api = {
+      function_name   = module.compute.lambda_function_name
+      error_threshold = 3
+      throttle_alarm  = true
+    }
+    reminders = {
+      function_name   = module.compute.reminders_lambda_function_name
+      error_threshold = 3
+    }
+    marketing = {
+      function_name   = module.compute.marketing_lambda_function_name
+      error_threshold = 3
+    }
+    "email-status" = {
+      function_name   = module.compute.email_status_lambda_function_name
+      error_threshold = 1
+    }
+    # Errors here are infrastructure — a DynamoDB refusal, a bad image — not
+    # refused webhooks, which the consumer logs and consumes without throwing.
+    # A message that keeps failing lands in the relay's DLQ, which has its own
+    # alarm on the same topic.
+    "stripe-webhooks" = {
+      function_name   = module.webhook_relay.consumer_function_name
+      error_threshold = 2
+    }
+  }
+
+  api_ids = {
+    api       = module.compute.api_id
+    marketing = module.compute.marketing_api_id
+  }
+
+  dynamodb_table_names = module.storage.dynamodb_table_names
+
+  tags = local.common_tags
+}
+
+# The alarm predates the module. `moved` keeps the same AWS alarm — it is relocated in
+# state, not replaced, so nothing is destroyed and no alarm history is lost.
+moved {
+  from = module.compute.aws_cloudwatch_metric_alarm.email_status_errors
+  to   = module.alerting.aws_cloudwatch_metric_alarm.lambda_errors["email-status"]
+}
+
+# Published for future consumers — another stack that wants to notify the same place
+# reads this rather than duplicating a topic.
+resource "aws_ssm_parameter" "alerts_topic_arn" {
+  name        = "/humbugg/prod/alerts-topic-arn"
+  description = "SNS topic every Humbugg production alarm publishes to"
+  type        = "String"
+  value       = module.alerting.topic_arn
 
   tags = local.common_tags
 }

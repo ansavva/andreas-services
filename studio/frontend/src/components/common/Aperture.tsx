@@ -13,7 +13,7 @@ import { blades } from "../../utils/aperture";
 
 // --- the mark --------------------------------------------------------------
 
-export type ApertureSize = "sm" | "md" | "lg" | "xl";
+type ApertureSize = "sm" | "md" | "lg" | "xl";
 
 const SIZE_CLASS: Record<ApertureSize, string> = {
   sm: "size-4",

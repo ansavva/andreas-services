@@ -24,6 +24,9 @@ const webFirstExtensions = [
 
 export default defineConfig(({ command }) => ({
   plugins: [tailwindcss(), reactRouter()],
+  // :5175 — every service's dev ports are one table in the root CLAUDE.md.
+  // `strictPort`: a hop lands on a port Cognito has no callback for.
+  server: { port: 5175, strictPort: true },
   // Vite 8 resolves tsconfig `paths` natively.
   resolve: { tsconfigPaths: true, extensions: webFirstExtensions },
   // The design system publishes TypeScript source with no build step, so

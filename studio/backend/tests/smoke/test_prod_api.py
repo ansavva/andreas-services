@@ -80,7 +80,7 @@ def test_the_lambda_can_read_the_provider_token(api):
     call Replicate — every step of the credential path — without creating a
     prediction. Exercising the grant through `POST /api/runs/<id>/submit` would
     have meant a real generation on every deploy, which is a bill and, under hard
-    rule #2, a payload nobody approved.
+    rule #2, a run nobody asked for.
 
     **Two grants, and only one of them fails visibly on its own.** Granting
     `ssm:GetParameter` without `kms:Decrypt` fails at runtime with an

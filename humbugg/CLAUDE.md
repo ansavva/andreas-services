@@ -26,11 +26,11 @@ What it does:
 | Layer | Choice |
 |---|---|
 | Backend | ASP.NET Core 10 (C# 14) packaged as a Docker container Lambda behind API Gateway HTTP API, on its own domain |
-| Marketing (`web/`) | React Router v7 SSR on a Docker Lambda + CloudFront; hashed assets on S3. Vite, Tailwind v4, the design system's **web** leaves |
+| Marketing (`marketing/`) | React Router v7 SSR on a Docker Lambda + CloudFront; hashed assets on S3. Vite, Tailwind v4, the design system's **web** leaves |
 | Product app (`app/`) | Expo + Expo Router; `expo export -p web` → S3 + CloudFront. Metro, **no Tailwind**, the design system's **native** leaves rendered through react-native-web |
 | Auth | AWS Cognito (User Pool + secretless App Client). Sign-in **and sign-up** are hosted **Managed Login** pages at `auth.humbugg.com`; the app runs authorization code + PKCE through `expo-auth-session` and holds one screen, a button. Refresh-token rotation is on, which is why `ALLOW_REFRESH_TOKEN_AUTH` must never return to the client. The API still validates **access** tokens, unchanged. See [`docs/auth-managed-login.md`](docs/auth-managed-login.md) |
 | Data | DynamoDB — profiles, groups, groupmembers, private draws, reveal audit events, and email delivery IDs. **No email address**: Humbugg stores none, and reads a verified one back from Cognito at send time (`IAccountDirectory`, #137) |
-| Infra | Terraform in `humbugg/infra/` (`modules/` + `envs/prod`) |
+| Infra | Terraform in `humbugg/infra/` (`modules/` + `envs/prod` + per-machine `envs/dev`) |
 
 ## Directory Structure
 
@@ -39,10 +39,10 @@ humbugg/
 ├── backend/                    # ASP.NET Core app + Dockerfile, shipped as container Lambda
 │   ├── Dockerfile
 │   ├── Humbugg.slnx
-│   ├── Humbugg.Api/             # controllers → services → DynamoDB repositories
+│   ├── Humbugg.Api/             # controllers → services → DynamoDB repositories; Consumers/ (Lambda + Compose entry points)
 │   └── Humbugg.Api.Tests/       # matching and domain tests
-├── web/                        # Marketing site — React Router v7 SSR (www.humbugg.com)
-│   ├── app/                     # routes, including the legacy → app redirects
+├── marketing/                  # Marketing site — React Router v7 SSR (www.humbugg.com)
+│   ├── app/                     # routes (React Router file conventions)
 │   ├── src/                     # pages, Layout, config
 │   └── vite.config.ts
 ├── app/                        # Product app — Expo + Expo Router (app.humbugg.com)
@@ -50,8 +50,11 @@ humbugg/
 │   ├── src/                     # api client, contexts, theme
 │   └── app.json
 ├── infra/                      # Terraform
-│   ├── modules/                # auth, compute, hosting, storage
-│   └── envs/prod/              # Lambda + API Gateway + Cognito, S3 + CloudFront + Route53 alias
+│   ├── modules/                # auth, compute, hosting, storage, webhook_relay (dev only)
+│   ├── envs/prod/              # Lambda + API Gateway + Cognito, S3 + CloudFront + Route53 alias
+│   └── envs/dev/               # per-machine: Cognito pool, tables, bucket, Stripe webhook relay
+├── seeds/                      # dev.json — who exists on a dev stack and what they are in
+├── scripts/                    # dev-*.sh, dev-seed.mjs, webhook-relay/receiver.mjs (the zip)
 └── CLAUDE.md                   # ← this file
 ```
 
@@ -78,6 +81,17 @@ or shared developer resources. `dev-aws-setup.sh` persists a random UUID at
 state, DynamoDB tables, the private S3 bucket, and the Cognito pool. A developer
 may therefore use multiple machines without collisions.
 
+**Every local value lives in one file: `~/.config/andreas-services/humbugg/dev.env`.**
+Backend config, both frontends' inlined values, Stripe test keys, the dev test
+account — one file, documented key by key in [`dev.env.sample`](dev.env.sample).
+There is no `backend/.env`, `app/.env.local` or `marketing/.env.local` any
+more; `dev-aws-setup.sh` imports and deletes them if it finds them. The readers
+come to the file: Docker Compose takes it as `env_file`, `dev-up-app.sh` exports
+its `EXPO_PUBLIC_*` keys for Metro, `dev-up-marketing.sh` exports its `VITE_*`
+keys for Vite, and the integration and e2e tiers parse it. It sits outside the
+repo because ignored files vanish on `git clean` and never exist in a fresh
+worktree, while this one is per machine and shared by every checkout on it.
+
 ```bash
 # One-time toolchain and authentication setup (from the repo root).
 # The shared setup includes the Stripe CLI from stripe/stripe-cli/stripe.
@@ -85,25 +99,50 @@ may therefore use multiple machines without collisions.
 stripe login
 
 # Authenticate npm for the private design system package.
-export GITHUB_PACKAGES_TOKEN=<pat-with-read:packages>
-eval "$(./scripts/github-packages-auth.sh --export)"
+# NOT scripts/github-packages-auth.sh --export: it opens a device flow and hangs
+# on a non-interactive session.
+export NODE_AUTH_TOKEN=$(gh auth token)
 npm --prefix humbugg/marketing install
 npm --prefix humbugg/app install
 
 # Read-only validation of shared tools, .NET, AWS resources, and env files.
 ./humbugg/scripts/dev-setup.sh --check
 
-# Start backend, frontend, and Stripe webhook forwarding together.
+# Start backend (+ the Stripe webhook consumer beside it) and both frontends.
 ./humbugg/scripts/dev-up.sh
+
+# Put seven .test people and two exchanges — one at the Free ceiling, one on
+# Plus — on this machine. Needs dev-up.sh running. seeds/README.md.
+./humbugg/scripts/dev-aws-seed.sh
 ```
 
-The combined launcher retrieves the current Stripe CLI `whsec_...` signing
-secret before the backend starts, stores it only in the ignored `backend/.env`,
-and supervises all three processes. It does not generate Stripe API keys;
-`HUMBUGG_STRIPE_MODE=test`, the test publishable key, and the test secret key
-must already be configured according to `docs/stripe-setup.md`. Ctrl+C stops
-the complete session. Mailer and Mailpit remain a separate shared dependency
-and should be started with `cd mailer && docker compose up --build`.
+The combined launcher supervises three processes — the backend Compose project
+(API plus the webhook consumer), marketing, and app. It does not generate Stripe
+API keys; `HUMBUGG_STRIPE_MODE=test`, the test publishable key, and the test
+secret key must already be configured according to `docs/stripe-setup.md`; with
+Stripe disabled the consumer idles with one log line. Ctrl+C stops the complete
+session. Mailer and Mailpit remain a separate shared dependency and should be
+started with `cd mailer && docker compose up --build`.
+
+**Stripe webhooks take one path in every environment: gateway → receiver →
+queue → the backend image.** `modules/webhook_relay` (studio's
+`modules/callbacks` shape) is an HTTP API Gateway, a dependency-free Node zip
+receiver that only enqueues, and an SQS queue with a DLQ. The consumer is the
+API's own container entered through `ConsumerHost`
+(`HUMBUGG_CONSUMER=stripe-webhooks`, `Consumers/StripeWebhooks/`): in prod a
+Lambda on an event-source mapping, in dev the `webhook-consumer` Compose
+service long-polling this machine's queue. It verifies Stripe's signature with
+the queue's retention as the timestamp window
+(`IBillingService.ProcessQueuedWebhookAsync`), keeps only events carrying its
+`HUMBUGG_ENVIRONMENT` (`dev-<short12>` per machine, because every dev
+endpoint sits in one sandbox; `production` in prod), and applies them through
+the same `ApplyEventAsync` as the HTTP route. `dev-aws-setup.sh` registers the
+dev URL with Stripe and writes the endpoint id and `whsec_` into `dev.env`;
+prod's is registered by hand. `stripe listen` used to relay locally and lost
+every event emitted while it was not running; the queue holds them for 14 days.
+**The dev sandbox must not be production's account**: Stripe fans every event
+to every endpoint in an account, and prod is test-mode until #159.
+`docs/stripe-setup.md` §4.
 
 ### Development scripts
 
@@ -114,13 +153,13 @@ All commands run from the repository root:
 | `scripts/dev-setup.sh` | Idempotently install shared tooling; use `--check` for a read-only prerequisite audit |
 | `humbugg/scripts/dev-setup.sh` | Canonical dependency chain: shared setup → .NET 10 → per-machine AWS setup; accepts `--profile`, `--region`, `--yes`, `--check` |
 | `humbugg/scripts/dev-aws-setup.sh` | Lower-level AWS provision/check command called by canonical setup; accepts `--profile`, `--region`, `--yes`, `--check` |
-| `humbugg/scripts/dev-up.sh` | Preferred full local startup; accepts `--profile`, `--region`, `--forward-to` |
-| `humbugg/scripts/dev-up-backend.sh` | Backend-only startup; exports temporary AWS credentials into Docker Compose without writing them to disk |
-| `humbugg/scripts/dev-up-marketing.sh` | Marketing-site-only startup; validates `marketing/.env.local` and installed dependencies first |
-| `humbugg/scripts/dev-up-app.sh` | Product-app-only startup; defaults to `--web`, pass `--ios`/`--android` for a simulator |
-| `humbugg/scripts/dev-up-stripe.sh` | Stripe-only listener for the billing webhook's exact event allowlist; copy its `whsec_...` value into `backend/.env` and restart the backend when running components separately |
+| `humbugg/scripts/dev-up.sh` | Preferred full local startup — backend + webhook consumer, both frontends; accepts `--profile`, `--region` |
+| `humbugg/scripts/dev-up-backend.sh` | Backend startup — the API and the Stripe webhook consumer, two services of one Compose project; exports temporary AWS credentials into Docker Compose without writing them to disk |
+| `humbugg/scripts/dev-up-marketing.sh` | Marketing-site-only startup; exports `VITE_*` from `dev.env` and checks installed dependencies first |
+| `humbugg/scripts/dev-up-app.sh` | Product-app-only startup; exports `EXPO_PUBLIC_*` from `dev.env`; defaults to `--web`, pass `--ios`/`--android` for a simulator |
 | `humbugg/scripts/dev-logs-backend.sh` | Follow the backend container logs; accepts Docker Compose log options such as `--tail 200` |
-| `humbugg/scripts/dev-user.sh` | Create or converge the dev-stack test account; `--generate-password` for a non-interactive run, `--check` to report without changing. **Both halves live in `~/.config/andreas-services/humbugg/dev.env`** — `HUMBUGG_DEV_USER_EMAIL` and `HUMBUGG_DEV_USER_PASSWORD`. No address is committed; a reserved `.test` one is what belongs there |
+| `humbugg/scripts/dev-user.sh` | Create or converge the one dev-stack account `HUMBUGG_DEV_USER_EMAIL` names; `--generate-password` for a non-interactive run, `--check` to report without changing. The address should be one of the people in `seeds/dev.json` |
+| `humbugg/scripts/dev-aws-seed.sh` | Create every account in `seeds/dev.json` (one shared password, `HUMBUGG_DEV_USER_PASSWORD`) and load the fixture through the local API — profiles, exchanges, joins, a Plus purchase through Stripe test mode; `--check` reports without writing. Converges; see `seeds/README.md` |
 | `humbugg/scripts/dev-aws-reset.sh` | Destructive data reset scoped to this machine; run with `--dry-run` first; `--skip-cognito` preserves users |
 | `humbugg/scripts/dev-aws-destroy.sh` | Destroy this machine's AWS resources; the persistent UUID is deliberately retained |
 
@@ -133,9 +172,8 @@ To start components separately:
 
 ```bash
 ./humbugg/scripts/dev-up-backend.sh                     # http://localhost:5001
-./humbugg/scripts/dev-up-marketing.sh                         # http://localhost:5173
+./humbugg/scripts/dev-up-marketing.sh                         # http://localhost:5176
 ./humbugg/scripts/dev-up-app.sh                         # http://localhost:8081
-./humbugg/scripts/dev-up-stripe.sh                      # forwards billing webhooks
 ./humbugg/scripts/dev-logs-backend.sh                   # follows backend logs
 ```
 
@@ -155,15 +193,17 @@ resources but retains the UUID and state identity for safe reprovisioning.
 
 See [`scripts/README.md`](../scripts/README.md) for the setup scripts and GitHub Packages auth.
 
-`dev-aws-setup.sh` generates two ignored env files — the prefixes differ because
-the bundlers do (Vite exposes `VITE_*`, Metro inlines `EXPO_PUBLIC_*`). Do not
-create shared or committed values manually.
+`dev-aws-setup.sh` writes both frontends' values into `dev.env` — the prefixes
+differ because the bundlers do (Vite exposes `VITE_*`, Metro inlines
+`EXPO_PUBLIC_*`), and each dev-up script exports only its own prefix so neither
+bundler is handed the Stripe secret key. Do not create shared or committed
+values manually.
 
-`marketing/.env.local` — no Cognito values, because the marketing site no longer
+Marketing — no Cognito values, because the marketing site no longer
 authenticates anyone:
 
 ```
-VITE_APP_BASE_URL=http://localhost:5173
+VITE_APP_BASE_URL=http://localhost:5176
 VITE_APP_ORIGIN=http://localhost:8081
 VITE_API_BASE_URL=http://127.0.0.1:5001
 ```
@@ -173,23 +213,24 @@ catalogue from `GET /api/plans` server-side rather than restating prices (#158).
 Production sets nothing: `src/config/site.ts` defaults to `api.humbugg.com`, the
 same way it defaults `APP_ORIGIN`.
 
-`app/.env.local`:
+Product app:
 
 ```
 EXPO_PUBLIC_COGNITO_CLIENT_ID=<generated by scripts/dev-aws-setup.sh>
 EXPO_PUBLIC_COGNITO_DOMAIN=<generated by scripts/dev-aws-setup.sh>
 EXPO_PUBLIC_API_BASE_URL=http://127.0.0.1:5001/api
+EXPO_PUBLIC_WEB_BASE_URL=http://localhost:5176
 ```
 
 `EXPO_PUBLIC_COGNITO_DOMAIN` is the Managed Login **host**, no scheme and no path. A dev stack takes
 a default Cognito domain (`<prefix>.auth.<region>.amazoncognito.com`) rather than a custom one, so no
 certificate or DNS record is involved. The pool id and the AWS region are no longer app
 configuration — Amplify needed them and the hosted flow does not; `dev-aws-setup.sh` strips them from
-an existing `.env.local`.
+an existing `dev.env`.
 
 The app calls the backend **cross-origin** in development as well as production,
 so the backend's `CORS_ORIGINS` must list `http://localhost:8081` alongside
-`http://localhost:5173`.
+`http://localhost:5176`.
 
 ## Testing
 
@@ -208,6 +249,11 @@ The short version:
 
 Coverage is printed on every PR and gates on nothing, deliberately — the
 reasoning is in the map.
+
+**Operating the live service** (billing, email, support inbox, deletion requests, the
+emergency reveal, credential rotation, health/alerts/rollback) is
+[`docs/runbooks.md`](docs/runbooks.md). A suspected personal-data breach follows
+[`docs/breach-response.md`](docs/breach-response.md) instead (GDPR Art. 33/34).
 
 ## Environment Variables (Prod)
 

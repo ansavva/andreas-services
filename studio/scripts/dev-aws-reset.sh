@@ -11,11 +11,9 @@
 # `--dry-run` names everything it would remove and removes nothing.
 # `--skip-cognito` keeps the accounts, so a reset does not mean signing in again.
 #
-# **It does not re-seed.** `dev-aws-seed.sh` now exists and is the way back, but
-# the fixture it loads is #284 and has not been published — so what you get back
-# today is an empty stack either way. Named at the end rather than called: a
-# reset and a seed are separate decisions, and chaining them would make
-# `--skip-cognito` the only way to reset without re-downloading.
+# **It does not re-seed.** `dev-aws-seed.sh` is the way back, named at the end
+# rather than called: a reset and a seed are separate decisions, and chaining
+# them would make `--skip-cognito` the only way to reset without re-downloading.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

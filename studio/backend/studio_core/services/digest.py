@@ -1,12 +1,16 @@
-"""The two hashes both halves of studio have to agree on, byte for byte.
+"""The hash both halves of studio have to agree on, byte for byte.
 
-`plan_digest` is what makes an approval mean something after the fact, and
-`submission_fingerprint` is what stops the same payload being bought twice. Both
-are pure functions of a plan and its ordered sends, and both are compared across
-a wire: the CLI reads a digest off a run row and hands it back on `POST
-/api/runs/<id>/approve`, and the API recomputes it and refuses a mismatch. A
-disagreement between the two sides is therefore not a wrong answer — it is every
-approval failing, or worse, one silently passing.
+`submission_fingerprint` is what stops the same payload being bought twice, and
+`plan_digest` is the hash under it — a pure function of a plan and its ordered
+sends, with the model added on top. It is compared across a wire: the API
+projects it onto every run's listing row, and the CLI asks
+`GET /api/runs?fingerprint=` before it submits. A disagreement between the two
+sides is therefore not a wrong answer — it is a duplicate going unnoticed, or a
+fresh payload refused as one.
+
+`plan_digest` used to be stored on the row as well, as the thing an approval
+was recorded against. There is no approve step any more, so it is not stored
+and not served; it survives as the fingerprint's ingredient.
 
 ## Why this is a module of its own
 
@@ -60,20 +64,17 @@ def plain_numbers(value):
 
 
 def plan_digest(plan: dict | None, send_entries: list[dict]) -> str:
-    """A hash over everything a person approves: the plan AND the images.
+    """A hash over everything a submission sends: the plan AND the images.
 
-    **This is what makes an approval mean something after the fact.** Hard rule
-    #2 says re-approve after *any* edit, and until it existed nothing checked
-    it: the approval was a `y` at a terminal and the payload could be edited
-    afterwards with no trace. An approval records the digest it was given, `POST
-    /api/runs/<id>/approve` refuses one that no longer matches, and the submit
-    transition refuses a run whose recorded digest has gone stale.
+    **The fingerprint's ingredient**, and nothing else reads it now. It is kept
+    as its own function because what it includes is the definition of "the same
+    payload", and that definition is worth testing on its own.
 
     The sends are hashed by `(field, role, node)` and their ORDER — swapping two
     reference images changes what the model is shown, and a prompt citing "the
     first image" makes that change material rather than cosmetic. `source` is
     excluded: it is provenance for a reader, and re-deriving it more accurately
-    later must not invalidate an approval nobody's payload changed.
+    later must not make an unchanged payload hash differently.
     """
     payload = plain_numbers({
         "plan": plan or {},

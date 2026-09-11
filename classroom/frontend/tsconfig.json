@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "types": ["vite/client"],
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+
+    "allowImportingTsExtensions": false,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+
+    // Mirrors vite.config.ts's `resolve.extensions` ordering for tsc: the
+    // design system's extensionless re-exports must resolve to the `.web` leaf
+    // here too, or every component import is a type error.
+    "moduleSuffixes": [".web", ""]
+  },
+  "include": ["src", "vite.config.ts", "eslint.config.js"]
+}

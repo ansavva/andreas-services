@@ -1,0 +1,91 @@
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router-dom";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+
+vi.mock("../../apis/studio", () => ({
+  getCharacters: vi.fn().mockResolvedValue([]),
+  getProjects: vi.fn().mockResolvedValue([]),
+  // The create bar's reads. Out of scope here — `CreateBar.test.tsx` is its
+  // suite — but present, because an accessed name missing from the factory
+  // is a vitest error about the mock rather than an empty bar.
+  getModels: vi.fn().mockResolvedValue({}),
+  getProject: vi.fn().mockResolvedValue({ id: "proj-1", name: "A project", characters: [] }),
+  getTemplates: vi.fn().mockResolvedValue({ blocks: {}, templates: [] }),
+}));
+vi.mock("../../context/AuthContext", () => ({
+  useAuth: () => ({ email: "person@example.com", logout: vi.fn() }),
+}));
+// Out of scope here — see `LibrarySwitcher.test.tsx` for its own behaviour.
+vi.mock("../common/LibrarySwitcher", () => ({ LibrarySwitcher: () => null }));
+
+import { CreateBarProvider } from "../../context/CreateBarContext";
+import { SidebarProvider } from "../../context/SidebarContext";
+import { TestProviders } from "../../test-providers";
+import { TopBar } from "./TopBar";
+
+function Address() {
+  return <span data-testid="address">{useLocation().pathname}</span>;
+}
+
+function open() {
+  render(
+    <TestProviders>
+      <MemoryRouter>
+        <SidebarProvider>
+          <CreateBarProvider>
+            <TopBar />
+            <Address />
+          </CreateBarProvider>
+        </SidebarProvider>
+      </MemoryRouter>
+    </TestProviders>,
+  );
+}
+
+afterEach(cleanup);
+beforeEach(() => vi.clearAllMocks());
+
+it("holds the search and no create bar — that is a sheet at the foot of the column now", () => {
+  open();
+  const header = screen.getByRole("banner");
+  expect(header.querySelector("[data-create-bar]")).toBeNull();
+  expect(
+    within(header).getAllByRole("combobox", { name: "Find a character or project" }).length,
+  ).toBeGreaterThan(0);
+});
+
+it("offers a search control below md, where HeaderSearch's own box is hidden", () => {
+  open();
+  expect(screen.getByRole("button", { name: "Search" })).toBeTruthy();
+});
+
+it("Search opens a drawer holding the same combobox, autofocused", () => {
+  open();
+  expect(screen.queryByRole("dialog")).toBeNull();
+
+  fireEvent.click(screen.getByRole("button", { name: "Search" }));
+
+  const dialog = screen.getByRole("dialog", { name: "Search" });
+  const combobox = within(dialog).getByRole("combobox", {
+    name: "Find a character or project",
+  });
+  expect(document.activeElement).toBe(combobox);
+});
+
+it("Menu opens the sidebar's contents in a drawer, and following a link closes it", () => {
+  open();
+  fireEvent.click(screen.getByRole("button", { name: "Menu" }));
+
+  const dialog = screen.getByRole("dialog", { name: "Menu" });
+  const nav = within(dialog).getByRole("navigation", { name: "Sections" });
+  for (const label of ["Home", "Characters", "Projects", "Files", "Templates"]) {
+    expect(within(nav).getByRole("link", { name: label })).toBeTruthy();
+  }
+  // A drawer is dismissed, not collapsed.
+  expect(within(dialog).queryByRole("button", { name: /sidebar/ })).toBeNull();
+
+  fireEvent.click(within(nav).getByRole("link", { name: "Characters" }));
+
+  expect(screen.getByTestId("address").textContent).toBe("/characters");
+  expect(screen.queryByRole("dialog")).toBeNull();
+});

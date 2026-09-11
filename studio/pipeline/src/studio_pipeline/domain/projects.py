@@ -12,11 +12,9 @@ movie names its own folder node rather than a path built from a convention.
 
 PROJECT vs CHARACTER
 --------------------
-A character is an identity record; a project is a piece of work. They used to be
-the same folder, which meant work involving two characters had nowhere to live
-and work involving none had to borrow a fake character called `misc`. Involvement
-is now `PROJ#…/CHAR#…` rows, which makes the reverse question — *which projects
-involve this character* — answerable for the first time at any price.
+A character is an identity record; a project is a piece of work, which may
+involve two characters or none. Involvement is `PROJ#…/CHAR#…` rows, so the
+reverse question — *which projects involve this character* — is one query.
 
 Nothing is inferred: every generating command takes an explicit `--project`.
 Guessing where output lands is the one thing that cannot be undone by rerunning a
@@ -126,9 +124,8 @@ def input_nodes(record: dict, numbers: list[int]) -> list[str]:
 def add_inputs(record: dict, paths: list[str]) -> list[dict]:
     """Upload local files into the pool, keeping their own basenames.
 
-    **No renaming**, where every file used to be renumbered into
-    `<project>_in_<n>`. A pool position is a listing position now, so a name
-    carries no meaning and throwing away the one it arrived with would only lose
+    **No renaming.** A pool position is a listing position, so a name carries
+    no meaning and throwing away the one it arrived with would only lose
     information.
 
     The pool folder is resolved by name under the project's root and created if
@@ -209,10 +206,9 @@ def do_new(project, characters, description):
     """Create a project: the record, its index row, its root and five subfolders.
 
     All of it in one transaction — either the project exists completely or it
-    does not exist at all. The subfolders used to appear lazily, on whatever
-    write happened to need one first, so a project could exist with no `runs/`.
+    does not exist at all, `runs/` and its siblings included.
 
-    **No conflict to catch.** The name was a claimed slug; it is a label now.
+    **No conflict to catch.** The name is a label, not a claim.
     """
     record = entities.create_project(
         project, description=description, characters=_character_ids(characters))
@@ -279,11 +275,10 @@ def _linked_ids(record: dict) -> list[str]:
 @click.argument("project", required=True)
 @click.argument("character", required=True)
 def do_link(project, character):
-    """Record that a project involves a character. **New — maintained explicitly.**
+    """Record that a project involves a character.
 
-    It used to be a list inside `project.json`, which made the reverse question
-    unanswerable and let a character be deleted while work still cited it. It is
-    a row, readable from either end.
+    It is a row, readable from either end, so a character cannot be deleted
+    while work still cites it.
     """
     record = require_project(project)
     char = _character_ids([character])[0]

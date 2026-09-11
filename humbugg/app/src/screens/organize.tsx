@@ -23,7 +23,7 @@ import { TemplatesPanel } from '../components/templates';
 import { Card, LoadingPanel, Shell } from '../components/shell';
 import { StatusMessage } from '../components/status-message';
 import { useAuth } from '../context/auth-context';
-import { blends, gap, styles } from '../theme/styles';
+import { gap, useTheme } from '../theme/styles';
 import type {
   GroupDetail,
   GroupReadiness,
@@ -49,6 +49,7 @@ export default function OrganizeScreen({
   /** Stripe's `?checkout=` return value on the web. Native returns by closing the browser instead. */
   checkout?: string | null;
 }) {
+  const { styles } = useTheme();
   const auth = useAuth();
   const router = useRouter();
   const [group, setGroup] = useState<GroupDetail | null>(null);
@@ -104,7 +105,7 @@ export default function OrganizeScreen({
     }
   }
 
-  if (loading) return <Shell><LoadingPanel>Checking who is ready…</LoadingPanel></Shell>;
+  if (loading) return <Shell><LoadingPanel /></Shell>;
 
   if (forbidden || !group || !readiness) {
     return (
@@ -324,6 +325,7 @@ function Stat({
   ready?: number;
   total?: number;
 }) {
+  const { styles } = useTheme();
   const showMeter = ready !== undefined && total !== undefined && total > 0;
   return (
     <Card style={local.stat}>
@@ -355,6 +357,7 @@ function NudgePanel({
   invitations: PendingInvitation[];
   total: number;
 }) {
+  const { blends, styles } = useTheme();
   const outstanding = participants.filter((person) => person.nudges.length > 0);
   return (
     <Card style={total > 0 ? { borderColor: blends.primaryBorder } : undefined}>
@@ -423,6 +426,7 @@ function RosterPanel({
   onNeedsPlus(): void;
   onAddLate(person: ParticipantReadiness): void;
 }) {
+  const { styles } = useTheme();
   const auth = useAuth();
   const { width } = useWindowDimensions();
   // Under 640px the badges go under the name instead of beside it; three chips beside a name on a
@@ -561,6 +565,7 @@ function rowLabel(person: ParticipantReadiness, drawn: boolean): string {
 }
 
 function GiftProgressPanel({ readiness }: { readiness: GroupReadiness }) {
+  const { styles } = useTheme();
   const progress = readiness.gift_progress;
   return (
     <Card>

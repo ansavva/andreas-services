@@ -23,11 +23,11 @@ export default function ProtectedLayout() {
   const { loaded: profileLoaded } = useProfile();
   const pathname = usePathname();
 
-  if (auth.loading) return <LoadingPanel>Checking your session…</LoadingPanel>;
+  if (auth.loading) return <LoadingPanel />;
 
   if (!auth.authenticated) return <SignInRedirect returnTo={pathname} />;
 
-  if (!profileLoaded) return <LoadingPanel>Loading your profile…</LoadingPanel>;
+  if (!profileLoaded) return <LoadingPanel />;
 
   // The web app also redirected a profile-less user away from every protected
   // route except the dashboard. That branch is gone because the dashboard IS

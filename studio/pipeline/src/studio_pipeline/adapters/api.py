@@ -1,4 +1,4 @@
-"""One transport for every studio API call (#301).
+"""One transport for every studio API call.
 
 Every HTTP call the CLI makes goes through `request`. That is the point: bearer
 token, refresh-on-401, library header and error mapping are decided once, and no

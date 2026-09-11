@@ -16,10 +16,9 @@ A movie is a **row**, `movie-<uuid>`, addressed by id and labelled by a free-tex
                      scenes/   each scene's output, copied in, in cut order
                      output/   the finished movie
 
-**`movie.json` is gone**, and so is the `<timestamp>_<label>` folder name that
-was its id. A movie is listed by `GET /api/movies?project=` and ordered by
-`created` on the row; its folder is named by `folder` rather than derived from a
-name, so renaming it strands nothing.
+**A movie is a row, not a document.** It is listed by `GET /api/movies?project=`
+and ordered by `created`; its folder is named by `folder` rather than derived
+from a name, so renaming it strands nothing.
 
 DERIVED, NEVER A SOURCE OF TRUTH
 --------------------------------
@@ -37,10 +36,6 @@ the bytes have to travel.
 
 STITCHING IS A RENDER JOB — SAME ARRANGEMENT AS A SCENE
 --------------------------------------------------------
-This section used to say the opposite: `ffmpeg` ships in this wheel and the
-Lambda has none, so `create` downloads each scene's cut, stitches here and
-uploads the result. That was a statement about an image, and the image changed.
-
 `create` resolves every sceneref to a cut, creates the movie row, and enqueues
 **one render job**. The worker copies each scene's cut into `scenes/`, stitches
 by the same rules a scene is stitched by, uploads the movie and records
@@ -110,8 +105,7 @@ def resolve_movie(ref: str, default_project: str | None = None) -> dict:
     `runs.resolve_run` and `scenes.resolve_scene`, and for the same reason:
     every caller reads the movie next, and a pair meant a second round trip.
 
-    `latest` is `created` on the row. It used to be `ids[-1]` over folder names,
-    which was only chronological because every id began with a timestamp.
+    `latest` is `created` on the row.
     """
     if "/" in ref:
         project, mid = ref.split("/", 1)
@@ -145,21 +139,14 @@ def resolve_movie(ref: str, default_project: str | None = None) -> dict:
         + ", ".join(f"{m['id']} ({m.get('name') or '-'})" for m in hits[:5]))
 
 
-def movie_folder(record: dict, *names: str) -> str:
-    """A folder inside the movie's own folder, created if it is absent."""
-    return store.folder_path(record["folder"], *names)["id"]
-
-
 # ── build ───────────────────────────────────────────────────────────────────
 
 def scene_characters(record: dict) -> list[str]:
     """Whose likeness is in a scene, as character ids.
 
     A scene records this on its row, written by `scenes assemble` from the runs
-    behind its shots. It is read straight off rather than recomputed — the walk
-    this used to fall back to (ask every shot's run) existed because a scene cut
-    before scenes carried the field had no answer, and there is nowhere left for
-    a scene without the field to come from: the row is created with it.
+    behind its shots, and the row is created with it — so it is read straight
+    off rather than recomputed from every shot's run.
     """
     return list(record.get("characters") or [])
 
@@ -174,11 +161,10 @@ def create(project: dict, name: str, refs: list[str],
     scene files parented to a folder nothing names.
 
     **The copy into `scenes/` is the worker's now**, along with the stitch and the
-    record. It is still a download plus an upload rather than a server-side
-    `CopyObject`, and for the reason it always was: a second node on one blob is
-    copy-on-write (#334), and the API's delete route destroys the shared bytes
-    when either row goes. What changed is where the two hops happen — inside one
-    Lambda with the file already on its disk, instead of through a terminal.
+    record. It is a download plus an upload rather than a server-side
+    `CopyObject`, because the API's delete route destroys a blob when its row
+    goes, so two rows may not share one. Both hops happen inside one Lambda with
+    the file already on its disk.
     """
     # Resolve every scene before anything is created, and report ALL the ones
     # that are not cut yet. A scene can exist as a plan, so "not assembled" is an

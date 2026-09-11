@@ -7,12 +7,11 @@
 // why nothing here tries to render markup either — what is typed is what is shown, as text.
 import { Button, Input, Textarea } from '@ansavva/design-system';
 import { useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, Text, View } from 'react-native';
 
 import { api } from '../api/client';
 import { useAuth } from '../context/auth-context';
-import { blends, gap, styles } from '../theme/styles';
-import { brand } from '../theme/theme';
+import { gap, scopedStyles, useTheme } from '../theme/styles';
 import type { ExchangeCustomization, GroupDetail } from '../types';
 import { pickBanner } from '../utils/image-picker';
 import { FieldLabel } from './field';
@@ -36,6 +35,9 @@ export function CustomizationPanel({
   group: GroupDetail;
   onSaved(next: GroupDetail): void;
 }) {
+  const theme = useTheme();
+  const { styles } = theme;
+  const local = localStyles(theme);
   const auth = useAuth();
   const [draft, setDraft] = useState<ExchangeCustomization>({
     ...DEFAULTS,
@@ -196,6 +198,9 @@ function Colour({
   value: string;
   onChange(next: string): void;
 }) {
+  const theme = useTheme();
+  const { brand, styles } = theme;
+  const local = localStyles(theme);
   return (
     <View style={{ flex: 1, minWidth: 160 }}>
       <FieldLabel label={label} help="#RRGGBB">
@@ -213,14 +218,15 @@ function Colour({
   );
 }
 
-const local = StyleSheet.create({
+/** Built once per scheme — see `scopedStyles`. */
+const localStyles = scopedStyles((t) => ({
   banner: {
     marginTop: 8,
     width: '100%',
     aspectRatio: 2,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: blends.primaryBorder,
+    borderColor: t.blends.primaryBorder,
   },
-  swatch: { width: 24, height: 24, borderRadius: 6, borderWidth: 1, borderColor: brand.line },
-});
+  swatch: { width: 24, height: 24, borderRadius: 6, borderWidth: 1, borderColor: t.brand.line },
+}));

@@ -1,5 +1,0 @@
-aws_region          = "us-east-1"
-anthropic_api_key   = "sk-ant-..."
-gmail_client_id     = "..."
-gmail_client_secret = "..."
-gmail_refresh_token = "..."

@@ -98,12 +98,17 @@ test("the object screen is a page in the app shell, not an overlay", async ({
   await page.goto(at(CLIP_ITEM.id));
 
   // The three things that make it a page: the shell's own navigation above it,
-  // a `PageBar` naming the file, and the neighbours drawn underneath rather
+  // a crumb saying where it sits, and the neighbours drawn underneath rather
   // than scrolled through in the dark.
+  //
+  // Not the filename — the object screen stopped drawing one (`ObjectFacts`),
+  // and a `getByText` on it now matches the tail of the `key` line instead,
+  // which is an assertion that passes without meaning what it says.
   await expect(
     page.getByRole("navigation", { name: /sections/i }).first(),
   ).toBeVisible();
-  await expect(page.getByText(CLIP_ITEM.name).first()).toBeVisible();
+  // Scoped to `main`: the sidebar carries a "Files" link of its own.
+  await expect(page.locator("main").getByRole("link", { name: "Files" })).toBeVisible();
   await expect(page.getByLabel("Neighbours")).toBeVisible();
   await expect(
     page.getByRole("region", { name: "File details" }),
@@ -233,7 +238,8 @@ test("a cold link with no context shows the file and says what it belongs to", a
   // would have added stripped off.
   await page.goto(`/o/${STILL.id}`);
 
-  await expect(page.getByText(STILL.name).first()).toBeVisible();
+  // The picture itself, not its name: see the note in the app-shell test above
+  // for why a `getByText` on the filename no longer proves anything.
   await expect(page.locator("main img").first()).toBeVisible();
 
   // One pane is not a sequence, so there is no strip — and the way back is the
@@ -252,8 +258,10 @@ test("a non-media node still opens the text page", async ({ page }) => {
   // frame, and Phase C moved the branch that decides which.
   await page.goto(`/o/${TEXT_NODE.id}`);
 
+  // No `dialog` role any more — `TextPage` is an ordinary page inside
+  // `AppLayout` now, with its own `PageBar` heading rather than a takeover.
   await expect(
-    page.getByRole("dialog", { name: TEXT_NODE.name }),
+    page.getByRole("heading", { name: TEXT_NODE.name }),
   ).toBeVisible();
   await expect(page.getByText('"shot"')).toBeVisible();
   await expect(page.getByRole("button", { name: "Close (Esc)" })).toBeVisible();
@@ -338,10 +346,16 @@ for (const [label, width] of [
  * `tile.scrollIntoView({ block: "nearest", inline: "center" })`, and
  * `block: "nearest"` does not mean "do not scroll vertically" — when the strip
  * sits below the fold, as it does at 390px, the browser scrolls every
- * scrollable ancestor to reveal it. `window.scrollY` settled at 85 and the
- * file's own name went under the sticky header, on the one width where a name
- * is hardest to spare. Scrolling the strip by hand fixes that, and the second
- * half of this test is what stops the fix from being "never scroll at all".
+ * scrollable ancestor to reveal it. `window.scrollY` settled at 85 and the top
+ * of the content column went under the sticky header. Scrolling the strip by
+ * hand fixes that, and the second half of this test is what stops the fix from
+ * being "never scroll at all".
+ *
+ * **What is asserted on top is Close, not the filename.** The name was the
+ * page's `<h2>` when this was written and is not drawn at all now — see
+ * `ObjectFacts`. Close is the better subject anyway: it sits in the same first
+ * row, and a control you cannot press is a worse outcome than a word you
+ * cannot read.
  */
 test("opening an object does not scroll the page, and the strip still centres", async ({
   page,
@@ -356,22 +370,19 @@ test("opening an object does not scroll the page, and the strip still centres", 
 
   await expect.poll(async () => page.evaluate(() => window.scrollY)).toBe(0);
 
-  // The name is the thing the old behaviour hid: assert it is genuinely on top
-  // at its own centre, not merely present in the DOM.
+  // Genuinely on top at its own centre, not merely present in the DOM.
   await expect
     .poll(async () =>
-      page.evaluate((name) => {
-        const title = [...document.querySelectorAll("h4")].find(
-          (el) => el.textContent?.trim() === name,
-        );
-        if (!title) return "missing";
-        const box = title.getBoundingClientRect();
+      page.evaluate(() => {
+        const close = document.querySelector('button[aria-label="Close (Esc)"]');
+        if (!close) return "missing";
+        const box = close.getBoundingClientRect();
         const hit = document.elementFromPoint(
           Math.round(box.x + box.width / 2),
           Math.round(box.y + box.height / 2),
         );
-        return hit === title || title.contains(hit) ? "on top" : "covered";
-      }, target.name),
+        return hit === close || close.contains(hit) ? "on top" : "covered";
+      }),
     )
     .toBe("on top");
 
@@ -417,24 +428,22 @@ test("the current tile's selection ring is not clipped", async ({ page }) => {
 });
 
 /**
- * **The run screen splits, and collapses output-first.**
+ * **The opened run is a lightbox: the stage and the rail side by side, and
+ * the rail under the stage on a phone.**
  *
- * Two assertions in one test because they are one decision. Above `lg` the
- * result sits in the right-hand column beside what produced it, the way the
- * provider's own playground reads. Below it there is one column and the OUTPUT
- * LEADS — the run page used to stack input first, so on a phone the thing a
- * person opened the page for sat under a fact table, an approval bar and every
- * binding the run had.
+ * Two assertions in one test because they are one decision. Above `md` the
+ * run's own details sit in a rail beside the picture, the way the mockup
+ * draws it. Below it there is one column and the OUTPUT LEADS — the thing a
+ * person opened the run for is first, and the rail scrolls under it.
  *
- * The output section is first in the DOM at both widths, which is what makes
- * the narrow case need no `order` override; the wide case places it with
- * `col-start`. So the heading order below is also the screen-reader order.
+ * The output is a video and must render as one — an `.mp4` handed to <img>
+ * is the broken thumbnail this suite exists to keep fixed.
  */
 for (const [label, width, splits] of [
   ["desktop", 1440, true],
   ["mobile", 390, false],
 ] as const) {
-  test(`the run screen ${splits ? "splits" : "stacks output-first"} at ${label}`, async ({
+  test(`the opened run ${splits ? "puts the rail beside the stage" : "stacks the rail under the stage"} at ${label}`, async ({
     page,
   }) => {
     stubOnly();
@@ -442,33 +451,27 @@ for (const [label, width, splits] of [
     await page.goto(`/p/${RUN_PROJECT}/r/${RUN_ID}`);
     await page.waitForLoadState("networkidle");
 
-    // Both columns are named, and the result is read first either way.
-    await expect(page.getByText("Inputs", { exact: true })).toBeVisible();
-    await expect(page.getByText("Outputs", { exact: true })).toBeVisible();
+    const dialog = page.getByRole("dialog", { name: "Run" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator("video").first()).toBeVisible();
+    await expect(dialog.getByRole("complementary", { name: "Run details" })).toBeVisible();
 
     const geometry = await page.evaluate(() => {
-      const sections = [...document.querySelectorAll("section")];
-      const outputs = sections.find((s) =>
-        s.textContent?.startsWith("Outputs"),
-      );
-      const column = document.querySelector('[class*="lg:col-start-1"]');
-      if (!outputs || !column) return null;
-      const out = outputs.getBoundingClientRect();
-      const left = column.getBoundingClientRect();
+      const dialog = document.querySelector('[role="dialog"][aria-label="Run"]');
+      const video = dialog?.querySelector("video");
+      const rail = dialog?.querySelector('aside[aria-label="Run details"]');
+      if (!video || !rail) return null;
+      const v = video.getBoundingClientRect();
+      const r = rail.getBoundingClientRect();
       return {
-        sideBySide: out.left >= left.right - 1,
-        outputAbove: out.top < left.top,
+        sideBySide: r.left >= v.right - 1,
+        railBelow: r.top >= v.bottom - 1,
       };
     });
 
     expect(geometry).not.toBeNull();
     expect(geometry!.sideBySide).toBe(splits);
-    // Stacked, the result leads. Split, they start on the same row.
-    if (!splits) expect(geometry!.outputAbove).toBe(true);
-
-    // The output is a video and must render as one — an `.mp4` handed to <img>
-    // is the broken thumbnail this suite exists to keep fixed.
-    await expect(page.locator("main video").first()).toBeVisible();
+    if (!splits) expect(geometry!.railBelow).toBe(true);
   });
 }
 

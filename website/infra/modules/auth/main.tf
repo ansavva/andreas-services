@@ -17,7 +17,7 @@ resource "aws_cognito_user_pool" "main" {
   #
   # `username_configuration` is accepted only at pool creation, so the provider
   # marks it ForceNew: applying it destroys the pool and every account in it.
-  # Cheap here for the same reason it is in scout — one admin account, and
+  # Cheap here — one admin account, and
   # nothing in `website/` keys on the Cognito `sub`. The session cookie holds an
   # ID token used only as a bearer credential; intake submissions are not
   # user-keyed.

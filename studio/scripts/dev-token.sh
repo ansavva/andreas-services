@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Print an ID token for this machine's dev-pool test account.
 #
-# The missing half of the dev environment: #289 wants integration tests that
-# validate "a real dev-pool ID token" through `identity.caller_sub`, and until
-# this existed there was no way to obtain one. It is also what turns a curl
-# against the local API into a real signed-in request:
+# The integration tests validate a real dev-pool ID token through
+# `identity.caller_sub`, and this is how one is obtained. It is also what turns
+# a curl against the local API into a real signed-in request:
 #
 #   curl -H "Authorization: Bearer $(./studio/scripts/dev-token.sh)" \
 #        http://localhost:8000/api/libraries

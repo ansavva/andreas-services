@@ -19,7 +19,7 @@ export const env = {
    *  so `request.url` carries the Function URL — unusable as an OAuth redirect
    *  URI, which Cognito matches character for character. Unset locally, where
    *  the dev server is the origin. */
-  publicOrigin: process.env.PUBLIC_ORIGIN ?? "http://localhost:5173",
+  publicOrigin: process.env.PUBLIC_ORIGIN ?? "http://localhost:5175",
   /** Secret used to sign the admin session cookie. */
   sessionSecret: process.env.SESSION_SECRET ?? "dev-insecure-session-secret",
 };

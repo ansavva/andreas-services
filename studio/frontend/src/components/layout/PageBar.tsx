@@ -1,9 +1,9 @@
-import type { ReactNode } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import type { ReactElement, ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 
-import { Breadcrumbs, IconButton } from "@ansavva/design-system";
+import { Breadcrumbs, Text } from "@ansavva/design-system";
 
-import { ArrowUpIcon } from "../common/icons";
+import { ActionMenu } from "../common/ActionMenu";
 
 /** One step above the current page. The current page itself is never a crumb. */
 export interface Crumb {
@@ -11,107 +11,180 @@ export interface Crumb {
   to: string;
 }
 
+/**
+ * One entry in the overflow menu behind the `⋯` trigger.
+ *
+ * **The arming escape hatches are gone**, and nothing lost them: `ActionMenu`
+ * draws this menu now and carries `danger` itself, which is what those two
+ * props (`onClick` + `itemProps`) existed to let a caller hand-roll. No page
+ * used them; every one of the four passes a Delete that opens its own
+ * `ConfirmDestroyDialog`.
+ */
+interface PageBarMenuItem {
+  label: string;
+  /** A glyph beside the word, as every menu line in the app now carries. */
+  icon: ReactElement;
+  onSelect: () => void;
+  /** Red label — for an item that destroys something. */
+  danger?: boolean;
+  disabled?: boolean;
+}
+
 interface Props {
-  /**
-   * Where this page sits, nearest ancestor last.
-   *
-   * **This is what replaced three hand-rolled `← Project` buttons.** A run, a
-   * scene and a movie each grew their own back button pointing at their
-   * project, each styled and placed slightly differently, and every other page
-   * had nothing at all — so "how do I get out of here" had three answers and
-   * one shrug. A crumb says where you are as well as offering the way up, which
-   * a button cannot.
-   */
+  /** Where this page sits, nearest ancestor last. Never the current page. */
   crumbs?: Crumb[];
-  /** The title block — a heading, a slug, whatever badges the page carries. */
-  children?: ReactNode;
-  /** This page's own controls. Delete lives here on the pages that have one. */
+  /** The page's name. A string renders as `Text variant="display"`, truncating. */
+  title?: string;
+  /** A row under the title — status, kind, a date, whatever the page counts as its own facts. */
+  meta?: ReactNode;
+  /** The one action worth a full button — "New character", "Run again". */
+  primary?: ReactNode;
+  /**
+   * Everything else this page can do to itself, behind one `⋯`.
+   *
+   * A danger item opens its own confirmation rather than firing straight from
+   * the menu — render a `ConfirmDestroyDialog` in controlled `open` mode
+   * beside the page's `PageBar` call and toggle it from `onSelect`.
+   */
+  menu?: PageBarMenuItem[];
+  /** Told when the menu opens or closes. */
+  onMenuOpenChange?: (open: boolean) => void;
+  /**
+   * Icon buttons that have to stay reachable — a copy, a download, a close.
+   *
+   * Kept separate from `menu` because these are not optional to reach: Object
+   * draws its Copy/Edit/Download/Close here, where a menu would cost an extra
+   * press for a control used on every visit.
+   */
   actions?: ReactNode;
+  /**
+   * A `Tabs.List`, rendered at the bar's own bottom edge so its underline is
+   * the bar's hairline rather than a second rule an inch below it.
+   *
+   * Passed as an element rather than owned here: the page still wraps
+   * everything — this bar included — in its own `Tabs.Root`, and an element
+   * handed down as a prop renders inside that tree exactly as if it had been
+   * written beside the panels, so the shared context reaches it either way.
+   */
+  tabs?: ReactNode;
 }
 
 /**
- * A page's own header row: where it sits, what it is, and what can be done to it.
+ * The page frame every routed screen now shares: where it sits, what it is
+ * called, and what can be done to it.
  *
- * The two groups are `justify-between` children rather than one run of items
- * with `ms-auto` on the last, and that is load-bearing on a phone: `ms-auto`
- * pins a control to the right of whatever *line* the flex run happened to break
- * at, so a destructive button moved around under the title depending on how long
- * the name was. Two groups give it one place on a wide screen and one place on a
- * narrow one.
+ * **This used to be a title bar with two open slots — `children` for the
+ * heading and `actions` for whatever controls the page carried — and every
+ * page filled them differently.** One page's Delete sat loose beside its
+ * title; another buried it three tabs deep; a third drew five icon buttons
+ * over the media it was destroying. `menu`, `primary` and `actions` are the
+ * three answers a page's own controls can be, in order of how often they are
+ * reached for — most pages need one of the first two and nothing else.
+ * `children` carried the transitional shape while every page migrated and is
+ * gone now that all of them have: every call site names `title`.
  *
- * **A hairline under it, not a card around it.** The title block used to end
- * where the next section's own margin began, so on a page of stacked bordered
- * cards the heading read as one more card. One rule at the bottom is what
- * separates "what this page is" from "what is on it" — and it is the same rule
- * every section boundary in the app is drawn with now, so a page reads as one
- * column divided rather than a stack of boxes.
+ * **The back arrow is gone.** It answered "where did I come from", which the
+ * browser's own Back already answers, and it changed the bar's height
+ * depending on `location.key` — the one piece of layout on this component that
+ * moved for a reason nothing on screen explained. A crumb still answers "where
+ * am I", which Back cannot.
+ *
+ * **The crumb row holds its height with zero crumbs.** Object's cold-link case
+ * and Templates' single-crumb case both pass through here, and a title that
+ * hops up a line the moment a crumb does load is worse than a blank row above
+ * it always.
  */
-export function PageBar({ crumbs, children, actions }: Props) {
+export function PageBar({
+  crumbs,
+  title,
+  meta,
+  primary,
+  menu,
+  onMenuOpenChange,
+  actions,
+  tabs,
+}: Props) {
   const navigate = useNavigate();
-  const location = useLocation();
-
-  /**
-   * **Back is not the crumb, which is why both are here.**
-   *
-   * A crumb goes UP — to the folder, the project, the parent. Back goes to
-   * wherever you actually came from, and on the object screen those are
-   * routinely different: `?in=` means a file can be opened from a feed that is
-   * not its own folder, so "up" lands somewhere you have never been.
-   *
-   * Rendered only when there is an entry to undo. `location.key` is React
-   * Router's `"default"` for the first entry in a session, so a cold share link
-   * has nothing behind it and stepping back leaves the app — the crumb is the
-   * way out of that one. Same test `ObjectPage.close` documents; this is that
-   * rule applied to every page rather than to one.
-   */
-  const canGoBack = location.key !== "default";
 
   return (
-    // `gap-3` + `pb-3` is the 12px half-line the header's own padding sits on.
-    <div className="flex flex-col gap-3 border-b border-line pb-3">
-      {(canGoBack || (crumbs && crumbs.length > 0)) && (
-        <div className="flex min-w-0 items-center gap-2">
-          {canGoBack && (
-            // An arrow, not a labelled button: it sits on the crumb's line and
-            // the crumb is already carrying the words.
-            <IconButton label="Back" size="sm" onClick={() => navigate(-1)}>
-              <ArrowUpIcon className="size-5 -rotate-90 fill-none stroke-current stroke-[1.5]" />
-            </IconButton>
-          )}
-          {crumbs && crumbs.length > 0 && (
-            <Breadcrumbs.Root>
-              {crumbs.map((crumb) => (
-                // `href` so it reads and behaves as a link — middle-click, copy
-                // address — with the router taking the plain click. The same
-                // bargain `FolderBrowser`'s trail makes.
-                <Breadcrumbs.Item
-                  key={crumb.to}
-                  href={crumb.to}
-                  onClick={(event: React.MouseEvent) => {
-                    if (event.metaKey || event.ctrlKey || event.shiftKey)
-                      return;
-                    event.preventDefault();
-                    navigate(crumb.to);
-                  }}
-                >
-                  {crumb.label}
-                </Breadcrumbs.Item>
-              ))}
-            </Breadcrumbs.Root>
+    <div className={`flex flex-col gap-3 ${tabs ? "" : "border-b border-line pb-3"}`}>
+      {/* Fixed to one line's height regardless of content, so a page with no
+          crumbs (a cold Object link) reads with the same title position as one
+          with two. */}
+      <div className="flex min-h-5 min-w-0 items-center gap-2">
+        {crumbs && crumbs.length > 0 && (
+          <Breadcrumbs.Root>
+            {crumbs.map((crumb) => (
+              // `href` so it reads and behaves as a link — middle-click, copy
+              // address — with the router taking the plain click. The same
+              // bargain `FolderBrowser`'s trail makes.
+              <Breadcrumbs.Item
+                key={crumb.to}
+                href={crumb.to}
+                onClick={(event: React.MouseEvent) => {
+                  if (event.metaKey || event.ctrlKey || event.shiftKey) return;
+                  event.preventDefault();
+                  navigate(crumb.to);
+                }}
+              >
+                {crumb.label}
+              </Breadcrumbs.Item>
+            ))}
+          </Breadcrumbs.Root>
+        )}
+      </div>
+
+      {(title || primary || menu || actions) && (
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <div className="flex min-w-0 flex-col gap-1">
+            {title && (
+              // `truncate` is a PROP as of design-system 0.17.0, and it works.
+              // It used to be an inline `style={{ textWrap: "nowrap" }}`: the
+              // heading variants carry `text-balance`, which is a shorthand
+              // that also resets `text-wrap-mode` to `wrap`, and the package's
+              // class merge did not know the two conflicted — so both survived
+              // and stylesheet order decided, wrapping a long project or run
+              // name onto three lines instead of eliding it. The package now
+              // states that conflict in its own merge, so the prop and a bare
+              // `className="truncate"` both win. `min-w-0` stays: that is this
+              // element's job as a flex child, not the package's.
+              <Text variant="display" truncate className="min-w-0">
+                {title}
+              </Text>
+            )}
+            {meta && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">{meta}</div>
+            )}
+          </div>
+
+          {(primary || menu || actions) && (
+            <div className="flex shrink-0 items-center gap-2">
+              {actions}
+              {primary}
+              {menu && menu.length > 0 && (
+                <ActionMenu
+                  label={typeof title === "string" ? title : "this page"}
+                  triggerLabel="More actions"
+                  onOpenChange={onMenuOpenChange}
+                  actions={menu.map((item) => ({
+                    key: item.label,
+                    label: item.label,
+                    icon: item.icon,
+                    danger: item.danger,
+                    disabled: item.disabled,
+                    // A page's danger item opens its own confirmation rather
+                    // than arming in the menu — see the prop's docblock — so it
+                    // is `danger` for the colour and fires on the first press.
+                    onSelect: item.onSelect,
+                  }))}
+                />
+              )}
+            </div>
           )}
         </div>
       )}
 
-      {(children || actions) && (
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-          <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-            {children}
-          </div>
-          {actions && (
-            <div className="flex shrink-0 items-center gap-2">{actions}</div>
-          )}
-        </div>
-      )}
+      {tabs}
     </div>
   );
 }

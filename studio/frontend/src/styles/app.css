@@ -97,6 +97,25 @@
   --color-brand: var(--color-neutral-12);
   --color-muted: var(--color-neutral-11);
   --color-line: var(--color-neutral-a5);
+  --color-fill-faint: var(--color-neutral-a2);
+  --color-fill: var(--color-neutral-a3);
+  --color-fill-hover: var(--color-neutral-a4);
+  --color-fill-active: var(--color-neutral-a5);
+  --color-sheet: color-mix(in srgb, var(--color-neutral-2) 90%, transparent);
+
+  /* **The create sheet's fills, as roles.** The sheet is translucent over
+     whatever the feed holds, so its controls cannot sit on an opaque
+     `surface-alt`: a chip's hover, a tile, the mode switch's track and the
+     sheet itself are alpha rungs of the ramp, named here so a call site says
+     what the fill is FOR rather than which rung it is (lint rule 3). `fill`
+     rests, `fill-hover` and `fill-active` step up one rung each, `fill-faint`
+     is the ground a tile group sits on, and `sheet` is the frosted panel —
+     `card` at nine tenths, over a backdrop blur. */
+  --color-fill-faint: var(--color-neutral-a2);
+  --color-fill: var(--color-neutral-a3);
+  --color-fill-hover: var(--color-neutral-a4);
+  --color-fill-active: var(--color-neutral-a5);
+  --color-sheet: color-mix(in srgb, var(--color-neutral-2) 90%, transparent);
 
   /* **The accent is the top of the ramp, not a hue.** It was #5b9dff, the one
      saturated colour in a near-monochrome app, and on a wall of generated media
@@ -124,32 +143,18 @@
   --color-accent-hover: color-mix(in srgb, var(--color-accent) 88%, black 12%);
   --color-danger-hover: color-mix(in srgb, var(--color-danger) 88%, white 12%);
 
-  /* Near-square, in Replicate's range. The design system's own `sm/md/lg` are
-     6/10/16px, which reads as a card system; studio wants hairline-separated
-     sections and 2/4/6px does not round the corner off a video frame. Sixty-
-     seven `rounded-md` call sites go from 10px to 4px on this line alone.
 
-     `--radius-none` (0) and `--radius-xs` (2px) come from the package
-     unchanged and are what a call site reaches for when it wants a square.
-     `sm` lands on 2px as well, so `rounded-sm` and `rounded-xs` are the same
-     corner here — that is the floor of the range agreeing with itself, not an
-     oversight, and `rounded-xs` is the one to write when the intent is
-     "as square as the scale goes". */
-  /* Measured, not guessed: at these values the search field and the account
-     menu both computed to 4px, which on a 2x display reads as a visibly
-     rounded corner. Replicate's own chrome sits at 0 and 2px, so this drops to
-     match it — square for the small stuff, a 2px hint on the large surfaces
-     (menus, popovers) so an overlay still has an edge against what is behind
-     it. `--radius-pill` is untouched; a pill is a shape, not a corner. */
-  /* **Square, not nearly square.** The 2px above was measured against
-     Replicate's chrome and read as "a hint of a corner"; at 2x it still reads
-     as rounded on a button. Studio's surfaces are hairline-separated
-     rectangles, and a corner radius is the one thing that stops them looking
-     like one system. `--radius-pill` is untouched: a pill is a shape, not a
-     corner. */
-  --radius-sm: 0px;
-  --radius-md: 0px;
-  --radius-lg: 0px;
+  /* **Rounded, in ElevenLabs' range.** The corners were 0/0/0 — Replicate's
+     hairline-separated rectangles — and the app read as a grid of boxes. The
+     redesign of 2026-09 models the shell on ElevenLabs: soft 8/12/16px
+     corners, surfaces told apart by fill rather than by a border, and the
+     create panel a frosted rounded sheet floating over the feed. These three
+     are the whole of that scale; `--radius-pill` is untouched, a pill being a
+     shape and not a corner, and `none`/`xs` come from the package for the one
+     thing that must stay square, a video frame. */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
 }
 
 [data-theme='dark'] {
@@ -211,7 +216,9 @@
   --color-primary-active: color-mix(in srgb, var(--color-primary) 76%, black 24%);
   --color-accent-hover: color-mix(in srgb, var(--color-accent) 88%, black 12%);
   --color-danger-hover: color-mix(in srgb, var(--color-danger) 88%, white 12%);
-}
+
+  /* See the `@theme static` block above for why these are named separately
+     from `ink`/`line` rather than reused. */}
 
 html,
 body,
@@ -306,16 +313,20 @@ body {
 /* ──────────────────────────── one control height ────────────────────────────
  *
  * **Every form control in this app is 44px, and this is the one place that is
- * decided.** The package ships three heights for things that sit side by side:
- * a `Select` trigger and a `md` Button are 44 — the WCAG 2.5.5 target-size
- * floor both of them cite — an `Input` is 40 from the shared `controlBox`, and
- * a `Toggle` sets no height at all and lands at 36 from its padding.
+ * decided.** The package ships two heights for things that sit side by side:
+ * a `Select` trigger, a `md` Button and — since 0.17.0 — a `md` Toggle are all
+ * 44, the WCAG 2.5.5 target-size floor they each cite, while an `Input` is 40
+ * from the shared `controlBox`.
  *
- * Bottom-aligned, as a field row is, those disagreements do not read as a few
- * pixels: each control's LABEL sits above its own box, so three heights put
- * three labels on three lines. It was fixed four times in four rows by hand
- * before it was fixed here, and the same latent bug sat in every row nobody had
- * looked at yet.
+ * **It was THREE heights until 0.17.0**, because `Toggle` set none at all and
+ * landed at 36 from its padding. That is fixed upstream now, so this block has
+ * one disagreement left to normalise rather than two.
+ *
+ * Bottom-aligned, as a field row is, that disagreement does not read as a few
+ * pixels: each control's LABEL sits above its own box, so two heights put two
+ * labels on two lines. It was fixed four times in four rows by hand before it
+ * was fixed here, and the same latent bug sat in every row nobody had looked
+ * at yet.
  *
  * **The durable fix is upstream**: `controlBox` should be `h-11`, which is what
  * `input.props.ts` would say if it applied the reasoning its own `Select` and
@@ -341,4 +352,51 @@ input.h-10,
  * control height would clip the thing it exists to show. */
 .field-row :is(input, button, [role="combobox"]) {
   height: 2.75rem;
+}
+
+/* ────────────────────────── one sticky offset ────────────────────────────
+ *
+ * **`TopBar` is the one thing every screen sticks under, and this is its
+ * height.** A selection strip pinned under it with a literal `top-12` would
+ * agree with the bar only until one of them changed — this is the number,
+ * read once here, so a second sticky surface (the folder browser's strip, the
+ * lightbox) reuses it rather than re-measuring the bar.
+ *
+ * 48px at every width. It was 72 above `md` and 56 below, because the create
+ * bar lived in it; the bar is a sheet at the foot of the column now, and the
+ * strip holds a search box and nothing that grows.
+ */
+:root {
+  --header-h: 48px;
+}
+
+/*
+ * A run in flight draws full-size placeholder tiles that shimmer, with the
+ * aperture spinner over them and the elapsed time counting up. The sweep runs
+ * between two rungs of the chrome ramp — `card` and `surface-alt` — so it is
+ * the same two surfaces every other empty box in the app is drawn in, only
+ * moving. Reduced motion gets the still card fill, for the reason the spinner
+ * gets a still mark: the point of the setting is that nothing loops.
+ */
+@keyframes studio-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+.studio-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-card) 0%,
+    var(--color-surface-alt) 50%,
+    var(--color-card) 100%
+  );
+  background-size: 200% 100%;
+  animation: studio-shimmer 1.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-shimmer {
+    animation: none;
+    background: var(--color-card);
+  }
 }

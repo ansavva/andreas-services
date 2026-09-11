@@ -42,18 +42,21 @@ def _run(*args):
 
 # ── the record ──────────────────────────────────────────────────────────────
 
-def test_creating_a_character_makes_its_layout_in_one_act(library):
-    """The four pools are part of the create transaction, not lazily discovered.
+def test_creating_a_character_makes_no_pools_at_all(library):
+    """A character starts holding nothing but its root.
 
-    They used to appear on whatever write happened to need one first, so a
-    character could exist with no `seed/` — and `add-to <name> seed` was the
-    command that found out.
+    `reference/`, `corpus/`, `seed/` and `archive/` used to be part of the
+    create transaction; they no longer are, because nothing afterwards ever
+    required them to exist. `add-to <name> seed` — or any other write into a
+    pool — is what makes one, on demand, the same way a project's `runs/`
+    appears on first use.
     """
     result = _run("create", "subject-c")
     assert result.exit_code == 0, result.output
     record = CHARACTER.resolve("subject-c")
-    assert {c["name"] for c in library.fake._children(record["root"])} == {
-        "reference", "corpus", "seed", "archive"}
+    assert library.fake._children(record["root"]) == []
+    # The four conventional names are still printed as a suggestion — the CLI
+    # falls back to `POOLS` when nothing was actually made.
     for pool in ("reference", "corpus", "seed", "archive"):
         assert f"{pool}/" in result.output
 

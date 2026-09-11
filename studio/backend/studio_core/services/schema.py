@@ -56,7 +56,7 @@ def fetch(model: str) -> tuple[dict, dict]:
     A provider failure comes back as empty maps rather than as an exception, and
     `check` reports a skipped validation. That is deliberate and it is a
     trade-off worth naming: a schema fetch that 500s must not be the thing that
-    stops a payload a person has already approved, because the authoritative
+    stops a payload a person has already read and sent, because the authoritative
     refusal is Replicate's own and this check only exists to make it cheaper and
     earlier.
     """

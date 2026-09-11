@@ -20,8 +20,13 @@ export default defineConfig({
   reporter: process.env.CI ? 'list' : [['list'], ['html', { open: 'never' }]],
   globalSetup: live ? './e2e/support/live-setup.mjs' : undefined,
   use: {
-    baseURL: live ? 'http://localhost:8081' : 'http://localhost:4173',
-    trace: 'retain-on-failure',
+    baseURL: live ? 'http://localhost:8081' : 'http://localhost:4174',
+    // CI never runs the live tier (E2E_LIVE=1 is local-only), but session.spec.ts's
+    // requests carry a real dev-stack bearer token — no trace/screenshot/video to
+    // capture it in an artifact, on the off chance CI is ever set alongside it.
+    trace: process.env.CI ? 'off' : 'retain-on-failure',
+    screenshot: 'off',
+    video: 'off',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: live
@@ -37,8 +42,8 @@ export default defineConfig({
         //    without it an export silently reuses whichever EXPO_PUBLIC_* values the
         //    previous export inlined (measured: same bundle hash across env changes).
         command:
-          'npx expo export -p web --output-dir dist-e2e --clear && npx serve -s dist-e2e -l 4173 --no-clipboard',
-        url: 'http://localhost:4173',
+          'npx expo export -p web --output-dir dist-e2e --clear && npx serve -s dist-e2e -l 4174 --no-clipboard',
+        url: 'http://localhost:4174',
         reuseExistingServer: !process.env.CI,
         timeout: 300_000,
         env: {

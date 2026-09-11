@@ -13,8 +13,8 @@ interface Props {
  * Narrow what a folder is showing, by name, tag or caption.
  *
  * **A folder of three hundred outputs had a sort and no filter**, so finding one
- * frame meant scrolling. The captions and tags that #483 added were worse than
- * unused — nothing could search them, so writing one bought nothing back.
+ * frame meant scrolling, and captions and tags nothing could search were worse
+ * than unused: writing one bought nothing back.
  *
  * It filters what is already loaded rather than asking the API. A listing is one
  * request and already in hand; a query per keystroke would be a request per

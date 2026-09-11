@@ -1,32 +1,30 @@
-import { useCallback } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useCallback, useMemo, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
-import {
-  Alert,
-  Badge,
-  Button,
-  Tabs,
-  Text,
-  Toggle,
-  ToggleGroup,
-} from "@ansavva/design-system";
+import { Badge, Tabs, Text } from "@ansavva/design-system";
 
 import {
   deleteProject,
+  getCharacters,
   getProject,
   getProjectMovies,
   getProjectScenes,
 } from "../apis/studio";
 import { ApertureSpinner } from "../components/common/Aperture";
+import { EmptyState } from "../components/common/EmptyState";
+import { PageLoading } from "../components/common/PageLoading";
+import { SectionLoading } from "../components/common/SectionLoading";
+import { SettingsIcon, TrashIcon } from "../components/common/icons";
 import { FolderTab } from "../components/browse/FolderTab";
+import { CharacterChipLink } from "../components/character/CharacterChip";
 import { PageBar } from "../components/layout/PageBar";
 import { EntityRow } from "../components/entity/EntityRow";
 import { ProjectDetails } from "../components/project/ProjectDetails";
-import { RunsGrid } from "../components/project/RunsGrid";
-import { RunsTable } from "../components/project/RunsTable";
-import { NewRunStrip } from "../components/run/NewRunStrip";
+import { RunFeed } from "../components/project/RunFeed";
+import { RunLightbox } from "../components/run/RunLightbox";
+import { useInFlightRuns } from "../hooks/useInFlightRuns";
 import { useResource } from "../hooks/useResource";
-import type { ProjectRecord } from "../types";
+import type { HeroImage, ProjectRecord } from "../types";
 import { formatDate } from "../utils/format";
 import { PROJECTS_PATH, moviePath, runPath, scenePath } from "../utils/location";
 import { useSearchParamState } from "../hooks/useSearchParamState";
@@ -34,7 +32,14 @@ import { LoadError } from "../components/common/LoadError";
 import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog";
 
 /**
- * One project: what it is, what has been run in it, and everything under it.
+ * One project: the feed of what has been run in it, and everything under it.
+ *
+ * **Runs is the default tab and the feed is the page.** A project is where
+ * things get made, so what it opens on is the making — every run, newest
+ * first, grouped by day, with the create bar live above it. Scenes, Movies and
+ * Files keep their screens as tabs; Settings, behind the gear at the far end
+ * of the strip, is what the Overview tab used to be: the name, the
+ * description, who is involved, and Delete.
  *
  * The five tabs are fixed here where a character's are not, and the difference
  * is real rather than an inconsistency. A character's tabs after References are
@@ -43,6 +48,14 @@ import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog"
  * files. The five starting folders (`runs/`, `scenes/`, `movies/`, `chains/`,
  * `input/`) are still only a convention, and they show up where all folders do:
  * inside Files.
+ *
+ * ## The opened run is this page, with a lightbox over it
+ *
+ * `/p/<project>/r/<run>` renders this same component with `runId` set, and
+ * `RunLightbox` sits over the feed rather than replacing it — closing it is
+ * the feed again, scrolled where it was, with the tab and the filters still
+ * in the address. The two-column run page that used to answer that URL is
+ * gone.
  *
  * ## There is no Inputs tab, and there should not be one
  *
@@ -55,41 +68,47 @@ import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog"
  * off the pool is the CLI's job, and `studio projects inputs <project>` prints
  * each position beside its node.
  */
-const RUNS_LIST = "list";
-const RUNS_GRID = "grid";
-
 export function ProjectPage() {
-  const { projectId = "" } = useParams();
+  const { projectId = "", runId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const [tab, setTab] = useSearchParamState("tab", "overview");
-  const [runsView, setRunsView] = useSearchParamState("runs", RUNS_LIST);
+  const [tabParam, setTab] = useSearchParamState("tab", "runs");
+  // `?tab=overview` was the old default and is in old links; it is Settings now.
+  const tab = tabParam === "overview" ? "settings" : tabParam;
+  /** The delete dialog, opened from the page bar's menu rather than drawn loose. */
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const load = useCallback(() => getProject(projectId), [projectId]);
   const project = useResource(["project", projectId], load);
 
-  if (project.loading) {
-    return (
-      <>
-        <div className="flex justify-center py-16">
-          <ApertureSpinner size="lg" label="Loading project" />
-        </div>
-      </>
-    );
-  }
+  // The card image per character, for the chips — the listing the sidebar's
+  // search already reads, so it costs no request of its own.
+  const characters = useResource(["characters"], useCallback(() => getCharacters(), []));
+  const heroes = useMemo<Record<string, HeroImage | null>>(
+    () => Object.fromEntries((characters.data ?? []).map((each) => [each.id, each.hero])),
+    [characters.data],
+  );
+
+  const running = useInFlightRuns()[projectId] ?? 0;
+
+  const openRun = useCallback(
+    (row: { id: string }, output?: number) =>
+      navigate(runPath(projectId, row.id) + location.search, {
+        state: output === undefined ? undefined : { output },
+      }),
+    [location.search, navigate, projectId],
+  );
+
+  if (project.loading) return <PageLoading label="Loading project" />;
 
   if (project.error || !project.data) {
     return (
-      <>
-        <Alert.Root intent="danger">
-          <Alert.Title>Could not open this project</Alert.Title>
-          <Alert.Description>{project.error ?? "It may have been deleted."}</Alert.Description>
-        </Alert.Root>
-        <div>
-          <Button size="sm" onClick={() => navigate("/")}>
-            Back to home
-          </Button>
-        </div>
-      </>
+      <LoadError
+        what="this project"
+        message={project.error ?? "It may have been deleted."}
+        onRetry={project.reload}
+        escape={{ label: "Back to home", onClick: () => navigate("/") }}
+      />
     );
   }
 
@@ -100,64 +119,115 @@ export function ProjectPage() {
 
   return (
     <>
-      {/* **The noun spells out the cascade, because the button IS the
-          confirmation.** `ConfirmDeleteButton` arms in place rather than
-          opening a modal — the reasoning is in that file — so the armed label
-          is the only thing standing between a click and 29 runs. It says the
-          count for that reason, and the count comes off the record rather
-          than a second fetch.
-
-          The `ms-auto` this used to hang the button off is gone with the bar:
-          it pinned the control to whichever line the flex run broke at, which
-          on a phone moved a destructive button around under the title. */}
-      <PageBar
-        crumbs={[{ label: "Projects", to: PROJECTS_PATH }]}
-        actions={
-          <ConfirmDestroyDialog
-            label="Delete"
-            title={`Delete ${record.name}?`}
-            summary={deleteSummary(held, counts)}
-            confirmWord={record.name}
-            onConfirm={async () => {
-              await deleteProject(record.id, "delete", held > 0);
-              navigate(PROJECTS_PATH);
-            }}
-          />
-        }
-      >
-        {/* One line, because there is one label. The mono caption under this
-            was the slug — the address a person typed — and it survived the slug
-            removal as `record.name` a second time, so the bar drew the project's
-            name twice. */}
-        <Text variant="display">{record.name}</Text>
-      </PageBar>
-
       {/* `defaultValue` as well as `value`, which the package requires even
           when controlled: it seeds `useControllableState`, and Tabs does not
           introspect its List to guess a first tab. */}
-      <Tabs.Root value={tab} defaultValue="overview" onValueChange={setTab}>
-        {/* Scrolls rather than wraps, like the character page's: a tab strip
-            that grows a second row draws a second underline, which reads as two
-            strips. Six of these wrapped at 390px, and five is not far enough
-            under that to change the rule. */}
-        <Tabs.List className="overflow-x-auto border-b border-line">
-          <Tabs.Tab value="overview">Overview</Tabs.Tab>
-          <Tabs.Tab value="runs">Runs</Tabs.Tab>
-          <Tabs.Tab value="scenes">Scenes</Tabs.Tab>
-          <Tabs.Tab value="movies">Movies</Tabs.Tab>
-          <Tabs.Tab value="files">Files</Tabs.Tab>
-        </Tabs.List>
+      <Tabs.Root value={tab} defaultValue="runs" onValueChange={setTab}>
+        {/* **Delete lives behind `⋯`, and the noun still spells out the
+            cascade.** `ConfirmDestroyDialog` types the name because a project
+            takes its runs, scenes and movies with it.
 
-        <Tabs.Panel value="overview" className="flex flex-col gap-4">
+            **Nothing here makes a run.** The create bar in the top bar is
+            where a run is authored, on every screen; the page's own primary
+            slot holds who the project is about instead, per the mockup. */}
+        <PageBar
+          crumbs={[{ label: "Projects", to: PROJECTS_PATH }]}
+          title={record.name}
+          meta={
+            <>
+              <Badge intent="neutral" className="font-mono tabular-nums">
+                {counts.runs} {counts.runs === 1 ? "run" : "runs"}
+              </Badge>
+              {running > 0 && (
+                <Badge intent="neutral" className="gap-1.5 font-mono tabular-nums">
+                  <ApertureSpinner size="sm" label={`${running} running`} className="size-3.5" />
+                  {running} running
+                </Badge>
+              )}
+            </>
+          }
+          primary={
+            record.characters.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-2" aria-label="Characters">
+                {record.characters.map((each) => (
+                  <CharacterChipLink
+                    key={each.id}
+                    id={each.id}
+                    name={each.name}
+                    hero={heroes[each.id] ?? null}
+                  />
+                ))}
+              </div>
+            ) : undefined
+          }
+          menu={[{
+              label: "Delete",
+              icon: <TrashIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5]" />,
+              danger: true,
+              onSelect: () => setDeleteOpen(true),
+            }]}
+          tabs={
+            // Scrolls rather than wraps, like the character page's: a tab
+            // strip that grows a second row draws a second underline, which
+            // reads as two strips. Settings sits at the far end, after a gap,
+            // because it is about the project rather than in it.
+            <Tabs.List className="overflow-x-auto border-b border-line">
+              <Tabs.Tab value="runs">Runs</Tabs.Tab>
+              <Tabs.Tab value="scenes">Scenes</Tabs.Tab>
+              <Tabs.Tab value="movies">Movies</Tabs.Tab>
+              <Tabs.Tab value="files">Files</Tabs.Tab>
+              <Tabs.Tab value="settings" className="ml-auto gap-1.5">
+                <SettingsIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+                Settings
+              </Tabs.Tab>
+            </Tabs.List>
+          }
+        />
+
+        <ConfirmDestroyDialog
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          label="Delete"
+          title={`Delete ${record.name}?`}
+          summary={deleteSummary(held, counts)}
+          confirmWord={record.name}
+          onConfirm={async () => {
+            await deleteProject(record.id, "delete", held > 0);
+            navigate(PROJECTS_PATH);
+          }}
+        />
+
+        <Tabs.Panel value="runs">
+          <RunFeed
+            projectId={record.id}
+            characters={record.characters}
+            heroes={heroes}
+            onOpen={openRun}
+          />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="scenes">
+          <ScenesTab projectId={record.id} />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="movies">
+          <MoviesTab projectId={record.id} />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="files">
+          <FolderTab rootId={record.root} label={record.name} />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="settings" className="flex flex-col gap-4">
           <div className="flex flex-wrap gap-2">
             <Badge intent="neutral" className="font-mono tabular-nums">
-              {record.counts.runs} runs
+              {counts.runs} runs
             </Badge>
             <Badge intent="neutral" className="font-mono tabular-nums">
-              {record.counts.scenes} scenes
+              {counts.scenes} scenes
             </Badge>
             <Badge intent="neutral" className="font-mono tabular-nums">
-              {record.counts.movies} movies
+              {counts.movies} movies
             </Badge>
           </div>
 
@@ -174,90 +244,36 @@ export function ProjectPage() {
             }
           />
 
-          {/* `block`: `caption` is a `<span>`, and an inline box takes no
-              top border or padding of its own. */}
-          <Text variant="caption" tone="muted" className="block border-t border-line pt-2 font-mono">
+          <Text variant="caption" tone="muted" className="border-t border-line pt-2 font-mono">
             Created {formatDate(record.created)} · updated {formatDate(record.updated)}
           </Text>
         </Tabs.Panel>
-
-        {/* The strip sits above the table rather than in the page bar, because
-            what it makes is a run in THIS project — and because the page bar's
-            one action deletes the project. */}
-        <Tabs.Panel value="runs" className="flex flex-col gap-4">
-          {/*
-            **Two readings of the same runs, and the unit is what differs.**
-
-            List's unit is the RUN — status, model, cost, when, the plan that
-            produced it — and it is filterable on every one of those, because
-            they are fields on the row. Grid's unit is the OUTPUT: it is the file
-            browser scoped to the project's `runs/` folder, in Media view, since
-            a run's outputs are ordinary nodes under it.
-
-            So this is not a skin. "Which runs on this model failed last week" is
-            a question only the list can answer, and "what has this project
-            actually made" is one only the grid can. Neither replaces the other,
-            which is why the control is a pair rather than a preference.
-
-            `?runs=` so a grid is a link, and single-select with empty refused —
-            a Runs tab showing neither reading is not a state.
-          */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <ToggleGroup.Root
-              aria-label="Runs view"
-              value={[runsView === RUNS_GRID ? RUNS_GRID : RUNS_LIST]}
-              onValueChange={(next) => {
-                if (next.length > 0) setRunsView(next[0]!);
-              }}
-            >
-              <Toggle value={RUNS_LIST}>List</Toggle>
-              <Toggle value={RUNS_GRID}>Grid</Toggle>
-            </ToggleGroup.Root>
-
-            {/* Stays in both, because "make one of these" is about the tab
-                rather than about how the tab is drawn. */}
-            <NewRunStrip projectId={record.id} characters={record.characters} />
-          </div>
-
-          {runsView === RUNS_GRID ? (
-            <RunsGrid projectId={record.id} rootId={record.root} />
-          ) : (
-            <RunsTable
-              projectId={record.id}
-              characters={record.characters}
-              onOpen={(run) => navigate(runPath(record.id, run.id))}
-            />
-          )}
-        </Tabs.Panel>
-
-        <Tabs.Panel value="scenes">
-          <ScenesTab projectId={record.id} />
-        </Tabs.Panel>
-
-        <Tabs.Panel value="movies">
-          <MoviesTab projectId={record.id} />
-        </Tabs.Panel>
-
-        <Tabs.Panel value="files">
-          <FolderTab rootId={record.root} label={record.name} />
-        </Tabs.Panel>
       </Tabs.Root>
+
+      {runId && (
+        <RunLightbox
+          projectId={record.id}
+          runId={runId}
+          characters={record.characters}
+          heroes={heroes}
+        />
+      )}
     </>
   );
 }
 
 function ScenesTab({ projectId }: { projectId: string }) {
-  const navigate = useNavigate();
   const load = useCallback(() => getProjectScenes(projectId), [projectId]);
   const { data, loading, error, reload } = useResource(["project-scenes", projectId], load);
 
-  if (loading) return <ApertureSpinner size="md" label="Loading scenes" />;
+  if (loading) return <SectionLoading label="Loading scenes" />;
   if (error) return <LoadError what="scenes" message={error} onRetry={reload} />;
   if (!data || data.length === 0)
     return (
-      <Text variant="body" tone="muted">
-        No scenes yet. A scene is shots stitched into one continuous take.
-      </Text>
+      <EmptyState
+        title="No scenes yet."
+        hint="A scene is shots stitched into one continuous take."
+      />
     );
 
   return (
@@ -266,10 +282,12 @@ function ScenesTab({ projectId }: { projectId: string }) {
         <EntityRow
           key={scene.id}
           title={scene.name}
-          subtitle={`${scene.name} · ${formatDate(scene.created)}`}
+          // The date, not the name said twice — the row already carries the
+          // title once.
+          subtitle={formatDate(scene.created)}
           status={scene.status}
           thumb={scene.thumb ?? null}
-          onOpen={() => navigate(scenePath(scene.id))}
+          to={scenePath(scene.id)}
         />
       ))}
     </div>
@@ -277,18 +295,13 @@ function ScenesTab({ projectId }: { projectId: string }) {
 }
 
 function MoviesTab({ projectId }: { projectId: string }) {
-  const navigate = useNavigate();
   const load = useCallback(() => getProjectMovies(projectId), [projectId]);
   const { data, loading, error, reload } = useResource(["project-movies", projectId], load);
 
-  if (loading) return <ApertureSpinner size="md" label="Loading movies" />;
+  if (loading) return <SectionLoading label="Loading movies" />;
   if (error) return <LoadError what="movies" message={error} onRetry={reload} />;
   if (!data || data.length === 0)
-    return (
-      <Text variant="body" tone="muted">
-        No movies yet. A movie is scenes cut into one piece.
-      </Text>
-    );
+    return <EmptyState title="No movies yet." hint="A movie is scenes cut into one piece." />;
 
   return (
     <div className="flex flex-col">
@@ -296,10 +309,10 @@ function MoviesTab({ projectId }: { projectId: string }) {
         <EntityRow
           key={movie.id}
           title={movie.name}
-          subtitle={`${movie.name} · ${formatDate(movie.created)}`}
+          subtitle={formatDate(movie.created)}
           status={movie.status}
           thumb={movie.thumb ?? null}
-          onOpen={() => navigate(moviePath(movie.id))}
+          to={moviePath(movie.id)}
         />
       ))}
     </div>

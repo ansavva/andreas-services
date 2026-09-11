@@ -7,7 +7,7 @@ description: The shared machinery every studio-* engine runs on — the model RE
 
 **Models are data, not code.** One entry per model in the **registry**, one
 runner over all of them. Adding a model is a reviewed data change plus a written
-page — never an edit to five scripts, which is what it used to be.
+page.
 `studio models` is the whole surface onto it.
 
 This skill is the plumbing. For how to *use* a given model, read its own skill:
@@ -18,6 +18,7 @@ This skill is the plumbing. For how to *use* a given model, read its own skill:
 | `nano-banana-2` | [`studio-media-nano-banana-2`](../studio-media-nano-banana-2/SKILL.md) |
 | `gpt-image-2` | [`studio-media-gpt-image-2`](../studio-media-gpt-image-2/SKILL.md) |
 | `gpt-image-1.5` | [`studio-media-gpt-image-1-5`](../studio-media-gpt-image-1-5/SKILL.md) |
+| `seedream-5-pro` | [`studio-media-seedream-5-pro`](../studio-media-seedream-5-pro/SKILL.md) |
 | `seedance` | [`studio-media-seedance`](../studio-media-seedance/SKILL.md) |
 | `kling` | [`studio-media-kling`](../studio-media-kling/SKILL.md) |
 
@@ -26,7 +27,7 @@ the shared prose lives in one place rather than six:
 
 | Skill | For |
 |---|---|
-| [`studio-media-image`](../studio-media-image/SKILL.md) | The frame-first workflow: why render a still before a video, run chaining, the approval gate |
+| [`studio-media-image`](../studio-media-image/SKILL.md) | The frame-first workflow: why render a still before a video, run chaining, the payload gate |
 | [`studio-media-shot`](../studio-media-shot/SKILL.md) | Orchestrating a whole shot — brief → plan → still → clip |
 | [`studio-media-prompt`](../studio-media-prompt/SKILL.md) | Authoring video prompts as structured JSON |
 | [`studio-media-character`](../studio-media-character/SKILL.md) | Character identity: the bible and the two image pools |
@@ -52,8 +53,8 @@ the engines are peers, chosen per shot.
 **`--project` is required and never inferred.** A run belongs to a project, and
 where output lands is the one thing rerunning a command cannot undo — so it is
 asked for, not guessed. Omitting it errors with the list of existing projects.
-Establish the project *before* showing a payload for approval: approving a
-payload should never imply approving where it lands.
+Establish the project *before* showing a payload: a yes to a payload should
+never imply a yes to where it lands.
 
 Image inputs: `--character <name>` (repeatable — one piece of work can involve
 several) · `--pick` / `--pick-tag` / `--slots` to choose from that character's
@@ -71,9 +72,9 @@ is position N in the resolved selection.
 
 ## What runs before anything bills
 
-`--dry-run` renders the payload for approval and submits nothing. The same
-checks run on a dry run as on a real submit, so **an approved payload is a
-payload that submits** — and a payload the model would refuse is refused before
+`--dry-run` renders the payload for a person to read and submits nothing. The
+same checks run on a dry run as on a real submit, so **the payload a person read
+is the payload that submits** — and a payload the model would refuse is refused before
 a draft is even written, leaving nothing behind:
 
 1. **`denied`** — documented constraints the schema does *not* enforce. The
@@ -95,10 +96,9 @@ The registry is data — one JSON document that every studio-* tool reads, and t
 only thing you edit to add a model. `studio models show <key>` prints an entry
 alongside the live schema; `studio-media-add-model` is how a new one gets written.
 
-**It is the deployed service's document, and the CLI reads it from there.** It
-used to ship inside the pipeline, and the app kept a three-engine copy of the
-reference caps that disagreed with it — so a selection the CLI refused, the app
-allowed. One copy now, served to both. Two things follow: reading the registry
+**It is the deployed service's document, and the CLI reads it from there.** One
+copy, served to the CLI and the app alike, so both refuse the same selection.
+Two things follow: reading the registry
 needs a session like every other command, and a model added here reaches
 production when the backend deploys. Against a local dev API it is live at once.
 
@@ -114,7 +114,7 @@ Each entry carries a `snapshot` of its schema's enums and ranges. It exists so
 **A registry entry may also carry `defaults` — inputs studio sets when you do
 not.** `gpt-image-2` and `gpt-image-1.5` default to `quality: medium` and
 `moderation: low`. They are applied *under* anything you pass, so `--extra
-'{"quality":"high"}'` still wins, and they appear in the payload you approve
+'{"quality":"high"}'` still wins, and they appear in the payload you show
 rather than being applied invisibly.
 
 The tier is where the money is: at `high` a `gpt-image-2` image costs about
@@ -152,8 +152,7 @@ actually honours.** `studio-media-add-model` reads both for exactly this reason.
 - **The request is recorded before submitting**, so a failed render
   is still history.
 - **The submission is declared before the provider is called.** A run reaches
-  `pending` first, so the approval gate stands in front of the money — and a
-  process that dies in between leaves a run that reads as "went out and never
+  `pending` first, so a process that dies in between leaves a run that reads as "went out and never
   answered" rather than as a draft nobody sent.
 - **Never `Prefer: wait`.** A timed-out wait retries internally and can create
   duplicate *billed* predictions. The prediction is created and then left alone;
@@ -184,16 +183,15 @@ generative model with the same prompt is a normal thing to want, and the point
 is that it is a decision somebody makes rather than something a script does in
 silence.
 
-**It is a query against the run store, not a local file.** It used to be a
-per-machine list beside the credentials, which caught the same machine
-submitting twice — what actually happened — and nothing else. The fingerprint is
-recorded on the run now, so a second machine and a colleague are caught too. An
+**It is a query against the run store, not a local file.** The fingerprint is
+recorded on the run, so a second machine and a colleague are caught, not only
+the same machine submitting twice. An
 unsubmitted draft never counts: repeating a `--dry-run` is ordinary.
 
 **An `owner/name` that is not a registry key runs off the live schema.** Trying
 a model before onboarding it had no supported path, so a four-way upscaler
 comparison ran three of them straight against the provider — no validation, no
-approval render, no run records.
+payload render, no run records.
 
 ```bash
 studio run --model vendor/some-upscaler --project <p> --start-key <node> --no-refs --dry-run

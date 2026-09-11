@@ -9,10 +9,6 @@ os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "testing")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 os.environ.setdefault("STUDIO_MEDIA_BUCKET", "studio-prod-media-us-east-1")
 os.environ.setdefault("STUDIO_CATALOG_TABLE", "studio-prod-catalog")
-# Assigned rather than defaulted: the browsable root is the whole bucket, and a
-# stale `STUDIO_MEDIA_ROOT_PREFIX` left in a shell would otherwise silently
-# rewrite what every test in the suite is asserting about.
-os.environ["STUDIO_MEDIA_ROOT_PREFIX"] = ""
 
 # NOTHING IN THIS SUITE MAY BILL.
 #

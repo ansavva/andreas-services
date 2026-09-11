@@ -2,21 +2,12 @@
 
 **This is the only reason `dev-seed` is a separate project rather than a
 subcommand.** Every other `studio` command reaches the library through the API
-and holds no cloud credential — that is #308, and it is the property that makes
-the CLI safe to hand to an agent. Seeding cannot work that way: it writes the
-node rows and copies the blobs that a library is *made of*, server-side, before
-there is a signed-in session or in many cases a library at all. So it needs a
-DynamoDB client and an S3 client of its own.
-
-Keeping that inside the CLI meant the CLI kept `adapters/ddb.py` and
-`adapters/s3.py` alive for one caller, and every other AWS-direct command in
-`maintenance/` sheltered under the same roof. Moving it out is what let all of
-them go.
-
-What is here is the small part of `adapters/ddb.py`, `adapters/s3.py` and
-`profiles.py` that seeding actually used — five DynamoDB functions, two S3, and
-a config read. Not a fork of those modules: they are deleted, and this is what
-outlived them.
+and holds no cloud credential, which is the property that makes the CLI safe to
+hand to an agent. Seeding cannot work that way: it writes the node rows and
+copies the blobs that a library is *made of*, server-side, before there is a
+signed-in session or in many cases a library at all. So it needs a DynamoDB
+client and an S3 client of its own — five DynamoDB functions, two S3, and a
+config read.
 """
 from __future__ import annotations
 
@@ -71,8 +62,7 @@ def value(field: str) -> str:
     The environment wins so a caller can point this at a stack the profile does
     not describe — `STUDIO_DEV_MACHINE_ID` targeting somebody else's stack is
     the case that needs it. There is deliberately no fallback to a production
-    name; `adapters/s3.py` lost exactly that default in #434 after a maintenance
-    command run in an unloaded shell addressed prod.
+    name: a command run in an unloaded shell must fail, not address prod.
     """
     from_env = os.environ.get(ENV_VAR[field])
     if from_env:
@@ -106,7 +96,7 @@ def session():
 
 
 def client():
-    """An S3 client. Named as `adapters/s3.py` named it, so the callers read the same."""
+    """An S3 client."""
     return session().client("s3")
 
 
@@ -116,10 +106,8 @@ def ddb_client():
 
 # ── marshalling ─────────────────────────────────────────────────────────────
 #
-# Lifted whole from `adapters/ddb.py`, including the two conversions that were
-# each paid for by a real failure. Both are load-bearing and neither is obvious,
-# so the reasoning travels with the code rather than being left behind in a
-# module that no longer exists.
+# Two conversions, each paid for by a real failure. Both are load-bearing and
+# neither is obvious.
 
 
 def to_item(doc: dict) -> dict:
@@ -140,12 +128,11 @@ def to_item(doc: dict) -> dict:
 def from_item(item: dict) -> dict:
     """The inverse, with numbers as ints.
 
-    **It recurses, and the version that did not was a real bug.** The
-    conversion used to run over the top-level attributes only, which was
-    invisible while every row it read was flat. An ENTITY row is not: a
-    character carries a nested `profile`, so `publish` read a `schema_version`
-    two maps deep, handed it to `json.dumps`, and died with "Object of type
-    Decimal is not JSON serializable" halfway through writing the fixture.
+    **It recurses.** A top-level-only conversion is invisible while every row
+    is flat, and an ENTITY row is not: a character carries a nested `profile`,
+    so a count two maps deep would reach `json.dumps` as a Decimal
+    and die with "Object of type Decimal is not JSON serializable" halfway
+    through writing the fixture.
     """
     deserializer = TypeDeserializer()
     return {key: _plain(deserializer.deserialize(val)) for key, val in item.items()}

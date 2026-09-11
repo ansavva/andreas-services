@@ -99,15 +99,15 @@ uv run --project studio/pipeline pytest studio/pipeline/tests -q \
 | Suite | Branch coverage | |
 |---|---|---|
 | `backend/` | **88%** | |
-| `pipeline/` | **70%** | measured before the AWS-direct `maintenance/` layer was deleted; its largest hole was in code that no longer exists, so re-measure before aiming at anything |
+| `pipeline/` | **72%** | |
 | `frontend/` | **36%** | by design; `vite.config.ts` argues for it |
 
 There is no `--cov-fail-under`. A threshold picked before anyone has read a real
 number either sits below it, and means nothing, or fires on unrelated PRs until
 somebody deletes it. Ratchet from these once there is a trend to ratchet.
 
-The suite stands up a miniature of the real library, and **the catalog half of it
-is no longer moto**. `tests/support/fake_api.py` is an in-memory studio API sitting
+The suite stands up a miniature of the real library. `tests/support/fake_api.py`
+is an in-memory studio API sitting
 at `adapters.api.request`, so a test exercises the route the CLI actually builds
 rather than a table it would never address directly — this package holds no AWS
 client to mock. `mock_s3` stays, because bytes are real: `store` PUTs and GETs
@@ -116,12 +116,11 @@ and `curate dedupe` hashes what comes back.
 
 **Seed through the fake, never around it.** The catalog is what says a thing
 exists; a fixture that wrote bytes and no rows would produce a tree nothing can
-list, which is the shape of the old S3-as-truth fixture and no longer resembles
-what the code reads.
+list.
 
 Three of the fake's answers are **the API's own code, loaded rather than
 approximated** — `services/storyboard.py`, `services/prompt.py` and
-`services/digest.py`, the last of which was a copy until #538. All three are
+`services/digest.py`. All three are
 written to import nothing outside the standard library, which is what makes them
 loadable from a suite that declares none of the API's runtime dependencies;
 `test_a_shared_backend_service_stays_loadable_from_here` holds that precondition
@@ -143,15 +142,14 @@ submission raises. That is the property `test_board` and `test_turnaround`
 actually want and it is stronger than "nothing billed": a dry run must not submit
 **at all**, and a fake would answer a submission perfectly happily.
 
-Three guards behind it, failing differently on purpose:
+Two guards behind it, failing differently on purpose:
 
 | Guard | Catches |
 |---|---|
 | the fake API | every submission this package can make |
 | an autouse socket guard | anything reaching the network by another route — **the primary guard now**, since there is no provider client here to switch off |
-| a dud `REPLICATE_API_TOKEN` | code that reaches a provider ever coming back to this package — a 401, not a bill |
 
-`backend/tests/conftest.py` carries the matching three for the half that *can*
+`backend/tests/conftest.py` carries the matching guards for the half that *can*
 spend, spelled the same way on purpose: a reader who knows one suite's guard
 knows the other's, and a divergence between them is visible rather than a thing
 to discover.

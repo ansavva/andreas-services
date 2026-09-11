@@ -52,7 +52,7 @@ export const PROMPT_FIELDS: Array<{
   { key: "avoid", label: "Avoid" },
 ];
 
-export function cameraLine(camera: MotionPrompt["camera"]): string {
+function cameraLine(camera: MotionPrompt["camera"]): string {
   if (!camera) return "";
   return [
     camera.shot,
@@ -89,7 +89,7 @@ export function MotionFields({ motion }: { motion: Motion }) {
         <Text variant="caption" tone="muted">
           Motion prompt
         </Text>
-        <pre className="max-h-56 overflow-auto rounded-none bg-surface-alt p-2 text-xs whitespace-pre-wrap text-muted">
+        <pre className="max-h-56 overflow-auto bg-surface-alt p-2 text-xs whitespace-pre-wrap text-muted">
           {motion.prompt}
         </pre>
       </div>
@@ -262,7 +262,7 @@ export function MotionEditor({
 }) {
   const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch });
   return (
-    <div className="flex flex-col gap-3 rounded-none border border-line bg-surface-alt p-3">
+    <div className="flex flex-col gap-3 border border-line bg-surface-alt p-3">
       {error && (
         <Alert.Root intent="danger">
           <Alert.Title>Could not save this shot</Alert.Title>

@@ -74,12 +74,12 @@ async function open() {
 
 describe("the tab strip", () => {
   it("is a FIXED list, and none of it is a folder", async () => {
-    // The count is not the point and has changed twice now — Runs and Projects
-    // joined when the character stopped being a dead end, and Shoot joined when
-    // a reference set could be made without a terminal. What must not come back
-    // is a strip built from the folder listing: it grew and shrank as folders
-    // came and went, every folder tab showed what Files already held, and at
-    // 390px seven of them wrapped into three rows of underline. The character's
+    // The count is not the point and has changed more than once — Runs and
+    // Projects came and went again, and Shoot joined when a reference set
+    // could be made without a terminal. What must not come back is a strip
+    // built from the folder listing: it grew and shrank as folders came and
+    // went, every folder tab showed what Files already held, and at 390px
+    // seven of them wrapped into three rows of underline. The character's
     // root children are `reference`, `corpus`, `seed` and `archive`, and none of
     // those may appear here — `seed` in particular, which Shoot now reads from
     // and which is exactly the kind of tab this test exists to keep out.
@@ -90,8 +90,10 @@ describe("the tab strip", () => {
     // folder names below it: it was Files with `default` pre-filled, which is a
     // preset of the tab beside it rather than a place of its own. `Shoot` went
     // with the turnaround — it rendered fourteen angles at once, and a template
-    // is picked for one run from the plan editor.
-    expect(tabs).toEqual(["Profile", "Files", "Runs", "Projects"]);
+    // is picked for one run from the plan editor. Runs and Projects are gone
+    // again too — a second way to browse work that already has a home on the
+    // run and project pages.
+    expect(tabs).toEqual(["Profile", "Files"]);
     expect(tabs).not.toContain("Identity");
     expect(tabs).not.toContain("reference");
     expect(tabs).not.toContain("seed");
@@ -156,7 +158,7 @@ describe("saving identity and the bible together", () => {
   it("has one save bar and one revision label, not one per section", async () => {
     await open();
 
-    expect(screen.getAllByRole("button", { name: "Saved" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Save" })).toHaveLength(1);
     expect(screen.getAllByText(/revision 7/)).toHaveLength(1);
   });
 });
@@ -212,22 +214,26 @@ describe("the sections", () => {
   });
 
   it("resets the card's own padding, which a class cannot be trusted to do", async () => {
-    // `Card.Root` carries `p-lg`, and the package merges caller classes with
-    // `tailwind-merge`, which does not recognise this design system's t-shirt
-    // spacing keys — `twMerge('… p-lg …', 'p-0')` returns BOTH, and `.p-lg` is
-    // emitted after `.p-0` in the stylesheet, so the reset lost. The card kept
-    // 24px and the panel added 24px more: 48px a side on a 390px screen.
+    // `Card.Root` carries `p-lg`, and this resets it. It used to have to be an
+    // inline style: the package merged caller classes with a `tailwind-merge`
+    // that did not recognise this design system's t-shirt spacing keys, so
+    // `twMerge('… p-lg …', 'p-0')` returned BOTH and `.p-lg` — emitted after
+    // `.p-0` — won. The card kept 24px and the panel added 24px more: 48px a
+    // side on a 390px screen.
     //
-    // Asserting the inline style is the point. A className assertion would have
-    // passed the whole time this was broken.
+    // design-system 0.17.0 teaches the merge the scale, so the reset is a
+    // className again and the assertion follows it. What is asserted is that
+    // `p-lg` is GONE, not merely that `p-0` is present — the whole failure was
+    // that both survived, and a bare `toContain("p-0")` would have passed
+    // throughout.
     await open();
 
     const card = document.querySelector<HTMLElement>('[data-section=" record"]');
     expect(card).toBeTruthy();
-    // Parsed, not string-compared: jsdom serialises these two zeroes
-    // differently — `padding` as "0px" and `gap` as "0".
-    expect(parseFloat(card!.style.padding)).toBe(0);
-    expect(parseFloat(card!.style.gap)).toBe(0);
+    expect(card!.className).toContain("p-0");
+    expect(card!.className).toContain("gap-0");
+    expect(card!.className).not.toContain("p-lg");
+    expect(card!.className).not.toContain("gap-sm");
   });
 
   it("marks the section that moved, and only that one", async () => {

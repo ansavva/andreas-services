@@ -40,7 +40,7 @@ export interface PlanCard {
   limitLabel: string;
 }
 
-const ORDER = ['free', 'plus', 'work'];
+const ORDER = ['free', 'plus'];
 
 /**
  * How each cadence reads.
@@ -115,9 +115,6 @@ export async function loadPlans(): Promise<PlanCard[]> {
 export const FALLBACK: PlanCard[] = toCards([
   { code: 'free', name: 'Free', participant_limit: 6, marketed_as_unlimited: false, price_cents: 0, currency: 'USD', billing_cadence: 'free' },
   { code: 'plus', name: 'Plus', participant_limit: 50, marketed_as_unlimited: false, price_cents: 1_200, currency: 'USD', billing_cadence: 'one_time' },
-  // `marketed_as_unlimited` here for the same reason the catalogue sets it: the 10,000 is a guard
-  // rail, and the fallback must not say something the live page would not.
-  { code: 'work', name: 'Work', participant_limit: 10_000, marketed_as_unlimited: true, price_cents: 9_900, currency: 'USD', billing_cadence: 'annual' },
 ]);
 
 /** Re-exported so the drift test can compare the fallback against the legal copy in one import. */

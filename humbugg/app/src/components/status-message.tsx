@@ -7,7 +7,7 @@
 // the accessibility contract — `role="status"`, matching the web app.
 import { Text, View } from 'react-native';
 
-import { styles } from '../theme/styles';
+import { useTheme } from '../theme/styles';
 
 export function StatusMessage({
   message,
@@ -16,6 +16,7 @@ export function StatusMessage({
   message?: string | null;
   tone?: 'error' | 'success';
 }) {
+  const { styles } = useTheme();
   if (!message) return null;
   const success = tone === 'success';
   return (

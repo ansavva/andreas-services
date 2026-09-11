@@ -141,53 +141,47 @@ in both, by design.
 | Directory | Purpose | Stack |
 |-----------|---------|-------|
 | `humbugg/` | Gift-exchange platform | ASP.NET Core 10 (C# 14) + React/Vite (marketing, `www`) + Expo/Expo Router (product app, `app`) + Lambda (Docker) + DynamoDB |
-| `scout/` | Events from Gmail | Python Lambdas + React/Vite/TS + DynamoDB |
 | `studio/` | AI media generation pipeline **and** a browser over its output | Claude Code skills (local, `uv`) + Flask + React/Vite/TS + Lambda (Docker) + Cognito + **DynamoDB** (`studio-prod-catalog`, single-table: characters, projects, runs, scenes, movies and the node tree; three GSIs) + S3 |
 | `infra/` | Shared infrastructure | Terraform |
 
-**`studio/` used to break this repo's environment rule and no longer does.**
-Until August 2026 it ran **local against prod** — one media bucket, one Cognito
-pool, no dev environment — on the reasoning that a view onto a single library of
-generated media would exercise nothing against an empty second copy. That is
-over: studio has a per-machine dev stack like every other service, and
-`dev-setup.sh` and `dev-up.sh` point at it. The reasoning was answered rather
-than abandoned — the dev stack is *seeded* from a published fixture, so it is
-not meant to be empty. **Both halves now work end to end.** #284 and #285
-landed as code in August and went unrun for weeks; `v1` was published on
-2026-08-27 and a fresh stack seeds from it in about two seconds. It carries one
-character and its seed pool — no runs, scenes or movies, because those are model
-output and cost money to make. Publishing is human-gated, but **not** because it
-generates media: `publish` promotes nodes that already exist in a dev stack, so
-it calls no model and costs nothing. The gate is hard rule #1 — `catalog.json`
-lands in git, so the publisher requires `--dev-subjects-only` before `--apply`
-and refuses any name outside `DEV_SUBJECTS`. That rule is **env-scoped**: a dev
+**`studio/` has a per-machine dev stack like every other service** — its own
+Cognito pool, media bucket, catalog table and callback endpoint, named
+`studio-dev-<short12>-*` — and `dev-setup.sh` and `dev-up.sh` point at it. The
+stack is *seeded* from a published fixture, so it is not meant to be empty: `v1`
+carries one character and its seed pool — no runs, scenes or movies, because
+those are model output and cost money to make — and a fresh stack loads it in
+about two seconds. Publishing is human-gated, but **not** because it generates
+media: `publish` promotes nodes that already exist in a dev stack, so it calls
+no model and costs nothing. The gate is hard rule #1 — `catalog.json` lands in
+git, so the publisher requires `--dev-subjects-only` before `--apply` and
+refuses any name outside `DEV_SUBJECTS`. That rule is **env-scoped**: a dev
 subject may be named in the repo, a production character never may.
 `studio/CLAUDE.md` has the reasoning.
 
-Running the **CLI** against production is a **named profile**, decided in August
-2026 and modelled on the AWS CLI's: `studio --profile prod <command>`, or
-`STUDIO_PROFILE=prod`. A profile carries all five values that select a stack —
-API URL, both Cognito ids, media bucket, catalog table — from
-`~/.config/andreas-services/studio/config`, and an explicit `--profile` beats an
-exported `STUDIO_API_URL` rather than losing to it. There is no confirmation
-step on prod: selecting it is the intent. It is also **not** a permission
-boundary — the maintenance commands run under your own IAM key either way. See
-`studio/CLAUDE.md`. And:
+Running the **CLI** against production is a **named profile**, modelled on the
+AWS CLI's: `studio --profile prod <command>`, or `STUDIO_PROFILE=prod`. A
+profile carries all five values that select a stack — API URL, both Cognito
+ids, media bucket, catalog table — from
+`~/.config/andreas-services/studio/config`. An explicit `--profile` beats an
+exported `STUDIO_API_URL`, because `dev-up.sh` exports one and `--profile prod`
+typed in that shell must not silently keep talking to dev. There is no
+confirmation step on prod: selecting it is the intent. It is also **not** a
+permission boundary — the CLI holds no AWS credential; the one tool that does,
+`dev-seed`, runs under your own IAM key. See `studio/CLAUDE.md`. And:
 
 **`studio/` is the one service that is not purely a deployable unit.** Half of it
-— `studio/.claude/skills/`, eighteen skills — runs locally inside Claude on a
+— `studio/.claude/skills/`, twenty skills — runs locally inside Claude on a
 developer's machine and never deploys; the CI path filters exclude it from the
 prod workflow. The other half is an ordinary Flask + Vite service. Both share the
-media S3 bucket, which `studio/infra/modules/media` owns. It is also the one
-bucket whose name predates the naming convention below and is deliberately
-renamed in August 2026 — see `studio/infra/README.md`.
+media S3 bucket, which `studio/infra/modules/media` owns — see
+`studio/infra/README.md`.
 
 **Those skills come in two families, and picking one is the first step of any
 task in `studio/`** — route by what the task changes, not what it mentions:
 
 | Changing… | Load |
 |---|---|
-| media or an S3 record (an image, a clip, a character, a project, a run) | a **`studio-media-*`** skill |
+| media or a catalog record (an image, a clip, a character, a project, a run) | a **`studio-media-*`** skill |
 | studio's own code (`pipeline/`, `backend/`, `frontend/`, `infra/`) | **`studio-code-pipeline`** |
 
 Load it with the Skill tool rather than skimming its `SKILL.md` — these pages
@@ -196,13 +190,39 @@ screen and starting work tends to end in hand-rolled `aws s3` calls that a
 `studio` subcommand already does. Full routing table in
 [studio/CLAUDE.md](studio/CLAUDE.md#which-skill).
 
-Those eighteen skills live in `studio/.claude/skills/` and are directory-scoped:
+Those twenty skills live in `studio/.claude/skills/` and are directory-scoped:
 they register only once a file under `studio/` has been read, so a `Skill` call
 on the first action of a session returns `Unknown skill`. That is a timing
 artifact, not a missing skill. The root **`studio`** skill is the entry point —
 it is registered from the start and routes you through
 [studio/CLAUDE.md](studio/CLAUDE.md#which-skill), which is also the read that
 registers the rest.
+
+## Dev ports
+
+Every service runs locally at once without a clash. One table, and every
+`vite.config`, dev script, Cognito localhost callback and `.claude/launch.json`
+entry agrees with it — change a port here first, then everywhere the table
+names.
+
+| Service | Backend | Frontend | Also |
+|---|---|---|---|
+| `studio/` | 8000 | 5173 — busy → 5178, 5179, 5180 (`dev-up.sh` picks; the dev stack registers all four) | Playwright preview 4173 |
+| `classroom/` | 8001 | 5174 | |
+| `website/` | 8002 | 5175 | prod build served on 3000 |
+| `humbugg/` | 5001 (Docker), 5050/5051 (`dotnet run`) | marketing 5176 · app (Expo web) 8081 | app stubbed e2e 4174 · Mailpit 8025 |
+
+Vite is `strictPort` everywhere: a silent hop to the next free port lands on
+one the service's Cognito pool has no callback for, and the sign-in fails a
+screen later with nothing pointing back here. Something outside this repo on
+a port (another project's dev server on `:5173` is how this table came to
+exist) is what studio's fallbacks are for; every other service says which
+port is taken and stops.
+
+Every `docker-compose.yml` sets top-level `name:` to its service (`humbugg`,
+`website`, …). Without it Compose names the project after the directory,
+and every service keeps its compose file in `backend/`, so `docker ps` showed
+`backend-backend-1` with nothing saying which app it was.
 
 ## Shared Infrastructure (`infra/`)
 
@@ -215,7 +235,7 @@ The root `infra/` directory owns **cross-cutting AWS resources** shared by all s
 
 State is in S3: `s3://andreas-services-terraform-state/`
 - Shared: `shared/terraform.tfstate`
-- Per-service: `<service>/<env>/terraform.tfstate` (e.g. `humbugg/prod/`, `scout/prod/`)
+- Per-service: `<service>/<env>/terraform.tfstate` (e.g. `humbugg/prod/`, `studio/prod/`)
 
 Services reference shared resources via Terraform data sources — never duplicate them:
 ```hcl
@@ -274,7 +294,7 @@ data "aws_route53_zone" "main" {
 - **DB access**: DynamoDB via the AWS SDK for .NET (no ORM, no VPC needed)
 - **Note**: Humbugg was migrated from Python/Flask to ASP.NET Core — it is no longer a Python service. See `humbugg/CLAUDE.md` for details.
 
-### Backend (Lambda-only services like scout-events)
+### Backend (Lambda-only Python services)
 - **Language**: Python 3.11
 - **Logging**: Standard `logging` module; output goes to CloudWatch automatically
 - **AWS SDK**: boto3 — never hardcode credentials; rely on IAM role
@@ -374,7 +394,7 @@ infra/
 - `lifecycle { ignore_changes = [image_uri, environment] }` on Lambda resources — the deploy workflow owns both: `update-function-code` for the image and `update-function-configuration` for env vars. Terraform sets initial values on first creation only.
 
 ### Deployment (CI/CD)
-- **Standard**: GitHub Actions. Filenames follow `<service>-<env>.yaml` (combined deploy) and `<service>-pr.yml` (combined PR workflow) — e.g. `humbugg-prod.yaml`, `scout-pr.yml` — so the service and the trigger environment (PR vs Prod) are visible at a glance. Auxiliary workflows append a scope suffix after the env segment (e.g. `shared-prod-infra-plan.yaml`).
+- **Standard**: GitHub Actions. Filenames follow `<service>-<env>.yaml` (combined deploy) and `<service>-pr.yml` (combined PR workflow) — e.g. `humbugg-prod.yaml`, `studio-pr.yml` — so the service and the trigger environment (PR vs Prod) are visible at a glance. Auxiliary workflows append a scope suffix after the env segment (e.g. `shared-prod-infra-plan.yaml`).
 - **One combined PR workflow per service**: each service has a single `<service>-pr.yml` that runs on every PR. It validates only — lint, unit tests, Terraform validate, and a build to prove the image compiles. Where a service has a browser suite it runs there too, stubbed: studio's Playwright specs answer every `/api/**` from committed fixtures. **PR workflows never write to AWS**, which is also why no service's integration suite runs on PR — those are local, behind a flag. There are no ephemeral preview environments; they were removed because the maintenance and teardown cost outweighed their value for a solo repo.
 - **One combined prod deploy per service**: each service has a single `<service>-prod.yaml` with four jobs chained via `needs:`: `detect-changes → build-and-push → deploy-infra → update-lambda + deploy-frontend`. Image build runs **before** Terraform applies because Lambda resources reference `${ecr_repo}:latest` with `lifecycle { ignore_changes = [image_uri, environment] }`, so the image must already exist before Terraform creates the Lambda. Putting build-and-push first eliminates the chicken-and-egg trap on fresh AWS accounts. `update-lambda` then sets env vars and pins the function code to `:${{ github.sha }}` for traceability. This eliminates races between separate infra and app workflows that shared SSM params.
 - **Path filtering**: `dorny/paths-filter@v3` — only deploy when the service's files change

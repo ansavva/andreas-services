@@ -66,7 +66,7 @@ test("a seeded session reaches the app rather than the hosted sign-in page", asy
   await expect(page.getByRole("menuitem", { name: /sign out/i })).toBeVisible();
 });
 
-test("the header offers the three sections", async ({ page }) => {
+test("the sidebar offers the sections", async ({ page }) => {
   // The navigation this rework added. It is asserted here rather than trusted
   // to the screenshots because it is the one thing on every screen: if these
   // stop rendering, every page loses its way out at once.
@@ -143,6 +143,11 @@ test("the character page opens its seed pool", async ({ page }) => {
  * **The fixture carries the id-shaped folder name for this reason.** It was
  * captured before slugs were removed and still said `jason`, against which this
  * spec passes even with the label wired to nothing at all.
+ *
+ * **A folder deep, because the root draws no trail.** One crumb inside a Files
+ * tab is the entity's own name under a page title that is already that name, so
+ * it is not drawn until there is somewhere above to go — which is also the
+ * first moment the boundary label matters.
  */
 test("the Files tab names its boundary crumb after the character", async ({
   page,
@@ -152,7 +157,18 @@ test("the Files tab names its boundary crumb after the character", async ({
 
   // The LAST one: `PageBar` draws a breadcrumb of its own above the tabs.
   const crumbs = page.getByRole("navigation", { name: "Breadcrumb" }).last();
-  await expect(crumbs).toHaveText(CHARACTER_NAME);
+  await expect(crumbs).toHaveCount(0);
+
+  // Into the first folder the tab lists, whatever it is called.
+  // The first folder the tab lists, whatever it is called: a folder row is a
+  // button named after itself, and the row comes before its own `⋯`.
+  const folderList = page.locator("section", {
+    has: page.getByRole("heading", { name: "Folders" }),
+  });
+  await folderList.waitFor();
+  await folderList.getByRole("button").first().click();
+
+  await expect(crumbs).toContainText(CHARACTER_NAME);
   await expect(crumbs).not.toContainText(CHARACTER);
 });
 
@@ -230,7 +246,7 @@ test("a tile in Media opens the file it shows", async ({ page }) => {
   // render once there is something to draw.
   await expect(page.getByLabel("Neighbours")).toBeVisible();
   await expect(page.getByRole("region", { name: "File details" })).toBeVisible();
-  await expect(page.getByText("No images or videos here.")).toHaveCount(0);
+  await expect(page.getByText("No images or videos yet.")).toHaveCount(0);
 });
 
 test("the captured listing still says 49 jpeg and 5 png", async ({ page }) => {
@@ -246,53 +262,29 @@ test("the captured listing still says 49 jpeg and 5 png", async ({ page }) => {
 });
 
 /**
- * **Back is not the breadcrumb**, and `PageBar` now carries both.
+ * **`PageBar` draws no back arrow, on any page.**
  *
- * A crumb goes UP — to the folder or the project. Back goes where you actually
- * came from, and `?in=` makes those routinely different: a file opened from a
- * feed has an "up" it has never visited. The arrow only appears when there is
- * an entry to undo, because a cold share link's back leaves the app entirely.
+ * It used to — an `IconButton` shown whenever `location.key !== "default"`,
+ * so the same page laid out differently opened cold versus opened from a
+ * list. The browser's own Back already answers "where did I come from"; a
+ * crumb answers "where am I", which Back cannot — so the arrow is gone
+ * everywhere rather than conditionally somewhere.
  *
  * `exact: true` is not decoration: Playwright matches an accessible name as a
  * case-insensitive SUBSTRING, and a character's body-angle stills are named
  * "…back…", so a loose locator matches four tiles in the Recent grid and the
  * test fails on a page that is behaving perfectly.
- *
- * **These must navigate in-app, never with a second `page.goto`.** A `goto` is
- * a full document load, so React Router's `location.key` resets to `"default"`
- * and the arrow correctly hides — a test written that way fails against a
- * perfectly good implementation, which is exactly what happened while writing
- * this one.
  */
-test("a back arrow appears once there is somewhere to go back to", async ({
-  page,
-}) => {
-  stubOnly(
-    "the arrow is router state, and the stub feed is what makes the walk deterministic",
-  );
+test("there is no back arrow, cold or navigated to", async ({ page }) => {
+  stubOnly("the stub feed is what makes the walk deterministic");
   await page.goto("/");
   await page.waitForLoadState("networkidle");
-
   await expect(
     page.getByRole("button", { name: "Back", exact: true }),
   ).toHaveCount(0);
 
   await page.getByText("jason", { exact: true }).first().click();
   await page.waitForURL(/\/c\//);
-
-  const back = page.getByRole("button", { name: "Back", exact: true });
-  await expect(back).toBeVisible();
-
-  await back.click();
-  await expect.poll(async () => new URL(page.url()).pathname).toBe("/");
-});
-
-test("a cold link has no back arrow, because back would leave the app", async ({
-  page,
-}) => {
-  stubOnly("same feed");
-  await page.goto(`/c/${CHARACTER}`);
-  await page.waitForLoadState("networkidle");
   await expect(
     page.getByRole("button", { name: "Back", exact: true }),
   ).toHaveCount(0);
@@ -316,9 +308,10 @@ test("media tiles are links, so a modified click can leave the page", async ({
   page,
 }) => {
   stubOnly("the stub feed is what makes the grid deterministic");
-  // Home's Recent grid, which the reel fixture fills — a character's Files tab
-  // needs a tab click to reach and this is about the tile, not the route.
-  await page.goto("/");
+  // The library's Media view, which the reel fixture fills — Home lists no
+  // media any more, and a character's Files tab needs a tab click to reach;
+  // this is about the tile, not the route.
+  await page.goto("/f?view=media");
   await page.waitForLoadState("networkidle");
 
   const linked = page.locator('main a[href*="/o/"]');

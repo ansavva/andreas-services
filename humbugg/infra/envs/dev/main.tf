@@ -41,3 +41,20 @@ module "storage" {
   app_bucket_name = local.app_bucket_name
   tags            = local.common_tags
 }
+
+# THE ONE PUBLIC ENDPOINT A DEV STACK HAS.
+#
+# Stripe cannot reach `localhost:5001`, so for as long as this environment had
+# no public URL the only way a Plus purchase could complete locally was the
+# Stripe CLI relaying events while it happened to be running. This gives each
+# machine a real webhook endpoint — a gateway, a zip receiver and a queue —
+# and `dev-up.sh` runs the consumer that drains the queue into the local
+# backend. `dev-aws-setup.sh` registers the URL with Stripe after this applies
+# and writes the queue and secret into dev.env; see the module for the design
+# and for why Terraform does not touch the Stripe side.
+module "webhook_relay" {
+  source = "../../modules/webhook_relay"
+
+  name_prefix = local.resource_prefix
+  tags        = local.common_tags
+}

@@ -13,8 +13,8 @@
 #
 # The bare `ADMIN_EMAIL` / `ADMIN_PASSWORD` are still accepted, second, because
 # that is what this took until now. Prefer the prefixed pair: the bare names are
-# the same two in scout's script, so one `export ADMIN_PASSWORD` in a
-# shell serves both and sets a password on whichever pool is run next. The
+# generic, so one `export ADMIN_PASSWORD` in a shell would reach whichever
+# service's script is run next. The
 # GitHub secrets have always been namespaced; this closes the gap between them.
 # Optional:
 #   AWS_REGION      defaults to us-east-1

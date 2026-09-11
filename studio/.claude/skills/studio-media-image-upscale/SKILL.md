@@ -11,7 +11,7 @@ whole reason to reach for it: a seed photo is evidence of who someone is, and a
 generative "upscaler" that redraws a face produces a better-looking image of a
 slightly different person.
 
-> Invocation, the approval gate, run recording and validation are shared —
+> Invocation, hard rule #2, run recording and validation are shared —
 > see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model image-upscale …`,
 > and `studio models show image-upscale` for the live schema. This page covers
 > only what is specific to this model.
@@ -39,9 +39,8 @@ studio run --model image-upscale --project <project> \
   --extra '{"enhance_model":"High Fidelity V2","upscale_factor":"4x","face_enhancement":true,"face_enhancement_creativity":0}'
 ```
 
-**No prompt.** `--prompt` is an error here, not a no-op. Passing one used to be
-unavoidable and made the model unrunnable: the only payload the CLI would build
-was the one Topaz rejected.
+**No prompt.** `--prompt` is an error here, not a no-op: Topaz rejects a
+payload carrying one.
 
 ## Which enhancer
 

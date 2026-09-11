@@ -2,7 +2,7 @@ import { useEffect, useMemo, type ReactNode } from "react";
 import { BrowserRouter, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 
-import { Alert } from "@ansavva/design-system";
+import { Alert, Toast } from "@ansavva/design-system";
 
 import { ApertureSpinner } from "./components/common/Aperture";
 import { CALLBACK_PATH, login } from "./auth/oauth";
@@ -44,7 +44,7 @@ function Gate({ children }: { children: ReactNode }) {
           <Alert.Root intent="warning">
             <Alert.Title>Auth is not configured</Alert.Title>
             <Alert.Description>
-              Set VITE_COGNITO_CLIENT_ID and VITE_COGNITO_DOMAIN (see .env.local.example).
+              Set VITE_COGNITO_CLIENT_ID and VITE_COGNITO_DOMAIN in dev.env (see studio/dev.env.sample).
             </Alert.Description>
           </Alert.Root>
         </div>
@@ -184,12 +184,20 @@ export function App() {
     // let `/auth/callback` through unauthenticated, and only a child of the
     // router can. The query client wraps everything, including that path —
     // clearing the cache on a library switch has to outlive any one route.
+    // The toast store sits outside the router and the gates, so a message
+    // queued by a write survives the navigation that follows it — deleting
+    // the folder you are in steps up into its parent, and the toast is what
+    // says the delete happened. Its viewport is a portal to `document.body`
+    // and draws nothing until something is queued.
     <QueryClientProvider client={client}>
-      <AuthProvider>
-        <BrowserRouter>
-          <GatedApp />
-        </BrowserRouter>
-      </AuthProvider>
+      <Toast.Provider>
+        <AuthProvider>
+          <BrowserRouter>
+            <GatedApp />
+          </BrowserRouter>
+        </AuthProvider>
+        <Toast.Viewport />
+      </Toast.Provider>
     </QueryClientProvider>
   );
 }
@@ -197,11 +205,10 @@ export function App() {
 /**
  * Empty the cache when the library changes.
  *
- * **The remount above is no longer enough, and that is what a cache costs.**
- * Discarding component state used to discard every answer with it; a cache
- * outlives the components that filled it, so without this a switch would redraw
- * the previous library's characters from memory and only correct itself when
- * something refetched. Keys are not library-scoped instead, because that would
+ * **The remount above is not enough on its own, and that is what a cache
+ * costs.** A cache outlives the components that filled it, so without this a
+ * switch would redraw the previous library's characters from memory and only
+ * correct itself when something refetched. Keys are not library-scoped instead, because that would
  * put the library context inside `useResource` and every component test would
  * need a provider to render at all.
  *

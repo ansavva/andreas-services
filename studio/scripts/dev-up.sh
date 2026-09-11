@@ -8,7 +8,8 @@
 #
 #   ./studio/scripts/dev-up.sh
 #
-# Backend on :8000, frontend on :5173. Ctrl+C stops both.
+# Backend on :8000, frontend on the first free port the stack accepts (:5173
+# first). Ctrl+C stops both.
 
 set -euo pipefail
 
@@ -19,11 +20,8 @@ cd "$ROOT"
 # fails per-request rather than at boot, which is a slower way to learn the same
 # thing. Since August 2026 they are a long-lived access key in
 # `~/.aws/credentials` or `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` in the
-# environment, and boto3 reads both natively. The export below used to be
-# load-bearing — under `aws login` the CLI read a cache boto3 could not see, so
-# the API failed with "no EC2 IMDS role found" while `aws sts
-# get-caller-identity` happily succeeded. It is kept because it costs nothing
-# and still does the right thing for an SSO or credential_process profile.
+# environment, and boto3 reads both natively. The export below costs nothing
+# and does the right thing for an SSO or credential_process profile.
 if ! aws sts get-caller-identity >/dev/null 2>&1; then
   echo "AWS credentials are not valid. Put an access key in ~/.aws/credentials," >&2
   echo "or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. See the root CLAUDE.md." >&2
@@ -32,7 +30,7 @@ fi
 eval "$(aws configure export-credentials --format env)"
 
 export AWS_DEFAULT_REGION="${AWS_REGION:-us-east-1}"
-export STUDIO_ALLOWED_ORIGIN="http://localhost:5173"
+# `STUDIO_ALLOWED_ORIGIN` is exported once the frontend's port is chosen, below.
 
 # ---------------------------------------------------------------------------
 # What the API now needs before it can answer anything at all.
@@ -46,18 +44,15 @@ export STUDIO_ALLOWED_ORIGIN="http://localhost:5173"
 # exports the whole local API answers 500 before it reaches a route.
 #
 # Read from SSM, the same parameters and by the same method `dev-setup.sh`
-# already uses to write `frontend/.env.local`. They are written there by the
+# already uses to write `dev.env`. They are written there by the
 # deploy workflow from Terraform's outputs, so they cannot drift from what is
 # deployed — and the frontend signing in against one pool while the backend
 # verifies against another is precisely the drift a hardcoded value would
 # create.
 #
-# **THIS MACHINE'S DEV STACK, NOT PROD.** studio used to read `/studio/prod/*`
-# here and serve the local API against the live bucket and the live pool. That
-# is over (#287): this repo no longer connects to production, the way every
-# other service in the monorepo already works.
+# **THIS MACHINE'S DEV STACK, NOT PROD.** Nothing here reads `/studio/prod/*`.
 #
-# Running the CLI against prod is a `studio --profile prod <command>` now, and
+# Running the CLI against prod is a `studio --profile prod <command>`, and
 # it is deliberately not a flag on this script — this one starts a local API
 # server, and there is no version of that which should serve production. The
 # profile mechanism is `pipeline/src/studio_pipeline/profiles.py`.
@@ -83,9 +78,9 @@ if ! dev_stack="$(
   load_machine_id false
   load_aws_identity
   load_dev_stack_outputs
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$DEV_POOL_ID" "$DEV_CLIENT_ID" \
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$DEV_POOL_ID" "$DEV_CLIENT_ID" \
     "$DEV_BUCKET" "$DEV_TABLE" "$DEV_CALLBACK_URL" "$DEV_CALLBACK_QUEUE" \
-    "$DEV_RENDER_QUEUE"
+    "$DEV_RENDER_QUEUE" "$DEV_SPA_PORTS"
 )"; then
   echo "Could not read this machine's dev stack." >&2
   echo "  The API verifies every request's token against the dev pool, so it" >&2
@@ -94,13 +89,54 @@ if ! dev_stack="$(
   exit 1
 fi
 IFS=$'\t' read -r POOL_ID CLIENT_ID MEDIA_BUCKET CATALOG_TABLE \
-  CALLBACK_URL CALLBACK_QUEUE RENDER_QUEUE <<<"$dev_stack"
+  CALLBACK_URL CALLBACK_QUEUE RENDER_QUEUE SPA_PORTS <<<"$dev_stack"
+
+# WHICH PORT THE FRONTEND GETS.
+#
+# The stack registers a short list of localhost ports (`spa_ports`, `:5173`
+# first) as Cognito callbacks and bucket CORS origins. The first free one is
+# the one — another project's dev server on `:5173` used to leave Vite hopping
+# to `:5175` on its own, where Cognito refused the callback and the API
+# refused the origin, and nothing said why. `STUDIO_DEV_PORT` names one
+# instead, and is refused rather than obeyed if the stack does not know it or
+# something else holds it: a port the pool has not heard of cannot sign in.
+# By connecting, on both address families, rather than by `lsof`: Vite binds
+# `localhost` — v4 and v6 — and a server bound to `::1` alone (another
+# project's dev server was) is invisible to an `lsof -iTCP` walk on macOS and
+# still takes the port.
+port_in_use() {
+  nc -z -w1 127.0.0.1 "$1" >/dev/null 2>&1 || nc -z -w1 ::1 "$1" >/dev/null 2>&1
+}
+FRONTEND_PORT=""
+if [ -n "${STUDIO_DEV_PORT:-}" ]; then
+  case " $SPA_PORTS " in
+    *" $STUDIO_DEV_PORT "*) ;;
+    *) echo "STUDIO_DEV_PORT=$STUDIO_DEV_PORT is not one this stack accepts ($SPA_PORTS)." >&2
+       echo "  Cognito would refuse the sign-in callback. Re-apply with a list that" >&2
+       echo "  names it, or unset STUDIO_DEV_PORT." >&2; exit 1 ;;
+  esac
+  if port_in_use "$STUDIO_DEV_PORT"; then
+    echo "Port $STUDIO_DEV_PORT is already in use. Stop what holds it, or unset STUDIO_DEV_PORT" >&2
+    echo "  to take the first free one of: $SPA_PORTS" >&2; exit 1
+  fi
+  FRONTEND_PORT="$STUDIO_DEV_PORT"
+else
+  for candidate in $SPA_PORTS; do
+    if ! port_in_use "$candidate"; then FRONTEND_PORT="$candidate"; break; fi
+    echo "Port $candidate is in use — trying the next one this stack accepts."
+  done
+  if [ -z "$FRONTEND_PORT" ]; then
+    echo "Every port this stack accepts is in use: $SPA_PORTS" >&2
+    echo "  Stop one of them, or re-apply the stack with more in \`spa_ports\`." >&2; exit 1
+  fi
+fi
+export STUDIO_DEV_PORT="$FRONTEND_PORT"
+export STUDIO_ALLOWED_ORIGIN="http://localhost:$FRONTEND_PORT"
 
 export STUDIO_COGNITO_USER_POOL_ID="$POOL_ID"
 export STUDIO_COGNITO_CLIENT_ID="$CLIENT_ID"
-# Exported unconditionally now, unlike the SSM version. `config.py`'s defaults
-# name PROD resources, so falling through to them is no longer a survivable
-# outcome — it is the exact thing this issue removes. `load_dev_stack_outputs`
+# Exported unconditionally: `config.py`'s defaults name PROD resources, so
+# falling through to them is not a survivable outcome. `load_dev_stack_outputs`
 # refuses an incomplete state, so reaching here means all four are set.
 export STUDIO_MEDIA_BUCKET="$MEDIA_BUCKET"
 export STUDIO_CATALOG_TABLE="$CATALOG_TABLE"
@@ -149,22 +185,29 @@ else
   echo "  and frames cannot be pulled. Re-apply with ./studio/scripts/dev-aws-setup.sh." >&2
 fi
 
+# The per-machine dev.env: DEV_ENV_FILE plus the readers for it. Sourced at
+# top level here (not in the subshell above) so the helpers are in scope; its
+# `die` is not reached from anything this script calls.
+# shellcheck source=dev-aws-common.sh
+source "$ROOT/studio/scripts/dev-aws-common.sh"
+
 # The Replicate token. The API holds the provider credential now — the CLI has
-# none at all — so it is the local Flask process that needs it, and it is read
-# from the same file it has always lived in. In prod the equivalent is an SSM
-# SecureString the Lambda reads under its own role; there is deliberately no
-# per-machine parameter, because a token is not environment-scoped.
-if [ -z "${REPLICATE_API_TOKEN:-}" ] && [ -f "$HOME/.config/andreas-services/studio/dev.env" ]; then
-  # shellcheck disable=SC1091
-  set -a; source "$HOME/.config/andreas-services/studio/dev.env"; set +a
+# none at all — so it is the local Flask process that needs it, read from
+# dev.env by key rather than by sourcing the whole file into this shell. In
+# prod the equivalent is an SSM SecureString the Lambda reads under its own
+# role; there is deliberately no per-machine parameter, because a token is not
+# environment-scoped.
+if [ -z "${REPLICATE_API_TOKEN:-}" ]; then
+  REPLICATE_API_TOKEN="$(read_env "$DEV_ENV_FILE" REPLICATE_API_TOKEN)"
+  export REPLICATE_API_TOKEN
 fi
 if [ -z "${REPLICATE_API_TOKEN:-}" ]; then
   echo "REPLICATE_API_TOKEN is not set, so this API cannot submit a generation." >&2
-  echo "  Put it in ~/.config/andreas-services/studio/dev.env. Everything else works." >&2
+  echo "  Put it in $DEV_ENV_FILE. Everything else works." >&2
 fi
 
-# Where `studio login` and every other CLI call go (#300). Defaults to the
-# deployed API; pointed at the Flask process this script is about to start, so
+# Where `studio login` and every other CLI call go: the Flask process this
+# script is about to start, so
 # the CLI drives the local API against this machine's dev stack rather than the
 # Lambda.
 export STUDIO_API_URL="http://localhost:8000"
@@ -208,7 +251,7 @@ fi
 # correct thing is to delegate rather than reimplement either check. node_modules
 # matters as much as the env file: vite is a local binary, so without it this
 # script's own `npm run dev` fails the same way `tsc: not found` does.
-if [ ! -f studio/frontend/.env.local ] || [ ! -d studio/frontend/node_modules ]; then
+if [ -z "$(read_env "$DEV_ENV_FILE" VITE_COGNITO_CLIENT_ID)" ] || [ ! -d studio/frontend/node_modules ]; then
   echo "Frontend env or node_modules missing — running dev-setup.sh first."
   ./studio/scripts/dev-setup.sh
 fi
@@ -252,8 +295,14 @@ fi
 (cd studio/backend && poetry run python -m studio_core.handlers.local.consumer.render_consumer) &
 pids+=($!)
 
-echo "Frontend → http://localhost:5173"
-(cd studio/frontend && npm run dev) &
+# Vite inlines VITE_* and leaves a variable already in the environment alone,
+# so the frontend's values reach it from dev.env without a file next to
+# vite.config — and without the bundler seeing the token that shares the file.
+export_env_prefix "$DEV_ENV_FILE" VITE_
+echo "Frontend → http://localhost:$FRONTEND_PORT"
+# `--strictPort`: the port was chosen above against what the stack accepts, and
+# a silent hop past it is the failure this whole block exists to stop.
+(cd studio/frontend && npm run dev -- --port "$FRONTEND_PORT" --strictPort) &
 pids+=($!)
 
 wait

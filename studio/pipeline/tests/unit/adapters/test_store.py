@@ -459,17 +459,6 @@ def test_copying_a_node_makes_a_second_blob(library):
     assert store.read_node(made["id"]) == store.read_node(library.face_1)
 
 
-def test_a_nodes_owner_is_derived_from_its_ancestry(library):
-    """Derived, not stored — so a move that changes the owner is visible at once.
-
-    The blob key it was stamped with is not rewritten, which is the drift
-    `catalog reseat` exists to clean up out of band.
-    """
-    assert store.node_owner(library.face_1) == {
-        "kind": "character", "id": library.character, "name": "subject-a"}
-    assert store.node_owner(library.run_output)["kind"] == "project"
-
-
 def test_a_blob_key_carries_the_owner_and_the_node_and_no_name(library):
     """**A bucket listing stops leaking hard rule #1.**
 
@@ -481,19 +470,6 @@ def test_a_blob_key_carries_the_owner_and_the_node_and_no_name(library):
     key = library.fake.nodes[library.face_1]["blob_key"]
     assert key == f"characters/{library.character}/{library.face_1}.webp"
     assert "subject-a" not in key
-
-
-def test_moving_a_node_out_of_a_character_leaves_its_key_alone(library):
-    """The honest cost of entity-prefixed keys, asserted rather than assumed.
-
-    The key is still a correct pointer — it is never parsed — but it now *looks*
-    like it means something it does not. `catalog verify` reports the drift and
-    `catalog reseat --apply` rewrites it, out of band and never automatically.
-    """
-    before = library.fake.nodes[library.face_1]["blob_key"]
-    store.move_nodes([library.face_1], library.input_pool)
-    assert library.fake.nodes[library.face_1]["blob_key"] == before
-    assert store.node_owner(library.face_1)["kind"] == "project"
 
 
 def test_deleting_an_entitys_root_folder_is_refused(library):

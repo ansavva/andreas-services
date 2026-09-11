@@ -47,3 +47,18 @@ output "api_stage_name" {
   description = "Backend HTTP API stage name, for the custom-domain API mapping"
   value       = aws_apigatewayv2_stage.api.name
 }
+
+output "marketing_api_id" {
+  description = "Marketing SSR HTTP API ID, for the 5xx alarm"
+  value       = aws_apigatewayv2_api.marketing.id
+}
+
+output "api_role_arn" {
+  description = "The API Lambda's execution role, which the Stripe webhook consumer runs under as well."
+  value       = aws_iam_role.api.arn
+}
+
+output "api_role_name" {
+  description = "Name of the same role, for an inline grant declared outside this module."
+  value       = aws_iam_role.api.name
+}

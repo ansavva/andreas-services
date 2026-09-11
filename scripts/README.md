@@ -12,6 +12,7 @@ Two layers — a shared base plus thin per-service scripts:
 | `scripts/dev-setup.sh` | Shared base (all services) | Terraform, tflint (+ pinned AWS ruleset, best-effort), AWS CLI, Node.js, jq, zip, Stripe CLI (+ Docker check), agent skills |
 | `scripts/github-packages-auth.sh` | Shared base (all frontends) | Ensures a `read:packages` token is available as `NODE_AUTH_TOKEN` so `npm ci` can install `@ansavva/design-system` from GitHub Packages |
 | `humbugg/scripts/dev-setup.sh` | Humbugg orchestrator | Calls shared setup, installs .NET SDK 10, then calls per-machine AWS setup |
+| `classroom/scripts/dev-setup.sh` | Classroom | Writes `frontend/.env.local` from this machine's dev stack, then installs the backend's Poetry env and the frontend's `node_modules` |
 
 ## Targets (both use Homebrew)
 

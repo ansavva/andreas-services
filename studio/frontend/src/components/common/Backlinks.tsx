@@ -2,6 +2,8 @@ import { useNavigate } from "react-router-dom";
 
 import { Text } from "@ansavva/design-system";
 
+import { linkButtonClass } from "./linkButtonClass";
+
 import type { Backlink } from "../../types";
 
 interface Props {
@@ -44,7 +46,7 @@ export function Backlinks({ label, links, to }: Props) {
           key={link.id}
           type="button"
           onClick={() => navigate(to(link.id))}
-          className="rounded text-sm text-accent underline underline-offset-2 hover:opacity-80"
+          className={linkButtonClass("accent")}
         >
           {link.name || link.id}
         </button>

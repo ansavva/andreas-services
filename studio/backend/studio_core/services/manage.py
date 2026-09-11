@@ -5,18 +5,15 @@ paths in `browse` are allowed to be forgiving — a missing folder is an empty
 listing — and nothing in here is. A write that cannot be described exactly is
 refused.
 
-**Every function here now takes node *records*, not name paths.** That is the
-whole of what the entity model changed about this file. The name-path routes
-(`/api/folder`, `/api/object`, `/api/objects/*`, `PATCH /api/text?key=`) are
-gone, `_walk` went with them, and so did the `GetItem`-per-segment each of them
-paid to turn a string into an id. One addressing scheme, no exceptions.
+**Every function here takes node *records*, not name paths.** One addressing
+scheme, no exceptions.
 
 Records rather than ids because the caller has already read them: `routes/nodes`
 resolves each id and checks it against the caller's memberships before anything
 here runs, and passing the id back down would mean reading it twice and, worse,
 would put a function here that could be called with an unchecked one.
 
-## The rules that did not change
+## The rules
 
 * **Nothing overwrites, and a condition expression is what says so.**
   `services.catalog` puts its `NAME#` item under `attribute_not_exists(pk)` and
@@ -39,15 +36,10 @@ implemented: a row pointing at a blob that is gone is a broken tile in the grid,
 while an orphan blob is invisible to every reader. If the second half fails, what
 is left is the harmless kind of inconsistent.
 
-**"Collectable later" used to be the end of that sentence, and the collector is
-gone.** It was `studio catalog gc` — a CLI command holding its own boto3 clients,
-listing every object in the bucket and scanning every row in the table to
-reconstruct a list this module had already had in its hand and thrown away. All
-of that existed because the delete told nobody which keys were in flight. It
-tells them now: `catalog.open_sweep` writes them to a row *before* the rows that
-name them are deleted, `release` closes that row once the bytes are gone, and
-`drain` finishes any sweep an earlier request abandoned. The leftover is
-addressed instead of searched for, and nothing has to scan anything.
+**The leftover is addressed, not searched for.** `catalog.open_sweep` writes
+the keys in flight to a row *before* the rows that name them are deleted,
+`release` closes that row once the bytes are deleted, and `drain` finishes any
+sweep an earlier request abandoned. Nothing has to scan anything.
 """
 
 import hashlib
@@ -66,15 +58,13 @@ def bulk(raw_ids: list | None, verb: str) -> list[str]:
 
     **The cap bounds a per-node cost rather than a single call**, and that is
     worth knowing before it is raised. `config.max_bulk_keys` is 1000 because
-    `DeleteObjects` took 1000 keys per call, so a bulk delete was one round trip;
-    against the catalog it is a transaction per node with the blobs still going
-    in one call at the end. The bound is the same number guarding a different
-    quantity, which is the kind of drift that only shows up as a timeout.
+    `DeleteObjects` takes 1000 keys per call, but against the catalog a bulk
+    delete is a transaction per node with the blobs going in one call at the
+    end — so the number bounds a per-node cost, which is the kind of thing that
+    only shows up as a timeout.
 
-    Duplicates are collapsed here rather than at each call site. One node named
-    twice in a selection used to be two `DeleteObject`s on one key, which S3
-    treats as idempotent; a row deleted twice is a 404 raised *after* the first
-    half of the request already applied.
+    Duplicates are collapsed here rather than at each call site: a row deleted
+    twice is a 404 raised *after* the first half of the request already applied.
     """
     if not isinstance(raw_ids, list) or not raw_ids:
         raise ValidationError("ids must be a non-empty list")
@@ -93,13 +83,9 @@ def bulk(raw_ids: list | None, verb: str) -> list[str]:
 def move_nodes(records: list[dict], destination: dict) -> dict:
     """Move files and folders into another folder, keeping their names.
 
-    **One route for both, where there used to be two.** `/api/objects/move` took
-    files and `/api/folder/move` took a folder, and the split was an artefact of
-    S3: moving a prefix meant a `CopyObject` per key underneath it and moving an
-    object meant one. Neither copies anything now — a move rewrites one
-    `parent_id`, one by-parent item and the derived `path` on every descendant —
-    so the only thing the two verbs still differed in was the shape of their
-    request.
+    **One route for files and folders.** Neither copies anything — a move
+    rewrites one `parent_id`, one by-parent item and the derived `path` on every
+    descendant — so the two differ only in the shape of their request.
 
     **Every destination is checked before any node moves.** Each `move_node` is
     its own transaction, so a conflict found on the eighth entry would leave
@@ -176,13 +162,11 @@ def copy_nodes(records: list[dict], destination: dict) -> dict:
     """Copy files into another folder, leaving the sources alone.
 
     **The only write in this service that copies bytes**, and that is the point
-    of it rather than an oversight. Every other copy this module used to make was
-    half of a rename or a move, and all of those are transactions now.
+    of it rather than an oversight: a rename and a move are row transactions.
 
     **Files only.** A recursive folder copy is a different operation with a
-    different cost — every descendant's bytes, not one selection's — and refusing
-    it here is the same refusal `/api/objects/copy` always made, said out loud
-    now that one route takes both kinds.
+    different cost — every descendant's bytes, not one selection's — and it is
+    refused out loud.
 
     **A name already taken at the destination is numbered, not refused.**
     `clip.mp4` arriving beside a `clip.mp4` becomes `clip (2).mp4`. A move refuses
@@ -190,17 +174,16 @@ def copy_nodes(records: list[dict], destination: dict) -> dict:
     across two folders; a copy has no such split, and copying a file into a
     folder that already holds the name is the ordinary case rather than the edge.
 
-    **Numbering consults names and nothing else.** An earlier version compared
-    byte sizes so that re-copying an identical file was silently skipped — a copy
-    quietly deciding not to copy. Ask for a copy, get a copy.
+    **Numbering consults names and nothing else.** Comparing byte sizes to skip
+    an identical file would be a copy quietly deciding not to copy. Ask for a
+    copy, get a copy.
 
     **Each copy gets its own blob, and that is load-bearing rather than
     incidental.** A second row on one `blob_key` would be cheaper, but
     `catalog.delete_node` reports the keys it removed rows for without asking
     whether anything else still points at them — there is no index on `blob_key`
-    — so a delete would destroy a surviving copy's bytes. Copy-on-write is #334
-    and has to revisit that; until it does, "no two rows share a key" is held
-    here, by the `CopyObject`.
+    — so a delete would destroy a surviving copy's bytes. "No two rows share a
+    key" is held here, by the `CopyObject`.
 
     **The copy is stamped with the *destination's* owner**, which is the one
     place a blob key is chosen rather than inherited. Copying a run output into a
@@ -265,7 +248,7 @@ def _source_blob(record: dict) -> tuple[str, dict]:
     """Where a file's bytes are, and what S3 says about them.
 
     A file row with no `blob_key`, or one whose object is not there, is a
-    placeholder whose upload never landed (#294). There is nothing to copy, and a
+    placeholder whose upload never landed. There is nothing to copy, and a
     404 naming the file is the honest answer — `s3.head` raises exactly that.
 
     The size and content type come from S3 rather than from the source row so the
@@ -314,10 +297,10 @@ def update_text(record: dict, raw_content: str | None) -> dict:
     beheaded either.
 
     **The refusal that keeps "edit" from becoming "upload" is
-    `browse.is_abandoned_upload`, and it has to be.** "Carries a `blob_key`"
-    stopped meaning anything the day `create_node` began minting one for every
-    file the moment the row exists — a placeholder whose bytes never landed has a
-    key exactly like a file that has them. The distinction is `"size" in record`:
+    `browse.is_abandoned_upload`, and it has to be.** `create_node` mints a
+    `blob_key` for every file the moment the row exists, so a placeholder whose
+    bytes never landed has a key exactly like a file that has them. The
+    distinction is `"size" in record`:
     a confirmed empty file has `size` 0 and a placeholder has it absent. It is
     asked through the one function that owns that reading rather than inlined
     here, which is what stops the two copies drifting.
@@ -373,19 +356,17 @@ def delete_nodes(records: list[dict]) -> dict:
     Bulk and single are the same call because the grid's selection is the reason
     delete exists at all — a viewer that could only remove one file at a time
     would not be worth the write permission this endpoint needs. Folders come in
-    through the same door for the reason `move_nodes` gives: the difference
-    between the two used to be a `CopyObject` per key and is now nothing.
+    through the same door: a folder delete and a file delete differ only in how
+    many rows go.
 
     **Every row goes before any blob does**, and the blobs go in one call at the
     end rather than one per file. The order is the recoverable one: a row
-    pointing at a blob that is gone is a broken tile the user sees, while the
-    reverse leaves an object no reader can reach.
+    pointing at a blob that has been deleted is a broken tile the user sees,
+    while the reverse leaves an object no reader can reach.
 
-    **That leftover used to be found by scanning, and is now addressed.**
-    `catalog.delete_node` opens a sweep naming the keys before the rows go, so
-    `release` below has a list to work from and the next delete finishes any
-    sweep this one abandons. `studio catalog gc` listed the whole bucket against
-    the whole table to reconstruct the same list; it is deleted.
+    **That leftover is addressed, never searched for.** `catalog.delete_node`
+    opens a sweep naming the keys before the rows go, so `release` below has a
+    list to work from and the next delete finishes any sweep this one abandons.
 
     **An entity's root folder is refused**, naming the entity to delete instead —
     and refused for *every* record before any of them is touched. That pre-pass
@@ -414,11 +395,10 @@ def release(lib: str | None, blob_keys: list[str], sweeps: list[str]) -> None:
     """Delete the bytes a row-delete freed, then close the sweeps that named them.
 
     **The one place blobs are deleted, and the reason no route handles a
-    `blob_key` any more.** Seven call sites each did `if result["blob_keys"]:
-    s3.delete(...)`, which is the line an interruption lands between — and the
-    line whose leftovers `studio catalog gc` existed to find. Doing it here means
-    the sweep is closed by whatever deleted the bytes, so the two can never
-    disagree about whether the job finished.
+    `blob_key`.** A call site doing `if result["blob_keys"]: s3.delete(...)` is
+    the line an interruption lands between. Doing it here means the sweep is
+    closed by whatever deleted the bytes, so the two can never disagree about
+    whether the job finished.
 
     Ordered bytes-then-sweep on purpose. A sweep outliving its objects costs one
     wasted recheck on the next delete; a sweep closed before its objects go is an
@@ -433,9 +413,9 @@ def drain(lib: str) -> int:
     """Finish any sweep an earlier delete left open. Answers how many blobs went.
 
     **Called at the top of every delete route**, which is the only moment a
-    sweep can exist and the only moment anybody is owed one being gone. That is
-    the whole of the replacement for a scheduled collector: the thing that
-    creates the debt is the thing that pays it, one request later.
+    sweep can exist and the only moment anybody is owed one being finished.
+    There is no scheduled collector: the thing that creates the debt is the
+    thing that pays it, one request later.
 
     **A key whose node is still live is kept and its sweep left open.** That is
     the crash-between-open-and-delete case: the sweep was written, the rows were
@@ -446,7 +426,7 @@ def drain(lib: str) -> int:
     A sweep may be part-live, and then the dead half still goes: those bytes are
     genuinely unreachable and holding them hostage to their siblings buys
     nothing. The sweep stays open and names them again next time, which costs a
-    second `DeleteObjects` on keys that are already gone — a no-op in S3, and
+    second `DeleteObjects` on keys already deleted — a no-op in S3, and
     cheaper than rewriting the row to remove them.
 
     Failures are swallowed and logged. A delete must not 500 because a *previous*

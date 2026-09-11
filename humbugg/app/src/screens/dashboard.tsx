@@ -14,13 +14,14 @@ import { recordPolicyConsent } from '../config/policies';
 import { webUrl } from '../config/site';
 import { useAuth } from '../context/auth-context';
 import { useProfile } from '../context/profile-context';
-import { gap, styles } from '../theme/styles';
+import { gap, useTheme } from '../theme/styles';
 import type { GroupSummary, Profile } from '../types';
 import { pickAvatar } from '../utils/image-picker';
 import { sessionKeys, sessionStore } from '../utils/session-store';
 import { todayInputValue, validateGroupForm } from '../utils/validation';
 
 export default function DashboardScreen() {
+  const { styles } = useTheme();
   const auth = useAuth();
   const router = useRouter();
   const { profile, loaded: profileLoaded, setProfile } = useProfile();
@@ -52,7 +53,7 @@ export default function DashboardScreen() {
 
   const needsProfile = profileLoaded && !profile;
 
-  if (loading || !profileLoaded) return <Shell><LoadingPanel>Preparing your exchanges…</LoadingPanel></Shell>;
+  if (loading || !profileLoaded) return <Shell><LoadingPanel /></Shell>;
   if (needsProfile) return <Shell><ProfileSetup onSaved={setProfile} /></Shell>;
 
   return (
@@ -113,13 +114,6 @@ export default function DashboardScreen() {
           </Card>
           <CreateGroup onCreated={(id) => router.push(`/groups/${id}`)} />
         </View>
-        <Text style={styles.smallMuted}>
-          Manage your photo, display name, and account in{' '}
-          <Link href="/settings" style={styles.link}>
-            Settings
-          </Link>
-          .
-        </Text>
       </View>
     </Shell>
   );
@@ -134,6 +128,7 @@ export default function DashboardScreen() {
 // order: nothing exists for a new account until this form is submitted, and the
 // consent rides the very same first `PUT /me` it always did.
 function ProfileSetup({ onSaved }: { onSaved(profile: Profile): void }) {
+  const { styles } = useTheme();
   const auth = useAuth();
   const [name, setName] = useState('');
   const [emailNotifications, setEmailNotifications] = useState(false);
@@ -241,7 +236,7 @@ function ProfileSetup({ onSaved }: { onSaved(profile: Profile): void }) {
           </Text>
         </View>
         <StatusMessage message={error} />
-        <Button size="lg" disabled={busy} onPress={() => void submit()}>
+        <Button style={styles.buttonBlock} size="lg" disabled={busy} onPress={() => void submit()}>
           {busy ? 'Saving…' : 'Continue'}
         </Button>
       </View>
@@ -250,6 +245,7 @@ function ProfileSetup({ onSaved }: { onSaved(profile: Profile): void }) {
 }
 
 function CreateGroup({ onCreated }: { onCreated(id: string): void }) {
+  const { styles } = useTheme();
   const auth = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -337,7 +333,7 @@ function CreateGroup({ onCreated }: { onCreated(id: string): void }) {
           />
         </FieldLabel>
         <StatusMessage message={error} />
-        <Button disabled={busy} onPress={() => void submit()}>
+        <Button style={styles.buttonBlock} disabled={busy} onPress={() => void submit()}>
           {busy ? 'Creating…' : 'Create group'}
         </Button>
         <Text style={styles.tiny}>

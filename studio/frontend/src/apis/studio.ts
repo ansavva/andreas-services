@@ -16,6 +16,7 @@ import type {
   NodeKind,
   NodeOwner,
   NodeRecord,
+  ProjectInputs,
   ProjectRecord,
   ProjectSummary,
   EntryKind,
@@ -25,6 +26,7 @@ import type {
   MediaListing,
   FileEntry,
   FolderEntry,
+  RunFeedPage,
   RunPage,
   RunPlan,
   RunRecord,
@@ -36,10 +38,10 @@ import type {
   SortOrder,
   TextResponse,
   UploadGrant,
-  NodeView,
   TemplateLibrary,
   TagInUse,
   TagScope,
+  FavoriteListing,
   PromptTemplate,
   TemplateBody,
   SpecBlock,
@@ -50,15 +52,14 @@ import { apiGet, apiSend } from "./client";
  * Which folder a listing is about.
  *
  * A node id, or nothing at all for the library root — whose id is not knowable
- * before the first request answers. **`prefix=` is gone**, and with it the last
- * read route that took a name path: a listing is a query on the parent id, so an
- * id is the argument the query already wants, while a path cost a read per
- * segment to walk down from the root first.
+ * before the first request answers. Never a name path: a listing is a query on
+ * the parent id, so an id is the argument the query already wants, while a path
+ * would cost a read per segment to walk down from the root first.
  */
-export type FolderRef = { node?: string };
+type FolderRef = { node?: string };
 
 /** What every listing filter can narrow on. Both readers below accept them. */
-export interface ListFilter {
+interface ListFilter {
   /** An entry must carry ALL of these. */
   tag?: string[];
   /** `folder`, `image`, `video`, `text`, `other`. Omit for everything. */
@@ -144,7 +145,6 @@ export async function getMedia(
   where: FolderRef,
   sort: SortOrder,
   cursor?: string,
-  pageSize?: number,
   filter: ListFilter = {},
 ): Promise<MediaListing> {
   const listing = await listNodes(where, {
@@ -153,7 +153,6 @@ export async function getMedia(
     cursor,
     depth: "all",
     kind: filter.kind ?? ["image", "video"],
-    limit: pageSize,
   });
   return {
     prefix: listing.prefix,
@@ -178,12 +177,11 @@ export function getNode(id: string) {
  * cross-origin download actually downloads), and the media surfaces re-signing
  * a URL that expired while the tab sat idle.
  *
- * **By node id, and that is the fix rather than a tidy-up (#432).** The route
- * also takes a `key`, and there it means a raw *S3* key rather than the name
- * path everything else in this file sends — the pipeline reads shared material
- * that has no catalog node through it. So a name path handed to `key` signs
- * whatever object happens to sit at that string, which since #294 is nothing at
- * all for anything uploaded through the app: its bytes are at `blobs/<id>`.
+ * **By node id, never by name path.** The route also takes a `key`, and there
+ * it means a raw *S3* key — the pipeline reads shared material that has no
+ * catalog node through it. A name path handed to `key` signs whatever object
+ * happens to sit at that string, which is nothing at all for anything uploaded
+ * through the app: its bytes are at `blobs/<id>`.
  */
 export function getAsset(
   node: string,
@@ -196,9 +194,8 @@ export function getAsset(
  * A JSON/markdown/text object's contents, for the text page.
  *
  * On the node's own route in both directions (`GET` here, `PATCH` in
- * `saveNodeText`), which is what closed the last gap #432 left open: the read
- * took a node id and the write took a name path, so the two addressed the same
- * file through two resolvers that could disagree. One address, one resolver.
+ * `saveNodeText`), so the read and the write address the same file through one
+ * resolver that cannot disagree with itself.
  */
 export function getNodeText(id: string) {
   return apiGet<TextResponse>(`/api/nodes/${encodeURIComponent(id)}/text`);
@@ -217,12 +214,10 @@ export function getNodeOwner(id: string) {
 // ---------------------------------------------------------------------------
 // File-layer writes — node ids, and nothing else
 //
-// Every one of these used to take a slash-joined *name* path, and there were
-// nine of them because a folder's address and a file's address were different
-// strings that counted different things. An id is an id, so `move`, `copy` and
-// `delete` are one route each and take a mixed selection.
+// An id is an id, so `move`, `copy` and `delete` are one route each and take a
+// mixed selection of folders and files.
 //
-// What that bought is the same thing ids bought the URL: a rename cannot strand
+// What that buys is the same thing ids buy the URL: a rename cannot strand
 // a request in flight, and nothing has to translate between an address and a
 // key. See ENTITY_MODEL.md, "one addressing scheme: the node id".
 // ---------------------------------------------------------------------------
@@ -411,9 +406,8 @@ export function deleteNode(id: string) {
 // Characters, projects, runs, scenes and movies — rows with ids, queried rather
 // than walked. Three things hold for every call below:
 //
-// * **Ids, and there is no other address.** The API accepted `slug:<slug>` for
-//   the CLI, where a person types a name; the SPA always holds an id and never
-//   sends one, so a rename cannot invalidate anything it is holding.
+// * **Ids, and there is no other address.** The SPA always holds an id and
+//   never sends a name, so a rename cannot invalidate anything it is holding.
 // * **`rev` on every record write.** The caller sends the `rev` it read and a
 //   stale one comes back 409. That is a compare-and-swap, not a check followed
 //   by a write with a window in it.
@@ -444,9 +438,7 @@ export function createCharacter(body: {
  * **A rename here moves nothing.** No object is copied, no run document is
  * rewritten, and every reference, binding and default-set entry keeps pointing
  * at the same node ids — the name is a label on one row and nothing else moves,
- * the root folder included, because it is named by the id. It used to be a `PATCH` per slugged
- * basename across four pools plus a rewrite pass over every run that cited the
- * old path.
+ * the root folder included, because it is named by the id.
  */
 export function patchCharacter(
   id: string,
@@ -525,34 +517,6 @@ export function deleteCharacter(
   );
 }
 
-/** The reference index, grouped and in `order` within each group. */
-/**
- * The reference spec: the prose a turnaround fills from a character's bible.
- *
- * It was a YAML file in the pipeline package, so this screen could not exist —
- * a wording change meant a code change, a review and a release, for prose whose
- * whole nature is that it gets tuned against what a model returned.
- *
- * Blocks and angles are separate rows, so editing one is one write and two
- * people editing different angles do not overwrite each other.
- */
-/**
- * One name path to the node it names.
- *
- * The address a person types, resolved once — the same route the CLI has always
- * used, without the app ever composing a path of its own.
- *
- * **It answers a NODE VIEW, not a file entry, and the difference is a crash.**
- * `support.view` reports the node's own fields; it carries no presigned `url`,
- * because a URL is what `support.assets` adds when a record POINTS at a node.
- * Typed as `FileEntry` this compiled happily and then threw on the first render
- * — `looksLikeVideo(name, url)` split an undefined. Pass the id to `MediaThumb`
- * and let it sign.
- */
-export function resolvePath(path: string) {
-  return apiGet<NodeView>("/api/resolve", { path });
-}
-
 /**
  * One tag vocabulary, by name, with how many things carry each tag.
  *
@@ -585,6 +549,51 @@ export function deleteTag(scope: TagScope, name: string) {
   return apiSend<{ name: string; changed: number }>(
     "DELETE",
     `/api/tags/${encodeURIComponent(name)}?scope=${scope}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Favorites — one PERSON's picks
+//
+// Not a tag and not a field on a node: a tag is a fact about the picture and
+// everyone in the library sees it, while a favorite is a fact about the caller
+// and two members are entitled to disagree. `POST` means favorited and `DELETE`
+// means not — there is no toggle route, because a toggle needs both ends to
+// agree on the current state first, and two tabs or one double-tap break that.
+// ---------------------------------------------------------------------------
+
+/** One page of the favorites grid, newest pick first. */
+export function getFavorites(cursor?: string, limit?: number) {
+  return apiGet<FavoriteListing>("/api/favorites", {
+    cursor,
+    limit: limit === undefined ? undefined : String(limit),
+  });
+}
+
+/**
+ * Every favorited node id, and nothing else.
+ *
+ * **What draws the heart everywhere except the grid.** A tile in the browser, a
+ * run's output, the open file — all any of them needs is whether an id is in
+ * this set, and asking per tile would be a request per tile. One read answers
+ * the whole app, and `useFavorites` is the one caller.
+ */
+export function getFavoriteIds() {
+  return apiGet<{ ids: string[] }>("/api/favorites", { view: "ids" });
+}
+
+/** Favorite one image or video. Idempotent, and keeps the first press's time. */
+export function addFavorite(id: string) {
+  return apiSend<{ node: string; favorite: true; favorited_at: string }>(
+    "POST",
+    `/api/favorites/${encodeURIComponent(id)}`,
+  );
+}
+
+export function removeFavorite(id: string) {
+  return apiSend<{ node: string; favorite: false }>(
+    "DELETE",
+    `/api/favorites/${encodeURIComponent(id)}`,
   );
 }
 
@@ -630,22 +639,26 @@ export function deleteTemplate(templateId: string) {
 }
 
 /**
- * What a run plan's template would become, expanded against this run's cast.
+ * What a template would say, filled from a cast named by id.
  *
- * Writes nothing, so the editor can call it on every change — the save is what
- * withdraws the approval, and what a prompt will SAY is exactly the thing that
- * tells you whether it is right.
+ * **The picker's fill, and it happens before there is a run.** Choosing a
+ * template in the create bar puts the FINISHED prompt in the box rather than
+ * the citations it was written with, so the words a person reads before
+ * pressing Send are the words the model gets. There is no draft yet, so the
+ * cast travels as ids.
+ *
+ * The same `expand` a draft's save runs, in the API, deliberately: a second
+ * implementation of "what does this person usually wear" would disagree with
+ * the first invisibly, because a run records the outcome and not the reasoning.
+ *
+ * It writes nothing. A template citing a character the run does not bind is a
+ * 400 naming the citation — the caller keeps the template text and says so.
  */
-export function previewPlanPrompt(runId: string, template: string) {
-  return apiSend<{
-    prompt: string;
-    /** Where each `{character.N.field}` landed in `prompt`, so it can be marked. */
-    spans: Array<{ name: string; start: number; end: number }>;
-    characters: number;
-  }>(
+export function expandTemplate(template: string, characters: string[]) {
+  return apiSend<{ prompt: string; characters: number }>(
     "POST",
-    `/api/runs/${encodeURIComponent(runId)}/plan/preview`,
-    { template },
+    "/api/templates/expand",
+    { template, characters },
   );
 }
 
@@ -666,7 +679,7 @@ export function previewPlanPrompt(runId: string, template: string) {
  * the property that makes this safe against the next route that omits
  * something new.
  */
-export type EntityPatch<T> = Partial<T> & { id: string; rev: number };
+type EntityPatch<T> = Partial<T> & { id: string; rev: number };
 
 /**
  * Revise one shot of a storyboard.
@@ -694,18 +707,16 @@ export function patchShot(
  * **A route rather than a function in each half of studio**, so the CLI and this
  * app cannot disagree about what slot 3 was. `pick` names files and `tag` names
  * tags, both comma-joined; `pick` wins, and neither given means the `default`
- * images. `group` is gone as a parameter because a group IS a tag.
+ * images. There is no `group` parameter because a group IS a tag.
  *
  * **One refusal a caller has to surface rather than work around**, a 409:
  * `over_cap`, when more images match than the model will take, carrying every
  * candidate so a person can choose. Never truncated, because a generation shown
  * seven of eighteen images silently is a result nobody can explain afterwards.
+ * A stale selection is not a second refusal: a tag cannot outlive the file it
+ * is written on.
  *
- * `stale_default_set` was the other one, and it cannot happen: it fired when the
- * set on the record named a node that was no longer a reference, and there is no
- * list and no row — a tag cannot outlive the file it is written on.
- *
- * **`ApiError.message` is the CODE on those two, not the sentence.** The API's
+ * **`ApiError.message` is the CODE on that refusal, not the sentence.** The API's
  * ordinary errors put their prose in `error` and a structured one puts the code
  * there, so `apis/client` — which reads `error` first — surfaces `over_cap`
  * verbatim and drops the `index`. A caller that wants the candidates has to read
@@ -724,20 +735,6 @@ export function getCharacterSelection(
       group: opts.group,
       limit: opts.limit === undefined ? undefined : String(opts.limit),
     },
-  );
-}
-
-/** Runs that used this character — one query, where it used to be a full walk. */
-export function getCharacterRuns(id: string, cursor?: string) {
-  return apiGet<RunPage>(`/api/characters/${encodeURIComponent(id)}/runs`, {
-    cursor,
-  });
-}
-
-/** Projects this character is involved in — a question with no answer before. */
-export function getCharacterProjects(id: string) {
-  return apiGet<ProjectSummary[]>(
-    `/api/characters/${encodeURIComponent(id)}/projects`,
   );
 }
 
@@ -799,18 +796,12 @@ export function deleteProject(
 
 /** Replace the involvement links wholesale — this is `projects link` / `unlink`. */
 /**
- * Replace who a project is about. **The answer is mergeable.**
- *
- * It was not, and the asymmetry cost three bugs: the route answered with the id
- * strings it had been handed while a `GET` expands the same field into
- * `{id, name}` objects. Merging replaced objects with strings, so
- * `characters.map(c => c.id)` became a list of `undefined` and every chip read
- * unselected while the write itself had succeeded — a failure no type could
- * catch, because the type was an assertion about a shape nobody had checked.
- *
- * The route now answers in the shape `GET` sends. The refetch this used to
- * require is gone, and `ProjectPage` lost the `onReload` prop that existed for
- * nothing else.
+ * Replace who a project is about. **The answer is mergeable**: the route
+ * answers in the shape `GET` sends — `{id, name}` objects, not the id strings
+ * it was handed — so the caller merges it into the record instead of
+ * refetching. A route that echoed strings would put them where the record
+ * holds objects, and `characters.map(c => c.id)` would read every chip as
+ * unselected while the write had succeeded — a failure no type can catch.
  */
 export function setProjectCharacters(id: string, characters: string[]) {
   return apiSend<{ id: string; characters: ProjectRecord["characters"] }>(
@@ -834,6 +825,11 @@ export function setProjectCharacters(id: string, characters: string[]) {
  * `RunsTable` reads `page.runs` and was always fine, which is why this survived:
  * the one listing anybody had opened was the one that unwrapped.
  */
+/** The working pool, numbered — what `--input N` addresses. */
+export function getProjectInputs(id: string) {
+  return apiGet<ProjectInputs>(`/api/projects/${encodeURIComponent(id)}/inputs`);
+}
+
 export function getProjectScenes(id: string) {
   return apiGet<{ scenes: SceneSummary[]; cursor: string | null }>(
     `/api/projects/${encodeURIComponent(id)}/scenes`,
@@ -855,32 +851,54 @@ export function getProjectMovies(id: string) {
  * under the project's partition, so a page is a query rather than an offset into
  * a result that had to be built first.
  */
-export function getRuns(
-  params: {
-    project?: string;
-    character?: string;
-    model?: string;
-    status?: string;
-    /**
-     * `"drafts"` un-hides drafts, which the route otherwise keeps out of a
-     * listing that names no status. Pass it whenever the caller means EVERY
-     * run — a screen offering "Any status" and then quietly dropping one is
-     * worse than a screen that never offered the choice.
-     */
-    include?: string;
-    /**
-     * **The one filter that is not for a screen.** It answers "has this exact
-     * payload already gone out here", which is a question about money rather
-     * than about what to draw — pass `include: "drafts"` with it, or the draft
-     * being asked about is itself hidden from the answer.
-     */
-    fingerprint?: string;
-    since?: string;
-    limit?: string;
-    cursor?: string;
-  } = {},
-) {
-  return apiGet<RunPage>("/api/runs", params);
+// A type alias rather than an interface: an alias carries the implicit index
+// signature `apiGet`'s `Record<string, string | undefined>` asks for.
+type RunsQuery = {
+  project?: string;
+  character?: string;
+  model?: string;
+  status?: string;
+  /**
+   * `"drafts"` un-hides drafts, which the route otherwise keeps out of a
+   * listing that names no status. Pass it whenever the caller means EVERY
+   * run — a screen offering "Any status" and then quietly dropping one is
+   * worse than a screen that never offered the choice.
+   */
+  include?: string;
+  /**
+   * **The one filter that is not for a screen.** It answers "has this exact
+   * payload already gone out here", which is a question about money rather
+   * than about what to draw — pass `include: "drafts"` with it, or the draft
+   * being asked about is itself hidden from the answer.
+   */
+  fingerprint?: string;
+  since?: string;
+  /**
+   * A prompt search: case-insensitive substring over the plan's prompt, within
+   * whatever scope and filters the rest of the query names. The catalog has no
+   * text index, so one call scans a bounded number of rows — **a page may come
+   * back short, or empty, with `cursor` still set, and that means keep
+   * going**, not "nothing more". See `docs/WEB_APP.md#the-entity-routes`.
+   */
+  q?: string;
+  limit?: string;
+  cursor?: string;
+};
+
+/**
+ * `GET /api/runs`, in either of its two shapes.
+ *
+ * Without `view` it is the listing — `RunSummary` rows, the projection the
+ * grid, the duplicate-submission check and the CLI read, cheap because it
+ * reads no envelope. `view: "feed"` asks for `RunFeedRow`s: the plan, every
+ * send and every output signed, the cast by name, from one call and no fetch
+ * per row. The feed page is clamped server-side (`STUDIO_MAX_FEED_ROWS`, 50)
+ * and says so in `cursor`, so a caller pages rather than raising `limit`.
+ */
+export function getRuns(params: RunsQuery & { view: "feed" }): Promise<RunFeedPage>;
+export function getRuns(params?: RunsQuery & { view?: undefined }): Promise<RunPage>;
+export function getRuns(params: RunsQuery & { view?: "feed" } = {}) {
+  return apiGet<RunPage | RunFeedPage>("/api/runs", params);
 }
 
 /**
@@ -888,10 +906,10 @@ export function getRuns(
  *
  * Only `project`, `kind` and `model` are required; a draft with no plan and no
  * sends is legal, and is what the composer strip makes before the editor fills
- * it in. The digest and the fingerprint are recomputed server-side from what
- * actually landed and come back on the 201 — never derived here, because
- * `plan_digest` has had three implementations in this repository and one of them
- * silently disagreed.
+ * it in. The fingerprint is recomputed server-side from what actually landed
+ * and comes back on the 201 — never derived here, because the hash under it has
+ * had three implementations in this repository and one of them silently
+ * disagreed.
  */
 export function createRun(body: CreateRunBody) {
   return apiSend<CreatedRun>("POST", "/api/runs", body);
@@ -945,7 +963,7 @@ export function getRun(id: string) {
 /**
  * The payload a DRAFT would send, rebuilt from the plan as it stands.
  *
- * Hard rule #2 asks a person to approve the full payload, and a draft has no
+ * Hard rule #2 asks a person to read the full payload, and a draft has no
  * `request.json` — that document records what was actually sent and is written
  * after dispatch. So the run whose payload most needs reading was the one whose
  * payload tab was empty, and an edit to the plan appeared to change nothing.
@@ -953,7 +971,7 @@ export function getRun(id: string) {
  * Answered by the API rather than assembled here on purpose: `payload_of` is
  * the single allowlist of what reaches a provider, and a second copy in this
  * file is exactly how a field added to the plan later becomes part of a payload
- * somebody approved as something else.
+ * somebody read as something else.
  */
 export function getRunPayloadPreview(id: string) {
   return apiGet<{ request: Record<string, unknown>; prompt: unknown }>(
@@ -962,45 +980,21 @@ export function getRunPayloadPreview(id: string) {
 }
 
 /**
- * Approve a draft — record that somebody read THIS payload and said yes to it.
+ * Send a draft to the model. **This is the call that spends money, and calling
+ * it is the decision.**
  *
- * **The digest is the whole of it.** It is sent, not stored: the API recomputes
- * the digest of what is actually on the row and answers 409 `stale_digest` if
- * the two disagree, so an approval cannot outlive the payload it was given for.
- * Approve-then-edit is the failure hard rule #2 names and that nothing checked
- * until this existed.
- */
-export function approveRun(id: string, digest: string) {
-  return apiSend<RunRecord>(
-    "POST",
-    `/api/runs/${encodeURIComponent(id)}/approve`,
-    {
-      digest,
-    },
-  );
-}
-
-/** Take an approval back. The run returns to `draft` and cannot be submitted. */
-export function revokeRunApproval(id: string) {
-  return apiSend<RunRecord>(
-    "DELETE",
-    `/api/runs/${encodeURIComponent(id)}/approve`,
-  );
-}
-
-/**
- * Send an approved run to the model. **This is the call that spends money.**
+ * **There is no approve step in front of it.** There was: `approveRun` sent a
+ * digest of the payload on screen and the API refused a submit whose plan had
+ * moved since. Decision 2026-09-04 removed it everywhere — a recorded yes was
+ * never a stronger claim than the press that submits, and the payload is on the
+ * page. Hard rule #2 is carried by who presses, not by a row.
  *
  * **The app could not do this at all until generation moved into the API.** The
- * spending lived in the CLI, holding the provider token, so a run approved on
- * this page then had to be sent from a terminal — the page could show the
- * payload, record the yes, and not act on it. It is one route now, and the
- * credential stays server-side where the SPA can never hold one.
- *
- * Refused with 409 unless the run is approved and the approval still matches the
- * payload. That is the same gate `runs submit` passes through, called from the
- * same place, so the app and the CLI cannot come to disagree about what may be
- * sent.
+ * spending lived in the CLI, holding the provider token, so a run planned on
+ * this page then had to be sent from a terminal. It is one route now, and the
+ * credential stays server-side where the SPA can never hold one. Refused with
+ * 409 once the run has already gone out — the same route `runs submit` calls,
+ * so the app and the CLI cannot come to disagree about what may be sent.
  *
  * It returns as soon as the provider has accepted the prediction — the run comes
  * back `running`, not `succeeded`. What closes it is a callback, minutes later,
@@ -1031,12 +1025,10 @@ export function reconcileRun(id: string) {
 }
 
 /**
- * Rewrite a draft's authored half. **Clears the approval, every time.**
+ * Rewrite a draft's authored half. The fingerprint moves with it.
  *
- * That is not this function's doing — the route does it — but a caller needs to
- * know, because finding out at submit time is finding out too late. Refused
- * outright once the run has been submitted: a plan edited afterwards would sit
- * beside `request.json` describing something that was never sent.
+ * Refused outright once the run has been submitted: a plan edited afterwards
+ * would sit beside `request.json` describing something that was never sent.
  */
 export function patchRunPlan(id: string, plan: RunPlan) {
   return apiSend<RunRecord>(
@@ -1048,7 +1040,7 @@ export function patchRunPlan(id: string, plan: RunPlan) {
   );
 }
 
-/** Replace the ordered images a draft binds. Clears the approval, every time. */
+/** Replace the ordered images a draft binds. The fingerprint moves with it. */
 export function patchRunSends(
   id: string,
   sends: { field: string; role: string | null; node: string }[],
@@ -1139,6 +1131,27 @@ export function patchScene(id: string, body: Partial<SceneRecord>) {
   );
 }
 
+/**
+ * Delete a scene and its shots. `files` keeps its folder by default.
+ *
+ * The route has been there since the entity model; the app had no wrapper for
+ * it. Not wired to a page yet — the scene bar's Delete is placed separately.
+ */
+export function deleteScene(id: string, files: "keep" | "delete" = "keep") {
+  return apiSend<{ id: string; files: string }>(
+    "DELETE",
+    `/api/scenes/${encodeURIComponent(id)}?files=${files}`,
+  );
+}
+
 export function getMovie(id: string) {
   return apiGet<MovieRecord>(`/api/movies/${encodeURIComponent(id)}`);
+}
+
+/** Delete a movie. Same shape and same `files` default as `deleteScene`. */
+export function deleteMovie(id: string, files: "keep" | "delete" = "keep") {
+  return apiSend<{ id: string; files: string }>(
+    "DELETE",
+    `/api/movies/${encodeURIComponent(id)}?files=${files}`,
+  );
 }

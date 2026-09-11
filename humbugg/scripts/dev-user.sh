@@ -64,16 +64,11 @@ DEV_POOL_ID="$(jq -r '.cognito_user_pool_id.value' <<<"$(terraform_output_json)"
 log "Pool:    $DEV_POOL_ID"
 log "Account: $HUMBUGG_DEV_USER_EMAIL"
 
-user_exists() {
-  aws_dev cognito-idp admin-get-user \
-    --user-pool-id "$DEV_POOL_ID" --username "$HUMBUGG_DEV_USER_EMAIL" >/dev/null 2>&1
-}
-
 if [[ "$CHECK" == "true" ]]; then
   # Deliberately does NOT check the password. Verifying it means signing in,
   # and a --check that authenticates is a --check that can lock an account out
   # of a pool with attempt limits.
-  user_exists ||
+  pool_user_exists "$DEV_POOL_ID" "$HUMBUGG_DEV_USER_EMAIL" ||
     die "No '$HUMBUGG_DEV_USER_EMAIL' in $DEV_POOL_ID. Run ./humbugg/scripts/dev-user.sh."
   ok "Account exists. Its password was not verified."
   exit 0
@@ -81,27 +76,6 @@ fi
 
 load_dev_user_password true "$GENERATE"
 
-if user_exists; then
-  log "Account exists; converging its password."
-else
-  # SUPPRESS because the password is set below, and because `.test` is
-  # unroutable — an invite would bounce into Cognito's own bounce accounting
-  # rather than reach anyone.
-  aws_dev cognito-idp admin-create-user \
-    --user-pool-id "$DEV_POOL_ID" \
-    --username "$HUMBUGG_DEV_USER_EMAIL" \
-    --user-attributes Name=email,Value="$HUMBUGG_DEV_USER_EMAIL" Name=email_verified,Value=true \
-    --message-action SUPPRESS >/dev/null
-  log "Account created."
-fi
-
-# --permanent, so there is no FORCE_CHANGE_PASSWORD challenge for a headless
-# SRP sign-in to get stuck behind.
-aws_dev cognito-idp admin-set-user-password \
-  --user-pool-id "$DEV_POOL_ID" \
-  --username "$HUMBUGG_DEV_USER_EMAIL" \
-  --password "$HUMBUGG_DEV_USER_PASSWORD" \
-  --permanent ||
-  die "admin-set-user-password failed. If it rejected the password, the AWS error above names the rule it broke — the policy differs per pool."
+ensure_pool_user "$DEV_POOL_ID" "$HUMBUGG_DEV_USER_EMAIL" "$HUMBUGG_DEV_USER_PASSWORD"
 
 ok "Account '$HUMBUGG_DEV_USER_EMAIL' ready in $DEV_POOL_ID."

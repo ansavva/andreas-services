@@ -82,3 +82,8 @@ output "ses_identity_arn" {
   description = "Verified SES domain identity ARN"
   value       = module.email.identity_arn
 }
+
+output "webhook_endpoint_url" {
+  description = "The public URL Stripe's webhook endpoint must point at — the relay's gateway, not the API's route."
+  value       = module.webhook_relay.endpoint_url
+}

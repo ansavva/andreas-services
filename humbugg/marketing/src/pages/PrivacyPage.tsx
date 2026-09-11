@@ -3,6 +3,68 @@ import { Link } from 'react-router';
 import { LegalPage } from '../components/LegalPage';
 import { BUSINESS_NAME, SERVICE_COUNTRY, SUPPORT_EMAIL } from '../config/policies';
 
+interface StoredItem {
+  keys: string;
+  store: string;
+  purpose: string;
+  lifetime: string;
+}
+
+// The complete inventory of what the product app and the marketing site store on a device.
+// The app half is verified against app/src/auth/oauth.ts, app/src/utils/session-store.ts,
+// app/src/utils/plus-intent.ts and app/src/utils/theme-preference.ts; the marketing entry is
+// marketing/src/theme.ts, the only key that site writes.
+const STORED_ITEMS: readonly StoredItem[] = [
+  {
+    keys: 'humbugg:theme',
+    store: 'localStorage on the marketing site (www.humbugg.com)',
+    purpose: 'Remembers your light/dark colour-scheme choice, if you picked one instead of following your system setting',
+    lifetime: 'Until you choose "System" again, or clear this site’s data',
+  },
+  {
+    keys: 'humbugg.auth.accessToken, humbugg.auth.refreshToken, humbugg.auth.idToken, humbugg.auth.expiresAt',
+    store: 'localStorage on the web; the device secure store (expo-secure-store) in the native app',
+    purpose: 'Keeps you signed in across tabs and restarts',
+    lifetime: 'Until sign-out or token expiry',
+  },
+  {
+    keys: 'humbugg:returnTo',
+    store: 'sessionStorage',
+    purpose: 'Where to send you after sign-in',
+    lifetime: 'The browser tab',
+  },
+  {
+    keys: 'humbugg:oauthVerifier, humbugg:oauthState',
+    store: 'sessionStorage',
+    purpose: 'Protects the sign-in handshake (PKCE, CSRF)',
+    lifetime: 'The sign-in round trip',
+  },
+  {
+    keys: 'humbugg:invite:{groupId}',
+    store: 'sessionStorage',
+    purpose: 'The invitation link you just created, so it can be shown again',
+    lifetime: 'The tab',
+  },
+  {
+    keys: 'humbugg:join:{groupId}',
+    store: 'sessionStorage',
+    purpose: 'Carries an invitation through sign-in',
+    lifetime: 'The tab',
+  },
+  {
+    keys: 'humbugg.plus.intent',
+    store: 'AsyncStorage — persists across tab close',
+    purpose: 'Remembers a Plus purchase you started, across the Stripe Checkout round trip',
+    lifetime: 'Cleared when the purchase resolves',
+  },
+  {
+    keys: 'humbugg.theme',
+    store: 'AsyncStorage — persists across tab close',
+    purpose: 'Your appearance choice (light or dark), so the app opens the way you left it',
+    lifetime: 'Until you pick System or clear site data',
+  },
+] as const;
+
 export default function PrivacyPage() {
   return (
     <LegalPage
@@ -59,7 +121,47 @@ export default function PrivacyPage() {
         Humbugg is used and to improve it. We do not use it to build advertising profiles about you.
       </p>
 
-      <h2>8. Payment information</h2>
+      <h2>8. Cookies and local storage</h2>
+      <p>
+        Humbugg uses only strictly necessary and functional storage &mdash; there are no third-party analytics,
+        advertising, or tracking cookies. Our product analytics is recorded server-side, in aggregate, and cannot be
+        tied back to your wish list, address, email, tokens, or assignment (see &ldquo;Analytics and technical
+        data&rdquo; above). Because nothing here is used to track you across sites or to build an advertising profile,
+        Humbugg does not show a cookie-consent banner.
+      </p>
+      <p>{BUSINESS_NAME}&rsquo;s marketing site (the pages this policy is published on) sets no cookies. It stores
+        one optional key, for your colour-scheme choice, only if you use the theme switch in the header &mdash; it is
+        never written just by visiting. The table below is everything the marketing site and the Humbugg product app
+        store on your device:</p>
+      <div className="mt-6 overflow-x-auto">
+        <table className="w-full min-w-[42rem] border-collapse text-left text-sm">
+          <caption className="sr-only">What the Humbugg marketing site and product app store on your device</caption>
+          <thead>
+            <tr className="border-b border-line">
+              <th scope="col" className="py-3 pr-4 font-semibold text-ink">Key</th>
+              <th scope="col" className="py-3 pr-4 font-semibold text-ink">Store</th>
+              <th scope="col" className="py-3 pr-4 font-semibold text-ink">Purpose</th>
+              <th scope="col" className="py-3 pr-4 font-semibold text-ink">Lifetime</th>
+            </tr>
+          </thead>
+          <tbody>
+            {STORED_ITEMS.map((item) => (
+              <tr key={item.keys} className="border-b border-line align-top">
+                <th scope="row" className="py-3 pr-4 font-mono text-xs font-medium text-ink">{item.keys}</th>
+                <td className="py-3 pr-4 text-muted">{item.store}</td>
+                <td className="py-3 pr-4 text-muted">{item.purpose}</td>
+                <td className="py-3 pr-4 text-muted">{item.lifetime}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p>
+        If Humbugg ever adds a non-essential cookie or a client-side analytics tool, we will update this section and
+        add a consent mechanism before doing so.
+      </p>
+
+      <h2>9. Payment information</h2>
       <p>
         Paid plans are handled by a third-party payment provider. Your card details are entered with that provider &mdash;
         Humbugg does not receive or store your full card number. We keep a record of your plan, purchase, and billing
@@ -67,19 +169,20 @@ export default function PrivacyPage() {
         <Link to="/billing">Billing Terms</Link> and <Link to="/refunds">Refund Policy</Link> for more.
       </p>
 
-      <h2>9. How we share information</h2>
+      <h2>10. How we share information</h2>
       <p>We share personal information only in these situations:</p>
       <ul>
         <li>Within an exchange, with its participants and organizer, as needed to run it.</li>
         <li>
           With service providers that operate Humbugg on our behalf &mdash; for hosting, databases, email delivery, and
-          payment processing &mdash; under obligations to protect it.
+          payment processing &mdash; under obligations to protect it. Our current sub-processors, what each one does,
+          and how international transfers are protected are listed on the <Link to="/sub-processors">Sub-processors</Link> page.
         </li>
         <li>When the law requires it, or to protect the rights, safety, and security of people and the service.</li>
       </ul>
       <p>We do not sell your personal information.</p>
 
-      <h2>10. Keeping and deleting information</h2>
+      <h2>11. Keeping and deleting information</h2>
       <p>
         We keep your information while your account is active and as needed to provide the service. You can delete your
         account, which removes your profile and the exchange content tied to it, subject to a short period needed to
@@ -88,14 +191,14 @@ export default function PrivacyPage() {
         rolling schedule.
       </p>
 
-      <h2>11. Security</h2>
+      <h2>12. Security</h2>
       <p>
         We use reasonable technical and organizational measures to protect your information, including encrypted
         connections and access controls. No online service can be completely secure, so we cannot guarantee absolute
         security, but we work to protect your information and to respond promptly to issues.
       </p>
 
-      <h2>12. Your choices</h2>
+      <h2>13. Your choices</h2>
       <p>
         You can review and update much of your information directly in Humbugg, and you can delete your account. If you
         would like help accessing or deleting your information, contact us at{' '}
@@ -104,14 +207,27 @@ export default function PrivacyPage() {
         </a>
         .
       </p>
+      <h3>Requesting restriction or objection</h3>
+      <p>
+        Access, rectification, erasure, and export of your information are self-service &mdash; use the export and
+        deletion tools in Settings, and the edit screens for your profile, wish list, and address. For a request to
+        restrict how we process your data (Art. 18), an objection to processing (Art. 21), or a change that is not
+        self-service &mdash; such as changing the email address on your account &mdash; email{' '}
+        <a className="text-accent hover:underline" href={`mailto:${SUPPORT_EMAIL}`}>
+          {SUPPORT_EMAIL}
+        </a>
+        . We may ask you to confirm the request from your account&rsquo;s own email address before acting on it. We
+        respond within one month; for a complex request we may extend that by up to two further months, and we will
+        tell you if we do.
+      </p>
 
-      <h2>13. Children</h2>
+      <h2>14. Children</h2>
       <p>
         Humbugg is not directed to children under 13, and we do not knowingly collect their personal information. If you
         believe a child has provided us information, contact us and we will remove it.
       </p>
 
-      <h2>14. Changes to this policy</h2>
+      <h2>15. Changes to this policy</h2>
       <p>
         We may update this policy over time. When we do, we will change the version and effective date shown at the top of
         this page.

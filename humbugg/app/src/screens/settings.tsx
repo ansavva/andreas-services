@@ -6,29 +6,31 @@
 // confirmation with a destructive action — and it owns the focus trap, the
 // dismissal and the `role="alertdialog"` wiring on both platforms, so the
 // hand-rolled overlay is gone rather than ported.
-import { AlertDialog, Button, Input, Switch } from '@ansavva/design-system';
+import { AlertDialog, Button, Input, Switch, Toggle, ToggleGroup } from '@ansavva/design-system';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Linking, Text, View } from 'react-native';
 
 import { api } from '../api/client';
 import { Avatar } from '../components/avatar';
-import { DangerButton } from '../components/danger-button';
 import { FieldLabel } from '../components/field';
 import { Card, LoadingPanel, Shell } from '../components/shell';
 import { StatusMessage } from '../components/status-message';
 import { webUrl } from '../config/site';
 import { useAuth } from '../context/auth-context';
 import { useProfile } from '../context/profile-context';
-import { blends, gap, styles } from '../theme/styles';
+import { radii } from '../theme/radii';
+import { useSchemePreference, type SchemePreference } from '../theme/scheme-preference';
+import { gap, scopedStyles, useTheme } from '../theme/styles';
 import type { Profile } from '../types';
 import { pickAvatar } from '../utils/image-picker';
 
 export default function SettingsScreen() {
+  const { styles } = useTheme();
   const auth = useAuth();
   const { profile, loading, loaded, error, setProfile } = useProfile();
 
-  if (loading && !loaded) return <Shell><LoadingPanel>Loading your settings…</LoadingPanel></Shell>;
+  if (loading && !loaded) return <Shell><LoadingPanel /></Shell>;
 
   return (
     <Shell>
@@ -42,6 +44,7 @@ export default function SettingsScreen() {
         </View>
         <StatusMessage message={error} />
         <ProfileSection profile={profile} email={auth.email} onSaved={setProfile} />
+        <AppearanceSection />
         {profile ? <NotificationsSection profile={profile} onSaved={setProfile} /> : null}
         <AccountSection email={auth.email} />
         {profile ? <DangerZone profile={profile} /> : null}
@@ -59,6 +62,7 @@ function ProfileSection({
   email: string | null;
   onSaved(profile: Profile): void;
 }) {
+  const { styles } = useTheme();
   const auth = useAuth();
   const [name, setName] = useState(profile?.display_name ?? '');
   const [savingName, setSavingName] = useState(false);
@@ -177,7 +181,84 @@ function ProfileSection({
   );
 }
 
+/**
+ * Light, dark, or whatever the device says — the one setting on this page that
+ * never leaves the device.
+ *
+ * A `ToggleGroup` rather than a `Select`: three options is a segmented control's
+ * whole range, all three are visible without opening anything, and each is a
+ * 44dp target. The group carries the accessible name ("Appearance") and each
+ * member announces its own state through `aria-pressed`, so a screen reader
+ * gets both the question and the answer.
+ *
+ * CONTROLLED, and the empty array is why. In single-select mode the package's
+ * group unpresses a value that is pressed again — correct for a filter, wrong
+ * for a three-way choice that must always have an answer. Ignoring an empty
+ * `next` turns a second press on the current option into a no-op instead of a
+ * state with no appearance selected.
+ */
+function AppearanceSection() {
+  const theme = useTheme();
+  const { styles } = theme;
+  const local = appearanceStyles(theme);
+  const { preference, setPreference } = useSchemePreference();
+
+  const options: ReadonlyArray<{ value: SchemePreference; label: string }> = [
+    { value: 'system', label: 'System' },
+    { value: 'light', label: 'Light' },
+    { value: 'dark', label: 'Dark' },
+  ];
+
+  return (
+    <Card>
+      <Text style={styles.heading}>Appearance</Text>
+      <Text style={[styles.smallMuted, { marginTop: 8 }]}>
+        Choose how Humbugg looks on this device. System follows your device&rsquo;s light or dark
+        setting. This is remembered on this device only — it is not part of your account.
+      </Text>
+      <View style={{ marginTop: 20 }}>
+        <ToggleGroup.Root
+          aria-label="Appearance"
+          style={local.group}
+          value={[preference]}
+          onValueChange={(next) => {
+            // Matched against the options rather than cast: the group speaks in
+            // `string[]`, and this is where that becomes a preference again.
+            const chosen = options.find((option) => option.value === next[0]);
+            if (chosen) setPreference(chosen.value);
+          }}
+        >
+          {options.map((option) => (
+            <Toggle key={option.value} value={option.value}>
+              {option.label}
+            </Toggle>
+          ))}
+        </ToggleGroup.Root>
+      </View>
+    </Card>
+  );
+}
+
+/**
+ * The track the three toggles sit in.
+ *
+ * Only the pressed toggle paints, so on a bare card the three read as three
+ * loose words rather than one control with one answer. A `surfaceAlt` trough is
+ * the same thing `.status-pill` and `.member-row` do with the same token — it
+ * says "these belong together" without touching the toggles themselves, which
+ * stay the package's.
+ */
+const appearanceStyles = scopedStyles((t) => ({
+  group: {
+    alignSelf: 'flex-start',
+    borderRadius: radii.md,
+    padding: 4,
+    backgroundColor: t.brand.surfaceAlt,
+  },
+}));
+
 function NotificationsSection({ profile, onSaved }: { profile: Profile; onSaved(profile: Profile): void }) {
+  const { styles } = useTheme();
   const auth = useAuth();
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ message: string; tone: 'error' | 'success' } | null>(null);
@@ -248,6 +329,7 @@ function NotificationsSection({ profile, onSaved }: { profile: Profile; onSaved(
 }
 
 function AccountSection({ email }: { email: string | null }) {
+  const { styles } = useTheme();
   return (
     <Card>
       <Text style={styles.heading}>Account</Text>
@@ -264,6 +346,7 @@ function AccountSection({ email }: { email: string | null }) {
 }
 
 function DangerZone({ profile }: { profile: Profile }) {
+  const { blends, styles } = useTheme();
   const auth = useAuth();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -335,9 +418,9 @@ function DangerZone({ profile }: { profile: Profile }) {
           <StatusMessage message={error} />
           <View style={{ marginTop: 24, flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
             <AlertDialog.Close>Cancel</AlertDialog.Close>
-            <DangerButton size="sm" disabled={busy || !matches} onPress={() => void deleteAccount()}>
+            <Button intent="danger" size="sm" disabled={busy || !matches} onPress={() => void deleteAccount()}>
               {busy ? 'Deleting…' : 'Permanently delete'}
-            </DangerButton>
+            </Button>
           </View>
         </AlertDialog.Popup>
       </AlertDialog.Root>

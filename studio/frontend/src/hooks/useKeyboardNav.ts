@@ -47,6 +47,9 @@ export function useKeyboardNav({
       // which is a range input and answers the arrow keys natively.
       const target = event.target as HTMLElement | null;
       if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      // The create bar's prompt editor is a contenteditable, not an input —
+      // an arrow pressed while writing a prompt moves the caret, not the run.
+      if (target?.isContentEditable) return;
 
       // A modified arrow is the browser's (back/forward, word jump); leave it.
       if (event.metaKey || event.ctrlKey || event.altKey) return;

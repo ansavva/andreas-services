@@ -18,9 +18,8 @@
 # resources below. A per-machine CloudFront distribution would cost 20 minutes
 # per apply and per destroy to prove nothing.
 #
-# **It DOES declare an API Gateway now, and that sentence used to say it never
-# would.** The exception is `module.callbacks`, and it is worth stating why it
-# earns one when hosting does not.
+# The one exception is `module.callbacks`, which does declare an API Gateway,
+# and it is worth stating why it earns one when hosting does not.
 #
 # Replicate cannot reach `http://localhost:8000`. So for as long as this
 # environment had no public endpoint, the callback that closes a generation
@@ -39,6 +38,9 @@
 # edited, and an apply here is still seconds.
 
 locals {
+  # Every origin the local SPA may have — see `spa_ports`.
+  spa_origins = [for port in var.spa_ports : "http://localhost:${port}"]
+
   project     = "studio"
   environment = "dev"
 
@@ -102,9 +104,10 @@ module "auth" {
   auth_domain_prefix = local.resource_prefix
 
   # Only localhost. There is no deployed origin in this environment — the SPA
-  # is Vite on :5173 and the API is Flask on :8000.
-  callback_urls = ["http://localhost:5173/auth/callback"]
-  logout_urls   = ["http://localhost:5173/"]
+  # is Vite on one of `spa_ports` and the API is Flask on :8000. One callback
+  # per port, so whichever port `dev-up.sh` lands on is already registered.
+  callback_urls = [for origin in local.spa_origins : "${origin}/auth/callback"]
+  logout_urls   = [for origin in local.spa_origins : "${origin}/"]
 
   tags = local.common_tags
 }
@@ -122,7 +125,7 @@ module "storage" {
   # Passed explicitly even though the module defaults to the same value, so the
   # one thing that differs between this bucket's CORS rule and prod's is visible
   # here rather than only in the module.
-  cors_allowed_origins = var.spa_origins
+  cors_allowed_origins = local.spa_origins
 
   tags = local.common_tags
 }

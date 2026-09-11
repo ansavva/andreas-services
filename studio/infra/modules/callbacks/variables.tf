@@ -17,12 +17,6 @@ variable "media_bucket_name" {
   default     = ""
 }
 
-variable "media_root_prefix" {
-  description = "Prefix inside the bucket the worker may write under. Empty means the whole bucket."
-  type        = string
-  default     = ""
-}
-
 variable "catalog_table_name" {
   description = "Catalog table the worker closes runs in. Prod only."
   type        = string

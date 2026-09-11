@@ -9,15 +9,14 @@ import {
 /**
  * One `GET`, the three states it can be in, and a `reload` for after a write.
  *
- * **Same shape as before; a cache underneath.** This was a `useState` +
- * `useEffect` pair per caller, which meant every navigation refetched
- * everything — going back to home refired the character list, the project list
- * and a walk of the whole library, each answer re-signing every URL in it. It
- * also meant two components wanting the same list made two requests: the header
- * search and the home page both read `/api/characters`, and both asked.
+ * **The shape of a `useState` + `useEffect` pair; a cache underneath.** A bare
+ * pair per caller means every navigation refetches everything — going back to
+ * home refires the character list, the project list and a walk of the whole
+ * library, each answer re-signing every URL in it — and two components wanting
+ * the same list make two requests: the header search and the home page both
+ * read `/api/characters`.
  *
- * The interface kept its shape on purpose. Twenty-one callers use this, and a
- * migration that rewrote all of them at once is a migration nobody can review.
+ * The interface keeps the plain shape on purpose: twenty-one callers use this.
  *
  * ## The key is the one thing callers had to gain
  *

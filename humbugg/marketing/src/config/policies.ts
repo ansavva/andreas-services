@@ -8,9 +8,9 @@
  */
 
 // Policy version + effective date recorded on every policy page.
-export const POLICY_VERSION = '2026.1';
+export const POLICY_VERSION = '2026.3';
 // ISO date the current policies take effect. Placeholder — confirm before publishing.
-export const POLICY_EFFECTIVE_DATE = '2026-07-01';
+export const POLICY_EFFECTIVE_DATE = '2026-09-10';
 
 // Display / merchant identity shown in the policies. Placeholder — confirm the
 // registered business name that will appear on card statements.
@@ -72,13 +72,5 @@ export const PLANS: readonly PlanFact[] = [
     price: '$12',
     cadence: 'one-time charge per exchange',
     summary: 'A one-time upgrade for a single exchange, raising the limit to 50 total participants.',
-  },
-  {
-    code: 'work',
-    name: 'Work',
-    price: '$99',
-    cadence: 'per year, automatically renewing',
-    summary:
-      'An annual plan for organizers running exchanges throughout the year; it renews each year until canceled.',
   },
 ] as const;

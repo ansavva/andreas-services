@@ -1,26 +1,27 @@
 import { useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { Alert, Button, Tabs, Text } from "@ansavva/design-system";
+import { Tabs } from "@ansavva/design-system";
 
-import { ApertureSpinner } from "../components/common/Aperture";
+import { LoadError } from "../components/common/LoadError";
+import { PageLoading } from "../components/common/PageLoading";
 import { ApiError } from "../apis/client";
 import { deleteCharacter, getCharacter, patchCharacter, setCharacterProfile } from "../apis/studio";
 import { FolderTab } from "../components/browse/FolderTab";
 import { PageBar } from "../components/layout/PageBar";
-import { CharacterProjects, CharacterRuns } from "../components/character/CharacterWork";
 import { ProfileForm } from "../components/character/ProfileForm";
 import { useResource } from "../hooks/useResource";
 import { CHARACTERS_PATH } from "../utils/location";
 import type { CharacterIdentity, CharacterProfile, CharacterRecord } from "../types";
 import { useSearchParamState } from "../hooks/useSearchParamState";
 import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog";
+import { TrashIcon } from "../components/common/icons";
 
 /**
  * One character: who they are, what they look like, and everything filed under
  * them.
  *
- * ## Four tabs, where there were seven
+ * ## Two tabs, where there were seven
  *
  * The root's children — `reference/`, `corpus/`, `seed/`, `archive/` and
  * anything made by hand — each used to get a tab beside Profile and References.
@@ -43,6 +44,15 @@ import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog"
  * listing dressed as a place. The filter is in Files, where every other way of
  * narrowing the listing is, and it is one press from the same result.
  *
+ * ## Runs and Projects are gone from here again
+ *
+ * They had a tab each: `GET /characters/<id>/runs` and `/projects` existed
+ * with no caller, so the pair got a tab to answer "what has this character
+ * been in" for the first time. Dropped back out of the view — a character
+ * page is who they are and what they look like, not a second way to browse
+ * work that already has a home on the run and project pages. The routes stay;
+ * `CharacterWork.tsx`, which drew these two tabs, does not.
+ *
  * ## Two writes, one button
  *
  * The identity fields and the bible are both on the character record and both
@@ -63,6 +73,8 @@ export function CharacterPage() {
   const navigate = useNavigate();
 
   const [tab, setTab] = useSearchParamState("tab", "profile");
+  /** The delete dialog, opened from the page bar's menu rather than drawn loose. */
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const load = useCallback(() => getCharacter(characterId), [characterId]);
   const character = useResource(["character", characterId], load);
 
@@ -109,29 +121,16 @@ export function CharacterPage() {
     [character, characterId],
   );
 
-  if (character.loading) {
-    return (
-      <>
-        <div className="flex justify-center py-16">
-          <ApertureSpinner size="lg" label="Loading character" />
-        </div>
-      </>
-    );
-  }
+  if (character.loading) return <PageLoading label="Loading character" />;
 
   if (character.error || !character.data) {
     return (
-      <>
-        <Alert.Root intent="danger">
-          <Alert.Title>Could not open this character</Alert.Title>
-          <Alert.Description>{character.error ?? "It may have been deleted."}</Alert.Description>
-        </Alert.Root>
-        <div>
-          <Button size="sm" onClick={() => navigate("/")}>
-            Back to home
-          </Button>
-        </div>
-      </>
+      <LoadError
+        what="this character"
+        message={character.error ?? "It may have been deleted."}
+        onRetry={character.reload}
+        escape={{ label: "Back to home", onClick: () => navigate("/") }}
+      />
     );
   }
 
@@ -140,15 +139,10 @@ export function CharacterPage() {
   return (
     <>
       {/*
-        The two-group layout this page argued for is `PageBar` now, and the
-        argument is unchanged — it just holds for every page instead of this one.
-
-        `ms-auto` pins a control to the right of whatever *line* it lands on,
-        and on a phone that line is whichever one the flex run happened to break
-        at — so the destructive control moved around under the title depending on
-        how long the name was. Two children and `justify-between` give it one
-        place on a wide screen and one place on a narrow one: beside the title,
-        or on its own line beneath it.
+        Delete lives in the menu now, behind `⋯` — the button itself moved,
+        the confirmation did not: it is still `ConfirmDestroyDialog`, still
+        typing the name, just opened by a menu item instead of drawn loose
+        beside the title.
 
         **No cascade here, and the noun says so.** Projects and runs that name
         this character hold link rows, and `force` drops those — but the runs
@@ -159,28 +153,31 @@ export function CharacterPage() {
       */}
       <PageBar
         crumbs={[{ label: "Characters", to: CHARACTERS_PATH }]}
-        actions={
-          <ConfirmDestroyDialog
-            label="Delete"
-            title={`Delete ${record.name}?`}
-            summary={
-              "The character, its profile and its whole reference library go. " +
-              "Runs that used it stay — a run really did use this subject, and " +
-              "deleting the character is not a reason to delete the work."
-            }
-            confirmWord={record.name}
-            onConfirm={async () => {
-              await deleteCharacter(record.id, "delete", true);
-              navigate(CHARACTERS_PATH);
-            }}
-          />
+        title={record.name}
+        menu={[{
+              label: "Delete",
+              icon: <TrashIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5]" />,
+              danger: true,
+              onSelect: () => setDeleteOpen(true),
+            }]}
+      />
+
+      <ConfirmDestroyDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        label="Delete"
+        title={`Delete ${record.name}?`}
+        summary={
+          "The character, its profile and its whole reference library go. " +
+          "Runs that used it stay — a run really did use this subject, and " +
+          "deleting the character is not a reason to delete the work."
         }
-      >
-        {/* One line, because there is one label. The mono caption under this
-            was the slug, and it survived the slug removal as `record.name` a
-            second time — so the bar drew the character's name twice. */}
-        <Text variant="display">{record.name}</Text>
-      </PageBar>
+        confirmWord={record.name}
+        onConfirm={async () => {
+          await deleteCharacter(record.id, "delete", true);
+          navigate(CHARACTERS_PATH);
+        }}
+      />
 
       {/* `defaultValue` as well as `value`, which the package requires even
           when controlled: it seeds `useControllableState`, and Tabs does not
@@ -193,11 +190,6 @@ export function CharacterPage() {
         <Tabs.List className="overflow-x-auto border-b border-line">
           <Tabs.Tab value="profile">Profile</Tabs.Tab>
           <Tabs.Tab value="files">Files</Tabs.Tab>
-          {/* The reverse questions. Both routes existed with no caller, so a
-              character was a dead end: who it is, what it looks like, and
-              nothing about the work it appears in. */}
-          <Tabs.Tab value="runs">Runs</Tabs.Tab>
-          <Tabs.Tab value="projects">Projects</Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="profile">
@@ -213,14 +205,6 @@ export function CharacterPage() {
             conflict={conflict}
             onReload={character.reload}
           />
-        </Tabs.Panel>
-
-        <Tabs.Panel value="runs">
-          <CharacterRuns characterId={record.id} />
-        </Tabs.Panel>
-
-        <Tabs.Panel value="projects">
-          <CharacterProjects characterId={record.id} />
         </Tabs.Panel>
 
         <Tabs.Panel value="files">

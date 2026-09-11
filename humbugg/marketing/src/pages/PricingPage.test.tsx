@@ -15,14 +15,15 @@ function renderWith(plans = FALLBACK) {
 }
 
 describe('PricingPage', () => {
-  it('shows all three plans with the figures it was given', () => {
+  it('shows the two plans with the figures it was given', () => {
     renderWith();
-    for (const name of ['Free', 'Plus', 'Work']) {
+    for (const name of ['Free', 'Plus']) {
       expect(screen.getAllByRole('heading', { name, level: 2 }).length).toBeGreaterThan(0);
     }
     expect(screen.getAllByText('$0').length).toBeGreaterThan(0);
     expect(screen.getAllByText('$12').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('$99').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('heading', { name: 'Work', level: 2 })).not.toBeInTheDocument();
+    expect(screen.queryByText('$99')).not.toBeInTheDocument();
   });
 
   /**
@@ -31,24 +32,22 @@ describe('PricingPage', () => {
    * One-time and automatically renewing have to be distinguishable without reading both twice, so
    * this asserts the words rather than that some cadence text exists.
    */
-  it('makes one-time and automatically renewing unmistakable', () => {
+  it('makes one-time unmistakable', () => {
     renderWith();
     expect(screen.getAllByText('Once, per exchange').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Per year, renews automatically').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Always free').length).toBeGreaterThan(0);
   });
 
   /**
    * #158: do not market the internal 10,000 safety ceiling as a feature.
    *
-   * It is a guard rail against a runaway import, not a product boundary, and the catalogue already
-   * flags it with `marketed_as_unlimited` — so this is the one number that must NOT appear.
+   * It is a guard rail against a runaway import, not a product boundary. Work is hidden entirely
+   * now, so this is the one number that must NOT appear.
    */
   it('never puts the 10,000 safety ceiling on the page', () => {
     const { container } = renderWith();
     expect(container.textContent).not.toContain('10,000');
     expect(container.textContent).not.toContain('10000');
-    expect(screen.getAllByText('No participant limit').length).toBeGreaterThan(0);
   });
 
   it('states the limits that ARE product boundaries, organizer included', () => {
@@ -70,14 +69,32 @@ describe('PricingPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('offers a start, an upgrade and a Work path', () => {
+  it('offers a start and an upgrade, no Work path', () => {
     renderWith();
     expect(screen.getByRole('link', { name: 'Start free' })).toHaveAttribute(
       'href',
-      `${APP_ORIGIN}/signup`,
+      `${APP_ORIGIN}/login`,
     );
     expect(screen.getByRole('link', { name: 'Upgrade an exchange' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Start Work' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Start Work' })).not.toBeInTheDocument();
+  });
+
+  /**
+   * Work is deferred (#638). Even if the API answers with a Work entry — a stored group that
+   * predates the flag, or a rollback — the page must never show it.
+   */
+  it('never renders Work even if the API returns it', () => {
+    const withWork = toCards([
+      { code: 'free', name: 'Free', participant_limit: 6, marketed_as_unlimited: false, price_cents: 0, currency: 'USD', billing_cadence: 'free' },
+      { code: 'plus', name: 'Plus', participant_limit: 50, marketed_as_unlimited: false, price_cents: 1_200, currency: 'USD', billing_cadence: 'one_time' },
+      { code: 'work', name: 'Work', participant_limit: 10_000, marketed_as_unlimited: true, price_cents: 9_900, currency: 'USD', billing_cadence: 'annual' },
+    ]);
+    const { container } = renderWith(withWork);
+
+    expect(container.textContent).not.toContain('Work');
+    expect(container.textContent).not.toContain('$99');
+    expect(screen.queryByRole('link', { name: 'Start Work' })).not.toBeInTheDocument();
+    expect(container.textContent).not.toContain('renews automatically');
   });
 
   /**

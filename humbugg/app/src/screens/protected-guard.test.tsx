@@ -35,7 +35,7 @@ beforeEach(() => {
 it('holds while the session is still being restored, rather than leaving for the hosted page', () => {
   mocks.auth = { loading: true, authenticated: false, login };
   render(<ProtectedLayout />);
-  expect(screen.getByText('Checking your session…')).toBeOnTheScreen();
+  expect(screen.getByLabelText('Loading')).toBeOnTheScreen();
   expect(login).not.toHaveBeenCalled();
 });
 
@@ -44,7 +44,7 @@ it('holds while the session is still being restored, rather than leaving for the
 it('sends a signed-out visitor straight to the hosted sign-in page', async () => {
   mocks.auth = { loading: false, authenticated: false, login };
   render(<ProtectedLayout />);
-  expect(screen.getByText('Taking you to sign in…')).toBeOnTheScreen();
+  expect(screen.getByLabelText('Loading')).toBeOnTheScreen();
   await waitFor(() => expect(login).toHaveBeenCalled());
 });
 
@@ -59,7 +59,7 @@ it('holds while the profile loads, so a first-run account is not judged missing'
   mocks.auth = { loading: false, authenticated: true, login };
   mocks.profileLoaded = false;
   render(<ProtectedLayout />);
-  expect(screen.getByText('Loading your profile…')).toBeOnTheScreen();
+  expect(screen.getByLabelText('Loading')).toBeOnTheScreen();
 });
 
 it('renders the protected stack once the session and profile have settled', () => {

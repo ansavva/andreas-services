@@ -1,14 +1,14 @@
 ---
 name: studio-media-shot
-description: Produce one finished SHOT end to end from a plain-language brief — plan the steps, render a still, then animate it — as a chain of recorded runs. Use whenever a request describes MOTION ("him doing X", "filmed from the front as he…", "a clip of…") rather than a single frame, or whenever a job needs more than one studio-* call in sequence. Owns the frame-first workflow, the approval gates between steps, the plan-as-JSON format the user approves before anything bills, and what the finished shot leaves behind in S3.
+description: Produce one finished SHOT end to end from a plain-language brief — plan the steps, render a still, then animate it — as a chain of recorded runs. Use whenever a request describes MOTION ("him doing X", "filmed from the front as he…", "a clip of…") rather than a single frame, or whenever a job needs more than one studio-* call in sequence. Owns the frame-first workflow, the show-then-ask gates between steps, the plan-as-JSON format the user reads before anything bills, and what the finished shot leaves behind in S3.
 ---
 
 # studio-media-shot — one brief, one finished shot
 
 The **orchestration** layer of the **`studio-*`** family. The other skills each
 own one call; this one owns the *sequence* — turning "him doing pull-ups, filmed
-from the front" into a plan, then into a still, then into a clip, with an
-approval gate at each point where money moves.
+from the front" into a plan, then into a still, then into a clip, showing the
+payload and asking at each point where money moves.
 
 | Skill | Owns |
 |---|---|
@@ -40,8 +40,8 @@ learned the expensive way:
 
 **Before any step runs, show the user the whole plan** — every step, the model it
 uses, and the prompt it will send — as JSON. This is the workflow-level version
-of the full-payload approval gate: it lets the user redirect at step 1 instead of
-after three billed calls.
+of hard rule #2 — show, ask, submit only when told: it lets the user redirect at
+step 1 instead of after three billed calls.
 
 ```json
 {
@@ -57,7 +57,7 @@ after three billed calls.
       "prompt": { "…the image prompt as JSON…" },
       "input": { "…the Replicate input…" },
       "output": "run {project}/{run_id} -> output/{name}.jpg",
-      "gate": "approve payload; then eyeball the frame against the bible `consistency`"
+      "gate": "show payload, submit when told; then eyeball the frame against the bible `consistency`"
     },
     {
       "n": 2,
@@ -75,7 +75,7 @@ after three billed calls.
       "prompt": { "…the studio-media-prompt JSON…" },
       "input": { "…the Replicate input…" },
       "output": "run {project}/{run_id} -> output/{name}.mp4",
-      "gate": "approve payload (two-document review)"
+      "gate": "show payload (two-document review), submit when told"
     }
   ]
 }
@@ -117,8 +117,8 @@ on-brief.
 
 ### 4. Render, then actually look at it
 
-Approve the payload, run it, then verify against the bible's `consistency` before spending
-video money. A drifted frame propagates into every clip made from it.
+Show the payload, run it when told, then verify against the bible's `consistency` before
+spending video money. A drifted frame propagates into every clip made from it.
 
 **Regions the model invented deserve extra scepticism** — anything outside the
 source crop (legs below a seated frame, a background that was not there) is
@@ -186,7 +186,7 @@ Each is documented where it belongs; recognising them mid-workflow matters here:
 
 | Symptom | Reality | Move |
 |---|---|---|
-| `E003 ModelRateLimitError` | Replicate capacity; nothing to do with the payload | Retry unchanged, or switch model. **Never** silently set `allow_fallback_model` — it renders on a different model than the one approved |
+| `E003 ModelRateLimitError` | Replicate capacity; nothing to do with the payload | Retry unchanged, or switch model. **Never** silently set `allow_fallback_model` — it renders on a different model than the one shown |
 | `E006` | Shot durations must sum to `duration` | Guarded locally before submitting |
 | Start frame rejected | `.webp` into Kling | Step 5 |
 | Output looks identical to input | The edit was buried under preservation wording | Lead with the change; keep "keep unchanged" short |

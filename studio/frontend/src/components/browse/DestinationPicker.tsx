@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Alert, Breadcrumbs, Button, Dialog, Text } from "@ansavva/design-system";
 
-import { ApertureSpinner } from "../common/Aperture";
+import { EmptyState } from "../common/EmptyState";
+import { SectionLoading } from "../common/SectionLoading";
 import { getFolder } from "../../apis/studio";
 import type { Crumb, FolderEntry } from "../../types";
 import type { FolderId } from "../../utils/location";
@@ -33,6 +34,19 @@ interface Props {
    * explains itself instead of the request coming back as an error.
    */
   forbiddenId?: string;
+  /**
+   * What to call the folder the picker opened at, when its stored name is not
+   * worth showing.
+   *
+   * **An entity's root folder is named after its id**, so a picker opened
+   * inside a character trails `char-57399438-…` as its first crumb and repeats
+   * it under the list as the destination — a 41-character UUID where a person
+   * expects a name. The Files tab solves the same thing with `boundaryLabel`;
+   * this is that, for the folders below a root the caller named.
+   *
+   * Display only. The submitted value is a node id either way.
+   */
+  rootLabel?: string;
   onSubmit: (destination: string) => Promise<unknown>;
   onClose: () => void;
 }
@@ -65,6 +79,7 @@ export function DestinationPicker({
   startId,
   currentId,
   forbiddenId,
+  rootLabel,
   onSubmit,
   onClose,
 }: Props) {
@@ -108,6 +123,28 @@ export function DestinationPicker({
   const destination = crumbs.at(-1)?.id ?? null;
   const shownPath = crumbs.at(-1)?.prefix ?? "";
 
+  /**
+   * A crumb's or a path's words, with the opened folder's id swapped for the
+   * name the caller gave it. See `rootLabel`.
+   */
+  const named = useCallback(
+    (text: string) => {
+      const start = crumbs.find((crumb) => crumb.id === startId);
+      if (!rootLabel || !start) return text;
+      // Trailing slashes differ between a crumb's prefix and the destination
+      // line's, so both ends are trimmed before they are compared — with them
+      // left on, the prefix test never matched and the line kept the id.
+      const trim = (path: string) => path.replace(/\/+$/, "");
+      const root = trim(start.prefix);
+      const here = trim(text);
+      if (here === trim(start.name) || here === root) return rootLabel;
+      return here.startsWith(`${root}/`)
+        ? `${rootLabel}/${here.slice(root.length + 1)}`
+        : text;
+    },
+    [crumbs, rootLabel, startId],
+  );
+
   const inForbidden = forbiddenId !== undefined && crumbs.some((crumb) => crumb.id === forbiddenId);
   // A move into the folder the items are already in does nothing; a copy into it
   // duplicates them, which is a thing people want.
@@ -143,17 +180,13 @@ export function DestinationPicker({
                 setFolderId(crumb.id);
               }}
             >
-              {crumb.name}
+              {named(crumb.name)}
             </Breadcrumbs.Item>
           ))}
         </Breadcrumbs.Root>
 
-        <div className="min-h-40 flex-1 overflow-auto rounded-md border border-line">
-          {loading && (
-            <div className="flex h-40 items-center justify-center">
-              <ApertureSpinner size="md" label="Loading folders" />
-            </div>
-          )}
+        <div className="min-h-40 flex-1 overflow-auto border border-line">
+          {loading && <SectionLoading label="Loading folders" />}
 
           {!loading && (
             <div className="flex flex-col">
@@ -176,10 +209,11 @@ export function DestinationPicker({
               ))}
 
               {folders.length === 0 && (
-                <Text variant="caption" tone="muted" className="p-3">
-                  No folders here — {verb === "move" ? "moving" : "copying"} into this one is
-                  still fine.
-                </Text>
+                <EmptyState
+                  title="No folders here."
+                  hint={`${verb === "move" ? "Moving" : "Copying"} into this one is still fine.`}
+                  className="p-3"
+                />
               )}
             </div>
           )}
@@ -188,12 +222,12 @@ export function DestinationPicker({
         {/* The *path* is what is shown, because a node id names nothing a person
             recognises. What is submitted is the id beside it. */}
         <Text variant="caption" tone="muted" className="truncate">
-          Destination: {shownPath || "/"}
+          Destination: {named(shownPath) || "/"}
         </Text>
 
         {error && (
           <Alert.Root intent="danger">
-            <Alert.Title>That did not work</Alert.Title>
+            <Alert.Title>Could not {verb} the items</Alert.Title>
             <Alert.Description>{error}</Alert.Description>
           </Alert.Root>
         )}
@@ -236,6 +270,7 @@ function PickerRow({
   up?: boolean;
 }) {
   return (
+    // eslint-disable-next-line studio/no-hand-rolled-button -- a listing row, same shape as FileRow/FolderCard.
     <button
       type="button"
       onClick={onSelect}

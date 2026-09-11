@@ -234,7 +234,6 @@ def _running_run(api):
         "plan": {"version": 1, "origin": "authored", "prompt": "a porch",
                  "params": {}},
     }).get_json()
-    api.post(f"/api/runs/{run['id']}/approve", json={"digest": run["plan_digest"]})
     api.post(f"/api/runs/{run['id']}/submit")
     return catalog.entity(catalog.ENTITY_RUN, run["id"])
 

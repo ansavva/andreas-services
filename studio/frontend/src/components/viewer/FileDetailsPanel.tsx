@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Alert, Button, Input, Text } from "@ansavva/design-system";
 
 import { AutoTextarea } from "../common/AutoTextarea";
+import { FormBar, useSavedFlash } from "../common/FormBar";
 import { TagSelect } from "../common/TagSelect";
 import type { FileEntry } from "../../types";
 
@@ -33,7 +34,7 @@ interface Props {
   onDirtyChange?: (dirty: boolean) => void;
   /** A dismissal was refused because this form holds unsaved words. */
   unsavedWarning?: boolean;
-  /** Throw the words away and close. */
+  /** Leave without saving: the words go, and the drawer closes. */
   onDiscard?: () => void;
   /** Stay, and put the warning away. */
   onKeepEditing?: () => void;
@@ -119,6 +120,8 @@ export function FileDetailsPanel({
   });
 
   const tags = useMemo(() => file.tags ?? [], [file.tags]);
+  // Tags have no Save to go grey, so the field itself says a write landed.
+  const [tagsSaved, flashTagsSaved] = useSavedFlash();
 
   /**
    * Stepping to another file must not leave the previous one's name or caption
@@ -141,21 +144,21 @@ export function FileDetailsPanel({
     setError(null);
   }, [file.id, file.name, file.description]);
 
-  const save = useCallback(
-    async (changes: { description?: string | null; tags?: string[] | null }) => {
+  const saveTags = useCallback(
+    async (next: string[]) => {
       setBusy(true);
       setError(null);
       try {
-        await onSave(changes);
+        await onSave({ tags: next });
+        flashTagsSaved();
       } catch (failure) {
         setError(failure instanceof Error ? failure.message : "Could not save");
       } finally {
         setBusy(false);
       }
     },
-    [onSave],
+    [flashTagsSaved, onSave],
   );
-
 
   const wantedName = name.trim();
   const renaming = wantedName !== "" && wantedName !== saved.name;
@@ -233,14 +236,16 @@ export function FileDetailsPanel({
             <span className="flex flex-col gap-2">
               <span>The name and description you typed would be lost.</span>
               <span className="flex flex-wrap gap-2">
-                <Button intent="secondary" onClick={onKeepEditing}>
+                <Button intent="secondary" size="sm" onClick={onKeepEditing}>
                   Keep editing
                 </Button>
                 {/* No `danger` intent exists on Button — the package ships three
                     weights and says so. The Alert around it carries the warning;
-                    this is only the choice inside it. */}
-                <Button intent="secondary" onClick={onDiscard}>
-                  Discard
+                    this is only the choice inside it. Says "leave", not
+                    "discard": the row below has a Revert, and a second word for
+                    throwing words away would read as a second way to do it. */}
+                <Button intent="secondary" size="sm" onClick={onDiscard}>
+                  Leave without saving
                 </Button>
               </span>
             </span>
@@ -283,32 +288,29 @@ export function FileDetailsPanel({
           placeholder="Shirtless at the pool, whistle on a cord, palms behind."
           aria-label="Description"
         />
-        <div className="flex items-center gap-2">
-          <Button size="sm" disabled={!dirty || busy} onClick={() => void commit()}>
-            {busy ? "Saving…" : "Save"}
-          </Button>
-          {dirty && (
-            // "Revert", not "Discard": the warning above offers a Discard that
-            // also LEAVES, and two buttons a click apart reading the same word
-            // and doing different things is worse than a slightly stiffer verb.
-            <Button
-              intent="secondary"
-              size="sm"
-              onClick={() => {
-                setName(saved.name);
-                setDraft(saved.description);
-              }}
-            >
-              Revert
-            </Button>
-          )}
-        </div>
+        <FormBar
+          dirty={dirty}
+          saving={busy}
+          onSave={() => void commit()}
+          onRevert={() => {
+            setName(saved.name);
+            setDraft(saved.description);
+          }}
+          error={error}
+        />
       </div>
 
       <div className="flex flex-col gap-2">
-        <Text variant="caption" tone="muted">
-          Tags
-        </Text>
+        <div className="flex items-center gap-2">
+          <Text variant="caption" tone="muted">
+            Tags
+          </Text>
+          {tagsSaved && (
+            <Text variant="caption" tone="muted" family="mono">
+              Saved
+            </Text>
+          )}
+        </div>
         {/*
           **The vocabulary, not a text box.** This was a free-text input with an
           Add button, so the words already on other files were invisible while
@@ -319,19 +321,8 @@ export function FileDetailsPanel({
           Every change saves immediately, as the box did: this panel is not a
           form and has no submit.
         */}
-        <TagSelect
-          scope="file"
-          value={tags}
-          onChange={(next) => void save({ tags: next })}
-          manage
-        />
+        <TagSelect scope="file" value={tags} onChange={(next) => void saveTags(next)} manage />
       </div>
-
-      {error && (
-        <Text variant="caption" className="text-danger">
-          {error}
-        </Text>
-      )}
     </section>
   );
 }

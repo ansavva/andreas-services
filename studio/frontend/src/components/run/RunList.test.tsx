@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { afterEach, expect, it } from "vitest";
 
 import { RunList } from "./RunList";
 import { TestProviders } from "../../test-providers";
@@ -9,13 +10,24 @@ import { TestProviders } from "../../test-providers";
  * listed. Three screens drew their own row and no two agreed — most visibly on
  * status colour, where a character page knew only `failed` and coloured a
  * `running` run grey while a project page coloured it amber.
+ *
+ * Rows are `EntityRow`'s now — an `<a>` addressed by `to` rather than a
+ * `<button>` with an `onOpen` — which is why every case here renders inside a
+ * `MemoryRouter`: `EntityRow` calls `useNavigate` even when nothing is clicked.
  */
 
 afterEach(cleanup);
 
-function draw(runs: Parameters<typeof RunList>[0]["runs"], onOpen = vi.fn()) {
-  render(<RunList runs={runs} onOpen={onOpen} />, { wrapper: TestProviders });
-  return onOpen;
+function draw(
+  runs: Parameters<typeof RunList>[0]["runs"],
+  to: Parameters<typeof RunList>[0]["to"] = () => "/x",
+) {
+  render(
+    <MemoryRouter>
+      <RunList runs={runs} to={to} />
+    </MemoryRouter>,
+    { wrapper: TestProviders },
+  );
 }
 
 it("colours a status the same way regardless of who is listing", () => {
@@ -47,15 +59,47 @@ it("leaves out the cost column entirely when cost is unknown", () => {
   expect(screen.getByText("—")).toBeTruthy();
 });
 
+it("links each row to the address the caller gives it", () => {
+  draw([{ id: "run-1", status: "succeeded", model: "m" }], (run) => `/p/proj/r/${run.id}`);
+  const link = screen.getByRole("link") as HTMLAnchorElement;
+  expect(link.getAttribute("href")).toBe("/p/proj/r/run-1");
+});
+
 it("opens the run that was clicked", () => {
-  const onOpen = draw([{ id: "run-1", status: "succeeded", model: "m" }]);
-  fireEvent.click(screen.getByRole("button"));
-  expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "run-1" }));
+  let landed = "";
+  function Land() {
+    landed = useLocation().pathname;
+    return <span>landed</span>;
+  }
+
+  render(
+    <MemoryRouter initialEntries={["/"]}>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <RunList
+              runs={[{ id: "run-1", status: "succeeded", model: "m" }]}
+              to={(run) => `/r/${run.id}`}
+            />
+          }
+        />
+        <Route path="/r/:runId" element={<Land />} />
+      </Routes>
+    </MemoryRouter>,
+    { wrapper: TestProviders },
+  );
+
+  fireEvent.click(screen.getByRole("link"));
+  expect(landed).toBe("/r/run-1");
 });
 
 it("shows the caller's own empty state rather than inventing one", () => {
-  render(<RunList runs={[]} onOpen={vi.fn()} empty={<span>nothing yet</span>} />, {
-    wrapper: TestProviders,
-  });
+  render(
+    <MemoryRouter>
+      <RunList runs={[]} to={() => "/x"} empty={<span>nothing yet</span>} />
+    </MemoryRouter>,
+    { wrapper: TestProviders },
+  );
   expect(screen.getByText("nothing yet")).toBeTruthy();
 });

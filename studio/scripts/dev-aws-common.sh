@@ -21,30 +21,104 @@ AWS_REGION_VALUE="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
 AWS_PROFILE_ARGS=()
 AWS_PROFILE_RESOLVED=0
 
-# The dev stack's one account. **Neither half of it is committed** — the
-# password never could be, and the address no longer is.
+# **One file holds every local development value: `$DEV_ENV_FILE`.** The
+# frontend's inlined `VITE_*` values, the dev test account, and any secret the
+# local half needs. It used to be two — `frontend/.env.local` for Vite and this
+# file for the account — and knowing which key went where was the job. Now the
+# readers come to the file: `dev-up.sh` exports the `VITE_*` prefix before Vite
+# starts, and the scripts read it directly.
 #
-# It used to be the literal `dev@studio.test`, on the reasoning that a reserved
-# `.test` TLD (RFC 2606) can never be a real mailbox, so the address was safe to
-# hard-code and worth hard-coding: `dev-user.sh` creates exactly the account
-# `dev-token.sh` signs in as, and one constant is how those cannot drift onto
-# two different people.
+# It sits outside the repo. Ignored files still vanish on `git clean -fdx` and
+# never exist in a fresh worktree; this one is per machine, shared by every
+# checkout on it, and holds a password. `STUDIO_DEV_ENV_FILE` overrides the
+# location, and every reader honours it.
 #
-# That second half still has to hold, and now it holds through the config file
-# rather than through the repo: both scripts read one value from one place, so
-# they still cannot drift — the place is just no longer inside a checkout.
-# `.test` is still what belongs in it, and nothing here enforces that, because
-# the value is now the developer's to choose.
-DEV_ENV_FILE="$CONFIG_DIR/dev.env"
+# `dev-setup.sh` writes the generated keys; a hand-set key is left alone by
+# every script that touches the file, because `upsert_env` rewrites only the
+# key it is given.
+DEV_ENV_FILE="${STUDIO_DEV_ENV_FILE:-$CONFIG_DIR/dev.env}"
+export STUDIO_DEV_ENV_FILE="$DEV_ENV_FILE"
+
+# Rewrite exactly one key, creating the file (mode 600) if needed. Comments
+# and every other key survive. A commented placeholder (`#KEY=`, which
+# dev-setup.sh renders for a hand-set key that has no value yet) is taken as
+# the key's slot, so the value lands in its section rather than at the end.
+upsert_env() {
+  local file="$1" key="$2" value="$3" temp
+  mkdir -p "$(dirname "$file")"
+  chmod 700 "$(dirname "$file")"
+  touch "$file"
+  temp="$(mktemp)"
+  awk -v key="$key" -v value="$value" '
+    BEGIN { found = 0 }
+    $0 ~ "^#?" key "=" {
+      if (!found) print key "=" value
+      found = 1
+      next
+    }
+    { print }
+    END { if (!found) print key "=" value }
+  ' "$file" > "$temp"
+  chmod 600 "$temp"
+  mv "$temp" "$file"
+}
+
+# Set a key only when the file has no line for it — a default the user may
+# have already replaced.
+ensure_env() {
+  local file="$1" key="$2" value="$3"
+  [[ -f "$file" ]] && grep -Eq "^${key}=" "$file" && return 0
+  upsert_env "$file" "$key" "$value"
+}
+
+remove_env() {
+  local file="$1" key="$2" temp
+  [[ -f "$file" ]] || return 0
+  temp="$(mktemp)"
+  awk -v key="$key" '$0 !~ "^" key "=" { print }' "$file" > "$temp"
+  chmod 600 "$temp"
+  mv "$temp" "$file"
+}
+
+# The value of one key, empty when absent. Never `source` the file: it holds
+# URLs and secrets whose characters are not all shell-safe.
+read_env() {
+  local file="$1" key="$2"
+  [[ -f "$file" ]] || return 0
+  awk -v key="$key" -F= '$1 == key { sub("^" key "=", ""); print; exit }' "$file"
+}
+
+# Export every key beginning with a prefix into this process. Vite inlines only
+# `VITE_*`, and leaves a variable already in the environment alone, so this is
+# how the frontend's values reach it without the bundler being handed a secret.
+export_env_prefix() {
+  local file="$1" prefix="$2" line key value
+  [[ -f "$file" ]] || return 0
+  while IFS= read -r line; do
+    [[ "$line" =~ ^(${prefix}[A-Za-z0-9_]*)=(.*)$ ]] || continue
+    key="${BASH_REMATCH[1]}"; value="${BASH_REMATCH[2]}"
+    export "$key=$value"
+  done < "$file"
+}
+
+require_dev_env() {
+  [[ -f "$DEV_ENV_FILE" ]] ||
+    die "Missing $DEV_ENV_FILE. Run ./studio/scripts/dev-setup.sh first."
+}
+
+# The dev stack's one account lives in the same file. **Neither half of it is
+# committed.** Both `dev-user.sh` and `dev-token.sh` read the address from this
+# one file, so the account created and the account signed in as cannot drift
+# apart. A reserved `.test` address (RFC 2606) is what belongs in it, because
+# it can never be a real mailbox; nothing enforces that, because the value is
+# the developer's.
 
 load_dev_user_email() {
   # Environment first, then the config file, and no default anywhere. Mirrors
   # `load_dev_user_password` below, deliberately: the two halves of one account
   # should not come from two kinds of place.
-  if [[ -z "${STUDIO_DEV_USER_EMAIL:-}" && -f "$DEV_ENV_FILE" ]]; then
-    # shellcheck source=/dev/null
-    source "$DEV_ENV_FILE"
-  fi
+  [[ -n "${STUDIO_DEV_USER_EMAIL:-}" ]] ||
+    STUDIO_DEV_USER_EMAIL="$(read_env "$DEV_ENV_FILE" STUDIO_DEV_USER_EMAIL)"
   [[ -n "${STUDIO_DEV_USER_EMAIL:-}" ]] || die \
     "STUDIO_DEV_USER_EMAIL is not set and $DEV_ENV_FILE provides none. Add a
   STUDIO_DEV_USER_EMAIL= line to that file. An address in the reserved .test TLD
@@ -211,11 +285,8 @@ export_temporary_aws_credentials() {
   local credentials
   # Make the selected profile resolve its current session before exporting credentials. This lets
   # SSO/credential-process profiles refresh their cached role credentials instead of copying a stale
-  # set into the long-running backend container. It used to be what made `terraform apply` work at
-  # all: `aws login` wrote a cache only the AWS CLI read, so the S3 backend resolved it while the
-  # AWS provider did not. The long-lived access key this repo moved to in August 2026 is read by
-  # both, so this is now redundancy rather than the fix. See "Environment access" in the root
-  # CLAUDE.md.
+  # set into the long-running backend container. With a long-lived access key it is redundancy
+  # rather than the fix. See "Environment access" in the root CLAUDE.md.
   resolve_aws_profile
   aws_dev_probe sts get-caller-identity >/dev/null ||
     die "AWS credentials are not currently valid. Sign in to AWS and try again."
@@ -266,11 +337,15 @@ load_dev_stack_outputs() {
   DEV_CLIENT_ID="$(jq -r '.outputs.cognito_user_pool_client_id.value // empty' <<<"$state_json")"
   # `<prefix>.auth.<region>.amazoncognito.com` — this stack's Managed Login
   # host, which the SPA redirects to. Checked below with the rest: an empty one
-  # is a stack applied before #364, and the local app cannot sign in at all
-  # against it, so failing here beats a blank sign-in button later.
+  # is a stack applied without Managed Login, and the local app cannot sign in
+  # at all against it, so failing here beats a blank sign-in button later.
   DEV_AUTH_DOMAIN="$(jq -r '.outputs.cognito_auth_domain.value // empty' <<<"$state_json")"
   DEV_BUCKET="$(jq -r '.outputs.media_bucket_name.value // empty' <<<"$state_json")"
   DEV_TABLE="$(jq -r '.outputs.catalog_table_name.value // empty' <<<"$state_json")"
+  # The ports the SPA may be served from, space-separated in the order to try.
+  # A stack applied before `spa_ports` existed registered `:5173` alone, which
+  # is what the default says — not in the required list below for that reason.
+  DEV_SPA_PORTS="$(jq -r '(.outputs.spa_ports.value // [5173]) | map(tostring) | join(" ")' <<<"$state_json")"
   # WHERE REPLICATE CALLS BACK FOR THIS MACHINE, AND THE QUEUE IT LANDS ON.
   #
   # Replicate cannot reach `http://localhost:8000`, so a generation submitted
@@ -312,10 +387,8 @@ load_dev_user_password() {
   # which puts it in this shell's history if a caller ever inlines it.
   local prompt_allowed="${1:-true}"
   local generate="${2:-false}"
-  if [[ -z "${STUDIO_DEV_USER_PASSWORD:-}" && -f "$DEV_ENV_FILE" ]]; then
-    # shellcheck source=/dev/null
-    source "$DEV_ENV_FILE"
-  fi
+  [[ -n "${STUDIO_DEV_USER_PASSWORD:-}" ]] ||
+    STUDIO_DEV_USER_PASSWORD="$(read_env "$DEV_ENV_FILE" STUDIO_DEV_USER_PASSWORD)"
   if [[ -z "${STUDIO_DEV_USER_PASSWORD:-}" && "$generate" == "true" ]]; then
     # 24 hex characters plus a fixed upper/lower/digit tail, because the pool
     # requires all three classes and `openssl rand -hex` alone can produce a
@@ -323,22 +396,10 @@ load_dev_user_password() {
     # an existing stack converges the same password rather than minting a second
     # one nothing has recorded.
     require_command openssl
-    umask 077
-    mkdir -p "$CONFIG_DIR"
-    # **Rewritten key by key, not overwritten.** This truncated the file
-    # until the address moved into it too, at which point a `--generate-password`
-    # run would have silently deleted the account's own name and left the
-    # next command asking for an email nobody removed.
-    local generated_env
-    generated_env="$(mktemp)"
-    chmod 600 "$generated_env"
-    [[ -f "$DEV_ENV_FILE" ]] &&
-      grep -v '^STUDIO_DEV_USER_PASSWORD=' "$DEV_ENV_FILE" > "$generated_env" || true
-    printf 'STUDIO_DEV_USER_PASSWORD=%s\n' "$(openssl rand -hex 12)Aa1" >> "$generated_env"
-    mv "$generated_env" "$DEV_ENV_FILE"
-    chmod 600 "$DEV_ENV_FILE"
-    # shellcheck source=/dev/null
-    source "$DEV_ENV_FILE"
+    # **Rewritten key by key, not overwritten.** Truncating the file would
+    # delete the whole stack's configuration along with the account's own address.
+    STUDIO_DEV_USER_PASSWORD="$(openssl rand -hex 12)Aa1"
+    upsert_env "$DEV_ENV_FILE" STUDIO_DEV_USER_PASSWORD "$STUDIO_DEV_USER_PASSWORD"
     ok "Generated the dev account password into $DEV_ENV_FILE (not printed)."
   fi
   if [[ -z "${STUDIO_DEV_USER_PASSWORD:-}" ]]; then

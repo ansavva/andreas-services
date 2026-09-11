@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { getNodeOwner } from "../../apis/studio";
+import { linkButtonClass } from "../common/linkButtonClass";
 import { useResource } from "../../hooks/useResource";
 import { characterPath, moviePath, projectPath, scenePath } from "../../utils/location";
 
@@ -32,8 +33,10 @@ export function OwnerLink({ nodeId }: { nodeId: string }) {
     <button
       type="button"
       onClick={() => navigate(to)}
-      className="rounded-none text-left text-muted underline-offset-2 hover:text-ink hover:underline
-                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      className={linkButtonClass(
+        "muted",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+      )}
     >
       {/* The slug, because that is what a person types at the CLI and the two
           must read as the same thing. A run has none — it is a machine event —

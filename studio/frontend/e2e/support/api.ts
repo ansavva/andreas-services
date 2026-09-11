@@ -90,6 +90,17 @@ const seedFolder = fixture<Listing<Node>>("seed-folder");
 const reel = fixture<Listing<Item>>("reel");
 const templates = fixture<unknown>("templates");
 
+/**
+ * The prompt `POST /api/templates/expand` answers with — prose, no citations.
+ *
+ * Not a captured fixture, and it does not pretend to be: it stands for
+ * "whatever the API filled", which is the only part of the pick a browser can
+ * check. That it is filled CORRECTLY is `backend/tests/unit/test_templates.py`.
+ */
+export const EXPANDED =
+  "A studio portrait of the person, front on. THE FACE COMES FROM THE " +
+  "REFERENCE IMAGES. Wearing a plain charcoal crew-neck tee, unbranded.";
+
 export const LIBRARY = libraries[0].id;
 export const CHARACTER = characters[0].id;
 export const CHARACTER_ROOT = character.root;
@@ -113,6 +124,15 @@ const projectRuns = fixture<{
   runs: Array<{ id: string; status: string; fingerprint?: string }>;
   cursor: string | null;
 }>("project-runs");
+/**
+ * The same page as `projectRuns`, in the feed's shape — `?view=feed`. `plan`
+ * is what `?q=` searches, so the stub filters it the way the API does: the
+ * prompt's string leaves, case-insensitively, never its keys.
+ */
+const projectRunsFeed = fixture<{
+  runs: Array<{ id: string; plan: { prompt: unknown } | null }>;
+  cursor: string | null;
+}>("project-runs-feed");
 const draftRun = fixture<Run>("run-draft");
 const imageRun = fixture<
   Run & {
@@ -126,7 +146,7 @@ const imageRun = fixture<
   }
 >("run-image");
 /** The 201 of `POST /api/runs` — not an envelope. See `CreatedRun`. */
-const createdRun = fixture<{ id: string; plan_digest: string }>("created-run");
+const createdRun = fixture<{ id: string; fingerprint: string }>("created-run");
 /** `GET /api/runs/<id>` on that same draft, which is what the app reads next. */
 const createdRunRecord = fixture<Run>("created-run-record");
 const models = fixture<{
@@ -145,6 +165,13 @@ export const IMAGE_RUN = imageRun.id;
 export const CREATED_RUN = createdRun.id;
 /** The output tile the promote panel is opened from. */
 export const OUTPUT = imageRun.outputs[0]!;
+/**
+ * The image run's stored `request.json`, which the opened run's Request row
+ * reads through `GET /api/nodes/<id>/text` — captured with the run, so the
+ * id is the API's. Answered below with `TEXT_BODY`, like every text node here.
+ */
+const IMAGE_RUN_PAYLOAD = imageRun.payload as { request: string; response: string };
+export const IMAGE_RUN_REQUEST = IMAGE_RUN_PAYLOAD.request;
 /** The character's `reference/` pool, which a promotion finds rather than makes. */
 export const REFERENCE_POOL = characterTree.entries.find(
   (folder) => folder.name === "reference",
@@ -345,7 +372,6 @@ export const RUN: Record<string, unknown> = {
   bindings: {},
   sends: [],
   plan: null,
-  approval: null,
   scenes: [],
   characters: [],
   outputs: [
@@ -369,7 +395,15 @@ export const TEXT_BODY = '{\n  "shot": "e2e",\n  "seconds": 5\n}\n';
 
 /** Every node `GET /api/nodes/<id>` can answer for. */
 const NODES = new Map<string, Node>(
-  [...characterRoot.entries, ...seedFolder.entries, TEXT_NODE].map((node) => [node.id, node]),
+  [
+    ...characterRoot.entries,
+    ...seedFolder.entries,
+    TEXT_NODE,
+    // The image run's two payload documents: the same captured text row under
+    // the ids the run record points at, so the Request row has bytes to show.
+    { ...TEXT_NODE, id: IMAGE_RUN_PAYLOAD.request, name: "request.json" },
+    { ...TEXT_NODE, id: IMAGE_RUN_PAYLOAD.response, name: "response.json" },
+  ].map((node) => [node.id, node]),
 );
 
 function json(route: Route, body: unknown, status = 200) {
@@ -400,6 +434,19 @@ function runFor(id: string): Record<string, unknown> {
   return RUNS.get(decodeURIComponent(id)) ?? RUN;
 }
 
+/** A plan's prompt as one lower-cased string — its string leaves, not its keys. */
+function promptText(plan: { prompt: unknown } | null): string {
+  const parts: string[] = [];
+  const walk = (value: unknown): void => {
+    if (typeof value === "string") parts.push(value);
+    else if (Array.isArray(value)) value.forEach(walk);
+    else if (value && typeof value === "object")
+      Object.values(value as Record<string, unknown>).forEach(walk);
+  };
+  walk(plan?.prompt);
+  return parts.join(" ").toLowerCase();
+}
+
 /** The run id in a `/api/runs/<id>/...` path. */
 function runIdIn(path: string): string {
   return /\/api\/runs\/([^/]+)/.exec(path)?.[1] ?? "";
@@ -419,25 +466,71 @@ function runIdIn(path: string): string {
  * stub that invented a `{}` for an unrecognised write would turn a missing
  * fixture into a flow that appears to succeed.
  */
+/**
+ * The favorites one browser run holds, in memory.
+ *
+ * **State rather than a fixture, and it is the only stub here that has any.**
+ * Every other route answers a captured artefact, because every other route
+ * answers a library that exists before the run starts. A favorite is made
+ * during the run — the spec presses a heart and then expects to find the file
+ * on the home screen — so what it asserts is that a write and a later read
+ * agree, and a fixture cannot hold that up. Reset per page by `stubApi`.
+ */
+let favorited: string[] = [];
+
+/** A favorited node as the grid's entry, off whatever listing already holds it. */
+function favoriteEntry(id: string) {
+  const known = reel.entries.find((item) => item.id === id);
+  return {
+    id,
+    key: known?.key ?? `favorited/${id}`,
+    name: known?.name ?? `${id}.webp`,
+    size: known?.size ?? 1,
+    last_modified: known?.last_modified ?? "2026-08-31T12:00:00+00:00",
+    kind: known?.kind ?? "image",
+    content_type: known?.content_type ?? "image/webp",
+    url: known?.url ?? PIXEL_PATH,
+    favorited_at: "2026-08-31T12:00:00+00:00",
+  };
+}
+
 async function written(
   route: Route,
   method: string,
   path: string,
   body: Record<string, unknown>,
 ): Promise<boolean> {
-  // A new draft. The 201 is not an envelope — it carries the id, the digest the
-  // next call approves against, and little else.
+  // The heart. `POST` means favorited, `DELETE` means not — no toggle, so the
+  // stub does not have to model one either.
+  if (path.includes("/api/favorites/")) {
+    const id = path.split("/").pop()!;
+    favorited =
+      method === "POST"
+        ? [id, ...favorited.filter((each) => each !== id)]
+        : favorited.filter((each) => each !== id);
+    await json(route, { node: id, favorite: method === "POST" }, method === "POST" ? 201 : 200);
+    return true;
+  }
+
+  // **What a template BECOMES.** Only the API can say: the fill reads each
+  // character's bible and lives in `services/template.py`, which is where it
+  // is tested. What a browser can say is that picking a template sends the
+  // template and puts the ANSWER in the box — so the stub answers with a
+  // sentence no template in the fixture contains.
+  if (method === "POST" && path.endsWith("/api/templates/expand")) {
+    await json(route, { prompt: EXPANDED, characters: 1 });
+    return true;
+  }
+
+  // A new draft. The 201 is not an envelope — it carries the id, the
+  // fingerprint, and little else.
   if (method === "POST" && path.endsWith("/api/runs")) {
     await json(route, createdRun, 201);
     return true;
   }
 
-  // The two halves of the one armed press. Both answer with the run, moved on:
-  // `RunBar` swaps what submit returns straight into the page.
-  if (method === "POST" && path.endsWith("/approve")) {
-    await json(route, { ...runFor(runIdIn(path)), status: "approved" });
-    return true;
-  }
+  // The one armed press. Answers with the run, moved on: `RunBar` swaps what
+  // submit returns straight into the page. No approve route — there is none.
   if (method === "POST" && path.endsWith("/submit")) {
     await json(route, {
       ...runFor(runIdIn(path)),
@@ -497,6 +590,7 @@ async function written(
  * path in it says which fixture to capture.
  */
 export async function stubApi(page: Page): Promise<void> {
+  favorited = [];
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const method = request.method();
@@ -523,6 +617,15 @@ export async function stubApi(page: Page): Promise<void> {
     }
 
     if (path.endsWith("/api/libraries")) return json(route, libraries);
+    if (path.endsWith("/api/favorites")) {
+      if (url.searchParams.get("view") === "ids") return json(route, { ids: favorited });
+      return json(route, {
+        entries: favorited.map(favoriteEntry),
+        total: favorited.length,
+        truncated: false,
+        next_cursor: null,
+      });
+    }
     // Before `/api/characters`, which does not match it, but keeping the spec
     // next to the listings it is a sibling of.
     if (path.endsWith("/api/templates")) return json(route, templates);
@@ -555,6 +658,20 @@ export async function stubApi(page: Page): Promise<void> {
     // project would put a "this has been run before" banner on every draft.
     if (path.endsWith("/api/runs")) {
       const fingerprint = url.searchParams.get("fingerprint");
+      // The feed's shape, and the prompt search over it. `q` is answered here
+      // and not on the listing because the listing row carries no plan to
+      // search — the API reads envelopes for it, and this stub has them.
+      if (url.searchParams.get("view") === "feed") {
+        const needle = (url.searchParams.get("q") ?? "").trim().toLowerCase();
+        return json(route, {
+          runs: needle
+            ? projectRunsFeed.runs.filter((run) =>
+                promptText(run.plan).includes(needle),
+              )
+            : projectRunsFeed.runs,
+          cursor: null,
+        });
+      }
       return json(route, {
         runs: fingerprint
           ? projectRuns.runs.filter((run) => run.fingerprint === fingerprint)

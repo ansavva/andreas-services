@@ -1,21 +1,19 @@
 #!/usr/bin/env bash
-# Start the backend, both frontends, and the Stripe webhook listener as one
-# local development session: marketing site on :5173, product app on :8081.
+# Start the backend (with the Stripe webhook consumer beside it, both from
+# backend/docker-compose.yml) and both frontends as one local development
+# session: marketing site on :5176, product app on :8081.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=dev-aws-common.sh
 source "$SCRIPT_DIR/dev-aws-common.sh"
 
-FORWARD_TO="${STRIPE_WEBHOOK_FORWARD_TO:-localhost:5001/api/billing/stripe/webhook}"
-
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --profile) [[ $# -ge 2 ]] || die "--profile requires a value."; AWS_PROFILE_VALUE="$2"; shift ;;
     --region) [[ $# -ge 2 ]] || die "--region requires a value."; AWS_REGION_VALUE="$2"; shift ;;
-    --forward-to) [[ $# -ge 2 ]] || die "--forward-to requires a value."; FORWARD_TO="$2"; shift ;;
     --help|-h)
-      printf 'Usage: %s [--profile NAME] [--region REGION] [--forward-to URL]\n' "$0"
+      printf 'Usage: %s [--profile NAME] [--region REGION]\n' "$0"
       exit 0
       ;;
     *) die "Unknown option: $1" ;;
@@ -23,37 +21,19 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-for command in aws docker jq npm stripe; do require_command "$command"; done
+for command in aws docker jq npm; do require_command "$command"; done
 
-backend_env="$HUMBUGG_DIR/backend/.env"
-[[ -f "$backend_env" ]] ||
-  die "Missing $backend_env. Run ./humbugg/scripts/dev-aws-setup.sh first."
+require_dev_env
 
-webhook_secret="$(stripe listen --print-secret --skip-update)" ||
-  die "Stripe could not retrieve its local webhook signing secret. Run 'stripe login' first."
-[[ "$webhook_secret" == whsec_* ]] ||
-  die "Stripe returned an invalid webhook signing secret. Run 'stripe login' and try again."
-
-upsert_env() {
-  local file="$1" key="$2" value="$3" temp
-  temp="$(mktemp)"
-  awk -v key="$key" -v value="$value" '
-    BEGIN { found = 0 }
-    $0 ~ "^" key "=" {
-      if (!found) print key "=" value
-      found = 1
-      next
-    }
-    { print }
-    END { if (!found) print key "=" value }
-  ' "$file" > "$temp"
-  chmod 600 "$temp"
-  mv "$temp" "$file"
-}
-
-upsert_env "$backend_env" HUMBUGG_STRIPE_WEBHOOK_SECRET "$webhook_secret"
-unset webhook_secret
-ok "Updated the ignored backend environment with the current Stripe CLI signing secret."
+# With Stripe in test mode the relay must be registered — a purchase that
+# completes with no endpoint is lost, where one that completes with no consumer
+# running merely waits in the queue. Said here, before anything starts, rather
+# than by the consumer container idling with a log line nobody reads.
+if stripe_dev_configured; then
+  [[ -n "$(read_env "$DEV_ENV_FILE" HUMBUGG_WEBHOOK_QUEUE_URL)" ]] &&
+    [[ "$(read_env "$DEV_ENV_FILE" HUMBUGG_STRIPE_WEBHOOK_SECRET)" == whsec_* ]] ||
+    die "Stripe is in test mode but this machine's webhook relay is not registered. Re-run ./humbugg/scripts/dev-aws-setup.sh."
+fi
 
 pids=()
 names=()
@@ -90,7 +70,6 @@ start_service backend "$SCRIPT_DIR/dev-up-backend.sh" \
   --profile "$AWS_PROFILE_VALUE" --region "$AWS_REGION_VALUE"
 start_service web "$SCRIPT_DIR/dev-up-marketing.sh"
 start_service app "$SCRIPT_DIR/dev-up-app.sh"
-start_service stripe "$SCRIPT_DIR/dev-up-stripe.sh" --forward-to "$FORWARD_TO" --skip-update
 
 ok "Humbugg local development is starting. Press Ctrl+C to stop everything."
 

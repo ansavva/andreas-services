@@ -24,6 +24,63 @@ with the original path and raw query string. Redirect behavior is tested locally
 and in the PR workflow; the production workflow also verifies the apex redirect
 after deployment.
 
+## Alerting
+
+`modules/alerting` owns one SNS topic, `humbugg-prod-alerts`, and every production
+CloudWatch alarm. Its ARN is published to `/humbugg/prod/alerts-topic-arn`.
+
+Notifications are **email**. `alert_email` is `sensitive` and defaults to `""`; CI
+passes `TF_VAR_alert_email` from the GitHub secret `HUMBUGG_ALERT_EMAIL`. The topic is
+always created, the subscription only when the address is non-empty — so the stack
+applies before the secret exists.
+
+Every alarm sets both `alarm_actions` and `ok_actions`, so a recovery mail closes the
+loop and a quiet inbox means healthy rather than unmonitored. Every alarm sets
+`treat_missing_data = "notBreaching"`: these metrics are published only when something
+happens, so absence is the healthy state, not `INSUFFICIENT_DATA`.
+
+| Alarm | Metric | Threshold | Period | Why |
+| --- | --- | --- | --- | --- |
+| `humbugg-prod-api-errors` | `AWS/Lambda` `Errors` Sum | ≥ 3 | 300s | The request path is broken. Three, not one: a container Lambda cold-starting on a fresh image, or one request losing a race with a DynamoDB retry, produces a lone error that resolves itself. |
+| `humbugg-prod-api-throttles` | `AWS/Lambda` `Throttles` Sum | ≥ 1 | 300s | A throttle has no benign case — the function was asked to run and could not, so a request was dropped. Alarmed for the request-path Lambda only; the consumers are asynchronous and retry. |
+| `humbugg-prod-reminders-errors` | `AWS/Lambda` `Errors` Sum | ≥ 3 | 300s | Scheduled reminders stopped going out. |
+| `humbugg-prod-marketing-errors` | `AWS/Lambda` `Errors` Sum | ≥ 3 | 300s | The marketing SSR renderer is failing. |
+| `humbugg-prod-email-status-errors` | `AWS/Lambda` `Errors` Sum | ≥ 1 | 300s | Pre-existing alarm, threshold kept at 1: every error is a delivery status that never reached `humbugg-prod-email-messages`, and this consumer's traffic is far too low for one to be noise. |
+| `humbugg-prod-api-5xx` | `AWS/ApiGateway` `5xx` Sum | ≥ 3 | 300s | Catches gateway-side faults the Lambda error metric never sees — integration timeout, authorizer failure. HTTP APIs publish `5xx` with an `ApiId` dimension; `5XXError` is the REST-API name and matches nothing here. |
+| `humbugg-prod-marketing-5xx` | `AWS/ApiGateway` `5xx` Sum | ≥ 3 | 300s | Same, for the marketing SSR API. |
+| `humbugg-prod-<table>-read-throttles` | `AWS/DynamoDB` `ReadThrottleEvents` Sum | ≥ 1 | 300s | On-demand caps throughput per *partition*, not per table — a hot partition throttles and the request fails. One per table. |
+| `humbugg-prod-<table>-write-throttles` | `AWS/DynamoDB` `WriteThrottleEvents` Sum | ≥ 1 | 300s | Same, for writes. |
+
+### Confirm the subscription
+
+**An SNS email subscription delivers nothing until the recipient clicks the AWS
+confirmation link.** Until then it sits in `PendingConfirmation` and every notification
+is discarded. Terraform reports the subscription as created either way and cannot tell
+the difference — the only check is the API:
+
+```bash
+aws sns list-subscriptions-by-topic \
+  --topic-arn "$(aws ssm get-parameter --name /humbugg/prod/alerts-topic-arn --query Parameter.Value --output text)" \
+  --query 'Subscriptions[].[Protocol,Endpoint,SubscriptionArn]' --output table
+```
+
+A `SubscriptionArn` of `PendingConfirmation` means nobody is being told anything. AWS
+expires the link after three days; re-run the deploy to re-send it.
+
+### Test it
+
+Drive an alarm by hand rather than waiting for a real fault:
+
+```bash
+aws cloudwatch set-alarm-state --alarm-name humbugg-prod-api-errors \
+  --state-value ALARM --state-reason test
+aws cloudwatch set-alarm-state --alarm-name humbugg-prod-api-errors \
+  --state-value OK --state-reason test
+```
+
+Both transitions should mail, because `ok_actions` is set. Leave the alarm in `OK`;
+the next real datapoint re-evaluates it anyway.
+
 ## Audit trail
 
 `humbugg-prod-audit-events` is the standard, append-only audit log for security- and
@@ -80,6 +137,39 @@ Analytics is opt-out via `HUMBUGG_ANALYTICS_ENABLED`. Reads are internal only �
 the emitter's structured `analytics_event` lines, or a DynamoDB export to S3 + Athena. The full
 event catalogue, metric formulas, and reporting queries are in
 [`docs/analytics.md`](../docs/analytics.md).
+
+## Restore
+
+Point-in-time recovery is enabled on every table in `modules/storage` except
+`humbugg-prod-email-messages` (TTL'd delivery state — nothing worth restoring).
+PITR restores to a **new** table, never in place:
+
+```bash
+aws dynamodb restore-table-to-point-in-time \
+  --source-table-name humbugg-prod-groups \
+  --target-table-name humbugg-prod-groups-restored \
+  --restore-date-time <iso>
+```
+
+A live draw spans three tables — `groups`, `groupmembers`, `draws` — so a
+restore that touches any of them must restore all three to the **same**
+`--restore-date-time`, or the recovered group, its membership, and its
+giver→recipient map will not agree with each other.
+
+The restored table only stands in for the original once GSIs, tags, and
+`point_in_time_recovery` itself are recreated on it (a restore does not carry
+`point_in_time_recovery` forward) — `describe-table` against the original is
+the reference for what to reapply.
+
+Cutting the restored table over to production is a Terraform decision, not a
+scripted one: either `moved` the resource address onto the restored table
+(if it's kept as the new source of truth) or reconcile the restored data back
+into the existing table with `import`/manual writes and leave the original
+resource alone. Which one applies depends on what actually happened to the
+data, so there is no one-size-fits-all script — a maintainer decides at
+restore time. `docs/runbooks.md` doesn't exist on this branch yet (it's in
+open PR #648); once it lands, it should link here rather than duplicate this
+section.
 
 ## SES domain authentication
 

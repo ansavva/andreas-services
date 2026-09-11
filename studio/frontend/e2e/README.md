@@ -38,12 +38,12 @@ normalised at all. **Re-take it on a freshly seeded stack only** — off a stack
 somebody has since worked in, those assertions quietly become a snapshot of one
 developer's afternoon.
 
-The **authoring** group — `project`, `project-runs`, `run-draft`, `run-image`,
+The **authoring** group — `project`, `project-runs`, `project-runs-feed`, `run-draft`, `run-image`,
 `created-run`, `created-run-record`, `models`, `model-schema`, `references`,
 `character-tree`, `reference-tree` — is the opposite. The seed holds no project,
-no runs and nothing ever submitted, so the three screens `runs.spec.ts` is about
-have nothing in it to be captured from; it needs a stack that **has** been worked
-in. Which project and which runs is discovery — the first project, its newest
+no runs and nothing ever submitted, so the two screens `runs.spec.ts` is about —
+a project's feed and a run opened over it — have nothing in it to be captured
+from; it needs a stack that **has** been worked in. Which project and which runs is discovery — the first project, its newest
 draft, its newest succeeded image run — with `STUDIO_E2E_PROJECT` and
 `STUDIO_E2E_SCHEMA_MODEL` to steer it.
 
@@ -61,7 +61,7 @@ the script never makes it.
 
 Every flow `runs.spec.ts` covers POSTs to a path that also has a GET: `/api/runs`
 is the listing and the create, `/api/nodes` is the browse and the mkdir,
-`/api/characters/<id>/references` is the library and the attach. `stubApi`
+`/api/nodes/copy` is what promotes an output into a character. `stubApi`
 dispatched on `url.pathname` alone until those flows existed, which would have
 answered each of them with the other one's body — a green test against a stub
 doing the opposite of the thing under test. Writes are matched first and answered
@@ -73,6 +73,28 @@ that is not the usual one: the `unsorted` group folder and the copy a promotion
 makes **do not exist until the run under test creates them**. `unsorted` is
 absent from the captured `reference/` listing deliberately, so the spec walks the
 branch that creates a group folder rather than the branch that finds one.
+
+**`project-runs-feed.json` was hand-projected once, and should be re-taken.**
+`GET /api/runs?view=feed` landed before any stack could be captured from, so
+the file holds the backend's `_feed_row` applied by hand to the two captured
+envelopes (`run-draft`, `run-image`) — captured rows, projected, nothing typed
+from memory. The two runs in `project-runs` with no captured envelope are not
+in it. `capture.py --runs` now takes it off the API like the rest; do that at
+the next capture and this paragraph goes.
+
+## The one stub that holds STATE
+
+Every other branch in `support/api.ts` answers a captured artefact, because
+every other branch answers a library that already exists when the run starts.
+Favorites do not: `favorites.spec.ts` presses a heart on one screen and then
+expects to find the file on another, so what it asserts is that a write and a
+later read agree — and no fixture can hold that up. `stubApi` therefore keeps a
+`favorited` array for the life of one page, resets it per page, and answers
+`GET /api/favorites` from it.
+
+That is the exception, not a new pattern. Anything that exists before the run
+starts is still captured; this is state the run itself creates, which is the
+same reason `unsorted` and the promoted copy are synthesised above.
 
 ## The one fixture that is made rather than taken
 

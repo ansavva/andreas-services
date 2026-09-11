@@ -30,6 +30,16 @@ variable "stripe_webhook_secret" {
 }
 
 
+# Where production alarms mail. Arrives via TF_VAR_alert_email in CI from the GitHub
+# secret HUMBUGG_ALERT_EMAIL — never committed. Empty creates the SNS topic with no
+# subscription, so the stack applies before the secret exists.
+variable "alert_email" {
+  description = "Address production alarm notifications are emailed to"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "api_throttling_rate_limit" {
   description = "Steady-state requests/second for the backend API (API Gateway stage default throttling)."
   type        = number

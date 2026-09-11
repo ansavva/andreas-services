@@ -11,7 +11,13 @@ internal interface IStripeGateway
     Task<StripeCheckoutSession> CreateCheckoutAsync(
         StripeCheckoutRequest request,
         CancellationToken cancellationToken = default);
-    BillingWebhookEvent ParseWebhook(string payload, string signature);
+    /// <summary>
+    /// Verify a Stripe webhook's signature and map it to a billing event. <paramref name="tolerance"/>
+    /// bounds how old the signed timestamp may be; null is Stripe's default of five minutes, right
+    /// for a request Stripe just made. The queued path passes the queue's retention instead — see
+    /// <see cref="IBillingService.ProcessQueuedWebhookAsync"/>.
+    /// </summary>
+    BillingWebhookEvent ParseWebhook(string payload, string signature, TimeSpan? tolerance = null);
 }
 
 internal sealed record StripeCheckoutRequest(
@@ -28,6 +34,10 @@ internal sealed record StripeCheckoutSession(string Id, string Url);
 
 internal sealed class StripeGateway(StripeSettings settings) : IStripeGateway
 {
+    // Stripe.net's own default for ConstructEvent, restated because the library does not expose it
+    // as a constant and the optional-parameter default is not reachable once the argument is named.
+    private static readonly TimeSpan StripeDefaultTolerance = TimeSpan.FromSeconds(300);
+
     public async Task<StripeCheckoutSession> CreateCheckoutAsync(
         StripeCheckoutRequest request,
         CancellationToken cancellationToken = default)
@@ -59,14 +69,16 @@ internal sealed class StripeGateway(StripeSettings settings) : IStripeGateway
         return new StripeCheckoutSession(session.Id, session.Url);
     }
 
-    public BillingWebhookEvent ParseWebhook(string payload, string signature)
+    public BillingWebhookEvent ParseWebhook(string payload, string signature, TimeSpan? tolerance = null)
     {
         EnsureEnabled();
         Event stripeEvent;
         try
         {
             stripeEvent = EventUtility.ConstructEvent(
-                payload, signature, settings.WebhookSecret, throwOnApiVersionMismatch: false);
+                payload, signature, settings.WebhookSecret,
+                tolerance: (long)(tolerance ?? StripeDefaultTolerance).TotalSeconds,
+                throwOnApiVersionMismatch: false);
         }
         catch (StripeException exception)
         {
@@ -175,6 +187,15 @@ public interface IBillingService
     Task<CheckoutResponse> CreatePlusCheckoutAsync(string groupId, CancellationToken cancellationToken = default);
     Task<PlusPurchaseStatus> GetPlusStatusAsync(string groupId, CancellationToken cancellationToken = default);
     Task ProcessWebhookAsync(string payload, string signature, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// The same as <see cref="ProcessWebhookAsync"/> for an event that arrived through the webhook
+    /// relay's queue rather than straight from Stripe. Stripe's signature is still what
+    /// authenticates it — the receiver holds no secret and verifies nothing — but its timestamp is
+    /// when Stripe sent it, and the event may have waited in the queue for up to fourteen days
+    /// (behind a shut laptop in dev, behind a failed deploy in prod). So the timestamp window is the
+    /// queue's retention, not five minutes. Nothing else differs.
+    /// </summary>
+    Task ProcessQueuedWebhookAsync(string payload, string signature, CancellationToken cancellationToken = default);
 }
 
 internal sealed class BillingService(
@@ -253,13 +274,29 @@ internal sealed class BillingService(
             payment?.UpdatedAt);
     }
 
-    public async Task ProcessWebhookAsync(
+    public Task ProcessWebhookAsync(
         string payload,
         string signature,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        ProcessAsync(payload, signature, tolerance: null, cancellationToken);
+
+    /// <summary>The webhook relay's queue keeps a message for fourteen days; so does this window.</summary>
+    public static readonly TimeSpan QueuedSignatureTolerance = TimeSpan.FromDays(14);
+
+    public Task ProcessQueuedWebhookAsync(
+        string payload,
+        string signature,
+        CancellationToken cancellationToken = default) =>
+        ProcessAsync(payload, signature, QueuedSignatureTolerance, cancellationToken);
+
+    private async Task ProcessAsync(
+        string payload,
+        string signature,
+        TimeSpan? tolerance,
+        CancellationToken cancellationToken)
     {
         BillingWebhookEvent billingEvent;
-        try { billingEvent = stripe.ParseWebhook(payload, signature); }
+        try { billingEvent = stripe.ParseWebhook(payload, signature, tolerance); }
         catch (UnsupportedStripeEventException) { return; }
         await billing.ApplyEventAsync(billingEvent, cancellationToken);
     }

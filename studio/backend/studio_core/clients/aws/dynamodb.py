@@ -3,7 +3,7 @@
 The catalog is where the library actually lives. A node's identity, name,
 parent and owner are rows here, and an S3 key is an opaque `blob_key` sitting on
 one of them that nothing derives and nothing parses. That is the whole point of
-the table: a rename, a move, a share and a transfer become row writes that touch
+the table: a rename, a move and a share become row writes that touch
 zero objects, where making ownership a *location* would have made each of them a
 copy of the bytes.
 

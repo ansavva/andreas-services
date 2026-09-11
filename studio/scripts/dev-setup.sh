@@ -7,10 +7,7 @@
 #
 # It is not *only* that half, and the difference matters. CI builds the deployed
 # half, but a person or an agent working on it locally still needs the parts CI
-# gets for free: frontend/.env.local (step 3) and frontend/node_modules (step 4).
-# This header used to claim the deployed half "needs nothing from here", which
-# read as a scope boundary and left those prerequisites owned by no script at
-# all — the reason a clean checkout reported `tsc: not found`.
+# gets for free: the per-machine dev.env (step 3) and frontend/node_modules (step 4).
 #
 # The only hard requirement is `uv`. The pipeline itself is one package
 # (studio/pipeline) with one dependency set, exposing one command: `studio`.
@@ -22,12 +19,17 @@
 
 set -euo pipefail
 
+# For DEV_ENV_FILE and the env-file helpers only; its `die` is never reached
+# from here, and the log functions below replace its.
+# shellcheck source=dev-aws-common.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/dev-aws-common.sh"
+
 log() { printf '\033[36m[studio-setup]\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m[studio-setup]\033[0m %s\n' "$*"; }
 
 # Resolve studio/ so this works no matter where it is invoked from. Note this is
 # studio/, not the repo root: the skills resolve their own paths relative to it
-# (studio/.env, studio/infra/README.md), so studio/ is what they treat as root.
+# (studio/infra/README.md), so studio/ is what they treat as root.
 STUDIO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # ---------------------------------------------------------------------------
@@ -66,11 +68,8 @@ fi
 # ---------------------------------------------------------------------------
 # 2. Install the pipeline and put its `studio` command on PATH.
 #
-#    The pipeline used to be a set of standalone scripts, each declaring its own
-#    dependencies inline and invoked by its path. It is now one package with one
-#    dependency set, exposing one command — so setup is a sync rather than a
-#    per-script cache warm, and the skills can say `studio runs list` instead of
-#    naming a file.
+#    One package with one dependency set, exposing one command — so setup is a
+#    single sync, and the skills say `studio runs list` rather than naming a file.
 # ---------------------------------------------------------------------------
 PIPELINE="$STUDIO_DIR/pipeline"
 
@@ -97,21 +96,24 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Write the env files, from THIS MACHINE'S DEV STACK.
+# 3. Write ~/.config/andreas-services/studio/dev.env, from THIS MACHINE'S DEV STACK.
 #
-#    This block used to read `/studio/prod/*` from SSM and pin the live bucket
-#    and the live Cognito pool into the local env files, under a heading that
-#    read "LOCAL POINTS AT PROD, DELIBERATELY". **That is over (#287.)** Studio
-#    stops connecting to production from this repo, the way every other service
-#    in the monorepo already works. The old reasoning — that a second, empty
-#    bucket would exercise none of the behaviour that matters — is answered by
-#    seeding the dev stack from a published fixture (#284, #285) rather than by
-#    pointing at prod.
+#    One file for everything local — the frontend's VITE_* values, the dev
+#    account, the provider tokens — outside the repo, so it survives `git
+#    clean` and a fresh worktree, and holds secrets where no `git add -f`
+#    reaches them. `dev-up.sh` exports the VITE_* prefix before Vite starts
+#    and reads the tokens for the API; the pipeline reads it through
+#    `env_value`. `studio/.env` and `frontend/.env.local`, which it replaced,
+#    are imported once and deleted.
 #
-#    Running the CLI against production is a `studio --profile prod <command>`
-#    now, and it is deliberately still not a flag on this script: this one sets
-#    up the LOCAL half, and pointing that at prod is what #287 removed. Step 3a
-#    below syncs the `dev` profile; `studio profile sync prod` writes the other.
+#    Nothing here reads `/studio/prod/*`: the values come from this machine's
+#    dev stack, which `dev-aws-seed.sh` seeds from a published fixture so it
+#    exercises the behaviour that matters without touching prod.
+#
+#    Running the CLI against production is `studio --profile prod <command>`,
+#    deliberately not a flag on this script: this one sets up the LOCAL half.
+#    Step 3a below syncs the `dev` profile; `studio profile sync prod` writes
+#    the other.
 #
 #    Values come from the dev stack's Terraform outputs, not SSM: SSM holds what
 #    the deploy workflow wrote, and nothing deploys a dev stack.
@@ -124,10 +126,8 @@ fi
 # the whole session hook down with it. Its `log` output goes to stderr, so what
 # is captured is exactly the four values.
 #
-# Four of the five: the catalog table used to be read here to pin into
-# `studio/.env`, and the `dev` profile carries it now. `load_dev_stack_outputs`
-# still refuses a state missing any of the five, so nothing is unchecked by
-# dropping it — it is simply not this script's to write any more.
+# Four of the five: the `dev` profile carries the catalog table.
+# `load_dev_stack_outputs` refuses a state missing any of the five.
 if dev_stack="$(
   # shellcheck source=dev-aws-common.sh
   source "$STUDIO_DIR/scripts/dev-aws-common.sh"
@@ -138,93 +138,101 @@ if dev_stack="$(
 )" 2>/dev/null; then
   IFS=$'\t' read -r POOL_ID CLIENT_ID AUTH_DOMAIN MEDIA_BUCKET <<<"$dev_stack"
 
-  # The app. VITE_API_URL stays on localhost: `dev-up.sh` runs the Flask API
-  # locally against the same dev stack, which is the point of the setup.
-  ENV_LOCAL="$STUDIO_DIR/frontend/.env.local"
-  cat > "$ENV_LOCAL" <<EOF
-# Generated by studio/scripts/dev-setup.sh from this machine's dev stack.
-# Do not edit by hand — re-run the script instead. Git-ignored.
-#
-# These are the DEV Cognito pool, client and Managed Login host. Local
-# development does not sign in against production; see the note in dev-setup.sh.
-VITE_API_URL=http://localhost:8000
-VITE_COGNITO_USER_POOL_ID=$POOL_ID
-VITE_COGNITO_CLIENT_ID=$CLIENT_ID
-VITE_COGNITO_DOMAIN=$AUTH_DOMAIN
-EOF
-  log "wrote frontend/.env.local (dev Cognito pool $POOL_ID, sign-in at $AUTH_DOMAIN)"
-
-  # The pipeline. Only the bucket and table are derived; REPLICATE_API_TOKEN is
-  # a secret that lives nowhere but this file, so an existing one is never
-  # overwritten.
-  # Spelled out rather than taken from `dev-aws-common.sh`: that file is sourced
-  # in the subshell above, so nothing it sets survives out here.
-  STUDIO_DEV_ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/andreas-services/studio/dev.env"
-
-  if [ ! -f "$STUDIO_DIR/.env" ]; then
-    cp "$STUDIO_DIR/.env.example" "$STUDIO_DIR/.env"
-    warn "created studio/.env from the example."
-    warn "  Put REPLICATE_API_TOKEN in $STUDIO_DEV_ENV_FILE, not in that file."
+  # Rendered whole, in a fixed layout, rather than upserted key by key: upserts
+  # append in write order and the result reads like a log. Generated keys are
+  # written fresh from the stack; hand-set keys are read back from the current
+  # file into their slot; anything unrecognised is carried over at the end.
+  previous="$(mktemp)"
+  chmod 600 "$previous"
+  cat "$DEV_ENV_FILE" > "$previous" 2>/dev/null || true
+  # The two files this replaced. Every key the new file lacks is imported —
+  # the Replicate token was only ever typed into studio/.env by hand — and the
+  # old file removed, because an ignored file nothing reads is the confusion
+  # this consolidation exists to end. The stack pins are NOT imported: the
+  # `dev` profile carries the bucket and table now (3a), and a pin here would
+  # be one more place the answer could come from — and one of them named the
+  # PROD bucket for a year. Retired variables are dropped for the same reason.
+  import_legacy_env() {
+    local legacy="$1" line key
+    [ -f "$legacy" ] || return 0
+    while IFS= read -r line; do
+      [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
+      key="${BASH_REMATCH[1]}"
+      case "$key" in
+        STUDIO_S3_BUCKET|STUDIO_CATALOG_TABLE|XHARNESS_S3_BUCKET|XHARNESS_S3_PREFIX|\
+        STUDIO_S3_PREFIX|STUDIO_S3_MEDIA_PREFIX|STUDIO_MAX_WALK_OBJECTS) continue ;;
+        REPLICATE_API_TOKEN) [ "${BASH_REMATCH[2]}" = "r8_your_token_here" ] && continue ;;
+      esac
+      ensure_env "$previous" "$key" "${BASH_REMATCH[2]}"
+    done < "$legacy"
+    rm -f "$legacy"
+    log "imported ${legacy#"$STUDIO_DIR/"} into $DEV_ENV_FILE and removed it"
+  }
+  import_legacy_env "$STUDIO_DIR/.env"
+  import_legacy_env "$STUDIO_DIR/frontend/.env.local"
+  written=""
+  rendered="$(mktemp)"
+  chmod 600 "$rendered"
+  exec 3>"$rendered"
+  line() { printf '%s\n' "$*" >&3; }
+  gen() { line "$1=$2"; written="$written $1"; }
+  keep() {
+    local key="$1" default="${2-}"
+    if grep -Eq "^${key}=" "$previous"; then line "$key=$(read_env "$previous" "$key")"
+    elif [ -n "$default" ]; then line "$key=$default"
+    else line "#$key="; fi
+    written="$written $key"
+  }
+  line "# Studio local development — the one file. studio/dev.env.sample documents it."
+  line "# Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ) by dev-setup.sh from dev pool $POOL_ID."
+  line "# Which STACK a command targets is not here: that is a profile (studio profile show)."
+  line ""
+  line "# ---- generated (rewritten on every dev-setup.sh run; do not hand-edit) --------"
+  line ""
+  line "# Frontend (Vite inlines VITE_*; dev-up.sh exports only this prefix). The DEV"
+  line "# Cognito pool and its Managed Login host — local development never signs in"
+  line "# against production. VITE_API_URL stays on localhost: dev-up.sh runs the API here."
+  gen VITE_API_URL "http://localhost:8000"
+  gen VITE_COGNITO_USER_POOL_ID "$POOL_ID"
+  gen VITE_COGNITO_CLIENT_ID "$CLIENT_ID"
+  gen VITE_COGNITO_DOMAIN "$AUTH_DOMAIN"
+  line ""
+  line "# ---- yours (kept as-is across reruns) -----------------------------------------"
+  line ""
+  line "# Dev test account — dev-user.sh writes both; a reserved .test address belongs here."
+  keep STUDIO_DEV_USER_EMAIL
+  keep STUDIO_DEV_USER_PASSWORD
+  line ""
+  line "# Provider tokens for the LOCAL pipeline; the deployed half never sees them."
+  line "# REPLICATE_API_TOKEN is required for every generation (https://replicate.com/account/api-tokens)."
+  line "# Assets are never uploaded to Replicate — only presigned S3 URLs reach a model."
+  keep REPLICATE_API_TOKEN
+  leftover="$(awk -F= -v written=" $written " '
+    /^[A-Za-z_][A-Za-z0-9_]*=/ && index(written, " " $1 " ") == 0 { print }
+  ' "$previous" | sort)"
+  if [ -n "$leftover" ]; then
+    line ""
+    line "# ---- not managed by any script; carried over as found ------------------------"
+    line "$leftover"
   fi
-  # A token inside the working tree is one `git add -f`, one copied directory
-  # or one backup tool away from leaving the machine, and `.gitignore` stops
-  # none of those. The config dir already holds this machine's dev pool
-  # password for exactly that reason; the token predates the decision.
-  #
-  # Named rather than moved. The file is the developer's, and a setup script
-  # that silently relocates a credential is a setup script nobody can predict —
-  # the same reasoning as the prod-bucket pin below. `env_value` reads the
-  # config dir FIRST, so copying the line across is enough and deleting the old
-  # one is tidiness rather than a step.
-  #
-  # The example's own placeholder starts `r8_` too, so it is excluded by name:
-  # a checkout that has copied the template and filled in nothing has no secret
-  # to move, and warning about it would train the warning to be ignored.
-  if grep -q "^REPLICATE_API_TOKEN=r8_" "$STUDIO_DIR/.env" &&
-    ! grep -q "^REPLICATE_API_TOKEN=r8_your_token_here$" "$STUDIO_DIR/.env"; then
-    warn "studio/.env holds a REPLICATE_API_TOKEN — a secret inside the repo."
-    warn "  Move it to $STUDIO_DEV_ENV_FILE (read first, so the move takes effect at once)."
+  exec 3>&-
+  rm -f "$previous"
+  mkdir -p "$(dirname "$DEV_ENV_FILE")"
+  chmod 700 "$(dirname "$DEV_ENV_FILE")"
+  mv "$rendered" "$DEV_ENV_FILE"
+  log "wrote $DEV_ENV_FILE (dev Cognito pool $POOL_ID, sign-in at $AUTH_DOMAIN)"
+  if [ -z "$(read_env "$DEV_ENV_FILE" REPLICATE_API_TOKEN)" ]; then
+    warn "REPLICATE_API_TOKEN is not set in $DEV_ENV_FILE — no generation can run until it is."
   fi
-  # A .env written before the bucket rename pins XHARNESS_S3_BUCKET, which
-  # nothing reads any more. Say so rather than leaving a line that looks like
-  # configuration and is not.
-  if grep -q "^XHARNESS_S3_" "$STUDIO_DIR/.env"; then
-    warn "studio/.env still sets XHARNESS_S3_* — dead since the bucket rename."
-    warn "  The variables are STUDIO_S3_* now. Delete the old lines."
-  fi
-  # Every other variable that has stopped being read, named individually.
-  #
-  # **Silence is the failure mode this exists to avoid**, and it is the same one
-  # the XHARNESS_S3_* rename was designed around: a pinned line looks like
-  # configuration, so a person reasons from it, and it has no effect. The
-  # variables below were removed by the catalog programme rather than renamed,
-  # so there is no successor name to point at — only a line to delete. Keep this
-  # list appended to whenever a variable retires; the cost of an extra entry is
-  # one grep per session and the cost of a missing one is a wrong diagnosis.
-  #
-  # STUDIO_S3_PREFIX used to need a message of its own, because "nothing reads
-  # it" would have been a lie — the layout migrator did, and only it. That
-  # command is deleted, no reader is left, and it joins the list. The WARNING
-  # is not what retired; a stale pin in someone's .env is exactly as silent as
-  # it ever was, and this is what breaks the silence.
-  for dead in STUDIO_S3_PREFIX STUDIO_S3_MEDIA_PREFIX STUDIO_MAX_WALK_OBJECTS; do
-    if grep -q "^${dead}=" "$STUDIO_DIR/.env"; then
-      warn "studio/.env sets ${dead} — retired, and read by nothing. Delete the line."
-    fi
-  done
   # -------------------------------------------------------------------------
-  # 3a. The `dev` PROFILE, which replaces pinning the stack into studio/.env.
+  # 3a. The `dev` PROFILE, which carries WHICH STACK a command targets.
   #
-  #     This block used to append STUDIO_S3_BUCKET and STUDIO_CATALOG_TABLE to
-  #     that file. Two problems with it, and the second is why it is gone.
-  #
-  #     A pin is per-CHECKOUT and the stack is per-MACHINE, so a second worktree
-  #     had no pins at all and a maintenance command run there addressed
-  #     whatever the shell happened to hold. And a pin covers two of the five
-  #     values that select a stack — the other three (the API URL and both
-  #     Cognito ids) were only ever exported by `dev-up.sh`, into its own shell.
-  #     So a `.env` and a shell could name different environments, and
-  #     `catalog gc` read the `.env` half. Nothing printed either.
+  #     Not a key in dev.env, on purpose. A pin there would cover two of the
+  #     five values that select a stack — the other three (the API URL and
+  #     both Cognito ids) are exported by `dev-up.sh`, into its own shell. So a
+  #     file and a shell could name different environments, and `catalog gc`
+  #     read the file's half. Nothing printed either. (`studio/.env` did
+  #     exactly this for a year, once with the PROD bucket.)
   #
   #     `studio profile sync dev` writes all five into
   #     `~/.config/andreas-services/studio/config`, beside the machine id they
@@ -241,26 +249,6 @@ EOF
     warn "  uv run --project $PIPELINE studio profile sync dev"
   fi
 
-  # A .env pinned to the PROD bucket predates #287. It still wins whenever no
-  # profile is selected, so it still points ordinary commands at production —
-  # named loudly rather than rewritten, because the file is the developer's and
-  # silently repointing where their commands write is worse than telling them.
-  if grep -qE "^STUDIO_S3_BUCKET=.*prod" "$STUDIO_DIR/.env"; then
-    warn "studio/.env pins a PROD bucket: $(grep -E '^STUDIO_S3_BUCKET=' "$STUDIO_DIR/.env")"
-    warn "  That line beats the dev profile whenever --profile is not given."
-    warn "  Delete it — the profile carries the bucket now — or reach prod"
-    warn "  deliberately with: studio --profile prod <command>"
-  fi
-  # Both stack pins are now the profile's job, so a line for either is one more
-  # place the answer can come from. Inert while it agrees with the profile and
-  # invisible when it does not, which is the shape of every other entry in the
-  # dead-variable list above.
-  for pinned in STUDIO_S3_BUCKET STUDIO_CATALOG_TABLE; do
-    if grep -q "^${pinned}=" "$STUDIO_DIR/.env"; then
-      warn "studio/.env pins ${pinned} — the dev profile carries it now."
-      warn "  Delete the line; check with: studio profile show"
-    fi
-  done
   # -------------------------------------------------------------------------
   # 3b. Push the shared material out to the bucket.
   #
@@ -275,11 +263,8 @@ EOF
   #     nodes, so the push goes through `studio config sync` rather than writing
   #     objects directly.
   #
-  #     `phrasebook/wording.yaml` used to be pushed here too, as a COPY-IF-ABSENT
-  #     — the bucket's copy became the live document the moment anyone ran
-  #     `studio phrasebook add`, so syncing the repo copy over it would have
-  #     deleted their entries (#425). The phrasebook is `TERM#` rows now. There
-  #     is no document, `add` needs no seed, and this pushes one thing.
+  #     The phrasebook is `TERM#` rows, not a document, so there is nothing
+  #     else to push.
   # -------------------------------------------------------------------------
   # shellcheck source=dev-shared-material.sh
   source "$STUDIO_DIR/scripts/dev-shared-material.sh"
@@ -301,7 +286,7 @@ else
   warn "    aws sts get-caller-identity"
   warn "  then provision with:"
   warn "    ./studio/scripts/dev-aws-setup.sh"
-  warn "  Nothing here points at production any more (#287)."
+  warn "  Nothing here points at production."
 fi
 
 # ---------------------------------------------------------------------------

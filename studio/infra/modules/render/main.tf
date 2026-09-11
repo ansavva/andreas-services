@@ -1,8 +1,7 @@
 # THE RENDER PATH: ENQUEUE, STITCH, RECORD.
 #
-# `routes/scenes.py` and `routes/movies.py` used to say that stitching stays in
-# the CLI because `ffmpeg` ships in the pipeline wheel and the Lambda has none.
-# That was a statement about an image. This module is the change to the image.
+# Stitching needs `ffmpeg`, which the API's image does not carry. This module
+# is the image that does, and the queue that feeds it.
 #
 #     API ──► SQS ──┬─► studio-prod-render  (prod, a second container image)
 #                   └─► a laptop            (dev, `dev-up.sh`)
@@ -329,9 +328,8 @@ resource "aws_lambda_function" "worker" {
 
   environment {
     variables = {
-      STUDIO_MEDIA_BUCKET      = var.media_bucket_name
-      STUDIO_MEDIA_ROOT_PREFIX = var.media_root_prefix
-      STUDIO_CATALOG_TABLE     = var.catalog_table_name
+      STUDIO_MEDIA_BUCKET  = var.media_bucket_name
+      STUDIO_CATALOG_TABLE = var.catalog_table_name
       # Deliberately no `STUDIO_REPLICATE_TOKEN_PARAMETER` and no Cognito ids.
       # This function answers no request and calls no provider; a variable it
       # never reads is a variable somebody later assumes it does.

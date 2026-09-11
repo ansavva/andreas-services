@@ -24,11 +24,11 @@ applicable and accept `--help` for their complete usage.
 | `./scripts/dev-setup.sh` | Installs shared Homebrew tooling, including Terraform, AWS CLI, Node.js, Stripe CLI, jq, and zip | `--check` reports without installing |
 | `./humbugg/scripts/dev-setup.sh` | Canonical setup: runs shared tool setup, installs .NET 10, then provisions per-machine AWS resources | `--profile`, `--region`, `--yes`; `--check` is read-only across every layer |
 | `./humbugg/scripts/dev-aws-setup.sh` | Lower-level AWS setup used by the canonical setup; remains directly runnable | `--profile`, `--region`, `--yes`, `--check` |
-| `./humbugg/scripts/dev-up.sh` | Starts the backend, frontend, and Stripe webhook listener as one supervised session | `--profile`, `--region`, `--forward-to` |
-| `./humbugg/scripts/dev-up-backend.sh` | Starts only the Dockerized .NET API with short-lived AWS credentials | `--profile`, `--region`, plus Docker Compose options |
-| `./humbugg/scripts/dev-up-marketing.sh` | Starts only the marketing site using `web/.env.local` | accepts React Router/Vite development options |
-| `./humbugg/scripts/dev-up-app.sh` | Starts only the product app using `app/.env.local` | defaults to `--web`; pass `--ios`/`--android` for a simulator |
-| `./humbugg/scripts/dev-up-stripe.sh` | Starts only the Stripe CLI listener with Humbugg's event allowlist | `--forward-to`, plus Stripe listener options |
+| `./humbugg/scripts/dev-up.sh` | Starts the backend (with the Stripe webhook consumer beside it) and both frontends as one supervised session | `--profile`, `--region` |
+| `./humbugg/scripts/dev-up-backend.sh` | Starts the Dockerized .NET API and, beside it, the Stripe webhook consumer (same image, `HUMBUGG_CONSUMER=stripe-webhooks`) with short-lived AWS credentials | `--profile`, `--region`, plus Docker Compose options |
+| `./humbugg/scripts/dev-up-marketing.sh` | Starts only the marketing site; exports `VITE_*` from `~/.config/andreas-services/humbugg/dev.env` | accepts React Router/Vite development options |
+| `./humbugg/scripts/dev-up-app.sh` | Starts only the product app; exports `EXPO_PUBLIC_*` from the same file | defaults to `--web`; pass `--ios`/`--android` for a simulator |
+| `./humbugg/scripts/dev-aws-seed.sh` | Creates every account in `seeds/dev.json` in this machine's pool and loads the fixture through the local API | `--profile`, `--region`, `--check` |
 | `./humbugg/scripts/dev-logs-backend.sh` | Follows the local backend's Docker logs | accepts Docker Compose log options such as `--tail 200` |
 | `./humbugg/scripts/dev-aws-reset.sh` | Clears this machine's DynamoDB, S3, and optionally Cognito user data while retaining its infrastructure | `--profile`, `--region`, `--dry-run`, `--skip-cognito`, `--yes` |
 | `./humbugg/scripts/dev-aws-destroy.sh` | Destroys this machine's AWS development resources while retaining its machine UUID | `--profile`, `--region`, `--yes` |
@@ -56,7 +56,7 @@ needed to override it.
    See [`../scripts/README.md`](../scripts/README.md) for details.
 
    For billing tests, configure `HUMBUGG_STRIPE_MODE=test`, the test publishable
-   key, and the test secret key in the ignored `humbugg/backend/.env` as
+   key, and the test secret key in `~/.config/andreas-services/humbugg/dev.env` as
    described in [`docs/stripe-setup.md`](docs/stripe-setup.md). The combined
    launcher refreshes the local webhook signing secret, but it does not create
    or persist Stripe API keys.
@@ -119,17 +119,17 @@ Then start the web application in another terminal:
 ./humbugg/scripts/dev-up-app.sh
 ```
 
-For local Stripe webhook testing, start the Stripe CLI listener in another
-terminal:
+Stripe webhooks reach this machine through its own public endpoint — an API
+Gateway, a receiver Lambda and an SQS queue that `dev-aws-setup.sh` applies and
+registers with Stripe, writing the endpoint's `whsec_...` into
+`~/.config/andreas-services/humbugg/dev.env`. The consumer that drains the
+queue is the backend image itself, run as the `webhook-consumer` service in
+`backend/docker-compose.yml`, so `dev-up-backend.sh` starts it with the API.
+Production runs the same code as a Lambda on the same kind of queue. An event
+that arrives while nothing is draining waits in the queue for up to 14 days
+rather than being lost.
 
-```bash
-./humbugg/scripts/dev-up-stripe.sh
-```
-
-Copy the `whsec_...` signing secret displayed by Stripe into
-`HUMBUGG_STRIPE_WEBHOOK_SECRET` in `backend/.env`, then restart the backend.
-
-The frontend runs at `http://localhost:5173`, the API at
+The frontend runs at `http://localhost:5176`, the API at
 `http://localhost:5001`, and the Mailpit inbox at `http://localhost:8025`.
 Product messages are captured only by Mailpit. AWS Cognito sends signup and
 recovery codes to the address entered during testing. The development S3

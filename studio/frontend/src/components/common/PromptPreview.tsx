@@ -56,7 +56,7 @@ export function PromptPreview({
             return (
               <span
                 key={index}
-                className="box-decoration-clone rounded border border-dashed border-neutral-8 px-1 text-muted"
+                className="box-decoration-clone border border-dashed border-muted px-1 text-muted"
               >
                 {part.text}
               </span>
@@ -101,11 +101,11 @@ export function Filled({
   return (
     <span
       data-block={name}
-      className="box-decoration-clone rounded bg-neutral-4 px-1 text-ink"
+      className="box-decoration-clone bg-surface-alt px-1 text-ink"
     >
       <span
         data-label=""
-        className="mr-1 rounded bg-neutral-7 px-1 text-xs leading-6 text-ink"
+        className="mr-1 bg-line px-1 text-xs leading-6 text-ink"
       >
         {label}
       </span>
@@ -153,7 +153,7 @@ export function PreviewBox({
       <Field.Description>{description}</Field.Description>
       <div
         aria-label={ariaLabel}
-        className="rounded border border-line bg-card p-2 font-mono text-sm leading-6 whitespace-pre-wrap"
+        className="border border-line bg-card p-2 font-mono text-sm leading-6 whitespace-pre-wrap"
       >
         {children}
       </div>

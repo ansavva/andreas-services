@@ -30,35 +30,30 @@ def _studio_dir() -> pathlib.Path:
     )
 
 
-# The one place that knows where `studio/` is. Everything needing `.env` or
-# `local/` derives it from here.
+# The one place that knows where `studio/` is. Everything needing `local/`
+# derives it from here.
 STUDIO_DIR = _studio_dir()
 
-# **The preferred home for a credential is OUTSIDE the repository.**
-# `~/.config/andreas-services/studio/dev.env` already holds this machine's dev
-# pool password, for the reason that applies just as well to the Replicate
-# token: a secret inside the working tree is one `git add -f`, one wholesale
-# copy of the directory, one backup tool away from leaving the machine, and
-# `.gitignore` stops none of those. The password was put there deliberately;
-# the token predates the decision and simply never moved.
+# **Every local value lives in one file, outside the repository:**
+# `~/.config/andreas-services/studio/dev.env` — this machine's dev pool
+# password, the frontend's `VITE_*` values, and the provider tokens. A secret
+# inside the working tree is one `git add -f`, one wholesale copy of the
+# directory, one backup tool away from leaving the machine, and `.gitignore`
+# stops none of those; an ignored file also vanishes on `git clean` and never
+# exists in a fresh worktree. `studio/.env` used to be read after this file
+# and is not read at all now — `dev-setup.sh` imports and deletes one it finds.
 #
-# Nothing here is environment-scoped despite the file's name: the token is the
+# Nothing here is environment-scoped despite the file's name: a token is the
 # same wherever it is used, and `dev.env` is the right file because the only
 # reader is the LOCAL pipeline. The deployed half never sees it — studio's
-# Lambda calls no model.
+# Lambda calls no model. `STUDIO_DEV_ENV_FILE` overrides the location, the
+# same way it does for the shell scripts.
 CONFIG_DIR = (
     pathlib.Path(os.environ.get("XDG_CONFIG_HOME") or pathlib.Path.home() / ".config")
     / "andreas-services"
     / "studio"
 )
-DEV_ENV_FILE = CONFIG_DIR / "dev.env"
-
-# Local config, still read and still git-ignored. It keeps the two stack pins
-# `dev-setup.sh` writes (STUDIO_S3_BUCKET, STUDIO_CATALOG_TABLE), which are
-# names rather than secrets, and it keeps working for a token already in it —
-# breaking every existing checkout to make a point about file locations would
-# cost more than it buys.
-ENV_FILE = STUDIO_DIR / ".env"
+DEV_ENV_FILE = pathlib.Path(os.environ.get("STUDIO_DEV_ENV_FILE") or CONFIG_DIR / "dev.env")
 
 
 def _read_env_file(path: pathlib.Path, name: str) -> str | None:
@@ -73,15 +68,12 @@ def _read_env_file(path: pathlib.Path, name: str) -> str | None:
 
 
 def env_value(name: str) -> str | None:
-    """Read `name` from the environment, then the config dir, then `studio/.env`.
+    """Read `name` from the environment, then `dev.env`.
 
     The environment wins so a caller can override per invocation without
-    editing a file. `~/.config/andreas-services/studio/dev.env` beats
-    `studio/.env` so that moving a credential out of the repository is enough
-    on its own — a value left behind in the old file cannot shadow the new one
-    and send a stale token to Replicate.
+    editing a file.
     """
     value = os.environ.get(name)
     if value:
         return value.strip()
-    return _read_env_file(DEV_ENV_FILE, name) or _read_env_file(ENV_FILE, name)
+    return _read_env_file(DEV_ENV_FILE, name)

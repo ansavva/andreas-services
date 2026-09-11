@@ -5,7 +5,7 @@ One Playwright suite, two modes, mirrored on studio's browser tier.
 ## Stubbed mode — `npm run e2e` (what CI runs)
 
 The app is exported the way production exports it (`expo export -p web`, single-file
-output) and served statically on :4173. Every `/api/**` request is answered from the
+output) and served statically on :4174. Every `/api/**` request is answered from the
 committed fixtures in `fixtures/` by `support/api-stub.ts`. No AWS, no credentials, no
 dev stack — which is what lets this run in the PR workflow, which never writes to AWS.
 

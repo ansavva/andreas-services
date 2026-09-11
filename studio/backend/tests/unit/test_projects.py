@@ -53,18 +53,6 @@ def _run(api, project, name="rooftop-portrait"):
     return resp.get_json()
 
 
-def _approve(api, run):
-    """Approve a draft by the digest the creation reply handed back.
-
-    A run is born a draft, so anything that wants a *submitted* run has to go
-    through the gate — which is the point of the gate, and the reason this helper
-    exists rather than each test flipping a status.
-    """
-    resp = api.post(f"/api/runs/{run['id']}/approve", json={"digest": run["plan_digest"]})
-    assert resp.status_code == 200, resp.get_data(as_text=True)
-    return resp.get_json()
-
-
 def _child(parent_id, name):
     return catalog.node(catalog.child_by_name(parent_id, name)["node_id"])
 
@@ -275,7 +263,6 @@ def test_counts_move_with_the_transaction_that_creates_and_deletes(empty_api):
     counts = empty_api.get(f"/api/projects/{project['id']}").get_json()["counts"]
     assert (counts["runs"], counts["scenes"], counts["movies"]) == (0, 1, 0)
 
-    _approve(empty_api, run)
     empty_api.patch(f"/api/runs/{run['id']}", json={"status": "pending"})
     counts = empty_api.get(f"/api/projects/{project['id']}").get_json()["counts"]
     assert counts["runs"] == 1, "submitting is what counts a run"

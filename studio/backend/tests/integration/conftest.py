@@ -160,9 +160,6 @@ def _point_config_at_the_dev_stack(dev_stack):
         ("STUDIO_CATALOG_TABLE", dev_stack["catalog_table_name"]),
         ("STUDIO_COGNITO_USER_POOL_ID", dev_stack["cognito_user_pool_id"]),
         ("STUDIO_COGNITO_CLIENT_ID", dev_stack["cognito_user_pool_client_id"]),
-        # The browsable root is the whole bucket, as in prod. A stale value in a
-        # shell would otherwise silently rewrite what these tests assert about.
-        ("STUDIO_MEDIA_ROOT_PREFIX", ""),
     ):
         previous[name] = os.environ.get(name)
         os.environ[name] = value

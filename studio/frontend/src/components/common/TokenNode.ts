@@ -1,5 +1,5 @@
 import { $applyNodeReplacement, TextNode } from "lexical";
-import type { EditorConfig, LexicalNode, NodeKey, SerializedTextNode } from "lexical";
+import type { EditorConfig, NodeKey, SerializedTextNode } from "lexical";
 
 /**
  * A `{placeholder}` in a prompt template, drawn as a pill and treated as one thing.
@@ -8,11 +8,11 @@ import type { EditorConfig, LexicalNode, NodeKey, SerializedTextNode } from "lex
  *
  * **Because the serialiser then does not exist.** The stored value is a plain
  * string — assembly is `string.Formatter().vformat` over `{name}`, and the
- * prompt is hashed into the approval digest, so the editor has to give back
+ * prompt is hashed into the fingerprint, so the editor has to give back
  * exactly the characters it was given, byte for byte. A decorator node holds
  * arbitrary React and needs a hand-written serialiser, which is a second
  * description of the string and a place for a normalised space to creep in;
- * every existing approval would then go stale over a change nobody made.
+ * every duplicate check would then miss over a change nobody made.
  *
  * A `TextNode` whose text IS `{name}` needs none of that. `root.getTextContent()`
  * returns the original string, line breaks included, because that is simply what
@@ -87,8 +87,4 @@ export function $createTokenNode(text: string, kind: "block" | "computed"): Toke
   const node = new TokenNode(text, kind);
   node.setMode("token");
   return $applyNodeReplacement(node);
-}
-
-export function $isTokenNode(node: LexicalNode | null | undefined): node is TokenNode {
-  return node instanceof TokenNode;
 }

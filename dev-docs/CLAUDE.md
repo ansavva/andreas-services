@@ -29,7 +29,6 @@ boto3.client('s3',
 See root `CLAUDE.md` for the full service index.
 
 - `humbugg/` – Gift-exchange platform
-- `scout/` – events aggregator from Gmail (`scout.andreas.services`)
 
 ## Shared Infrastructure
 

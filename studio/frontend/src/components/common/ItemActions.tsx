@@ -1,9 +1,9 @@
-import { useCallback, useState } from "react";
-
-import { Dropdown } from "@ansavva/design-system";
-
 import { copyLabel, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
-import { DotsIcon } from "./icons";
+import { ActionMenu, type MenuAction } from "./ActionMenu";
+import { ClipboardIcon, CopyIcon, FolderIntoIcon, PencilIcon, TrashIcon } from "./icons";
+
+/** Every line's glyph, at the size a line of text carries. */
+const GLYPH = "size-4 shrink-0 fill-none stroke-current stroke-[1.5]";
 
 interface Props {
   /** What is being acted on, written into every label. */
@@ -13,7 +13,7 @@ interface Props {
    *  it write with: rename, move, copy and delete all take node ids. */
   copyValue: string;
   /** What `copyValue` names, which is all that differs between the two labels. */
-  copyNoun?: "key" | "prefix";
+  copyNoun?: "path" | "prefix";
   /** Opens the parent's rename field. The parent owns it so it can be full width. */
   onRename: () => void;
   /** Opens the parent's destination picker on a move. */
@@ -27,7 +27,7 @@ interface Props {
 }
 
 /**
- * Every per-item action, behind one button.
+ * Every per-item action, behind one button — a row's `⋯`.
  *
  * Each row used to carry its controls as a strip of icons — rename, copy,
  * delete — and adding move would have made four, on every folder card and every
@@ -35,108 +35,71 @@ interface Props {
  * timestamp. The strip was reading as more chrome than content. So the actions
  * collapse into one trigger, and what a row shows at rest is the thing it names.
  *
- * Two of the four items behave unusually, and both are deliberate:
+ * **What is left here is the list; `ActionMenu` is the menu.** The two items
+ * that behave unusually are its features rather than this file's: `keepOpen`
+ * for Copy, whose entire feedback is its own label changing to "Copied" — a
+ * menu that closed would take the confirmation with it — and `danger` for
+ * Delete, which arms in place and fires on the second press. This file used to
+ * carry both by hand, alongside three other menus that carried them by hand
+ * differently.
  *
- * * **Copy keeps the menu open.** `Dropdown.Item` closes on activation unless the
- *   click is `preventDefault`ed, and copy is the one action here whose entire
- *   feedback is the label changing to "Copied" — closing the menu would take the
- *   confirmation with it. So it stays open and reports, exactly as
- *   `CopyKeyButton` does elsewhere.
- * * **Delete arms rather than fires.** The item turns red and restates what it is
- *   about to destroy, and the second press does it — the same interaction
- *   `ConfirmDeleteButton` argues for, kept here rather than delegated to that
- *   component because a `role="menu"` may only contain menu items, and it is a
- *   plain button. Closing the menu disarms, so a half-pressed delete is never
- *   left live behind a closed menu.
- *
- * A `Dropdown` is absolutely positioned inside its own relative wrapper rather
- * than portalled, so it needs nothing from the design system's `container` prop
- * and never did. It stays a browse-page control because a menu is the answer to
- * "four icons on every row", which is a listing's problem and not the object
- * screen's — that screen has one file and room to name its actions.
+ * It stays a browse-page control because a menu is the answer to "four icons on
+ * every row", which is a listing's problem and not the object screen's — that
+ * screen has one file and room to name its actions.
  */
 export function ItemActions({
   name,
   copyValue,
-  copyNoun = "key",
+  copyNoun = "path",
   onRename,
   onMove,
   onCopyTo,
   onDelete,
 }: Props) {
-  const [open, setOpen] = useState(false);
-  const [armed, setArmed] = useState(false);
-  const [busy, setBusy] = useState(false);
   const { status, copy } = useCopyToClipboard();
 
-  const change = useCallback((next: boolean) => {
-    setOpen(next);
-    // Closing disarms: an armed delete waiting behind a menu nobody can see is
-    // exactly the state `ConfirmDeleteButton`'s timeout exists to prevent.
-    if (!next) setArmed(false);
-  }, []);
+  const actions: MenuAction[] = [
+    {
+      key: "rename",
+      label: "Rename…",
+      icon: <PencilIcon className={GLYPH} />,
+      onSelect: onRename,
+    },
+    {
+      key: "move",
+      label: "Move…",
+      icon: <FolderIntoIcon className={GLYPH} />,
+      onSelect: onMove,
+    },
+    // "Copy to…" rather than "Copy", because the line below it copies the path
+    // to the clipboard and the two must not read as the same thing.
+    ...(onCopyTo
+      ? [
+          {
+            key: "copy-to",
+            label: "Copy to…",
+            icon: <CopyIcon className={GLYPH} />,
+            onSelect: onCopyTo,
+          },
+        ]
+      : []),
+    {
+      key: "copy-path",
+      label: copyLabel(status, `Copy ${copyNoun}`),
+      icon: <ClipboardIcon className={GLYPH} />,
+      keepOpen: true,
+      onSelect: () => void copy(copyValue),
+    },
+    {
+      key: "delete",
+      label: "Delete",
+      armedLabel: `Confirm — delete ${name}`,
+      icon: <TrashIcon className={GLYPH} />,
+      danger: true,
+      arm: true,
+      onSelect: onDelete,
+    },
+  ];
 
-  const pressDelete = useCallback(() => {
-    if (!armed) {
-      setArmed(true);
-      return;
-    }
-    setBusy(true);
-    void onDelete()
-      .catch(() => {
-        /* the page surfaces the message; this only owns the menu */
-      })
-      .finally(() => {
-        setBusy(false);
-        setArmed(false);
-        setOpen(false);
-      });
-  }, [armed, onDelete]);
-
-  return (
-    <Dropdown.Root open={open} onOpenChange={change}>
-      <Dropdown.Trigger
-        aria-label={`Actions for ${name}`}
-        title={`Actions for ${name}`}
-        className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-surface-alt hover:text-ink"
-      >
-        <DotsIcon />
-      </Dropdown.Trigger>
-
-      {/* Right-aligned: the trigger sits at the end of a row, so a menu growing
-          rightwards from it would hang off the edge of the page. */}
-      <Dropdown.Content className="left-auto right-0">
-        <Dropdown.Item onSelect={onRename}>Rename…</Dropdown.Item>
-        <Dropdown.Item onSelect={onMove}>Move…</Dropdown.Item>
-        {/* "Copy to…" rather than "Copy", because the item below it copies the
-            key to the clipboard and the two must not read as the same thing. */}
-        {onCopyTo && <Dropdown.Item onSelect={onCopyTo}>Copy to…</Dropdown.Item>}
-
-        <Dropdown.Item
-          onClick={(event: React.MouseEvent) => {
-            event.preventDefault();
-            void copy(copyValue);
-          }}
-        >
-          {/* `aria-live` so a screen reader hears an outcome whose only other
-              signal is the label changing under a pointer. */}
-          <span aria-live="polite">{copyLabel(status, `Copy ${copyNoun}`)}</span>
-        </Dropdown.Item>
-
-        <Dropdown.Item
-          disabled={busy}
-          onClick={(event: React.MouseEvent) => {
-            // Arming must not close the menu — the confirmation *is* the item.
-            if (!armed) event.preventDefault();
-            pressDelete();
-          }}
-          className={armed ? "text-danger" : ""}
-        >
-          <span aria-live="assertive">
-            {busy ? "Deleting…" : armed ? `Confirm — delete ${name}` : "Delete"}
-          </span>
-        </Dropdown.Item>
-      </Dropdown.Content>
-    </Dropdown.Root>
-  );
+  return <ActionMenu label={name} triggerLabel={`Actions for ${name}`} actions={actions} />;
 }

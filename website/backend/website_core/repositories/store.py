@@ -6,7 +6,7 @@ list submissions newest-first with a cheap `Query` (no `Scan`) and cursor
 pagination. Volume is tiny, so a single partition is fine.
 
 Intentionally self-contained (no shared package) so it can be copied into the
-Lambda image, matching the Scout convention.
+Lambda image.
 """
 
 import base64

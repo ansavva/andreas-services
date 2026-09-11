@@ -27,11 +27,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("./components/layout/AppLayout", () => ({ AppLayout: () => <Outlet /> }));
 
 vi.mock("./pages/HomePage", () => ({ HomePage: () => <div>home</div> }));
+vi.mock("./pages/FavoritesPage", () => ({ FavoritesPage: () => <div>favorites</div> }));
 vi.mock("./pages/CharactersPage", () => ({ CharactersPage: () => <div>characters</div> }));
 vi.mock("./pages/ProjectsPage", () => ({ ProjectsPage: () => <div>projects</div> }));
 vi.mock("./pages/CharacterPage", () => ({ CharacterPage: () => <div>character</div> }));
 vi.mock("./pages/ProjectPage", () => ({ ProjectPage: () => <div>project</div> }));
-vi.mock("./pages/RunPage", () => ({ RunPage: () => <div>run</div> }));
 vi.mock("./pages/ScenePage", () => ({ ScenePage: () => <div>scene</div> }));
 vi.mock("./pages/MoviePage", () => ({ MoviePage: () => <div>movie</div> }));
 vi.mock("./pages/BrowsePage", () => ({ BrowsePage: () => <div>browser</div> }));
@@ -57,13 +57,20 @@ function at(path: string) {
 describe("the route table", () => {
   it.each([
     ["/", "home"],
+    // The one address in the table that names nothing: a favorite is a fact
+    // about the caller, so the collection is whoever is signed in.
+    ["/favorites", "favorites"],
     ["/characters", "characters"],
     ["/projects", "projects"],
     ["/c/char-9f3c1e57-2a44-4d81-b6e0-77c21f8a4d15", "character"],
     ["/p/proj-4a10b8d2-5c93-47ae-8f61-0d51e6b7c2a9", "project"],
+    // The opened run is the project page — `ProjectPage` reads `runId` and
+    // draws the lightbox over its own feed. It must still not be swallowed by
+    // the project route above it, which this pins by reaching the same screen
+    // through a route that carries both ids.
     [
       "/p/proj-4a10b8d2-5c93-47ae-8f61-0d51e6b7c2a9/r/run-77c2f0a8-31b5-4e62-9a07-c4d8e15b3f60",
-      "run",
+      "project",
     ],
     ["/s/scene-0001", "scene"],
     ["/m/movie-0001", "movie"],

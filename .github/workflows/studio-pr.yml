@@ -108,8 +108,8 @@ jobs:
       # lock file with the API's, and differs by one Poetry group and a `CMD`. So
       # a broken lock file breaks both and either build would catch it — but a
       # `poetry install --only main,render` against a group that does not
-      # resolve, or a `CMD` naming a handler module that was renamed, breaks only
-      # the second, and the first thing to notice would be a prod deploy.
+      # resolve, or a `CMD` naming a handler module that does not exist, breaks
+      # only the second, and the first thing to notice would be a prod deploy.
       - name: Docker build (packaging check)
         run: |
           set -euo pipefail
@@ -158,10 +158,9 @@ jobs:
       - name: Favicon in sync with the mark's geometry
         run: cd studio/frontend && npm run mark:check
 
-      # One suite, and it covers the legacy-URL resolver. Everything else on
-      # this surface fails loudly — a broken listing is a blank page — but a
-      # share link written before #313 that quietly stops resolving is invisible
-      # until somebody reports it, so that is the piece with tests.
+      # One suite, over the pieces that fail quietly — address parsing, the API
+      # client's error shapes, the OAuth handshake. Everything else on this
+      # surface fails loudly: a broken listing is a blank page.
       - name: Run tests
         run: cd studio/frontend && npm run test:coverage
 

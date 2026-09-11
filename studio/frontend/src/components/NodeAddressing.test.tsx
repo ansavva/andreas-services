@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { FileEntry } from "../types";
@@ -126,7 +127,12 @@ describe("the download button", () => {
 
 describe("opening a text file", () => {
   it("reads by node id, and still shows the name path", async () => {
-    render(<TextPage file={FILE} onClose={() => {}} />, { wrapper: TestProviders });
+    render(
+      <MemoryRouter>
+        <TextPage file={FILE} onClose={() => {}} />
+      </MemoryRouter>,
+      { wrapper: TestProviders },
+    );
 
     await waitFor(() => expect(fetched).toHaveBeenCalledWith(FILE.id));
     // The path is what a person copies into a `studio` command. Nothing

@@ -1,10 +1,4 @@
 {
-  "approval": {
-    "at": "2026-08-30T15:24:23.094846+00:00",
-    "by": "d4f85488-f0c1-70be-c28f-61945af32ed1",
-    "digest": "sha256:13f8d35a57d6994d521f84b42c4f8c7a349f4aa7c97480f0b9865839ac40b863",
-    "via": "relayed"
-  },
   "bindings": {
     "input_images": [
       {
@@ -77,7 +71,6 @@
     "prompt": "A studio photograph of the man in the reference images, shirtless, wearing black jeans. Both arms raised with his hands clasped behind his head, elbows out wide. Turned to a three-quarter angle to camera. Plain black seamless background. Controlled studio lighting: warm key from camera left, soft fill, and a subtle rim light separating his shoulders from the background. Sharp focus on the face, natural skin texture, torso in frame.",
     "version": 1
   },
-  "plan_digest": "sha256:13f8d35a57d6994d521f84b42c4f8c7a349f4aa7c97480f0b9865839ac40b863",
   "prediction_id": "36mcybx905rmr0d0ad2rhkd4a4",
   "project": "proj-69e3a948-1bfd-48ee-8646-263265fd4289",
   "rev": 1,
@@ -135,7 +128,6 @@
       "url": "/e2e-asset.png"
     }
   ],
-  "stale": false,
   "status": "succeeded",
   "submitted": "2026-08-30T15:24:29.065258+00:00",
   "updated": "2026-08-30T15:26:11.153834+00:00"

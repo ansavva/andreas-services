@@ -1,9 +1,8 @@
-"""Cognito sign-in for the CLI, holding no AWS credentials (#300).
+"""Cognito sign-in for the CLI, holding no AWS credentials.
 
-**The point of this module is what it does *not* need.** Until now the pipeline
-reached S3 directly under the developer's own AWS login, so it only ran where
-credentials were configured. After this it signs in to Cognito as a user and
-calls the studio API, exactly as the SPA does — a laptop with no AWS account can
+**The point of this module is what it does *not* need.** The CLI signs in to
+Cognito as a user and calls the studio API, exactly as the SPA does — a laptop
+with no AWS account can
 drive the service.
 
 **SRP, because the pool allows nothing else.** `explicit_auth_flows` is
@@ -15,8 +14,8 @@ client-side, so this drives the same flow Amplify drives in the browser.
 `InitiateAuth` is an unauthenticated API — signing in is what a user without AWS
 access does — but boto3 resolves the credential chain when the client is
 *constructed*. Without this, `studio login` on a machine with no AWS credentials
-fails inside boto3 before it ever reaches Cognito, which is precisely the machine
-#300 names as the acceptance test.
+fails inside boto3 before it ever reaches Cognito, which is precisely the
+machine this module exists for.
 
 **The API takes the ID token, not the access token.** A REST
 `COGNITO_USER_POOLS` authorizer with no `authorization_scopes` validates an
@@ -46,14 +45,11 @@ CONFIG_DIR = (
 # mode 600, and a developer looking for one finds the other.
 CREDENTIALS_FILE = CONFIG_DIR / "credentials"
 
-# `DEFAULT_API_URL = "https://studio-api.andreas.services"` lived here and is
-# **deleted**. It meant that a shell with nothing set — no `dev-up.sh`, no
-# `.env` sourced — pointed the CLI at PRODUCTION, which is the exact opposite of
-# what `studio/CLAUDE.md` says the CLI does and the same shape of default #434
-# removed from `adapters/s3.py` and `adapters/ddb.py`. The target is a profile
-# now, it defaults to `dev`, and "nothing is configured" is a refusal that names
-# the two commands that fix it rather than a silent connection to the live
-# library.
+# There is deliberately no default API URL. One would mean that a shell with
+# nothing set — no `dev-up.sh`, no `.env` sourced — pointed the CLI at
+# PRODUCTION. The target is a profile, it defaults to `dev`, and "nothing is
+# configured" is a refusal that names the two commands that fix it rather than
+# a silent connection to the live library.
 
 
 class AuthError(RuntimeError):
@@ -126,11 +122,10 @@ def _dump(store: dict) -> None:
 def _load() -> dict:
     """Every profile's session: `{"profiles": {"<name>": {...}}}`.
 
-    **The file used to be one flat session and that was the bug worth fixing.**
-    There is one credentials file per machine, so signing in to prod overwrote
-    the dev session for every shell on it, indefinitely — the target outlived
-    the shell that chose it, which is precisely what a profile is supposed to
-    prevent. Keyed by profile, the two coexist and neither can shadow the other.
+    **Keyed by profile, never one flat session.** There is one credentials file
+    per machine, so a flat session would mean signing in to prod overwrote the
+    dev session for every shell on it, indefinitely. Keyed by profile, the two
+    coexist and neither can shadow the other.
     """
     if not CREDENTIALS_FILE.exists():
         return {"profiles": {}}

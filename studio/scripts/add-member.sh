@@ -185,8 +185,8 @@ EXISTING=$(aws dynamodb get-item \
 # pool replacement `create-user.sh` re-creates the account, grants the default
 # `member`, and this script then refused to correct it — "already a member,
 # leaving it untouched" — so the only route back to `owner` was deleting the row
-# by hand. That is the same silent no-op #468 removed from the create scripts,
-# left behind in the one place a pool replacement makes you walk through.
+# by hand — a silent no-op in the one place a pool replacement makes you walk
+# through.
 #
 # Membership is not a person's own setting the way a password is; it is granted,
 # and the grant is what this script names. So converging it is safe in a way

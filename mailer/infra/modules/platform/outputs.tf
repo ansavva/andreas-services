@@ -45,3 +45,7 @@ output "humbugg_status_queue_arn" {
 output "humbugg_auth_configuration_set" {
   value = local.humbugg_auth_config_set
 }
+
+output "alerts_topic_arn" {
+  value = aws_sns_topic.alerts.arn
+}

@@ -70,16 +70,10 @@ sends nothing — `submit` is the call that spends, and this never makes it. If
 the delete fails, the stack is left holding one abandoned draft; the script says
 so rather than hiding it.
 
-ONE FIXTURE IS SYNTHESISED, AND IT IS STILL NOT FETCHED
--------------------------------------------------------
-`e2e-asset.mp4` is generated here by ffmpeg rather than captured, because there
-is nothing to capture it from: the published dev seed is 54 stills, since runs,
-scenes and movies are model output and cost money to make. A `<video>` handed
-the one-pixel PNG cannot play, which is the whole reason `browse.spec.ts` never
-visited `/o`. Synthesising it locally keeps the rule the rest of this file is
-about — nothing here reaches out to the internet for a sample clip.
+One read has a side effect worth knowing: `GET /api/projects/<id>/inputs`
+makes the project's `input/` folder when it is missing. An empty folder,
+nothing in it, and the app would make the same one on its first visit.
 
-    python capture.py --video     # just the MP4; needs no API and no token
 """
 from __future__ import annotations
 
@@ -256,6 +250,13 @@ def authoring(bearer: str, library: str, character: dict) -> None:
     )
     write("project-runs", listing)
     runs = listing["runs"]
+    # The same page in the feed's shape: plan, sends and outputs signed, cast by
+    # name. Two fixtures because the route answers two shapes and the specs
+    # should see both as the API writes them, not one derived from the other.
+    write(
+        "project-runs-feed",
+        get(f"/api/runs?project={project['id']}&include=drafts&view=feed", bearer, library),
+    )
 
     draft = newest(runs, status="draft")
     done = newest(runs, status="succeeded", kind="image")
@@ -302,8 +303,7 @@ def created(bearer: str, library: str, project: str, entry: dict) -> None:
 
     - `created-run` is the 201 body, which is **not** a run envelope. It carries
       the handful of values the caller could not have known — the id, the
-      `plan_digest` the next call approves against, the fingerprint — and
-      nothing else.
+      fingerprint — and nothing else.
     - `created-run-record` is `GET /api/runs/<id>` on that same draft, which is
       what the app reads the moment it navigates to the run it just made.
 
