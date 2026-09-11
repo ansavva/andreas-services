@@ -110,12 +110,11 @@ def _isolated_profiles(tmp_path, monkeypatch):
     """
     monkeypatch.setattr(_profiles, "CONFIG_DIR", tmp_path / "config")
     monkeypatch.setattr(_profiles, "CONFIG_FILE", tmp_path / "config" / "config")
-    # The two dotenv files `env_value` falls back to, for the same reason. The
-    # environment variables above already shadow them, so this changes nothing
+    # The dotenv file `env_value` falls back to, for the same reason. The
+    # environment variables above already shadow it, so this changes nothing
     # in the ordinary case — it is what lets a test assert that a value is
     # supplied by NOTHING, which is impossible while a developer's own
-    # `studio/.env` is still on the path.
-    monkeypatch.setattr(_pipeline, "ENV_FILE", tmp_path / "dot.env")
+    # `dev.env` is still on the path.
     monkeypatch.setattr(_pipeline, "DEV_ENV_FILE", tmp_path / "dev.env")
     # **And the stored session, which this suite used to DELETE.**
     #

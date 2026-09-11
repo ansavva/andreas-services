@@ -284,7 +284,7 @@ API keys:
   | Where | How |
   |---|---|
   | The deployed API | An SSM SecureString, `/studio/prod/replicate-api-token`, read by the Lambda under its own role. The value comes from the `REPLICATE_API_TOKEN` **environment secret** on `studio-production`, written there by `studio-prod.yaml` on every app deploy. Terraform creates the parameter and never holds the value. |
-  | A local API under `dev-up.sh` | `~/.config/andreas-services/studio/dev.env`, the file that already holds this machine's dev pool password. `dev-up.sh` sources it into the Flask process. |
+  | A local API under `dev-up.sh` | `~/.config/andreas-services/studio/dev.env`, the one local file — it also holds this machine's dev pool password and the frontend's `VITE_*` values. `dev-up.sh` reads the token by key into the Flask process. |
 
   ```
   REPLICATE_API_TOKEN=r8_…
@@ -295,11 +295,11 @@ API keys:
   parameter per machine would be a secret per machine to rotate. For the same
   reason it is **not a profile field**.
 
-  A line left in `studio/.env` is inert — nothing in the pipeline reads it.
-  `dev-setup.sh` still warns about it, because a secret inside the repo is worth
-  removing whether or not anything loads it: `.gitignore` protects a secret
-  from `git add` and from nothing else — not from `git add -f`, not from a copy
-  of the working tree, not from a backup tool that indexes the repo.
+  `studio/.env` is not read any more, by anything. `dev-setup.sh` imports one
+  it finds into `dev.env` and deletes it, because a secret inside the repo is
+  worth removing whether or not anything loads it: `.gitignore` protects a
+  secret from `git add` and from nothing else — not from `git add -f`, not from
+  a copy of the working tree, not from a backup tool that indexes the repo.
 
 Asset storage needs **neither an AWS login nor a key of its own.** Character
 profiles, reference images and every generated asset live in S3 and never in

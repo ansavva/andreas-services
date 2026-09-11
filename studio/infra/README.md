@@ -393,7 +393,7 @@ needs a member, and the `sub` comes from the dev pool.
 
 `dev-setup.sh` reads the stack's Terraform outputs — **not SSM**, which holds
 what the deploy workflow wrote and knows nothing about a dev stack — and writes
-`frontend/.env.local` and the CLI's `dev` profile. It runs from the
+`~/.config/andreas-services/studio/dev.env` and the CLI's `dev` profile. It runs from the
 SessionStart hook and tolerates a missing stack, warning and carrying on.
 `dev-up.sh` does not: an API with no Cognito pool 500s on every call, so
 failing early is the faster way to find out.

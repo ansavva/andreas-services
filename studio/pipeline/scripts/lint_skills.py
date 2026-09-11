@@ -446,7 +446,7 @@ def _is_test_fixture(path) -> bool:
     would report itself. It did.)
 
     This scan exists to catch the opposite case: a RENAMED family leaving dead
-    names in `.env.example` and `infra/README.md`, files nothing thought to look
+    names in `dev.env.sample` and `infra/README.md`, files nothing thought to look
     at. A fixture is not that, and excluding it costs nothing the check was for.
     """
     return any(part.endswith((".test.tsx", ".test.ts", ".spec.ts", ".spec.tsx"))
@@ -457,7 +457,7 @@ def check_references(skills: set[str]) -> dict[str, list[str]]:
     """Every `studio-media-*` / `studio-code-*` mentioned anywhere must exist.
 
     The other checks only read the skills themselves, which is how renaming the
-    families left stale names in `.env.example` and `infra/README.md` — files
+    families left stale names in `dev.env.sample` and `infra/README.md` — files
     nothing thought to look at. A skill name is a cross-repo reference, so it
     gets checked across the repo.
     """

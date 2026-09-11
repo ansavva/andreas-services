@@ -44,7 +44,7 @@ function Gate({ children }: { children: ReactNode }) {
           <Alert.Root intent="warning">
             <Alert.Title>Auth is not configured</Alert.Title>
             <Alert.Description>
-              Set VITE_COGNITO_CLIENT_ID and VITE_COGNITO_DOMAIN (see .env.local.example).
+              Set VITE_COGNITO_CLIENT_ID and VITE_COGNITO_DOMAIN in dev.env (see studio/dev.env.sample).
             </Alert.Description>
           </Alert.Root>
         </div>

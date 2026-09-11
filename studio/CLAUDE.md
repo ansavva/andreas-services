@@ -151,9 +151,14 @@ uv run --project studio/scripts/dev_seed dev-seed publish --path <p>   # dry run
 ```
 
 `dev-setup.sh` runs from the SessionStart hook, tolerates a missing stack, and
-writes `frontend/.env.local` and the `dev` profile from the stack's Terraform
-outputs — re-run it, or `studio profile sync dev`, rather than editing either.
-It names a stale pin in `studio/.env` rather than rewriting it; delete the line.
+writes `~/.config/andreas-services/studio/dev.env` and the `dev` profile from
+the stack's Terraform outputs — re-run it, or `studio profile sync dev`, rather
+than editing either. **`dev.env` is the one local file**: the frontend's
+`VITE_*` values (generated), the dev account and the Replicate token (yours),
+documented in [`dev.env.sample`](dev.env.sample). There is no `studio/.env` or
+`frontend/.env.local` any more; `dev-setup.sh` imports and deletes either,
+dropping stack pins — the profile carries those. `STUDIO_DEV_ENV_FILE`
+overrides the location.
 `dev-up.sh` refuses to start without a stack: an API with no Cognito pool 500s.
 
 **The stack is seeded — not empty, and not a copy of prod.** `dev-aws-seed.sh`
