@@ -1,5 +1,9 @@
-// Exchange customization (#574) — the organizer's greeting and instructions on what everyone else
-// sees.
+// Exchange customization (#574) — the organizer's greeting on the invitation.
+//
+// Greeting only, since #684: the instructions field here duplicated the exchange's own "how it
+// works" text (`group.instructions`, Free) under the same name, and an organizer had two boxes to
+// fill with the same sentence. The exchange's instructions now reach the invitation preview too,
+// so this keeps the one thing that is Plus: a greeting in the organizer's voice.
 //
 // Words only. Until September 2026 this panel also took two theme colours and a banner image
 // (#677): a colour picker and an upload handed to somebody organizing a Secret Santa produced
@@ -11,7 +15,7 @@
 // writes text that OTHER people read, and the invitation preview renders it to somebody who is not
 // signed in. That is why the server refuses HTML and links outright rather than escaping them, and
 // why nothing here tries to render markup either — what is typed is what is shown, as text.
-import { Button, Input, Textarea } from '@ansavva/design-system';
+import { Button, Input } from '@ansavva/design-system';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 
@@ -36,8 +40,8 @@ export function CustomizationPanel({
   onSaved(next: GroupDetail): void;
   /**
    * Rendered inside another card — the Exchange settings — as a titled group of fields rather
-   * than a card of its own. The greeting and instructions describe the exchange; they are not a
-   * separate thing an organizer goes looking for.
+   * than a card of its own. The greeting describes the exchange; it is not a separate thing an
+   * organizer goes looking for.
    */
   embedded?: boolean;
 }) {
@@ -87,8 +91,8 @@ export function CustomizationPanel({
   if (needsPlus || group.plan === 'free')
     return (
       <PlusLockedNote
-        reason="Your own greeting and instructions are part of Plus."
-        action="put your own words on what everybody else sees"
+        reason="Your own greeting on the invitation is part of Plus."
+        action="put your own words at the top of the invitation"
         isOwner={group.is_owner}
       />
     );
@@ -97,15 +101,15 @@ export function CustomizationPanel({
   return (
     <Frame style={embedded ? { marginTop: 8 } : undefined}>
       {embedded ? (
-        <Text style={[styles.small, styles.semibold]}>Greeting and instructions</Text>
+        <Text style={[styles.small, styles.semibold]}>Invitation</Text>
       ) : (
         <>
           <Text style={styles.eyebrow}>Customization</Text>
-          <Text style={[styles.heading, { marginTop: 4 }]}>Your words on the exchange</Text>
+          <Text style={[styles.heading, { marginTop: 4 }]}>Your greeting</Text>
         </>
       )}
       <Text style={[styles.tiny, { marginTop: 4 }]}>
-        What people read on the invitation before they join, and at the top of the exchange after.
+        One line at the top of the invitation, in your voice.
       </Text>
 
       <View style={{ marginTop: 16, gap: gap.md }}>
@@ -118,24 +122,12 @@ export function CustomizationPanel({
           />
         </FieldLabel>
 
-        <FieldLabel
-          label="Instructions"
-          help="Anything the exchange needs that Humbugg does not ask for — where to bring it, when, what counts."
-        >
-          <Textarea
-            maxLength={1500}
-            value={draft.instructions}
-            onValueChange={(value) => set('instructions', value)}
-            placeholder="Bring it wrapped to the Friday lunch."
-          />
-        </FieldLabel>
-
         <StatusMessage message={error} />
         <StatusMessage message={saved ? 'Saved.' : null} tone="success" />
 
         <View style={{ alignSelf: 'flex-start' }}>
           <Button disabled={busy} onPress={() => void save()}>
-            {busy ? 'Saving…' : 'Save your words'}
+            {busy ? 'Saving…' : 'Save greeting'}
           </Button>
         </View>
       </View>

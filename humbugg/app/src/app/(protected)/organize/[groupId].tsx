@@ -1,15 +1,13 @@
-import { useLocalSearchParams } from 'expo-router';
+import { Redirect, useLocalSearchParams } from 'expo-router';
 
-import OrganizeScreen from '../../../screens/organize';
-
+/**
+ * The organizer dashboard is a set of tabs on the exchange page now (#684). This route stays so
+ * every link that was ever minted to it still lands — Stripe's return URL from a Checkout the
+ * backend set up before this shipped, the seeder's hint, a bookmark — on the tab it meant.
+ */
 export default function OrganizeRoute() {
-  // `checkout` is what Stripe returns with on the web (`success` / `canceled`). Read here rather
-  // than in the screen so the screen stays a function of its props, like every other one.
   const { groupId, checkout } = useLocalSearchParams<{ groupId: string; checkout?: string }>();
-  return (
-    <OrganizeScreen
-      groupId={groupId ?? ''}
-      checkout={Array.isArray(checkout) ? checkout[0] : checkout}
-    />
-  );
+  const value = Array.isArray(checkout) ? checkout[0] : checkout;
+  const query = value ? `tab=settings&checkout=${encodeURIComponent(value)}` : 'tab=people';
+  return <Redirect href={`/groups/${groupId ?? ''}?${query}`} />;
 }

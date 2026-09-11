@@ -20,6 +20,7 @@ import { useAuth } from '../context/auth-context';
 import { gap, useTheme } from '../theme/styles';
 import type { GroupDetail, GroupReadiness } from '../types';
 import { CustomizationPanel } from './customization';
+import { ExchangeSettingsPanel } from './exchange-settings';
 import { PlusBillingPanel } from './plus';
 import { RemindersPanel } from './reminders';
 import { Card } from './shell';
@@ -86,9 +87,17 @@ export function SettingsTab({
       {section === 'exchange' ? (
         <Card>
           <Text style={styles.eyebrow}>Exchange</Text>
-          {/* One row per setting — label, one line of consequence, the control on the right — so
-              the next setting is another <SettingRow>, not another card. */}
-          <View style={{ marginTop: 12 }}>
+          {/* What the exchange IS — name, dates, spending limit, how it works — then how it runs as
+              one row per setting (label, one line of consequence, control on the right, so the
+              next setting is another <SettingRow>), then the organizer's greeting. Before the draw
+              only for the details: nothing in them changes the matching, but a roster that can
+              still move is the mental model. */}
+          {group.status === 'open' ? (
+            <View style={{ marginTop: 20 }}>
+              <ExchangeSettingsPanel group={group} onSaved={onGroupChanged} embedded />
+            </View>
+          ) : null}
+          <View style={{ marginTop: 24 }}>
             <SettingRow
               label="Gifts are posted"
               help="Asks every participant for a mailing address. Leave it off when gifts change hands in person."

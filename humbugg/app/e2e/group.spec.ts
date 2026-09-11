@@ -28,7 +28,7 @@ test('a deep link renders the exchange with its wishlist', async ({ page }) => {
   await page.goto(`/groups/${group.group_id}`);
 
   await expect(page.getByText(group.name).first()).toBeVisible();
-  await expect(page.getByText('The exchange circle')).toBeVisible();
+  await expect(page.getByText('What you would love')).toBeVisible();
   for (const wish of wishes) {
     await expect(page.getByText(wish.title).first()).toBeVisible();
   }

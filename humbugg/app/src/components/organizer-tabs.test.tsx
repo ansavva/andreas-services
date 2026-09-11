@@ -1,4 +1,4 @@
-// The organizer readiness dashboard (#133).
+// The organizer's tabs on the exchange page (#133, #684).
 //
 // The behaviours worth pinning are the ones a screenshot cannot check: that the screen never
 // re-derives readiness (it renders the state the API sent, even an unexpected one), that a
@@ -39,7 +39,7 @@ jest.mock('expo-router', () => {
   };
 });
 
-// The error class is declared INSIDE the factory. Babel hoists `import ... from './organize'`
+// The error class is declared INSIDE the factory. Babel hoists `import ... from './organizer-tabs'`
 // above a top-level class declaration, so a class defined out here is still in its temporal dead
 // zone when the factory runs, and the screen's `err instanceof ApiError` throws on `undefined`
 // instead of branching. `jest.requireMock` below is how a test gets hold of the same class.
@@ -103,8 +103,15 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   default: () => ({ width: mocks.width, height: 800, scale: 2, fontScale: 1 }),
 }));
 
-import OrganizeScreen from './organize';
+import { Tabs } from '@ansavva/design-system';
+import { useEffect, useState } from 'react';
+import { Text, View } from 'react-native';
+
+import { api } from '../api/client';
+import { LoadingPanel } from './shell';
+import { ORGANIZER_TABS, OrganizerTabs } from './organizer-tabs';
 import type {
+  GroupDetail,
   GroupReadiness,
   ParticipantReadiness,
   ReminderOverview,
@@ -229,7 +236,47 @@ const reminders = (settings: Partial<ReminderSettings> = {}): ReminderOverview =
   recent_history: [],
 });
 
-/** The dashboard is two tabs; People is open by default, Settings holds the rest. */
+/**
+ * What the exchange page does around these tabs: read the group, own `Tabs.Root`, land on People
+ * — or on Settings when Stripe sends the organizer back. The mocked `getGroup` returns partial
+ * groups; the fields the tabs read off a real one are filled in here.
+ */
+function OrganizeScreen({ groupId, checkout }: { groupId: string; checkout?: string | null }) {
+  const [group, setGroup] = useState<GroupDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    api.getGroup('token', groupId).then(
+      (detail: Partial<GroupDetail>) =>
+        setGroup({ status: 'open', members: [], exclusions: [], participant_limit: 50, ...detail } as GroupDetail),
+      (err: Error) => setError(err.message),
+    );
+  }, [groupId]);
+  if (error) return <Text>{error}</Text>;
+  if (!group) return <LoadingPanel />;
+  return (
+    <Tabs.Root defaultValue={checkout ? 'settings' : 'people'}>
+      <Tabs.List>
+        {ORGANIZER_TABS.map((item) => (
+          <Tabs.Tab key={item.value} value={item.value}>{item.label}</Tabs.Tab>
+        ))}
+      </Tabs.List>
+      <OrganizerTabs
+        group={group}
+        checkout={checkout}
+        onGroupChanged={setGroup}
+        onReload={async () => {
+          const detail: Partial<GroupDetail> = await api.getGroup('token', groupId);
+          setGroup((current) => ({ ...(current as GroupDetail), ...detail }));
+        }}
+      />
+    </Tabs.Root>
+  );
+}
+
+/** People is open by default; Draw holds the roll-up and the draw; Settings the rest. */
+function openDraw() {
+  fireEvent.press(screen.getByText('Draw'));
+}
 function openSettings() {
   fireEvent.press(screen.getByText('Settings'));
 }
@@ -253,7 +300,9 @@ describe('loading and failure', () => {
     expect(screen.getByLabelText('Loading')).toBeOnTheScreen();
 
     release(readiness());
-    await waitFor(() => expect(screen.getByText('Taking part')).toBeOnTheScreen());
+    await waitFor(() => expect(screen.getByText('Everyone (1)')).toBeOnTheScreen());
+    openDraw();
+    expect(screen.getByText('Taking part')).toBeOnTheScreen();
   });
 
   it('tells a participant why the dashboard is closed to them rather than showing nothing', async () => {
@@ -263,7 +312,7 @@ describe('loading and failure', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText('Only an organizer of this exchange can see its readiness dashboard.'),
+        screen.getByText('Only an organizer of this exchange can see who is ready.'),
       ).toBeOnTheScreen(),
     );
   });
@@ -383,10 +432,11 @@ describe('what the roster shows', () => {
 
   it('hides the address and assignment chips the exchange is not asking about', async () => {
     render(<OrganizeScreen groupId="group-1" />);
-
     await waitFor(() => expect(screen.getByText('3 wishes')).toBeOnTheScreen());
     expect(screen.queryByText('Address not needed')).toBeNull();
-    // "Before the draw" appears once, as the Matches-opened tile's value — never as a row chip.
+    // "Before the draw" is the Matches-opened tile's value on Draw — never a row chip on People.
+    expect(screen.queryByText('Before the draw')).toBeNull();
+    openDraw();
     expect(screen.getAllByText('Before the draw')).toHaveLength(1);
   });
 
@@ -426,6 +476,7 @@ describe('what the roster shows', () => {
     render(<OrganizeScreen groupId="group-1" />);
 
     await waitFor(() => expect(screen.getByText('Participant · Sitting out')).toBeOnTheScreen());
+    openDraw();
     expect(screen.getByText('1 sitting out')).toBeOnTheScreen();
   });
 
@@ -446,6 +497,7 @@ describe('what the roster shows', () => {
     expect(screen.getByText('Person 119')).toBeOnTheScreen();
     // 40 of the 120 are missing a list; the roll-up and the filter must agree on that.
     expect(screen.getByText('Needs attention (40)')).toBeOnTheScreen();
+    openDraw();
     expect(screen.getByText('80 of 120')).toBeOnTheScreen();
   });
 });
@@ -453,7 +505,7 @@ describe('what the roster shows', () => {
 describe('the address setting', () => {
   it('saves the switch and reloads, so the counts follow the setting', async () => {
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => expect(screen.getByText('Not needed')).toBeOnTheScreen());
+    await waitFor(() => expect(screen.getByText('Everyone (1)')).toBeOnTheScreen());
     openSettings();
 
     mocks.getReadiness.mockResolvedValue(
@@ -464,11 +516,13 @@ describe('the address setting', () => {
     await waitFor(() =>
       expect(mocks.updateGroup).toHaveBeenCalledWith('token', 'group-1', { requires_address: true }),
     );
-    // The stat row above the tabs follows the setting — and the switch is still where it was, on
-    // Settings: a save must not reload the screen out from under the tab the organizer is on.
-    await waitFor(() => expect(screen.getByText('0 of 1')).toBeOnTheScreen());
+    // The switch is still where it was, on Settings: a save must not reload the screen out from
+    // under the tab the organizer is on. The counts it moved follow on Draw, the row on People.
+    await waitFor(() => expect(mocks.getReadiness.mock.calls.length).toBeGreaterThan(1));
     expect(screen.queryByLabelText('Loading')).toBeNull();
     expect(screen.getByLabelText('Gifts are posted to a mailing address')).toBeOnTheScreen();
+    openDraw();
+    await waitFor(() => expect(screen.getByText('0 of 1')).toBeOnTheScreen());
     fireEvent.press(screen.getByText('People'));
     expect(screen.getByText('No address')).toBeOnTheScreen();
   });
@@ -482,6 +536,7 @@ describe('the address setting', () => {
     fireEvent.press(screen.getByLabelText('Gifts are posted to a mailing address'));
 
     await waitFor(() => expect(screen.getByText('Nope.')).toBeOnTheScreen());
+    openDraw();
     expect(screen.getByText('Not needed')).toBeOnTheScreen();
   });
 });
@@ -489,6 +544,8 @@ describe('the address setting', () => {
 describe('gift progress', () => {
   it('says gift progress is not tracked rather than reporting zero of everything', async () => {
     render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => screen.getByText('Draw'));
+    openDraw();
 
     await waitFor(() => expect(screen.getByText('Nothing to track yet.')).toBeOnTheScreen());
     expect(screen.queryByText('0 of 1')).toBeNull();
@@ -500,6 +557,8 @@ describe('gift progress', () => {
     );
 
     render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => screen.getByText('Draw'));
+    openDraw();
 
     await waitFor(() => expect(screen.getByText('4 of 5')).toBeOnTheScreen());
     expect(screen.getByText('2 of 5')).toBeOnTheScreen();
@@ -524,12 +583,12 @@ describe('mobile and assistive technology', () => {
 
     render(<OrganizeScreen groupId="group-1" />);
 
-    await waitFor(() => expect(screen.getByText('Taking part')).toBeOnTheScreen());
     // Every tile, chip and row survives the narrow layout — the columns change, the content does not.
+    await waitFor(() => expect(screen.getByText('No address')).toBeOnTheScreen());
+    expect(screen.getByText('Has not looked yet')).toBeOnTheScreen();
+    openDraw();
     expect(screen.getByText('Taking part')).toBeOnTheScreen();
     expect(screen.getByText('Matches opened')).toBeOnTheScreen();
-    expect(screen.getByText('No address')).toBeOnTheScreen();
-    expect(screen.getByText('Has not looked yet')).toBeOnTheScreen();
   });
 
   it('gives every participant row one sentence rather than three loose chips', async () => {
@@ -587,6 +646,8 @@ describe('mobile and assistive technology', () => {
     );
 
     render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => screen.getByText('Draw'));
+    openDraw();
 
     await waitFor(() => expect(screen.getByLabelText('Wishlists: 1 of 2')).toBeOnTheScreen());
   });
@@ -816,8 +877,11 @@ describe('co-organizers', () => {
     render(<OrganizeScreen groupId="group-1" />);
     await waitFor(() => expect(screen.getByText('Robin')).toBeOnTheScreen());
 
-    // No menu on any row: before a draw the only member action is the owner's.
-    expect(screen.queryByLabelText('Actions for Robin')).toBeNull();
+    // Robin's menu holds sitting out — any organizer may — but no role item; Sam, a co-organizer,
+    // has nothing a co-organizer may do to them, so no menu at all.
+    fireEvent.press(screen.getByLabelText('Actions for Robin'));
+    expect(screen.getByText('Sit them out')).toBeOnTheScreen();
+    expect(screen.queryByText('Make organizer')).toBeNull();
     expect(screen.queryByLabelText('Actions for Sam')).toBeNull();
   });
 
@@ -947,10 +1011,10 @@ describe('exchange customization', () => {
     render(<OrganizeScreen groupId="group-1" />);
     await waitFor(() => screen.getByText('Settings'));
     openSettings();
-    await waitFor(() => expect(screen.getByText('Greeting and instructions')).toBeOnTheScreen());
+    await waitFor(() => expect(screen.getByText('Greeting')).toBeOnTheScreen());
 
     fireEvent.changeText(screen.getByLabelText('Greeting'), 'Welcome to the Holly Jolly Crew');
-    fireEvent.press(screen.getByText('Save your words'));
+    fireEvent.press(screen.getByText('Save greeting'));
 
     // Exactly the two fields, since #677 — a colour or an image reappearing here is a decision.
     await waitFor(() =>
@@ -969,10 +1033,10 @@ describe('exchange customization', () => {
     render(<OrganizeScreen groupId="group-1" />);
     await waitFor(() => screen.getByText('Settings'));
     openSettings();
-    await waitFor(() => expect(screen.getByText('Greeting and instructions')).toBeOnTheScreen());
+    await waitFor(() => expect(screen.getByText('Greeting')).toBeOnTheScreen());
 
     fireEvent.changeText(screen.getByLabelText('Greeting'), '<b>hi</b>');
-    fireEvent.press(screen.getByText('Save your words'));
+    fireEvent.press(screen.getByText('Save greeting'));
 
     await waitFor(() =>
       expect(screen.getByText('greeting cannot contain HTML or links.')).toBeOnTheScreen(),
@@ -998,7 +1062,7 @@ describe('exchange customization', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText('Your own greeting and instructions are part of Plus.'),
+        screen.getByText('Your own greeting on the invitation is part of Plus.'),
       ).toBeOnTheScreen(),
     );
     expect(screen.queryByLabelText('Greeting')).toBeNull();
@@ -1012,12 +1076,12 @@ describe('exchange customization', () => {
     render(<OrganizeScreen groupId="group-1" />);
     await waitFor(() => screen.getByText('Settings'));
     openSettings();
-    await waitFor(() => expect(screen.getByText('Greeting and instructions')).toBeOnTheScreen());
-    fireEvent.press(screen.getByText('Save your words'));
+    await waitFor(() => expect(screen.getByText('Greeting')).toBeOnTheScreen());
+    fireEvent.press(screen.getByText('Save greeting'));
 
     await waitFor(() =>
       expect(
-        screen.getByText('Your own greeting and instructions are part of Plus.'),
+        screen.getByText('Your own greeting on the invitation is part of Plus.'),
       ).toBeOnTheScreen(),
     );
   });

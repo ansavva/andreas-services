@@ -242,8 +242,9 @@ internal sealed class BillingService(
         // The organizer's billing area, on the product app's own origin. NOT `/app/groups/...`:
         // that shape is from when the app was served under www.humbugg.com/app, and only the
         // marketing origin still 301s it. APP_BASE_URL is app.humbugg.com, which never did, so a
-        // paid return landed on the not-found screen with the purchase invisible.
-        var returnBase = $"{settings.ReturnBaseUrl}/organize/{Uri.EscapeDataString(groupId)}";
+        // paid return landed on the not-found screen with the purchase invisible. Billing is a
+        // section of the exchange page's Settings tab (#684); `/organize/{id}` still redirects.
+        var returnBase = $"{settings.ReturnBaseUrl}/groups/{Uri.EscapeDataString(groupId)}";
         StripeCheckoutSession session;
         session = await stripe.CreateCheckoutAsync(new StripeCheckoutRequest(
             purchaseId,
@@ -252,8 +253,8 @@ internal sealed class BillingService(
             plan.PriceId,
             plan.PriceCents,
             plan.Currency,
-            $"{returnBase}?checkout=success&session_id={{CHECKOUT_SESSION_ID}}",
-            $"{returnBase}?checkout=canceled"), cancellationToken);
+            $"{returnBase}?tab=settings&checkout=success&session_id={{CHECKOUT_SESSION_ID}}",
+            $"{returnBase}?tab=settings&checkout=canceled"), cancellationToken);
         await billing.AttachCheckoutAsync(purchaseId, session.Id, session.Url, cancellationToken);
         return new CheckoutResponse(session.Url, session.Id, PaymentStatus.Pending);
     }

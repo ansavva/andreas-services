@@ -57,7 +57,7 @@ test('a canceled return says nothing was charged and leaves the exchange on Free
   const group = fixture<Group>('group');
 
   // Exactly the URL Stripe's cancel_url returns to.
-  await page.goto(`/organize/${group.group_id}?checkout=canceled`);
+  await page.goto(`/groups/${group.group_id}?tab=settings&checkout=canceled`);
 
   await expect(page.getByText(/nothing was charged/)).toBeVisible();
   await expect(page.getByText(/Upgrade this exchange/)).toBeVisible();
@@ -87,6 +87,7 @@ test('a paid return waits for the entitlement before it claims Plus', async ({ p
     });
   });
 
+  // The URL a Checkout set up before #684 returns to: the old route redirects onto Billing.
   await page.goto(`/organize/${group.group_id}?checkout=success`);
 
   await expect(page.getByText('Confirming your payment with Stripe…')).toBeVisible();

@@ -101,7 +101,10 @@ public sealed record ExchangeCustomization(
 // OrganizerName is the owner's display name — shown only to somebody holding a valid invite
 // secret, which is who this preview answers to, so a joiner told "the exchange is full" knows who
 // to ask (#674).
-public sealed record InvitationPreview(string GroupId, string ExchangeName, ExchangeCustomization Customization, string OrganizerName = "");
+// Instructions is GroupRecord.Instructions — "how this one works", the Free field every member
+// reads after joining — shown to the invitee before they join as well, so there is one place an
+// organizer writes how the exchange works and one text everybody reads (#684).
+public sealed record InvitationPreview(string GroupId, string ExchangeName, ExchangeCustomization Customization, string OrganizerName = "", string Instructions = "");
 public sealed record ExchangeTemplate(
     string TemplateId, string Name, string ExchangeName, string Description,
     int SignupDeadlineDaysBeforeEvent, string WishlistPrompt,

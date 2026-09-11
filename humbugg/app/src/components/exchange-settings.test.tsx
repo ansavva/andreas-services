@@ -74,7 +74,7 @@ describe('editing an exchange', () => {
 
     expect(screen.getByLabelText('Exchange name').props.value).toBe('Office Exchange');
     expect(screen.getByLabelText('Description (optional)').props.value).toBe('Back for another year.');
-    expect(screen.getByLabelText('How it works (optional)').props.value).toBe('Bring it wrapped.');
+    expect(screen.getByLabelText('Instructions (optional)').props.value).toBe('Bring it wrapped.');
     expect(screen.getByLabelText('Spending limit in dollars (optional)').props.value).toBe('25');
   });
 

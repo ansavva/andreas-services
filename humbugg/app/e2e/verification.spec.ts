@@ -21,8 +21,9 @@ const group = fixture<{ group_id: string }>('group');
 /** Every screen a Free participant or organizer reaches, and how to know it rendered. */
 const SCREENS: Array<{ path: string; heading: string }> = [
   { path: '/', heading: 'Your groups' },
-  { path: `/groups/${group.group_id}`, heading: 'The exchange circle' },
-  { path: `/organize/${group.group_id}`, heading: 'Organizer dashboard' },
+  { path: `/groups/${group.group_id}`, heading: 'What you would love' },
+  // The organizer tabs are the same page; the old dashboard URL redirects to the People tab.
+  { path: `/organize/${group.group_id}`, heading: 'Everyone (' },
   // Not reached by any other spec, which is how it came to be the one screen with no coverage.
   { path: '/settings', heading: 'Your account' },
 ];
@@ -190,7 +191,7 @@ test('every Plus capability offers Plus on a Free exchange instead of failing', 
   // Settings: each section says what Plus would add, and hides the form that could only fail.
   await page.getByRole('tab', { name: 'Settings' }).click();
   await expect(
-    page.getByText('Your own greeting and instructions are part of Plus.'),
+    page.getByText('Your own greeting on the invitation is part of Plus.'),
   ).toBeVisible();
   await expect(page.getByLabel('Greeting')).toBeHidden();
 

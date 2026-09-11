@@ -116,7 +116,7 @@ test('the dashboard reports gift progress as counts and names nobody', async ({ 
       }),
     }));
 
-  await page.goto(`/organize/${group.group_id}`);
+  await page.goto(`/groups/${group.group_id}?tab=draw`);
 
   await expect(page.getByText('Purchased, sent and received')).toBeVisible();
   await expect(page.getByText('3 of 4')).toBeVisible();

@@ -64,7 +64,7 @@ above are green, in this order, and stop at the first one you can't complete.
 1. **A real Stripe test-card purchase on `www.humbugg.com`.**
    Sign in, start a Plus checkout for a real exchange, and pay with `4242 4242 4242 4242` (any
    future expiry, any CVC) — see `docs/stripe-setup.md` for the full test-card list.
-   **Expect:** redirect back to `/organize/<group-id>?checkout=success...`; the billing area polls
+   **Expect:** redirect back to `/groups/<group-id>?tab=settings&checkout=success...`; the billing area polls
    until the **entitlement** appears (not `status: paid`) and then shows "Plus is on for this
    exchange"; "View your Stripe receipt" opens a real Stripe-hosted receipt.
 
