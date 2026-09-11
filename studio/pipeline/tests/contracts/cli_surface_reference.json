@@ -986,10 +986,11 @@
           "kling",
           "nano-banana-2",
           "nano-banana-pro",
-          "seedance"
+          "seedance",
+          "seedream-5-pro"
         ],
         "default": null,
-        "dest": "engine",
+        "dest": "for_",
         "flag": false,
         "flags": [
           "--for"

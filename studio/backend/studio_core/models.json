@@ -689,6 +689,75 @@
           "maximum": 1
         }
       }
+    },
+    "seedream-5-pro": {
+      "model": "bytedance/seedream-5-pro",
+      "kind": "image",
+      "skill": "studio-media-seedream-5-pro",
+      "images": {
+        "refs": "image_input",
+        "max_refs": 10,
+        "start": null,
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
+      "denied": {
+        "size": {
+          "1.5K": "seedream-5-pro renders standard images at 1K or 2K only; 1.5K exists for layer_decomposition mode (its schema lists it for both).",
+          "auto": "seedream-5-pro renders standard images at 1K or 2K only; auto exists for layer_decomposition mode, where it sizes from the input image."
+        }
+      },
+      "prompt": {
+        "max_chars": 4000
+      },
+      "note": "ByteDance's flagship image model. 1K/2K only (2K default, ~4MP), up to 10 reference images for character/style/product consistency and multi-image composition; aspect defaults to match_input_image. Flat per-image pricing. Also has a layer_decomposition mode that splits one image into a base plus up to 16 element layers.",
+      "snapshot": {
+        "aspect_ratio": {
+          "enum": [
+            "match_input_image",
+            "1:1",
+            "4:3",
+            "3:4",
+            "16:9",
+            "9:16",
+            "3:2",
+            "2:3",
+            "21:9"
+          ],
+          "default": "match_input_image"
+        },
+        "image_input": {
+          "default": []
+        },
+        "layer_decomposition": {
+          "default": false
+        },
+        "output_format": {
+          "enum": [
+            "png",
+            "jpeg"
+          ],
+          "default": "png"
+        },
+        "prompt": {
+          "default": ""
+        },
+        "size": {
+          "enum": [
+            "1K",
+            "1.5K",
+            "2K",
+            "auto"
+          ],
+          "default": "2K"
+        }
+      }
     }
   }
 }
