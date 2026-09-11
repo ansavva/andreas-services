@@ -492,7 +492,7 @@ To use a local file, upload it to S3 first.
 ## Available skills
 
 All live in `studio/.claude/skills/` and are discovered as `studio:<name>` —
-directory-scoped, so they surface when the work is under `studio/`. Eighteen
+directory-scoped, so they surface when the work is under `studio/`. Nineteen
 are `studio-media-*` and one is `studio-code-*`; `ls` that directory rather
 than trusting this number.
 
@@ -509,6 +509,7 @@ than trusting this number.
 | `studio-media-nano-banana-2` | `google/nano-banana-2` — fast/cheap sibling. The only model with the extreme `1:4`…`8:1` ratios; Google Search / Image Search grounding |
 | `studio-media-gpt-image-2` | `openai/gpt-image-2` — OpenAI's newest, and **the default for character frames**. Dense legible text, pixel-exact sizes, references held at high fidelity **automatically**. No transparent background |
 | `studio-media-gpt-image-1-5` | `openai/gpt-image-1.5` — the one that does **transparent backgrounds** and exposes `input_fidelity` (dial face preservation up *or down*). Aspect limited to `1:1`/`3:2`/`2:3` |
+| `studio-media-seedream-5-pro` | `bytedance/seedream-5-pro` — ByteDance's flagship still model. Up to 10 references blended into one composition, `1K`/`2K` only, flat per-image price. The layer-decomposition-only `size` values are `denied` |
 | `studio-media-seedance`  | `bytedance/seedance-2.0` — native audio, first/last frame, reference images/videos/audio. A start frame and a reference set **cannot** be combined |
 | `studio-media-kling`     | `kwaivgi/kling-v3-omni-video` — Kling 3.0 / O3 Omni (~$0.168/s, `reference_images` for consistency, native multi-shot to 6 cuts). Start frame and reference images can be combined |
 | `studio-media-veo-3-1`   | `google/veo-3.1` — the control-oriented engine, and the only one with a repeatable **seed** and a real `negative_prompt`. Reference images work only at 16:9 and 8 seconds; durations are a 4/6/8s enum |

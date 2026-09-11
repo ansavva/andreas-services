@@ -614,6 +614,76 @@
         "technical": "api"
       }
     },
+    "seedream-5-pro": {
+      "denied": {
+        "size": {
+          "1.5K": "seedream-5-pro renders standard images at 1K or 2K only; 1.5K exists for layer_decomposition mode (its schema lists it for both).",
+          "auto": "seedream-5-pro renders standard images at 1K or 2K only; auto exists for layer_decomposition mode, where it sizes from the input image."
+        }
+      },
+      "images": {
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ],
+        "end": null,
+        "max_refs": 10,
+        "refs": "image_input",
+        "start": null,
+        "start_excludes_refs": false
+      },
+      "key": "seedream-5-pro",
+      "kind": "image",
+      "model": "bytedance/seedream-5-pro",
+      "note": "ByteDance's flagship image model. 1K/2K only (2K default, ~4MP), up to 10 reference images for character/style/product consistency and multi-image composition; aspect defaults to match_input_image. Flat per-image pricing. Also has a layer_decomposition mode that splits one image into a base plus up to 16 element layers.",
+      "prompt": {
+        "max_chars": 4000
+      },
+      "skill": "studio-media-seedream-5-pro",
+      "snapshot": {
+        "aspect_ratio": {
+          "default": "match_input_image",
+          "enum": [
+            "match_input_image",
+            "1:1",
+            "4:3",
+            "3:4",
+            "16:9",
+            "9:16",
+            "3:2",
+            "2:3",
+            "21:9"
+          ]
+        },
+        "image_input": {
+          "default": []
+        },
+        "layer_decomposition": {
+          "default": false
+        },
+        "output_format": {
+          "default": "png",
+          "enum": [
+            "png",
+            "jpeg"
+          ]
+        },
+        "prompt": {
+          "default": ""
+        },
+        "size": {
+          "default": "2K",
+          "enum": [
+            "1K",
+            "1.5K",
+            "2K",
+            "auto"
+          ]
+        }
+      }
+    },
     "veo-3.1": {
       "aliases": [],
       "images": {
