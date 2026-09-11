@@ -200,7 +200,7 @@ public sealed class BillingServiceTests
             return Task.FromResult(new StripeCheckoutSession("cs_test_1", "https://checkout.stripe.test/session"));
         }
 
-        public BillingWebhookEvent ParseWebhook(string payload, string signature)
+        public BillingWebhookEvent ParseWebhook(string payload, string signature, TimeSpan? tolerance = null)
         {
             Parsed = (payload, signature);
             return Webhook ?? throw new InvalidOperationException("No webhook configured.");

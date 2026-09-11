@@ -52,6 +52,7 @@ env:
   API_LAMBDA_NAME: humbugg-prod-api
   EMAIL_STATUS_LAMBDA_NAME: humbugg-prod-email-status
   REMINDERS_LAMBDA_NAME: humbugg-prod-reminders
+  STRIPE_WEBHOOKS_LAMBDA_NAME: humbugg-prod-stripe-webhook-consumer
   MARKETING_LAMBDA_NAME: humbugg-prod-marketing
 
 jobs:
@@ -483,6 +484,34 @@ jobs:
               APP_BASE_URL: $app_base_url
             }}' > /tmp/env-humbugg-reminders.json
 
+          # Exactly what the Stripe webhook consumer reads: the two tables ApplyEventAsync
+          # writes, the Stripe settings ParseWebhook verifies with, and the environment the
+          # Checkout metadata is compared against. Keep this and
+          # AwsLambdaStripeWebhookConsumer.SettingsFromEnvironment() in step.
+          jq -n \
+            --arg groups_table "humbugg-prod-groups" \
+            --arg billing_table "humbugg-prod-billing" \
+            --arg stripe_mode "${{ vars.HUMBUGG_STRIPE_MODE || 'disabled' }}" \
+            --arg stripe_publishable_key "${{ vars.HUMBUGG_STRIPE_PUBLISHABLE_KEY }}" \
+            --arg stripe_secret_key "${{ secrets.HUMBUGG_STRIPE_SECRET_KEY }}" \
+            --arg stripe_webhook_secret "${{ secrets.HUMBUGG_STRIPE_WEBHOOK_SECRET }}" \
+            --arg plus_price_cents "${{ vars.HUMBUGG_PLUS_PRICE_CENTS || '1200' }}" \
+            --arg plus_product_id "${{ vars.HUMBUGG_PLUS_PRODUCT_ID }}" \
+            --arg plus_price_id "${{ vars.HUMBUGG_PLUS_PRICE_ID }}" \
+            '{Variables: {
+              HUMBUGG_CONSUMER: "stripe-webhooks",
+              HUMBUGG_GROUPS_TABLE: $groups_table,
+              HUMBUGG_BILLING_TABLE: $billing_table,
+              HUMBUGG_STRIPE_MODE: $stripe_mode,
+              HUMBUGG_STRIPE_PUBLISHABLE_KEY: $stripe_publishable_key,
+              HUMBUGG_STRIPE_SECRET_KEY: $stripe_secret_key,
+              HUMBUGG_STRIPE_WEBHOOK_SECRET: $stripe_webhook_secret,
+              HUMBUGG_PLUS_PRICE_CENTS: $plus_price_cents,
+              HUMBUGG_PLUS_PRODUCT_ID: $plus_product_id,
+              HUMBUGG_PLUS_PRICE_ID: $plus_price_id,
+              HUMBUGG_ENVIRONMENT: "production"
+            }}' > /tmp/env-humbugg-stripe-webhooks.json
+
           # The marketing SSR Lambda no longer authenticates anyone — sign-in moved
           # to the product app — so the Cognito variables it used to receive are
           # gone. Its canonical origin is baked in at build time via
@@ -517,6 +546,15 @@ jobs:
 
           aws lambda wait function-updated \
             --function-name "${REMINDERS_LAMBDA_NAME}" \
+            --region "${{ env.AWS_REGION }}"
+
+          aws lambda update-function-configuration \
+            --function-name "${STRIPE_WEBHOOKS_LAMBDA_NAME}" \
+            --region "${{ env.AWS_REGION }}" \
+            --environment file:///tmp/env-humbugg-stripe-webhooks.json
+
+          aws lambda wait function-updated \
+            --function-name "${STRIPE_WEBHOOKS_LAMBDA_NAME}" \
             --region "${{ env.AWS_REGION }}"
 
           aws lambda update-function-configuration \
@@ -559,6 +597,17 @@ jobs:
 
           aws lambda wait function-updated \
             --function-name "${REMINDERS_LAMBDA_NAME}" \
+            --region "${{ env.AWS_REGION }}"
+
+          aws lambda update-function-code \
+            --function-name "${STRIPE_WEBHOOKS_LAMBDA_NAME}" \
+            --image-uri "${API_ECR_URL}:${{ github.sha }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --output table \
+            --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
+
+          aws lambda wait function-updated \
+            --function-name "${STRIPE_WEBHOOKS_LAMBDA_NAME}" \
             --region "${{ env.AWS_REGION }}"
 
           aws lambda update-function-code \

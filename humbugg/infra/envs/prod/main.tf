@@ -218,6 +218,33 @@ module "billing" {
   tags = local.common_tags
 }
 
+# THE STRIPE WEBHOOK PATH, THE SAME ONE DEV RUNS.
+#
+# Stripe posts to this module's gateway, not to the API's route; the receiver
+# queues it and the consumer — the API's own image, entered through
+# ConsumerHost like the email-status and reminder Lambdas — verifies and
+# applies it. Dev is identical with a Compose service where the Lambda is. The
+# module header has the reasoning; the decision was that prod and dev do not
+# get to take different paths to the same code.
+#
+# The Stripe endpoint pointing at `webhook_endpoint_url` is registered by hand
+# (docs/stripe-setup.md §3) — the URL is known only after this applies. The
+# API's `/api/billing/stripe/webhook` route stays: harmless, and the smoke
+# test still proves the gateway reaches the application through it.
+module "webhook_relay" {
+  source = "../../modules/webhook_relay"
+
+  name_prefix = "${local.project}-${local.environment}"
+
+  create_consumer    = true
+  consumer_image_uri = "${module.compute.ecr_repository_url}:latest"
+  consumer_role_arn  = module.compute.api_role_arn
+  consumer_role_name = module.compute.api_role_name
+  alarm_topic_arn    = module.alerting.topic_arn
+
+  tags = local.common_tags
+}
+
 module "alerting" {
   source = "../../modules/alerting"
 
@@ -247,6 +274,14 @@ module "alerting" {
     "email-status" = {
       function_name   = module.compute.email_status_lambda_function_name
       error_threshold = 1
+    }
+    # Errors here are infrastructure — a DynamoDB refusal, a bad image — not
+    # refused webhooks, which the consumer logs and consumes without throwing.
+    # A message that keeps failing lands in the relay's DLQ, which has its own
+    # alarm on the same topic.
+    "stripe-webhooks" = {
+      function_name   = module.webhook_relay.consumer_function_name
+      error_threshold = 2
     }
   }
 

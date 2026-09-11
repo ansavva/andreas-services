@@ -72,6 +72,8 @@ pool_id="$(jq -r '.cognito_user_pool_id.value' <<<"$outputs")"
 client_id="$(jq -r '.cognito_client_id.value' <<<"$outputs")"
 auth_domain="$(jq -r '.cognito_auth_domain.value' <<<"$outputs")"
 bucket="$(jq -r '.app_bucket_name.value' <<<"$outputs")"
+webhook_url="$(jq -r '.webhook_endpoint_url.value' <<<"$outputs")"
+webhook_queue="$(jq -r '.webhook_queue_url.value' <<<"$outputs")"
 
 # Everything below lands in the one per-machine file. Generated keys are
 # rewritten on every run; keys the developer set by hand (Stripe, plan limits)
@@ -153,6 +155,20 @@ gen HUMBUGG_APP_BUCKET "$bucket"
 gen HUMBUGG_AVATAR_BASE_URL "https://$bucket.s3.$AWS_REGION_VALUE.amazonaws.com"
 gen HUMBUGG_AVATAR_PRESIGNED_READS "true"
 line ""
+# Per machine, not the shared "development": the backend stamps it into every
+# Checkout's metadata and the webhook consumer routes on it, because every dev
+# machine's endpoint sits in one Stripe sandbox and receives every machine's
+# events. Two developers with the same value would each try to close the
+# other's purchases.
+line "# This machine's name to Stripe. The backend stamps it into every Checkout; the"
+line "# webhook consumer forwards only events that carry it. Per machine on purpose."
+gen HUMBUGG_ENVIRONMENT "dev-$MACHINE_SHORT_ID"
+line ""
+line "# Stripe webhook relay — this machine's public endpoint (registered with Stripe by this"
+line "# script) and the queue behind it, which the consumer dev-up.sh starts drains into :5001."
+gen HUMBUGG_WEBHOOK_ENDPOINT_URL "$webhook_url"
+gen HUMBUGG_WEBHOOK_QUEUE_URL "$webhook_queue"
+line ""
 line "# DynamoDB tables — all twelve required; the backend refuses to start without any one."
 table HUMBUGG_PROFILES_TABLE profiles
 table HUMBUGG_GROUPS_TABLE groups
@@ -203,7 +219,9 @@ keep HUMBUGG_WORK_PRICE_CENTS
 keep HUMBUGG_WORK_ENABLED false
 line ""
 line "# Stripe, TEST MODE ONLY (live is blocked, #159). 'disabled' runs without Stripe."
-line "# dev-up.sh writes the webhook secret from 'stripe listen'; docs/stripe-setup.md."
+line "# Keys from the humbugg-dev sandbox; docs/stripe-setup.md. Once HUMBUGG_STRIPE_MODE=test"
+line "# and the secret key are set, re-run dev-aws-setup.sh: it registers this machine's"
+line "# webhook endpoint with Stripe and writes the endpoint id and its whsec_ below."
 keep HUMBUGG_STRIPE_MODE disabled
 keep HUMBUGG_PLUS_PRODUCT_ID
 keep HUMBUGG_PLUS_PRICE_ID
@@ -211,6 +229,7 @@ keep HUMBUGG_WORK_PRODUCT_ID
 keep HUMBUGG_WORK_PRICE_ID
 keep HUMBUGG_STRIPE_PUBLISHABLE_KEY
 keep HUMBUGG_STRIPE_SECRET_KEY
+keep HUMBUGG_STRIPE_WEBHOOK_ENDPOINT_ID
 keep HUMBUGG_STRIPE_WEBHOOK_SECRET
 
 # Anything the file held that no section above claims.
@@ -228,6 +247,14 @@ mv "$rendered" "$env_file"
 
 ok "AWS development resources are ready; $env_file is up to date."
 
+# The Stripe half of the webhook relay. After the file is written, because it
+# reads the key from it and writes the endpoint id and secret back into it.
+if stripe_dev_configured; then
+  ensure_stripe_webhook_endpoint "$webhook_url"
+else
+  log "Stripe is not in test mode in $env_file; no webhook endpoint registered. Set HUMBUGG_STRIPE_MODE=test and the keys, then re-run."
+fi
+
 # If setup is reapplied while the backend is already running, replace the container so it receives
 # the freshly exported credentials. Container environment variables cannot be changed in place.
 compose_file="$HUMBUGG_DIR/backend/docker-compose.yml"
@@ -236,8 +263,8 @@ if command -v docker >/dev/null 2>&1 &&
   docker compose -f "$compose_file" ps --services --status running 2>/dev/null | grep -qx backend; then
   log "Recreating the running backend with refreshed AWS credentials..."
   export AWS_DEFAULT_REGION="$AWS_REGION_VALUE"
-  docker compose -f "$compose_file" up -d --build --force-recreate backend
-  ok "The running backend now has refreshed AWS credentials."
+  docker compose -f "$compose_file" up -d --build --force-recreate
+  ok "The running backend and webhook consumer now have refreshed AWS credentials."
 fi
 
-printf '\nStart all Humbugg development services with:\n  ./humbugg/scripts/dev-up.sh --profile %s\n\nOr start them individually with:\n  ./humbugg/scripts/dev-up-backend.sh --profile %s\n  ./humbugg/scripts/dev-up-marketing.sh\n  ./humbugg/scripts/dev-up-app.sh\n  ./humbugg/scripts/dev-up-stripe.sh\n\nFollow backend logs with:\n  ./humbugg/scripts/dev-logs-backend.sh\n' "$AWS_PROFILE_VALUE" "$AWS_PROFILE_VALUE"
+printf '\nStart all Humbugg development services with:\n  ./humbugg/scripts/dev-up.sh --profile %s\n\nOr start them individually with:\n  ./humbugg/scripts/dev-up-backend.sh --profile %s\n  ./humbugg/scripts/dev-up-marketing.sh\n  ./humbugg/scripts/dev-up-app.sh\n\nFollow backend logs with:\n  ./humbugg/scripts/dev-logs-backend.sh\n' "$AWS_PROFILE_VALUE" "$AWS_PROFILE_VALUE"
