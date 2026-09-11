@@ -1,3 +1,4 @@
+name: humbugg
 services:
   backend:
     build:
