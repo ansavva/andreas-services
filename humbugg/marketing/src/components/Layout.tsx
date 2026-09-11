@@ -79,11 +79,6 @@ export function SiteFooter() {
   );
 }
 
-export function StatusMessage({ message, tone = 'error' }: { message?: string | null; tone?: 'error' | 'success' }) {
-  if (!message) return null;
-  return <div role="status" className={`status-message ${tone === 'success' ? 'status-success' : 'status-error'}`}>{message}</div>;
-}
-
 export function Card({ children, className = '', ...props }: HTMLAttributes<HTMLElement> & { children: ReactNode }) {
   return <section className={`rounded-lg border border-line bg-card p-6 shadow-sm ${className}`} {...props}>{children}</section>;
 }
