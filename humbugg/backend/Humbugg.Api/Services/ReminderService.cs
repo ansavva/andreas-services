@@ -216,6 +216,28 @@ internal sealed class ReminderService(
         CancellationToken cancellationToken)
     {
         var (reminder, recipientUserId) = eligibility;
+        // Where the button goes depends on who this is for. A member opens the exchange. An invitee
+        // is not a member — /groups/{id} would refuse them — so they get what "Send again" gives:
+        // a fresh invitation secret, stored as its hash, in the join link (#675). The old link stops
+        // working at that moment, exactly as it does on a resend; the email in their inbox is the
+        // newest one either way.
+        Uri destination;
+        string? freshHash = null;
+        string? freshExpiry = null;
+        string actionLabel;
+        if (rule == ReminderRule.UnacceptedInvitation)
+        {
+            var secret = InvitationLinks.Secret();
+            freshHash = InvitationLinks.Hash(secret);
+            freshExpiry = DateTimeOffset.UtcNow.Add(InvitationLinks.Lifetime).ToString("O");
+            destination = new Uri(InvitationLinks.Link(settings.AppBaseUrl, group.GroupId, invitation.InvitationId, secret));
+            actionLabel = "View your invitation";
+        }
+        else
+        {
+            destination = new Uri($"{settings.AppBaseUrl}/groups/{group.GroupId}");
+            actionLabel = "Open the exchange";
+        }
         var rendered = templates.Reminder(new(
             $"{group.GroupId}:{invitation.InvitationId}:{rule}:{occurrence}",
             invitation.Email,
@@ -223,9 +245,13 @@ internal sealed class ReminderService(
             recipientUserId is null ? "" : await DisplayNameAsync(group.GroupId, recipientUserId, cancellationToken),
             group.Name,
             reminder,
-            new Uri($"{settings.AppBaseUrl}/groups/{group.GroupId}"),
+            destination,
             recipientUserId,
-            group.Customization));
+            group.Customization,
+            actionLabel,
+            IsInvitee: rule == ReminderRule.UnacceptedInvitation));
+        if (freshHash is not null)
+            await invitations.UpdateAsync(invitation.InvitationId, "sent", freshHash, freshExpiry, rendered.MessageId, cancellationToken);
         var result = await email.SendAsync(rendered, cancellationToken);
         var status = result.Suppressed ? "suppressed" : "sent";
         var history = new ReminderHistoryItem(
@@ -255,7 +281,7 @@ internal sealed class ReminderService(
         {
             if (invitation.Status != "sent" || DateTimeOffset.Parse(invitation.ExpiresAt) <= DateTimeOffset.UtcNow)
                 throw ApiException.Conflict("This invitation no longer needs a reminder.");
-            return ("Please accept your invitation and join the exchange.", null);
+            return ("Your invitation is still open. Follow the link, sign in, and add a few things you'd love — it takes a minute.", null);
         }
         if (invitation.Status != "accepted" || string.IsNullOrWhiteSpace(invitation.AcceptedUserId))
             throw ApiException.Conflict("This participant has not accepted the invitation.");

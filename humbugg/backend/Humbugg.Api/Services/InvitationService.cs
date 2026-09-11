@@ -105,6 +105,6 @@ internal sealed class InvitationService(ICurrentUser user, IProfileRepository pr
         x.InvitationId, x.Email, InvitationStatusRule.Of(x, await invitations.GetDeliveryStatusAsync(x.MessageId, ct)),
         x.ExpiresAt, x.AcceptedAt, x.LastSentAt);
     private static string Normalize(string raw) { try { var a = new MailAddress(raw.Trim()); if (a.Address != raw.Trim()) throw new Exception(); return a.Address.ToLowerInvariant(); } catch { throw ApiException.BadRequest($"'{raw}' is not a valid single email address."); } }
-    private static string Secret() => WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32)); private static string Hash(string x) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(x)));
-    private string Link(string gid, string id, string secret) => $"{settings.AppBaseUrl}/join/{gid}#managed={id}.{secret}";
+    private static string Secret() => InvitationLinks.Secret(); private static string Hash(string x) => InvitationLinks.Hash(x);
+    private string Link(string gid, string id, string secret) => InvitationLinks.Link(settings.AppBaseUrl, gid, id, secret);
 }
