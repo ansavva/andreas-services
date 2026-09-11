@@ -612,7 +612,7 @@ describe('the billing area', () => {
     await waitFor(() => screen.getByText('Settings'));
     openSection('Billing');
 
-    await waitFor(() => expect(screen.getByText('This exchange is on Free')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/Upgrade this exchange/)).toBeTruthy());
     expect(screen.getByText('Upgrade this exchange — $12')).toBeTruthy();
   });
 
@@ -630,7 +630,7 @@ describe('the billing area', () => {
 
     render(<OrganizeScreen groupId="group-1" checkout="success" />);
 
-    await waitFor(() => expect(screen.getByText('Plus is on for this exchange')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/Paid once for this exchange/)).toBeTruthy());
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
@@ -647,7 +647,7 @@ describe('the billing area', () => {
     // Not even the menu entry: a co-organizer has no billing, so there is nothing to open.
     expect(screen.queryByText('Billing')).toBeNull();
     expect(screen.queryByText('Danger zone')).toBeNull();
-    expect(screen.queryByText('This exchange is on Free')).toBeNull();
+    expect(screen.queryByText(/Upgrade this exchange/)).toBeNull();
     expect(mocks.getPlusPurchaseStatus).not.toHaveBeenCalled();
   });
 });

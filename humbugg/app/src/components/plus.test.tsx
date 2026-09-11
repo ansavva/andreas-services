@@ -256,7 +256,7 @@ describe('coming back from Checkout', () => {
   it('says nothing was charged when the organizer cancels', async () => {
     renderPanel({ checkout: 'canceled' });
     await waitFor(() => expect(screen.getByText(/nothing was charged/)).toBeTruthy());
-    expect(screen.getByText('This exchange is on Free')).toBeTruthy();
+    expect(screen.getByText(/Upgrade this exchange/)).toBeTruthy();
     expect(mocks.onEntitled).not.toHaveBeenCalled();
   });
 
@@ -282,7 +282,7 @@ describe('coming back from Checkout', () => {
         ),
       ).toBeTruthy(),
     );
-    expect(screen.getByText('Plus is on for this exchange')).toBeTruthy();
+    expect(screen.getByText(/Paid once for this exchange/)).toBeTruthy();
     expect(mocks.onEntitled).toHaveBeenCalled();
     // The intent is spent; a later visit must not replay it.
     expect(intentStore.value).toBeNull();
@@ -299,9 +299,9 @@ describe('coming back from Checkout', () => {
 
     renderPanel();
 
-    await waitFor(() => expect(screen.getByText('This exchange is on Free')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/Upgrade this exchange/)).toBeTruthy());
     expect(screen.getByText(/Plus is still being applied/)).toBeTruthy();
-    expect(screen.queryByText('Plus is on for this exchange')).toBeNull();
+    expect(screen.queryByText(/Paid once for this exchange/)).toBeNull();
   });
 
   it('says the payment is still being applied when the webhook never lands', async () => {
@@ -314,7 +314,7 @@ describe('coming back from Checkout', () => {
         await jest.advanceTimersByTimeAsync(20_000);
       });
       expect(screen.getByText(/has not finished applying it/)).toBeTruthy();
-      expect(screen.queryByText('Plus is on for this exchange')).toBeNull();
+      expect(screen.queryByText(/Paid once for this exchange/)).toBeNull();
       expect(mocks.onEntitled).not.toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
@@ -343,7 +343,7 @@ describe('an exchange that already has Plus', () => {
 
     renderPanel({ group: group({ plan: 'plus' }) });
 
-    await waitFor(() => expect(screen.getByText('Plus is on for this exchange')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/Paid once for this exchange/)).toBeTruthy());
     expect(screen.getByText('View your Stripe receipt')).toBeTruthy();
     expect(screen.getByText(/does not renew, and a new exchange starts on Free/)).toBeTruthy();
     // No second sale on a paid exchange.

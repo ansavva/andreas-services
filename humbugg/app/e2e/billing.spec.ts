@@ -60,7 +60,7 @@ test('a canceled return says nothing was charged and leaves the exchange on Free
   await page.goto(`/organize/${group.group_id}?checkout=canceled`);
 
   await expect(page.getByText(/nothing was charged/)).toBeVisible();
-  await expect(page.getByText('This exchange is on Free')).toBeVisible();
+  await expect(page.getByText(/Upgrade this exchange/)).toBeVisible();
 });
 
 test('a paid return waits for the entitlement before it claims Plus', async ({ page }) => {
@@ -90,7 +90,7 @@ test('a paid return waits for the entitlement before it claims Plus', async ({ p
   await page.goto(`/organize/${group.group_id}?checkout=success`);
 
   await expect(page.getByText('Confirming your payment with Stripe…')).toBeVisible();
-  await expect(page.getByText('Plus is on for this exchange', { exact: true })).toBeVisible({
+  await expect(page.getByText(/Paid once for this exchange/)).toBeVisible({
     timeout: 15_000,
   });
   await expect(
@@ -111,7 +111,7 @@ test('the billing area survives a 390px phone viewport', async ({ page }) => {
   await page.goto(`/organize/${group.group_id}`);
   await openBilling(page);
 
-  await expect(page.getByText('This exchange is on Free')).toBeVisible();
+  await expect(page.getByText(/Upgrade this exchange/)).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });

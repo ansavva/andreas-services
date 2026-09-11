@@ -138,9 +138,9 @@ export function SettingsTab({
 
 /** A setting: what it is called, what it does in one line, and its control. */
 function SettingRow({ label, help, children }: { label: string; help: string; children: React.ReactNode }) {
-  const { brand, styles } = useTheme();
+  const { styles } = useTheme();
   return (
-    <View style={[local.settingRow, { borderTopColor: brand.line }]}>
+    <View style={local.settingRow}>
       <View style={{ flex: 1, minWidth: 220 }}>
         <Text style={[styles.small, styles.semibold]}>{label}</Text>
         <Text style={[styles.tiny, { marginTop: 2 }]}>{help}</Text>
@@ -239,8 +239,7 @@ const local = {
   menuColumn: { flexDirection: 'column', alignItems: 'stretch', gap: 6 } as const,
   menuRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 } as const,
   settingRow: {
-    paddingVertical: 14,
-    borderTopWidth: 1,
+    paddingVertical: 12,
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
