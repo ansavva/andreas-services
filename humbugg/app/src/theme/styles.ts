@@ -265,7 +265,8 @@ function buildStyles(scheme: Scheme, brand: Palette, blends: Blends) {
       alignItems: 'center',
     },
     /** `.loading-panel` */
-    loadingPanel: { minHeight: 320, alignItems: 'center', justifyContent: 'center', gap: 12 },
+    loadingPanel: { flex: 1, minHeight: 320, alignItems: 'center', justifyContent: 'center', gap: 12 },
+    loadingSpinner: { alignSelf: 'center' },
 
     // ── Status ────────────────────────────────────────────────────────────────
     /** `.status-message` */

@@ -53,7 +53,7 @@ export default function DashboardScreen() {
 
   const needsProfile = profileLoaded && !profile;
 
-  if (loading || !profileLoaded) return <Shell><LoadingPanel>Preparing your exchanges…</LoadingPanel></Shell>;
+  if (loading || !profileLoaded) return <Shell><LoadingPanel /></Shell>;
   if (needsProfile) return <Shell><ProfileSetup onSaved={setProfile} /></Shell>;
 
   return (

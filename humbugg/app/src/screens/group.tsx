@@ -108,7 +108,7 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
     }
   }
 
-  if (loading) return <Shell><LoadingPanel>Opening your exchange…</LoadingPanel></Shell>;
+  if (loading) return <Shell><LoadingPanel /></Shell>;
   if (!group || !me) {
     return (
       <Shell>
