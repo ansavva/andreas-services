@@ -86,8 +86,10 @@ export CLASSROOM_ALLOWED_ORIGIN="$SPA_ORIGIN"
 # ---------------------------------------------------------------------------
 export PATH="$HOME/.local/bin:$PATH"
 
+# shellcheck source=dev-aws-common.sh
+source "$ROOT/classroom/scripts/dev-aws-common.sh"
 needs_setup=0
-[ -f classroom/frontend/.env.local ] || needs_setup=1
+[ -n "$(read_env "$DEV_ENV_FILE" VITE_COGNITO_CLIENT_ID)" ] || needs_setup=1
 [ -d classroom/frontend/node_modules ] || needs_setup=1
 # Poetry keeps its virtualenv in a cache directory by default, not in the
 # project, so `.venv` is the wrong thing to test for and `poetry env info` is
@@ -121,6 +123,10 @@ pids+=($!)
 # 5174, and it has to be exactly that: the app client registers
 # `${SPA_ORIGIN}/auth/callback` character for character, so a different port
 # fails at the Cognito redirect rather than at startup.
+# Vite inlines VITE_* and leaves a variable already in the environment alone,
+# so the frontend's values reach it from dev.env without a file next to
+# vite.config — and without the bundler seeing anything else in that file.
+export_env_prefix "$DEV_ENV_FILE" VITE_
 echo "Frontend → $SPA_ORIGIN"
 (cd classroom/frontend && npm run dev) &
 pids+=($!)

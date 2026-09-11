@@ -92,7 +92,7 @@ rows beside a real teacher's.
 ```bash
 ./classroom/scripts/dev-aws-setup.sh   # pool + table + lesson bucket
 ./classroom/scripts/dev-user.sh        # its one teacher account
-./classroom/scripts/dev-setup.sh       # env file + both toolchains
+./classroom/scripts/dev-setup.sh       # ~/.config/andreas-services/classroom/dev.env + both toolchains
 ./classroom/scripts/dev-up.sh          # app :5174, API and lessons :8001
 ```
 
