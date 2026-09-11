@@ -219,7 +219,8 @@ internal sealed class ReminderService(
         var rendered = templates.Reminder(new(
             $"{group.GroupId}:{invitation.InvitationId}:{rule}:{occurrence}",
             invitation.Email,
-            "there",
+            // Known for a member; an invitee who has not joined is an address and nothing else.
+            recipientUserId is null ? "" : await DisplayNameAsync(group.GroupId, recipientUserId, cancellationToken),
             group.Name,
             reminder,
             new Uri($"{settings.AppBaseUrl}/groups/{group.GroupId}"),
@@ -270,6 +271,9 @@ internal sealed class ReminderService(
             "Please complete your wishlist so your giver can choose well.",
             invitation.AcceptedUserId);
     }
+
+    private async Task<string> DisplayNameAsync(string groupId, string userId, CancellationToken cancellationToken) =>
+        (await members.GetByUserAndGroupAsync(userId, groupId, cancellationToken))?.DisplayName ?? "";
 
     private async Task<GroupRecord> RequireManagerAsync(string groupId, CancellationToken cancellationToken)
     {

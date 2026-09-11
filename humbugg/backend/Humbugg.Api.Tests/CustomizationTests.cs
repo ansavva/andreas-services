@@ -30,7 +30,7 @@ public sealed class CustomizationTests
         var email = new TransactionalEmailTemplates().Invitation(new(
             "event", "person@example.com", "Pat", "Alex", "Exchange",
             new Uri("https://humbugg.com/join"), new ExchangeCustomization()));
-        Assert.Contains("<h1>", email.HtmlBody);
+        Assert.Contains("<h1 ", email.HtmlBody);
         Assert.Contains("— Humbugg", email.TextBody);
         Assert.DoesNotContain("<script", email.HtmlBody, StringComparison.OrdinalIgnoreCase);
     }
