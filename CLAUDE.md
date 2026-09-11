@@ -221,6 +221,11 @@ a port (another project's dev server on `:5173` is how this table came to
 exist) is what studio's fallbacks are for; every other service says which
 port is taken and stops.
 
+Every `docker-compose.yml` sets top-level `name:` to its service (`humbugg`,
+`storybook`, …). Without it Compose names the project after the directory,
+and every service keeps its compose file in `backend/`, so `docker ps` showed
+`backend-backend-1` with nothing saying which app it was.
+
 ## Shared Infrastructure (`infra/`)
 
 The root `infra/` directory owns **cross-cutting AWS resources** shared by all services. Never create these inside an individual service's infra:

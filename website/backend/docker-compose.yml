@@ -1,3 +1,4 @@
+name: website
 services:
   dynamodb:
     image: amazon/dynamodb-local:latest
