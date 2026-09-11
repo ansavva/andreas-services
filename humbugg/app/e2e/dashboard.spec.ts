@@ -36,5 +36,5 @@ test('a group card opens the exchange screen', async ({ page }) => {
   await page.goto('/');
   await page.getByText('E2E Fixture Exchange').first().click();
   await page.waitForURL(`**/groups/${group.group_id}`);
-  await expect(page.getByText('The exchange circle')).toBeVisible();
+  await expect(page.getByText('What you would love')).toBeVisible();
 });

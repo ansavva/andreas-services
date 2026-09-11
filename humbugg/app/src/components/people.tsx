@@ -16,7 +16,7 @@
 //
 // Everything a row SHOWS is a read of state the server computed: readiness per dimension, and the
 // invitation's delivery status. Nothing here decides who is ready.
-import { Badge, Button, Drawer, Dropdown, IconButton, Textarea, Toggle, ToggleGroup } from '@ansavva/design-system';
+import { AlertDialog, Badge, Button, Drawer, Dropdown, IconButton, Textarea, Toggle, ToggleGroup } from '@ansavva/design-system';
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
@@ -70,6 +70,8 @@ export function PeoplePanel({
   onChanged,
   onNeedsPlus,
   onAddLate,
+  onSetParticipation,
+  onRemove,
 }: {
   group: GroupDetail;
   readiness: GroupReadiness;
@@ -78,6 +80,10 @@ export function PeoplePanel({
   /** A role change refused for want of Plus — the note is a whole card, so the screen owns it. */
   onNeedsPlus(): void;
   onAddLate(person: ParticipantReadiness): void;
+  /** Sit somebody out or bring them back in, before the draw. */
+  onSetParticipation(person: ParticipantReadiness, participating: boolean): Promise<unknown>;
+  /** Owner-only, and confirmed here first: removal takes their wishlist, claims and conversations. */
+  onRemove(person: ParticipantReadiness): Promise<unknown>;
 }) {
   const theme = useTheme();
   const { styles } = theme;
@@ -91,6 +97,10 @@ export function PeoplePanel({
 
   const [filter, setFilter] = useState<Filter>('all');
   const [inviting, setInviting] = useState(false);
+  const [removing, setRemoving] = useState<ParticipantReadiness | null>(null);
+  // A row's menu on the last person opens past the bottom of this card, and the card after it —
+  // a later sibling — painted over the menu (caught by `settings.spec`). The card rises too.
+  const [menuOpen, setMenuOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -178,7 +188,33 @@ export function PeoplePanel({
   const nothingToShow = participants.length === 0 && shownInvitations.length === 0;
 
   return (
-    <Card>
+    <Card style={menuOpen ? { zIndex: 30 } : undefined}>
+      {/* Removing somebody is the one row action a stray tap must not do: it takes their wishlist,
+          claims, conversations and gift progress with them. So it confirms, by name. */}
+      <AlertDialog.Root open={removing !== null} onOpenChange={(next) => { if (!next) setRemoving(null); }}>
+        <AlertDialog.Popup>
+          <AlertDialog.Title>Remove {removing?.display_name} from the exchange?</AlertDialog.Title>
+          <AlertDialog.Description>
+            Their wishlist, preferences and anything they marked go with them. They can join again
+            with an invitation.
+          </AlertDialog.Description>
+          <View style={{ marginTop: 24, flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
+            <AlertDialog.Close>Keep them</AlertDialog.Close>
+            <Button
+              intent="danger"
+              size="sm"
+              disabled={busy !== null}
+              onPress={() => {
+                const person = removing;
+                setRemoving(null);
+                if (person) void run(person.member_id, async () => { await onRemove(person); return `${person.display_name} was removed.`; });
+              }}
+            >
+              Remove
+            </Button>
+          </View>
+        </AlertDialog.Popup>
+      </AlertDialog.Root>
       <View style={local.panelHeading}>
         <View style={{ flex: 1, minWidth: 200 }}>
           <Text style={styles.eyebrow}>People</Text>
@@ -292,11 +328,25 @@ export function PeoplePanel({
                         onSelect: () => void setRole(person, person.role !== 'co_organizer'),
                       }]
                     : []),
+                  // Before the draw the roster can still move. The organizer must take part — the
+                  // backend refuses to sit them out — so their own row offers neither.
+                  ...(!drawn && person.role !== 'owner' && person.role !== 'co_organizer'
+                    ? [{
+                        label: person.is_participating ? 'Sit them out' : 'Include them',
+                        onSelect: () => void run(person.member_id, async () => {
+                          await onSetParticipation(person, !person.is_participating);
+                          return null;
+                        }),
+                      }]
+                    : []),
+                  ...(!drawn && group.is_owner && person.role !== 'owner'
+                    ? [{ label: 'Remove from the exchange', onSelect: () => setRemoving(person), destructive: true }]
+                    : []),
                 ]}
               />
             );
             return (
-              <PersonRow key={person.member_id} label={rowLabel(person, drawn)} stacked={stacked} chips={chips} menu={menu}>
+              <PersonRow key={person.member_id} label={rowLabel(person, drawn)} stacked={stacked} chips={chips} menu={menu} onMenuOpenChange={setMenuOpen}>
                 <View style={styles.avatarChip}>
                   <Text style={styles.avatarChipText}>{person.display_name[0]?.toUpperCase()}</Text>
                 </View>
@@ -317,6 +367,7 @@ export function PeoplePanel({
               key={invitation.invitation_id}
               label={`${invitation.email}, invited, ${INVITATION_STATUS[invitation.status].label}`}
               stacked={stacked}
+              onMenuOpenChange={setMenuOpen}
               chips={
                 <View style={[local.chips, stacked && local.chipsStacked]}>
                   <Badge intent={INVITATION_STATUS[invitation.status].intent} size="sm">
@@ -362,6 +413,7 @@ function PersonRow({
   stacked,
   chips,
   menu,
+  onMenuOpenChange,
   children,
 }: {
   label: string;
@@ -369,12 +421,18 @@ function PersonRow({
   chips: React.ReactNode;
   /** A render prop, so the row learns when its menu opens and can rise above the rows below. */
   menu: (onOpenChange: (open: boolean) => void) => React.ReactNode;
+  /** The card holding the rows has the same problem one level up, and listens here. */
+  onMenuOpenChange?: (open: boolean) => void;
   children: React.ReactNode;
 }) {
   const { styles } = useTheme();
   // Every row is its own stacking context, and later siblings paint on top: a menu that opened
   // downwards disappeared behind the next two rows. The open row goes to the front.
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuOpen, setMenuOpenState] = useState(false);
+  const setMenuOpen = (open: boolean) => {
+    setMenuOpenState(open);
+    onMenuOpenChange?.(open);
+  };
   const raised = menuOpen ? { zIndex: 30 } : undefined;
   if (!stacked)
     return (
@@ -386,7 +444,9 @@ function PersonRow({
     );
   return (
     <View accessibilityLabel={label} style={[styles.memberRow, local.rowStacked, raised]}>
-      <View style={[local.rowIdentity, { alignSelf: 'stretch' }]}>
+      {/* Stacked, the chips are a later sibling of the line holding the menu, so they painted over
+          its first item. The line rises within the row the same way the row rises within the card. */}
+      <View style={[local.rowIdentity, { alignSelf: 'stretch' }, raised]}>
         {children}
         {menu(setMenuOpen)}
       </View>

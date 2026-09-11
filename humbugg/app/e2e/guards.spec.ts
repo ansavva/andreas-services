@@ -51,7 +51,7 @@ test('no request escapes to the network', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('Your groups')).toBeVisible();
   await page.goto(`/groups/${group.group_id}`);
-  await expect(page.getByText('The exchange circle')).toBeVisible();
+  await expect(page.getByText('What you would love')).toBeVisible();
 
   expect(escaped).toEqual([]);
 });
@@ -69,7 +69,7 @@ test('nothing 5xxs, so no fixture is missing', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('Your groups')).toBeVisible();
   await page.goto(`/groups/${group.group_id}`);
-  await expect(page.getByText('The exchange circle')).toBeVisible();
+  await expect(page.getByText('What you would love')).toBeVisible();
 
   expect(failures).toEqual([]);
 });

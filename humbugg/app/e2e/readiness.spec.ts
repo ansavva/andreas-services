@@ -17,16 +17,17 @@ interface Readiness {
   participants: Array<{ display_name: string }>;
 }
 
-test('the organizer reaches the readiness dashboard from the exchange', async ({ page }) => {
+test('the organizer reaches the people and draw tabs from the exchange', async ({ page }) => {
   await stubApi(page);
   await signIn(page);
   const group = fixture<Group>('group');
 
   await page.goto(`/groups/${group.group_id}`);
-  await page.getByText('See who is ready →').click();
+  await page.getByRole('tab', { name: 'People' }).click();
+  await expect(page.getByText(/^Everyone \(\d+\)$/)).toBeVisible();
 
-  await expect(page.getByText('Organizer dashboard')).toBeVisible();
-  await expect(page.getByRole('tab', { name: 'People' })).toBeVisible();
+  await page.getByRole('tab', { name: 'Draw' }).click();
+  await expect(page.getByText('Taking part')).toBeVisible();
 });
 
 test('a deep link to the dashboard renders the roll-up and the roster', async ({ page }) => {
@@ -40,11 +41,13 @@ test('a deep link to the dashboard renders the roll-up and the roster', async ({
   // route as well as the screen itself.
   await page.goto(`/organize/${group.group_id}`);
 
-  await expect(page.getByText('Taking part')).toBeVisible();
-  await expect(page.getByText('People', { exact: true }).first()).toBeVisible();
+  // The redirect lands on People; the roster is there, the roll-up one tab over.
+  await expect(page.getByRole('tab', { name: 'People', selected: true })).toBeVisible();
   for (const person of readiness.participants) {
     await expect(page.getByText(person.display_name).first()).toBeVisible();
   }
+  await page.getByRole('tab', { name: 'Draw' }).click();
+  await expect(page.getByText('Taking part')).toBeVisible();
   await expect(
     page.getByText(`${readiness.counts.wishlist_ready} of ${readiness.counts.participating}`).first(),
   ).toBeVisible();
@@ -56,9 +59,9 @@ test('gift progress reads as untracked rather than as zero', async ({ page }) =>
   await signIn(page);
   const group = fixture<Group>('group');
 
-  await page.goto(`/organize/${group.group_id}`);
+  await page.goto(`/groups/${group.group_id}?tab=draw`);
 
-  // The fixture exchange is open, so nobody has been asked to buy anything. The dashboard says so
+  // The fixture exchange is open, so nobody has been asked to buy anything. The Draw tab says so
   // rather than reporting zero purchases, which would be a claim about the world.
   await expect(page.getByText('Nothing to track yet.')).toBeVisible();
 });
@@ -70,7 +73,7 @@ test('the dashboard survives a 390px phone viewport', async ({ page }) => {
   await signIn(page);
   const group = fixture<Group>('group');
 
-  await page.goto(`/organize/${group.group_id}`);
+  await page.goto(`/groups/${group.group_id}?tab=draw`);
 
   await expect(page.getByText('Taking part')).toBeVisible();
   await expect(page.getByRole('tab', { name: 'People' })).toBeVisible();

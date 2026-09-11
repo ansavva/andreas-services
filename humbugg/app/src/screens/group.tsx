@@ -1,36 +1,42 @@
-// One exchange, ported from `src/pages/GroupPage.tsx`: the heading, the
-// assignment reveal, the participant list, your own wishlist, and — for the
-// organizer — invites, exclusions, the draw and the destructive actions.
-import { Button, Checkbox, Input, Select, Textarea } from '@ansavva/design-system';
-import * as Clipboard from 'expo-clipboard';
+// One exchange — the only page it has (#684).
+//
+// Everyone sees the EXCHANGE: what it is, how it works, their own wishlist and preferences, their
+// match once drawn. An organizer sees three more tabs beside it — People, Draw, Settings — which
+// `OrganizerTabs` renders and explains. This used to be two pages, "the group" and "the dashboard",
+// and an organizer met the roster, the delete button and the exchange's details on both.
+import { Button, Checkbox, Input, Tabs, Textarea } from '@ansavva/design-system';
 import { Link, useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, Share, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, Text, View } from 'react-native';
 
 import { api, ApiError } from '../api/client';
-import { ExchangeInstructions, ExchangeSettingsPanel } from '../components/exchange-settings';
-import { isPlusRequired, PlusRefusalCard } from '../components/plus';
+import { ExchangeInstructions } from '../components/exchange-settings';
 import { GiftReceivedPanel, GiftStagePanel } from '../components/gift-progress';
+import { ORGANIZER_TABS, OrganizerTabs, type OrganizerTab } from '../components/organizer-tabs';
+import { isPlusRequired, PlusRefusalCard } from '../components/plus';
 import { QuestionsPanel } from '../components/questions';
-import { RepeatExchangePanel } from '../components/repeat-exchange';
 import { FieldLabel } from '../components/field';
 import { Card, LoadingPanel, Shell } from '../components/shell';
 import { StatusMessage } from '../components/status-message';
 import { RecipientWishList, WishListPanel } from '../components/wishlist';
 import { useAuth } from '../context/auth-context';
 import { gap, scopedStyles, useTheme } from '../theme/styles';
-import type {
-  ExclusionPair,
-  GroupDetail,
-  Membership,
-  RecipientAssignment,
-  RevealAssignment,
-  WishClaimState,
-} from '../types';
-import { sessionKeys, sessionStore } from '../utils/session-store';
+import type { GroupDetail, Membership, RecipientAssignment, WishClaimState } from '../types';
 import { validateAddressForm } from '../utils/validation';
 
-export default function GroupScreen({ groupId }: { groupId: string }) {
+type PageTab = 'exchange' | OrganizerTab;
+
+export default function GroupScreen({
+  groupId,
+  tab: requestedTab,
+  checkout,
+}: {
+  groupId: string;
+  /** `?tab=` — where a link into this page lands: `/organize/{id}` redirects here with `people`. */
+  tab?: string | null;
+  /** Stripe's `?checkout=` return value on the web; lands on Settings → Billing. */
+  checkout?: string | null;
+}) {
   const { styles } = useTheme();
   const auth = useAuth();
   const router = useRouter();
@@ -41,14 +47,15 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [inviteUrl, setInviteUrl] = useState(() => sessionStore.get(sessionKeys.invite(groupId)) ?? '');
-  const [reveal, setReveal] = useState<RevealAssignment[] | null>(null);
-  // A 402 is not an error the organizer made; it is a price. Kept apart from `error` so it renders
+  const [tab, setTab] = useState<PageTab>(() =>
+    checkout ? 'settings' : isOrganizerTab(requestedTab) ? requestedTab : 'exchange',
+  );
+  // A 402 is not an error the member made; it is a price. Kept apart from `error` so it renders
   // as an offer with a way forward rather than a red bar with a dead end.
   const [plusRefusal, setPlusRefusal] = useState<string | null>(null);
 
-  async function load() {
-    setLoading(true);
+  async function load(quiet = false) {
+    if (!quiet) setLoading(true);
     setError(null);
     try {
       const token = await auth.accessToken();
@@ -68,7 +75,7 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load the group.');
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }
 
@@ -82,7 +89,7 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
     try {
       await work(await auth.accessToken());
       if (message) setSuccess(message);
-      await load();
+      await load(true);
       return true;
     } catch (err) {
       if (isPlusRequired(err)) setPlusRefusal((err as Error).message);
@@ -122,70 +129,8 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
 
   const participating = group.members.filter((member) => member.is_participating).length;
 
-  return (
-    <Shell>
-      <Link href="/" style={[styles.smallMuted, { marginBottom: 24 }]}>← All groups</Link>
-      <View style={{ gap: 28 }}>
-        <View style={styles.groupHeading}>
-          <View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <View style={[styles.statusPill, group.status === 'drawn' && styles.statusDrawn]}>
-                <Text style={[styles.statusPillText, group.status === 'drawn' && styles.statusDrawnText]}>
-                  {group.status === 'drawn' ? 'Draw complete' : 'Open for joining'}
-                </Text>
-              </View>
-              {group.is_organizer ? <Text style={styles.smallMuted}>You’re organizing</Text> : null}
-            </View>
-            <Text style={[styles.displayLg, { marginTop: 16 }]}>{group.name}</Text>
-            <Text style={[styles.bodyMuted, { marginTop: 12, maxWidth: 672 }]}>
-              {group.description || 'A little holiday magic is taking shape.'}
-            </Text>
-          </View>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-            <MetaChip>
-              {group.event_date ? new Date(`${group.event_date}T12:00:00`).toLocaleDateString() : 'Date TBD'}
-            </MetaChip>
-            <MetaChip>
-              {group.spending_limit != null ? `$${group.spending_limit.toFixed(2)} USD` : 'No spending limit'}
-            </MetaChip>
-            {/* The plan and its ceiling are the organizer's billing relationship with Humbugg, and
-                the organizer manages both on the dashboard. A participant sees who is taking part;
-                "plus plan" and "7 / 50" in their chips said somebody paid, and asked what 50 was. */}
-            <MetaChip>
-              {group.is_organizer && group.plan !== 'work'
-                ? `${participating} / ${group.participant_limit} participating · ${group.plan} plan`
-                : `${participating} participating`}
-            </MetaChip>
-          </View>
-        </View>
-        <StatusMessage message={error} />
-        <StatusMessage message={success} tone="success" />
-
-        {/* Said where the organizer is looking when a seventh person says the link does not work.
-            The billing card lives on the dashboard; "6 / 6" in a chip did not say it was closed. */}
-        {group.is_organizer && group.plan === 'free' && group.status === 'open' &&
-        participating >= group.participant_limit ? (
-          <Link href={`/organize/${groupId}`} asChild>
-            <Pressable accessibilityRole="link" style={[styles.panel, { marginTop: 16 }]}>
-              <Text style={[styles.small, styles.semibold]}>
-                This exchange is full — Free seats {group.participant_limit}, you included.
-              </Text>
-              <Text style={[styles.smallMuted, { marginTop: 4 }]}>
-                Nobody else can join until it moves to Plus. See the billing card on the dashboard →
-              </Text>
-            </Pressable>
-          </Link>
-        ) : null}
-
-        {plusRefusal ? (
-          <PlusRefusalCard
-            groupId={groupId}
-            reason={plusRefusal}
-            action="do what this exchange just asked for"
-            onNavigate={(path) => router.push(path as '/')}
-          />
-        ) : null}
-
+  const exchangeContent = (
+    <>
         {assignment ? (
           <AssignmentCard
             assignment={assignment}
@@ -227,78 +172,7 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
           </>
         ) : null}
 
-        <ExchangeInstructions instructions={group.instructions} />
-
-        {/* The organizer's edit form (#135). Before the draw only — nothing here changes the
-            matching, but a roster that can still move is the mental model, and settling the details
-            after everybody has their assignment is a different (and rarer) job. */}
-        {group.is_organizer && group.status === 'open' ? (
-          <ExchangeSettingsPanel group={group} onSaved={setGroup} />
-        ) : null}
-
-        {/* Offered after the draw, which is when an organizer actually thinks about next year —
-            before it they are still running this one (#136). Owner-only: it creates an exchange,
-            and the person who owns this one is who should own that one. */}
-        {group.is_owner && group.status === 'drawn' ? (
-          <RepeatExchangePanel group={group} />
-        ) : null}
-
-        <Card>
-          <Text style={styles.eyebrow}>Participants</Text>
-          <Text style={[styles.heading, { marginTop: 4 }]}>The exchange circle</Text>
-          <View style={{ marginTop: 24, gap: 12 }}>
-            {group.members.map((member) => (
-              <View key={member.member_id} style={styles.memberRow}>
-                <View style={styles.avatarChip}>
-                  <Text style={styles.avatarChipText}>{member.display_name[0]?.toUpperCase()}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.small, { fontFamily: styles.semibold.fontFamily }]}>
-                    {member.display_name}
-                  </Text>
-                  <Text style={styles.tiny}>
-                    {member.is_organizer
-                      ? 'Organizer'
-                      : member.is_participating
-                        ? 'Participating'
-                        : 'Not participating'}
-                  </Text>
-                </View>
-                {group.is_organizer && group.status === 'open' && !member.is_organizer ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Checkbox.Root
-                      checked={member.is_participating}
-                      aria-label={`Include ${member.display_name}`}
-                      onCheckedChange={(checked) =>
-                        void action((token) =>
-                          api.setParticipation(token, groupId, member.member_id, checked === true),
-                        )
-                      }
-                    >
-                      <Checkbox.Indicator />
-                    </Checkbox.Root>
-                    <Text style={styles.smallMuted}>Include</Text>
-                    {/* Owner-only, and armed before it commits, like every other destructive
-                        control here. Removing somebody takes their wishlist, their claims, their
-                        conversations and their gift progress with them; a stray tap must not. */}
-                    {group.is_owner ? (
-                      <RemoveMemberButton
-                        name={member.display_name}
-                        busy={busy}
-                        onRemove={() =>
-                          void action(
-                            (token) => api.removeMember(token, groupId, member.member_id),
-                            `${member.display_name} was removed.`,
-                          )
-                        }
-                      />
-                    ) : null}
-                  </View>
-                ) : null}
-              </View>
-            ))}
-          </View>
-        </Card>
+      <ExchangeInstructions instructions={group.instructions} />
 
         <WishListPanel groupId={groupId} />
 
@@ -316,86 +190,88 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
             )
           }
         />
+    </>
+  );
 
-        {group.is_organizer ? (
-          <OrganizerPanel
-            group={group}
-            inviteUrl={inviteUrl}
-            busy={busy}
-            revealed={reveal}
-            onInvite={() =>
-              void action(async (token) => {
-                const result = await api.rotateInvite(token, groupId);
-                setInviteUrl(result.invite_url);
-                sessionStore.set(sessionKeys.invite(groupId), result.invite_url);
-              }, 'A fresh invitation link is ready.')
-            }
-            onExclusions={(pairs) =>
-              void action((token) => api.setExclusions(token, groupId, pairs), 'Exclusions updated.')
-            }
-            onDraw={() => void action((token) => api.draw(token, groupId), 'The draw is complete.')}
-            onReset={() => void action((token) => api.reset(token, groupId), 'The group is open again.')}
-            onReveal={async (reason) => {
-              setBusy(true);
-              setError(null);
-              try {
-                const result = await api.reveal(await auth.accessToken(), groupId, reason);
-                setReveal(result.assignments);
-              } catch (err) {
-                setError(err instanceof Error ? err.message : 'Unable to reveal assignments.');
-              } finally {
-                setBusy(false);
-              }
-            }}
-            onDelete={async () => {
-              if (await action((token) => api.deleteGroup(token, groupId))) router.replace('/');
-            }}
+  return (
+    <Shell>
+      <Link href="/" style={[styles.smallMuted, { marginBottom: 24 }]}>← All groups</Link>
+      <View style={{ gap: 28 }}>
+        <View style={styles.groupHeading}>
+          <View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={[styles.statusPill, group.status === 'drawn' && styles.statusDrawn]}>
+                <Text style={[styles.statusPillText, group.status === 'drawn' && styles.statusDrawnText]}>
+                  {group.status === 'drawn' ? 'Draw complete' : 'Open for joining'}
+                </Text>
+              </View>
+              {group.is_organizer ? <Text style={styles.smallMuted}>You’re organizing</Text> : null}
+            </View>
+            <Text style={[styles.displayLg, { marginTop: 16 }]}>{group.name}</Text>
+            <Text style={[styles.bodyMuted, { marginTop: 12, maxWidth: 672 }]}>
+              {group.description || 'A little holiday magic is taking shape.'}
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+            <MetaChip>
+              {group.event_date ? new Date(`${group.event_date}T12:00:00`).toLocaleDateString() : 'Date TBD'}
+            </MetaChip>
+            <MetaChip>
+              {group.spending_limit != null ? `$${group.spending_limit.toFixed(2)} USD` : 'No spending limit'}
+            </MetaChip>
+            {/* The plan and its ceiling are the organizer's billing relationship with Humbugg, and
+                the organizer manages both on the dashboard. A participant sees who is taking part;
+                "plus plan" and "7 / 50" in their chips said somebody paid, and asked what 50 was. */}
+            <MetaChip>
+              {group.is_organizer && group.plan !== 'work'
+                ? `${participating} / ${group.participant_limit} participating · ${group.plan} plan`
+                : `${participating} participating`}
+            </MetaChip>
+          </View>
+        </View>
+        <StatusMessage message={error} />
+        <StatusMessage message={success} tone="success" />
+
+        {plusRefusal ? (
+          <PlusRefusalCard
+            groupId={groupId}
+            reason={plusRefusal}
+            action="do what this exchange just asked for"
+            // Billing is a section of this page now, not another page.
+            onNavigate={() => { setPlusRefusal(null); setTab('settings'); }}
           />
         ) : null}
+
+        {/* Participants get the exchange and nothing to switch between. The organizer gets tabs —
+            and their own part in the exchange is still the first one. */}
+        {group.is_organizer ? (
+          <Tabs.Root defaultValue="exchange" value={tab} onValueChange={(next) => setTab(next as PageTab)}>
+            <Tabs.List>
+              <Tabs.Tab value="exchange">Exchange</Tabs.Tab>
+              {ORGANIZER_TABS.map((item) => (
+                <Tabs.Tab key={item.value} value={item.value}>{item.label}</Tabs.Tab>
+              ))}
+            </Tabs.List>
+            <Tabs.Panel value="exchange">
+              <View style={{ gap: 28, marginTop: 24 }}>{exchangeContent}</View>
+            </Tabs.Panel>
+            <OrganizerTabs
+              group={group}
+              checkout={checkout}
+              onGroupChanged={setGroup}
+              onReload={() => load(true)}
+            />
+          </Tabs.Root>
+        ) : (
+          exchangeContent
+        )}
       </View>
     </Shell>
   );
 }
 
-/**
- * Arm, then commit — the same shape the delete and clear controls use.
- *
- * The armed state expires, so a removal cannot sit primed behind a scrolled-away button, and the
- * label says whose removal is armed rather than a bare "Confirm".
- */
-function RemoveMemberButton({
-  name,
-  busy,
-  onRemove,
-}: {
-  name: string;
-  busy: boolean;
-  onRemove(): void;
-}) {
-  const [armed, setArmed] = useState(false);
-
-  useEffect(() => {
-    if (!armed) return;
-    const timeout = setTimeout(() => setArmed(false), 5000);
-    return () => clearTimeout(timeout);
-  }, [armed]);
-
-  return (
-    <Button
-      intent="danger"
-      size="sm"
-      disabled={busy}
-      accessibilityLabel={armed ? `Confirm removing ${name}` : `Remove ${name}`}
-      accessibilityLiveRegion="polite"
-      onPress={() => {
-        if (!armed) { setArmed(true); return; }
-        setArmed(false);
-        onRemove();
-      }}
-    >
-      {armed ? 'Tap to confirm' : 'Remove'}
-    </Button>
-  );
+function isOrganizerTab(value: string | null | undefined): value is OrganizerTab {
+  return ORGANIZER_TABS.some((item) => item.value === value);
 }
 
 function MetaChip({ children }: { children: React.ReactNode }) {
@@ -582,276 +458,6 @@ function WishListForm({
           </Button>
         </View>
       </View>
-    </Card>
-  );
-}
-
-interface OrganizerProps {
-  group: GroupDetail;
-  inviteUrl: string;
-  busy: boolean;
-  revealed: RevealAssignment[] | null;
-  onInvite(): void;
-  onExclusions(pairs: string[][]): void;
-  onDraw(): void;
-  onReset(): void;
-  onReveal(reason: string): Promise<void>;
-  onDelete(): Promise<void>;
-}
-
-function OrganizerPanel(props: OrganizerProps) {
-  const theme = useTheme();
-  const { blends, brand, styles } = theme;
-  const local = localStyles(theme);
-  const { group } = props;
-  const [first, setFirst] = useState<string | null>(null);
-  const [second, setSecond] = useState<string | null>(null);
-  const [pairs, setPairs] = useState<ExclusionPair[]>(group.exclusions);
-  const [reason, setReason] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [deleteAnnouncement, setDeleteAnnouncement] = useState('');
-  const deleteArmedAt = useRef(0);
-
-  const names = useMemo(
-    () => Object.fromEntries(group.members.map((m) => [m.member_id, m.display_name])),
-    [group.members],
-  );
-  const options = useMemo(
-    () =>
-      group.members
-        .filter((m) => m.is_participating)
-        .map((m) => ({ value: m.member_id, label: m.display_name })),
-    [group.members],
-  );
-
-  function addPair() {
-    if (first && second && first !== second && !pairs.some((pair) => pair.includes(first) && pair.includes(second)))
-      setPairs([...pairs, [first, second]]);
-  }
-
-  // The armed state disarms itself after five seconds, so a delete cannot sit
-  // primed behind a scrolled-away button.
-  useEffect(() => {
-    if (!confirmingDelete) return;
-    const timeout = setTimeout(() => {
-      deleteArmedAt.current = 0;
-      setConfirmingDelete(false);
-      setDeleteAnnouncement('Delete confirmation expired.');
-    }, 5000);
-    return () => clearTimeout(timeout);
-  }, [confirmingDelete]);
-
-  async function handleDeletePress() {
-    if (!confirmingDelete) {
-      deleteArmedAt.current = Date.now();
-      setConfirmingDelete(true);
-      setDeleteAnnouncement('Deletion armed. Press Confirm delete within five seconds to permanently delete this group.');
-      return;
-    }
-    // Guards against a double-tap arming and committing in one gesture.
-    if (Date.now() - deleteArmedAt.current < 500) return;
-    setConfirmingDelete(false);
-    setDeleteAnnouncement('Deleting group.');
-    await props.onDelete();
-    deleteArmedAt.current = 0;
-  }
-
-  return (
-    <Card style={{ borderColor: blends.primaryBorder }}>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 16 }}>
-        <View>
-          <Text style={styles.eyebrow}>Organizer tools</Text>
-          <Text style={[styles.heading, { marginTop: 4 }]}>Prepare the draw</Text>
-        </View>
-        <View>
-          <Button
-            intent="danger"
-            size="sm"
-            disabled={props.busy}
-            accessibilityLabel={
-              confirmingDelete ? 'Confirm permanent group deletion within five seconds' : 'Delete group'
-            }
-            accessibilityLiveRegion="polite"
-            onPress={() => void handleDeletePress()}
-            style={{ width: 160 }}
-          >
-            {props.busy ? 'Deleting…' : confirmingDelete ? 'Confirm delete' : 'Delete group'}
-          </Button>
-          <Text accessibilityLiveRegion="polite" style={local.srOnly}>{deleteAnnouncement}</Text>
-        </View>
-      </View>
-
-      <View style={{ marginTop: 24 }}>
-        {/* The readiness dashboard is its own screen (#133) — the organizer's "who is holding
-            this up" question, kept off the participant's page. */}
-        <Link href={`/organize/${group.group_id}`} asChild>
-          <Pressable accessibilityRole="link" style={styles.panel}>
-            <Text style={[styles.small, styles.semibold]}>See who is ready →</Text>
-            <Text style={[styles.smallMuted, { marginTop: 4 }]}>
-              Wishlists, addresses and who still needs a nudge.
-            </Text>
-          </Pressable>
-        </Link>
-      </View>
-
-      {group.status === 'open' ? (
-        <View style={{ marginTop: 28, gap: 28 }}>
-          <View>
-            <Text style={[styles.small, styles.semibold]}>Invitation link</Text>
-            <Text style={[styles.smallMuted, { marginTop: 4 }]}>
-              Links are shown once. Rotating invalidates the previous link.
-            </Text>
-            {props.inviteUrl ? (
-              <View style={{ marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-                <View style={{ flex: 1, minWidth: 200 }}>
-                  <Input aria-label="Invitation link" value={props.inviteUrl} disabled />
-                </View>
-                <Button
-                  intent="secondary"
-                  onPress={() => {
-                    void Clipboard.setStringAsync(props.inviteUrl);
-                    setCopied(true);
-                  }}
-                >
-                  {copied ? 'Copied' : 'Copy'}
-                </Button>
-                {/*
-                  Native sharing (#134), where the platform has it. `Share` is a real sheet on iOS
-                  and Android and the Web Share API in a browser that supports it — and nothing at
-                  all in one that does not, which is why this renders only when `Share.share` exists
-                  rather than showing a button that does nothing on desktop Safari.
-                */}
-                {Share.share ? (
-                  <Button
-                    intent="secondary"
-                    accessibilityLabel="Share the invitation link"
-                    onPress={() => {
-                      // The message IS the link. Anything prepended ends up quoted in a chat app
-                      // ahead of the URL, and some of them then fail to linkify it.
-                      void Share.share({ message: props.inviteUrl }).catch(() => undefined);
-                    }}
-                  >
-                    Share
-                  </Button>
-                ) : null}
-              </View>
-            ) : (
-              <View style={{ marginTop: 12, alignSelf: 'flex-start' }}>
-                <Button intent="secondary" onPress={props.onInvite}>Create a fresh link</Button>
-              </View>
-            )}
-          </View>
-
-          <View>
-            <Text style={[styles.small, styles.semibold]}>Pair exclusions</Text>
-            <Text style={[styles.smallMuted, { marginTop: 4 }]}>
-              People in a pair cannot draw one another.
-            </Text>
-            <View style={{ marginTop: 12, gap: 8 }}>
-              <Select
-                aria-label="First person in the pair"
-                options={options}
-                value={first}
-                placeholder="Choose person"
-                onValueChange={setFirst}
-              />
-              <Select
-                aria-label="Second person in the pair"
-                options={options}
-                value={second}
-                placeholder="Choose person"
-                onValueChange={setSecond}
-              />
-              <View style={{ alignSelf: 'flex-start' }}>
-                <Button intent="secondary" onPress={addPair}>Add</Button>
-              </View>
-            </View>
-            <View style={{ marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {pairs.map((pair, index) => (
-                <Pressable
-                  key={`${pair[0]}-${pair[1]}`}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Remove exclusion ${names[pair[0]]} and ${names[pair[1]]}`}
-                  style={styles.pairChip}
-                  onPress={() => setPairs(pairs.filter((_, item) => item !== index))}
-                >
-                  <Text style={styles.pairChipText}>
-                    {names[pair[0]]} + {names[pair[1]]} ×
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-            <View style={{ marginTop: 16, alignSelf: 'flex-start' }}>
-              <Button intent="secondary" onPress={() => props.onExclusions(pairs)}>Save exclusions</Button>
-            </View>
-          </View>
-
-          <View style={styles.panel}>
-            <Text style={[styles.small, styles.semibold]}>Ready to draw?</Text>
-            <Text style={[styles.smallMuted, { marginTop: 4 }]}>
-              Drawing locks the roster and exclusions. Every person sees only their own recipient.
-            </Text>
-            <View style={{ marginTop: 16 }}>
-              <Button style={styles.buttonBlock} size="lg" disabled={props.busy} onPress={props.onDraw}>
-                Create private assignments
-              </Button>
-            </View>
-          </View>
-        </View>
-      ) : (
-        <View style={{ marginTop: 28, gap: 28 }}>
-          <View style={styles.panel}>
-            <Text style={[styles.small, styles.semibold]}>Need to change the group?</Text>
-            <Text style={[styles.smallMuted, { marginTop: 8 }]}>
-              Resetting clears every assignment and reopens the roster.
-            </Text>
-            <View style={{ marginTop: 16, alignSelf: 'flex-start' }}>
-              <Button intent="secondary" onPress={props.onReset}>Reset the draw</Button>
-            </View>
-          </View>
-          <View style={[styles.panel, { backgroundColor: 'transparent', borderWidth: 1, borderColor: blends.dangerBorder }]}>
-            <Text style={[styles.small, styles.semibold]}>Emergency reveal</Text>
-            <Text style={[styles.smallMuted, { marginTop: 8 }]}>
-              This action is permanently audited. Give a reason before viewing all assignments.
-            </Text>
-            <View style={{ marginTop: 12 }}>
-              <Textarea
-                aria-label="Reason for revealing all assignments"
-                value={reason}
-                onValueChange={setReason}
-                maxLength={500}
-                placeholder="Why is this reveal necessary?"
-              />
-            </View>
-            <View style={{ marginTop: 12, alignSelf: 'flex-start' }}>
-              <Button
-                intent="danger"
-                disabled={reason.trim().length === 0 || props.busy}
-                onPress={() => void props.onReveal(reason)}
-              >
-                Reveal all assignments
-              </Button>
-            </View>
-          </View>
-          {props.revealed ? (
-            <View>
-              <Text style={[styles.small, styles.semibold]}>Revealed assignments</Text>
-              <View style={{ marginTop: 12, gap: 8 }}>
-                {props.revealed.map((item) => (
-                  <View key={item.giver.member_id} style={[styles.panel, { padding: 16 }]}>
-                    <Text style={styles.small}>
-                      <Text style={styles.semibold}>{item.giver.display_name}</Text>
-                      <Text style={{ color: brand.muted }}> → </Text>
-                      {item.recipient.display_name}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          ) : null}
-        </View>
-      )}
     </Card>
   );
 }

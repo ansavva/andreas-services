@@ -284,9 +284,9 @@ No live key, real card, or payment method is ever required.
    validation rejects any `sk_live_` / `pk_live_` / `rk_live_` credential, so a
    live key cannot be used by accident.
 
-Both Checkout return URLs are `{APP_BASE_URL}/organize/<group-id>?checkout=…` — the
-organizer's billing area in the product app. Locally that is
-`http://localhost:8081/organize/<group-id>`, and Stripe permits HTTP only for localhost
+Both Checkout return URLs are `{APP_BASE_URL}/groups/<group-id>?tab=settings&checkout=…` — the
+Billing section of the exchange page's Settings tab. Locally that is
+`http://localhost:8081/groups/<group-id>`, and Stripe permits HTTP only for localhost
 testing, so `APP_BASE_URL` must name the **app** origin (`:8081`), not the marketing
 site. The path used to be `/app/groups/<id>`, which dates from the app being served under
 `www.humbugg.com/app`: only the marketing origin still 301s that shape, so once

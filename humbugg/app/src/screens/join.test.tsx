@@ -191,8 +191,10 @@ describe('when joining is refused', () => {
     mocks.getInvitation.mockResolvedValue({
       group_id: 'g1',
       exchange_name: 'Office Exchange',
-      customization: { greeting: 'Welcome to the office exchange', instructions: 'Bring it wrapped.' },
+      customization: { greeting: 'Welcome to the office exchange', instructions: '' },
       organizer_name: 'Dev Organizer',
+      // The exchange's own instructions (Free), not the Plus customization's — #684.
+      instructions: 'Bring it wrapped.',
     });
     render(<JoinScreen groupId="g1" />);
     await waitFor(() => expect(screen.getByText('Welcome to the office exchange')).toBeOnTheScreen());

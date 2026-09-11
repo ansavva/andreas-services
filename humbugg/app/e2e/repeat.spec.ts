@@ -40,7 +40,8 @@ test('an owner starts next year’s exchange and gets its one-time link', async 
   await page.route(`**/api/groups/${group.group_id}/assignment`, (route) =>
     route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: { code: 'not_found', message: 'none' } }) }));
 
-  await page.goto(`/groups/${group.group_id}`);
+  // Repeating an exchange is the Draw tab's, beside the draw it follows.
+  await page.goto(`/groups/${group.group_id}?tab=draw`);
   await expect(page.getByText('Run this exchange again')).toBeVisible();
   // The promise, made before anything is pressed.
   await expect(page.getByText(/This one is left exactly as it is/)).toBeVisible();
@@ -66,8 +67,8 @@ test('the repeat panel is not offered before the draw', async ({ page }) => {
   const group = fixture<Group>('group');
 
   // The committed fixture is open, which is the state under test.
-  await page.goto(`/groups/${group.group_id}`);
+  await page.goto(`/groups/${group.group_id}?tab=draw`);
 
-  await expect(page.getByText('The exchange circle')).toBeVisible();
+  await expect(page.getByText('Taking part')).toBeVisible();
   await expect(page.getByText('Run this exchange again')).toBeHidden();
 });

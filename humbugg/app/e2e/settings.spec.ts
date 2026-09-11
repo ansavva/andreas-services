@@ -141,10 +141,10 @@ test('the organizer edits the exchange and the save carries its concurrency toke
   const group = fixture<Group>('group');
   const recorded = await stubEditing(page, group);
 
-  await page.goto(`/groups/${group.group_id}`);
-  await expect(page.getByText('Exchange details')).toBeVisible();
+  await page.goto(`/groups/${group.group_id}?tab=settings`);
+  await expect(page.getByText('Details', { exact: true })).toBeVisible();
 
-  await page.getByLabel('How it works (optional)').fill('Bring it wrapped to the Friday lunch.');
+  await page.getByLabel('Instructions (optional)').fill('Bring it wrapped to the Friday lunch.');
   await page.getByRole('button', { name: 'Save changes' }).click();
 
   await expect(page.getByText('Saved.')).toBeVisible();
@@ -169,7 +169,7 @@ test('a save that lost the race says to reload rather than to try again', async 
   const group = fixture<Group>('group');
   await stubEditing(page, group, { conflict: true });
 
-  await page.goto(`/groups/${group.group_id}`);
+  await page.goto(`/groups/${group.group_id}?tab=settings`);
   await page.getByLabel('Description (optional)').fill('Rewritten.');
   await page.getByRole('button', { name: 'Save changes' }).click();
 
@@ -179,8 +179,7 @@ test('a save that lost the race says to reload rather than to try again', async 
 
 /**
  * Read as a PARTICIPANT, which is the claim: the instructions are for everybody who joined, not for
- * the person who wrote them. It also keeps the assertion unambiguous — an organizer sees the same
- * text twice, once in the panel and once loaded into the edit form's textarea.
+ * the person who wrote them. A participant also has no tabs: the exchange is the whole page.
  */
 test('the organizer’s instructions are shown to everybody who joined', async ({ page }) => {
   stubOnly('a live dev stack has no instructions to predict');
@@ -203,8 +202,8 @@ test('the organizer’s instructions are shown to everybody who joined', async (
 
   await expect(page.getByText('How this one works')).toBeVisible();
   await expect(page.getByText('Bring it wrapped to the Friday lunch.')).toBeVisible();
-  // And a participant is not offered the editor.
-  await expect(page.getByText('Exchange details')).toBeHidden();
+  // And a participant is not offered the organizer's tabs, the editor among them.
+  await expect(page.getByRole('tab', { name: 'Settings' })).toBeHidden();
 });
 
 /**
@@ -227,25 +226,31 @@ test('removing a participant takes two presses', async ({ page }) => {
     }
     return route.fallback();
   });
-  await page.route(`**/api/groups/${group.group_id}`, (route) =>
+  // The People roster reads the readiness roll-up, not the group's member list (#684).
+  const readiness = fixture<{ participants: Array<Record<string, unknown>>; counts: Record<string, number> }>('readiness');
+  await page.route(`**/api/groups/${group.group_id}/readiness`, (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        ...fixture('group'),
-        members: [
-          ...fixture<{ members: unknown[] }>('group').members,
-          { member_id: 'm2', display_name: 'Robin', is_organizer: false, is_participating: true },
+        ...readiness,
+        counts: { ...readiness.counts, members: 2, participating: 2 },
+        participants: [
+          ...readiness.participants,
+          { ...readiness.participants[0], member_id: 'm2', display_name: 'Robin', role: 'participant' },
         ],
       }),
     }));
 
-  await page.goto(`/groups/${group.group_id}`);
-  await expect(page.getByText('Robin')).toBeVisible();
+  await page.goto(`/groups/${group.group_id}?tab=people`);
+  await expect(page.getByText('Robin').first()).toBeVisible();
 
-  await page.getByLabel('Remove Robin').click();
+  // Removal lives in the row's menu and confirms by name before it commits.
+  await page.getByLabel('Actions for Robin').click();
+  await page.getByRole('menuitem', { name: 'Remove from the exchange' }).click();
+  await expect(page.getByText('Remove Robin from the exchange?')).toBeVisible();
   expect(removals).toEqual([]);
 
-  await page.getByLabel('Confirm removing Robin').click();
-  expect(removals).toEqual([`/api/groups/${group.group_id}/members/m2`]);
+  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await expect.poll(() => removals).toEqual([`/api/groups/${group.group_id}/members/m2`]);
 });

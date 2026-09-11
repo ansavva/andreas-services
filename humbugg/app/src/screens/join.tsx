@@ -125,8 +125,8 @@ export default function JoinScreen({ groupId }: { groupId: string }) {
           </Text>
         ) : null}
         <Text style={[styles.bodyMuted, { marginTop: preview?.customization.greeting ? 8 : 16, maxWidth: 448, textAlign: 'center' }]}>
-          {preview?.customization.instructions
-            ? preview.customization.instructions
+          {preview?.instructions
+            ? preview.instructions
             : preview
               ? 'Add your wish list and Humbugg keeps the surprise safe until draw day.'
               : 'Sign in, add your wish list, and let Humbugg keep the surprise safe until draw day.'}

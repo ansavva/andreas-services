@@ -22,9 +22,12 @@ import type { GroupDetail } from '../types';
 export function ExchangeSettingsPanel({
   group,
   onSaved,
+  embedded = false,
 }: {
   group: GroupDetail;
   onSaved(group: GroupDetail): void;
+  /** Inside the Settings → Exchange card, as fields under its eyebrow rather than a card of its own. */
+  embedded?: boolean;
 }) {
   const { styles } = useTheme();
   const auth = useAuth();
@@ -70,11 +73,18 @@ export function ExchangeSettingsPanel({
     }
   }
 
+  const Frame = embedded ? View : Card;
   return (
-    <Card>
-      <Text style={styles.eyebrow}>Organizer</Text>
-      <Text style={[styles.heading, { marginTop: 4 }]}>Exchange details</Text>
-      <Text style={[styles.smallMuted, { marginTop: 8 }]}>
+    <Frame>
+      {embedded ? (
+        <Text style={[styles.small, styles.semibold]}>Details</Text>
+      ) : (
+        <>
+          <Text style={styles.eyebrow}>Organizer</Text>
+          <Text style={[styles.heading, { marginTop: 4 }]}>Exchange details</Text>
+        </>
+      )}
+      <Text style={[embedded ? styles.tiny : styles.smallMuted, { marginTop: embedded ? 4 : 8 }]}>
         Everyone who has joined sees these. Change them whenever you like — none of it affects the
         draw.
       </Text>
@@ -85,7 +95,7 @@ export function ExchangeSettingsPanel({
         `aria-label` on the control inside is silently ignored, so "(optional)" belongs in the label
         rather than sitting in a second, ineffective one.
       */}
-      <View style={{ marginTop: 24, gap: gap.md }}>
+      <View style={{ marginTop: embedded ? 16 : 24, gap: gap.md }}>
         <FieldLabel label="Exchange name">
           <Input maxLength={120} value={name} onValueChange={setName} />
         </FieldLabel>
@@ -97,7 +107,10 @@ export function ExchangeSettingsPanel({
             placeholder="The office exchange, back for another year."
           />
         </FieldLabel>
-        <FieldLabel label="How it works (optional)">
+        <FieldLabel
+          label="Instructions (optional)"
+          help="How this exchange works — where to bring it, when, what counts. Shown on the invitation and at the top of the exchange."
+        >
           <Textarea
             maxLength={2000}
             value={instructions}
@@ -140,7 +153,7 @@ export function ExchangeSettingsPanel({
           </Button>
         </View>
       </View>
-    </Card>
+    </Frame>
   );
 }
 
