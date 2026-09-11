@@ -431,7 +431,8 @@ internal sealed class GroupService(
         if (token is null || !CryptographicOperations.FixedTimeEquals(
             Encoding.UTF8.GetBytes(Hash(token)), Encoding.UTF8.GetBytes(group.InviteHash)))
             throw ApiException.Forbidden("This invitation is invalid or has expired.");
-        return new(group.GroupId, group.Name, group.Customization ?? new ExchangeCustomization());
+        var owner = await memberships.GetByUserAndGroupAsync(group.OwnerUserId, groupId, cancellationToken);
+        return new(group.GroupId, group.Name, group.Customization ?? new ExchangeCustomization(), owner?.DisplayName ?? "");
     }
 
     public async Task DeleteAsync(string groupId, CancellationToken cancellationToken = default)

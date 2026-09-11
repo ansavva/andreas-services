@@ -128,6 +128,7 @@ export default function OrganizeScreen({
 
   const { counts } = readiness;
   const drawn = readiness.status === 'drawn';
+  const atFreeCeiling = group.plan === 'free' && counts.participating >= group.participant_limit;
 
   return (
     <Shell>
@@ -185,6 +186,12 @@ export default function OrganizeScreen({
             total={counts.participating}
           />
         </StatRow>
+
+        {/* When Free is full, the thing the organizer came to find out is why nobody can join —
+            so the billing card leads, and drops back to the bottom once there is room again. */}
+        {group.is_owner && atFreeCeiling ? (
+          <PlusBillingPanel group={group} checkout={checkout} onEntitled={() => void load(true)} />
+        ) : null}
 
         <NudgePanel
           participants={readiness.participants}
@@ -249,7 +256,7 @@ export default function OrganizeScreen({
           The organizer's billing area (#141). Owner-only: `GET .../billing/plus` refuses a
           co-organizer, so a co-organizer would get a panel that could only show its own error.
         */}
-        {group.is_owner ? (
+        {group.is_owner && !atFreeCeiling ? (
           <PlusBillingPanel group={group} checkout={checkout} onEntitled={() => void load(true)} />
         ) : null}
 
