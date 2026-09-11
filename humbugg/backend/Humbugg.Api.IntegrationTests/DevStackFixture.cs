@@ -10,10 +10,11 @@ public sealed class DevStackCollection : ICollectionFixture<DevStackFixture>;
 
 /// <summary>
 /// The one connection to the per-machine dev stack. Reads the same
-/// <c>humbugg/backend/.env</c> that <c>dev-up-backend.sh</c> feeds the backend container, so
-/// the tests exercise the exact tables the local backend uses — real AWS, real GSIs, real
-/// marshalling, under the developer's own credentials. Nothing here ever points at prod:
-/// the .env is written by <c>dev-aws-setup.sh</c> from the machine-scoped Terraform outputs.
+/// <c>~/.config/andreas-services/humbugg/dev.env</c> that <c>dev-up-backend.sh</c> feeds the
+/// backend container, so the tests exercise the exact tables the local backend uses — real AWS,
+/// real GSIs, real marshalling, under the developer's own credentials. Nothing here ever points
+/// at prod: the file is written by <c>dev-aws-setup.sh</c> from the machine-scoped Terraform
+/// outputs.
 /// </summary>
 public sealed class DevStackFixture : IAsyncLifetime
 {
@@ -30,7 +31,7 @@ public sealed class DevStackFixture : IAsyncLifetime
         catch (InvalidOperationException error)
         {
             throw new InvalidOperationException(
-                "humbugg/backend/.env is missing a value the integration tier needs — it is probably " +
+                $"{DevEnv.Location} is missing a value the integration tier needs — it is probably " +
                 "stale. Re-run humbugg/scripts/dev-aws-setup.sh to refresh it from Terraform outputs. " +
                 $"Underlying error: {error.Message}", error);
         }
@@ -70,16 +71,32 @@ public sealed class DevStackFixture : IAsyncLifetime
 }
 
 /// <summary>
-/// Loads <c>humbugg/backend/.env</c> into the process environment — only the configuration the
+/// Loads the per-machine dev file into the process environment — only the configuration the
 /// settings record reads. Credential selection stays with the ambient environment (the
 /// default profile per the repo rule), so AWS_PROFILE and ASPNETCORE_* lines are skipped.
 /// Shared by the Data fixture and the HTTP fixture, which both need the app's own settings.
 /// </summary>
 internal static class DevEnv
 {
+    /// <summary>
+    /// <c>$XDG_CONFIG_HOME/andreas-services/humbugg/dev.env</c>, falling back to
+    /// <c>~/.config</c> — the same resolution as <c>scripts/dev-aws-common.sh</c>.
+    /// </summary>
+    public static string Location
+    {
+        get
+        {
+            var xdg = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
+            var configHome = string.IsNullOrWhiteSpace(xdg)
+                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config")
+                : xdg;
+            return Path.Combine(configHome, "andreas-services", "humbugg", "dev.env");
+        }
+    }
+
     public static void Apply()
     {
-        var envFile = Path.Combine(BackendDirectory(), ".env");
+        var envFile = Location;
         if (!File.Exists(envFile))
             throw new InvalidOperationException(
                 $"{envFile} not found. The integration tier runs against the per-machine dev " +
@@ -99,17 +116,6 @@ internal static class DevEnv
             // from silently pointing the suite somewhere else.
             Environment.SetEnvironmentVariable(key, value.Length == 0 ? null : value);
         }
-    }
-
-    private static string BackendDirectory()
-    {
-        // Walk up from the test assembly (bin/<config>/net10.0) to the directory holding the
-        // solution file — counted once here, the way studio's tests/paths.py counts once.
-        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
-        {
-            if (File.Exists(Path.Combine(dir.FullName, "Humbugg.slnx"))) return dir.FullName;
-        }
-        throw new InvalidOperationException("Could not locate humbugg/backend (no Humbugg.slnx above the test assembly).");
     }
 }
 

@@ -8,13 +8,10 @@
 // live-setup.mjs (tokens to seed the browser's token store in E2E_LIVE mode).
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import pkg from 'amazon-cognito-identity-js';
 
 const { CognitoUserPool, CognitoUser, AuthenticationDetails } = pkg;
-
-const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 function parseEnvFile(file) {
   const values = {};
@@ -28,26 +25,24 @@ function parseEnvFile(file) {
   return values;
 }
 
+// The one per-machine file: pool and client from dev-aws-setup.sh, account from
+// dev-user.sh. Same resolution as scripts/dev-aws-common.sh, XDG_CONFIG_HOME first.
+export const DEV_ENV_FILE = path.join(
+  process.env.XDG_CONFIG_HOME || path.join(homedir(), '.config'),
+  'andreas-services', 'humbugg', 'dev.env');
+
 export function devStackConfig() {
-  const backendEnv = path.join(HERE, '..', '..', '..', 'backend', '.env');
-  const devEnv = path.join(homedir(), '.config', 'andreas-services', 'humbugg', 'dev.env');
-  let backend;
-  let account;
+  let env;
   try {
-    backend = parseEnvFile(backendEnv);
+    env = parseEnvFile(DEV_ENV_FILE);
   } catch {
-    throw new Error(`${backendEnv} not found — run humbugg/scripts/dev-aws-setup.sh first.`);
-  }
-  try {
-    account = parseEnvFile(devEnv);
-  } catch {
-    throw new Error(`${devEnv} not found — run humbugg/scripts/dev-user.sh first.`);
+    throw new Error(`${DEV_ENV_FILE} not found — run humbugg/scripts/dev-aws-setup.sh, then dev-user.sh.`);
   }
   const config = {
-    userPoolId: backend.COGNITO_USER_POOL_ID,
-    clientId: backend.COGNITO_CLIENT_ID,
-    email: account.HUMBUGG_DEV_USER_EMAIL,
-    password: account.HUMBUGG_DEV_USER_PASSWORD,
+    userPoolId: env.COGNITO_USER_POOL_ID,
+    clientId: env.COGNITO_CLIENT_ID,
+    email: env.HUMBUGG_DEV_USER_EMAIL,
+    password: env.HUMBUGG_DEV_USER_PASSWORD,
   };
   for (const [key, value] of Object.entries(config)) {
     if (!value) throw new Error(`dev-stack config is missing ${key} — refresh with dev-aws-setup.sh / dev-user.sh.`);

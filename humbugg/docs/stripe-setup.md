@@ -129,21 +129,24 @@ The publishable key is also mirrored into `/humbugg/prod/stripe/publishable-key`
 
 No live key, real card, or payment method is ever required.
 
-1. Copy `humbugg/backend/.env.sample` to your local env file.
+1. Your env file is `~/.config/andreas-services/humbugg/dev.env` (written by
+   `dev-aws-setup.sh`; `humbugg/dev.env.sample` documents every key).
 2. To run **without** Stripe, keep `HUMBUGG_STRIPE_MODE=disabled` (default).
 3. To exercise billing locally, install the [Stripe CLI](https://stripe.com/docs/stripe-cli):
    ```bash
    stripe login                       # test-mode account
    ./humbugg/scripts/dev-up-stripe.sh
    ```
-   `stripe listen` prints a `whsec_...` webhook signing secret. Put the test-mode
-   values into your env file:
+   Put the test-mode values into `dev.env`:
    ```
    HUMBUGG_STRIPE_MODE=test
    HUMBUGG_STRIPE_PUBLISHABLE_KEY=pk_test_...   # from Dashboard (test mode)
    HUMBUGG_STRIPE_SECRET_KEY=sk_test_...        # from Dashboard (test mode)
-   HUMBUGG_STRIPE_WEBHOOK_SECRET=whsec_...       # from `stripe listen`
    ```
+   `dev-up.sh` fetches the `whsec_...` signing secret from the Stripe CLI and
+   writes `HUMBUGG_STRIPE_WEBHOOK_SECRET` itself. Only when running
+   `dev-up-stripe.sh` on its own do you copy the printed value in by hand and
+   restart the backend.
 4. Use Stripe's [test cards](https://stripe.com/docs/testing) (e.g. `4242 4242 4242 4242`)
    and `stripe trigger` fixtures for events. The backend's `StripeSettings`
    validation rejects any `sk_live_` / `pk_live_` / `rk_live_` credential, so a

@@ -3,8 +3,10 @@ services:
     build:
       context: .
       target: development
+    # The per-machine dev file, ~/.config/andreas-services/humbugg/dev.env;
+    # dev-up-backend.sh exports the path. Compose does not expand `~`.
     env_file:
-      - .env
+      - ${HUMBUGG_DEV_ENV_FILE:?run humbugg/scripts/dev-up-backend.sh}
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_HTTP_PORTS: "5001"

@@ -40,7 +40,7 @@ humbugg/scripts/dev-test-integration.sh
   with your local dev app; `dev-aws-reset.sh` is the blunt fallback, not the plan.
 - **Reads through a GSI go through `Eventually(...)`** — GSIs are eventually
   consistent, and a bare read-after-write assertion is a flake, not a test.
-- **Never point at prod.** Configuration comes only from `humbugg/backend/.env`,
+- **Never point at prod.** Configuration comes only from `~/.config/andreas-services/humbugg/dev.env`,
   which `dev-aws-setup.sh` writes from the machine-scoped Terraform outputs.
   `AWS_PROFILE` in that file is deliberately ignored; credentials come from the
   ambient default chain, same as the AWS CLI.

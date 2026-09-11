@@ -7,8 +7,9 @@ metadata, canonical URLs, robots, and sitemap support. Authenticated routes
 hydrate into the same React application in the browser.
 
 Run `../scripts/dev-aws-setup.sh` to provision this machine's Cognito pool and
-write `.env.local`, install dependencies with `npm install`, then start it with
-`../scripts/dev-up-marketing.sh`. Local `/api` and `/health` requests are
+write `~/.config/andreas-services/humbugg/dev.env`, install dependencies with
+`npm install`, then start it with `../scripts/dev-up-marketing.sh` — which exports
+the file's `VITE_*` values before Vite starts. Local `/api` and `/health` requests are
 proxied to the .NET API at `http://127.0.0.1:5001`; production uses the same
 public origin through CloudFront. `VITE_APP_BASE_URL` controls absolute metadata
 URLs during a build; production always builds it as `https://humbugg.com`.

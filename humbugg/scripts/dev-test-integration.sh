@@ -9,10 +9,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$SCRIPT_DIR/../backend"
+DEV_ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/andreas-services/humbugg/dev.env"
 
 # Preflight 1: the per-machine env file the tests read their table names from.
-if [[ ! -f "$BACKEND_DIR/.env" ]]; then
-  echo "error: $BACKEND_DIR/.env not found." >&2
+if [[ ! -f "$DEV_ENV_FILE" ]]; then
+  echo "error: $DEV_ENV_FILE not found." >&2
   echo "The integration tier runs against the per-machine dev stack." >&2
   echo "Provision it and write the env file with: humbugg/scripts/dev-aws-setup.sh" >&2
   exit 1
