@@ -100,26 +100,6 @@
       ],
       "port": 4174,
       "autoPort": false
-    },
-    {
-      "name": "storybook-backend",
-      "runtimeExecutable": "/bin/sh",
-      "runtimeArgs": [
-        "-c",
-        "exec ./storybook/scripts/dev-up.sh --backend"
-      ],
-      "port": 8003,
-      "autoPort": false
-    },
-    {
-      "name": "storybook-frontend",
-      "runtimeExecutable": "/bin/sh",
-      "runtimeArgs": [
-        "-c",
-        "exec ./storybook/scripts/dev-up.sh --frontend"
-      ],
-      "port": 5177,
-      "autoPort": false
     }
   ]
 }

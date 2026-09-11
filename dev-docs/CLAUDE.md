@@ -28,7 +28,6 @@ boto3.client('s3',
 
 See root `CLAUDE.md` for the full service index.
 
-- `storybook/` – AI portrait studio
 - `humbugg/` – Gift-exchange platform
 
 ## Shared Infrastructure

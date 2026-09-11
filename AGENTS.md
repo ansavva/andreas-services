@@ -97,7 +97,6 @@ same source, so if the CLI authenticates, Terraform does.
 
 | Directory | Purpose | Stack |
 |-----------|---------|-------|
-| `storybook/` | AI portrait studio | Flask + React/Vite/HeroUI + Lambda (Docker) + DynamoDB |
 | `humbugg/` | Gift-exchange platform | ASP.NET Core 10 (C# 14) + React/Vite (marketing, `www`) + Expo/Expo Router (product app, `app`) + Lambda (Docker) + DynamoDB |
 | `infra/` | Shared infrastructure | Terraform |
 
@@ -143,7 +142,7 @@ data "aws_route53_zone" "main" {
 - **Styling**: Tailwind CSS (v3 or v4) on Vite surfaces. Expo surfaces have **no
   Tailwind pipeline** — they use React Native `StyleSheet` and the design system's
   `ThemeProvider`.
-- **Language**: TypeScript preferred (Storybook uses strict mode)
+- **Language**: TypeScript preferred, strict mode
 - **Folder structure**:
   ```
   frontend/src/
@@ -157,7 +156,7 @@ data "aws_route53_zone" "main" {
   ```
 - **Environment variables**: `VITE_` prefix, set as GitHub Actions vars
 
-### Backend (Flask services — e.g. storybook)
+### Backend (Flask services — e.g. studio, website)
 - **Framework**: Flask with Blueprint-based routing
 - **Pattern**: routes → controllers → services → repositories
 - **Logging**: structured JSON (structlog or watchtower → CloudWatch)
@@ -304,9 +303,9 @@ boto3.client('s3', aws_access_key_id='AKIA...', aws_secret_access_key='...')
 
 1. Create `<service>/` directory — self-contained with own backend, frontend, infra
 2. Reference shared Terraform outputs (Route53 zone, ACM cert, VPC) — do not recreate them
-3. Add GitHub Actions workflows at `.github/workflows/<service>-<env>.yaml` following the storybook pattern:
+3. Add GitHub Actions workflows at `.github/workflows/<service>-<env>.yaml` following the humbugg pattern:
    - `<service>-pr.yml` — PR checks only (lint, test, Terraform validate, Docker build verification). No AWS writes.
-   - `<service>-prod.yaml` — single combined deploy (detect-changes → deploy-infra → deploy-backend + deploy-frontend), with `concurrency: { group: <service>-prod, cancel-in-progress: false }`, `workflow_dispatch` inputs `run_infra` and `run_app`, and a `workflow_run` trigger on `Shared infra · Terraform apply · Prod`.
+   - `<service>-prod.yaml` — single combined deploy (detect-changes → build-and-push → deploy-infra → update-lambda + deploy-frontend), with `concurrency: { group: <service>-prod, cancel-in-progress: false }`, `workflow_dispatch` inputs `run_infra` and `run_app`, and a `workflow_run` trigger on `Shared infra · Terraform apply · Prod`.
    Use path filtering, OIDC auth, and SSM params for cross-job values.
 4. Use Vite for the frontend (not CRA)
 5. Add TypeScript

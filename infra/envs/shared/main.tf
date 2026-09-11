@@ -158,7 +158,7 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     resources = ["*"]
   }
 
-  # ECR — storybook Docker image pushes
+  # ECR — Docker image pushes for every container Lambda
   statement {
     effect    = "Allow"
     actions   = ["ecr:*"]
@@ -242,14 +242,14 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     resources = ["*"]
   }
 
-  # Cognito — storybook auth (Terraform)
+  # Cognito — service user pools (Terraform)
   statement {
     effect    = "Allow"
     actions   = ["cognito-idp:*"]
     resources = ["*"]
   }
 
-  # SQS — storybook image queue (Terraform)
+  # SQS — service queues: studio callbacks and render, mailer DLQ (Terraform)
   statement {
     effect    = "Allow"
     actions   = ["sqs:*"]
@@ -332,7 +332,6 @@ data "aws_iam_policy_document" "github_actions_permissions" {
       "ssm:RemoveTagsFromResource",
     ]
     resources = [
-      "arn:aws:ssm:*:*:parameter/storybook/*",
       "arn:aws:ssm:*:*:parameter/humbugg/*",
       "arn:aws:ssm:*:*:parameter/mailer/*",
       "arn:aws:ssm:*:*:parameter/website/*",

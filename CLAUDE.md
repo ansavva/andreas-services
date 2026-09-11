@@ -140,7 +140,6 @@ in both, by design.
 
 | Directory | Purpose | Stack |
 |-----------|---------|-------|
-| `storybook/` | AI portrait studio | Flask + React/Vite/HeroUI + Lambda (Docker) + DynamoDB |
 | `humbugg/` | Gift-exchange platform | ASP.NET Core 10 (C# 14) + React/Vite (marketing, `www`) + Expo/Expo Router (product app, `app`) + Lambda (Docker) + DynamoDB |
 | `studio/` | AI media generation pipeline **and** a browser over its output | Claude Code skills (local, `uv`) + Flask + React/Vite/TS + Lambda (Docker) + Cognito + **DynamoDB** (`studio-prod-catalog`, single-table: characters, projects, runs, scenes, movies and the node tree; three GSIs) + S3 |
 | `infra/` | Shared infrastructure | Terraform |
@@ -212,7 +211,6 @@ names.
 | `classroom/` | 8001 | 5174 | |
 | `website/` | 8002 | 5175 | prod build served on 3000 |
 | `humbugg/` | 5001 (Docker), 5050/5051 (`dotnet run`) | marketing 5176 · app (Expo web) 8081 | app stubbed e2e 4174 · Mailpit 8025 |
-| `storybook/` | 8003 | 5177 | DynamoDB Local 8004 |
 
 Vite is `strictPort` everywhere: a silent hop to the next free port lands on
 one the service's Cognito pool has no callback for, and the sign-in fails a
@@ -222,7 +220,7 @@ exist) is what studio's fallbacks are for; every other service says which
 port is taken and stops.
 
 Every `docker-compose.yml` sets top-level `name:` to its service (`humbugg`,
-`storybook`, …). Without it Compose names the project after the directory,
+`website`, …). Without it Compose names the project after the directory,
 and every service keeps its compose file in `backend/`, so `docker ps` showed
 `backend-backend-1` with nothing saying which app it was.
 
@@ -268,7 +266,7 @@ data "aws_route53_zone" "main" {
 - **Styling**: Tailwind CSS (v3 or v4) on Vite surfaces. Expo surfaces have **no
   Tailwind pipeline** — they use React Native `StyleSheet` and the design system's
   `ThemeProvider`.
-- **Language**: TypeScript preferred (Storybook uses strict mode)
+- **Language**: TypeScript preferred, strict mode
 - **Folder structure**:
   ```
   frontend/src/
@@ -282,7 +280,7 @@ data "aws_route53_zone" "main" {
   ```
 - **Environment variables**: `VITE_` prefix, set as GitHub Actions vars
 
-### Backend (Flask services — e.g. storybook)
+### Backend (Flask services — e.g. studio, website)
 - **Framework**: Flask with Blueprint-based routing
 - **Pattern**: routes → controllers → services → repositories
 - **Logging**: structured JSON (structlog or watchtower → CloudWatch)
@@ -429,9 +427,9 @@ boto3.client('s3', aws_access_key_id='AKIA...', aws_secret_access_key='...')
 
 1. Create `<service>/` directory — self-contained with own backend, frontend, infra
 2. Reference shared Terraform outputs (Route53 zone, ACM cert, VPC) — do not recreate them
-3. Add GitHub Actions workflows at `.github/workflows/<service>-<env>.yaml` following the storybook pattern:
+3. Add GitHub Actions workflows at `.github/workflows/<service>-<env>.yaml` following the humbugg pattern:
    - `<service>-pr.yml` — PR checks only (lint, test, Terraform validate, Docker build verification). No AWS writes.
-   - `<service>-prod.yaml` — single combined deploy (detect-changes → deploy-infra → deploy-backend + deploy-frontend), with `concurrency: { group: <service>-prod, cancel-in-progress: false }`, `workflow_dispatch` inputs `run_infra` and `run_app`, and a `workflow_run` trigger on `Shared infra · Terraform apply · Prod`.
+   - `<service>-prod.yaml` — single combined deploy (detect-changes → build-and-push → deploy-infra → update-lambda + deploy-frontend), with `concurrency: { group: <service>-prod, cancel-in-progress: false }`, `workflow_dispatch` inputs `run_infra` and `run_app`, and a `workflow_run` trigger on `Shared infra · Terraform apply · Prod`.
    Use path filtering, OIDC auth, and SSM params for cross-job values.
 4. **Add `arn:aws:ssm:*:*:parameter/<service>/*` to the SSM statement in
    `infra/envs/shared/main.tf`.** It is the only resource-scoped statement in the
