@@ -106,7 +106,7 @@
       "runtimeExecutable": "/bin/sh",
       "runtimeArgs": [
         "-c",
-        "cd storybook/backend && exec poetry run python -m storybook_core.handlers.local.api.api_dev_server"
+        "exec ./storybook/scripts/dev-up.sh --backend"
       ],
       "port": 8003,
       "autoPort": false
@@ -116,7 +116,7 @@
       "runtimeExecutable": "/bin/sh",
       "runtimeArgs": [
         "-c",
-        "exec npm --prefix storybook/frontend/storybook-ui run dev"
+        "exec ./storybook/scripts/dev-up.sh --frontend"
       ],
       "port": 5177,
       "autoPort": false

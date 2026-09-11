@@ -21,36 +21,38 @@ Install the required tooling (Homebrew commands shown for macOS):
 To run locally:
 
 ```bash
-# Run backend
-cd backend
-poetry install
-docker compose up dynamodb
-python -m storybook_core.handlers.local.api.api_dev_server
+(cd backend && poetry install)
+./scripts/dev-up.sh --backend       # DynamoDB Local :8004 + API :8003
 ```
 
 The local backend writes to DynamoDB Local on `localhost:8004` and creates the
-`storybook-*` tables on startup. Copy `.env.example` to `.env` for non-DynamoDB
-values.
+`storybook-*` tables on startup.
+
+**Every local value lives in one file, `~/.config/andreas-services/storybook/dev.env`**,
+documented key by key in [`dev.env.sample`](dev.env.sample). `dev-up.sh` lays it
+out from the sample on every run — your values kept, new keys slotted in — and
+exports every key into each process (Vite inlines only `VITE_*`). There is no
+`backend/.env` or `frontend/storybook-ui/.env.local`. `STORYBOOK_DEV_ENV_FILE`
+overrides the location.
 
 ## Run Image Worker Locally
 
-The image processor runs as a local SQS poller. You must set the queue URL.
+The image processor runs as a local SQS poller. Set `IMAGE_UPLOAD_QUEUE_URL` in
+`dev.env`, then:
 
 ```bash
-cd backend
-source venv/bin/activate
-python -m storybook_core.handlers.local.jobs.poll_image_normalization_handler
+./scripts/dev-up.sh --worker
 ```
 
 ## Run Frontend Locally
 
 ```bash
-cd frontend/storybook-ui
-npm install
-npm run dev
+npm --prefix frontend/storybook-ui install
+./scripts/dev-up.sh --frontend      # Vite on :5177, VITE_* from dev.env
 ```
 
-For local development, copy `.env.local.example` to `.env.local` and fill in the values from Terraform outputs.
+Fill the `VITE_AWS_COGNITO_*` keys in `dev.env` from the Terraform outputs of a
+dev apply.
 
 ## Deployment
 

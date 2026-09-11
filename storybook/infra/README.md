@@ -74,7 +74,7 @@ cd envs/dev
 terraform init
 terraform plan
 terraform apply
-terraform output  # Copy values to local .env files
+terraform output  # Copy the Cognito values into ~/.config/andreas-services/storybook/dev.env
 ```
 
 ### Deploy Production
@@ -256,7 +256,7 @@ Lock files are per-environment. Run `terraform init -upgrade` if needed.
 
 After deploying dev:
 1. Run `terraform output`
-2. Copy Cognito values to local `.env` files
+2. Copy Cognito values into `~/.config/andreas-services/storybook/dev.env` (see `storybook/dev.env.sample`)
 3. Start local backend and frontend
 4. Test authentication against dev Cognito pool
 

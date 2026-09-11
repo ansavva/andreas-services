@@ -57,24 +57,24 @@ A single Route53 A-alias record for `storybook.andreas.services` is added by the
 
 ```bash
 # Backend (writes to DynamoDB Local on :8004)
-cd storybook/backend
-poetry install
-docker compose up dynamodb
-python -m storybook_core.handlers.local.api.api_dev_server
+(cd storybook/backend && poetry install)
+./storybook/scripts/dev-up.sh --backend   # DynamoDB Local :8004 + API :8003
 
-# Image worker (SQS poller loop against the real prod queue URL)
-python -m storybook_core.handlers.local.jobs.poll_image_normalization_handler
+# Image worker (SQS poller loop; IMAGE_UPLOAD_QUEUE_URL from dev.env)
+./storybook/scripts/dev-up.sh --worker
 
 # Frontend
-cd storybook/frontend/storybook-ui
-npm install --legacy-peer-deps
-npm run dev
+npm --prefix storybook/frontend/storybook-ui install --legacy-peer-deps
+./storybook/scripts/dev-up.sh --frontend  # :5177
 ```
 
 The local API server creates the `storybook-*` tables in DynamoDB Local on
-startup. Unit tests should keep mocking AWS integrations. Copy
-`backend/.env.example → backend/.env` and
-`frontend/storybook-ui/.env.local.example → .env.local` for non-DynamoDB values.
+startup. Unit tests should keep mocking AWS integrations. Every local value
+lives in `~/.config/andreas-services/storybook/dev.env` (see
+[`dev.env.sample`](dev.env.sample)); `scripts/dev-up.sh` lays it out from the
+sample, exports every key, and starts DynamoDB Local + API + Vite, or one of
+them with `--backend` / `--frontend` / `--worker`. No `backend/.env`, no
+`frontend/storybook-ui/.env.local`.
 
 ## Environment Variables (Prod)
 
