@@ -274,7 +274,7 @@ internal sealed class AwsLambdaStripeWebhookConsumer(
             CognitoUserPoolId: "unused",
             CognitoClientId: "unused",
             CorsOrigins: [],
-            AppBaseUrl: "http://localhost:5176",
+            AppBaseUrl: "http://localhost:8081",
             DynamoDbEndpointUrl: Environment.GetEnvironmentVariable("DYNAMODB_ENDPOINT_URL"),
             ProfilesTable: unused,
             GroupsTable: required("HUMBUGG_GROUPS_TABLE"),

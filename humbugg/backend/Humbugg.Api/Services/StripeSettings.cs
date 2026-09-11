@@ -61,7 +61,7 @@ public sealed record StripeSettings
         string? secretKey,
         string? webhookSecret,
         string environment = "local",
-        string returnBaseUrl = "http://localhost:5176")
+        string returnBaseUrl = "http://localhost:8081")
     {
         var settings = new StripeSettings(
             ParseMode(mode),
@@ -69,7 +69,7 @@ public sealed record StripeSettings
             Clean(secretKey),
             Clean(webhookSecret),
             string.IsNullOrWhiteSpace(environment) ? "local" : environment.Trim(),
-            string.IsNullOrWhiteSpace(returnBaseUrl) ? "http://localhost:5176" : returnBaseUrl.Trim());
+            string.IsNullOrWhiteSpace(returnBaseUrl) ? "http://localhost:8081" : returnBaseUrl.Trim());
         settings.Validate();
         return settings;
     }
@@ -80,7 +80,7 @@ public sealed record StripeSettings
         System.Environment.GetEnvironmentVariable("HUMBUGG_STRIPE_SECRET_KEY"),
         System.Environment.GetEnvironmentVariable("HUMBUGG_STRIPE_WEBHOOK_SECRET"),
         System.Environment.GetEnvironmentVariable("HUMBUGG_ENVIRONMENT") ?? "local",
-        System.Environment.GetEnvironmentVariable("APP_BASE_URL") ?? "http://localhost:5176");
+        System.Environment.GetEnvironmentVariable("APP_BASE_URL") ?? "http://localhost:8081");
 
     private static StripeMode ParseMode(string? raw) => raw?.Trim().ToLowerInvariant() switch
     {

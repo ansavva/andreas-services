@@ -52,7 +52,13 @@
     "customization and late participants can be tried without buying",
     "anything by hand. Lower HUMBUGG_FREE_PARTICIPANT_LIMIT and the fixture",
     "still loads — the seeder refuses, naming the participant that would",
-    "not fit, rather than seeding an exchange that is silently short."
+    "not fit, rather than seeding an exchange that is silently short.",
+    "",
+    "The names and descriptions read as an organizer wrote them, not as",
+    "notes to a tester: a participant sees them at the top of their",
+    "exchange, and 'Free — full house' told Spare Test about a plan they",
+    "had not heard of. The handle carries the test's purpose; the name",
+    "does not have to."
   ],
   "people": [
     {
@@ -77,16 +83,16 @@
   "exchanges": [
     {
       "handle": "free-full",
-      "name": "Free — full house",
-      "description": "Seeded to the Free ceiling. One more joiner is refused.",
+      "name": "Family Christmas",
+      "description": "Wrapped and under the tree by Christmas Eve. One gift each, no peeking.",
       "organizer": "organizer",
       "plan": "free",
       "participants": ["p1", "p2", "p3", "p4", "p5"]
     },
     {
       "handle": "plus-exchange",
-      "name": "Plus — office exchange",
-      "description": "Seeded on Plus, bought through Stripe test mode.",
+      "name": "Office Secret Santa",
+      "description": "Friday lunch, wrapped, no names on the label.",
       "organizer": "organizer",
       "plan": "plus",
       "participants": ["p1", "p2"]
