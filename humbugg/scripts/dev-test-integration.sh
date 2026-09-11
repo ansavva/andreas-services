@@ -9,7 +9,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$SCRIPT_DIR/../backend"
-DEV_ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/andreas-services/humbugg/dev.env"
+DEV_ENV_FILE="${HUMBUGG_DEV_ENV_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/andreas-services/humbugg/dev.env}"
 
 # Preflight 1: the per-machine env file the tests read their table names from.
 if [[ ! -f "$DEV_ENV_FILE" ]]; then

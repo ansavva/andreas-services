@@ -194,11 +194,13 @@ terraform_output_json() {
 # `dev-aws-setup.sh` writes the generated keys; a hand-set key (a Stripe secret,
 # a plan limit) is left alone by every script that touches the file, because
 # `upsert_env` rewrites only the key it is given.
-DEV_ENV_FILE="$CONFIG_DIR/dev.env"
-# backend/docker-compose.yml takes the file as its `env_file` through this
-# variable, because Compose resolves relative paths against the compose file
-# and does not expand `~`. Exported here so every script that drives Compose —
-# up, logs, reset — has it.
+#
+# `HUMBUGG_DEV_ENV_FILE` overrides the location, and every reader honours it —
+# these scripts, backend/docker-compose.yml (which needs an absolute path,
+# because Compose resolves relative ones against the compose file and does not
+# expand `~`), the integration fixture and the e2e session helper. Exported so
+# every script that drives Compose — up, logs, reset — has it.
+DEV_ENV_FILE="${HUMBUGG_DEV_ENV_FILE:-$CONFIG_DIR/dev.env}"
 export HUMBUGG_DEV_ENV_FILE="$DEV_ENV_FILE"
 
 # Rewrite exactly one key, creating the file (mode 600) if needed. Comments

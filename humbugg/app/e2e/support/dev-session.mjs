@@ -26,8 +26,9 @@ function parseEnvFile(file) {
 }
 
 // The one per-machine file: pool and client from dev-aws-setup.sh, account from
-// dev-user.sh. Same resolution as scripts/dev-aws-common.sh, XDG_CONFIG_HOME first.
-export const DEV_ENV_FILE = path.join(
+// dev-user.sh. Same resolution as scripts/dev-aws-common.sh: HUMBUGG_DEV_ENV_FILE
+// if set, else $XDG_CONFIG_HOME/andreas-services/humbugg/dev.env, else ~/.config.
+export const DEV_ENV_FILE = process.env.HUMBUGG_DEV_ENV_FILE || path.join(
   process.env.XDG_CONFIG_HOME || path.join(homedir(), '.config'),
   'andreas-services', 'humbugg', 'dev.env');
 

@@ -79,13 +79,15 @@ public sealed class DevStackFixture : IAsyncLifetime
 internal static class DevEnv
 {
     /// <summary>
-    /// <c>$XDG_CONFIG_HOME/andreas-services/humbugg/dev.env</c>, falling back to
-    /// <c>~/.config</c> — the same resolution as <c>scripts/dev-aws-common.sh</c>.
+    /// <c>HUMBUGG_DEV_ENV_FILE</c> if set, else <c>$XDG_CONFIG_HOME/andreas-services/humbugg/dev.env</c>,
+    /// falling back to <c>~/.config</c> — the same resolution as <c>scripts/dev-aws-common.sh</c>.
     /// </summary>
     public static string Location
     {
         get
         {
+            var explicitPath = Environment.GetEnvironmentVariable("HUMBUGG_DEV_ENV_FILE");
+            if (!string.IsNullOrWhiteSpace(explicitPath)) return explicitPath;
             var xdg = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
             var configHome = string.IsNullOrWhiteSpace(xdg)
                 ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config")
