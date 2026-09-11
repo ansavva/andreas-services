@@ -17,6 +17,8 @@ public sealed record InvitationEmail(
 /// <summary>Contains the application data needed to render an exchange reminder.</summary>
 /// <remarks><see cref="RecipientUserId"/> is the recipient's Humbugg account id, used to honor their
 /// non-essential email opt-out. Reminders are non-essential.</remarks>
+/// <para><see cref="IsInvitee"/> says the recipient has not joined yet: <see cref="ExchangeUrl"/> is then
+/// their invitation link, and the footer says so rather than calling them a participant.</para>
 public sealed record ReminderEmail(
     string EventId,
     string ToAddress,
@@ -25,7 +27,9 @@ public sealed record ReminderEmail(
     string Reminder,
     Uri ExchangeUrl,
     string? RecipientUserId = null,
-    ExchangeCustomization? Customization = null);
+    ExchangeCustomization? Customization = null,
+    string ActionLabel = "Open the exchange",
+    bool IsInvitee = false);
 
 /// <summary>Contains the application data needed to announce a completed draw.</summary>
 public sealed record DrawCompletedEmail(
@@ -145,10 +149,12 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
             "Reminder",
             input.RecipientName,
             Text(input.Reminder),
-            "Open the exchange",
+            Text(input.ActionLabel),
             input.ExchangeUrl,
-            null,
-            $"You're receiving this because {exchange} on Humbugg has reminders turned on.",
+            input.IsInvitee ? "This link is yours alone: it signs you into this exchange and nobody else's." : null,
+            input.IsInvitee
+                ? $"You're receiving this because you were invited to {exchange} on Humbugg and have not joined yet."
+                : $"You're receiving this because you're part of {exchange} on Humbugg and it has reminders turned on.",
             input.RecipientUserId,
             input.Customization);
     }
