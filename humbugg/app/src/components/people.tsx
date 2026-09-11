@@ -16,7 +16,7 @@
 //
 // Everything a row SHOWS is a read of state the server computed: readiness per dimension, and the
 // invitation's delivery status. Nothing here decides who is ready.
-import { Badge, Button, Dropdown, IconButton, Textarea, Toggle, ToggleGroup } from '@ansavva/design-system';
+import { Badge, Button, Drawer, Dropdown, IconButton, Textarea, Toggle, ToggleGroup } from '@ansavva/design-system';
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
@@ -79,7 +79,9 @@ export function PeoplePanel({
   onNeedsPlus(): void;
   onAddLate(person: ParticipantReadiness): void;
 }) {
-  const { styles } = useTheme();
+  const theme = useTheme();
+  const { styles } = theme;
+  const scoped = localStyles(theme);
   const auth = useAuth();
   const { width } = useWindowDimensions();
   // Under 640px the badges go under the name instead of beside it; three chips beside a name on a
@@ -186,24 +188,42 @@ export function PeoplePanel({
               : `${readiness.counts.members} ${readiness.counts.members === 1 ? 'person' : 'people'}${open.length > 0 ? `, ${open.length} invited` : ''}`}
           </Text>
         </View>
-        <Button intent="secondary" size="sm" onPress={() => setInviting((current) => !current)}>
-          {inviting ? 'Done inviting' : 'Invite by email'}
+        <Button intent="secondary" size="sm" onPress={() => setInviting(true)}>
+          Invite by email
         </Button>
       </View>
 
-      {inviting ? (
-        invitationsLocked ? (
-          <View style={{ marginTop: 20 }}>
-            <PlusLockedNote
-              reason="Sending and tracking invitations is part of Plus."
-              action="invite people by email and see who has not answered"
-              isOwner={group.is_owner}
+      {/* The address box is a drawer over the list rather than a form unfolding inside it: the list
+          is the thing on this tab, and inviting is a task with a beginning and an end. On Free the
+          drawer holds the Plus note — shown only once somebody asked, because a locked notice above
+          an untouched roster is an advert rather than an answer. */}
+      <Drawer.Root open={inviting} onOpenChange={setInviting} side="right">
+        <Drawer.Panel accessibilityLabel="Invite by email" style={scoped.drawer}>
+          <Drawer.Title>Invite by email</Drawer.Title>
+          {invitationsLocked ? (
+            <View style={{ marginTop: 16 }}>
+              <PlusLockedNote
+                reason="Sending and tracking invitations is part of Plus."
+                action="invite people by email and see who has not answered"
+                isOwner={group.is_owner}
+              />
+            </View>
+          ) : (
+            <InviteByEmail
+              group={group}
+              onSent={(said) => {
+                setInviting(false);
+                setNotice(said);
+                void loadInvitations();
+                onChanged();
+              }}
             />
+          )}
+          <View style={{ marginTop: 20, alignSelf: 'flex-start' }}>
+            <Drawer.Close>Close</Drawer.Close>
           </View>
-        ) : (
-          <InviteByEmail group={group} onSent={(said) => { setNotice(said); void loadInvitations(); onChanged(); }} />
-        )
-      ) : null}
+        </Drawer.Panel>
+      </Drawer.Root>
 
       <View style={{ marginTop: 20 }}>
         <StatusMessage message={error ?? invitationsError} />
@@ -255,9 +275,10 @@ export function PeoplePanel({
                 )}
               </View>
             ) : null;
-            const menu = (
+            const menu = (onOpenChange: (open: boolean) => void) => (
               <RowMenu
                 label={`Actions for ${person.display_name}`}
+                onOpenChange={onOpenChange}
                 disabled={busy !== null}
                 items={[
                   // A late participant is a member who is NOT participating — the backend's own
@@ -303,9 +324,10 @@ export function PeoplePanel({
                   </Badge>
                 </View>
               }
-              menu={
+              menu={(onOpenChange) => (
                 <RowMenu
                   label={`Actions for ${invitation.email}`}
+                  onOpenChange={onOpenChange}
                   disabled={busy !== null}
                   items={[
                     { label: 'Send again', onSelect: () => void act(invitation, 'resend') },
@@ -313,7 +335,7 @@ export function PeoplePanel({
                     { label: 'Withdraw', onSelect: () => void act(invitation, 'revoke'), destructive: true },
                   ]}
                 />
-              }
+              )}
             >
               <View style={styles.avatarChip}>
                 <Text style={styles.avatarChipText}>@</Text>
@@ -345,23 +367,28 @@ function PersonRow({
   label: string;
   stacked: boolean;
   chips: React.ReactNode;
-  menu: React.ReactNode;
+  /** A render prop, so the row learns when its menu opens and can rise above the rows below. */
+  menu: (onOpenChange: (open: boolean) => void) => React.ReactNode;
   children: React.ReactNode;
 }) {
   const { styles } = useTheme();
+  // Every row is its own stacking context, and later siblings paint on top: a menu that opened
+  // downwards disappeared behind the next two rows. The open row goes to the front.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const raised = menuOpen ? { zIndex: 30 } : undefined;
   if (!stacked)
     return (
-      <View accessibilityLabel={label} style={styles.memberRow}>
+      <View accessibilityLabel={label} style={[styles.memberRow, raised]}>
         <View style={local.rowIdentity}>{children}</View>
         {chips}
-        {menu}
+        {menu(setMenuOpen)}
       </View>
     );
   return (
-    <View accessibilityLabel={label} style={[styles.memberRow, local.rowStacked]}>
+    <View accessibilityLabel={label} style={[styles.memberRow, local.rowStacked, raised]}>
       <View style={[local.rowIdentity, { alignSelf: 'stretch' }]}>
         {children}
-        {menu}
+        {menu(setMenuOpen)}
       </View>
       {chips}
     </View>
@@ -398,7 +425,7 @@ function InviteByEmail({ group, onSent }: { group: GroupDetail; onSent(said: str
   }
 
   return (
-    <View style={{ marginTop: 20, gap: gap.md }}>
+    <View style={{ marginTop: 12, gap: gap.md }}>
       <Text style={styles.smallMuted}>
         Humbugg sends each one and tells you what happened to it. They join by following their own
         link, so you never have to pass one on.
@@ -435,14 +462,23 @@ function RowMenu({
   label,
   items,
   disabled,
+  onOpenChange,
 }: {
   label: string;
   items: { label: string; onSelect(): void; destructive?: boolean }[];
   disabled: boolean;
+  onOpenChange?(open: boolean): void;
 }) {
   const { styles } = useTheme();
   const local = localStyles(useTheme());
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(false);
+  const setOpen = (next: boolean | ((current: boolean) => boolean)) => {
+    setOpenState((current) => {
+      const value = typeof next === 'function' ? next(current) : next;
+      onOpenChange?.(value);
+      return value;
+    });
+  };
   if (items.length === 0) return null;
   return (
     <>
@@ -529,4 +565,6 @@ const localStyles = scopedStyles((t) => ({
   backdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 10 },
   anchorRight: { right: 0, left: 'auto' },
   ellipsis: { color: t.brand.ink, fontSize: 18, lineHeight: 18, fontWeight: '700' },
+  // Wide enough for an address per line, no wider than a phone.
+  drawer: { maxWidth: 480, width: '100%' },
 }));

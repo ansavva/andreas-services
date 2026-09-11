@@ -181,10 +181,11 @@ test('every Plus capability offers Plus on a Free exchange instead of failing', 
 
   await page.goto(`/organize/${group.group_id}`);
 
-  // People: the invite form is behind its button, and on Free the button opens the offer.
-  await page.getByText('Invite by email', { exact: true }).click();
+  // People: inviting is a drawer, and on Free the drawer holds the offer instead of the form.
+  await page.getByRole('button', { name: 'Invite by email' }).click();
   await expect(page.getByText('Sending and tracking invitations is part of Plus.')).toBeVisible();
   await expect(page.getByLabel('Email addresses')).toBeHidden();
+  await page.getByText('Close', { exact: true }).click();
 
   // Settings: each section says what Plus would add, and hides the form that could only fail.
   await page.getByRole('tab', { name: 'Settings' }).click();
