@@ -15,7 +15,7 @@ public sealed class GroupRepositoryTests(DevStackFixture stack) : DevStackTest(s
         EventDate: "2026-12-24", SignupDeadline: null, SpendingLimitCents: 2500,
         Currency: "USD", Plan: PlanCode.Free, EntitlementId: null, Status: GroupStatus.Open,
         InviteHash: "hash", Exclusions: [["a", "b"]], CreatedAt: Now(), UpdatedAt: Now(),
-        Customization: new ExchangeCustomization("Ho ho", "Wrap it", "#112233", "#445566"));
+        Customization: new ExchangeCustomization("Ho ho", "Wrap it"));
 
     private string TrackGroup()
     {
@@ -46,7 +46,7 @@ public sealed class GroupRepositoryTests(DevStackFixture stack) : DevStackTest(s
         Assert.Equal([["a", "b"]], fetched.Exclusions);
         Assert.NotNull(fetched.Customization);
         Assert.Equal("Ho ho", fetched.Customization.Greeting);
-        Assert.Equal("#112233", fetched.Customization.PrimaryColor);
+        Assert.Equal("Wrap it", fetched.Customization.Instructions);
     }
 
     [IntegrationFact]

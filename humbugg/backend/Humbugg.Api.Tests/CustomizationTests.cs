@@ -11,19 +11,18 @@ public sealed class CustomizationTests
     [InlineData("<script>alert(1)</script>", "")]
     [InlineData("Welcome", "https://evil.example")]
     public void RejectsMarkupAndLinks(string greeting, string instructions) =>
-        Assert.Throws<ApiException>(() => CustomizationValidation.Validate(
-            new(greeting, instructions, "#112233", "#AABBCC", null)));
+        Assert.Throws<ApiException>(() => CustomizationValidation.Validate(new(greeting, instructions)));
 
-    [Theory]
-    [InlineData("red")]
-    [InlineData("#12345G")]
-    public void RejectsArbitraryStyling(string color) =>
-        Assert.Throws<ApiException>(() => CustomizationValidation.Validate(new("", "", color, "#AABBCC", null)));
-
+    // Words only since #677. The colours and the banner are gone from the record, so there is no
+    // longer a styling input to reject; what is pinned here is that the record stays two strings —
+    // a colour or an image creeping back in is a decision, not a field.
     [Fact]
-    public void RejectsNonImagePayload() =>
-        Assert.Throws<ApiException>(() => CustomizationValidation.Validate(
-            new("", "", "#112233", "#AABBCC", Convert.ToBase64String("not an image"u8.ToArray()))));
+    public void CustomizationIsGreetingAndInstructionsOnly()
+    {
+        var saved = CustomizationValidation.Validate(new(" Welcome ", " Bring it wrapped. "));
+        Assert.Equal(new ExchangeCustomization("Welcome", "Bring it wrapped."), saved);
+        Assert.Equal(2, typeof(ExchangeCustomization).GetProperties().Length);
+    }
 
     [Fact]
     public void IncompleteCustomizationKeepsReadableHumbuggDisclosure()

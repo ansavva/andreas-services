@@ -1,7 +1,7 @@
 // Reusable exchange templates (#574) — save a setup once, start next year's from it.
 //
 // **Applying a template REWRITES the exchange it is applied to.** Name, description, both dates,
-// greeting, instructions, colours, banner, reminder settings and (when the template says so)
+// greeting, instructions, reminder settings and (when the template says so)
 // exclusions are all overwritten, and the selected prior participants are sent invitations. That is
 // the backend's behaviour, not a choice made here — `ApplyAsync` calls `UpdateAsync`,
 // `UpdateCustomizationAsync`, `SetExclusionsAsync`, `reminders.UpdateAsync` and `CreateAsync` in
@@ -136,7 +136,7 @@ export function TemplatesPanel({
       <View style={{ marginTop: 24, gap: gap.md }}>
         <FieldLabel
           label="Save this exchange as a template"
-          help="Its name, description, deadline, colours, instructions, reminder settings — and who took part, so you can invite them again."
+          help="Its name, description, deadline, greeting, instructions, reminder settings — and who took part, so you can invite them again."
         >
           <Input
             maxLength={100}
@@ -172,7 +172,7 @@ export function TemplatesPanel({
                 <Text style={[styles.small, styles.semibold]}>This replaces what is here now</Text>
                 <Text style={[styles.tiny, { marginTop: 4 }]}>
                   “{group.name}” becomes “{template.exchange_name}”, and its description, dates,
-                  greeting, instructions, colours and reminder settings are replaced by the
+                  greeting, instructions and reminder settings are replaced by the
                   template’s
                   {template.exclusions_policy === 'none' ? ', and its exclusions are cleared' : ''}.
                   Nothing anybody wrote — wishlists, addresses, messages — is touched.

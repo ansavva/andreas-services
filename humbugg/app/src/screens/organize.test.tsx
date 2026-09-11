@@ -211,13 +211,7 @@ beforeEach(() => {
     name: 'Office Secret Santa',
     plan: 'plus',
     is_owner: true,
-    customization: {
-      greeting: 'Welcome',
-      instructions: '',
-      primary_color: '#7C2D12',
-      accent_color: '#F59E0B',
-      image_data_url: null,
-    },
+    customization: { greeting: 'Welcome', instructions: '' },
   });
 });
 
@@ -899,20 +893,16 @@ describe('scheduled reminders', () => {
 describe('exchange customization', () => {
   it('sends the greeting on the field name the API takes', async () => {
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => expect(screen.getByText('How this exchange looks')).toBeOnTheScreen());
+    await waitFor(() => expect(screen.getByText('Your words on the exchange')).toBeOnTheScreen());
 
     fireEvent.changeText(screen.getByLabelText('Greeting'), 'Welcome to the Holly Jolly Crew');
-    fireEvent.press(screen.getByText('Save how it looks'));
+    fireEvent.press(screen.getByText('Save your words'));
 
-    // `image`, not `image_data_url`. The response uses the other name, and sending it back saves
-    // nothing while looking exactly like a picker that failed.
+    // Exactly the two fields, since #677 — a colour or an image reappearing here is a decision.
     await waitFor(() =>
       expect(mocks.updateCustomization).toHaveBeenCalledWith('token', 'group-1', {
         greeting: 'Welcome to the Holly Jolly Crew',
         instructions: '',
-        primary_color: '#7C2D12',
-        accent_color: '#F59E0B',
-        image: '',
       }),
     );
   });
@@ -923,23 +913,14 @@ describe('exchange customization', () => {
     );
 
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => expect(screen.getByText('How this exchange looks')).toBeOnTheScreen());
+    await waitFor(() => expect(screen.getByText('Your words on the exchange')).toBeOnTheScreen());
 
     fireEvent.changeText(screen.getByLabelText('Greeting'), '<b>hi</b>');
-    fireEvent.press(screen.getByText('Save how it looks'));
+    fireEvent.press(screen.getByText('Save your words'));
 
     await waitFor(() =>
       expect(screen.getByText('greeting cannot contain HTML or links.')).toBeOnTheScreen(),
     );
-  });
-
-  it('says a half-typed colour is not one yet, rather than painting a swatch of nothing', async () => {
-    render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => expect(screen.getByText('How this exchange looks')).toBeOnTheScreen());
-
-    fireEvent.changeText(screen.getByLabelText('Main colour'), '#7C2D');
-
-    await waitFor(() => expect(screen.getByText('Not a colour yet')).toBeOnTheScreen());
   });
 
   // Unlike invitations and reminders there is no read to be refused — customization is a PUT — so
@@ -959,7 +940,7 @@ describe('exchange customization', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText('Your own greeting, instructions and colours are part of Plus.'),
+        screen.getByText('Your own greeting and instructions are part of Plus.'),
       ).toBeOnTheScreen(),
     );
     expect(screen.queryByLabelText('Greeting')).toBeNull();
@@ -971,12 +952,12 @@ describe('exchange customization', () => {
     );
 
     render(<OrganizeScreen groupId="group-1" />);
-    await waitFor(() => expect(screen.getByText('How this exchange looks')).toBeOnTheScreen());
-    fireEvent.press(screen.getByText('Save how it looks'));
+    await waitFor(() => expect(screen.getByText('Your words on the exchange')).toBeOnTheScreen());
+    fireEvent.press(screen.getByText('Save your words'));
 
     await waitFor(() =>
       expect(
-        screen.getByText('Your own greeting, instructions and colours are part of Plus.'),
+        screen.getByText('Your own greeting and instructions are part of Plus.'),
       ).toBeOnTheScreen(),
     );
   });

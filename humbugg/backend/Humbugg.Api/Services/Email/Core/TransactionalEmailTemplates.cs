@@ -206,7 +206,9 @@ internal sealed class TransactionalEmailTemplates : ITransactionalEmailTemplates
         // without it. The From address is no-reply@humbugg.com and nobody reads it — telling people
         // where to write instead is the difference between a dead end and a support channel.
         var safeSupport = HtmlEncoder.Default.Encode(SupportLine);
-        var primary = customization?.PrimaryColor is { Length: 7 } color && color[0] == '#' ? color : "#7C2D12";
+        // Humbugg's green (brand-colors.json `brand`), not the organizer's colour: since #677 an
+        // exchange has words of its own and no palette. The whole frame gets the brand pass in #676.
+        const string primary = "#1D5545";
         var customCopy = string.Join(" ", new[] { customization?.Greeting, customization?.Instructions }
             .Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => Text(value!)));
         var safeCustomCopy = HtmlEncoder.Default.Encode(customCopy);

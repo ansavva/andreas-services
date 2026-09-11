@@ -417,10 +417,7 @@ internal sealed class GroupService(
                 M = new()
                 {
                     ["greeting"] = DynamoValues.S(customization.Greeting),
-                    ["instructions"] = DynamoValues.S(customization.Instructions),
-                    ["primary_color"] = DynamoValues.S(customization.PrimaryColor),
-                    ["accent_color"] = DynamoValues.S(customization.AccentColor),
-                    ["image"] = DynamoValues.S(customization.ImageDataUrl ?? "")
+                    ["instructions"] = DynamoValues.S(customization.Instructions)
                 }
             }
         }, cancellationToken: cancellationToken);

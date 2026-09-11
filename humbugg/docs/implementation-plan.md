@@ -44,7 +44,9 @@ understand about this codebase today.
 (#141). Both landed on 2026-09-02.
 
 **Not fixed: every Plus capability is still unreachable.** Managed invitations, scheduled reminders,
-co-organizers, exchange customization, reusable templates and late-participant reassignment are all
+co-organizers, exchange customization (greeting and instructions since #677 — the colours and banner
+it shipped with were dropped on 2026-09-11, see that issue), reusable templates and
+late-participant reassignment are all
 built, tested, deployed — and rendered by no screen. `humbugg/app/src/api/client.ts` has a working
 client method for each; grep the `src/` tree for any of them and you get one hit, the client itself:
 

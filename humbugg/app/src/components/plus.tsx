@@ -34,7 +34,7 @@ export const PLUS_BENEFITS = [
   'Invite by email, and see who has joined, not opened, or bounced.',
   'Automatic reminders, so you are not the one chasing people.',
   'Co-organizers who can run the exchange alongside you.',
-  'Your own greeting, instructions and colours on what everyone sees.',
+  'Your own greeting and instructions on what everyone sees.',
   'Save the whole setup as a template and start next year from it.',
   'Add someone after the draw, changing as few matches as possible.',
 ] as const;
