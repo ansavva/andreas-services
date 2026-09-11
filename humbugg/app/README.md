@@ -115,9 +115,9 @@ Never hard-code a colour a semantic role covers. → the `design-system-ui` skil
 ## Local development
 
 ```bash
-cp .env.example .env.local     # or let humbugg/scripts/dev-aws-setup.sh write it
 npm install                    # needs NODE_AUTH_TOKEN, see below
-npm run web                    # http://localhost:8081
+../scripts/dev-up-app.sh       # http://localhost:8081; exports EXPO_PUBLIC_* from
+                               # ~/.config/andreas-services/humbugg/dev.env first
 npm run ios                    # or android, for a device/simulator
 ```
 

@@ -29,21 +29,17 @@ done
 
 require_command npm
 
-app_env="$HUMBUGG_DIR/app/.env.local"
-[[ -f "$app_env" ]] ||
-  die "Missing $app_env. Run ./humbugg/scripts/dev-aws-setup.sh first."
+require_dev_env
 
 # Metro inlines EXPO_PUBLIC_* at bundle time, so a missing value here is not a
 # runtime warning — it is a build that silently ships an empty Cognito client id.
-#
-# This list must match what dev-aws-setup.sh WRITES. It did not between #365 and now: the
-# hosted-login migration made the pool id and the region app configuration no longer, and
-# dev-aws-setup.sh removes both from an existing .env.local — so this loop demanded two keys
-# the setup script deletes and the app dev server refused to start on any machine.
+# Only that prefix is exported: Expo never sees the Stripe secret key that
+# shares the file. This list must match what dev-aws-setup.sh WRITES.
 for key in EXPO_PUBLIC_COGNITO_CLIENT_ID EXPO_PUBLIC_COGNITO_DOMAIN EXPO_PUBLIC_API_BASE_URL; do
-  grep -Eq "^${key}=.+" "$app_env" ||
-    die "Missing $key in $app_env. Run ./humbugg/scripts/dev-aws-setup.sh again."
+  [[ -n "$(read_env "$DEV_ENV_FILE" "$key")" ]] ||
+    die "Missing $key in $DEV_ENV_FILE. Run ./humbugg/scripts/dev-aws-setup.sh again."
 done
+export_env_prefix "$DEV_ENV_FILE" EXPO_PUBLIC_
 
 [[ -d "$HUMBUGG_DIR/app/node_modules" ]] ||
   die "Product app dependencies are not installed. Run npm install in humbugg/app first."

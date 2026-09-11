@@ -26,8 +26,8 @@ applicable and accept `--help` for their complete usage.
 | `./humbugg/scripts/dev-aws-setup.sh` | Lower-level AWS setup used by the canonical setup; remains directly runnable | `--profile`, `--region`, `--yes`, `--check` |
 | `./humbugg/scripts/dev-up.sh` | Starts the backend, frontend, and Stripe webhook listener as one supervised session | `--profile`, `--region`, `--forward-to` |
 | `./humbugg/scripts/dev-up-backend.sh` | Starts only the Dockerized .NET API with short-lived AWS credentials | `--profile`, `--region`, plus Docker Compose options |
-| `./humbugg/scripts/dev-up-marketing.sh` | Starts only the marketing site using `web/.env.local` | accepts React Router/Vite development options |
-| `./humbugg/scripts/dev-up-app.sh` | Starts only the product app using `app/.env.local` | defaults to `--web`; pass `--ios`/`--android` for a simulator |
+| `./humbugg/scripts/dev-up-marketing.sh` | Starts only the marketing site; exports `VITE_*` from `~/.config/andreas-services/humbugg/dev.env` | accepts React Router/Vite development options |
+| `./humbugg/scripts/dev-up-app.sh` | Starts only the product app; exports `EXPO_PUBLIC_*` from the same file | defaults to `--web`; pass `--ios`/`--android` for a simulator |
 | `./humbugg/scripts/dev-up-stripe.sh` | Starts only the Stripe CLI listener with Humbugg's event allowlist | `--forward-to`, plus Stripe listener options |
 | `./humbugg/scripts/dev-logs-backend.sh` | Follows the local backend's Docker logs | accepts Docker Compose log options such as `--tail 200` |
 | `./humbugg/scripts/dev-aws-reset.sh` | Clears this machine's DynamoDB, S3, and optionally Cognito user data while retaining its infrastructure | `--profile`, `--region`, `--dry-run`, `--skip-cognito`, `--yes` |
@@ -56,7 +56,7 @@ needed to override it.
    See [`../scripts/README.md`](../scripts/README.md) for details.
 
    For billing tests, configure `HUMBUGG_STRIPE_MODE=test`, the test publishable
-   key, and the test secret key in the ignored `humbugg/backend/.env` as
+   key, and the test secret key in `~/.config/andreas-services/humbugg/dev.env` as
    described in [`docs/stripe-setup.md`](docs/stripe-setup.md). The combined
    launcher refreshes the local webhook signing secret, but it does not create
    or persist Stripe API keys.
@@ -127,7 +127,8 @@ terminal:
 ```
 
 Copy the `whsec_...` signing secret displayed by Stripe into
-`HUMBUGG_STRIPE_WEBHOOK_SECRET` in `backend/.env`, then restart the backend.
+`HUMBUGG_STRIPE_WEBHOOK_SECRET` in `~/.config/andreas-services/humbugg/dev.env`,
+then restart the backend. (`dev-up.sh` does this itself.)
 
 The frontend runs at `http://localhost:5176`, the API at
 `http://localhost:5001`, and the Mailpit inbox at `http://localhost:8025`.

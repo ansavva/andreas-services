@@ -21,17 +21,16 @@ done
 
 require_command npm
 
-marketing_env="$HUMBUGG_DIR/marketing/.env.local"
-[[ -f "$marketing_env" ]] ||
-  die "Missing $marketing_env. Run ./humbugg/scripts/dev-aws-setup.sh first."
+require_dev_env
 
 # The marketing site does not authenticate anyone — sign-in lives in the product app — so it needs
 # only where to send somebody who wants to sign in, and where to read the plan catalogue for the
-# pricing page.
+# pricing page. Only VITE_* is exported; Vite inlines nothing else and should hold nothing else.
 for key in VITE_APP_ORIGIN VITE_API_BASE_URL; do
-  grep -Eq "^${key}=.+" "$marketing_env" ||
-    die "Missing $key in $marketing_env. Run ./humbugg/scripts/dev-aws-setup.sh again."
+  [[ -n "$(read_env "$DEV_ENV_FILE" "$key")" ]] ||
+    die "Missing $key in $DEV_ENV_FILE. Run ./humbugg/scripts/dev-aws-setup.sh again."
 done
+export_env_prefix "$DEV_ENV_FILE" VITE_
 
 [[ -d "$HUMBUGG_DIR/marketing/node_modules" ]] ||
   die "Marketing site dependencies are not installed. Run npm install in humbugg/marketing first."

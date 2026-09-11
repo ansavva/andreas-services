@@ -25,35 +25,15 @@ done
 
 for command in aws docker jq npm stripe; do require_command "$command"; done
 
-backend_env="$HUMBUGG_DIR/backend/.env"
-[[ -f "$backend_env" ]] ||
-  die "Missing $backend_env. Run ./humbugg/scripts/dev-aws-setup.sh first."
+require_dev_env
 
 webhook_secret="$(stripe listen --print-secret --skip-update)" ||
   die "Stripe could not retrieve its local webhook signing secret. Run 'stripe login' first."
 [[ "$webhook_secret" == whsec_* ]] ||
   die "Stripe returned an invalid webhook signing secret. Run 'stripe login' and try again."
-
-upsert_env() {
-  local file="$1" key="$2" value="$3" temp
-  temp="$(mktemp)"
-  awk -v key="$key" -v value="$value" '
-    BEGIN { found = 0 }
-    $0 ~ "^" key "=" {
-      if (!found) print key "=" value
-      found = 1
-      next
-    }
-    { print }
-    END { if (!found) print key "=" value }
-  ' "$file" > "$temp"
-  chmod 600 "$temp"
-  mv "$temp" "$file"
-}
-
-upsert_env "$backend_env" HUMBUGG_STRIPE_WEBHOOK_SECRET "$webhook_secret"
+upsert_env "$DEV_ENV_FILE" HUMBUGG_STRIPE_WEBHOOK_SECRET "$webhook_secret"
 unset webhook_secret
-ok "Updated the ignored backend environment with the current Stripe CLI signing secret."
+ok "Refreshed the Stripe CLI signing secret in $DEV_ENV_FILE."
 
 pids=()
 names=()

@@ -353,7 +353,7 @@ public sealed record HumbuggSettings(
     // tables that have since been deleted outright.
     //
     // The deploy workflow sets all twelve; dev-aws-setup.sh writes all twelve
-    // into humbugg/backend/.env from Terraform outputs. A missing one means the
+    // into ~/.config/andreas-services/humbugg/dev.env from Terraform outputs. A missing one means the
     // environment is genuinely misconfigured, so fail at startup and say which.
     private static string RequiredTable(string variable) =>
         Environment.GetEnvironmentVariable(variable) is { } value && !string.IsNullOrWhiteSpace(value)
@@ -361,7 +361,7 @@ public sealed record HumbuggSettings(
             : throw new InvalidOperationException(
                 $"{variable} is not set. DynamoDB table names are per-environment and have no default. " +
                 "In CI the deploy workflow sets it; locally run humbugg/scripts/dev-aws-setup.sh, " +
-                "which writes the table names from Terraform outputs into humbugg/backend/.env.");
+                "which writes the table names from Terraform outputs into ~/.config/andreas-services/humbugg/dev.env.");
 
     // Local development runs two distinct browser origins against one backend: the Vite
     // marketing dev server on :5176 and the Expo web dev server on :8081.

@@ -177,9 +177,104 @@ terraform_output_json() {
   terraform -chdir="$TF_DIR" output -json
 }
 
-# The dev stack's test account. Mirrors studio's `dev-aws-common.sh`
-# deliberately: the two services had no shared convention for this and studio's
-# is the one that already works.
+# **One file holds every local development value: `$DEV_ENV_FILE`.** The
+# machine-scoped backend config (table names, pool, bucket), the two frontends'
+# inlined values (`EXPO_PUBLIC_*`, `VITE_*`), the Stripe test keys and the CLI's
+# webhook signing secret, and the dev test account. It used to be four files —
+# `backend/.env`, `app/.env.local`, `marketing/.env.local` and this one — each
+# with a different reader, and knowing which key went where was the job. Now
+# the readers come to the file: Docker Compose takes it as `env_file`, the two
+# dev-up scripts export the prefix their bundler inlines, and the test tiers
+# parse it directly.
+#
+# It sits outside the repo. Ignored files still vanish on `git clean -fdx` and
+# never exist in a fresh worktree; this one is per machine, shared by every
+# checkout on it, and holds a password.
+#
+# `dev-aws-setup.sh` writes the generated keys; a hand-set key (a Stripe secret,
+# a plan limit) is left alone by every script that touches the file, because
+# `upsert_env` rewrites only the key it is given.
+#
+# `HUMBUGG_DEV_ENV_FILE` overrides the location, and every reader honours it —
+# these scripts, backend/docker-compose.yml (which needs an absolute path,
+# because Compose resolves relative ones against the compose file and does not
+# expand `~`), the integration fixture and the e2e session helper. Exported so
+# every script that drives Compose — up, logs, reset — has it.
+DEV_ENV_FILE="${HUMBUGG_DEV_ENV_FILE:-$CONFIG_DIR/dev.env}"
+export HUMBUGG_DEV_ENV_FILE="$DEV_ENV_FILE"
+
+# Rewrite exactly one key, creating the file (mode 600) if needed. Comments
+# and every other key survive. A commented placeholder (`#KEY=`, which
+# dev-aws-setup.sh renders for a hand-set key that has no value yet) is taken
+# as the key's slot, so the value lands in its section rather than at the end.
+upsert_env() {
+  local file="$1" key="$2" value="$3" temp
+  mkdir -p "$(dirname "$file")"
+  chmod 700 "$(dirname "$file")"
+  touch "$file"
+  temp="$(mktemp)"
+  awk -v key="$key" -v value="$value" '
+    BEGIN { found = 0 }
+    $0 ~ "^#?" key "=" {
+      if (!found) print key "=" value
+      found = 1
+      next
+    }
+    { print }
+    END { if (!found) print key "=" value }
+  ' "$file" > "$temp"
+  chmod 600 "$temp"
+  mv "$temp" "$file"
+}
+
+# Set a key only when the file has no line for it — a default the user may
+# have already replaced.
+ensure_env() {
+  local file="$1" key="$2" value="$3"
+  [[ -f "$file" ]] && grep -Eq "^${key}=" "$file" && return 0
+  upsert_env "$file" "$key" "$value"
+}
+
+remove_env() {
+  local file="$1" key="$2" temp
+  [[ -f "$file" ]] || return 0
+  temp="$(mktemp)"
+  awk -v key="$key" '$0 !~ "^" key "=" { print }' "$file" > "$temp"
+  chmod 600 "$temp"
+  mv "$temp" "$file"
+}
+
+# The value of one key, empty when absent. Never `source` the file: it holds
+# URLs and secrets whose characters are not all shell-safe.
+read_env() {
+  local file="$1" key="$2"
+  [[ -f "$file" ]] || return 0
+  awk -v key="$key" -F= '$1 == key { sub("^" key "=", ""); print; exit }' "$file"
+}
+
+# Export every key beginning with a prefix into this process. The bundlers
+# inline only their own prefix, and both leave a variable already in the
+# environment alone, so this is how `EXPO_PUBLIC_*` reaches Metro and `VITE_*`
+# reaches Vite without either being handed the Stripe secret key.
+export_env_prefix() {
+  local file="$1" prefix="$2" line key value
+  [[ -f "$file" ]] || return 0
+  while IFS= read -r line; do
+    [[ "$line" =~ ^(${prefix}[A-Za-z0-9_]*)=(.*)$ ]] || continue
+    key="${BASH_REMATCH[1]}"; value="${BASH_REMATCH[2]}"
+    export "$key=$value"
+  done < "$file"
+}
+
+require_dev_env() {
+  [[ -f "$DEV_ENV_FILE" ]] ||
+    die "Missing $DEV_ENV_FILE. Run ./humbugg/scripts/dev-aws-setup.sh first."
+}
+
+# The dev stack's test account lives in the same file, under
+# `HUMBUGG_DEV_USER_EMAIL` and `HUMBUGG_DEV_USER_PASSWORD`. Mirrors studio's
+# `dev-aws-common.sh` deliberately: the two services had no shared convention
+# for this and studio's is the one that already works.
 #
 # **Neither half is committed.** The address was the literal `dev@humbugg.test`
 # when this landed, on the reasoning that a reserved `.test` TLD (RFC 2606) can
@@ -188,19 +283,13 @@ terraform_output_json() {
 # every machine, that a test or a scripted sign-in can rely on — but "identical
 # on every machine" is now a property of the config file rather than of the
 # repo. Humbugg's pool allows self-signup, so this is a convenience and never
-# the only way in.
-#
-# Both values sit outside the repo. A default password here would be a
-# credential in a git history; the address follows it for consistency, so one
-# account is described in one place.
-DEV_ENV_FILE="$CONFIG_DIR/dev.env"
+# the only way in. A default password here would be a credential in a git
+# history; the address follows it for consistency.
 
 load_dev_user_email() {
   # Environment first, then the config file, and no default anywhere.
-  if [[ -z "${HUMBUGG_DEV_USER_EMAIL:-}" && -f "$DEV_ENV_FILE" ]]; then
-    # shellcheck source=/dev/null
-    source "$DEV_ENV_FILE"
-  fi
+  [[ -n "${HUMBUGG_DEV_USER_EMAIL:-}" ]] ||
+    HUMBUGG_DEV_USER_EMAIL="$(read_env "$DEV_ENV_FILE" HUMBUGG_DEV_USER_EMAIL)"
   [[ -n "${HUMBUGG_DEV_USER_EMAIL:-}" ]] || die \
     "HUMBUGG_DEV_USER_EMAIL is not set and $DEV_ENV_FILE provides none. Add a
   HUMBUGG_DEV_USER_EMAIL= line to that file. An address in the reserved .test TLD
@@ -213,10 +302,8 @@ load_dev_user_password() {
   # Never echoed, and never interpolated into a log line or a command echo.
   local prompt_allowed="${1:-true}"
   local generate="${2:-false}"
-  if [[ -z "${HUMBUGG_DEV_USER_PASSWORD:-}" && -f "$DEV_ENV_FILE" ]]; then
-    # shellcheck source=/dev/null
-    source "$DEV_ENV_FILE"
-  fi
+  [[ -n "${HUMBUGG_DEV_USER_PASSWORD:-}" ]] ||
+    HUMBUGG_DEV_USER_PASSWORD="$(read_env "$DEV_ENV_FILE" HUMBUGG_DEV_USER_PASSWORD)"
   if [[ -z "${HUMBUGG_DEV_USER_PASSWORD:-}" && "$generate" == "true" ]]; then
     # 24 hex characters plus a fixed upper/lower/digit tail, because the pool
     # requires all three classes and `openssl rand -hex` alone can produce a
@@ -225,22 +312,11 @@ load_dev_user_password() {
     # stack converges the same password rather than minting a second one
     # nothing has recorded.
     require_command openssl
-    umask 077
-    mkdir -p "$CONFIG_DIR"
-    # **Rewritten key by key, not overwritten.** This truncated the file
-    # until the address moved into it too, at which point a `--generate-password`
-    # run would have silently deleted the account's own name and left the
-    # next command asking for an email nobody removed.
-    local generated_env
-    generated_env="$(mktemp)"
-    chmod 600 "$generated_env"
-    [[ -f "$DEV_ENV_FILE" ]] &&
-      grep -v '^HUMBUGG_DEV_USER_PASSWORD=' "$DEV_ENV_FILE" > "$generated_env" || true
-    printf 'HUMBUGG_DEV_USER_PASSWORD=%s\n' "$(openssl rand -hex 12)Aa1" >> "$generated_env"
-    mv "$generated_env" "$DEV_ENV_FILE"
-    chmod 600 "$DEV_ENV_FILE"
-    # shellcheck source=/dev/null
-    source "$DEV_ENV_FILE"
+    # **Rewritten key by key, not overwritten.** An earlier version truncated
+    # the file, which by now would delete the whole dev stack's configuration
+    # along with the account's own address.
+    HUMBUGG_DEV_USER_PASSWORD="$(openssl rand -hex 12)Aa1"
+    upsert_env "$DEV_ENV_FILE" HUMBUGG_DEV_USER_PASSWORD "$HUMBUGG_DEV_USER_PASSWORD"
     ok "Generated the dev account password into $DEV_ENV_FILE (not printed)."
   fi
   if [[ -z "${HUMBUGG_DEV_USER_PASSWORD:-}" ]]; then

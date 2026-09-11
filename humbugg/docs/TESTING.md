@@ -105,7 +105,7 @@ Each rule traces to a real hazard, most of them already paid for once:
    anything needing real tables goes behind `HUMBUGG_INTEGRATION=1`, and the flag
    is exported in exactly one place — `dev-test-integration.sh`.
 2. **No integration test may depend on prod, or on another machine's stack.**
-   Configuration comes only from `backend/.env`, written by `dev-aws-setup.sh`
+   Configuration comes only from `~/.config/andreas-services/humbugg/dev.env`, written by `dev-aws-setup.sh`
    from the machine-scoped Terraform outputs. `AWS_PROFILE` in that file is
    deliberately ignored by the fixture.
 3. **Integration tests write `itest-`-prefixed ids and register cleanup.** The

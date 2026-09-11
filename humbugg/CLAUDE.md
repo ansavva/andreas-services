@@ -78,6 +78,17 @@ or shared developer resources. `dev-aws-setup.sh` persists a random UUID at
 state, DynamoDB tables, the private S3 bucket, and the Cognito pool. A developer
 may therefore use multiple machines without collisions.
 
+**Every local value lives in one file: `~/.config/andreas-services/humbugg/dev.env`.**
+Backend config, both frontends' inlined values, Stripe test keys, the dev test
+account — one file, documented key by key in [`dev.env.sample`](dev.env.sample).
+There is no `backend/.env`, `app/.env.local` or `marketing/.env.local` any
+more; `dev-aws-setup.sh` imports and deletes them if it finds them. The readers
+come to the file: Docker Compose takes it as `env_file`, `dev-up-app.sh` exports
+its `EXPO_PUBLIC_*` keys for Metro, `dev-up-marketing.sh` exports its `VITE_*`
+keys for Vite, and the integration and e2e tiers parse it. It sits outside the
+repo because ignored files vanish on `git clean` and never exist in a fresh
+worktree, while this one is per machine and shared by every checkout on it.
+
 ```bash
 # One-time toolchain and authentication setup (from the repo root).
 # The shared setup includes the Stripe CLI from stripe/stripe-cli/stripe.
@@ -99,7 +110,7 @@ npm --prefix humbugg/app install
 ```
 
 The combined launcher retrieves the current Stripe CLI `whsec_...` signing
-secret before the backend starts, stores it only in the ignored `backend/.env`,
+secret before the backend starts, writes it into `dev.env`,
 and supervises all three processes. It does not generate Stripe API keys;
 `HUMBUGG_STRIPE_MODE=test`, the test publishable key, and the test secret key
 must already be configured according to `docs/stripe-setup.md`. Ctrl+C stops
@@ -117,11 +128,11 @@ All commands run from the repository root:
 | `humbugg/scripts/dev-aws-setup.sh` | Lower-level AWS provision/check command called by canonical setup; accepts `--profile`, `--region`, `--yes`, `--check` |
 | `humbugg/scripts/dev-up.sh` | Preferred full local startup; accepts `--profile`, `--region`, `--forward-to` |
 | `humbugg/scripts/dev-up-backend.sh` | Backend-only startup; exports temporary AWS credentials into Docker Compose without writing them to disk |
-| `humbugg/scripts/dev-up-marketing.sh` | Marketing-site-only startup; validates `marketing/.env.local` and installed dependencies first |
-| `humbugg/scripts/dev-up-app.sh` | Product-app-only startup; defaults to `--web`, pass `--ios`/`--android` for a simulator |
-| `humbugg/scripts/dev-up-stripe.sh` | Stripe-only listener for the billing webhook's exact event allowlist; copy its `whsec_...` value into `backend/.env` and restart the backend when running components separately |
+| `humbugg/scripts/dev-up-marketing.sh` | Marketing-site-only startup; exports `VITE_*` from `dev.env` and checks installed dependencies first |
+| `humbugg/scripts/dev-up-app.sh` | Product-app-only startup; exports `EXPO_PUBLIC_*` from `dev.env`; defaults to `--web`, pass `--ios`/`--android` for a simulator |
+| `humbugg/scripts/dev-up-stripe.sh` | Stripe-only listener for the billing webhook's exact event allowlist; copy its `whsec_...` value into `dev.env` and restart the backend when running components separately (`dev-up.sh` does this itself) |
 | `humbugg/scripts/dev-logs-backend.sh` | Follow the backend container logs; accepts Docker Compose log options such as `--tail 200` |
-| `humbugg/scripts/dev-user.sh` | Create or converge the dev-stack test account; `--generate-password` for a non-interactive run, `--check` to report without changing. **Both halves live in `~/.config/andreas-services/humbugg/dev.env`** — `HUMBUGG_DEV_USER_EMAIL` and `HUMBUGG_DEV_USER_PASSWORD`. No address is committed; a reserved `.test` one is what belongs there |
+| `humbugg/scripts/dev-user.sh` | Create or converge the dev-stack test account; `--generate-password` for a non-interactive run, `--check` to report without changing. Both halves live in `dev.env` — `HUMBUGG_DEV_USER_EMAIL` and `HUMBUGG_DEV_USER_PASSWORD`. No address is committed; a reserved `.test` one is what belongs there |
 | `humbugg/scripts/dev-aws-reset.sh` | Destructive data reset scoped to this machine; run with `--dry-run` first; `--skip-cognito` preserves users |
 | `humbugg/scripts/dev-aws-destroy.sh` | Destroy this machine's AWS resources; the persistent UUID is deliberately retained |
 
@@ -156,11 +167,13 @@ resources but retains the UUID and state identity for safe reprovisioning.
 
 See [`scripts/README.md`](../scripts/README.md) for the setup scripts and GitHub Packages auth.
 
-`dev-aws-setup.sh` generates two ignored env files — the prefixes differ because
-the bundlers do (Vite exposes `VITE_*`, Metro inlines `EXPO_PUBLIC_*`). Do not
-create shared or committed values manually.
+`dev-aws-setup.sh` writes both frontends' values into `dev.env` — the prefixes
+differ because the bundlers do (Vite exposes `VITE_*`, Metro inlines
+`EXPO_PUBLIC_*`), and each dev-up script exports only its own prefix so neither
+bundler is handed the Stripe secret key. Do not create shared or committed
+values manually.
 
-`marketing/.env.local` — no Cognito values, because the marketing site no longer
+Marketing — no Cognito values, because the marketing site no longer
 authenticates anyone:
 
 ```
@@ -174,19 +187,20 @@ catalogue from `GET /api/plans` server-side rather than restating prices (#158).
 Production sets nothing: `src/config/site.ts` defaults to `api.humbugg.com`, the
 same way it defaults `APP_ORIGIN`.
 
-`app/.env.local`:
+Product app:
 
 ```
 EXPO_PUBLIC_COGNITO_CLIENT_ID=<generated by scripts/dev-aws-setup.sh>
 EXPO_PUBLIC_COGNITO_DOMAIN=<generated by scripts/dev-aws-setup.sh>
 EXPO_PUBLIC_API_BASE_URL=http://127.0.0.1:5001/api
+EXPO_PUBLIC_WEB_BASE_URL=http://localhost:5176
 ```
 
 `EXPO_PUBLIC_COGNITO_DOMAIN` is the Managed Login **host**, no scheme and no path. A dev stack takes
 a default Cognito domain (`<prefix>.auth.<region>.amazoncognito.com`) rather than a custom one, so no
 certificate or DNS record is involved. The pool id and the AWS region are no longer app
 configuration — Amplify needed them and the hosted flow does not; `dev-aws-setup.sh` strips them from
-an existing `.env.local`.
+an existing `dev.env`.
 
 The app calls the backend **cross-origin** in development as well as production,
 so the backend's `CORS_ORIGINS` must list `http://localhost:8081` alongside

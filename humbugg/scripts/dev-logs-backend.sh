@@ -4,6 +4,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HUMBUGG_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# Compose parses env_file even for `logs`; the helper exports the path it needs.
+# shellcheck source=dev-aws-common.sh
+source "$SCRIPT_DIR/dev-aws-common.sh"
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   printf 'Usage: %s [docker-compose-logs options]\n' "$0"
