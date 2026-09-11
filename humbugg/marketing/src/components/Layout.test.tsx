@@ -107,30 +107,46 @@ describe('reaching the pricing page', () => {
 });
 
 /**
- * The header hides its copy below `sm` (three icons don't fit beside "Start a
- * group" at 390px — measured, see the comment in `Shell`), so it is mirrored
- * in the footer the same way Pricing is: two elements with the same
- * accessible name, one of them a `hidden` class away from view at any given
- * width. `within(header)` picks the interactive one out for the tests below;
- * a separate test covers that the footer's copy is never left stale.
+ * The header hides its copy below `sm` (one 44px square is still one too
+ * many beside "Start a group" at 390px — measured, see the comment in
+ * `Shell`), so it is mirrored in the footer the same way Pricing is: two
+ * buttons with the same accessible name, one of them a `hidden` class away
+ * from view at any given width. `within(header)` picks the interactive one
+ * out for the tests below; a separate test covers that the footer's copy is
+ * never left stale.
+ *
+ * The control is a menu button: the icon on it is the scheme in EFFECT, and
+ * the three-way choice lives in the menu it opens. `aria-current` marks the
+ * stored preference there — not `aria-pressed`, which belongs to a toggle and
+ * is what the previous three-button version announced.
  */
 describe('the theme control', () => {
-  function headerGroup() {
-    return within(within(screen.getByRole('banner')).getByRole('group', { name: 'Theme' }));
+  function headerButton() {
+    return within(screen.getByRole('banner')).getByRole('button', { name: 'Theme' });
   }
-  function footerGroup() {
-    return within(within(screen.getByRole('contentinfo')).getByRole('group', { name: 'Theme' }));
+  function footerButton() {
+    return within(screen.getByRole('contentinfo')).getByRole('button', { name: 'Theme' });
+  }
+  /** Opens the header's menu and returns its items by name. */
+  function openHeaderMenu() {
+    fireEvent.click(headerButton());
+    const menu = within(screen.getByRole('menu', { name: 'Theme' }));
+    return {
+      item: (name: 'System' | 'Light' | 'Dark') => menu.getByRole('menuitem', { name }),
+    };
   }
 
   it('renders in both the header and the footer, each named "Theme"', () => {
     renderShell();
-    expect(screen.getAllByRole('group', { name: 'Theme' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Theme' })).toHaveLength(2);
   });
 
   it('hides the header copy below `sm` and the footer copy at `sm` and up — never both at once', () => {
     renderShell();
-    const header = within(screen.getByRole('banner')).getByRole('group', { name: 'Theme' });
-    const footer = within(screen.getByRole('contentinfo')).getByRole('group', { name: 'Theme' });
+    // The `hidden`/`sm:` classes sit on the wrapper the component takes
+    // `className` for, one level above the menu's own positioning root.
+    const header = headerButton().closest('[class*="sm:"]')!;
+    const footer = footerButton().closest('[class*="sm:"]')!;
     const headerClasses = header.className.split(/\s+/);
     const footerClasses = footer.className.split(/\s+/);
     expect(headerClasses).toContain('hidden');
@@ -141,30 +157,54 @@ describe('the theme control', () => {
     expect(footerClasses).toContain('sm:hidden');
   });
 
-  it('announces which option is current', () => {
+  it('sits first in the header nav, left of the text actions', () => {
     renderShell();
-    const group = headerGroup();
-    // Uncontroversial default: no stored key, so "System" is pressed and the
-    // other two are not — this is the state a screen reader announces per
-    // option via `aria-pressed`.
-    expect(group.getByRole('button', { name: 'System' })).toHaveAttribute('aria-pressed', 'true');
-    expect(group.getByRole('button', { name: 'Light' })).toHaveAttribute('aria-pressed', 'false');
-    expect(group.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'false');
+    const nav = screen.getByRole('navigation', { name: 'Primary navigation' });
+    expect(nav.firstElementChild!.contains(headerButton())).toBe(true);
   });
 
-  it('choosing Dark sets data-theme and writes localStorage', () => {
+  it('is a menu button that opens a three-way choice, closed until pressed', () => {
     renderShell();
-    const group = headerGroup();
-    fireEvent.click(group.getByRole('button', { name: 'Dark' }));
+    expect(headerButton()).toHaveAttribute('aria-haspopup', 'menu');
+    expect(headerButton()).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    const { item } = openHeaderMenu();
+    expect(headerButton()).toHaveAttribute('aria-expanded', 'true');
+    expect(item('System')).toBeInTheDocument();
+    expect(item('Light')).toBeInTheDocument();
+    expect(item('Dark')).toBeInTheDocument();
+  });
+
+  it('shows the scheme in effect on the button, not the stored preference', () => {
+    stubMatchMedia(true); // OS says dark, nothing stored: "System" paints dark
+    renderShell();
+    expect(headerButton()).toHaveAttribute('data-scheme', 'dark');
+    fireEvent.click(openHeaderMenu().item('Light'));
+    expect(headerButton()).toHaveAttribute('data-scheme', 'light');
+  });
+
+  it('marks which option is current', () => {
+    renderShell();
+    const { item } = openHeaderMenu();
+    // Uncontroversial default: no stored key, so "System" is current and the
+    // other two are not.
+    expect(item('System')).toHaveAttribute('aria-current', 'true');
+    expect(item('Light')).not.toHaveAttribute('aria-current');
+    expect(item('Dark')).not.toHaveAttribute('aria-current');
+  });
+
+  it('choosing Dark sets data-theme, writes localStorage, and closes the menu', () => {
+    renderShell();
+    fireEvent.click(openHeaderMenu().item('Dark'));
     expect(document.documentElement.dataset.theme).toBe('dark');
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
-    expect(group.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(openHeaderMenu().item('Dark')).toHaveAttribute('aria-current', 'true');
   });
 
   it('choosing Light sets data-theme and writes localStorage', () => {
     renderShell();
-    const group = headerGroup();
-    fireEvent.click(group.getByRole('button', { name: 'Light' }));
+    fireEvent.click(openHeaderMenu().item('Light'));
     expect(document.documentElement.dataset.theme).toBe('light');
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('light');
   });
@@ -173,24 +213,26 @@ describe('the theme control', () => {
     window.localStorage.setItem(THEME_STORAGE_KEY, 'dark');
     stubMatchMedia(false); // OS says light
     renderShell();
-    const group = headerGroup();
 
     // Starts from the stored explicit choice.
-    expect(group.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'true');
+    const { item } = openHeaderMenu();
+    expect(item('Dark')).toHaveAttribute('aria-current', 'true');
 
-    fireEvent.click(group.getByRole('button', { name: 'System' }));
+    fireEvent.click(item('System'));
 
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBeNull();
     expect(document.documentElement.dataset.theme).toBe('light'); // the OS query, not the old choice
-    expect(group.getByRole('button', { name: 'System' })).toHaveAttribute('aria-pressed', 'true');
+    expect(openHeaderMenu().item('System')).toHaveAttribute('aria-current', 'true');
   });
 
   it('keeps the footer copy in step with a choice made in the header, without a remount', () => {
     renderShell();
-    fireEvent.click(headerGroup().getByRole('button', { name: 'Dark' }));
+    fireEvent.click(openHeaderMenu().item('Dark'));
     // Both mount independently (see `theme.ts`'s `useThemePreference`); this is
     // the subscription that is supposed to stop them drifting apart.
-    expect(footerGroup().getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'true');
-    expect(footerGroup().getByRole('button', { name: 'System' })).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(footerButton());
+    const footerMenu = within(within(screen.getByRole('contentinfo')).getByRole('menu'));
+    expect(footerMenu.getByRole('menuitem', { name: 'Dark' })).toHaveAttribute('aria-current', 'true');
+    expect(footerMenu.getByRole('menuitem', { name: 'System' })).not.toHaveAttribute('aria-current');
   });
 });
