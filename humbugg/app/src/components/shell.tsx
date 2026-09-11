@@ -4,7 +4,7 @@
 // Ports `src/components/Layout.tsx`. The footer's policy links now cross an
 // origin — the legal pages live on the marketing site — so they open in the
 // system browser rather than routing.
-import { Card as DsCard } from '@ansavva/design-system';
+import { Card as DsCard, Spinner } from '@ansavva/design-system';
 import { Link } from 'expo-router';
 import type { ReactNode } from 'react';
 import { Linking, Pressable, ScrollView, Text, View, type StyleProp, type ViewStyle } from 'react-native';
@@ -95,12 +95,21 @@ export function Card({
   return <DsCard.Root style={[styles.card, roomy && styles.cardRoomy, style]}>{children}</DsCard.Root>;
 }
 
-/** `.loading-panel` — the full-height "please wait" state. */
-export function LoadingPanel({ children }: { children: ReactNode }) {
+/**
+ * `.loading-panel` — the full-height "please wait" state.
+ *
+ * A spinner, no copy. The panel used to narrate each wait ("Loading your
+ * profile…", "Taking you to sign in…") and the words read as the app talking
+ * to itself: a wait is a wait, and the destination explains itself on arrival.
+ * The spinner carries an accessible "Loading" name for screen readers.
+ * `children` is for the failure case only — a message and a retry button.
+ */
+export function LoadingPanel({ children }: { children?: ReactNode }) {
   const { styles } = useTheme();
   return (
     <View style={styles.loadingPanel}>
-      <Text style={styles.bodyMuted}>{children}</Text>
+      {/* The native leaf shrink-wraps with `alignSelf: 'flex-start'`, which beats the panel's `alignItems`. */}
+      {children ?? <Spinner size="lg" style={styles.loadingSpinner} />}
     </View>
   );
 }

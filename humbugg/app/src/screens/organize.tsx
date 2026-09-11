@@ -105,7 +105,7 @@ export default function OrganizeScreen({
     }
   }
 
-  if (loading) return <Shell><LoadingPanel>Checking who is ready…</LoadingPanel></Shell>;
+  if (loading) return <Shell><LoadingPanel /></Shell>;
 
   if (forbidden || !group || !readiness) {
     return (

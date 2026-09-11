@@ -44,5 +44,5 @@ export function SignInRedirect({ returnTo }: { returnTo?: string }) {
     );
   }
 
-  return <LoadingPanel>Taking you to sign in…</LoadingPanel>;
+  return <LoadingPanel />;
 }

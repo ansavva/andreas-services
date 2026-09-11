@@ -30,7 +30,7 @@ export default function SettingsScreen() {
   const auth = useAuth();
   const { profile, loading, loaded, error, setProfile } = useProfile();
 
-  if (loading && !loaded) return <Shell><LoadingPanel>Loading your settings…</LoadingPanel></Shell>;
+  if (loading && !loaded) return <Shell><LoadingPanel /></Shell>;
 
   return (
     <Shell>

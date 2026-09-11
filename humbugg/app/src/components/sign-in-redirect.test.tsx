@@ -22,7 +22,7 @@ describe('SignInRedirect', () => {
     mockLogin.mockResolvedValue(undefined);
     render(<SignInRedirect returnTo="/groups/g1" />);
 
-    expect(screen.getByText('Taking you to sign in…')).toBeTruthy();
+    expect(screen.getByLabelText('Loading')).toBeTruthy();
     await waitFor(() => expect(mockLogin).toHaveBeenCalledWith('/groups/g1'));
   });
 
@@ -36,6 +36,6 @@ describe('SignInRedirect', () => {
     fireEvent.press(screen.getByText('Try again'));
     await waitFor(() => expect(mockLogin).toHaveBeenCalledTimes(2));
     // A successful retry clears the failure back to the redirect holding state.
-    await waitFor(() => expect(screen.getByText('Taking you to sign in…')).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText('Loading')).toBeTruthy());
   });
 });
