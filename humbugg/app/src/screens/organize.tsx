@@ -80,7 +80,10 @@ export default function OrganizeScreen({
     setError(null);
     try {
       await api.updateGroup(await auth.accessToken(), groupId, { requires_address: next });
-      await load();
+      // Quietly, like every other action here. A loud reload swaps the screen for the loading
+      // panel, which unmounts the tabs — and the organizer who flipped a switch in Settings came
+      // back on People with the switch scrolled out of sight.
+      await load(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'The setting could not be saved.');
     } finally {

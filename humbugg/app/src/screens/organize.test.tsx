@@ -464,8 +464,11 @@ describe('the address setting', () => {
     await waitFor(() =>
       expect(mocks.updateGroup).toHaveBeenCalledWith('token', 'group-1', { requires_address: true }),
     );
-    // The stat row above the tabs follows the setting; the roster row is on the other tab.
+    // The stat row above the tabs follows the setting — and the switch is still where it was, on
+    // Settings: a save must not reload the screen out from under the tab the organizer is on.
     await waitFor(() => expect(screen.getByText('0 of 1')).toBeOnTheScreen());
+    expect(screen.queryByLabelText('Loading')).toBeNull();
+    expect(screen.getByLabelText('Gifts are posted to a mailing address')).toBeOnTheScreen();
     fireEvent.press(screen.getByText('People'));
     expect(screen.getByText('No address')).toBeOnTheScreen();
   });
