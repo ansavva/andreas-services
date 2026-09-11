@@ -84,15 +84,19 @@ public sealed record Membership(
 /// <remarks>
 /// <see cref="Instructions"/> is not the same field as <c>GroupRecord.Instructions</c> and merging
 /// them would be wrong in both directions. This one is invitation copy for people who are not
-/// members yet, Plus-gated alongside the colours and the image it is written to sit with; that one
-/// is how the exchange works, Free, and read by people who have already joined.
+/// members yet, Plus-gated; that one is how the exchange works, Free, and read by people who have
+/// already joined.
+///
+/// Words only. It carried two theme colours and a banner image until September 2026 (#677): a
+/// colour picker and an upload handed to somebody organizing a Secret Santa produced exchanges
+/// in a brown and an orange that were nobody's brand, and made the organizer's colour the one
+/// styled thing in every email. Humbugg's frame is Humbugg's; the organizer's words sit inside it.
+/// Rows written before that still carry `primary_color`, `accent_color` and `image` attributes,
+/// which the repository now ignores.
 /// </remarks>
 public sealed record ExchangeCustomization(
     string Greeting = "",
-    string Instructions = "",
-    string PrimaryColor = "#7C2D12",
-    string AccentColor = "#F59E0B",
-    string? ImageDataUrl = null);
+    string Instructions = "");
 
 public sealed record InvitationPreview(string GroupId, string ExchangeName, ExchangeCustomization Customization);
 public sealed record ExchangeTemplate(
@@ -519,8 +523,7 @@ public sealed record RepeatedExchange(
     string InviteUrl,
     IReadOnlyList<string> PriorParticipants);
 
-public sealed record UpdateCustomizationRequest(
-    string? Greeting, string? Instructions, string? PrimaryColor, string? AccentColor, string? Image);
+public sealed record UpdateCustomizationRequest(string? Greeting, string? Instructions);
 public sealed record JoinGroupRequest(string? InviteToken);
 public sealed record UpdateMembershipRequest(string? Wishlist, string? Avoidances, Address? Address);
 public sealed record ParticipationRequest(bool? IsParticipating);

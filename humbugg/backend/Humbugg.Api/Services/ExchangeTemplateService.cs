@@ -90,7 +90,7 @@ internal sealed class ExchangeTemplateService(
         var deadline = TemplateDates.Deadline(eventDate, template.SignupDeadlineDaysBeforeEvent).ToString("yyyy-MM-dd");
         await groupService.UpdateAsync(group.GroupId, new(template.ExchangeName, template.Description, eventDate.ToString("yyyy-MM-dd"), deadline, null), ct);
         var instructions = string.Join("\n\n", new[] { template.Customization.Instructions, template.WishlistPrompt }.Where(x => !string.IsNullOrWhiteSpace(x)));
-        await groupService.UpdateCustomizationAsync(group.GroupId, new(template.Customization.Greeting, instructions, template.Customization.PrimaryColor, template.Customization.AccentColor, template.Customization.ImageDataUrl), ct);
+        await groupService.UpdateCustomizationAsync(group.GroupId, new(template.Customization.Greeting, instructions), ct);
         if (template.ExclusionsPolicy == "none") await groupService.SetExclusionsAsync(group.GroupId, new([]), ct);
         await reminders.UpdateAsync(group.GroupId, new(template.ReminderPreferences.State, template.ReminderPreferences.RemindUnacceptedInvitations, template.ReminderPreferences.RemindIncompleteReadiness, template.ReminderPreferences.IntervalDays, template.ReminderPreferences.QuietStartUtcHour, template.ReminderPreferences.QuietEndUtcHour), ct);
         if (selected.Count > 0) await invitations.CreateAsync(group.GroupId, new(selected.Select(x => candidates[x].Email).ToList()), ct);

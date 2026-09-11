@@ -348,18 +348,15 @@ internal sealed class GroupRepository(IAmazonDynamoDB db, HumbuggSettings settin
             M = new()
             {
                 ["greeting"] = DynamoValues.S(value.Greeting),
-                ["instructions"] = DynamoValues.S(value.Instructions),
-                ["primary_color"] = DynamoValues.S(value.PrimaryColor),
-                ["accent_color"] = DynamoValues.S(value.AccentColor),
-                ["image"] = DynamoValues.S(value.ImageDataUrl ?? "")
+                ["instructions"] = DynamoValues.S(value.Instructions)
             }
         };
+    // Rows from before #677 also carry primary_color, accent_color and image; a save through
+    // CustomizationValue drops them, a read never looks. No migration.
     private static ExchangeCustomization? ReadCustomization(IReadOnlyDictionary<string, AttributeValue> item)
     {
         if (!item.TryGetValue("customization", out var value) || value.NULL == true || value.M is null) return null;
-        return new(value.M.String("greeting"), value.M.String("instructions"),
-            value.M.String("primary_color", "#7C2D12"), value.M.String("accent_color", "#F59E0B"),
-            EmptyToNull(value.M.String("image")));
+        return new(value.M.String("greeting"), value.M.String("instructions"));
     }
     internal static PlanCode ReadPlan(string value) => string.IsNullOrWhiteSpace(value)
         ? PlanCode.Free

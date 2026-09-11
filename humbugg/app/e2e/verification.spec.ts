@@ -183,7 +183,7 @@ test('every Plus capability offers Plus on a Free exchange instead of failing', 
   await expect(page.getByText('Sending and tracking invitations is part of Plus.')).toBeVisible();
   await expect(page.getByText('Automatic reminders are part of Plus.')).toBeVisible();
   await expect(
-    page.getByText('Your own greeting, instructions and colours are part of Plus.'),
+    page.getByText('Your own greeting and instructions are part of Plus.'),
   ).toBeVisible();
   await expect(page.getByText('Saving a setup as a template is part of Plus.')).toBeVisible();
   // No dead forms behind the notices.

@@ -18,7 +18,7 @@ public sealed class TemplateRepositoryTests(DevStackFixture stack) : DevStackTes
             SignupDeadlineDaysBeforeEvent: 7, WishlistPrompt: "Three ideas, please",
             ExclusionsPolicy: "couples",
             ReminderPreferences: new ReminderSettings(ReminderState.Active, true, false, 5, 8, 21),
-            Customization: new ExchangeCustomization("Hello", "Read this", "#101010", "#202020"),
+            Customization: new ExchangeCustomization("Hello", "Read this"),
             PriorParticipants: [new TemplateParticipant("member-1", "Alice", "alice@example.test")],
             SourceGroupId: "itest-source-group", CreatedAt: Now(), UpdatedAt: Now());
         CleanupItem(Settings.TemplatesTable, "user_id", userId, "template_id", template.TemplateId);

@@ -54,7 +54,7 @@ export interface Address {
 }
 
 export type ExclusionPair = [string, string];
-export interface ExchangeCustomization { greeting: string; instructions: string; primary_color: string; accent_color: string; image_data_url?: string | null; }
+export interface ExchangeCustomization { greeting: string; instructions: string; }
 export interface InvitationPreview { group_id: string; exchange_name: string; customization: ExchangeCustomization; }
 export interface TemplateParticipant { member_id: string; display_name: string; email: string; }
 export interface ExchangeTemplate { template_id: string; name: string; exchange_name: string; description: string; signup_deadline_days_before_event: number; wishlist_prompt: string; exclusions_policy: 'none' | 'preserve_existing'; reminder_preferences: ReminderSettings; customization: ExchangeCustomization; prior_participants: TemplateParticipant[]; source_group_id?: string | null; }
