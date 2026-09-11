@@ -197,8 +197,8 @@ export function PeoplePanel({
           is the thing on this tab, and inviting is a task with a beginning and an end. On Free the
           drawer holds the Plus note — shown only once somebody asked, because a locked notice above
           an untouched roster is an advert rather than an answer. */}
-      <Drawer.Root open={inviting} onOpenChange={setInviting} side="right">
-        <Drawer.Panel accessibilityLabel="Invite by email" style={scoped.drawer}>
+      <Drawer.Root open={inviting} onOpenChange={setInviting} side={width >= 768 ? 'right' : 'bottom'}>
+        <Drawer.Panel accessibilityLabel="Invite by email" style={width >= 768 ? scoped.drawer : undefined}>
           <Drawer.Title>Invite by email</Drawer.Title>
           {invitationsLocked ? (
             <View style={{ marginTop: 16 }}>

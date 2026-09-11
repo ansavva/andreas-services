@@ -148,8 +148,11 @@ describe('group list', () => {
 
   it('validates the create-group form before calling the API', async () => {
     render(<DashboardScreen />);
-    await waitFor(() => screen.getByText('Create group'));
-    fireEvent.press(screen.getByText('Create group'));
+    // The form is a drawer, opened from the Your groups header; nothing of it is on the page first.
+    await waitFor(() => screen.getByText('Start a group'));
+    expect(screen.queryByText('Create group')).toBeNull();
+    fireEvent.press(screen.getByText('Start a group'));
+    fireEvent.press(await screen.findByText('Create group'));
 
     await waitFor(() => expect(screen.getByText('Enter a group name.')).toBeOnTheScreen());
   });

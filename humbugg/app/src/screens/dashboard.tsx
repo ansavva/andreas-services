@@ -1,9 +1,9 @@
 // The signed-in home, ported from `src/pages/DashboardPage.tsx`: profile setup
 // for a brand-new account, then the group list beside the create-a-group form.
-import { Button, Checkbox, DateInput, Input, Textarea } from '@ansavva/design-system';
+import { Button, Checkbox, DateInput, Drawer, Input, Textarea } from '@ansavva/design-system';
 import { Link, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { api } from '../api/client';
 import { Avatar } from '../components/avatar';
@@ -21,6 +21,9 @@ import { sessionKeys, sessionStore } from '../utils/session-store';
 import { todayInputValue, validateGroupForm } from '../utils/validation';
 
 export default function DashboardScreen() {
+  const { width } = useWindowDimensions();
+  const drawerSide = width >= 768 ? 'right' : 'bottom';
+  const [creating, setCreating] = useState(false);
   const { styles } = useTheme();
   const auth = useAuth();
   const router = useRouter();
@@ -76,8 +79,11 @@ export default function DashboardScreen() {
                 <Text style={styles.eyebrow}>Your groups</Text>
                 <Text style={[styles.heading, { marginTop: 4 }]}>Exchanges in motion</Text>
               </View>
-              <View style={styles.countBadge}>
-                <Text style={styles.countBadgeText}>{groups.length}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Button size="sm" onPress={() => setCreating(true)}>Start a group</Button>
+                <View style={styles.countBadge}>
+                  <Text style={styles.countBadgeText}>{groups.length}</Text>
+                </View>
               </View>
             </View>
             <View style={{ marginTop: 24, gap: 12 }}>
@@ -112,7 +118,20 @@ export default function DashboardScreen() {
               ) : null}
             </View>
           </Card>
-          <CreateGroup onCreated={(id) => router.push(`/groups/${id}`)} />
+          {/* Starting a group is a task with a beginning and an end, so it is a drawer over the
+              list rather than a second card under it: from the right on a desktop, from below on
+              a phone, where a side panel would be the whole screen anyway. */}
+          <Drawer.Root open={creating} onOpenChange={setCreating} side={drawerSide}>
+            <Drawer.Panel accessibilityLabel="Start a group" style={drawerSide === 'right' ? local.drawerRight : undefined}>
+              <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 8 }}>
+                <Drawer.Title>Start a group</Drawer.Title>
+                <CreateGroup onCreated={(id) => { setCreating(false); router.push(`/groups/${id}`); }} />
+                <View style={{ marginTop: 16, alignSelf: 'flex-start' }}>
+                  <Drawer.Close>Close</Drawer.Close>
+                </View>
+              </ScrollView>
+            </Drawer.Panel>
+          </Drawer.Root>
         </View>
       </View>
     </Shell>
@@ -282,10 +301,8 @@ function CreateGroup({ onCreated }: { onCreated(id: string): void }) {
   }
 
   return (
-    <Card>
-      <Text style={styles.eyebrow}>New exchange</Text>
-      <Text style={[styles.heading, { marginTop: 4 }]}>Start a group</Text>
-      <View style={{ marginTop: 24, gap: gap.md }}>
+    <View>
+      <View style={{ marginTop: 16, gap: gap.md }}>
         <FieldLabel label="Group name">
           <Input maxLength={120} value={name} onValueChange={setName} placeholder="The Holly Jolly Crew" />
         </FieldLabel>
@@ -342,11 +359,13 @@ function CreateGroup({ onCreated }: { onCreated(id: string): void }) {
           <Text style={styles.link} onPress={() => void Linking.openURL(webUrl('/refunds'))}>Refund</Text> policies.
         </Text>
       </View>
-    </Card>
+    </View>
   );
 }
 
 const local = StyleSheet.create({
-  cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  cardHead: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  // Wide enough for two date fields side by side, no wider than a phone.
+  drawerRight: { maxWidth: 480 },
   consentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
 });
