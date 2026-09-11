@@ -17,7 +17,7 @@ server-side** for SEO/OG and fast first paint.
   Consumes the shared **`@ansavva/design-system`** (React DOM + Tailwind v4)
   from the external [ansavva/design-system](https://github.com/ansavva/design-system)
   repo — see the design-system gotcha below.
-- **`backend/`** — Python API Lambda, **Flask + Mangum like storybook/humbugg**
+- **`backend/`** — Python API Lambda, **Flask + Mangum like studio**
   (`/api/` Blueprint routing in `routes/` → `services`, with persistence in
   `repositories/` and external APIs in `clients/`).
   Package `website_core`.

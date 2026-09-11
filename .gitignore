@@ -216,7 +216,6 @@ node_modules/
 package-lock.json
 **/package-lock.json
 !scout/frontend/package-lock.json
-!storybook/frontend/storybook-ui/package-lock.json
 !humbugg/frontend/package-lock.json
 !humbugg/app/package-lock.json
 !design-system/package-lock.json
@@ -236,7 +235,6 @@ package-lock.json
 # directories (not Python venv dirs), so re-include them explicitly.
 !website/frontend/app/lib/
 !website/frontend/app/lib/**
-storybook/infra/outputs.txt
 
 # Terraform
 *.tfvars
