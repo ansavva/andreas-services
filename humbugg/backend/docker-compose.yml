@@ -15,7 +15,11 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
-      APP_BASE_URL: http://localhost:5176
+      # The PRODUCT APP's origin (:8081), not the marketing site's (:5176): invite
+      # links, Stripe return URLs and avatar URLs are built from it, and /join and
+      # /organize are app routes. It was :5176 from when the app was served under
+      # www, and every dev invite link 404ed on the marketing site until 2026-09.
+      APP_BASE_URL: http://localhost:8081
       CORS_ORIGINS: http://localhost:5176,http://localhost:8081
       HUMBUGG_EMAIL_PROVIDER: mailer
       HUMBUGG_MAILER_BASE_URL: http://host.docker.internal:8026

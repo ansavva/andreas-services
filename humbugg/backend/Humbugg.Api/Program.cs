@@ -301,7 +301,7 @@ public sealed record HumbuggSettings(
     string MailerAuthMode = "none",
     string MailerServiceId = "humbugg",
     string AppBucket = "",
-    string AvatarBaseUrl = "http://localhost:5176",
+    string AvatarBaseUrl = "http://localhost:8081",
     string? S3EndpointUrl = null,
     string BillingRecordsTable = "humbugg-billing",
     string WishesTable = "humbugg-wishes",
@@ -312,7 +312,9 @@ public sealed record HumbuggSettings(
 {
     public static HumbuggSettings FromEnvironment()
     {
-        var appBaseUrl = (Environment.GetEnvironmentVariable("APP_BASE_URL") ?? "http://localhost:5176").TrimEnd('/');
+        // The product app's dev origin. Not :5176 — that is the marketing site, which has no
+        // /join or /organize route; the link the backend mints has to land in the app.
+        var appBaseUrl = (Environment.GetEnvironmentVariable("APP_BASE_URL") ?? "http://localhost:8081").TrimEnd('/');
         return new(
             Environment.GetEnvironmentVariable("AWS_REGION") ?? Environment.GetEnvironmentVariable("AWS_DEFAULT_REGION") ?? "us-east-1",
             Environment.GetEnvironmentVariable("COGNITO_REGION") ?? "us-east-1",

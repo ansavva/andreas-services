@@ -146,12 +146,15 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
               {group.event_date ? new Date(`${group.event_date}T12:00:00`).toLocaleDateString() : 'Date TBD'}
             </MetaChip>
             <MetaChip>
-              {group.spending_limit != null ? `$${group.spending_limit.toFixed(2)} USD` : 'No set limit'}
+              {group.spending_limit != null ? `$${group.spending_limit.toFixed(2)} USD` : 'No spending limit'}
             </MetaChip>
-            <MetaChip>{group.plan} plan</MetaChip>
+            {/* The plan and its ceiling are the organizer's billing relationship with Humbugg, and
+                the organizer manages both on the dashboard. A participant sees who is taking part;
+                "plus plan" and "7 / 50" in their chips said somebody paid, and asked what 50 was. */}
             <MetaChip>
-              {participating}
-              {group.plan === 'work' ? '' : ` / ${group.participant_limit}`} participating
+              {group.is_organizer && group.plan !== 'work'
+                ? `${participating} / ${group.participant_limit} participating · ${group.plan} plan`
+                : `${participating} participating`}
             </MetaChip>
           </View>
         </View>
