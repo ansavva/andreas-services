@@ -1,3 +1,4 @@
+name: mailer
 services:
   api:
     build:

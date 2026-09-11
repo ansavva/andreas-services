@@ -70,7 +70,7 @@ export default function AuthCallbackRoute() {
 
   return (
     <Shell>
-      <LoadingPanel>Finishing sign-in…</LoadingPanel>
+      <LoadingPanel />
     </Shell>
   );
 }

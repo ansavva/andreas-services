@@ -85,13 +85,15 @@ jest.mock('../context/auth-context', () => ({
 }));
 
 jest.mock('../components/shell', () => {
-  const { Text, View } = require('react-native');
+  const { View } = require('react-native');
   return {
     Shell: ({ children }: { children?: React.ReactNode }) => <View>{children}</View>,
     Card: ({ children }: { children?: React.ReactNode }) => <View>{children}</View>,
-    // Wraps in Text like the real one — a bare string under a View is not a text host, and
-    // getByText would not find it.
-    LoadingPanel: ({ children }: { children?: React.ReactNode }) => <Text>{children}</Text>,
+    // Carries the real one's accessible name, so the loading assertion reads the same
+    // query as the unmocked screens.
+    LoadingPanel: ({ children }: { children?: React.ReactNode }) => (
+      <View accessibilityLabel="Loading">{children}</View>
+    ),
   };
 });
 
@@ -239,7 +241,7 @@ describe('loading and failure', () => {
     mocks.getReadiness.mockReturnValue(new Promise((resolve) => { release = resolve; }));
 
     render(<OrganizeScreen groupId="group-1" />);
-    expect(screen.getByText('Checking who is ready…')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Loading')).toBeOnTheScreen();
 
     release(readiness());
     await waitFor(() => expect(screen.getByText('Who is ready')).toBeOnTheScreen());

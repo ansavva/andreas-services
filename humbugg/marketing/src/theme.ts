@@ -84,22 +84,34 @@ export function setThemePreference(preference: ThemePreference): void {
   listeners.forEach((listener) => listener(preference));
 }
 
+export type ThemeScheme = 'light' | 'dark';
+
+/** What a preference paints right now — `system` resolved against the OS query. */
+export function resolveThemeScheme(preference: ThemePreference): ThemeScheme {
+  if (preference === 'system') return prefersDark() ? 'dark' : 'light';
+  return preference;
+}
+
 /**
  * One preference, shared by every component that calls this — see the
- * `listeners` note above. Renders `system` on the first pass (server AND
- * client, so hydration never mismatches — the head script already painted
+ * `listeners` note above. Renders `system`/`light` on the first pass (server
+ * AND client, so hydration never mismatches — the head script already painted
  * the real answer before React mounts) and corrects itself from
- * `localStorage` in an effect.
+ * `localStorage` and the OS query in an effect.
  *
- * While the current choice is "System", this keeps listening for the OS
- * query to change and re-painting live: the head script's own listener
- * stops the instant a stored key exists, so once a visitor has chosen
- * "System" in this tab (rather than simply never having chosen anything),
- * something still has to react without a reload — for as long as the
- * choice stays "System".
+ * The third member is the scheme that preference currently paints. It is
+ * what the control's icon shows — a visitor on "System" sees a moon, not a
+ * monitor, because the moon is what is on screen — and it is why this hook
+ * tracks the OS query rather than only re-painting on it: while the current
+ * choice is "System", the head script's own listener stops the instant a
+ * stored key exists, so once a visitor has chosen "System" in this tab
+ * (rather than simply never having chosen anything), something still has to
+ * react to the OS flipping without a reload — for as long as the choice
+ * stays "System".
  */
-export function useThemePreference(): [ThemePreference, (preference: ThemePreference) => void] {
+export function useThemePreference(): [ThemePreference, (preference: ThemePreference) => void, ThemeScheme] {
   const [preference, setPreference] = useState<ThemePreference>('system');
+  const [scheme, setScheme] = useState<ThemeScheme>('light');
 
   useEffect(() => {
     setPreference(getStoredThemePreference());
@@ -110,12 +122,16 @@ export function useThemePreference(): [ThemePreference, (preference: ThemePrefer
   }, []);
 
   useEffect(() => {
+    setScheme(resolveThemeScheme(preference));
     if (preference !== 'system') return undefined;
     const query = window.matchMedia('(prefers-color-scheme: dark)');
-    const onChange = () => applyThemePreference('system');
+    const onChange = () => {
+      applyThemePreference('system');
+      setScheme(resolveThemeScheme('system'));
+    };
     query.addEventListener('change', onChange);
     return () => query.removeEventListener('change', onChange);
   }, [preference]);
 
-  return [preference, setThemePreference];
+  return [preference, setThemePreference, scheme];
 }
