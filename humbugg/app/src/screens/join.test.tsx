@@ -182,6 +182,27 @@ describe('when joining is refused', () => {
     // Never the API's own words here: they tell a non-member to buy Plus for an exchange they are
     // not in.
     expect(screen.queryByText(/Plus is required/)).toBeNull();
+    // And no second try: pressing again asks the same roster the same question (#674).
+    expect(screen.getByText('Full for now')).toBeDisabled();
+    expect(screen.queryByText('Join the exchange')).toBeNull();
+  });
+
+  it('names the organizer when the preview knows them, and shows their words', async () => {
+    mocks.getInvitation.mockResolvedValue({
+      group_id: 'g1',
+      exchange_name: 'Office Exchange',
+      customization: { greeting: 'Welcome to the office exchange', instructions: 'Bring it wrapped.' },
+      organizer_name: 'Dev Organizer',
+    });
+    render(<JoinScreen groupId="g1" />);
+    await waitFor(() => expect(screen.getByText('Welcome to the office exchange')).toBeOnTheScreen());
+    expect(screen.getByText('Bring it wrapped.')).toBeOnTheScreen();
+    expect(screen.getByText('Organized by Dev Organizer')).toBeOnTheScreen();
+
+    mocks.joinGroup.mockRejectedValue(new ApiError(402, 'plus_required', 'Plus is required for participant 7.'));
+    fireEvent.press(screen.getByText('Join the exchange'));
+
+    await waitFor(() => expect(screen.getByText(/Only Dev Organizer can make room/)).toBeOnTheScreen());
   });
 
   it('passes a drawn exchange’s own explanation straight through', async () => {

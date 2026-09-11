@@ -189,7 +189,9 @@ export function RemindersPanel({ group }: { group: GroupDetail }) {
         <Text style={[styles.small, styles.semibold]}>{summary(draft)}</Text>
 
         <StatusMessage message={error} />
-        <StatusMessage message={saved ? `Saved. ${saved}` : null} tone="success" />
+        {/* Just "Saved." — the sentence above already says what was saved, and the header says it
+            again; a third copy in green was the same sentence three times on one panel. */}
+        <StatusMessage message={saved ? 'Saved.' : null} tone="success" />
 
         <View style={{ alignSelf: 'flex-start' }}>
           <Button disabled={busy} onPress={() => void save()}>
@@ -251,5 +253,6 @@ function Rule({
 function when(iso: string): string {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return 'at an unknown time';
-  return at.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  // With the zone: the rule under it is stated in UTC, and this is the reader's local time.
+  return at.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });
 }

@@ -30,17 +30,20 @@ import { sessionKeys, sessionStore } from '../utils/session-store';
  * these is an organizer. Somebody who has just clicked a link in a group chat cannot reset a draw or
  * buy Plus for an exchange they are not in, and telling them to is worse than telling them nothing.
  */
-function refusal(error: unknown): string {
+function refusal(error: unknown, organizer: string | undefined): string {
   if (!(error instanceof ApiError)) {
     return error instanceof Error ? error.message : 'Unable to join this exchange.';
   }
+  // Named when the preview knew them — the person reading this has the link from somebody, and
+  // "the organizer" is a role where a name is what they need to act.
+  const who = organizer || 'the organizer';
   switch (error.status) {
     case 403:
       // Invalid, rotated or expired are indistinguishable from here, and deliberately so: telling
       // somebody which one would tell a stranger whether a group id is real.
-      return 'This invitation is no longer valid. The organizer may have created a fresh link — ask them for the current one.';
+      return `This invitation is no longer valid. ${organizer ? organizer : 'The organizer'} may have created a fresh link — ask them for the current one.`;
     case 402:
-      return 'This exchange is full. Only the organizer can make room for more people.';
+      return `This exchange is full for now. Only ${who} can make room — let them know you'd like in, and try the link again once they have.`;
     case 409:
       return error.message;
     case 404:
@@ -57,6 +60,9 @@ export default function JoinScreen({ groupId }: { groupId: string }) {
   const [invite, setInvite] = useState<string>(() => sessionStore.get(sessionKeys.join(groupId)) ?? '');
   const [preview, setPreview] = useState<InvitationPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A 402 is not a mistake to retry: pressing again asks the same question of the same roster.
+  // The button says so instead of inviting a second try (#674).
+  const [full, setFull] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -96,7 +102,8 @@ export default function JoinScreen({ groupId }: { groupId: string }) {
       sessionStore.remove(sessionKeys.returnTo);
       router.replace(`/groups/${groupId}`);
     } catch (err) {
-      setError(refusal(err));
+      setFull(err instanceof ApiError && err.status === 402);
+      setError(refusal(err, preview?.organizer_name));
     } finally {
       setBusy(false);
     }
@@ -110,11 +117,23 @@ export default function JoinScreen({ groupId }: { groupId: string }) {
         <Text style={[styles.displayLg, { marginTop: 8, textAlign: 'center' }]}>
           {preview ? preview.exchange_name : 'Join this Secret Santa exchange'}
         </Text>
-        <Text style={[styles.bodyMuted, { marginTop: 16, maxWidth: 448, textAlign: 'center' }]}>
-          {preview
-            ? 'Add your wish list and Humbugg keeps the surprise safe until draw day.'
-            : 'Sign in, add your wish list, and let Humbugg keep the surprise safe until draw day.'}
+        {/* The organizer's own words when they wrote any (#677) — the greeting where Humbugg's
+            line would be, the instructions under it — otherwise Humbugg's line. */}
+        {preview?.customization.greeting ? (
+          <Text style={[styles.body, styles.semibold, { marginTop: 16, maxWidth: 448, textAlign: 'center' }]}>
+            {preview.customization.greeting}
+          </Text>
+        ) : null}
+        <Text style={[styles.bodyMuted, { marginTop: preview?.customization.greeting ? 8 : 16, maxWidth: 448, textAlign: 'center' }]}>
+          {preview?.customization.instructions
+            ? preview.customization.instructions
+            : preview
+              ? 'Add your wish list and Humbugg keeps the surprise safe until draw day.'
+              : 'Sign in, add your wish list, and let Humbugg keep the surprise safe until draw day.'}
         </Text>
+        {preview?.organizer_name ? (
+          <Text style={[styles.tiny, { marginTop: 8, textAlign: 'center' }]}>Organized by {preview.organizer_name}</Text>
+        ) : null}
 
         {!invite ? (
           <StatusMessage message="This invitation link is incomplete. Ask the organizer to send it again — the part after the # matters." />
@@ -122,8 +141,8 @@ export default function JoinScreen({ groupId }: { groupId: string }) {
 
         {auth.authenticated ? (
           <View style={{ marginTop: 28, width: '100%' }}>
-            <Button style={styles.buttonBlock} size="lg" disabled={busy || !invite} onPress={() => void join()}>
-              {busy ? 'Joining…' : 'Join the exchange'}
+            <Button style={styles.buttonBlock} size="lg" disabled={busy || !invite || full} onPress={() => void join()}>
+              {busy ? 'Joining…' : full ? 'Full for now' : 'Join the exchange'}
             </Button>
           </View>
         ) : (

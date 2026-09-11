@@ -161,6 +161,22 @@ export default function GroupScreen({ groupId }: { groupId: string }) {
         <StatusMessage message={error} />
         <StatusMessage message={success} tone="success" />
 
+        {/* Said where the organizer is looking when a seventh person says the link does not work.
+            The billing card lives on the dashboard; "6 / 6" in a chip did not say it was closed. */}
+        {group.is_organizer && group.plan === 'free' && group.status === 'open' &&
+        participating >= group.participant_limit ? (
+          <Link href={`/organize/${groupId}`} asChild>
+            <Pressable accessibilityRole="link" style={[styles.panel, { marginTop: 16 }]}>
+              <Text style={[styles.small, styles.semibold]}>
+                This exchange is full — Free seats {group.participant_limit}, you included.
+              </Text>
+              <Text style={[styles.smallMuted, { marginTop: 4 }]}>
+                Nobody else can join until it moves to Plus. See the billing card on the dashboard →
+              </Text>
+            </Pressable>
+          </Link>
+        ) : null}
+
         {plusRefusal ? (
           <PlusRefusalCard
             groupId={groupId}

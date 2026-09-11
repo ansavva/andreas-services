@@ -98,7 +98,10 @@ public sealed record ExchangeCustomization(
     string Greeting = "",
     string Instructions = "");
 
-public sealed record InvitationPreview(string GroupId, string ExchangeName, ExchangeCustomization Customization);
+// OrganizerName is the owner's display name — shown only to somebody holding a valid invite
+// secret, which is who this preview answers to, so a joiner told "the exchange is full" knows who
+// to ask (#674).
+public sealed record InvitationPreview(string GroupId, string ExchangeName, ExchangeCustomization Customization, string OrganizerName = "");
 public sealed record ExchangeTemplate(
     string TemplateId, string Name, string ExchangeName, string Description,
     int SignupDeadlineDaysBeforeEvent, string WishlistPrompt,
