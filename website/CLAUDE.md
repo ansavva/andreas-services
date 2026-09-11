@@ -97,17 +97,21 @@ Browser ──▶ CloudFront (www + apex)
 ## Local development
 
 ```bash
-cd frontend
 export NODE_AUTH_TOKEN=$(gh auth token)   # needs read:packages
-npm ci
-npm run dev            # RR SSR dev server (needs WEBSITE_API_URL for forms/admin)
-
-cd ../backend
-poetry install
-docker compose up dynamodb                  # local DynamoDB on :8001
-poetry run python -m website_core.handlers.local.api.api_dev_server  # :8002
-poetry run pytest                         # backend unit tests (moto)
+npm --prefix website/frontend ci
+(cd website/backend && poetry install)
+./website/scripts/dev-up.sh               # DynamoDB Local :8001, API :8002, SSR dev server :5175
+./website/scripts/dev-up.sh --frontend    # or --backend, or --serve-build (:3000)
+(cd website/backend && poetry run pytest) # backend unit tests (moto)
 ```
+
+**Every local value lives in one file, `~/.config/andreas-services/website/dev.env`**,
+documented key by key in [`dev.env.sample`](dev.env.sample); `dev-up.sh` lays it
+out from the sample on every run — your values kept, new keys slotted in — and
+exports every key into each process. There is
+no per-machine AWS stack for this service, so nothing generates it — it is
+yours. Nothing reads a `website/.env` any more. `WEBSITE_DEV_ENV_FILE`
+overrides the location.
 
 Both images are validated with Docker locally (see `docs/SETUP.md`).
 

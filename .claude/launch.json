@@ -36,7 +36,7 @@
       "runtimeExecutable": "/bin/sh",
       "runtimeArgs": [
         "-c",
-        "export PATH=/opt/homebrew/opt/node@20/bin:$PATH && exec npm --prefix website/frontend run dev"
+        "exec ./website/scripts/dev-up.sh --frontend"
       ],
       "port": 5175,
       "autoPort": false
@@ -46,7 +46,7 @@
       "runtimeExecutable": "/bin/sh",
       "runtimeArgs": [
         "-c",
-        "cd website/backend && exec poetry run python -m website_core.handlers.local.api.api_dev_server"
+        "exec ./website/scripts/dev-up.sh --backend"
       ],
       "port": 8002,
       "autoPort": false
@@ -56,7 +56,7 @@
       "runtimeExecutable": "/bin/sh",
       "runtimeArgs": [
         "-c",
-        "export PATH=/opt/homebrew/opt/node@20/bin:$PATH && cd website/frontend && exec npm run start"
+        "exec ./website/scripts/dev-up.sh --serve-build"
       ],
       "port": 3000,
       "autoPort": false
