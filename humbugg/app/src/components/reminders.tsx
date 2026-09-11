@@ -9,7 +9,7 @@
 // The hours are UTC and the panel says so rather than pretending otherwise. The backend stores UTC
 // hours with no timezone alongside them, so rendering them as local time would be a guess that
 // reads as a fact — and the guess is wrong for everybody who moves or has participants elsewhere.
-import { Badge, Button, Checkbox, Input, Select } from '@ansavva/design-system';
+import { Alert, Badge, Button, Checkbox, Input, Select } from '@ansavva/design-system';
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 
@@ -114,16 +114,6 @@ export function RemindersPanel({ group }: { group: GroupDetail }) {
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={styles.eyebrow}>Reminders</Text>
-          {/* The one fact the organizer opens this for: when the next one goes. The rule itself is
-              said once, under the controls, as what the DRAFT would do — that sentence changes as
-              the settings do, and the saved rule is what "On" already means. */}
-          <Text style={[styles.heading, { marginTop: 4 }]}>
-            {overview.settings.state === 'active' && overview.next_scheduled_at
-              ? `Next one ${when(overview.next_scheduled_at)}`
-              : overview.settings.state === 'paused'
-                ? 'Paused'
-                : 'Off'}
-          </Text>
         </View>
         <Badge intent={overview.settings.state === 'active' ? 'success' : 'neutral'} size="sm">
           {overview.settings.state === 'active'
@@ -132,6 +122,23 @@ export function RemindersPanel({ group }: { group: GroupDetail }) {
               ? 'Paused'
               : 'Off'}
         </Badge>
+      </View>
+
+      {/* The one fact the organizer opens this for, as a callout rather than a heading: when the
+          next one goes. Off and paused say so in the same place. The rule itself is said once,
+          under the controls, as what the DRAFT would do. */}
+      <View style={{ marginTop: 16 }}>
+        <Alert.Root intent={overview.settings.state === 'active' ? 'success' : 'info'}>
+          <Alert.Title>
+            {overview.settings.state === 'active' && overview.next_scheduled_at
+              ? `Next reminder goes ${when(overview.next_scheduled_at)}`
+              : overview.settings.state === 'active'
+                ? 'On — the next one is being scheduled'
+                : overview.settings.state === 'paused'
+                  ? 'Paused — nothing is sent until you switch them back on'
+                  : 'Off — nothing is sent'}
+          </Alert.Title>
+        </Alert.Root>
       </View>
 
       <View style={{ marginTop: 24, gap: gap.md }}>
