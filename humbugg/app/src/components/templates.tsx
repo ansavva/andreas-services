@@ -119,6 +119,7 @@ export function TemplatesPanel({
   if (needsPlus)
     return (
       <PlusLockedNote
+        groupId={group.group_id}
         reason="Saving a setup as a template is part of Plus."
         action="save this whole setup and start next year's from it"
         isOwner={group.is_owner}

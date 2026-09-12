@@ -98,14 +98,12 @@ export function SettingsTab({
           <Text style={styles.eyebrow}>Exchange</Text>
           {/* What the exchange IS — name, dates, spending limit, how it works — then how it runs as
               one row per setting (label, one line of consequence, control on the right, so the
-              next setting is another <SettingRow>), then the organizer's greeting. Before the draw
-              only for the details: nothing in them changes the matching, but a roster that can
-              still move is the mental model. */}
-          {group.status === 'open' ? (
-            <View style={{ marginTop: 20 }}>
-              <ExchangeSettingsPanel group={group} onSaved={onGroupChanged} embedded />
-            </View>
-          ) : null}
+              next setting is another <SettingRow>), then the organizer's greeting. After the draw
+              too: none of these change the matching, and a date or a limit that moves after the
+              draw is the ordinary case, not the exception. The header's "Edit details" lands here. */}
+          <View style={{ marginTop: 20 }}>
+            <ExchangeSettingsPanel group={group} onSaved={onGroupChanged} embedded />
+          </View>
           <View style={{ marginTop: 24 }}>
             <SettingRow
               label="Gifts are posted"

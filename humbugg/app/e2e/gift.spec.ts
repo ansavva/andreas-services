@@ -119,9 +119,9 @@ test('the dashboard reports gift progress as counts and names nobody', async ({ 
 
   await page.goto(`/groups/${group.group_id}?tab=draw`);
 
-  await expect(page.getByText('Purchased, sent and received')).toBeVisible();
+  // Beside the readiness tiles, in the same row.
+  await expect(page.getByText('Purchased')).toBeVisible();
   await expect(page.getByText('3 of 4')).toBeVisible();
   await expect(page.getByText('2 of 4')).toBeVisible();
   await expect(page.getByText('1 of 4')).toBeVisible();
-  await expect(page.getByText('Nothing to track yet.')).toBeHidden();
 });

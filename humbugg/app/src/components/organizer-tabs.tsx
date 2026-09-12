@@ -22,7 +22,7 @@
 // here decides who is ready.
 import { AlertDialog, Button, Input, Meter, Select, Textarea } from '@ansavva/design-system';
 import * as Clipboard from 'expo-clipboard';
-import { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, Share, Text, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
 
 import { api, ApiError } from '../api/client';
@@ -122,7 +122,7 @@ export function OrganizerTabs({
       <StatusMessage message={error} />
       <StatusMessage message={success} tone="success" />
       {plusRefusal ? (
-        <PlusLockedNote reason={plusRefusal} action="do what this exchange just asked for" isOwner={group.is_owner} />
+        <PlusLockedNote groupId={group.group_id} reason={plusRefusal} action="do what this exchange just asked for" isOwner={group.is_owner} />
       ) : null}
     </>
   );
@@ -135,11 +135,6 @@ export function OrganizerTabs({
     return (
         <View style={{ gap: 28 }}>
           {status}
-          {/* When Free is full, the thing the organizer came to People to find out is why nobody
-              can join — so the billing card leads here, and lives in Settings otherwise. */}
-          {group.is_owner && atFreeCeiling ? (
-            <PlusBillingPanel group={group} checkout={checkout} onEntitled={refresh} />
-          ) : null}
           {readiness ? (
             <PeoplePanel
               group={group}
@@ -157,6 +152,12 @@ export function OrganizerTabs({
           ) : (
             <LoadingPanel />
           )}
+          {/* When Free is full, the thing the organizer came to People to find out is why nobody
+              can join — so the billing card sits right under the roster, and lives in Settings
+              otherwise. */}
+          {group.is_owner && atFreeCeiling ? (
+            <PlusBillingPanel group={group} checkout={checkout} onEntitled={refresh} />
+          ) : null}
 
           {addingLate ? (
             <LateParticipantPanel
@@ -169,6 +170,7 @@ export function OrganizerTabs({
           ) : null}
           {lateNeedsPlus ? (
             <PlusLockedNote
+              groupId={group.group_id}
               reason="Adding somebody after the draw is part of Plus."
               action="fit a late arrival in, changing as few matches as possible"
               isOwner={group.is_owner}
@@ -178,6 +180,7 @@ export function OrganizerTabs({
               an advert rather than an answer. */}
           {rolesNeedPlus ? (
             <PlusLockedNote
+              groupId={group.group_id}
               reason="Sharing the organizing is part of Plus."
               action="hand the running of this exchange to somebody alongside you"
               isOwner={group.is_owner}
@@ -222,6 +225,7 @@ export function OrganizerTabs({
           )}
           <DrawCard
             group={group}
+            drawnAt={readiness?.drawn_at}
             busy={busy}
             revealed={reveal}
             onDraw={() => void action((token) => api.draw(token, groupId), 'The draw is complete.')}
@@ -239,7 +243,6 @@ export function OrganizerTabs({
               }
             }}
           />
-          {readiness ? <GiftProgressPanel readiness={readiness} /> : null}
           {/* Next year's exchange, offered once this one is drawn — that is when an organizer
               thinks about it (#136). Owner-only: it creates an exchange. */}
           {group.is_owner && drawn ? <RepeatExchangePanel group={group} /> : null}
@@ -386,6 +389,7 @@ function ExclusionsCard({
 
 function DrawCard({
   group,
+  drawnAt,
   busy,
   revealed,
   onDraw,
@@ -393,6 +397,8 @@ function DrawCard({
   onReveal,
 }: {
   group: GroupDetail;
+  /** When the draw was run, from the readiness read. */
+  drawnAt?: string | null;
   busy: boolean;
   revealed: RevealAssignment[] | null;
   onDraw(): void;
@@ -422,6 +428,9 @@ function DrawCard({
     <Card>
       <Text style={styles.eyebrow}>The draw</Text>
       <Text style={[styles.heading, { marginTop: 4 }]}>Drawn</Text>
+      {drawnAt ? (
+        <Text style={[styles.smallMuted, { marginTop: 8 }]}>Drawn on {whenDrawn(drawnAt)}.</Text>
+      ) : null}
       <View style={{ marginTop: 20, gap: 20 }}>
         <ResetDrawPanel group={group} busy={busy} onReset={onReset} style={dangerPanel} />
         <View style={dangerPanel}>
@@ -466,6 +475,13 @@ function DrawCard({
       </View>
     </Card>
   );
+}
+
+/** "September 12, 2026 at 10:17 AM" — the draw's own timestamp, in the reader's locale. */
+function whenDrawn(iso: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return iso;
+  return `${at.toLocaleDateString(undefined, { dateStyle: 'long' })} at ${at.toLocaleTimeString(undefined, { timeStyle: 'short' })}`;
 }
 
 /**
@@ -525,10 +541,19 @@ function ResetDrawPanel({
 
 // ─── Readiness ──────────────────────────────────────────────────────────────────────────────────
 
-/** The roll-up: is this exchange ready? One column on a phone, two on a small tablet, four wide. */
+/**
+ * The roll-up: is this exchange ready, and once drawn, how far along are the gifts? One row of
+ * tiles — one column on a phone, two on a small tablet, four wide — so the three gift counts sit
+ * beside the four readiness counts instead of under their own heading further down the page.
+ *
+ * Before the draw there are no gift tiles at all. Nobody has been asked to buy anything, so the
+ * API sends no progress; "0 of 5 purchased" would be a claim about the world, and a false one.
+ * The counts are counts only — they never reveal who is giving to whom.
+ */
 function ReadinessStats({ readiness }: { readiness: GroupReadiness }) {
   const { counts } = readiness;
   const drawn = readiness.status === 'drawn';
+  const progress = readiness.gift_progress;
   return (
     <StatRow>
       <Stat
@@ -557,6 +582,15 @@ function ReadinessStats({ readiness }: { readiness: GroupReadiness }) {
         ready={drawn ? counts.assignments_viewed : undefined}
         total={counts.participating}
       />
+      {progress ? (
+        <Stat label="Purchased" value={`${progress.purchased} of ${progress.total}`} ready={progress.purchased} total={progress.total} />
+      ) : null}
+      {progress ? (
+        <Stat label="Sent" value={`${progress.sent} of ${progress.total}`} ready={progress.sent} total={progress.total} />
+      ) : null}
+      {progress ? (
+        <Stat label="Received" value={`${progress.received} of ${progress.total}`} ready={progress.received} total={progress.total} />
+      ) : null}
     </StatRow>
   );
 }
@@ -568,15 +602,15 @@ function ReadinessStats({ readiness }: { readiness: GroupReadiness }) {
  */
 function StatRow({ children }: { children: React.ReactNode }) {
   const { width } = useWindowDimensions();
+  // Never more than four to a row: seven tiles after the draw wrap 4 + 3 rather than squeezing
+  // "Not needed" into a column too narrow for one word.
   const columns = width < 640 ? 1 : width < 1024 ? 2 : 4;
-  const minWidth = columns === 1 ? '100%' : columns === 2 ? '45%' : 0;
+  const minWidth = columns === 1 ? '100%' : columns === 2 ? '45%' : '22%';
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: gap.md }}>
-      {Array.isArray(children)
-        ? children.map((child, index) => (
-            <View key={index} style={{ flexBasis: 0, flexGrow: 1, minWidth }}>{child}</View>
-          ))
-        : children}
+      {React.Children.toArray(children).map((child, index) => (
+        <View key={index} style={{ flexBasis: 0, flexGrow: 1, minWidth }}>{child}</View>
+      ))}
     </View>
   );
 }
@@ -613,31 +647,3 @@ function Stat({
   );
 }
 
-function GiftProgressPanel({ readiness }: { readiness: GroupReadiness }) {
-  const { styles } = useTheme();
-  const progress = readiness.gift_progress;
-  return (
-    <Card>
-      <Text style={styles.eyebrow}>Gift progress</Text>
-      <Text style={[styles.heading, { marginTop: 4 }]}>Purchased, sent and received</Text>
-      {progress ? (
-        <StatRow>
-          <Stat label="Purchased" value={`${progress.purchased} of ${progress.total}`} ready={progress.purchased} total={progress.total} />
-          <Stat label="Sent" value={`${progress.sent} of ${progress.total}`} ready={progress.sent} total={progress.total} />
-          <Stat label="Received" value={`${progress.received} of ${progress.total}`} ready={progress.received} total={progress.total} />
-        </StatRow>
-      ) : (
-        <View style={[styles.emptyPanel, { marginTop: 24 }]}>
-          {/* Deliberately not three zeroes. Before a draw nobody has been asked to buy anything, so
-              the API sends no progress at all; "0 of 5 purchased" would be a claim about the
-              world, and this one would be false. */}
-          <Text style={styles.bodyMuted}>Nothing to track yet.</Text>
-          <Text style={[styles.tiny, { marginTop: 8, textAlign: 'center' }]}>
-            Once the draw is done and givers start marking gifts bought, sent and received, the totals
-            appear here — as counts only, so they never reveal who is giving to whom.
-          </Text>
-        </View>
-      )}
-    </Card>
-  );
-}

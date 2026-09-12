@@ -258,7 +258,8 @@ internal sealed class GroupService(
             group.GroupId, group.Status, group.Plan, group.RequiresAddress, counts, participants, pending,
             // Counts only, and only after a draw. Before one there is nothing to aggregate and null
             // says exactly that — see GiftProgress on why this is not three zeroes.
-            draw is null ? null : Progress(members, draw.DrawId));
+            draw is null ? null : Progress(members, draw.DrawId),
+            draw?.CreatedAt);
     }
 
     /// <summary>

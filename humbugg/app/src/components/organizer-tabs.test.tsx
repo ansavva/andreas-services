@@ -578,8 +578,19 @@ describe('the address setting', () => {
 describe('resetting the draw', () => {
   beforeEach(() => {
     mocks.getGroup.mockResolvedValue({ group_id: 'group-1', name: 'Office Secret Santa', plan: 'plus', is_owner: true, status: 'drawn' });
-    mocks.getReadiness.mockResolvedValue(readiness({ status: 'drawn' }));
+    mocks.getReadiness.mockResolvedValue(readiness({ status: 'drawn', drawn_at: '2026-09-12T14:17:00Z' }));
     mocks.reset.mockResolvedValue({});
+  });
+
+  it('says when the draw was run', async () => {
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('Everyone (1)')).toBeOnTheScreen());
+    openDraw();
+
+    const expected = new Date('2026-09-12T14:17:00Z');
+    expect(
+      screen.getByText(`Drawn on ${expected.toLocaleDateString(undefined, { dateStyle: 'long' })} at ${expected.toLocaleTimeString(undefined, { timeStyle: 'short' })}.`),
+    ).toBeOnTheScreen();
   });
 
   it('asks before it resets, and does nothing if the answer is no', async () => {
@@ -610,12 +621,13 @@ describe('resetting the draw', () => {
 });
 
 describe('gift progress', () => {
-  it('says gift progress is not tracked rather than reporting zero of everything', async () => {
+  it('shows no gift tiles before the draw rather than reporting zero of everything', async () => {
     render(<OrganizeScreen groupId="group-1" />);
     await waitFor(() => screen.getByText('Draw'));
     openDraw();
 
-    await waitFor(() => expect(screen.getByText('Nothing to track yet.')).toBeOnTheScreen());
+    await waitFor(() => expect(screen.getByText('Taking part')).toBeOnTheScreen());
+    expect(screen.queryByText('Purchased')).toBeNull();
     expect(screen.queryByText('0 of 1')).toBeNull();
   });
 
@@ -631,7 +643,9 @@ describe('gift progress', () => {
     await waitFor(() => expect(screen.getByText('4 of 5')).toBeOnTheScreen());
     expect(screen.getByText('2 of 5')).toBeOnTheScreen();
     expect(screen.getByText('1 of 5')).toBeOnTheScreen();
-    expect(screen.queryByText('Nothing to track yet.')).toBeNull();
+    // In the same row as the readiness tiles, not under a heading of their own.
+    expect(screen.getByText('Purchased')).toBeOnTheScreen();
+    expect(screen.queryByText('Gift progress')).toBeNull();
   });
 });
 

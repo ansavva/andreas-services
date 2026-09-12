@@ -5,6 +5,7 @@
 // themselves and the stage buttons. The anonymous chat sits beside every tab. Nothing about YOU is
 // on this page; that is the next tab. The old exchange page interleaved the two, and a card
 // headed "Your gift" sat above one headed "Your gift from your giver", both about a gift.
+import { Button } from '@ansavva/design-system';
 import { Text, View } from 'react-native';
 
 import { api } from '../../api/client';
@@ -17,7 +18,7 @@ import { firstName, useGroup } from './context';
 
 export default function GivingScreen() {
   const { styles } = useTheme();
-  const { groupId, group, me, assignment, busy, claimAction } = useGroup();
+  const { groupId, group, me, assignment, busy, claimAction, openChat } = useGroup();
 
   if (!me.is_participating) {
     return (
@@ -68,7 +69,7 @@ export default function GivingScreen() {
           onChange={(stage) => void claimAction((token) => api.setGiftStage(token, groupId, stage))}
         />
       ) : null}
-      <RecipientDetails name={name} assignment={assignment} />
+      <RecipientDetails name={name} assignment={assignment} onAsk={openChat} />
     </>
   );
 }
@@ -112,8 +113,17 @@ function RecipientCard({
 }
 
 /** What they wrote about themselves, and where to send it. */
-function RecipientDetails({ name, assignment }: { name: string; assignment: RecipientAssignment }) {
-  const { styles } = useTheme();
+function RecipientDetails({
+  name,
+  assignment,
+  onAsk,
+}: {
+  name: string;
+  assignment: RecipientAssignment;
+  /** Opens the anonymous chat on the thread with them. */
+  onAsk(): void;
+}) {
+  const { styles, brand } = useTheme();
   const address = Object.values(assignment.address ?? {}).filter(Boolean).join(', ');
   return (
     <Card>
@@ -123,6 +133,14 @@ function RecipientDetails({ name, assignment }: { name: string; assignment: Reci
         <Detail label="Likes, sizes and hobbies" value={assignment.wishlist || 'Nothing added.'} />
         <Detail label="Please avoid" value={assignment.avoidances || 'Nothing listed.'} />
         <Detail label="Delivery address" value={address || 'No address provided.'} />
+      </View>
+      {/* The gap in what they wrote is what the chat is for: a size, a colour, whether they
+          already own it. They are told someone asked, never who. */}
+      <View style={{ marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: brand.line, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <Text style={[styles.smallMuted, { flex: 1, minWidth: 220 }]}>
+          Something missing? Ask {name} — they are told someone asked, never who.
+        </Text>
+        <Button intent="secondary" size="sm" onPress={onAsk}>Ask {name} anonymously</Button>
       </View>
     </Card>
   );

@@ -13,6 +13,7 @@
 // to their next exchange. Every state below says so in words, because the shape a purchase button
 // usually has is a subscription's and the wrong assumption is the expensive one.
 import { Badge, Button } from '@ansavva/design-system';
+import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, Platform, Pressable, Text, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
@@ -343,16 +344,19 @@ export function PanelLoadFailure({ title, message }: { title: string; message: s
  * and is told whose decision it is instead of being sent looking for a control they do not have.
  */
 export function PlusLockedNote({
+  groupId,
   reason,
   action,
   isOwner,
 }: {
+  groupId: string;
   reason: string;
   /** Phrased to follow "Plus would let you …". */
   action: string;
   isOwner: boolean;
 }) {
   const { styles } = useTheme();
+  const router = useRouter();
   return (
     <Card>
       <Text style={styles.eyebrow}>Part of Plus</Text>
@@ -360,9 +364,18 @@ export function PlusLockedNote({
       <Text style={[styles.smallMuted, { marginTop: 8 }]}>
         Plus would let you {action}.{' '}
         {isOwner
-          ? 'You can turn it on for this exchange further down this page.'
+          ? 'It is one purchase for this exchange; the price is on the billing page.'
           : 'Only the person who created this exchange can turn it on.'}
       </Text>
+      {/* Billing is a section of Settings, which is a page of its own now — nothing is "further
+          down" from here. The button is the way there. */}
+      {isOwner ? (
+        <View style={{ marginTop: 16, alignSelf: 'flex-start' }}>
+          <Button size="sm" onPress={() => router.navigate(`/groups/${groupId}/settings/billing`)}>
+            Upgrade this exchange
+          </Button>
+        </View>
+      ) : null}
     </Card>
   );
 }

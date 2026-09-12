@@ -36,6 +36,8 @@ export interface GroupContextValue {
    * so this swaps it in rather than re-reading the group. See the layout for why.
    */
   claimAction(work: (token: string) => Promise<RecipientAssignment>): Promise<void>;
+  /** Bring the anonymous chat up — the rail if it was folded away, the sheet if it was resting. */
+  openChat(): void;
 }
 
 export const GroupContext = createContext<GroupContextValue | null>(null);

@@ -13,7 +13,7 @@
 import { Breadcrumbs, Tabs } from '@ansavva/design-system';
 import { useRouter, useSegments } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 
 import { api, ApiError } from '../../api/client';
 import { isPlusRequired, PlusRefusalCard } from '../../components/plus';
@@ -52,6 +52,9 @@ export default function GroupLayout({ groupId, children }: { groupId: string; ch
   // A 402 is not an error the member made; it is a price. Kept apart from `error` so it renders
   // as an offer with a way forward rather than a red bar with a dead end.
   const [plusRefusal, setPlusRefusal] = useState<string | null>(null);
+  // Counts up each time a page asks for the chat; the panel and the sheet open on the change.
+  const [chatSignal, setChatSignal] = useState(0);
+  const openChat = useCallback(() => setChatSignal((n) => n + 1), []);
 
   const loadReadiness = useCallback(async (token: string) => {
     try {
@@ -145,10 +148,10 @@ export default function GroupLayout({ groupId, children }: { groupId: string; ch
 
   const value = useMemo<GroupContextValue | null>(
     () => group && me
-      ? { groupId, group, me, assignment, readiness, readinessError, busy, setGroup, reload, action, claimAction }
+      ? { groupId, group, me, assignment, readiness, readinessError, busy, setGroup, reload, action, claimAction, openChat }
       : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [groupId, group, me, assignment, readiness, readinessError, busy, reload],
+    [groupId, group, me, assignment, readiness, readinessError, busy, reload, openChat],
   );
 
   if (loading) return <Shell><LoadingPanel /></Shell>;
@@ -202,10 +205,10 @@ export default function GroupLayout({ groupId, children }: { groupId: string; ch
   const recipient = assignment ? { name: assignment.display_name, avatar: assignment.avatar_url } : null;
   const chat = chatting ? (
     rail ? (
-      <ChatPanel groupId={groupId} layout="rail" recipient={recipient} />
+      <ChatPanel groupId={groupId} layout="rail" recipient={recipient} openSignal={chatSignal} />
     ) : (
-      <BottomSheet label="Anonymous chat">
-        <ChatPanel groupId={groupId} layout="sheet" recipient={recipient} />
+      <BottomSheet label="Anonymous chat" openSignal={chatSignal}>
+        <ChatPanel groupId={groupId} layout="sheet" recipient={recipient} openSignal={chatSignal} />
       </BottomSheet>
     )
   ) : null;
@@ -231,7 +234,14 @@ export default function GroupLayout({ groupId, children }: { groupId: string; ch
             {detail.description ? (
               <Text style={[styles.bodyMuted, { maxWidth: 672 }]}>{detail.description}</Text>
             ) : null}
-            <Text style={styles.smallMuted}>{meta}</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+              <Text style={styles.smallMuted}>{meta}</Text>
+              {detail.is_organizer ? (
+                <Pressable accessibilityRole="link" onPress={() => router.navigate(`/groups/${groupId}/settings/exchange`)}>
+                  <Text style={styles.link}>Edit details</Text>
+                </Pressable>
+              ) : null}
+            </View>
           </View>
 
           <Tabs.Root
