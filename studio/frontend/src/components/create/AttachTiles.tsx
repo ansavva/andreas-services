@@ -25,6 +25,74 @@ const ROLE_ICONS: Record<AttachRole, (props: { className?: string }) => ReactEle
 
 const GLYPH = "size-4 shrink-0 fill-none stroke-current stroke-[1.5]";
 
+/** The roles a model of this kind draws tiles for. */
+function rolesOf(kind: RunKind, entry: ModelEntry): AttachRole[] {
+  return ROLES_BY_KIND[kind].filter((each) => fieldFor(each, entry) !== null);
+}
+
+/**
+ * The model's own rules, as why a role cannot take one more picture — or
+ * null when it can. `start_excludes_refs` / `end_excludes_refs` say a model
+ * takes a frame OR references; `max_refs` is the ceiling on references.
+ */
+function blockedReason(
+  of: AttachRole,
+  entry: ModelEntry,
+  attachments: readonly Attachment[],
+): string | null {
+  const images = entry.images ?? {};
+  const has = (role: AttachRole) => attachments.some((each) => each.role === role);
+  const refs = attachments.filter((each) => each.role === "reference").length;
+  const start = has("start");
+  const end = has("end");
+  if (of === "reference") {
+    if (start && images.start_excludes_refs)
+      return "This model takes a start frame or reference images, not both.";
+    if (end && images.end_excludes_refs)
+      return "This model takes an end frame or reference images, not both.";
+    const cap = images.max_refs;
+    if (typeof cap === "number") {
+      const used = refs + (start && images.start_counts_toward_max_refs ? 1 : 0);
+      if (used >= cap) return `This model takes at most ${cap} reference images.`;
+    }
+    return null;
+  }
+  if (of === "start" && refs > 0 && images.start_excludes_refs)
+    return "This model takes a start frame or reference images, not both.";
+  if (of === "end" && refs > 0 && images.end_excludes_refs)
+    return "This model takes an end frame or reference images, not both.";
+  return null;
+}
+
+/**
+ * Where a picture dropped on the sheet but on no particular tile goes.
+ *
+ * The tiles name a role; the rest of the sheet does not, and a drop there is
+ * still a person putting a picture into the run. It takes the role a press
+ * on a tile would have picked first — a reference — and falls back through
+ * the roles a still can fill (an edit model's input, a video model's start
+ * frame, its end frame) to the first the model has room for. Null when none
+ * has, and the drop is refused the way a blocked tile refuses it.
+ */
+export function fallbackDropRole(
+  kind: RunKind,
+  entry: ModelEntry,
+  attachments: readonly Attachment[],
+): AttachRole | null {
+  const roles = rolesOf(kind, entry);
+  const order: AttachRole[] = ["reference", "input", "start", "end"];
+  return (
+    order.find(
+      (of) =>
+        roles.includes(of) &&
+        blockedReason(of, entry, attachments) === null &&
+        // One picture per frame or input: a second drop there would replace
+        // nothing and attach nothing a person can see.
+        (of === "reference" || !attachments.some((each) => each.role === of)),
+    ) ?? null
+  );
+}
+
 /**
  * The row under the mode switch: what the run will be handed, and the tiles
  * that add to it — ElevenLabs' `Start frame · End frame · Image refs`.
@@ -80,10 +148,9 @@ export function AttachTiles({
   /** The cell a drag is currently over, drawn as that cell's highlighted state. */
   const [over, setOver] = useState<AttachRole | null>(null);
 
-  const roles = ROLES_BY_KIND[kind].filter((each) => fieldFor(each, entry) !== null);
+  const roles = rolesOf(kind, entry);
   if (roles.length === 0) return null;
 
-  const images = entry.images ?? {};
   const held = (of: AttachRole) =>
     attachments
       .map((attachment, index) => ({ attachment, index }))
@@ -94,25 +161,7 @@ export function AttachTiles({
   const input = held("input")[0];
 
   // The model's own rules, as which tile is blocked and why.
-  const blocked = (of: AttachRole): string | null => {
-    if (of === "reference") {
-      if (start && images.start_excludes_refs)
-        return "This model takes a start frame or reference images, not both.";
-      if (end && images.end_excludes_refs)
-        return "This model takes an end frame or reference images, not both.";
-      const cap = images.max_refs;
-      if (typeof cap === "number") {
-        const used = refs.length + (start && images.start_counts_toward_max_refs ? 1 : 0);
-        if (used >= cap) return `This model takes at most ${cap} reference images.`;
-      }
-      return null;
-    }
-    if (of === "start" && refs.length > 0 && images.start_excludes_refs)
-      return "This model takes a start frame or reference images, not both.";
-    if (of === "end" && refs.length > 0 && images.end_excludes_refs)
-      return "This model takes an end frame or reference images, not both.";
-    return null;
-  };
+  const blocked = (of: AttachRole): string | null => blockedReason(of, entry, attachments);
 
   /**
    * The four handlers that make one cell a target.

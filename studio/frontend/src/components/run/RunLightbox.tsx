@@ -66,7 +66,7 @@ import { ParamChips } from "./ParamChips";
 import { PayloadDocument, PayloadPreview } from "./PayloadDocument";
 import { PromoteDrawer, isPromotable, isVideoAsset } from "./PromoteDrawer";
 import { rowOfRecord } from "./rowOfRecord";
-import { promptText } from "./seed";
+import { promptText, refOfOutput } from "./seed";
 import { useRunActions } from "./useRunActions";
 
 /** How often an opened run in flight re-reads its record. */
@@ -326,8 +326,9 @@ function Opened({
       setCompare(null);
       return;
     }
-    const other = row.outputs.find((each, i) => i !== output && !isVideoAsset(each)) ?? null;
-    setCompare({ b: other });
+    const at = row.outputs.findIndex((each, i) => i !== output && !isVideoAsset(each));
+    const other = row.outputs[at];
+    setCompare({ b: other ? { ...other, drag: refOfOutput(row, other, at) } : null });
   };
 
   /**
@@ -341,7 +342,12 @@ function Opened({
       return;
     }
     if (asset && picture.node === asset.node) return;
-    setCompare({ b: picture });
+    setCompare({
+      b:
+        index < row.outputs.length
+          ? { ...picture, drag: refOfOutput(row, picture, index) }
+          : picture,
+    });
   };
 
   /** A and B change places: B becomes the stage's output, A goes beside it. */
@@ -350,7 +356,7 @@ function Opened({
     const at = row.outputs.findIndex((each) => each.node === compare.b?.node);
     if (at < 0) return; // A send cannot be the stage's output.
     setOutput(at);
-    setCompare({ b: asset });
+    setCompare({ b: { ...asset, drag: refOfOutput(row, asset, output) } });
   };
 
   return (
@@ -457,7 +463,7 @@ function Opened({
             </div>
           ) : asset && compare ? (
             <CompareStage
-              a={asset}
+              a={{ ...asset, drag: refOfOutput(row, asset, output) }}
               b={compare.b}
               onSwap={swap}
               onControlsChange={onControlsChange}
@@ -475,6 +481,7 @@ function Opened({
                   fit="contain"
                   zoomable
                   onControlsChange={onControlsChange}
+                  drag={refOfOutput(row, asset, output)}
                   className="h-full w-full border border-line"
                 />
               </div>
@@ -544,6 +551,9 @@ function Opened({
                     isVideo={isVideoAsset(each) || row.kind === "video"}
                     aspect="square"
                     fit="contain"
+                    // An output drags as the run's output; a send drags as
+                    // whatever it was — its own provenance is on the row.
+                    drag={i < row.outputs.length ? refOfOutput(row, each, i) : true}
                     className=""
                   />
                   {compare && (isA || isB) && (
@@ -1088,6 +1098,7 @@ function RunStrip({
                   // Whole, not cropped: a strip of portrait outputs cut to
                   // squares was a strip of torsos.
                   fit="contain"
+                  drag={refOfOutput(row, thumb, 0)}
                   className=""
                 />
               ) : (

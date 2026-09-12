@@ -1,7 +1,6 @@
 import type { DragEvent } from "react";
 
 import type { AttachRef } from "../../context/CreateBarContext";
-import type { FileEntry } from "../../types";
 
 /**
  * Dragging a picture out of the library and onto the create sheet.
@@ -22,15 +21,24 @@ import type { FileEntry } from "../../types";
  *
  * A `text/plain` copy rides along so a drag that leaves the app lands as
  * something legible rather than as nothing.
+ *
+ * **Every still starts one of these, from wherever it is drawn.** `MediaThumb`
+ * and `MediaPlayer` load the drag themselves — a grid tile, a run's output,
+ * the picture on a viewer's stage, a strip thumb, a card's hero — so "can I
+ * drag this into the sheet" has one answer everywhere rather than one per
+ * surface. It was two grids for a while, and every other picture in the app
+ * answered a drag with the browser's own image drag, which the sheet refused.
  */
 export const NODE_MIME = "application/x-studio-node";
 
-/** What travels: enough to attach the node and to draw it before the run exists. */
-interface NodePayload {
-  node: string;
-  url?: string | null;
-  name?: string;
-}
+/**
+ * What travels: the whole `AttachRef` — the node, enough to draw it before the
+ * run exists, and its provenance (`kind`, `run`, `output`, `character`), so a
+ * run's output dropped on the sheet is recorded as that run's output and not
+ * as a bare file. A payload from before the provenance rode along carries no
+ * `kind`; `readNodeDrag` reads that as an object.
+ */
+type NodePayload = Partial<AttachRef> & { node: string };
 
 /**
  * Load the drag with a node.
@@ -39,16 +47,26 @@ interface NodePayload {
  * stays where it is and the sheet gets a pointer to it, which is also what
  * makes the cursor say `+` rather than the move arrow.
  */
-export function startNodeDrag(event: DragEvent, file: FileEntry): void {
-  const payload: NodePayload = { node: file.id, url: file.url, name: file.name };
+export function startNodeDrag(event: DragEvent, ref: AttachRef): void {
+  const payload: NodePayload = ref;
   event.dataTransfer.setData(NODE_MIME, JSON.stringify(payload));
-  event.dataTransfer.setData("text/plain", file.name);
+  event.dataTransfer.setData("text/plain", ref.name ?? ref.node);
   event.dataTransfer.effectAllowed = "copy";
 }
 
-/** Whether this drag is one of ours — the only question answerable mid-drag. */
-export function isNodeDrag(event: DragEvent): boolean {
-  return Array.from(event.dataTransfer.types).includes(NODE_MIME);
+/** A picture with no provenance beyond being a node — what most surfaces drag. */
+export function objectRef(node: string, url?: string | null, name?: string): AttachRef {
+  return { node, url, name, kind: "object" };
+}
+
+/**
+ * Whether this drag is one of ours — the only question answerable mid-drag.
+ *
+ * Takes a native event as well as React's: the shell listens on `window` for
+ * the drag that should bring the sheet up, and React does not wrap those.
+ */
+export function isNodeDrag(event: { dataTransfer: DataTransfer | null }): boolean {
+  return Array.from(event.dataTransfer?.types ?? []).includes(NODE_MIME);
 }
 
 /**
@@ -64,7 +82,7 @@ export function readNodeDrag(event: DragEvent): AttachRef | null {
   try {
     const payload = JSON.parse(raw) as NodePayload;
     if (!payload?.node) return null;
-    return { node: payload.node, url: payload.url, name: payload.name, kind: "object" };
+    return { ...payload, kind: payload.kind ?? "object" };
   } catch {
     return null;
   }

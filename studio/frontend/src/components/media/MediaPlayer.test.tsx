@@ -168,6 +168,56 @@ describe("a still", () => {
     expect(screen.queryByRole("button", { name: /^Play/ })).toBeNull();
     expect(transport()).toBeNull();
   });
+
+  /**
+   * Every still drags its node to the create sheet — the picture on a
+   * viewer's stage included — and a clip drags nothing. The `<img>` itself is
+   * not draggable, so the browser's own image drag (a URL, which the sheet
+   * refuses) never starts.
+   */
+  it("drags its node as a ref, and a clip does not", () => {
+    render(<MediaPlayer nodeId="node-2" url="https://example.invalid/a.png" name="a.png" />);
+    const img = screen.getByRole("img", { name: "a.png" });
+    expect(img.getAttribute("draggable")).toBe("false");
+    const box = img.parentElement!;
+    expect(box.getAttribute("draggable")).toBe("true");
+
+    const data = new Map<string, string>();
+    fireEvent.dragStart(box, {
+      dataTransfer: { setData: (type: string, value: string) => data.set(type, value), types: [] },
+    });
+    expect(JSON.parse(data.get("application/x-studio-node")!)).toEqual({
+      node: "node-2",
+      url: "https://example.invalid/a.png",
+      name: "a.png",
+      kind: "object",
+    });
+
+    cleanup();
+    render(<MediaPlayer {...CLIP} />);
+    expect(screen.getByLabelText(/^Play/).parentElement!.getAttribute("draggable")).toBeNull();
+  });
+
+  it("drags what it was told to — a run's output keeps its provenance", () => {
+    render(
+      <MediaPlayer
+        nodeId="node-2"
+        url="https://example.invalid/a.png"
+        name="a.png"
+        drag={{ node: "node-2", kind: "run", run: "run-1", output: 2 }}
+      />,
+    );
+    const data = new Map<string, string>();
+    fireEvent.dragStart(screen.getByRole("img", { name: "a.png" }).parentElement!, {
+      dataTransfer: { setData: (type: string, value: string) => data.set(type, value), types: [] },
+    });
+    expect(JSON.parse(data.get("application/x-studio-node")!)).toEqual({
+      node: "node-2",
+      kind: "run",
+      run: "run-1",
+      output: 2,
+    });
+  });
 });
 
 describe("the fullscreen container is exposed", () => {

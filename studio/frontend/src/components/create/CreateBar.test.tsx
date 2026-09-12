@@ -397,6 +397,38 @@ it("attachments show as thumbs in their role cell with a way off; a frame switch
   ).toBeNull();
 });
 
+/**
+ * A picture dropped on the sheet but on no tile still lands, as a reference —
+ * a drag from a viewer brings the sheet up under the pointer, and a drop an
+ * inch from the tile must not be a drop into nothing. A drop that is not a
+ * node (a file from the desktop) is refused.
+ */
+it("a node dropped anywhere on the sheet attaches as a reference", async () => {
+  await open();
+  const sheet = document.querySelector("[data-create-bar]")!;
+  const carrying = (types: string[], payload?: string) => ({
+    dataTransfer: {
+      types,
+      getData: () => payload ?? "",
+      dropEffect: "none",
+    },
+  });
+
+  fireEvent.drop(sheet, carrying(["Files"]));
+  expect(screen.queryByTitle(/^Image refs · /)).toBeNull();
+
+  const over = fireEvent.dragOver(sheet, carrying(["application/x-studio-node"]));
+  // `preventDefault` on dragover is what lets the drop happen at all.
+  expect(over).toBe(false);
+  fireEvent.drop(
+    sheet,
+    carrying(["application/x-studio-node"], JSON.stringify(FACE)),
+  );
+  await waitFor(() => expect(strip()).toBeTruthy());
+  const reference = within(strip()).getByRole("group", { name: "Image refs" });
+  expect(within(reference).getByTitle(/^Image refs · face-01\.png/)).toBeTruthy();
+});
+
 it("off a project page, the bar asks which project and lands there after sending", async () => {
   await open("/");
   fill("A portrait.");

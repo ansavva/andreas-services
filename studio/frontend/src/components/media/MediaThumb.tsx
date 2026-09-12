@@ -1,5 +1,7 @@
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type DragEvent, type ReactNode } from "react";
 
+import type { AttachRef } from "../../context/CreateBarContext";
+import { objectRef, startNodeDrag } from "../create/dragRef";
 import { useNearViewport } from "../../hooks/useNearViewport";
 import { useSignedSrc } from "../../hooks/useSignedSrc";
 import { formatDuration } from "../../utils/format";
@@ -98,6 +100,16 @@ interface Props {
    * that one with a second tooltip saying the same thing.
    */
   title?: string;
+  /**
+   * What a drag of this picture carries to the create sheet — see `dragRef`.
+   *
+   * **On by default for a still, and never on for a clip**: every role a tile
+   * stands for is a picture. `true` (the default) drags the node as an object;
+   * an `AttachRef` drags that instead — a run's output tile passes
+   * `refOfOutput` so the sheet records where the picture came from. `false`
+   * for the one place a drag would mean something else.
+   */
+  drag?: boolean | AttachRef;
 }
 
 /**
@@ -180,10 +192,24 @@ export function MediaThumb({
   mediaClassName = "",
   className = "",
   title,
+  drag = true,
 }: Props) {
   const isVideo = isVideoProp ?? looksLikeVideo(name, url);
-
   const { src, failed, onError } = useSignedSrc(nodeId, url);
+
+  /**
+   * The drag starts on this box, not on the `<img>` inside it.
+   *
+   * A browser drags an image by default, carrying its URL — which is not a
+   * node and which the sheet refuses. The `<img>` is told not to, so the box
+   * is the innermost draggable thing under the pointer and the payload is
+   * ours; the picture still follows the cursor as the drag image, because
+   * the browser takes the dragged element's own pixels for that.
+   */
+  const draggable = drag !== false && !isVideo && !failed;
+  const onDragStart = (event: DragEvent) =>
+    startNodeDrag(event, drag === true ? objectRef(nodeId, url, name) : (drag as AttachRef));
+
   const [duration, setDuration] = useState<number | null>(null);
   const box = useRef<HTMLSpanElement>(null);
   const video = useRef<HTMLVideoElement>(null);
@@ -225,6 +251,8 @@ export function MediaThumb({
       onPointerLeave={(event) => {
         if (isVideo && event.pointerType === "mouse") preview(false);
       }}
+      draggable={draggable || undefined}
+      onDragStart={draggable ? onDragStart : undefined}
       className={`relative block overflow-hidden bg-surface-alt ${ratio ? "" : ASPECTS[aspect]} ${className}`}
       style={ratio ? { aspectRatio: ratio } : undefined}
     >
@@ -267,6 +295,7 @@ export function MediaThumb({
           onError={onError}
           loading="lazy"
           decoding="async"
+          draggable={false}
           className={media}
         />
       )}
