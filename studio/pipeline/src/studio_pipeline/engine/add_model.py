@@ -57,6 +57,10 @@ from studio_pipeline.errors import die  # noqa: E402
 REF_FIELDS = ["input_images", "image_input", "reference_images", "images", "image"]
 START_FIELDS = ["image", "start_image", "first_frame_image", "first_frame"]
 END_FIELDS = ["last_frame_image", "end_image", "last_frame"]
+#: The one input that takes a CLIP — a motion reference, an edit source. Scalar
+#: `format: uri` fields, in the order the models here spell them.
+CLIP_FIELDS = ["video", "reference_video", "input_video", "source_video"]
+CLIP_EXT_RE = re.compile(r"\.?\b(mp4|mov|webm|m4v)\b", re.I)
 VIDEO_HINTS = ("duration", "fps", "generate_audio", "mode", "multi_prompt", "video")
 EXT_RE = re.compile(r"\.(jpe?g|png|webp|gif|bmp)\b", re.I)
 
@@ -152,6 +156,18 @@ def infer(model: str, props: dict, schemas: dict, text: str) -> tuple[dict, list
         exts = [".jpg", ".jpeg", ".png", ".webp"]
         notes.append(f"accepts_ext={exts} — GUESSED (no formats named in the description); VERIFY against the README")
 
+    clip = next((f for f in CLIP_FIELDS if is_scalar(f)), None)
+    clip_exts: list[str] = []
+    if clip:
+        clip_exts = sorted({"." + e.group(1).lower()
+                            for e in CLIP_EXT_RE.finditer(str(props[clip].get("description") or ""))})
+        if clip_exts:
+            notes.append(f"clips.source={clip} — a scalar video input; formats parsed from its description")
+        else:
+            clip_exts = [".mp4", ".mov"]
+            notes.append(f"clips.source={clip} — a scalar video input; accepts_ext={clip_exts} "
+                         f"GUESSED (no formats named); VERIFY")
+
     # A model with no `prompt` input gets `"prompt": null`, not an empty cap.
     # The two are different facts and `runner.build_payload` reads them
     # differently: null means "this model takes no prompt, do not demand one",
@@ -192,6 +208,8 @@ def infer(model: str, props: dict, schemas: dict, text: str) -> tuple[dict, list
         "note": "TODO — one line on what this model is for and how it differs from its siblings.",
         "snapshot": {},
     }
+    if clip:
+        entry["clips"] = {"source": clip, "accepts_ext": clip_exts}
     if kind == "video":
         entry["video"] = {
             "negative": "prompt", "technical": "api", "max_cuts": None,

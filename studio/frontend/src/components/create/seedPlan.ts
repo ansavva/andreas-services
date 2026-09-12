@@ -15,7 +15,7 @@ function isScalar(value: unknown): value is string | number | boolean {
  * answers to what the model is being asked. The entry's image fields are
  * **sends**, never params: an image reaches a provider as a presigned URL minted
  * from a node id (hard rule #3), so a params row naming one would be a second,
- * unchecked path to the same field.
+ * unchecked path to the same field. The clip field is a send for the same reason.
  *
  * Non-scalar defaults go too. Every one of them in the registry today is `[]` —
  * an empty list standing in for "no images yet" — and seeding it would write an
@@ -26,7 +26,7 @@ function isScalar(value: unknown): value is string | number | boolean {
 export function seedPlan(entry: ModelEntry): RunPlan {
   const images = entry.images ?? {};
   const skip = new Set(
-    ["refreshed", "prompt", images.refs, images.start, images.end].filter(
+    ["refreshed", "prompt", images.refs, images.start, images.end, entry.clips?.source].filter(
       (key): key is string => typeof key === "string",
     ),
   );

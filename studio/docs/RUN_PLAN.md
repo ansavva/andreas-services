@@ -77,7 +77,7 @@ when told.
                               ▼
   ┌────────────────────────────────────────────────────────────────┐
   │  field    "input_images"      which model input it binds to    │
-  │  role     "reference"         start | end | reference | input  │
+  │  role     "reference"    start | end | reference | input | clip │
   │  node     node-…              what was sent                    │
   │  source   { kind: "character",         WHY it was sent —       │
   │             character: char-…,         DERIVED, not reported   │
@@ -96,7 +96,11 @@ when their order came from a filename.
 one a scene already holds: a shot's `motion.prompt` is authored and queryable
 while the run it renders into keeps the provider payload as an undecoded blob.
 Principle 4 is applied one tier down, not weakened. The plan carries no image
-fields at all — those are sends, presigned in at the last moment.
+fields at all — those are sends, presigned in at the last moment. **Nor the
+clip field**: the one video a model works from (a motion reference, an edit
+source; `clips.source` in the registry) is a send with the role `clip`, bound
+with `--clip-run` / `--clip-key` or the sheet's Clip tile, for the same reason —
+a presigned URL in the plan would be expired data plus leaked access.
 
 **`bindings` is derived** from the send rows and keeps its old response shape, so
 nothing that drew a run had to change. A run with no send rows falls back to the

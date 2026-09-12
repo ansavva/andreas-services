@@ -808,3 +808,78 @@ def test_a_model_that_allows_BOTH_still_does():
                         "start_excludes_refs": False}}
     generate._check_exclusive_images(
         entry, {"start_image": "node-a", "reference_images": ["node-b"]})
+
+
+# ── the clip: the one video a model works from ──────────────────────────────
+
+
+MOTION = {"model": "kwaivgi/kling-v3-motion-control", "kind": "video",
+          "images": {"start": "image", "refs": None, "max_refs": 0},
+          "clips": {"source": "video", "accepts_ext": [".mp4", ".mov"]}}
+
+
+def test_a_clip_binds_as_a_scalar_like_a_frame():
+    """`video` is a string on every model that has one; a one-item list is a 422
+    from the provider after `pending`. Which field is the clip is registry data
+    (`clips.source`), read by the same helper that collapses the frames."""
+    sends = [{"field": "image", "role": "start", "node": "node-a"},
+             {"field": "video", "role": "clip", "node": "node-b"}]
+    bindings = generate.bindings_of(sends, MOTION)
+    generate._check_scalar_fields(MOTION, sends)
+    assert bindings == {"image": "node-a", "video": "node-b"}
+
+
+def test_two_sends_on_the_clip_field_are_refused_rather_than_dropped():
+    sends = [{"field": "video", "role": "clip", "node": "node-a"},
+             {"field": "video", "role": "clip", "node": "node-b"}]
+    with pytest.raises(Exception) as refusal:
+        generate._check_scalar_fields(MOTION, sends)
+    assert "'video'" in str(refusal.value) and "2 sends" in str(refusal.value)
+
+
+def test_clip_is_a_role_a_send_may_carry(empty_api):
+    project = _project(empty_api)
+    root = empty_api.get(f"/api/projects/{project['id']}").get_json()["root"]
+    still = _uploaded(empty_api, root, "a.png")
+    clip = _uploaded(empty_api, root, "b.mp4")
+    run = _draft(empty_api, project, sends=[
+        {"field": "image", "role": "start", "node": still["node_id"]},
+        {"field": "video", "role": "clip", "node": clip["node_id"]},
+    ])
+    assert [s["role"] for s in run["sends"]] == ["start", "clip"]
+
+
+def test_a_missing_required_input_is_refused_before_pending(empty_api, monkeypatch):
+    """The provider checks `required` too — after the run has moved to
+    `pending`, so a motion-control run drafted without its clip wedged instead
+    of failing. The schema's own `required` list is read here, and a required
+    field is satisfied by a payload value OR a binding."""
+    monkeypatch.setattr(
+        "studio_core.services.schema.fetch",
+        lambda model: (
+            {"prompt": {"type": "string"}, "image": {"type": "string"},
+             "video": {"type": "string"}},
+            {"Input": {"required": ["image", "video"]}},
+        ),
+    )
+    project = _project(empty_api)
+    root = empty_api.get(f"/api/projects/{project['id']}").get_json()["root"]
+    still = _uploaded(empty_api, root, "a.png")
+    run = _draft(empty_api, project, sends=[
+        {"field": "image", "role": "start", "node": still["node_id"]},
+    ])
+
+    resp = empty_api.post(f"/api/runs/{run['id']}/submit")
+
+    assert resp.status_code == 400
+    assert "requires ['video']" in resp.get_json()["error"]
+    assert catalog.entity(catalog.ENTITY_RUN, run["id"])["status"] == "draft"
+
+
+def test_a_required_input_met_by_a_binding_passes():
+    from studio_core.services import schema
+    props = {"prompt": {"type": "string"}, "image": {"type": "string"},
+             "video": {"type": "string"}}
+    schemas = {"Input": {"required": ["image", "video"]}}
+    schema.check({"prompt": "x"}, {"image": "node-a", "video": "node-b"},
+                 "kwaivgi/kling-v3-motion-control", props, schemas)

@@ -215,6 +215,9 @@ def build_payload(entry: dict, args) -> dict:
         if f and f in payload:
             die(f"pass images via --character/--ref-run/--key (and --start-run "
                 f"for a first frame), not in the payload as `{f}`.")
+    clip = REG.clip_field(entry)
+    if clip and clip in payload:
+        die(f"pass the clip via --clip-run/--clip-key, not in the payload as `{clip}`.")
     return payload
 
 
@@ -283,6 +286,8 @@ def _refuse_a_duplicate(record: dict, args) -> None:
 @click.option("--aspect-ratio", help="Model-dependent; validated against the live schema.")
 @click.option("--character", multiple=True, help=("A character supplying identity. Repeatable — one piece of work "
               "can involve several."))
+@click.option("--clip-key", help="Node id (or name path) of the clip a video model works from (video).")
+@click.option("--clip-run", help="An earlier run's output as the clip a video model works from (video).")
 @click.option("--dest", help="Also keep a local copy in this directory.")
 @click.option("--again", is_flag=True, help="Submit even though this exact payload was submitted before.")
 @click.option("--dry-run", is_flag=True, help="Show the payload; submit nothing, bill nothing.")

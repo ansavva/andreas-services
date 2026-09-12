@@ -86,9 +86,9 @@ def check(payload: dict, bindings: dict, model: str, props: dict,
           schemas: dict) -> list[str]:
     """Reject anything `model` will not accept. Raises on the first fault.
 
-    Checks unknown fields, enum membership, and numeric range. `bindings` are
-    checked for field NAME only — their values are node ids here and become
-    presigned URLs later, so there is nothing to range-check.
+    Checks unknown fields, required fields, enum membership, and numeric
+    range. `bindings` are checked for field NAME only — their values are node
+    ids here and become presigned URLs later, so there is nothing to range-check.
 
     **The `alternatives` argument the pipeline's version took is gone.** It
     fetched every sibling model's schema on the error path so the message could
@@ -105,6 +105,20 @@ def check(payload: dict, bindings: dict, model: str, props: dict,
         raise SchemaError(
             f"{model} does not accept: {sorted(unknown)}. "
             f"Valid inputs: {sorted(props)}"
+        )
+
+    # **Required inputs, before enums.** The provider checks these too, but
+    # only once the request is out — after the run has moved to `pending`, so
+    # a missing required field wedged a draft instead of refusing it. A
+    # required field is satisfied by a payload value or a binding; a binding is
+    # a node that becomes a URL at dispatch, which is what a `format: uri`
+    # field wants.
+    required = (schemas.get("Input") or {}).get("required") or []
+    missing = [k for k in required if k not in bindings and payload.get(k) is None]
+    if missing:
+        raise SchemaError(
+            f"{model} requires {sorted(missing)} and the payload has no value for "
+            f"{'it' if len(missing) == 1 else 'them'}. Valid inputs: {sorted(props)}"
         )
 
     for key, value in payload.items():

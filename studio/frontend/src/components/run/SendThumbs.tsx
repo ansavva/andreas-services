@@ -18,10 +18,11 @@ import { MediaThumb } from "../media/MediaThumb";
  * plural on a tile row, so a single picture takes the numbered form the sheet
  * captions its own tiles with (`Image 1`).
  */
-const ROLE_ORDER: Record<string, number> = { start: 0, end: 1, input: 2, reference: 3 };
+const ROLE_ORDER: Record<string, number> = { start: 0, end: 1, clip: 2, input: 3, reference: 4 };
 const ROLE_WORD: Record<string, string> = {
   start: "Start frame",
   end: "End frame",
+  clip: "Clip",
   input: "Input",
 };
 

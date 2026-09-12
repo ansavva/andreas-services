@@ -19,6 +19,7 @@ import {
   type FileEntry,
   type FolderEntry,
   type HeroImage,
+  type MediaKind,
   type NodeRecord,
   type SortOrder,
 } from "../../types";
@@ -97,8 +98,9 @@ function defaultView(kind: EntityKind): View {
  * the picker takes files into the folder it is standing on and attaches what
  * lands — the upload IS the pick.
  *
- * Images only, whichever view: every role a tile stands for is a picture,
- * and a clip cannot be one.
+ * One kind, whichever view: every image role's tile stands for a picture, and
+ * the clip tile for a video, so the listing is filtered to the one the role
+ * takes — a clip cannot be a start frame, and a still cannot be the clip.
  */
 export function AttachPicker({
   role,
@@ -132,6 +134,8 @@ export function AttachPicker({
   // Stable, so the listing effect does not re-run on every render for a
   // fresh-but-equal array.
   const asked = tags.join(",");
+  /** What this role is made of. */
+  const wanted: MediaKind = role === "clip" ? "video" : "image";
 
   const entity = place.kind === "entity" ? place.entity : null;
   const folderId = place.kind === "entity" ? place.folder : null;
@@ -151,7 +155,7 @@ export function AttachPicker({
     // see `getFolder`.
     getFolder({ node: folderId }, sort, {
       tag: asked ? asked.split(",") : [],
-      kind: view === VIEW_MEDIA ? ["image"] : [],
+      kind: view === VIEW_MEDIA ? [wanted] : [],
     })
       .then((result) => {
         if (cancelled) return;
@@ -159,7 +163,7 @@ export function AttachPicker({
         // Folders are the way to pictures at one level; in a result gathered
         // from the whole branch they are on the way to nothing.
         setFolders(searched ? [] : result.folders);
-        setFiles(result.files.filter((file) => file.kind === "image"));
+        setFiles(result.files.filter((file) => file.kind === wanted));
         setCrumbs(result.breadcrumbs);
         setDeep(searched);
       })
@@ -172,7 +176,7 @@ export function AttachPicker({
     return () => {
       cancelled = true;
     };
-  }, [folderId, asked, view, sort, attempt]);
+  }, [folderId, asked, view, sort, attempt, wanted]);
 
   /**
    * The trail from the entity's root down, with the root labelled by name.
@@ -202,22 +206,22 @@ export function AttachPicker({
    *
    * A `NodeRecord` carries no signed URL and no kind, and a ref without a URL
    * draws as `Unavailable` until something re-signs it — so each is signed
-   * first, and the answer's `kind` is what says whether it is a picture. Only
-   * pictures attach: a clip uploaded here stays in the folder and is not a
-   * role.
+   * first, and the answer's `kind` is what says whether it is what the role
+   * takes. Only that kind attaches: a clip uploaded on an image tile — or a
+   * still on the Clip tile — stays in the folder and is not a role.
    */
   const landed = useCallback(
     (nodes: NodeRecord[]) => {
       for (const node of nodes) {
         void getAsset(node.id)
           .then((asset) => {
-            if (asset.kind === "image") attach({ id: node.id, url: asset.url, name: node.name });
+            if (asset.kind === wanted) attach({ id: node.id, url: asset.url, name: node.name });
           })
           .catch(() => undefined);
       }
       setAttempt((n) => n + 1);
     },
-    [attach],
+    [attach, wanted],
   );
   const uploads = useUploads(folderId, landed);
 

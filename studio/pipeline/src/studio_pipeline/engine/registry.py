@@ -177,3 +177,19 @@ def defaults(entry: dict) -> dict:
 def accepts_ext(entry: dict) -> set[str]:
     """The image extensions this model will take, as a set."""
     return set(field(entry, "images.accepts_ext", []) or [])
+
+
+def clip_field(entry: dict) -> str | None:
+    """The one input that takes a CLIP, or None where the model has none.
+
+    Kept apart from `images`: a clip is not a still with a longer extension. It
+    binds through `--clip-run` / `--clip-key`, is checked against its own
+    `clips.accepts_ext`, and is left out of the image budget and the image byte
+    warning — both of which were measured on stills and would fire on any clip.
+    """
+    return field(entry, "clips.source")
+
+
+def clip_accepts_ext(entry: dict) -> set[str]:
+    """The clip extensions this model will take, as a set."""
+    return set(field(entry, "clips.accepts_ext", []) or [])

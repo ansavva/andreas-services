@@ -26,6 +26,9 @@ The family:
   character's existing S3 reference set carries over. `studio character textblock`
   gives a pasteable identity anchor when driving from a start frame instead.
 - **`studio-media-seedance`** — the other model family, with its own schema.
+- **`studio-media-kling-v3-motion-control`** — the same house, a different
+  job: the motion is copied from a reference clip rather than directed by a
+  prompt. Reach for it when the movement already exists as footage.
 
 ## The model
 
@@ -37,7 +40,7 @@ The family:
 | `start_image` | First frame. `.jpg/.jpeg/.png`, **max 10 MB**, min 300px, aspect 1:2.5–2.5:1. |
 | `end_image` | Last frame; requires `start_image`. |
 | `reference_images` | The character-consistency mechanism. **The cap of 7 counts the start frame too** — see below. 4 with a reference video. |
-| `reference_video` | 3–10s; `video_reference_type` `feature` (style/camera) or `base` (editing). |
+| `reference_video` | 3–10s, `.mp4/.mov`, ≤200 MB; `video_reference_type` `feature` (style/camera) or `base` (editing). Binds with `--clip-run` / `--clip-key`, or the sheet's Clip tile. |
 | `multi_prompt` | JSON-encoded array `[{"prompt": "...", "duration": N}]`. **Max 6 shots, durations must sum to `duration`.** |
 | `mode` | `standard` = 720p · `pro` = 1080p · `4k`. |
 | `aspect_ratio` | `16:9` · `9:16` · `1:1`. **Required only when there is no start frame.** |
@@ -134,7 +137,8 @@ studio run \
 ```
 
 Bind images with `--start-run` / `--end-run` (→ `start_image` / `end_image`),
-`--ref-run` (→ `reference_images`), or `--key` for an explicit S3 object. Unlike
+`--ref-run` (→ `reference_images`), or `--key` for an explicit S3 object; a
+reference clip with `--clip-run` / `--clip-key` (→ `reference_video`). Unlike
 Seedance, Kling lets a start frame and `reference_images` combine. Kling accepts
 only `.jpg/.jpeg/.png`, and the submitter rejects a `.webp` binding up front
 rather than letting the render fail.

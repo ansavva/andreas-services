@@ -986,6 +986,7 @@
           "gpt-image-2.5-flare",
           "gpt-image-2.5-sunburst",
           "kling",
+          "kling-v3-motion-control",
           "krea-2-large",
           "nano-banana-2",
           "nano-banana-pro",
@@ -3281,6 +3282,36 @@
         "help": "A character supplying identity. Repeatable — one piece of work can involve several.",
         "hidden": false,
         "multiple": true,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "clip_key": {
+        "choices": null,
+        "default": null,
+        "dest": "clip_key",
+        "flag": false,
+        "flags": [
+          "--clip-key"
+        ],
+        "help": "Node id (or name path) of the clip a video model works from (video).",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "clip_run": {
+        "choices": null,
+        "default": null,
+        "dest": "clip_run",
+        "flag": false,
+        "flags": [
+          "--clip-run"
+        ],
+        "help": "An earlier run's output as the clip a video model works from (video).",
+        "hidden": false,
+        "multiple": false,
         "nargs": 1,
         "required": false,
         "type": "str"

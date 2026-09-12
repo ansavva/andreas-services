@@ -64,6 +64,11 @@ README for limiting sentences and flags any that name a live schema value as a
    - `images.accepts_ext` — Kling rejects `.webp`; most others take it.
    - `images.start_excludes_refs` — **Seedance forbids a start frame together
      with references; Kling allows both.** Nothing in the schema says so.
+   - `clips.source` — the one input that takes a **clip** (a motion reference,
+     an edit source). Inferred from a scalar `video`-ish URI field; its
+     `accepts_ext` is read from the description or guessed as `.mp4/.mov`.
+     A model with a clip input and no `clips` block has an input nothing can
+     bind — `--clip-run` / `--clip-key` and the app's Clip tile read it.
    - For video, the whole `video` block is a template — set `max_cuts`,
      `technical`, and `resolution_map` by hand.
 3. **Add `denied`** for anything the README says is unsupported but the schema

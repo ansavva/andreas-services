@@ -227,6 +227,28 @@ def gather(entry: dict, args) -> dict:
                 if end_run else as_node(end_key)
             )
 
+    # --- the clip (a video engine's motion or edit source) ------------------
+    clip_field = REG.clip_field(entry)
+    clip_run = getattr(args, "clip_run", None)
+    clip_key = getattr(args, "clip_key", None)
+    if (clip_run or clip_key) and not clip_field:
+        raise SubmitError(
+            f"{entry['key']} takes no clip — --clip-run/--clip-key do not apply to it."
+        )
+    if clip_field and (clip_run or clip_key):
+        clip_exts = REG.clip_accepts_ext(entry)
+        bindings[clip_field] = (
+            R.resolve_output_nodes(clip_run, project["id"], kinds=clip_exts)[0]
+            if clip_run else as_node(clip_key)
+        )
+        # Its own format rule: the image list below is checked against
+        # `images.accepts_ext`, and a clip's extension is on neither side of it.
+        if _ext(bindings[clip_field]) not in clip_exts:
+            raise SubmitError(
+                f"{entry['key']} takes a clip in {sorted(clip_exts)}; "
+                f"{_label(bindings[clip_field])} is not one."
+            )
+
     # --- the reference / input list ----------------------------------------
     slots = [int(s) for s in args.slots.split(",")] if getattr(args, "slots", None) else None
     pick = [x.strip() for x in args.pick.split(",")] if getattr(args, "pick", None) else None
@@ -356,7 +378,8 @@ def _warn_total_bytes(entry: dict, bindings: dict) -> None:
     """
     if entry.get("kind") != "video":
         return
-    refs = flatten(bindings)
+    clip = REG.clip_field(entry)
+    refs = flatten({f: v for f, v in bindings.items() if f != clip})
     if not refs:
         return
     try:
@@ -559,6 +582,8 @@ def sends_for(entry: dict, bindings: dict) -> list[dict]:
     role_of = {images.get(name): role for name, role in
                (("start", "start"), ("end", "end"), ("refs", "reference"))
                if images.get(name)}
+    if REG.clip_field(entry):
+        role_of[REG.clip_field(entry)] = "clip"
     return [
         {"field": field, "role": role_of.get(field, "input"), "node": node}
         for field, value in bindings.items()

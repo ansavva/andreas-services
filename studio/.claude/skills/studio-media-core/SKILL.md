@@ -24,6 +24,7 @@ This skill is the plumbing. For how to *use* a given model, read its own skill:
 | `krea-2-large` | [`studio-media-krea-2-large`](../studio-media-krea-2-large/SKILL.md) |
 | `seedance` | [`studio-media-seedance`](../studio-media-seedance/SKILL.md) |
 | `kling` | [`studio-media-kling`](../studio-media-kling/SKILL.md) |
+| `kling-v3-motion-control` | [`studio-media-kling-v3-motion-control`](../studio-media-kling-v3-motion-control/SKILL.md) |
 
 The rest of the family — a model skill points here, and here points onward, so
 the shared prose lives in one place rather than six:

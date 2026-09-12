@@ -198,6 +198,7 @@ submit path enforces — `studio models show <model>` prints it.
 | `seedance` | 9 | **no — a start frame excludes references** | allowed |
 | `veo-3.1` | 3 | yes | **excludes all references** |
 | `grok-imagine-video` | none | — | none |
+| `kling-v3-motion-control` | none | — | none — the reference **clip** (`--clip-run`) sets the motion and the length |
 
 So "start plus six references" is a Kling sentence, not a general one. Author the
 plan in slots and let the engine's own rules decide what survives; `studio scenes

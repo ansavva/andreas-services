@@ -176,12 +176,23 @@ def bindings_of(send_entries: list[dict], entry: dict) -> dict:
         if not field:
             continue
         bindings.setdefault(field, []).append(send["node"])
-    images = entry.get("images") or {}
-    for name in ("start", "end"):
-        field = images.get(name)
-        if field and field in bindings:
+    for field in _scalar_fields(entry):
+        if field in bindings:
             bindings[field] = bindings[field][0]
     return bindings
+
+
+def _scalar_fields(entry: dict) -> set[str]:
+    """The inputs that take ONE object: the frames, and the clip.
+
+    `images.start` / `images.end` are strings on every model that has them,
+    and `clips.source` — a motion reference, an edit source — is a string on
+    every model that has one. Read here once, so `bindings_of` and
+    `_check_scalar_fields` cannot disagree about which fields collapse.
+    """
+    images = entry.get("images") or {}
+    clips = entry.get("clips") or {}
+    return {images.get("start"), images.get("end"), clips.get("source")} - {None}
 
 
 # ───────────────────────────────── preflight ─────────────────────────────────
@@ -266,7 +277,7 @@ def _check_scalar_fields(entry: dict, send_entries: list[dict]) -> None:
     different input is the same class of silent decision.
     """
     images = entry.get("images") or {}
-    scalars = {images.get(name) for name in ("start", "end")} - {None}
+    scalars = _scalar_fields(entry)
     counts: dict[str, int] = {}
     for send in send_entries:
         field = send.get("field")

@@ -5,12 +5,15 @@ import type { ModelEntry, RunKind, RunSendInput } from "../../types";
  * The roles each kind's strip offers, in the order the mockup draws them.
  *
  * Image mode: Image refs, Input image. Video mode: Start frame, End frame,
- * Image refs — the models' own words, which ElevenLabs uses too. Nothing about frames on an image run — a still has no
- * start — and `input` on a video would be a second word for its start frame.
+ * Image refs, Clip — the models' own words, which ElevenLabs uses too. Nothing
+ * about frames on an image run — a still has no start — and `input` on a video
+ * would be a second word for its start frame. `clip` is the one video a model
+ * works from — the motion it copies, the clip it edits — and only the models
+ * whose registry entry names a `clips.source` show the tile.
  */
 export const ROLES_BY_KIND: Record<RunKind, readonly AttachRole[]> = {
   image: ["reference", "input"],
-  video: ["start", "end", "reference"],
+  video: ["start", "end", "reference", "clip"],
 };
 
 /** What each role is called on the strip, what it is for, and how the picker asks for one. */
@@ -27,6 +30,11 @@ export const ROLE_WORDS: Record<AttachRole, { label: string; hint: string; choos
   },
   start: { label: "Start frame", hint: "The image the clip starts from.", choose: "Choose a start frame" },
   end: { label: "End frame", hint: "How the clip ends.", choose: "Choose an end frame" },
+  clip: {
+    label: "Clip",
+    hint: "The video this model works from: the motion it copies, or the clip it edits.",
+    choose: "Choose a clip",
+  },
 };
 
 /**
@@ -53,6 +61,8 @@ export function fieldFor(role: AttachRole, entry: ModelEntry | null): string | n
       return images.refs ?? null;
     case "input":
       return images.start ?? null;
+    case "clip":
+      return entry?.clips?.source ?? null;
   }
 }
 

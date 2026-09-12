@@ -22,8 +22,8 @@ import { useMatch } from "react-router-dom";
 
 import type { RunKind } from "../types";
 
-/** What an attached image is FOR. The same four words a send's `role` takes. */
-export type AttachRole = "reference" | "start" | "end" | "input";
+/** What an attachment is FOR. The same five words a send's `role` takes. */
+export type AttachRole = "reference" | "start" | "end" | "input" | "clip";
 
 /**
  * An image handed to the bar: the node it names, and enough to draw and to
@@ -88,18 +88,18 @@ export const CREATE_PROJECT_STORAGE_KEY = "studio.createBar.project";
 export const CREATE_COLLAPSED_STORAGE_KEY = "studio.createBar.collapsed";
 
 /**
- * A role that holds ONE image. `start` and `end` are scalar fields on every
- * model that has them, and `input` — the image an edit starts from — is one
- * picture by meaning even where it lands on a list field. Attaching to any of
- * these replaces; only `reference` accumulates.
+ * A role that holds ONE object. `start`, `end` and `clip` are scalar fields on
+ * every model that has them, and `input` — the image an edit starts from — is
+ * one picture by meaning even where it lands on a list field. Attaching to any
+ * of these replaces; only `reference` accumulates.
  */
 export function holdsOne(role: AttachRole): boolean {
   return role !== "reference";
 }
 
-/** The kind a role belongs to. A frame is a video's; the rest fit either. */
+/** The kind a role belongs to. A frame or a clip is a video's; the rest fit either. */
 function kindOfRole(role: AttachRole, current: RunKind): RunKind {
-  return role === "start" || role === "end" ? "video" : current;
+  return role === "start" || role === "end" || role === "clip" ? "video" : current;
 }
 
 interface CreateBarState {

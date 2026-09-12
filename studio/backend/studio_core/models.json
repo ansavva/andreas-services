@@ -17,7 +17,13 @@
     "",
     "`denied` records constraints the model's DOCS state but its SCHEMA does not",
     "enforce. The generated schema is sometimes more permissive than the model,",
-    "so a value can validate and still not be honoured."
+    "so a value can validate and still not be honoured.",
+    "",
+    "`images` names the fields that take a STILL (`refs` a list, `start`/`end` one",
+    "each); `clips` names the one field that takes a CLIP (`source`), with its own",
+    "`accepts_ext`. Both are what `--start-run`, `--ref-run`, `--clip-run` and the",
+    "app's tiles bind to, so a model with a clip input and no `clips` block has an",
+    "input nothing can fill."
   ],
   "version": 1,
   "models": {
@@ -443,6 +449,13 @@
         "start_counts_toward_max_refs": true,
         "end_excludes_refs": true
       },
+      "clips": {
+        "source": "reference_video",
+        "accepts_ext": [
+          ".mp4",
+          ".mov"
+        ]
+      },
       "prompt": {
         "max_chars": 2500
       },
@@ -576,6 +589,14 @@
           ".jpeg",
           ".png",
           ".webp"
+        ]
+      },
+      "clips": {
+        "source": "video",
+        "accepts_ext": [
+          ".mp4",
+          ".mov",
+          ".webm"
         ]
       },
       "prompt": {
@@ -1006,6 +1027,68 @@
           ],
           "default": "auto"
         }
+      }
+    },
+    "kling-v3-motion-control": {
+      "model": "kwaivgi/kling-v3-motion-control",
+      "kind": "video",
+      "skill": "studio-media-kling-v3-motion-control",
+      "images": {
+        "refs": null,
+        "max_refs": 0,
+        "start": "image",
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png"
+        ]
+      },
+      "clips": {
+        "source": "video",
+        "accepts_ext": [
+          ".mp4",
+          ".mov"
+        ]
+      },
+      "prompt": {
+        "max_chars": null
+      },
+      "note": "Kling 3.0 Motion Control. Transfers the CHARACTER MOTION of a reference clip onto one still: `image` is the look (one .jpg/.jpeg/.png, 340-3850px, ratio 1:2.5..2.5:1, <=10MB), `video` is the motion (.mp4/.mov, <=100MB) and is REQUIRED. No duration, aspect_ratio, reference_images or last frame: length and framing follow the reference clip. `character_orientation` image = faces as in the still, clip <=10s; video = faces as in the clip, clip <=30s. `mode` std=720p, pro=1080p. `keep_original_sound` carries the clip's audio over. Bind the clip with --clip-run/--clip-key.",
+      "snapshot": {
+        "character_orientation": {
+          "enum": [
+            "image",
+            "video"
+          ],
+          "default": "image"
+        },
+        "keep_original_sound": {
+          "default": true
+        },
+        "mode": {
+          "enum": [
+            "std",
+            "pro"
+          ],
+          "default": "pro"
+        },
+        "prompt": {
+          "default": ""
+        }
+      },
+      "video": {
+        "negative": "prompt",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": false,
+        "resolution_field": "mode",
+        "resolution_map": {
+          "720p": "std",
+          "1080p": "pro"
+        },
+        "allow_intelligent_duration": false
       }
     }
   }
