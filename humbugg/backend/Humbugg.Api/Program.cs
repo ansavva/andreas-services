@@ -1,3 +1,4 @@
+using Amazon.ApiGatewayManagementApi;
 using Amazon.DynamoDBv2;
 using Amazon.Lambda.AspNetCoreServer.Hosting;
 using Amazon.Runtime.Credentials;
@@ -9,6 +10,7 @@ using Humbugg.Api.Services.Email.Adapters.Aws;
 using Humbugg.Api.Services.Email.Adapters.Http;
 using Humbugg.Api.Services.Email.Adapters.Memory;
 using Humbugg.Api.Services.Email.Core;
+using Humbugg.Api.Services.Realtime;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -217,6 +219,29 @@ builder.Services.AddScoped<ITemplateRepository, TemplateRepository>();
 builder.Services.AddScoped<IMembershipRepository, MembershipRepository>();
 builder.Services.AddScoped<IWishRepository, WishRepository>();
 builder.Services.AddScoped<IQuestionRepository, QuestionRepository>();
+// The realtime channel (#691). One store and one notifier for the process: connections are shared
+// state, and the in-process hub IS the state when the container hosts the sockets itself.
+if (settings.RealtimeViaApiGateway)
+{
+    if (string.IsNullOrWhiteSpace(settings.ChatConnectionsTable))
+        throw new InvalidOperationException("HUMBUGG_CHAT_CONNECTIONS_TABLE is required when HUMBUGG_REALTIME_ENDPOINT is set.");
+    builder.Services.AddSingleton<IRealtimeConnectionStore>(services =>
+        new DynamoDbRealtimeConnectionStore(services.GetRequiredService<IAmazonDynamoDB>(), settings.ChatConnectionsTable));
+    builder.Services.AddSingleton<IAmazonApiGatewayManagementApi>(_ =>
+        new AmazonApiGatewayManagementApiClient(new AmazonApiGatewayManagementApiConfig
+        {
+            ServiceURL = settings.RealtimeEndpoint,
+            RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(settings.AwsRegion)
+        }));
+    builder.Services.AddSingleton<IRealtimeNotifier, ApiGatewayRealtimeNotifier>();
+}
+else
+{
+    builder.Services.AddSingleton<IRealtimeConnectionStore, InMemoryRealtimeConnectionStore>();
+    builder.Services.AddSingleton<InProcessRealtimeHub>();
+    builder.Services.AddSingleton<IRealtimeNotifier>(services => services.GetRequiredService<InProcessRealtimeHub>());
+}
+builder.Services.AddScoped<IRealtimeTicketService, RealtimeTicketService>();
 builder.Services.AddScoped<IInvitationRepository, InvitationRepository>();
 builder.Services.AddScoped<IReminderRepository, ReminderRepository>();
 builder.Services.AddScoped<IAuditRepository, AuditRepository>();
@@ -277,6 +302,23 @@ app.UseAuthorization();
 // not in-process — see humbugg/infra/modules/compute and humbugg/docs/threat-model.md §4.
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapControllers();
+// The container's own socket endpoint, where it hosts the channel itself (#691). Not in a Lambda:
+// an HTTP API cannot upgrade a connection, and production's sockets are API Gateway's. The ticket
+// is the credential — spent here exactly as the $connect authorizer spends it in production.
+if (!settings.RealtimeViaApiGateway)
+{
+    app.UseWebSockets();
+    app.Map("/ws", async context =>
+    {
+        if (!context.WebSockets.IsWebSocketRequest) { context.Response.StatusCode = 400; return; }
+        var store = context.RequestServices.GetRequiredService<IRealtimeConnectionStore>();
+        var ticket = context.Request.Query["ticket"].ToString();
+        var userId = string.IsNullOrWhiteSpace(ticket) ? null : await store.ConsumeTicketAsync(ticket, DateTimeOffset.UtcNow);
+        if (userId is null) { context.Response.StatusCode = 401; return; }
+        using var socket = await context.WebSockets.AcceptWebSocketAsync();
+        await context.RequestServices.GetRequiredService<InProcessRealtimeHub>().RunAsync(userId, socket, context.RequestAborted);
+    });
+}
 app.Run();
 
 public partial class Program;
@@ -308,8 +350,15 @@ public sealed record HumbuggSettings(
     string InvitationsTable = "humbugg-invitations",
     string RemindersTable = "humbugg-reminders",
     string TemplatesTable = "humbugg-templates",
-    string QuestionsTable = "humbugg-questions")
+    string QuestionsTable = "humbugg-questions",
+    // The realtime channel (#691). In production the endpoint is the WebSocket API's management
+    // URL and the table holds connections and tickets; unset, the container hosts the sockets
+    // itself on /ws and keeps both in memory — the dev stack, and the tests.
+    string? RealtimeEndpoint = null,
+    string ChatConnectionsTable = "")
 {
+    public bool RealtimeViaApiGateway => !string.IsNullOrWhiteSpace(RealtimeEndpoint);
+
     public static HumbuggSettings FromEnvironment()
     {
         // The product app's dev origin. Not :5176 — that is the marketing site, which has no
@@ -343,7 +392,9 @@ public sealed record HumbuggSettings(
             RequiredTable("HUMBUGG_INVITATIONS_TABLE"),
             RequiredTable("HUMBUGG_REMINDERS_TABLE"),
             RequiredTable("HUMBUGG_TEMPLATES_TABLE"),
-            RequiredTable("HUMBUGG_QUESTIONS_TABLE"));
+            RequiredTable("HUMBUGG_QUESTIONS_TABLE"),
+            Environment.GetEnvironmentVariable("HUMBUGG_REALTIME_ENDPOINT")?.TrimEnd('/'),
+            Environment.GetEnvironmentVariable("HUMBUGG_CHAT_CONNECTIONS_TABLE") ?? "");
     }
 
     // Table names are per-environment and carry no safe default: prod, each

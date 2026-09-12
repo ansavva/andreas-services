@@ -72,6 +72,10 @@ Paths are relative to `app.humbugg.com`. `(auth)` and `(protected)` are route
 | `src/app/(protected)/organize/[groupId].tsx` | `/organize/:id` — redirects to `/groups/:id/people` |
 | `src/app/(protected)/settings.tsx` | `/settings` |
 
+`EXPO_PUBLIC_REALTIME_URL` is the anonymous chat's push channel (`src/context/realtime-context.tsx`,
+`src/realtime/client.ts`): a WebSocket opened with a one-time ticket from `POST /api/realtime/tickets`.
+Unset, the chat polls. `humbugg/CLAUDE.md` has the channel's design.
+
 Every tab of an exchange is a route, so a reload keeps it and the browser's back button moves
 between tabs. Where you were on the page is kept per URL too — `src/hooks/use-scroll-restoration.ts`
 — because the app scrolls inside its own `ScrollView` and the browser cannot see that.

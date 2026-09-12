@@ -192,6 +192,9 @@ line "# domain on a dev stack rather than a name Humbugg owns."
 gen EXPO_PUBLIC_COGNITO_CLIENT_ID "$client_id"
 gen EXPO_PUBLIC_COGNITO_DOMAIN "$auth_domain"
 gen EXPO_PUBLIC_API_BASE_URL "http://127.0.0.1:5001/api"
+# The realtime channel (#691). A dev container hosts its own sockets on /ws; production's are
+# API Gateway's on wss://ws.humbugg.com. Unset, the app polls and never opens one.
+gen EXPO_PUBLIC_REALTIME_URL "ws://127.0.0.1:5001/ws"
 gen EXPO_PUBLIC_WEB_BASE_URL "http://localhost:5176"
 line ""
 # The marketing site no longer authenticates anyone, so it gets no Cognito

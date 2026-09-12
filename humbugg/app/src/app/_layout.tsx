@@ -25,6 +25,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AuthProvider } from '../context/auth-context';
 import { ProfileProvider } from '../context/profile-context';
+import { RealtimeProvider } from '../context/realtime-context';
 import { SchemePreferenceProvider } from '../theme/scheme-preference';
 import { useTheme } from '../theme/styles';
 
@@ -74,14 +75,16 @@ function Shell() {
       */}
       {fontsLoaded ? (
         <AuthProvider>
-          <ProfileProvider>
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: brand.bg },
-              }}
-            />
-          </ProfileProvider>
+          <RealtimeProvider>
+            <ProfileProvider>
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  contentStyle: { backgroundColor: brand.bg },
+                }}
+              />
+            </ProfileProvider>
+          </RealtimeProvider>
         </AuthProvider>
       ) : (
         <View style={{ flex: 1, backgroundColor: brand.bg }} />

@@ -35,7 +35,7 @@ require_dev_env
 # runtime warning — it is a build that silently ships an empty Cognito client id.
 # Only that prefix is exported: Expo never sees the Stripe secret key that
 # shares the file. This list must match what dev-aws-setup.sh WRITES.
-for key in EXPO_PUBLIC_COGNITO_CLIENT_ID EXPO_PUBLIC_COGNITO_DOMAIN EXPO_PUBLIC_API_BASE_URL; do
+for key in EXPO_PUBLIC_COGNITO_CLIENT_ID EXPO_PUBLIC_COGNITO_DOMAIN EXPO_PUBLIC_API_BASE_URL EXPO_PUBLIC_REALTIME_URL; do
   [[ -n "$(read_env "$DEV_ENV_FILE" "$key")" ]] ||
     die "Missing $key in $DEV_ENV_FILE. Run ./humbugg/scripts/dev-aws-setup.sh again."
 done

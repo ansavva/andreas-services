@@ -28,6 +28,7 @@ output "dynamodb_table_arns" {
     reminders        = aws_dynamodb_table.reminders.arn
     templates        = aws_dynamodb_table.templates.arn
     questions        = aws_dynamodb_table.questions.arn
+    chat_connections = aws_dynamodb_table.chat_connections.arn
   }
 }
 
@@ -47,6 +48,7 @@ output "dynamodb_table_names" {
     templates        = aws_dynamodb_table.templates.name
     questions        = aws_dynamodb_table.questions.name
     email_messages   = aws_dynamodb_table.email_messages.name
+    chat_connections = aws_dynamodb_table.chat_connections.name
   }
 }
 

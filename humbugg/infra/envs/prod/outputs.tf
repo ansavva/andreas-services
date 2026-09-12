@@ -83,6 +83,16 @@ output "ses_identity_arn" {
   value       = module.email.identity_arn
 }
 
+output "realtime_authorizer_lambda_function_name" {
+  description = "The realtime channel's $connect authorizer Lambda"
+  value       = module.realtime.authorizer_lambda_function_name
+}
+
+output "realtime_connections_lambda_function_name" {
+  description = "The realtime channel's route handler Lambda"
+  value       = module.realtime.connections_lambda_function_name
+}
+
 output "webhook_endpoint_url" {
   description = "The public URL Stripe's webhook endpoint must point at — the relay's gateway, not the API's route."
   value       = module.webhook_relay.endpoint_url
