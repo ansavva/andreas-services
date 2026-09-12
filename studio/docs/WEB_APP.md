@@ -367,9 +367,15 @@ page and a plain textarea over its literal bytes, and never offers fields.
   "N running" badge in the project header and the spinner beside the project
   in the sidebar — which is why both are only ever right about projects open
   this session. A tile carries one `⋮` — `ActionMenu`, a dropdown on a pointer
-  and a bottom sheet below `md` — holding Run again with this, Use as
-  reference, Start frame, Upscale, Copy into a character and Download
-  (`OutputTile`). It used to be six glyphs in the tile's corners, revealed on
+  and a bottom sheet below `md` — holding Run again with this, a `Use as`
+  group of Reference, Start frame and End frame, then Upscale, Copy into a
+  character and Download (`OutputTile`). The group is `attachActions`, and
+  every picture in the app offers the same three — a favorite's tile, a
+  folder's tile, the open file's `Use as…` menu and the opened run's rail —
+  each a plain `attach`: a frame switches the bar to video and replaces the
+  frame it held, a reference accumulates. A group is a `MenuAction.group`:
+  a heading and hairlines, flat, because the `Dropdown` has no submenu and a
+  sheet-in-a-sheet on a phone would be worse than three lines. It used to be six glyphs in the tile's corners, revealed on
   hover: `opacity-0` hides a control without disarming it, so a press aimed at
   the picture ran Animate or Upscale, and on a touch screen — where the hover
   may never arrive — that was every press the tile got. A press anywhere else

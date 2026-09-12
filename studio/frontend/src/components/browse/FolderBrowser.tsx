@@ -64,10 +64,10 @@ import {
   ImageIcon,
   TrashIcon,
   UploadIcon,
-  UseInPromptIcon,
 } from "../common/icons";
 import { ActionMenu, type MenuAction } from "../common/ActionMenu";
 import { BULK_GATE, ConfirmDestroyDialog } from "../common/ConfirmDestroyDialog";
+import { attachActions } from "../create/attachActions";
 
 /** Every tile-menu line's glyph, at the size a line of text carries. */
 const MENU_GLYPH = "size-4 shrink-0 fill-none stroke-current stroke-[1.5]";
@@ -452,7 +452,8 @@ export function FolderBrowser({
   const toast = useToast();
 
   /**
-   * Hand a picture in this listing to the create bar, as a reference.
+   * Hand a picture in this listing to the create bar — as a reference, a
+   * start frame or an end frame.
    *
    * **The library IS the reference shelf, so browsing it has to be a way to
    * pick one.** The sheet's own picker walks the same tree from inside the
@@ -460,21 +461,14 @@ export function FolderBrowser({
    * are — but a person looking through a character's seed folder for the four
    * frames worth using was reaching them by opening the picker and walking back
    * down to the folder already on screen. This is the same `attach` the run's
-   * outputs use (`useRunActions.useInPrompt`), from the other grid.
+   * outputs use (`useRunActions.useAs`), from the other grid, and the same
+   * three lines (`attachActions`).
    *
    * `reference` accumulates rather than replaces, so pressing four tiles
-   * attaches four pictures — see `holdsOne`.
+   * attaches four pictures; a frame replaces — see `holdsOne`.
    */
   const bar = useCreateBar();
   const favorites = useFavorites();
-  const attachAsReference = useCallback(
-    (file: FileEntry) =>
-      bar.attach(
-        { node: file.id, url: file.url, name: file.name, kind: "object" },
-        "reference",
-      ),
-    [bar],
-  );
 
   /** "3 files", "1 key" — the count and its noun, agreeing about plurality. */
   const selectedNoun = useCallback(
@@ -548,14 +542,10 @@ export function FolderBrowser({
         // A still only: every role a tile stands for is a picture, and a clip
         // attached as one is sent to a field that refuses it.
         ...(file.kind === "image"
-          ? [
-              {
-                key: "reference",
-                label: "Use as reference",
-                icon: <UseInPromptIcon className={MENU_GLYPH} />,
-                onSelect: () => attachAsReference(file),
-              },
-            ]
+          ? attachActions(
+              { node: file.id, url: file.url, name: file.name, kind: "object" },
+              bar.attach,
+            )
           : []),
         {
           key: "favorite",
@@ -597,7 +587,7 @@ export function FolderBrowser({
         },
       ];
     },
-    [attachAsReference, deleteOne, favorites],
+    [bar, deleteOne, favorites],
   );
 
   /**

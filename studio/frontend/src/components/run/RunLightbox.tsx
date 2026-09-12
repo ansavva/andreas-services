@@ -44,17 +44,16 @@ import {
   DownloadIcon,
   FolderIcon,
   PencilIcon,
-  PlayIcon,
   PromoteIcon,
   RerunIcon,
   TrashIcon,
   UpscaleIcon,
-  UseInPromptIcon,
 } from "../common/icons";
 import { LoadError } from "../common/LoadError";
 import { pressInApp } from "../common/pressInApp";
 import { SectionLoading } from "../common/SectionLoading";
 import { CharacterChipLink } from "../character/CharacterChip";
+import { USE_AS_GROUP, USE_AS_ROLES, USE_AS_WORDS } from "../create/attachActions";
 import { CompareStage, type ComparePicture } from "../media/CompareStage";
 import { MediaPlayer, type MediaPlayerControls } from "../media/MediaPlayer";
 import { MediaThumb } from "../media/MediaThumb";
@@ -830,21 +829,21 @@ function ActionGrid({
           onClick={actions.edit}
         />
         {/* A still only: every role a tile stands for is a picture, and a
-            clip attached as one was sent to a field that refuses it. */}
-        {asset && still && (
-          <Cell
-            icon={<UseInPromptIcon className={GLYPH} />}
-            label="Use as reference"
-            onClick={() => actions.useInPrompt(asset, output)}
-          />
-        )}
-        {asset && still && (
-          <Cell
-            icon={<PlayIcon className="size-4 fill-current stroke-none" />}
-            label="Start frame"
-            onClick={() => actions.animate(asset, output)}
-          />
-        )}
+            clip attached as one was sent to a field that refuses it. The
+            same three lines every tile's menu offers (`attachActions`). */}
+        {asset &&
+          still &&
+          USE_AS_ROLES.map((role) => {
+            const { label, icon: Icon } = USE_AS_WORDS[role];
+            return (
+              <Cell
+                key={role}
+                icon={<Icon className={GLYPH} />}
+                label={`${USE_AS_GROUP} ${label.toLowerCase()}`}
+                onClick={() => actions.useAs(asset, output, role)}
+              />
+            );
+          })}
         {asset && still && (
           <Cell
             icon={<UpscaleIcon className={GLYPH} />}

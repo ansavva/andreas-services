@@ -3,6 +3,7 @@ import { Fragment, type ReactNode } from "react";
 import { Badge, Text } from "@ansavva/design-system";
 
 import { EmptyState } from "../common/EmptyState";
+import type { AttachRole } from "../../context/CreateBarContext";
 import type { FileEntry } from "../../types";
 import { formatBytes, formatDate } from "../../utils/format";
 import { ObjectActions } from "./ObjectActions";
@@ -28,8 +29,8 @@ interface ControlsProps {
   editing?: boolean;
   onToggleEditing?: () => void;
   onClose?: () => void;
-  /** Hand the open picture to the create bar. Absent on a clip — see `ObjectActions`. */
-  onUseAsReference?: () => void;
+  /** Hand the open picture to the create bar, in a role. Absent on a clip — see `ObjectActions`. */
+  onUseAs?: (role: AttachRole) => void;
   className?: string;
 }
 
@@ -55,7 +56,7 @@ export function ObjectControls({
   editing = false,
   onToggleEditing,
   onClose,
-  onUseAsReference,
+  onUseAs,
   className,
 }: ControlsProps) {
   return (
@@ -69,7 +70,7 @@ export function ObjectControls({
           editing={editing}
           onToggleEditing={onToggleEditing}
           onClose={onClose}
-          onUseAsReference={onUseAsReference}
+          onUseAs={onUseAs}
         />
       </div>
 

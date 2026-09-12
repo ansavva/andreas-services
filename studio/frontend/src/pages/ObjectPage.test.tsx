@@ -390,24 +390,49 @@ describe("deleting the open file", () => {
  * The picture on screen, handed to the create bar — the shortcut from the one
  * place a person is already looking at the reference they want.
  */
-describe("using the open file as a reference", () => {
-  it("attaches the open picture, in the role that accumulates", async () => {
+describe("using the open file in the create bar", () => {
+  /**
+   * `Use as…` is an `ActionMenu`: a dropdown trigger beside a sheet trigger,
+   * told apart in CSS jsdom does not apply — so both are found, and the
+   * dropdown is the one whose items are `menuitem`s.
+   */
+  const openUseAs = () =>
+    fireEvent.click(screen.getAllByRole("button", { name: "Use as…" })[0]!);
+
+  it("attaches the open picture as a reference, in the role that accumulates", async () => {
     open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
     await waitFor(() => expect(screen.getByText(/2 of 3/)).toBeTruthy());
 
-    fireEvent.click(screen.getByRole("button", { name: "Use as reference" }));
+    openUseAs();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Reference" }));
 
     expect(screen.getByTestId("bar")).toHaveProperty("textContent", `reference:${OPEN}`);
   });
 
-  it("offers nothing on a clip — a reference is a picture", async () => {
+  it("offers the picture as a start frame and as an end frame", async () => {
+    open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
+    await waitFor(() => expect(screen.getByText(/2 of 3/)).toBeTruthy());
+
+    openUseAs();
+    fireEvent.click(screen.getByRole("menuitem", { name: "End frame" }));
+    expect(screen.getByTestId("bar")).toHaveProperty("textContent", `end:${OPEN}`);
+
+    openUseAs();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Start frame" }));
+    expect(screen.getByTestId("bar")).toHaveProperty(
+      "textContent",
+      `end:${OPEN},start:${OPEN}`,
+    );
+  });
+
+  it("offers nothing on a clip — every role is a picture", async () => {
     tree.mockResolvedValue(
       listing([file(OPEN, "b.mp4", { kind: "video", content_type: "video/mp4" })]),
     );
     open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
     await waitFor(() => expect(screen.getByText(/1 of 1/)).toBeTruthy());
 
-    expect(screen.queryByRole("button", { name: "Use as reference" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Use as…" })).toBeNull();
   });
 });
 

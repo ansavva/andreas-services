@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@ansavva/design-system";
 
 import { deleteRun, getAsset, getModels } from "../../apis/studio";
-import { useCreateBar } from "../../context/CreateBarContext";
+import { useCreateBar, type AttachRole } from "../../context/CreateBarContext";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { useResource } from "../../hooks/useResource";
 import type { RunAsset, RunFeedRow } from "../../types";
@@ -78,22 +78,18 @@ export function useRunActions(row: RunFeedRow) {
     [bar, models.data, row, toast],
   );
 
-  /** Video mode, with this output as the start frame and nothing else. */
-  const animate = useCallback(
-    (asset: RunAsset, index: number) => {
-      bar.setKind("video");
-      bar.loadRun({
-        project: row.project,
-        kind: "video",
-        attachments: [{ ref: refOfOutput(row, asset, index), role: "start" }],
-      });
-    },
-    [bar, row],
-  );
-
-  /** Add this output to whatever the bar holds, as a reference. */
-  const useInPrompt = useCallback(
-    (asset: RunAsset, index: number) => bar.attach(refOfOutput(row, asset, index), "reference"),
+  /**
+   * Add this output to whatever the bar holds — as a reference, a start
+   * frame or an end frame. A frame switches the bar to video and replaces
+   * the frame it held; a reference accumulates (`holdsOne`).
+   *
+   * **`Start frame` used to LOAD a fresh video run holding only this
+   * picture**, while `Use as reference` attached to whatever was there, and
+   * nothing offered an end frame at all. Three roles, one gesture: attach.
+   */
+  const useAs = useCallback(
+    (asset: RunAsset, index: number, role: AttachRole) =>
+      bar.attach(refOfOutput(row, asset, index), role),
     [bar, row],
   );
 
@@ -149,8 +145,7 @@ export function useRunActions(row: RunFeedRow) {
     edit,
     outputAgain,
     upscale,
-    animate,
-    useInPrompt,
+    useAs,
     download,
     remove,
     copyPrompt,
