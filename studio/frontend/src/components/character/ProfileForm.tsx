@@ -7,17 +7,24 @@ import {
   Card,
   Collapsible,
   Field,
+  IconButton,
   Input,
+  Select,
   Separator,
   Switch,
   Text,
 } from "@ansavva/design-system";
 
-import type { CharacterIdentity, CharacterProfile, ProfileValue } from "../../types";
+import type {
+  CharacterIdentity,
+  CharacterProfile,
+  ProfileTemplate,
+  ProfileValue,
+} from "../../types";
 import { humaniseKey } from "../../utils/format";
 import { AutoTextarea } from "../common/AutoTextarea";
 import { FormBar } from "../common/FormBar";
-import { ChevronDownIcon } from "../common/icons";
+import { ChevronDownIcon, CloseIcon, PlusIcon } from "../common/icons";
 
 interface Props {
   /** Slug and display name — saved by a different route from the bible. */
@@ -33,6 +40,16 @@ interface Props {
   /** The API's own 409 wording when the last save was refused, or null. */
   conflict?: string | null;
   onReload?: () => void;
+  /**
+   * The blank bible and its hints — `GET /api/characters/profile-template`.
+   *
+   * What a missing section is added from, so adding `face` gives the nine
+   * fields a face has rather than an empty group; and the line under each
+   * field saying what goes in it. Absent while it loads, or when the fetch
+   * failed: the form still works, sections are added empty and the fields
+   * carry no hint.
+   */
+  template?: ProfileTemplate | null;
 }
 
 /**
@@ -125,6 +142,49 @@ const SECTIONS: ReadonlyArray<{ key: string; hint: string }> = [
 ];
 
 const SECTION_HINTS = new Map(SECTIONS.map((section) => [section.key, section.hint]));
+
+/**
+ * The template's hint for a path, if it has one.
+ *
+ * Keyed without list indexes — `wardrobe.tops.item` serves every top — so
+ * the numeric segments a form path carries are dropped before the lookup.
+ */
+function hintFor(hints: Record<string, string>, path: readonly string[]): string | undefined {
+  return hints[path.filter((segment) => !/^\d+$/.test(segment)).join(".")];
+}
+
+/**
+ * A field name as typed, as the key it is stored under.
+ *
+ * `snake_case`, like every key the template ships: lower-cased, runs of
+ * anything that is not a letter or a digit folded to one underscore, the ends
+ * trimmed. `Mouth & jaw` becomes `mouth_and_jaw`'s neighbour `mouth_jaw`;
+ * what the form shows is `humaniseKey` of it, which is `Mouth jaw`.
+ */
+export function toKey(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+/**
+ * The shapes a new field can start as, in the order the picker lists them.
+ *
+ * Every one is a shape `ProfileNode` already draws, so a field added here is
+ * drawn exactly as the same field would be had the template shipped it. A
+ * list of maps is not offered: its entries copy the first one's keys, and a
+ * first entry has to come from somewhere — add a group and fill it instead.
+ */
+const FIELD_KINDS: ReadonlyArray<{ value: string; label: string; initial: ProfileValue }> = [
+  { value: "text", label: "Text", initial: "" },
+  { value: "long", label: "Long text", initial: "" },
+  { value: "list", label: "List", initial: [] },
+  { value: "switch", label: "Yes / no", initial: false },
+  { value: "number", label: "Number", initial: 0 },
+  { value: "group", label: "Group of fields", initial: {} },
+];
 
 /**
  * The sections in groups, because eight peers is a list and not a shape.
@@ -242,7 +302,15 @@ function groupSections(keys: readonly string[]) {
  * write with a window between them. The draft is kept on a 409 so the work is not
  * lost; what the form offers is a re-read, not a retry.
  */
-export function ProfileForm({ identity, profile, rev, onSave, conflict = null, onReload }: Props) {
+export function ProfileForm({
+  identity,
+  profile,
+  rev,
+  onSave,
+  conflict = null,
+  onReload,
+  template = null,
+}: Props) {
   const [identityDraft, setIdentityDraft] = useState<CharacterIdentity>(identity);
   const [profileDraft, setProfileDraft] = useState<CharacterProfile>(profile);
   const [busy, setBusy] = useState(false);
@@ -257,10 +325,25 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
    * unmounts the input and takes focus with it. The saved value is a stable
    * answer to the same question.
    */
-  const multiline = useRef<ReadonlySet<string>>(collectLongPaths(profile, []));
+  const multiline = useRef<Set<string>>(collectLongPaths(profile, []));
+  const hints = template?.hints ?? {};
 
-  const groups = useMemo(() => groupSections(Object.keys(profile)), [profile]);
+  /**
+   * The sections are the DRAFT's, not the saved profile's.
+   *
+   * They used to be read off `profile`, which was right while the set of
+   * sections could only change by a save. A section added or removed in this
+   * session has to be drawn — or stop being drawn — before it is saved, so
+   * the walk is over what is being edited. The order is still the manifest's.
+   */
+  const groups = useMemo(() => groupSections(Object.keys(profileDraft)), [profileDraft]);
   const keys = useMemo(() => groups.flatMap((group) => group.keys), [groups]);
+
+  /** The schema's sections the draft does not hold — what "Add section" offers. */
+  const missing = useMemo(
+    () => SECTIONS.map((section) => section.key).filter((key) => !(key in profileDraft)),
+    [profileDraft],
+  );
 
   /**
    * Whether the sections the summary restates have moved in this session.
@@ -296,9 +379,11 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
     return moved;
   }, [identityDirty, keys, profile, profileDraft]);
 
+  // A section taken off is dirty too, and it has no trigger to carry the dot:
+  // the whole draft is compared, not only the sections still drawn.
   const profileDirty = useMemo(
-    () => keys.some((key) => dirtySections.has(key)),
-    [dirtySections, keys],
+    () => JSON.stringify(profileDraft) !== JSON.stringify(profile),
+    [profile, profileDraft],
   );
   const dirty = identityDirty || profileDirty;
 
@@ -347,6 +432,38 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
   const setAt = useCallback((path: string[], value: ProfileValue) => {
     setProfileDraft((current) => setIn(current, path, value) as CharacterProfile);
   }, []);
+
+  const removeAt = useCallback((path: string[]) => {
+    setProfileDraft((current) => deleteIn(current, path) as CharacterProfile);
+  }, []);
+
+  /**
+   * A field added by hand, at any depth.
+   *
+   * A "Long text" field is a string like any other; what makes it a box is
+   * its path being in `multiline`, which is decided once from the saved
+   * profile — so the path is put there by hand, and stays a box for the
+   * life of this form.
+   */
+  const addAt = useCallback((path: string[], value: ProfileValue, long = false) => {
+    if (long) multiline.current.add(path.join("."));
+    setProfileDraft((current) => setIn(current, path, value) as CharacterProfile);
+  }, []);
+
+  /**
+   * A schema section the draft lacks, from the template when there is one.
+   *
+   * Empty otherwise — `{}` for a map section, `""` for the paragraph — which
+   * the API accepts and the form then fills field by field.
+   */
+  const addSection = useCallback(
+    (key: string) => {
+      const blank = template?.profile[key] ?? (key === SUMMARY_KEY ? "" : {});
+      setProfileDraft((current) => ({ ...current, [key]: structuredClone(blank) }));
+      setOpen((current) => new Set([...current, key]));
+    },
+    [template],
+  );
 
   const save = useCallback(() => {
     setBusy(true);
@@ -479,13 +596,32 @@ export function ProfileForm({ identity, profile, rev, onSave, conflict = null, o
                     path={[key]}
                     value={profileDraft[key] ?? null}
                     multiline={multiline.current}
+                    hints={hints}
                     onChange={setAt}
+                    onRemove={removeAt}
+                    onAdd={addAt}
                     headless
                   />
+                  {/* Off the draft, not off the record — Save is what writes,
+                      Revert puts it back. A section is a big thing to take
+                      off with one press, and a draft is what makes one press
+                      enough. */}
+                  <div className="flex justify-end">
+                    <Button intent="secondary" size="sm" onClick={() => removeAt([key])}>
+                      Remove section
+                    </Button>
+                  </div>
                 </ProfileSection>
               ))}
             </div>
           ))}
+
+          {/* The schema's sections this character lacks. A character written
+              before a section existed, or one whose section was taken off, is
+              added back from the template — its fields, not an empty group. */}
+          {missing.length > 0 && (
+            <AddSection missing={missing} onAdd={addSection} />
+          )}
 
           {/*
             One bar, one revision number.
@@ -724,7 +860,13 @@ interface NodeProps {
   path: string[];
   value: ProfileValue;
   multiline: ReadonlySet<string>;
+  /** The template's line per field — see `hintFor`. */
+  hints: Record<string, string>;
   onChange: (path: string[], value: ProfileValue) => void;
+  /** Take this node off the draft. Absent on a node that cannot be removed. */
+  onRemove?: (path: string[]) => void;
+  /** Put a new field under a map at `path`. */
+  onAdd: (path: string[], value: ProfileValue, long?: boolean) => void;
   /**
    * Drop this node's own title.
    *
@@ -735,17 +877,41 @@ interface NodeProps {
   headless?: boolean;
 }
 
-/** One leaf, one list or one group — chosen by the shape of the value. */
-function ProfileNode({ label, path, value, multiline, onChange, headless = false }: NodeProps) {
+/**
+ * One leaf, one list or one group — chosen by the shape of the value.
+ *
+ * **Every node can be taken off, and every map can take one more.** The API
+ * validates a bible by section and by nothing below it, so the fields inside
+ * `face` are a person's to add to and take from — and until this the form
+ * drew exactly the keys the record held and offered no way to change that
+ * set, which on a character created in the app was no keys at all. The ×
+ * on a field and the "Add field" under a group are that way. Both edit the
+ * draft; Save is what writes, Revert what puts it back.
+ */
+function ProfileNode({
+  label,
+  path,
+  value,
+  multiline,
+  hints,
+  onChange,
+  onRemove,
+  onAdd,
+  headless = false,
+}: NodeProps) {
   const name = path.join(".");
   const title = humaniseKey(label);
+  const hint = hintFor(hints, path);
+  // A section's own × is the card's "Remove section"; only what is inside
+  // one gets the field-sized way off.
+  const remove = onRemove && !headless ? () => onRemove(path) : undefined;
 
   if (typeof value === "boolean") {
     return (
       // Not a `<label>`: `Switch.Root` renders a `<button>`, which is not a
       // labelable element, so the association would silently do nothing. The
       // name goes on the control itself.
-      <div className="flex items-center gap-3">
+      <div className="group flex items-center gap-3">
         <Switch.Root
           checked={value}
           aria-label={title}
@@ -754,19 +920,21 @@ function ProfileNode({ label, path, value, multiline, onChange, headless = false
           <Switch.Thumb />
         </Switch.Root>
         <Text variant="body">{title}</Text>
+        {remove && <RemoveField title={title} onRemove={remove} />}
       </div>
     );
   }
 
   if (typeof value === "number") {
     return (
-      <Field.Root name={name}>
-        <Field.Label>{title}</Field.Label>
+      <Field.Root name={name} className="group">
+        <LabelRow title={title} onRemove={remove} />
         <Input
           type="number"
           value={String(value)}
           onValueChange={(next: string) => onChange(path, next === "" ? null : Number(next))}
         />
+        {hint && <Field.Description>{hint}</Field.Description>}
       </Field.Root>
     );
   }
@@ -774,13 +942,14 @@ function ProfileNode({ label, path, value, multiline, onChange, headless = false
   if (value === null || typeof value === "string") {
     const text = value ?? "";
     return (
-      <Field.Root name={name}>
-        <Field.Label>{title}</Field.Label>
+      <Field.Root name={name} className="group">
+        <LabelRow title={title} onRemove={remove} />
         {multiline.has(name) ? (
           <AutoTextarea value={text} onValueChange={(next: string) => onChange(path, next)} />
         ) : (
           <Input value={text} onValueChange={(next: string) => onChange(path, next)} />
         )}
+        {hint && <Field.Description>{hint}</Field.Description>}
       </Field.Root>
     );
   }
@@ -797,15 +966,18 @@ function ProfileNode({ label, path, value, multiline, onChange, headless = false
           path={path}
           items={shaped}
           multiline={multiline}
+          hints={hints}
           onChange={onChange}
+          onRemove={onRemove}
+          onAdd={onAdd}
           headless={headless}
         />
       );
     }
 
     return (
-      <Field.Root name={name}>
-        <Field.Label>{title}</Field.Label>
+      <Field.Root name={name} className="group">
+        <LabelRow title={title} onRemove={remove} />
         {/* One entry per line. A list of short cues is what this shape always
             holds — signature features, accent cues, the never/must lists — and a
             row of inputs with add and remove buttons is more chrome than the
@@ -823,7 +995,7 @@ function ProfileNode({ label, path, value, multiline, onChange, headless = false
             )
           }
         />
-        <Field.Description>One per line.</Field.Description>
+        <Field.Description>{hint ? `${hint}. One per line.` : "One per line."}</Field.Description>
       </Field.Root>
     );
   }
@@ -831,7 +1003,12 @@ function ProfileNode({ label, path, value, multiline, onChange, headless = false
   if (isMap(value)) {
     return (
       <div className="flex flex-col gap-3">
-        {!headless && <GroupHeading title={title} />}
+        {!headless && (
+          <GroupHeading
+            title={title}
+            action={remove && <RemoveField title={title} onRemove={remove} />}
+          />
+        )}
         {/* Indented on a wide screen and flush on a narrow one: the indent is
             what carries the nesting now that the border is gone, and 12px of it
             is 3% of a phone's width spent saying what the heading already says. */}
@@ -843,9 +1020,17 @@ function ProfileNode({ label, path, value, multiline, onChange, headless = false
               path={[...path, childKey]}
               value={childValue}
               multiline={multiline}
+              hints={hints}
               onChange={onChange}
+              onRemove={onRemove}
+              onAdd={onAdd}
             />
           ))}
+          <AddField
+            under={title}
+            existing={Object.keys(value)}
+            onAdd={(key, initial, long) => onAdd([...path, key], initial, long)}
+          />
         </div>
       </div>
     );
@@ -855,12 +1040,174 @@ function ProfileNode({ label, path, value, multiline, onChange, headless = false
   // cannot place must still be *shown*, because the save writes the whole draft
   // back and a leaf that was never rendered would be a leaf that was deleted.
   return (
-    <Field.Root name={name}>
-      <Field.Label>{title}</Field.Label>
+    <Field.Root name={name} className="group">
+      <LabelRow title={title} onRemove={remove} />
       <Text variant="caption" tone="muted">
         {JSON.stringify(value)}
       </Text>
     </Field.Root>
+  );
+}
+
+/** A field's name, and the way to take the field off beside it. */
+function LabelRow({ title, onRemove }: { title: string; onRemove?: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <Field.Label>{title}</Field.Label>
+      {onRemove && <RemoveField title={title} onRemove={onRemove} />}
+    </div>
+  );
+}
+
+/**
+ * The × on a field.
+ *
+ * Hidden until the field is hovered or holds focus, and always drawn where
+ * there is no pointer to hover with — `MediaTile`'s rule for its menu. A ×
+ * on every one of sixty fields all the time is sixty things that are not the
+ * field; one that appears under the hand is the way off, when wanted.
+ */
+function RemoveField({ title, onRemove }: { title: string; onRemove: () => void }) {
+  return (
+    <IconButton
+      label={`Remove ${title}`}
+      size="sm"
+      intent="ghost"
+      onClick={onRemove}
+      className="-my-1 opacity-0 transition-opacity focus-visible:opacity-100
+                 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100
+                 motion-reduce:transition-none"
+    >
+      <CloseIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+    </IconButton>
+  );
+}
+
+/**
+ * One more field under a map — a name and a shape, then it is drawn like any
+ * other and filled in place.
+ *
+ * Closed at rest, so a group reads as its fields and not as a form for making
+ * more of them. The name is stored as `toKey` of what was typed; an empty or
+ * duplicate key is refused in place, because a second `nose` would be one
+ * field drawn twice and saved once.
+ */
+function AddField({
+  under,
+  existing,
+  onAdd,
+}: {
+  under: string;
+  existing: readonly string[];
+  onAdd: (key: string, initial: ProfileValue, long: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [kind, setKind] = useState(FIELD_KINDS[0]!.value);
+  const key = toKey(name);
+  const problem =
+    name.trim() === ""
+      ? null
+      : key === ""
+        ? "A name needs a letter or a digit in it."
+        : existing.includes(key)
+          ? `There is already a field called ${humaniseKey(key)}.`
+          : null;
+
+  const add = () => {
+    if (key === "" || problem) return;
+    const shape = FIELD_KINDS.find((each) => each.value === kind) ?? FIELD_KINDS[0]!;
+    onAdd(key, structuredClone(shape.initial), shape.value === "long");
+    setName("");
+    setOpen(false);
+  };
+
+  if (!open) {
+    return (
+      <div className="flex">
+        <Button intent="secondary" size="sm" onClick={() => setOpen(true)}>
+          <PlusIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+          Add field
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      role="group"
+      aria-label={`New field under ${under}`}
+      className="flex flex-col gap-3 border-t border-line pt-3"
+    >
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem]">
+        <Field.Root name="new-field-name">
+          <Field.Label>Field name</Field.Label>
+          <Input
+            value={name}
+            onValueChange={setName}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                add();
+              }
+            }}
+          />
+          {key !== "" && !problem && (
+            <Field.Description>
+              Stored as <code>{key}</code>.
+            </Field.Description>
+          )}
+          {problem && <Field.Description>{problem}</Field.Description>}
+        </Field.Root>
+        <Field.Root name="new-field-kind">
+          <Field.Label>Shape</Field.Label>
+          <Select
+            aria-label="Shape"
+            options={FIELD_KINDS.map(({ value, label }) => ({ value, label }))}
+            value={kind}
+            onValueChange={setKind}
+          />
+        </Field.Root>
+      </div>
+      <div className="flex gap-2">
+        <Button size="sm" onClick={add} disabled={key === "" || problem !== null}>
+          Add
+        </Button>
+        <Button intent="secondary" size="sm" onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The schema's sections this bible lacks, one press each.
+ *
+ * Under the last group, as its own card: a section is bigger than a field and
+ * the control that adds one belongs with the sections rather than inside any
+ * of them. Nothing off-schema can be added here — the API refuses a section
+ * it does not name, so offering one would be offering a save that fails.
+ */
+function AddSection({ missing, onAdd }: { missing: readonly string[]; onAdd: (key: string) => void }) {
+  return (
+    <Card.Root className="gap-3">
+      <div className="flex flex-col gap-1">
+        <Text variant="title">Add a section</Text>
+        <Text variant="caption" tone="muted">
+          Sections the schema names and this character does not have yet. Each comes with its
+          fields.
+        </Text>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {missing.map((key) => (
+          <Button key={key} intent="secondary" size="sm" onClick={() => onAdd(key)}>
+            <PlusIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+            {humaniseKey(key)}
+          </Button>
+        ))}
+      </div>
+    </Card.Root>
   );
 }
 
@@ -895,36 +1242,51 @@ function GroupList({
   path,
   items,
   multiline,
+  hints,
   onChange,
+  onRemove,
+  onAdd,
   headless = false,
 }: {
   title: string;
   path: string[];
   items: Array<Record<string, ProfileValue>>;
   multiline: ReadonlySet<string>;
+  hints: Record<string, string>;
   onChange: (path: string[], value: ProfileValue) => void;
+  onRemove?: (path: string[]) => void;
+  onAdd: (path: string[], value: ProfileValue, long?: boolean) => void;
   headless?: boolean;
 }) {
   const template = items[0] ?? {};
+  const hint = hintFor(hints, path);
 
   const add = (
-    <Button
-      intent="secondary"
-      size="sm"
-      onClick={() =>
-        onChange(path, [
-          ...items,
-          Object.fromEntries(Object.keys(template).map((key) => [key, ""])),
-        ])
-      }
-    >
-      Add
-    </Button>
+    <div className="flex items-center gap-1">
+      <Button
+        intent="secondary"
+        size="sm"
+        onClick={() =>
+          onChange(path, [
+            ...items,
+            Object.fromEntries(Object.keys(template).map((key) => [key, ""])),
+          ])
+        }
+      >
+        Add
+      </Button>
+      {onRemove && <RemoveField title={title} onRemove={() => onRemove(path)} />}
+    </div>
   );
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="group flex flex-col gap-3">
       {headless ? <div className="flex justify-end">{add}</div> : <GroupHeading title={title} action={add} />}
+      {hint && (
+        <Text variant="caption" tone="muted">
+          {hint}
+        </Text>
+      )}
 
       {items.map((item, index) => (
         <div
@@ -955,9 +1317,17 @@ function GroupList({
               path={[...path, String(index), key]}
               value={value}
               multiline={multiline}
+              hints={hints}
               onChange={onChange}
+              onRemove={onRemove}
+              onAdd={onAdd}
             />
           ))}
+          <AddField
+            under={`${title} ${index + 1}`}
+            existing={Object.keys(item)}
+            onAdd={(key, initial, long) => onAdd([...path, String(index), key], initial, long)}
+          />
         </div>
       ))}
     </div>
@@ -1019,4 +1389,27 @@ function setIn(source: ProfileValue, path: string[], value: ProfileValue): Profi
 
   const base = isMap(source) ? source : {};
   return { ...base, [head]: setIn(base[head] ?? null, rest, value) };
+}
+
+/**
+ * A copy of `source` with one node taken out — `setIn`'s opposite, and as
+ * immutable, for the same reasons. A path into nothing is a no-op.
+ */
+function deleteIn(source: ProfileValue, path: string[]): ProfileValue {
+  const [head, ...rest] = path;
+  if (head === undefined) return source;
+
+  if (Array.isArray(source)) {
+    const index = Number(head);
+    if (rest.length === 0) return source.filter((_, at) => at !== index);
+    return source.map((item, at) => (at === index ? deleteIn(item, rest) : item));
+  }
+
+  if (!isMap(source) || !(head in source)) return source;
+  if (rest.length === 0) {
+    const kept = { ...source };
+    delete kept[head];
+    return kept;
+  }
+  return { ...source, [head]: deleteIn(source[head] ?? null, rest) };
 }

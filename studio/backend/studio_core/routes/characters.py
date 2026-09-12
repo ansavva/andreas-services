@@ -43,7 +43,7 @@ from studio_core.errors import ConflictError, ForbiddenError, NotFoundError, Val
 from studio_core.routes import projects as project_routes
 from studio_core.routes import support
 from studio_core import config
-from studio_core.services import browse, catalog, keys, manage, registry
+from studio_core.services import browse, catalog, keys, manage, profile_template, registry
 
 logger = logging.getLogger(__name__)
 
@@ -245,13 +245,29 @@ def create_character():
     support.member_of(g.library, held)
 
     root = catalog.library(g.library)["root_node"]
+    # **Seeded from the blank bible when the body says nothing about one.** A
+    # character made in the app used to start with `{}` — a form with nothing
+    # in it — where one made by the CLI started from `templates/profile.yaml`.
+    # `profile: {}` is still `{}`: that is a client asking for empty.
+    seeded = "profile" not in body
     record = catalog.create_character(
         g.library,
         root,
         name=keys.clean_label(body.get("name")),
-        profile=clean_profile(body.get("profile")),
+        profile=profile_template.blank_profile() if seeded else clean_profile(body.get("profile")),
     )
     return jsonify(record), 201, {"Location": f"/api/characters/{record['id']}"}
+
+
+@bp.get("/characters/profile-template")
+def get_profile_template():
+    """The blank bible and a hint per field — what a new section is added from.
+
+    Shares a prefix with `/characters/<addressed>`; Werkzeug ranks a literal
+    segment above a converter whatever the registration order, and a character
+    could never be addressed as `profile-template` anyway — ids are UUIDs.
+    """
+    return jsonify(profile_template.template())
 
 
 @bp.get("/characters/<addressed>")

@@ -2,6 +2,7 @@ import type {
   AssetResponse,
   CharacterRecord,
   CharacterProfile,
+  ProfileTemplate,
   CharacterSummary,
   CopiedNodes,
   CreateRunBody,
@@ -423,6 +424,11 @@ export function getCharacters(q?: string) {
 /** One character's whole record, `profile` inline. */
 export function getCharacter(id: string) {
   return apiGet<CharacterRecord>(`/api/characters/${encodeURIComponent(id)}`);
+}
+
+/** The blank bible and a hint per field. Per deploy, like the registry. */
+export function getProfileTemplate() {
+  return apiGet<ProfileTemplate>("/api/characters/profile-template");
 }
 
 export function createCharacter(body: {

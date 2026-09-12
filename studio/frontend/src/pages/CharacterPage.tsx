@@ -6,7 +6,13 @@ import { Tabs } from "@ansavva/design-system";
 import { LoadError } from "../components/common/LoadError";
 import { PageLoading } from "../components/common/PageLoading";
 import { ApiError } from "../apis/client";
-import { deleteCharacter, getCharacter, patchCharacter, setCharacterProfile } from "../apis/studio";
+import {
+  deleteCharacter,
+  getCharacter,
+  getProfileTemplate,
+  patchCharacter,
+  setCharacterProfile,
+} from "../apis/studio";
 import { FolderTab } from "../components/browse/FolderTab";
 import { PageBar } from "../components/layout/PageBar";
 import { ProfileForm } from "../components/character/ProfileForm";
@@ -77,6 +83,9 @@ export function CharacterPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const load = useCallback(() => getCharacter(characterId), [characterId]);
   const character = useResource(["character", characterId], load);
+  // The blank bible, for the form's hints and for adding a section back. Per
+  // deploy like the registry, so one key serves every character.
+  const template = useResource(["profile-template"], getProfileTemplate);
 
   /**
    * The 409 message, as the API worded it.
@@ -204,6 +213,7 @@ export function CharacterPage() {
             onSave={saveCharacter}
             conflict={conflict}
             onReload={character.reload}
+            template={template.data}
           />
         </Tabs.Panel>
 
