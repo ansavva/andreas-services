@@ -127,6 +127,96 @@ public sealed class QuestionServiceTests
     }
 
     /// <summary>
+    /// One mail per unread stretch. The second line of a chat does not earn a second email; looking
+    /// at the thread is what earns the next one.
+    /// </summary>
+    [Fact]
+    public async Task OneEmailUntilTheyLook()
+    {
+        var world = World(withAddresses: true);
+        int ToBo() => world.Email.Sent.Count(message => message.ToAddress == "bo@example.test");
+
+        await world.AsAna.AskAsync(Group, new SendQuestionRequest("Which size?"), Token);
+        Assert.Equal(1, ToBo());
+
+        // Bo has not looked. Two more lines, no more mail.
+        world.Clock.Advance(QuestionService.MinimumGap);
+        await world.AsAna.AskAsync(Group, new SendQuestionRequest("And colour?"), Token);
+        world.Clock.Advance(QuestionService.MinimumGap);
+        await world.AsAna.AskAsync(Group, new SendQuestionRequest("Sorry — one more."), Token);
+        Assert.Equal(1, ToBo());
+
+        // Bo fetches — a poll from a closed panel — and that is NOT looking.
+        var fetched = await world.AsBo.GetForRecipientAsync(Group, Token);
+        Assert.Equal(3, fetched.Unread);
+        world.Clock.Advance(QuestionService.MinimumGap);
+        await world.AsAna.AskAsync(Group, new SendQuestionRequest("Still there?"), Token);
+        Assert.Equal(1, ToBo());
+
+        // Bo has the conversation on screen. The next message is news again.
+        var seen = await world.AsBo.MarkSeenForRecipientAsync(Group, Token);
+        Assert.Equal(0, seen.Unread);
+        world.Clock.Advance(QuestionService.MinimumGap);
+        await world.AsAna.AskAsync(Group, new SendQuestionRequest("Last one, promise."), Token);
+        Assert.Equal(2, ToBo());
+
+        // Every message went out as its own event, so a retry of one is not a resend of another.
+        Assert.Equal(2, world.Email.Sent.Where(message => message.ToAddress == "bo@example.test")
+            .Select(message => message.MessageId).Distinct().Count());
+    }
+
+    /// <summary>Each side counts only the OTHER side's messages it has not seen; a reply reads.</summary>
+    [Fact]
+    public async Task UnreadCountsTheOtherSideOnly()
+    {
+        var world = World();
+        await world.AsAna.AskAsync(Group, new SendQuestionRequest("Which size?"), Token);
+        world.Clock.Advance(QuestionService.MinimumGap);
+        var mine = await world.AsAna.AskAsync(Group, new SendQuestionRequest("And colour?"), Token);
+        Assert.Equal(0, mine.Unread);
+        Assert.Equal(2, (await world.AsBo.GetForRecipientAsync(Group, Token)).Unread);
+
+        var replied = await world.AsBo.ReplyAsync(Group, new SendQuestionRequest("Medium, blue."), Token);
+        Assert.Equal(0, replied.Unread);
+        Assert.Equal(1, (await world.AsAna.GetForGiverAsync(Group, Token)).Unread);
+        Assert.Equal(0, (await world.AsAna.MarkSeenForGiverAsync(Group, Token)).Unread);
+    }
+
+    /// <summary>Replying is reading: a reply moves the replier's marker, so the next message is news.</summary>
+    [Fact]
+    public async Task ReplyingCountsAsHavingLooked()
+    {
+        var world = World(withAddresses: true);
+        int ToBo() => world.Email.Sent.Count(message => message.ToAddress == "bo@example.test");
+
+        await world.AsAna.AskAsync(Group, new SendQuestionRequest("Which size?"), Token);
+        await world.AsBo.ReplyAsync(Group, new SendQuestionRequest("Medium."), Token);
+        Assert.Equal(1, ToBo());
+
+        world.Clock.Advance(QuestionService.MinimumGap);
+        await world.AsAna.AskAsync(Group, new SendQuestionRequest("Thanks!"), Token);
+        Assert.Equal(2, ToBo());
+    }
+
+    /// <summary>
+    /// The read markers are stored on the thread row, and the guarantee still holds there: a marker
+    /// is a message id, so serialising the row finds no giver on it.
+    /// </summary>
+    [Fact]
+    public async Task ReadMarkersNameNoOne()
+    {
+        var world = World();
+        await world.AsAna.AskAsync(Group, new SendQuestionRequest("Which size?"), Token);
+        await world.AsBo.MarkSeenForRecipientAsync(Group, Token);
+
+        var (thread, _) = await world.Questions.GetThreadAsync(
+            QuestionRepository.ThreadId(Group, "draw-1", Bo), Token);
+        Assert.NotNull(thread!.GiverSeen);
+        Assert.NotNull(thread.RecipientSeen);
+        Assert.DoesNotContain(Ana, JsonSerializer.Serialize(thread), StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// A mail failure never costs a message that is already stored.
     /// </summary>
     [Fact]
@@ -278,20 +368,27 @@ public sealed class QuestionServiceTests
         Assert.Equal(2, replied.Messages.Count);
     }
 
+    /// <summary>
+    /// A thread has no ceiling. It shipped with one (fifty, "short of a chat product") and the
+    /// product is now a chat: the only per-message rule left is the flood gap above.
+    /// </summary>
     [Fact]
-    public async Task AThreadStopsAtItsMessageLimit()
+    public async Task AConversationHasNoMessageLimit()
     {
         var world = World();
         var stale = DateTimeOffset.UtcNow.AddHours(-1).ToString("O");
-        for (var index = 0; index < QuestionService.MaxMessagesPerThread; index++)
+        for (var index = 0; index < 500; index++)
             await world.Questions.AppendAsync(new QuestionMessageRecord(
                 QuestionRepository.ThreadId(Group, "draw-1", Bo),
-                $"seed-{index:D3}", Group, "draw-1", Bo, QuestionAuthor.Giver, "filler", stale), Token);
+                $"seed-{index:D3}", Group, "draw-1", Bo,
+                index % 2 == 0 ? QuestionAuthor.Giver : QuestionAuthor.Recipient, "filler", stale), Token);
 
-        var error = await Assert.ThrowsAsync<ApiException>(() =>
-            world.AsAna.AskAsync(Group, new SendQuestionRequest("One more"), Token));
-        Assert.Equal(409, error.StatusCode);
-        Assert.False((await world.AsAna.GetForGiverAsync(Group, Token)).CanSend);
+        await world.AsAna.AskAsync(Group, new SendQuestionRequest("One more"), Token);
+        var thread = await world.AsBo.ReplyAsync(Group, new SendQuestionRequest("And another"), Token);
+
+        Assert.Equal(502, thread.Messages.Count);
+        Assert.True(thread.CanSend);
+        Assert.Null(thread.BlockedReason);
     }
 
     // ── Draw lifecycle ──────────────────────────────────────────────────────────────────────────
@@ -330,6 +427,7 @@ public sealed class QuestionServiceTests
         public DrawableGroups Groups { get; }
         public RecordingEmail Email { get; } = new();
         public FakeAccountDirectory Directory { get; } = new();
+        public StepClock Clock { get; } = new();
         private readonly FakeMembers members;
         private readonly FakeInvitations invitations;
 
@@ -345,7 +443,8 @@ public sealed class QuestionServiceTests
             new TransactionalEmailTemplates(),
             new HumbuggSettings(
                 "us-east-1", "us-east-1", "pool", "client", ["http://localhost:5173"],
-                "http://localhost:5173", null, "profiles", "groups", "members", "draws", "audit", "analytics"));
+                "http://localhost:5173", null, "profiles", "groups", "members", "draws", "audit", "analytics"),
+            Clock);
 
         public IQuestionService AsAna => For($"user-{Ana}");
         public IQuestionService AsBo => For($"user-{Bo}");
@@ -375,6 +474,18 @@ public sealed class QuestionServiceTests
     private sealed class StubUser(string userId) : ICurrentUser
     {
         public string UserId => userId;
+    }
+
+    /// <summary>
+    /// A clock the test steps past the flood gap, so one side can write twice. It also moves a
+    /// millisecond per read, because a frozen clock would stamp two messages into the same tick and
+    /// the id ordering test would then be testing the random suffix.
+    /// </summary>
+    private sealed class StepClock : TimeProvider
+    {
+        private DateTimeOffset now = DateTimeOffset.UtcNow;
+        public override DateTimeOffset GetUtcNow() => now += TimeSpan.FromMilliseconds(1);
+        public void Advance(TimeSpan by) => now += by;
     }
 
     /// <summary>A group repository whose draw can be replaced, for the reset case.</summary>

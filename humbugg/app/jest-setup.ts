@@ -13,6 +13,28 @@
 process.env.EXPO_PUBLIC_COGNITO_DOMAIN ??= 'auth.humbugg.test';
 process.env.EXPO_PUBLIC_COGNITO_CLIENT_ID ??= 'test-client-id';
 
+// The Santa hat is drawn with react-native-svg, which every screen reaches through the Shell's
+// account menu → avatar. Transforming the real package on a cold cache is what tipped the first
+// test of a suite past jest's 5 s timeout in CI; nothing here asserts on a path, so the primitives
+// are plain Views.
+jest.mock('react-native-svg', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const primitive = (name: string) => {
+    const Component = (props: Record<string, unknown>) => React.createElement(View, { ...props, testID: name });
+    Component.displayName = name;
+    return Component;
+  };
+  return {
+    __esModule: true,
+    default: primitive('Svg'),
+    Svg: primitive('Svg'),
+    Circle: primitive('Circle'),
+    Path: primitive('Path'),
+    Rect: primitive('Rect'),
+  };
+});
+
 jest.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
   default: { getItem: jest.fn(), setItem: jest.fn(), removeItem: jest.fn() },

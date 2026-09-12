@@ -27,6 +27,11 @@ public sealed class GiverQuestionsController(IQuestionService questions) : Contr
         [FromBody] SendQuestionRequest request,
         CancellationToken cancellationToken) =>
         questions.AskAsync(groupId, request, cancellationToken);
+
+    /// <summary>The conversation was on screen. Clears the unread count and re-arms the mail.</summary>
+    [HttpPost("seen")]
+    public Task<QuestionThread> Seen(string groupId, CancellationToken cancellationToken) =>
+        questions.MarkSeenForGiverAsync(groupId, cancellationToken);
 }
 
 /// <summary>
@@ -53,6 +58,10 @@ public sealed class RecipientQuestionsController(IQuestionService questions) : C
         [FromBody] SendQuestionRequest request,
         CancellationToken cancellationToken) =>
         questions.ReplyAsync(groupId, request, cancellationToken);
+
+    [HttpPost("seen")]
+    public Task<QuestionThread> Seen(string groupId, CancellationToken cancellationToken) =>
+        questions.MarkSeenForRecipientAsync(groupId, cancellationToken);
 
     [HttpPut("blocked")]
     public Task<QuestionThread> SetBlocked(

@@ -24,6 +24,14 @@ internal interface IQuestionRepository
         CancellationToken cancellationToken = default);
     Task AppendAsync(QuestionMessageRecord message, CancellationToken cancellationToken = default);
     Task SetBlockedAsync(QuestionThreadRecord thread, CancellationToken cancellationToken = default);
+    /// <summary>Records that <paramref name="side"/> has seen the thread up to <paramref name="messageId"/>.</summary>
+    Task MarkSeenAsync(
+        string threadId,
+        string groupId,
+        string recipientMemberId,
+        QuestionAuthor side,
+        string messageId,
+        CancellationToken cancellationToken = default);
     /// <summary>Deletes every thread in a group — both control rows and messages.</summary>
     Task DeleteByGroupAsync(string groupId, CancellationToken cancellationToken = default);
     /// <summary>Deletes every thread in a group that names this member as either party.</summary>
@@ -84,12 +92,50 @@ internal sealed class QuestionRepository(IAmazonDynamoDB db, HumbuggSettings set
             ConditionExpression = "attribute_not_exists(message_id)",
         }, cancellationToken);
 
+    // Both writes to the control row are updates rather than puts: the row carries the block flag
+    // AND two read markers, written from different requests, and a put of either would erase the
+    // other. Each also upserts the identity attributes, because the row does not exist until
+    // something first writes it and the group index has to find it for deletion.
     public Task SetBlockedAsync(QuestionThreadRecord thread, CancellationToken cancellationToken = default) =>
-        db.PutItemAsync(new PutItemRequest
+        db.UpdateItemAsync(new UpdateItemRequest
         {
             TableName = settings.QuestionsTable,
-            Item = WriteThread(thread),
+            Key = Key(thread.ThreadId, ThreadSortKey),
+            UpdateExpression = "SET group_id = :group, recipient_member_id = :recipient, blocked = :blocked, updated_at = :at",
+            ExpressionAttributeValues = new()
+            {
+                [":group"] = DynamoValues.S(thread.GroupId),
+                [":recipient"] = DynamoValues.S(thread.RecipientMemberId),
+                [":blocked"] = DynamoValues.B(thread.Blocked),
+                [":at"] = DynamoValues.S(thread.UpdatedAt),
+            },
         }, cancellationToken);
+
+    public Task MarkSeenAsync(
+        string threadId,
+        string groupId,
+        string recipientMemberId,
+        QuestionAuthor side,
+        string messageId,
+        CancellationToken cancellationToken = default) =>
+        db.UpdateItemAsync(new UpdateItemRequest
+        {
+            TableName = settings.QuestionsTable,
+            Key = Key(threadId, ThreadSortKey),
+            UpdateExpression =
+                "SET group_id = :group, recipient_member_id = :recipient, blocked = if_not_exists(blocked, :open), #seen = :seen",
+            ExpressionAttributeNames = new() { ["#seen"] = SeenAttribute(side) },
+            ExpressionAttributeValues = new()
+            {
+                [":group"] = DynamoValues.S(groupId),
+                [":recipient"] = DynamoValues.S(recipientMemberId),
+                [":open"] = DynamoValues.B(false),
+                [":seen"] = DynamoValues.S(messageId),
+            },
+        }, cancellationToken);
+
+    private static string SeenAttribute(QuestionAuthor side) =>
+        side == QuestionAuthor.Giver ? "giver_seen" : "recipient_seen";
 
     public async Task DeleteByGroupAsync(string groupId, CancellationToken cancellationToken = default) =>
         await DeleteAsync(await KeysForGroupAsync(groupId, cancellationToken), cancellationToken);
@@ -173,16 +219,6 @@ internal sealed class QuestionRepository(IAmazonDynamoDB db, HumbuggSettings set
         ["created_at"] = DynamoValues.S(record.CreatedAt),
     };
 
-    private static Dictionary<string, AttributeValue> WriteThread(QuestionThreadRecord record) => new(StringComparer.Ordinal)
-    {
-        ["thread_id"] = DynamoValues.S(record.ThreadId),
-        ["message_id"] = DynamoValues.S(ThreadSortKey),
-        ["group_id"] = DynamoValues.S(record.GroupId),
-        ["recipient_member_id"] = DynamoValues.S(record.RecipientMemberId),
-        ["blocked"] = DynamoValues.B(record.Blocked),
-        ["updated_at"] = DynamoValues.S(record.UpdatedAt),
-    };
-
     private static QuestionMessageRecord ReadMessage(IReadOnlyDictionary<string, AttributeValue> item) => new(
         item.String("thread_id"),
         item.String("message_id"),
@@ -198,5 +234,7 @@ internal sealed class QuestionRepository(IAmazonDynamoDB db, HumbuggSettings set
         item.String("group_id"),
         item.String("recipient_member_id"),
         item.Bool("blocked"),
-        item.String("updated_at"));
+        item.String("updated_at"),
+        item.TryGetValue("giver_seen", out var giver) ? giver.S : null,
+        item.TryGetValue("recipient_seen", out var recipient) ? recipient.S : null);
 }

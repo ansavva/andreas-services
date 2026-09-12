@@ -7,15 +7,16 @@
 import { Button, Checkbox, Input, Tabs, Textarea } from '@ansavva/design-system';
 import { Link, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 
 import { api, ApiError } from '../api/client';
 import { ExchangeInstructions } from '../components/exchange-settings';
 import { GiftReceivedPanel, GiftStagePanel } from '../components/gift-progress';
 import { ORGANIZER_TABS, OrganizerTabs, type OrganizerTab } from '../components/organizer-tabs';
 import { isPlusRequired, PlusRefusalCard } from '../components/plus';
-import { QuestionsPanel } from '../components/questions';
+import { ChatPanel } from '../components/questions';
 import { FieldLabel } from '../components/field';
+import { BottomSheet, PEEK } from '../components/sheet';
 import { Card, LoadingPanel, Shell } from '../components/shell';
 import { StatusMessage } from '../components/status-message';
 import { RecipientWishList, WishListPanel } from '../components/wishlist';
@@ -40,6 +41,9 @@ export default function GroupScreen({
   const { styles } = useTheme();
   const auth = useAuth();
   const router = useRouter();
+  // Wide enough for the chat to have a column of its own beside the page; narrower, it is a sheet
+  // at the bottom of the screen that is dragged up to read and down to put away.
+  const rail = useWindowDimensions().width >= 1024;
   const [group, setGroup] = useState<GroupDetail | null>(null);
   const [me, setMe] = useState<Membership | null>(null);
   const [assignment, setAssignment] = useState<RecipientAssignment | null>(null);
@@ -129,6 +133,21 @@ export default function GroupScreen({
 
   const participating = group.members.filter((member) => member.is_participating).length;
 
+  // Anonymous chat (#131), both conversations: the one you opened about the gift you are buying,
+  // and the one somebody opened about the gift you are getting. Only after the draw and only for
+  // someone taking part — before that neither exists.
+  const chatting = group.status === 'drawn' && me.is_participating;
+  const recipient = assignment ? { name: assignment.display_name, avatar: assignment.avatar_url } : null;
+  const chat = chatting ? (
+    rail ? (
+      <ChatPanel groupId={groupId} layout="rail" recipient={recipient} />
+    ) : (
+      <BottomSheet label="Anonymous chat">
+        <ChatPanel groupId={groupId} layout="sheet" recipient={recipient} />
+      </BottomSheet>
+    )
+  ) : null;
+
   const exchangeContent = (
     <>
         {assignment ? (
@@ -147,12 +166,6 @@ export default function GroupScreen({
           />
         ) : null}
 
-        {/*
-          Anonymous questions (#131), both ends. Rendered only after the draw and only for someone
-          taking part — before that neither thread exists. Two panels rather than one because they
-          are two different conversations: the one you opened about the gift you are buying, and the
-          one somebody opened about the gift you are getting.
-        */}
         {group.status === 'drawn' && me.is_participating ? (
           <>
             {/* Gift progress (#132), both ends. The stage comes back on the assignment — it is the
@@ -167,8 +180,6 @@ export default function GroupScreen({
               />
             ) : null}
             <GiftReceivedPanel groupId={groupId} />
-            <QuestionsPanel groupId={groupId} side="giver" />
-            <QuestionsPanel groupId={groupId} side="recipient" />
           </>
         ) : null}
 
@@ -194,7 +205,7 @@ export default function GroupScreen({
   );
 
   return (
-    <Shell>
+    <Shell aside={rail ? chat : undefined} sheet={rail ? undefined : chat} sheetInset={chatting && !rail ? PEEK : 0}>
       <Link href="/" style={[styles.smallMuted, { marginBottom: 24 }]}>← All groups</Link>
       <View style={{ gap: 28 }}>
         <View style={styles.groupHeading}>

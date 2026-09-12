@@ -262,7 +262,8 @@ export interface QuestionThread {
   /** Whether the caller may send right now; `blocked_reason` says why not. */
   can_send: boolean;
   blocked_reason?: string | null;
-  message_limit: number;
+  /** The other side's messages this caller has not had on screen. Cleared by `markQuestionsSeen`. */
+  unread: number;
 }
 
 /** The GIVER's own claim on a wish. Never the wishlist owner's — they are never sent one. */
@@ -323,6 +324,8 @@ export interface RecipientAssignment {
   wishes: RecipientWish[];
   /** The CALLER's own gift status (#132). Absent on any read that is not the giver's own. */
   gift?: GiftStatus | null;
+  /** The recipient's profile photo, or null for the initials fallback. */
+  avatar_url?: string | null;
 }
 
 export interface CreateWishInput {

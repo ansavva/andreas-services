@@ -32,6 +32,14 @@ public interface IQuestionService
     Task<QuestionThread> AskAsync(string groupId, SendQuestionRequest request, CancellationToken cancellationToken = default);
     Task<QuestionThread> ReplyAsync(string groupId, SendQuestionRequest request, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The caller has had the conversation on screen. Fetching is not seeing — a poll from a closed
+    /// panel must not clear a badge — so the app says so explicitly, and this is what re-arms the
+    /// "message waiting" mail and zeroes <see cref="QuestionThread.Unread"/>.
+    /// </summary>
+    Task<QuestionThread> MarkSeenForGiverAsync(string groupId, CancellationToken cancellationToken = default);
+    Task<QuestionThread> MarkSeenForRecipientAsync(string groupId, CancellationToken cancellationToken = default);
+
     /// <summary>The recipient ends (or reopens) the conversation. The giver cannot.</summary>
     Task<QuestionThread> SetBlockedAsync(string groupId, BlockQuestionsRequest request, CancellationToken cancellationToken = default);
 }
@@ -45,10 +53,12 @@ internal sealed class QuestionService(
     IQuestionRepository questions,
     ITransactionalEmailService email,
     ITransactionalEmailTemplates templates,
-    HumbuggSettings settings) : IQuestionService
+    HumbuggSettings settings,
+    TimeProvider? timeProvider = null) : IQuestionService
 {
-    /// <summary>Plenty for clarifying a size or a colour; short of a chat product.</summary>
-    internal const int MaxMessagesPerThread = 50;
+    private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
+
+    /// <summary>Per message. There is no cap on how many: this is a conversation, not a form.</summary>
     internal const int MaxBodyLength = 1_000;
 
     /// <summary>
@@ -57,9 +67,11 @@ internal sealed class QuestionService(
     /// <remarks>
     /// Deliberately per SIDE and not per account: the limit has to hold without knowing who the
     /// giver is, and "this side last wrote at" is readable from the thread itself. It is a
-    /// flood guard, not a throttle — a real conversation never notices thirty seconds.
+    /// flood guard, not a throttle — two seconds is under what a person typing a second line
+    /// takes, and it still caps a script at thirty rows a minute. It used to be thirty seconds,
+    /// which a chat notices on the very first "oh, and…".
     /// </remarks>
-    internal static readonly TimeSpan MinimumGap = TimeSpan.FromSeconds(30);
+    internal static readonly TimeSpan MinimumGap = TimeSpan.FromSeconds(2);
 
     public async Task<QuestionThread> GetForGiverAsync(string groupId, CancellationToken cancellationToken = default)
     {
@@ -85,6 +97,24 @@ internal sealed class QuestionService(
         CancellationToken cancellationToken = default) =>
         await SendAsync(await RequireRecipientAsync(groupId, cancellationToken), QuestionAuthor.Recipient, request, cancellationToken);
 
+    public async Task<QuestionThread> MarkSeenForGiverAsync(string groupId, CancellationToken cancellationToken = default) =>
+        await MarkSeenAsync(await RequireGiverAsync(groupId, cancellationToken), QuestionAuthor.Giver, cancellationToken);
+
+    public async Task<QuestionThread> MarkSeenForRecipientAsync(string groupId, CancellationToken cancellationToken = default) =>
+        await MarkSeenAsync(await RequireRecipientAsync(groupId, cancellationToken), QuestionAuthor.Recipient, cancellationToken);
+
+    private async Task<QuestionThread> MarkSeenAsync(ThreadContext context, QuestionAuthor viewer, CancellationToken cancellationToken)
+    {
+        var (thread, messages) = await questions.GetThreadAsync(context.ThreadId, cancellationToken);
+        // Written only when it would move, so a panel that reports "seen" on every poll costs a read
+        // and not a write.
+        var newest = messages.Count == 0 ? null : messages[^1].MessageId;
+        if (newest is not null && string.CompareOrdinal(newest, Seen(thread, viewer)) > 0)
+            await questions.MarkSeenAsync(
+                context.ThreadId, context.GroupId, context.RecipientMemberId, viewer, newest, cancellationToken);
+        return await ProjectAsync(context, viewer, cancellationToken);
+    }
+
     public async Task<QuestionThread> SetBlockedAsync(
         string groupId,
         BlockQuestionsRequest request,
@@ -96,7 +126,7 @@ internal sealed class QuestionService(
         await questions.SetBlockedAsync(
             new QuestionThreadRecord(
                 context.ThreadId, groupId, context.RecipientMemberId, request.Blocked,
-                DateTimeOffset.UtcNow.ToString("O")),
+                clock.GetUtcNow().ToString("O")),
             cancellationToken);
         return await ProjectAsync(context, QuestionAuthor.Recipient, cancellationToken);
     }
@@ -118,11 +148,7 @@ internal sealed class QuestionService(
         if (thread?.Blocked == true && author == QuestionAuthor.Giver)
             throw ApiException.Conflict(BlockedMessage(author));
 
-        if (messages.Count >= MaxMessagesPerThread)
-            throw ApiException.Conflict(
-                $"This conversation has reached {MaxMessagesPerThread} messages. Carry on outside Humbugg.");
-
-        var now = DateTimeOffset.UtcNow;
+        var now = clock.GetUtcNow();
         var last = messages.LastOrDefault(message => message.Author == author);
         if (last is not null &&
             DateTimeOffset.TryParse(last.CreatedAt, System.Globalization.CultureInfo.InvariantCulture,
@@ -131,10 +157,17 @@ internal sealed class QuestionService(
             throw ApiException.Conflict(
                 $"Give it {(int)MinimumGap.TotalSeconds} seconds between messages.");
 
+        // Decided before the append, off the same read: does the other side already have something
+        // of mine they have not looked at? If so they were told when it arrived, and telling them
+        // again for every line of a chat is the thing this replaced.
+        var waiting = messages.Any(message =>
+            message.Author == author && string.CompareOrdinal(message.MessageId, Seen(thread, Other(author))) > 0);
+
+        var messageId = MessageId(now);
         await questions.AppendAsync(
             new QuestionMessageRecord(
                 context.ThreadId,
-                MessageId(now),
+                messageId,
                 context.GroupId,
                 context.DrawId,
                 context.RecipientMemberId,
@@ -143,9 +176,19 @@ internal sealed class QuestionService(
                 now.ToString("O")),
             cancellationToken);
 
-        await NotifyAsync(context, author, cancellationToken);
+        if (!waiting) await NotifyAsync(context, author, messageId, cancellationToken);
+        // Writing is reading: the sender has the thread in front of them, own message included.
+        await questions.MarkSeenAsync(
+            context.ThreadId, context.GroupId, context.RecipientMemberId, author, messageId, cancellationToken);
         return await ProjectAsync(context, author, cancellationToken);
     }
+
+    private static QuestionAuthor Other(QuestionAuthor side) =>
+        side == QuestionAuthor.Giver ? QuestionAuthor.Recipient : QuestionAuthor.Giver;
+
+    /// <summary>The newest message id this side has seen; empty when it has seen none.</summary>
+    private static string Seen(QuestionThreadRecord? thread, QuestionAuthor side) =>
+        (side == QuestionAuthor.Giver ? thread?.GiverSeen : thread?.RecipientSeen) ?? "";
 
     /// <summary>
     /// A timestamp-prefixed id, so the sort key orders chronologically on its own.
@@ -162,9 +205,13 @@ internal sealed class QuestionService(
     // ── Notification ────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Tells the other side that something arrived, and nothing else.
+    /// Tells the other side that something is waiting for them, and nothing else.
     /// </summary>
     /// <remarks>
+    /// Sent once per unread stretch, not once per message: the caller skips it while the other side
+    /// already has an unseen message, and reading the thread (<see cref="ProjectAsync"/>) is what
+    /// re-arms it. A chat is many short messages, and one mail per line is spam.
+    ///
     /// It never names either party and never carries the message body. A giver's notification that
     /// named their recipient would put the assignment in an inbox — the same reason
     /// <c>AssignmentAvailable</c> says Humbugg never puts a recipient's name in email — and a
@@ -178,7 +225,11 @@ internal sealed class QuestionService(
     /// every plan. An accepted managed invitation is kept as a fallback for the case Cognito cannot
     /// answer for — a pool record that has gone while the membership row survives.
     /// </remarks>
-    private async Task NotifyAsync(ThreadContext context, QuestionAuthor author, CancellationToken cancellationToken)
+    private async Task NotifyAsync(
+        ThreadContext context,
+        QuestionAuthor author,
+        string messageId,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -194,18 +245,18 @@ internal sealed class QuestionService(
             if (string.IsNullOrWhiteSpace(address)) return;
 
             var summary = author == QuestionAuthor.Giver
-                ? "Someone in this exchange asked you a question about your gift. Humbugg does not say who."
-                : "You have a reply to your anonymous question.";
+                ? "You have a message waiting in the anonymous chat about your gift. Humbugg does not say who it is from."
+                : "Your recipient has replied. A message is waiting in your anonymous chat.";
 
             await email.SendAsync(
                 templates.AccountExchangeEvent(new AccountExchangeEventEmail(
                     // One event id per message, so a retry is de-duplicated rather than re-sent.
-                    $"question:{context.ThreadId}:{author}:{DateTimeOffset.UtcNow:yyyyMMddHHmm}",
+                    $"question:{context.ThreadId}:{author}:{messageId}",
                     address,
                     member.DisplayName,
                     context.GroupName,
                     summary,
-                    "Open the exchange",
+                    "Open the chat",
                     new Uri($"{settings.AppBaseUrl}/groups/{context.GroupId}"),
                     member.UserId)),
                 cancellationToken);
@@ -282,8 +333,11 @@ internal sealed class QuestionService(
     {
         var (thread, messages) = await questions.GetThreadAsync(context.ThreadId, cancellationToken);
         var blocked = thread?.Blocked == true;
-        var full = messages.Count >= MaxMessagesPerThread;
-        var canSend = !full && !(blocked && viewer == QuestionAuthor.Giver);
+        var canSend = !(blocked && viewer == QuestionAuthor.Giver);
+        // Fetching is NOT seeing — see MarkSeenAsync. This only counts.
+        var seen = Seen(thread, viewer);
+        var unread = messages.Count(message =>
+            message.Author != viewer && string.CompareOrdinal(message.MessageId, seen) > 0);
         return new QuestionThread(
             // Author is the SIDE. This is the only thing either party learns about who wrote a
             // message, and it is the same value for both viewers.
@@ -291,10 +345,8 @@ internal sealed class QuestionService(
                 message.MessageId, message.Author, message.Body, message.CreatedAt)).ToList(),
             blocked,
             canSend,
-            canSend ? null : full
-                ? $"This conversation has reached {MaxMessagesPerThread} messages."
-                : BlockedMessage(viewer),
-            MaxMessagesPerThread);
+            canSend ? null : BlockedMessage(viewer),
+            unread);
     }
 
     private static string BlockedMessage(QuestionAuthor viewer) => viewer == QuestionAuthor.Giver

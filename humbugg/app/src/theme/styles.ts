@@ -92,6 +92,16 @@ function buildStyles(scheme: Scheme, brand: Palette, blends: Blends) {
     screen: { flex: 1, backgroundColor: brand.bg },
     /** `mx-auto max-w-7xl px-5 py-10 lg:px-8` */
     main: { width: '100%', maxWidth: 1280, alignSelf: 'center', paddingHorizontal: 20, paddingVertical: 40 },
+    /** The rail beside the page — see `Shell`'s `aside`. The card colour, ruled off from the page. */
+    aside: {
+      width: 420,
+      minHeight: 0,
+      borderLeftWidth: StyleSheet.hairlineWidth,
+      borderLeftColor: alpha(brand.line, 80),
+      backgroundColor: brand.card,
+    },
+    /** The rail folded away: a launcher in the page's corner with the unread count on it. */
+    asideLauncher: { position: 'absolute', right: 24, bottom: 24 },
     /** `border-b border-line/80 bg-bg/95` — the sticky header band. */
     header: {
       borderBottomWidth: StyleSheet.hairlineWidth,

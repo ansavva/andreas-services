@@ -124,7 +124,14 @@ Each rule traces to a real hazard, most of them already paid for once:
    does not key on env vars; without it the export silently reuses whichever
    `EXPO_PUBLIC_*` values the previous export inlined (measured: identical bundle
    hash across env changes).
-8. **The prod smoke account stays empty, and read-only.** It is an ordinary user
+8. **The app's jest `testTimeout` is 15 s, and that is not a licence for slow tests.** The
+   first test in a suite pays for every module its render is the first to reach —
+   babel-jest transforms a design-system leaf the first time it is required, and on a
+   cold CI cache the first `render(<WishListPanel/>)` alone measured ~5 s, against
+   jest's 5 s default. It passed by a hair for weeks and failed the day a second heavy
+   suite ran beside it. A test that genuinely needs seconds is doing too much; the
+   raised ceiling is for the transform tax, which no test controls.
+9. **The prod smoke account stays empty, and read-only.** It is an ordinary user
    in the **production** pool, and everything that makes it safe
    is a property of what it holds: no group, no membership, no profile row, no
    personal data. So the smoke step only ever **reads** — a new assertion may add

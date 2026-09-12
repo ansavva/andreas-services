@@ -293,7 +293,8 @@ function NotificationsSection({ profile, onSaved }: { profile: Profile; onSaved(
         <View style={{ flex: 1 }}>
           <Text style={[styles.small, styles.semibold]}>Send me non-essential emails</Text>
           <Text style={[styles.tiny, { marginTop: 4 }]}>
-            Reminders, group-activity notifications, and product news. Turn this off to stop them.
+            Reminders, group-activity notifications, a note when a message is waiting in your
+            anonymous chat, and product news. Turn this off to stop them.
             Essential emails — sign-in and account security, invitations, and “your assignment is
             ready” — always send.
           </Text>
