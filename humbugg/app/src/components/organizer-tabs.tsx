@@ -20,7 +20,7 @@
 // the group and the readiness read and hands both down; this owns every organizer action and asks
 // the layout to re-read when one lands. Readiness is a READ of state the server computed — nothing
 // here decides who is ready.
-import { Button, Input, Meter, Select, Textarea } from '@ansavva/design-system';
+import { AlertDialog, Button, Input, Meter, Select, Textarea } from '@ansavva/design-system';
 import * as Clipboard from 'expo-clipboard';
 import { useMemo, useState } from 'react';
 import { Pressable, Share, Text, View, useWindowDimensions } from 'react-native';
@@ -421,17 +421,14 @@ function DrawCard({
       <Text style={styles.eyebrow}>The draw</Text>
       <Text style={[styles.heading, { marginTop: 4 }]}>Drawn</Text>
       <View style={{ marginTop: 20, gap: 20 }}>
-        <View style={styles.panel}>
-          <Text style={[styles.small, styles.semibold]}>Need to change the exchange?</Text>
-          <Text style={[styles.smallMuted, { marginTop: 8 }]}>Resetting clears every assignment and reopens the roster.</Text>
-          <View style={{ marginTop: 16, alignSelf: 'flex-start' }}>
-            <Button intent="secondary" disabled={busy} onPress={onReset}>Reset the draw</Button>
-          </View>
-        </View>
+        <ResetDrawPanel group={group} busy={busy} onReset={onReset} />
         <View style={[styles.panel, { backgroundColor: 'transparent', borderWidth: 1, borderColor: blends.dangerBorder }]}>
           <Text style={[styles.small, styles.semibold]}>Emergency reveal</Text>
           <Text style={[styles.smallMuted, { marginTop: 8 }]}>
-            This action is permanently audited. Give a reason before viewing all assignments.
+            Shows you, and only you, who is giving to whom — every pair, with each recipient’s
+            wishlist. Nothing changes and nobody is told, but the surprise is gone for you, and the
+            reveal is written to this exchange’s audit log with your name and your reason. For a
+            draw that is stuck: somebody dropped out, a gift needs rerouting, a dispute needs settling.
           </Text>
           <View style={{ marginTop: 12 }}>
             <Textarea
@@ -466,6 +463,49 @@ function DrawCard({
         ) : null}
       </View>
     </Card>
+  );
+}
+
+/**
+ * Resetting the draw, behind a confirmation.
+ *
+ * It undoes what everyone has done since the draw — the person they drew, the wishes they marked
+ * bought, the gift stage, the questions asked — so it is a danger button, not a quiet secondary one
+ * (which on the dark scheme rendered as bare text), and a dialog stands between the press and the
+ * loss. Same shape as the danger zone's delete: a dialog rather than a two-press arm, because
+ * nothing else on the tab could be mistaken for the confirmation.
+ */
+function ResetDrawPanel({ group, busy, onReset }: { group: GroupDetail; busy: boolean; onReset(): void }) {
+  const { blends, styles } = useTheme();
+  const [confirming, setConfirming] = useState(false);
+  const participating = group.members.filter((member) => member.is_participating).length;
+  return (
+    <View style={styles.panel}>
+      <Text style={[styles.small, styles.semibold]}>Need to change the exchange?</Text>
+      <Text style={[styles.smallMuted, { marginTop: 8 }]}>
+        Resetting clears every assignment and reopens the roster. Claims, gift progress and the
+        anonymous chats go with it.
+      </Text>
+      <AlertDialog.Root open={confirming} onOpenChange={(next) => { if (!busy) setConfirming(next); }}>
+        <View style={{ marginTop: 16, alignSelf: 'flex-start' }}>
+          <Button intent="danger" disabled={busy} onPress={() => setConfirming(true)}>Reset the draw…</Button>
+        </View>
+        <AlertDialog.Popup style={{ borderWidth: 1, borderColor: blends.dangerBorder }}>
+          <AlertDialog.Title>Reset the draw?</AlertDialog.Title>
+          <AlertDialog.Description>
+            {participating === 1 ? 'The one person taking part loses' : `All ${participating} people taking part lose`} the
+            person they drew, along with anything they marked bought and any questions asked. You
+            can draw again once the roster is settled.
+          </AlertDialog.Description>
+          <View style={{ marginTop: 24, flexDirection: 'row', justifyContent: 'flex-end', gap: gap.xs }}>
+            <AlertDialog.Close>Keep the draw</AlertDialog.Close>
+            <Button intent="danger" size="sm" disabled={busy} onPress={() => { setConfirming(false); onReset(); }}>
+              Reset the draw
+            </Button>
+          </View>
+        </AlertDialog.Popup>
+      </AlertDialog.Root>
+    </View>
   );
 }
 

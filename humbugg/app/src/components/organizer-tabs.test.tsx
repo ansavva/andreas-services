@@ -28,6 +28,7 @@ const mocks = {
   deleteTemplate: jest.fn(),
   previewLateParticipant: jest.fn(),
   confirmLateParticipant: jest.fn(),
+  reset: jest.fn(),
   width: 1280,
 };
 
@@ -75,6 +76,7 @@ jest.mock('../api/client', () => {
       deleteTemplate: (...args: unknown[]) => mocks.deleteTemplate(...args),
       previewLateParticipant: (...args: unknown[]) => mocks.previewLateParticipant(...args),
       confirmLateParticipant: (...args: unknown[]) => mocks.confirmLateParticipant(...args),
+      reset: (...args: unknown[]) => mocks.reset(...args),
     },
     ApiError,
   };
@@ -570,6 +572,40 @@ describe('the address setting', () => {
     await waitFor(() => expect(screen.getByText('Nope.')).toBeOnTheScreen());
     openDraw();
     expect(screen.getByText('Not needed')).toBeOnTheScreen();
+  });
+});
+
+describe('resetting the draw', () => {
+  beforeEach(() => {
+    mocks.getGroup.mockResolvedValue({ group_id: 'group-1', name: 'Office Secret Santa', plan: 'plus', is_owner: true, status: 'drawn' });
+    mocks.getReadiness.mockResolvedValue(readiness({ status: 'drawn' }));
+    mocks.reset.mockResolvedValue({});
+  });
+
+  it('asks before it resets, and does nothing if the answer is no', async () => {
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('Everyone (1)')).toBeOnTheScreen());
+    openDraw();
+
+    fireEvent.press(screen.getByText('Reset the draw…'));
+    expect(mocks.reset).not.toHaveBeenCalled();
+    expect(screen.getByText('Reset the draw?')).toBeOnTheScreen();
+
+    fireEvent.press(screen.getByText('Keep the draw'));
+    await waitFor(() => expect(screen.queryByText('Reset the draw?')).not.toBeOnTheScreen());
+    expect(mocks.reset).not.toHaveBeenCalled();
+  });
+
+  it('resets once confirmed', async () => {
+    render(<OrganizeScreen groupId="group-1" />);
+    await waitFor(() => expect(screen.getByText('Everyone (1)')).toBeOnTheScreen());
+    openDraw();
+
+    fireEvent.press(screen.getByText('Reset the draw…'));
+    fireEvent.press(screen.getByText('Reset the draw'));
+
+    await waitFor(() => expect(mocks.reset).toHaveBeenCalledWith('token', 'group-1'));
+    await waitFor(() => expect(screen.getByText('The exchange is open again.')).toBeOnTheScreen());
   });
 });
 
