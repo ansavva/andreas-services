@@ -61,9 +61,11 @@ test('gift progress reads as untracked rather than as zero', async ({ page }) =>
 
   await page.goto(`/groups/${group.group_id}?tab=draw`);
 
-  // The fixture exchange is open, so nobody has been asked to buy anything. The Draw tab says so
-  // rather than reporting zero purchases, which would be a claim about the world.
-  await expect(page.getByText('Nothing to track yet.')).toBeVisible();
+  // The fixture exchange is open, so nobody has been asked to buy anything. The Draw tab shows
+  // the readiness tiles and no gift tiles, rather than reporting zero purchases, which would be a
+  // claim about the world.
+  await expect(page.getByText('Taking part')).toBeVisible();
+  await expect(page.getByText('Purchased')).toBeHidden();
 });
 
 test('the dashboard survives a 390px phone viewport', async ({ page }) => {

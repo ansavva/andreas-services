@@ -457,6 +457,8 @@ export interface GroupReadiness {
   participants: ParticipantReadiness[];
   pending_invitations: PendingInvitation[];
   gift_progress?: GiftProgress | null;
+  /** When the draw was run. Absent before one. */
+  drawn_at?: string | null;
 }
 
 /**

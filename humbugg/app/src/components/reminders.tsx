@@ -92,6 +92,7 @@ export function RemindersPanel({ group }: { group: GroupDetail }) {
   if (needsPlus)
     return (
       <PlusLockedNote
+        groupId={group.group_id}
         reason="Automatic reminders are part of Plus."
         action="have Humbugg chase the people who have not answered, instead of you"
         isOwner={group.is_owner}

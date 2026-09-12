@@ -108,10 +108,13 @@ export function ChatPanel({
   groupId,
   layout = 'card',
   recipient: recipientPerson,
+  openSignal = 0,
 }: {
   groupId: string;
   layout?: ChatLayout;
   recipient?: ChatRecipient | null | undefined;
+  /** A page asked for the chat: each change unfolds the rail and lands on the recipient thread. */
+  openSignal?: number;
 }) {
   const rail = layout === 'rail';
   const fill = layout !== 'card';
@@ -137,6 +140,12 @@ export function ChatPanel({
     setOpen(next);
     void chatRailPreference.saveOpen(next);
   }
+  useEffect(() => {
+    if (!openSignal) return;
+    setChosen('giver');
+    if (rail) toggle(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSignal]);
 
   const available = (['giver', 'recipient'] as const).filter(
     (side) => !(side === 'giver' ? giver : recipient).unavailable,

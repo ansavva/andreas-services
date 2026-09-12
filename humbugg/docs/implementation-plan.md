@@ -377,8 +377,10 @@ site kept 301ing the old shape and `APP_BASE_URL` became the app's own origin �
 `LateParticipantService` all built, resolved to `https://app.humbugg.com/app/groups/{id}`: a route
 Expo Router does not have. Every Stripe checkout return, every reminder email and every
 late-participant email pointed at the not-found screen. Fixed on 2026-09-02; a test now pins the
-checkout return. **If you build a link to the product app, its paths are `/groups/{id}`
-(`?tab=people|draw|settings` for the organizer tabs; `/organize/{id}` only redirects there), `/join/{id}` and `/settings` — there is no `/app` prefix on that origin.**
+checkout return. **If you build a link to the product app, its paths are `/groups/{id}/giving`, `/groups/{id}/you`,
+`/groups/{id}/people|draw`, `/groups/{id}/settings/{section}`, `/join/{id}` and `/settings` — there is no
+`/app` prefix on that origin. A bare `/groups/{id}` redirects to a tab and still honours the old
+`?tab=people|draw|settings` and `?checkout=`; `/organize/{id}` only redirects there.**
 
 **Run the exact CI commands, not approximations.** `terraform validate` on the prod env only is not
 `tflint --recursive`; `dotnet build` is not `dotnet format --verify-no-changes`. Both have failed a

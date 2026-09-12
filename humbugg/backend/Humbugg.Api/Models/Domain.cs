@@ -252,7 +252,9 @@ public sealed record GroupReadiness(
     ReadinessCounts Counts,
     IReadOnlyList<ParticipantReadiness> Participants,
     IReadOnlyList<PendingInvitation> PendingInvitations,
-    GiftProgress? GiftProgress);
+    GiftProgress? GiftProgress,
+    /// <summary>When the draw was run — the draw record's own timestamp. Null before one.</summary>
+    string? DrawnAt = null);
 
 // ─── Wishes ─────────────────────────────────────────────────────────────────────────────────────
 //

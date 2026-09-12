@@ -239,6 +239,7 @@ export function PeoplePanel({
           {invitationsLocked ? (
             <View style={{ marginTop: 16 }}>
               <PlusLockedNote
+                groupId={group.group_id}
                 reason="Sending and tracking invitations is part of Plus."
                 action="invite people by email and see who has not answered"
                 isOwner={group.is_owner}

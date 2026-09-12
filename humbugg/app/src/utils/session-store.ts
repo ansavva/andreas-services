@@ -50,4 +50,6 @@ export const sessionKeys = {
   oauthState: 'humbugg:oauthState',
   invite: (groupId: string) => `humbugg:invite:${groupId}`,
   join: (groupId: string) => `humbugg:join:${groupId}`,
+  /** Where the page was scrolled to, per pathname — see `hooks/use-scroll-restoration.ts`. */
+  scroll: (pathname: string) => `humbugg:scroll:${pathname}`,
 } as const;

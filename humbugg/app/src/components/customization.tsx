@@ -91,6 +91,7 @@ export function CustomizationPanel({
   if (needsPlus || group.plan === 'free')
     return (
       <PlusLockedNote
+        groupId={group.group_id}
         reason="Your own greeting on the invitation is part of Plus."
         action="put your own words at the top of the invitation"
         isOwner={group.is_owner}

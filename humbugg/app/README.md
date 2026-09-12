@@ -62,8 +62,19 @@ Paths are relative to `app.humbugg.com`. `(auth)` and `(protected)` are route
 | `src/app/auth/callback.tsx` | `/auth/callback` |
 | `src/app/join/[groupId].tsx` | `/join/:groupId` |
 | `src/app/(protected)/index.tsx` | `/` |
-| `src/app/(protected)/groups/[groupId].tsx` | `/groups/:id` |
+| `src/app/(protected)/groups/[groupId]/_layout.tsx` | `/groups/:id/*` — the exchange's header and tabs |
+| `src/app/(protected)/groups/[groupId]/index.tsx` | `/groups/:id` — redirects to a tab (`?tab=` and `?checkout=` honoured) |
+| `src/app/(protected)/groups/[groupId]/giving.tsx` | `/groups/:id/giving` — FOR <recipient> |
+| `src/app/(protected)/groups/[groupId]/you.tsx` | `/groups/:id/you` — FOR YOU |
+| `src/app/(protected)/groups/[groupId]/people.tsx` | `/groups/:id/people` (organizer) |
+| `src/app/(protected)/groups/[groupId]/draw.tsx` | `/groups/:id/draw` (organizer) |
+| `src/app/(protected)/groups/[groupId]/settings/[section].tsx` | `/groups/:id/settings/:section` (organizer) |
+| `src/app/(protected)/organize/[groupId].tsx` | `/organize/:id` — redirects to `/groups/:id/people` |
 | `src/app/(protected)/settings.tsx` | `/settings` |
+
+Every tab of an exchange is a route, so a reload keeps it and the browser's back button moves
+between tabs. Where you were on the page is kept per URL too — `src/hooks/use-scroll-restoration.ts`
+— because the app scrolls inside its own `ScrollView` and the browser cannot see that.
 
 There is no `/signup`, `/confirm` or `/forgot-password`: they are Cognito Managed
 Login pages, and `/login` is a button that launches the hosted flow. See

@@ -25,7 +25,16 @@ const TOP_INSET = 80;
 
 type Snap = 'peek' | 'half' | 'full';
 
-export function BottomSheet({ children, label }: { children: ReactNode; label: string }) {
+export function BottomSheet({
+  children,
+  label,
+  openSignal = 0,
+}: {
+  children: ReactNode;
+  label: string;
+  /** A page asked for the sheet: each change lifts it to half if it was resting. */
+  openSignal?: number;
+}) {
   const theme = useTheme();
   const local = localStyles(theme);
   const { height: window } = useWindowDimensions();
@@ -50,6 +59,11 @@ export function BottomSheet({ children, label }: { children: ReactNode; label: s
     setSnap(target);
     Animated.spring(height, { toValue: snaps[target], useNativeDriver: false, bounciness: 2 }).start();
   }
+
+  useEffect(() => {
+    if (openSignal && snapRef.current === 'peek') settle('half');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSignal]);
 
   // A window resize (rotation, a keyboard on the web) moves the snap the sheet is resting on.
   useEffect(() => { height.setValue(snaps[snap]); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [snaps]);
