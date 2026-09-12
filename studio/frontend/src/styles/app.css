@@ -371,6 +371,26 @@ input.h-10,
 }
 
 /*
+ * **The create sheet's handle is the other edge a viewer has to clear.** The
+ * sheet collapses to a strip along the foot of the column (`AppLayout`'s
+ * `SheetSlot`), sticky and above everything, and a viewer sized to
+ * `100dvh - header` ran under it: the last row of output tiles and the foot
+ * of the run strip sat behind the handle. The height is read from here by
+ * both — the handle to draw itself, `ViewerFrame` to stop short of it — so
+ * they cannot disagree. Taller under a finger, the same test the design
+ * system's `sm` controls use to reach their 44px floor.
+ */
+:root {
+  --sheet-handle-h: 24px;
+}
+
+@media (pointer: coarse) {
+  :root {
+    --sheet-handle-h: 36px;
+  }
+}
+
+/*
  * A run in flight draws full-size placeholder tiles that shimmer, with the
  * aperture spinner over them and the elapsed time counting up. The sweep runs
  * between two rungs of the chrome ramp — `card` and `surface-alt` — so it is

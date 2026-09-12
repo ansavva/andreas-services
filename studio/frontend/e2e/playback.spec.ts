@@ -91,15 +91,15 @@ async function stage(page: Page) {
   });
 }
 
-test("the object screen is a page in the app shell, not an overlay", async ({
+test("the object screen is the viewer in the app shell, with the shell still around it", async ({
   page,
 }) => {
   stubOnly();
   await page.goto(at(CLIP_ITEM.id));
 
-  // The three things that make it a page: the shell's own navigation above it,
-  // a crumb saying where it sits, and the neighbours drawn underneath rather
-  // than scrolled through in the dark.
+  // The three things that keep it a page while it fills the window: the
+  // shell's own navigation beside it, a crumb saying where it sits, and the
+  // neighbours drawn as a strip rather than scrolled through in the dark.
   //
   // Not the filename — the object screen stopped drawing one (`ObjectFacts`),
   // and a `getByText` on it now matches the tail of the `key` line instead,
@@ -114,22 +114,26 @@ test("the object screen is a page in the app shell, not an overlay", async ({
     page.getByRole("region", { name: "File details" }),
   ).toBeVisible();
 
-  // `/o/<id>` was `fixed inset-x-0 z-50` over a black shell until Phase C. This
-  // is that sentence as an assertion: nothing between the player and `<main>`
-  // takes itself out of the page's flow.
-  const pinned = await page.evaluate(() => {
-    const strip = document.querySelector('[aria-label="Neighbours"]');
-    let element = [...document.querySelectorAll("main video")].find(
-      (candidate) => !strip?.contains(candidate),
-    ) as HTMLElement | null | undefined;
-    while (element && element.tagName !== "MAIN") {
-      if (getComputedStyle(element).position === "fixed")
-        return element.className;
-      element = element.parentElement;
-    }
-    return null;
+  // **`/o/<id>` is `ViewerFrame` now — the opened run's box — and that box is
+  // `fixed`, sized from the header to the create sheet's handle.** It was an
+  // ordinary page with the player capped at `65dvh` between the two, and the
+  // picture was half the size the same file got when opened from a run. The
+  // assertion is the box: fixed, under the header, and not under the handle.
+  const frame = await page.evaluate(() => {
+    const viewer = document.querySelector('[data-testid="object-viewer"]') as HTMLElement | null;
+    if (!viewer) return null;
+    const box = viewer.getBoundingClientRect();
+    const handle = document.querySelector('button[aria-label^="Open the create panel"]');
+    return {
+      position: getComputedStyle(viewer).position,
+      top: box.top,
+      bottom: box.bottom,
+      handleTop: handle?.getBoundingClientRect().top ?? null,
+    };
   });
-  expect(pinned).toBeNull();
+  expect(frame?.position).toBe("fixed");
+  expect(frame?.top).toBe(48);
+  expect(frame?.bottom).toBeLessThanOrEqual(frame?.handleTop ?? 0);
 });
 
 test("a poster plays in place, and closing returns to it without navigating", async ({

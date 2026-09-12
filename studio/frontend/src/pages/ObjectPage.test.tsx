@@ -1,9 +1,10 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FileEntry, RunRecord, FolderListing } from "../types";
 import { CreateBarProvider, useCreateBarState } from "../context/CreateBarContext";
+import { SidebarProvider } from "../context/SidebarContext";
 import { TestProviders } from "../test-providers";
 
 /**
@@ -106,13 +107,15 @@ function Probe() {
 function open(path: string) {
   render(
     <MemoryRouter initialEntries={[path]}>
-      <CreateBarProvider>
-        <Routes>
-          <Route path="/o" element={<ObjectPage />} />
-          <Route path="/o/:nodeId" element={<ObjectPage />} />
-        </Routes>
-        <Probe />
-      </CreateBarProvider>
+      <SidebarProvider>
+        <CreateBarProvider>
+          <Routes>
+            <Route path="/o" element={<ObjectPage />} />
+            <Route path="/o/:nodeId" element={<ObjectPage />} />
+          </Routes>
+          <Probe />
+        </CreateBarProvider>
+      </SidebarProvider>
     </MemoryRouter>,
     { wrapper: TestProviders },
   );
@@ -405,5 +408,51 @@ describe("using the open file as a reference", () => {
     await waitFor(() => expect(screen.getByText(/1 of 1/)).toBeTruthy());
 
     expect(screen.queryByRole("button", { name: "Use as reference" })).toBeNull();
+  });
+});
+
+/**
+ * Compare pins the open file as A; the strip and the arrows then choose B
+ * rather than moving the address. A swap moves the address to B and pins the
+ * file that was A beside it — in one write, so nothing clears in between.
+ */
+describe("comparing two files", () => {
+  it("pins A, lets the strip and the keys choose B, swaps, and stops", async () => {
+    open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
+    await waitFor(() => expect(screen.getByText(/2 of 3/)).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Compare" }));
+    expect(screen.getByTestId("compare-stage")).toBeTruthy();
+    expect(screen.getByText("Press a picture to put it here.")).toBeTruthy();
+
+    // The strip chooses B; the address stays on A.
+    fireEvent.click(screen.getByRole("button", { name: "c.png" }));
+    const strip = screen.getByLabelText("Neighbours");
+    expect(within(strip).getByRole("button", { name: "c.png (B)" })).toBeTruthy();
+    expect(within(strip).getByRole("button", { name: "b.png (A)" })).toBeTruthy();
+    expect(screen.getByText(/2 of 3/)).toBeTruthy();
+
+    // Left steps B, not the address — and never onto A.
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+    expect(within(strip).getByRole("button", { name: "c.png (B)" })).toBeTruthy();
+    expect(screen.getByText(/2 of 3/)).toBeTruthy();
+
+    // Swap: c.png takes the address, b.png goes beside it.
+    fireEvent.click(screen.getByRole("button", { name: "Swap sides" }));
+    await waitFor(() => expect(screen.getByText(/3 of 3/)).toBeTruthy());
+    expect(within(strip).getByRole("button", { name: "c.png (A)" })).toBeTruthy();
+    expect(within(strip).getByRole("button", { name: "b.png (B)" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop comparing" }));
+    expect(screen.queryByTestId("compare-stage")).toBeNull();
+  });
+
+  it("a clip cannot be compared", async () => {
+    tree.mockResolvedValue(
+      listing([file("node-a", "a.png"), file(OPEN, "b.mp4", { kind: "video", content_type: "video/mp4" })]),
+    );
+    open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
+    await waitFor(() => expect(screen.getByText(/2 of 2/)).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Compare" })).toBeNull();
   });
 });

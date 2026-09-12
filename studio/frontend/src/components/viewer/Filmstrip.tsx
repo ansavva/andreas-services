@@ -14,6 +14,11 @@ interface Props {
   items: FileEntry[];
   /** The file the page is open on. Scrolled into view as it changes. */
   currentId: string;
+  /**
+   * The file beside it on the compare stage, while comparing. Marked in the
+   * strip with the accent ring and a `B`, against the open file's `A`.
+   */
+  compareId?: string | null;
   /** A page of the feed is in flight. */
   loading?: boolean;
   onSelect: (file: FileEntry) => void;
@@ -22,7 +27,8 @@ interface Props {
 }
 
 /**
- * The feed's neighbours, running across under the player.
+ * The feed's neighbours — along the foot of the viewer on a phone, down its
+ * right edge from `md`, the same way the opened run's strip goes.
  *
  * **This is what the scroll-snap column became, and the trade was taken with
  * eyes open.** A vertical reel let a thumb flick from one clip to the next and
@@ -37,10 +43,15 @@ interface Props {
  *
  * The arrows are the same step Left/Right take, which is deliberate: a keyboard
  * shortcut nothing on screen mirrors is a shortcut nobody finds.
+ *
+ * **It scrolls the way the screen is shaped**, and the axis is read off the
+ * element rather than assumed — see `RunStrip`, which this now matches: a row
+ * below `md`, a column above it, one list either way.
  */
 export function Filmstrip({
   items,
   currentId,
+  compareId = null,
   loading = false,
   onSelect,
   onPrev,
@@ -66,15 +77,21 @@ export function Filmstrip({
     // ancestor happens to be positioned.
     const tileBox = tile.getBoundingClientRect();
     const stripBox = el.getBoundingClientRect();
+    const vertical = el.scrollHeight > el.clientHeight;
     const left =
       el.scrollLeft +
       (tileBox.left - stripBox.left) -
       (el.clientWidth - tileBox.width) / 2;
+    const top =
+      el.scrollTop +
+      (tileBox.top - stripBox.top) -
+      (el.clientHeight - tileBox.height) / 2;
 
     // jsdom implements neither, and this is decoration — the strip is correct
     // whether or not it scrolls itself.
     if (typeof el.scrollTo === "function")
-      el.scrollTo({ left, behavior: "smooth" });
+      el.scrollTo(vertical ? { top, behavior: "smooth" } : { left, behavior: "smooth" });
+    else if (vertical) el.scrollTop = top;
     else el.scrollLeft = left;
   }, [currentId]);
 
@@ -84,14 +101,21 @@ export function Filmstrip({
   if (items.length < 2) return null;
 
   return (
-    <div className="flex items-center gap-1">
+    <div
+      className="flex shrink-0 items-center gap-1 border-t border-line p-2
+                 md:w-[6.25rem] md:flex-col md:border-l md:border-t-0"
+    >
+      {/* `secondary`, so they read as controls — and on a phone they are the
+          only way to step, the stage's own arrows not being drawn there. The
+          chevron turns with the list: ← along a row, ↑ up a column. */}
       <IconButton
         label="Previous (←)"
         size="sm"
+        intent="secondary"
         disabled={!onPrev}
         onClick={() => onPrev?.()}
       >
-        <ChevronDownIcon className={`${CHEVRON} rotate-90`} />
+        <ChevronDownIcon className={`${CHEVRON} rotate-90 md:rotate-180`} />
       </IconButton>
 
       <div
@@ -103,10 +127,12 @@ export function Filmstrip({
             horizontal padding the scroller clipped the ring off the first and
             last tiles, which are exactly the ones most often current. 6px
             clears the 2px offset plus the 2px stroke with room to spare. */
-        className="no-scrollbar flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto p-1.5"
+        className="no-scrollbar flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto p-1.5
+                   md:min-h-0 md:w-full md:flex-col md:overflow-x-hidden md:overflow-y-auto"
       >
         {items.map((item) => {
           const current = item.id === currentId;
+          const compared = compareId !== null && item.id === compareId;
           return (
             // eslint-disable-next-line studio/no-hand-rolled-button -- a media tile, the same shape as MediaTile.
             <button
@@ -128,21 +154,38 @@ export function Filmstrip({
                  a box-shadow ring paints outside the box exactly like the
                  outline it replaces, which is why `p-1.5` on the scroller still
                  clears it at the first and last tile. */
-              className={`relative w-16 shrink-0 cursor-pointer
+              className={`relative w-16 shrink-0 cursor-pointer md:w-full
                           focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary
-                          ${current ? "ring-2 ring-primary" : "opacity-70 hover:opacity-100"}`}
+                          ${
+                            current
+                              ? "ring-2 ring-primary"
+                              : compared
+                                ? "ring-2 ring-accent"
+                                : "opacity-70 hover:opacity-100"
+                          }`}
             >
               {/* The name is on the button's `title` and in this label, so the
                   picture inside it is decorative — see `MediaThumb`. */}
-              <span className="sr-only">{item.name}</span>
+              <span className="sr-only">
+                {item.name}
+                {compareId !== null && current ? " (A)" : compared ? " (B)" : ""}
+              </span>
               <MediaThumb
                 nodeId={item.id}
                 url={item.url}
                 name={item.name}
                 isVideo={item.kind === "video"}
                 aspect="square"
+                // Whole, not cropped: a strip of portraits cut to squares
+                // was a strip of faces with the rest of every picture gone.
+                fit="contain"
                 className=""
               />
+              {compareId !== null && (current || compared) && (
+                <span aria-hidden="true" className="pointer-events-none absolute left-0.5 top-0.5 bg-overlay-scrim/80 px-1 font-mono text-[11px] text-overlay-ink">
+                  {current ? "A" : "B"}
+                </span>
+              )}
             </button>
           );
         })}
@@ -157,10 +200,11 @@ export function Filmstrip({
       <IconButton
         label="Next (→)"
         size="sm"
+        intent="secondary"
         disabled={!onNext}
         onClick={() => onNext?.()}
       >
-        <ChevronDownIcon className={`${CHEVRON} -rotate-90`} />
+        <ChevronDownIcon className={`${CHEVRON} -rotate-90 md:rotate-0`} />
       </IconButton>
     </div>
   );

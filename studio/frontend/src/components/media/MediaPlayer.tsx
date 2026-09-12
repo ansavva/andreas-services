@@ -10,6 +10,7 @@ import {
 import { IconButton, Text } from "@ansavva/design-system";
 
 import { useFullscreen } from "../../hooks/useFullscreen";
+import { useZoom, type ZoomState } from "./useZoom";
 import { useMediaPlayback } from "../../hooks/useMediaPlayback";
 import { useNearViewport } from "../../hooks/useNearViewport";
 import { useSignedSrc } from "../../hooks/useSignedSrc";
@@ -21,6 +22,8 @@ import {
   PlayIcon,
   SoundOffIcon,
   SoundOnIcon,
+  ZoomInIcon,
+  ZoomOutIcon,
 } from "../common/icons";
 import { PlayerTransport } from "./PlayerTransport";
 
@@ -77,6 +80,10 @@ export interface MediaPlayerControls {
   togglePlay: () => void;
   toggleMuted: () => void;
   toggleFullscreen: () => void;
+  /** `+`, `-` and `0`. No-ops on a video, and on a player that is not `zoomable`. */
+  zoomIn: () => void;
+  zoomOut: () => void;
+  zoomReset: () => void;
 }
 
 interface MediaPlayerProps {
@@ -152,6 +159,20 @@ interface MediaPlayerProps {
   overlay?: ReactNode;
   /** Extra buttons at the left of the top chrome row — download, delete, rename. */
   actions?: ReactNode;
+  /**
+   * Whether a still can be zoomed and panned — see `useZoom`.
+   *
+   * Off by default: a tile in a scene's storyboard is not a place to pinch,
+   * and a wheel over it must scroll the page. The two viewers turn it on.
+   */
+  zoomable?: boolean;
+  /**
+   * The zoom, controlled — for two players zooming together on the compare
+   * stage. Either one's gesture arrives at `onZoomChange`; the stage holds one
+   * state and hands it to both.
+   */
+  zoom?: ZoomState;
+  onZoomChange?: (next: ZoomState) => void;
 }
 
 /**
@@ -204,6 +225,9 @@ export function MediaPlayer({
   onControlsChange,
   overlay,
   actions,
+  zoomable = false,
+  zoom: zoomValue,
+  onZoomChange,
 }: MediaPlayerProps) {
   const [playing, setPlaying] = useState(autoPlay);
   const [posterDuration, setPosterDuration] = useState<number | null>(null);
@@ -211,6 +235,7 @@ export function MediaPlayer({
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
 
   // Held in a ref so a caller passing an inline arrow does not change the
   // identity of the ref callback below, which would detach and re-attach the
@@ -223,6 +248,14 @@ export function MediaPlayer({
   const { src, failed, onError } = useSignedSrc(nodeId, url);
   const near = useNearViewport(containerRef, isVideo);
   const { isFullscreen, native, toggle } = useFullscreen(containerRef);
+  const zoom = useZoom({
+    container: containerRef,
+    media: imageRef,
+    enabled: zoomable && !isVideo,
+    value: zoomValue,
+    onChange: onZoomChange,
+    resetKey: nodeId,
+  });
 
   // The key is the node, and it is `undefined` while the poster is up — which
   // is the whole of "closed" as far as playback is concerned: the hook pauses
@@ -335,10 +368,10 @@ export function MediaPlayer({
    * would loop.
    */
   const onControlsChangeRef = useRef(onControlsChange);
-  const latest = useRef({ isVideo, playing, startPlaying, playback, toggle });
+  const latest = useRef({ isVideo, playing, startPlaying, playback, toggle, zoom });
   useEffect(() => {
     onControlsChangeRef.current = onControlsChange;
-    latest.current = { isVideo, playing, startPlaying, playback, toggle };
+    latest.current = { isVideo, playing, startPlaying, playback, toggle, zoom };
   });
 
   useEffect(() => {
@@ -352,6 +385,9 @@ export function MediaPlayer({
       },
       toggleMuted: () => latest.current.playback.toggleMuted(),
       toggleFullscreen: () => void latest.current.toggle(),
+      zoomIn: () => latest.current.zoom.zoomIn(),
+      zoomOut: () => latest.current.zoom.zoomOut(),
+      zoomReset: () => latest.current.zoom.reset(),
     };
     onControlsChangeRef.current?.(controls);
     return () => onControlsChangeRef.current?.(null);
@@ -362,7 +398,12 @@ export function MediaPlayer({
 
   const media = `h-full w-full ${FITS[fit]}`;
   const box = [
-    "relative isolate block overflow-hidden bg-overlay-scrim",
+    // **`overflow-clip`, not `-hidden`, and the zoom is why.** `hidden` still
+    // makes the box a scroll container, and a zoomed picture's overflow to the
+    // right and bottom counts as scrollable — so the browser, bringing a
+    // focused chrome button into view, scrolled the box by a quarter of the
+    // picture and the zoom landed off-centre. `clip` clips and cannot scroll.
+    "relative isolate block overflow-clip bg-overlay-scrim",
     isFullscreen ? "" : ASPECTS[aspect],
     // **The app positions the box only when the browser has not.** Native
     // fullscreen makes the element the whole screen by itself; the fallback is
@@ -387,7 +428,12 @@ export function MediaPlayer({
     : undefined;
 
   return (
-    <div ref={setContainerNode} className={box} style={shell}>
+    <div
+      ref={setContainerNode}
+      className={box}
+      style={{ ...shell, ...zoom.stage }}
+      {...zoom.handlers}
+    >
       {failed ? (
         <div className="flex h-full w-full items-center justify-center p-6 text-center">
           <Text variant="caption" tone="muted">
@@ -413,12 +459,15 @@ export function MediaPlayer({
         />
       ) : (
         <img
+          ref={imageRef}
           src={src}
           alt={name}
           onError={onError}
           decoding="async"
           loading="lazy"
+          draggable={false}
           className={media}
+          style={zoom.style}
         />
       )}
 
@@ -475,6 +524,47 @@ export function MediaPlayer({
           <div className="pointer-events-auto flex min-w-0 items-center gap-1">{actions}</div>
 
           <div className="pointer-events-auto flex shrink-0 items-center gap-1">
+            {/*
+              **Zoom, on a still, before everything else in the row.** Two
+              glyphs and — once the picture is in at all — the figure, so a
+              person can see they are not at the fit. Every gesture `useZoom`
+              answers gets here too; these are the two a pointer can find.
+            */}
+            {zoomable && !isVideo && (
+              <>
+                <IconButton
+                  label="Zoom out (-)"
+                  size="sm"
+                  onClick={zoom.zoomOut}
+                  disabled={!zoom.canZoomOut}
+                  intent="overlay"
+                  className={CHROME_SCRIM}
+                >
+                  <ZoomOutIcon />
+                </IconButton>
+                {zoom.zoomed && (
+                  <Text
+                    variant="caption"
+                    family="mono"
+                    aria-label="Zoom level"
+                    className={`${CHROME_SCRIM} px-1.5 py-0.5 tabular-nums text-overlay-ink`}
+                  >
+                    {Math.round(zoom.zoom.scale * 100)}%
+                  </Text>
+                )}
+                <IconButton
+                  label="Zoom in (+)"
+                  size="sm"
+                  onClick={zoom.zoomIn}
+                  disabled={!zoom.canZoomIn}
+                  intent="overlay"
+                  className={CHROME_SCRIM}
+                >
+                  <ZoomInIcon />
+                </IconButton>
+              </>
+            )}
+
             {/*
               Sound is the leftmost control and Close the rightmost, deliberately:
               a mis-tap on the button you reach for mid-clip should not be the one

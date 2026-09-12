@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { Drawer, Button } from "@ansavva/design-system";
+import { Drawer, Button, IconButton, Text } from "@ansavva/design-system";
 
 import { EmptyState } from "../components/common/EmptyState";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CloseIcon,
+  CompareIcon,
+} from "../components/common/icons";
 import { LoadError } from "../components/common/LoadError";
 import { PageLoading } from "../components/common/PageLoading";
 import {
@@ -15,6 +21,7 @@ import {
   renameNode,
 } from "../apis/studio";
 import { PageBar, type Crumb } from "../components/layout/PageBar";
+import { CompareStage } from "../components/media/CompareStage";
 import { MediaPlayer, type MediaPlayerControls } from "../components/media/MediaPlayer";
 import { TextPage } from "../components/text/TextPage";
 import { FileDetailsPanel } from "../components/viewer/FileDetailsPanel";
@@ -22,11 +29,13 @@ import { Filmstrip } from "../components/viewer/Filmstrip";
 import { ObjectActions } from "../components/viewer/ObjectActions";
 import { ObjectControls, ObjectDetails } from "../components/viewer/ObjectAside";
 import { OwnerLink } from "../components/viewer/OwnerLink";
+import { ViewerFrame } from "../components/viewer/ViewerFrame";
 import { useCreateBar } from "../context/CreateBarContext";
 import { useKeyboardNav } from "../hooks/useKeyboardNav";
 import { useResource } from "../hooks/useResource";
 import { useViewerFeed } from "../hooks/useViewerFeed";
 import { DEFAULT_SORT, isSortOrder, type FileEntry, type SortOrder } from "../types";
+import { formatBytes } from "../utils/format";
 import type { ViewerSource } from "../utils/location";
 import {
   FAVORITES_PATH,
@@ -44,14 +53,21 @@ const PREFETCH_MARGIN = 4;
 /**
  * One file, open, with whatever it sits among.
  *
- * **This is an ordinary page now, not an overlay.** `/o/<id>` was
- * `fixed inset-x-0 z-50` over a black shell — a vertical scroll-snap reel of
- * full-viewport panes with its own chrome, its own transport and its own idea
- * of what a header is. It is `AppLayout` with a `PageBar` on it like every
- * other screen: one `MediaPlayer` large in the content column, the file's own
- * words beside it, and the feed's neighbours as a filmstrip underneath. What
- * that buys is that a clip is a *thing with an address* rather than a mode you
- * enter and leave.
+ * **The same viewer the opened run gets.** `/o/<id>` has been three things: a
+ * `fixed inset-x-0 z-50` reel of full-viewport panes with its own chrome, then
+ * an ordinary page with a `PageBar` and a player capped at `65dvh` in the
+ * content column, and now this — `ViewerFrame`, the box `RunLightbox` draws
+ * in, with the picture on the stage taking every pixel between the header
+ * and the create sheet's handle, the file's own words in a rail beside it,
+ * and the feed's neighbours down the right edge. The page form put a
+ * two-thirds-height picture beside a column of facts and read as a form with
+ * a preview; the opened run's picture was twice the size, and this is the
+ * same thing, so it is the same box.
+ *
+ * What survives from the page form is everything that made it a *page*: the
+ * crumb saying where the file sits (at the top of the rail now), the
+ * address, and the create sheet staying out of the way until something calls
+ * it up — `CreateBarContext` treats `/o/<id>` as it treats the opened run.
  *
  * **`ViewerPage` was the name, and everything below the body is unchanged from
  * it.** `useViewerFeed` still decides what the neighbours are from `?in=`; the
@@ -141,6 +157,24 @@ export function ObjectPage() {
     document.addEventListener("fullscreenchange", sync);
     return () => document.removeEventListener("fullscreenchange", sync);
   }, []);
+
+  /**
+   * Compare: the open file pinned as A, and the neighbour beside it as B.
+   *
+   * `null` is "not comparing"; `{ a, b: null }` is comparing with the right
+   * pane empty. While comparing, a press on the strip and a Left/Right both
+   * choose B rather than stepping the address — the open file stays where it
+   * is, which is what "pinned" means. `a` records which file was pinned, so
+   * the address moving on (Close, a crumb, a delete) leaves the comparison
+   * behind without an effect to clear it — and a swap, which moves the
+   * address deliberately, pins the new one in the same write.
+   */
+  const [pinned, setPinned] = useState<{ a: string; b: FileEntry | null } | null>(null);
+  const compare = pinned && pinned.a === nodeId ? pinned : null;
+  const setCompare = useCallback(
+    (b: FileEntry | null) => setPinned({ a: nodeId, b }),
+    [nodeId],
+  );
 
   const items = feed.items;
   const { exhausted, loadMore } = feed;
@@ -256,10 +290,31 @@ export function ObjectPage() {
 
   const step = useCallback(
     (delta: number) => {
+      // Comparing: the step chooses B, from wherever B is — or from the open
+      // file, when nothing is beside it yet.
+      if (compare) {
+        const from = compare.b ? items.findIndex((item) => item.id === compare.b?.id) : index;
+        const next = items[from + delta];
+        if (next && next.id !== nodeId && next.kind === "image") setCompare(next);
+        return;
+      }
       const next = items[index + delta];
       if (next) setCurrent(next);
     },
-    [index, items, setCurrent],
+    [compare, index, items, nodeId, setCompare, setCurrent],
+  );
+
+  /** A press on the strip: the file to open, or — while comparing — B. */
+  const pick = useCallback(
+    (file: FileEntry) => {
+      if (!compare) {
+        setCurrent(file);
+        return;
+      }
+      if (file.id === nodeId || file.kind !== "image") return;
+      setCompare(file);
+    },
+    [compare, nodeId, setCompare, setCurrent],
   );
 
   /**
@@ -296,6 +351,9 @@ export function ObjectPage() {
     onToggleMuted: controls && !modal ? () => controls.toggleMuted() : undefined,
     onToggleFullscreen:
       controls && !modal ? () => controls.toggleFullscreen() : undefined,
+    onZoomIn: controls && !modal ? () => controls.zoomIn() : undefined,
+    onZoomOut: controls && !modal ? () => controls.zoomOut() : undefined,
+    onZoomReset: controls && !modal ? () => controls.zoomReset() : undefined,
   });
 
   if (open && isText) {
@@ -379,101 +437,173 @@ export function ObjectPage() {
   };
   const toggleEditing = () => (editing ? askToClose() : setEditing(true));
 
+  /**
+   * A and B change places: B becomes the open file, A goes beside it. The
+   * address follows A, as it always does.
+   */
+  const swap = () => {
+    if (!compare?.b) return;
+    setPinned({ a: compare.b.id, b: current });
+    setCurrent(compare.b);
+  };
+
+  const canCompare = !isVideo && items.length > 1;
+  const stepPrev = index > 0 || (compare !== null && compare.b !== null);
+  const stepNext = index < items.length - 1 || (compare !== null && compare.b !== null);
+
   return (
-    <>
-      {/*
-        Crumbs and nothing else. The name, the facts and the controls that used
-        to fill this bar are all in the column beside the player now — see
-        `ObjectAside`. What a bar can say that the column cannot is where the
-        page sits.
-      */}
-      <PageBar crumbs={crumbs} />
+    <ViewerFrame aria-label="File" data-testid="object-viewer">
+      {/* The stage: the picture large, with the neighbours' steps at its
+          sides from `md` and the strip carrying them below it. The same
+          shape as the opened run's, for the same reasons `RunLightbox`
+          gives at each of these. */}
+      <div className="relative flex min-h-[80dvh] min-w-0 flex-1 flex-col md:min-h-0">
+        <div className="absolute right-3 top-3 z-10 flex gap-1">
+          {canCompare && (
+            <IconButton
+              label={compare ? "Stop comparing" : "Compare"}
+              size="sm"
+              intent="overlay"
+              pressed={compare !== null}
+              onClick={() => (compare ? setPinned(null) : setCompare(null))}
+              className=""
+            >
+              <CompareIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+            </IconButton>
+          )}
+          <IconButton
+            label="Close (Esc)"
+            size="sm"
+            intent="overlay"
+            onClick={close}
+            className=""
+          >
+            <CloseIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+          </IconButton>
+        </div>
+        {stepPrev && (
+          <IconButton
+            label="Previous file (←)"
+            size="sm"
+            intent="overlay"
+            onClick={() => step(-1)}
+            className="absolute left-3 top-1/2 z-10 hidden -translate-y-1/2 md:flex"
+          >
+            <ChevronLeftIcon className="size-5 fill-none stroke-current stroke-[1.5]" />
+          </IconButton>
+        )}
+        {stepNext && (
+          <IconButton
+            label="Next file (→)"
+            size="sm"
+            intent="overlay"
+            onClick={() => step(1)}
+            className="absolute right-3 top-1/2 z-10 hidden -translate-y-1/2 md:flex"
+          >
+            <ChevronRightIcon className="size-5 fill-none stroke-current stroke-[1.5]" />
+          </IconButton>
+        )}
 
-      {/*
-        One column on a phone, two from `lg`, and the DOM order is the phone's.
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-2 pt-12 md:p-8">
+          {compare ? (
+            <CompareStage
+              a={{ node: current.id, url: current.url, name: current.name, size: current.size }}
+              b={
+                compare.b
+                  ? { node: compare.b.id, url: compare.b.url, name: compare.b.name, size: compare.b.size }
+                  : null
+              }
+              onSwap={swap}
+              onControlsChange={setControls}
+            />
+          ) : (
+            <>
+              <div className="min-h-0 w-full flex-1">
+                {/*
+                  Not keyed on the node, deliberately: stepping from one clip
+                  to the next keeps the player mounted and playing, which is
+                  the one thing the reel's column did better than a lightbox
+                  ever has. The zoom resets itself on the node.
+                */}
+                <MediaPlayer
+                  nodeId={current.id}
+                  url={current.url}
+                  name={current.name}
+                  isVideo={isVideo}
+                  aspect="auto"
+                  zoomable
+                  className="h-full w-full border border-line"
+                  onContainerChange={setStage}
+                  onControlsChange={setControls}
+                  // **Only while fullscreen.** The rail carries Copy, Edit,
+                  // Download and Close — the same controls this row used to
+                  // duplicate over the media on every visit — so drawing it
+                  // too is two rows saying the same thing. Fullscreen is the
+                  // one state where the rail genuinely is not painted, and
+                  // edit/delete are the two that still have to be reachable
+                  // there.
+                  actions={
+                    fullscreen ? (
+                      <ObjectActions
+                        file={current}
+                        variant="media"
+                        onDelete={removeThis}
+                        editing={editing}
+                        onToggleEditing={toggleEditing}
+                      />
+                    ) : undefined
+                  }
+                />
+              </div>
+              <Text variant="caption" family="mono" tone="muted" className="tabular-nums">
+                {current.name} · {formatBytes(current.size)}
+              </Text>
+            </>
+          )}
+        </div>
+      </div>
 
-        Everything done to the file and everything it says about itself —
-        Copy/Edit/Download/Close, its description, its tags, its properties —
-        is in the right column on a wide screen, which is what `lg:col-start-2`
-        and the explicit rows below put there; the player takes the left column
-        across both rows. On a phone there is one column and the three children
-        fall in source order: the controls first, so what acts on the file is
-        reachable without scrolling past it, then the player, then everything
-        that describes it. Placing them rather than reordering keeps that a
-        property of the source and not of a `lg:order-*` a reader has to run in
-        their head.
-      */}
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:grid-rows-[auto_minmax(0,1fr)] lg:gap-x-6 lg:gap-y-3">
+      {/* The rail: where the file sits, what can be done to it, and what it
+          says about itself. */}
+      <aside
+        aria-label="File"
+        className="flex w-full shrink-0 flex-col gap-4 border-t border-line bg-bg p-5 md:w-[360px] md:overflow-y-auto md:border-l md:border-t-0"
+      >
+        {/*
+          Crumbs and nothing else. What a bar can say that the column cannot
+          is where the page sits.
+        */}
+        <PageBar crumbs={crumbs} />
+
         <ObjectControls
           file={current}
           position={position}
           onDelete={removeThis}
           editing={editing}
           onToggleEditing={toggleEditing}
-          onClose={close}
           onUseAsReference={attachAsReference}
-          className="lg:col-start-2 lg:row-start-1"
         />
 
-        <div className="flex min-w-0 flex-col gap-3 lg:col-start-1 lg:row-span-2 lg:row-start-1">
-          {/*
-            Not keyed on the node, deliberately: stepping from one clip to the
-            next keeps the player mounted and playing, which is the one thing
-            the reel's column did better than a lightbox ever has.
+        <ObjectDetails
+          file={current}
+          // A link that arrived with no context: say what the file belongs
+          // to and offer the way there. Everywhere else the crumb above
+          // already says it.
+          aside={source === null ? <OwnerLink nodeId={current.id} /> : undefined}
+        />
+      </aside>
 
-            `100dvh` is what the height is measured against and never `inset-0`
-            — the reel paid for that lesson and `MediaPlayer` carries it — so
-            this cap tracks the browser's toolbars instead of hiding behind
-            them.
-          */}
-          <MediaPlayer
-            nodeId={current.id}
-            url={current.url}
-            name={current.name}
-            isVideo={isVideo}
-            aspect="auto"
-            className="h-[min(65dvh,44rem)] border border-line"
-            onContainerChange={setStage}
-            onControlsChange={setControls}
-            // **Only while fullscreen.** The page header carries Copy, Edit,
-            // Download and Close now — the same controls this row used to
-            // duplicate over the media on every visit — so drawing it too is
-            // two rows saying the same thing. Fullscreen is the one state
-            // where the header genuinely is not painted, and edit/delete are
-            // the two that still have to be reachable there.
-            actions={
-              fullscreen ? (
-                <ObjectActions
-                  file={current}
-                  variant="media"
-                  onDelete={removeThis}
-                  editing={editing}
-                  onToggleEditing={toggleEditing}
-                />
-              ) : undefined
-            }
-          />
-
-          <Filmstrip
-            items={items}
-            currentId={current.id}
-            loading={feed.loading}
-            onSelect={setCurrent}
-            onPrev={index > 0 ? () => step(-1) : undefined}
-            onNext={index < items.length - 1 ? () => step(1) : undefined}
-          />
-        </div>
-
-        <aside className="flex min-w-0 flex-col gap-4 lg:col-start-2 lg:row-start-2">
-          <ObjectDetails
-            file={current}
-            // A link that arrived with no context: say what the file belongs
-            // to and offer the way there. Everywhere else the crumb above
-            // already says it.
-            aside={source === null ? <OwnerLink nodeId={current.id} /> : undefined}
-          />
-        </aside>
-      </div>
+      {/* The neighbours, last in the flex — a row along the foot below `md`,
+          a column down the right edge above it. See `RunStrip`. */}
+      <Filmstrip
+        items={items}
+        currentId={current.id}
+        compareId={compare ? (compare.b?.id ?? null) : null}
+        loading={feed.loading}
+        onSelect={pick}
+        onPrev={stepPrev ? () => step(-1) : undefined}
+        onNext={stepNext ? () => step(1) : undefined}
+      />
 
       {editing && (
         /*
@@ -522,7 +652,7 @@ export function ObjectPage() {
           </Drawer.Panel>
         </Drawer.Root>
       )}
-    </>
+    </ViewerFrame>
   );
 }
 
