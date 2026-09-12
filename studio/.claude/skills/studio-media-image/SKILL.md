@@ -1,6 +1,6 @@
 ---
 name: studio-media-image
-description: The FRAME-FIRST WORKFLOW for still images in the studio-* pipeline — why to render a frame before a video, how runs chain, the show-then-ask rule, how images reach Replicate (presigned S3 URLs only), and handing a still to a video engine. Use whenever the user wants to create, render, or edit an image, a frame, a poster, a thumbnail, or a start frame to animate, and whenever choosing between the image models. Each model has its own skill (studio-media-nano-banana-pro, studio-media-nano-banana-2, studio-media-gpt-image-2, studio-media-gpt-image-1-5, studio-media-seedream-5-pro); this covers what is true of all of them.
+description: The FRAME-FIRST WORKFLOW for still images in the studio-* pipeline — why to render a frame before a video, how runs chain, the show-then-ask rule, how images reach Replicate (presigned S3 URLs only), and handing a still to a video engine. Use whenever the user wants to create, render, or edit an image, a frame, a poster, a thumbnail, or a start frame to animate, and whenever choosing between the image models. Each model has its own skill (studio-media-nano-banana-pro, studio-media-nano-banana-2, studio-media-gpt-image-2, studio-media-gpt-image-1-5, studio-media-seedream-5-pro, studio-media-krea-2-large); this covers what is true of all of them.
 ---
 
 # studio-media-image — image generation as a recorded run
@@ -56,6 +56,7 @@ caveats and levers:
 | `nano-banana-2` | [`studio-media-nano-banana-2`](../studio-media-nano-banana-2/SKILL.md) | Fast/cheap iteration; the extreme `1:4`…`8:1` ratios; search grounding |
 | `gpt-image-1.5` | [`studio-media-gpt-image-1-5`](../studio-media-gpt-image-1-5/SKILL.md) | Transparent backgrounds, or fidelity dialled **down** |
 | `seedream-5-pro` | [`studio-media-seedream-5-pro`](../studio-media-seedream-5-pro/SKILL.md) | Blending up to 10 references into one composition; flat per-image price; 2K ceiling |
+| `krea-2-large` | [`studio-media-krea-2-large`](../studio-media-krea-2-large/SKILL.md) | Photoreal or painterly looks with no character in frame; a **style** transferred from ≤10 images; `creativity` from `raw` to `high`; the only image model with a seed |
 
 ```bash
 studio models                    # the registry

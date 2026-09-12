@@ -747,6 +747,66 @@
         "resolution_map": null,
         "technical": "api"
       }
+    },
+    "krea-2-large": {
+      "images": {
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ],
+        "end": null,
+        "max_refs": 10,
+        "refs": "style_reference_images",
+        "start": null,
+        "start_excludes_refs": false
+      },
+      "key": "krea-2-large",
+      "kind": "image",
+      "model": "krea/krea-2-large",
+      "note": "Krea 2 Large. Krea's flagship still model: photorealism, natural light, textured and expressive looks; `creativity` raw/low/medium/high sets how far it embellishes the prompt; the only image model here with a SEED. `style_reference_images` (<=10) is a STYLE transfer input, NOT an identity reference: --character binds a likeness into it and the model keeps the look, not the face. No output-format, size or quality knob; flat $0.06/image (+$0.005 with style refs, +$0.01 with a Krea moodboard).",
+      "prompt": {
+        "max_chars": null
+      },
+      "skill": "studio-media-krea-2-large",
+      "snapshot": {
+        "aspect_ratio": {
+          "default": "1:1",
+          "enum": [
+            "1:1",
+            "4:3",
+            "3:2",
+            "16:9",
+            "2.35:1",
+            "4:5",
+            "2:3",
+            "9:16"
+          ]
+        },
+        "creativity": {
+          "default": "medium",
+          "enum": [
+            "raw",
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "moodboard_strength": {
+          "default": 0.35,
+          "maximum": 1,
+          "minimum": 0
+        },
+        "style_reference_images": {
+          "default": []
+        },
+        "style_reference_strength": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0
+        }
+      }
     }
   }
 }
