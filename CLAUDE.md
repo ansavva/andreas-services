@@ -170,7 +170,7 @@ permission boundary — the CLI holds no AWS credential; the one tool that does,
 `dev-seed`, runs under your own IAM key. See `studio/CLAUDE.md`. And:
 
 **`studio/` is the one service that is not purely a deployable unit.** Half of it
-— `studio/.claude/skills/`, twenty skills — runs locally inside Claude on a
+— `studio/.claude/skills/`, twenty-three skills — runs locally inside Claude on a
 developer's machine and never deploys; the CI path filters exclude it from the
 prod workflow. The other half is an ordinary Flask + Vite service. Both share the
 media S3 bucket, which `studio/infra/modules/media` owns — see
@@ -190,7 +190,7 @@ screen and starting work tends to end in hand-rolled `aws s3` calls that a
 `studio` subcommand already does. Full routing table in
 [studio/CLAUDE.md](studio/CLAUDE.md#which-skill).
 
-Those twenty skills live in `studio/.claude/skills/` and are directory-scoped:
+Those twenty-three skills live in `studio/.claude/skills/` and are directory-scoped:
 they register only once a file under `studio/` has been read, so a `Skill` call
 on the first action of a session returns `Unknown skill`. That is a timing
 artifact, not a missing skill. The root **`studio`** skill is the entry point —

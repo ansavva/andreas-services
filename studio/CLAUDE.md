@@ -228,8 +228,8 @@ same library.
 
 ## Which skill
 
-**Load one before doing anything else in `studio/`.** Twenty skills in **two
-families** — nineteen `studio-media-*` and one `studio-code-*`; route by what
+**Load one before doing anything else in `studio/`.** Twenty-three skills in **two
+families** — twenty-two `studio-media-*` and one `studio-code-*`; route by what
 the task *changes*, not by what it mentions.
 
 | If the task changes… | Load | Examples |
@@ -265,7 +265,7 @@ The app half (`backend/`, `frontend/`) has no skill of its own; read
 | Invoke a model generically, or inspect its schema | `studio-media-core` |
 | Register a new Replicate model | `studio-media-add-model` |
 | Pick a video engine | `studio-media-seedance` · `studio-media-kling` · `studio-media-veo-3-1` · `studio-media-grok-imagine-video` |
-| Pick an image engine | `studio-media-nano-banana-pro` · `studio-media-nano-banana-2` · `studio-media-gpt-image-2` · `studio-media-gpt-image-1-5` · `studio-media-seedream-5-pro` |
+| Pick an image engine | `studio-media-nano-banana-pro` · `studio-media-nano-banana-2` · `studio-media-gpt-image-2` · `studio-media-gpt-image-2-5-sunburst` · `studio-media-gpt-image-2-5-flare` · `studio-media-gpt-image-1-5` · `studio-media-seedream-5-pro` · `studio-media-krea-2-large` |
 
 **Ask which project before generating anything.** A run belongs to a project;
 guessing puts runs somewhere nobody looks again. `--project` takes a project id,

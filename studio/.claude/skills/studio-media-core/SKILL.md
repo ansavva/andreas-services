@@ -17,8 +17,11 @@ This skill is the plumbing. For how to *use* a given model, read its own skill:
 | `nano-banana-pro` | [`studio-media-nano-banana-pro`](../studio-media-nano-banana-pro/SKILL.md) |
 | `nano-banana-2` | [`studio-media-nano-banana-2`](../studio-media-nano-banana-2/SKILL.md) |
 | `gpt-image-2` | [`studio-media-gpt-image-2`](../studio-media-gpt-image-2/SKILL.md) |
+| `gpt-image-2.5-sunburst` | [`studio-media-gpt-image-2-5-sunburst`](../studio-media-gpt-image-2-5-sunburst/SKILL.md) |
+| `gpt-image-2.5-flare` | [`studio-media-gpt-image-2-5-flare`](../studio-media-gpt-image-2-5-flare/SKILL.md) |
 | `gpt-image-1.5` | [`studio-media-gpt-image-1-5`](../studio-media-gpt-image-1-5/SKILL.md) |
 | `seedream-5-pro` | [`studio-media-seedream-5-pro`](../studio-media-seedream-5-pro/SKILL.md) |
+| `krea-2-large` | [`studio-media-krea-2-large`](../studio-media-krea-2-large/SKILL.md) |
 | `seedance` | [`studio-media-seedance`](../studio-media-seedance/SKILL.md) |
 | `kling` | [`studio-media-kling`](../studio-media-kling/SKILL.md) |
 

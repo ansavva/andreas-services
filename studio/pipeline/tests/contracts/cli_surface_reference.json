@@ -983,7 +983,10 @@
         "choices": [
           "gpt-image-1.5",
           "gpt-image-2",
+          "gpt-image-2.5-flare",
+          "gpt-image-2.5-sunburst",
           "kling",
+          "krea-2-large",
           "nano-banana-2",
           "nano-banana-pro",
           "seedance",
