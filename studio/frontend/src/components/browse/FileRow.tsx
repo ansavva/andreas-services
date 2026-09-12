@@ -60,7 +60,8 @@ export function FileRow({
   return (
     <EntityRow
       title={file.name}
-      subtitle={`${formatBytes(file.size)} · ${formatDate(file.last_modified)}`}
+      // The date shown is the one the date orders sort on — see `FileEntry.created`.
+      subtitle={`${formatBytes(file.size)} · ${formatDate(file.created ?? file.last_modified)}`}
       status={file.language}
       thumb={{ icon: <FileIcon className="size-5 shrink-0 fill-none stroke-muted stroke-[1.5]" /> }}
       selected={selected}

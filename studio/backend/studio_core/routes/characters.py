@@ -210,6 +210,9 @@ def list_characters():
             "id": record["id"],
             "name": record.get("name"),
             "hero": _hero(record, heroes),
+            # The one pointer into the file tree, so a picker can open a
+            # character without reading its whole record first.
+            "root": record.get("root"),
             "counts": files.get(record["id"], {"files": 0, "default": 0}),
             "updated": record.get("updated"),
         }

@@ -115,6 +115,14 @@ export interface FileEntry {
   name: string;
   size: number;
   last_modified: string | null;
+  /**
+   * When the row was made — what `newest` and `oldest` order on.
+   *
+   * `last_modified` moves on a tag, a rename or a move, and an order that
+   * followed it put last month's shoot at the top for a tag added this
+   * morning. Optional only because captured fixtures predate it.
+   */
+  created?: string;
   kind: MediaKind;
   content_type: string | null;
   /** Presigned inline GET. Short-lived — re-sign through `getAsset` when it dies. */
@@ -139,6 +147,8 @@ export interface FolderEntry {
   prefix: string;
   name: string;
   last_modified: string | null;
+  /** See `FileEntry.created`. */
+  created?: string;
   parent_id?: string;
   /** The entity whose root this is, when it is one. Draws a card, not an icon. */
   entity?: string;
@@ -381,6 +391,8 @@ export interface CharacterSummary {
   id: string;
   name: string;
   hero: HeroImage | null;
+  /** The root folder — the one pointer into the file tree. Absent from older captures. */
+  root?: string;
   /**
    * `default` is how many of its images a generation is shown, counted off the
    * tag. Both come out of one branch walk.
@@ -565,6 +577,8 @@ export interface ProjectSummary {
   id: string;
   name: string;
   hero: HeroImage | null;
+  /** The root folder — see `CharacterSummary.root`. */
+  root?: string;
   counts: ProjectCounts;
   updated: string;
 }

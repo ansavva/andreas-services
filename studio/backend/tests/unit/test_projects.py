@@ -116,6 +116,15 @@ def test_two_projects_may_share_a_name(empty_api):
     assert resp.get_json()["id"] != first["id"]
 
 
+def test_the_listing_carries_each_root(empty_api):
+    """A summary names its root folder, so a picker can open it off the list."""
+    project = _project(empty_api)
+
+    listed = empty_api.get("/api/projects").get_json()
+
+    assert [entry["root"] for entry in listed] == [project["root"]]
+
+
 def test_creating_with_a_character_that_does_not_exist_is_404(empty_api):
     """A link to a missing character would answer the reverse query forever."""
     assert empty_api.post(

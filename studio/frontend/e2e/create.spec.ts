@@ -95,11 +95,11 @@ test("a tile opens the picker above the sheet, and a pressed picture lands in th
   // the picker — there is no separate control.
   await page.getByRole("group", { name: "Image refs" }).getByRole("button", { name: "Image refs" }).click();
 
-  // The picker is the library's own navigation: it opens on the project's
-  // folder, and Media is every picture under it.
+  // The picker opens inside the project, in Media view — every picture under
+  // it, newest first — with no view to switch or folder to open first.
   const picker = page.getByRole("region", { name: "Choose image refs" });
   await expect(picker).toBeVisible();
-  await picker.getByRole("button", { name: "Media" }).click();
+  await expect(picker.getByRole("button", { name: "Media" })).toHaveAttribute("aria-pressed", "true");
   const first = picker.getByRole("button", { name: /^Attach / }).first();
   await expect(first).toBeVisible();
   await first.click();

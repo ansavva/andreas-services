@@ -655,6 +655,29 @@ def test_newest_first_puts_a_later_write_first(catalog_tree):
     assert oldest[-1] == "subject-a_0_written_last.webp"
 
 
+def test_newest_orders_on_creation_not_on_the_last_edit(catalog_tree):
+    """Tagging an old picture does not carry it to the top.
+
+    `newest` used to sort on `updated_at`, so a `default` tag put on last
+    month's shoot this morning reshuffled every listing it sat in. The order a
+    person means by "newest" is arrival order, which is `created_at` — the
+    date the entry reports as `created`, beside the `last_modified` the edit
+    moves.
+    """
+    seed = _node_id("characters/subject-a/seed/")
+    before = [f["name"] for f in _files(_folder(CATALOG_LIBRARY, seed, "newest"))]
+    assert len(before) > 1
+    oldest = before[-1]
+    oldest_id = next(f["id"] for f in _files(_folder(CATALOG_LIBRARY, seed)) if f["name"] == oldest)
+
+    catalog.describe_node(oldest_id, tags=["default"])
+
+    after = _files(_folder(CATALOG_LIBRARY, seed, "newest"))
+    assert [f["name"] for f in after] == before
+    edited = next(f for f in after if f["id"] == oldest_id)
+    assert edited["last_modified"] > edited["created"]
+
+
 def test_the_reel_orders_by_the_timestamp_it_reports(catalog_tree):
     """What replaced the key tie-break.
 
@@ -665,7 +688,7 @@ def test_the_reel_orders_by_the_timestamp_it_reports(catalog_tree):
     """
     items = _media(CATALOG_LIBRARY, _node_id("characters/"))["entries"]
 
-    stamps = [item["last_modified"] for item in items]
+    stamps = [item["created"] for item in items]
     assert stamps == sorted(stamps, reverse=True)
     assert len(set(stamps)) == len(stamps)
 

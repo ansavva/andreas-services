@@ -300,7 +300,10 @@ Two things about this shape drive the UI: run and scene folders sort
 chronologically because their names start with a timestamp, and a run's output
 lives one level down in `output/`, so a run folder itself usually shows only
 JSON. A folder is a row, stamped by `catalog._now` like every other row, so a
-folder has a `last_modified` and date sorts need no fallback to its name.
+folder has a `created` and a `last_modified` and date sorts need no fallback to
+its name. **`newest` and `oldest` order on `created`**, not on the last edit:
+tagging or renaming a picture does not move it, and every listing and picker
+opens newest-first with a control to change it.
 
 **Nothing in studio names a folder the pipeline owns, and nothing should start
 to.** A copy is handed its destination; studio does not know which folder inside
@@ -532,9 +535,14 @@ page and a plain textarea over its literal bytes, and never offers fields.
   selected model has a field for — Start frame, End frame, Image refs, Input
   image, the models' own words — dimmed when the registry's
   `start_excludes_refs` / `max_refs` rule blocks it. Pressing a tile opens
-  `AttachPicker`, a second sheet ABOVE this one with the library's own
-  navigation — Folders and Media views, tags, crumbs, `Project` / `Library`
-  jumps — and pressing a picture there attaches it to that role. Then the
+  `AttachPicker`, a second sheet ABOVE this one. It opens inside the project
+  in Media view — every picture under it, newest first — and its top level is
+  the `Characters` and `Projects` lists by name, never the library's folder
+  tree: a character opens in Folders (its folders are the person's own), a
+  project in Media (its `runs/` are numbers), both switchable, with tags,
+  crumbs trimmed at the entity's root, and a sort control. It takes uploads
+  too, into the folder it is standing on, and attaches each picture that
+  lands. Pressing a picture attaches it to that role. Then the
   prompt, borderless, its `{` menu opening upward — two lines at rest, faded
   where more is cut off, eight with the caret in it.
 

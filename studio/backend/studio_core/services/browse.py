@@ -196,14 +196,28 @@ def _name_path(record: dict) -> str:
 
 
 def _timestamp(record: dict) -> str:
-    """The one date a row reports, and the one every order here sorts on.
+    """The date a row reports as `last_modified`.
 
-    `updated_at`, because the field is called `last_modified` and that is what it
-    means; `created_at` only for a row carrying no `updated_at`. Using one
-    value for both the display and the sort is deliberate — a listing ordered by
-    a date it does not show is the kind of thing that reads as a bug forever.
+    `updated_at`, because that is what the field means; `created_at` only for a
+    row carrying no `updated_at`.
     """
     return record.get("updated_at") or record.get("created_at") or _UNDATED
+
+
+def _created(record: dict) -> str:
+    """The date a row reports as `created`, and the one the date orders sort on.
+
+    **Creation, not the last edit.** `newest` used to order on `_timestamp`,
+    which meant tagging a picture, renaming it or moving it carried it to the
+    top of every listing — a shoot from last month reshuffled by a `default`
+    tag put on this morning. The order a person means by "newest" is the order
+    things arrived in, and that is the one date a row carries that nothing
+    afterwards changes. It is also the range key of `by-recent`, so the reel's
+    query and this sort now agree.
+
+    A listing shows both dates, so neither order sorts on a date it hides.
+    """
+    return record.get("created_at") or record.get("updated_at") or _UNDATED
 
 
 def is_abandoned_upload(record: dict) -> bool:
@@ -254,6 +268,7 @@ def _file_entry(record: dict, prefix: str) -> dict:
         "size": record.get("size", 0),
         "content_type": record.get("content_type"),
         "last_modified": _timestamp(record),
+        "created": _created(record),
         "kind": keys.kind(name),
     }
     # **The MD5 of the bytes.** Served so `studio curate dedupe` can compare two
@@ -288,8 +303,8 @@ def _file_entry(record: dict, prefix: str) -> dict:
 def _folder_entry(record: dict, prefix: str) -> dict:
     """One folder row as a listing entry.
 
-    It carries `last_modified` because a folder is a row and is stamped like
-    any other, so the date orders never fall back to a folder's name.
+    It carries `last_modified` and `created` because a folder is a row and is
+    stamped like any other, so the date orders never fall back to a folder's name.
     """
     return {
         "id": record["node_id"],
@@ -300,6 +315,7 @@ def _folder_entry(record: dict, prefix: str) -> dict:
         "prefix": f"{prefix}{record['name']}/",
         "name": record["name"],
         "last_modified": _timestamp(record),
+        "created": _created(record),
         **({"parent_id": record["parent_id"]} if record.get("parent_id") else {}),
         # The reverse pointer that makes a listing draw a character card rather
         # than a folder icon. Written once in the entity's create transaction.
@@ -309,6 +325,8 @@ def _folder_entry(record: dict, prefix: str) -> dict:
 
 def _sort_records(records: list[dict], sort: str) -> None:
     """Order node records in place — files and folders, the same way.
+
+    The date orders sort on `_created`, not `_timestamp` — see `_created`.
 
     **No tie-break.** `catalog._now` stamps microseconds, so two rows written
     in the same second still order correctly — a run writes its whole output
@@ -321,7 +339,7 @@ def _sort_records(records: list[dict], sort: str) -> None:
     elif sort == "name_desc":
         records.sort(key=lambda record: record["name"].lower(), reverse=True)
     else:
-        records.sort(key=_timestamp, reverse=sort == "newest")
+        records.sort(key=_created, reverse=sort == "newest")
 
 
 def _records_for(entries: list[dict]) -> list[dict]:

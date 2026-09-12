@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@ansavva/design-system";
 
 import { uploadFile, type UploadProgress } from "../apis/upload";
+import type { NodeRecord } from "../types";
 
 type UploadStatus = "waiting" | "sending" | "done" | "failed";
 
@@ -40,13 +41,18 @@ let sequence = 0;
  * `onSettled` fires once the queue drains rather than per file. A listing refetch
  * per file would be a request per upload for a folder nobody is reading while a
  * progress bar is over it — and `useSelection` is keyed by node id, so a refetch
- * mid-queue is safe but pointless.
+ * mid-queue is safe but pointless. It is handed the nodes that landed, because
+ * the create sheet's picker attaches what was just uploaded and has no listing
+ * to find it in.
  *
  * A failure does not stop the queue. Ten photos where the third is a HEIC should
  * leave nine uploaded and one legible message, not one message and seven files
  * never attempted.
  */
-export function useUploads(parentId: string | null, onSettled: () => void) {
+export function useUploads(
+  parentId: string | null,
+  onSettled: (landed: NodeRecord[]) => void,
+) {
   const [items, setItems] = useState<readonly UploadItem[]>([]);
   const [active, setActive] = useState(false);
   const toast = useToast();
@@ -88,7 +94,7 @@ export function useUploads(parentId: string | null, onSettled: () => void) {
       setItems((current) => [...current, ...queued]);
       setActive(true);
 
-      const landed: string[] = [];
+      const landed: NodeRecord[] = [];
       for (const [index, file] of files.entries()) {
         const item = queued[index];
         if (!item) continue;
@@ -98,7 +104,7 @@ export function useUploads(parentId: string | null, onSettled: () => void) {
             onProgress: (progress: UploadProgress) => patch(item.key, progress),
           });
           patch(item.key, { status: "done", landedAs: node.name, loaded: file.size });
-          landed.push(node.name);
+          landed.push(node);
         } catch (err) {
           patch(item.key, { status: "failed", error: (err as Error).message });
         }
@@ -111,12 +117,13 @@ export function useUploads(parentId: string | null, onSettled: () => void) {
       if (landed.length > 0)
         toast.add({
           intent: "success",
-          title: landed.length === 1 ? `Uploaded ${landed[0]}` : `Uploaded ${landed.length} files`,
+          title:
+            landed.length === 1 ? `Uploaded ${landed[0]?.name}` : `Uploaded ${landed.length} files`,
         });
 
       if (gone.current) return;
       setActive(false);
-      onSettled();
+      onSettled(landed);
     },
     [onSettled, parentId, patch, toast],
   );
