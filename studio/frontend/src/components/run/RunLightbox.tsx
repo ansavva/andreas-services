@@ -53,7 +53,7 @@ import { LoadError } from "../common/LoadError";
 import { pressInApp } from "../common/pressInApp";
 import { SectionLoading } from "../common/SectionLoading";
 import { CharacterChipLink } from "../character/CharacterChip";
-import { USE_AS_GROUP, USE_AS_ROLES, USE_AS_WORDS } from "../create/attachActions";
+import { USE_AS_GROUP, USE_AS_WORDS, useAsRoles } from "../create/attachActions";
 import { CompareStage, type ComparePicture } from "../media/CompareStage";
 import { MediaPlayer, type MediaPlayerControls } from "../media/MediaPlayer";
 import { MediaThumb } from "../media/MediaThumb";
@@ -828,12 +828,10 @@ function ActionGrid({
           label="Edit"
           onClick={actions.edit}
         />
-        {/* A still only: every role a tile stands for is a picture, and a
-            clip attached as one was sent to a field that refuses it. The
-            same three lines every tile's menu offers (`attachActions`). */}
+        {/* Three cells for a still, one for a clip: the same lines every
+            tile's menu offers (`attachActions`), decided by the kind. */}
         {asset &&
-          still &&
-          USE_AS_ROLES.map((role) => {
+          useAsRoles(still ? "image" : "video").map((role) => {
             const { label, icon: Icon } = USE_AS_WORDS[role];
             return (
               <Cell

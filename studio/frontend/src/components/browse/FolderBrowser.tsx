@@ -539,14 +539,13 @@ export function FolderBrowser({
     (file: FileEntry): MenuAction[] => {
       const favorite = favorites.isFavorite(file.id);
       return [
-        // A still only: every role a tile stands for is a picture, and a clip
-        // attached as one is sent to a field that refuses it.
-        ...(file.kind === "image"
-          ? attachActions(
-              { node: file.id, url: file.url, name: file.name, kind: "object" },
-              bar.attach,
-            )
-          : []),
+        // Three lines for a picture, one for a clip, none for anything else —
+        // `attachActions` decides by the file's kind.
+        ...attachActions(
+          { node: file.id, url: file.url, name: file.name, kind: "object" },
+          bar.attach,
+          file.kind,
+        ),
         {
           key: "favorite",
           label: favorite ? "Remove from favorites" : "Add to favorites",

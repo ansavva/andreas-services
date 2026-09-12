@@ -60,10 +60,11 @@ export function OutputTile({
    * What this output offers, in the order a person reaches for it: make
    * something from it, then take it away with you.
    *
-   * **A still only, for four of them.** Every role a picture can fill is a
-   * picture — a clip attached as a reference or a frame is sent to a field
-   * that refuses it — and the upscaler takes an image. Download is the one
-   * that means the same thing for both.
+   * **A still offers three roles and Upscale; a clip offers one role.** A
+   * picture can be a reference or a frame, a clip can be the clip a model
+   * works from, and each sent as the other is a field that refuses it — so
+   * `attachActions` draws by kind. The upscaler takes an image. Download
+   * means the same thing for both.
    */
   const menu: MenuAction[] = [
     {
@@ -72,12 +73,14 @@ export function OutputTile({
       icon: <RerunIcon className={GLYPH} />,
       onSelect: () => actions.outputAgain(asset, index),
     },
+    ...attachActions(
+      refOfOutput(row, asset, index),
+      (_, role) => actions.useAs(asset, index, role),
+      video ? "video" : "image",
+    ),
     ...(video
       ? []
       : [
-          ...attachActions(refOfOutput(row, asset, index), (_, role) =>
-            actions.useAs(asset, index, role),
-          ),
           {
             key: "upscale",
             label: "Upscale",
