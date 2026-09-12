@@ -209,7 +209,7 @@ it("a picture in the grid is attached to the create bar as a reference", async (
   );
 });
 
-it("a clip's menu offers no reference — a reference is a picture", async () => {
+it("a clip's menu offers the clip, and its first frame as what a picture can be", async () => {
   list.mockResolvedValue(
     listing({
       files: [
@@ -230,7 +230,11 @@ it("a clip's menu offers no reference — a reference is a picture", async () =>
   await screen.findByText("clip.mp4");
 
   openTileMenu("clip.mp4");
-  expect(screen.queryByRole("menuitem", { name: "Reference" })).toBeNull();
+  // The clip itself is one thing to the bar; a reference is a picture, so the
+  // three picture roles are offered for its FIRST FRAME, under their own word.
+  expect(screen.getByRole("menuitem", { name: "Clip" })).toBeTruthy();
+  expect(screen.getByText("First frame as")).toBeTruthy();
+  expect(screen.getAllByRole("menuitem", { name: "Reference" })).toHaveLength(1);
   // The lines that are not about being a picture are still there.
   expect(screen.getByRole("menuitem", { name: "Download" })).toBeTruthy();
 });

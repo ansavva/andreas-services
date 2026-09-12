@@ -378,7 +378,14 @@ page and a plain textarea over its literal bytes, and never offers fields.
   the registry's `clips.source` — because a clip sent as a frame, or a still
   sent as the clip, is a field that refuses it; `attachActions` decides by the
   file's kind, once. On the create sheet the same role is the Clip tile, whose
-  picker lists videos only. A group is a `MenuAction.group`:
+  picker lists videos only. A clip's menu also carries a second group,
+  **First frame as** Reference / Start frame / End frame: `useFirstFrame`
+  asks the render worker for the clip's opening still (`POST /api/renders`,
+  `kind: frame, at: 0`, into the project's input pool), polls the row, and
+  attaches the frame — not the clip — in that role. It exists because a
+  motion-transfer still is drawn to match the clip's first frame, and the
+  frame used to be a `studio frames at … --add-input` and a walk back
+  through the picker. A group is a `MenuAction.group`:
   a heading and hairlines, flat, because the `Dropdown` has no submenu and a
   sheet-in-a-sheet on a phone would be worse than three lines. It used to be six glyphs in the tile's corners, revealed on
   hover: `opacity-0` hides a control without disarming it, so a press aimed at

@@ -110,6 +110,32 @@ Every submission is a run under `<project>/runs/<run_id>/`, holding
 it; a run left unpolled closes on the callback or on `studio runs reconcile`.
 Inspect with `studio runs` (`list` / `show` / `outputs --presign`).
 
+## Make the still from the clip's first frame
+
+The transfer holds together when the still's pose and framing already match
+the clip's opening frame. Hand it a still in a different pose and the first
+second is the model dragging `<name>` into position — and the identity is
+what gives. So the still is made *from* that frame, three steps, two of
+which bill:
+
+1. **Take the clip's first frame.** In the app: the clip's `⋮` menu (a
+   folder tile, a run's output, the open file) → **First frame as ·
+   Reference**. The worker cuts the frame into the project's input pool and
+   it lands on the create bar. From a terminal:
+   `studio frames at <project>/latest --time 0 --add-input`.
+2. **Render `<name>` into it.** An image model with the frame as a
+   reference and the character's identity images alongside —
+   `studio-media-gpt-image-2` by default — with a prompt that names the
+   swap: *"`<name>` in exactly this pose, framing and setting; replace the
+   person, keep everything else."* Check the result against the frame
+   before going on: same crop, same limb positions, whole body visible.
+3. **Run the transfer** with that render as `--start-run` and the same clip
+   as `--clip-run` (or the Start frame and Clip tiles).
+
+Step 1 is why "First frame as" exists on a clip's menu; a clip attached
+as a start frame would be refused, and walking the picker back to a frame
+you just cut was the old route.
+
 ## Getting the pairing right
 
 The README's tips, restated as the failures they prevent:

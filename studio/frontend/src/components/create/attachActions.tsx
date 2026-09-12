@@ -59,10 +59,19 @@ export const USE_AS_WORDS: Record<
  */
 export const USE_AS_GROUP = "Use as";
 
+/**
+ * The heading over a clip's second set of lines: its FIRST FRAME, as any of
+ * the three things a picture can be. A motion-transfer still is drawn to
+ * match the clip's opening frame — `useFirstFrame` says why — so the frame
+ * is offered wherever the clip is, one press from the picture it starts.
+ */
+export const FIRST_FRAME_GROUP = "First frame as";
+
 const GLYPH = "size-4 shrink-0 fill-none stroke-current stroke-[1.5]";
 
 /**
- * The menu lines for one file: three for a picture, one for a clip, none for
+ * The menu lines for one file: three for a picture; for a clip, one — and
+ * three more for its first frame when the caller can take one; none for
  * anything else.
  *
  * `attach` is `useCreateBar().attach` — a frame or the clip switches the bar
@@ -70,13 +79,20 @@ const GLYPH = "size-4 shrink-0 fill-none stroke-current stroke-[1.5]";
  * `holdsOne`. `kind` is the file's own, so a caller no longer gates on it: a
  * clip offered as a frame would be sent to a field that refuses it, and this
  * is where that is decided, once.
+ *
+ * `firstFrame` is `useFirstFrame().take`: it asks the worker for the clip's
+ * opening still and attaches THAT in the role, which is why the lines read
+ * `First frame as · Reference` rather than `Use as`. A caller with no bar
+ * target to put the frame in still passes it — the hook says so in a toast,
+ * which is better than a line that is sometimes missing.
  */
 export function attachActions(
   ref: AttachRef,
   attach: (ref: AttachRef, role: AttachRole) => void,
   kind: string = "image",
+  firstFrame?: (ref: AttachRef, role: AttachRole) => void,
 ): MenuAction[] {
-  return rolesOfKind(kind).map((role) => {
+  const own: MenuAction[] = rolesOfKind(kind).map((role) => {
     const { label, icon: Icon } = USE_AS_WORDS[role];
     return {
       key: `use-as-${role}`,
@@ -86,4 +102,16 @@ export function attachActions(
       onSelect: () => attach(ref, role),
     };
   });
+  if (kind !== "video" || !firstFrame) return own;
+  const frame: MenuAction[] = USE_AS_ROLES.map((role) => {
+    const { label, icon: Icon } = USE_AS_WORDS[role];
+    return {
+      key: `first-frame-as-${role}`,
+      group: FIRST_FRAME_GROUP,
+      label,
+      icon: <Icon className={GLYPH} />,
+      onSelect: () => firstFrame(ref, role),
+    };
+  });
+  return [...own, ...frame];
 }

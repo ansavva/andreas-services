@@ -425,7 +425,7 @@ describe("using the open file in the create bar", () => {
     );
   });
 
-  it("offers a clip as the clip, and as nothing a picture is", async () => {
+  it("offers a clip as the clip, and its first frame as what a picture can be", async () => {
     tree.mockResolvedValue(
       listing([file(OPEN, "b.mp4", { kind: "video", content_type: "video/mp4" })]),
     );
@@ -433,8 +433,8 @@ describe("using the open file in the create bar", () => {
     await waitFor(() => expect(screen.getByText(/1 of 1/)).toBeTruthy());
 
     openUseAs();
-    expect(screen.queryByRole("menuitem", { name: "Start frame" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Reference" })).toBeNull();
+    expect(screen.getByText("First frame as")).toBeTruthy();
+    expect(screen.getAllByRole("menuitem", { name: "Start frame" })).toHaveLength(1);
     fireEvent.click(screen.getByRole("menuitem", { name: "Clip" }));
     expect(screen.getByTestId("bar")).toHaveProperty("textContent", `clip:${OPEN}`);
   });

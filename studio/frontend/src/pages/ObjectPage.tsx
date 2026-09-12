@@ -31,6 +31,7 @@ import { ObjectControls, ObjectDetails } from "../components/viewer/ObjectAside"
 import { OwnerLink } from "../components/viewer/OwnerLink";
 import { ViewerFrame } from "../components/viewer/ViewerFrame";
 import { useCreateBar, type AttachRole } from "../context/CreateBarContext";
+import { useFirstFrame } from "../hooks/useFirstFrame";
 import { useKeyboardNav } from "../hooks/useKeyboardNav";
 import { useResource } from "../hooks/useResource";
 import { useViewerFeed } from "../hooks/useViewerFeed";
@@ -94,6 +95,7 @@ export function ObjectPage() {
   const feed = useViewerFeed(source, nodeId, sort);
   const crumbs = useSourceCrumbs(source);
   const bar = useCreateBar();
+  const firstFrame = useFirstFrame();
 
   /**
    * The player's own container and controls, held in state rather than in refs.
@@ -419,6 +421,14 @@ export function ObjectPage() {
           { node: current.id, url: current.url, name: current.name, kind: "object" },
           role,
         );
+  /** The open clip's first frame to the bar — the still a motion run is drawn to match. */
+  const firstFrameAs = isVideo
+    ? (role: AttachRole) =>
+        firstFrame.take(
+          { node: current.id, url: current.url, name: current.name, kind: "object" },
+          role,
+        )
+    : undefined;
 
   /**
    * Every way of putting the drawer away asks the form first.
@@ -583,6 +593,7 @@ export function ObjectPage() {
           editing={editing}
           onToggleEditing={toggleEditing}
           onUseAs={useAs}
+          onFirstFrameAs={firstFrameAs}
         />
 
         <ObjectDetails

@@ -20,6 +20,8 @@ import type {
   ProjectInputs,
   ProjectRecord,
   ProjectSummary,
+  RenderJob,
+  RenderedFrame,
   EntryKind,
   Depth,
   NodeListing,
@@ -834,6 +836,51 @@ export function setProjectCharacters(id: string, characters: string[]) {
 /** The working pool, numbered — what `--input N` addresses. */
 export function getProjectInputs(id: string) {
   return apiGet<ProjectInputs>(`/api/projects/${encodeURIComponent(id)}/inputs`);
+}
+
+// ── renders ────────────────────────────────────────────────────────────────
+//
+// The worker's queue. A 202 and a row to poll — `services/render.py` argues
+// the design; the CLI's `domain/renders.py` is the other client of it.
+
+export function createRender(kind: RenderJob["kind"], params: Record<string, unknown>) {
+  return apiSend<RenderJob>("POST", "/api/renders", { kind, params });
+}
+
+export function getRender(id: string) {
+  return apiGet<RenderJob>(`/api/renders/${encodeURIComponent(id)}`);
+}
+
+/** How often to ask, and how long to keep asking. A frame grab is seconds; a cold worker is more. */
+const RENDER_POLL_MS = 2000;
+const RENDER_TIMEOUT_MS = 180_000;
+
+/**
+ * Ask the worker for one still out of a clip, and wait for it.
+ *
+ * `at` is seconds from the start — `0` is the first frame, which is what a
+ * motion-transfer still is drawn to match. The frame lands in `dest` under
+ * `name` (numbered if that name is taken) and comes back as the node the
+ * worker made. Resolves to the asset; rejects with the job's own error, or
+ * with a timeout that leaves the job running — the row is still there.
+ */
+export async function grabFrame(params: {
+  node: string;
+  at: number;
+  dest: string;
+  name: string;
+}): Promise<RenderedFrame> {
+  const job = await createRender("frame", params);
+  const until = Date.now() + RENDER_TIMEOUT_MS;
+  let current = job;
+  while (current.status === "queued" || current.status === "running") {
+    if (Date.now() > until) throw new Error("The frame is taking too long; try again in a moment.");
+    await new Promise((resolve) => setTimeout(resolve, RENDER_POLL_MS));
+    current = await getRender(job.id);
+  }
+  if (current.status === "failed" || !current.result)
+    throw new Error(current.error ?? "The frame could not be taken.");
+  return current.result.frame as RenderedFrame;
 }
 
 export function getProjectScenes(id: string) {

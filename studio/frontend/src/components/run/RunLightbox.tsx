@@ -53,7 +53,13 @@ import { LoadError } from "../common/LoadError";
 import { pressInApp } from "../common/pressInApp";
 import { SectionLoading } from "../common/SectionLoading";
 import { CharacterChipLink } from "../character/CharacterChip";
-import { USE_AS_GROUP, USE_AS_WORDS, rolesOfKind } from "../create/attachActions";
+import {
+  FIRST_FRAME_GROUP,
+  USE_AS_GROUP,
+  USE_AS_ROLES,
+  USE_AS_WORDS,
+  rolesOfKind,
+} from "../create/attachActions";
 import { CompareStage, type ComparePicture } from "../media/CompareStage";
 import { MediaPlayer, type MediaPlayerControls } from "../media/MediaPlayer";
 import { MediaThumb } from "../media/MediaThumb";
@@ -839,6 +845,21 @@ function ActionGrid({
                 icon={<Icon className={GLYPH} />}
                 label={`${USE_AS_GROUP} ${label.toLowerCase()}`}
                 onClick={() => actions.useAs(asset, output, role)}
+              />
+            );
+          })}
+        {/* A clip's first frame, as the three things a picture can be — the
+            still a motion-transfer run is drawn to match (`useFirstFrame`). */}
+        {asset &&
+          !still &&
+          USE_AS_ROLES.map((role) => {
+            const { label, icon: Icon } = USE_AS_WORDS[role];
+            return (
+              <Cell
+                key={`first-${role}`}
+                icon={<Icon className={GLYPH} />}
+                label={`${FIRST_FRAME_GROUP} ${label.toLowerCase()}`}
+                onClick={() => actions.firstFrameAs(asset, output, role)}
               />
             );
           })}
