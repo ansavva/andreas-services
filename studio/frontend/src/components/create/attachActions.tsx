@@ -28,8 +28,14 @@ export const USE_AS_ROLES = ["reference", "start", "end"] as const satisfies rea
 export const USE_AS_CLIP_ROLES = ["clip"] as const satisfies readonly AttachRole[];
 export type UseAsRole = (typeof USE_AS_ROLES)[number] | (typeof USE_AS_CLIP_ROLES)[number];
 
-/** The roles a file of this kind can be to the bar. Text and the rest: none. */
-export function useAsRoles(kind: string): readonly UseAsRole[] {
+/**
+ * The roles a file of this kind can be to the bar. Text and the rest: none.
+ *
+ * Not `useAsRoles`: a plain function whose name starts with `use` is a hook
+ * to `react-hooks/rules-of-hooks`, which then refuses it inside
+ * `attachActions` and behind a condition in the rail.
+ */
+export function rolesOfKind(kind: string): readonly UseAsRole[] {
   if (kind === "image") return USE_AS_ROLES;
   if (kind === "video") return USE_AS_CLIP_ROLES;
   return [];
@@ -70,7 +76,7 @@ export function attachActions(
   attach: (ref: AttachRef, role: AttachRole) => void,
   kind: string = "image",
 ): MenuAction[] {
-  return useAsRoles(kind).map((role) => {
+  return rolesOfKind(kind).map((role) => {
     const { label, icon: Icon } = USE_AS_WORDS[role];
     return {
       key: `use-as-${role}`,
