@@ -160,6 +160,7 @@ export function ObjectActions({
           actions={attachActions(
             { node: file.id, url: file.url, name: file.name, kind: "object" },
             (_, role) => onUseAs(role),
+            file.kind,
           ).map((action) => ({ ...action, group: undefined }))}
         />
       )}

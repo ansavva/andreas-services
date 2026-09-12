@@ -373,7 +373,12 @@ page and a plain textarea over its literal bytes, and never offers fields.
   every picture in the app offers the same three — a favorite's tile, a
   folder's tile, the open file's `Use as…` menu and the opened run's rail —
   each a plain `attach`: a frame switches the bar to video and replaces the
-  frame it held, a reference accumulates. A group is a `MenuAction.group`:
+  frame it held, a reference accumulates. A **clip** on any of those surfaces
+  offers one line instead, `Clip` — the video a model works from, bound to
+  the registry's `clips.source` — because a clip sent as a frame, or a still
+  sent as the clip, is a field that refuses it; `attachActions` decides by the
+  file's kind, once. On the create sheet the same role is the Clip tile, whose
+  picker lists videos only. A group is a `MenuAction.group`:
   a heading and hairlines, flat, because the `Dropdown` has no submenu and a
   sheet-in-a-sheet on a phone would be worse than three lines. It used to be six glyphs in the tile's corners, revealed on
   hover: `opacity-0` hides a control without disarming it, so a press aimed at

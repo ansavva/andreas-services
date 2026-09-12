@@ -55,7 +55,7 @@ export function CreateSettings({
   const skip = useMemo(() => {
     const images = entry.images ?? {};
     return new Set([
-      ...["prompt", images.refs, images.start, images.end].filter(
+      ...["prompt", images.refs, images.start, images.end, entry.clips?.source].filter(
         (key): key is string => typeof key === "string",
       ),
       ...resolveChips(entry, schema.data ?? null).map((chip) => chip.name),

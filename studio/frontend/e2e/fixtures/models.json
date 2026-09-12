@@ -189,6 +189,14 @@
     },
     "grok-imagine-video": {
       "aliases": [],
+      "clips": {
+        "accepts_ext": [
+          ".mp4",
+          ".mov",
+          ".webm"
+        ],
+        "source": "video"
+      },
       "images": {
         "accepts_ext": [
           ".jpg",
@@ -322,6 +330,13 @@
       "aliases": [
         "kling-replicate"
       ],
+      "clips": {
+        "accepts_ext": [
+          ".mp4",
+          ".mov"
+        ],
+        "source": "reference_video"
+      },
       "images": {
         "accepts_ext": [
           ".jpg",
@@ -998,6 +1013,69 @@
             "auto"
           ]
         }
+      }
+    },
+    "kling-v3-motion-control": {
+      "clips": {
+        "accepts_ext": [
+          ".mp4",
+          ".mov"
+        ],
+        "source": "video"
+      },
+      "images": {
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png"
+        ],
+        "end": null,
+        "max_refs": 0,
+        "refs": null,
+        "start": "image",
+        "start_excludes_refs": false
+      },
+      "key": "kling-v3-motion-control",
+      "kind": "video",
+      "model": "kwaivgi/kling-v3-motion-control",
+      "note": "Kling 3.0 Motion Control. Transfers the CHARACTER MOTION of a reference clip onto one still: `image` is the look (one .jpg/.jpeg/.png, 340-3850px, ratio 1:2.5..2.5:1, <=10MB), `video` is the motion (.mp4/.mov, <=100MB) and is REQUIRED. No duration, aspect_ratio, reference_images or last frame: length and framing follow the reference clip. `character_orientation` image = faces as in the still, clip <=10s; video = faces as in the clip, clip <=30s. `mode` std=720p, pro=1080p. `keep_original_sound` carries the clip's audio over. Bind the clip with --clip-run/--clip-key.",
+      "prompt": {
+        "max_chars": null
+      },
+      "skill": "studio-media-kling-v3-motion-control",
+      "snapshot": {
+        "character_orientation": {
+          "default": "image",
+          "enum": [
+            "image",
+            "video"
+          ]
+        },
+        "keep_original_sound": {
+          "default": true
+        },
+        "mode": {
+          "default": "pro",
+          "enum": [
+            "std",
+            "pro"
+          ]
+        },
+        "prompt": {
+          "default": ""
+        }
+      },
+      "video": {
+        "allow_intelligent_duration": false,
+        "image_tokens": false,
+        "max_cuts": null,
+        "negative": "prompt",
+        "resolution_field": "mode",
+        "resolution_map": {
+          "1080p": "pro",
+          "720p": "std"
+        },
+        "technical": "api"
       }
     }
   }

@@ -2984,9 +2984,11 @@ def source_of(record: dict) -> dict:
 
 SEND_PREFIX = "SEND#"
 
-#: What an image is FOR. The same four words a storyboard panel uses, minus
-#: `sample` — a sample binds to nothing, so it never becomes a send.
-SEND_ROLES = frozenset({"start", "end", "reference", "input"})
+#: What a send is FOR. The four image words a storyboard panel uses, minus
+#: `sample` — a sample binds to nothing, so it never becomes a send — plus
+#: `clip`: the one video a model works from (a motion reference, an edit
+#: source), which the registry names under `clips.source`.
+SEND_ROLES = frozenset({"start", "end", "reference", "input", "clip"})
 
 #: Everything a send row holds. All four are AUTHORED; a send has no recorded
 #: half, which is the one way it differs from a shot. That is also why

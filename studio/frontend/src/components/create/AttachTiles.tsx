@@ -12,6 +12,7 @@ import {
   PencilIcon,
   StartFrameIcon,
   SwapIcon,
+  VideoIcon,
 } from "../common/icons";
 import { isNodeDrag, readNodeDrag } from "./dragRef";
 import { ROLES_BY_KIND, ROLE_WORDS, fieldFor } from "./roles";
@@ -21,6 +22,7 @@ const ROLE_ICONS: Record<AttachRole, (props: { className?: string }) => ReactEle
   input: PencilIcon,
   start: StartFrameIcon,
   end: FrameEndIcon,
+  clip: VideoIcon,
 };
 
 const GLYPH = "size-4 shrink-0 fill-none stroke-current stroke-[1.5]";
@@ -65,6 +67,15 @@ function blockedReason(
 }
 
 /**
+ * Whether a dragged node may land on this role. A drag carries a still —
+ * `MediaThumb` never starts one on a clip — and the clip cell takes only a
+ * video, so a drop there is refused and the picker is the way in.
+ */
+function takesDrop(of: AttachRole): boolean {
+  return of !== "clip";
+}
+
+/**
  * Where a picture dropped on the sheet but on no particular tile goes.
  *
  * The tiles name a role; the rest of the sheet does not, and a drop there is
@@ -80,6 +91,7 @@ export function fallbackDropRole(
   attachments: readonly Attachment[],
 ): AttachRole | null {
   const roles = rolesOf(kind, entry);
+  // No `clip`: a drop is a still, and a still is not a clip.
   const order: AttachRole[] = ["reference", "input", "start", "end"];
   return (
     order.find(
@@ -159,6 +171,7 @@ export function AttachTiles({
   const end = held("end")[0];
   const refs = held("reference");
   const input = held("input")[0];
+  const clip = held("clip")[0];
 
   // The model's own rules, as which tile is blocked and why.
   const blocked = (of: AttachRole): string | null => blockedReason(of, entry, attachments);
@@ -175,7 +188,7 @@ export function AttachTiles({
    * the containment test works.
    */
   const dropTarget = (of: AttachRole) => {
-    const refused = blocked(of) !== null;
+    const refused = blocked(of) !== null || !takesDrop(of);
     return {
       onDragEnter: (event: DragEvent) => {
         if (!isNodeDrag(event) || refused) return;
@@ -295,6 +308,26 @@ export function AttachTiles({
             />
           </div>
         )}
+
+        {roles.includes("clip") && (
+          <div role="group" aria-label={ROLE_WORDS.clip.label} data-role-cell="clip" className="contents">
+            {clip ? (
+              <Thumb
+                attachment={clip.attachment}
+                caption="Clip"
+                onPress={() => onRole(role === "clip" ? null : "clip")}
+                onDetach={() => onDetach(clip.index)}
+              />
+            ) : (
+              <Ghost
+                role="clip"
+                on={role === "clip"}
+                blocked={null}
+                onPress={() => onRole(role === "clip" ? null : "clip")}
+              />
+            )}
+          </div>
+        )}
       </div>
 
     </div>
@@ -365,7 +398,18 @@ export function Thumb({
         className="relative block size-full overflow-hidden rounded-md bg-fill p-0 hover:bg-fill"
         onClick={onPress}
       >
-        <img src={ref.url ?? undefined} alt="" className="size-full object-cover" />
+        {role === "clip" ? (
+          // `preload="metadata"` is the free poster frame; nothing plays here.
+          <video
+            src={ref.url ?? undefined}
+            muted
+            playsInline
+            preload="metadata"
+            className="size-full object-cover"
+          />
+        ) : (
+          <img src={ref.url ?? undefined} alt="" className="size-full object-cover" />
+        )}
         {/* The word over the picture's foot, on a scrim, the way ElevenLabs
             labels `@Image 1`. */}
         <span className="absolute inset-x-0 bottom-0 truncate bg-overlay-scrim/60 px-1 py-0.5 text-center text-[11px] font-medium text-overlay-ink">

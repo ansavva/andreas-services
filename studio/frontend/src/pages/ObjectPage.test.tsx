@@ -425,14 +425,18 @@ describe("using the open file in the create bar", () => {
     );
   });
 
-  it("offers nothing on a clip — every role is a picture", async () => {
+  it("offers a clip as the clip, and as nothing a picture is", async () => {
     tree.mockResolvedValue(
       listing([file(OPEN, "b.mp4", { kind: "video", content_type: "video/mp4" })]),
     );
     open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
     await waitFor(() => expect(screen.getByText(/1 of 1/)).toBeTruthy());
 
-    expect(screen.queryByRole("button", { name: "Use as…" })).toBeNull();
+    openUseAs();
+    expect(screen.queryByRole("menuitem", { name: "Start frame" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Reference" })).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Clip" }));
+    expect(screen.getByTestId("bar")).toHaveProperty("textContent", `clip:${OPEN}`);
   });
 });
 

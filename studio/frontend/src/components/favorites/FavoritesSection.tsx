@@ -79,13 +79,12 @@ export function FavoritesSection({
 
   const tileActions = useCallback(
     (file: FavoriteEntry): MenuAction[] => [
-      // A still only: every role a picture can fill is a picture.
-      ...(file.kind === "image"
-        ? attachActions(
-            { node: file.id, url: file.url, name: file.name, kind: "object" },
-            bar.attach,
-          )
-        : []),
+      // Three lines for a picture, one for a clip, none for anything else.
+      ...attachActions(
+        { node: file.id, url: file.url, name: file.name, kind: "object" },
+        bar.attach,
+        file.kind,
+      ),
       {
         key: "favorite",
         label: "Remove from favorites",

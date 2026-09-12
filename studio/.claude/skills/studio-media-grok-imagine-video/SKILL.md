@@ -91,26 +91,21 @@ The `video` input takes a clip and changes it from a prompt, preserving
 everything not mentioned. Nothing else in the registry does this, so the
 alternative is always a full re-render.
 
-**There is no binding flag for it.** `--start-run`, `--ref-run` and friends map
-onto the registry's first-frame / last-frame / reference fields; `video` is none
-of those, so nothing binds a stored object to it. Editing therefore takes two
-steps — and note `presign` needs `--key` for an exact object: a bare positional
-is a *basename*, meaningful only alongside `--folder`.
+The clip binds like a frame: `--clip-run` takes an earlier run's output,
+`--clip-key` a node id or name path. It is a **send** with the role `clip`, so
+the run records which object it edited and the presigned URL is minted at
+submit — the same S3-only path a start frame takes. The model accepts
+`.mp4/.mov/.webm`; anything else is refused by name before a draft is written.
 
 ```bash
-studio presign --key <path>       # temporary HTTPS URL for that exact object
 studio run --model grok-imagine-video --project <project> \
+  --clip-run <project>/latest \
   --prompt "Add a silver necklace to the woman." \
-  --extra '{"video": "<the presigned URL>"}' \
   --name <file> --poll
 ```
 
-That still satisfies S3-only origin — the clip originates in the bucket and
-reaches the model as a short-lived presigned URL, which is the rule. But note
-what it costs: `--extra` is merged into the payload verbatim, so the clip is
-**not** recorded in `request.json` as an S3 key the way a bound image is. The run
-will not tell you which object it edited. Until a binding flag exists, note the
-source key in the output name or keep the pairing yourself.
+In the app the same thing is the **Clip** tile on the create sheet, whose
+picker lists videos only.
 
 Output inherits the input's duration, ratio and resolution, so `duration`,
 `resolution` and `aspect_ratio` are all ignored in this mode.

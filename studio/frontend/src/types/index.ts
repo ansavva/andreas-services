@@ -1,6 +1,6 @@
 /** Shapes returned by the studio API. Mirrors `studio_core.services`. */
 
-type MediaKind = "image" | "video" | "text" | "other";
+export type MediaKind = "image" | "video" | "text" | "other";
 
 /**
  * Mirrors `browse.SORTS`. `newest` is the default on both sides: this is a
@@ -851,7 +851,7 @@ export interface RunSend extends RunAsset {
   /** The model input this binds to, e.g. `image_input`, `start_image`. */
   field: string;
   /** `null` on a run backfilled from a model the registry does not list. */
-  role: "start" | "end" | "reference" | "input" | null;
+  role: "start" | "end" | "reference" | "input" | "clip" | null;
   source: RunSendSource;
 }
 
@@ -1064,6 +1064,15 @@ export interface ModelEntry {
     start_counts_toward_max_refs?: boolean;
     start_excludes_refs?: boolean;
     end_excludes_refs?: boolean;
+  };
+  /**
+   * The one input that takes a CLIP — a motion reference, an edit source —
+   * with its own accepted extensions. Absent on a model that takes none, and
+   * kept apart from `images`: a clip is not a still with a longer extension.
+   */
+  clips?: {
+    source?: string | null;
+    accepts_ext?: string[];
   };
   prompt?: { max_chars?: number | null; recommended_words?: number | null };
   note?: string;

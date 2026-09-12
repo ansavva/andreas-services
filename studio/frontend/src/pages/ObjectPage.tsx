@@ -403,16 +403,16 @@ export function ObjectPage() {
   const removeThis = () => remove(current);
 
   /**
-   * The open picture, attached to the create bar — as a reference, a start
-   * frame or an end frame.
+   * The open file, attached to the create bar — a picture as a reference, a
+   * start frame or an end frame; a clip as the clip a model works from.
    *
-   * **A still only.** Every role is a picture; a clip attached as one is sent
-   * to a field that refuses it, which is the rule `OutputTile` and the run's
-   * rail already carry. The bar's own picker walks the same tree, so this is a
-   * shortcut rather than a second way in — but it is the shortcut from the one
-   * place a person is already looking at the picture they want.
+   * Which lines are offered is the file's kind's to decide (`attachActions`),
+   * which is the rule `OutputTile` and the run's rail carry too. The bar's own
+   * picker walks the same tree, so this is a shortcut rather than a second way
+   * in — but it is the shortcut from the one place a person is already looking
+   * at the thing they want. Text has no role, and no menu.
    */
-  const useAs = isVideo
+  const useAs = isText
     ? undefined
     : (role: AttachRole) =>
         bar.attach(

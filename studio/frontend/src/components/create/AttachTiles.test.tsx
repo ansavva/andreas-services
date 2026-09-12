@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Attachment } from "../../context/CreateBarContext";
 import type { ModelEntry } from "../../types";
 import { fallbackDropRole } from "./AttachTiles";
+import { fieldFor, sendsOf } from "./roles";
 
 const STILL: ModelEntry = {
   key: "still",
@@ -20,6 +21,17 @@ const MOTION: ModelEntry = {
   skill: "studio-media-motion",
   images: { refs: null, start: "start_image", end: "end_image" },
   snapshot: { refreshed: "2026-08-15" },
+};
+
+/** A motion-transfer model: one still, one clip, nothing else. */
+const TRANSFER: ModelEntry = {
+  key: "transfer",
+  model: "v/transfer",
+  kind: "video",
+  skill: "studio-media-transfer",
+  images: { refs: null, start: "image", end: null, max_refs: 0 },
+  clips: { source: "video", accepts_ext: [".mp4", ".mov"] },
+  snapshot: { refreshed: "2026-09-12" },
 };
 
 const held = (role: Attachment["role"], node = `node-${role}`): Attachment => ({
@@ -45,5 +57,31 @@ describe("fallbackDropRole", () => {
     expect(fallbackDropRole("video", MOTION, [])).toBe("start");
     expect(fallbackDropRole("video", MOTION, [held("start")])).toBe("end");
     expect(fallbackDropRole("video", MOTION, [held("start"), held("end")])).toBeNull();
+  });
+
+  it("never lands a dropped still on the clip", () => {
+    expect(fallbackDropRole("video", TRANSFER, [])).toBe("start");
+    expect(fallbackDropRole("video", TRANSFER, [held("start")])).toBeNull();
+  });
+});
+
+/**
+ * The clip is the one video a model works from. It binds to the field the
+ * registry names under `clips.source`, and a model that names none has no
+ * such role — the tile is hidden and an attachment in that role is dropped.
+ */
+describe("the clip role", () => {
+  it("binds to the registry's clip field, and to nothing on a model without one", () => {
+    expect(fieldFor("clip", TRANSFER)).toBe("video");
+    expect(fieldFor("clip", MOTION)).toBeNull();
+  });
+
+  it("travels as a send with its role", () => {
+    const sends = sendsOf([held("start"), held("clip")], TRANSFER);
+    expect(sends).toEqual([
+      { field: "image", role: "start", node: "node-start" },
+      { field: "video", role: "clip", node: "node-clip" },
+    ]);
+    expect(sendsOf([held("clip")], MOTION)).toEqual([]);
   });
 });

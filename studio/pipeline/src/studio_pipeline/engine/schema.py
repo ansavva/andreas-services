@@ -122,9 +122,9 @@ def check(
 ) -> list[str]:
     """Reject anything `model` will not accept. Raises SchemaError on the first fault.
 
-    Checks unknown fields, enum membership, and numeric range. `bindings` are
-    checked for field NAME only — their values are node ids here and become
-    presigned URLs later, so there is nothing to range-check.
+    Checks unknown fields, required fields, enum membership, and numeric
+    range. `bindings` are checked for field NAME only — their values are node
+    ids here and become presigned URLs later, so there is nothing to range-check.
 
     `alternatives` maps sibling model name -> its input properties. When a field
     is unknown here but valid there, the error names the model that takes it,
@@ -145,6 +145,20 @@ def check(
                 lines.append(f"  `{field}` is accepted by: {', '.join(takers)}")
         lines.append(f"  valid inputs: {sorted(props)}")
         raise SchemaError("\n".join(lines))
+
+    # **Required inputs, before enums.** The provider checks these too, but
+    # only once the request is out — after the run has moved to `pending`, so
+    # a missing required field wedged a draft instead of refusing it. A
+    # required field is satisfied by a payload value or a binding; a binding is
+    # a node that becomes a URL at dispatch, which is what a `format: uri`
+    # field wants.
+    required = (schemas.get("Input") or {}).get("required") or []
+    missing = [k for k in required if k not in bindings and payload.get(k) is None]
+    if missing:
+        raise SchemaError(
+            f"{model} requires {sorted(missing)} and the payload has no value for "
+            f"{'it' if len(missing) == 1 else 'them'}. Valid inputs: {sorted(props)}"
+        )
 
     for key, value in payload.items():
         spec = props.get(key, {})
