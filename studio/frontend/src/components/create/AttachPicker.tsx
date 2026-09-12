@@ -29,6 +29,7 @@ import { TagFilter } from "../browse/TagFilter";
 import { UploadButton } from "../browse/UploadButton";
 import { UploadStatus } from "../browse/UploadStatus";
 import { EmptyState } from "../common/EmptyState";
+import { FilterBar } from "../common/FilterBar";
 import { ArrowUpIcon, CheckIcon, CloseIcon, FolderIcon } from "../common/icons";
 import { LoadError } from "../common/LoadError";
 import { SectionLoading } from "../common/SectionLoading";
@@ -286,7 +287,11 @@ export function AttachPicker({
         >
           Projects
         </Chip>
-        {entity && (
+        {/* Not at the project's own root: the pressed `Project` chip already
+            says where this is, and on a phone the one-crumb trail was a row
+            of its own repeating it. A character's root keeps its crumb —
+            no chip names it. */}
+        {entity && !(atRoot && entity.id === project?.id) && (
           <Breadcrumbs.Root>
             {trail.map((crumb, index, all) => (
               <Breadcrumbs.Item
@@ -307,17 +312,25 @@ export function AttachPicker({
 
       {entity && (
         <>
+          {/* One line: the sort, Upload, and the tag filter folded behind
+              `Filter` the way the Files page folds it — a count badge says
+              when a tag is narrowing the grid. It used to be an open input
+              with a note under it, three lines on a phone above a grid this
+              sheet exists to show; the tags are used seldom enough that a
+              press to reach them costs less than the rows they took.
+
+              The note about scope is for Folders only: Media is the branch
+              by definition, so "everything under it" says nothing there. */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* Wide enough that on a phone the filter takes a line of its own
-                and the sort and Upload drop under it, rather than all three
-                squeezing onto one. */}
-            <div className="min-w-56 flex-1">
-              <TagFilter value={tags} onChange={setTags} searching={deep} />
-            </div>
-            <div className="flex items-center gap-2">
-              <SortControl value={sort} onChange={setSort} />
-              <UploadButton onFiles={uploads.start} disabled={uploads.active} />
-            </div>
+            <SortControl value={sort} onChange={setSort} />
+            <UploadButton onFiles={uploads.start} disabled={uploads.active} />
+            <FilterBar activeCount={tags.length} onClear={() => setTags([])}>
+              <TagFilter
+                value={tags}
+                onChange={setTags}
+                searching={deep && view === VIEW_FOLDERS}
+              />
+            </FilterBar>
           </div>
           <UploadStatus items={uploads.items} onClearFinished={uploads.clearFinished} />
         </>
