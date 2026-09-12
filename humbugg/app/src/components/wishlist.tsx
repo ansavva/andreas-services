@@ -1,9 +1,9 @@
 // The structured wishlist (#128), on the model added in #127. Two audiences and two components:
 // `WishListPanel` is the owner editing their own list, `RecipientWishList` is the assigned giver
 // reading it after the draw.
-import { Badge, Button, Input, Select, Textarea } from '@ansavva/design-system';
+import { Badge, Button, Drawer, Input, Select, Textarea } from '@ansavva/design-system';
 import { useEffect, useState } from 'react';
-import { Linking, Pressable, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 
 import { api } from '../api/client';
 import { FieldLabel } from '../components/field';
@@ -32,6 +32,8 @@ export function WishListPanel({ groupId }: { groupId: string }) {
   const { styles } = theme;
   const local = localStyles(theme);
   const auth = useAuth();
+  const { width } = useWindowDimensions();
+  const drawerSide = width >= 768 ? 'right' : 'bottom';
   const [wishes, setWishes] = useState<Wish[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -88,15 +90,52 @@ export function WishListPanel({ groupId }: { groupId: string }) {
 
   return (
     <Card>
-      <Text style={styles.eyebrow}>Your wishlist</Text>
-      <Text style={[styles.heading, { marginTop: 4 }]}>What you would love</Text>
+      <View style={local.panelHeading}>
+        <View style={{ flex: 1, minWidth: 200 }}>
+          <Text style={styles.eyebrow}>Your wishlist</Text>
+          <Text style={[styles.heading, { marginTop: 4 }]}>What you would love</Text>
+        </View>
+        <Button size="sm" disabled={busy} onPress={() => { setAdding(true); setEditing(null); }}>
+          Add a wish
+        </Button>
+      </View>
       <Text style={[styles.smallMuted, { marginTop: 8 }]}>
         Only your assigned giver sees this, and only after the draw. Put the thing you want most at
         the top.
       </Text>
 
       <Text accessibilityLiveRegion="polite" style={local.srOnly}>{status ?? ''}</Text>
-      <StatusMessage message={error} />
+      {/* While the drawer is up the card is under a scrim, so a failure reports inside it instead. */}
+      <StatusMessage message={adding ? null : error} />
+
+      {/* Adding is a drawer over the list rather than a form unfolding under it, the same as
+          inviting on the People tab and starting a group on the dashboard: the list is the thing
+          on this card, and a wish is a task with a beginning and an end. Editing stays in place,
+          because a correction belongs next to the row it corrects. */}
+      <Drawer.Root open={adding} onOpenChange={setAdding} side={drawerSide}>
+        <Drawer.Panel accessibilityLabel="Add a wish" style={drawerSide === 'right' ? local.drawer : undefined}>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 8 }}>
+            <Drawer.Title>Add a wish</Drawer.Title>
+            <StatusMessage message={error} />
+            <WishForm
+              initial={emptyWishForm}
+              busy={busy}
+              // Only the ADD form reads links. Editing an existing wish is for correcting what is
+              // there, and re-fetching a page to overwrite it is the opposite of that.
+              groupId={groupId}
+              submitLabel="Add to my list"
+              onCancel={() => setAdding(false)}
+              onSubmit={async (values) => {
+                const saved = await run(
+                  (token) => api.createWish(token, groupId, toCreateInput(values)),
+                  `${values.title.trim()} added to your wishlist.`,
+                );
+                if (saved) setAdding(false);
+              }}
+            />
+          </ScrollView>
+        </Drawer.Panel>
+      </Drawer.Root>
 
       {loading ? (
         <View style={[styles.emptyPanel, { marginTop: 20 }]}>
@@ -148,34 +187,6 @@ export function WishListPanel({ groupId }: { groupId: string }) {
             Add a few things — a link, a rough idea, anything at all. It makes your giver&apos;s job
             much easier.
           </Text>
-        </View>
-      )}
-
-      {adding ? (
-        <View style={{ marginTop: gap.sm }}>
-          <WishForm
-            heading="Add a wish"
-            initial={emptyWishForm}
-            busy={busy}
-            // Only the ADD form reads links. Editing an existing wish is for correcting what is
-            // there, and re-fetching a page to overwrite it is the opposite of that.
-            groupId={groupId}
-            submitLabel="Add to my list"
-            onCancel={() => setAdding(false)}
-            onSubmit={async (values) => {
-              const saved = await run(
-                (token) => api.createWish(token, groupId, toCreateInput(values)),
-                `${values.title.trim()} added to your wishlist.`,
-              );
-              if (saved) setAdding(false);
-            }}
-          />
-        </View>
-      ) : (
-        <View style={{ marginTop: 20, alignSelf: 'flex-start' }}>
-          <Button disabled={busy} onPress={() => { setAdding(true); setEditing(null); }}>
-            Add a wish
-          </Button>
         </View>
       )}
     </Card>
@@ -297,7 +308,8 @@ function WishForm({
   onCancel,
   groupId,
 }: {
-  heading: string;
+  /** Absent in the drawer, which supplies its own title and frame. */
+  heading?: string;
   initial: WishFormValues;
   busy: boolean;
   submitLabel: string;
@@ -353,8 +365,8 @@ function WishForm({
   }
 
   return (
-    <View style={local.form}>
-      <Text style={[styles.small, styles.semibold]}>{heading}</Text>
+    <View style={heading ? local.form : undefined}>
+      {heading ? <Text style={[styles.small, styles.semibold]}>{heading}</Text> : null}
       <View style={{ marginTop: gap.md, gap: gap.md }}>
         <FieldLabel label="What is it?">
           <Input
@@ -643,6 +655,15 @@ const localStyles = scopedStyles((t) => ({
     padding: gap.md,
   },
   rowActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: gap.xs },
+  panelHeading: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: gap.md,
+  },
+  // Wide enough for a link per line, no wider than a phone.
+  drawer: { maxWidth: 480, width: '100%' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: gap.xs },
   form: { borderWidth: 1, borderColor: t.brand.line, borderRadius: 12, padding: gap.md },
   /**

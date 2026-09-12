@@ -348,8 +348,17 @@ function ExclusionsCard({
       <Text style={styles.eyebrow}>Exclusions</Text>
       <Text style={[styles.smallMuted, { marginTop: 8 }]}>People in a pair cannot draw one another.</Text>
       <View style={{ marginTop: 12, gap: 8 }}>
-        <Select aria-label="First person in the pair" options={options} value={first} placeholder="Choose person" onValueChange={setFirst} />
-        <Select aria-label="Second person in the pair" options={options} value={second} placeholder="Choose person" onValueChange={setSecond} />
+        {/* The two people sit beside each other because a pair is one thing, not a list of two;
+            stacked, each select read as its own question. They wrap under each other only when a
+            phone leaves no room for two names on a line. */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <View style={{ flex: 1, minWidth: 200 }}>
+            <Select aria-label="First person in the pair" options={options} value={first} placeholder="Choose person" onValueChange={setFirst} />
+          </View>
+          <View style={{ flex: 1, minWidth: 200 }}>
+            <Select aria-label="Second person in the pair" options={options} value={second} placeholder="Choose person" onValueChange={setSecond} />
+          </View>
+        </View>
         <View style={{ alignSelf: 'flex-start' }}>
           <Button intent="secondary" onPress={addPair}>Add</Button>
         </View>
