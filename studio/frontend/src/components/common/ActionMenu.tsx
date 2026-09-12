@@ -213,7 +213,7 @@ export function ActionMenu({
     // When neither side fits, take the roomier one rather than always falling
     // downward.
     setUpward(below < height && box.top > below);
-  }, [actions.length, align]);
+  }, [actions, align]);
 
   const wordOf = (action: MenuAction) =>
     action.arm
