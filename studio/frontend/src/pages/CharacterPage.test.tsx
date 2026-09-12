@@ -384,7 +384,7 @@ describe("adding and removing fields and sections", () => {
     fireEvent.click(within(card("face")).getByRole("button", { name: "Add field" }));
     fireEvent.change(screen.getByLabelText("Field name"), { target: { value: "Mouth & jaw" } });
     expect(screen.getByText(/Stored as/).textContent).toContain("mouth_jaw");
-    fireEvent.click(screen.getByRole("button", { name: "Add", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: /^Add$/ }));
 
     // Drawn like any other field, and empty.
     const added = screen.getByLabelText("Mouth jaw") as HTMLInputElement;
@@ -404,7 +404,7 @@ describe("adding and removing fields and sections", () => {
   it("refuses an empty or duplicate field name in place", async () => {
     await open();
     fireEvent.click(within(card("face")).getByRole("button", { name: "Add field" }));
-    const add = () => screen.getByRole("button", { name: "Add", exact: true }) as HTMLButtonElement;
+    const add = () => screen.getByRole("button", { name: /^Add$/ }) as HTMLButtonElement;
     expect(add().disabled).toBe(true);
 
     fireEvent.change(screen.getByLabelText("Field name"), { target: { value: "Hair" } });
