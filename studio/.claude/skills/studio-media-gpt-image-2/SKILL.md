@@ -1,14 +1,18 @@
 ---
 name: studio-media-gpt-image-2
-description: Render still images with OpenAI's GPT Image 2 (openai/gpt-image-2) on Replicate as a recorded run. The DEFAULT for character frames, and OpenAI's newest image model — strongest instruction-following and text rendering, the widest aspect list including explicit pixel sizes, and reference images held at high fidelity automatically. Use when a frame needs dense legible text, precise edits that preserve identity, or a non-standard output size. Cannot do transparent backgrounds — for those use studio-media-gpt-image-1-5.
+description: Render still images with OpenAI's GPT Image 2 (openai/gpt-image-2) on Replicate as a recorded run. The DEFAULT for character frames — strong instruction-following and text rendering, the widest aspect list including explicit pixel sizes, and reference images held at high fidelity automatically. Use when a frame needs dense legible text, precise edits that preserve identity, or a non-standard output size. Cannot do transparent backgrounds — for those use studio-media-gpt-image-1-5 or studio-media-gpt-image-2-5-sunburst. For an edit that must change one thing and keep the rest, or xhigh/max quality, see studio-media-gpt-image-2-5-sunburst.
 ---
 
 # studio-media-gpt-image-2
 
-`openai/gpt-image-2` — OpenAI's newest image model, and the most capable of the
-two GPT Image entries. **The default for a character frame**: reference images
-are held at high fidelity automatically, which is the property identity work
-turns on. No OpenAI key needed; it bills through Replicate.
+`openai/gpt-image-2` — the middle of the GPT Image entries here. **The default
+for a character frame**: reference images are held at high fidelity
+automatically, which is the property identity work turns on. No OpenAI key
+needed; it bills through Replicate.
+[`gpt-image-2.5-sunburst`](../studio-media-gpt-image-2-5-sunburst/SKILL.md)
+and [`gpt-image-2.5-flare`](../studio-media-gpt-image-2-5-flare/SKILL.md) are
+the newer pair — editing precision and speed respectively — carrying two
+higher quality tiers.
 
 > Invocation, hard rule #2, run recording and validation are shared —
 > see [`studio-media-core`](../studio-media-core/SKILL.md): `studio run --model gpt-image-2 …`,

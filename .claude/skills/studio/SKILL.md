@@ -18,12 +18,12 @@ surface live in `studio/CLAUDE.md` and in studio's own skills.
 
 ## Load studio's skills before doing the work
 
-Twenty-one skills live in `studio/.claude/skills/`, in two families. Route by what
+Twenty-three skills live in `studio/.claude/skills/`, in two families. Route by what
 the task **changes**, not by what it mentions:
 
 | Changing… | Load |
 |---|---|
-| media, or a catalog record — an image, a clip, a character, a project, a run, a scene, a movie | a **`studio-media-*`** skill (twenty) |
+| media, or a catalog record — an image, a clip, a character, a project, a run, a scene, a movie | a **`studio-media-*`** skill (twenty-two) |
 | studio's own code — anything under `pipeline/`, `backend/`, `frontend/`, `infra/` | **`studio-code-pipeline`** |
 
 The table naming each one is in `studio/CLAUDE.md`, under "Which skill".

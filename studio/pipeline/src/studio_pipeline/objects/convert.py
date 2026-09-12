@@ -129,7 +129,7 @@ def _source_name(key: str) -> str:
 # of the CLI surface and `test_help_text_survived` compares these strings against
 # it, so correcting the wording here is a contract change and not a comment fix.
 @click.option("--dest-key", help="Explicit destination S3 key instead.")
-@click.option("--for", "for_", type=click.Choice(["gpt-image-1.5", "gpt-image-2", "kling", "krea-2-large", "nano-banana-2", "nano-banana-pro", "seedance", "seedream-5-pro"]), help="Convert only if this engine would reject the current format.")
+@click.option("--for", "for_", type=click.Choice(["gpt-image-1.5", "gpt-image-2", "gpt-image-2.5-flare", "gpt-image-2.5-sunburst", "kling", "krea-2-large", "nano-banana-2", "nano-banana-pro", "seedance", "seedream-5-pro"]), help="Convert only if this engine would reject the current format.")
 @click.option("--key", help="Source S3 key (full).")
 @click.option("--project", help="Default project for a bare runref.")
 @click.option("--quality", type=int, default=95, help="JPEG/WebP quality (default 95).")
