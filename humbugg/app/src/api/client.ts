@@ -236,6 +236,10 @@ export const api = {
       token,
       json('POST'),
     ),
+  // The realtime channel (#691): a one-time, sixty-second ticket the socket connects with, so the
+  // access token never goes in a URL. Minted here, spent by the socket's `$connect`.
+  createRealtimeTicket: (token: string) =>
+    request<{ ticket: string; expires_at: string }>('/realtime/tickets', token, json('POST')),
   reveal: (token: string, id: string, reason: string) => request<{ assignments: RevealAssignment[] }>(`/groups/${id}/assignment/reveal`, token, json('POST', { reason })),
   previewLateParticipant: (token: string, id: string, memberId: string) =>
     request<LateParticipantPreview>(`/groups/${id}/late-participants/${memberId}/preview`, token, json('POST')),

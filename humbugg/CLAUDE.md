@@ -349,6 +349,34 @@ Group `humbugg-prod` with `cancel-in-progress: false` — queued pushes wait for
   per message. There is no message cap; a 2 s per-side flood gap is the only send limit
 - `humbugg-prod-email-messages` — stable transactional message IDs and delivery state
 
+- `humbugg-prod-chat-connections` — the realtime channel (#691). Two kinds of short-lived row
+  keyed by `connection_id`: a WebSocket **connection** (`user_id`, two-hour TTL) and a one-time
+  **ticket** (`ticket#…`, `user_id`, sixty-second TTL) that a `POST /api/realtime/tickets` mints
+  and the `$connect` authorizer spends. Keyed by user, never by who gives to whom. See the
+  realtime section below.
+
+## The realtime channel (#691)
+
+The anonymous chat is pushed, not polled. `modules/realtime` is an API Gateway **WebSocket** API on
+`wss://ws.humbugg.com` (a custom domain cannot mix WebSocket and HTTP APIs, hence the hostname —
+adding it to the certificate's SANs replaced the certificate, survivably). Two Lambdas run the
+backend image under `HUMBUGG_CONSUMER` modes: `realtime-authorizer` (a REQUEST authorizer on
+`$connect` that consumes the ticket in `?ticket=` and hands the user id on) and
+`realtime-connections` (`$connect` records the socket, `$disconnect` forgets it, `$default` drops
+client pings). The API Lambda pushes through the management endpoint
+(`HUMBUGG_REALTIME_ENDPOINT`, the `execute-api:ManageConnections` grant) when
+`QuestionService` appends a message or moves a seen marker.
+
+**A nudge is `{ type, group_id, side }` and nothing else** — no body, no name, no message id. The
+client refetches through the existing authorized GET. The access token never travels in the socket
+URL; the ticket does, and it is 256 random bits, single-use and dead in a minute.
+
+**A dev stack has no API Gateway**: with `HUMBUGG_REALTIME_ENDPOINT` unset the container hosts
+the sockets itself on `ws://127.0.0.1:5001/ws` (`InProcessRealtimeHub`, tickets and connections in
+memory) and the app connects to `EXPO_PUBLIC_REALTIME_URL`, which `dev-aws-setup.sh` writes.
+Unset in the app, there is no socket and the chat polls: 5 s while on screen, 30 s while not.
+Connected, the poll drops to a 60 s safety net.
+
 Profile photos are **not** in DynamoDB: the `humbugg-prod-profiles` row stores only an `avatar_key`
 reference, and the image bytes live under the `avatars/` prefix of the shared application object
 bucket `humbugg-prod-app-files-us-east-1` (Terraform `storage` module, `app_files` bucket — there is

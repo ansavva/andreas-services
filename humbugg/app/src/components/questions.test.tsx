@@ -45,6 +45,25 @@ jest.mock('../context/auth-context', () => ({
   useAuth: () => ({ accessToken: () => Promise.resolve('token'), authenticated: true }),
 }));
 
+// The push channel (#691), under the test's control: `nudge()` delivers to every subscriber and
+// `connected` paces the poll underneath.
+const mockRealtime = {
+  connected: false,
+  listeners: new Set<(nudge: { type: string; group_id: string; side: 'giver' | 'recipient' }) => void>(),
+  nudge(nudge: { type: string; group_id: string; side: 'giver' | 'recipient' }) {
+    for (const listener of mockRealtime.listeners) listener(nudge);
+  },
+};
+jest.mock('../context/realtime-context', () => ({
+  useRealtime: () => ({
+    connected: mockRealtime.connected,
+    subscribe: (listener: (nudge: { type: string; group_id: string; side: 'giver' | 'recipient' }) => void) => {
+      mockRealtime.listeners.add(listener);
+      return () => mockRealtime.listeners.delete(listener);
+    },
+  }),
+}));
+
 jest.mock('../context/profile-context', () => ({
   useProfile: () => ({ profile: { display_name: 'Priya Test', avatar_url: null } }),
 }));
@@ -472,5 +491,30 @@ describe('when there is no conversation', () => {
     render(<ChatPanel groupId="g1" />);
 
     await waitFor(() => expect(screen.getByText('Something broke.')).toBeTruthy());
+  });
+});
+
+describe('the push channel (#691)', () => {
+  beforeEach(() => {
+    mockRealtime.connected = false;
+    mockRealtime.listeners.clear();
+  });
+
+  it('refetches the thread a nudge names, and only that one', async () => {
+    render(<ChatPanel groupId="g1" />);
+    await waitFor(() => expect(mocks.getGiverQuestions).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mocks.getRecipientQuestions).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      mockRealtime.nudge({ type: 'questions', group_id: 'g1', side: 'giver' });
+    });
+    expect(mocks.getGiverQuestions).toHaveBeenCalledTimes(2);
+    expect(mocks.getRecipientQuestions).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      mockRealtime.nudge({ type: 'questions', group_id: 'other', side: 'giver' });
+      mockRealtime.nudge({ type: 'wishes', group_id: 'g1', side: 'giver' });
+    });
+    expect(mocks.getGiverQuestions).toHaveBeenCalledTimes(2);
   });
 });

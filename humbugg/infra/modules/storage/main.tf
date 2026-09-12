@@ -379,6 +379,43 @@ resource "aws_dynamodb_table" "questions" {
   tags = var.tags
 }
 
+# Who is connected to the realtime channel, and the one-time tickets that open a connection (#691).
+# Two kinds of row in one table, both keyed by USER and never by who gives to whom, and both
+# short-lived: a ticket for a minute, a connection for at most the two hours API Gateway allows.
+# The TTL is the backstop for a $disconnect that never arrived; the backend also deletes a
+# connection the moment a push to it comes back 410. No point-in-time recovery: nothing here is
+# worth restoring, a lost row is a socket that reconnects.
+resource "aws_dynamodb_table" "chat_connections" {
+  name         = "${var.project}-${var.environment}-chat-connections"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "connection_id"
+
+  attribute {
+    name = "connection_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "user_id-index"
+    hash_key        = "user_id"
+    projection_type = "KEYS_ONLY"
+  }
+
+  server_side_encryption { enabled = true }
+
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
+
+  tags = var.tags
+}
+
 # General-purpose application object bucket. Today it holds user profile photos under the avatars/
 # prefix — written only by the backend Lambda (least-privilege policy in the compute module) and read
 # only by CloudFront via Origin Access Control on the /avatars/* path — and is the single place for any

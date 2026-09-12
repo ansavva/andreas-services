@@ -1,4 +1,5 @@
 using Humbugg.Api.Consumers.EmailStatus;
+using Humbugg.Api.Consumers.Realtime;
 using Humbugg.Api.Consumers.Reminders;
 using Humbugg.Api.Consumers.StripeWebhooks;
 
@@ -19,7 +20,12 @@ internal static class ConsumerHost
             [AwsLambdaReminderConsumer.ConsumerName] =
                 AwsLambdaReminderConsumer.RunAsync,
             [AwsLambdaStripeWebhookConsumer.ConsumerName] =
-                AwsLambdaStripeWebhookConsumer.RunAsync
+                AwsLambdaStripeWebhookConsumer.RunAsync,
+            // The WebSocket API's two Lambdas (#691): the $connect authorizer and the route handler.
+            [AwsLambdaRealtimeAuthorizer.ConsumerName] =
+                AwsLambdaRealtimeAuthorizer.RunAsync,
+            [AwsLambdaRealtimeConnections.ConsumerName] =
+                AwsLambdaRealtimeConnections.RunAsync
         };
 
     /// <summary>

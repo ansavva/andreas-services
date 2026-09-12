@@ -52,6 +52,8 @@ env:
   API_LAMBDA_NAME: humbugg-prod-api
   EMAIL_STATUS_LAMBDA_NAME: humbugg-prod-email-status
   REMINDERS_LAMBDA_NAME: humbugg-prod-reminders
+  REALTIME_AUTHORIZER_LAMBDA_NAME: humbugg-prod-realtime-authorizer
+  REALTIME_CONNECTIONS_LAMBDA_NAME: humbugg-prod-realtime-connections
   STRIPE_WEBHOOKS_LAMBDA_NAME: humbugg-prod-stripe-webhook-consumer
   MARKETING_LAMBDA_NAME: humbugg-prod-marketing
 
@@ -363,6 +365,7 @@ jobs:
           put COGNITO_USER_POOL_ID    /humbugg/prod/cognito-user-pool-id
           put COGNITO_CLIENT_ID       /humbugg/prod/cognito-client-id
           put HUMBUGG_MAILER_BASE_URL /mailer/prod/humbugg/api-url
+          put HUMBUGG_REALTIME_ENDPOINT /humbugg/prod/realtime-endpoint
           # EMAIL_STATUS_LAMBDA_NAME is not read from SSM: the name is deterministic
           # (humbugg-prod-email-status) and already set as a job-level env default,
           # matching BACKEND/FRONTEND. Reading a missing SSM param here silently produced an
@@ -388,6 +391,8 @@ jobs:
             --arg billing_table "humbugg-prod-billing" \
             --arg templates_table "humbugg-prod-templates" \
             --arg questions_table "humbugg-prod-questions" \
+            --arg chat_connections_table "humbugg-prod-chat-connections" \
+            --arg realtime_endpoint "${HUMBUGG_REALTIME_ENDPOINT}" \
             --arg analytics_enabled "${{ vars.HUMBUGG_ANALYTICS_ENABLED || 'true' }}" \
             --arg email_messages_table "humbugg-prod-email-messages" \
             --arg app_bucket "humbugg-prod-app-files-us-east-1" \
@@ -423,6 +428,8 @@ jobs:
               HUMBUGG_BILLING_TABLE: $billing_table,
               HUMBUGG_TEMPLATES_TABLE: $templates_table,
               HUMBUGG_QUESTIONS_TABLE: $questions_table,
+              HUMBUGG_CHAT_CONNECTIONS_TABLE: $chat_connections_table,
+              HUMBUGG_REALTIME_ENDPOINT: $realtime_endpoint,
               HUMBUGG_ANALYTICS_ENABLED: $analytics_enabled,
               HUMBUGG_EMAIL_MESSAGES_TABLE: $email_messages_table,
               HUMBUGG_APP_BUCKET: $app_bucket,
@@ -512,6 +519,16 @@ jobs:
               HUMBUGG_ENVIRONMENT: "production"
             }}' > /tmp/env-humbugg-stripe-webhooks.json
 
+          # The realtime channel's two Lambdas (#691) read one table and nothing else. Keep
+          # this and RealtimeConsumerSettings.FromEnvironment() in step.
+          for mode in realtime-authorizer realtime-connections; do
+            jq -n --arg mode "$mode" --arg chat_connections_table "humbugg-prod-chat-connections" \
+              '{Variables: {
+                HUMBUGG_CONSUMER: $mode,
+                HUMBUGG_CHAT_CONNECTIONS_TABLE: $chat_connections_table
+              }}' > "/tmp/env-humbugg-${mode}.json"
+          done
+
           # The marketing SSR Lambda no longer authenticates anyone — sign-in moved
           # to the product app — so the Cognito variables it used to receive are
           # gone. Its canonical origin is baked in at build time via
@@ -556,6 +573,16 @@ jobs:
           aws lambda wait function-updated \
             --function-name "${STRIPE_WEBHOOKS_LAMBDA_NAME}" \
             --region "${{ env.AWS_REGION }}"
+
+          for pair in "${REALTIME_AUTHORIZER_LAMBDA_NAME}:realtime-authorizer" "${REALTIME_CONNECTIONS_LAMBDA_NAME}:realtime-connections"; do
+            aws lambda update-function-configuration \
+              --function-name "${pair%%:*}" \
+              --region "${{ env.AWS_REGION }}" \
+              --environment "file:///tmp/env-humbugg-${pair##*:}.json"
+            aws lambda wait function-updated \
+              --function-name "${pair%%:*}" \
+              --region "${{ env.AWS_REGION }}"
+          done
 
           aws lambda update-function-configuration \
             --function-name "${MARKETING_LAMBDA_NAME}" \
@@ -609,6 +636,19 @@ jobs:
           aws lambda wait function-updated \
             --function-name "${STRIPE_WEBHOOKS_LAMBDA_NAME}" \
             --region "${{ env.AWS_REGION }}"
+
+          for name in "${REALTIME_AUTHORIZER_LAMBDA_NAME}" "${REALTIME_CONNECTIONS_LAMBDA_NAME}"; do
+            aws lambda update-function-code \
+              --function-name "${name}" \
+              --image-uri "${API_ECR_URL}:${{ github.sha }}" \
+              --region "${{ env.AWS_REGION }}" \
+              --output table \
+              --query '{FunctionName:FunctionName,CodeSize:CodeSize}'
+
+            aws lambda wait function-updated \
+              --function-name "${name}" \
+              --region "${{ env.AWS_REGION }}"
+          done
 
           aws lambda update-function-code \
             --function-name "${MARKETING_LAMBDA_NAME}" \
@@ -750,6 +790,7 @@ jobs:
           # identifier it still needs.
           put EXPO_PUBLIC_COGNITO_CLIENT_ID    /humbugg/prod/cognito-client-id
           put EXPO_PUBLIC_COGNITO_DOMAIN       /humbugg/prod/cognito-auth-domain
+          put EXPO_PUBLIC_REALTIME_URL         /humbugg/prod/realtime-url
 
       - name: Install product app dependencies
         env:
@@ -764,6 +805,9 @@ jobs:
       - name: Export product app for web
         env:
           EXPO_PUBLIC_API_BASE_URL: https://api.humbugg.com/api
+          # The realtime channel (#691). Metro inlines this; without it the app polls and
+          # never opens a socket, so an empty value is a silent regression, not an error.
+          EXPO_PUBLIC_REALTIME_URL: ${{ env.EXPO_PUBLIC_REALTIME_URL }}
         run: cd humbugg/app && npx expo export -p web --source-maps
 
       - name: Assert the app build took the native leaf

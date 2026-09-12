@@ -30,7 +30,10 @@ public sealed class EmailArchitectureTests
         Assert.True(Directory.Exists(Path.Combine(consumers, "EmailStatus")));
         Assert.True(Directory.Exists(Path.Combine(consumers, "Reminders")));
         Assert.True(Directory.Exists(Path.Combine(consumers, "StripeWebhooks")));
-        Assert.Equal(["email-status", "reminders", "stripe-webhooks"], ConsumerHost.RegisteredConsumerNames);
+        Assert.True(Directory.Exists(Path.Combine(consumers, "Realtime")));
+        Assert.Equal(
+            ["email-status", "reminders", "stripe-webhooks", "realtime-authorizer", "realtime-connections"],
+            ConsumerHost.RegisteredConsumerNames);
     }
 
     [Fact]

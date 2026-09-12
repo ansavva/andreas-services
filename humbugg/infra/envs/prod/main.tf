@@ -1,9 +1,10 @@
 locals {
-  project          = "humbugg"
-  environment      = "prod"
-  domain_name      = "humbugg.com"
-  api_domain_name  = "api.${local.domain_name}"
-  auth_domain_name = "auth.${local.domain_name}"
+  project              = "humbugg"
+  environment          = "prod"
+  domain_name          = "humbugg.com"
+  api_domain_name      = "api.${local.domain_name}"
+  realtime_domain_name = "ws.${local.domain_name}"
+  auth_domain_name     = "auth.${local.domain_name}"
 
   # What the backend derives invite URLs and avatar URLs from, and what Cognito
   # redirects to — so it is the product app, not the marketing site. The
@@ -113,6 +114,7 @@ module "certificates" {
     "app.${local.domain_name}",
     local.api_domain_name,
     local.auth_domain_name,
+    local.realtime_domain_name,
   ]
 
   route53_zone_id = data.aws_route53_zone.humbugg.zone_id
@@ -132,6 +134,59 @@ module "api_domain" {
   stage_name = module.compute.api_stage_name
 
   route53_zone_id = data.aws_route53_zone.humbugg.zone_id
+
+  tags = local.common_tags
+}
+
+# The realtime channel (#691): the WebSocket API on ws.humbugg.com. Its two Lambdas run the
+# backend's image under the API's role, the way the reminder consumer does, so the table grant the
+# storage output confers reaches them without a policy of their own.
+module "realtime" {
+  source = "../../modules/realtime"
+
+  project     = local.project
+  environment = local.environment
+  aws_region  = var.aws_region
+
+  image_uri              = "${module.compute.ecr_repository_url}:latest"
+  lambda_role_arn        = module.compute.api_role_arn
+  lambda_role_name       = module.compute.api_role_name
+  connections_table_name = module.storage.dynamodb_table_names["chat_connections"]
+
+  tags = local.common_tags
+}
+
+# ws.humbugg.com — the same domain module as api.humbugg.com, mapped onto the WebSocket stage.
+module "realtime_domain" {
+  source = "../../modules/api_domain"
+
+  domain_name     = local.realtime_domain_name
+  certificate_arn = module.certificates.certificate_arn
+
+  api_id     = module.realtime.api_id
+  stage_name = module.realtime.stage_name
+
+  route53_zone_id = data.aws_route53_zone.humbugg.zone_id
+
+  tags = local.common_tags
+}
+
+# What the app connects to, and what the backend posts through. Both known here, so both are
+# Terraform's to publish; update-lambda and deploy-app read them.
+resource "aws_ssm_parameter" "realtime_url" {
+  name        = "/humbugg/prod/realtime-url"
+  description = "Public WebSocket URL of the realtime channel"
+  type        = "String"
+  value       = "wss://${module.realtime_domain.domain_name}"
+
+  tags = local.common_tags
+}
+
+resource "aws_ssm_parameter" "realtime_endpoint" {
+  name        = "/humbugg/prod/realtime-endpoint"
+  description = "Management endpoint the backend posts to WebSocket connections through"
+  type        = "String"
+  value       = module.realtime.management_endpoint
 
   tags = local.common_tags
 }
@@ -282,6 +337,14 @@ module "alerting" {
     "stripe-webhooks" = {
       function_name   = module.webhook_relay.consumer_function_name
       error_threshold = 2
+    }
+    "realtime-authorizer" = {
+      function_name   = module.realtime.authorizer_lambda_function_name
+      error_threshold = 3
+    }
+    "realtime-connections" = {
+      function_name   = module.realtime.connections_lambda_function_name
+      error_threshold = 3
     }
   }
 

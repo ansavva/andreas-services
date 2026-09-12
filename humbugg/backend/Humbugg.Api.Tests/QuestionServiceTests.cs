@@ -23,6 +23,57 @@ public sealed class QuestionServiceTests
     private const string Bo = "bo";       // gives to Ana
     private const string Group = "group";
 
+    // ── The socket (#691) ───────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// A line sent nudges the other side's sockets — by user id, resolved in memory — and the nudge
+    /// names the group and THEIR side. No body, no name, no message id.
+    /// </summary>
+    [Fact]
+    public async Task ALineNudgesTheOtherSideWithAGroupAndTheirSideOnly()
+    {
+        var world = World();
+
+        await world.AsAna.AskAsync(Group, new SendQuestionRequest("Which size?"), Token);
+
+        var (userId, nudge) = Assert.Single(world.Realtime.Sent);
+        Assert.Equal($"user-{Bo}", userId);
+        Assert.Equal(Group, nudge.GroupId);
+        Assert.Equal("recipient", nudge.Side);
+        Assert.DoesNotContain("Which size?", nudge.ToJson(), StringComparison.Ordinal);
+        Assert.DoesNotContain(Ana, nudge.ToJson(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AReplyNudgesTheGiverAsTheGiverSide()
+    {
+        var world = World();
+        await world.AsAna.AskAsync(Group, new SendQuestionRequest("Which size?"), Token);
+        world.Realtime.Sent.Clear();
+
+        await world.AsBo.ReplyAsync(Group, new SendQuestionRequest("Medium, thanks."), Token);
+
+        var (userId, nudge) = Assert.Single(world.Realtime.Sent);
+        Assert.Equal($"user-{Ana}", userId);
+        Assert.Equal("giver", nudge.Side);
+    }
+
+    /// <summary>Reading is a change the other side can see, so it nudges too — but only when it moved.</summary>
+    [Fact]
+    public async Task MarkingSeenNudgesTheOtherSideOnceAndNotOnARepeat()
+    {
+        var world = World();
+        await world.AsAna.AskAsync(Group, new SendQuestionRequest("Which size?"), Token);
+        world.Realtime.Sent.Clear();
+
+        await world.AsBo.MarkSeenForRecipientAsync(Group, Token);
+        await world.AsBo.MarkSeenForRecipientAsync(Group, Token);
+
+        var (userId, nudge) = Assert.Single(world.Realtime.Sent);
+        Assert.Equal($"user-{Ana}", userId);
+        Assert.Equal("giver", nudge.Side);
+    }
+
     // ── The guarantee ───────────────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -428,6 +479,7 @@ public sealed class QuestionServiceTests
         public RecordingEmail Email { get; } = new();
         public FakeAccountDirectory Directory { get; } = new();
         public StepClock Clock { get; } = new();
+        public RecordingRealtime Realtime { get; } = new();
         private readonly FakeMembers members;
         private readonly FakeInvitations invitations;
 
@@ -444,6 +496,7 @@ public sealed class QuestionServiceTests
             new HumbuggSettings(
                 "us-east-1", "us-east-1", "pool", "client", ["http://localhost:5173"],
                 "http://localhost:5173", null, "profiles", "groups", "members", "draws", "audit", "analytics"),
+            Realtime,
             Clock);
 
         public IQuestionService AsAna => For($"user-{Ana}");

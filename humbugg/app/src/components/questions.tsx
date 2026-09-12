@@ -19,6 +19,8 @@ import { Platform, ScrollView, Text, View } from 'react-native';
 
 import { api, ApiError } from '../api/client';
 import { useAuth } from '../context/auth-context';
+import { useRealtime } from '../context/realtime-context';
+import { useAppVisible } from '../hooks/use-app-visible';
 import { useProfile } from '../context/profile-context';
 import { radii } from '../theme/radii';
 import { gap, scopedStyles, useTheme } from '../theme/styles';
@@ -32,13 +34,16 @@ import { StatusMessage } from './status-message';
 export type QuestionSide = 'giver' | 'recipient';
 
 /**
- * How often an open panel asks for the thread again.
+ * How often an open panel asks for the thread again, when nothing better is on offer.
  *
- * There is no push channel, so "the other side replied" reaches a panel by asking. Fifteen seconds
- * is slow enough that a page left open all day costs nothing worth measuring and fast enough that
- * a reply lands while you are still looking.
+ * The push channel (#691) is the better thing: a socket nudge triggers a refetch the moment the
+ * other side writes. The poll stays underneath it as the fallback, and its pace depends on what it
+ * is covering for — a slow safety net while the socket is up, a fast one while it is down and the
+ * conversation is in front of the person, and a slow one again when they have looked away.
  */
-const POLL_MS = 15_000;
+const POLL_CONNECTED_MS = 60_000;
+const POLL_VISIBLE_MS = 5_000;
+const POLL_HIDDEN_MS = 30_000;
 
 /** The composer grows with the draft, from one line to about five, then scrolls. */
 const COMPOSER_MIN = 44;
@@ -332,7 +337,7 @@ function useThread(groupId: string, side: QuestionSide): ThreadState {
     } catch (err) {
       if (err instanceof ApiError && (err.status === 403 || err.status === 404 || err.status === 409))
         setUnavailable(true);
-      // A refresh that fails is tried again in fifteen seconds; only the first load reports.
+      // A refresh that fails is tried again on the next poll or nudge; only the first load reports.
       else if (!quiet) setError(err instanceof Error ? err.message : 'Questions could not be loaded.');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -340,11 +345,30 @@ function useThread(groupId: string, side: QuestionSide): ThreadState {
 
   useEffect(() => { void load({ quiet: false }); }, [load]);
 
+  // Push first: a nudge for this group and this side is a refetch. The poll underneath paces
+  // itself to the socket's state and to whether the person is looking.
+  const realtime = useRealtime();
+  const visible = useAppVisible();
   useEffect(() => {
     if (unavailable) return undefined;
-    const timer = setInterval(() => void load({ quiet: true }), POLL_MS);
+    return realtime.subscribe((nudge) => {
+      if (nudge.type === 'questions' && nudge.group_id === groupId && nudge.side === side) void load({ quiet: true });
+    });
+  }, [realtime, groupId, side, load, unavailable]);
+  useEffect(() => {
+    if (unavailable) return undefined;
+    const every = realtime.connected ? POLL_CONNECTED_MS : visible ? POLL_VISIBLE_MS : POLL_HIDDEN_MS;
+    const timer = setInterval(() => void load({ quiet: true }), every);
     return () => clearInterval(timer);
-  }, [load, unavailable]);
+  }, [load, unavailable, realtime.connected, visible]);
+  // Looking again is the moment to catch up on whatever the slow poll missed — on the change,
+  // not on mount, where the first load is already in flight.
+  const wasVisible = useRef(visible);
+  useEffect(() => {
+    if (visible && !wasVisible.current && !unavailable) void load({ quiet: true });
+    wasVisible.current = visible;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   async function run(work: (token: string) => Promise<QuestionThread>) {
     setBusy(true);

@@ -1,6 +1,7 @@
 using Humbugg.Api.Data;
 using Humbugg.Api.Models;
 using Humbugg.Api.Services.Email.Core;
+using Humbugg.Api.Services.Realtime;
 
 namespace Humbugg.Api.Services;
 
@@ -54,7 +55,9 @@ internal sealed class QuestionService(
     ITransactionalEmailService email,
     ITransactionalEmailTemplates templates,
     HumbuggSettings settings,
-    TimeProvider? timeProvider = null) : IQuestionService
+    IRealtimeNotifier realtime,
+    TimeProvider? timeProvider = null,
+    ILogger<QuestionService>? logger = null) : IQuestionService
 {
     private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
 
@@ -110,8 +113,13 @@ internal sealed class QuestionService(
         // and not a write.
         var newest = messages.Count == 0 ? null : messages[^1].MessageId;
         if (newest is not null && string.CompareOrdinal(newest, Seen(thread, viewer)) > 0)
+        {
             await questions.MarkSeenAsync(
                 context.ThreadId, context.GroupId, context.RecipientMemberId, viewer, newest, cancellationToken);
+            // The other side's thread changed too — their message is now marked read — so they get
+            // the same nudge a new line would send, and re-read.
+            await NudgeAsync(context, Other(viewer), cancellationToken);
+        }
         return await ProjectAsync(context, viewer, cancellationToken);
     }
 
@@ -180,6 +188,9 @@ internal sealed class QuestionService(
         // Writing is reading: the sender has the thread in front of them, own message included.
         await questions.MarkSeenAsync(
             context.ThreadId, context.GroupId, context.RecipientMemberId, author, messageId, cancellationToken);
+        // Every line, not once per unread stretch like the mail: a socket nudge costs nothing to
+        // receive and is what makes the chat move. It carries the group and the reader's side only.
+        await NudgeAsync(context, Other(author), cancellationToken);
         return await ProjectAsync(context, author, cancellationToken);
     }
 
@@ -203,6 +214,35 @@ internal sealed class QuestionService(
         $"{at.UtcDateTime:yyyyMMddTHHmmss.fffffffZ}-{Guid.NewGuid():N}"[..40];
 
     // ── Notification ────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Tells one side's open sockets that their view of this thread changed (#691).
+    /// </summary>
+    /// <remarks>
+    /// The side to nudge is resolved to a user id here, in memory, the same way the mail's address
+    /// is: from the draw for the giver, from the thread for the recipient. The nudge itself names a
+    /// group and the RECEIVER's own side, so the giver's socket learns "your giver thread moved" and
+    /// nothing about who is on the other end. Delivery is best effort; a message that is stored is
+    /// not undone by a socket that is not there.
+    /// </remarks>
+    private async Task NudgeAsync(ThreadContext context, QuestionAuthor side, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var memberId = side == QuestionAuthor.Giver ? context.GiverMemberId : context.RecipientMemberId;
+            var member = await memberships.GetAsync(memberId, cancellationToken);
+            if (member is null) return;
+            await realtime.NudgeAsync(
+                member.UserId,
+                RealtimeNudge.Questions(context.GroupId, side == QuestionAuthor.Giver ? "giver" : "recipient"),
+                cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            // Stored is stored. The poll still catches up with a nudge that never arrived.
+            logger?.LogWarning(exception, "Realtime: nudge not delivered");
+        }
+    }
 
     /// <summary>
     /// Tells the other side that something is waiting for them, and nothing else.
