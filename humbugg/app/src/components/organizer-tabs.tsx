@@ -1,11 +1,12 @@
-// The organizer's three tabs on the exchange page: People, Draw, Settings (#684).
+// The organizer's three tabs on the exchange page: People, Draw, Settings (#684, #690).
 //
 // There used to be two pages. `/groups/{id}` was "the participant's page" and grew organizer tools
 // because the organizer is a participant too; `/organize/{id}` was "the dashboard" and grew
 // settings because there was nowhere else. An organizer met the roster twice, the delete button
 // twice, and the exchange's details split across both, and neither page's name said which had the
-// thing they wanted. Now there is one exchange page. Everyone sees the Exchange tab — what the
-// exchange is and their own part in it. An organizer also sees these three, each named for a job:
+// thing they wanted. Now there is one exchange, with tabs. Everyone sees the two named for the
+// people in their exchange — FOR <recipient> and FOR YOU. An organizer also sees these three, each
+// named for a job:
 //
 //   PEOPLE   who is in, who is invited, what each still owes; the invite link and email invitations;
 //            exclusions; roles, sitting out, removal; a late arrival after the draw.
@@ -14,12 +15,14 @@
 //   SETTINGS how the exchange runs: details, gifts posted, greeting, reminders, templates, billing,
 //            and the danger zone.
 //
-// This component renders the three `Tabs.Panel`s and must sit inside the page's `Tabs.Root`. It
-// owns the readiness read and every organizer action; the page owns the group and re-reads it when
-// told. Readiness is a READ of state the server computed — nothing here decides who is ready.
-import { Button, Input, Meter, Select, Tabs, Textarea } from '@ansavva/design-system';
+// Each tab is a route (`/groups/{id}/people`, `/draw`, `/settings/{section}`), so this renders ONE
+// tab — the one `tab` names — and the layout above it renders the tab bar. The layout also owns
+// the group and the readiness read and hands both down; this owns every organizer action and asks
+// the layout to re-read when one lands. Readiness is a READ of state the server computed — nothing
+// here decides who is ready.
+import { Button, Input, Meter, Select, Textarea } from '@ansavva/design-system';
 import * as Clipboard from 'expo-clipboard';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, Share, Text, View, useWindowDimensions } from 'react-native';
 
 import { api, ApiError } from '../api/client';
@@ -37,13 +40,13 @@ import { LateParticipantPanel } from './late-participant';
 import { PeoplePanel } from './people';
 import { PanelLoadFailure, PlusBillingPanel, PlusLockedNote, isPlusRequired } from './plus';
 import { RepeatExchangePanel } from './repeat-exchange';
-import { SettingsTab } from './settings-tab';
+import { SettingsTab, type SettingsSection } from './settings-tab';
 import { Card, LoadingPanel } from './shell';
 import { StatusMessage } from './status-message';
 
 export type OrganizerTab = 'people' | 'draw' | 'settings';
 
-/** The tabs, in the order an organizer works through them. `Tabs.List` renders these. */
+/** The tabs, in the order an organizer works through them. The exchange layout renders them. */
 export const ORGANIZER_TABS: { value: OrganizerTab; label: string }[] = [
   { value: 'people', label: 'People' },
   { value: 'draw', label: 'Draw' },
@@ -51,25 +54,37 @@ export const ORGANIZER_TABS: { value: OrganizerTab; label: string }[] = [
 ];
 
 export function OrganizerTabs({
+  tab,
   group,
+  readiness,
+  readinessError,
   checkout,
+  section,
+  onSectionChange,
   onGroupChanged,
   onReload,
 }: {
+  /** Which of the three this page is. */
+  tab: OrganizerTab;
   group: GroupDetail;
+  /** The roster read, from the layout. `null` while it is still loading. */
+  readiness: GroupReadiness | null;
+  readinessError: string | null;
   /** Stripe's `?checkout=` return value on the web. Native returns by closing the browser instead. */
   checkout?: string | null;
+  /** The Settings section open — its URL segment. Defaults to the first. */
+  section?: SettingsSection;
+  /** The person chose another Settings section: the URL should follow. */
+  onSectionChange?(next: SettingsSection): void;
   /** A settings save that returned the new group — the page's header follows it. */
   onGroupChanged(next: GroupDetail): void;
-  /** Something changed the roster, the draw or the plan: the page re-reads the group. */
+  /** Something changed the roster, the draw or the plan: the page re-reads the group and the roster. */
   onReload(): Promise<unknown> | void;
 }) {
   const { styles } = useTheme();
   const auth = useAuth();
   const groupId = group.group_id;
 
-  const [readiness, setReadiness] = useState<GroupReadiness | null>(null);
-  const [readinessError, setReadinessError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -80,21 +95,6 @@ export function OrganizerTabs({
   const [rolesNeedPlus, setRolesNeedPlus] = useState(false);
   const [plusRefusal, setPlusRefusal] = useState<string | null>(null);
 
-  const loadReadiness = useCallback(async () => {
-    try {
-      setReadiness(await api.getReadiness(await auth.accessToken(), groupId));
-      setReadinessError(null);
-    } catch (err) {
-      // A co-organizer demoted underneath us is a 403 here; say so rather than spin forever.
-      setReadinessError(
-        err instanceof ApiError && err.status === 403
-          ? 'Only an organizer of this exchange can see who is ready.'
-          : err instanceof Error ? err.message : 'Unable to load the roster.',
-      );
-    }
-  }, [auth, groupId]);
-  useEffect(() => { void loadReadiness(); }, [loadReadiness]);
-
   /** Every organizer action: run it, say what happened, re-read both the group and the roster. */
   async function action(work: (token: string) => Promise<unknown>, message?: string) {
     setBusy(true);
@@ -104,7 +104,7 @@ export function OrganizerTabs({
     try {
       await work(await auth.accessToken());
       if (message) setSuccess(message);
-      await Promise.all([onReload(), loadReadiness()]);
+      await onReload();
       return true;
     } catch (err) {
       if (isPlusRequired(err)) setPlusRefusal((err as Error).message);
@@ -115,7 +115,7 @@ export function OrganizerTabs({
     }
   }
 
-  const refresh = () => { void Promise.all([onReload(), loadReadiness()]); };
+  const refresh = () => { void onReload(); };
 
   const status = (
     <>
@@ -131,10 +131,9 @@ export function OrganizerTabs({
   const atFreeCeiling =
     readiness !== null && group.plan === 'free' && readiness.counts.participating >= group.participant_limit;
 
-  return (
-    <>
-      <Tabs.Panel value="people">
-        <View style={{ gap: 28, marginTop: 24 }}>
+  if (tab === 'people')
+    return (
+        <View style={{ gap: 28 }}>
           {status}
           {/* When Free is full, the thing the organizer came to People to find out is why nobody
               can join — so the billing card leads here, and lives in Settings otherwise. */}
@@ -208,10 +207,11 @@ export function OrganizerTabs({
             </>
           ) : null}
         </View>
-      </Tabs.Panel>
+    );
 
-      <Tabs.Panel value="draw">
-        <View style={{ gap: 28, marginTop: 24 }}>
+  if (tab === 'draw')
+    return (
+        <View style={{ gap: 28 }}>
           {status}
           {readiness ? (
             <ReadinessStats readiness={readiness} />
@@ -244,10 +244,10 @@ export function OrganizerTabs({
               thinks about it (#136). Owner-only: it creates an exchange. */}
           {group.is_owner && drawn ? <RepeatExchangePanel group={group} /> : null}
         </View>
-      </Tabs.Panel>
+    );
 
-      <Tabs.Panel value="settings">
-        <View style={{ marginTop: 24, gap: 16 }}>
+  return (
+        <View style={{ gap: 16 }}>
           {status}
           {readiness ? (
             <SettingsTab
@@ -260,7 +260,8 @@ export function OrganizerTabs({
               onRequiresAddress={(checked) =>
                 void action((token) => api.updateGroup(token, groupId, { requires_address: checked }))
               }
-              initial={checkout ? 'billing' : undefined}
+              section={section}
+              onSectionChange={onSectionChange}
             />
           ) : readinessError ? (
             <PanelLoadFailure title="Settings" message={readinessError} />
@@ -268,8 +269,6 @@ export function OrganizerTabs({
             <LoadingPanel />
           )}
         </View>
-      </Tabs.Panel>
-    </>
   );
 }
 

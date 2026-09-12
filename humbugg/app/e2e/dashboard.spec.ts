@@ -35,6 +35,7 @@ test('a group card opens the exchange screen', async ({ page }) => {
 
   await page.goto('/');
   await page.getByText('E2E Fixture Exchange').first().click();
-  await page.waitForURL(`**/groups/${group.group_id}`);
+  // An open exchange opens on your own wishlist — and the tab is in the URL.
+  await page.waitForURL(`**/groups/${group.group_id}/you`);
   await expect(page.getByText('What you would love')).toBeVisible();
 });

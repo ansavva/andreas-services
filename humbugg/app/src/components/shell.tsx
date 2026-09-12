@@ -5,7 +5,7 @@
 // origin — the legal pages live on the marketing site — so they open in the
 // system browser rather than routing.
 import { Card as DsCard, Spinner } from '@ansavva/design-system';
-import { Link } from 'expo-router';
+import { Link, usePathname } from 'expo-router';
 import type { ReactNode } from 'react';
 import { Linking, Pressable, ScrollView, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LEGAL_EXTERNAL_LINKS } from '../config/site';
 import { SERVICE_COUNTRY, SERVICE_CURRENCY } from '../config/policies';
 import { useAuth } from '../context/auth-context';
+import { useScrollRestoration } from '../hooks/use-scroll-restoration';
 import { useTheme } from '../theme/styles';
 import { AvatarMenu } from './avatar-menu';
 import { Brand } from './brand';
@@ -36,6 +37,8 @@ export function Shell({
 }) {
   const { styles } = useTheme();
   const auth = useAuth();
+  // One scroller for the page, so this is the one place the offset is kept and put back.
+  const scroll = useScrollRestoration(usePathname());
   return (
     <SafeAreaView edges={['top']} style={styles.screen}>
       <View style={{ flex: 1, flexDirection: 'row', minHeight: 0 }}>
@@ -61,8 +64,13 @@ export function Shell({
             </View>
           </View>
           <ScrollView
+            ref={scroll.ref}
             contentContainerStyle={{ flexGrow: 1, paddingBottom: sheetInset }}
             keyboardShouldPersistTaps="handled"
+            scrollEventThrottle={100}
+            onScroll={scroll.onScroll}
+            onContentSizeChange={scroll.onContentSizeChange}
+            onLayout={scroll.onLayout}
           >
             <View style={styles.main}>{children}</View>
             <SiteFooter />

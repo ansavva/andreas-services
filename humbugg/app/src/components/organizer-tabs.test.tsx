@@ -103,13 +103,13 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   default: () => ({ width: mocks.width, height: 800, scale: 2, fontScale: 1 }),
 }));
 
-import { Tabs } from '@ansavva/design-system';
 import { useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { api } from '../api/client';
 import { LoadingPanel } from './shell';
-import { ORGANIZER_TABS, OrganizerTabs } from './organizer-tabs';
+import { ORGANIZER_TABS, OrganizerTabs, type OrganizerTab } from './organizer-tabs';
+import type { SettingsSection } from './settings-tab';
 import type {
   GroupDetail,
   GroupReadiness,
@@ -237,39 +237,71 @@ const reminders = (settings: Partial<ReminderSettings> = {}): ReminderOverview =
 });
 
 /**
- * What the exchange page does around these tabs: read the group, own `Tabs.Root`, land on People
- * — or on Settings when Stripe sends the organizer back. The mocked `getGroup` returns partial
- * groups; the fields the tabs read off a real one are filled in here.
+ * What the exchange layout does around these tabs: read the group and the roster, own which tab
+ * is open, land on People — or on Settings → Billing when Stripe sends the organizer back. In the
+ * app each tab is a route and the layout reads it off the URL; here it is a row of pressables and a
+ * state, which is the same contract from this component's side. The mocked `getGroup` returns
+ * partial groups; the fields the tabs read off a real one are filled in here.
  */
 function OrganizeScreen({ groupId, checkout }: { groupId: string; checkout?: string | null }) {
   const [group, setGroup] = useState<GroupDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [readiness, setReadiness] = useState<GroupReadiness | null>(null);
+  const [readinessError, setReadinessError] = useState<string | null>(null);
+  const [tab, setTab] = useState<OrganizerTab>(checkout ? 'settings' : 'people');
+  const [section, setSection] = useState<SettingsSection | undefined>(checkout ? 'billing' : undefined);
+
+  const loadGroup = async () => {
+    const detail: Partial<GroupDetail> = await api.getGroup('token', groupId);
+    setGroup((current) => ({ status: 'open', members: [], exclusions: [], participant_limit: 50, ...current, ...detail } as GroupDetail));
+  };
+  // The layout's own mapping of a readiness failure, so a 403 reads the same here as there.
+  const loadReadiness = async () => {
+    try {
+      setReadiness(await api.getReadiness('token', groupId));
+      setReadinessError(null);
+    } catch (err) {
+      setReadinessError(
+        err instanceof ApiError && (err as { status?: number }).status === 403
+          ? 'Only an organizer of this exchange can see who is ready.'
+          : (err as Error).message,
+      );
+    }
+  };
   useEffect(() => {
-    api.getGroup('token', groupId).then(
-      (detail: Partial<GroupDetail>) =>
-        setGroup({ status: 'open', members: [], exclusions: [], participant_limit: 50, ...detail } as GroupDetail),
-      (err: Error) => setError(err.message),
-    );
+    loadGroup().catch((err: Error) => setError(err.message));
+    void loadReadiness();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupId]);
+
   if (error) return <Text>{error}</Text>;
   if (!group) return <LoadingPanel />;
   return (
-    <Tabs.Root defaultValue={checkout ? 'settings' : 'people'}>
-      <Tabs.List>
+    <View>
+      <View accessibilityRole="tablist" style={{ flexDirection: 'row' }}>
         {ORGANIZER_TABS.map((item) => (
-          <Tabs.Tab key={item.value} value={item.value}>{item.label}</Tabs.Tab>
+          <Pressable
+            key={item.value}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: tab === item.value }}
+            onPress={() => setTab(item.value)}
+          >
+            <Text>{item.label}</Text>
+          </Pressable>
         ))}
-      </Tabs.List>
+      </View>
       <OrganizerTabs
+        tab={tab}
         group={group}
+        readiness={readiness}
+        readinessError={readinessError}
         checkout={checkout}
+        section={section}
+        onSectionChange={setSection}
         onGroupChanged={setGroup}
-        onReload={async () => {
-          const detail: Partial<GroupDetail> = await api.getGroup('token', groupId);
-          setGroup((current) => ({ ...(current as GroupDetail), ...detail }));
-        }}
+        onReload={() => Promise.all([loadGroup(), loadReadiness()])}
       />
-    </Tabs.Root>
+    </View>
   );
 }
 

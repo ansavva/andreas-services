@@ -83,7 +83,8 @@ test('the recipient says it arrived, and is told that reveals nobody', async ({ 
   const group = fixture<Group>('group');
   const recorded = await stubDrawn(page, group);
 
-  await page.goto(`/groups/${group.group_id}`);
+  // The gift coming to you is on the FOR YOU tab; the one you are giving is on the other.
+  await page.goto(`/groups/${group.group_id}/you`);
   await expect(page.getByText('Has it arrived?')).toBeVisible();
   await expect(page.getByText(/does not tell you, or them, who sent it/)).toBeVisible();
 
