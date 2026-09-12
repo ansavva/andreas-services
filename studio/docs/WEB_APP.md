@@ -550,8 +550,12 @@ page and a plain textarea over its literal bytes, and never offers fields.
   in Media view — every picture under it, newest first — and its top level is
   the `Characters` and `Projects` lists by name, never the library's folder
   tree: a character opens in Folders (its folders are the person's own), a
-  project in Media (its `runs/` are numbers), both switchable, with tags,
-  crumbs trimmed at the entity's root, and a sort control. It takes uploads
+  project in Media (its `runs/` are numbers), both switchable, with a sort
+  control, crumbs trimmed at the entity's root and not drawn at the
+  project's own (the pressed chip says it), and tags folded behind `Filter`
+  — the Files page's `FilterBar`, collapsed with a count badge, because an
+  open tag input and its scope note were three lines of a phone above the
+  grid this sheet exists to show. It takes uploads
   too, into the folder it is standing on, and attaches each picture that
   lands. Pressing a picture attaches it to that role. Then the
   prompt, borderless, its `{` menu opening upward — two lines at rest, faded
