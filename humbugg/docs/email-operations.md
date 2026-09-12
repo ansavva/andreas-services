@@ -24,7 +24,7 @@ switch — nowhere else — to reclassify a category.
 | `DrawCompleted` ("your assignment is ready") | Essential (join-critical) | No — always sends |
 | `AssignmentAvailable` ("your assignment is ready") | Essential (join-critical) | No — always sends |
 | `Reminder` | Non-essential | Yes |
-| `AccountExchangeEvent` (group-activity / question-and-reply) | Non-essential | Yes |
+| `AccountExchangeEvent` (group-activity / "a message is waiting in your anonymous chat") | Non-essential | Yes |
 
 ## Where the address comes from (#137)
 

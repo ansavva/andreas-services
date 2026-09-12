@@ -57,7 +57,9 @@ internal sealed class GroupService(
     ITransactionalEmailService email,
     ITransactionalEmailTemplates emailTemplates,
     ILogger<GroupService> logger,
-    HumbuggSettings settings) : IGroupService
+    HumbuggSettings settings,
+    // Optional so the many test fixtures that build this by hand need not learn it; DI supplies it.
+    IAvatarStore? avatars = null) : IGroupService
 {
     public async Task<IReadOnlyList<GroupSummary>> ListAsync(CancellationToken cancellationToken = default)
     {
@@ -802,7 +804,16 @@ internal sealed class GroupService(
             recipient,
             await wishes.GetByMemberAsync(recipient.MemberId, cancellationToken),
             ClaimsFor(membership, draw.DrawId),
-            StatusFor(membership, draw.DrawId));
+            StatusFor(membership, draw.DrawId),
+            await AvatarUrlAsync(recipient.UserId, cancellationToken));
+    }
+
+    /// <summary>The recipient's photo, the same URL their own profile shows them.</summary>
+    private async Task<string?> AvatarUrlAsync(string userId, CancellationToken cancellationToken)
+    {
+        if (avatars is null) return null;
+        var key = (await profiles.GetAsync(userId, cancellationToken))?.AvatarKey;
+        return string.IsNullOrEmpty(key) ? null : avatars.ReadUrl(key, settings.AvatarBaseUrl);
     }
 
     /// <summary>
@@ -1133,10 +1144,12 @@ internal sealed class GroupService(
         IReadOnlyDictionary<string, WishClaimRecord>? claims = null,
         // The caller's own gift status. Defaulted to null for the same reason the claims are: the
         // emergency reveal gets none by omission rather than by remembering to strip them.
-        GiftStatus? gift = null) => new(
+        GiftStatus? gift = null,
+        string? avatarUrl = null) => new(
         member.MemberId, member.DisplayName, member.Wishlist, member.Avoidances, member.Address,
         wishes.Select(record => RecipientWishOf(record, claims)).ToList(),
-        gift);
+        gift,
+        avatarUrl);
     private static RecipientWish RecipientWishOf(
         WishRecord record,
         IReadOnlyDictionary<string, WishClaimRecord>? claims) => new(

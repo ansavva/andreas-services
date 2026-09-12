@@ -228,6 +228,14 @@ export const api = {
     request<QuestionThread>(`/groups/${id}/members/me/questions`, token, json('POST', { body })),
   setQuestionsBlocked: (token: string, id: string, blocked: boolean) =>
     request<QuestionThread>(`/groups/${id}/members/me/questions/blocked`, token, json('PUT', { blocked })),
+  // Fetching is not seeing: a poll from a closed panel must not clear a badge. The app says "this
+  // conversation was on screen" explicitly, and that is what zeroes `unread` and re-arms the mail.
+  markQuestionsSeen: (token: string, id: string, side: 'giver' | 'recipient') =>
+    request<QuestionThread>(
+      side === 'giver' ? `/groups/${id}/assignment/questions/seen` : `/groups/${id}/members/me/questions/seen`,
+      token,
+      json('POST'),
+    ),
   reveal: (token: string, id: string, reason: string) => request<{ assignments: RevealAssignment[] }>(`/groups/${id}/assignment/reveal`, token, json('POST', { reason })),
   previewLateParticipant: (token: string, id: string, memberId: string) =>
     request<LateParticipantPreview>(`/groups/${id}/late-participants/${memberId}/preview`, token, json('POST')),

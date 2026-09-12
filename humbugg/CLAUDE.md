@@ -342,7 +342,11 @@ Group `humbugg-prod` with `cancel-in-progress: false` — queued pushes wait for
   records which SIDE wrote it and the API re-derives who the giver is from the draw on every
   request, so there is no field to project, no id for a URL to carry, and nothing for a later
   endpoint to leak by returning a whole record. The `group_id` index exists for deletion, not
-  reading, and projects only the keys plus `recipient_member_id`
+  reading, and projects only the keys plus `recipient_member_id`. The `#thread` control row also
+  carries `giver_seen` / `recipient_seen` — the newest message id each SIDE has had on screen,
+  written by the explicit `…/questions/seen` routes (fetching is not seeing). They drive the
+  `unread` count and the "message waiting" mail, which goes once per unread stretch, not once
+  per message. There is no message cap; a 2 s per-side flood gap is the only send limit
 - `humbugg-prod-email-messages` — stable transactional message IDs and delivery state
 
 Profile photos are **not** in DynamoDB: the `humbugg-prod-profiles` row stores only an `avatar_key`

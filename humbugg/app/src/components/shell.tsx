@@ -17,33 +17,60 @@ import { useTheme } from '../theme/styles';
 import { AvatarMenu } from './avatar-menu';
 import { Brand } from './brand';
 
-export function Shell({ children }: { children: ReactNode }) {
+/**
+ * The page chrome. `aside` is a rail beside the scrolling page — outside the scroll, full height,
+ * its own surface — for the one thing that has earned one: the anonymous chat, which wants to stay
+ * put while the exchange scrolls past it the way a messenger sits beside the thing it is about.
+ */
+export function Shell({
+  children,
+  aside,
+  sheet,
+  sheetInset = 0,
+}: {
+  children: ReactNode;
+  aside?: ReactNode;
+  /** A `BottomSheet` over the page column; `sheetInset` is the room the page leaves for it at rest. */
+  sheet?: ReactNode;
+  sheetInset?: number;
+}) {
   const { styles } = useTheme();
   const auth = useAuth();
   return (
     <SafeAreaView edges={['top']} style={styles.screen}>
-      <View style={styles.header}>
-        <View style={styles.headerInner}>
-          <Brand />
-          <View accessibilityLabel="Primary navigation" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            {auth.authenticated ? (
-              <AvatarMenu />
-            ) : (
-              <>
-                <Link href="/login" asChild>
-                  <Pressable accessibilityRole="link" style={styles.navLink}>
-                    <Text style={styles.navLinkText}>Sign in</Text>
-                  </Pressable>
-                </Link>
-              </>
-            )}
+      <View style={{ flex: 1, flexDirection: 'row', minHeight: 0 }}>
+        {/* Header and page share a column, so the wordmark lines up with the page content
+            whatever width the rail leaves them; the rail runs the full height beside both. */}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={styles.header}>
+            <View style={styles.headerInner}>
+              <Brand />
+              <View accessibilityLabel="Primary navigation" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {auth.authenticated ? (
+                  <AvatarMenu />
+                ) : (
+                  <>
+                    <Link href="/login" asChild>
+                      <Pressable accessibilityRole="link" style={styles.navLink}>
+                        <Text style={styles.navLinkText}>Sign in</Text>
+                      </Pressable>
+                    </Link>
+                  </>
+                )}
+              </View>
+            </View>
           </View>
+          <ScrollView
+            contentContainerStyle={{ flexGrow: 1, paddingBottom: sheetInset }}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.main}>{children}</View>
+            <SiteFooter />
+          </ScrollView>
+          {sheet}
         </View>
+        {aside}
       </View>
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
-        <View style={styles.main}>{children}</View>
-        <SiteFooter />
-      </ScrollView>
     </SafeAreaView>
   );
 }

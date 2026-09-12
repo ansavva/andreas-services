@@ -310,7 +310,10 @@ public sealed record RecipientAssignment(
     IReadOnlyList<RecipientWish> Wishes,
     // The CALLER's own gift status, never the recipient's opinion of it — the same rule as
     // RecipientWish.Claim. Null on the emergency reveal, which is not the giver reading their own.
-    GiftStatus? Gift = null);
+    GiftStatus? Gift = null,
+    // The recipient's profile photo, for the chat to put a face beside their name. Null when they
+    // have none (the app draws initials) and on the emergency reveal.
+    string? AvatarUrl = null);
 
 public sealed record RevealAssignment(Membership Giver, RecipientAssignment Recipient);
 
@@ -347,7 +350,8 @@ public sealed record QuestionThread(
     /// <summary>Whether THIS caller may send right now, with <see cref="BlockedReason"/> saying why not.</summary>
     bool CanSend,
     string? BlockedReason,
-    int MessageLimit);
+    /// <summary>The other side's messages this caller has not yet had on screen. Cleared by the seen route.</summary>
+    int Unread);
 
 public sealed record SendQuestionRequest(string? Body);
 public sealed record BlockQuestionsRequest(bool Blocked);
@@ -372,13 +376,23 @@ internal sealed record QuestionMessageRecord(
     string Body,
     string CreatedAt);
 
-/// <summary>The thread's own control row: whether the recipient has ended it.</summary>
+/// <summary>
+/// The thread's own control row: whether the recipient has ended it, and how far each SIDE has read.
+/// </summary>
+/// <remarks>
+/// <see cref="GiverSeen"/> and <see cref="RecipientSeen"/> are message ids — the newest message that
+/// side has had on screen — and they decide whether a new message earns an email: one goes out when
+/// the other side has nothing waiting, and none while they do. A side's marker names a message,
+/// never a person, which is what lets the giver's sit on a row the recipient can read.
+/// </remarks>
 internal sealed record QuestionThreadRecord(
     string ThreadId,
     string GroupId,
     string RecipientMemberId,
     bool Blocked,
-    string UpdatedAt);
+    string UpdatedAt,
+    string? GiverSeen = null,
+    string? RecipientSeen = null);
 public sealed record RevealResponse(IReadOnlyList<RevealAssignment> Assignments);
 public sealed record LateParticipantPreview(
     string ProposalId,

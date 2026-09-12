@@ -20,11 +20,11 @@ interface Thread {
   blocked: boolean;
   can_send: boolean;
   blocked_reason: string | null;
-  message_limit: number;
+  unread: number;
 }
 
 function thread(overrides: Partial<Thread> = {}): Thread {
-  return { messages: [], blocked: false, can_send: true, blocked_reason: null, message_limit: 50, ...overrides };
+  return { messages: [], blocked: false, can_send: true, blocked_reason: null, unread: 0, ...overrides };
 }
 
 /** A drawn exchange with both conversations under the test's control. */
@@ -86,10 +86,12 @@ test('the giver asks anonymously and the question appears as theirs', async ({ p
   const recorded = await stubDrawn(page, group);
 
   await page.goto(`/groups/${group.group_id}`);
-  await expect(page.getByText('Ask about their gift')).toBeVisible();
+  // Desktop Chrome is wide enough for the chat rail, where the heading is the panel's, not the
+  // conversation's; the composer is still named for the conversation.
+  await expect(page.getByText('Anonymous chat')).toBeVisible();
 
   await page.getByLabel('Ask about their gift').fill('What size do you take?');
-  await page.getByText('Send anonymously').click();
+  await page.getByRole('button', { name: 'Send anonymously' }).click();
 
   await expect(page.getByText('What size do you take?')).toBeVisible();
   expect(recorded.asked).toEqual(['What size do you take?']);
@@ -99,7 +101,7 @@ test('the giver asks anonymously and the question appears as theirs', async ({ p
  * The identity guarantee, at the last surface it could leak through.
  *
  * The recipient's panel renders a question with `author: "giver"`. Everything on that screen is
- * checked for the one thing it must never contain: a person. "Your giver" is a role; the roster
+ * checked for the one thing it must never contain: a person. "Your Secret Santa" is a role; the roster
  * name of whoever asked appears nowhere.
  */
 test('the recipient is never told who asked', async ({ page }) => {
@@ -116,12 +118,13 @@ test('the recipient is never told who asked', async ({ page }) => {
 
   await page.goto(`/groups/${group.group_id}`);
 
-  await expect(page.getByText('Questions about your gift')).toBeVisible();
+  await expect(page.getByText('Anonymous chat')).toBeVisible();
+  await page.getByText('Your Secret Santa').first().click();
   await expect(page.getByText('Do you already own it?')).toBeVisible();
-  await expect(page.getByText('Your giver').first()).toBeVisible();
+  await expect(page.getByText('Your Secret Santa').nth(1)).toBeVisible();
 
   // The panel's own subtree carries no roster name — not the asker's, not anyone's.
-  const panel = page.locator('div').filter({ hasText: 'Questions about your gift' }).last();
+  const panel = page.locator('div').filter({ hasText: 'Anonymous chat' }).last();
   const text = (await panel.innerText()).toLowerCase();
   for (const member of roster.members) {
     expect(text).not.toContain(member.display_name.toLowerCase());
@@ -144,10 +147,10 @@ test('a blocked thread offers the giver no way to send', async ({ page }) => {
   await page.goto(`/groups/${group.group_id}`);
 
   await expect(page.getByText('Questions are turned off for this gift.')).toBeVisible();
-  await expect(page.getByText('Send anonymously')).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Send anonymously' })).toBeHidden();
 });
 
-test('the question panels survive a 390px phone viewport', async ({ page }) => {
+test('the chat sheet survives a 390px phone viewport', async ({ page }) => {
   stubOnly('the layout under test is the stubbed export’s');
   await page.setViewportSize({ width: 390, height: 844 });
   await stubApi(page);
@@ -157,7 +160,10 @@ test('the question panels survive a 390px phone viewport', async ({ page }) => {
 
   await page.goto(`/groups/${group.group_id}`);
 
-  await expect(page.getByText('Ask about their gift')).toBeVisible();
+  // On a phone the chat is a sheet resting at the bottom of the screen; its handle expands it.
+  await expect(page.getByText('Anonymous chat')).toBeVisible();
+  await page.getByRole('button', { name: 'Expand chat' }).click();
+  await expect(page.getByLabel('Ask about their gift')).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });

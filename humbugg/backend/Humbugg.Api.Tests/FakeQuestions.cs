@@ -37,7 +37,27 @@ internal sealed class FakeQuestions : IQuestionRepository
 
     public Task SetBlockedAsync(QuestionThreadRecord thread, CancellationToken cancellationToken = default)
     {
-        threads[thread.ThreadId] = thread;
+        // An update, like the real row: the read markers survive a block.
+        threads[thread.ThreadId] = threads.TryGetValue(thread.ThreadId, out var existing)
+            ? existing with { Blocked = thread.Blocked, UpdatedAt = thread.UpdatedAt }
+            : thread;
+        return Task.CompletedTask;
+    }
+
+    public Task MarkSeenAsync(
+        string threadId,
+        string groupId,
+        string recipientMemberId,
+        QuestionAuthor side,
+        string messageId,
+        CancellationToken cancellationToken = default)
+    {
+        var current = threads.TryGetValue(threadId, out var existing)
+            ? existing
+            : new QuestionThreadRecord(threadId, groupId, recipientMemberId, false, "");
+        threads[threadId] = side == QuestionAuthor.Giver
+            ? current with { GiverSeen = messageId }
+            : current with { RecipientSeen = messageId };
         return Task.CompletedTask;
     }
 
