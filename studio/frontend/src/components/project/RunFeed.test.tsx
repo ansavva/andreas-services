@@ -317,18 +317,18 @@ describe("the actions", () => {
     await screen.findByRole("article");
 
     openTileMenu(1);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Use as reference" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Reference" }));
     expect(bar().attachments).toEqual(["reference:node-o2"]);
 
     openTileMenu(0);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Use as start frame" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Start frame" }));
     expect(bar().kind).toBe("video");
     expect(bar().attachments).toEqual(["start:node-o1"]);
 
     // An end frame joins the start frame; it does not replace it, and it does
     // not wipe the bar the way the old `Start frame` did.
     openTileMenu(1);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Use as end frame" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "End frame" }));
     expect(bar().kind).toBe("video");
     expect(bar().attachments).toEqual(["start:node-o1", "end:node-o2"]);
   });
@@ -445,9 +445,9 @@ describe("the shape of the frames", () => {
     // A clip is not a reference — a reference is a picture — so the tile's
     // menu offers no way to attach it as one. It did, and the send was refused.
     openTileMenu(0);
-    expect(screen.queryByRole("menuitem", { name: "Use as reference" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Use as start frame" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Use as end frame" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Reference" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Start frame" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "End frame" })).toBeNull();
     expect(screen.getByRole("menuitem", { name: "Run again with this" })).toBeTruthy();
   });
 });

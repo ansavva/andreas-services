@@ -404,7 +404,7 @@ describe("using the open file in the create bar", () => {
     await waitFor(() => expect(screen.getByText(/2 of 3/)).toBeTruthy());
 
     openUseAs();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Use as reference" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Reference" }));
 
     expect(screen.getByTestId("bar")).toHaveProperty("textContent", `reference:${OPEN}`);
   });
@@ -414,11 +414,11 @@ describe("using the open file in the create bar", () => {
     await waitFor(() => expect(screen.getByText(/2 of 3/)).toBeTruthy());
 
     openUseAs();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Use as end frame" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "End frame" }));
     expect(screen.getByTestId("bar")).toHaveProperty("textContent", `end:${OPEN}`);
 
     openUseAs();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Use as start frame" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Start frame" }));
     expect(screen.getByTestId("bar")).toHaveProperty(
       "textContent",
       `end:${OPEN},start:${OPEN}`,

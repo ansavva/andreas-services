@@ -199,7 +199,7 @@ it("a picture in the grid is attached to the create bar as a reference", async (
   await screen.findByText("a.png");
 
   openTileMenu("a.png");
-  fireEvent.click(screen.getByRole("menuitem", { name: "Use as reference" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Reference" }));
 
   // The node, in the role that accumulates — pressing a second tile adds to
   // this rather than replacing it.
@@ -230,7 +230,7 @@ it("a clip's menu offers no reference — a reference is a picture", async () =>
   await screen.findByText("clip.mp4");
 
   openTileMenu("clip.mp4");
-  expect(screen.queryByRole("menuitem", { name: "Use as reference" })).toBeNull();
+  expect(screen.queryByRole("menuitem", { name: "Reference" })).toBeNull();
   // The lines that are not about being a picture are still there.
   expect(screen.getByRole("menuitem", { name: "Download" })).toBeTruthy();
 });

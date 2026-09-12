@@ -53,7 +53,7 @@ import { LoadError } from "../common/LoadError";
 import { pressInApp } from "../common/pressInApp";
 import { SectionLoading } from "../common/SectionLoading";
 import { CharacterChipLink } from "../character/CharacterChip";
-import { USE_AS_ROLES, USE_AS_WORDS } from "../create/attachActions";
+import { USE_AS_GROUP, USE_AS_ROLES, USE_AS_WORDS } from "../create/attachActions";
 import { CompareStage, type ComparePicture } from "../media/CompareStage";
 import { MediaPlayer, type MediaPlayerControls } from "../media/MediaPlayer";
 import { MediaThumb } from "../media/MediaThumb";
@@ -839,7 +839,7 @@ function ActionGrid({
               <Cell
                 key={role}
                 icon={<Icon className={GLYPH} />}
-                label={label}
+                label={`${USE_AS_GROUP} ${label.toLowerCase()}`}
                 onClick={() => actions.useAs(asset, output, role)}
               />
             );

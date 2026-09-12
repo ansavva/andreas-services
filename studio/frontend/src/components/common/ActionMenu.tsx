@@ -1,6 +1,18 @@
-import { useCallback, useRef, useState, type ReactElement, type ReactNode } from "react";
+import {
+  Fragment,
+  useCallback,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 
-import { Drawer, Dropdown, Text, iconButtonClass } from "@ansavva/design-system";
+import {
+  Drawer,
+  Dropdown,
+  Text,
+  iconButtonClass,
+} from "@ansavva/design-system";
 
 import { useArmed } from "../../hooks/useArmed";
 import { DotsIcon, DotsVerticalIcon } from "./icons";
@@ -55,6 +67,29 @@ export interface MenuAction {
   reason?: string;
   /** On the line itself — the one use is `sm:hidden`, for an item a wider toolbar draws as a button. */
   className?: string;
+  /**
+   * The heading this line sits under. Consecutive lines carrying the same
+   * word are drawn as one group: the word once above them, a hairline on
+   * either side. The one use is `Use as` over the three roles a picture can
+   * take — a flat group rather than a submenu, because the `Dropdown` has no
+   * submenu and a sheet-in-a-sheet on a phone is worse than three lines.
+   */
+  group?: string;
+}
+
+/**
+ * Where a group starts and ends: the line before this one is under a
+ * different heading, or there is none. Read on both the dropdown and the
+ * sheet so the two draw the same breaks.
+ */
+function groupEdges(actions: readonly MenuAction[], at: number) {
+  const here = actions[at]!.group;
+  const before = at > 0 ? actions[at - 1]!.group : undefined;
+  const after = at + 1 < actions.length ? actions[at + 1]!.group : undefined;
+  return {
+    opens: here !== undefined && here !== before,
+    closes: here !== undefined && here !== after && at + 1 < actions.length,
+  };
 }
 
 /**
@@ -167,10 +202,14 @@ export function ActionMenu({
     const fitsRight = box.left + PANEL_W <= bounds.right;
     setLeftward(align === "end" ? fitsLeft : !fitsRight);
 
-    const floating = document.querySelector("[data-create-bar]")?.getBoundingClientRect();
+    const floating = document
+      .querySelector("[data-create-bar]")
+      ?.getBoundingClientRect();
     const floor = Math.min(window.innerHeight, floating?.top ?? Infinity);
     const below = floor - box.bottom;
-    const height = actions.length * PANEL_LINE + PANEL_PAD;
+    // A group adds a heading and up to two hairlines — about one line.
+    const groups = actions.filter((_, at) => groupEdges(actions, at).opens).length;
+    const height = (actions.length + groups) * PANEL_LINE + PANEL_PAD;
     // When neither side fits, take the roomier one rather than always falling
     // downward.
     setUpward(below < height && box.top > below);
@@ -181,18 +220,23 @@ export function ActionMenu({
       ? armed.busy
         ? "Working…"
         : armed.armed
-          ? (action.armedLabel ?? `Confirm — ${String(action.label).toLowerCase()}`)
+          ? (action.armedLabel ??
+            `Confirm — ${String(action.label).toLowerCase()}`)
           : action.label
       : action.label;
 
   const Glyph = vertical ? DotsVerticalIcon : DotsIcon;
   const glyph = icon ?? (
-    <Glyph className={overlay ? "size-4 fill-current stroke-none" : undefined} />
+    <Glyph
+      className={overlay ? "size-4 fill-current stroke-none" : undefined}
+    />
   );
   const triggerClass = iconButtonClass({
     size: "sm",
     ...(overlay ? { intent: "overlay" as const } : {}),
-    className: overlay ? "bg-overlay-scrim/60" : "shrink-0 text-muted hover:text-ink",
+    className: overlay
+      ? "bg-overlay-scrim/60"
+      : "shrink-0 text-muted hover:text-ink",
   });
 
   return (
@@ -230,41 +274,62 @@ export function ActionMenu({
             leftward ? "left-auto right-0" : "left-0 right-auto"
           } ${upward ? "bottom-full top-auto mb-2 mt-0" : ""}`}
         >
-          {actions.map((action) => (
-            <Dropdown.Item
-              key={action.key}
-              disabled={action.disabled || (action.arm && armed.busy)}
-              title={action.reason}
-              className={`${action.className ?? ""} ${
-                action.danger || armed.armed ? "text-danger" : ""
-              }`}
-              {...(action.arm ? armed.handlers : {})}
-              onClick={
-                action.arm
-                  ? (event: React.MouseEvent) => {
-                      // Arming must not close the menu — the confirmation IS
-                      // the line.
-                      if (!armed.armed) event.preventDefault();
-                      armed.press();
+          {actions.map((action, at) => {
+            const edge = groupEdges(actions, at);
+            return (
+              <Fragment key={action.key}>
+                {edge.opens && (
+                  <>
+                    {at > 0 && <Dropdown.Divider />}
+                    <Dropdown.Label>{action.group}</Dropdown.Label>
+                  </>
+                )}
+                <Dropdown.Item
+                  disabled={action.disabled || (action.arm && armed.busy)}
+                  title={action.reason}
+                  className={`${action.className ?? ""} ${
+                    action.danger || armed.armed ? "text-danger" : ""
+                  }`}
+                  {...(action.arm ? armed.handlers : {})}
+                  onClick={
+                    action.arm
+                      ? (event: React.MouseEvent) => {
+                          // Arming must not close the menu — the confirmation IS
+                          // the line.
+                          if (!armed.armed) event.preventDefault();
+                          armed.press();
+                        }
+                      : action.keepOpen
+                        ? (event: React.MouseEvent) => {
+                            event.preventDefault();
+                            void action.onSelect();
+                          }
+                        : undefined
+                  }
+                  onSelect={
+                    action.arm || action.keepOpen
+                      ? undefined
+                      : () => void action.onSelect()
+                  }
+                >
+                  <span
+                    className="flex items-center gap-2"
+                    aria-live={
+                      action.arm
+                        ? "assertive"
+                        : action.keepOpen
+                          ? "polite"
+                          : undefined
                     }
-                  : action.keepOpen
-                    ? (event: React.MouseEvent) => {
-                        event.preventDefault();
-                        void action.onSelect();
-                      }
-                    : undefined
-              }
-              onSelect={action.arm || action.keepOpen ? undefined : () => void action.onSelect()}
-            >
-              <span
-                className="flex items-center gap-2"
-                aria-live={action.arm ? "assertive" : action.keepOpen ? "polite" : undefined}
-              >
-                {action.icon}
-                {wordOf(action)}
-              </span>
-            </Dropdown.Item>
-          ))}
+                  >
+                    {action.icon}
+                    {wordOf(action)}
+                  </span>
+                </Dropdown.Item>
+                {edge.closes && <Dropdown.Divider />}
+              </Fragment>
+            );
+          })}
         </Dropdown.Content>
       </Dropdown.Root>
 
@@ -289,7 +354,10 @@ export function ActionMenu({
           {glyph}
         </Drawer.Trigger>
         <Drawer.Backdrop />
-        <Drawer.Panel ref={sheet} className="max-h-[85vh] overflow-y-auto rounded-t-lg pt-0">
+        <Drawer.Panel
+          ref={sheet}
+          className="max-h-[85vh] overflow-y-auto rounded-t-lg pt-0"
+        >
           <Drawer.Title className="sr-only">{triggerLabel}</Drawer.Title>
           <SheetHandle panel={sheet} onDismiss={close} />
           <div className="flex flex-col pb-2">
@@ -298,34 +366,61 @@ export function ActionMenu({
             <Text variant="caption" tone="muted" className="truncate px-2 pb-1">
               {label}
             </Text>
-            {actions.map((action) => (
-              <button
-                key={action.key}
-                type="button"
-                disabled={action.disabled || (action.arm && armed.busy)}
-                title={action.reason}
-                {...(action.arm ? armed.handlers : {})}
-                onClick={() => {
-                  if (action.arm) {
-                    armed.press();
-                    return;
-                  }
-                  void action.onSelect();
-                  if (!action.keepOpen) close();
-                }}
-                className={`flex min-h-11 items-center gap-3 rounded-md px-2 text-left text-sm
+            {actions.map((action, at) => {
+              const edge = groupEdges(actions, at);
+              return (
+                <Fragment key={action.key}>
+                  {edge.opens && (
+                    <>
+                      {at > 0 && (
+                        <div role="separator" className="my-1 h-px bg-line" />
+                      )}
+                      <Text
+                        variant="caption"
+                        tone="muted"
+                        className="px-2 pb-1 pt-2 font-semibold"
+                      >
+                        {action.group}
+                      </Text>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    disabled={action.disabled || (action.arm && armed.busy)}
+                    title={action.reason}
+                    {...(action.arm ? armed.handlers : {})}
+                    onClick={() => {
+                      if (action.arm) {
+                        armed.press();
+                        return;
+                      }
+                      void action.onSelect();
+                      if (!action.keepOpen) close();
+                    }}
+                    className={`flex min-h-11 items-center gap-3 rounded-md px-2 text-left text-sm
                             hover:bg-fill active:bg-fill-active disabled:opacity-50
                             ${action.className ?? ""}
                             ${action.danger || armed.armed ? "text-danger" : ""}`}
-              >
-                {action.icon}
-                <span
-                  aria-live={action.arm ? "assertive" : action.keepOpen ? "polite" : undefined}
-                >
-                  {wordOf(action)}
-                </span>
-              </button>
-            ))}
+                  >
+                    {action.icon}
+                    <span
+                      aria-live={
+                        action.arm
+                          ? "assertive"
+                          : action.keepOpen
+                            ? "polite"
+                            : undefined
+                      }
+                    >
+                      {wordOf(action)}
+                    </span>
+                  </button>
+                  {edge.closes && (
+                    <div role="separator" className="my-1 h-px bg-line" />
+                  )}
+                </Fragment>
+              );
+            })}
           </div>
         </Drawer.Panel>
       </Drawer.Root>

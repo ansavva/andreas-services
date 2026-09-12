@@ -155,10 +155,12 @@ export function ObjectActions({
           triggerLabel="Use as…"
           align="start"
           icon={<UseInPromptIcon className="size-4 fill-none stroke-current stroke-[1.5]" />}
+          // Ungrouped: the trigger already says `Use as…`, and a heading
+          // repeating it over three lines would be the word twice.
           actions={attachActions(
             { node: file.id, url: file.url, name: file.name, kind: "object" },
             (_, role) => onUseAs(role),
-          )}
+          ).map(({ group: _group, ...action }) => action)}
         />
       )}
 

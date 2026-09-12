@@ -25,10 +25,17 @@ export const USE_AS_WORDS: Record<
   UseAsRole,
   { label: string; icon: (props: { className?: string }) => ReactElement }
 > = {
-  reference: { label: "Use as reference", icon: UseInPromptIcon },
-  start: { label: "Use as start frame", icon: StartFrameIcon },
-  end: { label: "Use as end frame", icon: FrameEndIcon },
+  reference: { label: "Reference", icon: UseInPromptIcon },
+  start: { label: "Start frame", icon: StartFrameIcon },
+  end: { label: "End frame", icon: FrameEndIcon },
 };
+
+/**
+ * The heading the three sit under in a menu — the verb once, the role on
+ * each line. The open file's row has no menu to join, so there the same
+ * word is the trigger of a menu holding only these.
+ */
+export const USE_AS_GROUP = "Use as";
 
 const GLYPH = "size-4 shrink-0 fill-none stroke-current stroke-[1.5]";
 
@@ -48,6 +55,7 @@ export function attachActions(
     const { label, icon: Icon } = USE_AS_WORDS[role];
     return {
       key: `use-as-${role}`,
+      group: USE_AS_GROUP,
       label,
       icon: <Icon className={GLYPH} />,
       onSelect: () => attach(ref, role),
