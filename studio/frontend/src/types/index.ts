@@ -415,6 +415,18 @@ export type ProfileValue =
 export type CharacterProfile = Record<string, ProfileValue>;
 
 /**
+ * The blank bible and a hint per field — `GET /api/characters/profile-template`.
+ *
+ * What a new character is seeded from, and what the form adds a missing
+ * section from. `hints` is keyed by dotted path with no list indexes
+ * (`wardrobe.tops.item`), so the same line serves every entry of a list.
+ */
+export interface ProfileTemplate {
+  profile: CharacterProfile;
+  hints: Record<string, string>;
+}
+
+/**
  * One character's whole record.
  *
  * `rev` is the reason an edit here is safe. Every write that changes the record

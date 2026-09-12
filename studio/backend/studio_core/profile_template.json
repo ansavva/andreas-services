@@ -1,0 +1,127 @@
+{
+  "profile": {
+    "identity": {
+      "apparent_age": "",
+      "build": "",
+      "height_read": "",
+      "signature_features": [],
+      "home_turf": "",
+      "register": "",
+      "speech": ""
+    },
+    "face": {
+      "structure": "",
+      "skin": "",
+      "eyes": "",
+      "eyebrows": "",
+      "nose": "",
+      "mouth_and_jaw": "",
+      "facial_hair": "",
+      "hair": "",
+      "ears": ""
+    },
+    "body": {
+      "silhouette": "",
+      "chest_and_shoulders": "",
+      "back": "",
+      "arms": "",
+      "hands": "",
+      "neck": "",
+      "midsection": "",
+      "lower_body": "",
+      "feet": "",
+      "body_hair": "",
+      "posture": ""
+    },
+    "wardrobe": {
+      "always_dressed": true,
+      "tops": [
+        {
+          "item": "",
+          "colour": "",
+          "detail": ""
+        }
+      ],
+      "lower_body": "",
+      "footwear": "",
+      "accessories": [],
+      "palette": ""
+    },
+    "voice": {
+      "language": "",
+      "accent": "",
+      "accent_cues": [],
+      "manner": "",
+      "delivery": ""
+    },
+    "rendering": {
+      "default_style": "Realistic",
+      "optional_styles": [],
+      "framing": "",
+      "backgrounds": ""
+    },
+    "consistency": {
+      "must": [],
+      "never": [],
+      "drift_modes": [
+        {
+          "failure": "",
+          "fix": ""
+        }
+      ]
+    },
+    "text_identity_block": ""
+  },
+  "hints": {
+    "identity.apparent_age": "e.g. late 30s to mid 40s",
+    "identity.build": "body type in one line",
+    "identity.height_read": "how tall they read against people and furniture",
+    "identity.signature_features": "2-4 cues; the recognition core",
+    "identity.home_turf": "recurring setting / world",
+    "identity.register": "demeanour in a few words",
+    "identity.speech": "language + accent in a few words",
+    "face.structure": "overall shape, proportion, dominant planes",
+    "face.skin": "tone, texture, weathering, folds",
+    "face.eyes": "set, colour, lids, resting gaze",
+    "face.eyebrows": "shape, weight, how they sit",
+    "face.nose": "the shape, and what must not drift",
+    "face.mouth_and_jaw": "lips, resting expression, jawline, chin",
+    "face.facial_hair": "default state; what it is never",
+    "face.hair": "colour, length, how it is worn, finish",
+    "face.ears": "size, set, lobes",
+    "body.silhouette": "proportion — usually the single most reliable on-model cue",
+    "body.chest_and_shoulders": "width across the shoulders, how the chest reads, where it tapers",
+    "body.back": "taper, lats, blades, spinal furrow — the body angle image shot from behind has nothing else to check itself against",
+    "body.arms": "length and thickness, how defined, where the muscle actually sits",
+    "body.hands": "palm and finger shape, nails, veins, hair; which wrist wears what",
+    "body.neck": "thickness AND length, the muscles that show, where facial hair stops",
+    "body.midsection": "how defined, honestly — \"trim\" and \"shredded\" are not the same",
+    "body.lower_body": "thighs, calves, hips; the shape, not just the size",
+    "body.feet": "size and shape — only ever read by a body angle that shows them",
+    "body.body_hair": "state it explicitly if it matters — generators default to smooth",
+    "body.posture": "how they sit, stand, gesture",
+    "wardrobe.tops.item": "garment",
+    "wardrobe.tops.colour": "one plain colour, optional",
+    "wardrobe.tops.detail": "colour, cut, any embroidery or graphic",
+    "wardrobe.lower_body": "trousers, shorts or skirt — cut, length and colour",
+    "wardrobe.footwear": "the shoes they are usually in, and their colour",
+    "wardrobe.accessories": "the repeated ones — these carry recognition; say which wrist, how worn",
+    "wardrobe.palette": "the colours the character and their world live in",
+    "voice.language": "language spoken lines are written in",
+    "voice.accent": "the accent by name, and how strong it is",
+    "voice.accent_cues": "one sound or word the accent lands on",
+    "voice.manner": "how they behave on camera",
+    "voice.delivery": "sentence length, pacing, volume",
+    "rendering.framing": "shot sizes that suit them",
+    "rendering.backgrounds": "default environments",
+    "consistency.must": "one cue every render must show — the checklist, one line each",
+    "consistency.never": "what must be absent, or must never change",
+    "consistency.drift_modes.failure": "what the model does",
+    "consistency.drift_modes.fix": "what to state in the prompt instead",
+    "text_identity_block": "~50-70 words for engines that carry no reference images — only what a text-only engine cannot infer. `studio character textblock <name>` prints the raw material",
+    "wardrobe.tops": "ordered by how often the character wears it; the first is what a reference angle wears",
+    "consistency.drift_modes": "how models get this character wrong, each paired with the fix to write into the next prompt",
+    "rendering.default_style": "a preset name from studio-media-prompt's style presets",
+    "rendering.optional_styles": "other presets this character may opt into"
+  }
+}

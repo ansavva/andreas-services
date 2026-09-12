@@ -26,6 +26,7 @@ import pytest
 
 from studio_core import app_factory, config
 from studio_core.services import catalog, layout
+from studio_core.routes.characters import PROFILE_SECTIONS, TEXT_BLOCK, clean_profile
 from tests.conftest import CATALOG_LIBRARY, CATALOG_ROOT
 
 
@@ -1015,3 +1016,39 @@ def test_the_listing_orders_by_name_then_id_so_duplicates_do_not_swap(empty_api)
     found = empty_api.get("/api/characters").get_json()
 
     assert [entry["id"] for entry in found] == sorted([first["id"], second["id"]])
+
+
+# ──────────────────────────── the blank bible ────────────────────────────
+
+
+def test_a_character_made_without_a_profile_starts_from_the_blank_bible(empty_api):
+    """**The app's create and the CLI's create start from the same form.**
+
+    `POST /api/characters {name}` used to leave `profile` as `{}`, which the
+    SPA drew as a form with nothing in it — and nothing on that screen could
+    add a field, so the character stayed empty. It is seeded from
+    `profile_template.json` now: every section the API validates, every field
+    blank. A body that says `profile: {}` still gets `{}` — that is a client
+    asking for empty, not forgetting to say.
+    """
+    seeded = _create(empty_api)
+    assert set(seeded["profile"]) == set(PROFILE_SECTIONS) | {TEXT_BLOCK}
+    assert seeded["profile"]["identity"]["apparent_age"] == ""
+    assert seeded["profile"]["wardrobe"]["always_dressed"] is True
+    # One blank entry, so the form knows what an entry holds.
+    assert seeded["profile"]["wardrobe"]["tops"] == [{"item": "", "colour": "", "detail": ""}]
+    assert seeded["profile"][TEXT_BLOCK] == ""
+
+    explicit = _create(empty_api, name="subject-b", profile={})
+    assert explicit["profile"] == {}
+
+
+def test_the_blank_bible_passes_the_validation_it_will_be_saved_under(empty_api):
+    """The template is a valid bible by the API's own rules, or the first save
+    of an untouched new character would be refused."""
+    template = empty_api.get("/api/characters/profile-template").get_json()
+    assert clean_profile(template["profile"]) == template["profile"]
+    # A hint per scalar field, keyed without list indexes.
+    assert template["hints"]["identity.apparent_age"]
+    assert template["hints"]["wardrobe.tops.item"]
+    assert not any(".0." in key for key in template["hints"])

@@ -15,17 +15,24 @@ vi.mock("../components/browse/FolderTab", () => ({
 vi.mock("../apis/studio", () => ({
   deleteCharacter: vi.fn(),
   getCharacter: vi.fn(),
+  getProfileTemplate: vi.fn(),
   patchCharacter: vi.fn(),
   setCharacterProfile: vi.fn(),
 }));
 
-import { getCharacter, patchCharacter, setCharacterProfile } from "../apis/studio";
+import {
+  getCharacter,
+  getProfileTemplate,
+  patchCharacter,
+  setCharacterProfile,
+} from "../apis/studio";
 import { CharacterPage } from "./CharacterPage";
 import { TestProviders } from "../test-providers";
 
 const read = vi.mocked(getCharacter);
 const patch = vi.mocked(patchCharacter);
 const setProfile = vi.mocked(setCharacterProfile);
+const template = vi.mocked(getProfileTemplate);
 
 const ID = "char-0001";
 
@@ -58,6 +65,15 @@ afterEach(cleanup);
 beforeEach(() => {
   vi.clearAllMocks();
   read.mockResolvedValue(record());
+  template.mockResolvedValue({
+    profile: {
+      identity: { apparent_age: "", build: "", signature_features: [] },
+      face: { hair: "", nose: "" },
+      voice: { accent: "" },
+      text_identity_block: "",
+    },
+    hints: { "face.hair": "colour, length, how it is worn, finish", "face.nose": "the shape" },
+  });
 });
 
 async function open() {
@@ -346,5 +362,97 @@ describe("the sections", () => {
     // that every shoot depends on looked exactly as important as three thousand
     // characters of `face` that no code reads.
     expect(screen.getByText(/what a prompt gets written from/)).toBeTruthy();
+  });
+});
+
+/**
+ * The fields inside a section are a person's to add to and take from — the
+ * API validates by section and by nothing below it — and the sections
+ * themselves come and go from the schema's list. All of it edits the draft;
+ * Save writes it whole.
+ */
+describe("adding and removing fields and sections", () => {
+  /** A section's card, by its key. */
+  const card = (key: string) => document.querySelector<HTMLElement>(`[data-section="${key}"]`)!;
+
+  it("adds a field of a chosen shape under a section, stored as a snake_case key", async () => {
+    setProfile.mockResolvedValue(record({ rev: 8 }));
+    await open();
+
+    // Face is the first bible section, open by default. Its "Add field" is
+    // the one under its fields.
+    fireEvent.click(within(card("face")).getByRole("button", { name: "Add field" }));
+    fireEvent.change(screen.getByLabelText("Field name"), { target: { value: "Mouth & jaw" } });
+    expect(screen.getByText(/Stored as/).textContent).toContain("mouth_jaw");
+    fireEvent.click(screen.getByRole("button", { name: "Add", exact: true }));
+
+    // Drawn like any other field, and empty.
+    const added = screen.getByLabelText("Mouth jaw") as HTMLInputElement;
+    expect(added.value).toBe("");
+    fireEvent.change(added, { target: { value: "square" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(setProfile).toHaveBeenCalledWith(
+        ID,
+        expect.objectContaining({ face: expect.objectContaining({ mouth_jaw: "square" }) }),
+        7,
+      ),
+    );
+  });
+
+  it("refuses an empty or duplicate field name in place", async () => {
+    await open();
+    fireEvent.click(within(card("face")).getByRole("button", { name: "Add field" }));
+    const add = () => screen.getByRole("button", { name: "Add", exact: true }) as HTMLButtonElement;
+    expect(add().disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText("Field name"), { target: { value: "Hair" } });
+    expect(screen.getByText(/already a field called Hair/)).toBeTruthy();
+    expect(add().disabled).toBe(true);
+  });
+
+  it("takes a field off the draft, and Save sends the section without it", async () => {
+    setProfile.mockResolvedValue(record({ rev: 8 }));
+    await open();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Hair" }));
+    expect(screen.queryByLabelText("Hair")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(setProfile).toHaveBeenCalled());
+    const sent = setProfile.mock.calls[0]![1] as { face: Record<string, unknown> };
+    expect(sent.face).toEqual({ build: "a".repeat(63) });
+  });
+
+  it("adds a missing schema section from the template, with its fields, and removes one", async () => {
+    setProfile.mockResolvedValue(record({ rev: 8 }));
+    await open();
+
+    // Identity is in the schema and not on this record: offered, and it
+    // arrives with the template's fields rather than empty.
+    expect(screen.queryByRole("button", { name: "Remove Apparent age" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Identity" }));
+    expect(within(card("identity")).getByLabelText("Apparent age")).toBeTruthy();
+    expect(within(card("identity")).getByLabelText("Build")).toBeTruthy();
+    // And it is no longer on offer.
+    expect(screen.queryByRole("button", { name: "Identity" })).toBeNull();
+
+    // Voice goes: the whole section, one press, off the draft.
+    fireEvent.click(within(card("voice")).getByRole("button", { name: "Remove section" }));
+    expect(screen.queryByLabelText("Accent")).toBeNull();
+    // Offered back.
+    expect(screen.getByRole("button", { name: "Voice" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(setProfile).toHaveBeenCalled());
+    const sent = setProfile.mock.calls[0]![1] as Record<string, unknown>;
+    expect(Object.keys(sent).sort()).toEqual(["face", "identity"]);
+    expect(sent.identity).toEqual({ apparent_age: "", build: "", signature_features: [] });
+  });
+
+  it("draws the template's hint under a field", async () => {
+    await open();
+    expect(screen.getByText("colour, length, how it is worn, finish")).toBeTruthy();
   });
 });

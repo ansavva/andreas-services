@@ -1031,9 +1031,10 @@ fan-out write this trade avoids.
 
 | Route | Returns |
 |---|---|
-| `GET \| POST /api/characters` | List, or create — record, library index row, root folder and the starting pools in one transaction. **No 409**: a name is a label, so nothing here can collide |
+| `GET \| POST /api/characters` | List, or create — record, library index row, root folder and the starting pools in one transaction. **No 409**: a name is a label, so nothing here can collide. A body with no `profile` is seeded from the blank bible; `profile: {}` stays `{}` |
+| `GET /api/characters/profile-template` | `{profile, hints}` — the blank bible (`profile_template.json`, the pipeline's `templates/profile.yaml` with the placeholders emptied) and a line per field keyed by dotted path without list indexes. What the form adds a missing section from |
 | `GET \| PATCH \| DELETE /api/characters/<id>` | One character, addressed by id. `PATCH` carries `rev` and **409**s if it has moved |
-| `PATCH /api/characters/<id>/profile` | `{profile, rev}` — the bible, validated |
+| `PATCH /api/characters/<id>/profile` | `{profile, rev}` — the bible, validated **by section only**: what is inside `face` is a person's to add to and take from, and `ProfileForm` lets them (an × per field, "Add field" under every group, "Remove section" and "Add a section" for the schema's list) |
 | `GET /api/characters/<id>/selection` | `?pick=&tag=&limit=` → the ordered nodes a model would be shown. **Refuses** an over-cap selection with the index in the body |
 | `GET /api/characters/<id>/textblock` · `/runs` · `/projects` | The identity paragraph; the runs that used it; the projects that involve it |
 | `GET \| POST /api/projects` | List, or create |

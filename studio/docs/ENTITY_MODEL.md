@@ -446,7 +446,8 @@ moves with it.
 | Route | Body / params → result |
 |---|---|
 | `GET /api/characters` | `?q=` → `[{id, name, hero, counts, updated}]`, name-then-id ascending so duplicates never swap between reads |
-| `POST /api/characters` | `{name, profile?}` → **201** the record. Creates entity + library index row + root + four pool folders in one transaction. **No 409** — nothing here can collide |
+| `POST /api/characters` | `{name, profile?}` → **201** the record. Creates entity + library index row + root + four pool folders in one transaction. **No 409** — nothing here can collide. No `profile` at all → seeded from the blank bible, so the app's create and the CLI's start from the same form |
+| `GET /api/characters/profile-template` | `{profile, hints}` → the blank bible and a hint per field; what a missing section is added back from |
 | `GET /api/characters/<id>` | the full record, `profile` included |
 | `PATCH /api/characters/<id>` | `{name?, hero?, rev}` → **409** on a stale `rev`, and on nothing else |
 | `PATCH /api/characters/<id>/profile` | `{profile, rev}` → whole-bible replace, validated. The `edit` round trip |
@@ -578,7 +579,7 @@ Ids in URLs everywhere, so every link survives every rename.
 
 Tabs: **Profile · References · Corpus · Seed · Archive · Files**
 
-- **Profile** renders the bible as fields, editable in place, saved with `rev`.
+- **Profile** renders the bible as fields, editable in place, saved with `rev`. The fields are the person's: an × takes one off, "Add field" puts one under any group (text, long text, list, yes/no, number, group), a section can be removed and any schema section added back with the template's fields. Validation is by section, so all of it saves.
   Not a textarea over YAML — the shape is studio's now, so it can be a form.
 - **References** is a grid grouped by purpose, with drag-to-reorder writing
   `order`, inline descriptions, tag filters, and a visible marker on the
