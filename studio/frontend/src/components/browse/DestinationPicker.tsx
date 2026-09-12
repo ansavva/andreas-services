@@ -5,9 +5,10 @@ import { Alert, Breadcrumbs, Button, Dialog, Text } from "@ansavva/design-system
 import { EmptyState } from "../common/EmptyState";
 import { SectionLoading } from "../common/SectionLoading";
 import { getFolder } from "../../apis/studio";
-import type { Crumb, FolderEntry } from "../../types";
+import { DEFAULT_SORT, type Crumb, type FolderEntry, type SortOrder } from "../../types";
 import type { FolderId } from "../../utils/location";
 import { ArrowUpIcon, FolderIcon } from "../common/icons";
+import { SortControl } from "./SortControl";
 
 interface Props {
   /** Which operation this is picking a destination for. */
@@ -84,6 +85,11 @@ export function DestinationPicker({
   onClose,
 }: Props) {
   const [folderId, setFolderId] = useState<FolderId>(startId);
+  // Newest first, like every listing — a project's `runs/` is folders named by
+  // number, and the one somebody is filing into is almost always the latest.
+  // The control is here because the same list read by name is what a person
+  // who knows the folder's name wants.
+  const [sort, setSort] = useState<SortOrder>(DEFAULT_SORT);
   const [folders, setFolders] = useState<FolderEntry[]>([]);
   const [crumbs, setCrumbs] = useState<Crumb[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,9 +101,7 @@ export function DestinationPicker({
     setLoading(true);
     setError(null);
 
-    // Always by name: this is a folder chooser, and "newest first" is an answer
-    // to a question nobody asks while looking for somewhere to put something.
-    getFolder(folderId === null ? {} : { node: folderId }, "name")
+    getFolder(folderId === null ? {} : { node: folderId }, sort)
       .then((result) => {
         if (cancelled) return;
         setFolders(result.folders);
@@ -113,7 +117,7 @@ export function DestinationPicker({
     return () => {
       cancelled = true;
     };
-  }, [folderId]);
+  }, [folderId, sort]);
 
   // Up, and whether there is an up, come from the trail the listing returned.
   // The server built that trail by walking `parent_id`, so it is the tree's own
@@ -169,21 +173,24 @@ export function DestinationPicker({
           {verb === "move" ? "Move" : "Copy"} {noun}
         </Dialog.Title>
 
-        <Breadcrumbs.Root>
-          {crumbs.map((crumb, index, all) => (
-            <Breadcrumbs.Item
-              key={crumb.id}
-              current={index === all.length - 1}
-              href="#"
-              onClick={(event: React.MouseEvent) => {
-                event.preventDefault();
-                setFolderId(crumb.id);
-              }}
-            >
-              {named(crumb.name)}
-            </Breadcrumbs.Item>
-          ))}
-        </Breadcrumbs.Root>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Breadcrumbs.Root>
+            {crumbs.map((crumb, index, all) => (
+              <Breadcrumbs.Item
+                key={crumb.id}
+                current={index === all.length - 1}
+                href="#"
+                onClick={(event: React.MouseEvent) => {
+                  event.preventDefault();
+                  setFolderId(crumb.id);
+                }}
+              >
+                {named(crumb.name)}
+              </Breadcrumbs.Item>
+            ))}
+          </Breadcrumbs.Root>
+          <SortControl value={sort} onChange={setSort} />
+        </div>
 
         <div className="min-h-40 flex-1 overflow-auto border border-line">
           {loading && <SectionLoading label="Loading folders" />}

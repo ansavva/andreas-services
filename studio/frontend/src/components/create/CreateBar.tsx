@@ -536,7 +536,16 @@ export function CreateBar() {
             <AttachPicker
               key={bar.role}
               role={bar.role}
-              projectRoot={project.data?.root ?? null}
+              project={
+                project.data
+                  ? {
+                      kind: "project",
+                      id: project.data.id,
+                      name: project.data.name,
+                      root: project.data.root,
+                    }
+                  : null
+              }
               attached={new Set(attachments.map((each) => each.ref.node))}
               onAttach={(ref: AttachRef) => {
                 if (bar.role) attach(ref, bar.role);

@@ -82,6 +82,8 @@ def summary_rows(records: list[dict]) -> list[dict]:
             "id": record["id"],
             "name": record.get("name"),
             "hero": _hero(record, heroes),
+            # The one pointer into the file tree — see `list_characters`.
+            "root": record.get("root"),
             "counts": record.get("counts") or {},
             "updated": record.get("updated"),
         }

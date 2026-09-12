@@ -157,6 +157,7 @@ function FileProperties({ file }: { file: FileEntry }) {
     ["Name", file.name],
     ["Type", file.content_type ?? file.kind],
     ["Size", formatBytes(file.size)],
+    ...(file.created ? [["Created", formatDate(file.created)] as [string, string]] : []),
     ...(file.last_modified
       ? [["Modified", formatDate(file.last_modified)] as [string, string]]
       : []),

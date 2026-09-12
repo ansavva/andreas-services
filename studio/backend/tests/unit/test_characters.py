@@ -962,6 +962,9 @@ def test_the_listing_counts_identity_without_a_counter_on_the_record(empty_api):
 
     assert [entry["id"] for entry in listed] == [character["id"]]
     assert listed[0]["counts"]["default"] == 2
+    # The one pointer into the file tree rides on the summary, so a picker can
+    # open a character straight off the list.
+    assert listed[0]["root"] == character["root"]
 
 
 def test_the_listing_counts_files_under_the_character(empty_api):
