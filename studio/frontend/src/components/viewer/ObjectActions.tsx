@@ -1,12 +1,14 @@
 import { IconButton } from "@ansavva/design-system";
 
 import { downloadNode } from "../../utils/download";
+import type { AttachRole } from "../../context/CreateBarContext";
 import type { FileEntry } from "../../types";
 import { ActionMenu } from "../common/ActionMenu";
 import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { FavoriteButton } from "../common/FavoriteButton";
 import { CopyKeyButton } from "../common/CopyKeyButton";
 import { CloseIcon, DownloadIcon, PencilIcon, TrashIcon, UseInPromptIcon } from "../common/icons";
+import { attachActions } from "../create/attachActions";
 
 interface Props {
   file: FileEntry;
@@ -49,15 +51,16 @@ interface Props {
   /** Leaves the screen. Only the page header offers it; Esc does it everywhere. */
   onClose?: () => void;
   /**
-   * Attach the open picture to the create bar as a reference.
+   * Attach the open picture to the create bar — as a reference, a start
+   * frame or an end frame, the three lines of one `Use as…` menu.
    *
-   * **Absent on a clip and in fullscreen.** A reference is a picture, so the
+   * **Absent on a clip and in fullscreen.** Every role is a picture, so the
    * page supplies this for an image and nothing else; and the `media` variant
    * leaves it out because the sheet it attaches to is not painted while the
    * frame owns the screen — a control whose whole feedback is a tile appearing
    * somewhere you cannot see.
    */
-  onUseAsReference?: () => void;
+  onUseAs?: (role: AttachRole) => void;
 }
 
 /**
@@ -88,7 +91,7 @@ export function ObjectActions({
   editing = false,
   onToggleEditing,
   onClose,
-  onUseAsReference,
+  onUseAs,
 }: Props) {
   // A text file has no heart. The favorites screen is a grid of media and the
   // API refuses anything else, so offering the control on a `prompt.json` would
@@ -143,11 +146,20 @@ export function ObjectActions({
       */}
       {/* First, because it is the one control here that starts something rather
           than filing, fetching or leaving — the same reason it is the first of
-          the still's actions in the run's rail. */}
-      {onUseAsReference && (
-        <IconButton label="Use as reference" size="sm" onClick={onUseAsReference}>
-          <UseInPromptIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
-        </IconButton>
+          the still's actions in the run's rail. A menu rather than a button
+          since the picture can be three things to the bar, and three icons
+          would not fit a row that fits seven at `sm` with 31px to spare. */}
+      {onUseAs && (
+        <ActionMenu
+          label={file.name}
+          triggerLabel="Use as…"
+          align="start"
+          icon={<UseInPromptIcon className="size-4 fill-none stroke-current stroke-[1.5]" />}
+          actions={attachActions(
+            { node: file.id, url: file.url, name: file.name, kind: "object" },
+            (_, role) => onUseAs(role),
+          )}
+        />
       )}
 
       {favoritable && <FavoriteButton id={file.id} name={file.name} size="sm" />}

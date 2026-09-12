@@ -89,6 +89,8 @@ export function ActionMenu({
   triggerLabel = `Actions for ${label}`,
   overlay = false,
   vertical = false,
+  icon,
+  align = "end",
   className = "",
   onOpenChange,
 }: {
@@ -101,6 +103,21 @@ export function ActionMenu({
   overlay?: boolean;
   /** `⋮` rather than `⋯` — upright over a picture, flat in a row of text. */
   vertical?: boolean;
+  /**
+   * The trigger's own glyph, instead of the dots — for a menu that is one
+   * named thing with three ways of doing it (`Use as…`) rather than "more".
+   * Drawn as given; the dots carry their own size, this carries its own.
+   */
+  icon?: ReactElement;
+  /**
+   * Which way the panel opens, when there is room both ways. `end` — the
+   * default — opens it leftward, under a trigger at the right edge of the
+   * thing it belongs to, which is where every `⋯` sits. `start` opens it
+   * rightward, for a trigger at the LEFT of its row: the open file's
+   * `Use as…` is first in the details column, and a panel opening leftward
+   * from there lands under the stage, which paints over it.
+   */
+  align?: "start" | "end";
   /** Where the trigger sits. */
   className?: string;
   /** Told when the menu opens or closes. */
@@ -113,7 +130,7 @@ export function ActionMenu({
 
   /** Which way the panel opens, decided when it is opened. See the docblock. */
   const [upward, setUpward] = useState(false);
-  const [leftward, setLeftward] = useState(true);
+  const [leftward, setLeftward] = useState(align === "end");
 
   /** The arming line's second press. */
   const arming = actions.find((action) => action.arm);
@@ -143,9 +160,12 @@ export function ActionMenu({
     const bounds = (
       anchor.current?.closest("main") ?? document.documentElement
     ).getBoundingClientRect();
-    // Leftward by default — every one of these triggers sits at the right edge
-    // of the thing it belongs to, so that is the side with room.
-    setLeftward(box.right - PANEL_W >= bounds.left);
+    // Leftward by default — nearly every one of these triggers sits at the
+    // right edge of the thing it belongs to, so that is the side with room.
+    // `align="start"` turns it round for the one that sits at the left.
+    const fitsLeft = box.right - PANEL_W >= bounds.left;
+    const fitsRight = box.left + PANEL_W <= bounds.right;
+    setLeftward(align === "end" ? fitsLeft : !fitsRight);
 
     const floating = document.querySelector("[data-create-bar]")?.getBoundingClientRect();
     const floor = Math.min(window.innerHeight, floating?.top ?? Infinity);
@@ -154,7 +174,7 @@ export function ActionMenu({
     // When neither side fits, take the roomier one rather than always falling
     // downward.
     setUpward(below < height && box.top > below);
-  }, [actions.length]);
+  }, [actions.length, align]);
 
   const wordOf = (action: MenuAction) =>
     action.arm
@@ -166,6 +186,9 @@ export function ActionMenu({
       : action.label;
 
   const Glyph = vertical ? DotsVerticalIcon : DotsIcon;
+  const glyph = icon ?? (
+    <Glyph className={overlay ? "size-4 fill-current stroke-none" : undefined} />
+  );
   const triggerClass = iconButtonClass({
     size: "sm",
     ...(overlay ? { intent: "overlay" as const } : {}),
@@ -192,7 +215,7 @@ export function ActionMenu({
           title={triggerLabel}
           className={`${triggerClass} max-md:hidden`}
         >
-          <Glyph className={overlay ? "size-4 fill-current stroke-none" : undefined} />
+          {glyph}
         </Dropdown.Trigger>
 
         {/*
@@ -263,7 +286,7 @@ export function ActionMenu({
           title={triggerLabel}
           className={`${triggerClass} md:hidden`}
         >
-          <Glyph className={overlay ? "size-4 fill-current stroke-none" : undefined} />
+          {glyph}
         </Drawer.Trigger>
         <Drawer.Backdrop />
         <Drawer.Panel ref={sheet} className="max-h-[85vh] overflow-y-auto rounded-t-lg pt-0">

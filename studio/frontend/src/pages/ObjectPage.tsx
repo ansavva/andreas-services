@@ -30,7 +30,7 @@ import { ObjectActions } from "../components/viewer/ObjectActions";
 import { ObjectControls, ObjectDetails } from "../components/viewer/ObjectAside";
 import { OwnerLink } from "../components/viewer/OwnerLink";
 import { ViewerFrame } from "../components/viewer/ViewerFrame";
-import { useCreateBar } from "../context/CreateBarContext";
+import { useCreateBar, type AttachRole } from "../context/CreateBarContext";
 import { useKeyboardNav } from "../hooks/useKeyboardNav";
 import { useResource } from "../hooks/useResource";
 import { useViewerFeed } from "../hooks/useViewerFeed";
@@ -403,20 +403,21 @@ export function ObjectPage() {
   const removeThis = () => remove(current);
 
   /**
-   * The open picture, attached to the create bar as a reference.
+   * The open picture, attached to the create bar — as a reference, a start
+   * frame or an end frame.
    *
-   * **A still only.** A reference is a picture; a clip attached as one is sent
+   * **A still only.** Every role is a picture; a clip attached as one is sent
    * to a field that refuses it, which is the rule `OutputTile` and the run's
    * rail already carry. The bar's own picker walks the same tree, so this is a
    * shortcut rather than a second way in — but it is the shortcut from the one
    * place a person is already looking at the picture they want.
    */
-  const attachAsReference = isVideo
+  const useAs = isVideo
     ? undefined
-    : () =>
+    : (role: AttachRole) =>
         bar.attach(
           { node: current.id, url: current.url, name: current.name, kind: "object" },
-          "reference",
+          role,
         );
 
   /**
@@ -581,7 +582,7 @@ export function ObjectPage() {
           onDelete={removeThis}
           editing={editing}
           onToggleEditing={toggleEditing}
-          onUseAsReference={attachAsReference}
+          onUseAs={useAs}
         />
 
         <ObjectDetails

@@ -15,9 +15,10 @@ import { EmptyState } from "../common/EmptyState";
 import { LoadError } from "../common/LoadError";
 import { SectionLoading } from "../common/SectionLoading";
 import { linkButtonClass } from "../common/linkButtonClass";
-import { DownloadIcon, HeartFilledIcon, UseInPromptIcon } from "../common/icons";
+import { DownloadIcon, HeartFilledIcon } from "../common/icons";
 import type { MenuAction } from "../common/ActionMenu";
 import { MediaTile } from "../browse/MediaTile";
+import { attachActions } from "../create/attachActions";
 
 /**
  * How many tiles home shows before it stops and points at the whole screen.
@@ -78,19 +79,12 @@ export function FavoritesSection({
 
   const tileActions = useCallback(
     (file: FavoriteEntry): MenuAction[] => [
+      // A still only: every role a picture can fill is a picture.
       ...(file.kind === "image"
-        ? [
-            {
-              key: "reference",
-              label: "Use as reference",
-              icon: <UseInPromptIcon className={MENU_GLYPH} />,
-              onSelect: () =>
-                bar.attach(
-                  { node: file.id, url: file.url, name: file.name, kind: "object" },
-                  "reference",
-                ),
-            },
-          ]
+        ? attachActions(
+            { node: file.id, url: file.url, name: file.name, kind: "object" },
+            bar.attach,
+          )
         : []),
       {
         key: "favorite",

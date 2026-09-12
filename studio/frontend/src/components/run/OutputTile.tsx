@@ -1,14 +1,8 @@
 import type { RunAsset, RunFeedRow } from "../../types";
 import { assetLabel } from "../../utils/format";
-import {
-  DownloadIcon,
-  PlayIcon,
-  PromoteIcon,
-  RerunIcon,
-  UpscaleIcon,
-  UseInPromptIcon,
-} from "../common/icons";
+import { DownloadIcon, PromoteIcon, RerunIcon, UpscaleIcon } from "../common/icons";
 import { ActionMenu, type MenuAction } from "../common/ActionMenu";
+import { attachActions } from "../create/attachActions";
 import { ratioOf } from "./aspect";
 import { MediaThumb } from "../media/MediaThumb";
 import { isPromotable, isVideoAsset } from "./PromoteDrawer";
@@ -67,9 +61,9 @@ export function OutputTile({
    * something from it, then take it away with you.
    *
    * **A still only, for four of them.** Every role a picture can fill is a
-   * picture — a clip attached as a reference or a start frame is sent to a
-   * field that refuses it — and the upscaler takes an image. Download is the
-   * one that means the same thing for both.
+   * picture — a clip attached as a reference or a frame is sent to a field
+   * that refuses it — and the upscaler takes an image. Download is the one
+   * that means the same thing for both.
    */
   const menu: MenuAction[] = [
     {
@@ -81,18 +75,9 @@ export function OutputTile({
     ...(video
       ? []
       : [
-          {
-            key: "reference",
-            label: "Use as reference",
-            icon: <UseInPromptIcon className={GLYPH} />,
-            onSelect: () => actions.useInPrompt(asset, index),
-          },
-          {
-            key: "start",
-            label: "Start frame",
-            icon: <PlayIcon className="size-4 shrink-0 fill-current stroke-none" />,
-            onSelect: () => actions.animate(asset, index),
-          },
+          ...attachActions(refOfOutput(row, asset, index), (_, role) =>
+            actions.useAs(asset, index, role),
+          ),
           {
             key: "upscale",
             label: "Upscale",

@@ -415,6 +415,18 @@ describe("the opened run", () => {
     );
   });
 
+  it("the rail offers the output as a start frame and as an end frame too", async () => {
+    await draw();
+    await screen.findByTestId("stage");
+
+    fireEvent.click(screen.getByRole("button", { name: "Use as start frame" }));
+    fireEvent.click(screen.getByRole("button", { name: "Output 2 of 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use as end frame" }));
+    expect(screen.getByTestId("attachments").textContent).toBe(
+      "start:node-o1,end:node-o2",
+    );
+  });
+
   it("Trash arms, then deletes and returns to the project", async () => {
     vi.mocked(deleteRun).mockResolvedValue({ id: "run-2", files: "keep" });
     await draw();
