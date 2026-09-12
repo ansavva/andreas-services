@@ -19,7 +19,6 @@ import {
 } from "@ansavva/design-system";
 
 import { getRun, submitRun } from "../../apis/studio";
-import { useShellSidebar } from "../../context/SidebarContext";
 import { useArmed } from "../../hooks/useArmed";
 import { useKeyboardNav } from "../../hooks/useKeyboardNav";
 import { useNow } from "../../hooks/useNow";
@@ -41,6 +40,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   CloseIcon,
+  CompareIcon,
   DownloadIcon,
   FolderIcon,
   PencilIcon,
@@ -55,8 +55,10 @@ import { LoadError } from "../common/LoadError";
 import { pressInApp } from "../common/pressInApp";
 import { SectionLoading } from "../common/SectionLoading";
 import { CharacterChipLink } from "../character/CharacterChip";
-import { MediaPlayer } from "../media/MediaPlayer";
+import { CompareStage, type ComparePicture } from "../media/CompareStage";
+import { MediaPlayer, type MediaPlayerControls } from "../media/MediaPlayer";
 import { MediaThumb } from "../media/MediaThumb";
+import { ViewerFrame } from "../viewer/ViewerFrame";
 import { SendThumbs } from "./SendThumbs";
 import { StatusBadge, useFeedFilters, useRunFeed } from "../project/RunFeed";
 import { elapsedSince, inFlight, relativeTime } from "./feedTime";
@@ -84,8 +86,9 @@ interface Props {
  * **A lightbox, not a page.** The two-column run page that used to answer this
  * address is gone; this sits over the feed, the create bar stays live above
  * it, and closing it is the feed again with the tab and the filters still in
- * the address. The sidebar collapses to its rail while it is open and comes
- * back as it was on close, so the picture gets the width.
+ * the address. `ViewerFrame` is the box — the one the open file uses too — and
+ * it collapses the sidebar to its rail while it is open, so the picture gets
+ * the width.
  *
  * Three things are drawn, and they are the feed's three. The **row** — plan,
  * sends, outputs, cast — comes off the feed's own cache (`useRunFeed` shares
@@ -102,17 +105,6 @@ interface Props {
 export function RunLightbox({ projectId, runId, characters, heroes }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
-
-  // Collapse the rail for as long as this is open, and put it back as it was.
-  // `setCollapsed` is stable; what was captured on the first render is what
-  // comes back.
-  const { collapsed, setCollapsed } = useShellSidebar();
-  const restore = useRef(collapsed);
-  useEffect(() => {
-    const prior = restore.current;
-    setCollapsed(true);
-    return () => setCollapsed(prior);
-  }, [setCollapsed]);
 
   const filters = useFeedFilters();
   const feed = useRunFeed(projectId, filters.applied);
@@ -164,23 +156,19 @@ export function RunLightbox({ projectId, runId, characters, heroes }: Props) {
 
   // The promote drawer binds Escape itself, so while it is up the keys are its.
   const [promoting, setPromoting] = useState<RunAsset | null>(null);
+  // The stage's player, for `+`, `-` and `0` — see `MediaPlayer`'s controls.
+  const [controls, setControls] = useState<MediaPlayerControls | null>(null);
   useKeyboardNav({
     onPrev: promoting ? undefined : prev,
     onNext: promoting ? undefined : next,
     onClose: promoting ? undefined : close,
+    onZoomIn: controls && !promoting ? () => controls.zoomIn() : undefined,
+    onZoomOut: controls && !promoting ? () => controls.zoomOut() : undefined,
+    onZoomReset: controls && !promoting ? () => controls.zoomReset() : undefined,
   });
 
   return (
-    <div
-      role="dialog"
-      aria-label="Run"
-      data-testid="run-lightbox"
-      className="fixed inset-x-0 z-20 flex flex-col overflow-y-auto bg-bg md:left-16 md:flex-row md:overflow-hidden"
-      style={{
-        top: "var(--header-h)",
-        height: "calc(100dvh - var(--header-h))",
-      }}
-    >
+    <ViewerFrame role="dialog" aria-label="Run" data-testid="run-lightbox">
       {/* **No `key` here, and that is the fix rather than an omission.** It
           used to carry `key={row.id}`, which reset the output index per run by
           throwing the whole opened run away and building a new one — the rail,
@@ -200,6 +188,7 @@ export function RunLightbox({ projectId, runId, characters, heroes }: Props) {
           onNext={next}
           promoting={promoting}
           onPromote={setPromoting}
+          onControlsChange={setControls}
           strip={
             <RunStrip
               rows={rows}
@@ -232,7 +221,7 @@ export function RunLightbox({ projectId, runId, characters, heroes }: Props) {
           <ApertureSpinner size="lg" label="Loading run" />
         </div>
       )}
-    </div>
+    </ViewerFrame>
   );
 }
 
@@ -247,6 +236,7 @@ function Opened({
   onNext,
   promoting,
   onPromote,
+  onControlsChange,
   strip,
 }: {
   row: RunFeedRow;
@@ -259,6 +249,7 @@ function Opened({
   onNext?: () => void;
   promoting: RunAsset | null;
   onPromote: (asset: RunAsset | null) => void;
+  onControlsChange: (controls: MediaPlayerControls | null) => void;
   strip: ReactNode;
 }) {
   const location = useLocation();
@@ -285,11 +276,23 @@ function Opened({
    * only on the first open — a step carries none, and re-applying a stale one
    * would send every Left/Right back to the output the FIRST run opened on.
    */
+  /**
+   * Compare: the output on the stage pinned as A, and B beside it.
+   *
+   * `null` is "not comparing"; `{ b: null }` is comparing with the right pane
+   * still empty. B starts on the run's other output when there is one — two
+   * outputs of one send is what Compare is opened for — and empty otherwise,
+   * with the sends offered in the row under the stage as well: an edit's
+   * input against its output is the other comparison a run invites.
+   */
+  const [compare, setCompare] = useState<{ b: ComparePicture | null } | null>(null);
+
   const [openedId, setOpenedId] = useState(row.id);
   if (openedId !== row.id) {
     setOpenedId(row.id);
     setOutput(0);
     setRequestOpen(false);
+    setCompare(null);
   }
 
   const actions = useRunActions(row);
@@ -300,6 +303,55 @@ function Opened({
     ? isVideoAsset(asset) || row.kind === "video"
     : row.kind === "video";
   const sent = row.submitted !== null;
+  const still = asset !== null && !video;
+
+  /**
+   * What the row under the stage offers while comparing: the run's outputs,
+   * then the stills it was sent. Stills only — a clip has no place on a
+   * compare stage, and a send whose node is gone has nothing to draw.
+   */
+  const candidates = useMemo<ComparePicture[]>(
+    () =>
+      compare
+        ? [
+            ...row.outputs.filter((each) => !isVideoAsset(each) && row.kind !== "video"),
+            ...row.sends.filter((each) => each.url && !isVideoAsset(each)),
+          ]
+        : row.outputs,
+    [compare, row.kind, row.outputs, row.sends],
+  );
+
+  const toggleCompare = () => {
+    if (compare) {
+      setCompare(null);
+      return;
+    }
+    const other = row.outputs.find((each, i) => i !== output && !isVideoAsset(each)) ?? null;
+    setCompare({ b: other });
+  };
+
+  /**
+   * A press on a tile under the stage: the output to show, or — while
+   * comparing — the picture to put beside the pinned one. A press on A itself
+   * is nothing; a picture beside itself is not a comparison.
+   */
+  const pick = (picture: ComparePicture, index: number) => {
+    if (!compare) {
+      setOutput(index);
+      return;
+    }
+    if (asset && picture.node === asset.node) return;
+    setCompare({ b: picture });
+  };
+
+  /** A and B change places: B becomes the stage's output, A goes beside it. */
+  const swap = () => {
+    if (!compare?.b || !asset) return;
+    const at = row.outputs.findIndex((each) => each.node === compare.b?.node);
+    if (at < 0) return; // A send cannot be the stage's output.
+    setOutput(at);
+    setCompare({ b: asset });
+  };
 
   return (
     <>
@@ -316,6 +368,20 @@ function Opened({
       */}
       <div className="relative flex min-h-[80dvh] min-w-0 flex-1 flex-col md:min-h-0">
         <div className="absolute right-3 top-3 z-10 flex gap-1">
+          {/* A still only, and only once the run has one: a clip has no
+              compare stage, and there is nothing to pin while it is out. */}
+          {still && !flying && (
+            <IconButton
+              label={compare ? "Stop comparing" : "Compare"}
+              size="sm"
+              intent="overlay"
+              pressed={compare !== null}
+              onClick={toggleCompare}
+              className=""
+            >
+              <CompareIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+            </IconButton>
+          )}
           <IconButton
             label="Close (Esc)"
             size="sm"
@@ -389,6 +455,13 @@ function Opened({
                 {elapsedSince(row.submitted ?? row.created, now)}
               </Text>
             </div>
+          ) : asset && compare ? (
+            <CompareStage
+              a={asset}
+              b={compare.b}
+              onSwap={swap}
+              onControlsChange={onControlsChange}
+            />
           ) : asset ? (
             <>
               <div className="min-h-0 w-full flex-1">
@@ -400,6 +473,8 @@ function Opened({
                   isVideo={video}
                   aspect="auto"
                   fit="contain"
+                  zoomable
+                  onControlsChange={onControlsChange}
                   className="h-full w-full border border-line"
                 />
               </div>
@@ -429,36 +504,56 @@ function Opened({
           )}
         </div>
 
-        {row.outputs.length > 1 && !flying && (
+        {/* The run's pictures, under the stage: its outputs, and while
+            comparing its sends too. `fit="contain"` — these are portrait more
+            often than not, and a square crop took the legs off every one. A
+            is the output on the stage; B, while comparing, the one beside it. */}
+        {candidates.length > 1 && !flying && (
           <div
             className="flex justify-center gap-1.5 px-4 pb-2"
-            aria-label="Outputs"
+            aria-label={compare ? "Pictures to compare" : "Outputs"}
           >
-            {row.outputs.map((each, i) => (
-              // The tile is the press; `MediaThumb` inside it is decorative.
-              // eslint-disable-next-line studio/no-hand-rolled-button -- a media tile, the same shape as Filmstrip's.
-              <button
-                key={each.node}
-                type="button"
-                aria-label={`Output ${i + 1} of ${row.outputs.length}`}
-                aria-current={i === output ? "true" : undefined}
-                onClick={() => setOutput(i)}
-                className={`w-14 shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
-                  i === output
-                    ? "ring-2 ring-primary"
-                    : "opacity-70 hover:opacity-100"
-                }`}
-              >
-                <MediaThumb
-                  nodeId={each.node}
-                  url={each.url}
-                  name={each.name}
-                  isVideo={isVideoAsset(each) || row.kind === "video"}
-                  aspect="square"
-                  className=""
-                />
-              </button>
-            ))}
+            {candidates.map((each, i) => {
+              const isA = asset?.node === each.node;
+              const isB = compare?.b?.node === each.node;
+              const word =
+                i < row.outputs.length
+                  ? `Output ${i + 1} of ${row.outputs.length}`
+                  : `Sent ${assetLabel(each.name)}`;
+              return (
+                // The tile is the press; `MediaThumb` inside it is decorative.
+                // eslint-disable-next-line studio/no-hand-rolled-button -- a media tile, the same shape as Filmstrip's.
+                <button
+                  key={each.node}
+                  type="button"
+                  aria-label={compare && isA ? `${word} (A)` : isB ? `${word} (B)` : word}
+                  aria-current={isA ? "true" : undefined}
+                  onClick={() => pick(each, i)}
+                  className={`relative w-14 shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                    isA
+                      ? "ring-2 ring-primary"
+                      : isB
+                        ? "ring-2 ring-accent"
+                        : "opacity-70 hover:opacity-100"
+                  }`}
+                >
+                  <MediaThumb
+                    nodeId={each.node}
+                    url={each.url}
+                    name={each.name}
+                    isVideo={isVideoAsset(each) || row.kind === "video"}
+                    aspect="square"
+                    fit="contain"
+                    className=""
+                  />
+                  {compare && (isA || isB) && (
+                    <span aria-hidden="true" className="pointer-events-none absolute left-0.5 top-0.5 bg-overlay-scrim/80 px-1 font-mono text-[11px] text-overlay-ink">
+                      {isA ? "A" : "B"}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -990,6 +1085,9 @@ function RunStrip({
                   name={row.outputs[0]?.name ?? row.id}
                   isVideo={row.kind === "video"}
                   aspect="square"
+                  // Whole, not cropped: a strip of portrait outputs cut to
+                  // squares was a strip of torsos.
+                  fit="contain"
                   className=""
                 />
               ) : (

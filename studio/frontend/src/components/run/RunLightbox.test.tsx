@@ -317,6 +317,65 @@ describe("the opened run", () => {
     expect(screen.getByText(/out-2\.png · 4\.0 KB/)).toBeTruthy();
   });
 
+  /**
+   * Compare pins the output on the stage as A, starts B on the run's other
+   * output, and turns the row under the stage into the pictures that can go
+   * beside A — the outputs and the stills that were sent.
+   */
+  it("Compare pins the stage as A, offers the other output and the sends, and swaps", async () => {
+    await draw();
+    await screen.findByTestId("stage");
+
+    fireEvent.click(screen.getByRole("button", { name: "Compare" }));
+    const compare = screen.getByTestId("compare-stage");
+    const stages = within(compare).getAllByTestId("stage");
+    expect(stages.map((each) => each.textContent)).toEqual([
+      "image: out-1.png",
+      "image: out-2.png",
+    ]);
+
+    // The row grew the send, and marks A and B.
+    const row = screen.getByLabelText("Pictures to compare");
+    expect(within(row).getByRole("button", { name: "Output 1 of 2 (A)" })).toBeTruthy();
+    expect(within(row).getByRole("button", { name: "Output 2 of 2 (B)" })).toBeTruthy();
+    fireEvent.click(within(row).getByRole("button", { name: "Sent seed-01.jpg" }));
+    expect(
+      within(screen.getByTestId("compare-stage"))
+        .getAllByTestId("stage")
+        .map((each) => each.textContent),
+    ).toEqual(["image: out-1.png", "image: seed-01.jpg"]);
+
+    // A beside itself is nothing.
+    fireEvent.click(within(row).getByRole("button", { name: "Output 1 of 2 (A)" }));
+    expect(
+      within(screen.getByTestId("compare-stage")).getAllByTestId("stage")[1]!.textContent,
+    ).toBe("image: seed-01.jpg");
+
+    // Swap: B has to be an output to take the stage.
+    fireEvent.click(within(row).getByRole("button", { name: "Output 2 of 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Swap sides" }));
+    expect(
+      within(screen.getByTestId("compare-stage"))
+        .getAllByTestId("stage")
+        .map((each) => each.textContent),
+    ).toEqual(["image: out-2.png", "image: out-1.png"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop comparing" }));
+    expect(screen.queryByTestId("compare-stage")).toBeNull();
+    expect(screen.getByTestId("stage").textContent).toBe("image: out-2.png");
+  });
+
+  it("stepping to another run drops the comparison", async () => {
+    await draw();
+    await screen.findByTestId("stage");
+    fireEvent.click(screen.getByRole("button", { name: "Compare" }));
+    expect(screen.getByTestId("compare-stage")).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    await waitFor(() => expect(address()).toBe("/p/proj-1/r/run-1?tab=runs"));
+    expect(screen.queryByTestId("compare-stage")).toBeNull();
+  });
+
   it("loads a document only when the Request row is opened and the document pressed", async () => {
     await draw();
     await screen.findByRole("complementary", { name: "Run details" });

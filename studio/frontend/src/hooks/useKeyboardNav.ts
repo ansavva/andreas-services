@@ -9,6 +9,10 @@ interface Handlers {
   onToggleFullscreen?: () => void;
   onTogglePlay?: () => void;
   onToggleMuted?: () => void;
+  /** `+` / `=`, `-` and `0` — the zoom on a still. See `useZoom`. */
+  onZoomIn?: () => void;
+  onZoomOut?: () => void;
+  onZoomReset?: () => void;
 }
 
 /**
@@ -39,6 +43,9 @@ export function useKeyboardNav({
   onToggleFullscreen,
   onTogglePlay,
   onToggleMuted,
+  onZoomIn,
+  onZoomOut,
+  onZoomReset,
 }: Handlers) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -84,6 +91,18 @@ export function useKeyboardNav({
             onTogglePlay();
           }
           break;
+        // `=` is the unshifted `+` on every layout that has one; a person
+        // pressing the key marked `+` should not need Shift as well.
+        case "+":
+        case "=":
+          onZoomIn?.();
+          break;
+        case "-":
+          onZoomOut?.();
+          break;
+        case "0":
+          onZoomReset?.();
+          break;
         default:
           break;
       }
@@ -91,5 +110,15 @@ export function useKeyboardNav({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose, onNext, onPrev, onTogglePlay, onToggleFullscreen, onToggleMuted]);
+  }, [
+    onClose,
+    onNext,
+    onPrev,
+    onTogglePlay,
+    onToggleFullscreen,
+    onToggleMuted,
+    onZoomIn,
+    onZoomOut,
+    onZoomReset,
+  ]);
 }

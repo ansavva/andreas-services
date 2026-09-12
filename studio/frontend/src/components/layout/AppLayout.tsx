@@ -120,17 +120,16 @@ function SheetSlot() {
              **Taller where there is a finger, not where there is a window.**
              24px is a comfortable target for a pointer and a hard one for a
              thumb, and it is the input device that decides that — a narrow
-             window on a laptop still has a mouse. `pointer-coarse` is the same
-             test the design system's own `sm` controls use to reach their 44px
-             floor. */
+             window on a laptop still has a mouse. `--sheet-handle-h` in
+             `app.css` carries both heights, and `ViewerFrame` reads the same
+             variable to stop short of this strip. */
           // eslint-disable-next-line studio/no-hand-rolled-button -- the sheet's own frame collapsed, not a control in it.
           <button
             type="button"
             aria-label="Open the create panel (c)"
             title="Open the create panel (c)"
             onClick={expand}
-            className="flex h-6 w-full items-center justify-center rounded-t-lg bg-sheet
-                       pointer-coarse:h-9
+            className="flex h-[var(--sheet-handle-h)] w-full items-center justify-center rounded-t-lg bg-sheet
                        ring-1 ring-line backdrop-blur-xl transition-colors hover:bg-fill
                        focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
           >

@@ -193,3 +193,16 @@ it("anything that fills the bar opens it", () => {
   act(() => api.loadRun({ project: "proj-1", kind: "image" }));
   expect(state().shown).toBe(true);
 });
+
+/**
+ * The open file is the opened run's viewer now — `ViewerFrame`, sized to the
+ * window — so the sheet stays away from it the same way, until something
+ * calls it up.
+ */
+it("the open file keeps the sheet away until something fills it, like the opened run", () => {
+  mount("/o/node-1");
+  expect(state().shown).toBe(false);
+
+  act(() => api.attach(FACE, "reference"));
+  expect(state().shown).toBe(true);
+});

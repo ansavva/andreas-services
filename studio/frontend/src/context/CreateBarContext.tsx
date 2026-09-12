@@ -121,11 +121,12 @@ interface CreateBarState {
   /** Bumped when something loads the bar, so it can take focus. */
   focus: number;
   /**
-   * Whether something has called the sheet up since the run on screen was
-   * opened. On the opened run the sheet is not drawn until Edit, Rerun,
-   * Use as reference or a tile attaches something — it would cover the
-   * filmstrip and the transport with a prompt about some other run.
-   * Reset every time a different run opens. Read as `shown`.
+   * Whether something has called the sheet up since the run or file on
+   * screen was opened. On the opened run — and the open file, which is the
+   * same viewer — the sheet is not drawn until Edit, Rerun, Use as reference
+   * or a tile attaches something — it would cover the filmstrip and the
+   * transport with a prompt about some other run. Reset every time a
+   * different one opens. Read as `shown`.
    */
   summoned: boolean;
   /**
@@ -225,12 +226,17 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
   // The route's project, wherever under it the page is — a run opened at
   // `/p/<project>/r/<run>` is still that project's.
   const routeProject = useMatch("/p/:projectId/*")?.params.projectId ?? null;
-  // The opened run — the one screen the sheet stays out of until it is
-  // called up. Keyed on the run so a different run opening puts it away again.
+  // The opened run and the open file — the two screens the sheet stays out
+  // of until it is called up: both are `ViewerFrame`, sized to the window, and
+  // a sheet drawn over either covers the strip and the transport with nothing
+  // able to scroll them back. Keyed on the id so a different one opening puts
+  // it away again.
   const openedRun = useMatch("/p/:projectId/r/:runId")?.params.runId ?? null;
+  const openedFile = useMatch("/o/:nodeId")?.params.nodeId ?? null;
+  const opened = openedRun ?? openedFile;
   useEffect(() => {
     setState((current) => (current.summoned ? { ...current, summoned: false } : current));
-  }, [openedRun]);
+  }, [opened]);
 
   // The last project used is whichever one the person was last IN, so leaving
   // it for Home keeps the bar pointed where they were working.
@@ -392,7 +398,7 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
       onProject: routeProject !== null,
       // Both have to be clear: `collapsed` is a person's decision about every
       // screen, `summoned` is this screen's own rule about the opened run.
-      shown: !state.collapsed && (openedRun === null || state.summoned),
+      shown: !state.collapsed && (opened === null || state.summoned),
       collapse,
       expand,
       setPrompt,
@@ -407,7 +413,7 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
     [
       state,
       routeProject,
-      openedRun,
+      opened,
       collapse,
       expand,
       setPrompt,

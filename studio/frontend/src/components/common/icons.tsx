@@ -559,3 +559,27 @@ export const SwapIcon = ({ className }: Props) => (
     <path d="M16 3l4 4-4 4M20 7H8M8 21l-4-4 4-4M4 17h12" />
   </Glyph>
 );
+
+// --- the viewer: zoom and compare -----------------------------------------
+
+export const ZoomInIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="M21 21l-4.5-4.5M11 8v6M8 11h6" />
+  </Glyph>
+);
+
+export const ZoomOutIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="M21 21l-4.5-4.5M8 11h6" />
+  </Glyph>
+);
+
+/** Two frames side by side — the compare toggle. */
+export const CompareIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <rect x="3" y="5" width="8" height="14" rx="1" />
+    <rect x="13" y="5" width="8" height="14" rx="1" />
+  </Glyph>
+);

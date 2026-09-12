@@ -389,6 +389,35 @@ page and a plain textarea over its literal bytes, and never offers fields.
   prediction id and the payload nodes. A cold link with nothing cached draws
   the row off the record (`rowOfRecord`). The two-column run page
   that used to answer this address is deleted.
+- **Both viewers are one box, `ViewerFrame`.** The opened run and the open
+  file (`/o/<id>`) draw in the same `fixed` frame: from the header down to the
+  create sheet's handle (`--sheet-handle-h` in `app.css`, read by the handle
+  and the frame so neither can run under the other), a column that scrolls
+  below `md` and a row that does not above it — stage, rail, strip in that
+  order. The frame collapses the sidebar while it is up. On either screen the
+  sheet stays away until something calls it up (`CreateBarContext` keys
+  `summoned` on the run *or* the file).
+- **A still zooms; a clip does not.** `MediaPlayer` takes `zoomable`, and the
+  two viewers set it: `useZoom` is a `translate(x, y) scale(s)` on the `<img>`
+  about the box's middle, clamped to the picture's edge. Pinch (two fingers,
+  or a trackpad wheel with `ctrlKey`) zooms about the fingers; a plain wheel
+  zooms from `md` and only once zoomed below it, so a scrolling column keeps
+  its scroll; double-click goes in and back; drag pans; `+`/`-`/`0` reach it
+  through the player's controls and `useKeyboardNav`. The player's box is
+  `overflow-clip`, not `-hidden` — `hidden` is a scroll container, and the
+  browser scrolled it to bring a focused zoom button into view. A press on
+  the chrome is never a drag: `onPointerDown` leaves anything inside a
+  `button`/`a`/`input` alone, or pointer capture would swallow the click.
+- **Compare pins the picture on the stage as A; the next tile pressed goes
+  beside it as B.** `CompareStage` holds one `ZoomState` and hands it to both
+  players controlled, so a gesture on either moves both. On the opened run
+  the row under the stage becomes the run's outputs plus the stills it was
+  sent, B starting on the other output; on the open file the strip and
+  Left/Right choose B and the address stays on A. Swap moves the address to
+  B and pins the old A beside it in the same write (`ObjectPage` keeps
+  `{ a, b }` and reads it as active only while `a` is the address). Strip and
+  output thumbs are `fit="contain"` — a square crop of a portrait output was
+  a strip of torsos.
 - **An opened run shows three different kinds of thing, and conflating them is
   the one mistake to avoid.** The *envelope* is studio's and safe to render as
   fields. The *payload documents* are the provider's and are shown as text and
@@ -674,9 +703,10 @@ page and a plain textarea over its literal bytes, and never offers fields.
   `play()` is caught, not swallowed: playback falls back to muted and `blocked`
   is raised so the UI can say why. Check `volume` too, since a muted element
   sitting at `volume === 0` is still silent after unmuting.
-- **`/o/<id>` is a page, not an overlay.** `ObjectPage` sits inside
-  `AppLayout`, with a `PageBar`, one `MediaPlayer` in the content column, the
-  file's own words beside it, and the neighbours as a horizontal filmstrip. A
+- **`/o/<id>` is the viewer, in the app shell.** `ObjectPage` renders
+  `ViewerFrame` inside `AppLayout`: one `MediaPlayer` on the stage, the crumb
+  (`PageBar`) and the file's own words in the rail, and the neighbours as a
+  `Filmstrip` along the foot on a phone and down the right edge from `md`. A
   stage mounts one `<video>`. `useKeyboardNav` is Left/Right between files,
   plus Space, `m`, `f` and Esc. The seek bar is a `Slider`, which answers the
   arrow keys natively, and the hook ignores anything targeting an INPUT — so
