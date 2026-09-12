@@ -78,8 +78,9 @@ test('the giver marks a gift bought and the list says so', async ({ page }) => {
   const group = fixture<Group>('group');
   const recorded = await stubDrawn(page, group);
 
+  // A drawn exchange opens on the person you drew.
   await page.goto(`/groups/${group.group_id}`);
-  await expect(page.getByText('Your secret recipient')).toBeVisible();
+  await expect(page.getByText('You’re giving to')).toBeVisible();
   await expect(page.getByText('Chef knife')).toBeVisible();
 
   await page.getByText('I bought it').click();
@@ -121,7 +122,9 @@ test('the list says the mark is private, on the giver’s side only', async ({ p
   await page.goto(`/groups/${group.group_id}`);
 
   await expect(page.getByText(/never see it, and it is only for this draw/)).toBeVisible();
-  // The owner's own list — the editor further down the same page — offers no such control.
-  await expect(page.getByText('Your wishlist', { exact: true })).toBeVisible();
   await expect(page.getByText('I bought it')).toHaveCount(1);
+  // The owner's own list — the editor on the FOR YOU tab — offers no such control.
+  await page.getByRole('tab', { name: 'For you' }).click();
+  await expect(page.getByText('Your wishlist', { exact: true })).toBeVisible();
+  await expect(page.getByText('I bought it')).toHaveCount(0);
 });

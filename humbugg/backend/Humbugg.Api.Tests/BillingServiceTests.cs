@@ -39,8 +39,8 @@ public sealed class BillingServiceTests
 
         await world.Subject.CreatePlusCheckoutAsync("group-1", TestContext.Current.CancellationToken);
 
-        Assert.StartsWith("https://humbugg.test/groups/group-1?tab=settings&", world.Stripe.Request!.SuccessUrl);
-        Assert.Equal("https://humbugg.test/groups/group-1?tab=settings&checkout=canceled", world.Stripe.Request.CancelUrl);
+        Assert.StartsWith("https://humbugg.test/groups/group-1/settings/billing?", world.Stripe.Request!.SuccessUrl);
+        Assert.Equal("https://humbugg.test/groups/group-1/settings/billing?checkout=canceled", world.Stripe.Request.CancelUrl);
         Assert.DoesNotContain("/app/", world.Stripe.Request.SuccessUrl);
     }
 

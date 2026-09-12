@@ -1,4 +1,7 @@
-// The Settings tab of the organizer dashboard: one section at a time, chosen from a menu.
+// The Settings tab of the exchange page: one section at a time, chosen from a menu.
+//
+// The section is the URL's last segment — `/groups/{id}/settings/billing` — so a reload keeps it
+// and Stripe's return lands on Billing by address rather than by a flag (#690).
 //
 // On a desktop the menu is a column on the left and the section fills the rest — the settings
 // shape everyone knows. Under 768px a left column would leave the section forty characters wide,
@@ -27,9 +30,9 @@ import { Card } from './shell';
 import { StatusMessage } from './status-message';
 import { TemplatesPanel } from './templates';
 
-type Section = 'exchange' | 'reminders' | 'templates' | 'billing' | 'danger';
+export type SettingsSection = 'exchange' | 'reminders' | 'templates' | 'billing' | 'danger';
 
-const SECTIONS: { value: Section; label: string; ownerOnly?: boolean }[] = [
+export const SETTINGS_SECTIONS: { value: SettingsSection; label: string; ownerOnly?: boolean }[] = [
   // General first, then what people read, then what runs on its own, then reuse; money and the
   // irreversible thing last, where every settings page keeps them.
   { value: 'exchange', label: 'Exchange' },
@@ -47,8 +50,10 @@ export function SettingsTab({
   onGroupChanged,
   onReload,
   onRequiresAddress,
-  /** Which section to open first — the billing card, when a paid return lands. */
-  initial,
+  /** Which section is open. The URL's, when there is one; the first otherwise. */
+  section: requested,
+  /** The person picked another section: the caller moves the URL, and `section` follows. */
+  onSectionChange,
 }: {
   group: GroupDetail;
   readiness: GroupReadiness;
@@ -57,18 +62,22 @@ export function SettingsTab({
   onGroupChanged(next: GroupDetail): void;
   onReload(): void;
   onRequiresAddress(checked: boolean): void;
-  initial?: Section;
+  section?: SettingsSection;
+  onSectionChange?(next: SettingsSection): void;
 }) {
   const { styles } = useTheme();
   const { width } = useWindowDimensions();
   const sideBySide = width >= 768;
-  const sections = SECTIONS.filter((section) => !section.ownerOnly || group.is_owner);
-  const [section, setSection] = useState<Section>(initial ?? 'exchange');
+  const sections = SETTINGS_SECTIONS.filter((item) => !item.ownerOnly || group.is_owner);
+  // Uncontrolled when nobody routes the section — the unit tests render it on its own.
+  const [own, setOwn] = useState<SettingsSection>(requested ?? 'exchange');
+  const section = requested ?? own;
+  const setSection = (next: SettingsSection) => { setOwn(next); onSectionChange?.(next); };
 
   const menu = (
     <ToggleGroup.Root
       value={[section]}
-      onValueChange={(value) => { if (value[0]) setSection(value[0] as Section); }}
+      onValueChange={(value) => { if (value[0]) setSection(value[0] as SettingsSection); }}
       size="sm"
       style={sideBySide ? local.menuColumn : local.menuRow}
     >
@@ -233,7 +242,7 @@ function DangerZone({ group }: { group: GroupDetail }) {
             This cannot be undone. {people === 1 ? 'Nobody else is affected.' : `${people} people lose their place, their wishlists and their assignments.`}
           </AlertDialog.Description>
           <View style={{ marginTop: 24, flexDirection: 'row', justifyContent: 'flex-end', gap: gap.xs }}>
-            <AlertDialog.Close>Keep it</AlertDialog.Close>
+            <Button intent="secondary" size="sm" disabled={busy} onPress={() => setConfirming(false)}>Keep it</Button>
             <Button intent="danger" size="sm" disabled={busy} onPress={() => void remove()}>
               {busy ? 'Deleting…' : 'Permanently delete'}
             </Button>

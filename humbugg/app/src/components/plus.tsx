@@ -69,7 +69,7 @@ export function formatPrice(cents: number, currency: string): string {
  *
  * The two platforms come back differently and the difference is not cosmetic. On web this is a
  * full-page navigation, exactly like the hosted sign-in: Stripe returns the browser to
- * `/groups/{groupId}?tab=settings&checkout=…` and the screen reads that query. On native the `https://` return
+ * `/groups/{groupId}/settings/billing?checkout=…` and the section reads that query. On native the `https://` return
  * URL cannot re-enter the app — `openAuthSessionAsync` intercepts a custom scheme, not a web
  * origin — so nothing is intercepted at all: the browser is opened, and when the user closes it the
  * screen re-reads the purchase from the API. That makes the API the source of truth on native and
@@ -294,7 +294,7 @@ export function PlusRefusalCard({
   const { blends } = useTheme();
   const plans = usePlanCatalogue();
   const checkout = usePlusCheckout(groupId, () =>
-    onNavigate(`/groups/${groupId}?tab=settings&checkout=success`),
+    onNavigate(`/groups/${groupId}/settings/billing?checkout=success`),
   );
   return (
     <Card style={{ borderColor: blends.primaryBorder }}>
