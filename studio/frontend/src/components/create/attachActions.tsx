@@ -29,7 +29,7 @@ export const USE_AS_CLIP_ROLES = ["clip"] as const satisfies readonly AttachRole
 export type UseAsRole = (typeof USE_AS_ROLES)[number] | (typeof USE_AS_CLIP_ROLES)[number];
 
 /** The roles a file of this kind can be to the bar. Text and the rest: none. */
-export function useAsRoles(kind: string): readonly UseAsRole[] {
+export function attachRolesFor(kind: string): readonly UseAsRole[] {
   if (kind === "image") return USE_AS_ROLES;
   if (kind === "video") return USE_AS_CLIP_ROLES;
   return [];
@@ -70,7 +70,7 @@ export function attachActions(
   attach: (ref: AttachRef, role: AttachRole) => void,
   kind: string = "image",
 ): MenuAction[] {
-  return useAsRoles(kind).map((role) => {
+  return attachRolesFor(kind).map((role) => {
     const { label, icon: Icon } = USE_AS_WORDS[role];
     return {
       key: `use-as-${role}`,

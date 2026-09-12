@@ -53,7 +53,7 @@ import { LoadError } from "../common/LoadError";
 import { pressInApp } from "../common/pressInApp";
 import { SectionLoading } from "../common/SectionLoading";
 import { CharacterChipLink } from "../character/CharacterChip";
-import { USE_AS_GROUP, USE_AS_WORDS, useAsRoles } from "../create/attachActions";
+import { USE_AS_GROUP, USE_AS_WORDS, attachRolesFor } from "../create/attachActions";
 import { CompareStage, type ComparePicture } from "../media/CompareStage";
 import { MediaPlayer, type MediaPlayerControls } from "../media/MediaPlayer";
 import { MediaThumb } from "../media/MediaThumb";
@@ -831,7 +831,7 @@ function ActionGrid({
         {/* Three cells for a still, one for a clip: the same lines every
             tile's menu offers (`attachActions`), decided by the kind. */}
         {asset &&
-          useAsRoles(still ? "image" : "video").map((role) => {
+          attachRolesFor(still ? "image" : "video").map((role) => {
             const { label, icon: Icon } = USE_AS_WORDS[role];
             return (
               <Cell
