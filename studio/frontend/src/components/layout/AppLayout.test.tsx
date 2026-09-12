@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -49,4 +49,34 @@ it("draws the sidebar, the top bar and the page, in that order, and the page ins
   expect(within(nav).getByRole("link", { name: "Projects" }).getAttribute("aria-current")).toBe(
     "page",
   );
+});
+
+/**
+ * A picture picked up anywhere brings the sheet up: on the opened run and the
+ * open file the role tiles are not drawn until something calls the sheet up,
+ * and a drag with nowhere to land is a gesture that does nothing.
+ */
+it("a node drag entering the window brings up a sheet that was away", () => {
+  render(
+    <TestProviders>
+      <MemoryRouter initialEntries={["/o/node-1"]}>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route path="/o/:nodeId" element={<p>the file</p>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </TestProviders>,
+  );
+  // The open file keeps the sheet away: only its handle is drawn.
+  expect(screen.getByRole("button", { name: /Open the create panel/ })).toBeTruthy();
+  expect(screen.queryByLabelText("Prompt")).toBeNull();
+
+  // Somebody else's drag — a file from the desktop — is not ours.
+  fireEvent.dragEnter(window, { dataTransfer: { types: ["Files"] } });
+  expect(screen.queryByLabelText("Prompt")).toBeNull();
+
+  fireEvent.dragEnter(window, { dataTransfer: { types: ["application/x-studio-node"] } });
+  expect(screen.getByLabelText("Prompt")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /Open the create panel/ })).toBeNull();
 });

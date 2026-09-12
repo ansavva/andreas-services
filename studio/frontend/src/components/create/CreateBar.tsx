@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -53,7 +53,8 @@ import {
 } from "../common/TokenizedPromptEditor";
 import { TemplateList } from "../run/TemplateList";
 import { SheetHandle } from "../common/SheetHandle";
-import { AttachTiles } from "./AttachTiles";
+import { AttachTiles, fallbackDropRole } from "./AttachTiles";
+import { isNodeDrag, readNodeDrag } from "./dragRef";
 import { ModelChip, ModelList, ParamChipRow, chipClass } from "./CreateChips";
 import { AttachPicker } from "./AttachPicker";
 import { SettingsPanel } from "./CreateSettings";
@@ -452,10 +453,33 @@ export function CreateBar() {
 
   if (!bar.shown) return null;
 
+  /**
+   * A picture dropped on the sheet but on no tile still lands — as whatever
+   * role the model has room for, references first (`fallbackDropRole`). The
+   * tiles answer a drop that named its role before it reaches here and stop
+   * it; this is for the drop that did not, which is most of them now that a
+   * drag from a viewer brings the sheet up under the pointer.
+   */
+  const dropRole = entry ? fallbackDropRole(bar.kind, entry, attachments) : null;
+  const onDragOver = (event: DragEvent) => {
+    if (!isNodeDrag(event) || dropRole === null) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+  const onDrop = (event: DragEvent) => {
+    if (dropRole === null) return;
+    const ref = readNodeDrag(event);
+    if (!ref) return;
+    event.preventDefault();
+    attach(ref, dropRole);
+  };
+
   return (
     <div
       className="flex flex-col gap-2"
       data-create-bar=""
+      onDragOver={onDragOver}
+      onDrop={onDrop}
       onKeyDown={(event) => {
         // Escape inside the sheet collapses it — inside, so it never competes
         // with the Escape a viewer, a drawer or a menu binds for itself.

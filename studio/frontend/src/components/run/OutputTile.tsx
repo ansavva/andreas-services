@@ -12,6 +12,7 @@ import { ActionMenu, type MenuAction } from "../common/ActionMenu";
 import { ratioOf } from "./aspect";
 import { MediaThumb } from "../media/MediaThumb";
 import { isPromotable, isVideoAsset } from "./PromoteDrawer";
+import { refOfOutput } from "./seed";
 import type { useRunActions } from "./useRunActions";
 
 /** Every menu line's glyph, at the size a line of text carries. */
@@ -140,6 +141,8 @@ export function OutputTile({
             aspect={video ? "video" : "portrait"}
             ratio={ratioOf(row)}
             fit="cover"
+            // Dragged to the sheet, this is the run's output, not a bare file.
+            drag={refOfOutput(row, asset, index)}
           />
         </button>
       </div>

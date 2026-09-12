@@ -1139,7 +1139,6 @@ export function FolderBrowser({
                   selection.toggleAt(indexOf.get(file.id) ?? 0, extend)
                 }
                 actions={tileActions(file)}
-                draggableRef={file.kind === "image"}
               />
             ))}
           </div>

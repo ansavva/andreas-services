@@ -161,7 +161,6 @@ export function FavoritesSection({
               // rename field to open. Taking it off the screen is the one this
               // grid owes — it is where the heart used to be.
               actions={tileActions(file)}
-              draggableRef={file.kind === "image"}
               // The viewer steps through the favorites, not through the folder
               // each one happens to live in — `?in=fav`. Opening a picture from
               // here and finding yourself in somebody's `reference` folder is

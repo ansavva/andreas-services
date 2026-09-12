@@ -4,6 +4,7 @@ import { Outlet } from "react-router-dom";
 import { CreateBarProvider, useCreateBarState } from "../../context/CreateBarContext";
 import { SidebarProvider } from "../../context/SidebarContext";
 import { CreateBar } from "../create/CreateBar";
+import { isNodeDrag } from "../create/dragRef";
 import { ChevronUpIcon } from "../common/icons";
 import { AppSidebar } from "./AppSidebar";
 import { TopBar } from "./TopBar";
@@ -96,6 +97,26 @@ function SheetSlot() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  }, [shown, expand]);
+
+  /**
+   * **A picture picked up anywhere brings the sheet up.** Every still in the
+   * app drags its node (`dragRef`), and the only things that take the drop
+   * are the sheet's role tiles — which, on the opened run and the open file,
+   * are not drawn until something calls the sheet up, and are behind the
+   * handle wherever it was collapsed by hand. A drag that has nowhere to
+   * land is a gesture that does nothing, so the drag is what calls it up:
+   * the first `dragenter` carrying our type expands the sheet, and the
+   * tiles are under the pointer by the time it gets there. Read off the
+   * type list, never the payload — see `isNodeDrag`.
+   */
+  useEffect(() => {
+    if (shown) return;
+    const onDragEnter = (event: DragEvent) => {
+      if (isNodeDrag(event)) expand();
+    };
+    window.addEventListener("dragenter", onDragEnter);
+    return () => window.removeEventListener("dragenter", onDragEnter);
   }, [shown, expand]);
 
   return (

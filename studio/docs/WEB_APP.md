@@ -418,6 +418,18 @@ page and a plain textarea over its literal bytes, and never offers fields.
   `{ a, b }` and reads it as active only while `a` is the address). Strip and
   output thumbs are `fit="contain"` — a square crop of a portrait output was
   a strip of torsos.
+- **Every still drags to the create sheet.** `MediaThumb` and `MediaPlayer`
+  load the drag themselves (`dragRef.ts`, a private MIME carrying the whole
+  `AttachRef`), so a grid tile, a run's output, a strip thumb, a card's hero
+  and the picture on a viewer's stage all answer the same gesture; a clip
+  never does, and the `<img>` inside is `draggable={false}` so the browser's
+  own URL drag cannot start instead. A run's surfaces pass `refOfOutput` so
+  the provenance rides along. Two things make the drop land: the shell
+  (`SheetSlot`) brings the sheet up on the first `dragenter` carrying our
+  type — on the opened run and the open file it is not drawn otherwise — and
+  the sheet takes a drop that hit no role tile as `fallbackDropRole`
+  (reference, else the first frame the model has room for). A zoomed still
+  does not drag; the gesture is the pan.
 - **An opened run shows three different kinds of thing, and conflating them is
   the one mistake to avoid.** The *envelope* is studio's and safe to render as
   fields. The *payload documents* are the provider's and are shown as text and

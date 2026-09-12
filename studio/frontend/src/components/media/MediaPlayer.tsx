@@ -4,13 +4,15 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type DragEvent,
   type ReactNode,
 } from "react";
 
 import { IconButton, Text } from "@ansavva/design-system";
 
+import type { AttachRef } from "../../context/CreateBarContext";
+import { objectRef, startNodeDrag } from "../create/dragRef";
 import { useFullscreen } from "../../hooks/useFullscreen";
-import { useZoom, type ZoomState } from "./useZoom";
 import { useMediaPlayback } from "../../hooks/useMediaPlayback";
 import { useNearViewport } from "../../hooks/useNearViewport";
 import { useSignedSrc } from "../../hooks/useSignedSrc";
@@ -26,6 +28,7 @@ import {
   ZoomOutIcon,
 } from "../common/icons";
 import { PlayerTransport } from "./PlayerTransport";
+import { useZoom, type ZoomState } from "./useZoom";
 
 /**
  * Every class here is a whole literal, for the reason `MediaThumb` spells out:
@@ -173,6 +176,14 @@ interface MediaPlayerProps {
    */
   zoom?: ZoomState;
   onZoomChange?: (next: ZoomState) => void;
+  /**
+   * What a drag of the picture carries to the create sheet — `MediaThumb`'s
+   * `drag`, with the same default: a still drags its node as an object, a
+   * clip drags nothing, and a viewer showing a run's output passes
+   * `refOfOutput` so the provenance goes with it. Off while zoomed, where a
+   * drag is the pan.
+   */
+  drag?: boolean | AttachRef;
 }
 
 /**
@@ -228,6 +239,7 @@ export function MediaPlayer({
   zoomable = false,
   zoom: zoomValue,
   onZoomChange,
+  drag = true,
 }: MediaPlayerProps) {
   const [playing, setPlaying] = useState(autoPlay);
   const [posterDuration, setPosterDuration] = useState<number | null>(null);
@@ -394,6 +406,18 @@ export function MediaPlayer({
   }, []);
 
   const showChrome = playing || !isVideo || isFullscreen;
+
+  // A still at the fit drags to the sheet; zoomed, the same gesture is the
+  // pan — see `useZoom`. The chrome's buttons never start one: a press on a
+  // button is not a drag whatever the box says.
+  const draggable = drag !== false && !isVideo && !failed && !zoom.zoomed;
+  const onDragStart = (event: DragEvent) => {
+    if ((event.target as HTMLElement | null)?.closest("button, a, input")) {
+      event.preventDefault();
+      return;
+    }
+    startNodeDrag(event, drag === true ? objectRef(nodeId, url, name) : (drag as AttachRef));
+  };
   const duration = playback.duration || posterDuration || 0;
 
   const media = `h-full w-full ${FITS[fit]}`;
@@ -432,6 +456,8 @@ export function MediaPlayer({
       ref={setContainerNode}
       className={box}
       style={{ ...shell, ...zoom.stage }}
+      draggable={draggable || undefined}
+      onDragStart={draggable ? onDragStart : undefined}
       {...zoom.handlers}
     >
       {failed ? (

@@ -256,6 +256,46 @@ test("a cold link with no context shows the file and says what it belongs to", a
   await expect(page).toHaveURL(`/c/${CHARACTER}`);
 });
 
+/**
+ * **The picture on the stage drags into the create sheet, and the sheet
+ * comes up to take it.** On the open file the sheet is not drawn until
+ * something calls it up, so a drag has to be that something: the first
+ * `dragenter` carrying our type expands it, and a drop anywhere on it lands
+ * as a reference. Only a browser can say this — the drag is the browser's
+ * own, the `<img>`'s default drag has to have been switched off for the node
+ * payload to be the one that travels, and the sheet has to be under the
+ * pointer by the time the drop happens.
+ *
+ * Moved in steps, because a real hand does: a drop with no `dragover` on the
+ * target before it is refused by the browser, and that is what a two-event
+ * drag produces.
+ */
+test("the picture on the stage drags into the sheet, which comes up to take it", async ({
+  page,
+}) => {
+  stubOnly();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(at(FEED[1]!.id));
+  const stage = page.locator('[data-testid="object-viewer"] img[alt]').first();
+  await expect(stage).toBeVisible();
+  await expect(page.getByRole("button", { name: /Open the create panel/ })).toBeVisible();
+  await expect(page.getByLabel("Prompt")).toHaveCount(0);
+
+  const from = (await stage.boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  // Off the picture first — that is the move that starts the drag and brings
+  // the sheet up — then across the sheet in steps, then let go on it.
+  await page.mouse.move(from.x + from.width / 2 + 40, from.y + from.height / 2 + 40, { steps: 5 });
+  const sheet = page.locator("[data-create-bar]");
+  await expect(sheet).toBeVisible();
+  const to = (await sheet.boundingBox())!;
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 20 });
+  await page.mouse.up();
+
+  await expect(page.getByTitle(new RegExp(`^Image refs · ${FEED[1]!.name}`))).toBeVisible();
+});
+
 test("a non-media node still opens the text page", async ({ page }) => {
   stubOnly();
   // `/o/<id>` has always been the address of a `prompt.json` as well as of a

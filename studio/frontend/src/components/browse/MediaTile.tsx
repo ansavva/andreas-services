@@ -5,7 +5,6 @@ import { useFavorites } from "../../hooks/useFavorites";
 import { MediaThumb } from "../media/MediaThumb";
 import { ActionMenu, type MenuAction } from "../common/ActionMenu";
 import { CheckIcon, HeartFilledIcon } from "../common/icons";
-import { startNodeDrag } from "../create/dragRef";
 
 interface Props {
   file: FileEntry;
@@ -42,16 +41,6 @@ interface Props {
    * instead. Empty or absent draws no trigger at all.
    */
   actions?: readonly MenuAction[];
-  /**
-   * Whether dragging this tile carries its node — for a drop on the create
-   * sheet's role tiles.
-   *
-   * Off by default, and never true for a clip: every role a tile stands for is
-   * a picture. It is the pointer's accelerator for the menu's `Use as
-   * reference`, not a replacement for it — HTML5 drag-and-drop does not exist
-   * on touch and cannot be reached from a keyboard.
-   */
-  draggableRef?: boolean;
 }
 
 /**
@@ -71,7 +60,6 @@ export function MediaTile({
   to,
   onToggleSelect,
   actions,
-  draggableRef = false,
 }: Props) {
   const favorite = useFavorites().isFavorite(file.id);
 
@@ -109,11 +97,10 @@ export function MediaTile({
           href={to}
           onClick={press}
           // An anchor drags its own href by default, which would drop a URL
-          // into the sheet rather than a node. `startNodeDrag` overwrites the
-          // payload; the browser still takes the picture under the pointer as
-          // the drag image, which is what makes the gesture read.
-          draggable={draggableRef}
-          onDragStart={draggableRef ? (event) => startNodeDrag(event, file) : undefined}
+          // into the sheet rather than a node. The `MediaThumb` inside is the
+          // draggable thing and loads the node itself — see `dragRef` — so
+          // the anchor's own drag is switched off rather than overridden.
+          draggable={false}
           title={file.name}
           aria-current={selectionActive && selected ? "true" : undefined}
           className={surface}
@@ -140,8 +127,6 @@ export function MediaTile({
           // photo library makes, and the only way to pick forty tiles on a
           // touch screen without hunting forty checkboxes.
           onClick={press}
-          draggable={draggableRef}
-          onDragStart={draggableRef ? (event) => startNodeDrag(event, file) : undefined}
           title={file.name}
           aria-pressed={selectionActive ? selected : undefined}
           className={surface}
