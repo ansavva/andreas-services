@@ -242,7 +242,7 @@ function DangerZone({ group }: { group: GroupDetail }) {
             This cannot be undone. {people === 1 ? 'Nobody else is affected.' : `${people} people lose their place, their wishlists and their assignments.`}
           </AlertDialog.Description>
           <View style={{ marginTop: 24, flexDirection: 'row', justifyContent: 'flex-end', gap: gap.xs }}>
-            <AlertDialog.Close>Keep it</AlertDialog.Close>
+            <Button intent="secondary" size="sm" disabled={busy} onPress={() => setConfirming(false)}>Keep it</Button>
             <Button intent="danger" size="sm" disabled={busy} onPress={() => void remove()}>
               {busy ? 'Deleting…' : 'Permanently delete'}
             </Button>

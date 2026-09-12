@@ -23,7 +23,7 @@
 import { AlertDialog, Button, Input, Meter, Select, Textarea } from '@ansavva/design-system';
 import * as Clipboard from 'expo-clipboard';
 import { useMemo, useState } from 'react';
-import { Pressable, Share, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, Share, Text, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
 
 import { api, ApiError } from '../api/client';
 import { useAuth } from '../context/auth-context';
@@ -401,6 +401,8 @@ function DrawCard({
 }) {
   const { blends, brand, styles } = useTheme();
   const [reason, setReason] = useState('');
+  // Both things you can do to a drawn exchange are destructive, so both sit in the same box.
+  const dangerPanel = [styles.panel, { backgroundColor: 'transparent', borderWidth: 1, borderColor: blends.dangerBorder }];
   if (group.status === 'open')
     return (
       <Card style={{ borderColor: blends.primaryBorder }}>
@@ -421,8 +423,8 @@ function DrawCard({
       <Text style={styles.eyebrow}>The draw</Text>
       <Text style={[styles.heading, { marginTop: 4 }]}>Drawn</Text>
       <View style={{ marginTop: 20, gap: 20 }}>
-        <ResetDrawPanel group={group} busy={busy} onReset={onReset} />
-        <View style={[styles.panel, { backgroundColor: 'transparent', borderWidth: 1, borderColor: blends.dangerBorder }]}>
+        <ResetDrawPanel group={group} busy={busy} onReset={onReset} style={dangerPanel} />
+        <View style={dangerPanel}>
           <Text style={[styles.small, styles.semibold]}>Emergency reveal</Text>
           <Text style={[styles.smallMuted, { marginTop: 8 }]}>
             Shows you, and only you, who is giving to whom — every pair, with each recipient’s
@@ -475,12 +477,22 @@ function DrawCard({
  * loss. Same shape as the danger zone's delete: a dialog rather than a two-press arm, because
  * nothing else on the tab could be mistaken for the confirmation.
  */
-function ResetDrawPanel({ group, busy, onReset }: { group: GroupDetail; busy: boolean; onReset(): void }) {
+function ResetDrawPanel({
+  group,
+  busy,
+  onReset,
+  style,
+}: {
+  group: GroupDetail;
+  busy: boolean;
+  onReset(): void;
+  style: StyleProp<ViewStyle>;
+}) {
   const { blends, styles } = useTheme();
   const [confirming, setConfirming] = useState(false);
   const participating = group.members.filter((member) => member.is_participating).length;
   return (
-    <View style={styles.panel}>
+    <View style={style}>
       <Text style={[styles.small, styles.semibold]}>Need to change the exchange?</Text>
       <Text style={[styles.smallMuted, { marginTop: 8 }]}>
         Resetting clears every assignment and reopens the roster. Claims, gift progress and the
@@ -498,7 +510,9 @@ function ResetDrawPanel({ group, busy, onReset }: { group: GroupDetail; busy: bo
             can draw again once the roster is settled.
           </AlertDialog.Description>
           <View style={{ marginTop: 24, flexDirection: 'row', justifyContent: 'flex-end', gap: gap.xs }}>
-            <AlertDialog.Close>Keep the draw</AlertDialog.Close>
+            {/* A real button, not `AlertDialog.Close`: that renders as a bare label, and next to a
+                filled danger button the way out read as an afterthought. */}
+            <Button intent="secondary" size="sm" disabled={busy} onPress={() => setConfirming(false)}>Keep the draw</Button>
             <Button intent="danger" size="sm" disabled={busy} onPress={() => { setConfirming(false); onReset(); }}>
               Reset the draw
             </Button>
