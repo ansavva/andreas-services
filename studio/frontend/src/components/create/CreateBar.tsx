@@ -550,6 +550,7 @@ export function CreateBar() {
                   : null
               }
               attached={new Set(attachments.map((each) => each.ref.node))}
+              held={attachments.filter((each) => each.role === bar.role).length}
               onAttach={(ref: AttachRef) => {
                 if (bar.role) attach(ref, bar.role);
               }}

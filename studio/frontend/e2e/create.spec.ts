@@ -169,3 +169,30 @@ test("a model that works from a clip offers a Clip tile, and its picker lists vi
   expect(wrote(calls)).toEqual([]);
   expect(escaped(calls, page)).toEqual([]);
 });
+
+test("on a phone the picker is a sheet over the create sheet, and a one-picture role closes it on the pick", async ({
+  page,
+}) => {
+  // The floating box stacked on the create sheet overran a phone's screen:
+  // the title, the Folders/Media switch and the close sat above the top edge.
+  await page.setViewportSize({ width: 390, height: 664 });
+  await page.goto(`/p/${PROJECT}`);
+  await page.getByRole("group", { name: "Kind" }).getByText("Video").click();
+  const strip = page.locator("[data-mode-strip]");
+  await strip.getByRole("group", { name: "Start frame" }).getByRole("button", { name: "Start frame" }).click();
+
+  // Every control of the header is on screen, and the two views switch.
+  const picker = page.getByRole("region", { name: "Choose a start frame" });
+  await expect(picker).toBeVisible();
+  await expect(picker.getByText("Start frame", { exact: true })).toBeInViewport();
+  await expect(picker.getByRole("button", { name: "Done" })).toBeInViewport();
+  await picker.getByRole("button", { name: "Folders" }).click();
+  await expect(picker.getByRole("button", { name: "Folders" })).toBeInViewport();
+  await picker.getByRole("button", { name: "Media" }).click();
+
+  // A start frame is one picture: the pick closes the sheet, and the tile
+  // under it is what the person sees next.
+  await picker.getByRole("button", { name: /^Attach / }).first().click();
+  await expect(picker).toHaveCount(0);
+  await expect(strip.getByText("Start", { exact: true })).toBeVisible();
+});

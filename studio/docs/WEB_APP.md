@@ -568,7 +568,14 @@ page and a plain textarea over its literal bytes, and never offers fields.
   open tag input and its scope note were three lines of a phone above the
   grid this sheet exists to show. It takes uploads
   too, into the folder it is standing on, and attaches each picture that
-  lands. Pressing a picture attaches it to that role. Then the
+  lands. Pressing a picture attaches it to that role. **Two bodies, one
+  component** (`useMediaQuery(WIDE)`): on a desk it floats above the create
+  sheet capped at 60vh with the tile it fills visible under it; under `md`
+  it is a bottom `Drawer` of 92vh over the create sheet — the floating box
+  stacked on the sheet overran a phone, with the title, the Folders/Media
+  switch and the close above the top edge — titled by the role's name, with
+  a `Done`, closing itself on the pick for a one-picture role and staying
+  open with a count in the title while `Image refs` accumulates. Then the
   prompt, borderless, its `{` menu opening upward — two lines at rest, faded
   where more is cut off, eight with the caret in it.
 

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   Breadcrumbs,
   Button,
   Chip,
+  Drawer,
   IconButton,
   Text,
   Toggle,
@@ -11,7 +12,8 @@ import {
 } from "@ansavva/design-system";
 
 import { getAsset, getCharacters, getFolder, getProjects } from "../../apis/studio";
-import type { AttachRef, AttachRole } from "../../context/CreateBarContext";
+import { holdsOne, type AttachRef, type AttachRole } from "../../context/CreateBarContext";
+import { WIDE, useMediaQuery } from "../../hooks/useMediaQuery";
 import { useUploads } from "../../hooks/useUploads";
 import {
   DEFAULT_SORT,
@@ -33,6 +35,7 @@ import { FilterBar } from "../common/FilterBar";
 import { ArrowUpIcon, CheckIcon, CloseIcon, FolderIcon } from "../common/icons";
 import { LoadError } from "../common/LoadError";
 import { SectionLoading } from "../common/SectionLoading";
+import { SheetHandle } from "../common/SheetHandle";
 import { EntityRow } from "../entity/EntityRow";
 import { MediaThumb } from "../media/MediaThumb";
 import { ROLE_WORDS } from "./roles";
@@ -102,21 +105,83 @@ function defaultView(kind: EntityKind): View {
  * One kind, whichever view: every image role's tile stands for a picture, and
  * the clip tile for a video, so the listing is filtered to the one the role
  * takes — a clip cannot be a start frame, and a still cannot be the clip.
+ *
+ * **Two bodies for two screens, one component.** On a desk it floats above
+ * the create sheet, capped at 60vh, and the tile it fills is visible under
+ * it — pressing a picture puts it there, and that is the confirmation. On a
+ * phone the same box stacked on the sheet overran the screen: the title,
+ * the Folders/Media switch and the close were above the top edge and the
+ * two views could not be switched at all. So under `md` it is a **bottom
+ * sheet over the create sheet**, 92vh, with its own handle and a `Done`; a
+ * one-picture role closes it on the pick, since the tile it filled is what
+ * the sheet under it shows, and `Image refs` stays open with a count in the
+ * title until Done. Same state, same listing, one fetch.
  */
-export function AttachPicker({
-  role,
-  project,
-  attached,
-  onAttach,
-  onClose,
-}: {
+export function AttachPicker(props: PickerProps) {
+  const wide = useMediaQuery(WIDE);
+  const words = ROLE_WORDS[props.role];
+  const panel = useRef<HTMLDivElement>(null);
+  if (wide) {
+    return (
+      <div
+        className="flex max-h-[60vh] flex-col gap-2 rounded-lg bg-sheet p-3 shadow-[0_12px_48px_rgba(0,0,0,0.55)]
+                   ring-1 ring-line backdrop-blur-xl"
+        data-attach-picker=""
+        role="region"
+        aria-label={words.choose}
+      >
+        <PickerBody {...props} sheet={false} />
+      </div>
+    );
+  }
+  return (
+    <Drawer.Root
+      side="bottom"
+      open
+      onOpenChange={(next: boolean) => {
+        if (!next) props.onClose();
+      }}
+    >
+      <Drawer.Backdrop />
+      <Drawer.Panel ref={panel} className="flex h-[92vh] flex-col rounded-t-lg pt-0">
+        <Drawer.Title className="sr-only">{words.choose}</Drawer.Title>
+        <SheetHandle panel={panel} onDismiss={props.onClose} />
+        <div
+          className="flex min-h-0 flex-1 flex-col gap-2"
+          data-attach-picker=""
+          role="region"
+          aria-label={words.choose}
+        >
+          <PickerBody {...props} sheet />
+        </div>
+      </Drawer.Panel>
+    </Drawer.Root>
+  );
+}
+
+interface PickerProps {
   role: AttachRole;
   /** The project the sheet is creating in — where the picker opens. Null before it is known. */
   project: PickerEntity | null;
   /** Node ids already on the sheet, in any role. */
   attached: ReadonlySet<string>;
+  /** How many the highlighted role holds — the count a phone's title shows while `Image refs` accumulates. */
+  held?: number;
   onAttach: (ref: AttachRef) => void;
   onClose: () => void;
+}
+
+function PickerBody({
+  role,
+  project,
+  attached,
+  held = 0,
+  onAttach,
+  onClose,
+  sheet,
+}: PickerProps & {
+  /** The phone's bottom sheet, as opposed to the desk's floating box. */
+  sheet: boolean;
 }) {
   const [place, setPlace] = useState<Place>(() =>
     project ? { kind: "entity", entity: project, folder: project.root } : { kind: "projects" },
@@ -196,10 +261,15 @@ export function AttachPicker({
   const parent = atRoot ? undefined : trail.at(-2)?.id;
 
   const words = ROLE_WORDS[role];
+  // On the phone the sheet covers the tile it fills, so a one-picture role
+  // closes on the pick and the tile is what the person sees next. A role that
+  // accumulates stays open — the count in the title is the confirmation.
   const attach = useCallback(
-    (file: Pick<FileEntry, "id" | "url" | "name">) =>
-      onAttach({ node: file.id, url: file.url, name: file.name, kind: "object" }),
-    [onAttach],
+    (file: Pick<FileEntry, "id" | "url" | "name">) => {
+      onAttach({ node: file.id, url: file.url, name: file.name, kind: "object" });
+      if (sheet && holdsOne(role)) onClose();
+    },
+    [onAttach, onClose, role, sheet],
   );
 
   /**
@@ -229,16 +299,18 @@ export function AttachPicker({
   const empty = useMemo(() => folders.length === 0 && files.length === 0, [folders, files]);
 
   return (
-    <div
-      className="flex max-h-[60vh] flex-col gap-2 rounded-lg bg-sheet p-3 shadow-[0_12px_48px_rgba(0,0,0,0.55)]
-                 ring-1 ring-line backdrop-blur-xl"
-      data-attach-picker=""
-      role="region"
-      aria-label={words.choose}
-    >
+    <>
       <div className="flex items-center gap-2">
+        {/* The sheet says the role's name — `Start frame` — where the box
+            says `Choose a start frame`: the row also holds the view switch
+            and Done, and on 390px the sentence was the thing that got cut. */}
         <Text as="span" variant="body" weight="medium" className="min-w-0 flex-1 truncate">
-          {words.choose}
+          {sheet ? words.label : words.choose}
+          {sheet && !holdsOne(role) && held > 0 && (
+            <Text as="span" variant="body" tone="muted">
+              {` · ${held}`}
+            </Text>
+          )}
         </Text>
         {entity && (
           <ToggleGroup.Root
@@ -259,9 +331,15 @@ export function AttachPicker({
             </Toggle>
           </ToggleGroup.Root>
         )}
-        <IconButton size="sm" label="Close the picker" onClick={onClose}>
-          <CloseIcon />
-        </IconButton>
+        {sheet ? (
+          <Button size="sm" intent="secondary" onClick={onClose}>
+            Done
+          </Button>
+        ) : (
+          <IconButton size="sm" label="Close the picker" onClick={onClose}>
+            <CloseIcon />
+          </IconButton>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -418,7 +496,7 @@ export function AttachPicker({
             </div>
           ))}
       </div>
-    </div>
+    </>
   );
 }
 
