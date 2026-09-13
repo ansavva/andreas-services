@@ -16,6 +16,7 @@ import {
   VideoIcon,
 } from "../common/icons";
 import { isNodeDrag, readNodeDrag } from "./dragRef";
+import { ROW_ATTR, useReorder, type Sortable } from "./reorder";
 import { ROLES_BY_KIND, ROLE_WORDS, fieldFor } from "./roles";
 
 const ROLE_ICONS: Record<AttachRole, (props: { className?: string }) => ReactElement> = {
@@ -128,6 +129,12 @@ export function fallbackDropRole(
  * Nothing here is a `<button>` inside a `<button>`: the picture is a button,
  * its × a sibling.
  *
+ * **References can be dragged along the row into a new order**, by mouse or
+ * by a held finger, and a focused one moves with the arrow keys — see
+ * `reorder.ts`. Their order is the order they are sent in and the number the
+ * prompt cites, so `Image 2` before `Image 1` has to be a gesture and not a
+ * remove-and-reattach. Frames have the ⇄ instead: two roles, not a row.
+ *
  * **Each cell is also where a dragged picture lands.** A tile in the library's
  * grid can be dragged straight onto the role it should fill, which is the one
  * thing the buttons on those tiles cannot express — a button has to pick a role
@@ -143,6 +150,7 @@ export function AttachTiles({
   onRole,
   onDetach,
   onSwapFrames,
+  onMove,
   onDropRef,
 }: {
   kind: RunKind;
@@ -155,14 +163,13 @@ export function AttachTiles({
   onDetach: (index: number) => void;
   /** The start frame becomes the end frame and vice versa. */
   onSwapFrames: () => void;
+  /** Move the attachment at one index in `attachments` to sit at another. */
+  onMove: (from: number, to: number) => void;
   /** A picture dragged onto a role tile. The bar decides what `attach` does with it. */
   onDropRef: (ref: AttachRef, role: AttachRole) => void;
 }) {
   /** The cell a drag is currently over, drawn as that cell's highlighted state. */
   const [over, setOver] = useState<AttachRole | null>(null);
-
-  const roles = rolesOf(kind, entry);
-  if (roles.length === 0) return null;
 
   const held = (of: AttachRole) =>
     attachments
@@ -173,6 +180,16 @@ export function AttachTiles({
   const refs = held("reference");
   const input = held("input")[0];
   const clip = held("clip")[0];
+
+  // The drag speaks in positions among the references; the bar in indices.
+  const sortable = useReorder(refs.length, (from, to) => {
+    const a = refs[from];
+    const b = refs[to];
+    if (a && b) onMove(a.index, b.index);
+  });
+
+  const roles = rolesOf(kind, entry);
+  if (roles.length === 0) return null;
 
   // The model's own rules, as which tile is blocked and why.
   const blocked = (of: AttachRole): string | null => blockedReason(of, entry, attachments);
@@ -249,7 +266,10 @@ export function AttachTiles({
   return (
     <div className="flex items-center gap-2" data-mode-strip="">
       {/* `min-w-0` + `overflow-x-auto`: the row scrolls rather than wraps. */}
-      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
+      <div
+        className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]"
+        {...{ [ROW_ATTR]: "" }}
+      >
         {roles.includes("start") && frameTile("start", start)}
         {start && end && (
           <IconButton size="sm" label="Swap the start and end frames" onClick={onSwapFrames}>
@@ -292,13 +312,17 @@ export function AttachTiles({
             className="contents"
             {...dropTarget("reference")}
           >
+            {/* Keyed by node — `attach` holds each node once per role — so
+                a tile keeps its element across a reorder, and the pointer
+                capture on it holds. */}
             {refs.map(({ attachment, index }, position) => (
               <Thumb
-                key={`${attachment.ref.node}-${index}`}
+                key={attachment.ref.node}
                 attachment={attachment}
                 caption={`Image ${position + 1}`}
                 onPress={() => onRole(role === "reference" ? null : "reference")}
                 onDetach={() => onDetach(index)}
+                sortable={refs.length > 1 ? sortable(position) : undefined}
               />
             ))}
             <Ghost
@@ -388,11 +412,14 @@ export function Thumb({
   caption,
   onPress,
   onDetach,
+  sortable,
 }: {
   attachment: Attachment;
   caption: string;
   onPress: () => void;
   onDetach: () => void;
+  /** Given when the tile can be dragged along its row — see `reorder.ts`. */
+  sortable?: Sortable;
 }) {
   const { ref, role } = attachment;
   // `ref.name` is absent when the node it names has been deleted — see
@@ -401,19 +428,28 @@ export function Thumb({
   const title = pending ? ref.pending! : `${ROLE_WORDS[role].label} · ${assetLabel(ref.name)}`;
   return (
     <div
-      className="relative size-[4.5rem] shrink-0"
+      className={`relative size-[4.5rem] shrink-0 ${
+        sortable
+          ? // No callout on a held touch, and no image drag from a mouse: the
+            // hold and the move are this row's own gesture.
+            "select-none [-webkit-touch-callout:none] [&_img]:pointer-events-none"
+          : ""
+      } ${sortable?.dragging ? "z-10 scale-105 shadow-lg ring-2 ring-accent" : ""}`}
       title={title}
       data-attachment={role}
       data-pending={pending || undefined}
       aria-busy={pending || undefined}
+      {...sortable?.wrapper}
     >
       <Button
         intent="secondary"
         size="md"
         aria-label={pending ? ref.pending! : `Change ${caption.toLowerCase()} — ${assetLabel(ref.name)}`}
+        aria-description={sortable ? "Drag, or press an arrow key, to change its order." : undefined}
         className="relative block size-full overflow-hidden rounded-md bg-fill p-0 hover:bg-fill"
         onClick={onPress}
         disabled={pending}
+        {...sortable?.button}
       >
         {pending ? (
           // The source it is being made from — a clip, for a first frame —

@@ -86,10 +86,12 @@ function defaultView(kind: EntityKind): View {
  * highlighted, so any picture in the library can be a reference, a start
  * frame or an end frame.
  *
- * **Pressing a picture attaches it.** There is no chosen-list and no Add
- * button: the tile in the sheet below IS the list, and a one-image role
- * replaces what it held. The picture stays marked here so the same one is
- * not sent twice.
+ * **Pressing a picture attaches it; pressing it again takes it off.** There
+ * is no chosen-list and no Add button: the tile in the sheet below IS the
+ * list, and a one-image role replaces what it held. The picture stays marked
+ * here so the same one is not sent twice — and the mark is a toggle, because
+ * on a phone the sheet below is under this one, and its × cannot be reached
+ * without closing the picker to find it.
  *
  * **Opens on the project it is creating in, in Media view** — every picture
  * under the project, newest first — and the `Characters` and `Projects` chips
@@ -168,6 +170,8 @@ interface PickerProps {
   /** How many the highlighted role holds — the count a phone's title shows while `Image refs` accumulates. */
   held?: number;
   onAttach: (ref: AttachRef) => void;
+  /** A marked picture pressed again: take it off the sheet. */
+  onDetach: (node: string) => void;
   onClose: () => void;
 }
 
@@ -177,6 +181,7 @@ function PickerBody({
   attached,
   held = 0,
   onAttach,
+  onDetach,
   onClose,
   sheet,
 }: PickerProps & {
@@ -455,11 +460,11 @@ function PickerBody({
                         intent="secondary"
                         size="sm"
                         aria-pressed={on}
-                        aria-label={`Attach ${file.name}`}
+                        aria-label={on ? `Remove ${file.name}` : `Attach ${file.name}`}
                         title={file.name}
                         className={`relative h-auto flex-col items-stretch gap-1 rounded-md bg-transparent p-1 text-left
                                     hover:bg-fill active:bg-fill-active ${on ? "ring-2 ring-primary" : ""}`}
-                        onClick={() => attach(file)}
+                        onClick={() => (on ? onDetach(file.id) : attach(file))}
                       >
                         <MediaThumb
                           nodeId={file.id}

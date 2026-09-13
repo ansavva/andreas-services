@@ -201,16 +201,18 @@ it("the kind switch changes the tiles, the chips and the model", async () => {
   });
 });
 
-it("Enter creates the draft and then submits it, in that order; Shift+Enter does not", async () => {
+it("⌘/Ctrl+Enter creates the draft and then submits it, in that order; plain Enter does not", async () => {
   await open();
   fill("A portrait.");
   await waitFor(() => expect(editor().textContent).toContain("A portrait."));
 
+  // Enter is a line break, not a send — a prompt is paragraphs.
+  fireEvent.keyDown(editor(), { key: "Enter" });
   fireEvent.keyDown(editor(), { key: "Enter", shiftKey: true });
   await new Promise((resolve) => setTimeout(resolve, 20));
   expect(createRun).not.toHaveBeenCalled();
 
-  fireEvent.keyDown(editor(), { key: "Enter" });
+  fireEvent.keyDown(editor(), { key: "Enter", metaKey: true });
   await waitFor(() => expect(submitRun).toHaveBeenCalledWith("run-0001"));
 
   expect(vi.mocked(createRun).mock.calls[0]![0]).toMatchObject({
@@ -395,6 +397,64 @@ it("attachments show as thumbs in their role cell with a way off; a frame switch
   expect(
     screen.queryByRole("button", { name: "Remove face-01.png" }),
   ).toBeNull();
+});
+
+/**
+ * The order of the references is the order they are sent in and the number
+ * the prompt cites, so it can be changed in place: an arrow key on a focused
+ * tile, or a drag along the row. jsdom lays nothing out, so the drag is
+ * driven with tiles told where they are.
+ */
+it("a reference moves along the row by arrow key and by drag, and its caption follows", async () => {
+  await open();
+  api.attach(FACE, "reference");
+  api.attach({ ...FACE, node: "node-2", name: "face-02.png" }, "reference");
+  api.attach({ ...FACE, node: "node-3", name: "face-03.png" }, "reference");
+  await waitFor(() =>
+    expect(within(strip()).getAllByTitle(/^Image refs · /)).toHaveLength(3),
+  );
+  const captions = () =>
+    within(strip())
+      .getAllByRole("button", { name: /^Change image \d/ })
+      .map((each) => each.getAttribute("aria-label"));
+  expect(captions()).toEqual([
+    "Change image 1 — face-01.png",
+    "Change image 2 — face-02.png",
+    "Change image 3 — face-03.png",
+  ]);
+
+  // ← on the third puts it second; → on the first would put it second too.
+  fireEvent.keyDown(within(strip()).getByRole("button", { name: /^Change image \d — face-03/ }), { key: "ArrowLeft" });
+  expect(captions()).toEqual([
+    "Change image 1 — face-01.png",
+    "Change image 2 — face-03.png",
+    "Change image 3 — face-02.png",
+  ]);
+  // ← on the first goes nowhere.
+  fireEvent.keyDown(within(strip()).getByRole("button", { name: /^Change image \d — face-01/ }), { key: "ArrowLeft" });
+  expect(captions()[0]).toBe("Change image 1 — face-01.png");
+
+  // A mouse drag: tiles 72px wide at x = 0, 80, 160. Take the first, move it
+  // past the middle of the third.
+  const tiles = Array.from(strip().querySelectorAll<HTMLElement>("[data-ref-position]"));
+  tiles.forEach((tile, at) => {
+    tile.getBoundingClientRect = () =>
+      ({ left: at * 80, right: at * 80 + 72, width: 72, top: 0, bottom: 72, height: 72 }) as DOMRect;
+  });
+  const first = tiles[0]!;
+  fireEvent.pointerDown(first, { pointerId: 1, pointerType: "mouse", button: 0, clientX: 10, clientY: 10 });
+  fireEvent.pointerMove(first, { pointerId: 1, pointerType: "mouse", clientX: 30, clientY: 10 });
+  expect(first.hasAttribute("data-dragging")).toBe(true);
+  fireEvent.pointerMove(first, { pointerId: 1, pointerType: "mouse", clientX: 210, clientY: 10 });
+  fireEvent.pointerUp(first, { pointerId: 1, pointerType: "mouse", clientX: 210, clientY: 10 });
+  expect(first.hasAttribute("data-dragging")).toBe(false);
+  expect(captions()).toEqual([
+    "Change image 1 — face-03.png",
+    "Change image 2 — face-02.png",
+    "Change image 3 — face-01.png",
+  ]);
+  // The release is not a press: the picker did not open on the reference role.
+  expect(screen.queryByRole("region", { name: "Choose image refs" })).toBeNull();
 });
 
 /**

@@ -560,7 +560,7 @@ page and a plain textarea over its literal bytes, and never offers fields.
   see is the one outcome this must not have. `collapsed` is a person's decision
   about every screen; `summoned` stays what it was, the opened run's own rule.
 - **The create sheet floats at the foot of every screen, always fully drawn,
-  and Enter sends.** `components/create/CreateBar.tsx`, mounted by
+  and ⌘/Ctrl+Enter sends — Enter is a line break.** `components/create/CreateBar.tsx`, mounted by
   `AppLayout`; its state is `CreateBarContext`, so a feed row or a tile can
   fill it from a route element: `useCreateBar()` is `{ loadRun, attach,
   setKind }` and nothing else. Top-left the IMAGE/VIDEO switch; top-right the

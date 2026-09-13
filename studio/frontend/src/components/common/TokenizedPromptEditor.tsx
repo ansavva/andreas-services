@@ -177,12 +177,13 @@ export function TokenizedPromptEditor({
   /** Sizing for the editable itself: a min height, a max height and a scroll. */
   contentClassName?: string;
   /**
-   * Enter sends, Shift+Enter breaks the line.
+   * ⌘/Ctrl+Enter sends. Plain Enter breaks the line, as does Shift+Enter.
    *
-   * Only when given: the template editor keeps Enter as a newline, because a
-   * template is paragraphs. The create bar is a chat box and Enter is what a
-   * chat box means by it. The `{` menu still takes Enter first while it is
-   * open — choosing a pill must not send the prompt half-written.
+   * Only when given: the template editor has no send at all, because a
+   * template is paragraphs. The create bar did send on plain Enter, like a
+   * chat box — and a prompt is not a chat message: it is paragraphs too, and
+   * a line break meant for the prompt sent it half-written (decision
+   * 2026-09-13). The `{` menu still takes Enter first while it is open.
    */
   onSubmit?: () => void;
   /**
@@ -299,13 +300,14 @@ export function TokenizedPromptEditor({
 }
 
 /**
- * Enter sends; Shift+Enter is still a line break.
+ * ⌘/Ctrl+Enter sends; Enter and Shift+Enter are line breaks.
  *
  * Registered at `COMMAND_PRIORITY_HIGH`, above the `{` menu's own Enter and
  * above the plain-text plugin's, so it is asked first — and it declines when
  * the menu is open, so the keystroke falls through to the menu and picks the
- * highlighted pill instead of sending a half-written citation. It declines on
- * Shift too, which leaves the newline to the plugin that always drew one.
+ * highlighted pill instead of sending a half-written citation. It declines
+ * without the modifier too, which leaves the newline to the plugin that
+ * always drew one. `metaKey` is ⌘ on a Mac; `ctrlKey` is Ctrl everywhere else.
  */
 function SubmitOnEnter({
   onSubmit,
@@ -323,6 +325,7 @@ function SubmitOnEnter({
         (event) => {
           if (
             event === null ||
+            !(event.metaKey || event.ctrlKey) ||
             event.shiftKey ||
             event.isComposing ||
             menuOpen.current

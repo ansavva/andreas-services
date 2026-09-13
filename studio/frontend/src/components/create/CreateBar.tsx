@@ -124,7 +124,8 @@ const UP_LIST =
  * three icons top-right, a tile per image role, the prompt, and a row of chips
  * for the model and the settings worth a press — each a glyph and a value
  * that opens a short menu upward — and a gear holding every setting as rows.
- * Enter sends. The round arrow is Send.
+ * ⌘/Ctrl+Enter sends; Enter is a line break, a prompt being paragraphs. The
+ * round arrow is Send.
  *
  * **There is no approve step.** Hard rule #2 is carried by the person
  * pressing Send over a prompt they can read.
@@ -140,7 +141,7 @@ const UP_LIST =
  */
 export function CreateBar() {
   const bar = useCreateBarState();
-  const { attach, setKind } = useCreateBar();
+  const { attach, drop, setKind } = useCreateBar();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -554,6 +555,9 @@ export function CreateBar() {
               onAttach={(ref: AttachRef) => {
                 if (bar.role) attach(ref, bar.role);
               }}
+              // The mark in the picker means "on the sheet", in any role, so
+              // pressing it again takes the picture off whichever role holds it.
+              onDetach={drop}
               onClose={() => bar.setRole(null)}
             />
           </div>
@@ -617,6 +621,7 @@ export function CreateBar() {
             onRole={bar.setRole}
             onDetach={bar.detach}
             onSwapFrames={bar.swapFrames}
+            onMove={bar.move}
             // A picture dragged out of the library's grid and dropped on a
             // role tile. `attach` is the same call the tiles' own button
             // makes; what the drop adds is that the gesture NAMES the role.
@@ -793,7 +798,7 @@ export function CreateBar() {
           <Button
             size="sm"
             aria-label={busy ? "Sending…" : pending ? "Waiting for a frame…" : "Send"}
-            title={pending ? "Waiting for the first frame to land" : "Send (Enter)"}
+            title={pending ? "Waiting for the first frame to land" : `Send (${navigator.platform.startsWith("Mac") ? "⌘" : "Ctrl"}+Enter)`}
             className="size-9 shrink-0 rounded-pill p-0"
             disabled={!canSend}
             onClick={() => void send()}

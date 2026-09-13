@@ -517,7 +517,7 @@ function FeedRow({
           </Text>
         </div>
 
-        <Prompt row={row} />
+        <RunPrompt row={row} />
 
         <SendThumbs sends={row.sends} size="size-20" />
 
@@ -659,14 +659,20 @@ function DraftTiles({ row }: { row: RunFeedRow }) {
  *
  * Prose verbatim; a structured prompt serialised — the pipeline decodes
  * nothing, and the opened run's Request row is where a document reads whole.
+ *
+ * **The opened run's rail draws this same one.** It had a box of its own —
+ * the whole prompt behind a `max-h-48` scroll — which on a phone is a scroll
+ * inside the scroll the frame already is: the prompt cut off mid-line with
+ * nothing saying there was more, and the feed's More a screen back. One
+ * clamp, one word, both places.
  */
-function Prompt({ row }: { row: RunFeedRow }) {
+export function RunPrompt({ row, className = "" }: { row: RunFeedRow; className?: string }) {
   const [expanded, setExpanded] = useState(false);
   const text = promptText(row.plan?.prompt);
 
   if (!text) {
     return (
-      <Text variant="body" tone="muted">
+      <Text variant="body" tone="muted" className={className}>
         {row.plan ? "No prompt." : "This run predates the plan."}
       </Text>
     );
@@ -677,7 +683,7 @@ function Prompt({ row }: { row: RunFeedRow }) {
   const long = text.length > 220;
 
   return (
-    <div className="flex flex-col items-start gap-1">
+    <div className={`flex flex-col items-start gap-1 ${className}`}>
       <Text
         variant="body"
         className={

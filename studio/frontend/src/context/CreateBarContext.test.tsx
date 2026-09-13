@@ -123,6 +123,36 @@ it("attach: reference accumulates without duplicates; a frame replaces and switc
   expect(state().attachments.video).toEqual([{ ref: FACE, role: "start" }]);
 });
 
+it("move puts one attachment at another's index, within the current kind", () => {
+  mount();
+  const second: AttachRef = { ...FACE, node: "node-2", name: "face-02.png" };
+  const third: AttachRef = { ...FACE, node: "node-3", name: "face-03.png" };
+  act(() => api.attach(FACE, "reference"));
+  act(() => api.attach(second, "reference"));
+  act(() => api.attach(third, "reference"));
+
+  act(() => own.move(2, 0));
+  expect(state().attachments.image.map((each: { ref: AttachRef }) => each.ref.node)).toEqual([
+    "node-3",
+    "node-face",
+    "node-2",
+  ]);
+  act(() => own.move(0, 1));
+  expect(state().attachments.image.map((each: { ref: AttachRef }) => each.ref.node)).toEqual([
+    "node-face",
+    "node-3",
+    "node-2",
+  ]);
+  // Out of range, or nowhere: nothing happens.
+  act(() => own.move(1, 1));
+  act(() => own.move(0, 7));
+  expect(state().attachments.image.map((each: { ref: AttachRef }) => each.ref.node)).toEqual([
+    "node-face",
+    "node-3",
+    "node-2",
+  ]);
+});
+
 it("setKind switches and drops the highlighted role", () => {
   mount();
   act(() => api.setKind("video"));
