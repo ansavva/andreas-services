@@ -5,6 +5,7 @@ import { Button, IconButton } from "@ansavva/design-system";
 import type { AttachRef, AttachRole, Attachment } from "../../context/CreateBarContext";
 import type { ModelEntry, RunKind } from "../../types";
 import { assetLabel } from "../../utils/format";
+import { ApertureSpinner } from "../common/Aperture";
 import {
   CloseIcon,
   FrameEndIcon,
@@ -373,6 +374,14 @@ function Ghost({
  * The × is a sibling of the picture rather than a child of a button around
  * it — a control inside a control is invalid HTML the browser resolves by
  * dropping one. The picture itself reopens the picker on its role.
+ *
+ * **A `pending` ref is drawn as what it is being made from, waiting.** A
+ * clip's first frame takes the worker a few seconds, and a menu line that
+ * did nothing visible for those seconds read as a menu line that did
+ * nothing — so the tile appears at once, over the clip's own poster, with
+ * the spinner and the word `Taking…`, and turns into the frame when it
+ * lands. Its × takes it off the bar; the worker still finishes and the
+ * frame still reaches the input pool, which is a file and not a spend.
  */
 export function Thumb({
   attachment,
@@ -388,17 +397,41 @@ export function Thumb({
   const { ref, role } = attachment;
   // `ref.name` is absent when the node it names has been deleted — see
   // `AttachRef`. The thumb stays, so it can be seen and removed.
-  const title = `${ROLE_WORDS[role].label} · ${assetLabel(ref.name)}`;
+  const pending = ref.pending !== undefined;
+  const title = pending ? ref.pending! : `${ROLE_WORDS[role].label} · ${assetLabel(ref.name)}`;
   return (
-    <div className="relative size-[4.5rem] shrink-0" title={title} data-attachment={role}>
+    <div
+      className="relative size-[4.5rem] shrink-0"
+      title={title}
+      data-attachment={role}
+      data-pending={pending || undefined}
+      aria-busy={pending || undefined}
+    >
       <Button
         intent="secondary"
         size="md"
-        aria-label={`Change ${caption.toLowerCase()} — ${assetLabel(ref.name)}`}
+        aria-label={pending ? ref.pending! : `Change ${caption.toLowerCase()} — ${assetLabel(ref.name)}`}
         className="relative block size-full overflow-hidden rounded-md bg-fill p-0 hover:bg-fill"
         onClick={onPress}
+        disabled={pending}
       >
-        {role === "clip" ? (
+        {pending ? (
+          // The source it is being made from — a clip, for a first frame —
+          // dimmed under the spinner. `<video>` because that source is a clip
+          // today; an `<img>` of an mp4 is a broken picture.
+          <>
+            <video
+              src={ref.url ?? undefined}
+              muted
+              playsInline
+              preload="metadata"
+              className="size-full object-cover opacity-40"
+            />
+            <span className="absolute inset-0 flex items-center justify-center">
+              <ApertureSpinner size="sm" label={ref.pending!} />
+            </span>
+          </>
+        ) : role === "clip" ? (
           // `preload="metadata"` is the free poster frame; nothing plays here.
           <video
             src={ref.url ?? undefined}
@@ -413,7 +446,7 @@ export function Thumb({
         {/* The word over the picture's foot, on a scrim, the way ElevenLabs
             labels `@Image 1`. */}
         <span className="absolute inset-x-0 bottom-0 truncate bg-overlay-scrim/60 px-1 py-0.5 text-center text-[11px] font-medium text-overlay-ink">
-          {caption}
+          {pending ? "Taking…" : caption}
         </span>
       </Button>
       <IconButton

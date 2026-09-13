@@ -5,7 +5,8 @@ import { useToast } from "@ansavva/design-system";
 import { getAsset, getProjectInputs, grabFrame } from "../apis/studio";
 import { useCreateBar, useCreateBarState, type AttachRef, type AttachRole } from "../context/CreateBarContext";
 import { assetLabel } from "../utils/format";
-import { ROLE_WORDS } from "../components/create/roles";
+
+let sequence = 0;
 
 /** The still's name: the clip's stem, marked as its first frame. */
 export function firstFrameName(clip: string | undefined): string {
@@ -37,7 +38,10 @@ export function firstFrameName(clip: string | undefined): string {
  * `attach` is the bar's: the same call a `Use as` line makes for a picture,
  * so a first frame attached as a reference accumulates and as a frame
  * replaces, and the bar switches to video for a frame exactly as it would
- * for any other still.
+ * for any other still. It is called at once with a placeholder — the tile
+ * is the feedback, and it appears before the worker has been asked — and
+ * the placeholder is swapped for the frame when it lands. No toast on
+ * success: the tile turning into the picture is the whole of the news.
  */
 export function useFirstFrame() {
   const bar = useCreateBar();
@@ -66,26 +70,34 @@ export function useFirstFrame() {
         });
         return;
       }
+      // **On the bar before the worker is asked**, as a placeholder over the
+      // clip's own poster — the seconds the grab takes are otherwise seconds
+      // in which pressing the line did nothing anyone can see. `replace`
+      // swaps it for the frame when the frame lands; `drop` takes it off if
+      // it does not. See `AttachRef.pending`.
+      const name = firstFrameName(clip.name);
+      const placeholder = `pending-${++sequence}-${clip.node}`;
+      bar.attach(
+        {
+          node: placeholder,
+          url: clip.url,
+          name,
+          kind: "object",
+          pending: `Taking the first frame of ${assetLabel(clip.name)}…`,
+        },
+        role,
+      );
       if (!gone.current) setBusy(clip.node);
       try {
         const { folder } = await getProjectInputs(target);
-        const frame = await grabFrame({
-          node: clip.node,
-          at: 0,
-          dest: folder,
-          name: firstFrameName(clip.name),
-        });
+        const frame = await grabFrame({ node: clip.node, at: 0, dest: folder, name });
         const asset = await getAsset(frame.node);
-        bar.attach({ node: frame.node, url: asset.url, name: frame.name, kind: "object" }, role);
-        toast.add({
-          intent: "success",
-          title: `First frame of ${assetLabel(clip.name)}`,
-          description: `${frame.name} is in the input pool and on the bar as ${ROLE_WORDS[role].label.toLowerCase()}.`,
-        });
+        bar.replace(placeholder, { node: frame.node, url: asset.url, name: frame.name, kind: "object" });
       } catch (err) {
+        bar.drop(placeholder);
         toast.add({
           intent: "danger",
-          title: "Could not take the first frame",
+          title: `Could not take the first frame of ${assetLabel(clip.name)}`,
           description: (err as Error).message,
         });
       } finally {

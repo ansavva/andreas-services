@@ -50,6 +50,16 @@ export interface AttachRef {
   /** 1-based, matching what a runref's `#2` means. */
   output?: number;
   character?: string;
+  /**
+   * Set while the thing this ref names is still being MADE — a clip's first
+   * frame the worker has not handed back yet. The sentence is what the tile
+   * says. `node` is then a placeholder that exists nowhere; `sendsOf` skips
+   * it and the bar will not send while one is held, and `replace` swaps it
+   * for the real ref when the work lands (or `drop` takes it off when it
+   * fails). `url`, when set, is the source it is being made from, so the
+   * tile has a picture to wait over.
+   */
+  pending?: string;
 }
 
 /** What a feed row hands the bar to re-open a run in it. */
@@ -66,6 +76,10 @@ export interface CreateSeed {
 export interface CreateBarApi {
   loadRun(seed: CreateSeed): void;
   attach(ref: AttachRef, role: AttachRole): void;
+  /** Swap the attachment naming `node` for `ref`, in the role it held. A no-op if it is gone. */
+  replace(node: string, ref: AttachRef): void;
+  /** Take every attachment naming `node` off, whichever kind holds it. */
+  drop(node: string): void;
   setKind(kind: RunKind): void;
 }
 
@@ -290,11 +304,37 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  // Across BOTH kinds, because the caller holds a node, not a kind: a frame
+  // attached as a reference while the bar was on Image, then switched to
+  // Video by the person, is still the same placeholder to swap or drop.
+  const replace = useCallback((node: string, ref: AttachRef) => {
+    setState((current) => ({
+      ...current,
+      attachments: {
+        image: current.attachments.image.map((each) => (each.ref.node === node ? { ...each, ref } : each)),
+        video: current.attachments.video.map((each) => (each.ref.node === node ? { ...each, ref } : each)),
+      },
+    }));
+  }, []);
+
+  const drop = useCallback((node: string) => {
+    setState((current) => ({
+      ...current,
+      attachments: {
+        image: current.attachments.image.filter((each) => each.ref.node !== node),
+        video: current.attachments.video.filter((each) => each.ref.node !== node),
+      },
+    }));
+  }, []);
+
   const setKind = useCallback((kind: RunKind) => {
     setState((current) => (current.kind === kind ? current : { ...current, kind, role: null }));
   }, []);
 
-  const api = useMemo<CreateBarApi>(() => ({ loadRun, attach, setKind }), [loadRun, attach, setKind]);
+  const api = useMemo<CreateBarApi>(
+    () => ({ loadRun, attach, replace, drop, setKind }),
+    [loadRun, attach, replace, drop, setKind],
+  );
 
   const setPrompt = useCallback(
     (prompt: string) => setState((current) => ({ ...current, prompt })),

@@ -84,4 +84,14 @@ describe("the clip role", () => {
     ]);
     expect(sendsOf([held("clip")], MOTION)).toEqual([]);
   });
+
+  it("never sends a placeholder — a pending ref names nothing yet", () => {
+    const waiting: Attachment = {
+      ref: { node: "pending-1", kind: "object", pending: "Taking the first frame of a.mp4…" },
+      role: "start",
+    };
+    expect(sendsOf([waiting, held("clip")], TRANSFER)).toEqual([
+      { field: "video", role: "clip", node: "node-clip" },
+    ]);
+  });
 });

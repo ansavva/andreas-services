@@ -34,7 +34,7 @@ function Harness() {
       <output data-testid="busy">{busy ?? ""}</output>
       <output data-testid="bar">
         {state.attachments[state.kind]
-          .map((held) => `${held.role}:${held.ref.node}:${held.ref.name}`)
+          .map((held) => `${held.role}:${held.ref.pending ? "pending" : held.ref.node}:${held.ref.name}`)
           .join(",")}
       </output>
     </>
@@ -73,14 +73,24 @@ describe("the first frame of a clip", () => {
     asset.mockResolvedValue({ url: "https://signed/frame.png", kind: "image" } as never);
   });
 
-  it("goes into the route's project's input pool and lands on the bar as the role", async () => {
+  it("is on the bar at once as a placeholder, then becomes the frame when it lands", async () => {
+    // The grab is held open so the placeholder can be seen before it resolves.
+    let land!: (frame: Awaited<ReturnType<typeof grabFrame>>) => void;
+    grab.mockReturnValue(new Promise((resolve) => (land = resolve)));
     mount("/p/proj-1");
     fireEvent.click(screen.getByRole("button", { name: "First frame as reference" }));
 
+    // Before the worker has answered: the tile is there, waiting, named for
+    // the frame it will become.
+    await waitFor(() =>
+      expect(screen.getByTestId("bar").textContent).toBe("reference:pending:dance-first.png"),
+    );
+    expect(inputs).toHaveBeenCalledWith("proj-1");
+
+    land({ node: "node-frame", name: "dance-first.png", size: 1, content_type: "image/png" });
     await waitFor(() =>
       expect(screen.getByTestId("bar").textContent).toBe("reference:node-frame:dance-first.png"),
     );
-    expect(inputs).toHaveBeenCalledWith("proj-1");
     expect(grab).toHaveBeenCalledWith({
       node: "node-clip",
       at: 0,
@@ -88,9 +98,8 @@ describe("the first frame of a clip", () => {
       name: "dance-first.png",
     });
     expect(asset).toHaveBeenCalledWith("node-frame");
-    // Said once it is there, and the toast names the clip it came from.
-    const region = await screen.findByRole("region", { name: "Notifications" });
-    expect(region.textContent).toContain("First frame of dance.mp4");
+    // No toast on success: the tile turning into the picture is the news.
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("refuses without a project, before asking the worker for anything", async () => {
@@ -105,7 +114,7 @@ describe("the first frame of a clip", () => {
     expect(screen.getByTestId("bar").textContent).toBe("");
   });
 
-  it("reports the worker's own failure and attaches nothing", async () => {
+  it("reports the worker's own failure and takes the placeholder back off", async () => {
     grab.mockRejectedValue(new Error("ffmpeg: moov atom not found"));
     mount("/p/proj-1");
     fireEvent.click(screen.getByRole("button", { name: "First frame as reference" }));

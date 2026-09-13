@@ -58,7 +58,7 @@ import { isNodeDrag, readNodeDrag } from "./dragRef";
 import { ModelChip, ModelList, ParamChipRow, chipClass } from "./CreateChips";
 import { AttachPicker } from "./AttachPicker";
 import { SettingsPanel } from "./CreateSettings";
-import { castOf, defaultEntry, findEntry, sendsOf } from "./roles";
+import { anyPending, castOf, defaultEntry, findEntry, sendsOf } from "./roles";
 import { seedPlan } from "./seedPlan";
 import { runPath, projectPath } from "../../utils/location";
 
@@ -224,7 +224,10 @@ export function CreateBar() {
   }, [cast, templates.data]);
 
   const prompt = bar.prompt.trim();
-  const canSend = Boolean(entry && target && prompt !== "") && !busy;
+  // Not while something on the bar is still being made: a first frame the
+  // worker has not handed back would be sent as nothing, silently.
+  const pending = anyPending(attachments);
+  const canSend = Boolean(entry && target && prompt !== "") && !busy && !pending;
 
   /**
    * A template picked lands FILLED, not as the citations it was written with.
@@ -299,7 +302,7 @@ export function CreateBar() {
    */
   const send = useCallback(
     async (force = false) => {
-      if (!entry || !target || prompt === "" || busy) return;
+      if (!entry || !target || prompt === "" || busy || anyPending(attachments)) return;
       setBusy(true);
       setFailure(null);
       try {
@@ -788,8 +791,8 @@ export function CreateBar() {
               everyone else. */}
           <Button
             size="sm"
-            aria-label={busy ? "Sending…" : "Send"}
-            title="Send (Enter)"
+            aria-label={busy ? "Sending…" : pending ? "Waiting for a frame…" : "Send"}
+            title={pending ? "Waiting for the first frame to land" : "Send (Enter)"}
             className="size-9 shrink-0 rounded-pill p-0"
             disabled={!canSend}
             onClick={() => void send()}
