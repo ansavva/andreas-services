@@ -477,6 +477,8 @@ function runIdIn(path: string): string {
  * agree, and a fixture cannot hold that up. Reset per page by `stubApi`.
  */
 let favorited: string[] = [];
+/** The caller's own starting params per model — what "Set as default" wrote. */
+let defaults: Record<string, Record<string, unknown>> = {};
 
 /** A favorited node as the grid's entry, off whatever listing already holds it. */
 function favoriteEntry(id: string) {
@@ -500,6 +502,20 @@ async function written(
   path: string,
   body: Record<string, unknown>,
 ): Promise<boolean> {
+  // A person's defaults for one model: `POST` sets them whole, `DELETE` clears.
+  const model = /\/api\/defaults\/models\/(.+)$/.exec(path);
+  if (model) {
+    const name = decodeURIComponent(model[1]!);
+    if (method === "POST") {
+      defaults[name] = body.params as Record<string, unknown>;
+      await json(route, { model: name, params: defaults[name], set_at: "2026-09-13T00:00:00Z" });
+    } else {
+      delete defaults[name];
+      await json(route, { model: name, cleared: true });
+    }
+    return true;
+  }
+
   // The heart. `POST` means favorited, `DELETE` means not — no toggle, so the
   // stub does not have to model one either.
   if (path.includes("/api/favorites/")) {
@@ -591,6 +607,7 @@ async function written(
  */
 export async function stubApi(page: Page): Promise<void> {
   favorited = [];
+  defaults = {};
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const method = request.method();
@@ -617,6 +634,7 @@ export async function stubApi(page: Page): Promise<void> {
     }
 
     if (path.endsWith("/api/libraries")) return json(route, libraries);
+    if (path.endsWith("/api/defaults/models")) return json(route, { defaults });
     if (path.endsWith("/api/favorites")) {
       if (url.searchParams.get("view") === "ids") return json(route, { ids: favorited });
       return json(route, {

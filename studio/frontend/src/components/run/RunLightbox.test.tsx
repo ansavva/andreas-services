@@ -26,6 +26,7 @@ vi.mock("../../apis/studio", () => ({
   createRun: vi.fn(),
   deleteRun: vi.fn(),
   getAsset: vi.fn(),
+  getModelDefaults: vi.fn().mockResolvedValue({ defaults: {} }),
   getModels: vi.fn().mockResolvedValue({}),
 }));
 // The player is its own suite; here the stage only has to name what it shows.

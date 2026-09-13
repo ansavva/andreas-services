@@ -44,6 +44,7 @@ One node type. A folder is a node with no blob; a file is a node with one.
 | Template | `LIB#<lib>` | `SPEC#TEMPLATE#<template_id>` | the record |
 | Sweep | `LIB#<lib>` | `SWEEP#<opened>#<id>#<n>` | blobs a delete is about to strand |
 | Favorite | `USER#<sub>` | `FAV#<lib>#<node_id>` | one person's picks, per library |
+| Model defaults | `USER#<sub>` | `DEFAULTS#<model>` | one person's starting params for a model |
 
 **An id is the identity; a name is a label.** Every entity has a `v4` UUID that
 never changes, and the name is a mutable free-text attribute — not unique, not
@@ -3491,4 +3492,85 @@ def remove_favorite(sub: str, lib: str, node_id: str) -> None:
         )
     except ClientError as exc:
         logger.warning("Could not unfavorite %s: %s", node_id, exc)
+        raise UpstreamError("Could not write to the catalog") from exc
+
+
+# ──────────────────────────── model defaults ────────────────────────────
+#
+# **A person's own starting params for one model, filed under the person.**
+# The registry snapshot says what a model's inputs default to; this row says
+# what THIS caller wants them to start at instead — the create sheet's "Set as
+# default". Under `USER#<sub>` beside memberships and favorites, for the same
+# reason a favorite is: it is a fact about the person, not about a library or
+# a model, and the person carries it from phone to desk. Keyed on the Replicate
+# `owner/name`, which is what the create sheet keys its params on too.
+#
+# Like a `FAV#` row it carries no `path` and no `reel`, so it is in no index
+# but `by-sk`; and like one it begins with something other than `LIB#`, so
+# `libraries_for` never reads it as a membership.
+
+
+def _defaults_sk(model: str) -> str:
+    return f"DEFAULTS#{model}"
+
+
+def model_defaults(sub: str) -> dict[str, dict]:
+    """Every model this caller has set defaults for: `{model: params}`.
+
+    One query on the person's partition — bounded by how many models they
+    have touched, which is a handful — and the create sheet reads it once.
+    """
+    items = _query(
+        TableName=config.catalog_table(),
+        KeyConditionExpression="pk = :pk AND begins_with(sk, :prefix)",
+        ExpressionAttributeValues={
+            ":pk": {"S": _user_pk(sub)},
+            ":prefix": {"S": "DEFAULTS#"},
+        },
+    )
+    held: dict[str, dict] = {}
+    for row in (_attributes(item) for item in items):
+        model = row.get("model")
+        params = row.get("params")
+        if isinstance(model, str) and isinstance(params, dict):
+            held[model] = _numbers(params)
+    return held
+
+
+def put_model_defaults(sub: str, model: str, params: dict) -> dict:
+    """Set this caller's starting params for one model, replacing what was there.
+
+    A put, not an update: the row IS the params, whole, and "set as default"
+    means these and nothing else. `set_at` is for a screen that wants to say
+    when; nothing sorts on it.
+    """
+    stamp = _now()
+    try:
+        dynamodb.client().put_item(
+            TableName=config.catalog_table(),
+            Item=_item(
+                {
+                    "pk": _user_pk(sub),
+                    "sk": _defaults_sk(model),
+                    "model": model,
+                    "params": params,
+                    "set_at": stamp,
+                }
+            ),
+        )
+    except ClientError as exc:
+        logger.warning("Could not save defaults for %s: %s", model, exc)
+        raise UpstreamError("Could not write to the catalog") from exc
+    return {"model": model, "params": params, "set_at": stamp}
+
+
+def delete_model_defaults(sub: str, model: str) -> None:
+    """Back to the model's own defaults. Unconditional, like `remove_favorite`."""
+    try:
+        dynamodb.client().delete_item(
+            TableName=config.catalog_table(),
+            Key={"pk": {"S": _user_pk(sub)}, "sk": {"S": _defaults_sk(model)}},
+        )
+    except ClientError as exc:
+        logger.warning("Could not clear defaults for %s: %s", model, exc)
         raise UpstreamError("Could not write to the catalog") from exc

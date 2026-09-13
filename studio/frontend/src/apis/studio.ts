@@ -1167,6 +1167,31 @@ export function getModelSchema(name: string) {
   return apiGet<ModelSchema>(`/api/models/${modelPath(name)}/schema`);
 }
 
+/**
+ * This caller's own starting params, per model — the create sheet's "Set as
+ * default". Keyed by Replicate id, which is what the sheet keys its params on;
+ * a person's, not a library's, so they follow them from phone to desk.
+ */
+export type ModelDefaults = Record<string, Record<string, unknown>>;
+
+export function getModelDefaults() {
+  return apiGet<{ defaults: ModelDefaults }>("/api/defaults/models");
+}
+
+/** Set them for one model, whole — these and nothing else. */
+export function setModelDefaults(name: string, params: Record<string, unknown>) {
+  return apiSend<{ model: string; params: Record<string, unknown>; set_at: string }>(
+    "POST",
+    `/api/defaults/models/${modelPath(name)}`,
+    { params },
+  );
+}
+
+/** Back to the model's own. Clearing what was never set is fine too. */
+export function clearModelDefaults(name: string) {
+  return apiSend<{ model: string; cleared: true }>("DELETE", `/api/defaults/models/${modelPath(name)}`);
+}
+
 export function getScene(id: string) {
   return apiGet<SceneRecord>(`/api/scenes/${encodeURIComponent(id)}`);
 }

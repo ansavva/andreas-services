@@ -22,6 +22,7 @@ vi.mock("../../apis/studio", () => ({
   createRun: vi.fn(),
   deleteRun: vi.fn().mockResolvedValue({ id: "run-1", files: "keep" }),
   getAsset: vi.fn(),
+  getModelDefaults: vi.fn().mockResolvedValue({ defaults: {} }),
   getModels: vi.fn().mockResolvedValue({
     "image-upscale": {
       key: "image-upscale",

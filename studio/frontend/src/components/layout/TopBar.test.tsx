@@ -8,6 +8,7 @@ vi.mock("../../apis/studio", () => ({
   // The create bar's reads. Out of scope here — `CreateBar.test.tsx` is its
   // suite — but present, because an accessed name missing from the factory
   // is a vitest error about the mock rather than an empty bar.
+  getModelDefaults: vi.fn().mockResolvedValue({ defaults: {} }),
   getModels: vi.fn().mockResolvedValue({}),
   getProject: vi.fn().mockResolvedValue({ id: "proj-1", name: "A project", characters: [] }),
   getTemplates: vi.fn().mockResolvedValue({ blocks: {}, templates: [] }),
