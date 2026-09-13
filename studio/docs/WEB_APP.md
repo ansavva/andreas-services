@@ -389,9 +389,13 @@ page and a plain textarea over its literal bytes, and never offers fields.
   poster under a spinner and `Taking…`, swapped for the frame by
   `bar.replace` when it lands or taken off by `bar.drop` when it fails; the
   bar will not send while one is held and `sendsOf` skips it regardless. It exists because a
-  motion-transfer still is drawn to match the clip's first frame, and the
-  frame used to be a `studio frames at … --add-input` and a walk back
-  through the picker. A group is a `MenuAction.group`:
+  motion-transfer still is drawn to match the frame the transfer starts
+  from, and the frame used to be a `studio frames at … --add-input` and a
+  walk back through the picker. Where the clip is on screen — the open
+  file's `Use as…`, the opened run's rail — the group reads **This frame as**
+  instead: the time is read off the player (`MediaPlayerControls.currentTime`)
+  when the line is pressed and the player is paused there, so the frame on
+  screen is the frame taken; a poster that never played is at 0. A group is a `MenuAction.group`:
   a heading and hairlines, flat, because the `Dropdown` has no submenu and a
   sheet-in-a-sheet on a phone would be worse than three lines. It used to be six glyphs in the tile's corners, revealed on
   hover: `opacity-0` hides a control without disarming it, so a press aimed at

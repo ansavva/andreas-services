@@ -21,13 +21,16 @@ import logging
 import os
 import signal
 import sys
+import time
 from typing import Callable
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, EndpointConnectionError
 
 #: The SQS maximum. Anything shorter is more requests for the same latency.
 WAIT_SECONDS = 20
+#: How long to wait after SQS could not be reached before asking again.
+RETRY_SECONDS = 5
 
 _running = True
 
@@ -95,6 +98,16 @@ def serve(name: str, queue_variable: str, unset_advice: str, *, batch: int,
     while _running:
         try:
             drain(client, queue_url, batch=batch, handle=handle, droppable=droppable, log=log)
+        except EndpointConnectionError as exc:
+            # **The network went away, not the queue.** A laptop on a flaky
+            # link — DNS failing for a moment, a sleep, a hotspot handover —
+            # raised through here and took the consumer with it, silently:
+            # dev-up.sh carried on, the API kept answering, and every render
+            # and every callback after that sat on its queue for ever while
+            # the app polled a row that would never move. Wait and try again;
+            # the loop below is the whole of the fix.
+            log.warning("cannot reach SQS (%s); retrying in %ss", exc, RETRY_SECONDS)
+            time.sleep(RETRY_SECONDS)
         except ClientError as exc:
             # A queue that does not exist is a stack that was destroyed, or a
             # machine id that moved. Said once, plainly, and then this stops — a

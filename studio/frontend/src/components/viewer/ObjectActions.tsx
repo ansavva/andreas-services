@@ -8,7 +8,7 @@ import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { FavoriteButton } from "../common/FavoriteButton";
 import { CopyKeyButton } from "../common/CopyKeyButton";
 import { CloseIcon, DownloadIcon, PencilIcon, TrashIcon, UseInPromptIcon } from "../common/icons";
-import { attachActions } from "../create/attachActions";
+import { THIS_FRAME_GROUP, attachActions } from "../create/attachActions";
 
 interface Props {
   file: FileEntry;
@@ -61,8 +61,12 @@ interface Props {
    * somewhere you cannot see.
    */
   onUseAs?: (role: AttachRole) => void;
-  /** The open CLIP's first frame, as any of the three — see `useFirstFrame`. Video only. */
-  onFirstFrameAs?: (role: AttachRole) => void;
+  /**
+   * The open CLIP's frame — the one the player is on — as any of the three;
+   * see `useFrameGrab`. Video only. The caller reads the time off the player
+   * when the line is pressed, which is why this takes no `at`.
+   */
+  onFrameAs?: (role: AttachRole) => void;
 }
 
 /**
@@ -94,7 +98,7 @@ export function ObjectActions({
   onToggleEditing,
   onClose,
   onUseAs,
-  onFirstFrameAs,
+  onFrameAs,
 }: Props) {
   // A text file has no heart. The favorites screen is a grid of media and the
   // API refuses anything else, so offering the control on a `prompt.json` would
@@ -161,13 +165,14 @@ export function ObjectActions({
           // Ungrouped: the trigger already says `Use as…`, and a heading
           // repeating it over three lines would be the word twice.
           // Ungrouped for a picture: the trigger already says `Use as…`.
-          // A clip keeps its groups — `Use as · Source video` and `First frame as ·
+          // A clip keeps its groups — `Use as · Source video` and `This frame as ·
           // Reference / Start frame / End frame` are two different things.
           actions={attachActions(
             { node: file.id, url: file.url, name: file.name, kind: "object" },
             (_, role) => onUseAs(role),
             file.kind,
-            onFirstFrameAs && ((_, role) => onFirstFrameAs(role)),
+            onFrameAs && ((_, role) => onFrameAs(role)),
+            THIS_FRAME_GROUP,
           ).map((action) =>
             file.kind === "video" ? action : { ...action, group: undefined },
           )}

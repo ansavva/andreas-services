@@ -425,7 +425,7 @@ describe("using the open file in the create bar", () => {
     );
   });
 
-  it("offers a clip as the clip, and its first frame as what a picture can be", async () => {
+  it("offers a clip as the source video, and the frame it is on as what a picture can be", async () => {
     tree.mockResolvedValue(
       listing([file(OPEN, "b.mp4", { kind: "video", content_type: "video/mp4" })]),
     );
@@ -433,7 +433,9 @@ describe("using the open file in the create bar", () => {
     await waitFor(() => expect(screen.getByText(/1 of 1/)).toBeTruthy());
 
     openUseAs();
-    expect(screen.getByText("First frame as")).toBeTruthy();
+    // "This frame", not "First frame": the clip is on screen here, and the
+    // frame taken is the one the player is on — which is the first until it plays.
+    expect(screen.getByText("This frame as")).toBeTruthy();
     expect(screen.getAllByRole("menuitem", { name: "Start frame" })).toHaveLength(1);
     fireEvent.click(screen.getByRole("menuitem", { name: "Source video" }));
     expect(screen.getByTestId("bar")).toHaveProperty("textContent", `clip:${OPEN}`);

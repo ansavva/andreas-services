@@ -31,8 +31,8 @@ interface ControlsProps {
   onClose?: () => void;
   /** Hand the open picture to the create bar, in a role. Absent on a clip — see `ObjectActions`. */
   onUseAs?: (role: AttachRole) => void;
-  /** The open clip's first frame to the bar, in a role. Video only. */
-  onFirstFrameAs?: (role: AttachRole) => void;
+  /** The open clip's frame — the one the player is on — to the bar, in a role. Video only. */
+  onFrameAs?: (role: AttachRole) => void;
   className?: string;
 }
 
@@ -59,7 +59,7 @@ export function ObjectControls({
   onToggleEditing,
   onClose,
   onUseAs,
-  onFirstFrameAs,
+  onFrameAs,
   className,
 }: ControlsProps) {
   return (
@@ -74,7 +74,7 @@ export function ObjectControls({
           onToggleEditing={onToggleEditing}
           onClose={onClose}
           onUseAs={onUseAs}
-          onFirstFrameAs={onFirstFrameAs}
+          onFrameAs={onFrameAs}
         />
       </div>
 

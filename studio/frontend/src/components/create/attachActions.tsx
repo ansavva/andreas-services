@@ -63,10 +63,17 @@ export const USE_AS_GROUP = "Use as";
 /**
  * The heading over a clip's second set of lines: its FIRST FRAME, as any of
  * the three things a picture can be. A motion-transfer still is drawn to
- * match the clip's opening frame — `useFirstFrame` says why — so the frame
+ * match the clip's opening frame — `useFrameGrab` says why — so the frame
  * is offered wherever the clip is, one press from the picture it starts.
  */
 export const FIRST_FRAME_GROUP = "First frame as";
+/**
+ * The same three lines where the clip is ON SCREEN — the open file, the
+ * opened run — and the frame is the one the player is stopped on rather
+ * than the first. A clip that never played is on its first frame, so this
+ * heading covers that case too; the two never appear together.
+ */
+export const THIS_FRAME_GROUP = "This frame as";
 
 const GLYPH = "size-4 shrink-0 fill-none stroke-current stroke-[1.5]";
 
@@ -92,6 +99,7 @@ export function attachActions(
   attach: (ref: AttachRef, role: AttachRole) => void,
   kind: string = "image",
   firstFrame?: (ref: AttachRef, role: AttachRole) => void,
+  frameGroup: string = FIRST_FRAME_GROUP,
 ): MenuAction[] {
   const own: MenuAction[] = rolesOfKind(kind).map((role) => {
     const { label, icon: Icon } = USE_AS_WORDS[role];
@@ -107,8 +115,8 @@ export function attachActions(
   const frame: MenuAction[] = USE_AS_ROLES.map((role) => {
     const { label, icon: Icon } = USE_AS_WORDS[role];
     return {
-      key: `first-frame-as-${role}`,
-      group: FIRST_FRAME_GROUP,
+      key: `frame-as-${role}`,
+      group: frameGroup,
       label,
       icon: <Icon className={GLYPH} />,
       onSelect: () => firstFrame(ref, role),

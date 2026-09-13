@@ -430,3 +430,39 @@ def test_the_local_consumer_says_so_when_no_queue_is_configured(monkeypatch):
 
     monkeypatch.delenv("STUDIO_CALLBACK_QUEUE_URL", raising=False)
     assert callback_consumer.main() == 0
+
+
+def test_the_local_consumer_survives_a_network_blip(monkeypatch):
+    """**The network going away is not the queue going away.**
+
+    A laptop's DNS failing for a moment raised `EndpointConnectionError`
+    through `serve` and ended the consumer, silently — dev-up.sh carried on,
+    the API kept answering, and every render and callback after that sat on
+    its queue while the app polled a row that would never move. A blip is
+    waited out; a queue that does not exist (`ClientError`) still stops it.
+    """
+    from botocore.exceptions import ClientError, EndpointConnectionError
+
+    from studio_core.handlers.local.consumer import poll
+
+    monkeypatch.setenv("STUDIO_TEST_QUEUE_URL", "https://sqs.test/q")
+    calls = {"n": 0}
+
+    def drain(*_args, **_kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise EndpointConnectionError(endpoint_url="https://sqs.test")
+        raise ClientError({"Error": {"Code": "AWS.SimpleQueueService.NonExistentQueue",
+                                     "Message": "gone"}}, "ReceiveMessage")
+
+    slept = []
+    monkeypatch.setattr(poll, "drain", drain)
+    monkeypatch.setattr(poll.time, "sleep", slept.append)
+    monkeypatch.setattr(poll.boto3, "client", lambda *_a, **_k: object())
+
+    code = poll.serve("test", "STUDIO_TEST_QUEUE_URL", "n/a", batch=1,
+                      handle=lambda _b: None, droppable=RuntimeError)
+
+    assert calls["n"] == 2, "the blip was retried; the missing queue was not"
+    assert slept == [poll.RETRY_SECONDS]
+    assert code == 1
