@@ -725,7 +725,10 @@ export async function stubApi(page: Page): Promise<void> {
           { error: `e2e: no fixture for node ${node[1]}` },
           501,
         );
-      if (node[2] === "owner") return json(route, record.owner ?? null);
+      // The real route's envelope, `{id, owner}` — the stub used to answer
+      // the bare owner, which is what the client was (wrongly) typed to
+      // expect, so `OwnerLink` passed here and drew nothing in production.
+      if (node[2] === "owner") return json(route, { id: node[1], owner: record.owner ?? null });
       if (node[2] === "text") {
         return json(route, {
           id: record.id,

@@ -395,7 +395,15 @@ page and a plain textarea over its literal bytes, and never offers fields.
   file's `Use as…`, the opened run's rail — the group reads **This frame as**
   instead: the time is read off the player (`MediaPlayerControls.currentTime`)
   when the line is pressed and the player is paused there, so the frame on
-  screen is the frame taken; a poster that never played is at 0. A group is a `MenuAction.group`:
+  screen is the frame taken; a poster that never played is at 0. The same
+  menu is also **on the player** as a worded `Frame` pill (`FrameMenu`, the
+  player's `actions` slot, drawn on the poster too) — on a phone the rail is
+  a screen below the video, behind an unlabelled glyph, and a person who has
+  just paused on a frame is looking at the player. A file page has no
+  project on its route, so the frame's destination is the clip's own
+  project, read off `GET /api/nodes/<id>/owner` — which now carries
+  `project` for a run-, scene- or movie-owned node — and the bar is pointed
+  there too, so the run that follows goes where the frame went. A group is a `MenuAction.group`:
   a heading and hairlines, flat, because the `Dropdown` has no submenu and a
   sheet-in-a-sheet on a phone would be worse than three lines. It used to be six glyphs in the tile's corners, revealed on
   hover: `opacity-0` hides a control without disarming it, so a press aimed at

@@ -121,9 +121,10 @@ which bill:
 1. **Take the frame the transfer starts from.** For a whole clip that is
    the first frame: the clip's `⋮` menu on a folder tile or a run's output →
    **First frame as · Reference**. For a transfer that starts mid-clip, open
-   the clip, play or scrub to the moment, pause, and the same menu (the open
-   file's `Use as…`, the opened run's rail) reads **This frame as ·
-   Reference** — the frame on screen is the frame taken. The worker cuts it
+   the clip, play or scrub to the moment, pause, and the **Frame** pill on
+   the player (also the open file's `Use as…` and the opened run's rail)
+   reads **This frame as · Reference** — the frame on screen is the frame
+   taken. The worker cuts it
    into the project's input pool and it lands on the create bar, named for
    the clip and the moment (`<clip>-at-0m06.5s.png`). From a terminal:
    `studio frames at <project>/latest --time 6.5 --add-input`.

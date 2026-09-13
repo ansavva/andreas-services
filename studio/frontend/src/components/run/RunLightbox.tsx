@@ -69,6 +69,7 @@ import { StatusBadge, useFeedFilters, useRunFeed } from "../project/RunFeed";
 import { elapsedSince, inFlight, relativeTime } from "./feedTime";
 import { ParamChips } from "./ParamChips";
 import { PayloadDocument, PayloadPreview } from "./PayloadDocument";
+import { FrameMenu } from "../viewer/FrameMenu";
 import { PromoteDrawer, isPromotable, isVideoAsset } from "./PromoteDrawer";
 import { rowOfRecord } from "./rowOfRecord";
 import { promptText, refOfOutput } from "./seed";
@@ -492,6 +493,20 @@ function Opened({
                   onControlsChange={onControlsChange}
                   drag={refOfOutput(row, asset, output)}
                   className="h-full w-full border border-line"
+                  // On a clip: the menu that takes THIS frame, beside the
+                  // frame — the rail's cells are a screen down on a phone.
+                  actions={
+                    video ? (
+                      <FrameMenu
+                        file={{ id: asset.node, url: asset.url, name: asset.name ?? "", kind: "video" }}
+                        onUseAs={(role) => actions.useAs(asset, output, role)}
+                        onFrameAs={(role) => {
+                          controls?.pause();
+                          void actions.frameAs(asset, output, role, controls?.currentTime() ?? 0);
+                        }}
+                      />
+                    ) : undefined
+                  }
                 />
               </div>
               <Text

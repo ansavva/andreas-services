@@ -211,7 +211,12 @@ export function getNodeText(id: string) {
  * caller that has a node and no listing around it.
  */
 export function getNodeOwner(id: string) {
-  return apiGet<NodeOwner | null>(`/api/nodes/${encodeURIComponent(id)}/owner`);
+  // The route answers `{id, owner}`. This was typed as the owner alone and
+  // handed the envelope to `OwnerLink`, which read `.kind` off it, got
+  // nothing, and drew nothing — for as long as it has existed.
+  return apiGet<{ id: string; owner: NodeOwner | null }>(
+    `/api/nodes/${encodeURIComponent(id)}/owner`,
+  ).then((body) => body.owner);
 }
 
 // ---------------------------------------------------------------------------

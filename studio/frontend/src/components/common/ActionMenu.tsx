@@ -11,6 +11,7 @@ import {
   Drawer,
   Dropdown,
   Text,
+  buttonClass,
   iconButtonClass,
 } from "@ansavva/design-system";
 
@@ -125,6 +126,7 @@ export function ActionMenu({
   overlay = false,
   vertical = false,
   icon,
+  word,
   align = "end",
   className = "",
   onOpenChange,
@@ -153,6 +155,13 @@ export function ActionMenu({
    * from there lands under the stage, which paints over it.
    */
   align?: "start" | "end";
+  /**
+   * A word beside the glyph, making the trigger a small pill rather than an
+   * icon button. For the one or two menus that have to be FOUND rather than
+   * recognised — a bare glyph over a video, on a page a person came to for
+   * the video, is a glyph nobody presses. `triggerLabel` is still the name.
+   */
+  word?: string;
   /** Where the trigger sits. */
   className?: string;
   /** Told when the menu opens or closes. */
@@ -231,13 +240,29 @@ export function ActionMenu({
       className={overlay ? "size-4 fill-current stroke-none" : undefined}
     />
   );
-  const triggerClass = iconButtonClass({
-    size: "sm",
-    ...(overlay ? { intent: "overlay" as const } : {}),
-    className: overlay
-      ? "bg-overlay-scrim/60"
-      : "shrink-0 text-muted hover:text-ink",
-  });
+  const triggerClass = word
+    ? buttonClass({
+        size: "sm",
+        intent: "secondary",
+        className: overlay
+          ? "h-8 gap-1.5 rounded-pill bg-overlay-scrim/60 px-2.5 text-overlay-ink hover:bg-overlay-scrim/80 active:bg-overlay-scrim"
+          : "h-8 gap-1.5 rounded-pill px-2.5",
+      })
+    : iconButtonClass({
+        size: "sm",
+        ...(overlay ? { intent: "overlay" as const } : {}),
+        className: overlay
+          ? "bg-overlay-scrim/60"
+          : "shrink-0 text-muted hover:text-ink",
+      });
+  const trigger = word ? (
+    <>
+      {glyph}
+      <span>{word}</span>
+    </>
+  ) : (
+    glyph
+  );
 
   return (
     <div ref={anchor} className={`${className} transition-opacity`}>
@@ -259,7 +284,7 @@ export function ActionMenu({
           title={triggerLabel}
           className={`${triggerClass} max-md:hidden`}
         >
-          {glyph}
+          {trigger}
         </Dropdown.Trigger>
 
         {/*
@@ -351,7 +376,7 @@ export function ActionMenu({
           title={triggerLabel}
           className={`${triggerClass} md:hidden`}
         >
-          {glyph}
+          {trigger}
         </Drawer.Trigger>
         <Drawer.Backdrop />
         <Drawer.Panel

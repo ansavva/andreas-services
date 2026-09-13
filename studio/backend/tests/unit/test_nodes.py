@@ -1245,10 +1245,13 @@ def test_the_deepest_entity_wins(catalog_table, signed_in):
     ).get_json()
     output_folder = _child(run["folder"], "output")
 
+    # The project rides along: a frame taken off this run's clip goes into a
+    # project's input pool, and the file page has to know which from the file.
     assert _get(f"/api/nodes/{output_folder['node_id']}/owner").get_json()["owner"] == {
         "kind": "run",
         "id": run["id"],
         "name": None,
+        "project": {"kind": "project", "id": project["id"], "name": project["name"]},
     }
 
 

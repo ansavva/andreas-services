@@ -432,6 +432,11 @@ describe("using the open file in the create bar", () => {
     open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
     await waitFor(() => expect(screen.getByText(/1 of 1/)).toBeTruthy());
 
+    // The same menu sits ON the player as a worded `Frame` pill — the rail
+    // is a screen below the video on a phone — and is drawn on the poster,
+    // before the clip has played.
+    expect(screen.getAllByRole("button", { name: "Use this frame…" }).length).toBeGreaterThan(0);
+
     openUseAs();
     // "This frame", not "First frame": the clip is on screen here, and the
     // frame taken is the one the player is on — which is the first until it plays.
