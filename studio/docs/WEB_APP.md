@@ -382,7 +382,11 @@ page and a plain textarea over its literal bytes, and never offers fields.
   **First frame as** Reference / Start frame / End frame: `useFirstFrame`
   asks the render worker for the clip's opening still (`POST /api/renders`,
   `kind: frame, at: 0`, into the project's input pool), polls the row, and
-  attaches the frame — not the clip — in that role. It exists because a
+  attaches the frame — not the clip — in that role. The tile is on the bar
+  **before the worker is asked**: a `pending` `AttachRef` drawn as the clip's
+  poster under a spinner and `Taking…`, swapped for the frame by
+  `bar.replace` when it lands or taken off by `bar.drop` when it fails; the
+  bar will not send while one is held and `sendsOf` skips it regardless. It exists because a
   motion-transfer still is drawn to match the clip's first frame, and the
   frame used to be a `studio frames at … --add-input` and a walk back
   through the picker. A group is a `MenuAction.group`:

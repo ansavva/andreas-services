@@ -72,15 +72,23 @@ export function fieldFor(role: AttachRole, entry: ModelEntry | null): string | n
  * Attachment order is send order — the strip says so — and an attachment
  * whose role this model has no field for is dropped rather than sent to a
  * field the live schema would refuse. The role travels with the send so the
- * record says what each image was FOR, not only where it went.
+ * record says what each image was FOR, not only where it went. A `pending`
+ * ref names nothing yet and is skipped — though `CreateBar` will not send
+ * while one is held, so this is the second guard, not the first.
  */
 export function sendsOf(attachments: readonly Attachment[], entry: ModelEntry | null): RunSendInput[] {
   const sends: RunSendInput[] = [];
   for (const { ref, role } of attachments) {
+    if (ref.pending) continue;
     const field = fieldFor(role, entry);
     if (field) sends.push({ field, role, node: ref.node });
   }
   return sends;
+}
+
+/** Whether something on the bar is still being made — see `AttachRef.pending`. */
+export function anyPending(attachments: readonly Attachment[]): boolean {
+  return attachments.some((each) => each.ref.pending !== undefined);
 }
 
 /**
