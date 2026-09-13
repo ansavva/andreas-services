@@ -170,6 +170,12 @@ interface CreateBarStateValue extends CreateBarState {
   detach(index: number): void;
   /** The start frame becomes the end frame and vice versa. A no-op unless both are held. */
   swapFrames(): void;
+  /**
+   * Move one attachment of the current kind so it sits at another's index.
+   * Attachment order is send order, so this is what "Image 2 before Image 1"
+   * means. Both indices are into the current kind's list.
+   */
+  move(from: number, to: number): void;
   /** Whether the sheet is drawn at all — false on the opened run until something calls it up. */
   shown: boolean;
   /** Collapse the sheet to its handle. */
@@ -410,6 +416,19 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const move = useCallback(
+    (from: number, to: number) =>
+      setState((current) => {
+        const held = current.attachments[current.kind];
+        if (from === to || !(from in held) || !(to in held)) return current;
+        const moved = [...held];
+        const [one] = moved.splice(from, 1);
+        moved.splice(to, 0, one!);
+        return { ...current, attachments: { ...current.attachments, [current.kind]: moved } };
+      }),
+    [],
+  );
+
   const collapse = useCallback(() => {
     writeCollapsed(true);
     setState((current) => ({ ...current, summoned: false, collapsed: true, role: null }));
@@ -448,6 +467,7 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
       setRole,
       detach,
       swapFrames,
+      move,
       sent,
     }),
     [
@@ -463,6 +483,7 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
       setRole,
       detach,
       swapFrames,
+      move,
       sent,
     ],
   );

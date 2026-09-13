@@ -1,14 +1,14 @@
 /**
  * The create bar, driven by a real keyboard.
  *
- * **Enter sends, and sending is two calls in one order.** `POST /api/runs`
+ * **⌘/Ctrl+Enter sends, and sending is two calls in one order.** `POST /api/runs`
  * makes the draft whole — plan and sends together — and
  * `POST /api/runs/<id>/submit` is the one route that spends. There is no
- * approve step between them (decision 2026-09-04): the person pressing Enter
- * over a prompt they can read is the yes. What only a browser can say is that
- * the Lexical editor, wired to the real bar and the real API client, turns
- * that keystroke into exactly those two writes — and that Shift+Enter turns
- * it into a line break and nothing else.
+ * approve step between them (decision 2026-09-04): the person pressing
+ * ⌘+Enter over a prompt they can read is the yes. What only a browser can say
+ * is that the Lexical editor, wired to the real bar and the real API client,
+ * turns that keystroke into exactly those two writes — and that plain Enter
+ * turns it into a line break and nothing else (decision 2026-09-13).
  *
  * Every `/api/**` is answered from captured fixtures (`support/api.ts`); the
  * `?fingerprint=` read between the two writes finds no twin, because the
@@ -43,7 +43,7 @@ function defaultImageModel() {
   return Object.values(models).find((entry) => entry.kind === "image")!;
 }
 
-test("Enter on the create bar makes a draft and submits it; Shift+Enter breaks the line", async ({
+test("⌘+Enter on the create bar makes a draft and submits it; Enter breaks the line", async ({
   page,
 }) => {
   test.skip(LIVE, "it would submit a real run in the dev stack");
@@ -56,12 +56,12 @@ test("Enter on the create bar makes a draft and submits it; Shift+Enter breaks t
   await page.keyboard.type("A plain studio portrait, front on.");
 
   // A newline is not a send.
-  await page.keyboard.press("Shift+Enter");
+  await page.keyboard.press("Enter");
   await page.keyboard.type("Neutral expression.");
   await expect(box).toContainText("Neutral expression.");
   expect(wrote(calls)).toEqual([]);
 
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("ControlOrMeta+Enter");
 
   await expect
     .poll(() => spell(wrote(calls)))
@@ -85,7 +85,7 @@ test("Enter on the create bar makes a draft and submits it; Shift+Enter breaks t
   expect(escaped(calls, page)).toEqual([]);
 });
 
-test("a tile opens the picker above the sheet, and a pressed picture lands in the row", async ({
+test("a tile opens the picker above the sheet, a pressed picture lands in the row, and pressed again it leaves", async ({
   page,
 }) => {
   const calls = log(page);
@@ -108,6 +108,15 @@ test("a tile opens the picker above the sheet, and a pressed picture lands in th
   const strip = page.locator("[data-mode-strip]");
   await expect(strip.getByText("Image 1")).toBeVisible();
   await expect(strip.getByRole("button", { name: /^Remove / })).toBeVisible();
+
+  // Marked in the picker, and the mark is a toggle: pressing it again takes
+  // the picture off the row — on a phone the row's own × is under this sheet.
+  const marked = picker.getByRole("button", { name: /^Remove / });
+  await expect(marked).toHaveAttribute("aria-pressed", "true");
+  await marked.click();
+  await expect(strip.getByText("Image 1")).toHaveCount(0);
+  await expect(picker.getByRole("button", { name: /^Remove / })).toHaveCount(0);
+
   // Attaching is not a send: nothing was written.
   expect(wrote(calls)).toEqual([]);
   expect(escaped(calls, page)).toEqual([]);

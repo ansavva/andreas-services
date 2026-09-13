@@ -65,14 +65,14 @@ import { MediaPlayer, type MediaPlayerControls } from "../media/MediaPlayer";
 import { MediaThumb } from "../media/MediaThumb";
 import { ViewerFrame } from "../viewer/ViewerFrame";
 import { SendThumbs } from "./SendThumbs";
-import { StatusBadge, useFeedFilters, useRunFeed } from "../project/RunFeed";
+import { RunPrompt, StatusBadge, useFeedFilters, useRunFeed } from "../project/RunFeed";
 import { elapsedSince, inFlight, relativeTime } from "./feedTime";
 import { ParamChips } from "./ParamChips";
 import { PayloadDocument, PayloadPreview } from "./PayloadDocument";
 import { FrameMenu } from "../viewer/FrameMenu";
 import { PromoteDrawer, isPromotable, isVideoAsset } from "./PromoteDrawer";
 import { rowOfRecord } from "./rowOfRecord";
-import { promptText, refOfOutput } from "./seed";
+import { refOfOutput } from "./seed";
 import { useRunActions } from "./useRunActions";
 
 /** How often an opened run in flight re-reads its record. */
@@ -619,7 +619,11 @@ function Opened({
           </Text>
         </div>
 
-        <Prompt row={row} />
+        {/* The feed's clamp and its More, not a scroll box of its own — a
+            scroll inside the scroll the frame is on a phone cut the prompt
+            off mid-line with nothing saying so. `shrink-0` because the rail
+            is a flex column taller than the frame on desktop. */}
+        <RunPrompt row={row} className="shrink-0" />
 
         <SendThumbs sends={row.sends} size="size-28" />
 
@@ -755,31 +759,6 @@ function Opened({
         />
       )}
     </>
-  );
-}
-
-/** The prompt, whole — the feed clamps it; this is where it reads entire. */
-function Prompt({ row }: { row: RunFeedRow }) {
-  const text = promptText(row.plan?.prompt);
-  if (!text) {
-    return (
-      <Text variant="body" tone="muted" className="shrink-0">
-        {row.plan ? "No prompt." : "This run predates the plan."}
-      </Text>
-    );
-  }
-  return (
-    <Text
-      variant="body"
-      // **`shrink-0`, and it is load-bearing.** `overflow-y-auto` makes this a
-      // scroll container, which sets its `min-height` to 0 instead of `auto` —
-      // so as a flex child of a rail whose content is taller than the lightbox,
-      // it is the one item flexbox can shrink, and it shrank to nothing. The
-      // prompt was in the DOM at zero height on every opened run.
-      className="max-h-48 shrink-0 overflow-y-auto whitespace-pre-wrap break-words"
-    >
-      {text}
-    </Text>
   );
 }
 

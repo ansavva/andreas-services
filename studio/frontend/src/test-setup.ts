@@ -21,6 +21,11 @@
 //   no scrolling. Nothing in the app calls it since the reel was replaced (the
 //   filmstrip uses `scrollIntoView`, and guards for its absence), but the stub
 //   costs one line and the next thing that scrolls will want it.
+// * **`PointerEvent` is absent**, so `fireEvent.pointerDown` makes a bare
+//   `Event` with no `pointerType`, no `clientX` and no `pointerId` — and the
+//   create bar's reorder drag (`create/reorder.ts`) decides hold-or-move off
+//   the first and where the tile is off the second. A `MouseEvent` that
+//   carries the pointer fields is enough for a test to drive it.
 
 class MemoryStorage implements Storage {
   private items = new Map<string, string>();
@@ -88,4 +93,19 @@ if (typeof window.IntersectionObserver === "undefined") {
 if (typeof Element.prototype.scrollTo !== "function") {
   // A no-op, because there is nothing to scroll.
   Element.prototype.scrollTo = () => {};
+}
+
+if (typeof window.PointerEvent === "undefined") {
+  class ShimPointerEvent extends MouseEvent {
+    readonly pointerId: number;
+    readonly pointerType: string;
+    readonly isPrimary: boolean;
+    constructor(type: string, init: PointerEventInit = {}) {
+      super(type, init);
+      this.pointerId = init.pointerId ?? 0;
+      this.pointerType = init.pointerType ?? "";
+      this.isPrimary = init.isPrimary ?? true;
+    }
+  }
+  Object.defineProperty(window, "PointerEvent", { value: ShimPointerEvent, writable: true });
 }
