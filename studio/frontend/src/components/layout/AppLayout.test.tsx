@@ -6,6 +6,7 @@ vi.mock("../../apis/studio", () => ({
   getCharacters: vi.fn().mockResolvedValue([]),
   getProjects: vi.fn().mockResolvedValue([]),
   // The create bar in the top bar reads these. See `CreateBar.test.tsx`.
+  getModelDefaults: vi.fn().mockResolvedValue({ defaults: {} }),
   getModels: vi.fn().mockResolvedValue({}),
   getProject: vi.fn().mockResolvedValue({ id: "proj-1", name: "A project", characters: [] }),
   getTemplates: vi.fn().mockResolvedValue({ blocks: {}, templates: [] }),

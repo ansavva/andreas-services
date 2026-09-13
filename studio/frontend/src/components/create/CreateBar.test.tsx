@@ -21,6 +21,9 @@ import type { CreatedRun, ModelEntry } from "../../types";
 
 vi.mock("../../apis/studio", () => ({
   getModels: vi.fn(),
+  getModelDefaults: vi.fn(),
+  setModelDefaults: vi.fn(),
+  clearModelDefaults: vi.fn(),
   getProject: vi.fn(),
   getProjects: vi.fn().mockResolvedValue([]),
   getTemplates: vi.fn(),
@@ -44,12 +47,15 @@ vi.mock("../../apis/studio", () => ({
 }));
 
 import {
+  clearModelDefaults,
   createRun,
   expandTemplate,
+  getModelDefaults,
   getModels,
   getProject,
   getRuns,
   getTemplates,
+  setModelDefaults,
   submitRun,
 } from "../../apis/studio";
 import { CreateBar } from "./CreateBar";
@@ -138,6 +144,13 @@ beforeEach(() => {
     characters: [],
   } as never);
   vi.mocked(getTemplates).mockResolvedValue({ blocks: {}, templates: [] });
+  vi.mocked(getModelDefaults).mockResolvedValue({ defaults: {} });
+  vi.mocked(setModelDefaults).mockImplementation(async (model, params) => ({
+    model,
+    params,
+    set_at: "2026-09-13T00:00:00Z",
+  }));
+  vi.mocked(clearModelDefaults).mockImplementation(async (model) => ({ model, cleared: true }));
   vi.mocked(createRun).mockResolvedValue(created());
   vi.mocked(submitRun).mockResolvedValue({
     id: "run-0001",
@@ -199,6 +212,46 @@ it("the kind switch changes the tiles, the chips and the model", async () => {
     engine: "studio-media-motion-model",
     plan: { prompt: "A portrait.", params: { duration: 5 } },
   });
+});
+
+/**
+ * A person's own defaults for a model lie over the registry's, and the
+ * settings panel is where they are set and unset — on the popover and the
+ * phone sheet alike, since both draw the same panel.
+ */
+it("saved defaults seed the params; Set as default writes them, Reset goes back to the model's", async () => {
+  vi.mocked(getModelDefaults).mockResolvedValue({
+    defaults: { "vendor/still-model": { resolution: "1K" } },
+  });
+  await open();
+  // The saved 1K over the snapshot's 2K.
+  expect(await screen.findByRole("button", { name: "Resolution: 1K" })).toBeTruthy();
+
+  // Two gears — the popover's and the phone sheet's, one hidden by CSS jsdom
+  // does not apply. The popover's is first.
+  fireEvent.click(screen.getAllByRole("button", { name: "Settings" })[0]!);
+  const panel = await screen.findByRole("dialog", { name: "Settings" });
+  expect(within(panel).getByText("Starts from your defaults.")).toBeTruthy();
+
+  // Back to the model's own: the row goes, and so does the 1K.
+  fireEvent.click(within(panel).getByRole("button", { name: "Reset" }));
+  await waitFor(() => expect(clearModelDefaults).toHaveBeenCalledWith("vendor/still-model"));
+  // The chip in the row and its row in the panel both read 2K now.
+  await waitFor(() =>
+    expect(screen.getAllByRole("button", { name: "Resolution: 2K" }).length).toBeGreaterThan(0),
+  );
+  expect(screen.queryByRole("button", { name: "Resolution: 1K" })).toBeNull();
+  await waitFor(() =>
+    expect(within(panel).getByText("Starts from the model's defaults.")).toBeTruthy(),
+  );
+
+  // Set as default keeps what the sheet holds now, whole.
+  fireEvent.click(within(panel).getByRole("button", { name: "Set as default" }));
+  await waitFor(() =>
+    expect(setModelDefaults).toHaveBeenCalledWith("vendor/still-model", { resolution: "2K" }),
+  );
+  await waitFor(() => expect(within(panel).getByText("Starts from your defaults.")).toBeTruthy());
+  expect(await screen.findByText(/Saved as your default for still-model/)).toBeTruthy();
 });
 
 it("⌘/Ctrl+Enter creates the draft and then submits it, in that order; plain Enter does not", async () => {

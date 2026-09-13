@@ -1046,6 +1046,8 @@ the entity's id.
 | `GET /api/asset?node=&disposition=` | A fresh presigned URL for one node's bytes — what the SPA calls on an expired tile |
 | `GET /api/favorites?view=&cursor=&limit=` | **This caller's favorites**, newest pick first. The default is the grid — presigned entries, `total`, `truncated`, `next_cursor`; `view=ids` is the id set alone |
 | `POST \| DELETE /api/favorites/<node_id>` | Favorite an image or a video, or stop. Idempotent both ways; **no toggle route** |
+| `GET /api/defaults/models` | **This caller's own starting params, per model** — `{defaults: {<owner/name>: {…}}}`. The create sheet lays them over the registry's snapshot defaults; a person's, not a library's, so they follow them between devices |
+| `POST \| DELETE /api/defaults/models/<name>` | Set them for one model — `{params}`, whole, scalars only, no image field — or go back to the model's own. The create sheet's **Set as default** and **Reset**, under the settings rows on the popover and the phone sheet alike |
 
 ### Favorites, which are the only per-CALLER thing in this API
 

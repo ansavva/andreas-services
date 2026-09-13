@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 
+import { Button, Text } from "@ansavva/design-system";
+
 import { getModelSchema } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
 import type { ModelEntry } from "../../types";
@@ -101,10 +103,23 @@ export function SettingsPanel({
   entry,
   params,
   onParams,
+  actions,
 }: {
   entry: ModelEntry;
   params: Record<string, unknown>;
   onParams: (next: Record<string, unknown>) => void;
+  /**
+   * What can be done with the whole set: keep it as this person's starting
+   * point for the model, or go back to the model's own. Under the rows on
+   * both the popover and the phone sheet, since the sheet is where the
+   * settings get tuned by hand and then wanted again next time.
+   */
+  actions: {
+    /** Whether a default of the person's own is in force for this model. */
+    saved: boolean;
+    onSaveDefault: () => void;
+    onReset: () => void;
+  } | null;
 }) {
   const [picking, setPicking] = useState<Picking | null>(null);
 
@@ -116,6 +131,21 @@ export function SettingsPanel({
     <SettingsPickProvider onPick={setPicking}>
       <ParamRows entry={entry} params={params} onParams={onParams} />
       <CreateSettings entry={entry} params={params} onParams={onParams} />
+      {actions && (
+        <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-3" data-settings-actions="">
+          <Text as="span" variant="caption" tone="muted">
+            {actions.saved ? "Starts from your defaults." : "Starts from the model's defaults."}
+          </Text>
+          <span className="flex shrink-0 items-center gap-1">
+            <Button intent="ghost" size="sm" onClick={actions.onReset}>
+              Reset
+            </Button>
+            <Button intent="secondary" size="sm" onClick={actions.onSaveDefault}>
+              Set as default
+            </Button>
+          </span>
+        </div>
+      )}
     </SettingsPickProvider>
   );
 }

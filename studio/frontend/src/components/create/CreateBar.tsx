@@ -18,16 +18,20 @@ import {
 } from "@ansavva/design-system";
 
 import {
+  clearModelDefaults,
   createRun,
   deleteRun,
   expandTemplate,
+  getModelDefaults,
   getModels,
   getProject,
   getProjects,
   getRuns,
   getTemplates,
   patchRunPlan,
+  setModelDefaults,
   submitRun,
+  type ModelDefaults,
 } from "../../apis/studio";
 import {
   useCreateBar,
@@ -188,12 +192,25 @@ export function CreateBar() {
     useCallback(() => getTemplates(), []),
   );
 
+  // What this person starts each model at, over the registry's own defaults.
+  // One read for the whole sheet; "Set as default" writes it back.
+  const defaults = useResource(
+    ["model-defaults"],
+    useCallback(() => getModelDefaults(), []),
+  );
+  const own = useMemo(() => defaults.data?.defaults ?? {}, [defaults.data]);
+
   const entry =
     findEntry(models.data, bar.model[bar.kind]) ??
     defaultEntry(models.data, bar.kind);
+  // Untouched this session: the model's defaults with the person's own laid
+  // over — so a param the snapshot gained since they were saved still seeds.
   const params = useMemo(
-    () => (entry ? (bar.params[entry.model] ?? seedPlan(entry).params) : {}),
-    [bar.params, entry],
+    () =>
+      entry
+        ? (bar.params[entry.model] ?? { ...seedPlan(entry).params, ...own[entry.model] })
+        : {},
+    [bar.params, entry, own],
   );
   const projectCast = useMemo(
     () => project.data?.characters ?? [],
@@ -418,6 +435,41 @@ export function CreateBar() {
   const setParams = (next: Record<string, unknown>) => {
     if (entry) bar.setParams(entry.model, next);
   };
+
+  /**
+   * The two things the settings panel can do with the whole set. Both
+   * write the person's row, then put the answer straight into the query so
+   * every sheet reads it without a refetch.
+   */
+  const rememberDefaults = (held: ModelDefaults) =>
+    queryClient.setQueryData(["model-defaults"], { defaults: held });
+  const saveAsDefault = async () => {
+    if (!entry) return;
+    try {
+      const written = await setModelDefaults(entry.model, params);
+      rememberDefaults({ ...own, [written.model]: written.params });
+      toast.add({ intent: "success", title: `Saved as your default for ${entry.key}` });
+    } catch (err) {
+      toast.add({ intent: "danger", title: "Could not save the default", description: (err as Error).message });
+    }
+  };
+  const resetToModel = async () => {
+    if (!entry) return;
+    try {
+      await clearModelDefaults(entry.model);
+      rememberDefaults(Object.fromEntries(Object.entries(own).filter(([model]) => model !== entry.model)));
+      bar.setParams(entry.model, seedPlan(entry).params);
+    } catch (err) {
+      toast.add({ intent: "danger", title: "Could not reset the settings", description: (err as Error).message });
+    }
+  };
+  const settingsActions = entry
+    ? {
+        saved: entry.model in own,
+        onSaveDefault: () => void saveAsDefault(),
+        onReset: () => void resetToModel(),
+      }
+    : null;
 
   const kindSwitch = (
     // IMAGE / VIDEO. Single-select and never empty: a run is one or the other,
@@ -712,7 +764,7 @@ export function CreateBar() {
                 label="Settings"
                 className="bottom-full top-auto left-auto right-0 mb-2 mt-0 max-h-[70vh] w-[min(26rem,calc(100vw-2rem))] max-w-none overflow-y-auto"
               >
-                <SettingsPanel entry={entry} params={params} onParams={setParams} />
+                <SettingsPanel entry={entry} params={params} onParams={setParams} actions={settingsActions} />
               </Popover.Content>
             </Popover.Root>
           )}
@@ -782,7 +834,7 @@ export function CreateBar() {
                           <ChevronRightIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5] text-muted" />
                         </Button>
                       </div>
-                      <SettingsPanel entry={entry} params={params} onParams={setParams} />
+                      <SettingsPanel entry={entry} params={params} onParams={setParams} actions={settingsActions} />
                     </>
                   )}
                 </div>
