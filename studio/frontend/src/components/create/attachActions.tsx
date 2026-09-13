@@ -26,6 +26,7 @@ export const USE_AS_ROLES = ["reference", "start", "end"] as const satisfies rea
  * still attached as the clip.
  */
 export const USE_AS_CLIP_ROLES = ["clip"] as const satisfies readonly AttachRole[];
+// The role is `clip` on the wire and `Source video` to a person — see `ROLE_WORDS`.
 export type UseAsRole = (typeof USE_AS_ROLES)[number] | (typeof USE_AS_CLIP_ROLES)[number];
 
 /**
@@ -49,7 +50,7 @@ export const USE_AS_WORDS: Record<
   reference: { label: "Reference", icon: UseInPromptIcon },
   start: { label: "Start frame", icon: StartFrameIcon },
   end: { label: "End frame", icon: FrameEndIcon },
-  clip: { label: "Clip", icon: VideoIcon },
+  clip: { label: "Source video", icon: VideoIcon },
 };
 
 /**

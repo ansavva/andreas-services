@@ -232,7 +232,7 @@ it("a clip's menu offers the clip, and its first frame as what a picture can be"
   openTileMenu("clip.mp4");
   // The clip itself is one thing to the bar; a reference is a picture, so the
   // three picture roles are offered for its FIRST FRAME, under their own word.
-  expect(screen.getByRole("menuitem", { name: "Clip" })).toBeTruthy();
+  expect(screen.getByRole("menuitem", { name: "Source video" })).toBeTruthy();
   expect(screen.getByText("First frame as")).toBeTruthy();
   expect(screen.getAllByRole("menuitem", { name: "Reference" })).toHaveLength(1);
   // The lines that are not about being a picture are still there.

@@ -161,7 +161,7 @@ export function ObjectActions({
           // Ungrouped: the trigger already says `Use as…`, and a heading
           // repeating it over three lines would be the word twice.
           // Ungrouped for a picture: the trigger already says `Use as…`.
-          // A clip keeps its groups — `Use as · Clip` and `First frame as ·
+          // A clip keeps its groups — `Use as · Source video` and `First frame as ·
           // Reference / Start frame / End frame` are two different things.
           actions={attachActions(
             { node: file.id, url: file.url, name: file.name, kind: "object" },

@@ -137,7 +137,7 @@ test("a template picked lands in the box FILLED, and there is no preview to open
   expect(escaped(calls, page)).toEqual([]);
 });
 
-test("a model that works from a clip offers a Clip tile, and its picker lists videos only", async ({
+test("a model that works from a video offers a Source video tile, and its picker lists videos only", async ({
   page,
 }) => {
   const calls = log(page);
@@ -146,15 +146,18 @@ test("a model that works from a clip offers a Clip tile, and its picker lists vi
   // A still model has no clip. Switch to video and choose the motion model —
   // the one whose registry entry names a `clips.source`.
   const strip = page.locator("[data-mode-strip]");
-  await expect(strip.getByRole("group", { name: "Clip" })).toHaveCount(0);
+  await expect(strip.getByRole("group", { name: "Source video" })).toHaveCount(0);
   await page.getByRole("group", { name: "Kind" }).getByText("Video").click();
   await page.getByRole("button", { name: /^Model: / }).click();
   await page.getByRole("option", { name: /kling-v3-motion-control/ }).click();
 
   // The clip tile stands beside the start frame. Pressing it opens the picker
   // on videos: the seed is stills, so Media lists the one clip and nothing else.
-  await strip.getByRole("group", { name: "Clip" }).getByRole("button", { name: "Clip" }).click();
-  const picker = page.getByRole("region", { name: "Choose a clip" });
+  await strip
+    .getByRole("group", { name: "Source video" })
+    .getByRole("button", { name: "Source video" })
+    .click();
+  const picker = page.getByRole("region", { name: "Choose a source video" });
   await expect(picker).toBeVisible();
   await picker.getByRole("button", { name: "Media" }).click();
   const offered = picker.getByRole("button", { name: /^Attach / });
@@ -163,8 +166,8 @@ test("a model that works from a clip offers a Clip tile, and its picker lists vi
   await offered.click();
 
   // The clip is in the row, drawn as a video, captioned as what it is to the run.
-  const cell = strip.getByRole("group", { name: "Clip" });
-  await expect(cell.getByText("Clip", { exact: true })).toBeVisible();
+  const cell = strip.getByRole("group", { name: "Source video" });
+  await expect(cell.getByText("Source", { exact: true })).toBeVisible();
   await expect(cell.locator("video")).toHaveCount(1);
   expect(wrote(calls)).toEqual([]);
   expect(escaped(calls, page)).toEqual([]);

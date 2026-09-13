@@ -104,7 +104,7 @@ studio run --model grok-imagine-video --project <project> \
   --name <file> --poll
 ```
 
-In the app the same thing is the **Clip** tile on the create sheet, whose
+In the app the same thing is the **Source video** tile on the create sheet, whose
 picker lists videos only.
 
 Output inherits the input's duration, ratio and resolution, so `duration`,

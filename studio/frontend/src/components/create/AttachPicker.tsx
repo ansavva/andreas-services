@@ -279,7 +279,7 @@ function PickerBody({
    * draws as `Unavailable` until something re-signs it — so each is signed
    * first, and the answer's `kind` is what says whether it is what the role
    * takes. Only that kind attaches: a clip uploaded on an image tile — or a
-   * still on the Clip tile — stays in the folder and is not a role.
+   * still on the Source video tile — stays in the folder and is not a role.
    */
   const landed = useCallback(
     (nodes: NodeRecord[]) => {

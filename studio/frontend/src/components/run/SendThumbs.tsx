@@ -22,7 +22,7 @@ const ROLE_ORDER: Record<string, number> = { start: 0, end: 1, clip: 2, input: 3
 const ROLE_WORD: Record<string, string> = {
   start: "Start frame",
   end: "End frame",
-  clip: "Clip",
+  clip: "Source video",
   input: "Input",
 };
 

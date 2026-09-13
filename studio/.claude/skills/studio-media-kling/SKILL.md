@@ -40,7 +40,7 @@ The family:
 | `start_image` | First frame. `.jpg/.jpeg/.png`, **max 10 MB**, min 300px, aspect 1:2.5–2.5:1. |
 | `end_image` | Last frame; requires `start_image`. |
 | `reference_images` | The character-consistency mechanism. **The cap of 7 counts the start frame too** — see below. 4 with a reference video. |
-| `reference_video` | 3–10s, `.mp4/.mov`, ≤200 MB; `video_reference_type` `feature` (style/camera) or `base` (editing). Binds with `--clip-run` / `--clip-key`, or the sheet's Clip tile. |
+| `reference_video` | 3–10s, `.mp4/.mov`, ≤200 MB; `video_reference_type` `feature` (style/camera) or `base` (editing). Binds with `--clip-run` / `--clip-key`, or the sheet's **Source video** tile. |
 | `multi_prompt` | JSON-encoded array `[{"prompt": "...", "duration": N}]`. **Max 6 shots, durations must sum to `duration`.** |
 | `mode` | `standard` = 720p · `pro` = 1080p · `4k`. |
 | `aspect_ratio` | `16:9` · `9:16` · `1:1`. **Required only when there is no start frame.** |

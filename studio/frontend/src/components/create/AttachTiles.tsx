@@ -315,7 +315,7 @@ export function AttachTiles({
             {clip ? (
               <Thumb
                 attachment={clip.attachment}
-                caption="Clip"
+                caption="Source"
                 onPress={() => onRole(role === "clip" ? null : "clip")}
                 onDetach={() => onDetach(clip.index)}
               />

@@ -447,7 +447,7 @@ describe("the shape of the frames", () => {
     // FRAME under their own heading. It once offered the clip itself as a
     // reference, and the send was refused.
     openTileMenu(0);
-    expect(screen.getByRole("menuitem", { name: "Clip" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Source video" })).toBeTruthy();
     expect(screen.getByText("First frame as")).toBeTruthy();
     expect(screen.getAllByRole("menuitem", { name: "Start frame" })).toHaveLength(1);
     expect(screen.getByRole("menuitem", { name: "Run again with this" })).toBeTruthy();

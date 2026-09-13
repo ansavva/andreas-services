@@ -5,11 +5,12 @@ import type { ModelEntry, RunKind, RunSendInput } from "../../types";
  * The roles each kind's strip offers, in the order the mockup draws them.
  *
  * Image mode: Image refs, Input image. Video mode: Start frame, End frame,
- * Image refs, Clip — the models' own words, which ElevenLabs uses too. Nothing
- * about frames on an image run — a still has no start — and `input` on a video
- * would be a second word for its start frame. `clip` is the one video a model
- * works from — the motion it copies, the clip it edits — and only the models
- * whose registry entry names a `clips.source` show the tile.
+ * Image refs, Source video — the models' own words, which ElevenLabs uses
+ * too. Nothing about frames on an image run — a still has no start — and
+ * `input` on a video would be a second word for its start frame. `clip` is
+ * the one video a model works from — the motion it copies, the footage it
+ * edits — and only the models whose registry entry names a `clips.source`
+ * show the tile.
  */
 export const ROLES_BY_KIND: Record<RunKind, readonly AttachRole[]> = {
   image: ["reference", "input"],
@@ -30,10 +31,13 @@ export const ROLE_WORDS: Record<AttachRole, { label: string; hint: string; choos
   },
   start: { label: "Start frame", hint: "The image the clip starts from.", choose: "Choose a start frame" },
   end: { label: "End frame", hint: "How the clip ends.", choose: "Choose an end frame" },
+  // "Source video", never "clip": the sheet already says `Video` for what is
+  // being MADE, and the same word for what goes IN read as two different
+  // things called clip. The role stays `clip` on the wire.
   clip: {
-    label: "Clip",
-    hint: "The video this model works from: the motion it copies, or the clip it edits.",
-    choose: "Choose a clip",
+    label: "Source video",
+    hint: "The video this model works from — the motion it copies, or the footage it edits. Not what it makes.",
+    choose: "Choose a source video",
   },
 };
 
