@@ -93,8 +93,8 @@ Both are **sends**: the run records the node, not a URL, so `request.json`
 says which clip drove it and the URL is minted at submit. A `.webm` or `.avi`
 clip is refused by name — the model takes `.mp4/.mov` — and a `.webp` still
 is refused with the `studio convert --for kling-v3-motion-control` line that
-fixes it. In the app the same two are the **Start frame** and **Clip** tiles;
-the Clip tile's picker lists videos only.
+fixes it. In the app the same two are the **Start frame** and **Source video** tiles;
+the Source video tile's picker lists videos only.
 
 Where a clip comes from:
 - **A run's output** — `--clip-run <project>/latest` (or `#2` for the second
@@ -130,7 +130,7 @@ which bill:
    person, keep everything else."* Check the result against the frame
    before going on: same crop, same limb positions, whole body visible.
 3. **Run the transfer** with that render as `--start-run` and the same clip
-   as `--clip-run` (or the Start frame and Clip tiles).
+   as `--clip-run` (or the Start frame and Source video tiles).
 
 Step 1 is why "First frame as" exists on a clip's menu; a clip attached
 as a start frame would be refused, and walking the picker back to a frame

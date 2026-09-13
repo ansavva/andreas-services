@@ -435,7 +435,7 @@ describe("using the open file in the create bar", () => {
     openUseAs();
     expect(screen.getByText("First frame as")).toBeTruthy();
     expect(screen.getAllByRole("menuitem", { name: "Start frame" })).toHaveLength(1);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Clip" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Source video" }));
     expect(screen.getByTestId("bar")).toHaveProperty("textContent", `clip:${OPEN}`);
   });
 });
