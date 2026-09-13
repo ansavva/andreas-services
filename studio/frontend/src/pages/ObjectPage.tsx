@@ -17,6 +17,7 @@ import {
   describeNode,
   getCharacter,
   getNode,
+  getNodeOwner,
   getScene,
   renameNode,
 } from "../apis/studio";
@@ -26,6 +27,7 @@ import { MediaPlayer, type MediaPlayerControls } from "../components/media/Media
 import { TextPage } from "../components/text/TextPage";
 import { FileDetailsPanel } from "../components/viewer/FileDetailsPanel";
 import { Filmstrip } from "../components/viewer/Filmstrip";
+import { FrameMenu } from "../components/viewer/FrameMenu";
 import { ObjectActions } from "../components/viewer/ObjectActions";
 import { ObjectControls, ObjectDetails } from "../components/viewer/ObjectAside";
 import { OwnerLink } from "../components/viewer/OwnerLink";
@@ -358,6 +360,22 @@ export function ObjectPage() {
     onZoomReset: controls && !modal ? () => controls.zoomReset() : undefined,
   });
 
+  /**
+   * The project this clip belongs to, for a frame taken off it: a file page
+   * has no project on its route, and the frame goes into a project's input
+   * pool. Read off the file's owner — a run's output reports the run and the
+   * project it sits in; an input-pool still reports the project itself. Only
+   * asked for a clip, and only once per file. Above the early returns, as
+   * every hook has to be.
+   */
+  const clipId = current && current.kind === "video" ? current.id : null;
+  const owner = useResource(
+    clipId ? ["node-owner", clipId] : null,
+    clipId ? () => getNodeOwner(clipId) : null,
+  );
+  const homeProject =
+    owner.data?.kind === "project" ? owner.data.id : (owner.data?.project?.id ?? null);
+
   if (open && isText) {
     // Same crumb the media case draws — `TextPage` grew its own `PageBar`
     // once it stopped being a `fixed inset-0` takeover, and a page inside
@@ -435,6 +453,7 @@ export function ObjectPage() {
           { node: current.id, url: current.url, name: current.name, kind: "object" },
           role,
           controls?.currentTime() ?? 0,
+          homeProject,
         );
       }
     : undefined;
@@ -466,6 +485,16 @@ export function ObjectPage() {
     setPinned({ a: compare.b.id, b: current });
     setCurrent(compare.b);
   };
+
+  /**
+   * On a clip, always: the menu that takes THIS frame belongs beside the
+   * frame, not in a rail a phone puts a screen below the player it reads the
+   * time from — see `FrameMenu`.
+   */
+  const stageMenu =
+    isVideo && useAs && frameAs ? (
+      <FrameMenu file={current} onUseAs={useAs} onFrameAs={frameAs} />
+    ) : null;
 
   const canCompare = !isVideo && items.length > 1;
   const stepPrev = index > 0 || (compare !== null && compare.b !== null);
@@ -563,14 +592,19 @@ export function ObjectPage() {
                   // edit/delete are the two that still have to be reachable
                   // there.
                   actions={
-                    fullscreen ? (
-                      <ObjectActions
-                        file={current}
-                        variant="media"
-                        onDelete={removeThis}
-                        editing={editing}
-                        onToggleEditing={toggleEditing}
-                      />
+                    stageMenu || fullscreen ? (
+                      <>
+                        {stageMenu}
+                        {fullscreen && (
+                          <ObjectActions
+                            file={current}
+                            variant="media"
+                            onDelete={removeThis}
+                            editing={editing}
+                            onToggleEditing={toggleEditing}
+                          />
+                        )}
+                      </>
                     ) : undefined
                   }
                 />

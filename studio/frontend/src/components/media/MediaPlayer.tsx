@@ -555,14 +555,18 @@ export function MediaPlayer({
         A clip keeps its bottom gradient: the transport is a row of text and a
         scrub bar, not two glyphs, and it is only drawn while the clip plays.
       */}
-      {showChrome && !failed && (
+      {/* `actions` are drawn on a clip's poster too, before it has played:
+          the caller's controls are about the file, not about playback, and
+          a `Frame` menu on a poster is the first frame. The player's own
+          controls on the right still wait for the chrome. */}
+      {(showChrome || actions) && !failed && (
         <div
           className={`pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start
                       justify-between gap-2 p-2 ${isFullscreen ? FULLSCREEN_TOP : ""}`}
         >
           <div className="pointer-events-auto flex min-w-0 items-center gap-1">{actions}</div>
 
-          <div className="pointer-events-auto flex shrink-0 items-center gap-1">
+          <div className={`pointer-events-auto flex shrink-0 items-center gap-1 ${showChrome ? "" : "hidden"}`}>
             {/*
               **Zoom, on a still, before everything else in the row.** Two
               glyphs and — once the picture is in at all — the figure, so a

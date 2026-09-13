@@ -62,7 +62,7 @@ export function frameName(clip: string | undefined, at: number): string {
  */
 export function useFrameGrab() {
   const bar = useCreateBar();
-  const { target } = useCreateBarState();
+  const { target, setProject } = useCreateBarState();
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -78,8 +78,18 @@ export function useFrameGrab() {
   }, []);
 
   const take = useCallback(
-    async (clip: AttachRef, role: AttachRole, at = 0) => {
-      if (!target) {
+    async (clip: AttachRef, role: AttachRole, at = 0, home?: string | null) => {
+      // The bar's target first — the route's project, else the one chosen in
+      // the bar. Failing both, the clip's own project (`home`): a file page
+      // has no project on its route, and the frame belongs with the clip it
+      // came from. The bar is pointed there too, so the run that follows
+      // goes where the frame went rather than asking again.
+      let project = target;
+      if (!project && home) {
+        project = home;
+        setProject(home);
+      }
+      if (!project) {
         toast.add({
           intent: "danger",
           title: "Choose a project first",
@@ -105,7 +115,7 @@ export function useFrameGrab() {
       );
       if (!gone.current) setBusy(clip.node);
       try {
-        const { folder } = await getProjectInputs(target);
+        const { folder } = await getProjectInputs(project);
         const frame = await grabFrame({ node: clip.node, at: moment, dest: folder, name });
         const asset = await getAsset(frame.node);
         bar.replace(placeholder, { node: frame.node, url: asset.url, name: frame.name, kind: "object" });
@@ -120,7 +130,7 @@ export function useFrameGrab() {
         if (!gone.current) setBusy(null);
       }
     },
-    [bar, target, toast],
+    [bar, setProject, target, toast],
   );
 
   return { take, busy };

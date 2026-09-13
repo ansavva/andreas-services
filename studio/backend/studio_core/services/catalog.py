@@ -994,18 +994,36 @@ def owner_of(record: dict) -> dict | None:
     makes by hand are meant to be reachable without becoming somebody's.
 
     The deepest entity wins, so a run's output reports the run rather than the
-    project it sits in. That is the answer a person wants from a file, and the
-    project is one hop up its `path` for anyone who wants that instead.
+    project it sits in. That is the answer a person wants from a file. **The
+    project rides along as `project`** when the owner is something inside one
+    — a run, a scene, a movie — because the SPA's file page needs it for a
+    different question: a frame taken off this clip goes into a project's
+    input pool, and "which project" has to be answered from the file alone,
+    with no project on the route and possibly none on the create bar. Absent
+    when the owner IS the project, or a character, or nothing.
     """
-    for entity_id in entity_chain(record):
+    chain = entity_chain(record)
+    owner = None
+    for entity_id in chain:
         try:
-            return entity_summary(entity_id)
+            owner = entity_summary(entity_id)
+            break
         except (NotFoundError, ValidationError):
             # A reverse pointer naming a record that does not exist. Skipped rather than
             # raised: the node is fine, and a listing that 500s because one
             # ancestor was half-deleted is a worse answer than "owned by nobody".
             logger.warning("Node %s names a missing entity: %s", record["node_id"], entity_id)
-    return None
+    if owner is None or owner["kind"] == ENTITY_PROJECT:
+        return owner
+    for entity_id in chain:
+        if entity_kind(entity_id) != ENTITY_PROJECT:
+            continue
+        try:
+            owner["project"] = entity_summary(entity_id)
+        except (NotFoundError, ValidationError):
+            logger.warning("Node %s names a missing project: %s", record["node_id"], entity_id)
+        break
+    return owner
 
 
 def _blob_owner(record: dict) -> tuple[str | None, str]:

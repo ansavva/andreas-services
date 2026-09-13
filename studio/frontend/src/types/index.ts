@@ -95,6 +95,12 @@ export interface NodeOwner {
   kind: "character" | "project" | "run" | "scene" | "movie";
   id: string;
   name: string | null;
+  /**
+   * The project the owner sits inside, when the owner is a run, a scene or a
+   * movie. What a frame taken off the file goes into — the file page has no
+   * project on its route, and the create bar may have none either.
+   */
+  project?: { kind: "project"; id: string; name: string | null } | null;
 }
 
 export interface FileEntry {
