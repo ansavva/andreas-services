@@ -7,7 +7,7 @@ import { ActionMenu } from "../common/ActionMenu";
 import { ConfirmDeleteButton } from "../common/ConfirmDeleteButton";
 import { FavoriteButton } from "../common/FavoriteButton";
 import { CopyKeyButton } from "../common/CopyKeyButton";
-import { CloseIcon, DownloadIcon, PencilIcon, TrashIcon, UseInPromptIcon } from "../common/icons";
+import { CloseIcon, DownloadIcon, PencilIcon, TrashIcon } from "../common/icons";
 import { THIS_FRAME_GROUP, attachActions } from "../create/attachActions";
 
 interface Props {
@@ -151,34 +151,6 @@ export function ObjectActions({
         been `sm` for the same reason — a row of controls beside a picture is
         not the place for the touch-target default.
       */}
-      {/* First, because it is the one control here that starts something rather
-          than filing, fetching or leaving — the same reason it is the first of
-          the still's actions in the run's rail. A menu rather than a button
-          since the picture can be three things to the bar, and three icons
-          would not fit a row that fits seven at `sm` with 31px to spare. */}
-      {onUseAs && (
-        <ActionMenu
-          label={file.name}
-          triggerLabel="Use as…"
-          align="start"
-          icon={<UseInPromptIcon className="size-4 fill-none stroke-current stroke-[1.5]" />}
-          // Ungrouped: the trigger already says `Use as…`, and a heading
-          // repeating it over three lines would be the word twice.
-          // Ungrouped for a picture: the trigger already says `Use as…`.
-          // A clip keeps its groups — `Use as · Source video` and `This frame as ·
-          // Reference / Start frame / End frame` are two different things.
-          actions={attachActions(
-            { node: file.id, url: file.url, name: file.name, kind: "object" },
-            (_, role) => onUseAs(role),
-            file.kind,
-            onFrameAs && ((_, role) => onFrameAs(role)),
-            THIS_FRAME_GROUP,
-          ).map((action) =>
-            file.kind === "video" ? action : { ...action, group: undefined },
-          )}
-        />
-      )}
-
       {favoritable && <FavoriteButton id={file.id} name={file.name} size="sm" />}
 
       <CopyKeyButton value={file.key} />
@@ -204,24 +176,42 @@ export function ObjectActions({
         </IconButton>
       )}
 
-      {/* Last, and behind a menu: every other page keeps its destructive
-          control off the row of things pressed on every visit. `ActionMenu`
-          carries the arming — the same two presses this file used to spell out
-          for itself, and the same ones every other `⋯` in the app now runs on. */}
-      {onDelete && (
+      {/* Last, one `⋯`, the way every tile's `⋮` is built: the `Use as` group
+          first — Reference / Start frame / End frame for a picture, Source
+          video and `This frame as` for a clip — then Delete, armed. It used
+          to be two triggers: a `⊞` for `Use as…` beside the `⋯`, a glyph that
+          appeared nowhere else in the app and read as nothing, on the one row
+          a person came to for the picture. The clip's `Frame` pill on the
+          player carries the same lines where the frame is. */}
+      {(onUseAs || onDelete) && (
         <ActionMenu
           label={file.name}
           triggerLabel="More actions"
           actions={[
-            {
-              key: "delete",
-              label: "Delete",
-              armedLabel: "Confirm — delete this file",
-              icon: <TrashIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5]" />,
-              danger: true,
-              arm: true,
-              onSelect: onDelete,
-            },
+            ...(onUseAs
+              ? attachActions(
+                  { node: file.id, url: file.url, name: file.name, kind: "object" },
+                  (_, role) => onUseAs(role),
+                  file.kind,
+                  onFrameAs && ((_, role) => onFrameAs(role)),
+                  THIS_FRAME_GROUP,
+                )
+              : []),
+            ...(onDelete
+              ? [
+                  {
+                    key: "delete",
+                    label: "Delete",
+                    armedLabel: "Confirm — delete this file",
+                    icon: (
+                      <TrashIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5]" />
+                    ),
+                    danger: true,
+                    arm: true,
+                    onSelect: onDelete,
+                  },
+                ]
+              : []),
           ]}
         />
       )}

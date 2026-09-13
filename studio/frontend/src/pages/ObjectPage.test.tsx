@@ -392,12 +392,16 @@ describe("deleting the open file", () => {
  */
 describe("using the open file in the create bar", () => {
   /**
-   * `Use as…` is an `ActionMenu`: a dropdown trigger beside a sheet trigger,
-   * told apart in CSS jsdom does not apply — so both are found, and the
-   * dropdown is the one whose items are `menuitem`s.
+   * The `Use as` lines live in the row's `⋯` — one menu, built the way every
+   * tile's `⋮` is, rather than a `⊞` of their own that appeared nowhere else.
+   * `ActionMenu` is a dropdown trigger beside a sheet trigger, told apart in
+   * CSS jsdom does not apply — so both are found, and the dropdown is the one
+   * whose items are `menuitem`s. The clip's `Frame` pill on the player is a
+   * second way to the same lines; it is the FIRST `More actions` here that
+   * this opens, the rail's.
    */
   const openUseAs = () =>
-    fireEvent.click(screen.getAllByRole("button", { name: "Use as…" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "More actions" })[0]!);
 
   it("attaches the open picture as a reference, in the role that accumulates", async () => {
     open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
