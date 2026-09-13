@@ -633,6 +633,30 @@ export interface ProjectInputs {
   inputs: ProjectInput[];
 }
 
+/**
+ * A render job — `POST /api/renders` answers 202 with this row, and
+ * `GET /api/renders/<id>` is the same row until it stops moving.
+ *
+ * The worker with ffmpeg does the work: a cut, a frame, a contact grid or
+ * sheet. `result` is the job's own shape — a frame grab's is `{frame: <asset>}`
+ * naming the node it put in the folder the caller asked for.
+ */
+export interface RenderJob {
+  id: string;
+  kind: "assemble" | "frame" | "grid" | "sheet";
+  status: "queued" | "running" | "succeeded" | "failed";
+  result: Record<string, unknown> | null;
+  error: string | null;
+}
+
+/** What a `frame` render puts in the folder: one still, as a node. */
+export interface RenderedFrame {
+  node: string;
+  name: string;
+  size: number;
+  content_type: string;
+}
+
 export type RunStatus =
   // Before anything is submitted. A run is created when it is PLANNED, so the
   // row does not say that anything happened — see `RunRecord.plan`.

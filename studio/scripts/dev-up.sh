@@ -245,7 +245,13 @@ fi
 # `--no-root` because the backend is not a package: the Dockerfile copies
 # `studio_core` in rather than installing it. Cheap to re-run, so it is not
 # guarded — Poetry resolves from the lockfile and does nothing when satisfied.
-(cd studio/backend && poetry install --no-root --no-interaction)
+# `--with render` because this script also runs the render consumer (below),
+# and the ffmpeg it needs is `imageio-ffmpeg` in the `render` group — the one
+# `Dockerfile.render` installs and `Dockerfile` does not. Without it the
+# consumer starts, takes a job, and raises `No module named 'imageio_ffmpeg'`
+# on the first frame grab, which reads as a broken clip rather than a missing
+# install.
+(cd studio/backend && poetry install --no-root --no-interaction --with render)
 
 # Both of these are dev-setup.sh's job, and it is idempotent, so the cheapest
 # correct thing is to delegate rather than reimplement either check. node_modules

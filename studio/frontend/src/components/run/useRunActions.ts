@@ -6,6 +6,7 @@ import { useToast } from "@ansavva/design-system";
 
 import { deleteRun, getAsset, getModels } from "../../apis/studio";
 import { useCreateBar, type AttachRole } from "../../context/CreateBarContext";
+import { useFirstFrame } from "../../hooks/useFirstFrame";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { useResource } from "../../hooks/useResource";
 import type { RunAsset, RunFeedRow } from "../../types";
@@ -34,6 +35,7 @@ export const UPSCALE_MODEL = "topazlabs/image-upscale";
  */
 export function useRunActions(row: RunFeedRow) {
   const bar = useCreateBar();
+  const firstFrame = useFirstFrame();
   const navigate = useNavigate();
   const toast = useToast();
   const client = useQueryClient();
@@ -94,6 +96,17 @@ export function useRunActions(row: RunFeedRow) {
   );
 
   /**
+   * A clip's FIRST FRAME to the bar, in the role. The worker takes the still
+   * into the project's input pool and `useFirstFrame` attaches it; the ref
+   * still says which run's output it was cut from.
+   */
+  const firstFrameAs = useCallback(
+    (asset: RunAsset, index: number, role: AttachRole) =>
+      firstFrame.take(refOfOutput(row, asset, index), role),
+    [firstFrame, row],
+  );
+
+  /**
    * Signed with `response-content-disposition: attachment` server-side. A
    * plain `<a download>` would be ignored here, because the presigned URL is
    * cross-origin to this app.
@@ -146,6 +159,7 @@ export function useRunActions(row: RunFeedRow) {
     outputAgain,
     upscale,
     useAs,
+    firstFrameAs,
     download,
     remove,
     copyPrompt,

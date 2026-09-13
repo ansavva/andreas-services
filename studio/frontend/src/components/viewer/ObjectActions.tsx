@@ -61,6 +61,8 @@ interface Props {
    * somewhere you cannot see.
    */
   onUseAs?: (role: AttachRole) => void;
+  /** The open CLIP's first frame, as any of the three — see `useFirstFrame`. Video only. */
+  onFirstFrameAs?: (role: AttachRole) => void;
 }
 
 /**
@@ -92,6 +94,7 @@ export function ObjectActions({
   onToggleEditing,
   onClose,
   onUseAs,
+  onFirstFrameAs,
 }: Props) {
   // A text file has no heart. The favorites screen is a grid of media and the
   // API refuses anything else, so offering the control on a `prompt.json` would
@@ -157,11 +160,17 @@ export function ObjectActions({
           icon={<UseInPromptIcon className="size-4 fill-none stroke-current stroke-[1.5]" />}
           // Ungrouped: the trigger already says `Use as…`, and a heading
           // repeating it over three lines would be the word twice.
+          // Ungrouped for a picture: the trigger already says `Use as…`.
+          // A clip keeps its groups — `Use as · Clip` and `First frame as ·
+          // Reference / Start frame / End frame` are two different things.
           actions={attachActions(
             { node: file.id, url: file.url, name: file.name, kind: "object" },
             (_, role) => onUseAs(role),
             file.kind,
-          ).map((action) => ({ ...action, group: undefined }))}
+            onFirstFrameAs && ((_, role) => onFirstFrameAs(role)),
+          ).map((action) =>
+            file.kind === "video" ? action : { ...action, group: undefined },
+          )}
         />
       )}
 

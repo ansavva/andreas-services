@@ -443,11 +443,13 @@ describe("the shape of the frames", () => {
     const box = tile.querySelector("span[style]") as HTMLElement;
     expect(box.style.aspectRatio).toBe("9 / 16");
     // A clip is not a reference — a reference is a picture — so the tile's
-    // menu offers no way to attach it as one. It did, and the send was refused.
+    // menu offers the clip as the clip, and the picture roles for its FIRST
+    // FRAME under their own heading. It once offered the clip itself as a
+    // reference, and the send was refused.
     openTileMenu(0);
-    expect(screen.queryByRole("menuitem", { name: "Reference" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Start frame" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "End frame" })).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "Clip" })).toBeTruthy();
+    expect(screen.getByText("First frame as")).toBeTruthy();
+    expect(screen.getAllByRole("menuitem", { name: "Start frame" })).toHaveLength(1);
     expect(screen.getByRole("menuitem", { name: "Run again with this" })).toBeTruthy();
   });
 });

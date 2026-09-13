@@ -5,6 +5,7 @@ import { Button, Text } from "@ansavva/design-system";
 
 import { getFavorites } from "../../apis/studio";
 import { useCreateBar } from "../../context/CreateBarContext";
+import { useFirstFrame } from "../../hooks/useFirstFrame";
 import { FAVORITES_GRID_KEY, useFavorites } from "../../hooks/useFavorites";
 import { useResource } from "../../hooks/useResource";
 import type { FavoriteEntry } from "../../types";
@@ -75,6 +76,7 @@ export function FavoritesSection({
   const total = data?.total ?? 0;
 
   const bar = useCreateBar();
+  const firstFrame = useFirstFrame();
   const favorites = useFavorites();
 
   const tileActions = useCallback(
@@ -84,6 +86,7 @@ export function FavoritesSection({
         { node: file.id, url: file.url, name: file.name, kind: "object" },
         bar.attach,
         file.kind,
+        firstFrame.take,
       ),
       {
         key: "favorite",
@@ -98,7 +101,7 @@ export function FavoritesSection({
         onSelect: () => void downloadNode(file.id),
       },
     ],
-    [bar, favorites],
+    [bar, favorites, firstFrame.take],
   );
 
   return (

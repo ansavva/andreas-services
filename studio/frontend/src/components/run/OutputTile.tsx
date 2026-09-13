@@ -77,6 +77,7 @@ export function OutputTile({
       refOfOutput(row, asset, index),
       (_, role) => actions.useAs(asset, index, role),
       video ? "video" : "image",
+      (_, role) => actions.firstFrameAs(asset, index, role),
     ),
     ...(video
       ? []
