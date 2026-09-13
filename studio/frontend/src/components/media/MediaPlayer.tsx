@@ -81,6 +81,14 @@ const FULLSCREEN_BOTTOM =
  */
 export interface MediaPlayerControls {
   togglePlay: () => void;
+  /** Stop where it is. A no-op on a still and on a poster that never played. */
+  pause: () => void;
+  /**
+   * Where the clip is, in seconds — the frame on screen, read off the element
+   * at the moment of the call. `0` on a still, and on a poster: a clip that
+   * never played is on its first frame.
+   */
+  currentTime: () => number;
   toggleMuted: () => void;
   toggleFullscreen: () => void;
   /** `+`, `-` and `0`. No-ops on a video, and on a player that is not `zoomable`. */
@@ -395,6 +403,11 @@ export function MediaPlayer({
         if (now.playing) now.playback.togglePaused();
         else now.startPlaying();
       },
+      pause: () => {
+        const now = latest.current;
+        if (now.isVideo && now.playing && !now.playback.paused) now.playback.togglePaused();
+      },
+      currentTime: () => videoRef.current?.currentTime ?? 0,
       toggleMuted: () => latest.current.playback.toggleMuted(),
       toggleFullscreen: () => void latest.current.toggle(),
       zoomIn: () => latest.current.zoom.zoomIn(),

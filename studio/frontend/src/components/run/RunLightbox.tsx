@@ -54,7 +54,7 @@ import { pressInApp } from "../common/pressInApp";
 import { SectionLoading } from "../common/SectionLoading";
 import { CharacterChipLink } from "../character/CharacterChip";
 import {
-  FIRST_FRAME_GROUP,
+  THIS_FRAME_GROUP,
   USE_AS_GROUP,
   USE_AS_ROLES,
   USE_AS_WORDS,
@@ -193,6 +193,7 @@ export function RunLightbox({ projectId, runId, characters, heroes }: Props) {
           onNext={next}
           promoting={promoting}
           onPromote={setPromoting}
+          controls={controls}
           onControlsChange={setControls}
           strip={
             <RunStrip
@@ -241,6 +242,7 @@ function Opened({
   onNext,
   promoting,
   onPromote,
+  controls,
   onControlsChange,
   strip,
 }: {
@@ -254,6 +256,8 @@ function Opened({
   onNext?: () => void;
   promoting: RunAsset | null;
   onPromote: (asset: RunAsset | null) => void;
+  /** The stage's player, once mounted — where `This frame as` reads the time. */
+  controls: MediaPlayerControls | null;
   onControlsChange: (controls: MediaPlayerControls | null) => void;
   strip: ReactNode;
 }) {
@@ -651,6 +655,7 @@ function Opened({
           asset={asset}
           output={output}
           actions={actions}
+          controls={controls}
           onPromote={() => asset && onPromote(asset)}
         />
 
@@ -779,6 +784,7 @@ function ActionGrid({
   asset,
   output,
   actions,
+  controls,
   onPromote,
 }: {
   row: RunFeedRow;
@@ -786,6 +792,8 @@ function ActionGrid({
   asset: RunAsset | null;
   output: number;
   actions: ReturnType<typeof useRunActions>;
+  /** The stage's player. Null until it mounts, when the frame is the first. */
+  controls: MediaPlayerControls | null;
   onPromote: () => void;
 }) {
   const navigate = useNavigate();
@@ -848,18 +856,25 @@ function ActionGrid({
               />
             );
           })}
-        {/* A clip's first frame, as the three things a picture can be — the
-            still a motion-transfer run is drawn to match (`useFirstFrame`). */}
+        {/* The frame the clip is ON — paused there, or passing — as the three
+            things a picture can be: the still a motion-transfer run is drawn
+            to match (`useFrameGrab`). The time is read off the stage's player
+            when the cell is pressed, and the player is paused so the frame on
+            screen is the frame taken. A clip that never played is at 0, the
+            first frame. */}
         {asset &&
           !still &&
           USE_AS_ROLES.map((role) => {
             const { label, icon: Icon } = USE_AS_WORDS[role];
             return (
               <Cell
-                key={`first-${role}`}
+                key={`frame-${role}`}
                 icon={<Icon className={GLYPH} />}
-                label={`${FIRST_FRAME_GROUP} ${label.toLowerCase()}`}
-                onClick={() => actions.firstFrameAs(asset, output, role)}
+                label={`${THIS_FRAME_GROUP} ${label.toLowerCase()}`}
+                onClick={() => {
+                  controls?.pause();
+                  void actions.frameAs(asset, output, role, controls?.currentTime() ?? 0);
+                }}
               />
             );
           })}

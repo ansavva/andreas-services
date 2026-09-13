@@ -6,7 +6,7 @@ import { useToast } from "@ansavva/design-system";
 
 import { deleteRun, getAsset, getModels } from "../../apis/studio";
 import { useCreateBar, type AttachRole } from "../../context/CreateBarContext";
-import { useFirstFrame } from "../../hooks/useFirstFrame";
+import { useFrameGrab } from "../../hooks/useFrameGrab";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { useResource } from "../../hooks/useResource";
 import type { RunAsset, RunFeedRow } from "../../types";
@@ -35,7 +35,7 @@ export const UPSCALE_MODEL = "topazlabs/image-upscale";
  */
 export function useRunActions(row: RunFeedRow) {
   const bar = useCreateBar();
-  const firstFrame = useFirstFrame();
+  const frameGrab = useFrameGrab();
   const navigate = useNavigate();
   const toast = useToast();
   const client = useQueryClient();
@@ -96,14 +96,15 @@ export function useRunActions(row: RunFeedRow) {
   );
 
   /**
-   * A clip's FIRST FRAME to the bar, in the role. The worker takes the still
-   * into the project's input pool and `useFirstFrame` attaches it; the ref
-   * still says which run's output it was cut from.
+   * A frame of a clip to the bar, in the role — the first by default, or the
+   * one at `at` seconds, which the opened run reads off its player. The
+   * worker takes the still into the project's input pool and `useFrameGrab`
+   * attaches it; the ref still says which run's output it was cut from.
    */
-  const firstFrameAs = useCallback(
-    (asset: RunAsset, index: number, role: AttachRole) =>
-      firstFrame.take(refOfOutput(row, asset, index), role),
-    [firstFrame, row],
+  const frameAs = useCallback(
+    (asset: RunAsset, index: number, role: AttachRole, at = 0) =>
+      frameGrab.take(refOfOutput(row, asset, index), role, at),
+    [frameGrab, row],
   );
 
   /**
@@ -159,7 +160,7 @@ export function useRunActions(row: RunFeedRow) {
     outputAgain,
     upscale,
     useAs,
-    firstFrameAs,
+    frameAs,
     download,
     remove,
     copyPrompt,

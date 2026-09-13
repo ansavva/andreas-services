@@ -31,7 +31,7 @@ import { ObjectControls, ObjectDetails } from "../components/viewer/ObjectAside"
 import { OwnerLink } from "../components/viewer/OwnerLink";
 import { ViewerFrame } from "../components/viewer/ViewerFrame";
 import { useCreateBar, type AttachRole } from "../context/CreateBarContext";
-import { useFirstFrame } from "../hooks/useFirstFrame";
+import { useFrameGrab } from "../hooks/useFrameGrab";
 import { useKeyboardNav } from "../hooks/useKeyboardNav";
 import { useResource } from "../hooks/useResource";
 import { useViewerFeed } from "../hooks/useViewerFeed";
@@ -95,7 +95,7 @@ export function ObjectPage() {
   const feed = useViewerFeed(source, nodeId, sort);
   const crumbs = useSourceCrumbs(source);
   const bar = useCreateBar();
-  const firstFrame = useFirstFrame();
+  const frameGrab = useFrameGrab();
 
   /**
    * The player's own container and controls, held in state rather than in refs.
@@ -421,13 +421,22 @@ export function ObjectPage() {
           { node: current.id, url: current.url, name: current.name, kind: "object" },
           role,
         );
-  /** The open clip's first frame to the bar — the still a motion run is drawn to match. */
-  const firstFrameAs = isVideo
-    ? (role: AttachRole) =>
-        firstFrame.take(
+  /**
+   * The open clip's frame to the bar — the one the player is stopped on, or
+   * the one it is passing: the still a motion run is drawn to match. The time
+   * is read off the player when the line is pressed, and the player is paused
+   * there so the frame on screen is the frame taken. A poster that never
+   * played is at 0, which is the first frame.
+   */
+  const frameAs = isVideo
+    ? (role: AttachRole) => {
+        controls?.pause();
+        void frameGrab.take(
           { node: current.id, url: current.url, name: current.name, kind: "object" },
           role,
-        )
+          controls?.currentTime() ?? 0,
+        );
+      }
     : undefined;
 
   /**
@@ -593,7 +602,7 @@ export function ObjectPage() {
           editing={editing}
           onToggleEditing={toggleEditing}
           onUseAs={useAs}
-          onFirstFrameAs={firstFrameAs}
+          onFrameAs={frameAs}
         />
 
         <ObjectDetails

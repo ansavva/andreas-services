@@ -12,7 +12,7 @@ vi.mock("../apis/studio", () => ({
 import { getAsset, getProjectInputs, grabFrame } from "../apis/studio";
 import { CreateBarProvider, useCreateBarState } from "../context/CreateBarContext";
 import { TestProviders } from "../test-providers";
-import { firstFrameName, useFirstFrame } from "./useFirstFrame";
+import { formatMoment, frameName, useFrameGrab } from "./useFrameGrab";
 
 const inputs = vi.mocked(getProjectInputs);
 const grab = vi.mocked(grabFrame);
@@ -22,7 +22,7 @@ afterEach(cleanup);
 
 /** One button that asks for the clip's first frame as a reference, and the bar read back. */
 function Harness() {
-  const { take, busy } = useFirstFrame();
+  const { take, busy } = useFrameGrab();
   const state = useCreateBarState();
   return (
     <>
@@ -35,6 +35,32 @@ function Harness() {
       <output data-testid="bar">
         {state.attachments[state.kind]
           .map((held) => `${held.role}:${held.ref.pending ? "pending" : held.ref.node}:${held.ref.name}`)
+          .join(",")}
+      </output>
+    </>
+  );
+}
+
+/** The same, at a moment mid-clip, with the pending sentence read back too. */
+function AtHarness() {
+  const { take } = useFrameGrab();
+  const state = useCreateBarState();
+  return (
+    <>
+      <button
+        onClick={() =>
+          void take({ node: "node-clip", name: "dance.mp4", kind: "object" }, "start", 4.24)
+        }
+      >
+        Frame at 4.24s as start
+      </button>
+      <output data-testid="bar">
+        {state.attachments[state.kind]
+          .map((held) =>
+            held.ref.pending
+              ? `${held.role}:pending:${held.ref.name}:${held.ref.pending}`
+              : `${held.role}:${held.ref.node}:${held.ref.name}`,
+          )
           .join(",")}
       </output>
     </>
@@ -125,9 +151,41 @@ describe("the first frame of a clip", () => {
     expect(screen.getByTestId("bar").textContent).toBe("");
   });
 
-  it("names the still for the clip", () => {
-    expect(firstFrameName("dance.mp4")).toBe("dance-first.png");
-    expect(firstFrameName("a.b.mov")).toBe("a.b-first.png");
-    expect(firstFrameName(undefined)).toBe("clip-first.png");
+  it("takes the frame at a moment, named and captioned for it", async () => {
+    let land!: (frame: Awaited<ReturnType<typeof grabFrame>>) => void;
+    grab.mockReturnValue(new Promise((resolve) => (land = resolve)));
+    render(
+      <MemoryRouter initialEntries={["/p/proj-1"]}>
+        <CreateBarProvider>
+          <AtHarness />
+        </CreateBarProvider>
+      </MemoryRouter>,
+      { wrapper: TestProviders },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Frame at 4.24s as start" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("bar").textContent).toBe(
+        "start:pending:dance-at-0m04.2s.png:Taking the frame at 0:04.2 of dance.mp4…",
+      ),
+    );
+    land({ node: "node-frame", name: "dance-at-0m04.2s.png", size: 1, content_type: "image/png" });
+    await waitFor(() => expect(screen.getByTestId("bar").textContent).toContain("node-frame"));
+    // Rounded to the tenth the transport shows; ffmpeg seeks to the nearest frame.
+    expect(grab).toHaveBeenCalledWith({
+      node: "node-clip",
+      at: 4.2,
+      dest: "node-pool",
+      name: "dance-at-0m04.2s.png",
+    });
+  });
+
+  it("names the still for the clip and the moment", () => {
+    expect(frameName("dance.mp4", 0)).toBe("dance-first.png");
+    expect(frameName("a.b.mov", 0)).toBe("a.b-first.png");
+    expect(frameName(undefined, 0)).toBe("clip-first.png");
+    expect(frameName("dance.mp4", 4.2)).toBe("dance-at-0m04.2s.png");
+    expect(frameName("dance.mp4", 75)).toBe("dance-at-1m15.0s.png");
+    expect(formatMoment(4.24)).toBe("0:04.2");
+    expect(formatMoment(75)).toBe("1:15.0");
   });
 });

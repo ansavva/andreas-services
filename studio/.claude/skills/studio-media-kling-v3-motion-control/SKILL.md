@@ -118,11 +118,15 @@ second is the model dragging `<name>` into position — and the identity is
 what gives. So the still is made *from* that frame, three steps, two of
 which bill:
 
-1. **Take the clip's first frame.** In the app: the clip's `⋮` menu (a
-   folder tile, a run's output, the open file) → **First frame as ·
-   Reference**. The worker cuts the frame into the project's input pool and
-   it lands on the create bar. From a terminal:
-   `studio frames at <project>/latest --time 0 --add-input`.
+1. **Take the frame the transfer starts from.** For a whole clip that is
+   the first frame: the clip's `⋮` menu on a folder tile or a run's output →
+   **First frame as · Reference**. For a transfer that starts mid-clip, open
+   the clip, play or scrub to the moment, pause, and the same menu (the open
+   file's `Use as…`, the opened run's rail) reads **This frame as ·
+   Reference** — the frame on screen is the frame taken. The worker cuts it
+   into the project's input pool and it lands on the create bar, named for
+   the clip and the moment (`<clip>-at-0m06.5s.png`). From a terminal:
+   `studio frames at <project>/latest --time 6.5 --add-input`.
 2. **Render `<name>` into it.** An image model with the frame as a
    reference and the character's identity images alongside —
    `studio-media-gpt-image-2` by default — with a prompt that names the

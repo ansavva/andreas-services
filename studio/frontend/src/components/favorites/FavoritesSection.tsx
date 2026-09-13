@@ -5,7 +5,7 @@ import { Button, Text } from "@ansavva/design-system";
 
 import { getFavorites } from "../../apis/studio";
 import { useCreateBar } from "../../context/CreateBarContext";
-import { useFirstFrame } from "../../hooks/useFirstFrame";
+import { useFrameGrab } from "../../hooks/useFrameGrab";
 import { FAVORITES_GRID_KEY, useFavorites } from "../../hooks/useFavorites";
 import { useResource } from "../../hooks/useResource";
 import type { FavoriteEntry } from "../../types";
@@ -76,7 +76,7 @@ export function FavoritesSection({
   const total = data?.total ?? 0;
 
   const bar = useCreateBar();
-  const firstFrame = useFirstFrame();
+  const firstFrame = useFrameGrab();
   const favorites = useFavorites();
 
   const tileActions = useCallback(

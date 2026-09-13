@@ -26,7 +26,7 @@ import { FilterBar } from "../common/FilterBar";
 import { LoadError } from "../common/LoadError";
 import { PageLoading } from "../common/PageLoading";
 import { useCreateBar } from "../../context/CreateBarContext";
-import { useFirstFrame } from "../../hooks/useFirstFrame";
+import { useFrameGrab } from "../../hooks/useFrameGrab";
 import { useFavorites } from "../../hooks/useFavorites";
 import { copyLabel, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { useFolder } from "../../hooks/useFolder";
@@ -469,7 +469,7 @@ export function FolderBrowser({
    * attaches four pictures; a frame replaces — see `holdsOne`.
    */
   const bar = useCreateBar();
-  const firstFrame = useFirstFrame();
+  const firstFrame = useFrameGrab();
   const favorites = useFavorites();
 
   /** "3 files", "1 key" — the count and its noun, agreeing about plurality. */
