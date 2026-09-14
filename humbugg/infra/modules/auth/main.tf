@@ -205,9 +205,9 @@ resource "aws_cognito_managed_login_branding" "main" {
   # `.brand-wordmark` with, so the same mark is uploaded as artwork —
   # `app/tool/render-wordmark.py` renders it and records how.
   #
-  # Only FORM_LOGO is declared. Undeclared categories are left alone, so Cognito
-  # keeps serving its own illustrations for the MFA and passkey screens rather
-  # than us committing artwork we did not draw.
+  # FORM_LOGO and FAVICON_ICO are declared. Undeclared categories are left
+  # alone, so Cognito keeps serving its own illustrations for the MFA and
+  # passkey screens rather than us committing artwork we did not draw.
   asset {
     category   = "FORM_LOGO"
     color_mode = "LIGHT"
@@ -220,6 +220,17 @@ resource "aws_cognito_managed_login_branding" "main" {
     color_mode = "DARK"
     extension  = "PNG"
     bytes      = filebase64("${path.module}/assets/humbugg-wordmark.png")
+  }
+
+  # The tab icon. `settings.favicon.enabledTypes` lists ICO and SVG, but a type
+  # is only served when an asset backs it — without this the hosted pages had
+  # no favicon at all. Same file as `marketing/public/favicon.ico`; favicons
+  # take DYNAMIC because one icon serves both colour modes.
+  asset {
+    category   = "FAVICON_ICO"
+    color_mode = "DYNAMIC"
+    extension  = "ICO"
+    bytes      = filebase64("${path.module}/assets/humbugg-favicon.ico")
   }
 }
 

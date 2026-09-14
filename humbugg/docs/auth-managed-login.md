@@ -96,7 +96,7 @@ be globally unique across AWS, which the per-machine id already guarantees.
 `auth.humbugg.com` was added as a SAN to the existing certificate, which **replaces** it.
 `create_before_destroy` on `modules/certificates` keeps www, app and api serving through the swap.
 
-Two Terraform facts that are outages if got wrong:
+Three Terraform facts that are outages if got wrong:
 
 - **Branding must exist before the domain.** A `managed_login_version = 2` domain created without a
   branding record serves "Login pages unavailable" to every visitor. `depends_on` in
@@ -104,6 +104,11 @@ Two Terraform facts that are outages if got wrong:
 - **The AWS provider floor is `>= 6.12`.** `aws_cognito_managed_login_branding` exists in no 5.x
   release and in none before 6.12, which is what moved humbugg off the 5.x line.
   `refresh_token_rotation` was not the binding constraint — it has been available since 5.98.
+- **Every `asset` block is ForceNew.** Adding, removing or re-rendering one replaces the branding
+  record, and the domain serves "Login pages unavailable" for the seconds between destroy and
+  create. Sessions already issued are untouched; only a sign-in page loaded in that window fails.
+  #518 (the wordmark) and the favicon both paid this. Batch asset changes rather than shipping
+  them one at a time.
 
 ## The option that was rejected
 
