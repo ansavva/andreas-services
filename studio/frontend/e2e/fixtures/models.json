@@ -780,7 +780,7 @@
       "key": "krea-2-large",
       "kind": "image",
       "model": "krea/krea-2-large",
-      "note": "Krea 2 Large. Krea's flagship still model: photorealism, natural light, textured and expressive looks; `creativity` raw/low/medium/high sets how far it embellishes the prompt; the only image model here with a SEED. `style_reference_images` (<=10) is a STYLE transfer input, NOT an identity reference: --character binds a likeness into it and the model keeps the look, not the face. No output-format, size or quality knob; flat $0.06/image (+$0.005 with style refs, +$0.01 with a Krea moodboard).",
+      "note": "Krea 2 Large. Krea's flagship still model: photorealism, natural light, textured and expressive looks; `creativity` raw/low/medium/high sets how far it embellishes the prompt; has a SEED (as does flux-2-pro). `style_reference_images` (<=10) is a STYLE transfer input, NOT an identity reference: --character binds a likeness into it and the model keeps the look, not the face. No output-format, size or quality knob; flat $0.06/image (+$0.005 with style refs, +$0.01 with a Krea moodboard).",
       "prompt": {
         "max_chars": null
       },
@@ -1076,6 +1076,87 @@
           "720p": "std"
         },
         "technical": "api"
+      }
+    },
+    "flux-2-pro": {
+      "images": {
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp",
+          ".gif"
+        ],
+        "end": null,
+        "max_refs": 8,
+        "refs": "input_images",
+        "start": null,
+        "start_excludes_refs": false
+      },
+      "key": "flux-2-pro",
+      "kind": "image",
+      "model": "black-forest-labs/flux-2-pro",
+      "note": "FLUX.2 [pro], Black Forest Labs' production still model: text-to-image, natural-language EDITING of up to 8 input_images (address them by index \u2014 'the beach in image 3'), legible text/typography, photorealism, character and product consistency across the reference set; JSON-structured prompts are documented. `seed` for repeatable draws. `resolution` 0.5/1/2/4 MP (2 MP or below recommended; 2048px hard cap per side) or `aspect_ratio: custom` + width/height in multiples of 16; `match_input_image` on both follows the FIRST input image. Total input \u22649 MP. No negative prompts \u2014 the README says they can add what they exclude. Priced per megapixel: $0.015 per run + $0.015 per input MP + $0.015 per output MP (a 1 MP still with no refs \u2248 $0.03; 2 MP \u2248 $0.045).",
+      "prompt": {
+        "max_chars": null
+      },
+      "skill": "studio-media-flux-2-pro",
+      "snapshot": {
+        "aspect_ratio": {
+          "default": "1:1",
+          "enum": [
+            "match_input_image",
+            "custom",
+            "1:1",
+            "16:9",
+            "3:2",
+            "2:3",
+            "4:5",
+            "5:4",
+            "9:16",
+            "3:4",
+            "4:3"
+          ]
+        },
+        "height": {
+          "maximum": 2048,
+          "minimum": 256
+        },
+        "input_images": {
+          "default": []
+        },
+        "output_format": {
+          "default": "webp",
+          "enum": [
+            "webp",
+            "jpg",
+            "png"
+          ]
+        },
+        "output_quality": {
+          "default": 80,
+          "maximum": 100,
+          "minimum": 0
+        },
+        "resolution": {
+          "default": "1 MP",
+          "enum": [
+            "match_input_image",
+            "0.5 MP",
+            "1 MP",
+            "2 MP",
+            "4 MP"
+          ]
+        },
+        "safety_tolerance": {
+          "default": 2,
+          "maximum": 5,
+          "minimum": 1
+        },
+        "width": {
+          "maximum": 2048,
+          "minimum": 256
+        }
       }
     }
   }

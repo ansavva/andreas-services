@@ -1,6 +1,6 @@
 ---
 name: studio-media-krea-2-large
-description: Render still images with Krea 2 Large (krea/krea-2-large) on Replicate as a recorded run. Use for photorealism, natural light and textured or painterly looks with no recurring character in frame, when a LOOK should be lifted from up to 10 style images, when the prompt should be rendered literally (`creativity: raw`) or freely embellished (`high`), or when a frame must be repeatable — the only image model here with a seed. Its reference input transfers style, not identity: for a character frame use studio-media-gpt-image-2.
+description: Render still images with Krea 2 Large (krea/krea-2-large) on Replicate as a recorded run. Use for photorealism, natural light and textured or painterly looks with no recurring character in frame, when a LOOK should be lifted from up to 10 style images, when the prompt should be rendered literally (`creativity: raw`) or freely embellished (`high`), or when a frame must be repeatable with a seed. Its reference input transfers style, not identity: for a character frame use studio-media-gpt-image-2.
 ---
 
 # studio-media-krea-2-large
@@ -27,7 +27,7 @@ result. It bills a flat price per image and exposes almost no other knobs.
 | Resolution | not selectable — no `size`, `resolution` or `quality` field |
 | Aspect | `1:1` (default) `4:3` `3:2` `16:9` `2.35:1` `4:5` `2:3` `9:16` — the only image model here with a cinema `2.35:1` |
 | Creativity | `raw` / `low` / `medium` (default) / `high` |
-| Seed | `seed` — an integer, repeatable; **no other image model here has one** |
+| Seed | `seed` — an integer, repeatable; of the image models only [`flux-2-pro`](../studio-media-flux-2-pro/SKILL.md) also has one |
 | Style strength | `style_reference_strength` 0–1, default 0.5; applies to every style image at once |
 | Moodboard | `moodboard_id` + `moodboard_strength` 0–1, default 0.35 — a Krea-webapp object, see below |
 | Price | flat per image: $0.060; $0.065 with style references; $0.070 with a moodboard (docs, September 2026) |
@@ -82,11 +82,12 @@ A frame that will be handed to a video engine wants `raw` or `low`: the
 motion prompt is written against what is in the frame, and liberty taken here
 is a mismatch there.
 
-## Seed — repeatable, and unique among the image models
+## Seed — repeatable
 
 `seed` is a plain integer with no range. Set it and the same payload renders
-the same image, which makes this the one still model where a prompt can be
-iterated one word at a time against a fixed draw. Leave it unset for variety.
+the same image, so a prompt can be iterated one word at a time against a
+fixed draw; of the other still models only `flux-2-pro` offers that. Leave it
+unset for variety.
 The seed is part of the recorded `input`, so a run's JSON is enough to
 reproduce it.
 
@@ -111,7 +112,9 @@ Krea first.
   [`image-upscale`](../studio-media-image-upscale/SKILL.md) afterwards.
 - **A photoreal or painterly plate with nobody recurring in it** — this model.
   Establishing shots, backgrounds, textures, posters, a look to match a scene to.
-- **The same frame again, changed one word** — this model, with a `seed`.
+- **The same frame again, changed one word** — this model, with a `seed`; or
+  [`flux-2-pro`](../studio-media-flux-2-pro/SKILL.md), which also has one and
+  edits what it is given.
 - **A transparent PNG** — [`gpt-image-1.5`](../studio-media-gpt-image-1-5/SKILL.md).
 
 `krea/krea-2-medium` is the faster, cheaper sibling the README recommends for

@@ -981,6 +981,7 @@
       },
       "for": {
         "choices": [
+          "flux-2-pro",
           "gpt-image-1.5",
           "gpt-image-2",
           "gpt-image-2.5-flare",
