@@ -205,9 +205,10 @@ resource "aws_cognito_managed_login_branding" "main" {
   # `.brand-wordmark` with, so the same mark is uploaded as artwork —
   # `app/tool/render-wordmark.py` renders it and records how.
   #
-  # FORM_LOGO and FAVICON_ICO are declared. Undeclared categories are left
-  # alone, so Cognito keeps serving its own illustrations for the MFA and
-  # passkey screens rather than us committing artwork we did not draw.
+  # FORM_LOGO and FAVICON_ICO are declared, each in LIGHT and DARK. Undeclared
+  # categories are left alone, so Cognito keeps serving its own illustrations
+  # for the MFA and passkey screens rather than us committing artwork we did
+  # not draw.
   asset {
     category   = "FORM_LOGO"
     color_mode = "LIGHT"
@@ -222,13 +223,23 @@ resource "aws_cognito_managed_login_branding" "main" {
     bytes      = filebase64("${path.module}/assets/humbugg-wordmark.png")
   }
 
-  # The tab icon. `settings.favicon.enabledTypes` lists ICO and SVG, but a type
-  # is only served when an asset backs it — without this the hosted pages had
-  # no favicon at all. Same file as `marketing/public/favicon.ico`; favicons
-  # take DYNAMIC because one icon serves both colour modes.
+  # The tab icon, same file as `marketing/public/favicon.ico`. LIGHT and DARK
+  # like the wordmark, NOT DYNAMIC: Cognito's own defaults (visible with
+  # `describe-managed-login-branding-by-client --return-merged-resources`) are
+  # per-mode, and the page resolves the mode `colorSchemeMode` names — a
+  # DYNAMIC entry sat beside AWS's LIGHT default and was never served. The
+  # reconcile tool also restricts `favicon.enabledTypes` to ICO, because an
+  # enabled SVG with no asset behind it links AWS's icon, which browsers prefer.
   asset {
     category   = "FAVICON_ICO"
-    color_mode = "DYNAMIC"
+    color_mode = "LIGHT"
+    extension  = "ICO"
+    bytes      = filebase64("${path.module}/assets/humbugg-favicon.ico")
+  }
+
+  asset {
+    category   = "FAVICON_ICO"
+    color_mode = "DARK"
     extension  = "ICO"
     bytes      = filebase64("${path.module}/assets/humbugg-favicon.ico")
   }

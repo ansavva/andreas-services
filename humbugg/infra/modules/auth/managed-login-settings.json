@@ -73,8 +73,7 @@
     },
     "favicon": {
       "enabledTypes": [
-        "ICO",
-        "SVG"
+        "ICO"
       ]
     },
     "pageBackground": {
