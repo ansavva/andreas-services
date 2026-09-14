@@ -294,12 +294,13 @@ resource "aws_apigatewayv2_integration" "receiver" {
 # checks looks like a run id before queueing anything — a path that is not one
 # cannot be acted on downstream and is refused here rather than filling the
 # queue with messages the consumer will drop.
+#
+# `{provider}` rather than a literal route per provider: the receiver checks the
+# name against the two it knows and forwards it, and the consumer verifies each
+# provider's callback its own way — Replicate by signature, Runpod by the
+# `?sig=` its URL was minted with (`services/generate.callback_url`).
 resource "aws_apigatewayv2_route" "receiver" {
   api_id    = aws_apigatewayv2_api.main.id
-  # `{provider}` rather than a literal per provider: the receiver checks the
-  # name against the two it knows and forwards it, and the consumer verifies
-  # each provider's callback its own way — Replicate by signature, Runpod by
-  # the `?sig=` its URL was minted with (`services/generate.callback_url`).
   route_key = "POST /api/hooks/{provider}/{run_id}"
   target    = "integrations/${aws_apigatewayv2_integration.receiver.id}"
 }
