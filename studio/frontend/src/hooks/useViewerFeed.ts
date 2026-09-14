@@ -43,17 +43,10 @@ function fromAsset(asset: RunAsset): FileEntry {
   };
 }
 
-/** Only what can actually be drawn. A panel that was planned and never rendered has no url. */
+/** Only what can actually be drawn. A run in the cut that has not rendered has no url. */
 const drawable = (entry: FileEntry) =>
   Boolean(entry.url) && (entry.kind === "image" || entry.kind === "video");
 
-/**
- * Every frame a shot touches, in the order the board draws them.
- *
- * The handoff frame first, then the panels by number, then the clip that came
- * out — which is the order a person reads a shot in, so it is the order
- * scrolling moves through.
- */
 /**
  * Everything a scene page draws, as the viewer scrolls it: the current take,
  * every earlier one, each clip in the cut, then the scene's own frames.
@@ -99,7 +92,7 @@ interface ViewerFeed {
  *
  * **The whole point of this rework is that the neighbours differ.** A file
  * opened from a folder should scroll through that folder; opened from a run,
- * through that run's frames; opened from a storyboard, through the board. Before
+ * through that run's frames; opened from a scene, through its cut. Before
  * this, all three meant "the folder browser with the file open over it", so
  * opening a run's output left the run.
  *

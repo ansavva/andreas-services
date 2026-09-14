@@ -173,7 +173,7 @@ interface MediaPlayerProps {
   /**
    * Whether a still can be zoomed and panned — see `useZoom`.
    *
-   * Off by default: a tile in a scene's storyboard is not a place to pinch,
+   * Off by default: a tile in a scene's cut is not a place to pinch,
    * and a wheel over it must scroll the page. The two viewers turn it on.
    */
   zoomable?: boolean;

@@ -52,7 +52,7 @@ bp = Blueprint("scenes", __name__, url_prefix="/api")
 KIND = catalog.ENTITY_SCENE
 
 #: What a run row in the cut carries — the listing fields every run list draws,
-#: plus the clip. See `frontend/src/components/run/RunList.tsx`.
+#: plus the clip. The SPA's `SceneCut` type mirrors it.
 RUN_ROW = ("id", "project", "status", "kind", "model", "created")
 
 

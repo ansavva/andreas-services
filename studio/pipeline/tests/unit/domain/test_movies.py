@@ -2,7 +2,7 @@
 
 **This module was patched in both #489 and #490 and had no test file**, and the
 coverage run that arrived with the tooling put it at 56% — the thinnest of the
-board/panel cluster by a clear margin, against `storyboard.py` at 95%. The gap
+scene/movie cluster by a clear margin. The gap
 was almost all of `create`: the half that moves bytes and writes the record.
 
 A movie is DERIVED — its scenes name their runs and the runs are the history —

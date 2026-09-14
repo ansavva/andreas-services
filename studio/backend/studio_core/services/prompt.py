@@ -31,7 +31,7 @@ with warnings; `studio prompt --strict` exits non-zero on any.
 
 The phrasebook lookup is **injected** rather than imported. This module is loaded
 by path from `pipeline/tests/support/fake_api.py`, which mirrors the API without
-depending on the backend package — the same arrangement `services/storyboard.py`
+depending on the backend package — the same arrangement `services/digest.py`
 has, and for the same reason: the alternative is a second implementation of six
 hundred lines of prompting rules, which is precisely what this move exists to
 end. Importing `catalog` here would pull in boto3 and break that.

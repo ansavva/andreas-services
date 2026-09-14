@@ -109,7 +109,7 @@ _SCRIPT_CALL = re.compile(r"\b([a-z0-9_]+)\.py[ \t]+(\S+)")
 # A BARE module basename — one written with no directory in front of it, which is
 # how the pipeline's own modules are named. A name reached by a path is matched by
 # `_PATHED_MODULE` below and checked against the half it actually lives in: the
-# two skills that name `services/storyboard.py` and `services/prompt.py` were
+# two skills that named `services/storyboard.py` and `services/prompt.py` were
 # passing because files of those names happen to exist under `pipeline/` too, so
 # the check that was meant to catch a rotted name was reading the wrong tree.
 _MODULE_NAME = re.compile(r"(?<![/\w.])[a-z0-9_]+\.py\b")

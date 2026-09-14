@@ -116,7 +116,7 @@ interface Props {
  * One image or video, at whatever size the box it is given implies.
  *
  * **This is the only place media is drawn.** There were eight: the browser's
- * tile, a reference tile, the storyboard's frame, a run's output tile, a
+ * tile, a reference tile, a scene's cut row, a run's output tile, a
  * project row's thumb, a movie's scene row, the entity card's hero and the
  * unattached grid — three aspect ratios, three hover behaviours, and one shared
  * bug. Only two of them re-signed an expired URL, so a tab left open past the
@@ -127,7 +127,7 @@ interface Props {
  * about weight without derivatives:
  *
  * * **Images are `loading="lazy"`.** One tile had this and seven did not, so a
- *   storyboard or a run page fetched every full-size frame on mount.
+ *   scene page or a run page fetched every full-size frame on mount.
  * * **A video has no `src` until it is near the viewport.** `preload="metadata"`
  *   is how a tile gets a free poster frame out of a bucket that ships no
  *   derivatives, and it is also sixty simultaneous range requests on a folder of
@@ -288,7 +288,7 @@ export function MediaThumb({
           // its `title`, a row that spells it out beside the picture. An `alt`
           // here does not add information, it *replaces* the label: a button's
           // accessible name comes from its contents before its title, so the
-          // filename would win over the prompt a storyboard tile is captioned
+          // filename would win over the prompt a tile is captioned
           // with. Empty alt keeps the thumbnail out of the name and leaves it
           // `role="presentation"`, which is what it is.
           alt=""
