@@ -296,7 +296,11 @@ resource "aws_apigatewayv2_integration" "receiver" {
 # queue with messages the consumer will drop.
 resource "aws_apigatewayv2_route" "receiver" {
   api_id    = aws_apigatewayv2_api.main.id
-  route_key = "POST /api/hooks/replicate/{run_id}"
+  # `{provider}` rather than a literal per provider: the receiver checks the
+  # name against the two it knows and forwards it, and the consumer verifies
+  # each provider's callback its own way — Replicate by signature, Runpod by
+  # the `?sig=` its URL was minted with (`services/generate.callback_url`).
+  route_key = "POST /api/hooks/{provider}/{run_id}"
   target    = "integrations/${aws_apigatewayv2_integration.receiver.id}"
 }
 
@@ -403,6 +407,7 @@ resource "aws_lambda_function" "worker" {
       STUDIO_MEDIA_BUCKET              = var.media_bucket_name
       STUDIO_CATALOG_TABLE             = var.catalog_table_name
       STUDIO_REPLICATE_TOKEN_PARAMETER = var.replicate_token_parameter
+      STUDIO_RUNPOD_TOKEN_PARAMETER    = var.runpod_token_parameter
     }
   }
 

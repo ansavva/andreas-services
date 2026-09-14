@@ -6,7 +6,7 @@ output "base_url" {
     even the same kind of thing, because the API is Flask on `localhost:8000`
     and this is a real AWS endpoint.
 
-    `services/generate.callback_url` appends `/api/hooks/replicate/<run_id>`.
+    `services/generate.callback_url` appends `/api/hooks/<provider>/<run_id>`.
   EOT
   value       = aws_apigatewayv2_stage.main.invoke_url
 }

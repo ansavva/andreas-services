@@ -403,6 +403,25 @@ jobs:
             --value "${REPLICATE_API_TOKEN}" >/dev/null
           echo "Stored the Replicate token in /studio/prod/replicate-api-token"
 
+      # The second provider's key, stored the same way. Optional in the same
+      # sense: unset, every Replicate model still works and a `runpod/*` model
+      # fails with a message naming /studio/prod/runpod-api-key.
+      - name: Store the Runpod key
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RUNPOD_API_KEY}" ]; then
+            echo "::warning::RUNPOD_API_KEY is not set on the studio-production" \
+                 "environment. Runpod models will fail with a message naming" \
+                 "/studio/prod/runpod-api-key; everything else is unaffected."
+            exit 0
+          fi
+          aws ssm put-parameter --overwrite --type SecureString \
+            --name /studio/prod/runpod-api-key \
+            --value "${RUNPOD_API_KEY}" >/dev/null
+          echo "Stored the Runpod key in /studio/prod/runpod-api-key"
+
       - name: Update Lambda env vars
         run: |
           set -euo pipefail
@@ -453,7 +472,8 @@ jobs:
               STUDIO_COGNITO_CLIENT_ID:         $client,
               STUDIO_WEBHOOK_BASE_URL:          $callback,
               STUDIO_RENDER_QUEUE_URL:          $renderq,
-              STUDIO_REPLICATE_TOKEN_PARAMETER: "/studio/prod/replicate-api-token"
+              STUDIO_REPLICATE_TOKEN_PARAMETER: "/studio/prod/replicate-api-token",
+              STUDIO_RUNPOD_TOKEN_PARAMETER:    "/studio/prod/runpod-api-key"
             }}' > /tmp/env-api.json
 
           aws lambda update-function-configuration \
@@ -475,7 +495,8 @@ jobs:
             '{Variables: {
               STUDIO_MEDIA_BUCKET:              $bucket,
               STUDIO_CATALOG_TABLE:             $table,
-              STUDIO_REPLICATE_TOKEN_PARAMETER: "/studio/prod/replicate-api-token"
+              STUDIO_REPLICATE_TOKEN_PARAMETER: "/studio/prod/replicate-api-token",
+              STUDIO_RUNPOD_TOKEN_PARAMETER:    "/studio/prod/runpod-api-key"
             }}' > /tmp/env-worker.json
 
           aws lambda update-function-configuration \

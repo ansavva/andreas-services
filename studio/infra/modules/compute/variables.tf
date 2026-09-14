@@ -99,6 +99,17 @@ variable "replicate_token_parameter" {
   default     = ""
 }
 
+variable "runpod_token_parameter" {
+  description = <<-EOT
+    Name of the SSM SecureString holding the Runpod API key, reaching the
+    Lambda as `STUDIO_RUNPOD_TOKEN_PARAMETER`. Same rules as
+    `replicate_token_parameter`: a NAME, read at call time, empty where a
+    developer's machine supplies `RUNPOD_API_KEY` directly.
+  EOT
+  type        = string
+  default     = ""
+}
+
 # `replicate_token_parameter_arn` was here and is DELETED. It took the ARN off
 # `aws_ssm_parameter.replicate_api_token`, which made the `count` that used it
 # unresolvable at plan time and failed a prod deploy outright. The ARN is now

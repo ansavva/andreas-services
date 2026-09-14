@@ -188,6 +188,8 @@ def _point_config_at_the_dev_stack(dev_stack):
 BILLING_HOSTS = (
     "api.replicate.com",
     "replicate.delivery",
+    "api.runpod.ai",
+    "image.runpod.ai",
     "api.openai.com",
     "api.anthropic.com",
 )

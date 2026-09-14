@@ -28,9 +28,9 @@ import time
 
 import pytest
 
-from studio_core.clients import replicate
+from studio_core.clients import replicate, runpod
 from studio_core.handlers.aws.hook import hook_handler
-from studio_core.services import callbacks, catalog
+from studio_core.services import callbacks, catalog, generate
 
 SECRET = "whsec_" + base64.b64encode(b"a-test-signing-key").decode()
 
@@ -157,9 +157,11 @@ def queue(monkeypatch):
     return q
 
 
-def _event(run_id, body: bytes, headers=None, base64_encoded=False):
+def _event(run_id, body: bytes, headers=None, base64_encoded=False,
+           provider="replicate", query=None):
     return {
-        "pathParameters": {"run_id": run_id},
+        "pathParameters": {"provider": provider, "run_id": run_id},
+        "queryStringParameters": query,
         "headers": headers if headers is not None else _signed(body),
         "body": base64.b64encode(body).decode() if base64_encoded else body.decode(),
         "isBase64Encoded": base64_encoded,
@@ -176,7 +178,7 @@ def test_the_receiver_enqueues_the_body_verbatim(queue):
 
     answer = hook_handler.handler(_event("run-abc", body), None)
 
-    assert answer["statusCode"] == 202
+    assert answer["statusCode"] == 200
     message = json.loads(queue.sent[0]["MessageBody"])
     assert base64.b64decode(message["body_b64"]) == body
     assert message["run"] == "run-abc"
@@ -210,6 +212,29 @@ def test_the_receiver_refuses_a_path_that_names_no_run(queue):
 
     assert answer["statusCode"] == 404
     assert queue.sent == []
+
+
+def test_the_receiver_refuses_a_path_that_names_no_provider(queue):
+    """The consumer would reject it anyway; refusing here keeps it off the queue."""
+    answer = hook_handler.handler(_event("run-abc", b"{}", provider="openai"), None)
+
+    assert answer["statusCode"] == 404
+    assert queue.sent == []
+
+
+def test_the_receiver_carries_runpods_proof_from_the_query_string(queue):
+    """Runpod signs nothing, so the URL it was told to call carries `sig`, and
+    the receiver forwards it without checking it — the consumer recomputes it."""
+    body = b'{"id":"job-1","status":"COMPLETED"}'
+
+    hook_handler.handler(
+        _event("run-abc", body, headers={}, provider="runpod",
+               query={"sig": "abc123"}), None)
+
+    message = json.loads(queue.sent[0]["MessageBody"])
+    assert message["provider"] == "runpod"
+    assert message["sig"] == "abc123"
+    assert message["headers"] == {}
 
 
 def test_the_receiver_refuses_an_oversized_body(queue, monkeypatch):
@@ -301,6 +326,97 @@ def test_a_duplicate_callback_does_not_upload_the_output_twice(
     again = callbacks.process(message)
 
     assert again["outputs"] == first["outputs"]
+
+
+# ── the consumer, for a Runpod run ──────────────────────────────────────────
+
+
+def _running_runpod_run(api):
+    project = api.post("/api/projects", json={"name": "rooftop-teaser"}).get_json()
+    run = api.post("/api/runs", json={
+        "project": project["id"], "kind": "image", "engine": "z-image-turbo",
+        "model": "runpod/z-image-turbo",
+        "plan": {"version": 1, "origin": "authored", "prompt": "a porch",
+                 "params": {"size": "512*512"}},
+    }).get_json()
+    api.post(f"/api/runs/{run['id']}/submit")
+    return catalog.entity(catalog.ENTITY_RUN, run["id"])
+
+
+def _runpod_message(run_id: str, job: dict, sig: str | None = None) -> dict:
+    body = json.dumps(job).encode()
+    return {"run": run_id, "provider": "runpod", "headers": {},
+            "sig": runpod.callback_signature(run_id) if sig is None else sig,
+            "body_b64": base64.b64encode(body).decode()}
+
+
+def test_a_runpod_callback_with_the_right_sig_closes_the_run(empty_api, media_bucket):
+    """The proof is in the URL rather than the headers, and the job document is
+    Runpod's own shape — `output.result`, `output.cost`, `executionTime`."""
+    record = _running_runpod_run(empty_api)
+    assert record["provider"] == "runpod"
+
+    closed = callbacks.process(_runpod_message(record["id"], {
+        "id": record["prediction_id"], "status": "COMPLETED",
+        "delayTime": 3643, "executionTime": 5706, "workerId": "w1",
+        "output": {"cost": 0.005,
+                   "result": "https://fake.invalid/z-image-turbo/abc/result.png"},
+    }))
+
+    assert closed["status"] == "succeeded"
+    assert len(closed["outputs"]) == 1
+    assert closed["cost"] == {"amount": 0.005, "currency": "USD", "predict_time": 5.706}
+
+
+def test_a_runpod_callback_with_the_wrong_sig_is_rejected(empty_api):
+    record = _running_runpod_run(empty_api)
+
+    with pytest.raises(callbacks.Rejected):
+        callbacks.process(_runpod_message(record["id"], {
+            "id": record["prediction_id"], "status": "COMPLETED",
+            "output": {"result": "https://fake.invalid/x.png"}}, sig="forged"))
+
+    assert catalog.entity(catalog.ENTITY_RUN, record["id"])["status"] == "running"
+
+
+def test_a_runpod_callback_with_no_sig_is_rejected(empty_api):
+    record = _running_runpod_run(empty_api)
+
+    with pytest.raises(callbacks.Rejected):
+        callbacks.process(_runpod_message(record["id"], {
+            "id": record["prediction_id"], "status": "COMPLETED"}, sig=""))
+
+
+def test_a_failed_runpod_job_closes_the_run_failed(empty_api):
+    record = _running_runpod_run(empty_api)
+
+    closed = callbacks.process(_runpod_message(record["id"], {
+        "id": record["prediction_id"], "status": "FAILED",
+        "error": "worker exited"}))
+
+    assert closed["status"] == "failed"
+    assert closed["error"] == "worker exited"
+
+
+def test_a_replicate_callback_about_a_runpod_run_is_rejected(empty_api):
+    """Verified as one provider's, about a run that went to the other. A routing
+    mistake rather than a forgery, and still not applied."""
+    record = _running_runpod_run(empty_api)
+
+    with pytest.raises(callbacks.Rejected) as raised:
+        callbacks.process(_message(record["id"], {
+            "id": record["prediction_id"], "status": "succeeded",
+            "output": ["https://fake.invalid/x/0.png"]}))
+    assert "went to runpod" in str(raised.value)
+
+
+def test_the_callback_url_for_a_runpod_run_carries_its_sig(monkeypatch):
+    monkeypatch.setenv("STUDIO_WEBHOOK_BASE_URL", "https://hooks.test")
+
+    url = generate.callback_url("run-abc", "runpod")
+
+    assert url == f"https://hooks.test/api/hooks/runpod/run-abc?sig={runpod.callback_signature('run-abc')}"
+    assert generate.callback_url("run-abc") == "https://hooks.test/api/hooks/replicate/run-abc"
 
 
 def test_a_message_that_is_not_json_is_rejected():

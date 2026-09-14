@@ -1,9 +1,17 @@
 {
   "_readme": [
-    "THE MODEL REGISTRY — one entry per Replicate model, and the single source of",
+    "THE MODEL REGISTRY — one entry per model, and the single source of",
     "truth for every studio-* tool. Models are DATA, not code, the same way",
     "characters are: adding one is an entry here plus a generated skill doc, never",
     "an edit to five scripts.",
+    "",
+    "`provider` says which API runs an entry: `replicate` (the default when the",
+    "key is absent — every entry written before there was a second provider) or",
+    "`runpod`, whose `model` is `runpod/<public endpoint id>`. A Runpod model has",
+    "no schema to fetch, so its entry carries an `input` block — `properties` and",
+    "`required`, the shape the live-schema route returns for Replicate — and that",
+    "block IS its schema: submit validates against it, and `snapshot` below is",
+    "distilled from it.",
     "",
     "Add a model with `studio-media-add-model`, which fetches the live schema AND the",
     "README and proposes an entry for review. Do not hand-edit `snapshot` — it is",
@@ -1169,6 +1177,119 @@
           "minimum": 256,
           "maximum": 2048
         }
+      }
+    },
+    "z-image-turbo": {
+      "model": "runpod/z-image-turbo",
+      "provider": "runpod",
+      "kind": "image",
+      "skill": "studio-media-z-image-turbo",
+      "images": {
+        "refs": null,
+        "max_refs": null,
+        "start": "image",
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
+      "prompt": {
+        "max_chars": null
+      },
+      "note": "Z-Image Turbo, Tongyi Lab's distilled 6B text-to-image model, called on Runpod's public endpoint (not through Replicate): eight-step generation in a few seconds, photorealism, bilingual (English/Chinese) text rendering, a prompt enhancer that expands short prompts — so write a descriptive sentence, not a tag list. `image` (one URL) switches it to image-to-image, with `strength` 0–1 (default 0.8) for how far to depart from it. `size` is a fixed list of `W*H` strings, 1024*1024 by default; `seed` -1 is random, any other value repeats a draw. No negative prompt, no step count — it is distilled to eight and more steps make it worse. Flat $0.005 per image whatever the size, failed generations free, output URLs kept about seven days. The one model here whose run record carries a real price.",
+      "input": {
+        "required": [
+          "prompt"
+        ],
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "description": "What to draw. English or Chinese; a descriptive sentence beats a keyword list."
+          },
+          "image": {
+            "type": "string",
+            "format": "uri",
+            "title": "Image",
+            "description": "One image URL. Present, the model edits it (image-to-image) instead of drawing from nothing."
+          },
+          "size": {
+            "type": "string",
+            "title": "Size",
+            "enum": [
+              "1024*1024",
+              "512*512",
+              "768*768",
+              "1280*1280",
+              "1024*768",
+              "768*1024",
+              "1280*720",
+              "720*1280"
+            ],
+            "default": "1024*1024",
+            "description": "Output size as W*H."
+          },
+          "strength": {
+            "type": "number",
+            "title": "Strength",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.8,
+            "description": "Image-to-image only: how far the result departs from `image`."
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "default": -1,
+            "description": "-1 for a random draw; any other value repeats one."
+          },
+          "output_format": {
+            "type": "string",
+            "title": "Output format",
+            "enum": [
+              "png",
+              "jpeg",
+              "webp"
+            ],
+            "default": "png"
+          }
+        }
+      },
+      "snapshot": {
+        "output_format": {
+          "enum": [
+            "png",
+            "jpeg",
+            "webp"
+          ],
+          "default": "png"
+        },
+        "seed": {
+          "default": -1
+        },
+        "size": {
+          "enum": [
+            "1024*1024",
+            "512*512",
+            "768*768",
+            "1280*1280",
+            "1024*768",
+            "768*1024",
+            "1280*720",
+            "720*1280"
+          ],
+          "default": "1024*1024"
+        },
+        "strength": {
+          "default": 0.8,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "refreshed": "2026-09-14"
       }
     }
   }

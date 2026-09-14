@@ -205,6 +205,13 @@ if [ -z "${REPLICATE_API_TOKEN:-}" ]; then
   echo "REPLICATE_API_TOKEN is not set, so this API cannot submit a generation." >&2
   echo "  Put it in $DEV_ENV_FILE. Everything else works." >&2
 fi
+# The second provider's key, read the same way. Optional in the same sense:
+# without it every Replicate model still works and a `runpod/*` model refuses
+# with a message naming this variable.
+if [ -z "${RUNPOD_API_KEY:-}" ]; then
+  RUNPOD_API_KEY="$(read_env "$DEV_ENV_FILE" RUNPOD_API_KEY)"
+  export RUNPOD_API_KEY
+fi
 
 # Where `studio login` and every other CLI call go: the Flask process this
 # script is about to start, so

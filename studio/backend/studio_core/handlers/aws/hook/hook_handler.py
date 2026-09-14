@@ -34,6 +34,14 @@ own queue and closing the run with the working tree — so the code being edited
 the code that runs. In prod it is a Lambda on an event source mapping. One
 implementation either way: `services/callbacks.py`.
 
+## Two providers, one route
+
+The route is `POST /api/hooks/{provider}/{run_id}` and this file forwards the
+provider's name and, for Runpod, the `sig` query parameter its callback URL
+was minted with — `services/generate.callback_url` says why Runpod's proof is
+in the URL and Replicate's is in the headers. Neither is checked here; both
+are checked by the consumer.
+
 ## This handler does NOT verify the signature, deliberately
 
 Verification has to be byte-exact over the raw body — Replicate signs
@@ -67,6 +75,11 @@ import boto3
 #: business being copied — cookies, forwarded IPs, the gateway's own tracing.
 SIGNATURE_HEADERS = ("webhook-id", "webhook-timestamp", "webhook-signature")
 
+#: The providers a callback may claim to be from. A literal here rather than an
+#: import from `services/registry.py`, because this file imports nothing from
+#: `studio_core` — see the module docstring — and the consumer re-checks it.
+PROVIDERS = ("replicate", "runpod")
+
 #: SQS refuses a message body over 256 KiB, and a callback is a JSON envelope
 #: with metrics and logs in it — a failed video's `logs` can be large. The cap is
 #: below the SQS limit so the refusal happens here, where it can be logged
@@ -92,11 +105,15 @@ def handler(event, _context):
     callback into several. Everything this can actually refuse is refused before
     the queue: a path with no run id, and a body too large to hold.
     """
-    path = (event.get("pathParameters") or {}).get("run_id") or ""
+    parameters = event.get("pathParameters") or {}
+    path = parameters.get("run_id") or ""
     if not path.startswith("run-"):
         # Not a run id. Nothing downstream could act on this and nothing should
         # be queued for it.
         return {"statusCode": 404, "body": json.dumps({"error": "no such run"})}
+    provider = parameters.get("provider") or ""
+    if provider not in PROVIDERS:
+        return {"statusCode": 404, "body": json.dumps({"error": "no such provider"})}
 
     body = event.get("body") or ""
     if event.get("isBase64Encoded"):
@@ -118,6 +135,10 @@ def handler(event, _context):
         QueueUrl=os.environ["STUDIO_CALLBACK_QUEUE_URL"],
         MessageBody=json.dumps({
             "run": path,
+            "provider": provider,
+            # Runpod's proof travels in the URL rather than a header. Forwarded
+            # as-is; the consumer is what recomputes it.
+            "sig": (event.get("queryStringParameters") or {}).get("sig") or "",
             "headers": {name.lower(): value for name, value in headers.items()},
             # Base64 because the signature is over these exact bytes and a JSON
             # round trip of the decoded string is not guaranteed to reproduce
@@ -126,4 +147,8 @@ def handler(event, _context):
         }),
     )
     print(f"queued a callback for {path} ({len(raw)} bytes)")
-    return {"statusCode": 202, "body": json.dumps({"queued": True})}
+    # **200, not 202.** Replicate takes any 2xx; Runpod's documentation says
+    # `200` and, measured on 2026-09-14, it re-delivered a callback answered
+    # 202 five seconds later. The consumer is idempotent so the repeat cost one
+    # invocation and nothing else — but it was ours to cause.
+    return {"statusCode": 200, "body": json.dumps({"queued": True})}

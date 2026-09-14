@@ -57,7 +57,9 @@ def test_no_dev_aws_script_names_the_provider_token():
     more than the one script that would do the spending.
     """
     for script in sorted(SCRIPTS.glob("dev-aws-*.sh")):
-        assert "REPLICATE_API_TOKEN" not in script.read_text(), script.name
+        text = script.read_text()
+        assert "REPLICATE_API_TOKEN" not in text, script.name
+        assert "RUNPOD_API_KEY" not in text, script.name
 
 
 def test_dev_aws_seed_destroys_nothing():

@@ -605,7 +605,7 @@ def test_a_provider_that_is_merely_unreachable_is_still_retried(
                         lambda *a, **k: (_ for _ in ()).throw(
                             generate.replicate.OutputGone("GET … -> 403")))
     monkeypatch.setattr(generate.replicate, "get_prediction",
-                        lambda _p: (_ for _ in ()).throw(
+                        lambda _p, **_k: (_ for _ in ()).throw(
                             generate.replicate.ReplicateError("connection reset")))
     project = _project(empty_api)
     record = _running(empty_api, project)
@@ -883,3 +883,146 @@ def test_a_required_input_met_by_a_binding_passes():
     schemas = {"Input": {"required": ["image", "video"]}}
     schema.check({"prompt": "x"}, {"image": "node-a", "video": "node-b"},
                  "kwaivgi/kling-v3-motion-control", props, schemas)
+
+
+# ── the second provider ─────────────────────────────────────────────────────
+#
+# A run whose registry entry says `provider: runpod` goes to Runpod's public
+# endpoint through `clients/runpod.py`, and everything above — the transition,
+# the preflight, the one closing implementation — is the same code. What is
+# tested here is the seam: the right client is chosen, the run records which,
+# and the registry entry stands in for the live schema Runpod does not publish.
+
+
+def _runpod_draft(api, project, **body):
+    resp = api.post("/api/runs", json={
+        "project": project["id"],
+        "kind": "image",
+        "engine": "z-image-turbo",
+        "model": "runpod/z-image-turbo",
+        "plan": {"version": 1, "origin": "authored", "prompt": "a porch at dusk",
+                 "params": {"size": "512*512", "seed": 42}},
+        **body,
+    })
+    assert resp.status_code == 201, resp.get_data(as_text=True)
+    return resp.get_json()
+
+
+def test_a_runpod_run_is_submitted_through_the_runpod_client(empty_api, monkeypatch):
+    """`dispatch` picks the client off the entry's `provider`, and the route
+    records it on the run before anything is sent."""
+    from studio_core.clients import runpod
+    seen = {}
+
+    def create(model, payload, *, webhook=None):
+        seen.update(model=model, payload=payload, webhook=webhook)
+        return {"id": "job-1-u1", "status": "IN_QUEUE"}
+
+    monkeypatch.setattr(runpod, "create_prediction", create)
+    monkeypatch.setattr(replicate, "create_prediction",
+                        lambda *a, **k: pytest.fail("Replicate was called"))
+    project = _project(empty_api)
+    run = _runpod_draft(empty_api, project)
+
+    body = empty_api.post(f"/api/runs/{run['id']}/submit").get_json()
+
+    assert seen["model"] == "runpod/z-image-turbo"
+    assert seen["payload"] == {"size": "512*512", "seed": 42, "prompt": "a porch at dusk"}
+    assert body["status"] == "running"
+    assert body["provider"] == "runpod"
+    assert body["prediction_id"] == "job-1-u1"
+
+
+def test_a_runpod_run_reconciles_through_the_runpod_client(empty_api, media_bucket):
+    """The fake answers `COMPLETED` with `output.result`, and the run closes
+    with a real price rather than a duration."""
+    project = _project(empty_api)
+    run = _runpod_draft(empty_api, project)
+    empty_api.post(f"/api/runs/{run['id']}/submit")
+
+    body = empty_api.post(f"/api/runs/{run['id']}/reconcile").get_json()
+
+    assert body["status"] == "succeeded"
+    assert len(body["outputs"]) == 1
+    assert body["cost"]["currency"] == "USD"
+
+
+def test_a_runpod_payload_is_checked_against_the_entry_before_pending(empty_api):
+    """Runpod publishes no schema, so the entry's `input` block is the schema:
+    a size not in its enum is refused, and the run stays a draft."""
+    project = _project(empty_api)
+    run = _runpod_draft(empty_api, project, plan={
+        "version": 1, "origin": "authored", "prompt": "a porch",
+        "params": {"size": "4096*4096"}})
+
+    resp = empty_api.post(f"/api/runs/{run['id']}/submit")
+
+    assert resp.status_code == 400
+    assert "size='4096*4096' is not one of" in resp.get_json()["error"]
+    assert catalog.entity(catalog.ENTITY_RUN, run["id"])["status"] == "draft"
+
+
+def test_a_runpod_run_with_no_prompt_is_refused(empty_api):
+    project = _project(empty_api)
+    run = _runpod_draft(empty_api, project, plan={
+        "version": 1, "origin": "authored", "prompt": None, "params": {}})
+
+    resp = empty_api.post(f"/api/runs/{run['id']}/submit")
+
+    assert resp.status_code == 400
+    assert "requires ['prompt']" in resp.get_json()["error"]
+
+
+def test_the_schema_route_serves_a_runpod_entry_from_the_registry(empty_api):
+    """What `studio models show` and `models refresh` read for this model —
+    the same document `preflight` validates against."""
+    body = empty_api.get("/api/models/z-image-turbo/schema").get_json()
+
+    assert body["model"] == "runpod/z-image-turbo"
+    assert "1024*1024" in body["props"]["size"]["enum"]
+    assert body["schemas"]["Input"]["required"] == ["prompt"]
+
+
+def test_the_readme_route_answers_for_a_runpod_entry_without_a_provider_call(empty_api):
+    body = empty_api.get("/api/models/z-image-turbo/readme").get_json()
+
+    assert body["readme"].startswith("# runpod/z-image-turbo")
+    assert "$0.005" in body["readme"]
+
+
+def test_a_run_written_before_provider_existed_is_replicates():
+    assert generate.provider_of({"model": "google/nano-banana-pro"}) == "replicate"
+    assert generate.provider_of({"model": "runpod/z-image-turbo"}) == "runpod"
+    assert generate.provider_of({"model": "runpod/x", "provider": "replicate"}) == "replicate"
+
+
+def test_runpod_output_and_cost_are_read_off_the_public_endpoint_shape():
+    from studio_core.clients import runpod
+    job = {"id": "j", "status": "COMPLETED", "executionTime": 5706,
+           "output": {"cost": 0.005, "result": "https://x.invalid/r.png"}}
+
+    assert runpod.output_urls(job) == ["https://x.invalid/r.png"]
+    assert runpod.cost(job) == {"amount": 0.005, "currency": "USD", "predict_time": 5.706}
+    assert runpod.output_urls({"output": ["https://x.invalid/a", "https://x.invalid/b"]}) == [
+        "https://x.invalid/a", "https://x.invalid/b"]
+    assert runpod.cost({"status": "FAILED"}) is None
+
+
+def test_the_stored_runpod_document_carries_no_callback_signature(empty_api, media_bucket):
+    """Runpod echoes the webhook URL it was told, `?sig=` included. The stored
+    document keeps the URL and drops the proof."""
+    from studio_core.clients.aws import s3
+    project = _project(empty_api)
+    run = _runpod_draft(empty_api, project)
+    empty_api.post(f"/api/runs/{run['id']}/submit")
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+
+    closed = generate.close_from_prediction(record, {
+        "id": record["prediction_id"], "status": "COMPLETED", "executionTime": 10,
+        "output": {"cost": 0.005, "result": "https://fake.invalid/r.png"},
+        "webhook": "https://hooks.test/api/hooks/runpod/" + run["id"] + "?sig=deadbeef",
+    })
+
+    stored = s3.get_body(catalog.node(closed["payload"]["response"])["blob_key"], 1 << 20).decode()
+    assert "deadbeef" not in stored
+    assert "https://hooks.test/api/hooks/runpod/" in stored

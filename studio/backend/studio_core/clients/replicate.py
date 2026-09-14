@@ -9,9 +9,11 @@ poll loop somebody has to leave a terminal open for — and the credential had t
 move with it.
 
 So the sentence is preserved rather than deleted: **the only paid calls in this
-repository are `create_prediction` below and nothing else.** Everything else here
-reads — a schema, a README, a prediction's status, a webhook secret — and the
-pipeline now holds no provider token at all.
+repository are `create_prediction` below and its twin in `clients/runpod.py`,
+and nothing else.** Everything else in either reads — a schema, a README, a
+prediction's status, a webhook secret — and the pipeline now holds no provider
+token at all. `services/generate.py` picks between the two by the run's
+`provider`; the seam both answer to is documented in `runpod.py`.
 
 Two workarounds carried over verbatim, both learned the hard way and both easy to
 lose in a rewrite:
@@ -271,12 +273,51 @@ def create_prediction(model: str, payload: dict, *, webhook: str | None = None) 
     return _request("POST", f"{API_ROOT}/models/{model}/predictions", body=body)
 
 
-def get_prediction(prediction_id: str) -> dict:
-    """One prediction, whatever state it is in. Reads; never bills."""
+def get_prediction(prediction_id: str, *, model: str | None = None) -> dict:
+    """One prediction, whatever state it is in. Reads; never bills.
+
+    `model` is accepted and unused: a prediction id is global here, but
+    `clients/runpod.py` addresses a job by endpoint *and* id, and
+    `services/generate.py` calls both through one name.
+    """
     if mode() == FAKE:
         logger.info("[replicate:FAKE] get_prediction %s", prediction_id)
         return _fake_settled(prediction_id)
     return _request("GET", f"{API_ROOT}/predictions/{prediction_id}")
+
+
+def output_urls(prediction: dict) -> list[str]:
+    """Every file the prediction produced, in order.
+
+    A model returns a bare string for a single output and a list for several, and
+    a few return neither — a `succeeded` prediction with no output at all is
+    closed as `failed` by the caller, because a run that cost money and produced
+    nothing is not a success whatever the provider calls it.
+    """
+    output = prediction.get("output")
+    if isinstance(output, str):
+        return [output]
+    return [item for item in (output or []) if isinstance(item, str)]
+
+
+def cost(prediction: dict) -> dict | None:
+    """What the run cost, as far as the provider will say — which is not a price.
+
+    **Replicate's prediction body carries no money in it.** Billing is per second
+    of the model's hardware and the rate lives on the account, not on the
+    response, so an `amount` computed here would be a number this service made
+    up. What is real is `metrics.predict_time`, and it is what a price would be
+    derived from, so it is recorded under the same key the app already reads and
+    `amount` stays null.
+
+    `runs list` prints `cost.amount` and already skips a null, so a run shows no
+    price rather than a wrong one.
+    """
+    metrics = prediction.get("metrics") or {}
+    predict_time = metrics.get("predict_time")
+    if predict_time is None:
+        return None
+    return {"amount": None, "currency": None, "predict_time": predict_time}
 
 
 def model_schema(model: str) -> tuple[dict, dict]:
