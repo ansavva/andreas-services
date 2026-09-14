@@ -551,7 +551,7 @@ def test_the_entity_replace_routes_are_reachable_as_patch(catalog_tree):
     """**The six routes `docs/ENTITY_MODEL.md` spells as PUT, and why they are not.**
 
     A profile, a reference index, a default set, a project's characters, a
-    scene's shots and a movie's scenes all replace a *collection*, which is what
+    scene's runs and a movie's scenes all replace a *collection*, which is what
     PUT is for. Adding the verb means changing four places at once — Flask's
     list, the MOCK integration response, and both authorizer gateway responses in
     `modules/api_gateway` — and a verb missing from any of them fails as an

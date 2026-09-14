@@ -916,8 +916,8 @@ def test_a_send_with_an_unknown_role_is_refused(empty_api):
               "sends": [{"field": "image_input", "role": "sample", "node": picture["node_id"]}]},
     )
 
-    # `sample` is a storyboard PANEL role — a picture for a person to look at,
-    # which binds to nothing. It cannot be a send, because a send is by
+    # `sample` was a storyboard panel role — a picture for a person to look
+    # at, which binds to nothing. It cannot be a send, because a send is by
     # definition something the model was handed.
     assert resp.status_code == 400
 

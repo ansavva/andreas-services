@@ -53,12 +53,12 @@ belong in front of the person rather than at the far end of a queue where they
 arrive as a failed job twenty seconds later. The CLI already does that
 resolution and is tested for it.
 
-**It appends to no chain and patches no shot.** `frames last --chain <scene>` and
-`scenes handoff` are catalog writes on a node id, so the caller makes them once
-the job hands the node back. The worker's contract is: bytes in, one node out —
-except for `assemble`, which owns the record it is cutting, because a cut that
-landed in the bucket and never reached the scene is exactly the failure
-`SCENE_FIELDS` was widened to fix.
+**It appends to no chain and orders no cut.** `frames last --chain <slug>` and
+`scenes add` are catalog writes on ids, so the caller makes them once the job
+hands the node back. The worker's contract is: bytes in, one node out — except
+for `assemble`, which owns the record it is cutting, because a cut that landed
+in the bucket and never reached the scene is exactly the failure `SCENE_FIELDS`
+was widened to fix.
 """
 
 from __future__ import annotations
@@ -75,7 +75,7 @@ from studio_core.clients.aws import s3, sqs
 from studio_core.errors import ConfigError, NotFoundError, UpstreamError, ValidationError
 from studio_core.media import sheet as sheets
 from studio_core.media import workspace
-from studio_core.services import catalog, generate, storyboard
+from studio_core.services import catalog, generate
 
 logger = logging.getLogger(__name__)
 
@@ -439,7 +439,7 @@ def _assemble(lib: str, params: dict) -> dict:
         # what the record already holds rather than from the folder: the record
         # is what `cuts` is read off, and a stray file in the folder must not be
         # able to renumber a history that does not include it.
-        superseded = storyboard.output_node(record)
+        superseded = catalog.output_node(record)
         take = len(record.get("cuts") or []) + (1 if superseded else 0) + 1
         name = f"{stem}.mp4" if take == 1 else f"{stem}-{take}.mp4"
         output = _store(_child_folder(record["folder"], "output")["node_id"],
@@ -448,13 +448,13 @@ def _assemble(lib: str, params: dict) -> dict:
 
     info["cuts"] = [{"n": part["n"], "node": part["copy"],
                      "duration": part.get("duration"),
-                     **{k: part[k] for k in ("run", "scene", "shot", "name") if k in part}}
+                     **{k: part[k] for k in ("run", "scene", "name") if k in part}}
                     for part in parts]
 
     assignments = {
         "output": {"node": output["node"], **probe},
         "stitch": info,
-        "cuts": storyboard.keep_cut(record, output["node"]),
+        "cuts": catalog.keep_cut(record, output["node"]),
         "assembled": catalog.now(),
         "status": "assembled",
     }
@@ -463,8 +463,6 @@ def _assemble(lib: str, params: dict) -> dict:
     record = catalog.update_project_entity(
         kind, record, assignments, {"status": "assembled", "thumb": output["node"]})
 
-    if is_scene:
-        _record_shots(record, parts)
     return {"output": output, "stitch": info, "target": target,
             # Named rather than left to be inferred from the method string. It is
             # the thing the stitching contract exists to make visible, and a
@@ -482,38 +480,6 @@ def _child_folder(parent_id: str, name: str) -> dict:
     from studio_core.services import layout
 
     return layout.folder_under(parent_id, name)
-
-
-def _record_shots(record: dict, parts: list[dict]) -> None:
-    """Write each shot's copied node, its position and its duration back.
-
-    One `update_shot` per shot rather than a `put_shots` replace, because a
-    replace merges a whole plan and this is recording what a render did to shots
-    that already exist. A part with no `shot` is one the caller appended with
-    `--shot <runref>` against a scene that has no plan; there is no row to
-    update and nothing is invented for it.
-    """
-    for part in parts:
-        if not part.get("shot"):
-            continue
-        # **No `n`.** A shot's position is `order`, and `n` is derived from it
-        # on read (`domain/scenes.scene_shots`) precisely so there is one answer
-        # to that question — storing it would go stale the first time a plan was
-        # reordered, and `catalog.SHOT_FIELDS` does not carry it.
-        changes = {"node": part["node"],
-                   # The copy in `shots/`, which is what makes a scene stay
-                   # playable while its runs are rebuilt around it. It is a
-                   # different node from `node` on purpose — two blobs, two
-                   # independent lifetimes, because a second node on one blob is
-                   # copy-on-write and a delete of either destroys the bytes.
-                   "shot_node": part["copy"],
-                   "duration": part.get("duration")}
-        if part.get("run"):
-            changes["run"] = part["run"]
-        try:
-            catalog.update_shot(record["id"], record["lib"], part["shot"], changes)
-        except NotFoundError:
-            logger.warning("Scene %s has no shot %s to record", record["id"], part["shot"])
 
 
 def _frame(params: dict) -> dict:

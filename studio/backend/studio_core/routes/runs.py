@@ -369,6 +369,7 @@ def create_draft(body: dict, held) -> dict:
     plan = body.get("plan")
     if plan is not None and not isinstance(plan, dict):
         raise ValidationError("plan must be an object")
+    scene = _scene_of(body.get("scene"), project["id"], held)
 
     parent = project_routes.folder_for(project, layout.RUN_PARENT)
     record = catalog.create_project_entity(
@@ -399,12 +400,19 @@ def create_draft(body: dict, held) -> dict:
             "submitted": None,
             "completed": None,
             "characters": characters,
+            # **The scene this run is made for, or nothing.** A field on the
+            # run — a run belongs to at most one scene — with an edge beside
+            # it (`_edge_targets`), so "every run in this scene" is one
+            # `by-sk` query. Projected onto the listing row so
+            # `?scene=` filters a page without reading an envelope.
+            "scene": scene,
             "outputs": [],
             "cost": None,
             "error": None,
             "payload": {"request": None, "response": None, "prompt": None},
         },
-        listing={"status": "draft", "model": model, "kind": kind},
+        listing={"status": "draft", "model": model, "kind": kind,
+                 **({"scene": scene} if scene else {})},
         subfolders=(layout.OUTPUT_FOLDER,),
         # A draft is an intention. Counting it here would make a project report
         # runs nobody bought; `update_run` counts it when it is submitted.
@@ -434,6 +442,7 @@ def create_draft(body: dict, held) -> dict:
             # back for the record to find out which project it just wrote to
             # would be a round trip for something it supplied.
             "project": record["project"],
+            "scene": record.get("scene"),
             "status": record["status"],
             "folder": record["folder"],
             "payload": record["payload"],
@@ -445,6 +454,24 @@ def create_draft(body: dict, held) -> dict:
             "created": record["created"],
         }
     )
+
+
+def _scene_of(addressed, project_id: str, held) -> str | None:
+    """The scene a run names, checked: this library's, and this project's.
+
+    `None` and `""` both mean no scene, so a client that sends the field empty
+    to clear it is not refused. A scene in another project is refused rather
+    than accepted and drawn under the wrong one — a run and its scene share a
+    project by construction, and nothing downstream checks it again.
+    """
+    if not addressed:
+        return None
+    if not isinstance(addressed, str):
+        raise ValidationError("scene must be a scene id")
+    scene = support.entity_at(catalog.ENTITY_SCENE, g.library, addressed, held)
+    if scene.get("project") != project_id:
+        raise ValidationError(f"{addressed} is not in this project")
+    return scene["id"]
 
 
 def _write_payload(record: dict, body: dict) -> dict:
@@ -489,8 +516,10 @@ def list_runs():
     each — which is what `runs find` did for *every* query, reading three JSON
     documents per run on the way.
 
-    `status`, `model`, `kind`, `fingerprint` and `since` filter in memory over one
-    query's worth of rows. A GSI per filter would be five indexes for one screen.
+    `status`, `model`, `kind`, `fingerprint`, `scene` and `since` filter in memory
+    over one query's worth of rows. A GSI per filter would be six indexes for one
+    screen. `scene` is projected onto the listing row for exactly this: the
+    scene page is the project feed narrowed to one scene's runs.
 
     **`?fingerprint=` is the one that is not for a screen.** It answers "has this
     exact payload already been submitted here", which `engine/ledger.py` kept a
@@ -535,7 +564,7 @@ def list_runs():
             runs.extend(catalog.project_entities(project["id"], KIND))
         runs.sort(key=lambda run: run.get("created") or "", reverse=True)
 
-    for field in ("status", "model", "kind", "fingerprint"):
+    for field in ("status", "model", "kind", "fingerprint", "scene"):
         if args.get(field):
             runs = [run for run in runs if run.get(field) == args[field]]
     if args.get("since"):
@@ -754,6 +783,7 @@ def _feed_row(row: dict, record: dict, send_entries: list[dict], nodes: dict) ->
         "id": row["id"],
         "lib": row.get("lib") or record.get("lib"),
         "project": row.get("project") or record.get("project"),
+        "scene": record.get("scene") or row.get("scene"),
         "status": record.get("status") or row.get("status"),
         "kind": record.get("kind") or row.get("kind"),
         "model": record.get("model") or row.get("model"),
@@ -876,9 +906,8 @@ def get_run(run_id: str):
     """The envelope, bindings and outputs expanded, payload left as ids, and the
     way back up.
 
-    `scenes` is which scenes bound this run into a shot, which could not be asked
-    before the edge rows existed: it lived in a shot attribute, and `by-sk`
-    cannot see into one.
+    `scene` is the scene this run belongs to, or `None` — a field on the record,
+    always present, so a client never has to tell "absent" from "no scene".
 
     **`payload` stays three node ids.** They are fetched as text through
     `GET /api/nodes/<id>/text` by whoever wants them, which is where the "never
@@ -921,6 +950,7 @@ def view(record: dict, send_entries: list[dict] | None = None) -> dict:
             # "absent" from "null" to draw the difference between a run with no
             # plan and one whose plan was cleared. There is no difference.
             "plan": None,
+            "scene": None,
             **record,
             # **Who this run is ABOUT, which `characters` alone does not answer.**
             # That field is written at creation and nowhere else, so a run built
@@ -929,7 +959,6 @@ def view(record: dict, send_entries: list[dict] | None = None) -> dict:
             # `{character.N}` counts, derived from the bindings when the record
             # itself is silent — see `_cast`.
             "cast": _cast(record),
-            "scenes": support.holders(record["id"], catalog.ENTITY_SCENE),
             # **The ordered list, each image with what it is for and where it
             # came from.** This is the half `bindings` never held: the map says
             # an image was sent, and a send says it was the start frame, or the
@@ -1227,6 +1256,18 @@ def update_run(run_id: str):
         assignments["characters"] = cast
         edges = {catalog.ENTITY_CHARACTER: cast}
 
+    # **Which scene this run is for — settable after creation, and clearable.**
+    # A run made from the project feed can be put into a scene later, and one
+    # made for a scene can be taken back out; both are the attribute, its
+    # listing projection and its edge row, in one transaction. Taking a run
+    # out of a scene does not take it out of that scene's CUT — the cut is the
+    # scene's list, and `routes/scenes.set_runs` is where it is edited.
+    if "scene" in body:
+        scene = _scene_of(body["scene"], record["project"], held)
+        assignments["scene"] = scene
+        listing["scene"] = scene
+        edges = {**(edges or {}), catalog.ENTITY_SCENE: [scene] if scene else []}
+
     if not assignments:
         raise ValidationError("nothing to change")
 
@@ -1430,6 +1471,14 @@ def delete_run(run_id: str):
     if files not in ("keep", "delete"):
         raise ValidationError("files must be 'keep' or 'delete'")
 
+    # A cut that names a deleted run would draw a row with nothing in it and
+    # refuse to assemble for a reason nobody can act on. The run's own edge
+    # rows go with its partition; the scene's list is another record's field.
+    for scene_id in catalog.linked(record["id"], catalog.ENTITY_SCENE):
+        scene = catalog.entity(catalog.ENTITY_SCENE, scene_id)
+        kept = [run_id for run_id in scene.get("runs") or [] if run_id != record["id"]]
+        catalog.update_project_entity(
+            catalog.ENTITY_SCENE, scene, {"runs": kept}, edges={KIND: kept})
     manage.drain(g.library)
     result = catalog.delete_entity(KIND, record, delete_files=files == "delete")
     manage.release(g.library, result["blob_keys"], result["sweeps"])

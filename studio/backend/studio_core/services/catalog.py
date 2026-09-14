@@ -16,7 +16,7 @@ Library     lib-<uuid>     the sharing unit; has members
  ├ Character char-<uuid>   who a subject is
  ├ Project  proj-<uuid>    a unit of production
  ├ Run      run-<uuid>     one submission to a model
- ├ Scene    scene-<uuid>   shots stitched into one continuous take
+ ├ Scene    scene-<uuid>   an ordered series of runs, cut into one take
  └ Movie    movie-<uuid>   scenes cut into one piece
 ```
 
@@ -38,7 +38,8 @@ One node type. A folder is a node with no blob; a file is a node with one.
 | Run ↔ character | `RUN#<run_id>` | `CHAR#<char_id>` | which characters a run used |
 | Scene / Movie | `SCENE#…` / `MOVIE#…` | `META` | |
 | Scene / Movie in project | `PROJ#<proj_id>` | `SCENE#<created>#<id>` | |
-| Shot | `SCENE#<scene_id>` | `SHOT#<shot_id>` | one row per planned shot |
+| Run ↔ scene | `RUN#<run_id>` | `SCENE#<scene_id>` | which scene a run belongs to; reverse-queryable |
+| Scene ↔ run | `SCENE#<scene_id>` | `RUN#<run_id>` | the runs a scene cuts; reverse-queryable |
 | Phrasebook term | `LIB#<lib>` | `TERM#<model>#<avoid>` | the wording lists |
 | Block | `LIB#<lib>` | `SPEC#BLOCK#<name>` | shared prose, cited BY NAME in a prompt |
 | Template | `LIB#<lib>` | `SPEC#TEMPLATE#<template_id>` | the record |
@@ -122,7 +123,7 @@ from botocore.exceptions import ClientError
 from studio_core import config
 from studio_core.clients.aws import dynamodb
 from studio_core.errors import ConflictError, NotFoundError, UpstreamError, ValidationError
-from studio_core.services import digest, keys, storyboard
+from studio_core.services import digest, keys
 # Re-exported so every caller keeps saying `catalog.plan_digest(...)`. They live
 # in `digest.py` because the pipeline's test fake loads that module rather than
 # restating the hash — see its docstring.
@@ -2017,21 +2018,22 @@ def links(entity_id: str, target_kind: str) -> list[str]:
 # |---|---|---|
 # | **edge** | `<B>#<b_id>` | set membership, readable from both ends |
 # | **listing** | `<KIND>#<created>#<id>` | chronological pagination — `project_entities` |
-# | **ordered child** | `SHOT#<n>` | a positional entity carrying payload |
+# | **ordered child** | `SEND#<n>` | a positional row carrying payload |
 #
 # A listing row embeds a timestamp so a project's runs paginate newest-first,
 # which costs it a reverse query it does not need — a run records its `project`
-# on its own record. An ordered child is an entity in its own right: a shot
-# exists before anything has been rendered into it, so its identity is its
-# position and not the run it may later bind.
+# on its own record. An ordered child's identity is its position: a send is the
+# n-th image a model is handed, and the node it names is a field.
 #
-# **Where an ordered child points at an entity, it gets an edge row beside it**,
-# written in the SAME transaction — for the reason `create_project_entity`
+# **Where a record holds an ordered list of entities, it gets edge rows beside
+# it**, written in the SAME transaction — for the reason `create_project_entity`
 # already gives about character usage: a link written afterwards is a link a
-# crash can lose. That is the whole rule: a movie's scenes are also a JSON list
-# and a scene's shots also name their run in an attribute, and no index can see
-# into either — the edge row beside each is what makes "which movie cuts this
-# scene" and "which scene used this run" one `by-sk` query apiece.
+# crash can lose. A movie's scenes and a scene's runs are both JSON lists,
+# because both may legally repeat an entry and both carry an order, and no
+# index can see into a list — the edge rows beside each are what make "which
+# movie cuts this scene" and "which scene cuts this run" one `by-sk` query
+# apiece. A run's `scene` is a single id and gets the same edge, so "every run
+# in this scene" is the same query one prefix over.
 
 
 def edge_sk(target_id: str) -> str:
@@ -2408,7 +2410,7 @@ def delete_entity(kind: str, record: dict, *, delete_files: bool) -> dict:
     if kind in LISTED_KINDS:
         steps.append(
             (_delete(_lib_pk(record["lib"]), _member_sk(kind, record["id"])), None))
-    for holder in (ENTITY_PROJECT, ENTITY_RUN):
+    for holder in (ENTITY_PROJECT, ENTITY_RUN, ENTITY_SCENE, ENTITY_MOVIE):
         for holder_id in linked(record["id"], holder):
             steps.append(
                 (
@@ -2542,11 +2544,15 @@ def _listing_sk(kind: str, created: str, entity_id: str) -> str:
 def _edge_targets(attributes: dict) -> list[str]:
     """Every entity id an envelope points at, flattened for `edge_steps`.
 
-    `characters` and `scenes` are lists of ids, and each is an edge like any
-    other — "which runs used this character" is the same question as "which
-    projects involve this character", asked one prefix over.
+    `characters`, `scenes` and `runs` are lists of ids and `scene` is one, and
+    each is an edge like any other — "which runs used this character" is the
+    same question as "which projects involve this character", asked one prefix
+    over, and "which runs are in this scene" is the same one again.
     """
-    return [*(attributes.get("characters") or []), *(attributes.get("scenes") or [])]
+    return [*(attributes.get("characters") or []),
+            *(attributes.get("scenes") or []),
+            *(attributes.get("runs") or []),
+            *([attributes["scene"]] if attributes.get("scene") else [])]
 
 
 def create_project_entity(
@@ -2724,186 +2730,73 @@ def runs_for_character(char_id: str) -> list[dict]:
     return sorted(found.values(), key=lambda record: record.get("created") or "", reverse=True)
 
 
-# ───────────────────────────── shots ─────────────────────────────
-
-
-SHOT_PREFIX = "SHOT#"
-
-
-def shots(scene_id: str) -> list[dict]:
-    """One scene's planned shots, in `order`."""
-    items = _query(
-        TableName=config.catalog_table(),
-        KeyConditionExpression="pk = :pk AND begins_with(sk, :shot)",
-        ExpressionAttributeValues={
-            ":pk": {"S": _entity_pk(ENTITY_SCENE, scene_id)},
-            ":shot": {"S": SHOT_PREFIX},
-        },
-    )
-    entries = []
-    for item in items:
-        entry = _entity(item)
-        entry["id"] = _deserialize(item["sk"])[len(SHOT_PREFIX) :]
-        entries.append(entry)
-    entries.sort(key=lambda entry: entry.get("order") or 0)
-    return entries
-
-
-# Everything a shot row holds, and it is the list of what a storyboard IS. A
-# field the CLI authors and this tuple omits is dropped silently on the way in,
-# so the tuple has to be the whole list.
+# ───────────────────────────── scenes ─────────────────────────────
 #
-# `panels` is a list of objects and `motion` is an object; both survive the trip
-# because `_serialize` marshals nested values and `_numbers` walks them back.
+# A scene is a named, ORDERED SERIES OF RUNS, and nothing else: no plan rows, no
+# panels, no storyboard. There were `SHOT#` rows once — one per planned shot,
+# carrying a prompt, its panels and the run that rendered it — and the plan they
+# held was a second data model beside the run's own `plan` and `SEND#` rows,
+# describing the same still and the same clip in different words. A run already
+# has an authored half and a rendered half; a scene needs only to say which runs
+# are its, and in what order they cut.
 #
-# The two halves are worth keeping distinct in your head even though the merge
-# treats them alike — authored: `order`, `beat`, `prompt`, `panels`, `motion`,
-# `continues`, `status`; recorded by a render: `run`, `runref`, `node`,
-# `shot_node`, `panel`, `duration`, `rendered`, `opens_on`.
-SHOT_FIELDS = (
-    "order", "beat", "prompt", "panels", "motion", "continues", "status",
-    "opens_on", "run", "runref", "node", "shot_node", "panel", "duration", "rendered",
-    # The runs this shot has been rendered by before the current one. Written by
-    # `storyboard.keep_take` on the two routes below rather than by any caller —
-    # a client that had to remember to preserve its own history would forget,
-    # and the CLI is not the only client.
-    "takes",
-)
+# Two facts, each stored once:
+#
+# | Fact | Where | Edge beside it |
+# |---|---|---|
+# | a run belongs to a scene | `scene` on the run's record | `RUN#<run>` / `SCENE#<scene>` |
+# | the cut, in order | `runs` on the scene's record | `SCENE#<scene>` / `RUN#<run>` |
+#
+# Membership takes the stills as well as the clips — the frame a shot opens on
+# and the contact sheet somebody judged it by are runs made FOR the scene — and
+# the cut names the clips only. `runs_in_scene` answers the first; the record
+# answers the second.
 
 
-def _shot_item(scene_id: str, shot_id: str, entry: dict) -> dict:
-    return _put(
-        _entity_pk(ENTITY_SCENE, scene_id),
-        f"{SHOT_PREFIX}{shot_id}",
-        {
-            **{field: entry.get(field) for field in SHOT_FIELDS},
-            "created": entry.get("created") or _now(),
-        },
-    )
+def runs_in_scene(scene_id: str) -> list[dict]:
+    """Every run that names this scene, newest first. One `by-sk` query."""
+    found = entities_by_id(ENTITY_RUN, linked(scene_id, ENTITY_RUN))
+    return sorted(found.values(), key=lambda record: record.get("created") or "", reverse=True)
 
 
-def _shot_run_edges(scene_id: str, lib: str, written: list[dict],
-                    now: str) -> list[tuple[dict, Exception | None]]:
-    """Edge rows making `SCENE#<id> / RUN#<id>` exactly the runs its shots bind.
+def output_node(record: dict) -> str | None:
+    """The node id of a scene's or movie's cut, whichever of the two shapes it is.
 
-    A shot's identity is its position — it exists as a plan before anything is
-    rendered — so `SHOT#<n>` is the right key for it and the run it later binds
-    is a field. Without an edge the run would be reachable only by reading every
-    shot of every scene.
-
-    So the edge lives beside the shot rather than replacing it, and is derived
-    from the shots on every write instead of being maintained incrementally:
-    a shot can gain, change or lose its run through two different routes, and a
-    derived set cannot drift from the thing it is derived from.
-
-    **A shot names a run in three places, not one.** In a boarded scene
-    `shot["run"]` — the motion render — is typically empty while every *panel*
-    carries a run, because boarding records the still per panel. Reading
-    `shot["run"]` alone leaves the backlink empty for every boarded scene.
-
-    | Field | What named the run |
-    |---|---|
-    | `shot["run"]` | the motion render for the whole shot |
-    | `panels[n]["run"]` | the still boarded into panel n |
-    | `opens_on["from_run"]` | the run whose last frame this shot continues from |
-
-    All three are "this scene used that run", which is the question being
-    answered. Duplicates collapse — an edge is set membership.
+    `{"node": <id>, …probe}` is what the render worker writes; a bare id is what
+    `POST /api/{scenes,movies}/<id>/output` wrote before it wrote a pointer, and
+    what every row created up to then holds. Normalising on the way out beats
+    migrating: there was one writer of the old shape and it now writes the new.
     """
-    bound = []
-    for shot in written:
-        if shot.get("run"):
-            bound.append(shot["run"])
-        for panel in shot.get("panels") or []:
-            if isinstance(panel, dict) and panel.get("run"):
-                bound.append(panel["run"])
-        opens_on = shot.get("opens_on")
-        if isinstance(opens_on, dict) and opens_on.get("from_run"):
-            bound.append(opens_on["from_run"])
-    return edge_steps(ENTITY_SCENE, scene_id, lib, bound,
-                      links(scene_id, ENTITY_RUN), now)
+    stored = record.get("output")
+    if isinstance(stored, str):
+        return stored or None
+    if isinstance(stored, dict):
+        return stored.get("node")
+    return None
 
 
-def put_shots(scene_id: str, lib: str, entries: list[dict]) -> list[dict]:
-    """Revise a scene's plan **onto** the work already rendered, not over it.
+def keep_cut(record: dict, node_id: str | None) -> list[dict]:
+    """The cuts a scene or movie was assembled into before the current one.
 
-    A plan revision is a person rewriting prompts. `run`, `node` and `panel` are
-    what a render put there, and a plain replace would throw them away — so a
-    shot matched by id keeps every field the request does not name. Shots the
-    revision drops are deleted; new ones are appended.
+    **Re-cutting overwrote the only pointer to the previous take.** A scene holds
+    one `output` — deliberately, because a scene *is* one take — but assembling
+    is not a one-shot act: a run gets re-rendered and the scene is cut again,
+    and the stitched file that was there was then reachable by nobody.
 
-    That rule is `entry.get(field, previous.get(field))` and it is per-field
-    rather than per-half on purpose: `--force` re-ingest sends a plan the CLI has
-    already merged, and a route that guessed which half a field belonged to would
-    disagree with it. Naming a field wins; not naming one keeps what was there.
+    Only a node actually being displaced is pushed, and a node already in the
+    list is not pushed twice, so the repeated writes a single assemble makes
+    cannot grow the history. It lives here because the render worker calls it
+    and a worker has no Flask request to import a route module under.
     """
-    existing = {entry["id"]: entry for entry in shots(scene_id)}
-    now = _now()
-
-    written = []
-    steps = []
-    for index, entry in enumerate(entries):
-        shot_id = entry.get("id") or f"shot-{uuid.uuid4()}"
-        previous = existing.pop(shot_id, {})
-        merged = {field: entry.get(field, previous.get(field)) for field in SHOT_FIELDS}
-        # **One level deeper, for panels only.** The rule above protects a shot's
-        # fields; a `panels` list that IS named replaces the stored one whole, so
-        # the images and boarded flags inside it need carrying across too.
-        deeper = storyboard.merge_panels(previous, entry)
-        if deeper is not None:
-            merged["panels"] = deeper
-        # **The STORE guarantees the shape; the write does not overwrite it.**
-        # `opens_on` is recorded by `scenes handoff` and must survive a revision
-        # that does not mention it — so it is never sent — but a shot that has
-        # never had one still answers with the pair rather than with `null`, so
-        # no reader has to tell "no handoff yet" from "this field does not exist".
-        if not merged.get("opens_on"):
-            merged["opens_on"] = {"node": None, "from_run": None}
-        # BEFORE `status`, and before anything else reads `merged`: a take is
-        # displaced by this very write, so the comparison is between what was
-        # stored and what is about to be.
-        merged["takes"] = storyboard.keep_take(previous, merged)
-        merged["status"] = storyboard.shot_status(merged)
-        merged["order"] = (
-            merged["order"] if merged.get("order") is not None else (index + 1) * 10
-        )
-        merged["created"] = previous.get("created") or now
-        written.append({**merged, "id": shot_id})
-        steps.append((_shot_item(scene_id, shot_id, merged), None))
-
-    steps += [
-        (_delete(_entity_pk(ENTITY_SCENE, scene_id), f"{SHOT_PREFIX}{shot_id}"), None)
-        for shot_id in existing
-    ]
-    steps += _shot_run_edges(scene_id, lib, written, now)
-
-    for start in range(0, len(steps), TRANSACTION_ITEMS):
-        _write(steps[start : start + TRANSACTION_ITEMS])
-    written.sort(key=lambda entry: entry.get("order") or 0)
-    return written
-
-
-def update_shot(scene_id: str, lib: str, shot_id: str, changes: dict) -> dict:
-    """One shot: which run rendered it, which panel it came from, its plan.
-
-    The same field list as `put_shots`, because a shot patched one field at a
-    time and a shot rewritten by a plan revision are the same row; a narrower
-    list here would silently discard whatever the other had just written.
-    """
-    entry = next((item for item in shots(scene_id) if item["id"] == shot_id), None)
-    if entry is None:
-        raise NotFoundError(shot_id)
-
-    merged = {**entry, **{k: v for k, v in changes.items() if k in SHOT_FIELDS}}
-    # The one-field patch route reaches this too: `scenes render` and
-    # `scenes attach` both record a run through here, so a retry that never
-    # touches the plan still keeps the take it displaced.
-    merged["takes"] = storyboard.keep_take(entry, merged)
-    merged["status"] = storyboard.shot_status(merged)
-    others = [item for item in shots(scene_id) if item["id"] != shot_id]
-    _write([(_shot_item(scene_id, shot_id, merged), None),
-            *_shot_run_edges(scene_id, lib, [*others, merged], _now())])
-    return merged
+    was = output_node(record)
+    cuts = [dict(cut) for cut in (record.get("cuts") or [])]
+    if not was or was == node_id:
+        return cuts
+    if any(cut.get("node") == was for cut in cuts):
+        return cuts
+    stored = record.get("output")
+    stored = {} if isinstance(stored, str) else dict(stored or {})
+    return [{**stored, "node": was}, *cuts]
 
 
 # ──────────────────────── where an image came from ────────────────────────
@@ -2984,9 +2877,9 @@ def source_of(record: dict) -> dict:
 
 # ───────────────────────────── sends ─────────────────────────────
 #
-# One row per image a run binds, and it is to a run what `SHOT#` is to a scene:
-# an ORDERED CHILD, not an edge. It exists in a plan before anything has been
-# submitted, its identity is its position, and the node it names is a field.
+# One row per image a run binds: an ORDERED CHILD, not an edge. It exists in a
+# plan before anything has been submitted, its identity is its position, and
+# the node it names is a field.
 #
 # **The order is the meaning, not a presentation detail.** A model is handed a
 # list of images and the prompt cites positions in it — a production prompt in
@@ -3003,16 +2896,15 @@ def source_of(record: dict) -> dict:
 
 SEND_PREFIX = "SEND#"
 
-#: What a send is FOR. The four image words a storyboard panel uses, minus
-#: `sample` — a sample binds to nothing, so it never becomes a send — plus
-#: `clip`: the one video a model works from (a motion reference, an edit
-#: source), which the registry names under `clips.source`.
+#: What a send is FOR. The image slots a video engine takes — a first frame, a
+#: last frame, a reference — plus `input`, the image being edited, and `clip`:
+#: the one video a model works from (a motion reference, an edit source), which
+#: the registry names under `clips.source`.
 SEND_ROLES = frozenset({"start", "end", "reference", "input", "clip"})
 
 #: Everything a send row holds. All four are AUTHORED; a send has no recorded
-#: half, which is the one way it differs from a shot. That is also why
-#: `put_sends` replaces rather than merging: there is nothing underneath a
-#: revision that a render could have put there.
+#: half, which is why `put_sends` replaces rather than merging: there is
+#: nothing underneath a revision that a render could have put there.
 SEND_FIELDS = ("field", "role", "node", "source")
 
 
@@ -3060,13 +2952,11 @@ def _send_item(run_id: str, order: int, entry: dict) -> dict:
 def put_sends(run_id: str, entries: list[dict]) -> list[dict]:
     """Replace a run's sends wholesale, renumbered from 1.
 
-    **A replace, where `put_shots` merges, and the difference is not an
-    oversight.** A shot carries recorded work — the run that rendered it, the
-    clip, the panel — so a plan revision has to land *onto* it. Every field of a
-    send is authored, so there is nothing to preserve and merging would only
-    make position ambiguous: the whole point of the row is that send 3 is the
-    third image, and a merge that kept a dropped send at position 3 would leave
-    the list describing an order the model was never given.
+    **A replace, not a merge.** Every field of a send is authored, so there is
+    nothing underneath a revision to preserve, and merging would only make
+    position ambiguous: the whole point of the row is that send 3 is the third
+    image, and a merge that kept a dropped send at position 3 would leave the
+    list describing an order the model was never given.
 
     Rows beyond the new length are deleted in the same write, so the tail of a
     shortened list cannot survive as a send nothing sent.

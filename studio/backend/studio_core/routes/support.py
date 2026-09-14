@@ -45,7 +45,7 @@ from flask import g, jsonify, request
 
 from studio_core.clients.aws import s3
 from studio_core.errors import ForbiddenError, ValidationError
-from studio_core.services import catalog, storyboard
+from studio_core.services import catalog
 
 logger = logging.getLogger(__name__)
 
@@ -185,24 +185,9 @@ def asset(node_id: str, record: dict | None = None) -> dict:
 
 
 def output_node(stored) -> str | None:
-    """The node id inside a stored `output`, whichever of the two shapes it is.
-
-    A scene and a movie each have exactly one cut, stored as a pointer —
-    `{"node": <id>}` — plus whatever the encoder recorded about the file.
-    `assemble` writes the probe alongside it; this service stores that and never
-    reads it, because how the video was made is the CLI's business.
-
-    **A bare id is still read**, because that is the shape
-    `POST /api/{scenes,movies}/<id>/output` wrote before it wrote a pointer, and
-    it is what every row created up to then holds. Normalising on the way out
-    beats migrating: there was one writer of the old shape and it now writes the
-    new one.
-    """
-    if isinstance(stored, str):
-        return stored or None
-    if isinstance(stored, dict):
-        return stored.get("node")
-    return None
+    """The node id inside a stored `output`. `catalog.output_node`'s rule, on a
+    bare value: a client sends `{"node": …}` or an id, and this reads both."""
+    return catalog.output_node({"output": stored})
 
 
 def with_output(record: dict) -> dict:
@@ -218,7 +203,7 @@ def with_output(record: dict) -> dict:
     what was then a bare string.
     """
     stored = record.get("output")
-    node_id = output_node(stored)
+    node_id = catalog.output_node(record)
     # `cuts` is expanded whether or not there is a current output: a scene can
     # hold earlier cuts and no current one if the latest assemble failed, and
     # returning early would hide exactly the history somebody is looking for.
@@ -232,14 +217,14 @@ def with_output(record: dict) -> dict:
 
 
 def keep_cut(record: dict, node_id: str | None) -> list[dict]:
-    """The cuts this scene has been assembled into before the current one.
+    """The cuts this scene or movie was assembled into before the current one.
 
-    **The implementation moved to `services/storyboard.py` and the name stayed
-    here.** The assemble that displaces a cut runs in the render worker now, and
-    a worker has no Flask request — so a pure function it needs could not go on
-    living in a route module. Every route that wrote a cut still calls this.
+    `catalog.keep_cut`, kept under this name because every route that records
+    a cut calls it; the implementation lives beside the worker's other record
+    helpers, since a worker has no Flask request to import a route module
+    under.
     """
-    return storyboard.keep_cut(record, node_id)
+    return catalog.keep_cut(record, node_id)
 
 
 def structured(code: str, message: str, status: int, **extra):
@@ -311,10 +296,9 @@ def holders(entity_id: str, holder_kind: str) -> list[dict]:
 
     One `by-sk` query plus a batched read, which is only possible because the
     relationship is an edge row keyed on this entity's id. It is the answer to
-    "which scene used this run" and "which movie cuts this scene", and both were
-    unanswerable at any price until those edges existed: the run lived in a
-    shot's attribute and the scenes lived in a JSON list, and no index can see
-    into either.
+    "which movie cuts this scene", which was unanswerable at any price until
+    that edge existed: the scenes lived in a JSON list, and no index can see
+    into one.
 
     Deliberately thin — an id and a name are what a link needs to be drawn. It
     carried a `slug` and a `title`, which were two names for one thing.

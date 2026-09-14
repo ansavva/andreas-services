@@ -86,7 +86,7 @@ LIBRARY_UNSCOPED_PATHS = frozenset({"/api/libraries"})
 # **PUT is still allowed nowhere, and six entity routes wanted it.**
 #
 # `docs/ENTITY_MODEL.md` spells them as PUT — a profile, a reference index, a
-# default set, a project's characters, a scene's shots, a movie's scenes — and
+# default set, a project's characters, a scene's runs, a movie's scenes — and
 # every one of them replaces a *collection* rather than merging into one, which
 # is exactly what PUT is for. They are PATCH here, for the reason this file
 # already gave about saving a text file: adding a verb means changing four

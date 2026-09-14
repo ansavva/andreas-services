@@ -11,6 +11,10 @@ reverse question with no answer at any price:
 | a movie's scenes, a JSON list on the record | no index addresses into a list |
 | a scene's run, an attribute on a `SHOT#<n>` row | `by-sk` sees sort keys, not attributes |
 
+The `SHOT#` rows are gone — a scene is a series of runs now — and the rule
+outlived them: a scene's cut is a list on its record with an edge row per run,
+and a run's `scene` is one id with an edge row beside it.
+
 The second half of the file is the *shape* contract. `GET` resolved a
 relationship to objects while the write that changed it answered with the bare
 ids it was handed, so a client that merged the response replaced objects with
@@ -29,10 +33,10 @@ def _character(api, name="subject-a"):
     return api.post("/api/characters", json={"name": name}).get_json()
 
 
-def _scene(api, project, name="stadium-encounter", shots=None):
+def _scene(api, project, name="stadium-encounter", **body):
     resp = api.post(
         "/api/scenes",
-        json={"project": project["id"], "name": name, "shots": shots or []},
+        json={"project": project["id"], "name": name, **body},
     )
     assert resp.status_code == 201, resp.get_data(as_text=True)
     return resp.get_json()
@@ -44,11 +48,11 @@ def _movie(api, project, name="launch-cut", **body):
     return resp.get_json()
 
 
-def _run(api, project, **body):
+def _run(api, project, kind="video", **body):
     resp = api.post(
         "/api/runs",
-        json={"project": project["id"], "kind": "image", "engine": "nano-banana-pro",
-              "model": "google/nano-banana-pro", **body},
+        json={"project": project["id"], "kind": kind, "engine": "kling",
+              "model": "kwaivgi/kling-v3-omni-video", **body},
     )
     assert resp.status_code == 201, resp.get_data(as_text=True)
     return resp.get_json()
@@ -108,44 +112,42 @@ def test_a_reprise_keeps_its_order_and_collapses_to_one_edge(empty_api):
     assert [entry["id"] for entry in back] == [movie["id"]]
 
 
-def test_a_run_names_the_scenes_that_used_it(empty_api):
-    """The question `runs find --character` has always had, one prefix over."""
+def test_a_run_names_the_scene_it_belongs_to(empty_api):
+    """One id on the run, and the same question backwards is one `by-sk` query."""
     project = _project(empty_api)
-    run = _run(empty_api, project)
-    scene = _scene(empty_api, project, shots=[{"id": "shot-01", "prompt": "wide"}])
+    scene = _scene(empty_api, project)
+    run = _run(empty_api, project, scene=scene["id"])
 
-    empty_api.patch(f"/api/scenes/{scene['id']}/shots/shot-01", json={"run": run["id"]})
-
-    body = empty_api.get(f"/api/runs/{run['id']}").get_json()
-    assert [entry["id"] for entry in body["scenes"]] == [scene["id"]]
+    assert empty_api.get(f"/api/runs/{run['id']}").get_json()["scene"] == scene["id"]
+    assert catalog.linked(scene["id"], catalog.ENTITY_RUN) == [run["id"]]
 
 
-def test_rebinding_a_shot_moves_the_edge_off_the_old_run(empty_api):
-    """Derived from the shots on every write, so it cannot drift from them."""
+def test_moving_a_run_between_scenes_moves_the_edge(empty_api):
+    """The attribute and its edge land in one transaction, so they cannot drift."""
     project = _project(empty_api)
-    first = _run(empty_api, project)
-    second = _run(empty_api, project)
-    scene = _scene(empty_api, project, shots=[{"id": "shot-01", "prompt": "wide"}])
+    first = _scene(empty_api, project, name="one")
+    second = _scene(empty_api, project, name="two")
+    run = _run(empty_api, project, scene=first["id"])
 
-    empty_api.patch(f"/api/scenes/{scene['id']}/shots/shot-01", json={"run": first["id"]})
-    empty_api.patch(f"/api/scenes/{scene['id']}/shots/shot-01", json={"run": second["id"]})
+    empty_api.patch(f"/api/runs/{run['id']}", json={"scene": second["id"]})
 
-    assert empty_api.get(f"/api/runs/{first['id']}").get_json()["scenes"] == []
-    assert [entry["id"] for entry in
-            empty_api.get(f"/api/runs/{second['id']}").get_json()["scenes"]] == [scene["id"]]
+    assert catalog.linked(first["id"], catalog.ENTITY_RUN) == []
+    assert catalog.linked(second["id"], catalog.ENTITY_RUN) == [run["id"]]
 
 
-def test_a_plan_revision_that_drops_a_shot_drops_its_run_edge(empty_api):
-    """`put_shots` deletes rows; the edges have to go with them."""
+def test_dropping_a_run_from_the_cut_drops_its_edge(empty_api):
+    """The list and its edge rows are one write; a replace deletes what it omits."""
     project = _project(empty_api)
-    run = _run(empty_api, project)
-    scene = _scene(empty_api, project, shots=[{"id": "shot-01", "prompt": "wide"}])
-    empty_api.patch(f"/api/scenes/{scene['id']}/shots/shot-01", json={"run": run["id"]})
+    scene = _scene(empty_api, project)
+    first, second = _run(empty_api, project), _run(empty_api, project)
+    empty_api.patch(f"/api/scenes/{scene['id']}/runs",
+                    json={"runs": [first["id"], second["id"]]})
 
-    empty_api.patch(f"/api/scenes/{scene['id']}/shots",
-                  json={"shots": [{"id": "shot-02", "prompt": "close"}]})
+    empty_api.patch(f"/api/scenes/{scene['id']}/runs", json={"runs": [second["id"]]})
 
-    assert empty_api.get(f"/api/runs/{run['id']}").get_json()["scenes"] == []
+    assert catalog.links(scene["id"], catalog.ENTITY_RUN) == [second["id"]]
+    assert catalog.linked(first["id"], catalog.ENTITY_SCENE) == []
+    assert catalog.linked(second["id"], catalog.ENTITY_SCENE) == [scene["id"]]
 
 
 def test_a_character_still_names_its_projects(empty_api):
@@ -202,6 +204,19 @@ def test_setting_a_movies_scenes_answers_in_the_read_shape(empty_api):
     assert written["scenes"] == read["scenes"]
 
 
+def test_setting_a_scenes_runs_answers_in_the_read_shape(empty_api):
+    project = _project(empty_api)
+    scene = _scene(empty_api, project)
+    run = _run(empty_api, project)
+
+    written = empty_api.patch(f"/api/scenes/{scene['id']}/runs",
+                            json={"runs": [run["id"]]}).get_json()
+    read = empty_api.get(f"/api/scenes/{scene['id']}").get_json()
+
+    assert written["runs"] == read["runs"]
+    assert written["runs"][0]["kind"] == "video"
+
+
 def test_creating_a_movie_answers_in_the_read_shape(empty_api):
     project = _project(empty_api)
     scene = _scene(empty_api, project)
@@ -250,44 +265,3 @@ def test_the_input_pool_is_an_envelope_and_says_so(empty_api):
     assert isinstance(body, dict)
     assert set(body) == {"folder", "inputs"}
     assert body["inputs"] == []
-
-
-def test_a_run_boarded_into_a_panel_is_an_edge_too(empty_api):
-    """The shape the production library actually has.
-
-    `shot["run"]` is the motion render and is empty on every shot there, while
-    boarding writes a run per panel. Deriving from `run` alone left the backlink
-    empty for every boarded scene — correct in these tests, correct on a dev
-    stack with no shots, and wrong on the only real data.
-    """
-    project = _project(empty_api)
-    run = _run(empty_api, project)
-    scene = _scene(empty_api, project, shots=[{"id": "shot-01", "prompt": "wide"}])
-
-    empty_api.patch(f"/api/scenes/{scene['id']}/shots/shot-01",
-                    json={"panels": [{"n": 1, "run": run["id"]}]})
-
-    body = empty_api.get(f"/api/runs/{run['id']}").get_json()
-    assert [entry["id"] for entry in body["scenes"]] == [scene["id"]]
-
-
-def test_a_shot_that_continues_from_a_run_is_an_edge_too(empty_api):
-    project = _project(empty_api)
-    run = _run(empty_api, project)
-    scene = _scene(empty_api, project, shots=[{"id": "shot-01", "prompt": "wide"}])
-
-    empty_api.patch(f"/api/scenes/{scene['id']}/shots/shot-01",
-                    json={"opens_on": {"node": None, "from_run": run["id"]}})
-
-    body = empty_api.get(f"/api/runs/{run['id']}").get_json()
-    assert [entry["id"] for entry in body["scenes"]] == [scene["id"]]
-
-
-def test_a_planned_panel_is_not_a_link_to_nothing(empty_api):
-    project = _project(empty_api)
-    scene = _scene(empty_api, project, shots=[{"id": "shot-01", "prompt": "wide"}])
-
-    empty_api.patch(f"/api/scenes/{scene['id']}/shots/shot-01",
-                    json={"panels": [{"n": 1, "run": None}]})
-
-    assert catalog.links(scene["id"], catalog.ENTITY_RUN) == []
