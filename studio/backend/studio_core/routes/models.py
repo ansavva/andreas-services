@@ -120,6 +120,12 @@ def model_readme(name: str):
     is JSON and `apis/client.ts` needs no second code path for one route.
     """
     model_id = _model_id(name)
+    entry = registry.by_model_id(model_id)
+    if entry is not None and registry.provider_of(entry) == registry.RUNPOD:
+        # Runpod publishes no README to fetch. The entry's `note` is the prose
+        # studio wrote about it, and is what `add-model` would have read.
+        readme = f"# {model_id}\n\n{entry.get('note') or ''}\n"
+        return jsonify({"model": model_id, "readme": readme}), 200
     return jsonify({"model": model_id, "readme": replicate.model_readme(model_id)}), 200
 
 

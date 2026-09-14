@@ -118,11 +118,34 @@ def find(name: str) -> dict | None:
 
 
 def by_model_id(model_id: str) -> dict | None:
-    """One entry by Replicate id (`owner/name`), or `None`."""
+    """One entry by model id (`owner/name`, or `runpod/<endpoint>`), or `None`."""
     for key, entry in _load().items():
         if entry.get("model") == model_id:
             return {**entry, "key": key}
     return None
+
+
+#: The providers an entry may name. `replicate` is what an entry with no
+#: `provider` key means — every entry written before there was a second one.
+REPLICATE, RUNPOD = "replicate", "runpod"
+PROVIDERS = (REPLICATE, RUNPOD)
+
+
+def provider_of(entry: dict | None) -> str:
+    """Which provider runs this entry: its `provider` key, else `replicate`.
+
+    A registry key rather than an inference from the model id's prefix, so an
+    entry says what it is and a reader does not have to know that `runpod/` is
+    not a Replicate owner. `runpod.is_model` exists for the one place that has
+    only the id — a run record older than the `provider` field.
+    """
+    got = (entry or {}).get("provider") or REPLICATE
+    if got not in PROVIDERS:
+        raise RegistryError(
+            f"{(entry or {}).get('key', '?')} names provider {got!r}; "
+            f"it is one of {PROVIDERS}"
+        )
+    return got
 
 
 def field(entry: dict, path: str, default=None):

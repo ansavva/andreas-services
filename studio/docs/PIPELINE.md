@@ -295,6 +295,15 @@ API keys:
   parameter per machine would be a secret per machine to rotate. For the same
   reason it is **not a profile field**.
 
+- **RUNPOD_API_KEY** — https://console.runpod.io/user/settings — the second
+  provider's key, held exactly the same way: `/studio/prod/runpod-api-key`
+  in prod from the `RUNPOD_API_KEY` environment secret, `dev.env` locally,
+  never the CLI. Needed only for a model whose registry entry says
+  `provider: runpod` (`runpod/<endpoint>`, Runpod's public endpoints); without
+  it every Replicate model still works. It also signs the callback URL a
+  Runpod job is told to call, because Runpod signs nothing itself —
+  `backend/studio_core/clients/runpod.py` has the reasoning.
+
   `studio/.env` is not read any more, by anything. `dev-setup.sh` imports one
   it finds into `dev.env` and deletes it, because a secret inside the repo is
   worth removing whether or not anything loads it: `.gitignore` protects a
@@ -383,7 +392,7 @@ stitched into one continuous take. A **movie** is scenes cut together.
 (Separately, the `studio-media-shot` skill produces a whole still-then-clip chain,
 usually one shot in this sense.)
 
-Every submission to Replicate, from any `studio-*` engine, is recorded as a
+Every submission to a provider, from any `studio-*` engine, is recorded as a
 **run**:
 
 **A run is a row with a folder.** The envelope — status, model, prediction id,
@@ -514,6 +523,7 @@ than trusting this number.
 | `studio-media-seedream-5-pro` | `bytedance/seedream-5-pro` — ByteDance's flagship still model. Up to 10 references blended into one composition, `1K`/`2K` only, flat per-image price. The layer-decomposition-only `size` values are `denied` |
 | `studio-media-krea-2-large` | `krea/krea-2-large` — Krea's flagship still model: photorealism and expressive styles, `creativity` from `raw` to `high`, a **seed** (as has `flux-2-pro`). `style_reference_images` (≤10) transfers a **look, not a likeness** — not for holding a character on-model |
 | `studio-media-flux-2-pro` | `black-forest-labs/flux-2-pro` — BFL's production still model, generator **and editor**: natural-language edits over ≤8 `input_images` addressed by index ("the beach in image 3"), legible text, photorealism, hex colours, a seed, `custom` pixel sizes. **No negative prompt** — a negated phrase can add what it names. Billed per megapixel in and out; total input ≤9 MP |
+| `studio-media-z-image-turbo` | `runpod/z-image-turbo` — Tongyi Lab's distilled 6B still model on **Runpod's public endpoint, not Replicate** (`provider: runpod`; the entry carries its own schema because Runpod publishes none). Eight steps, photoreal, English/Chinese text in the image, a seed, one optional `image` for image-to-image with `strength`. No reference list, no negative prompt. **Flat $0.005 a draw**, and the run records that price |
 | `studio-media-seedance`  | `bytedance/seedance-2.0` — native audio, first/last frame, reference images/videos/audio. A start frame and a reference set **cannot** be combined |
 | `studio-media-kling`     | `kwaivgi/kling-v3-omni-video` — Kling 3.0 / O3 Omni (~$0.168/s, `reference_images` for consistency, native multi-shot to 6 cuts). Start frame and reference images can be combined |
 | `studio-media-kling-v3-motion-control` | `kwaivgi/kling-v3-motion-control` — Kling 3.0 Motion Control: transfers the **motion of a reference clip** onto one still ($0.07/s std, $0.12/s pro, billed on output seconds). `image` and `video` both required; no duration, aspect ratio, reference set or last frame — the clip sets the length. The clip binds with `--clip-run` / `--clip-key` (registry `clips.source`) |

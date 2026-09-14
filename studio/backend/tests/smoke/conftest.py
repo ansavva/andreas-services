@@ -88,6 +88,8 @@ def pytest_collection_modifyitems(config, items):
 BILLING_HOSTS = (
     "api.replicate.com",
     "replicate.delivery",
+    "api.runpod.ai",
+    "image.runpod.ai",
     "api.openai.com",
     "api.anthropic.com",
 )

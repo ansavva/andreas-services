@@ -71,7 +71,7 @@ from studio_core.errors import (
 )
 from studio_core.routes import projects as project_routes
 from studio_core.routes import support
-from studio_core.services import catalog, generate, layout, manage
+from studio_core.services import catalog, generate, layout, manage, registry
 from studio_core.services import template as templating
 
 logger = logging.getLogger(__name__)
@@ -1281,10 +1281,15 @@ def submit_run(run_id: str):
     entry, payload, bindings = generate.prepare(record, send_entries)
 
     bump_count = not record.get("counted")
+    # `provider` is written with the transition, before anything is sent, so a
+    # run that wedges at `pending` still says which provider to ask — and so
+    # closing it later never depends on the registry still carrying the model.
+    provider = registry.provider_of(entry)
     record = catalog.update_project_entity(
         KIND,
         record,
-        {"status": "pending", "submitted": catalog.now(), "counted": True},
+        {"status": "pending", "submitted": catalog.now(), "counted": True,
+         "provider": provider},
         {"status": "pending"},
         bump_count=bump_count,
     )
@@ -1309,7 +1314,7 @@ def submit_run(run_id: str):
     )
     return jsonify({
         **view(record, send_entries),
-        "callback": "webhook" if generate.callback_url(run_id) else "poll",
+        "callback": "webhook" if generate.callback_url(run_id, provider) else "poll",
     }), 200
 
 

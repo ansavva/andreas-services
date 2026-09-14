@@ -30,6 +30,11 @@ os.environ.setdefault("STUDIO_CATALOG_TABLE", "studio-prod-catalog")
 # in the shell they run the suite from would otherwise be believed.
 os.environ["STUDIO_REPLICATE_MODE"] = "fake"
 os.environ["REPLICATE_API_TOKEN"] = "dud-token-the-suite-must-never-use"
+# The second provider, guarded the same three ways. A dud key rather than none:
+# `runpod.callback_signature` is an HMAC under it, and a test that mints a
+# callback URL needs the fake to have something to sign with.
+os.environ["STUDIO_RUNPOD_MODE"] = "fake"
+os.environ["RUNPOD_API_KEY"] = "dud-key-the-suite-must-never-use"
 # No callback URL, so a submission under test takes the `poll` branch and there
 # is no webhook to deliver. The webhook route is tested by calling it directly
 # with a signature the test computes — see `tests/unit/test_hooks.py`.

@@ -23,6 +23,12 @@ variable "catalog_table_name" {
   default     = ""
 }
 
+variable "runpod_token_parameter" {
+  description = "Name of the SSM SecureString holding the Runpod API key, reaching the worker as `STUDIO_RUNPOD_TOKEN_PARAMETER`. A NAME, never a value — see `replicate_token_parameter`."
+  type        = string
+  default     = ""
+}
+
 variable "replicate_token_parameter" {
   description = <<-EOT
     Name of the SSM SecureString holding the Replicate API token, reaching the

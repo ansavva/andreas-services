@@ -136,8 +136,27 @@ def replicate_token_env():
     return os.environ.get("REPLICATE_API_TOKEN", "").strip()
 
 
+def runpod_token_parameter():
+    """The SSM parameter holding the Runpod API key, or `""` for none.
+
+    A name, never a value — the same shape as `replicate_token_parameter`, and
+    read the same way at call time by `clients/runpod.py`.
+    """
+    return os.environ.get("STUDIO_RUNPOD_TOKEN_PARAMETER", "").strip()
+
+
+def runpod_token_env():
+    """The Runpod API key straight from the environment, or `""`.
+
+    `RUNPOD_API_KEY` rather than a `STUDIO_` name, because it is the variable
+    every Runpod tool already reads — `runpodctl`, `flash`, the MCP — and
+    `dev.env` already carried it under that name before this service read it.
+    """
+    return os.environ.get("RUNPOD_API_KEY", "").strip()
+
+
 def webhook_base_url():
-    """Where Replicate should call back, or `""` when nothing can reach us.
+    """Where a provider should call back, or `""` when nothing can reach us.
 
     **Not this API's own origin.** It is the receiver's — a small zip Lambda
     behind its own API Gateway route, which enqueues the callback and answers in

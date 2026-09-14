@@ -16,6 +16,7 @@ locals {
   # does not resolve references between resources, so nothing caught it until a
   # real plan ran.
   replicate_token_name = "/studio/prod/replicate-api-token"
+  runpod_token_name    = "/studio/prod/runpod-api-key"
 
   common_tags = {
     Project     = local.project
@@ -169,6 +170,23 @@ resource "aws_ssm_parameter" "replicate_api_token" {
   }
 }
 
+# The second provider's key, held exactly the same way. Runpod's public
+# endpoints (`runpod/<endpoint>` in the registry) are called with it, and it is
+# also what signs the callback URL those jobs are told to call — see
+# `clients/runpod.py`.
+resource "aws_ssm_parameter" "runpod_api_key" {
+  name        = local.runpod_token_name
+  description = "Runpod API key. Written by studio-prod.yaml from a GitHub environment secret; Terraform never holds the value."
+  type        = "SecureString"
+  value       = "placeholder-the-deploy-workflow-writes-the-real-one"
+
+  tags = local.common_tags
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
 module "compute" {
   source = "../../modules/compute"
 
@@ -182,6 +200,7 @@ module "compute" {
   # The NAME as a literal, never the resource's attribute — that is what keeps
   # the grant's `count` resolvable at plan time. The module composes the ARN.
   replicate_token_parameter = local.replicate_token_name
+  runpod_token_parameter    = local.runpod_token_name
 
   # From the module, not from the variable directly: this is what orders the
   # IAM policy after the bucket exists.
@@ -260,6 +279,7 @@ module "callbacks" {
 
   catalog_table_name        = module.catalog.table_name
   replicate_token_parameter = local.replicate_token_name
+  runpod_token_parameter    = local.runpod_token_name
 
   # `:latest`, matching the Lambda in `modules/compute`: the deploy workflow
   # repoints both to `:${{ github.sha }}` after the image is pushed, and both

@@ -90,7 +90,7 @@ the `--relayed` that once recorded a second-hand yes went with the approve
 step it belonged to.
 
 **What the code enforces is smaller than the rule, and says so.**
-`POST /api/runs/<id>/submit` is the one route that calls Replicate; it takes a
+`POST /api/runs/<id>/submit` is the one route that calls a provider; it takes a
 `draft`, refuses anything already sent, and asks nothing else. What shows a
 person the payload is the CLI's render and the app's opened run. The rule is
 carried by who calls submit — a person, or an agent that person has explicitly
@@ -228,8 +228,8 @@ same library.
 
 ## Which skill
 
-**Load one before doing anything else in `studio/`.** Twenty-five skills in **two
-families** — twenty-four `studio-media-*` and one `studio-code-*`; route by what
+**Load one before doing anything else in `studio/`.** Twenty-six skills in **two
+families** — twenty-five `studio-media-*` and one `studio-code-*`; route by what
 the task *changes*, not by what it mentions.
 
 | If the task changes… | Load | Examples |
@@ -265,7 +265,7 @@ The app half (`backend/`, `frontend/`) has no skill of its own; read
 | Invoke a model generically, or inspect its schema | `studio-media-core` |
 | Register a new Replicate model | `studio-media-add-model` |
 | Pick a video engine | `studio-media-seedance` · `studio-media-kling` · `studio-media-kling-v3-motion-control` · `studio-media-veo-3-1` · `studio-media-grok-imagine-video` |
-| Pick an image engine | `studio-media-nano-banana-pro` · `studio-media-nano-banana-2` · `studio-media-gpt-image-2` · `studio-media-gpt-image-2-5-sunburst` · `studio-media-gpt-image-2-5-flare` · `studio-media-gpt-image-1-5` · `studio-media-seedream-5-pro` · `studio-media-krea-2-large` · `studio-media-flux-2-pro` |
+| Pick an image engine | `studio-media-nano-banana-pro` · `studio-media-nano-banana-2` · `studio-media-gpt-image-2` · `studio-media-gpt-image-2-5-sunburst` · `studio-media-gpt-image-2-5-flare` · `studio-media-gpt-image-1-5` · `studio-media-seedream-5-pro` · `studio-media-krea-2-large` · `studio-media-flux-2-pro` · `studio-media-z-image-turbo` |
 
 **Ask which project before generating anything.** A run belongs to a project;
 guessing puts runs somewhere nobody looks again. `--project` takes a project id,

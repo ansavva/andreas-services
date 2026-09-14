@@ -1158,6 +1158,119 @@
           "minimum": 256
         }
       }
+    },
+    "z-image-turbo": {
+      "images": {
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ],
+        "end": null,
+        "max_refs": null,
+        "refs": null,
+        "start": "image",
+        "start_excludes_refs": false
+      },
+      "input": {
+        "properties": {
+          "image": {
+            "description": "One image URL. Present, the model edits it (image-to-image) instead of drawing from nothing.",
+            "format": "uri",
+            "title": "Image",
+            "type": "string"
+          },
+          "output_format": {
+            "default": "png",
+            "enum": [
+              "png",
+              "jpeg",
+              "webp"
+            ],
+            "title": "Output format",
+            "type": "string"
+          },
+          "prompt": {
+            "description": "What to draw. English or Chinese; a descriptive sentence beats a keyword list.",
+            "title": "Prompt",
+            "type": "string"
+          },
+          "seed": {
+            "default": -1,
+            "description": "-1 for a random draw; any other value repeats one.",
+            "title": "Seed",
+            "type": "integer"
+          },
+          "size": {
+            "default": "1024*1024",
+            "description": "Output size as W*H.",
+            "enum": [
+              "1024*1024",
+              "512*512",
+              "768*768",
+              "1280*1280",
+              "1024*768",
+              "768*1024",
+              "1280*720",
+              "720*1280"
+            ],
+            "title": "Size",
+            "type": "string"
+          },
+          "strength": {
+            "default": 0.8,
+            "description": "Image-to-image only: how far the result departs from `image`.",
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Strength",
+            "type": "number"
+          }
+        },
+        "required": [
+          "prompt"
+        ]
+      },
+      "key": "z-image-turbo",
+      "kind": "image",
+      "model": "runpod/z-image-turbo",
+      "note": "Z-Image Turbo, Tongyi Lab's distilled 6B text-to-image model, called on Runpod's public endpoint (not through Replicate): eight-step generation in a few seconds, photorealism, bilingual (English/Chinese) text rendering, a prompt enhancer that expands short prompts \u2014 so write a descriptive sentence, not a tag list. `image` (one URL) switches it to image-to-image, with `strength` 0\u20131 (default 0.8) for how far to depart from it. `size` is a fixed list of `W*H` strings, 1024*1024 by default; `seed` -1 is random, any other value repeats a draw. No negative prompt, no step count \u2014 it is distilled to eight and more steps make it worse. Flat $0.005 per image whatever the size, failed generations free, output URLs kept about seven days. The one model here whose run record carries a real price.",
+      "prompt": {
+        "max_chars": null
+      },
+      "provider": "runpod",
+      "skill": "studio-media-z-image-turbo",
+      "snapshot": {
+        "output_format": {
+          "default": "png",
+          "enum": [
+            "png",
+            "jpeg",
+            "webp"
+          ]
+        },
+        "seed": {
+          "default": -1
+        },
+        "size": {
+          "default": "1024*1024",
+          "enum": [
+            "1024*1024",
+            "512*512",
+            "768*768",
+            "1280*1280",
+            "1024*768",
+            "768*1024",
+            "1280*720",
+            "720*1280"
+          ]
+        },
+        "strength": {
+          "default": 0.8,
+          "maximum": 1,
+          "minimum": 0
+        }
+      }
     }
   }
 }

@@ -74,29 +74,66 @@ import re
 import tempfile
 
 from studio_core import config
-from studio_core.clients import replicate
+from studio_core.clients import replicate, runpod
 from studio_core.clients.aws import s3
 from studio_core.errors import ConflictError, NotFoundError, ValidationError
 from studio_core.services import catalog, layout, registry, schema
 
 logger = logging.getLogger(__name__)
 
-#: Replicate's vocabulary on the left, studio's on the right. Two words differ
-#: and both differences are deliberate: studio has no `starting`/`processing`
-#: split (a run that has gone out is `running`, and a second word for the first
-#: two seconds of it would be a state nothing acts on), and `canceled` is spelled
-#: `cancelled` here because `catalog.RUN_STATUSES` has always spelled it that
-#: way. Anything unrecognised is `failed` rather than passed through — an
-#: unmapped provider word reaching `PATCH /api/runs/<id>` is a 400 on the one
-#: call that has to succeed, because it is the only report a paid prediction
-#: will ever make.
+#: The providers' vocabularies on the left, studio's on the right. Two words
+#: differ from Replicate's and both differences are deliberate: studio has no
+#: `starting`/`processing` split (a run that has gone out is `running`, and a
+#: second word for the first two seconds of it would be a state nothing acts
+#: on), and `canceled` is spelled `cancelled` here because
+#: `catalog.RUN_STATUSES` has always spelled it that way. Runpod's words are
+#: upper-case on the wire and lower-cased before the lookup; the two sets do not
+#: collide, so one map serves both. Anything unrecognised is `failed` rather
+#: than passed through — an unmapped provider word reaching
+#: `PATCH /api/runs/<id>` is a 400 on the one call that has to succeed, because
+#: it is the only report a paid prediction will ever make.
 PROVIDER_STATUS = {
+    # Replicate
     "starting": "running",
     "processing": "running",
     "succeeded": "succeeded",
     "failed": "failed",
     "canceled": "cancelled",
+    # Runpod
+    "in_queue": "running",
+    "in_progress": "running",
+    "completed": "succeeded",
+    "cancelled": "cancelled",
+    "timed_out": "failed",
 }
+
+#: The client behind each provider name. Both answer to the same five
+#: functions — `create_prediction`, `get_prediction`, `download`,
+#: `output_urls`, `cost` — and an `OutputGone`; `clients/runpod.py` says why.
+CLIENTS = {registry.REPLICATE: replicate, registry.RUNPOD: runpod}
+
+
+def provider_of(record: dict) -> str:
+    """Which provider a run went to: what `submit` recorded, else inferred.
+
+    Recorded on the run at submit time so that closing it — from a callback,
+    from `reconcile`, months later — does not depend on the registry still
+    carrying the model. A run written before the field existed has no
+    `provider`, and every one of those went to Replicate unless its model id
+    says otherwise.
+    """
+    recorded = record.get("provider")
+    if recorded:
+        return recorded
+    return registry.RUNPOD if runpod.is_model(record.get("model") or "") else registry.REPLICATE
+
+
+def client_for(provider: str):
+    """The client module for a provider name. Unknown is a 500, not a guess."""
+    try:
+        return CLIENTS[provider]
+    except KeyError:
+        raise registry.RegistryError(f"no client for provider {provider!r}") from None
 
 #: What an output file is called when the run named nothing. A filename, never an
 #: identity: a run is addressed by its id.
@@ -355,8 +392,8 @@ def prepare(record: dict, send_entries: list[dict]) -> tuple[dict, dict, dict]:
 # ──────────────────────────────── dispatching ────────────────────────────────
 
 
-def callback_url(run_id: str) -> str | None:
-    """Where Replicate should call back, or `None` when nothing can reach us.
+def callback_url(run_id: str, provider: str = registry.REPLICATE) -> str | None:
+    """Where the provider should call back, or `None` when nothing can reach us.
 
     **The receiver's URL, not this API's**, and on a developer's machine those
     are not even the same host — see `config.webhook_base_url`. What arrives
@@ -366,13 +403,25 @@ def callback_url(run_id: str) -> str | None:
     `None` is supported and means no webhook is asked for at all: the run is
     closed by `POST /api/runs/<id>/reconcile` instead.
 
-    The run id is in the path rather than in a signed token because the callback
-    is authenticated by its **signature**, not by the secrecy of its URL. A URL
-    that had to be unguessable would be a second credential to store, rotate and
-    leak; the run id is already public to anyone holding a link to the run page.
+    The run id is in the path rather than in a signed token because a Replicate
+    callback is authenticated by its **signature**, not by the secrecy of its
+    URL. A URL that had to be unguessable would be a second credential to store,
+    rotate and leak; the run id is already public to anyone holding a link to
+    the run page.
+
+    **Runpod signs nothing, so its URL carries the proof instead**: `?sig=` is an
+    HMAC of the run id under the API key this service already holds, and
+    `services/callbacks.py` recomputes it. Not a second credential — the key is
+    the one that paid for the job — and not secrecy of the URL either: a reader
+    who has the URL has a signature for one run id and nothing else.
     """
     base = config.webhook_base_url()
-    return f"{base}/api/hooks/replicate/{run_id}" if base else None
+    if not base:
+        return None
+    url = f"{base}/api/hooks/{provider}/{run_id}"
+    if provider == registry.RUNPOD:
+        url += f"?sig={runpod.callback_signature(run_id)}"
+    return url
 
 
 def dispatch(record: dict, entry: dict, payload: dict, bindings: dict) -> dict:
@@ -396,13 +445,14 @@ def dispatch(record: dict, entry: dict, payload: dict, bindings: dict) -> dict:
     if bindings:
         logger.info("Minted presigned URLs for %s on run %s",
                     sorted(bindings), record["id"])
-    return replicate.create_prediction(
-        entry["model"], payload, webhook=callback_url(record["id"])
+    provider = registry.provider_of(entry)
+    return client_for(provider).create_prediction(
+        entry["model"], payload, webhook=callback_url(record["id"], provider)
     )
 
 
 def presign_node(node_id: str) -> str:
-    """A short-lived GET for one node's bytes. **The only way to Replicate.**
+    """A short-lived GET for one node's bytes. **The only way to a provider.**
 
     There is no expiry argument: the TTL is the service's
     (`STUDIO_PRESIGN_TTL_SECONDS`) and a caller does not get to lengthen the
@@ -419,38 +469,19 @@ def presign_node(node_id: str) -> str:
 # ───────────────────────────────── closing ──────────────────────────────────
 
 
-def _cost(prediction: dict) -> dict | None:
-    """What the run cost, as far as the provider will say — which is not a price.
+def _cost(record: dict, prediction: dict) -> dict | None:
+    """What the run cost, in whatever terms its provider will say.
 
-    **Replicate's prediction body carries no money in it.** Billing is per second
-    of the model's hardware and the rate lives on the account, not on the
-    response, so an `amount` computed here would be a number this service made
-    up. What is real is `metrics.predict_time`, and it is what a price would be
-    derived from, so it is recorded under the same key the app already reads and
-    `amount` stays null.
-
-    `runs list` prints `cost.amount` and already skips a null, so a run shows no
-    price rather than a wrong one.
+    Replicate says a duration and never a price; a Runpod public endpoint says
+    the price in dollars. Each client reads its own body, and both write the
+    same three keys, so `runs list` prints `cost.amount` and skips a null.
     """
-    metrics = prediction.get("metrics") or {}
-    predict_time = metrics.get("predict_time")
-    if predict_time is None:
-        return None
-    return {"amount": None, "currency": None, "predict_time": predict_time}
+    return client_for(provider_of(record)).cost(prediction)
 
 
-def _output_urls(prediction: dict) -> list[str]:
-    """Every file the prediction produced, in order.
-
-    A model returns a bare string for a single output and a list for several, and
-    a few return neither — a `succeeded` prediction with no output at all is
-    closed as `failed` by the caller, because a run that cost money and produced
-    nothing is not a success whatever the provider calls it.
-    """
-    output = prediction.get("output")
-    if isinstance(output, str):
-        return [output]
-    return [item for item in (output or []) if isinstance(item, str)]
+def _output_urls(record: dict, prediction: dict) -> list[str]:
+    """Every file the prediction produced, in order — in the provider's shape."""
+    return client_for(provider_of(record)).output_urls(prediction)
 
 
 def _store_output(record: dict, folder_id: str, url: str, name: str) -> str:
@@ -484,7 +515,8 @@ def _store_output(record: dict, folder_id: str, url: str, name: str) -> str:
     handle, staged = tempfile.mkstemp(prefix="studio-output-")
     os.close(handle)
     try:
-        replicate.download(url, staged, max_bytes=config.max_output_bytes())
+        client_for(provider_of(record)).download(
+            url, staged, max_bytes=config.max_output_bytes())
         s3.put_file(node["blob_key"], staged, content_type)
     finally:
         # A partial download is not left behind for the next invocation to
@@ -559,22 +591,24 @@ def _after_the_output_expired(record: dict, gone: Exception):
     """
     logger.warning("Outputs for run %s were gone; asking for fresh URLs: %s",
                    record["id"], gone)
+    client = client_for(provider_of(record))
     try:
-        fresh = _output_urls(replicate.get_prediction(record["prediction_id"]))
+        fresh = _output_urls(record, client.get_prediction(
+            record["prediction_id"], model=record.get("model") or ""))
         if fresh:
             return _store_all(record, fresh), "succeeded", None
-    except replicate.OutputGone:
+    except client.OutputGone:
         pass
-    except replicate.ReplicateError as exc:
-        # The provider is unreachable, which IS transient — let the queue retry
-        # rather than declaring a paid generation lost on one bad round trip.
-        raise exc
+    # Any other provider error propagates: the provider being unreachable IS
+    # transient, and the queue should retry rather than declare a paid
+    # generation lost on one bad round trip.
 
     return [], "failed", (
         "the prediction succeeded but its output was no longer available to "
-        "download. Replicate deletes output files about an hour after a "
-        "prediction completes, and this callback was processed after that. The "
-        "generation was paid for; its bytes are not recoverable."
+        "download. The provider deletes output files some time after a "
+        "prediction completes (Replicate after about an hour), and this "
+        "callback was processed after that. The generation was paid for; its "
+        "bytes are not recoverable."
     )
 
 
@@ -612,6 +646,14 @@ def _unsigned_input(record: dict, prediction: dict) -> dict:
     than left. A field this service cannot account for is the one case where
     guessing wrong means leaving a live URL in the document.
     """
+    # Runpod echoes the `webhook` it was given, `?sig=` and all. The proof is
+    # good for this one run, which is terminal by the time this is written, so
+    # keeping it would grant nothing — and filing a signature is still the
+    # thing this function exists not to do.
+    webhook = prediction.get("webhook")
+    if isinstance(webhook, str) and "?" in webhook:
+        prediction = {**prediction, "webhook": webhook.split("?", 1)[0]}
+
     payload = prediction.get("input")
     if not isinstance(payload, dict):
         return prediction
@@ -725,7 +767,7 @@ def close_from_prediction(record: dict, prediction: dict) -> dict:
     if status == "running":
         return record
 
-    urls = _output_urls(prediction) if status == "succeeded" else []
+    urls = _output_urls(record, prediction) if status == "succeeded" else []
     error = prediction.get("error")
     if status == "succeeded" and not urls:
         # Paid for, and produced nothing. Calling that a success would put an
@@ -736,7 +778,7 @@ def close_from_prediction(record: dict, prediction: dict) -> dict:
     if urls:
         try:
             outputs = _store_all(record, urls)
-        except replicate.OutputGone as gone:
+        except client_for(provider_of(record)).OutputGone as gone:
             outputs, status, error = _after_the_output_expired(record, gone)
             urls = outputs
 
@@ -746,7 +788,7 @@ def close_from_prediction(record: dict, prediction: dict) -> dict:
         "error": None if error is None else str(error)[:2000],
         "prediction_id": prediction.get("id") or record.get("prediction_id"),
     }
-    cost = _cost(prediction)
+    cost = _cost(record, prediction)
     if cost is not None:
         assignments["cost"] = cost
 
@@ -794,4 +836,7 @@ def reconcile(record: dict) -> dict:
             f"run {record['id']} is {record.get('status')} and carries no "
             "prediction id — nothing was ever sent to the provider"
         )
-    return close_from_prediction(record, replicate.get_prediction(prediction_id))
+    client = client_for(provider_of(record))
+    return close_from_prediction(
+        record, client.get_prediction(prediction_id, model=record.get("model") or "")
+    )

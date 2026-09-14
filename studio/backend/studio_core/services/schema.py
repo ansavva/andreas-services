@@ -35,6 +35,7 @@ import logging
 
 from studio_core.clients import replicate
 from studio_core.errors import ValidationError
+from studio_core.services import registry
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,22 @@ def fetch(model: str) -> tuple[dict, dict]:
     stops a payload a person has already read and sent, because the authoritative
     refusal is Replicate's own and this check only exists to make it cheaper and
     earlier.
+
+    **A Runpod model has no live schema, so the registry entry is the schema.**
+    Runpod's public endpoints publish a parameter table in prose and nothing a
+    program can fetch, so the entry carries an `input` block in the same shape
+    this function returns for Replicate — `properties` keyed by field, and a
+    `required` list — and `check` runs over it unchanged. It is the one case
+    where the registry is the authority rather than a months-old copy of one,
+    which is also why the registry's own `snapshot` is distilled from it: the
+    pipeline's `models refresh` reads this route and sees the same document.
     """
+    entry = registry.by_model_id(model)
+    if entry is not None and registry.provider_of(entry) == registry.RUNPOD:
+        spec = entry.get("input") or {}
+        props = spec.get("properties") or {}
+        return props, {"Input": {"required": spec.get("required") or [], **spec}}
+
     try:
         return replicate.model_schema(model)
     except replicate.ReplicateError as exc:

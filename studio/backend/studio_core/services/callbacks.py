@@ -37,9 +37,9 @@ import json
 import logging
 
 from studio_core import config
-from studio_core.clients import replicate
+from studio_core.clients import replicate, runpod
 from studio_core.errors import NotFoundError
-from studio_core.services import catalog, generate
+from studio_core.services import catalog, generate, registry
 
 logger = logging.getLogger(__name__)
 
@@ -48,16 +48,44 @@ class Rejected(Exception):
     """The message will never succeed. Delete it rather than redriving it."""
 
 
-def _decode(message: dict) -> tuple[str, dict, bytes]:
+def _decode(message: dict) -> tuple[str, str, dict, bytes]:
     run_id = message.get("run") or ""
     if not run_id.startswith("run-"):
         raise Rejected(f"message names no run ({run_id!r})")
+    # A message queued before the receiver named a provider is Replicate's:
+    # there was no other provider to receive from.
+    provider = message.get("provider") or registry.REPLICATE
+    if provider not in registry.PROVIDERS:
+        raise Rejected(f"message names no provider ({provider!r})")
     headers = message.get("headers") or {}
     try:
         body = base64.b64decode(message.get("body_b64") or "")
     except (ValueError, binascii.Error) as exc:
         raise Rejected(f"message body is not base64: {exc}") from exc
-    return run_id, headers, body
+    return run_id, provider, headers, body
+
+
+def _verify(provider: str, run_id: str, message: dict, headers: dict, body: bytes) -> None:
+    """Raise `ValueError` unless this callback really is the provider's.
+
+    Two providers, two proofs. Replicate signs the body the Standard Webhooks
+    way and the check is over the exact bytes that arrived. Runpod signs
+    nothing, so the URL it was told to call carries an HMAC of the run id under
+    the API key (`generate.callback_url`), the receiver forwards it as `sig`,
+    and the check is that it recomputes — see `clients/runpod.py` for what that
+    does and does not protect against.
+    """
+    if provider == registry.RUNPOD:
+        runpod.verify_callback(run_id, message.get("sig") or "")
+        return
+    replicate.verify_webhook(
+        replicate.webhook_secret(),
+        headers.get("webhook-id", ""),
+        headers.get("webhook-timestamp", ""),
+        headers.get("webhook-signature", ""),
+        body,
+        config.webhook_tolerance_seconds(),
+    )
 
 
 def process(message: dict) -> dict | None:
@@ -72,17 +100,10 @@ def process(message: dict) -> dict | None:
     than a hazard — which is what lets the receiver ack before anything has been
     verified, and what lets a redrive be safe.
     """
-    run_id, headers, body = _decode(message)
+    run_id, provider, headers, body = _decode(message)
 
     try:
-        replicate.verify_webhook(
-            replicate.webhook_secret(),
-            headers.get("webhook-id", ""),
-            headers.get("webhook-timestamp", ""),
-            headers.get("webhook-signature", ""),
-            body,
-            config.webhook_tolerance_seconds(),
-        )
+        _verify(provider, run_id, message, headers, body)
     except ValueError as refusal:
         raise Rejected(f"callback for {run_id} failed verification: {refusal}") from refusal
 
@@ -99,6 +120,15 @@ def process(message: dict) -> dict | None:
         # Verified, and about a run this library does not have. A deleted run is
         # the ordinary way to reach this; there is nothing to retry toward.
         raise Rejected(f"callback names run {run_id}, which does not exist") from exc
+
+    if generate.provider_of(record) != provider:
+        # Verified as one provider's callback, about a run that went to the
+        # other. Nothing forged can reach here, so this is a routing mistake —
+        # and applying it would close the run on a document from the wrong API.
+        raise Rejected(
+            f"callback for {run_id} arrived on the {provider} route but the run "
+            f"went to {generate.provider_of(record)}"
+        )
 
     reported = prediction.get("id")
     if reported and record.get("prediction_id") and reported != record["prediction_id"]:
