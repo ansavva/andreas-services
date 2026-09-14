@@ -3,9 +3,10 @@
 // reading it after the draw.
 import { Badge, Button, Drawer, Input, Select, Textarea } from '@ansavva/design-system';
 import { useEffect, useState } from 'react';
-import { Linking, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { Linking, Pressable, Text, View, useWindowDimensions } from 'react-native';
 
 import { api } from '../api/client';
+import { DrawerBody } from '../components/drawer-body';
 import { FieldLabel } from '../components/field';
 import { Card } from '../components/shell';
 import { StatusMessage } from '../components/status-message';
@@ -114,7 +115,7 @@ export function WishListPanel({ groupId }: { groupId: string }) {
           because a correction belongs next to the row it corrects. */}
       <Drawer.Root open={adding} onOpenChange={setAdding} side={drawerSide}>
         <Drawer.Panel accessibilityLabel="Add a wish" style={drawerSide === 'right' ? local.drawer : undefined}>
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 8 }}>
+          <DrawerBody>
             <Drawer.Title>Add a wish</Drawer.Title>
             <StatusMessage message={error} />
             <WishForm
@@ -133,7 +134,7 @@ export function WishListPanel({ groupId }: { groupId: string }) {
                 if (saved) setAdding(false);
               }}
             />
-          </ScrollView>
+          </DrawerBody>
         </Drawer.Panel>
       </Drawer.Root>
 

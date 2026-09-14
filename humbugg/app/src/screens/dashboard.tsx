@@ -3,10 +3,11 @@
 import { Button, Checkbox, DateInput, Drawer, Input, Textarea } from '@ansavva/design-system';
 import { Link, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { api } from '../api/client';
 import { Avatar } from '../components/avatar';
+import { DrawerBody } from '../components/drawer-body';
 import { FieldLabel } from '../components/field';
 import { Card, LoadingPanel, Shell } from '../components/shell';
 import { StatusMessage } from '../components/status-message';
@@ -123,13 +124,13 @@ export default function DashboardScreen() {
               a phone, where a side panel would be the whole screen anyway. */}
           <Drawer.Root open={creating} onOpenChange={setCreating} side={drawerSide}>
             <Drawer.Panel accessibilityLabel="Start a group" style={drawerSide === 'right' ? local.drawerRight : undefined}>
-              <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 8 }}>
+              <DrawerBody>
                 <Drawer.Title>Start a group</Drawer.Title>
                 <CreateGroup onCreated={(id) => { setCreating(false); router.push(`/groups/${id}`); }} />
                 <View style={{ marginTop: 16, alignSelf: 'flex-start' }}>
                   <Drawer.Close>Close</Drawer.Close>
                 </View>
-              </ScrollView>
+              </DrawerBody>
             </Drawer.Panel>
           </Drawer.Root>
         </View>
