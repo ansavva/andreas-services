@@ -11,13 +11,12 @@ this file is about.
 """
 from __future__ import annotations
 
-import json
 
 import pytest
 from click.testing import CliRunner
 
 from studio_pipeline import cli
-from studio_pipeline.adapters import entities as E
+from studio_pipeline.adapters import api, entities as E
 from studio_pipeline.adapters import store
 from studio_pipeline.domain import movies as MV
 from studio_pipeline.domain import projects as PROJECTS
@@ -26,18 +25,6 @@ from studio_pipeline.domain import scenes as SC
 
 def _run(*args):
     return CliRunner().invoke(cli.main, ["movies", *args])
-
-
-def _plan(tmp_path, name="plan.json", **over):
-    doc = {
-        "defaults": {"model": "kling", "panel_model": "nano-banana-pro", "duration": 5},
-        "shots": [{"beat": "one", "panels": [{"prompt": "a"}],
-                   "motion": {"prompt": "m1"}}],
-    }
-    doc.update(over)
-    path = tmp_path / name
-    path.write_text(json.dumps(doc))
-    return str(path)
 
 
 @pytest.fixture
@@ -50,13 +37,13 @@ def cut_scene(library, tmp_path):
     """
     def make(slug, characters=()):
         project = PROJECTS.resolve("porch-teaser")
-        scene = SC.new_scene(project, slug, _plan(tmp_path, f"{slug}.json"))
+        scene = SC.new_scene(project, slug)
         folder = SC.scene_folder(scene, "output")
         node = store.upload_into(folder, f"{slug}.mp4", _clip(tmp_path, slug),
                                  content_type="video/mp4")
-        return E.patch_scene(scene["id"], status="assembled",
-                             characters=list(characters),
-                             output={"node": node["id"], "duration": 5.0})
+        return api.patch(f"/api/scenes/{scene['id']}",
+                         {"status": "assembled", "characters": list(characters),
+                          "output": {"node": node["id"], "duration": 5.0}})
     return make
 
 
@@ -121,8 +108,8 @@ def test_a_movie_id_that_is_not_there_is_refused_by_id(library):
 
 
 def test_scene_characters_is_read_off_the_row_and_never_recomputed(library):
-    """A scene records this when it is assembled, from the runs behind its
-    shots. The walk this used to fall back to has nowhere left to come from."""
+    """A scene records this when it is assembled, from the runs in its cut.
+    The walk this used to fall back to has nowhere left to come from."""
     assert MV.scene_characters({"characters": ["char-1", "char-2"]}) == ["char-1", "char-2"]
     assert MV.scene_characters({}) == []
     assert MV.scene_characters({"characters": None}) == []
@@ -132,13 +119,13 @@ def test_scene_characters_is_read_off_the_row_and_never_recomputed(library):
 
 
 def test_every_unassembled_scene_is_reported_at_once(library, tmp_path):
-    """A scene can exist as a plan, so "not assembled" is an ordinary state.
+    """A scene can exist as a cut nobody has stitched, so "not assembled" is an ordinary state.
 
     One per attempt would be one round trip per missing scene.
     """
     project = PROJECTS.resolve("porch-teaser")
-    SC.new_scene(project, "one", _plan(tmp_path, "one.json"))
-    SC.new_scene(project, "two", _plan(tmp_path, "two.json"))
+    SC.new_scene(project, "one")
+    SC.new_scene(project, "two")
 
     result = _run("new", "porch-teaser", "--name", "the-cut",
                   "--scene", "porch-teaser/one", "--scene", "porch-teaser/two")
@@ -152,7 +139,7 @@ def test_nothing_is_created_when_a_scene_is_not_cut(library, tmp_path):
     """The refusal happens before `create_movie`, so a failed attempt leaves no
     half-movie behind for somebody to find later and wonder about."""
     project = PROJECTS.resolve("porch-teaser")
-    SC.new_scene(project, "one", _plan(tmp_path, "one.json"))
+    SC.new_scene(project, "one")
 
     _run("new", "porch-teaser", "--name", "the-cut", "--scene", "porch-teaser/one")
 

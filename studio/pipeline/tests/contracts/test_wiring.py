@@ -259,7 +259,7 @@ def test_input_pool_numbers_actually_bind(library, monkeypatch):
 #: approximating: `tests/support/fake_api.py` imports each one so that a test
 #: gets the API's own answer to "is this plan coherent", "will this prompt
 #: render" and "is this the same payload as that one".
-SHARED_SERVICES = ("digest", "prompt", "registry", "storyboard")
+SHARED_SERVICES = ("digest", "prompt", "registry")
 
 _SERVICES = studio_pipeline.STUDIO_DIR / "backend" / "studio_core" / "services"
 

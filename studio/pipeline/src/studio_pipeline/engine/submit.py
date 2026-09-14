@@ -667,6 +667,9 @@ def draft(entry: dict, payload: dict, bindings: dict, args) -> dict:
             sends=sends_for(entry, bindings),
             characters=REFS.character_ids(characters),
             prompt_source=prompt_source,
+            # The scene this run is made for, resolved by the caller. A run
+            # belongs to at most one, and the row is where that lives.
+            scene=getattr(args, "scene", None),
             # **What the output file will be called, recorded at DRAFT time.**
             # The API downloads, driven by a callback that arrives with no
             # request body — so if the name is not on the row before the

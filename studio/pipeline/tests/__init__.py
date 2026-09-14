@@ -12,7 +12,7 @@ WHERE DOES MY TEST GO?
 Ask what it is about, not what it imports.
 
   * **One module.** `unit/<subpackage>/test_<module>.py`, mirroring the source.
-    `engine/board.py` is `unit/engine/test_board.py` and there is nowhere else
+    `domain/scenes.py` is `unit/domain/test_scenes.py` and there is nowhere else
     to look.
   * **A class of failure that spans modules.** `contracts/`. These are named
     after bugs that actually shipped — `test_cli_shadowing`, `test_wiring`,

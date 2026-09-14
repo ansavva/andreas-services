@@ -39,10 +39,10 @@ When rendering shot N of a sequence, its `reference_images` should be the frames
 that sequence has already produced — the image shot 1 started from, plus each
 handoff frame since — **not** the character's `reference/` set.
 
-**A planned scene does not need this.** `studio scenes` derives that list from
-the scene's shot rows, where both halves already live. A chain is for a sequence
-with no scene behind it; two records of one sequence, kept in sync by hand, is
-a bug waiting to happen.
+**A scene does not need this.** `studio scenes frames` derives that list from
+the scene's cut — the first frame each run in it opened on. A chain is for a
+sequence with no scene behind it; two records of one sequence, kept in sync by
+hand, is a bug waiting to happen.
 
 Those frames are on-model for *this* scene: same location, wardrobe, lighting and
 grade. The curated set is a different context, so feeding it in mid-scene pulls
@@ -67,8 +67,9 @@ rule that differs between sibling commands is the rule people get wrong.
 `reference_images` (Kling 7). The seed is kept because it anchors the look the
 whole scene inherits.
 
-For anything planned with `studio scenes`, use `studio scenes handoff` instead:
-it records the frame on the shot row itself, so there is no second list.
+For anything in a scene, hand the frame to the next run with `--start-key` and
+read the references off `studio scenes frames <project>/<name> --args`: the
+scene derives its own list from its cut, so there is no second list.
 
 THE FRAMES ARE PULLED BY THE SERVICE, NOT BY THIS PROCESS
 ---------------------------------------------------------
@@ -213,7 +214,7 @@ def chain_nodes(doc: dict, max_n: int | None) -> list[str]:
     if doc.get("seed"):
         # `nodes[-0:]` is the WHOLE list, not the empty one, so `--max 1` on a
         # seeded chain would silently return every frame and the cap would do
-        # nothing. `storyboard.scene_frames` guards the same edge.
+        # nothing. `scenes.scene_frames` guards the same edge.
         return [nodes[0]] + (nodes[-(max_n - 1):] if max_n > 1 else [])
     return nodes[-max_n:]
 

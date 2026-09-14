@@ -34,6 +34,7 @@ from types import SimpleNamespace
 import click
 
 from studio_pipeline.domain import projects as PROJ
+from studio_pipeline.domain import scenes as SCENES
 from studio_pipeline.domain import runs as R
 from studio_pipeline.engine import add_model as AM
 from studio_pipeline.engine import refs as REFS
@@ -197,10 +198,10 @@ def build_payload(entry: dict, args) -> dict:
     # `--input-file`, `--aspect-ratio` and `character turnaround`'s per-model
     # block have all had their say by now, and each of them keeps it.
     #
-    # It is here rather than at the three call sites because there are three:
-    # `studio run`, `scenes board` and `scenes render` all build their payload
-    # through this function, and a default applied in one of them would be a
-    # default the other two silently did not have.
+    # It is here rather than at the call site because there were three once —
+    # `studio run` and two storyboard commands all built their payload through
+    # this function — and a default applied in one of them was a default the
+    # other two silently did not have. One caller now; the rule still holds.
     #
     # **They are visible, not implicit.** Whatever lands here is in the payload
     # `submit.render` prints and a person reads under hard rule #2 — so a
@@ -312,6 +313,8 @@ def _refuse_a_duplicate(record: dict, args) -> None:
 @click.option("--prompt-file", help="Read the prompt from a file instead.")
 @click.option("--prompt-json", help="studio-media-prompt source, stored as prompt.json.")
 @click.option("--ref-run", multiple=True, help="An earlier run's output as reference material. Repeatable.")
+@click.option("--scene", help=("File this run under a scene of the project. A sceneref: <name>, "
+              "latest, or scene-<uuid>."))
 @click.option("--slots", help="Comma-separated positions WITHIN the resolved selection.")
 @click.option("--name", help="What the output file is called. Not an identity: "
                                      "a run is addressed by its id or by `latest`.")
@@ -352,6 +355,11 @@ def cmd_run(**options):
     # call sites doing it four times and disagreeing about which of two projects
     # sharing a name they meant.
     args.project = PROJ.require_project(args.project)
+    # Resolved after the project, because a bare `<name>` is looked up in it.
+    # A run made for a scene belongs to it from the draft — a scene page
+    # lists its runs off this field, so a run filed later is one nobody saw.
+    args.scene = (SCENES.resolve_scene(args.scene, default_project=args.project["id"])["id"]
+                  if args.scene else None)
 
     payload = build_payload(entry, args)
 

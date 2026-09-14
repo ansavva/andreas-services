@@ -74,11 +74,10 @@ ORDER_GAP = 1000
 def _backend_service(name: str):
     """A backend `services/<name>.py`, loaded by path. **Not a copy of it.**
 
-    Four modules are shared this way — `storyboard`, `prompt`, `digest` and
-    `reference` — and all four are written to import neither Flask nor boto3 so
-    that a unit test needs neither. What they hold is the API's own answers: whether a plan
-    is coherent, whether a prompt will render well, and whether two payloads are
-    the same one. A fake that approximated any of them would let the CLI's
+    The modules shared this way — `prompt`, `digest`, `registry` — are written
+    to import neither Flask nor boto3 so that a unit test needs neither. What
+    they hold is the API's own answers: whether a prompt will render well, and
+    whether two payloads are the same one. A fake that approximated any of them would let the CLI's
     tests pass against answers the real service does not give, which is the
     failure this fake exists to prevent.
 
@@ -102,24 +101,6 @@ def _backend_service(name: str):
     if root not in sys.path:
         sys.path.insert(0, root)
     return importlib.import_module(f"studio_core.services.{name}")
-
-
-def _storyboard():
-    """The BACKEND's plan module, loaded by path. **Not a copy of it.**
-
-    Normalising a plan, validating it and deriving a shot's status are the API's
-    now, so a fake that did not do them would let the CLI's tests pass against
-    shapes the real service refuses — which is the failure this fake exists to
-    prevent.
-
-    Loaded from the file rather than imported as a package because the pipeline
-    does not depend on the backend and must not start to. `services/storyboard.py`
-    has no imports of its own beyond `__future__`, so this pulls in no Flask, no
-    boto3, and nothing that would make a unit test need either. If that ever
-    stops being true this will fail loudly at import, which is the right way for
-    it to stop working.
-    """
-    return _backend_service("storyboard")
 
 
 @functools.lru_cache(maxsize=1)
@@ -171,7 +152,7 @@ def _fingerprint(model, plan, sends) -> str:
     What made it a copy was reachability, not judgement: it lived in
     `catalog.py`, which imports boto3, so a unit suite could not load it. It is
     `services/digest.py` now — `hashlib`, `json` and `decimal`, nothing else —
-    and is loaded the same way `storyboard` and `prompt` are.
+    and is loaded the same way `prompt` is.
     """
     return _backend_service("digest").submission_fingerprint(model, plan, sends)
 
@@ -231,9 +212,6 @@ class FakeApi:
         self.runs: dict[str, dict] = {}
         self.scenes: dict[str, dict] = {}
         self.movies: dict[str, dict] = {}
-        #: char_id -> [entry], each naming a node id. The `REF#` rows.
-        #: scene_id -> [shot]. The `SHOT#` rows.
-        self.shots: dict[str, list[dict]] = {}
         self.terms: list[dict] = []
         #: The template library, as the two row classes the catalog keeps it in.
         self.spec_blocks: dict[str, str] = {}
@@ -527,10 +505,11 @@ class FakeApi:
         own state for free.
 
         That is not a smaller version of the real behaviour, it is the opposite
-        of it, and it hid a live bug: `scenes board` captured its panels before
-        the submit loop, and after the first write the real API's response had
-        replaced them with fresh dicts, so twelve of thirteen rendered panels
-        were recorded into orphans. Under this fake all thirteen "worked".
+        of it, and it hid a live bug: the storyboard's board loop captured its
+        panels before the submit loop, and after the first write the real API's
+        response had replaced them with fresh dicts, so twelve of thirteen
+        rendered panels were recorded into orphans. Under this fake all thirteen
+        "worked".
         """
         params = {k: v for k, v in params.items() if v is not None}
         try:
@@ -608,8 +587,7 @@ class FakeApi:
             (r"/api/runs/([^/]+)/reconcile", self._r_run_reconcile),
             (r"/api/runs/([^/]+)", self._r_run),
             (r"/api/scenes", self._r_scenes),
-            (r"/api/scenes/([^/]+)/shots", self._r_shots),
-            (r"/api/scenes/([^/]+)/shots/([^/]+)", self._r_shot),
+            (r"/api/scenes/([^/]+)/runs", self._r_scene_runs),
             (r"/api/scenes/([^/]+)/output", self._r_scene_output),
             (r"/api/scenes/([^/]+)", self._r_scene),
             (r"/api/movies", self._r_movies),
@@ -1233,6 +1211,8 @@ class FakeApi:
         return {"id": record["id"], "project": record["project"],
                 "status": record["status"], "kind": record["kind"],
                 "model": record["model"], "created": record["created"],
+                # Projected onto the row only when set, as the real listing is.
+                **({"scene": record["scene"]} if record.get("scene") else {}),
                 "thumb": {"node": outputs[0]} if outputs else None}
 
     def _backlinks(self, holders: dict, matches) -> list[dict]:
@@ -1253,10 +1233,9 @@ class FakeApi:
 
     def _run_view(self, record: dict) -> dict:
         return {**record,
-                "scenes": self._backlinks(
-                    self.scenes,
-                    lambda sc: any(shot.get("run") == record["id"]
-                                   for shot in self.shots.get(sc["id"], []))),
+                # Always present, `None` included — the real route says a run
+                # with no scene has `scene: null` rather than no key.
+                "scene": record.get("scene"),
                 "outputs": [{"node": n, "name": self.nodes.get(n, {}).get("name"),
                              "size": self.nodes.get(n, {}).get("size"),
                              "url": f"memory://{self.nodes.get(n, {}).get('blob_key')}"}
@@ -1335,7 +1314,7 @@ class FakeApi:
                 char = self._entity(self.characters, params["character"], "character")
                 found = [r for r in found
                          if char["id"] in (r.get("characters") or [])]
-            for field in ("model", "status", "fingerprint"):
+            for field in ("model", "status", "fingerprint", "scene"):
                 if params.get(field):
                     found = [r for r in found if r.get(field) == params[field]]
             if params.get("since"):
@@ -1347,6 +1326,7 @@ class FakeApi:
             raise FakeError(405, method)
 
         project = self._entity(self.projects, body["project"], "project")
+        scene = self._scene_of(body.get("scene"), project["id"])
         bindings = body.get("bindings") or {}
         for field, value in bindings.items():
             for one in (value if isinstance(value, list) else [value]):
@@ -1392,6 +1372,7 @@ class FakeApi:
                   "prediction_id": None, "created": _now(), "submitted": None,
                   "completed": None,
                   "characters": list(body.get("characters") or []),
+                  "scene": scene,
                   "folder": folder["id"], "outputs": [],
                   "cost": None, "error": None, "payload": payload,
                   # **A filename, not an identity**, and an envelope field rather
@@ -1440,9 +1421,15 @@ class FakeApi:
                           "submitted", "outputs"):
                 if field in body:
                     record[field] = body[field]
+            if "scene" in body:
+                record["scene"] = self._scene_of(body["scene"], record["project"])
             return self._run_view(record)
         if method == "DELETE":
             self.runs.pop(run_id)
+            # A cut naming a deleted run would draw an empty row; the real
+            # route strips it, so this does.
+            for scene in self.scenes.values():
+                scene["runs"] = [r for r in scene.get("runs") or [] if r != run_id]
             if params.get("files") == "delete":
                 self._delete_node(record["folder"])
             return {"deleted": run_id}
@@ -1595,14 +1582,82 @@ class FakeApi:
         return {"response": record["payload"]["response"]}
 
     # ── scenes and movies ───────────────────────────────────────────────────
+    #
+    # A scene is a named, ordered series of runs — `runs` on the scene (the
+    # cut) and `scene` on each run (membership) — and nothing else. The `SHOT#`
+    # rows, the plan and the storyboard service this fake used to load by path
+    # are gone with the model they mirrored.
+
+    def _scene_of(self, addressed, project_id: str) -> str | None:
+        """A run's `scene`, checked as the API checks it: exists, same project."""
+        if not addressed:
+            return None
+        scene = self.scenes.get(addressed)
+        if scene is None:
+            raise FakeError(404, f"no such scene: {addressed}")
+        if scene["project"] != project_id:
+            raise FakeError(400, f"{addressed} is not in this project")
+        return scene["id"]
+
+    def _cut_rows(self, record: dict) -> list[dict]:
+        """The cut as rows — the listing fields plus the first output, signed."""
+        rows = []
+        for run_id in record.get("runs") or []:
+            run = self.runs.get(run_id) or {}
+            outputs = run.get("outputs") or []
+            clip = None
+            if outputs:
+                node = self.nodes.get(outputs[0], {})
+                clip = {"node": outputs[0], "name": node.get("name"),
+                        "url": f"memory://{node.get('blob_key')}"}
+            rows.append({"id": run_id, "project": run.get("project"),
+                         "status": run.get("status"), "kind": run.get("kind"),
+                         "model": run.get("model"), "created": run.get("created"),
+                         "scene": run.get("scene"), "output": clip, "thumb": clip})
+        return rows
+
+    def _scene_frames(self, record: dict) -> list[dict]:
+        """The first `start` send of each cut run, in cut order, deduplicated."""
+        starts: list[str] = []
+        for run_id in dict.fromkeys(record.get("runs") or []):
+            for send in (self.runs.get(run_id) or {}).get("sends") or []:
+                if send.get("role") == "start" and send.get("node") not in starts:
+                    starts.append(send["node"])
+                    break
+        return [{"node": n, "name": self.nodes.get(n, {}).get("name"),
+                 "url": f"memory://{self.nodes.get(n, {}).get('blob_key')}"}
+                for n in starts]
 
     def _scene_view(self, record: dict) -> dict:
         return {**record,
-                "shots": sorted(self.shots.get(record["id"], []),
-                                key=lambda s: s["order"]),
+                "runs": self._cut_rows(record),
+                "frames": self._scene_frames(record),
                 "movies": self._backlinks(
                     self.movies,
                     lambda m: record["id"] in (m.get("scenes") or []))}
+
+    def _cut_of(self, raw, scene_id: str | None, project_id: str) -> list[str]:
+        """Validate a cut and join its runs, as `routes/scenes._cut_of` does."""
+        if raw is None:
+            return []
+        if not isinstance(raw, list) or not all(isinstance(r, str) for r in raw):
+            raise FakeError(400, "runs must be a list of run ids")
+        for run_id in dict.fromkeys(raw):
+            run = self.runs.get(run_id)
+            if run is None:
+                raise FakeError(404, f"no such run: {run_id}")
+            if run["project"] != project_id:
+                raise FakeError(400, f"{run_id} is not in this project")
+            if run.get("kind") != "video":
+                raise FakeError(400, f"{run_id} is a {run.get('kind')} run; "
+                                     "only a video can be cut")
+            if run.get("scene") and run["scene"] != scene_id:
+                raise FakeError(400, f"{run_id} belongs to scene {run['scene']}")
+        return list(raw)
+
+    def _join(self, scene_id: str, runs: list[str]) -> None:
+        for run_id in dict.fromkeys(runs):
+            self.runs[run_id]["scene"] = scene_id
 
     def _r_scenes(self, method, body, params):
         if method == "GET":
@@ -1616,68 +1671,19 @@ class FakeApi:
         if method != "POST":
             raise FakeError(405, method)
         project = self._entity(self.projects, body["project"], "project")
-        if any(s["project"] == project["id"] and s["name"] == body["name"]
-               for s in self.scenes.values()):
-            raise FakeError(409, f"scene {body['name']!r} already exists")
+        runs = self._cut_of(body.get("runs"), None, project["id"])
         scenes_folder = self._folder_under(project["root"], "scenes")
-        folder = self._create_node(scenes_folder["id"], body["name"], "folder")
         scene_id = "scene-" + str(uuid.uuid4())
+        folder = self._create_node(scenes_folder["id"], scene_id, "folder")
         record = {"id": scene_id, "lib": self.lib, "project": project["id"],
-                  "name": body["name"], "title": body.get("title") or "",
-                  "setting": body.get("setting") or "",
-                  "defaults": body.get("defaults") or {},
-                  "status": "planned", "created": _now(), "updated": _now(),
-                  "folder": folder["id"], "characters": [], "output": None,
+                  "name": body["name"], "status": "planned",
+                  "created": _now(), "updated": _now(),
+                  "folder": folder["id"], "characters": [], "runs": runs,
+                  "output": None, "error": None,
                   "stitch": None, "assembled": None}
         self.scenes[scene_id] = record
-        self.shots[scene_id] = []
-        if body.get("shots"):
-            self._merge_shots(scene_id, body["shots"], body)
-        self._restate(scene_id)
+        self._join(scene_id, runs)
         return self._scene_view(record)
-
-    def _merge_shots(self, scene_id: str, shots: list[dict], plan: dict | None = None) -> None:
-        """Normalise, validate, merge by shot id, and derive each shot's status.
-
-        **All four are the API's**, and this mirrors it rather than approximating
-        it: `_storyboard()` is the backend's own module, loaded by path. A fake
-        that merged without normalising would accept a raw plan the real service
-        turns into something else, and every test would agree with the fake.
-        """
-        SB = _storyboard()
-        scene = self.scenes[scene_id]
-        envelope = plan or {}
-        doc = SB.normalise(
-            {**{k: envelope.get(k, scene.get(k)) for k in ("setting", "defaults")},
-             "shots": shots},
-            scene.get("name") or scene_id,
-        )
-        SB.validate(doc)
-
-        existing = {s["id"]: s for s in self.shots.setdefault(scene_id, [])}
-        merged = []
-        for order, spec in enumerate(doc["shots"], 1):
-            shot_id = spec["id"]
-            previous = existing.get(shot_id, {})
-            row = {**previous, **spec,
-                   "id": shot_id, "order": spec.get("order") or order * ORDER_GAP}
-            deeper = SB.merge_panels(previous, spec)
-            if deeper is not None:
-                row["panels"] = deeper
-            row.setdefault("run", None)
-            row.setdefault("panel", None)
-            if not row.get("opens_on"):
-                row["opens_on"] = {"node": None, "from_run": None}
-            row["status"] = SB.shot_status(row)
-            merged.append(row)
-        self.shots[scene_id] = merged
-
-    def _restate(self, scene_id: str) -> None:
-        """Re-derive the scene's status from its shots, as every write route does."""
-        SB = _storyboard()
-        record = self.scenes[scene_id]
-        record["status"] = SB.scene_status(
-            {**record, "shots": self.shots.get(scene_id, [])})
 
     def _r_scene(self, method, body, params, scene_id):
         record = self.scenes.get(scene_id)
@@ -1686,37 +1692,38 @@ class FakeApi:
         if method == "GET":
             return self._scene_view(record)
         if method == "PATCH":
-            record.update(body)
+            allowed = ("name", "status", "error", "characters", "stitch",
+                       "output", "assembled", "cuts")
+            changes = {k: v for k, v in body.items() if k in allowed}
+            if not changes:
+                raise FakeError(400, "nothing to change")
+            record.update(changes)
             record["updated"] = _now()
             return self._scene_view(record)
         if method == "DELETE":
             self.scenes.pop(scene_id)
-            self.shots.pop(scene_id, None)
+            for run in self.runs.values():
+                if run.get("scene") == scene_id:
+                    run["scene"] = None
             if params.get("files") == "delete":
                 self._delete_node(record["folder"])
             return {"deleted": scene_id}
         raise FakeError(405, method)
 
-    def _r_shots(self, method, body, params, scene_id):
-        if scene_id not in self.scenes:
+    def _r_scene_runs(self, method, body, params, scene_id):
+        """`PATCH /api/scenes/<id>/runs` — the cut, replaced, answered as rows."""
+        record = self.scenes.get(scene_id)
+        if record is None:
             raise FakeError(404, f"no such scene: {scene_id}")
-        if method == "GET":
-            return {"shots": sorted(self.shots.get(scene_id, []),
-                                    key=lambda s: s["order"])}
         if method != "PATCH":
             raise FakeError(405, method)
-        self._merge_shots(scene_id, body["shots"])
-        self._restate(scene_id)
-        return self._scene_view(self.scenes[scene_id])
-
-    def _r_shot(self, method, body, params, scene_id, shot_id):
-        shot = next((s for s in self.shots.get(scene_id, []) if s["id"] == shot_id), None)
-        if shot is None:
-            raise FakeError(404, f"no shot {shot_id} in {scene_id}")
-        shot.update(body)
-        shot["status"] = _storyboard().shot_status(shot)
-        self._restate(scene_id)
-        return shot
+        if not isinstance(body.get("runs"), list):
+            raise FakeError(400, "runs must be a list")
+        runs = self._cut_of(body["runs"], scene_id, record["project"])
+        self._join(scene_id, runs)
+        record["runs"] = runs
+        record["updated"] = _now()
+        return {"id": scene_id, "runs": self._cut_rows(record)}
 
     def _r_scene_output(self, method, body, params, scene_id):
         record = self.scenes[scene_id]
@@ -1892,7 +1899,7 @@ class FakeApi:
         info = {"method": "concat demuxer, stream copy (no re-encode)",
                 f"uniform_{label}": True,
                 "cuts": [{"n": p["n"], "node": p["copy"], "duration": p["duration"],
-                          **{k: p[k] for k in ("run", "scene", "shot", "slug") if k in p}}
+                          **{k: p[k] for k in ("run", "scene", "name") if k in p}}
                          for p in parts]}
 
         slug = record.get("name") or record["id"]
@@ -1916,17 +1923,6 @@ class FakeApi:
         if params.get("characters") is not None:
             record["characters"] = sorted(set(params["characters"]))
 
-        # The shot rows the worker writes back. A part with no `shot` was
-        # appended with `--shot <runref>` against a scene with no plan; there is
-        # no row to update and nothing is invented for it.
-        for part in parts:
-            if not part.get("shot"):
-                continue
-            for shot in self.shots.get(target) or []:
-                if shot.get("id") == part["shot"]:
-                    shot.update({"n": part["n"], "node": part["node"],
-                                 "shot_node": part["copy"],
-                                 "duration": part["duration"]})
         return {"output": self._render_asset(output["id"]), "stitch": info,
                 "target": target, "re_encoded": False}
 
