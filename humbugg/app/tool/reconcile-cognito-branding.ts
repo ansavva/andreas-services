@@ -129,13 +129,19 @@ const SLOTS: ReadonlyArray<readonly [string, string]> = [
  *   background colour below only shows once this is off.
  * - `form.logo.enabled` ships FALSE, so the FORM_LOGO asset the Terraform
  *   uploads would be ignored.
+ * - `favicon.enabledTypes` ships `["ICO", "SVG"]`. An enabled type with no
+ *   asset of ours behind it links AWS's default icon, and browsers prefer an
+ *   SVG favicon over an ICO — so with SVG left on, the FAVICON_ICO the
+ *   Terraform uploads is fetched and then ignored. Only ICO is enabled until
+ *   there is an SVG mark to upload beside it.
  *
  * They are set here, not hand-edited into the JSON, so that a re-export from
  * the console cannot quietly restore AWS's defaults.
  */
-const STRUCTURE: ReadonlyArray<readonly [string, boolean]> = [
+const STRUCTURE: ReadonlyArray<readonly [string, boolean | readonly string[]]> = [
   ['components.pageBackground.image.enabled', false],
   ['components.form.logo.enabled', true],
+  ['components.favicon.enabledTypes', ['ICO']],
 ];
 
 /** Cognito wants `rrggbbaa`, no leading `#`, lower-cased so diffs are stable. */
@@ -163,8 +169,12 @@ function setColor(root: Record<string, unknown>, path: readonly string[], value:
   node[leaf] = value;
 }
 
-/** Same walk as `setColor`, for the boolean structure above. */
-function setFlag(root: Record<string, unknown>, path: readonly string[], value: boolean): void {
+/** Same walk as `setColor`, for the structure above. */
+function setFlag(
+  root: Record<string, unknown>,
+  path: readonly string[],
+  value: boolean | readonly string[],
+): void {
   let node = root;
   for (const segment of path.slice(0, -1)) {
     const next = node[segment];
