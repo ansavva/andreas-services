@@ -2,10 +2,18 @@
 
 An AI media generation pipeline, and a private browser over what it produces.
 
+> **Shut down 2026-09-14.** `studio.andreas.services` and
+> `studio-api.andreas.services` are gone — no Lambda, no gateway, no
+> CloudFront, no images. The library is untouched: `studio-prod-media-us-east-1`,
+> `studio-prod-catalog` and the Cognito pool its rows are keyed by remain, and
+> `infra/envs/prod` now declares only those. The code below is kept as it was;
+> nothing in it deploys. `git log` on `infra/envs/prod/main.tf` and
+> `.github/workflows/studio-prod.yaml` is the way back.
+
 | Surface | URL |
 |---|---|
-| App | https://studio.andreas.services |
-| API | https://studio-api.andreas.services |
+| App | ~~https://studio.andreas.services~~ (down) |
+| API | ~~https://studio-api.andreas.services~~ (down) |
 
 Studio is two things sharing one library:
 

@@ -1,5 +1,11 @@
 # Claude Instructions – studio
 
+**Shut down 2026-09-14.** The site and the API are gone in prod, and the
+per-machine dev stack keeps only its pool, bucket and table. The library is
+intact and `infra/envs/prod` declares only the library. Nothing here deploys;
+`studio --profile prod` and `dev-up.sh` have no API to reach. The rest of this
+file describes the service as it was.
+
 **Read the hard rules below before doing anything else in this directory.** They
 are not preferences, and two of them are about spending money and leaking
 identity. Everything else in this file is an index.

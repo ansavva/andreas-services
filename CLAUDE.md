@@ -108,8 +108,9 @@ diagnosing issues.
 **`curl` against the live sites usually works — test it, do not assume.** This
 file used to state flatly that outbound HTTP to `*.andreas.services` was blocked
 by the sandbox network policy (`403 host_not_allowed`). That is not true in
-general: `studio.andreas.services` and `studio-api.andreas.services` both answer
-`200`. The rule was written from one sandbox that did block it and was then
+general: `www.humbugg.com` answers `200` (`studio.andreas.services` and
+`studio-api.andreas.services` used to, until studio was shut down on
+2026-09-14). The rule was written from one sandbox that did block it and was then
 believed rather than retested, which cost a session the check it was in the
 middle of — it reported the site unreachable, and it was not. A blocked sandbox
 is still possible, so try the request and read what comes back.
@@ -141,7 +142,7 @@ in both, by design.
 | Directory | Purpose | Stack |
 |-----------|---------|-------|
 | `humbugg/` | Gift-exchange platform | ASP.NET Core 10 (C# 14) + React/Vite (marketing, `www`) + Expo/Expo Router (product app, `app`) + Lambda (Docker) + DynamoDB |
-| `studio/` | AI media generation pipeline **and** a browser over its output | Claude Code skills (local, `uv`) + Flask + React/Vite/TS + Lambda (Docker) + Cognito + **DynamoDB** (`studio-prod-catalog`, single-table: characters, projects, runs, scenes, movies and the node tree; three GSIs) + S3 |
+| `studio/` | **Shut down 2026-09-14** — site and API gone, library kept. Was: AI media generation pipeline **and** a browser over its output | Claude Code skills (local, `uv`) + Flask + React/Vite/TS + Lambda (Docker) + Cognito + **DynamoDB** (`studio-prod-catalog`, single-table: characters, projects, runs, scenes, movies and the node tree; three GSIs) + S3 |
 | `infra/` | Shared infrastructure | Terraform |
 
 **`studio/` has a per-machine dev stack like every other service** — its own

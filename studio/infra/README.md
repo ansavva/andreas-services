@@ -1,5 +1,12 @@
 # studio — infrastructure
 
+**Shut down 2026-09-14.** `envs/prod` now declares `media`, `catalog`, `auth`
+and `dev_seed` and nothing else; `envs/dev` declares `auth` and `storage`. The
+compute, gateway, callback, render, hosting and API-domain modules are still
+here and unused — the applies that removed them are in the git history of the
+two `main.tf` files. The library was not touched. The rest of this file
+describes the stack as it was.
+
 Terraform for both halves of studio. **Two environments**: `prod`, with state in
 `s3://andreas-services-terraform-state/studio/prod/terraform.tfstate`, and
 `dev`, which is **per machine** — its state key carries the AWS account and a

@@ -18,15 +18,3 @@ variable "media_bucket_name" {
   type        = string
   default     = "studio-prod-media-us-east-1"
 }
-
-variable "api_throttling_rate_limit" {
-  description = "Steady-state request rate limit on the API stage"
-  type        = number
-  default     = 25
-}
-
-variable "api_throttling_burst_limit" {
-  description = "Burst request limit on the API stage"
-  type        = number
-  default     = 50
-}
