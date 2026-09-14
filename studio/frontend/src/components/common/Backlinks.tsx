@@ -17,15 +17,14 @@ interface Props {
  * The way back UP the tree.
  *
  * Every other link in this app goes down — a project to its runs, a scene to
- * its shots, a movie to its cuts — because down is what a record holds. Up was
- * unanswerable: a run knew nothing of the scene that used it and a scene
- * nothing of the movie that cut it, so arriving at either from the reel was a
- * dead end and the way back was the project and down the other branch.
+ * its cut, a movie to its scenes — because down is what a record holds. Up was
+ * unanswerable: a scene knew nothing of the movie that cut it, so arriving at
+ * it from the reel was a dead end and the way back was the project and down
+ * the other branch. (A run's way up is one id, `scene`, drawn as a link.)
  *
  * **Renders nothing when there are no links**, rather than an empty row saying
- * so. A run that no scene has used is the ordinary case, not a gap — most runs
- * are never cut into anything, and a permanent "Used in: —" would be noise on
- * every one of them.
+ * so. A scene no movie has cut is the ordinary case, not a gap, and a
+ * permanent "Cut into: —" would be noise on every one of them.
  */
 export function Backlinks({ label, links, to }: Props) {
   const navigate = useNavigate();

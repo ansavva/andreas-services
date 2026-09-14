@@ -16,8 +16,7 @@ and not served; it survives as the fingerprint's ingredient.
 
 **It lives here rather than in `catalog.py` so that the pipeline's test fake can
 load the real thing instead of restating it.** `tests/support/fake_api.py` in the
-pipeline already imports `services/storyboard.py` and `services/prompt.py` by
-path, for exactly this reason and with the same precondition: a module the CLI's
+pipeline already imports `services/prompt.py` by path, for exactly this reason and with the same precondition: a module the CLI's
 unit suite loads must import neither Flask nor boto3, or the pipeline grows a
 dependency on the backend's runtime. `catalog.py` imports both, so the digest
 could not be reached from there and was copied — and `routes/runs.py` records

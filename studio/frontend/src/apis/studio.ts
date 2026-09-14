@@ -813,7 +813,7 @@ export function setProjectCharacters(id: string, characters: string[]) {
  * that did `data.length === 0` and then `data.map(...)`: `undefined === 0` is
  * false, so the empty-state branch was skipped and the map threw. The Scenes and
  * Movies tabs of a project crashed, and the Scenes tab is the only route to a
- * scene in the app — so a storyboard was unreachable from the UI.
+ * scene in the app — so a scene was unreachable from the UI.
  *
  * `RunsTable` reads `page.runs` and was always fine, which is why this survived:
  * the one listing anybody had opened was the one that unwrapped.
