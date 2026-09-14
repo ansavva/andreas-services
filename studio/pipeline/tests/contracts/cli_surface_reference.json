@@ -3648,6 +3648,21 @@
         "required": false,
         "type": "str"
       },
+      "scene": {
+        "choices": null,
+        "default": null,
+        "dest": "scene",
+        "flag": false,
+        "flags": [
+          "--scene"
+        ],
+        "help": "File this run under a scene of the project. A sceneref: <name>, latest, or scene-<uuid>.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
       "slots": {
         "choices": null,
         "default": null,
@@ -4028,6 +4043,21 @@
             "required": false,
             "type": "str"
           },
+          "scene": {
+            "choices": null,
+            "default": null,
+            "dest": "scene",
+            "flag": false,
+            "flags": [
+              "--scene"
+            ],
+            "help": "Only runs made for this scene: <name>, latest, or scene-<uuid>.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          },
           "since": {
             "choices": null,
             "default": null,
@@ -4247,6 +4277,52 @@
   "scenes": {
     "arguments": {},
     "commands": {
+      "add": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
+          "runref": {
+            "choices": null,
+            "default": null,
+            "dest": "runref",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": "+",
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "flags": [
+              "--project"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
       "assemble": {
         "arguments": {
           "ref": {
@@ -4302,7 +4378,7 @@
             "flags": [
               "--shot"
             ],
-            "help": "a run output to append, in cut order. Repeatable. Accepts <project>/<name>, a run id, a unique name fragment, or #N.",
+            "help": "Replace the cut with these runs first, then stitch. Accepts <project>/latest, a run id, a unique fragment — a runref, as `studio runs` spells it. Repeatable, in cut order.",
             "hidden": false,
             "multiple": true,
             "nargs": 1,
@@ -4311,7 +4387,7 @@
           }
         }
       },
-      "attach": {
+      "frames": {
         "arguments": {
           "ref": {
             "choices": null,
@@ -4328,111 +4404,32 @@
         },
         "commands": {},
         "options": {
-          "project": {
-            "choices": null,
-            "default": null,
-            "dest": "project",
-            "flag": false,
-            "flags": [
-              "--project"
-            ],
-            "help": "project, when the sceneref does not carry one",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "run": {
-            "choices": null,
-            "default": null,
-            "dest": "run",
-            "flag": false,
-            "flags": [
-              "--run"
-            ],
-            "help": "the finished run whose video becomes this shot",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          },
-          "shot": {
-            "choices": null,
-            "default": null,
-            "dest": "shot",
-            "flag": false,
-            "flags": [
-              "--shot"
-            ],
-            "help": "the shot to record it on, by number or id",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          }
-        }
-      },
-      "board": {
-        "arguments": {
-          "ref": {
-            "choices": null,
-            "default": null,
-            "dest": "ref",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {
-          "dest": {
-            "choices": null,
-            "default": null,
-            "dest": "dest",
-            "flag": false,
-            "flags": [
-              "--dest"
-            ],
-            "help": "also keep a local copy of each result",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "dry_run": {
+          "args": {
             "choices": null,
             "default": false,
-            "dest": "dry_run",
+            "dest": "args",
             "flag": true,
             "flags": [
-              "--dry-run"
+              "--args"
             ],
-            "help": "show every payload; submit nothing, bill nothing",
+            "help": "print as `--key N --key N …`, ready to paste into a run",
             "hidden": false,
             "multiple": false,
             "nargs": 0,
             "required": false,
             "type": "bool"
           },
-          "panel": {
+          "max": {
             "choices": null,
             "default": null,
-            "dest": "panel",
+            "dest": "max_",
             "flag": false,
             "flags": [
-              "--panel"
+              "--max"
             ],
-            "help": "only this panel number, within each shot",
+            "help": "cap the list (Kling takes 7); keeps the seed and the newest",
             "hidden": false,
-            "multiple": true,
+            "multiple": false,
             "nargs": 1,
             "required": false,
             "type": "int"
@@ -4445,215 +4442,12 @@
             "flags": [
               "--project"
             ],
-            "help": "project, when the sceneref does not carry one",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "redo": {
-            "choices": null,
-            "default": false,
-            "dest": "redo",
-            "flag": true,
-            "flags": [
-              "--redo"
-            ],
-            "help": "render a panel again even though it exists",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 0,
-            "required": false,
-            "type": "bool"
-          },
-          "review_sheet": {
-            "choices": null,
-            "default": null,
-            "dest": "review_sheet",
-            "flag": false,
-            "flags": [
-              "--review-sheet"
-            ],
-            "help": "also keep a local copy of each payload's contact sheet here. The sheet is uploaded into the scene either way.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "shot": {
-            "choices": null,
-            "default": null,
-            "dest": "shot",
-            "flag": false,
-            "flags": [
-              "--shot"
-            ],
-            "help": "only this shot, by number or id. Repeatable.",
-            "hidden": false,
-            "multiple": true,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          }
-        }
-      },
-      "check": {
-        "arguments": {
-          "ref": {
-            "choices": null,
-            "default": null,
-            "dest": "ref",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {
-          "dest": {
-            "choices": null,
-            "default": null,
-            "dest": "dest",
-            "flag": false,
-            "flags": [
-              "--dest"
-            ],
-            "help": "also keep a local copy of each result",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "dry_run": {
-            "choices": null,
-            "default": false,
-            "dest": "dry_run",
-            "flag": true,
-            "flags": [
-              "--dry-run"
-            ],
-            "help": "show every payload; submit nothing, bill nothing",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 0,
-            "required": false,
-            "type": "bool"
-          },
-          "project": {
-            "choices": null,
-            "default": null,
-            "dest": "project",
-            "flag": false,
-            "flags": [
-              "--project"
-            ],
-            "help": "project, when the sceneref does not carry one",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "review_sheet": {
-            "choices": null,
-            "default": null,
-            "dest": "review_sheet",
-            "flag": false,
-            "flags": [
-              "--review-sheet"
-            ],
-            "help": "also keep a local copy of each payload's contact sheet here. The sheet is uploaded into the scene either way.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "shot": {
-            "choices": null,
-            "default": null,
-            "dest": "shot",
-            "flag": false,
-            "flags": [
-              "--shot"
-            ],
-            "help": "only this shot, by number or id. Repeatable.",
-            "hidden": false,
-            "multiple": true,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          }
-        }
-      },
-      "handoff": {
-        "arguments": {
-          "ref": {
-            "choices": null,
-            "default": null,
-            "dest": "ref",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {
-          "from_run": {
-            "choices": null,
-            "default": null,
-            "dest": "from_run",
-            "flag": false,
-            "flags": [
-              "--from-run"
-            ],
-            "help": "the run to take the frame from (default: the previous shot's)",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "project": {
-            "choices": null,
-            "default": null,
-            "dest": "project",
-            "flag": false,
-            "flags": [
-              "--project"
-            ],
             "help": "",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
             "required": false,
             "type": "str"
-          },
-          "shot": {
-            "choices": null,
-            "default": null,
-            "dest": "shot",
-            "flag": false,
-            "flags": [
-              "--shot"
-            ],
-            "help": "the shot that should OPEN on this frame",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "int"
           }
         }
       },
@@ -4692,36 +4486,6 @@
         },
         "commands": {},
         "options": {
-          "force": {
-            "choices": null,
-            "default": false,
-            "dest": "force",
-            "flag": true,
-            "flags": [
-              "--force"
-            ],
-            "help": "revise an existing scene, carrying its runs and panels across",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 0,
-            "required": false,
-            "type": "bool"
-          },
-          "from_json": {
-            "choices": null,
-            "default": null,
-            "dest": "from_json",
-            "flag": false,
-            "flags": [
-              "--from-json"
-            ],
-            "help": "the plan: shots, panels and the motion that carries them",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
           "name": {
             "choices": null,
             "default": null,
@@ -4730,6 +4494,37 @@
             "flags": [
               "--name"
             ],
+            "help": "What the scene is called. A label, not an address.",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          },
+          "run": {
+            "choices": null,
+            "default": null,
+            "dest": "run",
+            "flag": false,
+            "flags": [
+              "--run"
+            ],
+            "help": "A video run for the cut, appended in the order given. Accepts <project>/latest, a run id, a unique fragment — a runref, as `studio runs` spells it. Repeatable, in cut order.",
+            "hidden": false,
+            "multiple": true,
+            "nargs": 1,
+            "required": false,
+            "type": "str"
+          }
+        }
+      },
+      "order": {
+        "arguments": {
+          "ref": {
+            "choices": null,
+            "default": null,
+            "dest": "ref",
+            "flag": false,
             "help": "",
             "hidden": false,
             "multiple": false,
@@ -4737,32 +4532,32 @@
             "required": true,
             "type": "str"
           },
-          "part": {
+          "runref": {
             "choices": null,
             "default": null,
-            "dest": "part",
+            "dest": "runref",
             "flag": false,
-            "flags": [
-              "--part"
-            ],
             "help": "",
-            "hidden": true,
-            "multiple": true,
-            "nargs": 1,
-            "required": false,
+            "hidden": false,
+            "multiple": false,
+            "nargs": "+",
+            "required": true,
             "type": "str"
-          },
-          "shot": {
+          }
+        },
+        "commands": {},
+        "options": {
+          "project": {
             "choices": null,
             "default": null,
-            "dest": "shot",
+            "dest": "project",
             "flag": false,
             "flags": [
-              "--shot"
+              "--project"
             ],
             "help": "",
-            "hidden": true,
-            "multiple": true,
+            "hidden": false,
+            "multiple": false,
             "nargs": 1,
             "required": false,
             "type": "str"
@@ -4818,7 +4613,7 @@
           }
         }
       },
-      "plan": {
+      "remove": {
         "arguments": {
           "ref": {
             "choices": null,
@@ -4831,198 +4626,22 @@
             "nargs": 1,
             "required": true,
             "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {
-          "project": {
-            "choices": null,
-            "default": null,
-            "dest": "project",
-            "flag": false,
-            "flags": [
-              "--project"
-            ],
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
           },
-          "prompts": {
-            "choices": null,
-            "default": false,
-            "dest": "prompts",
-            "flag": true,
-            "flags": [
-              "--prompts"
-            ],
-            "help": "also print every prompt in full — what each panel and each shot says",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 0,
-            "required": false,
-            "type": "bool"
-          }
-        }
-      },
-      "render": {
-        "arguments": {
-          "ref": {
+          "runref": {
             "choices": null,
             "default": null,
-            "dest": "ref",
+            "dest": "runref",
             "flag": false,
             "help": "",
             "hidden": false,
             "multiple": false,
-            "nargs": 1,
+            "nargs": "+",
             "required": true,
             "type": "str"
           }
         },
         "commands": {},
         "options": {
-          "dest": {
-            "choices": null,
-            "default": null,
-            "dest": "dest",
-            "flag": false,
-            "flags": [
-              "--dest"
-            ],
-            "help": "also keep a local copy of each result",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "dry_run": {
-            "choices": null,
-            "default": false,
-            "dest": "dry_run",
-            "flag": true,
-            "flags": [
-              "--dry-run"
-            ],
-            "help": "show every payload; submit nothing, bill nothing",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 0,
-            "required": false,
-            "type": "bool"
-          },
-          "project": {
-            "choices": null,
-            "default": null,
-            "dest": "project",
-            "flag": false,
-            "flags": [
-              "--project"
-            ],
-            "help": "project, when the sceneref does not carry one",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "review_sheet": {
-            "choices": null,
-            "default": null,
-            "dest": "review_sheet",
-            "flag": false,
-            "flags": [
-              "--review-sheet"
-            ],
-            "help": "also keep a local copy of each payload's contact sheet here. The sheet is uploaded into the scene either way.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "shot": {
-            "choices": null,
-            "default": null,
-            "dest": "shot",
-            "flag": false,
-            "flags": [
-              "--shot"
-            ],
-            "help": "the shot to render, by number or id. Repeatable, and required.",
-            "hidden": false,
-            "multiple": true,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          }
-        }
-      },
-      "sheet": {
-        "arguments": {
-          "ref": {
-            "choices": null,
-            "default": null,
-            "dest": "ref",
-            "flag": false,
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": true,
-            "type": "str"
-          }
-        },
-        "commands": {},
-        "options": {
-          "cell": {
-            "choices": null,
-            "default": 320,
-            "dest": "cell",
-            "flag": false,
-            "flags": [
-              "--cell"
-            ],
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "int"
-          },
-          "cols": {
-            "choices": null,
-            "default": 4,
-            "dest": "cols",
-            "flag": false,
-            "flags": [
-              "--cols"
-            ],
-            "help": "",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "int"
-          },
-          "out": {
-            "choices": null,
-            "default": null,
-            "dest": "out",
-            "flag": false,
-            "flags": [
-              "--out"
-            ],
-            "help": "where to write the sheet (default: a temp directory)",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
           "project": {
             "choices": null,
             "default": null,

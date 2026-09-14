@@ -69,8 +69,8 @@ entity is found by asking for it, not by listing a folder that groups it.
 
 <project>/                  a project's folder
     runs/<run_id>/          one submission: its payload documents + output/
-    chains/<scene>.json      a scene's own frames, in order
-    scenes/<scene_id>/      runs cut into one continuous take: storyboard/ shots/ output/
+    chains/<slug>.json      an ad-hoc sequence's frames, when there is no scene
+    scenes/<scene_id>/      runs cut into one continuous take: shots/ (copies) + output/
     movies/<movie_id>/      scenes cut into one piece: scenes/ + output/
     input/                  the project working pool
 
@@ -98,15 +98,15 @@ folder you mean rather than asking for a subtree.
 ### The tiers, and the word "shot"
 
 ```
-generation cut  ⊂  shot  ⊂  scene  ⊂  movie
+generation cut  ⊂  run  ⊂  scene  ⊂  movie
 ```
 
 A **generation cut** is a cut *inside* one submission (Kling `multi_prompt`).
-A **shot** is one run's output, used as a component of a scene — it was called a
-"part", which named its position in a list rather than what it is. A **scene** is
-shots stitched into one continuous take. A **movie** is scenes cut together.
-(Confusingly, the `studio-media-shot` skill produces a whole still-then-clip chain,
-which is usually one shot in this sense. Ask which tier is meant when it matters.)
+A **scene** is a named, ordered series of runs — every still and clip made for
+one continuous piece — and its **cut** is the video runs in stitch order. A
+"shot" is a video run in a cut: a position, not a record of its own. A
+**movie** is scenes cut together. (The `studio-media-shot` skill produces a
+whole still-then-clip chain, which is two runs, usually in one scene.)
 
 Scenes and movies are **derived** — the runs they name stay the history, and
 either can always be rebuilt.
@@ -188,20 +188,22 @@ studio frames grid <project>/latest --count 4 --dest /tmp/check
 studio frames last <project>/latest --add-input   # -> <project>/input/
 studio frames at   <project>/latest --time 6.5
 
-# Chains: a scene's own frames, which are its reference set for later shots
-studio frames chain <project>/<name> --seed <project>/input/<file>.png
-studio frames last  <project>/latest --add-input --chain <scene>
-studio frames chain <project>/<name> --args --max 7    # -> --key … --key …
+# Chains: an ad-hoc sequence's frames, when there is no scene behind it.
+# A scene derives its own from its cut: `studio scenes frames`.
+studio frames chain <project>/<slug> --seed <project>/input/<file>.png
+studio frames last  <project>/latest --add-input --chain <slug>
+studio frames chain <project>/<slug> --args --max 7    # -> --key … --key …
 
 # Phrasebook: per-model wording lists (shared material — see above)
 studio phrasebook check --model <model key> --text "<draft prompt>"
 studio phrasebook show --model <model key>
 
-# Scenes: a piece planned, shot and cut. `new` starts one from a plan;
-# `assemble` does the cutting, and takes runrefs directly when there is no plan.
-studio scenes new <project> --name <name> --from-json plan.json
-studio scenes assemble <project>/<name> \
-  --shot <project>/<run_id>#1 --shot <project>/latest#1
+# Scenes: a named, ordered series of runs. `studio run --scene` files a run
+# under one; `add`/`remove`/`order` edit the cut; `assemble` stitches it.
+studio scenes new <project> --name <name> --run <project>/latest
+studio scenes add <project>/<name> <project>/latest
+studio scenes frames <project>/<name> --args --max 7   # the cut's start frames
+studio scenes assemble <project>/<name>
 studio scenes list <project>
 studio scenes show <project>/latest
 
@@ -211,18 +213,19 @@ studio movies new <project> --name <name> \
 studio movies show <project>/latest
 ```
 
-`--shot` and `--scene` are repeatable and **order is the cut order**. Each takes
+`--run` and `--scene` are repeatable and **order is the cut order**. Each takes
 a runref / sceneref, so a chained sequence assembles straight from its own
 history. Sources are copied in, so a scene or movie stays playable and
-re-stitchable, and the manifest records both the copied path and the originating
-ref — copying never loses lineage.
+re-stitchable, and the record names both the copied node and the originating
+run — copying never loses lineage.
 
 ### Runrefs and scenerefs
 
 A run is addressed as `<project>/<run_id>`, `<project>/latest`, a unique name
 fragment, or a bare run id when the project is supplied out of band. Append `#N`
 to pick the Nth output (1-based); the default is every output. This is what the
-engine skills' `--ref-run` / `--start-run` / `--image-run` flags accept.
+engine skills' `--ref-run` / `--start-run` / `--image-run` flags accept. A
+scene's cut names runs, not outputs, so `#N` is refused there.
 
 A **sceneref** is the same shape one tier up — `<project>/<scene_id>`,
 `<project>/latest`, or a unique fragment — and is what `studio movies new --scene`

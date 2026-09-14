@@ -38,12 +38,13 @@ machine event: it is found by `latest`, by its id, or by the filters below —
 unique by embedding `created`, which is what sorting reads and `--since`
 filters on already.
 
-A scene and a movie have a slug and title. Those are things a person plans and
-comes back to; a run is not.
+A scene and a movie have a name. Those are things a person plans and comes
+back to; a run is not — it may belong to a scene (`--scene`), and that is the
+whole of its naming.
 
 CLI
 ---
-    studio runs list <project> [--character|--model|--status|--since]
+    studio runs list <project> [--character|--model|--scene|--status|--since]
     studio runs find --character <name>
     studio runs show <project>/latest [--payload]
     studio runs outputs <project>/latest --presign
@@ -198,6 +199,7 @@ def record_request(
     input: dict, bindings: dict | None = None, prompt_source: dict | None = None,
     characters: list[str] | None = None, plan: dict | None = None,
     sends: list[dict] | None = None, name: str | None = None,
+    scene: str | None = None,
 ) -> dict:
     """Create the run as a DRAFT. **Called before the submission.**
 
@@ -223,7 +225,8 @@ def record_request(
         return entities.create_run(
             project=project, kind=kind, engine=engine, model=model,
             input=input, bindings=clean, plan=plan, sends=sends,
-            characters=characters or [], prompt=prompt_source, name=name)
+            characters=characters or [], prompt=prompt_source, name=name,
+            scene=scene)
     except api.ApiError as exc:
         raise RunError(str(exc)) from exc
 
@@ -466,15 +469,21 @@ def _row(record: dict) -> str:
 @click.option("--character", help="Only runs that used this character.")
 @click.option("--json", "json_", is_flag=True)
 @click.option("--model", help="Only runs on this model (e.g. google/nano-banana-pro).")
+@click.option("--scene", help="Only runs made for this scene: <name>, latest, or scene-<uuid>.")
 @click.option("--since", help="Only runs created at or after this ISO timestamp.")
 @click.option("--status", help="pending | running | succeeded | failed | cancelled.")
 @reports(RunError, api.ApiError)
-def do_list(project, character, json_, model, since, status):
+def do_list(project, character, json_, model, scene, since, status):
     """A project's runs, newest first. Every filter is one query, not a walk."""
+    project_id = _address(project)
+    if scene:
+        # Imported here: `scenes` imports this module for the run store.
+        from studio_pipeline.domain import scenes as SC
+        scene = SC.resolve_scene(scene, default_project=project_id)["id"]
     found = list_runs(
-        _address(project),
+        project_id,
         character=_character_address(character),
-        model=model, status=status, since=since)
+        model=model, status=status, since=since, scene=scene or None)
     if json_:
         print(json.dumps(found, indent=2))
     else:
@@ -563,8 +572,8 @@ def do_delete(runref, files, project):
     `s3:DeleteObjectVersion` — but that is the deployed service's protection,
     not this command's, and it does not apply to a dev stack.
 
-    Nothing cascades. A run holds no entities; a scene shot that names this run
-    keeps the id, and there is no check here that finds one.
+    Nothing cascades. A run holds no entities. A scene whose cut names this run
+    has it taken out of the cut by the API; the scene itself stays.
     """
     record = resolve_run(runref, project)
     entities.delete_run(record["id"], files=files)
@@ -750,9 +759,8 @@ def do_submit(runref, project):
     and an approve subcommand that recorded a yes as a row was deleted
     because a recorded yes is not a stronger claim than a typed command.
 
-    The draft is what goes out. It can have been left by `--dry-run`, by
-    `scenes board`, or by the app, and it can be read in one place and sent from
-    another.
+    The draft is what goes out. It can have been left by `--dry-run` or by
+    the app, and it can be read in one place and sent from another.
     """
     record = resolve_run(runref, project)
     if record.get("status") != "draft":

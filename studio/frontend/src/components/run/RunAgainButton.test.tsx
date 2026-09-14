@@ -42,7 +42,7 @@ function record(over: Partial<RunRecord> = {}): RunRecord {
     engine: "replicate",
     created: "2026-08-20T00:00:00Z",
     outputs: [],
-    scenes: [],
+    scene: null,
     bindings: {},
     sends: [
       {

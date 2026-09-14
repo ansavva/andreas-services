@@ -13,7 +13,7 @@ payload and asking at each point where money moves.
 | Skill | Owns |
 |---|---|
 | **`studio-media-shot`** (this) | the workflow: plan → still → animate → deliver |
-| `studio-media-scene` | a piece **longer than one clip**: chained shots, stitched |
+| `studio-media-scene` | a piece **longer than one clip**: a series of runs, chained and stitched |
 | `studio-media-movie` | several finished **scenes** cut into one piece |
 | `studio-media-character` | identity: the bible and the described reference library |
 | `studio-media-prompt` | authoring a *video* prompt as structured JSON |
@@ -201,6 +201,6 @@ plan before the first one bills.
 **A piece longer than one clip → [`studio-media-scene`](../studio-media-scene/SKILL.md).**
 This skill delivers *one* clip. When the brief outruns the engine's duration
 ceiling (Kling stops at 15 s), or has beats that must flow rather than hard-cut,
-the shape is `still -> video -> video -> …`: each part starts from the previous
-shot's last frame and the shots are stitched into a scene. `studio-media-scene` owns
+the shape is `still -> video -> video -> …`: each clip starts from the previous
+clip's last frame and the clips are cut into a scene. `studio-media-scene` owns
 that loop, the continuity rules, and assembly.

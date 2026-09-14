@@ -187,8 +187,8 @@ def _registry_is_a_copy(monkeypatch, tmp_path):
     #
     # Reading the registry is `GET /api/models`, memoised per process. Left
     # alone that would make every test that asks a model a question need a
-    # signed-in fake — including a pile of pure-logic ones in `test_board.py`
-    # and `test_turnaround.py` that want nothing but a cap and a field name.
+    # signed-in fake — including a pile of pure-logic ones in
+    # `test_turnaround.py` that want nothing but a cap and a field name.
     #
     # So `entities.models` answers from the committed file, and NOT
     # `registry._load`. Patching the loader would have stubbed out the memo, the

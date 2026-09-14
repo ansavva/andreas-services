@@ -28,7 +28,6 @@ from studio_pipeline.domain import prompt as _prompt
 from studio_pipeline.domain import runs as _runs
 from studio_pipeline.domain import scenes as _scenes
 from studio_pipeline.engine import add_model as _add_model
-from studio_pipeline.engine import board as _board
 from studio_pipeline.engine import runner as _runner
 from studio_pipeline.objects import config_sync as _config_sync
 from studio_pipeline.objects import convert as _convert
@@ -144,14 +143,6 @@ main.add_command(_session.cmd_whoami, "whoami")
 main.add_command(_runner.main.commands["run"], "run")
 main.add_command(_runner.main.commands["models"], "models")
 
-
-# Same arrangement for the three scene commands that invoke models: the scene
-# store stays a store, and `board`/`render`/`check` read as scene commands
-# because that is what they are to a user.
-_scenes.main.add_command(_board.cmd_board, "board")
-_scenes.main.add_command(_board.cmd_render, "render")
-_scenes.main.add_command(_board.cmd_check, "check")
-_scenes.main.add_command(_board.cmd_attach, "attach")
 
 for _name, _cmd in [
     ("add-model", _add_model.add_model),

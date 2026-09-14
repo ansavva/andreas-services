@@ -74,7 +74,7 @@
   "prediction_id": "36mcybx905rmr0d0ad2rhkd4a4",
   "project": "proj-69e3a948-1bfd-48ee-8646-263265fd4289",
   "rev": 1,
-  "scenes": [],
+  "scene": null,
   "sends": [
     {
       "content_type": "image/jpeg",

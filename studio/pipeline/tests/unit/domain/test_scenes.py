@@ -1,79 +1,68 @@
-"""`studio scenes` — envelopes, `SHOT#` rows, and a local cut.
+"""`studio scenes` — a named, ordered series of runs, and the cut it stitches.
 
-**`scene.json` is gone, and most of this file used to be about it.** A scene was
-a document in the bucket: `read_manifest` / `write_manifest`, a manifest that
-could be missing or unreadable, an id that was a folder name, and a `latest` that
-had to open every manifest in the project because a lexical sort over folder
-names put every slug after every timestamp. All of that was the document being
-the record.
+**The plan is gone, and most of this file used to be about it.** A scene was a
+storyboard: shot rows with panels, a plan on disk that `new --from-json`
+ingested, a `board` that rendered panels, a `handoff` that carried frames
+between shots. Every one of those things was a run wearing a second record.
+What is tested now is the two facts a scene is — the runs in it (`--scene` on
+`studio run`) and the cut (`add` / `remove` / `order`) — plus the frames the
+cut implies and the render job `assemble` enqueues.
 
-A scene is a row. `latest` is `created` on it, `status` is recomputed and
-`PATCH`ed, and the shots are their own rows that `PUT /api/scenes/<id>/shots`
-merges by id. So the tests that guarded the document are gone and what replaced
-them asserts the row.
-
-**The encode moved too, and this file used to say it had not.** It said ffmpeg
-ships in this wheel and the Lambda has none, so `assemble` downloads every
-rendered shot and stitches locally. It resolves each shot to a video node and
-enqueues one render job now; the worker downloads, copies each shot into
-`shots/`, stitches and writes the record.
-`test_the_cut_is_a_render_job_and_the_worker_writes_the_record` is the test that
-says so, and what it asserts is the half this package still owns: resolution,
-order, and reading the record back rather than asserting it.
+`test_the_cut_is_a_render_job_and_the_worker_writes_the_record` is what says the
+encode left the CLI: one `POST /api/renders` naming node ids in cut order, and a
+record read back from the service rather than asserted.
 """
 
 from __future__ import annotations
-
-import json
 
 import pytest
 from click.testing import CliRunner
 
 from studio_pipeline import cli
-from studio_pipeline.adapters import entities as E, store
+from studio_pipeline.adapters import entities as E
 from studio_pipeline.domain import projects as PROJECTS
 from studio_pipeline.domain import scenes as SC
 from tests.support.fake_api import add_run_output
+
+BUCKET = "studio-prod-media-us-east-1"
 
 
 def _run(*args):
     return CliRunner().invoke(cli.main, ["scenes", *args])
 
 
-def _plan(tmp_path, **over):
-    """A two-shot plan on disk, as `scenes new --from-json` takes it."""
-    doc = {
-        "defaults": {"model": "kling", "panel_model": "nano-banana-pro", "duration": 5},
-        "shots": [
-            {"beat": "one", "panels": [{"prompt": "a"}], "motion": {"prompt": "m1"}},
-            {"beat": "two", "panels": [{"prompt": "b"}], "motion": {"prompt": "m2"}},
-        ],
-    }
-    doc.update(over)
-    path = tmp_path / "plan.json"
-    path.write_text(json.dumps(doc))
-    return str(path)
+def _video(library, name="clip.mp4", rendered=True, sends=None, scene=None):
+    """A video run, with a clip on it unless told otherwise."""
+    run = E.create_run(project=library.project, kind="video", engine="kling",
+                       model="kwaivgi/kling", input={}, bindings={},
+                       sends=sends, scene=scene)
+    if rendered:
+        signed = add_run_output(run["id"], name, 9, "video/mp4")
+        library.fake.s3.put_object(
+            Bucket=BUCKET, Key=signed["url"].removeprefix("memory://"), Body=b"mp4-bytes")
+        node = library.fake.nodes[signed["node"]]
+        node.update(size=9, content_type="video/mp4")
+        node.pop("pending", None)
+        E.patch_run(run["id"], status="succeeded")
+        return run["id"], signed["node"]
+    return run["id"], None
 
 
 @pytest.fixture
-def scene(library, tmp_path):
-    """One planned scene in the fixture project."""
-    project = PROJECTS.resolve("porch-teaser")
-    return SC.new_scene(project, "the-encounter", _plan(tmp_path))
+def scene(library):
+    """One empty scene in the fixture project."""
+    return SC.new_scene(PROJECTS.resolve("porch-teaser"), "the-encounter")
 
 
 # ── resolving ───────────────────────────────────────────────────────────────
 
-def test_a_scene_resolves_by_slug(library, scene):
+def test_a_scene_resolves_by_name(library, scene):
     assert SC.resolve_scene("porch-teaser/the-encounter")["id"] == scene["id"]
 
 
 def test_a_scene_resolves_by_id_with_no_project_at_all(library, scene):
-    """The property a record storing a scene id depends on.
-
-    A movie names its scenes by id, so nothing has to remember which project
-    they were in and a project rename strands none of them.
-    """
+    """A movie names its scenes by id, so nothing has to remember which project
+    they were in and a project rename strands none of them."""
     assert SC.resolve_scene(scene["id"])["id"] == scene["id"]
 
 
@@ -81,18 +70,9 @@ def test_a_unique_fragment_still_resolves(library, scene):
     assert SC.resolve_scene("porch-teaser/encounter")["id"] == scene["id"]
 
 
-def test_latest_reads_created_off_the_row(library, scene, tmp_path):
-    """**Not a lexical sort over folder names, and not a walk of the manifests.**
-
-    `latest` meant `ids[-1]` while every id began with a timestamp, which made
-    the lexical sort accidentally chronological. Slug-keyed scenes sort after
-    every timestamped one, so it came to mean "alphabetically last" — and
-    `movies new --scene <project>/latest` was exactly the caller that would have
-    got it wrong. The fix was to open every manifest; the row carries the
-    timestamp, so there is nothing left to re-derive.
-    """
+def test_latest_reads_created_off_the_row(library, scene):
     project = PROJECTS.resolve("porch-teaser")
-    newer = SC.new_scene(project, "aaa-later", _plan(tmp_path))
+    newer = SC.new_scene(project, "aaa-later")
     assert SC.resolve_scene("porch-teaser/latest")["id"] == newer["id"]
     assert newer["name"] < scene["name"], "and it sorts FIRST alphabetically"
 
@@ -109,121 +89,171 @@ def test_a_project_with_no_scenes_says_so(library):
     assert "no scenes" in result.output
 
 
-# ── planning ────────────────────────────────────────────────────────────────
+# ── new ─────────────────────────────────────────────────────────────────────
 
-def test_new_creates_the_record_and_its_shot_rows(library, tmp_path):
-    project = PROJECTS.resolve("porch-teaser")
-    record = SC.new_scene(project, "the-encounter", _plan(tmp_path))
-
-    assert record["id"].startswith("scene-")
-    assert record["project"] == library.project
-    assert [s["id"] for s in SC.scene_shots(record)] == ["shot-01", "shot-02"]
-    assert record["status"] == "planned"
-    # Its folder is a child of the project's `scenes/`, and the record names it.
-    assert record["folder"].startswith("node-")
+def test_new_creates_the_record_with_an_empty_cut(library):
+    result = _run("new", "porch-teaser", "--name", "opening")
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+    record = SC.resolve_scene("porch-teaser/opening")
+    assert record["runs"] == [] and record["frames"] == []
+    assert "nothing in the cut yet" in result.output
+    assert "--scene porch-teaser/opening" in result.output
 
 
-def test_a_shot_read_back_carries_its_position(library, tmp_path):
-    """**`n` is derived on read, never stored.**
+def test_new_with_runs_names_the_cut_in_the_order_given(library):
+    first, _ = _video(library, "a.mp4")
+    second, _ = _video(library, "b.mp4")
 
-    It is the shot's 1-based position, which `order` already decides — storing it
-    would be a second answer to one question and would go stale the first time a
-    plan was reordered. `storyboard.normalise` sets it while building a plan from
-    JSON, so a freshly ingested scene had it and a scene *read back from the API*
-    did not: the rows come off `SHOT#` and had never been through `normalise`.
-    Everything downstream reads it — `--shot 3`, the handoff hint, panel slugs —
-    so `scenes check` on a stored plan died with `KeyError: 'n'`.
-    """
-    project = PROJECTS.resolve("porch-teaser")
-    created = SC.new_scene(project, "the-encounter", _plan(tmp_path))
+    result = _run("new", "porch-teaser", "--name", "opening", "--run", second, "--run", first)
 
-    reread = SC.scene_shots(SC.resolve_scene(created["id"]))
-
-    assert [s["n"] for s in reread] == [1, 2]
-    assert [s["n"] for s in SC.scene_shots(created)] == [1, 2]
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+    record = SC.resolve_scene("porch-teaser/opening")
+    assert SC.cut_ids(record) == [second, first]
+    # Naming a run in the cut puts it into the scene.
+    assert E.get_run(first)["scene"] == record["id"]
 
 
-def test_a_slug_shaped_like_a_run_id_is_accepted_now(library, tmp_path):
-    """**This was refused, and the reason expired.**
-
-    A scene folder was once `<timestamp>_<slug>`, so such a slug was
-    indistinguishable from a legacy scene and the resolver would have gone to
-    the wrong directory. A scene is a row with a UUID; there is nothing left to
-    collide with.
-    """
-    project = PROJECTS.resolve("porch-teaser")
-    record = SC.new_scene(project, "2026-08-16_07-40-22_the-encounter",
-                          _plan(tmp_path))
-    assert SC.resolve_scene(record["id"])["name"] == \
-        "2026-08-16_07-40-22_the-encounter"
-
-
-def test_new_refuses_to_overwrite_and_says_how_to_revise(library, scene, tmp_path):
-    result = _run("new", "porch-teaser", "--name", "the-encounter",
-                  "--from-json", _plan(tmp_path))
+def test_new_refuses_a_still_in_the_cut(library):
+    still = E.create_run(project=library.project, kind="image", engine="nano-banana-pro",
+                         model="google/nano-banana-pro", input={}, bindings={})
+    result = _run("new", "porch-teaser", "--name", "opening", "--run", still["id"])
     assert result.exit_code == 1
-    assert "--force" in result.output
+    assert "only a video can be cut" in result.output
+    assert SC.list_scenes(PROJECTS.resolve("porch-teaser")) == []
 
 
-def test_revising_carries_recorded_work_across(library, scene, tmp_path):
-    """**Editing prose must not orphan a clip somebody paid for.**
-
-    Two merges, and both are needed. `PUT /api/scenes/<id>/shots` merges by shot
-    id server-side, which protects the shot; a revised shot's `panels` list
-    replaces the stored one wholesale, so `storyboard.merge` runs first to carry
-    the recorded panel images across. The API's merge protects the shot, this
-    one protects what is inside it, and they are not the same write.
-    """
-    shots = SC.scene_shots(scene)
-    shots[0].update(run="run-earlier", node="node-clip", duration=5.04)
-    shots[0]["panels"][0]["node"] = "node-panel-1"
-    SC.save_shots(scene, shots)
-
-    revised = _plan(tmp_path, shots=[
-        {"id": "shot-01", "beat": "one, but reworded",
-         "panels": [{"prompt": "a"}], "motion": {"prompt": "m1"}},
-        {"id": "shot-02", "beat": "two", "panels": [{"prompt": "b"}],
-         "motion": {"prompt": "m2"}},
-    ])
-    result = _run("new", "porch-teaser", "--name", "the-encounter",
-                  "--from-json", revised, "--force")
-    assert result.exit_code == 0, result.output
-
-    after = SC.scene_shots(SC.resolve_scene(scene["id"]))
-    assert after[0]["run"] == "run-earlier"
-    assert after[0]["duration"] == 5.04
-    assert after[0]["panels"][0]["node"] == "node-panel-1"
-    assert after[0]["beat"] == "one, but reworded"
-
-
-def test_new_redirects_the_old_assembling_spelling(library):
-    """`--shot` used to assemble here. A silent "unknown option" on a command
-    that still exists reads as a broken install, so it is answered."""
-    result = _run("new", "porch-teaser", "--name", "x", "--shot", "some/run")
+def test_new_refuses_an_output_index(library, scene):
+    """The cut names runs; which clip a run contributes is decided at assemble."""
+    run_id, _ = _video(library)
+    result = _run("add", "porch-teaser/the-encounter", f"{run_id}#1")
     assert result.exit_code == 1
-    assert "scenes assemble" in result.output
+    assert "drop the #N" in result.output
 
 
-def test_plan_marks_which_panels_exist(library, scene):
-    shots = SC.scene_shots(scene)
-    shots[0]["panels"][0]["node"] = "node-panel-1"
-    SC.save_shots(scene, shots)
+# ── membership ──────────────────────────────────────────────────────────────
 
-    result = _run("plan", "porch-teaser/the-encounter")
-    assert result.exit_code == 0, result.output
-    assert "*p1" in result.output           # boarded
-    assert "-p1" in result.output           # not boarded
+def test_a_run_made_with_scene_belongs_to_it(library, scene):
+    """`studio run --scene` files the draft under the scene from the start."""
+    run_id, _ = _video(library, scene=scene["id"])
+    assert E.get_run(run_id)["scene"] == scene["id"]
+    listed = E.query_runs(project=library.project, scene=scene["id"])["runs"]
+    assert [r["id"] for r in listed] == [run_id]
+    assert listed[0]["scene"] == scene["id"]
 
 
-def test_the_status_is_recomputed_and_never_read_back_as_authority(library, scene):
-    """Derived on every write, so a person can see where a scene is without
-    replaying the rules — and so a hand-edited status cannot lie."""
-    assert SC.resolve_scene(scene["id"])["status"] == "planned"
-    shots = SC.scene_shots(scene)
-    for shot in shots:
-        shot["panels"][0]["node"] = "node-panel"
-    after = SC.save_shots(scene, shots)
-    assert after["status"] == "boarded"
+def test_runs_list_filters_by_scene(library, scene):
+    mine, _ = _video(library, "mine.mp4", scene=scene["id"])
+    _video(library, "other.mp4")
+
+    result = CliRunner().invoke(cli.main, ["runs", "list", "porch-teaser",
+                                           "--scene", "the-encounter", "--status", "succeeded"])
+
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+    assert mine in result.output
+    assert result.output.count("run-") == 1
+
+
+# ── the cut ─────────────────────────────────────────────────────────────────
+
+def test_add_appends_in_order_and_joins(library, scene):
+    first, _ = _video(library, "a.mp4")
+    second, _ = _video(library, "b.mp4")
+
+    assert _run("add", "porch-teaser/the-encounter", first).exit_code == 0
+    result = _run("add", "porch-teaser/the-encounter", second)
+
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+    assert SC.cut_ids(SC.resolve_scene(scene["id"])) == [first, second]
+    assert E.get_run(second)["scene"] == scene["id"]
+
+
+def test_add_refuses_a_run_from_another_scene(library, scene):
+    theirs = SC.new_scene(PROJECTS.resolve("porch-teaser"), "theirs")
+    run_id, _ = _video(library, scene=theirs["id"])
+
+    result = _run("add", "porch-teaser/the-encounter", run_id)
+
+    assert result.exit_code == 1
+    assert theirs["id"] in result.output
+    assert SC.cut_ids(SC.resolve_scene(scene["id"])) == []
+
+
+def test_remove_takes_every_occurrence_out_and_leaves_membership(library, scene):
+    first, _ = _video(library, "a.mp4")
+    second, _ = _video(library, "b.mp4")
+    SC.order_runs(scene, [first, second, first])
+
+    result = _run("remove", "porch-teaser/the-encounter", first)
+
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+    assert SC.cut_ids(SC.resolve_scene(scene["id"])) == [second]
+    assert E.get_run(first)["scene"] == scene["id"]
+
+
+def test_remove_refuses_a_run_that_is_not_in_the_cut(library, scene):
+    run_id, _ = _video(library)
+    result = _run("remove", "porch-teaser/the-encounter", run_id)
+    assert result.exit_code == 1
+    assert "not in the cut" in result.output
+
+
+def test_order_replaces_the_cut_whole(library, scene):
+    first, _ = _video(library, "a.mp4")
+    second, _ = _video(library, "b.mp4")
+    SC.add_runs(scene, (first,))
+
+    result = _run("order", "porch-teaser/the-encounter", second, first)
+
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+    assert SC.cut_ids(SC.resolve_scene(scene["id"])) == [second, first]
+
+
+def test_show_prints_the_cut_as_rows(library, scene):
+    run_id, node = _video(library)
+    SC.add_runs(scene, (run_id,))
+    result = _run("show", "porch-teaser/the-encounter")
+    assert result.exit_code == 0
+    assert run_id in result.output and node in result.output
+
+
+# ── frames ──────────────────────────────────────────────────────────────────
+
+def test_frames_are_the_start_frame_of_each_cut_run_in_order(library, scene):
+    """Derived from the cut, so there is no second list to drift."""
+    seed = library.input_3
+    first, _ = _video(library, "a.mp4", sends=[
+        {"field": "start_image", "role": "start", "node": seed},
+        {"field": "reference_images", "role": "reference", "node": library.face_1}])
+    second, _ = _video(library, "b.mp4", sends=[
+        {"field": "start_image", "role": "start", "node": library.input_2}])
+    unstarted, _ = _video(library, "c.mp4")
+    SC.order_runs(scene, [first, second, unstarted])
+
+    result = _run("frames", "porch-teaser/the-encounter")
+
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+    assert result.output.split() == [seed, library.input_2]
+
+
+def test_frames_args_and_max_keep_the_seed_and_the_newest(library, scene):
+    nodes = [library.input_3, library.input_2, library.face_1, library.face_2]
+    ids = []
+    for n, node in enumerate(nodes):
+        run_id, _ = _video(library, f"{n}.mp4", sends=[
+            {"field": "start_image", "role": "start", "node": node}])
+        ids.append(run_id)
+    SC.order_runs(scene, ids)
+
+    result = _run("frames", "porch-teaser/the-encounter", "--args", "--max", "2")
+
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+    assert result.output.strip() == f"--key {nodes[0]} --key {nodes[-1]}"
+
+
+def test_frames_refuses_a_scene_with_none(library, scene):
+    result = _run("frames", "porch-teaser/the-encounter")
+    assert result.exit_code == 1
+    assert "no frames yet" in result.output
 
 
 # ── assembling ──────────────────────────────────────────────────────────────
@@ -231,53 +261,34 @@ def test_the_status_is_recomputed_and_never_read_back_as_authority(library, scen
 def test_assemble_refuses_a_scene_that_is_not_there(library):
     result = _run("assemble", "porch-teaser/nothing")
     assert result.exit_code == 1
+    assert "no scene" in result.output
 
 
-def test_assemble_names_every_shot_that_has_not_been_rendered(library, scene):
-    """All of them at once — being told one per attempt is one round trip each."""
+def test_assemble_refuses_an_empty_cut(library, scene):
     result = _run("assemble", "porch-teaser/the-encounter")
     assert result.exit_code == 1
-    assert "shot-01" in result.output and "shot-02" in result.output
+    assert "nothing in its cut" in result.output
 
 
-def test_assemble_refuses_a_scene_with_nothing_in_it(library):
-    project = PROJECTS.resolve("porch-teaser")
-    SC.new_scene(project, "empty", None)
-    result = _run("assemble", "porch-teaser/empty")
+def test_assemble_names_every_run_without_a_video_at_once(library, scene):
+    rendered, _ = _video(library, "a.mp4")
+    one, _ = _video(library, rendered=False)
+    two, _ = _video(library, rendered=False)
+    SC.order_runs(scene, [rendered, one, two])
+
+    result = _run("assemble", "porch-teaser/the-encounter")
+
     assert result.exit_code == 1
-    assert "no shots" in result.output
+    assert "2 run(s) in the cut have no video yet" in result.output
+    assert one in result.output and two in result.output
+    assert library.fake.renders == {}
 
 
-def test_the_cut_is_a_render_job_and_the_worker_writes_the_record(
-        library, scene, monkeypatch, tmp_path):
-    """**Stitching left the CLI, and this is the test that says so.**
-
-    It asserted the opposite — that the shots came DOWN, that `adapters/ffmpeg`
-    joined them here and that the result went UP through a signed URL. What is
-    asserted now is the seam that replaced it: one `POST /api/renders` of kind
-    `assemble`, naming this scene and its shots as NODE IDS in cut order, and a
-    record that comes back from the service carrying the output, the status and
-    the per-shot copies.
-    """
-    # Two rendered shots: a run each, with a video output.
-    clips = []
-    for n in (1, 2):
-        run = E.create_run(project=library.project, kind="video", engine="kling",
-                           model="kwaivgi/kling", input={},
-                           bindings={})
-        signed = add_run_output(run["id"], f"shot-{n}.mp4", 9, "video/mp4")
-        library.fake.s3.put_object(
-            Bucket="studio-prod-media-us-east-1",
-            Key=signed["url"].removeprefix("memory://"), Body=b"mp4-bytes")
-        node = library.fake.nodes[signed["node"]]
-        node.update(size=9, content_type="video/mp4")
-        node.pop("pending", None)
-        clips.append((run["id"], signed["node"]))
-
-    shots = SC.scene_shots(scene)
-    for shot, (run_id, node) in zip(shots, clips):
-        shot.update(run=run_id, node=node)
-    SC.save_shots(scene, shots)
+def test_the_cut_is_a_render_job_and_the_worker_writes_the_record(library, scene):
+    """One `POST /api/renders` of kind `assemble`, naming this scene and its
+    clips as NODE IDS in cut order, and a record read back from the service."""
+    clips = [_video(library, f"shot-{n}.mp4") for n in (1, 2)]
+    SC.order_runs(scene, [r for r, _ in clips])
 
     result = _run("assemble", "porch-teaser/the-encounter")
     assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
@@ -285,41 +296,26 @@ def test_the_cut_is_a_render_job_and_the_worker_writes_the_record(
     job = list(library.fake.renders.values())[-1]
     assert job["kind"] == "assemble"
     assert job["params"]["target"] == scene["id"]
-    # The clips, by node id and in cut order — resolved HERE, because "this run
-    # produced three videos, say which" is a refusal a person acts on and must
-    # not arrive as a failed job twenty seconds later.
     assert [part["node"] for part in job["params"]["parts"]] == [n for _, n in clips]
     assert [part["run"] for part in job["params"]["parts"]] == [r for r, _ in clips]
 
     after = SC.resolve_scene(scene["id"])
     assert after["output"]["node"].startswith("node-")
     assert after["status"] == "assembled"
-    assert SC.is_assembled(after) is True
-    # Each shot was copied into the scene, so it stays playable as its runs
-    # accumulate around it, and the copy is a real one — two blobs.
-    for shot in SC.scene_shots(after):
-        assert shot["shot_node"].startswith("node-")
-        assert shot["shot_node"] != shot["node"]
+    assert SC.scene_output_node(after) == after["output"]["node"]
 
 
-# ── handoff ─────────────────────────────────────────────────────────────────
+def test_assemble_with_shot_orders_first_then_cuts(library, scene):
+    """The pre-plan one-liner: a fresh scene plus runrefs is "just stitch these"."""
+    first, _ = _video(library, "a.mp4")
+    second, _ = _video(library, "b.mp4")
 
-def test_handoff_refuses_the_first_shot(library, scene):
-    result = _run("handoff", "porch-teaser/the-encounter", "--shot", "1")
-    assert result.exit_code == 1
-    assert "nothing before it" in result.output
+    result = _run("assemble", "porch-teaser/the-encounter", "--shot", second, "--shot", first)
 
-
-def test_handoff_refuses_a_shot_that_is_not_in_the_scene(library, scene):
-    result = _run("handoff", "porch-teaser/the-encounter", "--shot", "9")
-    assert result.exit_code == 1
-    assert "has no shot 9" in result.output
-
-
-def test_handoff_says_to_render_the_shot_before_it_first(library, scene):
-    result = _run("handoff", "porch-teaser/the-encounter", "--shot", "2")
-    assert result.exit_code == 1
-    assert "has not been rendered" in result.output
+    assert result.exit_code == 0, f"{result.output}\n{result.exception!r}"
+    assert SC.cut_ids(SC.resolve_scene(scene["id"])) == [second, first]
+    job = list(library.fake.renders.values())[-1]
+    assert [part["run"] for part in job["params"]["parts"]] == [second, first]
 
 
 # ── outputs ─────────────────────────────────────────────────────────────────
@@ -327,20 +323,15 @@ def test_handoff_says_to_render_the_shot_before_it_first(library, scene):
 def test_scenes_outputs_lists_nothing_before_a_cut(library, scene):
     result = _run("outputs", "porch-teaser/the-encounter")
     assert result.exit_code == 0, result.output
+    assert result.output.strip() == ""
 
 
-# ── movies ──────────────────────────────────────────────────────────────────
-#
-# The movie tier has its own file now — `test_movies.py`, added when coverage put
-# `domain/movies.py` at 56% against `storyboard.py`'s 95%. What is left here is
-# the seam between the two: a scene is what a movie is made OF.
+def test_scenes_outputs_lists_the_cut_after_one(library, scene):
+    run_id, _ = _video(library)
+    SC.add_runs(scene, (run_id,))
+    _run("assemble", "porch-teaser/the-encounter")
 
+    result = _run("outputs", "porch-teaser/the-encounter")
 
-
-
-
-
-
-def test_store_reads_a_scene_output_by_node(library, scene):
-    """The scene's folder is a node the record names, not a path anyone builds."""
-    assert store.node(scene["folder"])["name"] == "the-encounter"
+    assert result.exit_code == 0, result.output
+    assert "the-encounter.mp4" in result.output

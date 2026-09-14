@@ -330,6 +330,8 @@ export function CreateBar() {
           const cited = prompt.includes("{");
           const created = await createRun({
             project: target,
+            // On a scene page the draft is the scene's from the start.
+            ...(bar.scene ? { scene: bar.scene } : {}),
             kind: entry.kind,
             // The Replicate `owner/name`, not the registry key — `POST /api/runs`
             // records the model the provider is called by.
@@ -380,6 +382,7 @@ export function CreateBar() {
         // Every feed and listing keyed under `runs`, and the project's counts.
         void queryClient.invalidateQueries({ queryKey: ["runs"] });
         void queryClient.invalidateQueries({ queryKey: ["project", target] });
+        if (bar.scene) void queryClient.invalidateQueries({ queryKey: ["scene", bar.scene] });
         if (!bar.onProject) navigate(projectPath(target));
       } catch (err) {
         setFailure((err as Error).message);
@@ -426,7 +429,9 @@ export function CreateBar() {
     [projects.data],
   );
 
-  const placeholder = project.data
+  const placeholder = bar.scene
+    ? "Describe what to make for this scene…"
+    : project.data
     ? `Describe what to make in ${project.data.name}…`
     : target
       ? "Describe what to make…"

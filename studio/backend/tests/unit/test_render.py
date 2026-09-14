@@ -11,8 +11,8 @@ Three things are under test here and the split matters:
   validation twenty seconds later, in a worker, reaches a person as a failed row;
   the same sentence on the `POST` reaches them as a 400 they can act on.
 * **The worker's record-keeping**, which is the half that is not ffmpeg — what a
-  cut writes onto a scene, that a superseded cut is kept, that the shots learn
-  their copies.
+  cut writes onto a scene, that a superseded cut is kept, that each part's copy
+  and run are named in the report.
 * **Which failures redrive and which do not**, because getting that backwards
   either fills the dead-letter queue with something nobody can act on or loses
   work that would have succeeded.
@@ -57,9 +57,9 @@ def _project(api, name="rooftop-teaser"):
     return api.post("/api/projects", json={"name": name}).get_json()
 
 
-def _scene(api, project, name="stadium-encounter", shots=None):
+def _scene(api, project, name="stadium-encounter"):
     return api.post("/api/scenes", json={
-        "project": project["id"], "name": name, "shots": shots or []}).get_json()
+        "project": project["id"], "name": name}).get_json()
 
 
 def _movie(api, project, name="launch-cut"):
@@ -326,34 +326,26 @@ def test_re_cutting_keeps_the_cut_it_displaces(empty_api, queue, stitcher):
     assert catalog.node(after["output"]["node"])["name"] == "stadium-encounter-2.mp4"
 
 
-def test_a_shot_learns_its_copy_its_position_and_its_duration(empty_api, queue, stitcher):
-    """The worker writes the shot rows, because the assemble is what knows them.
-    A part with no `shot` was appended with `--shot <runref>` against a scene with
-    no plan; there is no row to update and nothing is invented for it."""
+def test_the_report_names_each_parts_run_copy_and_duration(empty_api, queue, stitcher):
+    """A scene holds no shot rows to write back to — its cut is a list of run
+    ids — so what the worker learned about each part lives in the stitch report:
+    which run it came from, the copy in `shots/`, and how long it ran."""
     project = _project(empty_api)
-    scene = _scene(empty_api, project, shots=[{"prompt": "a"}, {"prompt": "b"}])
-    planned = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"]
+    scene = _scene(empty_api, project)
     clips = [_clip(empty_api, project, f"shot-{n}.mp4") for n in (1, 2)]
 
     job = empty_api.post("/api/renders", json={"kind": "assemble", "params": {
         "target": scene["id"],
-        "parts": [{"node": clip["node_id"], "shot": shot["id"]}
-                  for clip, shot in zip(clips, planned)],
+        "parts": [{"node": clip["node_id"], "run": f"run-{n}"}
+                  for n, clip in enumerate(clips, 1)],
     }}).get_json()
     render.run(job["id"])
 
-    written = catalog.shots(scene["id"])
-    # **Position is `order`, and `n` is derived from it on read.** The worker
-    # deliberately writes no `n`: storing it would be a second answer to one
-    # question and would go stale the first time a plan was reordered.
-    # `order` is spaced (10, 20, …) so a shot can be inserted between two
-    # without renumbering the plan; what matters here is that the worker did not
-    # touch it.
-    assert [shot["order"] for shot in written] == [10, 20]
-    assert "n" not in written[0]
-    assert [shot["node"] for shot in written] == [clip["node_id"] for clip in clips]
-    assert all(shot["shot_node"] != shot["node"] for shot in written)
-    assert all(shot["duration"] == 5.0 for shot in written)
+    cuts = catalog.entity(catalog.ENTITY_SCENE, scene["id"])["stitch"]["cuts"]
+    assert [cut["run"] for cut in cuts] == ["run-1", "run-2"]
+    assert [cut["n"] for cut in cuts] == [1, 2]
+    assert all(cut["duration"] == 5.0 for cut in cuts)
+    assert all(cut["node"] != clip["node_id"] for cut, clip in zip(cuts, clips))
 
 
 def test_a_job_is_idempotent_because_delivery_is_at_least_once(

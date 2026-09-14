@@ -1,29 +1,21 @@
-"""Scenes: the tier above a run, and the plan that is rows.
+"""Scenes: a named, ordered series of runs.
 
-A scene is shots stitched into one continuous take. It is the same
-envelope-plus-blob split a run is, with one addition that is the whole reason a
-scene is not just a folder of runs: **the plan**.
+**A scene used to be a data model of its own** — a plan of `SHOT#` rows with
+panels, prompts and the run each one rendered into — and 700 lines of storyboard
+service over it. Every one of those things was already a run. So a scene is now
+two facts and a name, and this file tests exactly those:
 
-**Movies moved to `test_movies.py`.** This file covered two route modules and
-left `routes/movies.py` at 77% with eight of its tests.
-`SCENE#<id>` / `SHOT#<shot_id>` is one row per planned shot, carrying `order`,
-`prompt`, and the `run` and `panel` that rendered it.
+| Fact | Where | Edge beside it |
+|---|---|---|
+| a run belongs to a scene | `scene` on the run | `RUN#<run>` / `SCENE#<scene>` |
+| the cut, in order | `runs` on the scene | `SCENE#<scene>` / `RUN#<run>` |
 
-**The one non-obvious rule in the module is that a plan revision merges onto
-rendered work rather than replacing it.** Rewriting prompts is what a person does
-to a plan; `run` and `panel` are what a render put there, and a plain replace
-would silently discard them — which would read as "the render vanished" long
-after the request that caused it.
+The cut may name a run that has not rendered yet — the cut IS the plan — and
+naming a run in it puts the run into the scene. A run belongs to at most one.
 
-**Stitching used to stay in the CLI and this file used to say so.** The reason
-given was that `ffmpeg` ships in the pipeline wheel and the Lambda has none —
-which is a fact about an image, and the image changed. A cut is a render job
-(`test_render.py`) done by a second container that has ffmpeg in it, and the
-worker writes `output`, `stitch`, `cuts` and `assembled` back onto the scene.
-
-`POST /api/scenes/<id>/output` is still here and still tested. It signs an upload
-for a cut made somewhere else, which is what a client that already holds the
-bytes wants; the render path does not use it.
+Stitching is a render job (`test_render.py`). `POST /api/scenes/<id>/output`
+is still here and still tested: it signs an upload for a cut made somewhere
+else, which is what a client that already holds the bytes wants.
 """
 
 from studio_core import config
@@ -41,40 +33,48 @@ def _project(api, name="rooftop-teaser"):
     return api.post("/api/projects", json={"name": name}).get_json()
 
 
-def _scene(api, project, name="stadium-encounter", shots=None):
+def _scene(api, project, name="stadium-encounter", **body):
+    resp = api.post("/api/scenes", json={"project": project["id"], "name": name, **body})
+    assert resp.status_code == 201, resp.get_data(as_text=True)
+    return resp.get_json()
+
+
+def _run(api, project, kind="video", **body):
     resp = api.post(
-        "/api/scenes",
-        json={"project": project["id"], "name": name, "shots": shots or []},
+        "/api/runs",
+        json={"project": project["id"], "kind": kind, "engine": "kling",
+              "model": "kwaivgi/kling-v3-omni-video", **body},
     )
     assert resp.status_code == 201, resp.get_data(as_text=True)
     return resp.get_json()
 
 
-def _movie(api, project, name="launch-cut", **body):
-    resp = api.post("/api/movies", json={"project": project["id"], "name": name, **body})
-    assert resp.status_code == 201, resp.get_data(as_text=True)
-    return resp.get_json()
+def _output(api, run, name="clip.mp4"):
+    return api.post(
+        f"/api/runs/{run['id']}/outputs",
+        json={"name": name, "size": 10, "content_type": "video/mp4"},
+    ).get_json()["node"]
+
+
+def _uploaded(api, parent_id, name):
+    node = api.post("/api/nodes", json={"parent": parent_id, "name": name,
+                                        "kind": "file"}).get_json()
+    record = catalog.node(node["id"])
+    return catalog.set_blob(node["id"], record["blob_key"], size=4,
+                            content_type="image/png")
 
 
 def _child(parent_id, name):
-    """A named child folder, made if a test hasn't put one there — a character
-    no longer starts holding `reference/` and the rest, so this resolves-or-
-    creates by name, the same rule `folder_under` applies in production."""
     return layout.folder_under(parent_id, name)
 
 
-# ──────────────────────────── scenes ────────────────────────────
+# ──────────────────────────── the record ────────────────────────────
 
 
-def test_creating_a_scene_writes_the_record_listing_row_folder_and_shots(empty_api, catalog_table):
-    """The envelope and the plan, and the plan is rows rather than a document.
-
-    `scene.json` was a document nobody could parse, so a scene could be shown as
-    a folder and nothing else.
-    """
+def test_creating_a_scene_writes_the_record_listing_row_and_folder(empty_api, catalog_table):
     project = _project(empty_api)
 
-    scene = _scene(empty_api, project, shots=[{"prompt": "wide"}, {"prompt": "close"}])
+    scene = _scene(empty_api, project)
 
     assert _item(catalog_table, f"SCENE#{scene['id']}", "META")["status"]["S"] == "planned"
     assert [row["id"] for row in catalog.project_entities(project["id"], "scene")] == [
@@ -83,86 +83,322 @@ def test_creating_a_scene_writes_the_record_listing_row_folder_and_shots(empty_a
     assert catalog.node(scene["folder"])["parent_id"] == _child(
         project["root"], layout.SCENE_PARENT
     )["node_id"]
-    assert [shot["prompt"] for shot in scene["shots"]] == ["wide", "close"]
+    assert scene["runs"] == [] and scene["frames"] == [] and scene["movies"] == []
 
 
-def test_shots_come_back_in_order(empty_api):
-    """`order` is gapped by ten so a plan can be reordered without renumbering it."""
+def test_a_scene_listing_row_carries_its_name(empty_api):
+    """A row without one cannot be DRAWN, and a list of UUIDs is unreadable."""
     project = _project(empty_api)
-    scene = _scene(empty_api, project, shots=[{"prompt": "a"}, {"prompt": "b"}, {"prompt": "c"}])
+    _scene(empty_api, project, name="Opening")
+
+    (row,) = empty_api.get(f"/api/scenes?project={project['id']}").get_json()["scenes"]
+    assert row["name"] == "Opening" and row["status"] == "planned"
+
+
+def test_a_scene_holds_no_plan_rows(empty_api, catalog_table):
+    """**The point of the rework.** The partition is the record and its edges;
+    nothing else lives under it, because everything a shot held is a run."""
+    project = _project(empty_api)
+    run = _run(empty_api, project)
+    scene = _scene(empty_api, project, runs=[run["id"]])
+
+    rows = catalog_table.query(
+        TableName=config.catalog_table(),
+        KeyConditionExpression="pk = :pk",
+        ExpressionAttributeValues={":pk": {"S": f"SCENE#{scene['id']}"}},
+    )["Items"]
+    assert sorted(item["sk"]["S"] for item in rows) == ["META", f"RUN#{run['id']}"]
+
+
+# ──────────────────────────── membership ────────────────────────────
+
+
+def test_a_run_made_for_a_scene_names_it_and_is_listed_under_it(empty_api):
+    """`scene` is a field on the run, with an edge beside it, and it is
+    projected onto the listing row so `?scene=` is one range query narrowed."""
+    project = _project(empty_api)
+    scene = _scene(empty_api, project)
+    still = _run(empty_api, project, kind="image", scene=scene["id"])
+    _run(empty_api, project, kind="image")
+
+    assert still["scene"] == scene["id"]
+    assert empty_api.get(f"/api/runs/{still['id']}").get_json()["scene"] == scene["id"]
+    assert catalog.linked(scene["id"], catalog.ENTITY_RUN) == [still["id"]]
+    listed = empty_api.get(
+        f"/api/runs?project={project['id']}&scene={scene['id']}&include=drafts"
+    ).get_json()["runs"]
+    assert [row["id"] for row in listed] == [still["id"]]
+    assert listed[0]["scene"] == scene["id"]
+
+
+def test_a_feed_row_says_which_scene_a_run_is_in(empty_api):
+    project = _project(empty_api)
+    scene = _scene(empty_api, project)
+    run = _run(empty_api, project, scene=scene["id"])
+
+    (row,) = empty_api.get(
+        f"/api/runs?project={project['id']}&scene={scene['id']}&include=drafts&view=feed"
+    ).get_json()["runs"]
+    assert row["id"] == run["id"] and row["scene"] == scene["id"]
+
+
+def test_a_run_with_no_scene_says_none_rather_than_omitting_the_field(empty_api):
+    project = _project(empty_api)
+    run = _run(empty_api, project)
+
+    assert empty_api.get(f"/api/runs/{run['id']}").get_json()["scene"] is None
+
+
+def test_a_run_can_be_put_into_a_scene_later_and_taken_out_again(empty_api):
+    project = _project(empty_api)
+    scene = _scene(empty_api, project)
+    run = _run(empty_api, project)
+
+    resp = empty_api.patch(f"/api/runs/{run['id']}", json={"scene": scene["id"]})
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    assert catalog.linked(scene["id"], catalog.ENTITY_RUN) == [run["id"]]
+    (row,) = empty_api.get(f"/api/runs?project={project['id']}&include=drafts").get_json()["runs"]
+    assert row["scene"] == scene["id"]
+
+    empty_api.patch(f"/api/runs/{run['id']}", json={"scene": None})
+    assert empty_api.get(f"/api/runs/{run['id']}").get_json()["scene"] is None
+    assert catalog.linked(scene["id"], catalog.ENTITY_RUN) == []
+    (row,) = empty_api.get(f"/api/runs?project={project['id']}&include=drafts").get_json()["runs"]
+    assert "scene" not in row
+
+
+def test_moving_a_run_between_scenes_moves_the_edge(empty_api):
+    project = _project(empty_api)
+    first = _scene(empty_api, project, name="one")
+    second = _scene(empty_api, project, name="two")
+    run = _run(empty_api, project, scene=first["id"])
+
+    empty_api.patch(f"/api/runs/{run['id']}", json={"scene": second["id"]})
+
+    assert catalog.linked(first["id"], catalog.ENTITY_RUN) == []
+    assert catalog.linked(second["id"], catalog.ENTITY_RUN) == [run["id"]]
+
+
+def test_a_run_cannot_name_a_scene_in_another_project(empty_api):
+    """A run and its scene share a project by construction; nothing downstream
+    checks it again, so the one write that could break it refuses."""
+    here = _project(empty_api, name="here")
+    there = _project(empty_api, name="there")
+    scene = _scene(empty_api, there)
+
+    resp = empty_api.post("/api/runs", json={
+        "project": here["id"], "kind": "video", "model": "m", "scene": scene["id"]})
+    assert resp.status_code == 400
+    assert "not in this project" in resp.get_json()["error"]
+
+
+# ──────────────────────────── the cut ────────────────────────────
+
+
+def test_the_cut_is_an_ordered_list_answered_as_rows(empty_api):
+    """`GET` and the write that changes the list answer in one shape, for the
+    reason `test_edges` gives: a client that merged strings over rows read empty."""
+    project = _project(empty_api)
+    scene = _scene(empty_api, project)
+    first, second = _run(empty_api, project), _run(empty_api, project)
+    clip = _output(empty_api, second)
+
+    written = empty_api.patch(f"/api/scenes/{scene['id']}/runs",
+                              json={"runs": [second["id"], first["id"]]}).get_json()
+    read = empty_api.get(f"/api/scenes/{scene['id']}").get_json()
+
+    assert written["runs"] == read["runs"]
+    assert [row["id"] for row in read["runs"]] == [second["id"], first["id"]]
+    # A rendered run draws its clip; one that has not rendered yet draws as a
+    # row with nothing in it, which is what a planned cut looks like.
+    assert read["runs"][0]["output"]["node"] == clip and read["runs"][0]["output"]["url"]
+    assert read["runs"][1]["output"] is None
+    assert read["runs"][0]["kind"] == "video" and read["runs"][0]["status"] == "draft"
+
+
+def test_naming_a_run_in_the_cut_puts_it_into_the_scene(empty_api):
+    project = _project(empty_api)
+    scene = _scene(empty_api, project)
+    run = _run(empty_api, project)
+
+    empty_api.patch(f"/api/scenes/{scene['id']}/runs", json={"runs": [run["id"]]})
+
+    assert empty_api.get(f"/api/runs/{run['id']}").get_json()["scene"] == scene["id"]
+    assert catalog.linked(scene["id"], catalog.ENTITY_RUN) == [run["id"]]
+    assert catalog.links(scene["id"], catalog.ENTITY_RUN) == [run["id"]]
+
+
+def test_a_scene_can_be_created_with_its_cut(empty_api):
+    project = _project(empty_api)
+    run = _run(empty_api, project)
+
+    scene = _scene(empty_api, project, runs=[run["id"]])
+
+    assert [row["id"] for row in scene["runs"]] == [run["id"]]
+    assert empty_api.get(f"/api/runs/{run['id']}").get_json()["scene"] == scene["id"]
+
+
+def test_dropping_a_run_from_the_cut_keeps_it_in_the_scene(empty_api):
+    """The cut is the order; membership is the run's. Reordering a cut is not
+    a decision about where a run lives."""
+    project = _project(empty_api)
+    scene = _scene(empty_api, project)
+    first, second = _run(empty_api, project), _run(empty_api, project)
+    empty_api.patch(f"/api/scenes/{scene['id']}/runs",
+                    json={"runs": [first["id"], second["id"]]})
+
+    empty_api.patch(f"/api/scenes/{scene['id']}/runs", json={"runs": [second["id"]]})
+
+    assert catalog.links(scene["id"], catalog.ENTITY_RUN) == [second["id"]]
+    assert empty_api.get(f"/api/runs/{first['id']}").get_json()["scene"] == scene["id"]
+
+
+def test_a_reprise_is_legal_and_the_edge_rows_deduplicate(empty_api):
+    project = _project(empty_api)
+    scene = _scene(empty_api, project)
+    run = _run(empty_api, project)
+
+    body = empty_api.patch(f"/api/scenes/{scene['id']}/runs",
+                           json={"runs": [run["id"], run["id"]]}).get_json()
+
+    assert [row["id"] for row in body["runs"]] == [run["id"], run["id"]]
+    assert catalog.links(scene["id"], catalog.ENTITY_RUN) == [run["id"]]
+
+
+def test_a_still_cannot_be_cut(empty_api):
+    """The cut is what `assemble` walks; a still there is a stitch that fails at
+    the far end of a queue rather than at the request that caused it."""
+    project = _project(empty_api)
+    scene = _scene(empty_api, project)
+    still = _run(empty_api, project, kind="image")
+
+    resp = empty_api.patch(f"/api/scenes/{scene['id']}/runs", json={"runs": [still["id"]]})
+
+    assert resp.status_code == 400
+    assert "only a video can be cut" in resp.get_json()["error"]
+    assert empty_api.get(f"/api/runs/{still['id']}").get_json()["scene"] is None
+
+
+def test_a_run_in_another_scene_cannot_be_cut_here(empty_api):
+    """A run belongs to at most one scene, and moving it is a decision to make
+    on the run — not a side effect of ordering somebody else's cut."""
+    project = _project(empty_api)
+    theirs = _scene(empty_api, project, name="theirs")
+    mine = _scene(empty_api, project, name="mine")
+    run = _run(empty_api, project, scene=theirs["id"])
+
+    resp = empty_api.patch(f"/api/scenes/{mine['id']}/runs", json={"runs": [run["id"]]})
+
+    assert resp.status_code == 400
+    assert theirs["id"] in resp.get_json()["error"]
+    assert catalog.links(mine["id"], catalog.ENTITY_RUN) == []
+
+
+def test_a_cut_cannot_name_a_run_from_another_project(empty_api):
+    here = _project(empty_api, name="here")
+    there = _project(empty_api, name="there")
+    scene = _scene(empty_api, here)
+    run = _run(empty_api, there)
+
+    resp = empty_api.patch(f"/api/scenes/{scene['id']}/runs", json={"runs": [run["id"]]})
+
+    assert resp.status_code == 400
+    assert "not in this project" in resp.get_json()["error"]
+
+
+def test_runs_must_be_a_list_of_ids(empty_api):
+    project = _project(empty_api)
+    scene = _scene(empty_api, project)
+
+    assert empty_api.patch(f"/api/scenes/{scene['id']}/runs",
+                           json={"runs": "run-x"}).status_code == 400
+    assert empty_api.patch(f"/api/scenes/{scene['id']}/runs",
+                           json={"runs": [{"id": "run-x"}]}).status_code == 400
+
+
+def test_the_scenes_frames_are_the_first_frame_each_cut_run_opened_on(empty_api):
+    """Derived from the cut's `start` sends on read, in cut order — the seed
+    shot 1 started from and every handoff since. It was a `chains/<scene>.json`
+    kept in step by hand, and then a `scene_frames` over shot rows; both
+    drifted from the scene they described."""
+    project = _project(empty_api)
+    scene = _scene(empty_api, project)
+    pool = _child(project["root"], layout.INPUT_FOLDER)["node_id"]
+    seed = _uploaded(empty_api, pool, "seed.png")["node_id"]
+    handoff = _uploaded(empty_api, pool, "handoff.png")["node_id"]
+    reference = _uploaded(empty_api, pool, "ref.png")["node_id"]
+    first = _run(empty_api, project, sends=[
+        {"field": "start_image", "role": "start", "node": seed},
+        {"field": "reference_images", "role": "reference", "node": reference}])
+    second = _run(empty_api, project, sends=[
+        {"field": "start_image", "role": "start", "node": handoff}])
+    unstarted = _run(empty_api, project)
+
+    empty_api.patch(f"/api/scenes/{scene['id']}/runs",
+                    json={"runs": [first["id"], second["id"], unstarted["id"]]})
+
+    frames = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["frames"]
+    assert [frame["node"] for frame in frames] == [seed, handoff]
+    assert all(frame["url"] for frame in frames)
+
+
+# ──────────────────────────── deletion ────────────────────────────
+
+
+def test_deleting_a_scene_leaves_its_runs_and_clears_their_scene(empty_api, catalog_table):
+    """A run is the record; the scene was a grouping of them. The attribute is
+    a field on another record, which a partition delete cannot reach, so the
+    route clears it — nothing may point at an id that is gone."""
+    project = _project(empty_api)
+    scene = _scene(empty_api, project)
+    run = _run(empty_api, project, scene=scene["id"])
+    empty_api.patch(f"/api/scenes/{scene['id']}/runs", json={"runs": [run["id"]]})
+
+    resp = empty_api.delete(f"/api/scenes/{scene['id']}")
+
+    assert resp.status_code == 200
+    assert _item(catalog_table, f"SCENE#{scene['id']}", "META") is None
+    fetched = empty_api.get(f"/api/runs/{run['id']}").get_json()
+    assert fetched["status"] == "draft" and fetched["scene"] is None
+    assert catalog.links(run["id"], catalog.ENTITY_SCENE) == []
+    assert catalog.linked(scene["id"], catalog.ENTITY_RUN) == []
+    assert catalog.entity(catalog.ENTITY_PROJECT, project["id"])["counts"]["scenes"] == 0
+
+
+def test_deleting_a_run_takes_it_out_of_the_cut(empty_api):
+    """A cut naming a deleted run would draw an empty row and refuse to
+    assemble for a reason nobody can act on."""
+    project = _project(empty_api)
+    scene = _scene(empty_api, project)
+    gone, kept = _run(empty_api, project), _run(empty_api, project)
+    empty_api.patch(f"/api/scenes/{scene['id']}/runs",
+                    json={"runs": [gone["id"], kept["id"]]})
+
+    assert empty_api.delete(f"/api/runs/{gone['id']}").status_code == 200
 
     fetched = empty_api.get(f"/api/scenes/{scene['id']}").get_json()
+    assert [row["id"] for row in fetched["runs"]] == [kept["id"]]
+    assert catalog.links(scene["id"], catalog.ENTITY_RUN) == [kept["id"]]
 
-    assert [shot["prompt"] for shot in fetched["shots"]] == ["a", "b", "c"]
-    assert [shot["order"] for shot in fetched["shots"]] == [10, 20, 30]
 
-
-def test_a_plan_revision_keeps_the_work_already_rendered(empty_api):
-    """**The rule this module exists to hold.**
-
-    A shot matched by id keeps its `run` and `panel` unless the request names
-    them, so rewriting a prompt does not throw away the render that answered the
-    old one. A plain replace would, and would do it silently — the plan would look
-    right and the scene would have lost its footage.
-    """
+def test_deleting_a_scene_drops_the_edge_the_movie_held_to_it(empty_api):
+    """`delete_entity` used to clear a scene's run holders and not its movie
+    holders, so a movie kept an edge to a scene that was gone."""
     project = _project(empty_api)
-    scene = _scene(empty_api, project, shots=[{"prompt": "wide"}])
-    shot_id = scene["shots"][0]["id"]
-    empty_api.patch(
-        f"/api/scenes/{scene['id']}/shots/{shot_id}",
-        json={"run": "run-abc", "panel": 2},
-    )
+    scene = _scene(empty_api, project)
+    movie = empty_api.post("/api/movies", json={
+        "project": project["id"], "name": "cut", "scenes": [scene["id"]]}).get_json()
 
-    resp = empty_api.patch(
-        f"/api/scenes/{scene['id']}/shots",
-        json={"shots": [{"id": shot_id, "prompt": "wider"}]},
-    )
+    empty_api.delete(f"/api/scenes/{scene['id']}")
 
-    assert resp.status_code == 200
-    shot = resp.get_json()["shots"][0]
-    assert shot["prompt"] == "wider"
-    assert (shot["run"], shot["panel"]) == ("run-abc", 2)
+    assert catalog.links(movie["id"], catalog.ENTITY_SCENE) == []
 
 
-def test_a_plan_revision_drops_shots_it_omits_and_appends_new_ones(empty_api):
-    """A revision is the whole plan, so a shot left out of it is a shot removed.
-
-    That is the half a merge could get wrong in the other direction: keeping
-    everything would make a plan impossible to shorten.
-    """
-    project = _project(empty_api)
-    scene = _scene(empty_api, project, shots=[{"prompt": "a"}, {"prompt": "b"}])
-    keep = scene["shots"][0]["id"]
-
-    body = empty_api.patch(
-        f"/api/scenes/{scene['id']}/shots",
-        json={"shots": [{"id": keep, "prompt": "a"}, {"prompt": "c"}]},
-    ).get_json()
-
-    assert [shot["prompt"] for shot in body["shots"]] == ["a", "c"]
-    assert len(catalog.shots(scene["id"])) == 2
-
-
-def test_one_shot_can_be_patched_on_its_own(empty_api):
-    """What a render reports when it finishes: which run produced which shot."""
-    project = _project(empty_api)
-    scene = _scene(empty_api, project, shots=[{"prompt": "wide"}])
-
-    resp = empty_api.patch(
-        f"/api/scenes/{scene['id']}/shots/{scene['shots'][0]['id']}",
-        json={"run": "run-xyz", "panel": 1},
-    )
-
-    assert resp.status_code == 200
-    assert catalog.shots(scene["id"])[0]["run"] == "run-xyz"
+# ──────────────────────────── the output ────────────────────────────
 
 
 def test_a_scene_output_is_one_take_and_becomes_the_thumbnail(empty_api):
-    """A scene *is* one take — the shots that made it are rows naming their runs.
-
-    So there is one `output`, not a list, and each shot's own outputs live on the
-    run that rendered it.
-    """
+    """A scene *is* one take — the runs that made it hold their own outputs."""
     project = _project(empty_api)
     scene = _scene(empty_api, project)
 
@@ -182,15 +418,8 @@ def test_a_scene_output_is_one_take_and_becomes_the_thumbnail(empty_api):
 
 
 def test_a_cut_is_reported_as_something_a_page_can_draw(empty_api):
-    """The cut is stored as a pointer and reported as an asset.
-
-    It used to be reported as the pointer, and both readers broke on it
-    differently: the SPA drew a `<video>` with no `src`, and the CLI's
-    `scene_output_node` did `(output or {}).get("node")` against a bare string.
-
-    The probe `assemble` records travels alongside and is neither read nor
-    validated here — `ffmpeg` ships in the CLI's wheel and the Lambda has none.
-    """
+    """Stored as a pointer, reported as an asset — the probe the worker records
+    travels alongside and is neither read nor validated here."""
     project = _project(empty_api)
     scene = _scene(empty_api, project)
     node = empty_api.post(
@@ -211,11 +440,8 @@ def test_a_cut_is_reported_as_something_a_page_can_draw(empty_api):
 
 
 def test_a_cut_written_before_it_was_a_pointer_still_reads(empty_api, catalog_table):
-    """Every row written up to this change holds a bare node id.
-
-    Normalised on the way out rather than migrated: there was one writer of the
-    old shape and it now writes the new one.
-    """
+    """Rows written before `output` was a pointer hold a bare node id, and are
+    normalised on the way out rather than migrated."""
     project = _project(empty_api)
     scene = _scene(empty_api, project)
     node = empty_api.post(
@@ -236,15 +462,9 @@ def test_a_cut_written_before_it_was_a_pointer_still_reads(empty_api, catalog_ta
     assert cut["url"]
 
 
-def test_assembling_a_scene_records_everything_it_reports(empty_api):
-    """`assemble` sends four fields this route used to drop.
-
-    It allowlisted `title`, `status` and `error`, so a PATCH carrying only
-    `characters`, `stitch`, `output` and `assembled` matched nothing, fell
-    through to `nothing to change` and 400ed — *after* the take had been encoded
-    locally and uploaded. The cut sat in the bucket and the scene never learned
-    it had one.
-    """
+def test_a_cut_recorded_by_a_client_carries_everything_it_reports(empty_api):
+    """`characters`, `stitch`, `output` and `assembled` — the fields a cut made
+    elsewhere sends, and which this route once dropped after the upload."""
     project = _project(empty_api)
     scene = _scene(empty_api, project)
     node = empty_api.post(
@@ -259,6 +479,7 @@ def test_assembling_a_scene_records_everything_it_reports(empty_api):
             "stitch": {"tool": "ffmpeg", "shots": 3},
             "output": {"node": node, "duration": 12.5},
             "assembled": "2026-08-25T10:00:00Z",
+            "status": "assembled",
         },
     )
 
@@ -268,355 +489,25 @@ def test_assembling_a_scene_records_everything_it_reports(empty_api):
     assert body["stitch"] == {"tool": "ffmpeg", "shots": 3}
     assert body["assembled"] == "2026-08-25T10:00:00Z"
     assert body["output"]["node"] == node
+    assert body["status"] == "assembled"
 
 
-def test_a_scene_stores_the_storyboard_the_cli_authors(empty_api):
-    """**The whole plan survives the round trip, not the four fields it started with.**
-
-    A shot row held `order`, `prompt`, `run` and `panel` — the whole of a shot
-    before storyboards existed — and the CLI has authored `beat`, `panels`,
-    `motion`, `continues` and `opens_on` since. They were accepted, dropped on
-    the way in, and a seven-shot plan came back as seven rows of `{id, order}`.
-    Nothing failed: `scenes new` printed the shot list and exited 0, so the plan
-    looked stored and no board could be rendered from it.
-
-    `panels` is a list of objects and `motion` is an object; both go through
-    DynamoDB nested and come back the same shape.
-    """
-    project = _project(empty_api)
-    scene = _scene(
-        empty_api,
-        project,
-        shots=[{
-            "id": "shot-01",
-            "beat": "The whistle comes off",
-            "continues": False,
-            "panels": [
-                {"n": 1, "role": "start", "prompt": "square to camera",
-                 "model": "gpt-image-2", "references": {"characters": ["subject-a"]}},
-                {"n": 2, "role": "sample", "prompt": "the peak of the move"},
-            ],
-            "motion": {"prompt": "he lifts the lanyard over his head",
-                       "duration": 6, "model": "kling",
-                       "references": {"max_scene_frames": 4}},
-        }],
-    )
-
-    shot = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]
-
-    assert shot["beat"] == "The whistle comes off"
-    assert shot["continues"] is False
-    assert shot["motion"]["duration"] == 6
-    assert shot["motion"]["references"]["max_scene_frames"] == 4
-    assert [panel["role"] for panel in shot["panels"]] == ["start", "sample"]
-    assert shot["panels"][0]["references"]["characters"] == ["subject-a"]
-
-
-def test_a_scene_stores_the_setting_and_defaults_every_shot_inherits(empty_api):
-    """Without these a stored plan can be listed and not re-rendered.
-
-    `setting` is prepended byte-identically to every panel prompt and `defaults`
-    carries the models and the technical block each shot inherits. Both were sent
-    by `POST /api/scenes` and neither was read, so a shot came back naming a
-    `panel_model` nothing had recorded.
-    """
-    project = _project(empty_api)
-    resp = empty_api.post(
-        "/api/scenes",
-        json={
-            "project": project["id"], "name": "Light flex",
-            "logline": "an inventory, front to back",
-            "setting": "A plain mid-grey seamless studio cyclorama.",
-            "defaults": {"model": "kling", "panel_model": "gpt-image-2",
-                         "extra": {"mode": "pro", "generate_audio": False}},
-            "version": 3,
-            "shots": [],
-        },
-    )
-
-    assert resp.status_code == 201, resp.get_data(as_text=True)
-    body = empty_api.get(f"/api/scenes/{resp.get_json()['id']}").get_json()
-    assert body["setting"] == "A plain mid-grey seamless studio cyclorama."
-    assert body["defaults"]["panel_model"] == "gpt-image-2"
-    assert body["defaults"]["extra"]["generate_audio"] is False
-    assert body["logline"] == "an inventory, front to back"
-    assert body["version"] == 3
-
-
-def test_revising_a_plan_can_move_the_setting(empty_api):
-    """A revision re-ingests the whole plan, envelope included."""
+def test_a_patch_that_changes_nothing_is_refused(empty_api):
     project = _project(empty_api)
     scene = _scene(empty_api, project)
 
-    empty_api.patch(f"/api/scenes/{scene['id']}", json={"setting": "A rooftop at dusk."})
+    resp = empty_api.patch(f"/api/scenes/{scene['id']}", json={"setting": "a room"})
 
-    assert empty_api.get(
-        f"/api/scenes/{scene['id']}"
-    ).get_json()["setting"] == "A rooftop at dusk."
-
-
-def test_a_revision_keeps_the_panels_it_does_not_name(empty_api):
-    """The merge rule, applied to the fields a storyboard actually has.
-
-    Rewriting a beat must not discard the boarded panel underneath it — the same
-    promise `run` and `panel` already had, extended to the rest of the plan when
-    the rest of the plan started being stored.
-    """
-    project = _project(empty_api)
-    scene = _scene(empty_api, project, shots=[{"id": "shot-01", "beat": "first pass"}])
-    empty_api.patch(
-        f"/api/scenes/{scene['id']}/shots/shot-01",
-        json={"panels": [{"n": 1, "node": "node-abc", "boarded": True}]},
-    )
-
-    body = empty_api.patch(
-        f"/api/scenes/{scene['id']}/shots",
-        json={"shots": [{"id": "shot-01", "beat": "second pass"}]},
-    ).get_json()
-
-    assert body["shots"][0]["beat"] == "second pass"
-    assert body["shots"][0]["panels"] == [{"n": 1, "node": "node-abc", "boarded": True}]
-
-
-def test_a_boarded_panel_is_reported_as_something_a_page_can_draw(empty_api):
-    """A stored panel names a node; a drawn panel needs a URL.
-
-    The same expansion the cut already had, for the images a board is made of —
-    batched into one catalog read for the whole scene rather than one per panel.
-    """
-    project = _project(empty_api)
-    run = empty_api.post(
-        "/api/runs",
-        json={"project": project["id"], "kind": "image",
-              "engine": "gpt-image-2", "model": "openai/gpt-image-2"},
-    ).get_json()
-    node = empty_api.post(
-        f"/api/runs/{run['id']}/outputs",
-        json={"name": "panel-01.png", "size": 10, "content_type": "image/png"},
-    ).get_json()["node"]
-
-    scene = _scene(
-        empty_api, project,
-        shots=[{"id": "shot-01", "panels": [{"n": 1, "node": node, "boarded": True}]}],
-    )
-
-    panel = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]["panels"][0]
-    assert panel["node"] == node
-    assert panel["image"]["name"] == "panel-01.png"
-    assert panel["image"]["url"]
-
-
-def test_an_unboarded_panel_is_reported_without_an_image(empty_api):
-    """A placeholder is the normal state of a board and must not 500 it."""
-    project = _project(empty_api)
-    scene = _scene(
-        empty_api, project,
-        shots=[{"id": "shot-01", "panels": [{"n": 1, "prompt": "not rendered yet"}]}],
-    )
-
-    panel = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]["panels"][0]
-    assert "image" not in panel
-    assert panel["prompt"] == "not rendered yet"
-
-
-def test_a_plans_reference_block_comes_back_as_images(empty_api):
-    """**A board draws pictures; a plan names them.**
-
-    `references` says "this character, these images" — an id and some filenames.
-    Answering with that is answering with a filename, so the route resolves the
-    block into drawable assets.
-
-    The bug this pins: a plan used to hold SLUGS while `entity_at` read a bare
-    string as an id and resolved a slug only when prefixed `slug:`, so every
-    lookup raised `NotFoundError`, the tolerance swallowed it, and the board
-    asked for its images and drew none — silently, and only visible in
-    production. There is one address now, which is why the plan below holds an
-    id: the two spellings that could disagree are one.
-    """
-    project = _project(empty_api)
-    made = empty_api.post(
-        "/api/characters",
-        json={"name": "Subject A"},
-    )
-    assert made.status_code == 201, made.get_data(as_text=True)
-    character = made.get_json()
-    # **Under the character, not under the run.** A run output is the run's; what
-    # makes an image a character's identity is that it sits in the character's
-    # tree carrying `default`. Promoting one is a copy into the tree, which is
-    # what `add-refs --from-run` always did — it copied and then attached.
-    pool = layout.folder_under(character["root"], "reference")["node_id"]
-    made_node = empty_api.post(
-        "/api/nodes", json={"parent": pool, "name": "plate_front.png", "kind": "file"},
-    ).get_json()
-    record = catalog.node(made_node["id"])
-    catalog.set_blob(made_node["id"], record["blob_key"], size=10, content_type="image/png")
-    empty_api.patch(
-        f"/api/nodes/{made_node['id']}", json={"tags": ["default", "face"]},
-    )
-
-    scene = _scene(
-        empty_api, project,
-        shots=[{
-            "id": "shot-01",
-            "motion": {"prompt": "x",
-                       "references": {"characters": [character["id"]],
-                                      "pick": "plate_front.png"}},
-            "panels": [{"n": 1, "role": "start", "prompt": "p",
-                        "references": {"characters": [character["id"]]}}],
-        }],
-    )
-
-    shot = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]
-    plates = shot["motion"]["reference_assets"]
-    assert [a["name"] for a in plates] == ["plate_front.png"]
-    assert plates[0]["url"]
-    # A panel names its own list, and it is a different list from the shot's.
-    assert [a["name"] for a in shot["panels"][0]["reference_assets"]] == ["plate_front.png"]
-
-
-def test_a_scene_listing_row_carries_its_name(empty_api):
-    """A row without one cannot be DRAWN, and a list of UUIDs is unreadable.
-
-    It used to carry a `slug` for addressing too — `<project>/<slug>` was how a
-    person named a scene, every scene command read it off this row as a required
-    key, and its absence was a traceback rather than a miss. The only address is
-    the id now, so what is left is the label.
-    """
-    project = _project(empty_api)
-    _scene(empty_api, project, "stadium-encounter")
-
-    rows = empty_api.get(f"/api/scenes?project={project['id']}").get_json()["scenes"]
-
-    assert [row["name"] for row in rows] == ["stadium-encounter"]
-
-
-def test_deleting_a_scene_removes_its_shots(empty_api, catalog_table):
-    """A `SHOT#` row outliving its scene is a row nothing can reach."""
-    project = _project(empty_api)
-    scene = _scene(empty_api, project, shots=[{"prompt": "a"}])
-    shot_id = scene["shots"][0]["id"]
-
-    assert empty_api.delete(f"/api/scenes/{scene['id']}").status_code == 200
-
-    assert _item(catalog_table, f"SCENE#{scene['id']}", f"SHOT#{shot_id}") is None
-    assert catalog.project_entities(project["id"], "scene") == []
-
-
-# ──────────────────────────── movies ────────────────────────────
-
-
-def test_creating_a_movie_records_the_cut(empty_api):
-    project = _project(empty_api)
-    scene = _scene(empty_api, project)
-
-    movie = _movie(empty_api, project, scenes=[scene["id"]], title="Launch")
-
-    # Rows, not ids: a create answers in the shape a `GET` sends. See
-    # `test_edges.py` for why that is a rule rather than a preference.
-    assert [row["id"] for row in movie["scenes"]] == [scene["id"]]
-    assert [row["id"] for row in catalog.project_entities(project["id"], "movie")] == [
-        movie["id"]
-    ]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ─────────────────────── takes and cuts, kept ───────────────────────
-#
-# A shot holds one `run` and a scene one `output`, which is right — a shot is
-# rendered by a run and a scene IS one take. What was wrong is that replacing
-# either erased the only pointer to what was there. The runs and the stitched
-# files survived in the project and were reachable by nobody: the board drew the
-# new take and the old one sat at an id you had to have written down.
-
-
-def test_re_rendering_a_shot_keeps_the_take_it_displaced(empty_api):
-    project = _project(empty_api)
-    scene = _scene(empty_api, project, shots=[{"prompt": "wide"}])
-    shot = scene["shots"][0]["id"]
-
-    for run in ("run-first", "run-second"):
-        empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={"run": run})
-
-    fetched = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]
-    assert fetched["run"] == "run-second"
-    assert [take["run"] for take in fetched["takes"]] == ["run-first"]
-
-
-def test_the_newest_displaced_take_is_first(empty_api):
-    """Newest-first, so the take before the current one is the one you see."""
-    project = _project(empty_api)
-    scene = _scene(empty_api, project, shots=[{"prompt": "wide"}])
-    shot = scene["shots"][0]["id"]
-
-    for run in ("run-a", "run-b", "run-c"):
-        empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={"run": run})
-
-    fetched = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]
-    assert [take["run"] for take in fetched["takes"]] == ["run-b", "run-a"]
-
-
-def test_writing_a_shot_without_changing_its_run_keeps_the_history_flat(empty_api):
-    """The guard that makes this safe to call on every write.
-
-    `put_shots` runs on every plan revision and `update_shot` on every field
-    patch, so a shot is written many times with the same run in place. Pushing
-    unconditionally would grow the history by one per `--force` re-ingest, for
-    ever.
-    """
-    project = _project(empty_api)
-    scene = _scene(empty_api, project, shots=[{"prompt": "wide"}])
-    shot = scene["shots"][0]["id"]
-
-    empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={"run": "run-first"})
-    empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={"run": "run-second"})
-    for _ in range(3):
-        empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={"beat": "a beat"})
-        empty_api.patch(
-            f"/api/scenes/{scene['id']}/shots",
-            json={"shots": [{"id": shot, "prompt": "wide"}]},
-        )
-
-    fetched = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]
-    assert fetched["run"] == "run-second"
-    assert [take["run"] for take in fetched["takes"]] == ["run-first"]
-
-
-def test_a_plan_revision_keeps_the_take_a_re_render_displaced(empty_api):
-    """`put_shots`, not just the one-field patch — a `--force` re-ingest that
-    carries a new run reaches the other writer."""
-    project = _project(empty_api)
-    scene = _scene(empty_api, project, shots=[{"id": "shot-01", "prompt": "wide"}])
-
-    for run in ("run-first", "run-second"):
-        empty_api.patch(
-            f"/api/scenes/{scene['id']}/shots",
-            json={"shots": [{"id": "shot-01", "prompt": "wide", "run": run}]},
-        )
-
-    fetched = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]
-    assert [take["run"] for take in fetched["takes"]] == ["run-first"]
+    assert resp.status_code == 400
 
 
 def test_re_cutting_a_scene_keeps_the_cut_it_displaced(empty_api):
     project = _project(empty_api)
     scene = _scene(empty_api, project)
 
-    # A NEW name per cut, which is what `assemble` now sends: `create_node`
-    # dedupes on name, so re-cutting to the same filename would hand back the
-    # same node and there would be no displaced take to keep.
+    # A NEW name per cut, which is what the worker sends: `create_node` dedupes
+    # on name, so re-cutting to the same filename would hand back the same node
+    # and there would be no displaced take to keep.
     first = empty_api.post(
         f"/api/scenes/{scene['id']}/output",
         json={"size": 10, "content_type": "video/mp4", "name": "cut.mp4"},
@@ -632,7 +523,6 @@ def test_re_cutting_a_scene_keeps_the_cut_it_displaced(empty_api):
 
 
 def test_a_kept_cut_comes_back_drawable(empty_api):
-    """A pointer nobody can draw is the bug this replaced, one level down."""
     project = _project(empty_api)
     scene = _scene(empty_api, project)
     for name in ("cut.mp4", "cut-2.mp4"):
@@ -645,75 +535,11 @@ def test_a_kept_cut_comes_back_drawable(empty_api):
     assert cut["node"] and "url" in cut
 
 
-def test_a_superseded_take_comes_back_drawable(empty_api, catalog_table):
-    """A history of run ids nobody can watch is not what keeping them was for."""
+def test_an_output_needs_a_size_and_a_content_type(empty_api):
     project = _project(empty_api)
-    scene = _scene(empty_api, project, shots=[{"prompt": "wide"}])
-    shot = scene["shots"][0]["id"]
-    node = catalog.create_node(scene["folder"], "take.mp4", catalog.KIND_FILE,
-                               owner=catalog.blob_owner_for(scene["folder"]))["node_id"]
+    scene = _scene(empty_api, project)
 
-    empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}",
-                    json={"run": "run-first", "node": node})
-    empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={"run": "run-second"})
-
-    take = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]["takes"][0]
-    assert take["run"] == "run-first"
-    assert take["clip"]["node"] == node
-
-
-def test_a_history_can_be_stated_for_work_done_before_it_was_kept(empty_api):
-    """Takes are normally a by-product of displacement, which leaves no way to
-    record one that happened before the field existed. A caller that names
-    `takes` means it; displacement still appends to what it named."""
-    project = _project(empty_api)
-    scene = _scene(empty_api, project, shots=[{"prompt": "wide"}])
-    shot = scene["shots"][0]["id"]
-
-    empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}",
-                    json={"run": "run-current", "takes": [{"run": "run-from-before"}]})
-    fetched = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]
-    assert [t["run"] for t in fetched["takes"]] == ["run-from-before"]
-
-    empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={"run": "run-newer"})
-    fetched = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]
-    assert [t["run"] for t in fetched["takes"]] == ["run-current", "run-from-before"]
-
-
-def test_a_shot_reports_the_runs_behind_it(empty_api):
-    """A board is made of run output and could only say so in run ids."""
-    project = _project(empty_api)
-    scene = _scene(empty_api, project, shots=[{"prompt": "wide"}])
-    shot = scene["shots"][0]["id"]
-    run = empty_api.post("/api/runs", json={
-        "project": project["id"], "kind": "video", "engine": "studio-media-kling",
-        "model": "kwaivgi/kling-v3-omni-video", "input": {"prompt": "x"},
-    }).get_json()
-
-    empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={"run": run["id"]})
-
-    rows = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]["runs"]
-    assert [r["id"] for r in rows] == [run["id"]]
-    # The same fields a runs listing carries, so one component draws both.
-    assert rows[0]["model"] == "kwaivgi/kling-v3-omni-video"
-    assert rows[0]["status"] == "draft"
-    assert rows[0]["role"] == "clip"
-
-
-def test_a_run_bound_twice_in_one_shot_is_one_row(empty_api):
-    """Drawing it twice would read as two renders."""
-    project = _project(empty_api)
-    scene = _scene(empty_api, project, shots=[{"prompt": "wide"}])
-    shot = scene["shots"][0]["id"]
-    run = empty_api.post("/api/runs", json={
-        "project": project["id"], "kind": "video", "engine": "studio-media-kling",
-        "model": "m", "input": {"prompt": "x"},
-    }).get_json()
-
-    empty_api.patch(f"/api/scenes/{scene['id']}/shots/{shot}", json={
-        "run": run["id"],
-        "panels": [{"n": 1, "role": "sample", "prompt": "p", "run": run["id"]}],
-    })
-
-    rows = empty_api.get(f"/api/scenes/{scene['id']}").get_json()["shots"][0]["runs"]
-    assert [r["role"] for r in rows] == ["clip"]
+    assert empty_api.post(f"/api/scenes/{scene['id']}/output",
+                          json={"name": "a.mp4", "content_type": "video/mp4"}).status_code == 400
+    assert empty_api.post(f"/api/scenes/{scene['id']}/output",
+                          json={"name": "a.mp4", "size": 1}).status_code == 400

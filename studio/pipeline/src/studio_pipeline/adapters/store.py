@@ -325,11 +325,12 @@ def upload(path: str, source: Path, *, content_type: str) -> dict:
 #: How many times a transfer is attempted before it is called a failure, and how
 #: long it waits between attempts.
 #:
-#: **A dropped connection here can cost real money.** `scenes board` submits a
-#: generation, polls it, then downloads the result and copies it into the scene —
-#: and the panel is recorded only once that copy lands. So a reset socket after a
-#: paid render loses the record of something already billed, and the next attempt
-#: bills the next panel and loses that one too. Three attempts over an unreliable
+#: **A dropped connection here can cost real money.** A batch that submits a
+#: generation, polls it, then downloads the result and records it — a
+#: turnaround, once the storyboard — records only once that copy lands. So a
+#: reset socket after a paid render loses the record of something already
+#: billed, and the next attempt bills the next one and loses that too. Three
+#: attempts over an unreliable
 #: link turned five successful renders into a board with nothing on it.
 #:
 #: Retried on the transport error alone. An HTTP status is the server's answer

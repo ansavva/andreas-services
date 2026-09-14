@@ -3,8 +3,8 @@
 A run recorded WHAT it sent (`bindings`, a `{field: [node, …]}` map) and lost
 WHY. `engine/submit.py::gather` decides that an image is a start frame or a
 reference, and which character group it came from, and then throws that away. A
-send row keeps it, and it is to a run exactly what a `SHOT#` row is to a scene:
-an ordered child, existing in the plan before anything has been submitted.
+send row keeps it: an ordered child, existing in the plan before anything has
+been submitted.
 
 **The order is what these tests are most careful about.** A model is handed a
 list and the prompt cites positions in it, so a send that came back in the wrong
@@ -67,10 +67,10 @@ def test_sends_carry_the_order_they_were_written_in(catalog_table):
 
 
 def test_a_shorter_list_deletes_the_tail(catalog_table):
-    """**The one way `put_sends` differs from `put_shots`, and it is deliberate.**
+    """**A replace, never a merge, and it is deliberate.**
 
-    A shot carries recorded work, so a revision merges onto it. Every field of a
-    send is authored, so a merge would only make position ambiguous — a dropped
+    Every field of a send is authored, so a merge would only make position
+    ambiguous — a dropped
     send surviving at position 3 would leave the list describing an order the
     model was never given.
     """

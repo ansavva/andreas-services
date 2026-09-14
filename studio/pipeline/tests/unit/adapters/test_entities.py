@@ -111,8 +111,9 @@ WIRE_SURFACE = {
     # scenes
     "/api/scenes",
     "/api/scenes/<id>",
-    "/api/scenes/<id>/shots",
-    "/api/scenes/<id>/shots/<id>",
+    # The cut: an ordered list of run ids, replaced whole. The two `/shots`
+    # routes went with the storyboard — a scene is a series of runs now.
+    "/api/scenes/<id>/runs",
     # movies
     "/api/movies",
     "/api/movies/<id>",

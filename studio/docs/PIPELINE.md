@@ -119,8 +119,7 @@ to the provider and records no approval. See [RUN_PLAN.md](RUN_PLAN.md).
 answer to a multiple-choice question, or a payload shown earlier in the
 conversation is not an instruction to send the request about to go out. Show it
 again and wait. **There is deliberately no `--yes`-style flag on any generating
-command** — `run` submits because it was typed, `scenes board` asks at the
-terminal — and a yes-flag there is precisely the door an agent walks through
+command** — `run` submits because it was typed — and a yes-flag there is precisely the door an agent walks through
 while believing some earlier exchange counted as being told to. If one appears
 on a command that spends, it is a bug. The `--relayed` flag that once recorded
 a second-hand yes as a row went with the approve step it belonged to: a recorded
@@ -190,7 +189,7 @@ studio/pipeline/
         │
         ├── domain/                WHAT THINGS ARE — records and the tree's shape
         │   ├── paths.py           the starting layout names, `join`, `by_name`
-        │   ├── runs.py  scenes.py  storyboard.py  movies.py  frames.py
+        │   ├── runs.py  scenes.py  movies.py  frames.py
         │   ├── renders.py         ask the service to encode; wait; fetch
         │   ├── projects.py
         │   ├── characters/       base.py profile.py refs.py pools.py cli.py
@@ -202,7 +201,6 @@ studio/pipeline/
         ├── engine/                MODEL INVOCATION
         │   ├── resubmit.py        send a draft — `studio runs submit`
         │   ├── runner.py          `studio run`
-        │   ├── board.py           `studio scenes board` / `render` / `check`
         │   ├── registry.py  registry_file.py  schema.py  submit.py  refs.py  add_model.py
         │   │                     submit.py is the AUTHORING half; the half
         │   │                     that bills is the API's
@@ -380,17 +378,18 @@ undo. Offer the existing projects (`studio projects list`) and the option of a
 new one (`studio projects new`), and settle it *before* showing a payload — a
 yes to a payload must never imply a yes to where it lands.
 
-### The tiers — run, shot, scene, movie
+### The tiers — run, scene, movie
 
 ```
-generation cut  ⊂  shot  ⊂  scene  ⊂  movie
+generation cut  ⊂  run  ⊂  scene  ⊂  movie
 ```
 
 A **generation cut** is a cut inside one submission (Kling `multi_prompt`). A
-**shot** is one run's output used as a scene component. A **scene** is shots
-stitched into one continuous take. A **movie** is scenes cut together.
-(Separately, the `studio-media-shot` skill produces a whole still-then-clip chain,
-usually one shot in this sense.)
+**run** is one submission. A **scene** is an ordered series of runs — the
+stills and clips made for one continuous piece — and its **cut** is the video
+runs in stitch order. A **movie** is scenes cut together. (The
+`studio-media-shot` skill produces a whole still-then-clip chain; in this
+vocabulary that is two runs, usually in one scene.)
 
 Every submission to a provider, from any `studio-*` engine, is recorded as a
 **run**:
@@ -421,23 +420,28 @@ project's every run folder.
 The folder name starts with a timestamp, which is convenient when browsing and
 is not an id: the run's id is a UUID and nothing derives one from the other.
 
-A **scene is a row with a UUID** and created before anything renders — it is
-the plan as much as the record. A **movie** is only ever a finished cut:
+A **scene is a row with a UUID** and created before anything renders — the
+cut it names is the plan, and may name a run that has not rendered yet. A
+**movie** is only ever a finished cut:
 
 ```
 <project>/scenes/<scene_id>/
-    storyboard/     the panels: shot-<NN>-p<M>.png
-    shots/          each source clip, copied in, numbered in cut order
-    output/         the stitched scene — <name>.mp4
+    shots/          each clip in the cut, copied in, numbered in cut order
+    output/         the stitched scene — <name>.mp4, and the cuts before it
 
 <project>/movies/<movie_id>/
     scenes/         each scene's output, copied in, numbered in cut order
     output/         the finished movie — <name>.mp4
 ```
 
-A scene is `SCENE#<id>`/`META` with one `SHOT#` row per planned shot, and a
-movie is its own record naming scenes in cut order. A shot's `order` is an
-attribute, so revising a plan moves rows rather than rewriting a document.
+A scene is `SCENE#<id>`/`META` carrying `runs` — the cut, run ids in order —
+with an edge row per run beside it, and every run made for the scene carries
+`scene` on its own record with the reverse edge. A movie is its own record
+naming scenes in cut order. There are no shot rows: a scene *was* a storyboard
+of `SHOT#` rows with panels and prompts, and every one of those was already a
+run — a panel is an image run, a shot is a video run, the frame it opened on
+is that run's `start` send. The plan was a second description of the same
+runs, kept in step by hand, and it drifted.
 
 Both are **derived, never a source of truth**: the runs they name remain the
 history, so either can always be rebuilt. Sources are copied in so a scene stays
@@ -507,7 +511,7 @@ than trusting this number.
 
 | Skill     | What it does                                              |
 |-----------|-----------------------------------------------------------|
-| `studio-media-scene`     | **A piece longer than one generation.** Chains video runs — each starting from the previous clip's last frame — then stitches them into one cut. Owns the chain loop, the continuity rules that keep shots cutting together, the per-shot verification gate, and the `multi_prompt`-cuts-vs-timing trade. Use when a shot outruns the model's duration ceiling or must read as one continuous take |
+| `studio-media-scene`     | **A piece longer than one generation.** A scene is an ordered series of runs: a seed still, then each clip from the previous clip's last frame, then the cut. Owns that loop, the continuity rules that keep clips cutting together, the per-clip verification gate, and the `multi_prompt`-cuts-vs-timing trade. Use when a shot outruns the model's duration ceiling or must read as one continuous take |
 | `studio-media-movie`     | **The tier above a scene.** Cuts a project's finished scenes into one piece. Owns the cut order and the movie-vs-longer-scene decision: cut a movie where a hard cut belongs (a change of place, time or subject); extend a scene where it must read as one take |
 | `studio-media-shot`      | **Orchestrates a whole shot**: reads a brief, shows the multi-step plan as JSON to read, then renders a still and animates it — frame-first, show-then-ask at every billing step. Use when a brief describes motion or spans more than one studio-* call |
 | `studio-media-core`      | **The shared machinery.** The model **registry** (the backend's `models.json`, served at `GET /api/models`), the one submit lifecycle, live-schema validation, and `studio run` — the runner that invokes *any* registered model. Models are DATA, not code |
@@ -593,10 +597,9 @@ a reason a route cannot answer:
 | Still here | Why it cannot be a route |
 |---|---|
 | `profiles.py`, `adapters/auth.py` | How the CLI **finds** the API. `profiles.aws_session()` is the one boto3 call in the package, and a call that locates a service cannot go through it. |
-| `engine/submit.py`'s authoring half, `engine/board.py`, `engine/runner.py` | **Hard rule #2.** They gather, preflight, render the two documents a person reads, and record a draft. The half that spends is `POST /api/runs/<id>/submit`. A service has nobody in front of it; the half only a person can perform stays where the person is. |
+| `engine/submit.py`'s authoring half, `engine/runner.py` | **Hard rule #2.** They gather, preflight, render the two documents a person reads, and record a draft. The half that spends is `POST /api/runs/<id>/submit`. A service has nobody in front of it; the half only a person can perform stays where the person is. |
 | `engine/refs.py`, `engine/schema.py` | Already thin — a selection is `GET /api/characters/<id>/selection` and a schema is `GET /api/models/<name>/schema`. What is left is the message a refusal needs, which a 409 body cannot carry. |
 | `engine/registry_file.py`, `engine/add_model.py`'s inference | They edit a **committed file**. A write route would put a reviewed repo change behind an HTTP call. |
-| `domain/storyboard.py`'s role and frame helpers | Read by `board.py` on material it has just built and **not yet written** — the one case a served derivation cannot answer. |
 | `domain/renders.py`, and the resolution in front of every render job | `latest`, `#N`, "that scene is not cut yet" are refusals with an action in them. At the far end of a queue they arrive twenty seconds later as a failed row. |
 | the local-file halves of `upload`, `download`, `describe`, `presign`, `prompt`, `character edit`, `config sync` | A service cannot see this machine's disk. `--src` on `contact-sheet` is refused for exactly this reason. |
 
@@ -635,10 +638,9 @@ parameters, so that no id is ever typed into a config file by a person.
 | `paths.py` | **The starting layout names, address joining, and `by_name` — and nothing else.** `by_name` matches a name over a listing CLIENT-SIDE and refuses an ambiguous one with the ids, because the API resolves ids only. An entity record names its own nodes, so nothing builds a path to assert where something must be. |
 | `projects.py` | Project CRUD through the entity routes, plus the **input pool**. `require_project()` turns a missing `--project` into an error that lists the real options. Creating a project is one call: the API writes the record, the library index row, the root folder and the starting subfolders in one transaction, so there is no half-made project to recover from. |
 | `runs.py` | The shared **run store** every engine records into: the envelope, output uploads, runref resolution for chaining, `find --character` across projects — one API query. `check_bindings` refuses a URL-shaped binding, and so does the API; keeping the check here as well is what makes a `--dry-run` refuse before anything is sent. |
-| `scenes.py` | The **scene store**: a piece planned, shot and cut. Owns the shot rows, the read-only half of the CLI, and the resolution `assemble` and `handoff` do before they hand off — both are render jobs, so what is on this side is turning `latest`, `#N` and "that scene is not cut yet" into node ids and a refusal a person can act on. `new_scene` writes a scene that has never existed; the catalog has no folder until something asks for one. |
-| `storyboard.py` | **What is left of the plan document on this side.** Normalising an authored plan, validating it, merging a revision onto rendered work and deriving every status are `backend/studio_core/services/storyboard.py`. What stays: reading a plan off local disk, refusing a nameless scene before a request is spent on it, and the role and frame helpers `engine/board.py` needs **on material it has just built and not yet written**. Those follow `board.py` if it ever moves, and not before. |
+| `scenes.py` | The **scene store**: a named, ordered series of runs. Owns resolution (`<project>/<name>`, `latest`, an id), the cut — `add`, `remove`, `order` — the frames derived from it, and what `assemble` does before it enqueues: turning each run in the cut into one video node, and "these two runs have no video yet" into a refusal a person can act on rather than a failed job twenty seconds later. Nothing here spends; the runs come from `studio run --scene`. |
 | `movies.py` | The **movie store**: scenes cut into one piece. The same shape one tier up, including the folders a cut needs. Copying a scene in is a read plus a write, so each copy is its own blob — one blob under two rows is not on offer, because a delete does not ask whether a blob is still referenced. |
-| `frames.py` | Stills out of a run's video — the handoff frame, and the contact grid that lets a clip be looked at before more money is spent on it. It resolves a runref to one video **node** and enqueues a render job; the clip is never downloaded here. Its `chain` store is for a sequence with no scene behind it; a planned scene derives its own frames from its shot rows. |
+| `frames.py` | Stills out of a run's video — the handoff frame, and the contact grid that lets a clip be looked at before more money is spent on it. It resolves a runref to one video **node** and enqueues a render job; the clip is never downloaded here. Its `chain` store is for a sequence with no scene behind it; a scene's own frames come from `studio scenes frames`, derived from its cut. |
 | `renders.py` | **Asking the service to encode something, and waiting for it.** Enqueue, poll the `render-<uuid>` row, fetch the node it produced. `Ctrl-C` abandons a wait rather than the work, exactly as `engine/submit.wait_for` does — the job is being done elsewhere and the row is still there to read. |
 | `characters/` | The character record, in four modules. `base` — names, pools, node helpers. `profile` — the bible: schema, and the `edit` local round trip whose conflict check is a `rev` sent with the write, so the API refuses a stale push itself (compare-and-swap, not check-then-write). `refs` — what a model gets shown: `images` lists the branch with its tags, `selection` is resolved by the API. `pools` — corpus/seed/archive, material rather than identity. `cli` assembles the group; commands are `@click.command` and registered there, which is what keeps the package acyclic. A rename is one `PATCH` of one field, because the name is a plain attribute. |
 | `curate.py` | The pool operations that go wrong by hand — `dedupe`, `groups`, `move`, `drop`. There is no order to maintain and a group is a tag, so regrouping is `studio describe` and writes no object. `move` is the one worth knowing — when a byte-identical copy is already in the destination it deletes the source instead, which is the one path here that removes an image. `digest` is an MD5 over the node's bytes. |
@@ -653,8 +655,8 @@ plus the model, so there is no second hash to keep in step; the API stamps it
 on the draft and `GET /api/runs?fingerprint=` is one query. Both functions live
 in `backend/studio_core/services/digest.py`, which is a module for one reason:
 so the CLI's tests can load them. It imports `hashlib`, `json` and `decimal`
-and nothing else — the same precondition `services/storyboard.py` and
-`services/prompt.py` meet for the same fake —
+and nothing else — the same precondition `services/prompt.py` meets for the
+same fake —
 and `test_a_shared_backend_service_stays_loadable_from_here`
 (`pipeline/tests/contracts/test_wiring.py`) asserts it statically, so a Flask
 import arrives as a named failure. `catalog.py` re-exports both.
@@ -678,7 +680,6 @@ and a colleague, which a per-machine file never could.
 | `schema.py` | Validates fields, enums, ranges and `denied` — off a schema fetched through `GET /api/models/<name>/schema`. The API runs its own copy of the check at submit time, because the SPA also submits and never passes through here; that one is the gate and this one is the better message. |
 | `refs.py` | Character reference selection and project input pool → **node ids**. Selection itself is `GET /api/characters/<id>/selection`, so the CLI and the SPA cannot disagree about which images a generation saw; what is here is the translation, and the over-cap refusal that names the commands which narrow a set. |
 | `resubmit.py` | Send a draft a person has said to send — `studio runs submit`, and the retry path. Separate from `runner.py` because there is nothing to author: the plan and the sends are on the row, so this is a status check and one `POST`. |
-| `board.py` | `studio scenes board` / `render` / `check` — the two commands that spend money in a scene's life, plus the free one that says whether they would work. Turns the plan's roles into bindings and hands them to the same lifecycle `runner.py` drives. Every cap, exclusion and format rule stays in `submit.py`; a copy here is the one that drifts. |
 | `add_model.py` | Onboarding: fetch schema + README **through the API**, infer an entry, append it to the registry. The inference stays here because what it produces is a repo file somebody reviews. It writes no documentation — see `studio-media-add-model`. |
 
 **`objects/` — moving bytes.** `upload.py`, `download.py`, `presign.py`

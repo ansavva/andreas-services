@@ -39,7 +39,7 @@ import logging
 from flask import Blueprint, g, jsonify, request
 
 from studio_core.clients.aws import s3
-from studio_core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
+from studio_core.errors import ConflictError, ValidationError
 from studio_core.routes import projects as project_routes
 from studio_core.routes import support
 from studio_core import config
@@ -504,40 +504,6 @@ def _must_match(chosen: list, record: dict, asked: str) -> None:
 
 def _stem(name: str) -> str:
     return name.rsplit(".", 1)[0]
-
-
-def reference_nodes(refs: dict, held: dict) -> list[str]:
-    """The node ids a plan's `references` block resolves to, for DISPLAY.
-
-    A storyboard names its images the way a person writes them — a character and
-    a picked list or a tag — and a board has to draw them. Resolution lives here
-    because this module owns what a character's identity images are; `scenes.py`
-    may not grow a second copy of the pick rules.
-
-    **Tolerant, unlike the selection route.** That one refuses a filter matching
-    nothing, because a generation must never go out with silently fewer images
-    than were asked for. This one is a picture on a page: an image renamed or
-    re-tagged since the plan was written should leave a gap on the board, not 500
-    the scene it is part of.
-    """
-    found: list[str] = []
-    for named in refs.get("characters") or []:
-        # **A plan names a character by ID**, and nothing else: a name is a
-        # label two characters may share.
-        try:
-            record = _character(str(named), held)
-            pick, tags = _csv(refs.get("pick")), _csv(refs.get("pick_tag"))
-            # The same two sources the selection route resolves, in the same
-            # order, so a board draws what a submission would send.
-            chosen = _picked(record, pick) if pick else _identity(record, tags or [DEFAULT_TAG])
-            found += [entry["id"] for entry in chosen]
-        except (ValidationError, NotFoundError, ForbiddenError) as exc:
-            # Tolerated, but never in silence: a gap on the board is a thing
-            # somebody has to be able to explain, and an empty list that logged
-            # nothing cannot be.
-            logger.warning("could not resolve references for %s: %s", named, exc)
-            continue
-    return found
 
 
 @bp.get("/characters/<addressed>/selection")

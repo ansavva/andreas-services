@@ -27,11 +27,10 @@ def _project(api, name="rooftop-teaser"):
     return api.post("/api/projects", json={"name": name}).get_json()
 
 
-def _scene(api, project, name="stadium-encounter", shots=None):
+def _scene(api, project, name="stadium-encounter"):
     resp = api.post(
         "/api/scenes",
-        json={"project": project["id"], "name": "Stadium",
-              "shots": shots or []},
+        json={"project": project["id"], "name": "Stadium"},
     )
     assert resp.status_code == 201, resp.get_data(as_text=True)
     return resp.get_json()

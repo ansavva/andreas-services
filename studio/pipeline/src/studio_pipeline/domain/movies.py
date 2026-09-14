@@ -4,8 +4,7 @@ The hierarchy, each tier built from the one below it:
 
     generation cut  a shot inside one submission (Kling `multi_prompt`)
     run             one submission to a model                  (runs.py)
-    shot            one run's output, as a scene component     (scenes.py)
-    scene           shots stitched into one continuous take    (scenes.py)
+    scene           an ordered series of runs, cut into one take (scenes.py)
     movie           scenes cut together into one piece         (this)
 
 A movie is a **row**, `movie-<uuid>`, addressed by id and labelled by a free-text name:
@@ -145,8 +144,7 @@ def scene_characters(record: dict) -> list[str]:
     """Whose likeness is in a scene, as character ids.
 
     A scene records this on its row, written by `scenes assemble` from the runs
-    behind its shots, and the row is created with it — so it is read straight
-    off rather than recomputed from every shot's run.
+    in its cut — so it is read straight off rather than recomputed.
     """
     return list(record.get("characters") or [])
 

@@ -251,7 +251,8 @@ def create_run(*, project: str, kind: str, engine: str, model: str,
                input: dict, bindings: dict | None = None,
                characters: list[str] | None = None,
                prompt: dict | None = None, plan: dict | None = None,
-               sends: list[dict] | None = None, name: str | None = None) -> dict:
+               sends: list[dict] | None = None, name: str | None = None,
+               scene: str | None = None) -> dict:
     """Create the run as a DRAFT, before the submission.
 
     The ordering is the whole point and predates this route: `request.json` was
@@ -277,11 +278,16 @@ def create_run(*, project: str, kind: str, engine: str, model: str,
     is deliberately not part of `plan`: the fingerprint hashes the plan, so a
     rename would make two identical payloads read as different over something
     the provider is never sent.
+
+    **`scene` files the run under a scene of the same project.** A scene id,
+    validated by the API — a scene in another project is a 400, not a run drawn
+    under the wrong one. It is membership only: the scene's cut is
+    `put_scene_runs`, and naming a run there joins it without this.
     """
     body = {"project": project, "kind": kind, "engine": engine, "model": model,
             "input": input, "bindings": bindings or {}}
     body.update(_clean(characters=characters, prompt=prompt, plan=plan, sends=sends,
-                       name=name))
+                       name=name, scene=scene))
     return api.post("/api/runs", body)
 
 
@@ -299,17 +305,21 @@ def query_runs(*, project: str | None = None, character: str | None = None,
                model: str | None = None, status: str | None = None,
                since: str | None = None, limit: int | None = None,
                cursor: str | None = None, fingerprint: str | None = None,
-               include: str | None = None) -> dict:
+               include: str | None = None, scene: str | None = None) -> dict:
     """`{"runs": [...], "cursor": …}` — one query against a row.
 
     `fingerprint` is the duplicate-submission guard: it asks whether this exact
     payload has been submitted to this project before.
     `include="drafts"` goes with it — an unsubmitted draft bills nothing and must
     not read as a duplicate, but the caller decides that, not this wrapper.
+
+    `scene` is a scene id: the runs that BELONG to it, stills and clips alike.
+    The scene record does not carry them — its `runs` is the cut — so this is
+    the one way to list a scene's members.
     """
     return api.get("/api/runs", project=project, character=character, model=model,
                    status=status, since=since, limit=limit, cursor=cursor,
-                   fingerprint=fingerprint, include=include)
+                   fingerprint=fingerprint, include=include, scene=scene)
 
 
 def resolve_run(ref: str, project: str | None = None,
@@ -395,12 +405,16 @@ def delete_run(run_id: str, *, files: str = "keep") -> dict:
 # ── scenes ──────────────────────────────────────────────────────────────────
 
 def create_scene(*, project: str, name: str,
-                 shots: list[dict] | None = None, setting: str = "",
-                 defaults: dict | None = None) -> dict:
-    body = {"project": project, "name": name,
-            "shots": shots or [], "setting": setting}
-    body.update(_clean(defaults=defaults))
-    return api.post("/api/scenes", body)
+                 runs: list[str] | None = None) -> dict:
+    """A scene: a name in a project, and — if given — its cut.
+
+    `runs` is the cut, run ids in stitch order; the API validates each one
+    (same project, a video, not in another scene) and joins it to the scene.
+    A plan, a `setting`, `defaults` and shot rows used to travel here. Every one
+    of them was already a run, so the body is the two facts a scene is.
+    """
+    return api.post("/api/scenes", {"project": project, "name": name,
+                                    "runs": list(runs or [])})
 
 
 def query_scenes(*, project: str | None = None, cursor: str | None = None) -> dict:
@@ -408,27 +422,23 @@ def query_scenes(*, project: str | None = None, cursor: str | None = None) -> di
 
 
 def get_scene(scene_id: str) -> dict:
-    """The envelope plus its `SHOT#` rows, in `order`."""
+    """The record, its cut as rows, its `frames`, and the movies above it.
+
+    The runs that BELONG to the scene are not here: `query_runs(scene=…)`.
+    """
     return api.get(f"/api/scenes/{scene_id}")
 
 
-def patch_scene(scene_id: str, **fields) -> dict:
-    """Whatever moved: `name`, `setting`, `status`, `output`, `stitch`, `characters`."""
-    return api.patch(f"/api/scenes/{scene_id}", _clean(**fields))
+def put_scene_runs(scene_id: str, runs: list[str]) -> dict:
+    """Replace the cut. **Run ids**, in stitch order; duplicates are legal.
 
-
-def put_shots(scene_id: str, shots: list[dict]) -> dict:
-    """The plan revision. **Merges onto rendered work rather than replacing it.**
-
-    Re-ingesting a plan is how a plan is revised, and it must not orphan a panel
-    somebody already paid to render — so the API merges by shot id and the
-    caller does not have to hand-carry the rendered fields across.
+    A replace rather than an add/remove pair, for the reason `put_movie_scenes`
+    is: the caller has the list, and a partial verb would need its own
+    idempotency story. Naming a run here puts it into the scene if it was in
+    none; dropping one does not take it out. The answer is `{id, runs}` with the
+    cut as rows, not the whole record — a caller wanting that reads it again.
     """
-    return api.request("PATCH", f"/api/scenes/{scene_id}/shots", {"shots": shots})
-
-
-def patch_shot(scene_id: str, shot_id: str, **fields) -> dict:
-    return api.patch(f"/api/scenes/{scene_id}/shots/{shot_id}", _clean(**fields))
+    return api.request("PATCH", f"/api/scenes/{scene_id}/runs", {"runs": list(runs)})
 
 
 # ── movies ──────────────────────────────────────────────────────────────────

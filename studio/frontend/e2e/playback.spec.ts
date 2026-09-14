@@ -520,69 +520,47 @@ for (const [label, width, splits] of [
 }
 
 /**
- * **The scene screen's split is INSIDE a shot, and the cut is above it.**
+ * **The take leads, the cut is under it, and the scene's runs are under that.**
  *
- * This asserted a page-level split and was wrong about the page: a run has one
- * payload and one output, so its screen splits once; a scene has a RESULT and
- * then N shots that each have inputs and outputs of their own. So the cut leads
- * at full width — it is the scene, not a column beside it — and the two-column
- * treatment belongs to each shot.
- *
- * A shot's outputs are plural on purpose: a re-render keeps the take it
- * replaced, and comparing them is the reason to re-render at all.
+ * A scene is a series of runs: the stitched take IS the scene, so it leads at
+ * full width; the cut is the ordered rows that made it, with one row per run
+ * — including a run that has not rendered yet, which draws with no clip; and
+ * the runs are the project's feed narrowed to this scene. The order holds at
+ * both widths; nothing on this page splits into columns.
  */
-for (const [label, width, splits] of [
-  ["desktop", 1440, true],
-  ["mobile", 390, false],
+for (const [label, width] of [
+  ["desktop", 1440],
+  ["mobile", 390],
 ] as const) {
-  test(`a scene's shot ${splits ? "splits" : "stacks output-first"} at ${label}`, async ({
-    page,
-  }) => {
+  test(`a scene reads take, cut, runs at ${label}`, async ({ page }) => {
     stubOnly();
     await page.setViewportSize({ width, height: 900 });
     await page.goto(`/s/${SCENE_ID}`);
     await page.waitForLoadState("networkidle");
 
     const geometry = await page.evaluate(() => {
-      const cut = [...document.querySelectorAll("section")].find((s) =>
-        /^(Cuts|The cut)/.test(s.textContent ?? ""),
-      );
-      const shot = document.querySelector("article");
-      const inputs = shot?.querySelector('[class*="lg:col-start-1"]');
-      const outputs = shot?.querySelector('[class*="lg:col-start-2"]');
-      if (!cut || !shot || !inputs || !outputs) return null;
+      const sections = [...document.querySelectorAll("section")];
+      const take = sections.find((s) => /^(Takes|The take)/.test(s.textContent ?? ""));
+      const cut = sections.find((s) => /^The cut/.test(s.textContent ?? ""));
+      const runs = sections.find((s) => /^Runs/.test(s.textContent ?? ""));
+      if (!take || !cut || !runs) return null;
+      const t = take.getBoundingClientRect();
       const c = cut.getBoundingClientRect();
-      const i = inputs.getBoundingClientRect();
-      const o = outputs.getBoundingClientRect();
-      const board = shot.getBoundingClientRect();
+      const r = runs.getBoundingClientRect();
       return {
-        // The cut is above every shot, and spans the same width the storyboard
-        // does rather than half of it. Measured against the board rather than
-        // `main`, whose own padding makes it wider than any of its children.
-        cutAboveShots: c.bottom <= board.top + 1,
-        cutIsFullWidth: c.width >= board.width - 2,
-        shotSplits: o.left >= i.right - 1,
-        outputAbove: o.top < i.top,
+        takeAboveCut: t.bottom <= c.top + 1,
+        cutAboveRuns: c.bottom <= r.top + 1,
+        takeIsFullWidth: t.width >= c.width - 2,
+        rows: cut.querySelectorAll("a[href]").length,
+        planned: (cut.textContent ?? "").includes("not rendered"),
       };
     });
 
     expect(geometry).not.toBeNull();
-    expect(geometry!.cutAboveShots).toBe(true);
-    expect(geometry!.cutIsFullWidth).toBe(true);
-    expect(geometry!.shotSplits).toBe(splits);
-    if (!splits) expect(geometry!.outputAbove).toBe(true);
+    expect(geometry!.takeAboveCut).toBe(true);
+    expect(geometry!.cutAboveRuns).toBe(true);
+    expect(geometry!.takeIsFullWidth).toBe(true);
+    expect(geometry!.rows).toBe(2);
+    expect(geometry!.planned).toBe(true);
   });
 }
-
-test("a shot's runs are a tab, not a list under its inputs", async ({
-  page,
-}) => {
-  stubOnly();
-  await page.goto(`/s/${SCENE_ID}`);
-  await page.waitForLoadState("networkidle");
-
-  const runs = page.getByRole("tab", { name: /^Runs/ });
-  await expect(runs).toBeVisible();
-  await runs.click();
-  await expect(page.getByText("clip", { exact: true }).first()).toBeVisible();
-});

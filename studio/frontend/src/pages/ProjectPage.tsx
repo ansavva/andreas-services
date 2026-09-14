@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
-import { Badge, Tabs, Text } from "@ansavva/design-system";
+import { Badge, Button, Input, Tabs, Text } from "@ansavva/design-system";
 
 import {
+  createScene,
   deleteProject,
   getCharacters,
   getProject,
@@ -268,17 +269,18 @@ function ScenesTab({ projectId }: { projectId: string }) {
 
   if (loading) return <SectionLoading label="Loading scenes" />;
   if (error) return <LoadError what="scenes" message={error} onRetry={reload} />;
-  if (!data || data.length === 0)
-    return (
-      <EmptyState
-        title="No scenes yet."
-        hint="A scene is shots stitched into one continuous take."
-      />
-    );
 
   return (
-    <div className="flex flex-col">
-      {data.map((scene) => (
+    <div className="flex flex-col gap-3">
+      <NewScene projectId={projectId} />
+      {!data || data.length === 0 ? (
+        <EmptyState
+          title="No scenes yet."
+          hint="A scene is a series of runs cut into one take. Name one, then make its runs from its page."
+        />
+      ) : (
+        <div className="flex flex-col">
+          {data.map((scene) => (
         <EntityRow
           key={scene.id}
           title={scene.name}
@@ -289,8 +291,60 @@ function ScenesTab({ projectId }: { projectId: string }) {
           thumb={scene.thumb ?? null}
           to={scenePath(scene.id)}
         />
-      ))}
+          ))}
+        </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * A scene starts as a name. Everything else — its runs, its cut — is made
+ * from its own page, where the create bar files runs under it.
+ */
+function NewScene({ projectId }: { projectId: string }) {
+  const navigate = useNavigate();
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  const create = async () => {
+    if (!name.trim() || busy) return;
+    setBusy(true);
+    setFailure(null);
+    try {
+      const scene = await createScene({ project: projectId, name: name.trim() });
+      navigate(scenePath(scene.id));
+    } catch (err) {
+      setFailure((err as Error).message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form
+      className="flex flex-wrap items-center gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void create();
+      }}
+    >
+      <Input
+        value={name}
+        onValueChange={setName}
+        placeholder="A new scene's name…"
+        aria-label="Scene name"
+        className="min-w-48 flex-1"
+      />
+      <Button type="submit" size="sm" disabled={!name.trim() || busy}>
+        {busy ? "Creating…" : "New scene"}
+      </Button>
+      {failure && (
+        <Text variant="caption" tone="muted">
+          {failure}
+        </Text>
+      )}
+    </form>
   );
 }
 

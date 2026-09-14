@@ -1,31 +1,39 @@
-"""Scenes: shots stitched into one continuous take.
+"""Scenes: a named, ordered series of runs — the tier above a run.
 
-The tier above a run, and the same envelope-plus-blob split — with one addition
-that is the whole reason a scene is not just a folder of runs: **the plan**.
-`SCENE#<id>` / `SHOT#<shot_id>` is one row per planned shot, carrying `order`,
-`prompt`, and the `run` and `panel` that rendered it.
+**A scene is not a data model of its own.** It was: `SCENE#<id>` carried a plan
+— a `setting`, `defaults`, one `SHOT#` row per planned shot, each with its
+panels, its motion prompt, the run that rendered it and the frame it opened on —
+and 700 lines of storyboard service normalised, validated, merged and derived
+status over it. Every one of those things was already a run: a panel is an
+image run, a shot is a video run, "which frame it opens on" is that run's
+`start` send, and "which run rendered it" was the shot pointing at the thing
+that was already the record. The plan was a second description of the same
+runs, kept in step by hand.
 
-**A plan revision merges onto rendered work rather than replacing it.** That is
-the one non-obvious rule in this module and it is `catalog.put_shots`'. Rewriting
-prompts is what a person does to a plan; `run` and `panel` are what a render put
-there, and a plain replace would silently discard them — so a shot matched by id
-keeps both unless the request names them.
+So a scene is now two facts and a name:
+
+| Fact | Where | Edge beside it |
+|---|---|---|
+| a run belongs to a scene | `scene` on the run (`routes/runs.py`) | `RUN#<run>` / `SCENE#<scene>` |
+| the cut, in order | `runs` on the scene | `SCENE#<scene>` / `RUN#<run>` |
+
+Membership takes stills and clips alike — every run made FOR the scene, which
+is what a person looking at the scene wants to see together. The cut names the
+video runs in the order they are stitched, and may name a run that has not
+rendered yet: the cut is the plan. `assemble` refuses until every run in it has
+a clip.
 
 **Stitching is a render job.** `services/render.py` enqueues a cut and a worker
 Lambda with ffmpeg in its image does the download, the stitch and the record.
-
-`POST /api/scenes/<id>/output` below is unchanged and is not what the render path
-uses: it signs an upload for a cut made somewhere else, which is what a client
-holding the bytes wants.
+`POST /api/scenes/<id>/output` signs an upload for a cut made somewhere else,
+which is what a client holding the bytes wants; the render path does not use it.
 
 **No `rev` on the writes here, and that is a rule rather than an omission.** A
-character and a project are edited by people, twice at once, and losing somebody's
-paragraph is what optimistic concurrency exists to prevent. A run, a scene and a
-movie are driven by the machine that is rendering them, in sequence — demanding a
-`rev` would make the CLI re-read a record to report that a shot finished.
+character and a project are edited by people, twice at once, and losing
+somebody's paragraph is what optimistic concurrency exists to prevent. A scene
+is driven by the machine that is rendering it, in sequence.
 """
 
-import json
 import logging
 
 from flask import Blueprint, g, jsonify, request
@@ -33,10 +41,9 @@ from flask import Blueprint, g, jsonify, request
 from studio_core import config
 from studio_core.clients.aws import s3
 from studio_core.errors import ValidationError
-from studio_core.routes import characters as character_routes
 from studio_core.routes import projects as project_routes
 from studio_core.routes import support
-from studio_core.services import catalog, keys, layout, manage, storyboard
+from studio_core.services import catalog, keys, layout, manage
 
 logger = logging.getLogger(__name__)
 
@@ -44,65 +51,119 @@ bp = Blueprint("scenes", __name__, url_prefix="/api")
 
 KIND = catalog.ENTITY_SCENE
 
-# The plan's own fields on the envelope, as opposed to on its shots.
-#
-# `setting` is the paragraph prepended byte-identically to every panel prompt and
-# `defaults` carries the model, panel model, duration and technical block every
-# shot inherits — so without them a stored plan cannot be re-rendered or drawn,
-# only listed. Both were sent by `POST /api/scenes` from the first storyboard
-# release and neither was read here, which is why a scene came back with shots
-# that named a `panel_model` nothing had recorded.
-SCENE_PLAN = ("setting", "defaults", "logline", "version")
+#: What a run row in the cut carries — the listing fields every run list draws,
+#: plus the clip. See `frontend/src/components/run/RunList.tsx`.
+RUN_ROW = ("id", "project", "status", "kind", "model", "created")
 
 
 def _scene(scene_id: str, held: dict) -> dict:
     return support.entity_at(KIND, g.library, scene_id, held)
 
 
-def _planned(body: dict, name: str) -> tuple[dict, list[dict]]:
-    """Normalise and validate an authored plan. **The write gate.**
+def _cut_of(body: dict, record: dict, held: dict) -> list[str]:
+    """Validate the cut a request names, and put each run into the scene.
 
-    The service, not a client, decides what is storable: a duplicate shot id, a
-    panel with neither prompt nor image, two panels both claiming to be the
-    start frame are refused here whichever client sent them.
+    **Naming a run in the cut is what puts it in the scene.** A run with no
+    scene gets this one; a run already in this scene is left alone; a run in
+    another scene is refused, because a run belongs to at most one and moving
+    it is a decision to make on the run, not a side effect of ordering a cut.
 
-    `storyboard.normalise` also fills in what the author left implicit (ids,
-    numbering, inherited defaults, derived status), which is why it runs here
-    rather than being asserted after the fact: a plan that arrives half-specified
-    is the ordinary case, not an error.
+    Every entry is read before anything is written, so a cut cannot name a run
+    that is not there, is not this project's, or is a still — the cut is what
+    `assemble` walks, and a still there is a stitch that fails at the far end
+    of a queue rather than at the request that caused it. Duplicates are legal:
+    a clip may be reprised, and the edge rows beside the list deduplicate.
     """
-    raw = body.get("shots")
-    # **An empty list is "no plan yet", not an empty plan.** `storyboard.validate`
-    # refuses a scene with no shots, and it is right to for an authored plan —
-    # but `scenes new` with no `--from-json` creates the scene first and ingests
-    # the plan afterwards, and the SPA has no plan editor at all. Refusing here
-    # would break the create that every scene starts from.
-    if not raw:
-        return {}, []
-    if not isinstance(raw, list):
-        raise ValidationError("shots must be a list")
-    for shot in raw:
-        if not isinstance(shot, dict):
-            raise ValidationError("every shot must be an object")
+    runs = body.get("runs")
+    if runs is None:
+        return []
+    if not isinstance(runs, list) or not all(isinstance(r, str) for r in runs):
+        raise ValidationError("runs must be a list of run ids")
+    for run_id in dict.fromkeys(runs):
+        run = support.entity_at(catalog.ENTITY_RUN, g.library, run_id, held)
+        if run.get("project") != record["project"]:
+            raise ValidationError(f"{run_id} is not in this project")
+        if run.get("kind") != "video":
+            raise ValidationError(f"{run_id} is a {run.get('kind')} run; only a video can be cut")
+        if run.get("scene") and run["scene"] != record["id"]:
+            raise ValidationError(f"{run_id} belongs to scene {run['scene']}")
+    return runs
 
-    plan = {field: body[field] for field in SCENE_PLAN if field in body}
-    try:
-        doc = storyboard.normalise({**plan, "shots": raw}, name)
-        storyboard.validate(doc)
-    except storyboard.PlanError as refusal:
-        raise ValidationError(str(refusal)) from None
-    return doc, doc["shots"]
+
+def _join(record: dict, runs: list[str]) -> None:
+    """Put every run the cut names into the scene, if it is not already."""
+    for run_id in dict.fromkeys(runs):
+        run = catalog.entity(catalog.ENTITY_RUN, run_id)
+        if run.get("scene") == record["id"]:
+            continue
+        catalog.update_project_entity(
+            catalog.ENTITY_RUN, run, {"scene": record["id"]}, {"scene": record["id"]},
+            edges={KIND: [record["id"]]})
+
+
+def _cut_rows(record: dict) -> list[dict]:
+    """The runs a scene cuts, in order, as **every** response spells them.
+
+    One builder, for the reason `routes/movies._scene_rows` gives: `GET` and
+    the write that changes the list answering in different shapes is how a
+    client that merges a write's answer ends up holding strings where it read
+    rows. Each row is the listing fields plus the run's first video output,
+    signed, so the page can draw the cut without a fetch per run — and a run
+    that has not rendered yet draws as a row with no clip, which is what a
+    planned cut looks like.
+    """
+    ordered = record.get("runs") or []
+    found = catalog.entities_by_id(catalog.ENTITY_RUN, ordered)
+    firsts = {run_id: ((found.get(run_id) or {}).get("outputs") or [None])[0]
+              for run_id in ordered}
+    nodes = catalog.records([node for node in firsts.values() if node])
+    rows = []
+    for run_id in ordered:
+        run = found.get(run_id) or {}
+        node = firsts.get(run_id)
+        clip = support.asset(node, nodes.get(node)) if node else None
+        rows.append({**{field: run.get(field) for field in RUN_ROW}, "id": run_id,
+                     "scene": run.get("scene"), "output": clip, "thumb": clip})
+    return rows
+
+
+def _frames(record: dict) -> list[dict]:
+    """The scene's own frames: the first frame each run in the cut opened on.
+
+    A chained scene is built from these — the seed shot 1 started from, then
+    each later shot's handoff — and they are what shot N+1 should be handed as
+    references, not the character's curated set (`studio-media-scene` says
+    why). Derived from the cut's `start` sends on read rather than kept: the
+    `chains/<scene>.json` and `scene_frames` that used to hold this list both
+    drifted from the scene they described.
+    """
+    ordered = list(dict.fromkeys(record.get("runs") or []))
+    starts = []
+    for run_id in ordered:
+        for entry in catalog.sends(run_id):
+            if entry.get("role") == "start" and entry.get("node") not in starts:
+                starts.append(entry["node"])
+                break
+    return support.assets(starts)
+
+
+def _view(record: dict) -> dict:
+    """The record, its cut expanded, its frames and the way back up."""
+    return {**support.with_output(record),
+            "runs": _cut_rows(record),
+            "frames": _frames(record),
+            "movies": support.holders(record["id"], catalog.ENTITY_MOVIE)}
 
 
 @bp.post("/scenes")
 def create_scene():
-    """A scene, its listing row, its folder and its plan — one write plus the shots."""
+    """A scene, its listing row, its folder and — if named — its cut. One write."""
     body = support.body()
     held = support.memberships()
 
     project = project_routes.project_at(body.get("project") or "", held)
     name = keys.clean_label(body.get("name"))
-    doc, shots = _planned(body, name)
+    runs = _cut_of(body, {"id": None, "project": project["id"]}, held)
 
     parent = project_routes.folder_for(project, layout.SCENE_PARENT)
     record = catalog.create_project_entity(
@@ -110,22 +171,14 @@ def create_scene():
         project["lib"],
         project["id"],
         parent["node_id"],
-        attributes={
-            "name": name,
-            "status": doc.get("status") or "planned",
-            "output": None,
-            "error": None,
-            **{field: body[field] for field in SCENE_PLAN if field in body},
-        },
+        attributes={"name": name, "status": "planned", "runs": runs,
+                    "output": None, "error": None},
         # `name` belongs in the projection because a row without one cannot be
         # DRAWN. The only address is the id.
-        listing={"status": doc.get("status") or "planned", "name": name},
+        listing={"status": "planned", "name": name},
     )
-
-    written = catalog.put_shots(record["id"], record["lib"], shots) if shots else []
-    return jsonify({**record, "shots": written}), 201, {
-        "Location": f"/api/scenes/{record['id']}"
-    }
+    _join(record, runs)
+    return jsonify(_view(record)), 201, {"Location": f"/api/scenes/{record['id']}"}
 
 
 @bp.get("/scenes")
@@ -145,205 +198,32 @@ def list_scenes():
     return jsonify({"scenes": rows, "cursor": None}), 200
 
 
-def _shot_runs(entries: list[dict]) -> dict[str, list[dict]]:
-    """Every run a shot references, as the same summary a runs listing carries.
-
-    **A board is made of run output and could only say so in run ids.** The clip,
-    each boarded panel, the handoff frame and every superseded take came out of a
-    run, and the page drew a link per tile — a link is not a list, and a person
-    reading a shot wants to see the runs behind it together, with the status,
-    model and date every other run list on the site shows.
-
-    Read in ONE `entities_by_id` for the whole scene rather than per shot, and
-    returned as `{shot id: [rows]}` so the caller can attach without a second
-    pass. A row is `id`, `project`, `status`, `kind`, `model`, `created` and the
-    `role` it plays in this shot — the summary fields the shared list draws,
-    plus the one thing only the scene knows.
-    """
-    def roles_of(shot: dict) -> list[tuple[str, str]]:
-        found = [(shot["run"], "clip")] if shot.get("run") else []
-        opens = (shot.get("opens_on") or {}).get("from_run")
-        if opens:
-            found.append((opens, "handoff"))
-        for panel in shot.get("panels") or []:
-            if panel.get("run"):
-                found.append((panel["run"], panel.get("role") or "panel"))
-        for take in shot.get("takes") or []:
-            if take.get("run"):
-                found.append((take["run"], "earlier take"))
-        # First role wins: a run bound twice in one shot is one row, labelled by
-        # the first thing it is. Drawing it twice would read as two renders.
-        seen, ordered = set(), []
-        for run_id, role in found:
-            if run_id not in seen:
-                seen.add(run_id)
-                ordered.append((run_id, role))
-        return ordered
-
-    per_shot = {shot["id"]: roles_of(shot) for shot in entries}
-    wanted = [run_id for pairs in per_shot.values() for run_id, _ in pairs]
-    if not wanted:
-        return {}
-    records = catalog.entities_by_id(catalog.ENTITY_RUN, wanted)
-    return {
-        shot_id: [
-            {**{field: records[run_id].get(field) for field in RUN_ROW}, "role": role}
-            for run_id, role in pairs
-            if run_id in records
-        ]
-        for shot_id, pairs in per_shot.items()
-    }
-
-
-#: What a run row carries into a board. The same fields a runs listing draws, so
-#: one component can render both — see `frontend/src/components/run/RunList.tsx`.
-RUN_ROW = ("id", "project", "status", "kind", "model", "created")
-
-
-def _drawable(entries: list[dict], held: dict) -> list[dict]:
-    """A scene's shots with every image pointer expanded into something drawable.
-
-    A stored shot holds node ids and nothing else — the boarded panel, the
-    handoff frame it opens on, the clip it rendered — plus `references` blocks
-    that NAME images rather than pointing at them ("this character, these
-    references"). That is the right thing to store and the wrong thing to answer
-    with: a board cannot draw an id, and it certainly cannot draw a filename.
-
-    **One batched read for the whole scene.** The pointers and the resolved
-    reference nodes are collected across every shot first, then expanded
-    together; a character's index is read once per character rather than once per
-    shot.
-
-    Expansions sit beside the pointers rather than replacing them (`panel.node`
-    stays and gains `panel.image`), so a reader that only wants the id is
-    unaffected — the same shape `with_output` uses for the cut.
-    """
-    resolved: dict[str, list[str]] = {}
-
-    def nodes_for(refs) -> list[str]:
-        """The reference block's nodes, resolved once per distinct block."""
-        if not refs:
-            return []
-        cache_key = json.dumps(refs, sort_keys=True, default=str)
-        if cache_key not in resolved:
-            resolved[cache_key] = character_routes.reference_nodes(refs, held)
-        return resolved[cache_key]
-
-    wanted: list[str] = []
-    for shot in entries:
-        for node in (shot.get("node"), (shot.get("opens_on") or {}).get("node")):
-            if node:
-                wanted.append(node)
-        # A superseded take is a clip like any other and is drawn like one; a
-        # history of ids nobody can watch is the thing keeping them was for.
-        wanted += [take["node"] for take in (shot.get("takes") or []) if take.get("node")]
-        wanted += nodes_for((shot.get("motion") or {}).get("references"))
-        for panel in shot.get("panels") or []:
-            if panel.get("node"):
-                wanted.append(panel["node"])
-            wanted += nodes_for(panel.get("references"))
-
-    found = {a["node"]: a for a in support.assets(list(dict.fromkeys(wanted)))}
-    runs_for = _shot_runs(entries)
-    drawn = []
-    for shot in entries:
-        shot = dict(shot)
-        if shot.get("node") in found:
-            shot["clip"] = found[shot["node"]]
-        opens_on = shot.get("opens_on") or {}
-        if opens_on.get("node") in found:
-            shot["opens_on"] = {**opens_on, "frame": found[opens_on["node"]]}
-        motion = dict(shot.get("motion") or {})
-        if motion:
-            motion["reference_assets"] = [
-                found[n] for n in nodes_for(motion.get("references")) if n in found
-            ]
-            shot["motion"] = motion
-        shot["panels"] = [
-            {
-                **panel,
-                **({"image": found[panel["node"]]} if panel.get("node") in found else {}),
-                "reference_assets": [
-                    found[n] for n in nodes_for(panel.get("references")) if n in found
-                ],
-            }
-            for panel in shot.get("panels") or []
-        ]
-        # **Derived on read, never trusted off the row.** `status` says whether
-        # this shot is planned, boarded, rendered or cut, and `roles` says which
-        # panel the model is handed as the start frame — including the demotion
-        # a handoff causes, which is positional and cannot be read off a panel.
-        # Both were computed on one client and stored, so anything that wrote a
-        # shot without recomputing them left the SPA drawing a stale answer.
-        shot["takes"] = [
-            {**take, **({"clip": found[take["node"]]} if take.get("node") in found else {})}
-            for take in shot.get("takes") or []
-        ]
-        shot["status"] = storyboard.shot_status(shot)
-        shot["roles"] = storyboard.resolve_roles(shot)
-        drawn.append(shot)
-    for shot, rows in zip(drawn, (runs_for.get(s["id"], []) for s in drawn)):
-        shot["runs"] = rows
-    return drawn
-
-
 @bp.get("/scenes/<scene_id>")
 def get_scene(scene_id: str):
-    """The record, its plan, its shots with every image expanded, and the way back.
+    """The record, its cut, its frames, and which movies cut it.
 
-    `movies` is which movies cut this scene — a question with no answer before
-    the edge rows existed, because a movie held its scenes in a JSON list.
+    The runs that belong to the scene are not here: they are a run listing,
+    `GET /api/runs?scene=<id>`, paginated and filterable like any other, so the
+    same feed that draws a project draws a scene.
     """
     held = support.memberships()
-    record = _scene(scene_id, held)
-    shots = _drawable(catalog.shots(record["id"]), held)
-    return jsonify({**support.with_output(record),
-                    # Derived from the shots just read, so the envelope and its
-                    # plan cannot disagree even if a writer forgot to restate.
-                    "status": storyboard.scene_status({**record, "shots": shots}),
-                    # The frames this scene has produced, in order — shot 1's
-                    # opening panel and every later shot's handoff. It used to
-                    # be a `chains/<scene>.json` kept in step by hand, which is
-                    # the shape of every bug this repo has written a migrator for.
-                    "frames": storyboard.scene_frames({**record, "shots": shots}),
-                    "shots": shots,
-                    "movies": support.holders(record["id"], catalog.ENTITY_MOVIE)}), 200
+    return jsonify(_view(_scene(scene_id, held))), 200
 
 
 # What a PATCH may write, and it is the list of what actually writes to a scene.
-#
-# It held three names — `title`, `status`, `error` — and `assemble` sends four
-# others: `characters`, `stitch`, `output` and `assembled`. None of them matched,
-# so the request reached `nothing to change` and 400ed *after* the stitched video
-# had been encoded locally and uploaded. The cut was in the bucket and the scene
-# never learned it had one.
-#
-# `stitch` and `output` are the encoder's own report and are stored without being
-# read here: the encoder is `services/render.py`, which writes these fields
-# itself through `update_project_entity` rather than through this route, so this
-# route's job is to accept a report from a client that made a cut some other
-# way. `movies.py` accepted `output` already, which is why a movie assembled and a
-# scene did not.
-#
-# `SCENE_PLAN` joins it for the same reason it joins the create route: a scene is
-# revised by re-ingesting its plan, and a revision that could not move `setting`
-# or `defaults` would leave the envelope describing the plan before last.
-SCENE_FIELDS = (
-    "name", "status", "error", "characters", "stitch", "output", "assembled",
-    # Written by `support.keep_cut` on the two routes that set `output`, never
-    # by a client — see `SHOT_FIELDS`' `takes` for the same argument.
-    "cuts",
-    *SCENE_PLAN,
-)
+# `stitch`, `output`, `assembled` and `cuts` are the encoder's report: the
+# render worker writes them through `update_project_entity` itself, and this
+# route accepts them from a client that made a cut some other way.
+SCENE_FIELDS = ("name", "status", "error", "characters", "stitch", "output",
+                "assembled", "cuts")
 
-# The projection the listing row carries, and the only fields worth a second
-# write. A grid draws a scene from these.
+# The projection the listing row carries. A grid draws a scene from these.
 SCENE_LISTED = ("name", "status")
 
 
 @bp.patch("/scenes/<scene_id>")
 def update_scene(scene_id: str):
-    """Retitle a scene, move its status on, or record the cut `assemble` made."""
+    """Rename a scene, move its status on, or record a cut made elsewhere."""
     body = support.body()
     held = support.memberships()
     record = _scene(scene_id, held)
@@ -357,96 +237,47 @@ def update_scene(scene_id: str):
                 listing[field] = body[field]
     if "output" in body:
         # The cut is what a scene looks like, so recording one re-points the
-        # thumbnail — the same thing `POST /scenes/<id>/output` does, and it has
-        # to happen here too because `assemble` may write a different node than
-        # the one it signed for.
+        # thumbnail, and the cut it displaces is kept — read off the stored
+        # record, not the incoming value.
         node = support.output_node(body["output"])
-        # Before the assignment lands: the cut being displaced is the one still
-        # on `record`, so this reads the stored value and not the incoming one.
         assignments["cuts"] = support.keep_cut(record, node)
         if node:
             listing["thumb"] = node
     if not assignments:
         raise ValidationError("nothing to change")
     return jsonify(
-        support.with_output(catalog.update_project_entity(KIND, record, assignments, listing))
+        _view(catalog.update_project_entity(KIND, record, assignments, listing))
     ), 200
 
 
-@bp.patch("/scenes/<scene_id>/shots")
-def replace_shots(scene_id: str):
-    """The plan revision — **merged onto rendered work, not over it**.
+@bp.patch("/scenes/<scene_id>/runs")
+def set_runs(scene_id: str):
+    """The cut, as an ordered list of run ids. A replace, like every list here.
 
-    Validated exactly as the create route validates, because a revision can
-    introduce every fault an original can: this is where a duplicate shot id
-    matters most, since ids are what the merge matches on and two shots sharing
-    one would collapse a revision onto a single row.
-
-    The scene's status is re-derived afterwards. `put_shots` merges recorded work
-    onto the revision, so what a shot *is* changes here — and a scene left
-    claiming `planned` over three rendered shots is exactly the stale-status
-    failure this move exists to end.
+    The list and its edge rows land in one transaction, so "which scenes cut
+    this run" and the order it is cut in cannot disagree. Each run named joins
+    the scene first — see `_cut_of`.
     """
     body = support.body()
     held = support.memberships()
     record = _scene(scene_id, held)
 
-    _, shots = _planned({**body, **{f: record.get(f) for f in SCENE_PLAN}},
-                        record.get("name") or record["id"])
-    written = catalog.put_shots(record["id"], record["lib"], shots)
-    _restate(record, written)
-    return jsonify({"shots": written}), 200
-
-
-def _restate(record: dict, shots: list[dict]) -> dict:
-    """Recompute the scene's status from its shots, and store it if it moved.
-
-    **Derived, not asserted.** `scene_status` reads the shots and the output; a
-    caller that wrote a shot and forgot to restate the scene would otherwise
-    leave the two disagreeing. Writing only on a
-    change keeps this off the hot path for the common revision that moves
-    nothing.
-    """
-    want = storyboard.scene_status({**record, "shots": shots})
-    if want == record.get("status"):
-        return record
-    return catalog.update_project_entity(
-        KIND, record, {"status": want}, {"status": want}
-    )
-
-
-@bp.patch("/scenes/<scene_id>/shots/<shot_id>")
-def update_shot(scene_id: str, shot_id: str):
-    """One shot: which run rendered it, which panel it came from, its plan.
-
-    `catalog.SHOT_FIELDS` rather than a list of its own — this route held the
-    third copy of "what a shot is", and the narrowest one, so `scenes board`
-    recording a boarded panel wrote nothing and reported success.
-    """
-    body = support.body()
-    held = support.memberships()
-    record = _scene(scene_id, held)
-
-    changes = {field: body[field] for field in catalog.SHOT_FIELDS if field in body}
-    if not changes:
-        raise ValidationError("nothing to change")
-    written = catalog.update_shot(record["id"], record["lib"], shot_id, changes)
-    # This is the write that actually moves a scene along — `scenes board`
-    # recording a boarded panel, `scenes render` recording a run — so it is the
-    # one that most needed the scene restated and never did it.
-    _restate(record, catalog.shots(record["id"]))
-    return jsonify(written), 200
+    if not isinstance(body.get("runs"), list):
+        raise ValidationError("runs must be a list")
+    runs = _cut_of(body, record, held)
+    _join(record, runs)
+    updated = catalog.update_project_entity(
+        KIND, record, {"runs": runs}, edges={catalog.ENTITY_RUN: runs})
+    return jsonify({"id": record["id"], "runs": _cut_rows(updated)}), 200
 
 
 @bp.post("/scenes/<scene_id>/output")
 def add_output(scene_id: str):
-    """A placeholder and a presigned PUT for the stitched take.
+    """A placeholder and a presigned PUT for a cut stitched somewhere else.
 
     One CURRENT output rather than a list, because a scene *is* one take — the
-    shots that made it are `SHOT#` rows naming their own runs, and each of those
-    has its own outputs. The take it displaces is not thrown away, though: it
-    moves to `cuts`, because assembling is not a one-shot act and the stitched
-    file that was there was otherwise reachable by nobody.
+    runs that made it each have their own outputs. The take it displaces moves
+    to `cuts`, because assembling is not a one-shot act.
     """
     body = support.body()
     held = support.memberships()
@@ -488,7 +319,15 @@ def add_output(scene_id: str):
 
 @bp.delete("/scenes/<scene_id>")
 def delete_scene(scene_id: str):
-    """Remove a scene and its shots. `?files=keep|delete`, keeping by default."""
+    """Remove a scene. `?files=keep|delete`, keeping by default.
+
+    **Its runs stay, and stop naming it.** A run is the record and the scene
+    was only ever a grouping of them, so deleting the grouping leaves every run
+    where it is — `scene` cleared, so nothing points at an id that is gone.
+    The edge rows go with the scene's partition and the holders' rows in
+    `delete_entity`; the attribute is cleared here because it is a field on
+    another record, which is the one thing a partition delete cannot reach.
+    """
     held = support.memberships()
     record = _scene(scene_id, held)
 
@@ -496,6 +335,9 @@ def delete_scene(scene_id: str):
     if files not in ("keep", "delete"):
         raise ValidationError("files must be 'keep' or 'delete'")
 
+    for run in catalog.runs_in_scene(record["id"]):
+        catalog.update_project_entity(
+            catalog.ENTITY_RUN, run, {"scene": None}, {"scene": None})
     manage.drain(g.library)
     result = catalog.delete_entity(KIND, record, delete_files=files == "delete")
     manage.release(g.library, result["blob_keys"], result["sweeps"])

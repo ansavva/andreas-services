@@ -11,7 +11,7 @@ one wastes a session:
 | | `studio-media-*` | `studio-code-*` |
 |---|---|---|
 | You are | making media with studio | changing studio |
-| Seventeen of them, covering | characters, prompts, engines, scenes, the stores | this |
+| Twenty-four of them, covering | characters, prompts, engines, scenes, the stores | this |
 | They describe | the CLI surface — `studio <command>` | the code behind it |
 | May name modules | **no** | **yes** — that is the subject |
 
@@ -118,9 +118,8 @@ and `curate dedupe` hashes what comes back.
 exists; a fixture that wrote bytes and no rows would produce a tree nothing can
 list.
 
-Three of the fake's answers are **the API's own code, loaded rather than
-approximated** — `services/storyboard.py`, `services/prompt.py` and
-`services/digest.py`. All three are
+Two of the fake's answers are **the API's own code, loaded rather than
+approximated** — `services/prompt.py` and `services/digest.py`. Both are
 written to import nothing outside the standard library, which is what makes them
 loadable from a suite that declares none of the API's runtime dependencies;
 `test_a_shared_backend_service_stays_loadable_from_here` holds that precondition
@@ -138,8 +137,8 @@ prediction that settles when `reconcile` asks, and a real decodable placeholder
 PNG that hashing and contact sheets can work on.
 
 **The seam a test controls is `fake_api.submits_refused`.** Set it, and any
-submission raises. That is the property `test_board` and `test_turnaround`
-actually want and it is stronger than "nothing billed": a dry run must not submit
+submission raises. That is the property `test_turnaround` and the dry-run
+tests actually want and it is stronger than "nothing billed": a dry run must not submit
 **at all**, and a fake would answer a submission perfectly happily.
 
 Two guards behind it, failing differently on purpose:
