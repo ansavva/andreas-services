@@ -1,6 +1,6 @@
 ---
 name: studio-media-scene
-description: Build a SCENE — a continuous piece longer than one generation — by storyboarding it as panels, rendering each shot from the previous shot's last frame, then stitching them into one cut. Use whenever a shot must run past a single model's duration ceiling (Kling stops at 15s), whenever a brief has several beats that must not be hard cuts, or whenever the user asks to continue, extend, or carry on from an existing clip. Owns the storyboard, the shot loop, the continuity rules that keep shots cutting together, the per-shot verification gate, and assembly via the scene store. For cutting several finished scenes into one piece, see studio-media-movie.
+description: Build a SCENE — a continuous piece longer than one generation — as a series of runs, one seed still, then each clip rendered from the previous clip's last frame, then cut into one take. Use whenever a shot must run past a single model's duration ceiling (Kling stops at 15s), whenever a brief has several beats that must not be hard cuts, or whenever the user asks to continue, extend, or carry on from an existing clip. Owns the loop, the continuity rules that keep clips cutting together, the per-clip verification gate, and the cut. For cutting several finished scenes into one piece, see studio-media-movie.
 ---
 
 # studio-media-scene — a shot longer than one generation
@@ -12,19 +12,37 @@ model's duration ceiling**, or through beats that must flow rather than cut.
 The family:
 - **`studio-media-shot`** — one brief → one clip. Start there.
 - **`studio-media-scene`** (this) — many clips → one continuous piece.
-- **`studio-media-s3`** — `studio frames` extracts the handoff frame and the
+- **`studio-media-s3`** — `studio frames` pulls the handoff frame and the
   verification grid; `studio scenes` is the scene store.
-- **`studio-media-kling`** / **`studio-media-seedance`** — render each shot.
+- **`studio-media-kling`** / **`studio-media-seedance`** — render each clip.
+
+## What a scene is
+
+A **named, ordered series of runs** in a project, and nothing else. Two facts:
+
+| Fact | How it is written |
+|---|---|
+| a run belongs to the scene | `studio run … --scene <name>` when it is made, or `studio scenes add` later |
+| the **cut** — the clips, in stitch order | `studio scenes add` / `remove` / `order` |
+
+Membership takes stills and clips alike: the seed frame, the contact sheets,
+every take of every clip. The cut names only the video runs, in the order they
+are stitched, and it is the whole of the plan — it may name a run that has not
+rendered yet, and `assemble` refuses until every run in it has a clip.
+
+There is no storyboard document, no plan file, no panels. A seed still is an
+image run; a shot is a video run; the frame a shot opens on is that run's start
+frame. `studio scenes show <project>/<name>` prints the record with its cut.
 
 ## Why build a scene out of shots
 
-Three separate ceilings, and only a sequence of shots clears all three:
+Three separate ceilings, and only a sequence of clips clears all three:
 
 1. **Duration.** Kling caps at **15 s**. A 40-second piece is not one render.
 2. **Drift is cumulative *within* a generation.** Faces and hands go first, and
-   the back half of a long take is where they go. Four short shots each hold
+   the back half of a long take is where they go. Four short clips each hold
    together better than one long one — the trade is that drift now appears
-   *between* shots instead, which the continuity rules below manage.
+   *between* clips instead, which the continuity rules below manage.
 3. **`multi_prompt` cuts.** Kling's native multi-shot is the obvious way to get
    several beats, and every beat is a **hard cut by design** — different framing,
    often a different angle. If the piece must read as one continuous take,
@@ -44,148 +62,44 @@ So the choice is real and worth stating to the user before spending:
 |---|---|---|
 | Exact beat timings | `multi_prompt` | Hard cuts between beats |
 | One unbroken take | single `action` | No timing control |
-| Both | **a sequence of shots** — one take each, cut in post | An assembly step |
+| Both | **a sequence of clips** — one take each, cut in post | An assembly step |
 
-A sequence of shots is how you get both. Each shot is a single continuous take, and shot
-boundaries are where the cuts go — deliberately, where you chose them.
+A sequence of clips is how you get both. Each clip is a single continuous
+take, and clip boundaries are where the cuts go — deliberately, where you
+chose them.
 
-## Storyboard first
+## Seed still first
 
-A scene is planned before it is bought. Each shot gets one or more **panels** —
-stills, which cost cents — so the flow can be read before any video bills. The
-panels are not thrown away once looked at: they become the images the video
-model renders from.
+A scene is judged before it is bought. The first frame is a **still** — cents —
+so the location, wardrobe, light and grade are settled where they can be looked
+at, and the video model only has to carry motion. Every later clip opens on the
+previous clip's last frame, so the seed is the look the whole scene inherits.
 
-    plan  ->  panels  ->  shots  ->  the cut
+Write the motion prompt for each clip with `studio prompt` and paste what it
+returns — the app draws a compiled document as subject / action / camera /
+style / avoid, and a paragraph as one undifferentiated block. Prose renders;
+what it costs is every authoring check and the locked template, which is the
+only reproducibility lever Kling has (it has no seed).
 
-The plan is a local JSON file you write and ingest. It is prose about a
-particular scene, so it lives in the library as data — a node in the catalog,
-under the scene it plans — never in the repository.
+### Two ways to chain, and the choice is per scene
 
-```json
-{
-  "characters": ["<name>"],
-  "setting": "One paragraph — location, wardrobe, light, grade. Prepended
-              byte-identical to every panel prompt.",
-  "defaults": {
-    "model": "kling", "panel_model": "nano-banana-pro",
-    "duration": 5, "extra": {"mode": "standard", "generate_audio": false}
-  },
-  "shots": [
-    {
-      "id": "shot-01",
-      "beat": "one line, for the board caption",
-      "panels": [
-        {"role": "start", "prompt": "the still prompt for this panel",
-         "references": {"characters": ["<name>"], "pick_tag": "face"}},
-        {"role": "sample", "prompt": "what the peak of this beat looks like"}
-      ],
-      "motion": {"prompt": "<the COMPILED prompt document — see below>", "duration": 10}
-    }
-  ]
-}
-```
+**Chained — one seed, every later clip inferred.** Clip 1 opens on the seed
+still; every later clip opens on the **literal last frame of the clip before
+it**, pulled with `studio frames last`. This is the default and it is what makes
+a scene read as one continuous take: only that exact frame makes the join
+invisible, and a still composed for the same moment differs from it in a
+hundred small ways that read as a jump. The cost is that the scene must be
+rendered **in order** — clip N+1 has no start frame until clip N exists.
 
-### `motion.prompt` is a COMPILED document, not a paragraph
+**Bracketed — a start and an end frame per clip.** Every clip is pinned at both
+ends by stills you approved (`--start-key` and `--end-key`), and the model only
+invents the movement between them. Use it when a beat has to land somewhere
+exact. Two costs: the clips no longer chain from one another unless you also
+carry the handoff, and on most engines **an end frame excludes the reference
+list entirely** (see the table below), so the two frames have to say everything.
 
-**Author it with `studio prompt`, and paste what it returns.** The field is a
-string either way, and that is the trap — prose is accepted, renders, and looks
-fine right up until the scene page draws it:
-
-```bash
-studio prompt shot.json --engine kling-replicate --emit prompt
-# -> {"prompt": "{\n  \"subject\": …}", …}   ← the `prompt` STRING goes in motion.prompt
-```
-
-The app decides how to draw a motion prompt by trying to parse it. A compiled
-document draws as **subject / action / camera / style / avoid**; a paragraph
-draws as one undifferentiated block. So a hand-written scene looks unlike every
-scene planned properly, and you find out after the plan is in.
-
-The model's own preference is genuinely unsettled — Kuaishou's material uses
-prose — so prose is **noted, not rejected** (`scenes check` says so before
-anything bills). What it costs is everything around the model:
-
-- **None of the authoring checks run** — one camera move, no bare `fast`, no
-  camera verbs in the action, the beat budget, the phrasebook's per-model wording.
-- **`camera` never becomes a field**, so "locked off" ends up buried in a sentence.
-- **The negative is folded in by hand** rather than routed to wherever the target
-  engine takes it — and Kling has no `negative_prompt` at all.
-- **The locked template stops being enforceable.** Holding `style` and `camera`
-  byte-identical across shots is the only reproducibility lever Kling has, since
-  it has no seed, and nobody maintains byte-identical prose paragraphs.
-
-Note that `negative` on the way in is called `avoid` on the way out; the
-compiler renames it. `prompt_json` is a separate, mostly-unused field — it is
-**not** where the document goes.
-
-`id` is the merge key. Revising means re-ingesting with `--force`, which carries
-every run, panel and cut across — so rewording a beat cannot orphan a clip you
-already paid for. A panel whose prompt changed keeps its image and is marked
-**stale**: the picture on disk no longer illustrates the words beside it. That is
-a warning, not a block.
-
-### Panels inherit from each other
-
-Panel 1 renders from the character's references alone. Every later panel renders
-from those **plus the panels already on the board**, so the board converges on
-one location, wardrobe and grade instead of drifting a shot at a time. Two things
-follow, and both bite if you do not expect them:
-
-- the board renders **in order**, and
-- **re-rendering panel *k* invalidates everything after it**, because they were
-  rendered against the old one.
-
-`setting` is the second, cheaper lever on the same problem: repeated
-byte-identically in front of every panel prompt, it survives a panel being
-re-rendered alone.
-
-### What a panel is FOR — the four slots
-
-A panel declares a `role`, and the role is the same question as **does this reach
-the model at all**. Every one of them is optional; a shot may have none.
-
-| role | sent as | how many | what it is for |
-|---|---|---|---|
-| `start` | the engine's first-frame field | 0–1 | the literal frame the shot opens on |
-| `end` | the engine's last-frame field | 0–1 | the literal frame it lands on |
-| `reference` | the engine's reference list | 0–n | steers the look; fixes no frame |
-| **`sample`** | **nothing** | 0–n | **a picture of the shot, for a person** |
-
-**A sample is never sent.** It exists so a fifteen-second render can be judged
-before it is bought rather than after — a still that says "this is what this beat
-should look like", which the model neither sees nor has to obey. It is a
-storyboard artifact, not an input, and it is optional like everything else: board
-a sample for the two shots you are unsure about and none for the rest.
-
-Left unstated, roles fall back to **position** over the binding panels only —
-first is `start`, last is `end`, the rest are `reference`. Samples are skipped in
-that count, so `[sample, start]` has a start frame rather than a demoted one.
-State the role when it matters; a shot with one panel and no role is a start
-frame.
-
-### Two ways to storyboard, and the choice is per scene
-
-Both are supported and they differ only in **where the start frames come from**.
-
-**Chained — one seed, every later shot inferred.** Shot 1 gets a start frame;
-every later shot opens on the **literal last frame of the shot before it**, taken
-with `scenes handoff`. This is the default and it is what makes a scene read as
-one continuous take: only that exact frame makes the join invisible, and a panel
-composed for the same moment differs from it in a hundred small ways that read as
-a jump. The cost is that the scene must be rendered **in order** — shot N+1 has
-no start frame until shot N exists.
-
-**Bracketed — a start and an end frame per shot.** Every shot is pinned at both
-ends by compositions you approved, and the model only invents the movement
-between them. Use it when a beat has to land somewhere exact. Two costs: the
-shots no longer chain from one another unless you also carry the handoff, and on
-most engines **an end frame excludes the reference list entirely** (see the table
-below), so the two frames have to say everything.
-
-They mix. A scene is chained by default and a single shot can be bracketed by
-giving it an `end` panel; a shot that deliberately opens on a new composition
-sets `use_handoff: false` and keeps its own start panel.
+They mix. A clip that deliberately opens on a new composition takes its own
+`--start-key` instead of the handoff.
 
 ### What each engine will actually accept
 
@@ -200,106 +114,78 @@ submit path enforces — `studio models show <model>` prints it.
 | `grok-imagine-video` | none | — | none |
 | `kling-v3-motion-control` | none | — | none — the reference **clip** (`--clip-run`) sets the motion and the length |
 
-So "start plus six references" is a Kling sentence, not a general one. Author the
-plan in slots and let the engine's own rules decide what survives; `studio scenes
-check` resolves every shot against the model it names and reports what would be
-dropped, before anything bills.
+So "start plus six references" is a Kling sentence, not a general one. The
+submit path resolves every payload against the model it names and refuses what
+would be dropped, before anything bills.
 
 ## The loop
 
-Per shot, and only two steps bill.
+Per clip, and only two steps bill.
 
 ```bash
-# 1. write the plan, then ingest it  (free)
-studio scenes new <project> --name <name> --from-json plan.json
-studio scenes plan <project>/<name>          # read it back as a table
-studio scenes check <project>/<name>         # would every payload be accepted?
+# 1. name the scene  (free)
+studio scenes new <project> --name <name>
 
-# 2. render the panels  (SHOWS EVERY PAYLOAD, THEN ASKS — bills, cents each)
-studio scenes board <project>/<name> --dry-run --review-sheet /tmp/board
-studio scenes board <project>/<name>
+# 2. the seed still  (SHOWS THE PAYLOAD, THEN ASKS — bills, cents)
+studio run --model gpt-image-2 --project <project> --scene <name> \
+    --character <character> --prompt-file seed.txt --name seed
 
-# 3. LOOK AT THE BOARD — a sheet can be read, a plan cannot
-studio scenes sheet <project>/<name> --out /tmp/board
+# 3. LOOK AT IT — hard rule #2b: a seed nobody looked at is a scene nobody wanted
 
-# 4. render one shot  (SHOWS THE PAYLOAD, THEN ASKS — bills, dollars)
-studio scenes render <project>/<name> --shot 1
+# 4. clip 1, opening on the seed  (SHOWS THE PAYLOAD, THEN ASKS — bills, dollars)
+studio run --model kling --project <project> --scene <name> \
+    --start-run <project>/latest#1 --input-file shot-01.json --name shot-01
+studio scenes add <project>/<name> <project>/latest
 
-# 5. look at the clip, then carry its last frame into the next shot
+# 5. look at the clip, then carry its last frame into the next one
 studio frames grid <project>/latest --count 4 --dest /tmp/check
-studio scenes handoff <project>/<name> --shot 2
+studio frames last <project>/latest --add-input          # -> a node id
+studio scenes frames <project>/<name> --args --max 7     # -> --key … --key …
 
-# …repeat 4 and 5 for each shot, then cut
+# 6. clip 2, opening on that frame, referencing the scene's own frames
+studio run --model kling --project <project> --scene <name> \
+    --start-key <node id from step 5> --key <…> --key <…> \
+    --input-file shot-02.json --name shot-02
+studio scenes add <project>/<name> <project>/latest
+
+# …repeat 5 and 6 for each clip, then cut
 studio scenes assemble <project>/<name>
 ```
 
-**Step 3 is not optional.** Each panel becomes the input to the next, and each
-shot becomes the input to the one after it, so an unnoticed defect is inherited
-by everything downstream and re-billed. Looking costs nothing.
+**Step 5 is not optional.** Each clip becomes the input to the one after it, so
+an unnoticed defect is inherited by everything downstream and re-billed.
+Looking costs nothing.
 
-**`--shot` is required on `render`.** There is no whole-scene default: a
-four-shot scene with audio is real money, and shot N+1's start frame does not
-exist until shot N is rendered and its handoff taken.
+**`--dry-run` leaves a draft, and a draft can already be in the cut.** The
+payload has an address: open it in the app, link to it, submit it later with
+`studio runs submit` — when a person says to. There is no approve step; the
+submit command is the act. A draft in the cut is what a planned scene looks
+like; `assemble` names every run in the cut that has no clip yet.
 
-### `--dry-run` leaves a draft, and a draft has to be put back on its shot
+**A run made without `--scene` is not in the scene.** `studio scenes add` puts
+it there — naming a run in the cut joins it — and a run that belongs to another
+scene is refused, because a run belongs to at most one.
 
-`scenes render --dry-run` writes a **draft run per shot** rather than printing a
-payload that scrolls away, so the thing hard rule #2 asks a person to read has an
-address: it can be opened in the app, linked to, and submitted later — when a
-person says to. There is no approve step; the submit command is the act.
+### The still is the seed, not every clip's start frame
 
-```bash
-studio scenes render <project>/<name> --shot 1 --dry-run   # -> draft run-…
-studio runs show run-…                                     # read it
-studio runs submit run-…                                   # bills — only when told
-studio scenes attach <project>/<name> --shot 1 --run run-… # tell the scene
-```
-
-**That last line is not optional and is easy to miss.** `scenes render` without
-`--dry-run` records the run on the shot itself; a run submitted any other way —
-from one of these drafts, from `studio run`, or re-submitted after a wedged one
-was deleted — does not know it belongs to a shot. The scene is then left holding
-shots that have plainly rendered while `run` stays null, and the failure surfaces
-much later and somewhere else:
-
-- `scenes handoff` finds no previous shot to carry a frame from, and
-- `scenes assemble` refuses the cut with *"N shot(s) have not been rendered"*.
-
-`scenes attach` is what closes that loop. It takes a run that **succeeded** and
-is of **kind `video`** — attaching a draft, a failed run or a still would put a
-shot into `rendered` with nothing to cut, which is the same broken scene reached
-from the other side.
-
-**`scenes handoff` replaces the old three-step dance** of grabbing a frame,
-adding it to the input pool and recording it in a list kept beside the scene.
-The scene now records it directly, so there is no second list to point at the
-wrong thing — which the hand version could and did.
-
-### The panel is usually not the start frame
-
-A cut is seamless only from the **literal last frame** of the shot before it. A
-panel composed for the same moment differs from that frame in a hundred small
-ways, all of which read as a jump. So once a shot has a handoff frame, the
-handoff opens the shot and the start panel **is demoted to a reference** — still
-steering where the shot goes, no longer breaking the join. The render says so
-when it happens.
-
-Shot 1 has nothing before it, so its first panel really is its start frame. A
-shot that deliberately opens on a new composition can set `use_handoff: false`
-and keep its panel.
+A cut is seamless only from the **literal last frame** of the clip before it.
+A still composed for the same moment differs from that frame in a hundred small
+ways, all of which read as a jump. So after clip 1 the handoff frame opens each
+clip, and the seed is a reference — still steering where the scene goes, no
+longer breaking the join.
 
 ## Continuity — what to hold, what to change
 
-The largest source of inconsistency between shots is **workflow, not the model**.
-Rewording between shots feels like refinement and is actually a different
-creative direction each time, so every shot is self-consistent and inconsistent
+The largest source of inconsistency between clips is **workflow, not the model**.
+Rewording between clips feels like refinement and is actually a different
+creative direction each time, so every clip is self-consistent and inconsistent
 with its neighbours. Kling has **no seed**, so byte-identical wording is the only
 reproducibility lever that exists.
 
-**Hold byte-identical across shots:** `style`, `camera` (unless the shot genuinely
+**Hold byte-identical across clips:** `style`, `camera` (unless the shot genuinely
 moves), the drift terms in `negative`, `technical` (mode, resolution, audio).
 
-**Change per shot:** `action`, and the parts of `subject` and `negative` that the
+**Change per clip:** `action`, and the parts of `subject` and `negative` that the
 new action requires.
 
 ### The pose-continuity line
@@ -318,34 +204,34 @@ and point `negative` at the reset:
 "negative": "the pose resetting, the subjects starting apart, …"
 ```
 
-### `negative` has to be re-aimed every shot, and it is easy to miss
+### `negative` has to be re-aimed every clip, and it is easy to miss
 
-Terms that protected the previous shot will **fight** the next one. A shot that
+Terms that protected the previous clip will **fight** the next one. A clip that
 ends an embrace needs the term that preserved it removed. The classic trap:
-`changing wardrobe` is right for every shot until the shot where someone removes
+`changing wardrobe` is right for every clip until the clip where someone removes
 a garment, where it silently opposes the whole shot.
 
 Read `negative` against the new `action` each time and ask what now contradicts.
 
 ### Don't re-describe what the frame already shows
 
-Standard image-to-video discipline, and it matters more here because every shot
+Standard image-to-video discipline, and it matters more here because every clip
 after the first is driven by a frame: cut `scene` and `lighting`, keep `subject`
 to an identity anchor plus the pose line. See `studio-media-prompt`.
 
-## References for a shot come from the SCENE, not the character
+## References for a clip come from the SCENE, not the character
 
 Kling accepts `start_image` **and** `reference_images` together (Seedance does
-not), so every shot after the first can carry references. **They should be the
-scene's own frames**: the image shot 1 started from, plus each handoff frame
+not), so every clip after the first can carry references. **They should be the
+scene's own frames**: the seed clip 1 started from, plus each handoff frame
 produced since.
 
 **Not the character's curated `reference/` set.** Those images were shot in a
 different context — another location, another wardrobe, another light — so
 feeding them in mid-scene pulls the render toward that context and fights the
 continuity a scene exists to hold. The scene's own frames are already on-model
-for *this* scene in every respect that matters: setting, clothing, grade, and the
-current state of the action.
+for *this* scene in every respect that matters: setting, clothing, grade, and
+the current state of the action.
 
 Reach into `reference/` **only when the scene introduces something the existing
 frames cannot show** — a garment comes off and no frame yet shows the subject
@@ -353,21 +239,19 @@ without it, a prop appears, a new character enters. Then send only the images
 that show that specific thing, and drop them again once a frame in the scene
 covers it.
 
-**The list is derived, not kept.** `studio scenes render` reads it off the plan:
-shot 1's opening panel is the seed, and every later shot's recorded handoff is
-the frame the shot before it produced. There is nothing to maintain, and nothing
-that can drift from the scene it describes — which a separate list beside the
-scene, written by hand, reliably did.
+**The list is derived, not kept.** `studio scenes frames` reads it off the cut:
+the first frame each clip in the cut opened on, in order. There is nothing to
+maintain, and nothing that can drift from the scene it describes — which a
+separate list beside the scene, written by hand, reliably did.
 
-**Mind the cap** — Kling takes 7 images in total, the start frame included. Set
-`max_scene_frames` in a shot's `motion.references` to trim: the seed anchors the
-look the whole scene inherits and the newest frames carry the current state, so
-both ends are kept and the middle gives way.
+**Mind the cap** — Kling takes 7 images in total, the start frame included.
+`--max` trims: the seed anchors the look the whole scene inherits and the newest
+frames carry the current state, so both ends are kept and the middle gives way.
 
-> **A sequence with no scene behind it** — clips you are chaining ad hoc, with no
-> plan — still has `studio frames chain`, which keeps its own list in
-> `<project>/chains/<scene>.json`. Use it only when there is no scene; for
-> anything planned, the scene already knows.
+> **A sequence with no scene behind it** — clips you are chaining ad hoc — still
+> has `studio frames chain`, which keeps its own list in
+> `<project>/chains/<slug>.json`. Use it only when there is no scene; a scene
+> already knows.
 
 ## `reference_video` is not continuation — don't reach for it
 
@@ -378,7 +262,7 @@ It looks like the answer and is not. Per the model's own README:
 | `base` | **Edits the supplied video** per the prompt. `duration` is ignored |
 | `feature` | Borrows the reference's **camera movement and style** for new content |
 
-Neither continues from the end. Also: **3–10 s only** (a 15 s shot must be
+Neither continues from the end. Also: **3–10 s only** (a 15 s clip must be
 trimmed), `generate_audio` is **mutually exclusive** with it (`keep_original_sound`
 is the only way to have sound), and `reference_images` drops 7 → 4.
 
@@ -391,48 +275,36 @@ It is the wrong tool for *"and then…"*.
 studio scenes assemble <project>/<name>
 ```
 
-Shot order is cut order, taken from the plan. The scene lands at
-`<project>/scenes/<scene_id>/` with the source clips copied
-into `shots/`, and the stitched video in `output/`.
+The cut is the order. The scene lands at `<project>/scenes/<scene_id>/` with
+each clip copied into `shots/`, and the stitched video in `output/`.
 
 Re-cutting **keeps the cut it displaces.** Each cut is its own file: the first is
 `output/<name>.mp4` and later ones take a suffix, `<name>-2.mp4` and up. The
 scene's `output` names the newest and `cuts` lists the rest, newest first — so
 two takes of one scene can be put side by side, which is the thing re-cutting is
-for.
+for. `studio scenes outputs <project>/<name>` lists every cut, and one not
+worth keeping is deletable like any other file.
 
-**This page said the opposite, and told you to keep a cut under its own name
-before re-cutting.** That was true of an earlier scheme where the cut replaced
-the file in `output/`: the folder always showed current state, and a superseded
-cut survived only as an S3 object version — recoverable in production, gone in a
-dev stack, and invisible in both, because a version has nothing listing it,
-drawing it or linking to it. Nothing is replaced now, so the advice is retired
-and the behaviour is identical in every environment.
+No cut yet? `studio scenes assemble <project>/<name> --shot <runref> --shot
+<runref>` orders the cut first, then stitches — so "just stitch these three
+clips" is still one command.
 
-What that costs is accumulation: `studio scenes outputs <project>/<name>` lists
-every cut, and one not worth keeping is deletable like any other file.
-
-No storyboard? `studio scenes assemble <project>/<name> --shot <runref> --shot
-<runref>` appends runs directly, so "just stitch these three clips" is still one
-command and a board stays optional.
-
-Shots that agree on codec, geometry, frame rate and audio layout are
-**stream-copied** — the cut is bit-for-bit the sources joined end to end. Shots
+Clips that agree on codec, geometry, frame rate and audio layout are
+**stream-copied** — the cut is bit-for-bit the sources joined end to end. Clips
 produced by this loop agree automatically, because each inherits its geometry
-from the previous shot's frame. Mixing in a clip rendered at another `mode` or
+from the previous clip's frame. Mixing in a clip rendered at another `mode` or
 aspect forces a re-encode, which the scene's record notes.
 
 **The encode happens in the service, not on this machine.** `assemble` resolves
-each shot to its clip and asks for the cut; the joining, the copies and the
-record are done where the video toolchain lives. The command waits and prints as
-it goes, so a long cut is visible rather than silent — and `Ctrl-C` abandons the
-wait rather than the cut, which finishes either way and leaves the scene saying
-so.
+each run in the cut to its clip and asks for the cut; the joining, the copies
+and the record are done where the video toolchain lives. The command waits and
+prints as it goes — and `Ctrl-C` abandons the wait rather than the cut, which
+finishes either way and leaves the scene saying so.
 
 A scene is one continuous take. When a piece has genuine breaks in it — a change
 of place, of time, of subject — build each stretch as its own scene and cut them
-together with **`studio-media-movie`**, rather than hiding a hard cut inside something
-that is supposed to read as one shot.
+together with **`studio-media-movie`**, rather than hiding a hard cut inside
+something that is supposed to read as one shot.
 
 **Colour-match in an editor if the joins show.** A hard cut amplifies small
 differences between generations, and no prompt wording prevents that.
@@ -441,27 +313,28 @@ differences between generations, and no prompt wording prevents that.
 
 | Symptom | Why | Move |
 |---|---|---|
-| Pose jumps at a shot boundary | No pose-continuity line | Add it to `subject`; put `the pose resetting` in `negative` |
+| Pose jumps at a clip boundary | No pose-continuity line | Add it to `subject`; put `the pose resetting` in `negative` |
 | A garment appears in-hand while still worn | Removal is compressed into too little time | Give the motion more seconds — not more words |
 | A prop invents itself (a lanyard becomes a badge, then vanishes) | It is in the frame and absent from the prompt | Name persistent props in `subject`, or accept it |
-| On-screen text re-mangles every shot | Lettering is never stable | Add text in post |
-| Held stillness fills with unbidden motion | Models fill empty time | Shorten the shot — a still beat needs 3–6 s, not 15 |
+| On-screen text re-mangles every clip | Lettering is never stable | Add text in post |
+| Held stillness fills with unbidden motion | Models fill empty time | Shorten the clip — a still beat needs 3–6 s, not 15 |
 | A contradictory pose resolves itself | the direction asks for contact and separation at once | Settle the geometry in a **still** first, where it costs cents |
 
 ## Cost, and where the gate goes
 
-Kling standard is **$0.168/s**, **$0.224/s** with audio — so a 15 s shot with
-audio is ~$3.36 and a four-shot scene is real money. Show the full payload and
-ask before **every shot**, because every shot is its own submission
-(`CLAUDE.md` rule 2). Steps 2–4 move bytes only and need no asking.
+Kling standard is **$0.168/s**, **$0.224/s** with audio — so a 15 s clip with
+audio is ~$3.36 and a four-clip scene is real money. Show the full payload and
+ask before **every clip**, because every clip is its own submission
+(`CLAUDE.md` rule 2). Pulling frames, adding to the cut and assembling move
+bytes only and need no asking.
 
 Length is a lever, not a default: a still beat rendered at 6 s costs a third of
 15 s and drifts less. Pick the duration the beat needs.
 
-## Audio across shots
+## Audio across clips
 
-Direct it explicitly per shot — `generate_audio: true` alone tends to produce
+Direct it explicitly per clip — `generate_audio: true` alone tends to produce
 arbitrary music. Name the ambience, name the sounds the action makes, and say
-what to exclude. Keep the ambience wording **identical** across shots; it is
+what to exclude. Keep the ambience wording **identical** across clips; it is
 continuity like any other locked field, and a shifting soundbed makes joins
 audible even when the picture matches.

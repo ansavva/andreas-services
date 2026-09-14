@@ -9,12 +9,11 @@ A **movie** is a project's scenes cut together into one piece. It is the top of
 the hierarchy, and the only thing it contributes is **order**:
 
 ```
-generation cut  ⊂  shot  ⊂  scene  ⊂  movie
+generation cut  ⊂  run  ⊂  scene  ⊂  movie
 ```
 
 - a **generation cut** is a cut inside one submission (Kling `multi_prompt`)
-- a **shot** is one run's output, used as a scene component
-- a **scene** is shots stitched into one continuous take (`studio-media-scene`)
+- a **scene** is an ordered series of runs, its clips cut into one continuous take (`studio-media-scene`)
 - a **movie** is scenes cut together (this skill)
 
 ## Before anything: which project?
@@ -95,12 +94,12 @@ their runs; the runs are the history. So a movie can always be rebuilt, and
 nothing about it is worth protecting except the order.
 
 **Scenes are copied in server-side** for the same reason a scene copies its
-shots: the movie stays playable and re-cuttable while its scenes are rebuilt
+clips: the movie stays playable and re-cuttable while its scenes are rebuilt
 around it, and the movie's record names the scene beside the copied node, so
 copying does not lose lineage.
 
 The record also carries `characters` — the union of the cast of every scene,
-read back from the runs behind their shots. A movie can name who is in it
+read back from the runs in their cuts. A movie can name who is in it
 without a scan.
 
 ## Stitching

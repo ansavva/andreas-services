@@ -199,16 +199,17 @@ no seed available anywhere on Kling, this is the *only* reproducibility lever.
 Full workflow — the loop, the continuity rules, the per-part verification gate
 and assembly — lives in **[`studio-media-scene`](../studio-media-scene/SKILL.md)**. In short:
 
-1. Render part 1.
+1. Render part 1 with `--scene <name>`, so it belongs to the scene.
 2. Export its **last frame** with `studio frames last <runref> --add-input`;
-   use the resulting input-pool key as part 2's `start_image`.
+   hand the node id to part 2 as `--start-key`.
 3. Carry a **pose-continuity line** in part 2's `subject` — `"…, arms already
    raised in a bicep flex"` — so the pose doesn't reset on frame one.
 4. Hold the locked base identical.
 5. **Colour-match in assembly**; a hard cut amplifies small differences.
 
-Assemble with `studio scenes assemble`. Parts chained this way inherit their
-geometry from each other, so the stitch is a stream copy with no re-encode.
+Put each part in the cut with `studio scenes add`, then `studio scenes
+assemble`. Parts chained this way inherit their geometry from each other, so
+the stitch is a stream copy with no re-encode.
 
 **Binding the frame: `--start-key`, not `--key`.** `--key` adds an explicit S3
 object to `reference_images`; the first/last frame flags are `--start-key` /
@@ -298,8 +299,8 @@ frame, `mode: standard`, `generate_audio: true` throughout (15 s + 10 s + 10 s +
   `reference/` library. Those images were made in another context and pull the
   render toward it. Reach into `reference/` only when the scene introduces
   something no existing frame shows. See
-  [`studio-media-scene`](../studio-media-scene/SKILL.md); `studio frames chain`
-  derives the list.
+  [`studio-media-scene`](../studio-media-scene/SKILL.md); `studio scenes frames`
+  derives the list from the cut.
 - **Every shot came back 960×960 24 fps / AAC 44.1 kHz stereo**, so chained shots
   stitch as a stream copy with no re-encode.
 - **Audio needs directing.** `generate_audio: true` with no `audio` block tends to

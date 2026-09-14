@@ -94,9 +94,9 @@ studio/
 │   │   │                     #   generate.py + callbacks.py (the paid call and its webhook),
 │   │   │                     #   render.py (the queue the worker image drains),
 │   │   │                     #   layout.py (an entity's folder shape).
-│   │   │                     # storyboard.py, prompt.py, registry.py and digest.py are
-│   │   │                     #   loaded by path from the PIPELINE's test fake, so
-│   │   │                     #   none of the four may import Flask or boto3
+│   │   │                     # prompt.py, registry.py and digest.py are loaded by
+│   │   │                     #   path from the PIPELINE's test fake, so none of
+│   │   │                     #   the three may import Flask or boto3
 │   │   ├── clients/aws/      # dynamodb.py, s3.py, sqs.py, ssm.py — the only boto3 in the service
 │   │   ├── clients/replicate.py
 │   │   ├── handlers/         # aws/ (api, hook, render, worker) and local/ (dev server, consumers)
@@ -274,9 +274,9 @@ there is no scan. `backend/tests/unit/test_sweeps.py`.
 <project>/                      # a project's folder, created holding all five below
 ├── runs/<run id>/              # the run's documents
 │   └── output/                 # the generated .jpeg / .webp / .mp4
-├── scenes/<scene_id>/          # storyboard/ + shots/ + output/
+├── scenes/<scene_id>/          # shots/ (the cut's clips, copied in) + output/
 ├── movies/
-├── chains/                     # a scene's shot-to-shot plan
+├── chains/                     # an ad-hoc frame sequence with no scene behind it
 └── input/                      # the working pool
 config/angle/                   # the angle images; source of truth is the repo
 ```
@@ -291,7 +291,7 @@ first use, not anything `POST /api/characters` creates.
 `project.json`, `scene.json` or `movie.json`. Each of those is a row. An
 entity's folder is a top-level node its record names, so the two are found in
 opposite directions: the record names `root`, and the root node carries
-`entity` back. The bible, the project's description, a scene's shot list and a
+`entity` back. The bible, the project's description, a scene's cut and a
 run's envelope are all rows. What stays a file is what studio does not own: a
 run's payload documents are the provider's bytes, served as text and never
 parsed.
@@ -1098,7 +1098,7 @@ fan-out write this trade avoids.
 | `GET \| PATCH \| DELETE /api/projects/<id>` | One project, `rev`-guarded like a character |
 | `PATCH /api/projects/<id>/characters` | `{characters: [...]}` → replaces the involvement links |
 | `GET /api/projects/<id>/inputs` · `/runs` · `/scenes` · `/movies` | The working pool, and the three tiers |
-| `GET \| POST /api/runs` | Query by `project`, `character`, `status`, `model`, `kind`, `since`, `fingerprint`, `q`; or create a draft. **Refuses a URL-shaped binding.** `?view=feed` expands each row for the feed — see below |
+| `GET \| POST /api/runs` | Query by `project`, `character`, `scene`, `status`, `model`, `kind`, `since`, `fingerprint`, `q`; or create a draft. **Refuses a URL-shaped binding.** `?view=feed` expands each row for the feed — see below |
 | `GET /api/runs/resolve` | A run by `ref` |
 | `GET \| PATCH \| DELETE /api/runs/<id>` | The envelope, with outputs and bindings expanded |
 | `GET /api/runs/<id>/payload` | The payload a submit would send, assembled from the plan |
@@ -1107,7 +1107,7 @@ fan-out write this trade avoids.
 | `POST /api/runs/<id>/reconcile` | Asks the provider what happened and closes the run — for a callback that never arrived |
 | `POST /api/runs/<id>/outputs` · `/response` | An upload URL per output; the provider's response stored as a payload blob |
 | `GET \| POST /api/scenes` · `GET \| PATCH \| DELETE /api/scenes/<id>` | The scene record |
-| `PATCH /api/scenes/<id>/shots` · `/shots/<shot_id>` | The plan: revise it, or change one shot |
+| `PATCH /api/scenes/<id>/runs` | The cut: an ordered list of run ids, replaced whole. Naming a run joins it to the scene; `PATCH /api/runs/<id>` with `scene` moves one in or out |
 | `POST /api/scenes/<id>/output` · `POST /api/movies/<id>/output` | Upload URL for a cut made elsewhere. The render path does not use it |
 | `POST /api/renders` · `GET /api/renders/<id>` | **Enqueue an encode, and poll the row.** A stitch, a frame grab, a contact grid or a contact sheet, done by a second container image with `ffmpeg` in it |
 | `POST /api/images/convert` · `/api/images/crop` | The two image operations that are **not** on that queue — sub-second, so synchronous, with Pillow and no ffmpeg |
@@ -1173,7 +1173,7 @@ call reading the project. Composes with `view=feed`, which reuses the
 envelopes the search read.
 
 **Everything above is `PATCH` where a REST habit would reach for `PUT`**,
-including the whole-document writes (`/profile`, `/shots`, `/text`). `PUT` is
+including the whole-document writes (`/profile`, `/runs`, `/text`). `PUT` is
 not in the CORS method list, that list lives in four files that have to agree,
 and `PATCH` is already in all four. Adding `PUT` properly is a four-file change
 nobody has needed yet.

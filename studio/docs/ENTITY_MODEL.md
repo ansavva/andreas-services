@@ -21,6 +21,18 @@
 > worth keeping because the second half of it is what tags finish, and rewriting
 > it would erase why the row existed at all.
 
+> **A SECOND PART IS SUPERSEDED: the shot row.** This document gave a scene a
+> plan — `SCENE#<id>` / `SHOT#<shot_id>`, one ordered child per planned shot,
+> carrying its prompt, its panels and the run that rendered it. Every one of
+> those was already a run: a panel is an image run, a shot is a video run, and
+> the frame a shot opened on is that run's `start` send. The plan was a second
+> description of the same runs, kept in step by hand, and a 700-line storyboard
+> service existed to keep it in step. **A scene is two facts now** — `runs` on
+> the scene record (the cut, in order) and `scene` on each run (membership) —
+> each with an edge row beside it, and the shot rows are deleted. `SHOT#`
+> passages below are history, kept for the reasoning about ordered children,
+> which `SEND#` on a run still follows.
+
 Read [What was wrong](#what-was-wrong-and-what-this-replaced) for the shape
 this replaced, then go to [The data model](#the-data-model). The five decisions
 it turned on are settled and recorded in
@@ -73,7 +85,7 @@ Library    lib-…      the sharing unit; has members
  ├ Character char-…   who a subject is
  ├ Project  proj-…    a unit of production
  ├ Run      run-…     one submission to a model
- ├ Scene    scene-…   shots stitched into one continuous take
+ ├ Scene    scene-…   an ordered series of runs, cut into one take
  └ Movie    movie-…   scenes cut into one piece
 ```
 
@@ -100,8 +112,9 @@ parses it.
 | **Run ↔ character** | `RUN#<run_id>` | `CHAR#<char_id>` | which characters a run used |
 | **Scene** | `SCENE#<scene_id>` | `META` | |
 | **Scene in project** | `PROJ#<proj_id>` | `SCENE#<created>#<scene_id>` | |
-| **Shot** | `SCENE#<scene_id>` | `SHOT#<shot_id>` | one row per planned shot |
-| **Scene ↔ run** | `SCENE#<scene_id>` | `RUN#<run_id>` | which runs a scene's shots bound; reverse-queryable |
+| ~~**Shot**~~ | ~~`SCENE#<scene_id>`~~ | ~~`SHOT#<shot_id>`~~ | **superseded** — a shot is a run in the scene's cut |
+| **Scene ↔ run** | `SCENE#<scene_id>` | `RUN#<run_id>` | the runs a scene cuts (`runs` on the record is the order); reverse-queryable |
+| **Run ↔ scene** | `RUN#<run_id>` | `SCENE#<scene_id>` | the scene a run belongs to (`scene` on the record); reverse-queryable |
 | **Movie** | `MOVIE#<movie_id>` | `META` | |
 | **Movie in project** | `PROJ#<proj_id>` | `MOVIE#<created>#<movie_id>` | |
 | **Movie ↔ scene** | `MOVIE#<movie_id>` | `SCENE#<scene_id>` | which scenes a movie cuts; reverse-queryable |
@@ -117,7 +130,7 @@ decides whether a question has an answer at all, and getting it wrong is silent.
 |---|---|---|---|
 | **Edge** | `<TARGET>#<target_id>` | set membership | **free** — `by-sk` |
 | **Listing** | `<KIND>#<created>#<id>` | chronological pagination | none, and none needed |
-| **Ordered child** | `SHOT#<n>` | a positional entity with payload | varies |
+| **Ordered child** | `SEND#<n>` | a positional row with payload | varies |
 
 **An edge puts the target's id in the SORT KEY, and that is the whole rule.** In
 `by-sk` the sort key becomes the hash key, and a hash key takes an exact value
@@ -126,11 +139,12 @@ target id is the entire sort key after the prefix. `PROJ#<id>/CHAR#<id>` is; a
 listing row's `RUN#<created>#<id>` is not, which costs it a reverse query it
 does not need, because a run records its `project` on its own record.
 
-An **ordered child** is an entity in its own right, not a link. A shot exists as
-a plan before anything has been rendered into it, so its identity is its
-position and the run it may later bind is a field. **Where an ordered child
-points at an entity, it gets an edge row beside it**, written in the same
-transaction — a link written afterwards is a link a crash can lose.
+An **ordered child** is a row in its own right, not a link. A send exists in a
+plan before anything has been submitted, so its identity is its position and
+the node it names is a field. (A shot was one too, before shots became runs.)
+**Where an ordered list points at entities, it gets edge rows beside it**,
+written in the same transaction — a link written afterwards is a link a crash
+can lose.
 
 **Two relationships did not follow this and were only fixed in August 2026.** A
 movie's scenes were a JSON list on the record, which no index can address into,
@@ -142,8 +156,11 @@ down nowhere, which is how the two written last came to miss it.
 
 Both kept their original shape and gained an edge beside it, because both carry
 something an edge cannot express: a movie may legally cut one scene twice as a
-reprise, and an edge is set membership. Every writer maintains its own edges —
-`catalog.put_shots` and its siblings.
+reprise, and an edge is set membership. When the shot rows went, the scene's
+cut became a list of run ids on its record — the same shape as a movie's
+scenes, with the same edges beside it — and a run's `scene` became one id with
+one edge. Every writer maintains its own edges through
+`catalog.update_project_entity(edges=…)`.
 
 **Two items per entity.** The `META` row is the record; the second is the
 **library index** — `LIB#<lib>` / `CHAR#<char_id>` — which is what makes the
@@ -338,8 +355,8 @@ refused by the API rather than by `runs.py` — which is a strengthening, becaus
 the API is the only thing both halves of studio go through.
 
 Scene and movie records follow the same shape: an envelope of ids and status,
-with shots as `SHOT#` rows carrying `order`, `prompt`, `run`, `panel`, and the
-stitched output as a node id.
+an ordered list of what they cut — run ids on a scene, scene ids on a movie —
+and the stitched output as a node id.
 
 ## S3 layout
 
@@ -429,7 +446,7 @@ picking between them.
 
 **Every whole-collection replace is `PATCH`, not `PUT`.** Six routes here
 replace rather than merge — the profile, the reference index, the default set, a
-project's character links, a scene's shots, a movie's scenes — and PUT is the
+project's character links, a scene's runs, a movie's scenes — and PUT is the
 verb for that. The service registers none: a verb has to exist in the CORS list,
 the MOCK integration response and two gateway responses at once, and one
 omission is a browser failure carrying no status at all
@@ -478,16 +495,15 @@ moves with it.
 | Route | Body / params → result |
 |---|---|
 | `POST /api/runs` | `{project, kind, engine, model, input, bindings, characters?, prompt?}` → **201** `{id, folder, payload}`. Creates run + project link + character links + folder + payload blobs. **Refuses a URL-shaped binding** |
-| `GET /api/runs` | `?project=&character=&model=&status=&since=&cursor=` — the query that replaces `runs find` |
-| `GET /api/runs/<id>` | envelope + output nodes + the scenes that bound it |
-| `PATCH /api/runs/<id>` | `{status, prediction_id?, error?, cost?, completed?}` |
+| `GET /api/runs` | `?project=&character=&scene=&model=&status=&since=&cursor=` — the query that replaces `runs find`; `?scene=` is a scene's members |
+| `GET /api/runs/<id>` | envelope + output nodes + `scene` (the one it belongs to, or `null`) |
+| `PATCH /api/runs/<id>` | `{status, prediction_id?, error?, cost?, completed?, scene?}` — `scene` moves a run into a scene or (`null`) out |
 | `POST /api/runs/<id>/outputs` | `{name, size, content_type}` → a node under the run's `output/` and a presigned PUT |
 | `POST /api/runs/<id>/response` | `{body}` → stores the provider response as a payload blob |
 | `DELETE /api/runs/<id>` | `?files=keep\|delete` |
-| `POST /api/scenes` | `{project, name, shots: [...]}` → **201** |
-| `GET /api/scenes` · `GET /api/scenes/<id>` · `PATCH` · `DELETE` | as above |
-| `PATCH /api/scenes/<id>/shots` | `{shots: [...]}` → the plan revision; merges onto rendered work rather than replacing it |
-| `PATCH /api/scenes/<id>/shots/<shot_id>` | `{run?, panel?, prompt?, order?}` |
+| `POST /api/scenes` | `{project, name, runs?: [run_id…]}` → **201**; `runs` is the cut and joins each run to the scene |
+| `GET /api/scenes` · `GET /api/scenes/<id>` · `PATCH` · `DELETE` | as above; `GET /<id>` answers the cut as rows, `frames` (the first `start` send of each cut run) and `movies` |
+| `PATCH /api/scenes/<id>/runs` | `{runs: [run_id…]}` → the cut, replaced whole. A video run, this project's, not in another scene |
 | `POST /api/scenes/<id>/output` | `{name, size, content_type}` → upload URL for the stitched take |
 | `POST /api/movies` · `GET` · `PATCH` · `DELETE` · `PATCH /api/movies/<id>/scenes` | the tier above |
 
@@ -536,7 +552,7 @@ generate    run · models · add-model                               --project t
             run now records bindings as node ids
 
 records     runs      list · show · find · outputs · adopt         list/find are one API query
-            scenes    new · list · show · plan · board · render · check · handoff · assemble · sheet · outputs
+            scenes    new · list · show · add · remove · order · frames · assemble · outputs
             movies    new · list · show · outputs
             frames    at · last · grid · chain
             projects  list · new · show · edit · rename · delete · link · unlink
@@ -601,7 +617,7 @@ Tabs: **Overview · Runs · Scenes · Movies · Inputs · Files**
   status, character, date — each row showing its output thumbnail, model and
   cost. A run opens to its envelope, its outputs, and its payload documents as
   raw text (still never parsed).
-- **Scenes / Movies** show the plan, the shots and the cut.
+- **Scenes / Movies** show the cut, the runs made for the scene, and the piece.
 - **Inputs** is the working pool with positions shown, because `--input N` is a
   position.
 - **Files** is the raw browser at the project's root.

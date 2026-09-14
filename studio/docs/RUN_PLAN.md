@@ -10,9 +10,10 @@
 > done and why it is not worth resurrecting.
 
 It extends [ENTITY_MODEL.md](ENTITY_MODEL.md) rather than replacing anything in
-it. A run was already a row; this gives it the half a scene has and it did not —
-a **plan**, authored before the submission, kept as an artifact rather than
-as text that scrolled past in a terminal, and readable in the app.
+it. A run was already a row; this gives it the half a storyboard's shot once
+had and it did not — a **plan**, authored before the submission, kept as an
+artifact rather than as text that scrolled past in a terminal, and readable in
+the app. **The storyboard is gone since; the run's plan is the only plan.**
 
 **An earlier draft of this file said past runs could not be backfilled. That was
 wrong on the facts** and the whole of it is replaced. The reasoning confused two
@@ -23,32 +24,31 @@ total.
 
 ---
 
-## Vocabulary, because three words overlap
+## Vocabulary
 
 ```
-movie ⊃ scene ⊃ shot ⊃ panel
-                 │       └── run   ← an image run.  cents.
-                 └────────── run   ← a video run.   dollars.
+movie ⊃ scene ⊃ run
+               ├── an image run.  cents.   a seed frame, a contact sheet
+               └── a video run.   dollars. a clip — a "shot", in the cut
 ```
 
 - **run** — one submission to a model. A machine event. No name; addressed by id
-  or `latest`. **The only tier where anything bills.**
-- **shot** — a position in a scene's plan: `SCENE#<id>/SHOT#<shot_id>`. It exists
-  before anything is rendered. It *binds* a run; it is not one.
-- **panel** — a still inside a shot, in the shot row's `panels` list, with a role
-  of `start` / `end` / `reference` / `sample`. Panels are why a storyboard is
-  cheap: stills cost cents, so a flow is judged before a 15s shot is bought.
-- **storyboard** — a scene's whole plan: `setting`, `defaults`, `logline` and its
-  ordered `SHOT#` rows. Not an entity; there is no `BOARD#`.
+  or `latest`. **The only tier where anything bills.** It may belong to one
+  scene (`scene` on the record).
+- **scene** — a named, ordered series of runs. Its **cut** is the video runs
+  in stitch order, and that list is the whole of its plan; it may name a run
+  that has not rendered yet.
+- **shot** — a video run in a scene's cut. A word for a position, not a row:
+  there was a `SHOT#` row once, with panels and a prompt of its own, and every
+  field on it was a run wearing a second record.
 
-**Nothing has an approve step.** `scenes board` runs a `click.confirm` at the
-terminal, and no scene, shot, panel — or run — carries an approved state. A run
-did, for a while: an `approval` row bound to a digest of the plan, written by an approve
+**Nothing has an approve step.** No scene or run carries an approved state. A
+run did, for a while: an `approval` row bound to a digest of the plan, written by an approve
 subcommand or by the app before it submitted, and checked by the API at
 submit. **Decision 2026-09-04 removed it everywhere.** The record it kept
 was never a stronger claim than the command that submitted; the submit is the
-act. A storyboard is an *economic* preview; hard rule #2 is show, ask, submit
-when told.
+act. A seed still is an *economic* preview of a clip; hard rule #2 is show,
+ask, submit when told.
 
 ---
 
@@ -92,10 +92,9 @@ because **the order is cited by the prompt** — `SEND#10` would otherwise sort
 before `SEND#2`, which is the same `-10`-before-`-2` failure the run outputs had
 when their order came from a filename.
 
-**`plan` is studio's and `payload.request` is the provider's.** That line is the
-one a scene already holds: a shot's `motion.prompt` is authored and queryable
-while the run it renders into keeps the provider payload as an undecoded blob.
-Principle 4 is applied one tier down, not weakened. The plan carries no image
+**`plan` is studio's and `payload.request` is the provider's.** The plan is
+authored and queryable; the provider payload stays an undecoded blob beside it.
+Principle 4 is applied to the run, not weakened. The plan carries no image
 fields at all — those are sends, presigned in at the last moment. **Nor the
 clip field**: the one video a model works from (a motion reference, an edit
 source; `clips.source` in the registry) is a send with the role `clip`, bound
@@ -123,23 +122,22 @@ reconstructed from history has no `gather` behind it at all. Deriving it in the
 API means a run submitted today and a run backfilled from August describe their
 images in the same words, computed by the same code.
 
-### Where `role` comes from — a symmetry that already existed
+### Where `role` comes from
 
 ```
-   STORYBOARD (built)                              RUN (this)
-
-   panel.role                                      send.role
-     start    ─┐    resolve_roles(shot)     ┌──►     start
-     end       ├──► then submit.gather()    ├──►     end
-     reference │    {field: [node, …]}      ├──►     reference
-     sample   ─┘         ▲                  └──►     input
-                         │
-                    the role is USED here
-                    and then DISCARDED
+   submit.gather()                                  send.role
+     the first frame     ─┐                    ┌──►   start
+     the last frame       ├──► {field: [node]} ├──►   end
+     the references       │                    ├──►   reference
+     the image edited    ─┘                    └──►   input
+                               ▲
+                     the role was USED here and then
+                     DISCARDED, before sends kept it
 ```
 
-`sample` has no send: it binds to nothing, so it can never be something the model
-was handed.
+The storyboard's panels once carried the same four words plus `sample` — a
+still for a person to look at, bound to nothing — and `sample` has no send for
+that reason: it can never be something the model was handed.
 
 ### The state machine
 
@@ -391,8 +389,8 @@ studio runs discard run-<uuid>              # a draft that will not be submitted
 - **`runs discard` deletes the folder by default**, the opposite of `runs delete`.
   A submitted run's folder holds media somebody paid for; a draft's holds two
   payload documents and an empty `output/`.
-- `scenes board` needed no change: its single terminal confirm still stands in
-  front of the batch, and each submission is a run like any other.
+- `studio run --scene <ref>` files the draft under a scene; the scene lists
+  its runs off that field, and its cut is edited with `studio scenes add`.
 
 ---
 
@@ -405,10 +403,10 @@ opened, a lightbox over that feed (`components/run/RunLightbox.tsx`) — see
 record of the decisions the feed and the lightbox inherit; where a name below
 no longer exists, the paragraph says what replaced it.
 
-`RunPage` gained a **Plan** section above Outputs, built from the storyboard's own
-components — `Frame`, `SendRow` and `Slot` from `components/scene/Sends.tsx` — on
-the grounds that a shot and a run are the same object at two tiers and drawing
-them differently is what would need justifying. The feed row and the lightbox
+`RunPage` gained a **Plan** section above Outputs, built from what were then
+the storyboard's own components — on the grounds that a shot and a run were
+the same object at two tiers and drawing them differently was what needed
+justifying. (They are one object now; the storyboard is gone.) The feed row and the lightbox
 rail draw the same plan more compactly: the prompt, `ParamChips`, the sends as
 thumbnails carrying their role, the cast as chips.
 
@@ -488,5 +486,5 @@ what the editor decided, because the bar inherits every one of those rules.
    at an *entity* gets an edge, and a node is not one. Worth doing anyway.
 3. **Retire the stored `bindings` attribute** once every run has sends.
 4. **Do drafts expire?** Proposed: no. A draft costs a row and no bytes.
-5. **Does a scene learn about drafts?** `scenes render` could draft every shot and
-   submit the board in one pass, on one yes. Same mechanism, one tier up.
+5. ~~**Does a scene learn about drafts?**~~ Settled by removing the storyboard:
+   a scene's cut may name a draft, and the draft is submitted like any other.
