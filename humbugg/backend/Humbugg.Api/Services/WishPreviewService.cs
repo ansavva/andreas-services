@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Web;
 using Humbugg.Api.Data;
@@ -170,6 +171,13 @@ internal sealed class WishPreviewService(
     private static readonly Regex TitleTag = new("<title[^>]*>([^<]{0,500})", Safe);
     private static readonly Regex CanonicalTag = new("<link[^>]+rel=[\"']?canonical[\"']?[^>]*>", Safe);
     private static readonly Regex Attribute = new("([a-z:-]{1,40})\\s*=\\s*(\"[^\"]{0,2000}\"|'[^']{0,2000}')", Safe);
+    // The block's body stops at the first `<`, which JSON-LD has no business containing — a
+    // description that does breaks the parse below and costs the price, never anything worse.
+    // Unbounded `*` rather than a counted repeat: a `{0,200000}` is 200 000 automaton states
+    // under NonBacktracking, past its limit, while `*` is one. The length is capped after the
+    // match instead, in JsonLdOffer.
+    private static readonly Regex JsonLdTag = new("<script[^>]*type=[\"']?application/ld\\+json[\"']?[^>]*>([^<]*)", Safe);
+    private const int MaxJsonLdBytes = 200_000;
 
     internal static WishPreview Extract(Uri requested, Uri final, string html)
     {
@@ -177,7 +185,13 @@ internal sealed class WishPreviewService(
         foreach (var tag in MetaTag.Matches(html).Take(400).Select(match => match.Value))
         {
             var attributes = Attributes(tag);
-            var key = attributes.GetValueOrDefault("property") ?? attributes.GetValueOrDefault("name");
+            // `itemprop` is schema.org microdata — `<meta itemprop="price" content="25.99">` is
+            // how a shop that never emits Open Graph prices still says one. Namespaced so a page's
+            // `itemprop="name"` cannot masquerade as the `name="…"` meta it would otherwise share
+            // a key with.
+            var key = attributes.GetValueOrDefault("property")
+                ?? attributes.GetValueOrDefault("name")
+                ?? (attributes.GetValueOrDefault("itemprop") is { } itemprop ? $"itemprop:{itemprop}" : null);
             var value = attributes.GetValueOrDefault("content");
             if (key is null || value is null) continue;
             // First one wins. A page that repeats og:title is either sloppy or trying something.
@@ -196,9 +210,19 @@ internal sealed class WishPreviewService(
         // resolved a tracking link to the real product page is exactly what should be stored.
         var canonical = Link(canonicalHref, final) ?? final.ToString();
 
+        // Open Graph first, because a page that bothers with `product:price:amount` means it;
+        // then the JSON-LD `Product` most shops ship for search engines; then microdata. Each is
+        // taken as a pair, so a JSON-LD currency is never attached to a microdata amount.
         var (priceCents, currency) = Price(
             meta.GetValueOrDefault("product:price:amount") ?? meta.GetValueOrDefault("og:price:amount"),
             meta.GetValueOrDefault("product:price:currency") ?? meta.GetValueOrDefault("og:price:currency"));
+        if (priceCents is null)
+        {
+            var offer = JsonLdOffer(html);
+            (priceCents, currency) = Price(offer.Price, offer.Currency);
+        }
+        if (priceCents is null)
+            (priceCents, currency) = Price(meta.GetValueOrDefault("itemprop:price"), meta.GetValueOrDefault("itemprop:priceCurrency"));
 
         return new WishPreview(
             Host: final.Host,
@@ -275,6 +299,116 @@ internal sealed class WishPreviewService(
         // Still inspected, whichever branch produced it: resolving `javascript:alert(1)` against a
         // base yields `javascript:alert(1)`, and this is what refuses it.
         return WishUrlSafety.Inspect(absolute) == WishUrlSafety.Refusal.None ? absolute.ToString() : null;
+    }
+
+    /// <summary>
+    /// The first `Offer` under a JSON-LD `Product` on the page: its `price` and `priceCurrency`.
+    /// </summary>
+    /// <remarks>
+    /// Shops put the price here for Google far more reliably than in Open Graph, which is why
+    /// the Amazon page that filled its title and picture left the price empty. Only a Product's
+    /// offers count — a `Recipe` or `Event` with a price is not the thing being wished for.
+    /// `AggregateOffer` gives its `lowPrice`, the honest "from" number. Bounded on every axis:
+    /// the first five blocks, 200 KB each, a parse depth of 32, the first hundred nodes visited —
+    /// this is an attacker's document.
+    /// </remarks>
+    internal static (string? Price, string? Currency) JsonLdOffer(string html)
+    {
+        foreach (var block in JsonLdTag.Matches(html).Take(5).Select(match => match.Groups[1].Value))
+        {
+            if (block.Length > MaxJsonLdBytes) continue;
+            JsonDocument document;
+            try
+            {
+                document = JsonDocument.Parse(HttpUtility.HtmlDecode(block), new JsonDocumentOptions { MaxDepth = 32, AllowTrailingCommas = true });
+            }
+            catch (JsonException)
+            {
+                continue;
+            }
+            using (document)
+            {
+                var budget = 100;
+                var found = FindProductOffer(document.RootElement, ref budget);
+                if (found is not null) return found.Value;
+            }
+        }
+        return (null, null);
+    }
+
+    private static (string? Price, string? Currency)? FindProductOffer(JsonElement node, ref int budget)
+    {
+        if (--budget < 0) return null;
+        switch (node.ValueKind)
+        {
+            case JsonValueKind.Array:
+                foreach (var item in node.EnumerateArray())
+                {
+                    var found = FindProductOffer(item, ref budget);
+                    if (found is not null) return found;
+                }
+                return null;
+            case JsonValueKind.Object:
+                if (IsType(node, "Product") && node.TryGetProperty("offers", out var offers))
+                {
+                    var offer = FirstOffer(offers);
+                    if (offer is not null) return offer;
+                }
+                // `@graph` is how a page lists several things at once; a Product may be nested
+                // under a `mainEntity` or an `itemListElement` too. One walk covers them all.
+                foreach (var name in new[] { "@graph", "mainEntity", "itemListElement", "item" })
+                {
+                    if (node.TryGetProperty(name, out var child))
+                    {
+                        var found = FindProductOffer(child, ref budget);
+                        if (found is not null) return found;
+                    }
+                }
+                return null;
+            default:
+                return null;
+        }
+    }
+
+    private static (string? Price, string? Currency)? FirstOffer(JsonElement offers)
+    {
+        if (offers.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in offers.EnumerateArray().Take(10))
+            {
+                var offer = FirstOffer(item);
+                if (offer is not null) return offer;
+            }
+            return null;
+        }
+        if (offers.ValueKind != JsonValueKind.Object) return null;
+        var price = Scalar(offers, "price") ?? Scalar(offers, "lowPrice");
+        if (price is null) return null;
+        return (price, Scalar(offers, "priceCurrency"));
+    }
+
+    private static bool IsType(JsonElement node, string type)
+    {
+        if (!node.TryGetProperty("@type", out var value)) return false;
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => string.Equals(value.GetString(), type, StringComparison.OrdinalIgnoreCase),
+            JsonValueKind.Array => value.EnumerateArray().Any(item =>
+                item.ValueKind == JsonValueKind.String && string.Equals(item.GetString(), type, StringComparison.OrdinalIgnoreCase)),
+            _ => false,
+        };
+    }
+
+    /// <summary>A number or a string, as text for <see cref="Price"/> to judge; anything else is nothing.</summary>
+    private static string? Scalar(JsonElement node, string name)
+    {
+        if (!node.TryGetProperty(name, out var value)) return null;
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString(),
+            JsonValueKind.Number => value.GetRawText(),
+            _ => null,
+        };
     }
 
     private static (long? Cents, string? Currency) Price(string? amount, string? currency)

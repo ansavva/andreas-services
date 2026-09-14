@@ -2,6 +2,7 @@
 // two rules that matter beyond the UI: a reorder sends a complete order, and the giver's view is
 // read-only.
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { Image } from 'react-native';
 
 import type { RecipientWish, Wish } from '../types';
 
@@ -167,6 +168,33 @@ describe('adding a wish', () => {
     expect(mocks.createWish.mock.calls[0][2]).toMatchObject({ price_cents: 2599 });
   });
 
+  it('takes thousands separators where they belong and refuses them elsewhere', async () => {
+    render(<WishListPanel groupId="g1" />);
+    fireEvent.press(await screen.findByText('Add a wish'));
+    fireEvent.changeText(screen.getByLabelText('What is it?'), 'Tennis bracelet');
+
+    fireEvent.changeText(screen.getByLabelText('Rough price (optional)'), '1,2');
+    fireEvent.press(screen.getByText('Add to my list'));
+    expect(await screen.findByText(/Price must be a number/)).toBeTruthy();
+    expect(mocks.createWish).not.toHaveBeenCalled();
+
+    fireEvent.changeText(screen.getByLabelText('Rough price (optional)'), '32,025.00');
+    fireEvent.press(screen.getByText('Add to my list'));
+    await waitFor(() => expect(mocks.createWish).toHaveBeenCalled());
+    expect(mocks.createWish.mock.calls[0][2]).toMatchObject({ price_cents: 3202500 });
+  });
+
+  it('shows a large price with thousands separators, on the row and in the edit form', async () => {
+    mocks.listWishes.mockResolvedValue([
+      wish({ wish_id: 'a', title: 'Tennis bracelet', price_cents: 3202500, currency: 'USD' }),
+    ]);
+    render(<WishListPanel groupId="g1" />);
+
+    expect(await screen.findByText('32,025.00 USD')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Edit Tennis bracelet'));
+    expect(screen.getByLabelText('Rough price (optional)').props.value).toBe('32,025.00');
+  });
+
   it('keeps the form open and reports the failure when the save fails', async () => {
     mocks.createWish.mockRejectedValue(new Error('Wishlist is full'));
     render(<WishListPanel groupId="g1" />);
@@ -294,6 +322,21 @@ describe("the giver's view", () => {
 
   // Would have failed before the casing fix: the API sends "product"/"high", and the app's unions
   // said "Product"/"High", so both badges rendered empty.
+  it('shows the picture beside a wish that has one, and nothing where there is none', async () => {
+    render(
+      <RecipientWishList
+        wishes={[
+          wish({ wish_id: 'a', title: 'Chef knife', image_url: 'https://example.com/knife.jpg' }),
+          wish({ wish_id: 'b', title: 'Socks', image_url: null }),
+        ]}
+      />,
+    );
+
+    const pictures = screen.UNSAFE_getAllByType(Image);
+    expect(pictures).toHaveLength(1);
+    expect(pictures[0].props.source).toEqual({ uri: 'https://example.com/knife.jpg' });
+  });
+
   it('labels the kind and priority the API actually sends', () => {
     render(
       <RecipientWishList

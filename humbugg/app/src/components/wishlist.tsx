@@ -3,7 +3,7 @@
 // reading it after the draw.
 import { Badge, Button, Drawer, Input, Select, Textarea } from '@ansavva/design-system';
 import { useEffect, useState } from 'react';
-import { Linking, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { Image, Linking, Pressable, Text, View, useWindowDimensions } from 'react-native';
 
 import { api } from '../api/client';
 import { DrawerBody } from '../components/drawer-body';
@@ -16,6 +16,7 @@ import { gap, scopedStyles, useTheme } from '../theme/styles';
 import type { RecipientWish, Wish, WishClaimState } from '../types';
 import {
   emptyWishForm,
+  formatAmount,
   formatPrice,
   kindLabel,
   linkHost,
@@ -40,8 +41,8 @@ export function WishListPanel({ groupId }: { groupId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [editing, setEditing] = useState<string | null>(null);
+  // What the drawer holds: nothing, a new wish, or one of the list's own to correct.
+  const [sheet, setSheet] = useState<{ kind: 'add' } | { kind: 'edit'; wish: Wish } | null>(null);
 
   async function load() {
     setError(null);
@@ -96,7 +97,7 @@ export function WishListPanel({ groupId }: { groupId: string }) {
           <Text style={styles.eyebrow}>Your wishlist</Text>
           <Text style={[styles.heading, { marginTop: 4 }]}>What you would love</Text>
         </View>
-        <Button size="sm" disabled={busy} onPress={() => { setAdding(true); setEditing(null); }}>
+        <Button size="sm" disabled={busy} onPress={() => setSheet({ kind: 'add' })}>
           Add a wish
         </Button>
       </View>
@@ -107,33 +108,60 @@ export function WishListPanel({ groupId }: { groupId: string }) {
 
       <Text accessibilityLiveRegion="polite" style={local.srOnly}>{status ?? ''}</Text>
       {/* While the drawer is up the card is under a scrim, so a failure reports inside it instead. */}
-      <StatusMessage message={adding ? null : error} />
+      <StatusMessage message={sheet ? null : error} />
 
-      {/* Adding is a drawer over the list rather than a form unfolding under it, the same as
-          inviting on the People tab and starting a group on the dashboard: the list is the thing
-          on this card, and a wish is a task with a beginning and an end. Editing stays in place,
-          because a correction belongs next to the row it corrects. */}
-      <Drawer.Root open={adding} onOpenChange={setAdding} side={drawerSide}>
-        <Drawer.Panel accessibilityLabel="Add a wish" style={drawerSide === 'right' ? local.drawer : undefined}>
+      {/* Adding and editing are one drawer over the list rather than a form unfolding under it,
+          the same as inviting on the People tab and starting a group on the dashboard: the list
+          is the thing on this card, and a wish is a task with a beginning and an end. Editing
+          used to unfold in place, "next to the row it corrects" — but the form is eleven fields,
+          so in place meant the row disappeared under a page of inputs and the list stopped being
+          a list until Cancel. The drawer's title carries which row it is.
+
+          The form is keyed on what it edits, so switching from one wish to another — or from a
+          wish to a new one — starts it from that wish's values rather than carrying the last
+          draft across. */}
+      <Drawer.Root open={sheet !== null} onOpenChange={(open) => { if (!open) setSheet(null); }} side={drawerSide}>
+        <Drawer.Panel
+          accessibilityLabel={sheet?.kind === 'edit' ? `Edit ${sheet.wish.title}` : 'Add a wish'}
+          style={drawerSide === 'right' ? local.drawer : undefined}
+        >
           <DrawerBody>
-            <Drawer.Title>Add a wish</Drawer.Title>
+            <Drawer.Title>{sheet?.kind === 'edit' ? `Edit ${sheet.wish.title}` : 'Add a wish'}</Drawer.Title>
             <StatusMessage message={error} />
-            <WishForm
-              initial={emptyWishForm}
-              busy={busy}
-              // Only the ADD form reads links. Editing an existing wish is for correcting what is
-              // there, and re-fetching a page to overwrite it is the opposite of that.
-              groupId={groupId}
-              submitLabel="Add to my list"
-              onCancel={() => setAdding(false)}
-              onSubmit={async (values) => {
-                const saved = await run(
-                  (token) => api.createWish(token, groupId, toCreateInput(values)),
-                  `${values.title.trim()} added to your wishlist.`,
-                );
-                if (saved) setAdding(false);
-              }}
-            />
+            {sheet?.kind === 'edit' ? (
+              <WishForm
+                key={sheet.wish.wish_id}
+                initial={formFromWish(sheet.wish)}
+                busy={busy}
+                submitLabel="Save changes"
+                onCancel={() => setSheet(null)}
+                onSubmit={async (values) => {
+                  const saved = await run(
+                    (token) => api.updateWish(token, groupId, sheet.wish.wish_id, toUpdateInput(values)),
+                    `${values.title.trim()} updated.`,
+                  );
+                  if (saved) setSheet(null);
+                }}
+              />
+            ) : (
+              <WishForm
+                key="add"
+                initial={emptyWishForm}
+                busy={busy}
+                // Only the ADD form reads links. Editing an existing wish is for correcting what
+                // is there, and re-fetching a page to overwrite it is the opposite of that.
+                groupId={groupId}
+                submitLabel="Add to my list"
+                onCancel={() => setSheet(null)}
+                onSubmit={async (values) => {
+                  const saved = await run(
+                    (token) => api.createWish(token, groupId, toCreateInput(values)),
+                    `${values.title.trim()} added to your wishlist.`,
+                  );
+                  if (saved) setSheet(null);
+                }}
+              />
+            )}
           </DrawerBody>
         </Drawer.Panel>
       </Drawer.Root>
@@ -144,31 +172,14 @@ export function WishListPanel({ groupId }: { groupId: string }) {
         </View>
       ) : wishes === null ? null : wishes.length > 0 ? (
         <View style={{ marginTop: 20, gap: gap.sm }}>
-          {wishes.map((wish, index) =>
-            editing === wish.wish_id ? (
-              <WishForm
-                key={wish.wish_id}
-                heading={`Edit ${wish.title}`}
-                initial={formFromWish(wish)}
-                busy={busy}
-                submitLabel="Save changes"
-                onCancel={() => setEditing(null)}
-                onSubmit={async (values) => {
-                  const saved = await run(
-                    (token) => api.updateWish(token, groupId, wish.wish_id, toUpdateInput(values)),
-                    `${values.title.trim()} updated.`,
-                  );
-                  if (saved) setEditing(null);
-                }}
-              />
-            ) : (
+          {wishes.map((wish, index) => (
               <WishRow
                 key={wish.wish_id}
                 wish={wish}
                 busy={busy}
                 isFirst={index === 0}
                 isLast={index === wishes.length - 1}
-                onEdit={() => { setEditing(wish.wish_id); setAdding(false); }}
+                onEdit={() => setSheet({ kind: 'edit', wish })}
                 onMoveUp={() => move(index, -1)}
                 onMoveDown={() => move(index, 1)}
                 onRemove={() =>
@@ -178,8 +189,7 @@ export function WishListPanel({ groupId }: { groupId: string }) {
                   )
                 }
               />
-            ),
-          )}
+          ))}
         </View>
       ) : (
         <View style={[styles.emptyPanel, { marginTop: 20 }]}>
@@ -222,6 +232,7 @@ function WishRow({
 
   return (
     <View style={local.row}>
+      <WishPicture wish={wish} />
       <View style={{ flex: 1, gap: 6 }}>
         <Text style={[styles.small, styles.semibold]}>{wish.title}</Text>
         <View style={local.chips}>
@@ -300,8 +311,34 @@ function WishRow({
   );
 }
 
+/**
+ * The wish's picture, when it has one — beside the row on both the owner's list and the giver's.
+ *
+ * The image link was collected and read from a pasted page for a while before anything showed it,
+ * which made the field look like a mistake. A picture is what tells a giver "the blue one, this
+ * size" faster than any note. Decorative: the title beside it is the accessible name, and an
+ * image that fails to load simply leaves a blank square rather than a broken-image glyph.
+ *
+ * The URL is one the owner typed or a page's og:image; the API holds both to http(s) and the
+ * preview refuses private addresses, and the browser loads it, never Humbugg. Same posture as
+ * avatars.
+ */
+function WishPicture({ wish }: { wish: { image_url?: string | null; title: string } }) {
+  const theme = useTheme();
+  const local = localStyles(theme);
+  if (!wish.image_url) return null;
+  return (
+    <Image
+      accessibilityIgnoresInvertColors
+      accessible={false}
+      source={{ uri: wish.image_url }}
+      style={local.picture}
+      resizeMode="cover"
+    />
+  );
+}
+
 function WishForm({
-  heading,
   initial,
   busy,
   submitLabel,
@@ -309,8 +346,6 @@ function WishForm({
   onCancel,
   groupId,
 }: {
-  /** Absent in the drawer, which supplies its own title and frame. */
-  heading?: string;
   initial: WishFormValues;
   busy: boolean;
   submitLabel: string;
@@ -353,7 +388,7 @@ function WishForm({
         url: preview.canonical_url ?? current.url,
         price:
           current.price.trim() === '' && preview.price_cents != null
-            ? (preview.price_cents / 100).toFixed(2)
+            ? formatAmount(preview.price_cents)
             : current.price,
       }));
     } catch (err) {
@@ -366,9 +401,38 @@ function WishForm({
   }
 
   return (
-    <View style={heading ? local.form : undefined}>
-      {heading ? <Text style={[styles.small, styles.semibold]}>{heading}</Text> : null}
+    <View>
       <View style={{ marginTop: gap.md, gap: gap.md }}>
+        {/* The link comes first because it can fill most of what follows — name, picture, price.
+            Asking for the name first had people typing one out and then pasting the link that
+            would have typed it for them. */}
+        <FieldLabel label="Link" hint="(optional)">
+          <Input
+            maxLength={2048}
+            value={values.url}
+            onValueChange={(value) => set('url', value)}
+            placeholder="https://…"
+            {...(groupId ? { onSubmitEditing: () => void readLink() } : {})}
+          />
+        </FieldLabel>
+        {groupId ? (
+          <View style={{ alignSelf: 'flex-start', gap: 6 }}>
+            <Button
+              intent="secondary"
+              size="sm"
+              disabled={reading || busy || values.url.trim().length === 0}
+              onPress={() => void readLink()}
+            >
+              {reading ? 'Reading…' : 'Fill from the link'}
+            </Button>
+            {source ? (
+              // Whose page this came from, said plainly. The fields below are a stranger's words
+              // until the owner edits them, and a preview whose source is invisible is a way to make
+              // them look like Humbugg's.
+              <Text style={styles.tiny}>Filled from {source}. Change anything you like.</Text>
+            ) : null}
+          </View>
+        ) : null}
         <FieldLabel label="What is it?">
           <Input
             maxLength={200}
@@ -391,32 +455,6 @@ function WishForm({
             onValueChange={(value) => set('priority', value as WishFormValues['priority'])}
           />
         </FieldLabel>
-        <FieldLabel label="Link" hint="(optional)">
-          <Input
-            maxLength={2048}
-            value={values.url}
-            onValueChange={(value) => set('url', value)}
-            placeholder="https://…"
-          />
-        </FieldLabel>
-        {groupId ? (
-          <View style={{ alignSelf: 'flex-start', gap: 6 }}>
-            <Button
-              intent="secondary"
-              size="sm"
-              disabled={reading || busy || values.url.trim().length === 0}
-              onPress={() => void readLink()}
-            >
-              {reading ? 'Reading…' : 'Fill from the link'}
-            </Button>
-            {source ? (
-              // Whose page this came from, said plainly. The fields below are a stranger's words
-              // until the owner edits them, and a preview whose source is invisible is a way to make
-              // them look like Humbugg's.
-              <Text style={styles.tiny}>Filled from {source}. Change anything you like.</Text>
-            ) : null}
-          </View>
-        ) : null}
         <FieldLabel label="Image link" hint="(optional)">
           <Input
             maxLength={2048}
@@ -505,6 +543,9 @@ export function RecipientWishList({
         const host = linkHost(wish.url);
         return (
           <View key={wish.wish_id} style={local.recipientRow}>
+            <View style={{ flexDirection: 'row', gap: gap.sm, alignItems: 'flex-start' }}>
+              <WishPicture wish={wish} />
+              <View style={{ flex: 1, gap: 6 }}>
             <Text style={[styles.small, styles.semibold, styles.assignmentInk]}>
               {wish.title}
             </Text>
@@ -540,6 +581,8 @@ export function RecipientWishList({
                 onRelease={onRelease}
               />
             ) : null}
+              </View>
+            </View>
           </View>
         );
       })}
@@ -636,7 +679,7 @@ function formFromWish(wish: Wish): WishFormValues {
     kind: wish.kind,
     url: wish.url ?? '',
     imageUrl: wish.image_url ?? '',
-    price: wish.price_cents != null ? (wish.price_cents / 100).toFixed(2) : '',
+    price: wish.price_cents != null ? formatAmount(wish.price_cents) : '',
     quantity: String(wish.quantity),
     priority: wish.priority,
     details: wish.details ?? '',
@@ -656,6 +699,7 @@ const localStyles = scopedStyles((t) => ({
     padding: gap.md,
   },
   rowActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: gap.xs },
+  picture: { width: 56, height: 56, borderRadius: radii.md, backgroundColor: t.brand.surfaceAlt },
   panelHeading: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -666,7 +710,6 @@ const localStyles = scopedStyles((t) => ({
   // Wide enough for a link per line, no wider than a phone.
   drawer: { maxWidth: 480, width: '100%' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: gap.xs },
-  form: { borderWidth: 1, borderColor: t.brand.line, borderRadius: 12, padding: gap.md },
   /**
    * One wish inside the reveal.
    *
