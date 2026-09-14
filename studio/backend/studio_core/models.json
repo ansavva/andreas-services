@@ -800,7 +800,7 @@
       "prompt": {
         "max_chars": null
       },
-      "note": "Krea 2 Large. Krea's flagship still model: photorealism, natural light, textured and expressive looks; `creativity` raw/low/medium/high sets how far it embellishes the prompt; the only image model here with a SEED. `style_reference_images` (<=10) is a STYLE transfer input, NOT an identity reference: --character binds a likeness into it and the model keeps the look, not the face. No output-format, size or quality knob; flat $0.06/image (+$0.005 with style refs, +$0.01 with a Krea moodboard).",
+      "note": "Krea 2 Large. Krea's flagship still model: photorealism, natural light, textured and expressive looks; `creativity` raw/low/medium/high sets how far it embellishes the prompt; has a SEED (as does flux-2-pro). `style_reference_images` (<=10) is a STYLE transfer input, NOT an identity reference: --character binds a likeness into it and the model keeps the look, not the face. No output-format, size or quality knob; flat $0.06/image (+$0.005 with style refs, +$0.01 with a Krea moodboard).",
       "snapshot": {
         "aspect_ratio": {
           "enum": [
@@ -1089,6 +1089,86 @@
           "1080p": "pro"
         },
         "allow_intelligent_duration": false
+      }
+    },
+    "flux-2-pro": {
+      "model": "black-forest-labs/flux-2-pro",
+      "kind": "image",
+      "skill": "studio-media-flux-2-pro",
+      "images": {
+        "refs": "input_images",
+        "max_refs": 8,
+        "start": null,
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp",
+          ".gif"
+        ]
+      },
+      "prompt": {
+        "max_chars": null
+      },
+      "note": "FLUX.2 [pro], Black Forest Labs' production still model: text-to-image, natural-language EDITING of up to 8 input_images (address them by index — 'the beach in image 3'), legible text/typography, photorealism, character and product consistency across the reference set; JSON-structured prompts are documented. `seed` for repeatable draws. `resolution` 0.5/1/2/4 MP (2 MP or below recommended; 2048px hard cap per side) or `aspect_ratio: custom` + width/height in multiples of 16; `match_input_image` on both follows the FIRST input image. Total input ≤9 MP. No negative prompts — the README says they can add what they exclude. Priced per megapixel: $0.015 per run + $0.015 per input MP + $0.015 per output MP (a 1 MP still with no refs ≈ $0.03; 2 MP ≈ $0.045).",
+      "snapshot": {
+        "aspect_ratio": {
+          "enum": [
+            "match_input_image",
+            "custom",
+            "1:1",
+            "16:9",
+            "3:2",
+            "2:3",
+            "4:5",
+            "5:4",
+            "9:16",
+            "3:4",
+            "4:3"
+          ],
+          "default": "1:1"
+        },
+        "height": {
+          "minimum": 256,
+          "maximum": 2048
+        },
+        "input_images": {
+          "default": []
+        },
+        "output_format": {
+          "enum": [
+            "webp",
+            "jpg",
+            "png"
+          ],
+          "default": "webp"
+        },
+        "output_quality": {
+          "default": 80,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "resolution": {
+          "enum": [
+            "match_input_image",
+            "0.5 MP",
+            "1 MP",
+            "2 MP",
+            "4 MP"
+          ],
+          "default": "1 MP"
+        },
+        "safety_tolerance": {
+          "default": 2,
+          "minimum": 1,
+          "maximum": 5
+        },
+        "width": {
+          "minimum": 256,
+          "maximum": 2048
+        }
       }
     }
   }
