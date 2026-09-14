@@ -347,22 +347,29 @@ public sealed class QuestionServiceTests
     }
 
     /// <summary>
-    /// The recipient keeps their own last word on a thread they have ended.
+    /// Off means off for the recipient too.
     /// </summary>
     /// <remarks>
-    /// Blocking stops questions arriving; it is not a gag on the person who pressed it. "Please stop
-    /// asking" and a final answer are both things they may still want to send.
+    /// It used to leave them a "last word" on a thread they had ended, and a switch labelled "Allow
+    /// questions" sitting off above a box that still sent read as a bug. The switch is theirs: with
+    /// something left to say, they turn it back on.
     /// </remarks>
     [Fact]
-    public async Task BlockingDoesNotSilenceTheRecipient()
+    public async Task BlockingSilencesTheRecipientToo()
     {
         var world = World();
         await world.AsBo.SetBlockedAsync(Group, new BlockQuestionsRequest(true), Token);
 
-        var thread = await world.AsBo.ReplyAsync(Group, new SendQuestionRequest("It is a surprise, thanks."), Token);
+        var refused = await Assert.ThrowsAsync<ApiException>(() =>
+            world.AsBo.ReplyAsync(Group, new SendQuestionRequest("It is a surprise, thanks."), Token));
+        Assert.Equal(409, refused.StatusCode);
 
-        Assert.Single(thread.Messages);
-        Assert.True(thread.Blocked);
+        var view = await world.AsBo.GetForRecipientAsync(Group, Token);
+        Assert.False(view.CanSend);
+        Assert.Contains("turn them back on", view.BlockedReason, StringComparison.OrdinalIgnoreCase);
+
+        await world.AsBo.SetBlockedAsync(Group, new BlockQuestionsRequest(false), Token);
+        Assert.True((await world.AsBo.GetForRecipientAsync(Group, Token)).CanSend);
     }
 
     [Fact]

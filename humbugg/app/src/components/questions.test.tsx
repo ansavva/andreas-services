@@ -425,11 +425,18 @@ describe('refreshing', () => {
 });
 
 describe('blocking', () => {
-  it('offers the switch to the recipient only', async () => {
-    mocks.setQuestionsBlocked.mockResolvedValue({ ...THREAD, blocked: true, can_send: true });
+  it('offers the switch to the recipient only, and turning it off takes their box away too', async () => {
+    const off = 'You have turned questions off. Turn them back on to write to your giver, or to hear from them.';
+    mocks.setQuestionsBlocked.mockResolvedValue({
+      ...THREAD,
+      blocked: true,
+      can_send: false,
+      blocked_reason: off,
+    });
     await openRecipient();
     await waitFor(() =>
       expect(screen.getByLabelText('Allow anonymous questions about my gift')).toBeTruthy());
+    expect(screen.getByLabelText('Reply')).toBeTruthy();
 
     await act(async () => {
       fireEvent.press(screen.getByLabelText('Allow anonymous questions about my gift'));
@@ -437,6 +444,12 @@ describe('blocking', () => {
     // The switch reads "allow", so turning it off is a block. Inverted once, here, rather than the
     // panel offering a control labelled by what it takes away.
     expect(mocks.setQuestionsBlocked).toHaveBeenCalledWith('token', 'g1', true);
+
+    // Off means off for them as well: the composer goes, the reason says how to get it back, and
+    // the switch stays so they can.
+    await waitFor(() => expect(screen.getByText(off)).toBeTruthy());
+    expect(screen.queryByLabelText('Reply')).toBeNull();
+    expect(screen.getByLabelText('Allow anonymous questions about my gift')).toBeTruthy();
   });
 
   it('gives the giver no switch and no box once questions are off', async () => {
