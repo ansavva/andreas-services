@@ -338,7 +338,8 @@ describe("the crumb names the real place, not the kind of place", () => {
       project: "proj-1",
       name: "Porch at dawn",
       status: "planned",
-      shots: [],
+      runs: [],
+      frames: [],
       movies: [],
       created: "2026-08-01T00:00:00Z",
       // The cut, so the feed holds the frame the address opens on.

@@ -1,44 +1,47 @@
 import { useCallback, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 
-import { Alert, Badge, Button, Text } from "@ansavva/design-system";
+import { Badge, Button, Text, useToast } from "@ansavva/design-system";
 
+import { deleteScene, getScene, setSceneRuns } from "../apis/studio";
+import { Backlinks } from "../components/common/Backlinks";
+import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog";
 import { EmptyState } from "../components/common/EmptyState";
+import { ArrowDownIcon, ArrowUpIcon, CloseIcon, TrashIcon } from "../components/common/icons";
 import { LoadError } from "../components/common/LoadError";
 import { PageLoading } from "../components/common/PageLoading";
-import { deleteScene, getScene, patchScene, patchShot } from "../apis/studio";
-import { AutoTextarea } from "../components/common/AutoTextarea";
-import { ConfirmDestroyDialog } from "../components/common/ConfirmDestroyDialog";
+import { EntityRow } from "../components/entity/EntityRow";
 import { PageBar } from "../components/layout/PageBar";
-import { Backlinks } from "../components/common/Backlinks";
 import { OutputPanel } from "../components/media/OutputPanel";
-import { ShotCard } from "../components/scene/ShotCard";
-import { isBracketed } from "../components/scene/Sends";
-import { useResource } from "../hooks/useResource";
+import { RunFeed } from "../components/project/RunFeed";
 import { useProjectCrumb } from "../hooks/useProjectCrumb";
-import type { RunAsset, Shot } from "../types";
+import { useResource } from "../hooks/useResource";
+import type { SceneCut, SceneRecord } from "../types";
 import { formatDate } from "../utils/format";
 import { moviePath, objectPath, projectPath, runPath } from "../utils/location";
-import { TrashIcon } from "../components/common/icons";
 
 /**
- * One scene: the plan, the shots, and the take they were stitched into.
+ * One scene: the cut, the runs made for it, and the take they were stitched
+ * into.
  *
- * A scene exists because models have a duration ceiling — it is shots joined
- * into one continuous take — so what this page has to show is the *plan* beside
- * what has actually been rendered against it. Each shot names the run that
- * rendered it, by id, which is why revising a plan does not strand the work
- * already done: a shot whose `run` still points somewhere is still rendered, no
- * matter what happened to the plan around it.
+ * A scene is a named, ordered series of runs and nothing else. The **cut** is
+ * the video runs in stitch order — the whole of the plan, and it may name a
+ * run that has not rendered yet. The **runs** below it are every run that
+ * belongs to the scene, stills and clips alike, drawn by the same feed the
+ * project draws, narrowed by `?scene=`; the create bar on this page files new
+ * runs under it.
  *
- * **The stitching itself is not here and never will be.** `ffmpeg` ships in the
- * pipeline wheel and the Lambda has none: `assemble` downloads, stitches locally,
- * uploads the result and patches the record. The API owns the record, not the
- * encode.
+ * **There was a storyboard here** — shots with panels, a motion prompt each,
+ * a setting prepended to every panel — and every one of those was a run
+ * wearing a second record. The plan was kept in step with the runs by hand,
+ * and it drifted. So the cut is the plan, and the runs are the runs.
  */
 export function ScenePage() {
   const { sceneId = "" } = useParams();
   const navigate = useNavigate();
+  const client = useQueryClient();
+  const toast = useToast();
 
   const load = useCallback(() => getScene(sceneId), [sceneId]);
   const { data, loading, error, reload, setData } = useResource(
@@ -46,67 +49,41 @@ export function ScenePage() {
     load,
   );
   const crumbs = useProjectCrumb(data?.project ?? "");
-  // Every frame on the board opens into the scene, so the viewer scrolls the
-  // storyboard in cut order — the handoff, the panels, then the clip — rather
-  // than whatever folder the files were written to.
-  const openFrame = useCallback(
-    (asset: RunAsset) =>
-      navigate(objectPath(asset.node, { in: "scene", id: sceneId })),
-    [navigate, sceneId],
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  /**
+   * Rewrite the cut and merge the answer in. The route replies with the cut
+   * as rows — the same shape the record carries — so the page swaps that one
+   * field rather than refetching the scene, which would re-sign every URL on
+   * it to show one row moved.
+   */
+  const setCut = useCallback(
+    async (runs: string[]) => {
+      setSaving(true);
+      try {
+        const written = await setSceneRuns(sceneId, runs);
+        setData((current) => (current ? { ...current, runs: written.runs } : current));
+      } catch (err) {
+        toast.add({
+          intent: "danger",
+          title: "Could not change the cut",
+          description: (err as Error).message,
+        });
+      } finally {
+        setSaving(false);
+      }
+    },
+    [sceneId, setData, toast],
   );
 
-  // The route answers with the merged shot, so the page swaps that one row in
-  // rather than refetching the scene — a re-GET would re-sign every panel URL
-  // on the board to show one reworded sentence.
-  /**
-   * The setting, which was readable and not editable.
-   *
-   * It is the one field on a scene a person actually revises — prepended
-   * byte-identically to every panel prompt, so it is the single lever that
-   * keeps separately rendered panels agreeing on one room — and the only way to
-   * change it was to re-ingest the whole plan from a JSON file.
-   */
-  /** The delete dialog, opened from the page bar's menu rather than drawn loose. */
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [editingSetting, setEditingSetting] = useState(false);
-  const [settingDraft, setSettingDraft] = useState("");
-  const [settingSaving, setSettingSaving] = useState(false);
-  const [settingError, setSettingError] = useState<string | null>(null);
-
-  const saveSetting = useCallback(async () => {
-    setSettingSaving(true);
-    setSettingError(null);
-    try {
-      const updated = await patchScene(sceneId, { setting: settingDraft });
-      // The route answers with the whole scene, but only this field moved —
-      // merging rather than replacing keeps every presigned panel URL on the
-      // board alive instead of re-signing the lot to show one sentence.
-      setData((current) =>
-        current ? { ...current, setting: updated.setting } : current,
-      );
-      setEditingSetting(false);
-    } catch (err) {
-      setSettingError((err as Error).message);
-    } finally {
-      setSettingSaving(false);
-    }
-  }, [sceneId, setData, settingDraft]);
-
-  const saveShot = useCallback(
-    async (shotId: string, body: Partial<Shot>) => {
-      const updated = await patchShot(sceneId, shotId, body);
-      setData((current) =>
-        current
-          ? {
-              ...current,
-              shots: current.shots.map((s) =>
-                s.id === shotId ? { ...s, ...updated } : s,
-              ),
-            }
-          : current,
-      );
-    },
-    [sceneId, setData],
+  /** Open a run in the lightbox, with the feed still narrowed to this scene. */
+  const openRun = useCallback(
+    (row: { id: string; project: string }, output?: number) =>
+      navigate(runPath(row.project, row.id) + `?scene=${encodeURIComponent(sceneId)}`, {
+        state: output === undefined ? undefined : { output },
+      }),
+    [navigate, sceneId],
   );
 
   if (loading) return <PageLoading label="Loading scene" />;
@@ -122,8 +99,9 @@ export function ScenePage() {
     );
   }
 
-  /** A scene that has not been cut has nothing for the second column. */
   const hasCut = Boolean(data.output) || (data.cuts ?? []).length > 0;
+  const ids = data.runs.map((row) => row.id);
+  const rendered = data.runs.filter((row) => row.output).length;
 
   return (
     <>
@@ -135,26 +113,14 @@ export function ScenePage() {
             <Badge intent="neutral" className="font-mono">
               {data.status}
             </Badge>
-            {/* **How the scene is built belongs with what it is called.** This
-                sat over the shots as its own ruled row, which made it read as
-                a section heading for them — but `chained`, the shot count and
-                the planned runtime are facts about the SCENE, the same kind
-                of thing as its status and its date, and this is where those
-                already are. */}
-            <Badge intent="neutral" className="font-mono">
-              {isBracketed(data.shots) ? "bracketed" : "chained"}
-            </Badge>
             <Text variant="caption" tone="muted" className="font-mono">
               {formatDate(data.created)}
             </Text>
             <Text variant="caption" tone="muted" family="mono">
-              {data.shots.length} shot{data.shots.length === 1 ? "" : "s"}
-              {plannedRuntime(data.shots)
-                ? ` · ${plannedRuntime(data.shots)}s planned`
+              {data.runs.length} in the cut
+              {data.runs.length > 0 && rendered < data.runs.length
+                ? ` · ${data.runs.length - rendered} not rendered yet`
                 : ""}
-              {isBracketed(data.shots)
-                ? " · each shot pinned at both ends"
-                : " · each shot opens on the last frame of the one before"}
             </Text>
           </>
         }
@@ -171,41 +137,28 @@ export function ScenePage() {
         onOpenChange={setDeleteOpen}
         label="Delete"
         title={`Delete ${data.name}?`}
-        summary="Its shots and its folder go with it. Any movie already cut from it keeps its own copy of the piece."
+        summary="Its folder and its cuts go with it. The runs made for it stay in the project, and stop naming it."
         confirmWord={data.name}
         onConfirm={async () => {
           await deleteScene(data.id, "delete");
+          void client.invalidateQueries({ queryKey: ["runs"] });
           navigate(projectPath(data.project));
         }}
       />
 
-      {/* **The cut leads, at full width.** It IS the scene — every shot below
-          is an account of how it was made — so it is not a column beside the
-          storyboard, it is what the storyboard produced.
-
-          The split that matters on this page is one level down, inside each
-          shot, where that shot's own inputs and its own output sit side by
-          side. A page-level split was the wrong reading of the run screen: a
-          run has one payload and one output, a scene has a result and then N
-          shots that each have both. */}
+      {/* **The take leads, at full width.** It IS the scene — everything
+          below is an account of how it was made. Every cut, newest first:
+          assembling is not a one-shot act, and comparing two takes is the
+          reason for re-cutting. */}
       {hasCut && (
         <section className="flex flex-col gap-3">
           <Text variant="title" className="border-b border-line pb-2">
-            {(data.cuts ?? []).length > 0 ? "Cuts" : "The cut"}
+            {(data.cuts ?? []).length > 0 ? "Takes" : "The take"}
           </Text>
-          {/* **Every cut, newest first, not just the current one.** Assembling
-              is not a one-shot act: a shot gets re-rendered and the scene is
-              cut again, and comparing the two is the reason for doing it. An
-              older cut overwritten in place would survive only as an S3 object
-              version, which is recoverable and not something anyone can look
-              at. */}
           <div className="flex flex-col gap-3">
             {[
               ...(data.output ? [{ asset: data.output, current: true }] : []),
-              ...(data.cuts ?? []).map((asset) => ({
-                asset,
-                current: false,
-              })),
+              ...(data.cuts ?? []).map((asset) => ({ asset, current: false })),
             ].map(({ asset, current }) => (
               <OutputPanel
                 key={asset.node}
@@ -219,134 +172,147 @@ export function ScenePage() {
         </section>
       )}
 
-      <div className="flex min-w-0 flex-col gap-6">
-        {/* **One block that says what this scene is, then the shots.**
-            It was three competing headings — `Setting` over one paragraph,
-            `Storyboard` over the shots — each with its own rule, so the page
-            read as three sections of which two were labels for a sentence. A
-            scene IS its shots, and `Setting` is jargon for a description that
-            happens to be locked.
-
-            So: what it looks like, then how it is built, under one rule, and
-            the shots after it. Both lines are muted and neither is a heading —
-            the scene's own name at the top is the heading. */}
-        <section className="flex flex-col gap-3">
-          {/* The description, and it earns its place twice: it is what the
-              scene looks like, and it is prepended byte-identically to every
-              panel prompt, which is what makes separately rendered panels agree
-              on one room. Editable for that second reason — it is the lever,
-              not a caption. */}
-          {editingSetting ? (
-            <div className="flex max-w-prose flex-col gap-2">
-              {settingError && (
-                <Alert.Root intent="danger">
-                  <Alert.Title>Could not save the setting</Alert.Title>
-                  <Alert.Description>{settingError}</Alert.Description>
-                </Alert.Root>
-              )}
-              <AutoTextarea
-                value={settingDraft}
-                onValueChange={setSettingDraft}
-                minRows={3}
-                aria-label="Setting"
-              />
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  onClick={() => void saveSetting()}
-                  disabled={settingSaving}
-                >
-                  {settingSaving ? "Saving…" : "Save"}
-                </Button>
-                <Button
-                  intent="secondary"
-                  size="sm"
-                  onClick={() => setEditingSetting(false)}
-                  disabled={settingSaving}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex max-w-prose flex-col items-start gap-1">
-              {data.setting ? (
-                <Text variant="body" tone="muted">
-                  {data.setting}
-                </Text>
-              ) : (
-                <EmptyState
-                  title="No setting yet."
-                  hint="Where every shot in this scene happens, carried into each one's prompt."
-                />
-              )}
-              <Button
-                intent="secondary"
-                size="sm"
-                onClick={() => {
-                  setSettingDraft(data.setting ?? "");
-                  setSettingError(null);
-                  setEditingSetting(true);
+      <section className="flex flex-col gap-3">
+        <Text variant="title" className="border-b border-line pb-2">
+          The cut
+        </Text>
+        {data.runs.length === 0 ? (
+          <EmptyState
+            title="Nothing in the cut yet."
+            hint="A scene is its clips in order. Make a video run below, or add one from its ⋯ menu."
+          />
+        ) : (
+          <div className="flex flex-col">
+            {data.runs.map((row, index) => (
+              <CutRow
+                key={`${row.id}-${index}`}
+                row={row}
+                index={index}
+                count={data.runs.length}
+                disabled={saving}
+                to={runPath(data.project, row.id) + `?scene=${encodeURIComponent(sceneId)}`}
+                onMove={(delta) => {
+                  const next = [...ids];
+                  next.splice(index + delta, 0, ...next.splice(index, 1));
+                  void setCut(next);
                 }}
-              >
-                Edit the setting
-              </Button>
-            </div>
-          )}
+                onRemove={() => void setCut(ids.filter((_, at) => at !== index))}
+              />
+            ))}
+          </div>
+        )}
+      </section>
 
-          {data.shots.length === 0 ? (
-            <EmptyState
-              title="No shots yet."
-              hint="A scene is shots stitched into one continuous take."
-            />
-          ) : (
-            <div className="flex flex-col">
-              {[...data.shots]
-                .sort((a, b) => a.order - b.order)
-                .map((shot, index) => (
-                  <ShotCard
-                    key={shot.id}
-                    shot={shot}
-                    n={index + 1}
-                    bracketed={isBracketed(data.shots)}
-                    onOpenRun={(run) => navigate(runPath(data.project, run))}
-                    runHref={(run) => runPath(data.project, run)}
-                    onView={openFrame}
-                    // The scene owns the `?in=` context, so it is the scene
-                    // that can name a frame's address — a shot knows only the
-                    // asset.
-                    frameHref={(asset) =>
-                      objectPath(asset.node, { in: "scene", id: sceneId })
-                    }
-                    onSave={saveShot}
-                  />
-                ))}
-            </div>
-          )}
-        </section>
+      <section className="flex flex-col gap-3">
+        <Text variant="title" className="border-b border-line pb-2">
+          Runs
+        </Text>
+        {/* The same feed the project draws, narrowed by the URL's `?scene=`
+            — which `useFeedFilters` reads, and which the lightbox opened from
+            here keeps, so Left/Right step through this scene's rows. */}
+        <SceneFeed record={data} onOpen={openRun} />
+      </section>
 
-        <Backlinks label="Cut into" links={data.movies} to={moviePath} />
-      </div>
+      <Backlinks label="Cut into" links={data.movies} to={moviePath} />
     </>
   );
 }
 
-/*
- * `FrameViewer` was here — a right-hand `Drawer` holding one frame at 75vh.
- *
- * It existed because opening a frame "would work and loses your place on the
- * board", which was true when the only alternative was the folder browser: a
- * storyboard tile led to the file tree, and back was a different screen. The
- * viewer is a screen with an address now, so `/o/<node>?in=scene:<id>` keeps
- * the board one back-press away AND makes the frame linkable — which a drawer
- * never was. It also could not be made fullscreen: `Drawer` portals to
- * `<body>`, and nothing portalled is painted inside a fullscreen element.
+/**
+ * One row of the cut. Its position is the fact — the arrows write the whole
+ * list back — and a run that has not rendered draws as a row with no clip,
+ * which is what a planned cut looks like.
  */
+function CutRow({
+  row,
+  index,
+  count,
+  disabled,
+  to,
+  onMove,
+  onRemove,
+}: {
+  row: SceneCut;
+  index: number;
+  count: number;
+  disabled: boolean;
+  to: string;
+  onMove: (delta: -1 | 1) => void;
+  onRemove: () => void;
+}) {
+  const clip = row.output;
+  return (
+    <EntityRow
+      index={index + 1}
+      title={row.model ?? row.id}
+      subtitle={row.created ? formatDate(row.created) : row.id}
+      mono
+      status={row.status ?? "missing"}
+      thumb={clip?.url ? { node: clip.node, url: clip.url, isVideo: true } : { placeholder: "not rendered" }}
+      to={to}
+      trailing={
+        <div className="flex items-center gap-1">
+          <Button
+            intent="secondary"
+            size="sm"
+            aria-label="Move up"
+            disabled={disabled || index === 0}
+            onClick={() => onMove(-1)}
+          >
+            <ArrowUpIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+          </Button>
+          <Button
+            intent="secondary"
+            size="sm"
+            aria-label="Move down"
+            disabled={disabled || index === count - 1}
+            onClick={() => onMove(1)}
+          >
+            <ArrowDownIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+          </Button>
+          <Button
+            intent="secondary"
+            size="sm"
+            aria-label="Remove from the cut"
+            disabled={disabled}
+            onClick={onRemove}
+          >
+            <CloseIcon className="size-4 fill-none stroke-current stroke-[1.5]" />
+          </Button>
+        </div>
+      }
+    />
+  );
+}
 
-/** The planned runtime, which is what a scene will cost time-wise once shot. */
-function plannedRuntime(shots: Shot[]): number {
-  return shots.reduce(
-    (total, shot) => total + (shot.motion?.duration ?? shot.duration ?? 0),
-    0,
+/**
+ * The scene's runs, as the project feed draws them.
+ *
+ * The feed reads `?scene=` off the URL, so this pins it there while the page
+ * is up: a scene page with the param missing would be the whole project's
+ * feed under a heading that says otherwise.
+ */
+function SceneFeed({
+  record,
+  onOpen,
+}: {
+  record: SceneRecord;
+  onOpen: (row: { id: string; project: string }, output?: number) => void;
+}) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  if (params.get("scene") !== record.id) {
+    params.set("scene", record.id);
+    navigate({ search: `?${params}` }, { replace: true });
+    return null;
+  }
+  return (
+    <RunFeed
+      projectId={record.project}
+      characters={[]}
+      heroes={{}}
+      onOpen={onOpen}
+    />
   );
 }

@@ -32,7 +32,7 @@ import {
 } from "../../types";
 import { formatCost } from "../../utils/cost";
 import { assetLabel, formatBytes } from "../../utils/format";
-import { folderPath, projectPath, runPath } from "../../utils/location";
+import { folderPath, projectPath, runPath, scenePath } from "../../utils/location";
 import { ApertureSpinner } from "../common/Aperture";
 import { EmptyState } from "../common/EmptyState";
 import {
@@ -906,6 +906,29 @@ function ActionGrid({
             <FolderIcon className={GLYPH} />
             Folder
           </a>
+        )}
+        {/* The scene this run belongs to, when it does. One link, not a list:
+            a run is made for at most one scene. */}
+        {row.scene && (
+          <a
+            href={scenePath(row.scene)}
+            onClick={pressInApp(navigate, scenePath(row.scene))}
+            className={buttonClass({
+              intent: "secondary",
+              size: "sm",
+              className: CELL,
+            })}
+          >
+            <FolderIcon className={GLYPH} />
+            Scene
+          </a>
+        )}
+        {actions.canAddToCut && (
+          <Cell
+            icon={<FolderIcon className={GLYPH} />}
+            label="Add to the cut"
+            onClick={() => void actions.addToCut()}
+          />
         )}
         {!flying && (
           <ArmedCell

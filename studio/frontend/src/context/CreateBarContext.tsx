@@ -19,6 +19,9 @@ import {
   type ReactNode,
 } from "react";
 import { useMatch } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+
+import { getScene } from "../apis/studio";
 
 import type { RunKind } from "../types";
 
@@ -161,6 +164,13 @@ interface CreateBarStateValue extends CreateBarState {
   target: string | null;
   /** Whether `target` came off the route, which is when the picker is not drawn. */
   onProject: boolean;
+  /**
+   * The scene a send is filed under: the route's, on `/s/<scene>`, else
+   * none. A run made from a scene page belongs to that scene from the draft —
+   * the page lists its runs off the field, so a run filed later is one nobody
+   * saw.
+   */
+  scene: string | null;
   setPrompt(prompt: string): void;
   setModel(model: string | null): void;
   setParams(model: string, params: Record<string, unknown>): void;
@@ -246,6 +256,16 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
   // The route's project, wherever under it the page is — a run opened at
   // `/p/<project>/r/<run>` is still that project's.
   const routeProject = useMatch("/p/:projectId/*")?.params.projectId ?? null;
+  // A scene page names no project in its URL, so the scene is read to learn
+  // which project a send goes to. Cached under the page's own key, so the
+  // page and the bar share one read.
+  const routeScene = useMatch("/s/:sceneId")?.params.sceneId ?? null;
+  const scene = useQuery({
+    queryKey: ["scene", routeScene],
+    queryFn: () => getScene(routeScene ?? ""),
+    enabled: routeScene !== null,
+  });
+  const sceneProject = scene.data?.project ?? null;
   // The opened run and the open file — the two screens the sheet stays out
   // of until it is called up: both are `ViewerFrame`, sized to the window, and
   // a sheet drawn over either covers the strip and the transport with nothing
@@ -261,12 +281,13 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
   // The last project used is whichever one the person was last IN, so leaving
   // it for Home keeps the bar pointed where they were working.
   useEffect(() => {
-    if (!routeProject) return;
-    writeProject(routeProject);
+    const here = routeProject ?? sceneProject;
+    if (!here) return;
+    writeProject(here);
     setState((current) =>
-      current.project === routeProject ? current : { ...current, project: routeProject },
+      current.project === here ? current : { ...current, project: here },
     );
-  }, [routeProject]);
+  }, [routeProject, sceneProject]);
 
   const loadRun = useCallback((seed: CreateSeed) => {
     setState((current) => {
@@ -453,8 +474,9 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
   const value = useMemo<CreateBarStateValue>(
     () => ({
       ...state,
-      target: routeProject ?? state.project,
-      onProject: routeProject !== null,
+      target: routeProject ?? sceneProject ?? state.project,
+      onProject: routeProject !== null || sceneProject !== null,
+      scene: routeScene,
       // Both have to be clear: `collapsed` is a person's decision about every
       // screen, `summoned` is this screen's own rule about the opened run.
       shown: !state.collapsed && (opened === null || state.summoned),
@@ -473,6 +495,8 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
     [
       state,
       routeProject,
+      routeScene,
+      sceneProject,
       opened,
       collapse,
       expand,

@@ -757,6 +757,12 @@ export interface RunSummary {
   characters?: string[];
   /** Projected onto the row so `?fingerprint=` is one query — see `RunRecord`. */
   fingerprint?: string;
+  /**
+   * The scene this run belongs to. Projected onto the listing row so `?scene=`
+   * is one query — absent there when none; a feed row and a record always
+   * carry it, `null` when none.
+   */
+  scene?: string | null;
 }
 
 /**
@@ -861,8 +867,11 @@ export interface RunRecord {
   characters: string[];
   folder: string;
   outputs: RunAsset[];
-  /** Which scenes bound this run into a shot. */
-  scenes: Backlink[];
+  /**
+   * The scene this run belongs to, or `null`. One id, never a list: a run is
+   * made FOR at most one scene, and the scene lists its runs off this field.
+   */
+  scene: string | null;
   cost: RunCost | null;
   error: string | null;
   payload: { request: string | null; response: string | null; prompt: string | null };
@@ -988,6 +997,8 @@ export interface RunFeedPage {
  */
 export interface CreateRunBody {
   project: string;
+  /** The scene this run is made for. Must be one of `project`'s; the API refuses otherwise. */
+  scene?: string;
   kind: RunKind;
   model: string;
   engine?: string;
@@ -1135,185 +1146,6 @@ export interface ModelSchema {
   schemas?: Record<string, SchemaProp>;
 }
 
-/**
- * One planned shot inside a scene.
- *
- * `run` is how a shot knows what rendered it, and it is a run id rather than a
- * path — which is what lets a plan be revised without stranding the work already
- * done against it.
- */
-/**
- * What a panel is FOR, which is the same question as whether it binds.
- *
- * `start` and `end` are frames the model is given, `reference` steers the look
- * without fixing a frame, and a **`sample` binds to nothing** — it is a still
- * that shows a person what the shot should look like, so a fifteen-second render
- * can be judged before it is bought rather than after.
- *
- * It is `null` when the author left it to position. Resolving that is the
- * pipeline's job (`storyboard.panel_roles`) and deliberately not this page's:
- * a shot that opens on a handoff frame has its start panel demoted to a
- * reference, and a UI that recomputed the rule would be a second copy of it.
- */
-export type PanelRole = "start" | "end" | "reference" | "sample";
-
-/** One panel of a shot: a prompt, and the image it rendered into once boarded. */
-export interface Panel {
-  n: number;
-  role: PanelRole | null;
-  prompt: string;
-  model?: string | null;
-  aspect_ratio?: string | null;
-  /**
-   * Where this panel's own reference images come from when it renders — a
-   * character's references, by default set or by name, plus any explicit nodes.
-   *
-   * **Not the same list as the shot's.** These steer the STILL; what the video
-   * engine is sent is the shot's own `motion.references` plus the scene's frames.
-   * Conflating the two is the mistake this field being invisible encouraged.
-   */
-  references?: { characters?: string[]; pick?: string; pick_tag?: string; keys?: string[] };
-  /** The run that rendered it, and the node that run produced. */
-  run?: string | null;
-  node?: string | null;
-  boarded?: string | null;
-  /** The prompt changed after the image was rendered — the picture is behind the words. */
-  stale?: boolean;
-  /** Expanded by the API from `node`, so a board can be drawn without a second call. */
-  image?: RunAsset;
-  /** The references this panel renders FROM, resolved to images by the API. */
-  reference_assets?: RunAsset[];
-}
-
-/**
- * The motion prompt as the thing it actually is — a document studio authored.
- *
- * `motion.prompt` is this object serialized, and it is what the model receives:
- * every engine's prompt field is a plain string, so "JSON prompting" means
- * writing a structured object INTO that string. Reading it back apart to show a
- * person is therefore not parsing somebody else's payload — the run page's rule
- * about `request.json` is about the PROVIDER's document, whose shape studio does
- * not own. This one has a schema `studio prompt` validates against.
- *
- * Every field is optional because the schema is additive and a prose prompt is
- * legal too; anything unrecognised is preserved on the way back out.
- */
-export interface MotionPrompt {
-  subject?: string;
-  action?: string;
-  scene?: string;
-  lighting?: string;
-  style?: string;
-  audio?: string;
-  /** Folded in as `avoid` by the compiler — no engine here has a negative param. */
-  avoid?: string;
-  camera?: {
-    shot?: string;
-    movement?: string;
-    lens_mm?: number;
-    speed?: string;
-  };
-  [key: string]: unknown;
-}
-
-/** The clip half of a shot: what moves, for how long, on which engine. */
-export interface Motion {
-  prompt: string;
-  /** The same document unserialized, when the plan carried one. */
-  prompt_json?: MotionPrompt | null;
-  duration?: number | null;
-  model?: string | null;
-  aspect_ratio?: string | null;
-  extra?: Record<string, unknown> | null;
-  references?: { characters?: string[]; pick?: string; pick_tag?: string; keys?: string[] } | null;
-  /**
-   * The reference block resolved into drawable images, by the API.
-   *
-   * A stored plan NAMES its references ("this character, these files"); a board has
-   * to draw them. Expanded server-side because resolving which pictures a pick
-   * means is the character module's job, not a second copy in the browser.
-   */
-  reference_assets?: RunAsset[];
-}
-
-/**
- * One planned shot.
- *
- * `run` is how a shot knows what rendered it, and it is a run id rather than a
- * path — which is what lets a plan be revised without stranding the work already
- * done against it.
- *
- * `prompt` and `panel` are the pre-storyboard shape and still arrive on scenes
- * assembled from bare runs, which is why they are kept alongside `beat`,
- * `panels` and `motion` rather than replaced by them.
- */
-export interface Shot {
-  id: string;
-  order: number;
-  prompt: string;
-  run: string | null;
-  panel: string | number | null;
-
-  /** One line, for the board caption. */
-  beat?: string;
-  status?: string;
-  /** Whether this shot picks up the movement of the one before it. */
-  continues?: boolean;
-  panels?: Panel[];
-  motion?: Motion | null;
-  /**
-   * The previous shot's literal last frame — the only image that makes the join
-   * invisible, which is why it outranks a panel composed for the same moment.
-   */
-  opens_on?: { node?: string | null; from_run?: string | null; frame?: RunAsset } | null;
-
-  runref?: string | null;
-  /** The rendered clip, and its expansion. */
-  node?: string | null;
-  clip?: RunAsset;
-  duration?: number | null;
-  rendered?: string | null;
-  /**
-   * The runs this shot was rendered by BEFORE the current one, newest first.
-   *
-   * A shot holds one `run`, so without this a retry — a reworded beat, a take
-   * that came out wrong — would erase the only pointer to what it replaced.
-   * Written by the API on every shot write, never by a client.
-   */
-  takes?: Take[];
-  /**
-   * Every run behind this shot, as the same summary a runs listing carries.
-   *
-   * A board is made of run output — the clip, each boarded panel, the handoff
-   * frame, every superseded take — and could only say so in ids. Expanded by
-   * the API in one batched read for the whole scene, with the `role` each run
-   * plays in this shot, which is the one thing only the scene knows.
-   */
-  runs?: ShotRun[];
-}
-
-/** A run row on a shot: the listing fields, plus what it is TO this shot. */
-export interface ShotRun {
-  id: string;
-  project?: string;
-  status?: RunStatus;
-  kind?: RunKind;
-  model?: string;
-  created?: string;
-  /** `clip`, `handoff`, `sample`, `start`, `reference`, `earlier take`. */
-  role?: string;
-}
-
-/** A shot's earlier run, kept so it can still be opened and watched. */
-interface Take {
-  run: string | null;
-  runref?: string | null;
-  node?: string | null;
-  rendered?: string | null;
-  /** Expanded by the API from `node`, so the board can draw it. */
-  clip?: RunAsset;
-}
-
 export interface SceneSummary {
   id: string;
   project: string;
@@ -1336,15 +1168,50 @@ export interface Backlink {
   name: string | null;
 }
 
+/**
+ * A run as a scene's cut lists it — the listing fields plus its first output,
+ * signed, so the cut draws without a fetch per run. `output` is null while the
+ * run has not rendered: a planned cut is rows with nothing in them yet.
+ */
+export interface SceneCut {
+  id: string;
+  project: string | null;
+  status: RunStatus | null;
+  kind: RunKind | null;
+  model: string | null;
+  created: string | null;
+  scene: string | null;
+  output: RunAsset | null;
+  thumb: RunAsset | null;
+}
+
+/**
+ * A scene: a named, ordered series of runs.
+ *
+ * Two facts and nothing else. `runs` is the CUT — the video runs in stitch
+ * order, which may name a run that has not rendered yet. The runs that BELONG
+ * to the scene (stills and clips alike) are not here: they are a run listing,
+ * `getRuns({ scene })`, so the same feed that draws a project draws a scene.
+ *
+ * There was a plan here once — `shots`, each with panels, a motion prompt and
+ * the run it rendered into — and every one of those was a run wearing a
+ * second record. It is gone; the cut is the plan.
+ */
 export interface SceneRecord extends SceneSummary {
   folder: string;
-  shots: Shot[];
-  /** The stitched take, once `assemble` has uploaded it. */
+  runs: SceneCut[];
+  /**
+   * The scene's own frames: the first `start` frame each run in the cut opened
+   * on, in cut order. Derived by the API from the cut's sends — the seed shot 1
+   * started from and every handoff since.
+   */
+  frames: RunAsset[];
+  /** The stitched take, once assembled. */
   output: RunAsset | null;
   /**
    * Earlier cuts of this scene, newest first.
    *
-   * Each assemble writes its own node, so re-cutting after re-rendering a shot
+   * Each assemble writes its own node, so re-cutting after re-rendering a run
    * leaves both takes side by side. Overwriting one node would leave the older
    * cut only as an S3 object version, which is recoverable but not *visible* —
    * a version has no node, so nothing lists it, draws it or links to it.
@@ -1352,14 +1219,9 @@ export interface SceneRecord extends SceneSummary {
   cuts?: RunAsset[];
   /** Which movies cut this scene. */
   movies: Backlink[];
-
-  /** Prepended byte-identically to every panel prompt — one look, stated once. */
-  setting?: string;
-  logline?: string;
-  /** Model, panel model, duration and technical block every shot inherits. */
-  defaults?: Record<string, unknown> | null;
   characters?: string[];
-  version?: number;
+  stitch?: Record<string, unknown> | null;
+  assembled?: string | null;
 }
 
 export interface MovieSummary {

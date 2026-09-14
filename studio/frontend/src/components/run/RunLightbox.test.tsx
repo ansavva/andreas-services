@@ -124,7 +124,7 @@ function record(over: Partial<RunRecord> = {}): RunRecord {
     characters: base.characters,
     folder: "node-folder",
     outputs: base.outputs,
-    scenes: [],
+    scene: null,
     cost: base.cost,
     error: null,
     payload: {

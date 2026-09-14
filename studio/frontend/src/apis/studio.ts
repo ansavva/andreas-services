@@ -36,7 +36,7 @@ import type {
   SelectionResponse,
   SavedText,
   SceneRecord,
-  Shot,
+  SceneCut,
   SceneSummary,
   SortOrder,
   TextResponse,
@@ -695,26 +695,6 @@ export function expandTemplate(template: string, characters: string[]) {
 type EntityPatch<T> = Partial<T> & { id: string; rev: number };
 
 /**
- * Revise one shot of a storyboard.
- *
- * The route merges per-field onto what a render already put there, so sending a
- * reworded beat cannot discard the panel underneath it. Scenes carry no `rev`
- * and that is deliberate — a scene is driven by the machine rendering it, in
- * sequence, so demanding one would make every write re-read the record first.
- */
-export function patchShot(
-  sceneId: string,
-  shotId: string,
-  body: Partial<Shot>,
-) {
-  return apiSend<Shot>(
-    "PATCH",
-    `/api/scenes/${encodeURIComponent(sceneId)}/shots/${encodeURIComponent(shotId)}`,
-    body,
-  );
-}
-
-/**
  * The ordered images a model would actually be shown, and the cap they face.
  *
  * **A route rather than a function in each half of studio**, so the CLI and this
@@ -914,6 +894,8 @@ export function getProjectMovies(id: string) {
 type RunsQuery = {
   project?: string;
   character?: string;
+  /** The runs that belong to one scene — stills and clips alike. */
+  scene?: string;
   model?: string;
   status?: string;
   /**
@@ -1196,17 +1178,13 @@ export function getScene(id: string) {
   return apiGet<SceneRecord>(`/api/scenes/${encodeURIComponent(id)}`);
 }
 
-/**
- * Change a scene's own fields — its setting, its name, its status.
- *
- * `setting` is the one a person edits: it is prepended byte-identically to
- * every panel prompt, so it is the single lever that keeps separately rendered
- * panels agreeing on one room, and it was readable on the scene screen with no
- * way to change it. `PATCH /scenes/<id>` has accepted it all along —
- * `SCENE_PLAN` on the route — so this is the wrapper that was missing, not the
- * capability.
- */
-export function patchScene(id: string, body: Partial<SceneRecord>) {
+/** A scene: a name in a project, and — if given — its cut. */
+export function createScene(body: { project: string; name: string; runs?: string[] }) {
+  return apiSend<SceneRecord>("POST", "/api/scenes", body);
+}
+
+/** Rename a scene, or move its status on. Scenes carry no `rev` — a machine writes them, in sequence. */
+export function patchScene(id: string, body: Partial<Pick<SceneRecord, "name" | "status">>) {
   return apiSend<SceneRecord>(
     "PATCH",
     `/api/scenes/${encodeURIComponent(id)}`,
@@ -1215,7 +1193,26 @@ export function patchScene(id: string, body: Partial<SceneRecord>) {
 }
 
 /**
- * Delete a scene and its shots. `files` keeps its folder by default.
+ * Replace the cut — the run ids in stitch order. A replace, like every list
+ * write here: the page holds the list and sends it whole. Naming a run puts it
+ * into the scene if it was in none; dropping one leaves it in the scene. The
+ * answer is the cut as rows, the same shape `getScene` reports it in.
+ */
+export function setSceneRuns(id: string, runs: string[]) {
+  return apiSend<{ id: string; runs: SceneCut[] }>(
+    "PATCH",
+    `/api/scenes/${encodeURIComponent(id)}/runs`,
+    { runs },
+  );
+}
+
+/** Put a run into a scene, or (`null`) take it out. Membership only — the cut is `setSceneRuns`. */
+export function setRunScene(id: string, scene: string | null) {
+  return apiSend<RunRecord>("PATCH", `/api/runs/${encodeURIComponent(id)}`, { scene });
+}
+
+/**
+ * Delete a scene. Its runs stay, and stop naming it. `files` keeps its folder by default.
  *
  * The route has been there since the entity model; the app had no wrapper for
  * it. Not wired to a page yet — the scene bar's Delete is placed separately.

@@ -1,47 +1,37 @@
-import { expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { shotAssets } from "./useViewerFeed";
-import type { RunAsset, Shot } from "../types";
-
-/**
- * The feed decides what the viewer can open. Anything the board DRAWS has to be
- * in here, or clicking that tile lands on a node the reel does not hold and
- * reads as a dead link rather than playing.
- */
+import { sceneAssets } from "./useViewerFeed";
+import type { RunAsset, SceneCut, SceneRecord } from "../types";
 
 function asset(node: string): RunAsset {
-  return { node, name: `${node}.mp4`, url: `https://x/${node}.mp4` };
+  return { node, name: `${node}.mp4`, url: `https://signed/${node}`, content_type: "video/mp4" };
 }
 
-function shot(over: Partial<Shot> = {}): Shot {
-  return { id: "shot-01", order: 10, prompt: "", run: null, panel: null, ...over };
+function cut(id: string, output: RunAsset | null): SceneCut {
+  return { id, project: "proj-1", status: "succeeded", kind: "video", model: "m",
+           created: "2026-09-01T00:00:00Z", scene: "scene-1", output, thumb: output };
 }
 
-it("carries the clip a shot rendered into", () => {
-  expect(shotAssets(shot({ clip: asset("node-now") })).map((a) => a.node)).toContain("node-now");
-});
+function scene(over: Partial<SceneRecord> = {}): SceneRecord {
+  return { id: "scene-1", project: "proj-1", name: "s", status: "planned",
+           created: "2026-09-01T00:00:00Z", folder: "node-f", runs: [], frames: [],
+           output: null, movies: [], ...over };
+}
 
-it("carries earlier takes as well as the current clip", () => {
-  // The bug this file exists for: the card drew a tile per take and the feed
-  // held none of them, so every earlier take was a dead link.
-  const assets = shotAssets(
-    shot({
-      clip: asset("node-now"),
-      takes: [{ run: "run-old", node: "node-was", clip: asset("node-was") }],
-    }),
-  );
-  expect(assets.map((a) => a.node)).toEqual(["node-now", "node-was"]);
-});
+describe("sceneAssets", () => {
+  it("leads with the take, then earlier takes, then the cut, then the frames", () => {
+    const record = scene({
+      output: asset("node-take"),
+      cuts: [asset("node-earlier")],
+      runs: [cut("run-1", asset("node-clip-1")), cut("run-2", null), cut("run-3", asset("node-clip-3"))],
+      frames: [asset("node-seed"), asset("node-handoff")],
+    });
+    expect(sceneAssets(record).map((a) => a.node)).toEqual([
+      "node-take", "node-earlier", "node-clip-1", "node-clip-3", "node-seed", "node-handoff",
+    ]);
+  });
 
-it("skips a take whose clip the API could not expand", () => {
-  const assets = shotAssets(shot({ takes: [{ run: "run-gone", node: "node-gone" }] }));
-  expect(assets).toEqual([]);
-});
-
-it("leaves out the handoff of a shot that does not continue", () => {
-  // Not part of the fix — asserted because the fix appends to this list and a
-  // regression here would be silent.
-  const opens_on = { node: "node-h", from_run: "run-prev", frame: asset("node-h") };
-  expect(shotAssets(shot({ continues: false, opens_on })).map((a) => a.node)).toEqual([]);
-  expect(shotAssets(shot({ continues: true, opens_on })).map((a) => a.node)).toEqual(["node-h"]);
+  it("skips a run in the cut that has not rendered", () => {
+    expect(sceneAssets(scene({ runs: [cut("run-1", null)] }))).toEqual([]);
+  });
 });

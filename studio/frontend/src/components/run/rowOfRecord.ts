@@ -29,6 +29,7 @@ export function rowOfRecord(
     id: record.id,
     lib: record.lib,
     project: record.project,
+    scene: record.scene,
     status: record.status,
     kind: record.kind,
     engine: record.engine,

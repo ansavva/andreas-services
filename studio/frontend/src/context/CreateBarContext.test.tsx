@@ -1,5 +1,7 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+
+import { TestProviders } from "../test-providers";
 import { afterEach, beforeEach, expect, it } from "vitest";
 
 import {
@@ -67,6 +69,9 @@ function mount(path = "/") {
         <Probe />
       </CreateBarProvider>
     </MemoryRouter>,
+    // The provider reads a scene on `/s/<id>` through react-query, so it
+    // needs a client even on routes that never ask.
+    { wrapper: TestProviders },
   );
 }
 

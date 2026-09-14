@@ -99,6 +99,12 @@ export interface FeedFilters {
   model: string;
   since: string;
   q: string;
+  /**
+   * One scene's runs. A URL filter like the others rather than a prop, so a
+   * run opened from a scene page — `/p/<project>/r/<run>?scene=<id>` — keeps
+   * walking the scene's rows in the lightbox, off the same cache.
+   */
+  scene: string;
 }
 
 /**
@@ -116,6 +122,7 @@ export function useFeedFilters() {
   const [model, setModel] = useSearchParamState("model", "");
   const [since, setSince] = useSearchParamState("since", "");
   const [q, setQ] = useSearchParamState("q", "");
+  const [scene, setScene] = useSearchParamState("scene", "");
 
   /**
    * One write, not five.
@@ -128,14 +135,15 @@ export function useFeedFilters() {
   const [searchParams, setSearchParams] = useSearchParams();
   const clear = useCallback(() => {
     const next = new URLSearchParams(searchParams);
+    // `scene` is not cleared: it is where the feed IS, not a filter on it.
     for (const key of ["status", "character", "model", "since", "q"])
       next.delete(key);
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
   const applied = useMemo<FeedFilters>(
-    () => ({ status, character, model: model.trim(), since, q: q.trim() }),
-    [character, model, q, since, status],
+    () => ({ status, character, model: model.trim(), since, q: q.trim(), scene }),
+    [character, model, q, scene, since, status],
   );
 
   return {
@@ -145,6 +153,7 @@ export function useFeedFilters() {
     setModel,
     setSince,
     setQ,
+    setScene,
     clear,
     activeCount: [status, character, model.trim(), since].filter(Boolean)
       .length,
@@ -184,6 +193,7 @@ export function useRunFeed(projectId: string, filters: FeedFilters) {
         ...(filters.character ? { character: filters.character } : {}),
         ...(filters.since ? { since: filters.since } : {}),
         ...(filters.q ? { q: filters.q } : {}),
+        ...(filters.scene ? { scene: filters.scene } : {}),
         ...(pageParam ? { cursor: pageParam } : {}),
       }),
     initialPageParam: null as string | null,
@@ -814,6 +824,11 @@ function RowActions({
           <Dropdown.Item onSelect={actions.openRequest}>
             Open request documents
           </Dropdown.Item>
+          {actions.canAddToCut && (
+            <Dropdown.Item onSelect={() => void actions.addToCut()}>
+              Add to the cut
+            </Dropdown.Item>
+          )}
         </Dropdown.Content>
       </Dropdown.Root>
     </div>

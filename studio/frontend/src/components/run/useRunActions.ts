@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { useToast } from "@ansavva/design-system";
 
-import { deleteRun, getAsset, getModels } from "../../apis/studio";
+import { deleteRun, getAsset, getModels, getScene, setSceneRuns } from "../../apis/studio";
 import { useCreateBar, type AttachRole } from "../../context/CreateBarContext";
 import { useFrameGrab } from "../../hooks/useFrameGrab";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
@@ -138,6 +138,27 @@ export function useRunActions(row: RunFeedRow) {
     [copy, row.plan],
   );
 
+  /**
+   * Append this clip to its scene's cut. Only a succeeded video run that is IN
+   * a scene has the gesture — the cut names runs, and a still or a run in no
+   * scene has nothing to be appended to. The cut is read and re-sent whole:
+   * `PATCH /scenes/<id>/runs` is a replace, and a reprise is legal, so a run
+   * already in the cut goes in again rather than being refused.
+   */
+  const canAddToCut = Boolean(row.scene) && row.kind === "video" && row.status === "succeeded";
+  const addToCut = useCallback(async () => {
+    if (!row.scene) return;
+    try {
+      const scene = await getScene(row.scene);
+      await setSceneRuns(row.scene, [...scene.runs.map((each) => each.id), row.id]);
+      toast.add({ intent: "success", title: "Added to the cut", description: scene.name });
+      await client.invalidateQueries({ queryKey: ["scene", row.scene] });
+    } catch (err) {
+      toast.add({ intent: "danger", title: "Could not add to the cut",
+                  description: (err as Error).message });
+    }
+  }, [client, row.id, row.scene, toast]);
+
   /** The run, opened with its Request row already expanded. */
   const openRequest = useCallback(
     () => navigate(runPath(row.project, row.id) + window.location.search, { state: { request: true } }),
@@ -166,5 +187,7 @@ export function useRunActions(row: RunFeedRow) {
     copyPrompt,
     openRequest,
     folderHref,
+    canAddToCut,
+    addToCut,
   };
 }

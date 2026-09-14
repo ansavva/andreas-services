@@ -9,7 +9,7 @@ import {
   getScene,
   listNodes,
 } from "../apis/studio";
-import type { FileEntry, RunAsset, Shot, SortOrder } from "../types";
+import type { FileEntry, RunAsset, SceneRecord, SortOrder } from "../types";
 import type { ViewerSource } from "../utils/location";
 import { useMedia } from "./useMedia";
 import { useResource } from "./useResource";
@@ -55,33 +55,21 @@ const drawable = (entry: FileEntry) =>
  * scrolling moves through.
  */
 /**
- * Everything a shot draws, in the order the board draws it.
+ * Everything a scene page draws, as the viewer scrolls it: the current take,
+ * every earlier one, each clip in the cut, then the scene's own frames.
  *
  * Exported for its own test. It is the list that decides whether a tile opens
- * or reads as a dead link, it had no coverage, and the omission it shipped with
- * — earlier takes, drawn on the card and absent from here — is invisible from
- * the outside until you click one.
+ * or reads as a dead link — anything drawn on the scene page has to be
+ * reachable from here, which is the omission its predecessor shipped with.
  */
-export function shotAssets(shot: Shot): RunAsset[] {
-  const handoff = shot.continues !== false ? shot.opens_on?.frame : undefined;
-  const panels = [...(shot.panels ?? [])]
-    .sort((a, b) => a.n - b.n)
-    .map((panel) => panel.image)
-    .filter((image): image is RunAsset => Boolean(image));
-
+export function sceneAssets(scene: SceneRecord): RunAsset[] {
   return [
-    ...(handoff ? [handoff] : []),
-    ...panels,
-    ...(shot.motion?.reference_assets ?? []),
-    ...(shot.clip ? [shot.clip] : []),
-    // **Earlier takes belong in the feed for the same reason the clip does.**
-    // The board draws a tile for each one and a tile opens the viewer, so a
-    // take the feed does not hold is a tile that reads as a dead link — which
-    // is what "the video doesn't play" turned out to be. Anything drawn on this
-    // page has to be reachable from here.
-    ...(shot.takes ?? [])
-      .map((take) => take.clip)
+    ...(scene.output ? [scene.output] : []),
+    ...(scene.cuts ?? []),
+    ...scene.runs
+      .map((row) => row.output)
       .filter((clip): clip is RunAsset => Boolean(clip)),
+    ...scene.frames,
   ];
 }
 
@@ -175,11 +163,7 @@ export function useViewerFeed(
     }
 
     if (source.in === "scene") {
-      const scene = await getScene(source.id);
-      const shots = [...scene.shots].sort((a, b) => a.order - b.order);
-      // The current cut and every earlier one — the page draws them all.
-      const cut = [...(scene.output ? [scene.output] : []), ...(scene.cuts ?? [])];
-      return dedupe([...cut, ...shots.flatMap(shotAssets)].map(fromAsset));
+      return dedupe(sceneAssets(await getScene(source.id)).map(fromAsset));
     }
 
     if (source.in === "fav") {

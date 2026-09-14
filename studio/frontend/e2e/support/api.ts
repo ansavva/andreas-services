@@ -299,12 +299,10 @@ export const SCENE: Record<string, unknown> = {
   id: SCENE_ID,
   project: RUN_PROJECT,
   name: "e2e-scene",
-  title: "An end-to-end scene",
   status: "assembled",
   movies: [],
   created: "2026-08-31T12:00:00+00:00",
   folder: "node-e2e-scene-folder",
-  setting: "A bare studio wall, one hard key from the left.",
   output: {
     node: CLIP_ITEM.id,
     name: CLIP_ITEM.name,
@@ -313,47 +311,39 @@ export const SCENE: Record<string, unknown> = {
     content_type: "video/mp4",
   },
   cuts: [],
-  shots: [
+  // The cut: one rendered clip, and one run that has not rendered yet — a
+  // planned cut is rows with nothing in them, and the page has to draw both.
+  runs: [
     {
-      id: "shot-e2e-01",
-      order: 10,
-      prompt: "",
-      run: null,
-      panel: null,
-      beat: "He raises both arms",
-      status: "rendered",
-      continues: false,
-      panels: [],
-      motion: {
-        prompt: "a steady double-bicep flex",
-        duration: 5,
-        model: "kling",
-      },
-      // A rendered shot, so the shot's own right-hand column has something in
-      // it — the per-shot split is what this page is really about.
-      run: "run-e2e-shot-01",
-      node: CLIP_ITEM.id,
-      rendered: "2026-08-31T12:20:00+00:00",
-      clip: {
+      id: RUN_ID,
+      project: RUN_PROJECT,
+      status: "succeeded",
+      kind: "video",
+      model: "kwaivgi/kling-v3-omni-video",
+      created: "2026-08-31T12:29:00+00:00",
+      scene: SCENE_ID,
+      output: {
         node: CLIP_ITEM.id,
         name: CLIP_ITEM.name,
         url: CLIP_PATH,
         size: CLIP.byteLength,
         content_type: "video/mp4",
       },
-      runs: [
-        {
-          id: "run-e2e-shot-01",
-          project: RUN_PROJECT,
-          role: "clip",
-          status: "succeeded",
-          kind: "video",
-          model: "kwaivgi/kling-v3-omni-video",
-          created: "2026-08-31T12:15:00+00:00",
-        },
-      ],
+      thumb: { node: CLIP_ITEM.id, url: CLIP_PATH },
+    },
+    {
+      id: "run-e2e-planned",
+      project: RUN_PROJECT,
+      status: "draft",
+      kind: "video",
+      model: "kwaivgi/kling-v3-omni-video",
+      created: "2026-08-31T12:40:00+00:00",
+      scene: SCENE_ID,
+      output: null,
+      thumb: null,
     },
   ],
+  frames: [],
 };
 
 export const RUN: Record<string, unknown> = {
@@ -372,7 +362,7 @@ export const RUN: Record<string, unknown> = {
   bindings: {},
   sends: [],
   plan: null,
-  scenes: [],
+  scene: SCENE_ID,
   characters: [],
   outputs: [
     {
@@ -681,12 +671,13 @@ export async function stubApi(page: Page): Promise<void> {
       // search — the API reads envelopes for it, and this stub has them.
       if (url.searchParams.get("view") === "feed") {
         const needle = (url.searchParams.get("q") ?? "").trim().toLowerCase();
+        const scene = url.searchParams.get("scene");
         return json(route, {
-          runs: needle
-            ? projectRunsFeed.runs.filter((run) =>
-                promptText(run.plan).includes(needle),
-              )
-            : projectRunsFeed.runs,
+          runs: projectRunsFeed.runs
+            .filter((run) => !needle || promptText(run.plan).includes(needle))
+            // A scene page's feed: the captured page has no `scene` on its
+            // rows, so the one run this suite makes belong to it is `RUN`.
+            .filter((run) => !scene || run.id === RUN_ID),
           cursor: null,
         });
       }
