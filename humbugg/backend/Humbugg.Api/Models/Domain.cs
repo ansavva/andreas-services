@@ -192,7 +192,12 @@ public sealed record ParticipantReadiness(
     bool HasGeneralPreferences,
     ReadinessState Address,
     ReadinessState Assignment,
-    IReadOnlyList<NudgeReason> Nudges);
+    IReadOnlyList<NudgeReason> Nudges,
+    // The account's VERIFIED address, read back from Cognito at request time — Humbugg stores none
+    // (#137). Organizer-only by virtue of where it sits: this record exists only in the readiness
+    // response, which a participant cannot open. Null when the account has no verified address or
+    // the membership has been anonymized.
+    string? Email = null);
 
 /// <summary>An invitation that has been sent and not yet accepted. Plus-only in practice — a Free
 /// exchange invites by link and has no invitation rows — but never gated here: an empty list is the

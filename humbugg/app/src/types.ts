@@ -419,6 +419,8 @@ export interface ParticipantReadiness {
   address: ReadinessState;
   assignment: ReadinessState;
   nudges: NudgeReason[];
+  /** The account's verified address, read from Cognito per request; null when there is none. */
+  email: string | null;
 }
 
 export interface PendingInvitation {

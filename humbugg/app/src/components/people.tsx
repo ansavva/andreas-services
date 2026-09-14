@@ -353,6 +353,11 @@ export function PeoplePanel({
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={[styles.small, styles.semibold]}>{person.display_name}</Text>
+                  {person.email ? (
+                    <Text style={styles.tiny} numberOfLines={1} selectable>
+                      {person.email}
+                    </Text>
+                  ) : null}
                   <Text style={styles.tiny}>
                     {person.nudges.length > 0
                       ? person.nudges.map((reason) => NUDGE_LABELS[reason]).join(' · ')
@@ -585,7 +590,7 @@ function StateBadge({ state, label }: { state: ReadinessState; label: string }) 
  * three separate chips per person and rebuilding the sentence by hand.
  */
 export function rowLabel(person: ParticipantReadiness, drawn: boolean): string {
-  const parts = [person.display_name, PARTICIPANT_ROLE_LABELS[person.role]];
+  const parts = [person.display_name, ...(person.email ? [person.email] : []), PARTICIPANT_ROLE_LABELS[person.role]];
   if (!person.is_participating) return `${parts.join(', ')}, not participating`;
   parts.push(READINESS_LABELS.wishlist[person.wishlist]);
   if (person.address !== 'not_required') parts.push(READINESS_LABELS.address[person.address]);

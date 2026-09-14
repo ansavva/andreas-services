@@ -24,7 +24,8 @@
       "has_general_preferences": true,
       "address": "not_required",
       "assignment": "not_applicable",
-      "nudges": []
+      "nudges": [],
+      "email": "e2e@example.com"
     }
   ],
   "pending_invitations": []

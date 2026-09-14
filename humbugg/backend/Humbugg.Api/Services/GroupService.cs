@@ -225,6 +225,12 @@ internal sealed class GroupService(
     /// Nothing a participant wrote is in this response. Readiness is a state and a count, never a
     /// wish, an address or an assignment: the organizer learns that someone's list is empty, not
     /// what is on it, and learns that someone has opened their assignment, not whose name was in it.
+    ///
+    /// The one thing here that is not a state is each member's verified email address, so the
+    /// organizer can reach the person behind a display name. It is read from Cognito per request
+    /// (<see cref="IAccountDirectory"/>) rather than stored, and the lookups run concurrently: a
+    /// fifty-member roster is fifty AdminGetUser calls, and in series that is the dashboard's whole
+    /// load time.
     /// </summary>
     public async Task<GroupReadiness> GetReadinessAsync(string groupId, CancellationToken cancellationToken = default)
     {
@@ -235,9 +241,10 @@ internal sealed class GroupService(
             ? await groups.GetDrawAsync(groupId, cancellationToken)
             : null;
         var wishCounts = await WishCountsAsync(members.Where(item => item.IsParticipating), cancellationToken);
+        var emails = await Task.WhenAll(members.Select(member => directory.VerifiedEmailAsync(member.UserId, cancellationToken)));
 
         var participants = members
-            .Select(member => Readiness(member, group, draw, wishCounts.GetValueOrDefault(member.MemberId)))
+            .Select((member, index) => Readiness(member, group, draw, wishCounts.GetValueOrDefault(member.MemberId), emails[index]))
             .OrderBy(item => item.DisplayName, StringComparer.CurrentCultureIgnoreCase)
             .ThenBy(item => item.MemberId, StringComparer.Ordinal)
             .ToList();
@@ -286,7 +293,7 @@ internal sealed class GroupService(
         return new GiftProgress(purchased, sent, received, participating.Count);
     }
 
-    private static ParticipantReadiness Readiness(MembershipRecord member, GroupRecord group, DrawRecord? draw, int wishCount)
+    private static ParticipantReadiness Readiness(MembershipRecord member, GroupRecord group, DrawRecord? draw, int wishCount, string? email)
     {
         var hasPreferences = !string.IsNullOrWhiteSpace(member.Wishlist);
         // Ready on either the structured list (#127) or the free-text preferences, because both are a
@@ -320,7 +327,8 @@ internal sealed class GroupService(
             hasPreferences,
             address,
             assignment,
-            nudges);
+            nudges,
+            email);
     }
 
     private async Task<IReadOnlyList<PendingInvitation>> PendingInvitationsAsync(string groupId, CancellationToken cancellationToken)
