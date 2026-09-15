@@ -12,6 +12,7 @@ import {
 
 import { createCharacter, createProject } from "../../apis/studio";
 import { characterPath, projectPath } from "../../utils/location";
+import { cancelClass } from "../common/cancelClass";
 import { PlusIcon } from "../common/icons";
 
 interface Props {
@@ -134,7 +135,7 @@ export function CreateEntityDialog({ kind }: Props) {
         )}
 
         <div className="flex flex-wrap justify-end gap-2">
-          <Dialog.Close>Cancel</Dialog.Close>
+          <Dialog.Close className={cancelClass()}>Cancel</Dialog.Close>
           <Button disabled={(isCharacter && !trimmed) || busy} onClick={() => void submit()}>
             {busy ? "Creating…" : `Create ${kind}`}
           </Button>

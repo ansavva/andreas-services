@@ -2,6 +2,8 @@ import { useState } from "react";
 
 import { AlertDialog, Button, buttonClass, Field, Input, Text } from "@ansavva/design-system";
 
+import { cancelClass } from "./cancelClass";
+
 
 /**
  * Where an armed button stops being enough for a bulk delete.
@@ -133,7 +135,7 @@ export function ConfirmDestroyDialog({
         )}
 
         <div className="flex flex-wrap justify-end gap-2">
-          <AlertDialog.Close>Cancel</AlertDialog.Close>
+          <AlertDialog.Close className={cancelClass("sm")}>Cancel</AlertDialog.Close>
           <Button
             intent="danger"
             size="sm"
