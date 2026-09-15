@@ -601,10 +601,14 @@ page and a plain textarea over its literal bytes, and never offers fields.
   earlier/later, Swap the start and end frames, Remove — `MenuLines`, the
   list `ActionMenu`'s sheet draws, on its own. Because 72px says which
   picture and not what is in it; and because the 20px × at a tile's corner
-  and the hold-then-drag on a row that also scrolls were the two things a
-  thumb could not do reliably. Both still work, and the × grows to 32px set
-  inside the corner where the pointer is coarse, but the lines are the
-  phone's way. **And the phone's keyboard comes up only when the prompt
+  and a hold-then-drag on a row that also scrolls were the two things a
+  thumb could not do reliably. The × grows to 32px set inside the corner
+  where the pointer is coarse, and **the drag has a grip now: the caption
+  strip at the tile's foot** (`reorder.ts`) — `Image 2` is what a drag
+  changes, so it is what you take hold of; `touch-action: none` on it, so
+  a finger there drags from the first pixel with no hold and the browser
+  never claims it for scroll, and the picture above stays a plain press.
+  The lines remain for a thumb that would rather not. **And the phone's keyboard comes up only when the prompt
   is tapped.** `loadRun` and `expand` bump `focus` so Edit lands you in
   the box; under a coarse pointer (`FINE` in `useMediaQuery`) that bump is
   ignored, because on a phone it raised the keyboard over half the screen

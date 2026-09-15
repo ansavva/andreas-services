@@ -5,7 +5,6 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent,
-  type MouseEvent,
   type PointerEvent,
 } from "react";
 
@@ -20,15 +19,18 @@ import {
  * citing them by number. Pointer events fire the same way for a mouse and
  * a finger, so one gesture serves both.
  *
- * **A finger holds; a mouse just moves.** The row scrolls sideways, and a
- * touch that moves at once is a scroll — so a touch has to rest for
- * `HOLD_MS` before the tile lifts, and a touch that travels first is left
- * to the browser, which cancels the pointer when its scroll begins. Once
- * lifted, `touchmove` is prevented (the listener is registered non-passive
- * for exactly that) so the row holds still under the drag. A mouse has no
- * scroll to protect and lifts after `SLOP` pixels, which is also what
- * separates a drag from a press: a press that never travelled still opens
- * the picker.
+ * **The gesture lives on a grip, not on the tile.** The tile is a press (it
+ * opens the preview) sitting in a row that scrolls sideways, and a drag on
+ * the same square had to be told apart from both: a touch rested for 250ms
+ * before the tile lifted, a mouse travelled a few pixels first. That hold
+ * was the thing a thumb got wrong — a touch that moved a little during it
+ * was a scroll, one that rested a little long was iOS asking about the
+ * image. So the strip at the tile's foot — the caption, `Image 2`, the
+ * very thing the drag changes — is the handle: `touch-action: none` on it,
+ * so a touch there is ours from the first pixel and never the browser's
+ * scroll, and the tile lifts on the press. The picture above it stays a
+ * plain press, and a mouse on the picture can never lift the tile by
+ * accident. The row still scrolls under a finger on a picture.
  *
  * **The row reorders live.** Crossing the middle of a neighbour swaps places
  * with it — the way a home screen does — rather than drawing a gap and
@@ -47,8 +49,6 @@ import {
  * The keyboard has its own way: arrow keys on a focused tile. A tile is a
  * button, and a button does nothing with arrows otherwise.
  */
-const HOLD_MS = 250;
-const SLOP = 6;
 const EDGE = 28;
 const NUDGE = 8;
 
@@ -56,36 +56,39 @@ const NUDGE = 8;
 export const POSITION_ATTR = "data-ref-position";
 /** Set on the scroller the tiles live in. */
 export const ROW_ATTR = "data-attach-row";
+/** Set on the grip, so a test can take hold of it. */
+export const GRIP_ATTR = "data-ref-grip";
 
 interface Gesture {
   pointerId: number;
+  /** The tile: measured, and moved by the transform. */
   el: HTMLElement;
+  /** The strip that was pressed: holds the pointer capture. */
+  grip: HTMLElement;
   position: number;
-  startX: number;
-  startY: number;
   /** Where in the tile the pointer took hold, so the tile does not snap to it. */
   grabX: number;
   lastX: number;
   /** The transform applied right now — subtracted to find the tile's own place. */
   dx: number;
-  active: boolean;
-  hold: number | null;
   nudge: number | null;
-  onTouchMove: (event: TouchEvent) => void;
   onContextMenu: (event: Event) => void;
 }
 
 export interface Sortable {
-  /** Spread onto the tile's wrapper. */
+  /** Spread onto the tile's wrapper: where it is, and that it is lifted. */
   wrapper: {
+    style: CSSProperties | undefined;
+    [POSITION_ATTR]: number;
+    "data-dragging": "" | undefined;
+  };
+  /** Spread onto the grip: the drag. */
+  grip: {
     onPointerDown: (event: PointerEvent<HTMLElement>) => void;
     onPointerMove: (event: PointerEvent<HTMLElement>) => void;
     onPointerUp: (event: PointerEvent<HTMLElement>) => void;
     onPointerCancel: (event: PointerEvent<HTMLElement>) => void;
-    onClickCapture: (event: MouseEvent<HTMLElement>) => void;
-    style: CSSProperties | undefined;
-    [POSITION_ATTR]: number;
-    "data-dragging": "" | undefined;
+    [GRIP_ATTR]: "";
   };
   /** Spread onto the tile's button: the arrow keys. */
   button: { onKeyDown: (event: KeyboardEvent<HTMLElement>) => void };
@@ -100,8 +103,6 @@ export function useReorder(
     null,
   );
   const gesture = useRef<Gesture | null>(null);
-  /** A press that became a drag must not also open the picker on release. */
-  const swallowClick = useRef(false);
   // Read through a ref: the nudge's animation frame and the pointer capture
   // outlive the render whose `onMove` they were made in, and the caller's
   // position-to-index mapping changes with every swap.
@@ -112,19 +113,10 @@ export function useReorder(
     const g = gesture.current;
     if (!g) return;
     gesture.current = null;
-    if (g.hold !== null) window.clearTimeout(g.hold);
     if (g.nudge !== null) window.cancelAnimationFrame(g.nudge);
-    g.el.removeEventListener("touchmove", g.onTouchMove);
-    g.el.removeEventListener("contextmenu", g.onContextMenu);
-    if (g.active) {
-      if (g.el.hasPointerCapture?.(g.pointerId))
-        g.el.releasePointerCapture(g.pointerId);
-      // The click a mouse makes on release comes before the next task; a
-      // touch whose moves were prevented makes none, and must not leave the
-      // NEXT honest press swallowed.
-      swallowClick.current = true;
-      window.setTimeout(() => (swallowClick.current = false), 0);
-    }
+    g.grip.removeEventListener("contextmenu", g.onContextMenu);
+    if (g.grip.hasPointerCapture?.(g.pointerId))
+      g.grip.releasePointerCapture(g.pointerId);
     setDrag(null);
   }, []);
 
@@ -170,7 +162,7 @@ export function useReorder(
       if (by !== 0) {
         g.nudge = window.requestAnimationFrame(() => {
           g.nudge = null;
-          if (gesture.current !== g || !g.active) return;
+          if (gesture.current !== g) return;
           row.scrollLeft += by;
           track(g, g.lastX);
         });
@@ -178,24 +170,13 @@ export function useReorder(
     }
   }, []);
 
-  const activate = useCallback(
-    (g: Gesture) => {
-      g.active = true;
-      if (g.hold !== null) window.clearTimeout(g.hold);
-      g.hold = null;
-      g.el.setPointerCapture?.(g.pointerId);
-      track(g, g.lastX);
-    },
-    [track],
-  );
-
   // After a swap the tile's own place has moved: put the transform right
   // before paint, from where the pointer last was. On the position only —
   // a plain move has already set the transform from the same measurement.
   const position = drag?.position;
   useLayoutEffect(() => {
     const g = gesture.current;
-    if (!g || !g.active || position === undefined) return;
+    if (!g || position === undefined) return;
     const rect = g.el.getBoundingClientRect();
     const ownLeft = rect.left - g.dx;
     const dx = g.lastX - g.grabX - ownLeft;
@@ -211,78 +192,51 @@ export function useReorder(
       const onPointerDown = (event: PointerEvent<HTMLElement>) => {
         if (gesture.current || count < 2) return;
         if (event.pointerType === "mouse" && event.button !== 0) return;
-        const el = event.currentTarget;
+        const grip = event.currentTarget;
+        const el = grip.closest<HTMLElement>(`[${POSITION_ATTR}]`);
+        if (!el) return;
         const rect = el.getBoundingClientRect();
         const g: Gesture = {
           pointerId: event.pointerId,
           el,
+          grip,
           position,
-          startX: event.clientX,
-          startY: event.clientY,
           grabX: event.clientX - rect.left,
           lastX: event.clientX,
           dx: 0,
-          active: false,
-          hold: null,
           nudge: null,
-          // Non-passive on purpose: a passive listener cannot prevent the scroll.
-          onTouchMove: (touch) => {
-            if (gesture.current === g && g.active) touch.preventDefault();
-          },
-          // A held touch is a drag here, not a request for the image's menu.
+          // A held touch on the strip is a drag, not a request for a menu.
           onContextMenu: (menu) => {
             if (gesture.current === g) menu.preventDefault();
           },
         };
-        el.addEventListener("touchmove", g.onTouchMove, { passive: false });
-        el.addEventListener("contextmenu", g.onContextMenu);
+        grip.addEventListener("contextmenu", g.onContextMenu);
         gesture.current = g;
-        if (event.pointerType !== "mouse") {
-          g.hold = window.setTimeout(() => {
-            g.hold = null;
-            if (gesture.current === g) activate(g);
-          }, HOLD_MS);
-        }
+        grip.setPointerCapture?.(event.pointerId);
+        track(g, event.clientX);
       };
       const onPointerMove = (event: PointerEvent<HTMLElement>) => {
         const g = gesture.current;
         if (!g || g.pointerId !== event.pointerId) return;
-        if (g.active) {
-          track(g, event.clientX);
-          return;
-        }
-        const travelled = Math.hypot(
-          event.clientX - g.startX,
-          event.clientY - g.startY,
-        );
-        if (event.pointerType === "mouse") {
-          g.lastX = event.clientX;
-          if (travelled > SLOP) activate(g);
-        } else if (travelled > SLOP) {
-          // Moved before the hold was up: a scroll, and the browser's.
-          end();
-        }
+        track(g, event.clientX);
       };
       const onPointerUp = (event: PointerEvent<HTMLElement>) => {
         if (gesture.current?.pointerId === event.pointerId) end();
       };
       return {
         wrapper: {
+          style: dragging
+            ? { transform: `translateX(${drag!.dx}px)` }
+            : undefined,
+          [POSITION_ATTR]: position,
+          "data-dragging": dragging ? "" : undefined,
+        },
+        grip: {
           onPointerDown,
           onPointerMove,
           onPointerUp,
           onPointerCancel: onPointerUp,
-          onClickCapture: (event) => {
-            if (!swallowClick.current) return;
-            swallowClick.current = false;
-            event.preventDefault();
-            event.stopPropagation();
-          },
-          style: dragging
-            ? { transform: `translateX(${drag!.dx}px)`, touchAction: "none" }
-            : undefined,
-          [POSITION_ATTR]: position,
-          "data-dragging": dragging ? "" : undefined,
+          [GRIP_ATTR]: "",
         },
         button: {
           onKeyDown: (event) => {
@@ -300,6 +254,6 @@ export function useReorder(
         dragging,
       };
     },
-    [drag, count, activate, track, end],
+    [drag, count, track, end],
   );
 }

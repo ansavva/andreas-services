@@ -12,6 +12,7 @@ import {
   ChevronRightIcon,
   CloseIcon,
   FrameEndIcon,
+  GripIcon,
   ImagePlusIcon,
   PencilIcon,
   StartFrameIcon,
@@ -135,18 +136,16 @@ export function fallbackDropRole(
  * Nothing here is a `<button>` inside a `<button>`: the picture is a button,
  * its × a sibling.
  *
- * **References can be dragged along the row into a new order**, by mouse or
- * by a held finger, and a focused one moves with the arrow keys — see
- * `reorder.ts`. Their order is the order they are sent in and the number the
+ * **References can be dragged along the row into a new order by the strip
+ * at their foot**, mouse or finger alike, and a focused one moves with the
+ * arrow keys — see `reorder.ts`. Their order is the order they are sent in and the number the
  * prompt cites, so `Image 2` before `Image 1` has to be a gesture and not a
  * remove-and-reattach. Frames have the ⇄ instead: two roles, not a row.
  *
- * **The drawer's lines are the row's gestures as words, and on a phone they
- * are the way.** The hold-then-drag and the × still work there; they were
- * just not enough. A 20px × at a tile's corner and a 250ms hold on a row
- * that also scrolls were the two things a thumb could not do reliably, and
- * a picture is the one target on the row that is big. The × itself grows
- * to 32px with a 40px reach where the pointer is coarse.
+ * **The drawer's lines are the row's gestures as words.** The × and the
+ * grip work on a phone too; the lines are for when a thumb would rather
+ * not. The × itself grows to 32px with a 40px reach where the pointer is
+ * coarse, and the grip strip grows with it.
  *
  * **Each cell is also where a dragged picture lands.** A tile in the library's
  * grid can be dragged straight onto the role it should fill, which is the one
@@ -473,9 +472,16 @@ function Ghost({
  * it — a control inside a control is invalid HTML the browser resolves by
  * dropping one. The picture itself opens `AttachPreview`: itself, large,
  * with `actions` under it. The drawer is rendered beside the tile rather
- * than inside it, because the tile's wrapper carries the reorder gesture
- * and React's events climb through a portal — a press on a line would
- * have started a drag of the tile behind it.
+ * than inside it, so nothing pressed in it reaches the tile's handlers
+ * through the portal.
+ *
+ * **The caption strip at the foot is the grip.** `Image 2` is the thing a
+ * drag changes, so it is the thing you take hold of: a sibling of the
+ * button too, over its foot, `touch-action: none` so a finger on it drags
+ * from the first pixel with no hold and no scroll (`reorder.ts`). On a
+ * tile that cannot be reordered — a frame, the input, a lone reference —
+ * the same strip is just the word, and presses go through it to the
+ * picture.
  *
  * **The × is drawn for the pointer.** 20px at the corner under a mouse;
  * where the pointer is coarse it is 32px, set inside the corner rather
@@ -542,23 +548,14 @@ export function Thumb({
       ) : (
         <img src={ref.url ?? undefined} alt="" className="size-full object-cover" />
       )}
-      {/* The word over the picture's foot, on a scrim, the way ElevenLabs
-          labels `@Image 1`. */}
-      <span className="absolute inset-x-0 bottom-0 truncate bg-overlay-scrim/60 px-1 py-0.5 text-center text-[11px] font-medium text-overlay-ink">
-        {pending ? "Taking…" : caption}
-      </span>
     </>
   );
   return (
     <>
     <div
       className={`relative size-[4.5rem] shrink-0 ${
-        sortable
-          ? // No callout on a held touch, and no image drag from a mouse: the
-            // hold and the move are this row's own gesture.
-            "select-none [-webkit-touch-callout:none] [&_img]:pointer-events-none"
-          : ""
-      } ${sortable?.dragging ? "z-10 scale-105 shadow-lg ring-2 ring-accent" : ""}`}
+        sortable?.dragging ? "z-10 scale-105 shadow-lg ring-2 ring-accent" : ""
+      }`}
       title={title}
       data-attachment={role}
       data-pending={pending || undefined}
@@ -571,7 +568,7 @@ export function Thumb({
         aria-label={pending ? ref.pending! : `${caption} — ${assetLabel(ref.name)}`}
         aria-description={
           sortable
-            ? "Opens it large. Drag, or press an arrow key, to change its order."
+            ? "Opens it large. Drag the strip under it, or press an arrow key, to change its order."
             : "Opens it large."
         }
         className="relative block size-full overflow-hidden rounded-md bg-fill p-0 hover:bg-fill"
@@ -581,6 +578,22 @@ export function Thumb({
       >
         {picture}
       </Button>
+      {/* The word over the picture's foot, on a scrim, the way ElevenLabs
+          labels `@Image 1` — and the grip, when the tile can move. */}
+      <div
+        role="presentation"
+        className={`absolute inset-x-0 bottom-0 flex items-center justify-center gap-0.5 truncate rounded-b-md
+                    bg-overlay-scrim/60 px-1 py-0.5 text-[11px] font-medium text-overlay-ink
+                    ${
+                      sortable
+                        ? "cursor-grab select-none touch-none [-webkit-touch-callout:none] active:cursor-grabbing pointer-coarse:py-1.5"
+                        : "pointer-events-none"
+                    }`}
+        {...sortable?.grip}
+      >
+        {sortable && <GripIcon className="size-3 shrink-0 fill-current stroke-none opacity-80" />}
+        {pending ? "Taking…" : caption}
+      </div>
       <IconButton
         intent="overlay"
         size="sm"

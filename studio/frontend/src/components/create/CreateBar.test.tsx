@@ -531,11 +531,14 @@ it("a reference moves along the row by arrow key and by drag, and its caption fo
       ({ left: at * 80, right: at * 80 + 72, width: 72, top: 0, bottom: 72, height: 72 }) as DOMRect;
   });
   const first = tiles[0]!;
-  fireEvent.pointerDown(first, { pointerId: 1, pointerType: "mouse", button: 0, clientX: 10, clientY: 10 });
-  fireEvent.pointerMove(first, { pointerId: 1, pointerType: "mouse", clientX: 30, clientY: 10 });
+  // The grip is the strip at the tile's foot; the picture is a press.
+  fireEvent.pointerDown(first.querySelector("button")!, { pointerId: 1, pointerType: "mouse", button: 0, clientX: 10, clientY: 10 });
+  expect(first.hasAttribute("data-dragging")).toBe(false);
+  const grip = first.querySelector("[data-ref-grip]")!;
+  fireEvent.pointerDown(grip, { pointerId: 1, pointerType: "mouse", button: 0, clientX: 10, clientY: 60 });
   expect(first.hasAttribute("data-dragging")).toBe(true);
-  fireEvent.pointerMove(first, { pointerId: 1, pointerType: "mouse", clientX: 210, clientY: 10 });
-  fireEvent.pointerUp(first, { pointerId: 1, pointerType: "mouse", clientX: 210, clientY: 10 });
+  fireEvent.pointerMove(grip, { pointerId: 1, pointerType: "mouse", clientX: 210, clientY: 60 });
+  fireEvent.pointerUp(grip, { pointerId: 1, pointerType: "mouse", clientX: 210, clientY: 60 });
   expect(first.hasAttribute("data-dragging")).toBe(false);
   expect(captions()).toEqual([
     "Image 1 — face-03.png",
