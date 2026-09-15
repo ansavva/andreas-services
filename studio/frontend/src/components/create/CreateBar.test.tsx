@@ -55,6 +55,7 @@ import {
   getProject,
   getRuns,
   getTemplates,
+  patchRunPlan,
   setModelDefaults,
   submitRun,
 } from "../../apis/studio";
@@ -298,6 +299,41 @@ it("⌘/Ctrl+Enter creates the draft and then submits it, in that order; plain E
   // Sent: the prompt goes, the toast says so.
   expect(await screen.findByText("Sent")).toBeTruthy();
   await waitFor(() => expect(editor().textContent).toBe(""));
+});
+
+it("sends a JSON prompt as words, and a cited one as a template", async () => {
+  /**
+   * **The bug this pins.** The test for "does this prompt need expanding" was
+   * `prompt.includes("{")`, and `studio prompt` writes a prompt as a serialised
+   * JSON object — so every structured prompt went out through `PATCH /plan` as
+   * a template and came back refused for citing `{ "subject"}`. There was no
+   * way to send one from the app.
+   *
+   * A brace is not a citation. `{block.…}`, `{character.N.…}` and `{slot.…}`
+   * are; a JSON document is the words themselves.
+   */
+  vi.mocked(patchRunPlan).mockResolvedValue({ ...created(), fingerprint: "f2" } as never);
+  await open();
+
+  const json = '{"subject": "a person", "camera": {"move": "push in"}}';
+  fill(json);
+  await waitFor(() => expect(editor().textContent).toContain('"subject"'));
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(submitRun).toHaveBeenCalledWith("run-0001"));
+
+  expect(patchRunPlan).not.toHaveBeenCalled();
+  expect(vi.mocked(createRun).mock.calls[0]![0]).toMatchObject({
+    plan: { prompt: json },
+  });
+
+  // The same bar, a prompt that really does cite something: the template goes.
+  fill("A portrait. {block.scale}");
+  await waitFor(() => expect(editor().textContent).toContain("{block.scale}"));
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(patchRunPlan).toHaveBeenCalled());
+  expect(vi.mocked(patchRunPlan).mock.calls[0]![1]).toMatchObject({
+    template: "A portrait. {block.scale}",
+  });
 });
 
 it("holds a draft whose payload already went out here, and Send anyway submits it", async () => {

@@ -33,9 +33,25 @@ telling a render to take its wardrobe and background from an earlier one
 describes a binding only a fourteen-at-a-time turnaround makes. Neither is
 provided, so a template citing either gets the refusal every unknown citation
 gets — a loaded gun is not left in place with an authored block arguing for it.
+
+## A brace is only a citation when it is SHAPED like one
+
+**Everything else a brace can be is literal text and passes through
+untouched.** A citation is `{block.<name>}`, `{character.<N>.<member>}` with an
+optional `.face`/`.body`, `{character.<member>}`, or `{slot.<member>}` — that
+list and nothing else, matched by `CITATION`. This used to walk
+`string.Formatter().parse`, which treats every `{…}` in the string as a field,
+and that made a whole class of perfectly good prompt unsendable: `studio prompt`
+writes a **serialised JSON** prompt, so `{"subject": …, "camera": {…}}` was read
+as a citation of `{ "subject"}` and refused, and a single stray `{` in prose was
+a "malformed template". Doubled braces are no longer an escape, because there is
+nothing left to escape from. The cost is that a MISTYPED namespace —
+`{blocks.face_only}` — now reaches the model as text rather than being refused;
+a citation that is shaped right and names nothing real is still refused, which
+is where the typos that matter land.
 """
 
-import string
+import re
 from types import SimpleNamespace
 
 from studio_core.errors import ValidationError
@@ -201,6 +217,28 @@ VARIANTS = ("face", "body")
 #: string whichever kind of picture is being made.
 VARIED = ("build", "must")
 
+#: A member name, which is also the rule every block name matches.
+_MEMBER = r"[a-z_][a-z0-9_]*"
+
+#: **What a citation looks like, and the only thing that is one.** A brace run
+#: this does not match is TEXT — JSON, a stray `{`, `{x}` with no namespace —
+#: and reaches the model exactly as written. The unnumbered `{character.top}`
+#: and the bare `{character.1.build}` are deliberately inside the pattern so
+#: they can be REFUSED with the sentence that says how to spell them; a shape
+#: left outside would be silently rendered as prose instead.
+CITATION = re.compile(
+    r"\{(?:"
+    rf"block\.{_MEMBER}"
+    rf"|character\.(?:[0-9]+\.{_MEMBER}(?:\.(?:{'|'.join(VARIANTS)}))?|{_MEMBER})"
+    rf"|slot\.{_MEMBER}"
+    r")\}"
+)
+
+
+def _fields(template: str) -> list:
+    """Every citation in `template`, as the dotted name inside its braces."""
+    return [found.group(0)[1:-1] for found in CITATION.finditer(template or "")]
+
 
 def character_values(profile: dict, blocks: dict) -> dict:
     """One character's half of a prompt: what the bible says, as prose.
@@ -239,18 +277,12 @@ def _unnumbered(template: str) -> set:
     **A prompt names its cast by POSITION**, one-based, the same rule
     `[Image1]` already follows — `{character.1.top}` is the first character
     bound to this run. There is one spelling, and the bare form is caught here
-    rather than reaching `vformat` as an unhelpful `AttributeError`.
+    rather than reaching the fill as an unhelpful `AttributeError`.
     """
     found = set()
-    try:
-        fields = list(string.Formatter().parse(template or ""))
-    except ValueError:
-        return found
-    for _literal, field, _spec, _conv in fields:
-        if not field:
-            continue
+    for field in _fields(template):
         parts = field.split(".")
-        if parts[0] == "character" and len(parts) > 1 and not parts[1].isdigit():
+        if parts[0] == "character" and not parts[1].isdigit():
             found.add(field)
     return found
 
@@ -258,13 +290,7 @@ def _unnumbered(template: str) -> set:
 def _bare_variants(template: str) -> set:
     """`{character.N.build}` with no variant named. Refused, never defaulted."""
     found = set()
-    try:
-        fields = list(string.Formatter().parse(template or ""))
-    except ValueError:
-        return found
-    for _literal, field, _spec, _conv in fields:
-        if not field:
-            continue
+    for field in _fields(template):
         parts = field.split(".")
         if (len(parts) == 3 and parts[0] == "character"
                 and parts[1].isdigit() and parts[2] in VARIED):
@@ -281,9 +307,10 @@ def values_for(profiles: list, blocks: dict, identity_positions=None) -> dict:
     they cannot collide. In one flat namespace a block called `top` would be
     silently beaten by the bible's `top_text`.
 
-    A dot in a format field is ATTRIBUTE access rather than a nested key, so each
+    A dot in a citation is ATTRIBUTE access rather than a nested key, so each
     namespace goes in as an object. Every block name matches `[a-z_][a-z0-9_]*`,
-    which is also the rule for a Python identifier, so all of them are reachable.
+    which is also what `CITATION` will read after `block.`, so all of them are
+    reachable.
     """
     block_ns = {k: v for k, v in blocks.items() if isinstance(v, str)}
     cast = SimpleNamespace(**{
@@ -298,6 +325,38 @@ def values_for(profiles: list, blocks: dict, identity_positions=None) -> dict:
 
 
 
+def _lookup(field: str, values: dict, profiles: list) -> str:
+    """One citation's value, or the refusal that says what WAS there.
+
+    The dots are attribute access down the namespaces `values_for` built, and
+    the two ways that fails read very differently to the person who typed it.
+    """
+    space, *rest = field.split(".")
+    found = values[space]
+    for part in rest:
+        try:
+            found = getattr(found, part)
+        except AttributeError:
+            # **A cast position out of range gets its own sentence.** It is the
+            # commonest of these by far — a prompt written against a
+            # two-character run and then used on a one-character one — and
+            # "character has: 1" is a true answer to a question nobody asked.
+            if space == "character" and part == rest[0]:
+                raise ValidationError(
+                    f"this prompt cites {{{field}}}, and this run binds "
+                    f"{len(profiles)} character(s). N counts from 1, in the "
+                    f"order the run lists them.")
+            available = {
+                other: ", ".join(sorted(vars(values[other]))) for other in NAMESPACES
+            }
+            raise ValidationError(
+                f"this prompt cites {{{field}}}, which a namespace does not "
+                f"provide. "
+                + " ".join(f"{other} has: {names or '(nothing)'}."
+                           for other, names in available.items()))
+    return str(found)
+
+
 def expand(template: str, profiles: list, blocks: dict,
            identity_positions=None) -> str:
     """A template's finished prompt. **The one fill there is.**
@@ -305,10 +364,11 @@ def expand(template: str, profiles: list, blocks: dict,
     One spelling for the cast: positional, one-based, the same rule `[Image1]`
     follows.
 
-    A missing placeholder is a `ValidationError` naming both the placeholder and
+    A citation naming nothing real is a `ValidationError` naming both it and
     what WAS available, because templates are edited by people: the likeliest
     cause is somebody deleting a block a template still cites, and the useful
-    answer is the list of names they could have meant.
+    answer is the list of names they could have meant. A brace that is not a
+    citation at all is text, and comes back as text.
     """
     return expand_parts(template, profiles, blocks, identity_positions)[0]
 
@@ -317,12 +377,17 @@ def expand_parts(template: str, profiles: list, blocks: dict,
                  identity_positions=None) -> tuple:
     """`(text, spans)` — the same fill, and where each citation landed.
 
-    **The spans are why this walks `Formatter().parse` instead of calling
-    `vformat`.** An expanded prompt is a wall of prose in which nothing says
-    which words came from which citation, and that is the one question a reader
-    of it has: which of these can I go and change. The walk produces output
-    byte-identical to `vformat` — doubled braces included — so recording the
-    offsets costs the caller nothing and the text stays exactly what is hashed.
+    **The spans are why this scans for citations instead of calling `vformat`.**
+    An expanded prompt is a wall of prose in which nothing says which words came
+    from which citation, and that is the one question a reader of it has: which
+    of these can I go and change. Recording an offset per substitution costs the
+    caller nothing and the text stays exactly what is hashed.
+
+    **Only a `CITATION` is substituted.** Every other brace in the string — a
+    JSON prompt, a stray `{`, `{x}` naming no namespace — is copied through
+    verbatim, so a prompt that cites nothing comes back byte-identical to what
+    went in. What is still refused is a citation that is SHAPED right and names
+    nothing real, which is where the typos worth catching land.
     """
     unnumbered = sorted(_unnumbered(template))
     if unnumbered:
@@ -342,49 +407,20 @@ def expand_parts(template: str, profiles: list, blocks: dict,
             + " or ".join(f"{{{field}.{variant}}}" for variant in VARIANTS))
 
     values = values_for(profiles, blocks, identity_positions)
-    out, spans, at = [], [], 0
-    field = None
-    try:
-        for literal, field, _spec, _conv in string.Formatter().parse(template or ""):
-            if literal:
-                out.append(literal)
-                at += len(literal)
-            if field is None:
-                continue
-            filled = str(string.Formatter().get_field(field, (), values)[0])
-            spans.append({"name": field, "start": at, "end": at + len(filled)})
-            out.append(filled)
-            at += len(filled)
-        text = "".join(out)
-    except KeyError as exc:
-        raise ValidationError(
-            f"this prompt cites {{{exc.args[0]}}}, which nothing provides. "
-            f"Available: {', '.join(sorted(values))}")
-    except AttributeError:
-        # **A cast position out of range gets its own sentence.** It is the
-        # commonest of these by far — a prompt written against a two-character
-        # run and then used on a one-character one — and "character has: 1" is a
-        # true answer to a question nobody asked.
-        parts = (field or "").split(".")
-        if len(parts) > 1 and parts[0] == "character" and parts[1].isdigit():
-            raise ValidationError(
-                f"this prompt cites {{{field}}}, and this run binds "
-                f"{len(profiles)} character(s). N counts from 1, in the order "
-                f"the run lists them.")
-        available = {
-            space: ", ".join(sorted(vars(values[space]))) for space in NAMESPACES
-        }
-        raise ValidationError(
-            f"this prompt cites {{{field}}}, which a namespace does not provide. "
-            + " ".join(f"{space} has: {names or '(nothing)'}."
-                       for space, names in available.items()))
-    except (IndexError, ValueError) as exc:
-        # A stray `{` or `}` in edited prose. `vformat` and the walk both raise
-        # these, and unhandled they surface as a 500 on a route whose whole
-        # input is a person's typing.
-        raise ValidationError(
-            f"this prompt has a malformed template: {exc}. "
-            f"A literal brace must be doubled — {{{{ and }}}}.")
+    source = template or ""
+    out, spans, at, copied = [], [], 0, 0
+    for found in CITATION.finditer(source):
+        literal = source[copied:found.start()]
+        out.append(literal)
+        at += len(literal)
+        copied = found.end()
+        field = found.group(0)[1:-1]
+        filled = _lookup(field, values, profiles)
+        spans.append({"name": field, "start": at, "end": at + len(filled)})
+        out.append(filled)
+        at += len(filled)
+    out.append(source[copied:])
+    text = "".join(out)
 
     # **Whitespace is PRESERVED.** Ending with `" ".join(text.split())` would
     # collapse every newline into a space, which is wrong for a row a person

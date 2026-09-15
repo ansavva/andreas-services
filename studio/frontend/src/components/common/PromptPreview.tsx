@@ -175,7 +175,9 @@ function expand(prompt: string, blocks: Record<string, string>): Part[] {
   while (found !== null) {
     const start = found.index;
     const end = start + found[0].length;
-    // `{{` and `}}` are a literal brace, which is text rather than a citation.
+    // A doubled brace stays text. It was the escape for a literal brace and is
+    // no longer anything — the fill matches citations by SHAPE — but a preview
+    // that expanded half of one would show words the run does not send.
     if (prompt[start - 1] !== "{" && prompt[end] !== "}") {
       if (start > at) parts.push({ kind: "text", text: prompt.slice(at, start) });
       const cited = found[0].slice(1, -1);

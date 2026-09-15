@@ -121,7 +121,7 @@ it.each([
   ["there is no brace", "plain text"],
   ["the brace is already closed", "{face_only}"],
   ["the name has a space in it", "{face only"],
-  ["the brace is doubled — that is a LITERAL brace", "a {{lit"],
+  ["the brace is doubled — no placeholder can start there", "a {{lit"],
 ])("stays shut when %s", (_name, text) => {
   expect(promptTriggerMatch(text)).toBeNull();
 });
@@ -151,10 +151,12 @@ it("turns a hand-typed placeholder into a pill, so the menu is not the only way 
   );
 });
 
-it("leaves a DOUBLED brace as text, because it is a literal", async () => {
+it("leaves a DOUBLED brace flat", async () => {
   /**
-   * `assemble` says a literal brace is written `{{` and `}}`. Drawing one as a
-   * pill would claim the prompt cites something it does not.
+   * `{{` was the escape for a literal brace and is no longer anything: the fill
+   * matches citations by shape and leaves every other brace as text, so nothing
+   * has to be escaped. What is left is a run a person can only have typed by
+   * mistake, and a pill drawn inside a pair of stray braces reads as neither.
    */
   const changed = show("Write {{face_only}} literally.");
   await waitFor(() => expect(changed).toHaveBeenCalled());

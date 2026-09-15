@@ -40,6 +40,7 @@ import {
 } from "../../context/CreateBarContext";
 import { useResource } from "../../hooks/useResource";
 import type { CreatedRun, RunSummary } from "../../types";
+import { citesTemplate } from "../../utils/citations";
 import { formatDate } from "../../utils/format";
 import {
   ArrowUpIcon,
@@ -278,8 +279,10 @@ export function CreateBar() {
     async (template: string) => {
       setTemplatesOpen(false);
       // Nothing to fill, nothing to ask: a template of plain prose is its own
-      // finished prompt.
-      if (!template.includes("{")) {
+      // finished prompt. **A brace is not a citation** — a template written as
+      // JSON, or one carrying a stray `{`, is prose by this test and stays
+      // exactly as written.
+      if (!citesTemplate(template)) {
         bar.setPrompt(template);
         return;
       }
@@ -314,6 +317,12 @@ export function CreateBar() {
    * into `prompt` and stores only that, so what the fingerprint covers is the
    * words the model gets however they were written.
    *
+   * **"Cites anything" is `citesTemplate`, not a brace.** It was
+   * `prompt.includes("{")`, and `studio prompt` writes a prompt as serialised
+   * JSON — so every structured prompt went out as a template and came back
+   * refused for citing `{ "subject"}`. A JSON prompt cites nothing, skips
+   * `PATCH /plan`, and is sent as the words it is.
+   *
    * **Then one cheap read.** `?fingerprint=` is one query on the listing row.
    * A twin that was actually sent holds the draft and asks; a draft or a
    * discard is not a twin, because nothing was spent on it.
@@ -327,7 +336,7 @@ export function CreateBar() {
         let draft = held?.draft ?? null;
         let fingerprint = draft?.fingerprint ?? null;
         if (!draft) {
-          const cited = prompt.includes("{");
+          const cited = citesTemplate(prompt);
           const created = await createRun({
             project: target,
             // On a scene page the draft is the scene's from the start.
