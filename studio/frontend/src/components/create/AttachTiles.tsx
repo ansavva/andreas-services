@@ -3,16 +3,21 @@ import { useState, type DragEvent, type ReactElement } from "react";
 import { Button, IconButton } from "@ansavva/design-system";
 
 import type { AttachRef, AttachRole, Attachment } from "../../context/CreateBarContext";
+import { WIDE, useMediaQuery } from "../../hooks/useMediaQuery";
 import type { ModelEntry, RunKind } from "../../types";
 import { assetLabel } from "../../utils/format";
+import { ActionMenu, type MenuAction } from "../common/ActionMenu";
 import { ApertureSpinner } from "../common/Aperture";
 import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
   CloseIcon,
   FrameEndIcon,
   ImagePlusIcon,
   PencilIcon,
   StartFrameIcon,
   SwapIcon,
+  TrashIcon,
   VideoIcon,
 } from "../common/icons";
 import { isNodeDrag, readNodeDrag } from "./dragRef";
@@ -135,6 +140,16 @@ export function fallbackDropRole(
  * prompt cites, so `Image 2` before `Image 1` has to be a gesture and not a
  * remove-and-reattach. Frames have the ⇄ instead: two roles, not a row.
  *
+ * **On a phone, pressing a picture opens a sheet of what can be done to it**
+ * — choose another, move it earlier or later, swap the frames, remove it —
+ * as 44px rows, where on a desk the same press reopens the picker. The
+ * hold-then-drag and the × still work there; they were just not enough. A
+ * 20px × at a tile's corner and a 250ms hold on a row that also scrolls
+ * were the two things a thumb could not do reliably, and a picture is the
+ * one target on the row that is big. The same split every menu in the app
+ * makes (`ActionMenu`: a dropdown above `md`, a bottom sheet below), and
+ * the × itself grows to 32px with a 40px reach where the pointer is coarse.
+ *
  * **Each cell is also where a dragged picture lands.** A tile in the library's
  * grid can be dragged straight onto the role it should fill, which is the one
  * thing the buttons on those tiles cannot express — a button has to pick a role
@@ -195,6 +210,68 @@ export function AttachTiles({
   const blocked = (of: AttachRole): string | null => blockedReason(of, entry, attachments);
 
   /**
+   * The phone sheet's lines for one attached picture. `Choose…` is the press
+   * a desk makes on the picture — the picker on its role; the two moves
+   * are the drag; the swap is the ⇄; Remove is the ×. Every gesture on the
+   * row, as a row of words a thumb can hit.
+   */
+  const menuFor = (
+    holding: { attachment: Attachment; index: number },
+    among?: { position: number; count: number },
+  ): MenuAction[] => {
+    const of = holding.attachment.role;
+    const lines: MenuAction[] = [
+      {
+        key: "choose",
+        label: `${ROLE_WORDS[of].choose}…`,
+        icon: <ImagePlusIcon className={GLYPH} />,
+        onSelect: () => onRole(of),
+      },
+    ];
+    if (among && among.count > 1) {
+      lines.push(
+        {
+          key: "earlier",
+          label: "Move earlier",
+          icon: <ChevronLeftIcon className={GLYPH} />,
+          disabled: among.position === 0,
+          reason: among.position === 0 ? "Already first." : undefined,
+          onSelect: () => {
+            const to = refs[among.position - 1];
+            if (to) onMove(holding.index, to.index);
+          },
+        },
+        {
+          key: "later",
+          label: "Move later",
+          icon: <ChevronRightIcon className={GLYPH} />,
+          disabled: among.position === among.count - 1,
+          reason: among.position === among.count - 1 ? "Already last." : undefined,
+          onSelect: () => {
+            const to = refs[among.position + 1];
+            if (to) onMove(holding.index, to.index);
+          },
+        },
+      );
+    }
+    if ((of === "start" || of === "end") && start && end)
+      lines.push({
+        key: "swap",
+        label: "Swap the start and end frames",
+        icon: <SwapIcon className={GLYPH} />,
+        onSelect: onSwapFrames,
+      });
+    lines.push({
+      key: "remove",
+      label: "Remove",
+      icon: <TrashIcon className={GLYPH} />,
+      danger: true,
+      onSelect: () => onDetach(holding.index),
+    });
+    return lines;
+  };
+
+  /**
    * The four handlers that make one cell a target.
    *
    * `dragover` fires continuously and must `preventDefault` on **every** one of
@@ -251,6 +328,7 @@ export function AttachTiles({
           caption={of === "start" ? "Start" : "End"}
           onPress={() => onRole(role === of ? null : of)}
           onDetach={() => onDetach(holding.index)}
+          menu={menuFor(holding)}
         />
       ) : (
         <Ghost
@@ -292,6 +370,7 @@ export function AttachTiles({
                 caption="Input"
                 onPress={() => onRole(role === "input" ? null : "input")}
                 onDetach={() => onDetach(input.index)}
+                menu={menuFor(input)}
               />
             ) : (
               <Ghost
@@ -323,6 +402,7 @@ export function AttachTiles({
                 onPress={() => onRole(role === "reference" ? null : "reference")}
                 onDetach={() => onDetach(index)}
                 sortable={refs.length > 1 ? sortable(position) : undefined}
+                menu={menuFor({ attachment, index }, { position, count: refs.length })}
               />
             ))}
             <Ghost
@@ -342,6 +422,7 @@ export function AttachTiles({
                 caption="Source"
                 onPress={() => onRole(role === "clip" ? null : "clip")}
                 onDetach={() => onDetach(clip.index)}
+                menu={menuFor(clip)}
               />
             ) : (
               <Ghost
@@ -397,7 +478,15 @@ function Ghost({
  *
  * The × is a sibling of the picture rather than a child of a button around
  * it — a control inside a control is invalid HTML the browser resolves by
- * dropping one. The picture itself reopens the picker on its role.
+ * dropping one. The picture itself reopens the picker on its role — on a
+ * desk; on a phone it opens the sheet of `menu` (see `AttachTiles`), the
+ * picture being the `ActionMenu`'s trigger and the sheet its body.
+ *
+ * **The × is drawn for the pointer.** 20px at the corner under a mouse;
+ * where the pointer is coarse it is 32px, set inside the corner rather
+ * than over it, and reaches 4px past its own edge — a 40px target, which
+ * is the floor a thumb needs. The reach stays inside the tile's box so the
+ * row, which scrolls, is not handed 8px of overflow to scroll into.
  *
  * **A `pending` ref is drawn as what it is being made from, waiting.** A
  * clip's first frame takes the worker a few seconds, and a menu line that
@@ -413,6 +502,7 @@ export function Thumb({
   onPress,
   onDetach,
   sortable,
+  menu,
 }: {
   attachment: Attachment;
   caption: string;
@@ -420,12 +510,53 @@ export function Thumb({
   onDetach: () => void;
   /** Given when the tile can be dragged along its row — see `reorder.ts`. */
   sortable?: Sortable;
+  /** The phone sheet's lines. Without it the press opens the picker on every screen. */
+  menu?: MenuAction[];
 }) {
+  const wide = useMediaQuery(WIDE);
   const { ref, role } = attachment;
   // `ref.name` is absent when the node it names has been deleted — see
   // `AttachRef`. The thumb stays, so it can be seen and removed.
   const pending = ref.pending !== undefined;
   const title = pending ? ref.pending! : `${ROLE_WORDS[role].label} · ${assetLabel(ref.name)}`;
+  const pictureClass = "relative block size-full overflow-hidden rounded-md bg-fill p-0 hover:bg-fill";
+  const picture = (
+    <>
+      {pending ? (
+        // The source it is being made from — a clip, for a first frame —
+        // dimmed under the spinner. `<video>` because that source is a clip
+        // today; an `<img>` of an mp4 is a broken picture.
+        <>
+          <video
+            src={ref.url ?? undefined}
+            muted
+            playsInline
+            preload="metadata"
+            className="size-full object-cover opacity-40"
+          />
+          <span className="absolute inset-0 flex items-center justify-center">
+            <ApertureSpinner size="sm" label={ref.pending!} />
+          </span>
+        </>
+      ) : role === "clip" ? (
+        // `preload="metadata"` is the free poster frame; nothing plays here.
+        <video
+          src={ref.url ?? undefined}
+          muted
+          playsInline
+          preload="metadata"
+          className="size-full object-cover"
+        />
+      ) : (
+        <img src={ref.url ?? undefined} alt="" className="size-full object-cover" />
+      )}
+      {/* The word over the picture's foot, on a scrim, the way ElevenLabs
+          labels `@Image 1`. */}
+      <span className="absolute inset-x-0 bottom-0 truncate bg-overlay-scrim/60 px-1 py-0.5 text-center text-[11px] font-medium text-overlay-ink">
+        {pending ? "Taking…" : caption}
+      </span>
+    </>
+  );
   return (
     <div
       className={`relative size-[4.5rem] shrink-0 ${
@@ -441,58 +572,38 @@ export function Thumb({
       aria-busy={pending || undefined}
       {...sortable?.wrapper}
     >
-      <Button
-        intent="secondary"
-        size="md"
-        aria-label={pending ? ref.pending! : `Change ${caption.toLowerCase()} — ${assetLabel(ref.name)}`}
-        aria-description={sortable ? "Drag, or press an arrow key, to change its order." : undefined}
-        className="relative block size-full overflow-hidden rounded-md bg-fill p-0 hover:bg-fill"
-        onClick={onPress}
-        disabled={pending}
-        {...sortable?.button}
-      >
-        {pending ? (
-          // The source it is being made from — a clip, for a first frame —
-          // dimmed under the spinner. `<video>` because that source is a clip
-          // today; an `<img>` of an mp4 is a broken picture.
-          <>
-            <video
-              src={ref.url ?? undefined}
-              muted
-              playsInline
-              preload="metadata"
-              className="size-full object-cover opacity-40"
-            />
-            <span className="absolute inset-0 flex items-center justify-center">
-              <ApertureSpinner size="sm" label={ref.pending!} />
-            </span>
-          </>
-        ) : role === "clip" ? (
-          // `preload="metadata"` is the free poster frame; nothing plays here.
-          <video
-            src={ref.url ?? undefined}
-            muted
-            playsInline
-            preload="metadata"
-            className="size-full object-cover"
-          />
-        ) : (
-          <img src={ref.url ?? undefined} alt="" className="size-full object-cover" />
-        )}
-        {/* The word over the picture's foot, on a scrim, the way ElevenLabs
-            labels `@Image 1`. */}
-        <span className="absolute inset-x-0 bottom-0 truncate bg-overlay-scrim/60 px-1 py-0.5 text-center text-[11px] font-medium text-overlay-ink">
-          {pending ? "Taking…" : caption}
-        </span>
-      </Button>
+      {menu && !wide && !pending ? (
+        <ActionMenu
+          label={`${caption} — ${assetLabel(ref.name)}`}
+          triggerLabel={`${caption} — ${assetLabel(ref.name)}`}
+          actions={menu}
+          className="contents"
+          trigger={{ node: picture, className: pictureClass }}
+        />
+      ) : (
+        <Button
+          intent="secondary"
+          size="md"
+          aria-label={pending ? ref.pending! : `Change ${caption.toLowerCase()} — ${assetLabel(ref.name)}`}
+          aria-description={sortable ? "Drag, or press an arrow key, to change its order." : undefined}
+          className={pictureClass}
+          onClick={onPress}
+          disabled={pending}
+          {...sortable?.button}
+        >
+          {picture}
+        </Button>
+      )}
       <IconButton
         intent="overlay"
         size="sm"
         label={`Remove ${assetLabel(ref.name)}`}
-        className="absolute -right-1 -top-1 size-5 rounded-pill bg-overlay-scrim/80"
+        className="absolute -right-1 -top-1 size-5 rounded-pill bg-overlay-scrim/80
+                   pointer-coarse:right-1 pointer-coarse:top-1 pointer-coarse:size-8
+                   pointer-coarse:before:absolute pointer-coarse:before:-inset-1 pointer-coarse:before:content-['']"
         onClick={onDetach}
       >
-        <CloseIcon className="size-3 fill-none stroke-current stroke-2" />
+        <CloseIcon className="size-3 fill-none stroke-current stroke-2 pointer-coarse:size-4" />
       </IconButton>
     </div>
   );

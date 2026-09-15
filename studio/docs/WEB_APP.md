@@ -585,13 +585,31 @@ page and a plain textarea over its literal bytes, and never offers fields.
   lands. Pressing a picture attaches it to that role. **Two bodies, one
   component** (`useMediaQuery(WIDE)`): on a desk it floats above the create
   sheet capped at 60vh with the tile it fills visible under it; under `md`
-  it is a bottom `Drawer` of 92vh over the create sheet — the floating box
+  it is a bottom `Drawer` of 92dvh over the create sheet — the floating box
   stacked on the sheet overran a phone, with the title, the Folders/Media
   switch and the close above the top edge — titled by the role's name, with
-  a `Done`, closing itself on the pick for a one-picture role and staying
-  open with a count in the title while `Image refs` accumulates. Then the
-  prompt, borderless, its `{` menu opening upward — two lines at rest, faded
-  where more is cut off, eight with the caret in it.
+  a `Done` stuck to its bottom edge (`SheetDone`), closing itself on the
+  pick for a one-picture role and staying open with a count in the title
+  while `Image refs` accumulates. Then the prompt, borderless, its `{` menu
+  opening upward — two lines at rest, faded where more is cut off, eight
+  with the caret in it.
+
+  **On a phone, pressing a picture on the row opens a sheet of what can be
+  done to it** — choose another, move it earlier or later, swap the frames,
+  remove — as 44px rows (`ActionMenu`, the picture as its trigger), where
+  on a desk the same press reopens the picker. The 20px × at a tile's
+  corner and the hold-then-drag on a row that also scrolls were the two
+  things a thumb could not do reliably; both still work, and the × grows to
+  32px set inside the corner where the pointer is coarse, but the sheet is
+  the phone's way. **And the phone's keyboard comes up only when the prompt
+  is tapped.** `loadRun` and `expand` bump `focus` so Edit lands you in
+  the box; under a coarse pointer (`FINE` in `useMediaQuery`) that bump is
+  ignored, because on a phone it raised the keyboard over half the screen
+  the moment Edit was pressed. And a press anywhere on the sheet outside
+  the prompt — a tile, its ×, the gear, Send — and the picker opening by
+  any path bump `blurKey`, so the editor lets go: iOS keeps a
+  contenteditable focused through a tap on a `<button>`, and Lexical would
+  put the focus back on its next commit where the browser had dropped it.
 
   **On the opened run the sheet is not drawn** until Edit, Rerun, Use as
   reference or a tile calls it up (`summoned` in the context; `SheetSlot`
@@ -609,7 +627,16 @@ page and a plain textarea over its literal bytes, and never offers fields.
   **The chips collapse into the gear when the row is too narrow for them**
   (a container query on the row, 40rem); below `md` the gear opens a bottom
   `Drawer` — draggable shut by its grab strip — with the switch, a Model box
-  that pages the sheet to `ModelList`, and the same rows.
+  that pages the sheet to `ModelList`, and the same rows. **Every phone
+  sheet is capped in `dvh`, scrolls inside, and carries `Done` on its
+  bottom edge.** `85vh` was the viewport with Safari's bars hidden, so with
+  them shown a long sheet's top — and its grab strip — sat under the
+  address bar; and even on the screen, the top of a sheet that tall is
+  where a thumb is not. The strip is `sticky` on the sheet's own background
+  (`SheetHandle`), the rows scroll under it, and the close a thumb can
+  reach is `SheetDone` at the foot — the gear's sheet, the picker, and
+  `ActionMenu`'s sheet alike. `ModelList`'s search takes the caret on
+  open only under a fine pointer, for the same reason as `focus` above.
   Send is `createRun` (plan +
   sends together, then `PATCH /plan` with `template` when the prompt cites
   something — a `{block.…}`, `{character.N.…}` or `{slot.…}`, tested by

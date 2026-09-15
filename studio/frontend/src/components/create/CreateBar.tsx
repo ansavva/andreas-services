@@ -38,6 +38,7 @@ import {
   useCreateBarState,
   type AttachRef,
 } from "../../context/CreateBarContext";
+import { FINE, useMediaQuery } from "../../hooks/useMediaQuery";
 import { useResource } from "../../hooks/useResource";
 import type { CreatedRun, RunSummary } from "../../types";
 import { citesTemplate } from "../../utils/citations";
@@ -57,6 +58,7 @@ import {
   type PromptToken,
 } from "../common/TokenizedPromptEditor";
 import { TemplateList } from "../run/TemplateList";
+import { SheetDone } from "../common/SheetDone";
 import { SheetHandle } from "../common/SheetHandle";
 import { AttachTiles, fallbackDropRole } from "./AttachTiles";
 import { isNodeDrag, readNodeDrag } from "./dragRef";
@@ -154,6 +156,37 @@ export function CreateBar() {
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const promptBox = useRef<HTMLDivElement>(null);
   const [promptFocused, setPromptFocused] = useState(false);
+  /**
+   * **The caret is put in the prompt for you only under a mouse.** `loadRun`
+   * and `expand` bump `bar.focus` so that Edit on a run, or pulling the sheet
+   * up, lands you in the box — and on a phone that same bump raised the
+   * keyboard over half the screen the moment Edit was pressed, before
+   * anything had been read, with the tiles the person came to change
+   * squeezed above it. Under a thumb the prompt takes focus when it is
+   * tapped and not otherwise.
+   */
+  const fine = useMediaQuery(FINE);
+  /**
+   * Bumped when a press lands on the sheet outside the prompt — a tile, its
+   * ×, the gear, Send — so the editor lets go. iOS keeps a contenteditable
+   * focused, keyboard and all, through a tap on a `<button>`; and Lexical
+   * would put the focus back on its next commit even where the browser had
+   * dropped it (`blurKey` in `TokenizedPromptEditor`). On the pointer's way
+   * down, so the keyboard is already going when the press does its work.
+   */
+  const [blurKey, setBlurKey] = useState(0);
+  const leavePrompt = useCallback(() => {
+    if (promptFocused) setBlurKey((n) => n + 1);
+  }, [promptFocused]);
+  // And when the picker opens by any path at all: on a phone it is a sheet
+  // over this one, and a keyboard still up under it — the prompt's, kept
+  // through the tap that opened it — covered the pictures it was opened for.
+  const pickerOpen = bar.role !== null;
+  useEffect(() => {
+    if (pickerOpen && promptFocused) setBlurKey((n) => n + 1);
+    // On the opening only — not on every keystroke while it is open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickerOpen]);
   // Whether the prompt at rest has more than its two lines — the fade is
   // drawn only then, so a short prompt is not dimmed for nothing.
   const [promptOverflows, setPromptOverflows] = useState(false);
@@ -642,7 +675,7 @@ export function CreateBar() {
         className="flex flex-col gap-3 rounded-t-lg bg-sheet p-3 shadow-[0_-8px_48px_rgba(0,0,0,0.55)]
                    ring-1 ring-line backdrop-blur-xl"
       >
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-2" onPointerDownCapture={leavePrompt}>
           {kindSwitch}
 
           <div className="flex items-center gap-0.5">
@@ -679,20 +712,22 @@ export function CreateBar() {
         </div>
 
         {entry && (
-          <AttachTiles
-            kind={bar.kind}
-            entry={entry}
-            attachments={attachments}
-            role={bar.role}
-            onRole={bar.setRole}
-            onDetach={bar.detach}
-            onSwapFrames={bar.swapFrames}
-            onMove={bar.move}
-            // A picture dragged out of the library's grid and dropped on a
-            // role tile. `attach` is the same call the tiles' own button
-            // makes; what the drop adds is that the gesture NAMES the role.
-            onDropRef={attach}
-          />
+          <div className="contents" onPointerDownCapture={leavePrompt}>
+            <AttachTiles
+              kind={bar.kind}
+              entry={entry}
+              attachments={attachments}
+              role={bar.role}
+              onRole={bar.setRole}
+              onDetach={bar.detach}
+              onSwapFrames={bar.swapFrames}
+              onMove={bar.move}
+              // A picture dragged out of the library's grid and dropped on a
+              // role tile. `attach` is the same call the tiles' own button
+              // makes; what the drop adds is that the gesture NAMES the role.
+              onDropRef={attach}
+            />
+          </div>
         )}
 
         {/* Two lines at rest, faded where more is cut off; eight once the
@@ -727,7 +762,8 @@ export function CreateBar() {
                   }`
             }
             onSubmit={() => void send()}
-            focusKey={bar.focus}
+            focusKey={fine ? bar.focus : undefined}
+            blurKey={blurKey}
           />
         </div>
 
@@ -735,7 +771,7 @@ export function CreateBar() {
             them (`@min-[40rem]`), and collapse into the gear otherwise. A
             container query rather than `md:`, because a narrow window with the
             sidebar open is the phone's problem at a desktop breakpoint. */}
-        <div className="@container flex items-center gap-1">
+        <div className="@container flex items-center gap-1" onPointerDownCapture={leavePrompt}>
           {/* Off a project page the panel has to be told where a run goes.
               On one, the route says. Inline above `md`; a row of its own
               under the chips on a phone. */}
@@ -786,7 +822,15 @@ export function CreateBar() {
           {/* The phone's gear: the sheet. Two views — the settings as rows,
               and "Select a model" in its place when the Model row is pressed,
               the way ElevenLabs pages the same sheet rather than stacking a
-              picker over it. */}
+              picker over it.
+
+              **Capped in `dvh`, scrolling inside, with `Done` at its foot.**
+              `85vh` was the viewport with Safari's bars hidden, so with them
+              shown the sheet's top — and its grab strip — sat under the
+              address bar; and even in reach, a strip at the top of a sheet
+              that tall is where a thumb is not. The rows scroll under a
+              stuck strip, and the close a thumb can reach is the `Done` on
+              the bottom edge. */}
           <Drawer.Root
             side="bottom"
             open={sheetOpen}
@@ -803,7 +847,10 @@ export function CreateBar() {
               <SettingsIcon className={GLYPH} />
             </Drawer.Trigger>
             <Drawer.Backdrop />
-            <Drawer.Panel ref={sheetRef} className="max-h-[85vh] overflow-y-auto rounded-t-lg pt-0">
+            <Drawer.Panel
+              ref={sheetRef}
+              className="max-h-[85dvh] overflow-y-auto overscroll-contain rounded-t-lg pt-0"
+            >
               <Drawer.Title className="sr-only">
                 {sheetView === "models" ? "Select a model" : "Settings"}
               </Drawer.Title>
@@ -822,7 +869,9 @@ export function CreateBar() {
                     kind={bar.kind}
                     models={models.data ?? {}}
                     entry={entry}
-                    autoFocus
+                    // Under a mouse the caret goes to the search; under a
+                    // thumb that is the keyboard over the list it searches.
+                    autoFocus={fine}
                     onModel={(model) => {
                       bar.setModel(model);
                       setSheetView("settings");
@@ -853,6 +902,7 @@ export function CreateBar() {
                   )}
                 </div>
               )}
+              <SheetDone onDone={() => setSheetOpen(false)} />
             </Drawer.Panel>
           </Drawer.Root>
 

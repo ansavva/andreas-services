@@ -54,7 +54,7 @@ export function SheetHandle({
   return (
     <div
       role="presentation"
-      className="-mx-4 mb-2 flex h-8 cursor-grab touch-none items-center justify-center active:cursor-grabbing"
+      className="sticky top-0 z-10 -mx-6 mb-2 flex h-8 shrink-0 cursor-grab touch-none items-center justify-center bg-card active:cursor-grabbing"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

@@ -129,6 +129,7 @@ export function ActionMenu({
   word,
   align = "end",
   className = "",
+  trigger: custom,
   onOpenChange,
 }: {
   /** What the menu is about — the sheet's title, and the trigger's name by default. */
@@ -164,6 +165,14 @@ export function ActionMenu({
   word?: string;
   /** Where the trigger sits. */
   className?: string;
+  /**
+   * The trigger drawn as given — its content and its whole class — instead
+   * of the dots. For a menu whose trigger IS the thing: the create sheet's
+   * picture tile on a phone, where the whole picture is the press and a
+   * glyph over it would be one more small target on a row of them.
+   * `triggerLabel` is still the name; `icon` and `word` are ignored.
+   */
+  trigger?: { node: ReactNode; className: string };
   /** Told when the menu opens or closes. */
   onOpenChange?: (open: boolean) => void;
 }) {
@@ -240,7 +249,9 @@ export function ActionMenu({
       className={overlay ? "size-4 fill-current stroke-none" : undefined}
     />
   );
-  const triggerClass = word
+  const triggerClass = custom
+    ? custom.className
+    : word
     ? buttonClass({
         size: "sm",
         intent: "secondary",
@@ -255,7 +266,9 @@ export function ActionMenu({
           ? "bg-overlay-scrim/60"
           : "shrink-0 text-muted hover:text-ink",
       });
-  const trigger = word ? (
+  const trigger = custom ? (
+    custom.node
+  ) : word ? (
     <>
       {glyph}
       <span>{word}</span>
@@ -379,9 +392,12 @@ export function ActionMenu({
           {trigger}
         </Drawer.Trigger>
         <Drawer.Backdrop />
+        {/* `dvh`, not `vh`: on a phone `vh` is the viewport with the browser's
+            bars hidden, so a sheet sized by it ran under the address bar and
+            its grab strip with it. */}
         <Drawer.Panel
           ref={sheet}
-          className="max-h-[85vh] overflow-y-auto rounded-t-lg pt-0"
+          className="max-h-[85dvh] overflow-y-auto overscroll-contain rounded-t-lg pt-0"
         >
           <Drawer.Title className="sr-only">{triggerLabel}</Drawer.Title>
           <SheetHandle panel={sheet} onDismiss={close} />

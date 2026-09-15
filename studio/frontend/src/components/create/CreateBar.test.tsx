@@ -624,3 +624,61 @@ it("on the opened run the sheet stays away until something calls it up, and coll
   fireEvent.click(screen.getByRole("button", { name: "Collapse the create panel" }));
   await waitFor(() => expect(document.querySelector("[data-create-bar]")).toBeNull());
 });
+
+/**
+ * The phone: `WIDE` and `(pointer: fine)` both false, so a picture on the
+ * row is the trigger of a sheet rather than a press that opens the picker,
+ * and the sheet's lines are the row's gestures as words.
+ */
+it("on a phone a picture opens a sheet whose lines move it and remove it", async () => {
+  const original = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  // `ActionMenu` draws both its triggers and lets CSS hide one; the sheet's
+  // is the one that opens a dialog.
+  const tile = (name: string) =>
+    within(strip())
+      .getAllByRole("button", { name })
+      .find((each) => each.getAttribute("aria-haspopup") === "dialog")!;
+  try {
+    // The test above this one collapsed the sheet, and the decision is kept.
+    window.localStorage.clear();
+    await open();
+    api.attach(FACE, "reference");
+    api.attach({ ...FACE, node: "node-2", name: "face-02.png" }, "reference");
+    await waitFor(() => expect(strip()).toBeTruthy());
+
+    // Not the desk's "Change image 1" button: the picture names itself and
+    // opens a dialog.
+    expect(within(strip()).queryByRole("button", { name: /^Change image/ })).toBeNull();
+    fireEvent.click(tile("Image 1 — face-01.png"));
+    const sheet = await screen.findByRole("dialog", { name: "Image 1 — face-01.png" });
+    expect(within(sheet).getByRole("button", { name: "Move earlier" })).toHaveProperty("disabled", true);
+    fireEvent.click(within(sheet).getByRole("button", { name: "Move later" }));
+
+    // The caption follows the position: what was first is now `Image 2`.
+    await waitFor(() => expect(tile("Image 2 — face-01.png")).toBeTruthy());
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.click(tile("Image 1 — face-02.png"));
+    fireEvent.click(
+      within(await screen.findByRole("dialog", { name: "Image 1 — face-02.png" })).getByRole("button", {
+        name: "Remove",
+      }),
+    );
+    await waitFor(() =>
+      expect(within(strip()).queryAllByRole("button", { name: /face-02\.png/ })).toEqual([]),
+    );
+    expect(tile("Image 1 — face-01.png")).toBeTruthy();
+  } finally {
+    window.matchMedia = original;
+  }
+});
