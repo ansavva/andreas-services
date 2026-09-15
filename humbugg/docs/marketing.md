@@ -66,7 +66,11 @@ weight or face is not the logo.
 | **The lockup** — mark beside wordmark | `marketing/public/brand/humbugg-lockup.png` | social previews, partner pages |
 
 The SVGs embed the font, so they render identically without it installed.
-Colours: green `#1d5545`, cream `#fffdf8`, ink `#18332b`. The marketing site's
+Colours: green `#1d5545`, cream `#fffdf8`, ink `#18332b`. **The shipped icon set is
+not on that green**: `app/assets/images/icon.png`, the splash and every favicon are
+`#173f0c`, a darker, yellower green than the token the wordmark and the whole UI use.
+The lockup here and the reel recolour the mark to `#1d5545`; the icon files themselves
+are an open decision (found 2026-09-15 when the two greens met on the reel's end card). The marketing site's
 social preview (`marketing/app/assets/og.png`, 1200×630) is the wordmark as the
 heading with the anonymous chat under it, and nothing else (maintainer's call,
 2026-09-15: no mark beside the wordmark, no headline, no footer line). **The chat
