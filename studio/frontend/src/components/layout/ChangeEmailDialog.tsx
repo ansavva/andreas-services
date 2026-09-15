@@ -11,6 +11,7 @@ import {
 
 import { confirmEmailChange, requestEmailChange } from "../../auth/account";
 import { useAuth } from "../../context/AuthContext";
+import { cancelClass } from "../common/cancelClass";
 
 interface Props {
   open: boolean;
@@ -159,7 +160,7 @@ export function ChangeEmailDialog({ open, onOpenChange }: Props) {
         )}
 
         <div className="flex flex-wrap justify-end gap-2">
-          <Dialog.Close>Cancel</Dialog.Close>
+          <Dialog.Close className={cancelClass()}>Cancel</Dialog.Close>
           {!awaitingCode ? (
             <Button
               disabled={!looksLikeAddress || unchanged || busy}
