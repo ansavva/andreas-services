@@ -15,7 +15,10 @@ Rendered with **`bytedance/seedance-2.0` on Replicate**
 one command records the run, mints the presigned URLs, polls, and archives the
 finished video into the run.
 
-> **Which engine?** This skill is **Seedance 2.0**. For the **Kling 3.0 / O3
+> **Which engine?** This skill is **Seedance 2.0**. Its successor,
+> **`studio-media-seedance-2-5`**, is the one to reach for when a character
+> speaks — better lip-sync, 4–30 s, but 720p at most on Replicate.
+> For the **Kling 3.0 / O3
 > Omni** models — also on Replicate — use **`studio-media-kling`**: different
 > constraints (3–15 s, native multi-shot to 6 cuts, a start frame that combines
 > with references) and a **different wording list**, so a draft written for one

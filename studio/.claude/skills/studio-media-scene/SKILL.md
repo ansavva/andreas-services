@@ -14,7 +14,7 @@ The family:
 - **`studio-media-scene`** (this) — many clips → one continuous piece.
 - **`studio-media-s3`** — `studio frames` pulls the handoff frame and the
   verification grid; `studio scenes` is the scene store.
-- **`studio-media-kling`** / **`studio-media-seedance`** — render each clip.
+- **`studio-media-kling`** / **`studio-media-seedance`** / **`studio-media-seedance-2-5`** — render each clip.
 
 ## What a scene is
 
@@ -110,6 +110,7 @@ submit path enforces — `studio models show <model>` prints it.
 |---|---|---|---|
 | `kling` | 7 | yes — but **the start frame counts toward the 7** | **excludes all references** |
 | `seedance` | 9 | **no — a start frame excludes references** | allowed |
+| `seedance-2.5` | 30 | **no — a start frame excludes references** | allowed — and forces `aspect_ratio: adaptive` |
 | `veo-3.1` | 3 | yes | **excludes all references** |
 | `grok-imagine-video` | none | — | none |
 | `kling-v3-motion-control` | none | — | none — the reference **clip** (`--clip-run`) sets the motion and the length |

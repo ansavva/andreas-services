@@ -25,6 +25,7 @@ This skill is the plumbing. For how to *use* a given model, read its own skill:
 | `flux-2-pro` | [`studio-media-flux-2-pro`](../studio-media-flux-2-pro/SKILL.md) |
 | `z-image-turbo` | [`studio-media-z-image-turbo`](../studio-media-z-image-turbo/SKILL.md) |
 | `seedance` | [`studio-media-seedance`](../studio-media-seedance/SKILL.md) |
+| `seedance-2.5` | [`studio-media-seedance-2-5`](../studio-media-seedance-2-5/SKILL.md) |
 | `kling` | [`studio-media-kling`](../studio-media-kling/SKILL.md) |
 | `kling-v3-motion-control` | [`studio-media-kling-v3-motion-control`](../studio-media-kling-v3-motion-control/SKILL.md) |
 

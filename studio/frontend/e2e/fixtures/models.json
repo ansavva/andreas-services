@@ -629,6 +629,93 @@
         "technical": "api"
       }
     },
+    "seedance-2.5": {
+      "aliases": [],
+      "images": {
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp",
+          ".gif",
+          ".bmp"
+        ],
+        "end": "last_frame_image",
+        "max_refs": 30,
+        "refs": "reference_images",
+        "start": "image",
+        "start_excludes_refs": true
+      },
+      "key": "seedance-2.5",
+      "kind": "video",
+      "model": "bytedance/seedance-2.5",
+      "note": "ByteDance Seedance 2.5, the successor to seedance (2.0): native synced audio with better dialogue timing and lip-sync, a true 30 s ceiling in one pass (duration 4-30, or -1 to let the model choose), reference sets of up to 30 images / 10 videos / 10 audios, and an `adaptive` aspect ratio. On Replicate it renders at 480p or 720p ONLY - no 1080p or 4k tier - at $0.1028/s and $0.2312/s (about x4 with a reference video). A first frame still CANNOT be combined with references; first+last-frame, editing and extension modes require aspect_ratio adaptive. Has a seed (not guaranteed). Prefer it over seedance for anything spoken.",
+      "prompt": {
+        "max_chars": 4000,
+        "recommended_words": 600
+      },
+      "skill": "studio-media-seedance-2-5",
+      "snapshot": {
+        "aspect_ratio": {
+          "default": "16:9",
+          "enum": [
+            "16:9",
+            "4:3",
+            "1:1",
+            "3:4",
+            "9:16",
+            "21:9",
+            "adaptive"
+          ]
+        },
+        "duration": {
+          "default": 5,
+          "maximum": 30,
+          "minimum": -1
+        },
+        "generate_audio": {
+          "default": true
+        },
+        "output_format": {
+          "default": "mp4",
+          "enum": [
+            "mp4",
+            "mov"
+          ]
+        },
+        "prompt": {
+          "default": ""
+        },
+        "reference_audios": {
+          "default": []
+        },
+        "reference_images": {
+          "default": []
+        },
+        "reference_videos": {
+          "default": []
+        },
+        "resolution": {
+          "default": "720p",
+          "enum": [
+            "480p",
+            "720p"
+          ]
+        },
+        "watermark": {
+          "default": false
+        }
+      },
+      "video": {
+        "allow_intelligent_duration": true,
+        "image_tokens": true,
+        "max_cuts": null,
+        "negative": "prompt",
+        "resolution_field": "resolution",
+        "resolution_map": null,
+        "technical": "api"
+      }
+    },
     "seedream-5-pro": {
       "denied": {
         "size": {
