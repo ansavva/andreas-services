@@ -150,10 +150,11 @@ internal sealed class QuestionService(
         var body = Body(request.Body);
         var (thread, messages) = await questions.GetThreadAsync(context.ThreadId, cancellationToken);
 
-        // The recipient may still write on a thread they have blocked — blocking stops questions
-        // arriving, not their own last word ("please stop asking", or an answer they still want to
-        // give). Only the giver is refused.
-        if (thread?.Blocked == true && author == QuestionAuthor.Giver)
+        // Off means off, in both directions. Until September 2026 the recipient could still write
+        // on a thread they had turned off — "their last word" — and it read as a bug: a switch
+        // labelled "Allow questions" was off and the box under it still sent. A recipient with
+        // something left to say turns the switch back on; the switch is theirs.
+        if (thread?.Blocked == true)
             throw ApiException.Conflict(BlockedMessage(author));
 
         var now = clock.GetUtcNow();
@@ -373,7 +374,8 @@ internal sealed class QuestionService(
     {
         var (thread, messages) = await questions.GetThreadAsync(context.ThreadId, cancellationToken);
         var blocked = thread?.Blocked == true;
-        var canSend = !(blocked && viewer == QuestionAuthor.Giver);
+        // Both sides. See SendAsync.
+        var canSend = !blocked;
         // Fetching is NOT seeing — see MarkSeenAsync. This only counts.
         var seen = Seen(thread, viewer);
         var unread = messages.Count(message =>
@@ -393,7 +395,7 @@ internal sealed class QuestionService(
         // Says the door is shut without saying who shut it or when — a "they blocked you at 14:02"
         // is a fact about the recipient's behaviour that the giver has no need for.
         ? "Questions are turned off for this gift."
-        : "You have turned questions off. Turn them back on to hear from your giver.";
+        : "You have turned questions off. Turn them back on to write to your giver, or to hear from them.";
 
     private static string Body(string? value)
     {
