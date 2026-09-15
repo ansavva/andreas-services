@@ -75,10 +75,14 @@ export function AttachPreview({
           isVideo={role === "clip"}
           aspect="auto"
           fit="contain"
+          // A fixed height, not a cap: `aspect="auto"` sizes the player's box
+          // by the picture, and a cap on that box clipped a tall portrait —
+          // the top of the head and the fullscreen button with it — where a
+          // box of a set height lets `contain` scale the picture into it.
           // Shorter on a phone, so the first lines show under it before the
           // sheet is scrolled: the picture is what the drawer is for, the
           // lines are why the tile was pressed half the time.
-          className={`${wide ? "max-h-[60dvh]" : "max-h-[42dvh]"} w-full shrink-0 overflow-hidden rounded-md bg-fill`}
+          className={`${wide ? "h-[60dvh]" : "h-[42dvh]"} w-full shrink-0 overflow-hidden rounded-md bg-fill`}
           drag={false}
         />
         <MenuLines actions={actions} label={wide ? undefined : title} onClose={onClose} />

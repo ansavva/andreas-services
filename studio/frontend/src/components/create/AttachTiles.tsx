@@ -35,6 +35,9 @@ const ROLE_ICONS: Record<AttachRole, (props: { className?: string }) => ReactEle
 
 const GLYPH = "size-4 shrink-0 fill-none stroke-current stroke-[1.5]";
 
+/** The picture in a tile: the tile's full height, its own width, whole. */
+const MEDIA = "h-full w-auto max-w-[16rem] object-contain";
+
 /** The roles a model of this kind draws tiles for. */
 function rolesOf(kind: RunKind, entry: ModelEntry): AttachRole[] {
   return ROLES_BY_KIND[kind].filter((each) => fieldFor(each, entry) !== null);
@@ -454,7 +457,7 @@ function Ghost({
       aria-pressed={on}
       disabled={blocked !== null}
       title={blocked ?? words.hint}
-      className={`h-[4.5rem] shrink-0 gap-2 rounded-md px-4 active:bg-fill-active
+      className={`h-28 shrink-0 gap-2 rounded-md px-4 active:bg-fill-active pointer-coarse:h-36
                   ${on ? "bg-fill-hover text-ink hover:bg-fill-hover" : "bg-fill-faint text-muted hover:bg-fill hover:text-ink"}`}
       onClick={onPress}
     >
@@ -482,6 +485,16 @@ function Ghost({
  * tile that cannot be reordered — a frame, the input, a lone reference —
  * the same strip is just the word, and presses go through it to the
  * picture.
+ *
+ * **144px tall under a coarse pointer, 112px under a mouse, as wide as the
+ * picture is.** They were 72px squares, which was a picture too small to
+ * read at either size and cropped to a square besides — a portrait lost
+ * its head and feet, and the row's job is to say what the run will be
+ * handed, which includes which take. So the height is fixed and the width
+ * follows the picture (`object-contain`, capped for a panorama), and under
+ * a thumb the three targets on a tile — picture, ×, strip — each get a
+ * thumb's worth of room; the sheet has the height to give them. The ghost
+ * tiles grow with it.
  *
  * **The × is drawn for the pointer.** 20px at the corner under a mouse;
  * where the pointer is coarse it is 32px, set inside the corner rather
@@ -530,7 +543,7 @@ export function Thumb({
             muted
             playsInline
             preload="metadata"
-            className="size-full object-cover opacity-40"
+            className={`${MEDIA} opacity-40`}
           />
           <span className="absolute inset-0 flex items-center justify-center">
             <ApertureSpinner size="sm" label={ref.pending!} />
@@ -543,17 +556,17 @@ export function Thumb({
           muted
           playsInline
           preload="metadata"
-          className="size-full object-cover"
+          className={MEDIA}
         />
       ) : (
-        <img src={ref.url ?? undefined} alt="" className="size-full object-cover" />
+        <img src={ref.url ?? undefined} alt="" className={MEDIA} />
       )}
     </>
   );
   return (
     <>
     <div
-      className={`relative size-[4.5rem] shrink-0 ${
+      className={`relative h-28 min-w-20 shrink-0 pointer-coarse:h-36 pointer-coarse:min-w-24 ${
         sortable?.dragging ? "z-10 scale-105 shadow-lg ring-2 ring-accent" : ""
       }`}
       title={title}
@@ -571,7 +584,7 @@ export function Thumb({
             ? "Opens it large. Drag the strip under it, or press an arrow key, to change its order."
             : "Opens it large."
         }
-        className="relative block size-full overflow-hidden rounded-md bg-fill p-0 hover:bg-fill"
+        className="relative block h-full w-auto min-w-full overflow-hidden rounded-md bg-fill p-0 hover:bg-fill"
         onClick={() => setPreviewing(true)}
         disabled={pending}
         {...sortable?.button}
@@ -583,15 +596,16 @@ export function Thumb({
       <div
         role="presentation"
         className={`absolute inset-x-0 bottom-0 flex items-center justify-center gap-0.5 truncate rounded-b-md
-                    bg-overlay-scrim/60 px-1 py-0.5 text-[11px] font-medium text-overlay-ink
+                    bg-overlay-scrim/60 px-1 py-0.5 text-xs font-medium text-overlay-ink
+                    pointer-coarse:gap-1.5 pointer-coarse:text-sm
                     ${
                       sortable
-                        ? "cursor-grab select-none touch-none [-webkit-touch-callout:none] active:cursor-grabbing pointer-coarse:py-1.5"
-                        : "pointer-events-none"
+                        ? "cursor-grab select-none touch-none [-webkit-touch-callout:none] active:cursor-grabbing pointer-coarse:py-2.5"
+                        : "pointer-events-none pointer-coarse:py-1.5"
                     }`}
         {...sortable?.grip}
       >
-        {sortable && <GripIcon className="size-3 shrink-0 fill-current stroke-none opacity-80" />}
+        {sortable && <GripIcon className="size-3 shrink-0 fill-current stroke-none opacity-80 pointer-coarse:size-4" />}
         {pending ? "Taking…" : caption}
       </div>
       <IconButton
