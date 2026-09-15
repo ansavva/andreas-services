@@ -8,7 +8,6 @@ import { assetLabel } from "../../utils/format";
 import { MenuLines, type MenuAction } from "../common/ActionMenu";
 import { SheetDone } from "../common/SheetDone";
 import { SheetHandle } from "../common/SheetHandle";
-import { MediaPlayer } from "../media/MediaPlayer";
 
 /**
  * An attached picture or clip, large, in a drawer — and under it what can
@@ -31,6 +30,11 @@ import { MediaPlayer } from "../media/MediaPlayer";
  * A right-hand drawer on a desk, the way `PromoteDrawer` sits beside a
  * run; a bottom sheet on a phone, with the grab strip and `Done` every
  * phone sheet has.
+ *
+ * **A plain picture, not `MediaPlayer`.** The player brings a fullscreen
+ * control, and inside a drawer it did nothing — the drawer IS the large
+ * view, and the screen-filling one is the lightbox on a run. A clip gets
+ * the browser's own controls, which is all a preview needs.
  */
 export function AttachPreview({
   attachment,
@@ -68,23 +72,25 @@ export function AttachPreview({
       >
         <Drawer.Title className={wide ? "truncate" : "sr-only"}>{title}</Drawer.Title>
         {!wide && <SheetHandle panel={panel} onDismiss={onClose} />}
-        <MediaPlayer
-          nodeId={ref.node}
-          url={ref.url ?? null}
-          name={assetLabel(ref.name)}
-          isVideo={role === "clip"}
-          aspect="auto"
-          fit="contain"
-          // A fixed height, not a cap: `aspect="auto"` sizes the player's box
-          // by the picture, and a cap on that box clipped a tall portrait —
-          // the top of the head and the fullscreen button with it — where a
-          // box of a set height lets `contain` scale the picture into it.
-          // Shorter on a phone, so the first lines show under it before the
-          // sheet is scrolled: the picture is what the drawer is for, the
-          // lines are why the tile was pressed half the time.
+        {/* A box of a set height, the picture scaled into it whole. Shorter
+            on a phone, so the first lines show under it before the sheet is
+            scrolled: the picture is what the drawer is for, the lines are
+            why the tile was pressed half the time. */}
+        <div
           className={`${wide ? "h-[60dvh]" : "h-[42dvh]"} w-full shrink-0 overflow-hidden rounded-md bg-fill`}
-          drag={false}
-        />
+        >
+          {role === "clip" ? (
+            <video
+              src={ref.url ?? undefined}
+              controls
+              playsInline
+              preload="metadata"
+              className="size-full object-contain"
+            />
+          ) : (
+            <img src={ref.url ?? undefined} alt={assetLabel(ref.name)} className="size-full object-contain" />
+          )}
+        </div>
         <MenuLines actions={actions} label={wide ? undefined : title} onClose={onClose} />
         {!wide && <SheetDone onDone={onClose} />}
       </Drawer.Panel>
