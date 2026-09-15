@@ -138,6 +138,15 @@ function buildStyles(scheme: Scheme, brand: Palette, blends: Blends) {
       paddingHorizontal: 20,
       paddingVertical: 40,
     },
+    /** The © line and the social row: side by side once there is room, stacked before. */
+    footerBottom: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      columnGap: 24,
+      rowGap: 16,
+    },
 
     // ── Typography ────────────────────────────────────────────────────────────
     /** `.eyebrow` */
