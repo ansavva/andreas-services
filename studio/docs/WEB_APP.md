@@ -642,6 +642,17 @@ page and a plain textarea over its literal bytes, and never offers fields.
   *identity* token. Send the stored `idToken` (`auth/oauth.ts`, read by
   `apis/client.ts`). The failure mode is the confusing one: sign-in succeeds,
   the app renders, and every `/api` call 401s.
+- **The access token has one job: Cognito's own user APIs.** "Change email…"
+  in the account menu is `auth/account.ts` calling `UpdateUserAttributes` and
+  `VerifyUserAttribute` on the pool directly — a JSON POST with an
+  `X-Amz-Target` header, no SDK, no `/api` route. Both need the
+  `aws.cognito.signin.user.admin` scope, which the client grants and the
+  authorize leg requests; a session signed in before that scope existed fails
+  with "does not have required scopes", and a refresh keeps the old grant, so
+  the fix is a sign-in. The pool keeps the OLD address in force until the code
+  sent to the new one is verified (`attributes_require_verification_before_update`),
+  so a typo costs a code, not the account. The address is the username, so
+  the change reaches `studio login` too.
 - **An authorizer rejection carries no CORS headers unless you add them.** It is
   generated before the integration runs, so Flask's `CORS(...)` never sees it
   and the MOCK preflight only covers the OPTIONS. `modules/api_gateway` sets

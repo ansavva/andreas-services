@@ -1,7 +1,10 @@
+import { useState } from "react";
+
 import { Dropdown, buttonClass, iconButtonClass } from "@ansavva/design-system";
 
 import { useAuth } from "../../context/AuthContext";
 import { ProfileIcon } from "../common/icons";
+import { ChangeEmailDialog } from "./ChangeEmailDialog";
 
 /**
  * The account, behind one button, at the foot of the sidebar.
@@ -19,45 +22,57 @@ import { ProfileIcon } from "../common/icons";
  * No `navigate` after sign-out: it leaves for the hosted `/logout`, which ends
  * the Cognito session and returns to `/` itself. Routing in this tab first
  * would only race that navigation.
+ *
+ * "Change email…" opens a dialog that is a SIBLING of the menu, not a child of
+ * the item: selecting an item closes the menu and unmounts its content, so a
+ * dialog rendered inside it would close with it. The item flips state; the
+ * dialog reads it from out here.
  */
 export function AccountMenu({ collapsed = false }: { collapsed?: boolean }) {
   const { email, logout } = useAuth();
+  const [changingEmail, setChangingEmail] = useState(false);
   const name = email ? `Account — ${email}` : "Account";
 
   return (
-    <Dropdown.Root>
-      <Dropdown.Trigger
-        aria-label={name}
-        title={name}
-        className={
-          collapsed
-            ? iconButtonClass({ size: "md", className: "" })
-            : buttonClass({
-                intent: "secondary",
-                size: "md",
-                className: "w-full justify-between px-2",
-              })
-        }
-      >
-        {/* Mono, because an address is a string to be read character by
-            character rather than a phrase — the rule every node id, key and
-            byte count in this app is set under. */}
-        {!collapsed && (
-          <span className="min-w-0 truncate font-mono text-xs font-normal">
-            {email ?? "Account"}
-          </span>
-        )}
-        <ProfileIcon />
-      </Dropdown.Trigger>
+    <>
+      <Dropdown.Root>
+        <Dropdown.Trigger
+          aria-label={name}
+          title={name}
+          className={
+            collapsed
+              ? iconButtonClass({ size: "md", className: "" })
+              : buttonClass({
+                  intent: "secondary",
+                  size: "md",
+                  className: "w-full justify-between px-2",
+                })
+          }
+        >
+          {/* Mono, because an address is a string to be read character by
+              character rather than a phrase — the rule every node id, key and
+              byte count in this app is set under. */}
+          {!collapsed && (
+            <span className="min-w-0 truncate font-mono text-xs font-normal">
+              {email ?? "Account"}
+            </span>
+          )}
+          <ProfileIcon />
+        </Dropdown.Trigger>
 
-      <Dropdown.Content className="bottom-full top-auto mb-1 mt-0">
-        {email && (
-          <Dropdown.Item disabled className="font-mono text-xs">
-            {email}
+        <Dropdown.Content className="bottom-full top-auto mb-1 mt-0">
+          {email && (
+            <Dropdown.Item disabled className="font-mono text-xs">
+              {email}
+            </Dropdown.Item>
+          )}
+          <Dropdown.Item onSelect={() => setChangingEmail(true)}>
+            Change email…
           </Dropdown.Item>
-        )}
-        <Dropdown.Item onSelect={() => void logout()}>Sign out</Dropdown.Item>
-      </Dropdown.Content>
-    </Dropdown.Root>
+          <Dropdown.Item onSelect={() => void logout()}>Sign out</Dropdown.Item>
+        </Dropdown.Content>
+      </Dropdown.Root>
+      <ChangeEmailDialog open={changingEmail} onOpenChange={setChangingEmail} />
+    </>
   );
 }

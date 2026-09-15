@@ -32,6 +32,9 @@ const TOKENS_KEY = "studio.auth.tokens";
  */
 export const CALLBACK_PATH = "/auth/callback";
 
+/** Every scope the authorize leg asks for; must be a subset of the client's. */
+export const SCOPES = "openid email profile aws.cognito.signin.user.admin";
+
 export interface StoredTokens {
   idToken: string;
   accessToken: string;
@@ -153,6 +156,15 @@ export function getUserSub(): string | null {
   }
 }
 
+/**
+ * The ACCESS token — for Cognito's own user APIs, never for studio's. The API
+ * Gateway authorizer refuses it (`getIdToken` above); `account.ts` is the one
+ * caller, and what it calls is the pool.
+ */
+export function getAccessToken(): string | null {
+  return getTokens()?.accessToken ?? null;
+}
+
 /** The email claim off the ID token, for the header's "signed in as" line. */
 export function getUserEmail(): string | null {
   const idToken = getIdToken();
@@ -193,7 +205,12 @@ export async function buildAuthorizeUrl(returnTo?: string): Promise<string> {
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: "code",
-    scope: "openid email profile",
+    // `aws.cognito.signin.user.admin` is what lets the ACCESS token call the
+    // self-service user APIs — how `account.ts` changes the signed-in address.
+    // It covers the holder's own record only. A session signed in before this
+    // scope was requested does not carry it, and a refresh keeps the original
+    // grant, so that session has to sign in again to use it.
+    scope: SCOPES,
     redirect_uri: redirectUri(),
     state,
     code_challenge: challenge,

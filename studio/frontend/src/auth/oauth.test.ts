@@ -88,7 +88,9 @@ describe("buildAuthorizeUrl", () => {
     expect(url.pathname).toBe("/oauth2/authorize");
     expect(url.searchParams.get("response_type")).toBe("code");
     expect(url.searchParams.get("client_id")).toBe("test-client-id");
-    expect(url.searchParams.get("scope")).toBe("openid email profile");
+    expect(url.searchParams.get("scope")).toBe(
+      "openid email profile aws.cognito.signin.user.admin",
+    );
     // Cognito matches this character for character against `callback_urls`.
     expect(url.searchParams.get("redirect_uri")).toBe("http://localhost:5173/auth/callback");
     expect(sessionStorage.getItem("studio.oauth.returnTo")).toBe("/c/char-0001");
