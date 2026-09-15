@@ -17,6 +17,7 @@ skill:
 | Engine skill | Model | Access | `--engine` |
 |---|---|---|---|
 | **`studio-media-seedance`** | Seedance 2.0 | Replicate, via `studio run --model seedance` | `seedance` (default) |
+| **`studio-media-seedance-2-5`** | Seedance 2.5 | Replicate, via `studio run --model seedance-2.5` | `seedance` — same engine profile |
 | **`studio-media-kling`** | Kling 3.0 Omni | Replicate, via `studio run --model kling` | `kling-replicate` |
 
 Use this skill when the user wants precise, repeatable control, a multi-shot
