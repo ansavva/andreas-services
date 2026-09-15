@@ -58,7 +58,6 @@ import {
   type PromptToken,
 } from "../common/TokenizedPromptEditor";
 import { TemplateList } from "../run/TemplateList";
-import { SheetDone } from "../common/SheetDone";
 import { SheetHandle } from "../common/SheetHandle";
 import { AttachTiles, fallbackDropRole } from "./AttachTiles";
 import { isNodeDrag, readNodeDrag } from "./dragRef";
@@ -824,13 +823,13 @@ export function CreateBar() {
               the way ElevenLabs pages the same sheet rather than stacking a
               picker over it.
 
-              **Capped in `dvh`, scrolling inside, with `Done` at its foot.**
+              **Capped in `dvh`, scrolling inside under a stuck grab strip.**
               `85vh` was the viewport with Safari's bars hidden, so with them
               shown the sheet's top — and its grab strip — sat under the
-              address bar; and even in reach, a strip at the top of a sheet
-              that tall is where a thumb is not. The rows scroll under a
-              stuck strip, and the close a thumb can reach is the `Done` on
-              the bottom edge. */}
+              address bar. The strip is `sticky`, so a sheet scrolled to its
+              last row still has the thing that dismisses it; the backdrop
+              and Escape do too. A `Done` at the foot was tried and was one
+              control more than the sheet needed. */}
           <Drawer.Root
             side="bottom"
             open={sheetOpen}
@@ -902,7 +901,6 @@ export function CreateBar() {
                   )}
                 </div>
               )}
-              <SheetDone onDone={() => setSheetOpen(false)} />
             </Drawer.Panel>
           </Drawer.Root>
 

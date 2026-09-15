@@ -6,7 +6,6 @@ import type { Attachment } from "../../context/CreateBarContext";
 import { WIDE, useMediaQuery } from "../../hooks/useMediaQuery";
 import { assetLabel } from "../../utils/format";
 import { MenuLines, type MenuAction } from "../common/ActionMenu";
-import { SheetDone } from "../common/SheetDone";
 import { SheetHandle } from "../common/SheetHandle";
 
 /**
@@ -28,8 +27,8 @@ import { SheetHandle } from "../common/SheetHandle";
  * same list where the picture is.
  *
  * A right-hand drawer on a desk, the way `PromoteDrawer` sits beside a
- * run; a bottom sheet on a phone, with the grab strip and `Done` every
- * phone sheet has.
+ * run; a bottom sheet on a phone, with the grab strip every phone sheet
+ * has. A line closes it, and so do the strip, the backdrop and Escape.
  *
  * **A plain picture, not `MediaPlayer`.** The player brings a fullscreen
  * control, and inside a drawer it did nothing — the drawer IS the large
@@ -92,7 +91,6 @@ export function AttachPreview({
           )}
         </div>
         <MenuLines actions={actions} label={wide ? undefined : title} onClose={onClose} />
-        {!wide && <SheetDone onDone={onClose} />}
       </Drawer.Panel>
     </Drawer.Root>
   );
