@@ -52,6 +52,24 @@ Each line names the code that makes it true. Rewording is fine; the fact is not.
   organizer visibility; the recipient's switch is the only recourse
   (`docs/threat-model.md`, RR7 still open).
 
+## Brand assets
+
+Two logo forms, and both are files now (decision 2026-09-15). Never retype the
+wordmark: it is Lily Script One at `-0.025em`, and a re-render in another
+weight or face is not the logo.
+
+| Form | File | Use |
+|---|---|---|
+| **The mark** — dark green rounded square, white script H | `app/assets/images/icon.png` (512) | app icon, favicons, the reel's hook pill, anywhere the name is already said |
+| **The wordmark** — "Humbugg" in Lily Script One, brand green | `marketing/public/brand/humbugg-wordmark.svg` / `.png` | headers, end cards, print; served at `www.humbugg.com/brand/…` |
+| The wordmark on dark | `marketing/public/brand/humbugg-wordmark-cream.svg` / `.png` | over photography or green |
+| **The lockup** — mark beside wordmark | `marketing/public/brand/humbugg-lockup.png` | social previews, partner pages |
+
+The SVGs embed the font, so they render identically without it installed.
+Colours: green `#1d5545`, cream `#fffdf8`, ink `#18332b`. The marketing site's
+social preview (`marketing/app/assets/og.png`, 1200×630) is built from these;
+the card-game image it replaced was a generated mock and is gone.
+
 ## Where it is said
 
 | Surface | What carries the chat | File |
