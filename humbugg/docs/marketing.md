@@ -69,8 +69,14 @@ The SVGs embed the font, so they render identically without it installed.
 Colours: green `#1d5545`, cream `#fffdf8`, ink `#18332b`. The marketing site's
 social preview (`marketing/app/assets/og.png`, 1200×630) is the wordmark as the
 heading with the anonymous chat under it, and nothing else (maintainer's call,
-2026-09-15: no mark beside the wordmark, no headline, no footer line). The
-card-game image it replaced was a generated mock and is gone.
+2026-09-15: no mark beside the wordmark, no headline, no footer line). **The chat
+is a screenshot of the real rail, not a drawing**: the app's stubbed Playwright
+export (`humbugg/app`, `npx playwright test`) with a drawn exchange stubbed the
+way `e2e/questions.spec.ts` does, three messages seeded, the recipient's
+"Your Secret Santa" conversation open, viewport 1440×680 at 2×, the rail
+cropped from the page and the empty stretch above the composer removed. Redo
+it the same way when the chat UI changes. The card-game image it replaced was
+a generated mock and is gone.
 
 ## Where it is said
 
