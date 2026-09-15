@@ -49,6 +49,22 @@ public sealed class GroupReadinessTests
     }
 
     [Fact]
+    public async Task EachRowCarriesTheAccountsVerifiedEmailAndNothingForAnAccountWithoutOne()
+    {
+        var fixture = new Fixture();
+        fixture.Members.Items.Add(Fixture.Member("reachable"));
+        fixture.Members.Items.Add(Fixture.Member("unverified"));
+        fixture.Directory.Emails["user"] = "organizer@example.com";
+        fixture.Directory.Emails["user-reachable"] = "reachable@example.com";
+
+        var readiness = await fixture.Subject.GetReadinessAsync("group", TestContext.Current.CancellationToken);
+
+        Assert.Equal("organizer@example.com", Participant(readiness, "actor").Email);
+        Assert.Equal("reachable@example.com", Participant(readiness, "reachable").Email);
+        Assert.Null(Participant(readiness, "unverified").Email);
+    }
+
+    [Fact]
     public async Task TheDashboardIsNotGatedOnAPlan()
     {
         foreach (var plan in new[] { PlanCode.Free, PlanCode.Plus, PlanCode.Work })
@@ -409,13 +425,14 @@ public sealed class GroupReadinessTests
         public FakeGroups Groups { get; }
         public RecordingMembers Members { get; }
         public FakeInvitations Invitations { get; } = new();
+        public FakeAccountDirectory Directory { get; } = new();
         public IWishRepository Wishes { get; set; } = new FakeWishes();
         public FakeUser User => user;
 
         // Built lazily so a test can swap the wish repository in after seeding its roster.
         public GroupService Subject => subject ??= new GroupService(
             user, new FakeProfiles(), Groups, Members, Wishes, new FakeQuestions(), Invitations, new MatchingService(),
-            new PlanCatalog(new()), new NoopAudit(), new NoopAnalytics(), new FakeAccountDirectory(), new NoopEmail(), new TransactionalEmailTemplates(), NullLogger<GroupService>.Instance,
+            new PlanCatalog(new()), new NoopAudit(), new NoopAnalytics(), Directory, new NoopEmail(), new TransactionalEmailTemplates(), NullLogger<GroupService>.Instance,
             new HumbuggSettings("us-east-1", "us-east-1", "pool", "client", ["http://localhost:5173"],
                 "http://localhost:5173", null, "profiles", "groups", "members", "draws", "audit", "analytics"));
 

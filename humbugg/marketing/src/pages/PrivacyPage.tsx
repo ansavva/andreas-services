@@ -82,7 +82,8 @@ export default function PrivacyPage() {
       <p>
         When you create an account we collect your email address and the password credentials handled by our
         authentication provider (AWS Cognito). We use this to sign you in, secure your account, and send account-related
-        messages such as confirmation and password-reset codes.
+        messages such as confirmation and password-reset codes. When you join an exchange, its organizers can see
+        your verified email address so they can reach you about that exchange; other participants cannot.
       </p>
 
       <h2>3. Email and invitations</h2>

@@ -8,9 +8,9 @@
  */
 
 // Policy version + effective date recorded on every policy page.
-export const POLICY_VERSION = '2026.3';
+export const POLICY_VERSION = '2026.4';
 // ISO date the current policies take effect. Placeholder — confirm before publishing.
-export const POLICY_EFFECTIVE_DATE = '2026-09-10';
+export const POLICY_EFFECTIVE_DATE = '2026-09-14';
 
 // Display / merchant identity shown in the policies. Placeholder — confirm the
 // registered business name that will appear on card statements.

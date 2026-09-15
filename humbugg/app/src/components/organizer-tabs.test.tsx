@@ -138,6 +138,7 @@ const participant = (
   address: 'not_required',
   assignment: 'not_applicable',
   nudges: [],
+  email: null,
   ...overrides,
 });
 
@@ -337,6 +338,21 @@ describe('loading and failure', () => {
     await waitFor(() => expect(screen.getByText('Everyone (1)')).toBeOnTheScreen());
     openDraw();
     expect(screen.getByText('Taking part')).toBeOnTheScreen();
+  });
+
+  it('shows each person\'s verified email under their name, and nothing where there is none', async () => {
+    mocks.getReadiness.mockResolvedValue(readiness({
+      participants: [
+        participant('Alex', { role: 'owner', email: 'alex@example.com' }),
+        participant('Sam', { email: null }),
+      ],
+    }));
+
+    render(<OrganizeScreen groupId="group-1" />);
+
+    await waitFor(() => expect(screen.getByText('alex@example.com')).toBeOnTheScreen());
+    expect(screen.getByLabelText(/^Alex, alex@example.com, Owner/)).toBeOnTheScreen();
+    expect(screen.getByLabelText(/^Sam, Participant/)).toBeOnTheScreen();
   });
 
   it('tells a participant why the dashboard is closed to them rather than showing nothing', async () => {
