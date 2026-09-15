@@ -175,6 +175,13 @@ test("the blocks live on their own tab", async ({ page }) => {
   ).toHaveCount(1);
 });
 
+/** Resolves once every animation running under `el` has finished. */
+async function settled(el: import("@playwright/test").Locator) {
+  await el.evaluate((node) =>
+    Promise.all(node.getAnimations({ subtree: true }).map((a) => a.finished)),
+  );
+}
+
 test("a block can be closed again after it is opened", async ({ page }) => {
   await page.goto("/templates");
   await page.getByRole("tab", { name: /Blocks/ }).click();
@@ -215,6 +222,11 @@ test("Close and Escape both get you out of an opened block", async ({
   const box = panel.getByRole("textbox").filter({ hasText: /THE BUILD IS/ });
 
   await header.click();
+  // `Collapsible.Panel` opens over a 200ms grid-rows transition. The button
+  // is inside it, so it is moving until that ends, and a click aimed during
+  // the slide lands where the button WAS — seen in CI (#720's PR run, twice
+  // on one commit), never locally. Wait for the animations, not a duration.
+  await settled(panel);
   await panel.getByRole("button", { name: "Close", exact: true }).click();
   await expect(header).toHaveAttribute("aria-expanded", "false");
 
