@@ -60,6 +60,20 @@ resource "aws_cognito_user_pool" "main" {
     case_sensitive = false
   }
 
+  # The address IS the username (`username_attributes` above), so changing it
+  # is changing what the person signs in with — for the SPA and for
+  # `studio login` alike. This keeps the OLD address in force until the new one
+  # proves it can receive mail: `UpdateUserAttributes` on `email` sends a code
+  # to the new address and changes nothing, and `VerifyUserAttribute` with that
+  # code is what swaps it. Without this the swap is immediate, `email_verified`
+  # drops to false, and a typo in the new address is a locked-out account with
+  # no recovery route, because recovery below goes to the verified email.
+  # The SPA drives both calls itself — `frontend/src/auth/account.ts` — on the
+  # `aws.cognito.signin.user.admin` scope the client grants further down.
+  user_attribute_update_settings {
+    attributes_require_verification_before_update = ["email"]
+  }
+
   password_policy {
     minimum_length    = 12
     require_lowercase = true
@@ -108,8 +122,16 @@ resource "aws_cognito_user_pool_client" "main" {
   # grant. Cognito has no server-side "require PKCE" toggle: the SPA's PKCE test
   # (`frontend/src/auth/oauth.test.ts`) is what keeps the challenge from
   # silently disappearing.
-  allowed_oauth_flows  = ["code"]
-  allowed_oauth_scopes = ["openid", "email", "profile"]
+  allowed_oauth_flows = ["code"]
+
+  # `aws.cognito.signin.user.admin` is what lets an ACCESS token call the
+  # self-service user APIs — `UpdateUserAttributes`, `VerifyUserAttribute` —
+  # which is how the app changes the signed-in address. It is scoped to the
+  # token holder's own record; "admin" is Cognito's name, not a grant over the
+  # pool. Requested by name in the authorize leg (`frontend/src/auth/oauth.ts`):
+  # a token issued before this scope was granted does not carry it, and a
+  # refresh keeps the original grant, so those sessions have to sign in again.
+  allowed_oauth_scopes = ["openid", "email", "profile", "aws.cognito.signin.user.admin"]
 
   # Exact-match, character for character — no wildcard host, path or port. A
   # client with `code` enabled and no matching entry here fails on the redirect,
