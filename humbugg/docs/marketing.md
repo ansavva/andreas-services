@@ -67,8 +67,10 @@ weight or face is not the logo.
 
 The SVGs embed the font, so they render identically without it installed.
 Colours: green `#1d5545`, cream `#fffdf8`, ink `#18332b`. The marketing site's
-social preview (`marketing/app/assets/og.png`, 1200×630) is built from these;
-the card-game image it replaced was a generated mock and is gone.
+social preview (`marketing/app/assets/og.png`, 1200×630) is the wordmark as the
+heading with the anonymous chat under it, and nothing else (maintainer's call,
+2026-09-15: no mark beside the wordmark, no headline, no footer line). The
+card-game image it replaced was a generated mock and is gone.
 
 ## Where it is said
 
