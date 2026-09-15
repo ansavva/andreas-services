@@ -55,6 +55,18 @@ module "auth" {
   email_source_arn        = module.email.identity_arn
   email_configuration_set = data.aws_ssm_parameter.mailer_auth_configuration_set.value
 
+  # Social sign-in. Empty leaves a provider off; see envs/*/variables.tf.
+  google_client_id       = var.google_client_id
+  google_client_secret   = var.google_client_secret
+  facebook_app_id        = var.facebook_app_id
+  facebook_app_secret    = var.facebook_app_secret
+  apple_services_id      = var.apple_services_id
+  apple_team_id          = var.apple_team_id
+  apple_key_id           = var.apple_key_id
+  apple_private_key      = var.apple_private_key
+  linkedin_client_id     = var.linkedin_client_id
+  linkedin_client_secret = var.linkedin_client_secret
+
   tags = local.common_tags
 }
 

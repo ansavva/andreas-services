@@ -74,6 +74,8 @@ auth_domain="$(jq -r '.cognito_auth_domain.value' <<<"$outputs")"
 bucket="$(jq -r '.app_bucket_name.value' <<<"$outputs")"
 webhook_url="$(jq -r '.webhook_endpoint_url.value' <<<"$outputs")"
 webhook_queue="$(jq -r '.webhook_queue_url.value' <<<"$outputs")"
+idp_response_url="$(jq -r '.idp_response_url.value' <<<"$outputs")"
+identity_providers="$(jq -r '.identity_providers.value | join(", ")' <<<"$outputs")"
 
 # Everything below lands in the one per-machine file. Generated keys are
 # rewritten on every run; keys the developer set by hand (Stripe, plan limits)
@@ -234,6 +236,22 @@ keep HUMBUGG_STRIPE_PUBLISHABLE_KEY
 keep HUMBUGG_STRIPE_SECRET_KEY
 keep HUMBUGG_STRIPE_WEBHOOK_ENDPOINT_ID
 keep HUMBUGG_STRIPE_WEBHOOK_SECRET
+line ""
+line "# Social sign-in, per provider and opt-in. Register this machine's redirect URI"
+line "# (the line below) in the provider's console first, then set that provider's keys"
+line "# and re-run dev-aws-setup.sh. docs/auth-social-login.md walks each console."
+line "# Redirect URI for this machine: $idp_response_url"
+keep HUMBUGG_GOOGLE_CLIENT_ID
+keep HUMBUGG_GOOGLE_CLIENT_SECRET
+keep HUMBUGG_FACEBOOK_APP_ID
+keep HUMBUGG_FACEBOOK_APP_SECRET
+keep HUMBUGG_APPLE_SERVICES_ID
+keep HUMBUGG_APPLE_TEAM_ID
+keep HUMBUGG_APPLE_KEY_ID
+line "# base64 of the .p8 file, one line: \`base64 -i AuthKey_XXXX.p8 | tr -d '\\n'\`."
+keep HUMBUGG_APPLE_PRIVATE_KEY_BASE64
+keep HUMBUGG_LINKEDIN_CLIENT_ID
+keep HUMBUGG_LINKEDIN_CLIENT_SECRET
 
 # Anything the file held that no section above claims.
 leftover="$(awk -F= -v written=" $written " '
@@ -249,6 +267,11 @@ rm -f "$previous"
 mv "$rendered" "$env_file"
 
 ok "AWS development resources are ready; $env_file is up to date."
+if [[ -n "$identity_providers" ]]; then
+  ok "Social sign-in on this stack: $identity_providers."
+else
+  log "No social sign-in provider on this stack. Register $idp_response_url with one and set its keys in $env_file to enable it."
+fi
 
 # The Stripe half of the webhook relay. After the file is written, because it
 # reads the key from it and writes the endpoint id and secret back into it.
