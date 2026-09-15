@@ -20,6 +20,7 @@ What it does:
 1. Organizers create a group, invite members, and each member fills in a wish list / "do-not-give" list.
 2. A matching engine assigns each member a recipient (Secret Santa-style) while respecting exclusions.
 3. Members sign in via AWS Cognito and see their assignment in the React SPA.
+4. After the draw each member has two anonymous chats — with their recipient (named) and with their giver (shown only as "Your Secret Santa"). Pushed over a WebSocket, poll fallback; no stored row names the giver. **This is the lead feature in marketing** — see [`docs/marketing.md`](docs/marketing.md).
 
 ## Stack
 

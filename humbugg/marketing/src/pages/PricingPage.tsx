@@ -22,7 +22,7 @@ const COPY: Record<string, { who: string; lead: string; features: string[] }> = 
       'Wish lists, with links and prices',
       'Exclusions, so couples are not matched',
       'A private draw nobody can see into',
-      'Ask your recipient a question anonymously',
+      'An anonymous chat with your recipient — and with your own Santa',
     ],
   },
   plus: {
@@ -49,7 +49,7 @@ export default function PricingPage({ plans }: { plans: PlanCard[] }) {
             '@context': 'https://schema.org',
             '@type': 'Product',
             name: 'Humbugg',
-            description: 'A private, self-service Secret Santa organizer.',
+            description: 'A private, self-service Secret Santa organizer with an anonymous chat between giver and recipient.',
             url: canonicalUrl('/pricing'),
             offers: plans.map((plan) => ({
               '@type': 'Offer',

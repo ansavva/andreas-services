@@ -24,6 +24,15 @@ describe('LandingPage', () => {
     );
   });
 
+  it('sells the chat as a feature of its own, on Free', () => {
+    renderAt('/');
+    expect(screen.getByRole('heading', { level: 2, name: 'Ask them anything. Stay a secret.' })).toBeInTheDocument();
+    // The recipient's side never sees a name: this is the wording the app uses, pinned so the site
+    // cannot promise more anonymity — or less — than the product gives.
+    expect(screen.getAllByText('Your Secret Santa').length).toBeGreaterThan(0);
+    expect(screen.getByText('Included in Free.')).toBeInTheDocument();
+  });
+
   it('acknowledges a deleted account only when the app says so', () => {
     renderAt('/?account_deleted=1');
     expect(screen.getByRole('status')).toHaveTextContent('Your account was deleted.');

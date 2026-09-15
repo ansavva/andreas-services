@@ -471,6 +471,7 @@ Lambdas actually exist.
 
 - [`../CLAUDE.md`](../CLAUDE.md) — service context, local development, deploys
 - [`threat-model.md`](threat-model.md) — invitations, assignments, payments, Work tenancy
+- [`marketing.md`](marketing.md) — positioning (the anonymous chat leads), what the site and every ad may claim, the Reels spec and the first commercial's brief
 - [`gdpr-compliance.md`](gdpr-compliance.md) and [`data-retention-deletion.md`](data-retention-deletion.md)
 - [`analytics.md`](analytics.md), [`email-operations.md`](email-operations.md), [`stripe-setup.md`](stripe-setup.md), [`support-email.md`](support-email.md)
 - [`runbooks.md`](runbooks.md) — operating procedures: billing, email, support inbox, deletion requests, the emergency reveal, credential rotation, health/alerts/rollback
