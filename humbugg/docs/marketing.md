@@ -133,8 +133,13 @@ the still before animating so the same asset can later run paid without a
 re-shoot. Costs at the time: a still edit ≈ $0.13; a 14 s 1080p Seedance take
 ≈ $5–10.
 
-**Status.** Still approved and clean (2026-09-15). Video draft authored, not
-yet submitted. Assembly not started.
+**Status (2026-09-15).** Take 4 rendered on Seedance 2.5 and filed as the project's
+`reel-chat` scene. Assembled locally with HyperFrames: hook text at the belt line,
+word-timed captions in the safe band, 3 s end card, 1080×1920 H.264 30 fps, 19.1 s.
+Draft v1 delivered; music undecided (none in v1). Lessons: Seedance refuses a first
+frame wider than ~900 px with a misleading "sensitive" error, so animate from a 720 px
+copy; a hand going to the mouth turns a held phone into a cup, so the sip was dropped;
+the caption engine's themes are 16:9-tuned, so captions were built in the composition.
 
 ## Open
 
