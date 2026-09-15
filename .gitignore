@@ -260,6 +260,7 @@ skills-lock.json
 !.claude/skills/aws-naming/
 !.claude/skills/studio/
 !.claude/skills/github-access/
+!.claude/skills/short-form-ad/
 
 # studio's skills are the exception to the rule above: they are authored here,
 # not installed by a script, and they live at studio/.claude/skills/ rather than

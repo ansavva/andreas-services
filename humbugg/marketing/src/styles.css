@@ -108,6 +108,9 @@ button, input, textarea, select { font: inherit; }
 .hero-card-back { position: absolute; inset: 2.5rem -1.25rem -1.25rem 2.5rem; transform: rotate(4deg); background: var(--color-frame); }
 .avatar-chip { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; flex: 0 0 auto; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--color-primary) 12%, var(--color-card)); color: var(--color-primary); font-family: var(--font-heading); font-weight: 700; }
 .feature-card { min-height: 18rem; border: 1px solid var(--color-line); border-radius: var(--radius-lg); padding: 2rem; background: var(--color-card); }
+.chat-bubble { max-width: 85%; padding: .6rem .9rem; border-radius: var(--radius-lg); line-height: 1.5; }
+.chat-bubble-them { background: var(--color-surface-alt); color: var(--color-ink); border-bottom-left-radius: var(--radius-sm, .25rem); }
+.chat-bubble-me { margin-left: auto; background: var(--color-primary); color: var(--color-primary-text); border-bottom-right-radius: var(--radius-sm, .25rem); }
 .step-number { display: inline-flex; align-items: center; justify-content: center; width: 3rem; height: 3rem; border-radius: var(--radius-pill); background: var(--color-surface-alt); color: var(--color-primary); font-family: var(--font-heading); font-size: 1.15rem; font-weight: 700; }
 .legal-prose { color: var(--color-ink); line-height: 1.75; }
 .legal-prose h2 { font-family: var(--font-heading); font-size: 1.6rem; font-weight: 600; line-height: 1.25; margin-top: 2.5rem; margin-bottom: .5rem; color: var(--color-ink); }

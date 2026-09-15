@@ -11,7 +11,7 @@ export const meta: MetaFunction = () => {
     { title: 'Humbugg · Secret Santa made simple' },
     {
       name: 'description',
-      content: 'Create a Secret Santa group, collect wish lists, set thoughtful exclusions, and give every participant one private assignment.',
+      content: 'Create a Secret Santa group, collect wish lists, set thoughtful exclusions, give every participant one private assignment — and let givers and recipients chat without revealing who is who.',
     },
     { name: 'robots', content: 'index, follow' },
     { property: 'og:type', content: 'website' },
@@ -19,7 +19,7 @@ export const meta: MetaFunction = () => {
     { property: 'og:title', content: 'Humbugg · Secret Santa made simple' },
     {
       property: 'og:description',
-      content: 'A calmer way to organize a thoughtful Secret Santa exchange.',
+      content: 'A calmer Secret Santa, with an anonymous chat between giver and recipient.',
     },
     { property: 'og:url', content: canonicalUrl('/') },
     { property: 'og:image', content: socialImage },

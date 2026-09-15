@@ -25,7 +25,7 @@ export default function LandingPage() {
             applicationCategory: 'LifestyleApplication',
             operatingSystem: 'Web',
             offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
-            description: 'A private, self-service Secret Santa group organizer.',
+            description: 'A private, self-service Secret Santa group organizer with an anonymous chat between giver and recipient.',
           }),
         }}
       />
@@ -37,7 +37,7 @@ export default function LandingPage() {
               More wonder.<br /><span className="text-primary">Less wrangling.</span>
             </h1>
             <p className="mt-7 max-w-2xl text-lg leading-8 text-muted sm:text-xl">
-              Bring everyone together, collect wish lists, set thoughtful exclusions, and make a private draw in one calm place.
+              Bring everyone together, collect wish lists, set thoughtful exclusions, make a private draw — then talk to the person you drew without giving yourself away.
             </p>
             <div className="mt-9 flex flex-wrap gap-3">
               <a className={buttonClass({ size: 'lg' })} href={appUrl('/login')}>Create your exchange</a>
@@ -66,13 +66,46 @@ export default function LandingPage() {
         </div>
       </section>
 
+      <section id="chat" className="border-b border-line bg-surface-alt">
+        <div className="mx-auto grid max-w-7xl items-center gap-12 px-5 py-24 lg:grid-cols-[.9fr_1.1fr] lg:px-8">
+          <div className="relative mx-auto w-full max-w-md" aria-label="An anonymous Humbugg chat between a giver and their recipient">
+            <div className="hero-card">
+              <div className="flex items-center gap-3 border-b border-line pb-4">
+                <span className="avatar-chip">🎅</span>
+                <div><p className="font-semibold">Your Secret Santa</p><p className="text-xs text-muted">Humbugg never says who is typing</p></div>
+              </div>
+              <div className="my-6 space-y-3 text-sm">
+                <div className="chat-bubble chat-bubble-them">Be honest. What size are you, really?</div>
+                <div className="chat-bubble chat-bubble-me">Medium. And I know it’s you, Theo.</div>
+                <div className="chat-bubble chat-bubble-them">Ho ho no.</div>
+              </div>
+              <div className="rounded-md border border-line bg-surface px-4 py-3 text-sm text-muted">Write to your Santa…</div>
+            </div>
+          </div>
+          <div className="max-w-2xl">
+            <p className="eyebrow">The chat</p>
+            <h2 className="mt-3 font-heading text-4xl font-semibold sm:text-5xl">Ask them anything. Stay a secret.</h2>
+            <p className="mt-6 text-lg leading-8 text-muted">
+              After the draw, every person gets two private conversations: one with the person they drew, and one with whoever drew them.
+              You see your recipient’s name. They only ever see “Your Secret Santa”.
+            </p>
+            <ul className="mt-8 space-y-4 leading-7 text-muted">
+              <li className="flex gap-3"><span className="avatar-chip" aria-hidden="true">✓</span><span>Sizes, allergies, “do you already own this?” — asked and answered without a middleman.</span></li>
+              <li className="flex gap-3"><span className="avatar-chip" aria-hidden="true">✓</span><span>Messages arrive live, and an optional email tells you one is waiting without saying who it is from.</span></li>
+              <li className="flex gap-3"><span className="avatar-chip" aria-hidden="true">✓</span><span>Rather not be asked? One switch turns the chat off for your gift.</span></li>
+            </ul>
+            <p className="mt-8 text-sm text-muted">Included in Free.</p>
+          </div>
+        </div>
+      </section>
+
       <section id="how-it-works" className="mx-auto max-w-7xl px-5 py-24 lg:px-8">
         <div className="max-w-2xl"><p className="eyebrow">How it works</p><h2 className="mt-3 font-heading text-4xl font-semibold sm:text-5xl">From invite to exchange in three easy steps.</h2></div>
         <div className="mt-14 grid gap-6 md:grid-cols-3">
           {[
             ['01', 'Create your group', 'Choose a date and budget, then share one private invitation link.'],
             ['02', 'Make it thoughtful', 'Everyone adds gift ideas, avoidances, and an optional delivery address.'],
-            ['03', 'Draw with confidence', 'Set pair exclusions, lock the group, and reveal one private recipient to each person.'],
+            ['03', 'Draw with confidence', 'Set pair exclusions, lock the group, and reveal one private recipient to each person — with a chat to ask them anything.'],
           ].map(([number, title, text]) => (
             <article key={number} className="feature-card"><span className="step-number">{number}</span><h3 className="mt-8 font-heading text-2xl font-semibold">{title}</h3><p className="mt-3 leading-7 text-muted">{text}</p></article>
           ))}
