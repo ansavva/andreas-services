@@ -612,8 +612,11 @@ page and a plain textarea over its literal bytes, and never offers fields.
   that pages the sheet to `ModelList`, and the same rows.
   Send is `createRun` (plan +
   sends together, then `PATCH /plan` with `template` when the prompt cites
-  anything, so the API expands it into `prompt` — the template is the
-  instruction and is not stored), one `?fingerprint=` read that holds the
+  something — a `{block.…}`, `{character.N.…}` or `{slot.…}`, tested by
+  `utils/citations.ts` and **not** by looking for a brace — so the API expands
+  it into `prompt`; the template is the instruction and is not stored. A prompt
+  written as JSON, which is what `studio prompt` produces, cites nothing and is
+  sent as the words it is), one `?fingerprint=` read that holds the
   draft behind a warning if the same payload already went out here, then
   `submitRun`. A template picked from the library never reaches that path: it
   is filled by `POST /api/templates/expand` before it lands in the box. It targets the route's project, else the last one used

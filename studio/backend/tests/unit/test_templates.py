@@ -118,37 +118,71 @@ def test_a_template_citing_a_block_nobody_wrote_names_what_was_available():
     """The likeliest failure now that the spec is editable.
 
     Somebody deletes a block an angle still cites. The useful answer is the list
-    of names they could have meant, not a stack trace.
+    of names they could have meant, not a stack trace — and the citation has to
+    be SHAPED like one to get it, because an unshaped brace is now prose.
     """
     from studio_core.errors import ValidationError
     from studio_core.services import template as tmpl
 
     try:
-        tmpl.expand("{no_such_block}", [PROFILE], {})
+        tmpl.expand("{block.no_such_block}", [PROFILE], {"face_only": BLOCK})
     except ValidationError as exc:
         assert "no_such_block" in str(exc)
-        assert "Available:" in str(exc)
+        assert "block has: face_only." in str(exc)
     else:
         raise AssertionError("a missing placeholder must be refused")
 
 
-def test_a_stray_brace_in_edited_prose_is_a_400_not_a_500():
-    """The whole input to this route is a person's typing.
+def test_a_stray_brace_in_edited_prose_is_LITERAL_now():
+    """**This asserted the opposite, and the opposite was the bug.**
 
-    `vformat` raises IndexError/ValueError for a stray brace rather than
-    KeyError, and unhandled those surface as a server error on the one route
-    where a typo is the expected case.
+    It used to refuse every stray brace with "a literal brace must be doubled",
+    because the fill walked `string.Formatter().parse`, which reads every `{…}`
+    in the string as a field. That rule cost more than it bought: `studio
+    prompt` writes a prompt as **serialised JSON**, so the app could not send
+    one at all — `{"subject": …}` came back as "this prompt cites
+    { "subject"}, which nothing provides" — and asking a person to double every
+    brace in a JSON document to send it is not an answer.
+
+    So a brace run is a citation only when it matches `CITATION`, and everything
+    else is text the model gets as written. Nothing is lost: a citation that IS
+    shaped right and names nothing real is still refused, which is where the
+    typos worth catching land.
     """
-    from studio_core.errors import ValidationError
     from studio_core.services import template as tmpl
 
-    for broken in ("a { b", "a } b", "{}"):
-        try:
-            tmpl.expand(broken, [PROFILE], {})
-        except ValidationError:
-            pass
-        else:
-            raise AssertionError(f"{broken!r} should be refused")
+    for prose in ("a { b", "a } b", "{}", "{ 'json': 1 }", "a {{ b }} c"):
+        assert tmpl.expand(prose, [PROFILE], {}) == prose
+
+
+def test_a_json_prompt_comes_back_byte_identical():
+    """What `studio prompt` produces, sent from the app unchanged.
+
+    A structured prompt is one JSON document in the `prompt` field, braces and
+    all, and the fingerprint hashes it — so a fill that rewrote one character of
+    it would move every fingerprint for a change nobody made.
+    """
+    from studio_core.services import template as tmpl
+
+    prompt = ('{"subject": "a person at a window", "action": "turns to look",\n'
+              ' "camera": {"move": "slow push in", "lens": "35mm"},\n'
+              ' "style": {"grade": "cool"}}')
+    assert tmpl.expand(prompt, [PROFILE], {"face_only": BLOCK}) == prompt
+
+
+def test_a_real_citation_inside_a_json_prompt_is_still_filled():
+    """The two spellings coexist, because one of them is unambiguous.
+
+    A JSON prompt is not a reason to stop filling `{block.…}`: the citation is
+    shaped in a way no JSON object is, so a template value can be dropped into a
+    structured prompt and the rest of the document is copied through.
+    """
+    from studio_core.services import template as tmpl
+
+    text = tmpl.expand('{"subject": "{character.1.top}", "n": {"a": 1}}',
+                       [PROFILE], {})
+    assert text == ('{"subject": "Wearing a plain white polo shirt, unbranded, '
+                    'with no logo, text or embroidery", "n": {"a": 1}}')
 
 
 def test_the_slots_phrase_reads_as_english():
@@ -253,7 +287,7 @@ def test_a_namespaced_placeholder_says_where_it_comes_from():
     assert text == f"{BLOCK} | Realistic. | [Image2] and [Image3]"
 
 
-def test_a_bare_name_resolves_to_nothing_at_all_now():
+def test_a_bare_name_is_not_a_citation_and_is_left_alone():
     """**The flat namespace is gone rather than disambiguated.**
 
     Blocks were spread into one flat mapping and the computed values overwrote
@@ -261,9 +295,13 @@ def test_a_bare_name_resolves_to_nothing_at_all_now():
     so. The bare spelling was kept for a while because every template written so
     far used it; it is not kept now, because there is one template library and
     one way to write a citation in it.
+
+    It was a refusal for a while and is now simply text — a bare `{face_only}`
+    names no namespace, so nothing here can tell it from a brace somebody typed
+    on purpose. A template still carrying one shows as unfilled prose rather
+    than as a 400, which is the visible half of the same answer.
     """
-    with pytest.raises(ValidationError):
-        _assemble("{face_only}")
+    assert _assemble("{face_only}") == "{face_only}"
 
 
 def test_a_character_is_cited_by_POSITION_and_the_refusal_says_so():
@@ -316,10 +354,18 @@ def test_a_MISTYPED_member_is_a_refusal_and_not_a_500():
     assert "block has:" in str(refusal.value)
 
 
-def test_a_namespace_that_does_not_exist_names_what_does():
-    with pytest.raises(ValidationError) as refusal:
-        _assemble("{wardrobe.top}")
-    assert "wardrobe" in str(refusal.value)
+def test_a_namespace_that_does_not_exist_is_text_like_any_other_brace():
+    """**Three namespaces, and a fourth word is not one of them.**
+
+    This was a refusal naming the namespace. It cannot be any more without
+    taking JSON down with it: `{"camera": …}` and `{wardrobe.top}` are both
+    "a brace run whose first word is not `block`, `character` or `slot`", and
+    the one rule that separates a citation from typing is the shape. The trade
+    is that a mistyped namespace reaches the model as text; the shapes that ARE
+    citations — the deleted block, the unnumbered character, the bare variant,
+    the cast position that does not exist — are all still refused.
+    """
+    assert _assemble("{wardrobe.top}") == "{wardrobe.top}"
 
 
 # ─────────────────── whitespace, and per-angle identity ───────────────────

@@ -73,9 +73,11 @@ const PLACEHOLDER = /\{[a-z_][a-z0-9_]*(?:\.[a-z0-9_]+)*\}/g;
  * brace means the menu appears while you type the thing you were going to type
  * anyway, and there is nothing left to teach.
  *
- * The leading group refuses a doubled brace, because `{{` is how a template says
- * a LITERAL brace and offering a placeholder there would be offering the one
- * thing that cannot go there.
+ * The leading group refuses a doubled brace. `{{` was how a template escaped a
+ * LITERAL brace; the fill has no escape any more — a brace run is a citation
+ * only when it is shaped like one, and everything else is text — so `{{` is now
+ * a shape nobody has a reason to type, and opening the menu on it would be
+ * offering a placeholder in the middle of one.
  */
 const TRIGGER = /(^|[^{])(\{([a-z0-9_.]*))$/;
 
@@ -99,9 +101,10 @@ export function promptTriggerMatch(text: string) {
 /**
  * The next `{placeholder}` in `text` at or after `from`.
  *
- * A doubled brace is skipped: `{{` and `}}` are how a template says a LITERAL
- * brace — `assemble` says so when it refuses a malformed one — and drawing an
- * escape as a citation would claim the prompt cites something it does not.
+ * A doubled brace is skipped. It used to be the escape for a literal brace and
+ * is no longer anything — the fill matches citations by SHAPE now and leaves
+ * every other brace as text — but a pill drawn inside a pair of stray braces
+ * reads as neither, so the run stays flat and a person can see what they typed.
  */
 function nextPlaceholder(text: string, from = 0) {
   PLACEHOLDER.lastIndex = from;
