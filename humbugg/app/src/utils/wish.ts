@@ -56,14 +56,22 @@ export const emptyWishForm: WishFormValues = {
 export function parsePrice(value: string): { cents?: number; error?: string } {
   const trimmed = value.trim();
   if (trimmed.length === 0) return {};
-  if (!/^\d{1,9}(\.\d{1,2})?$/.test(trimmed))
+  // Thousands separators are accepted where they belong — "32,025.00" — and nowhere else, so a
+  // "1,2" is refused rather than read as twelve. The form shows prices with them, so it has to
+  // take them back.
+  if (!/^(\d{1,3}(,\d{3})*|\d{1,9})(\.\d{1,2})?$/.test(trimmed))
     return { error: 'Price must be a number, with at most two decimal places.' };
-  return { cents: Math.round(Number(trimmed) * 100) };
+  return { cents: Math.round(Number(trimmed.replace(/,/g, '')) * 100) };
+}
+
+/** Cents as "32,025.00": two decimals always, thousands grouped. The same shape in the form and on the row. */
+export function formatAmount(cents: number) {
+  return (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export function formatPrice(cents: number | null | undefined, currency: string | null | undefined) {
   if (cents == null) return null;
-  const amount = (cents / 100).toFixed(2);
+  const amount = formatAmount(cents);
   return currency ? `${amount} ${currency}` : amount;
 }
 
