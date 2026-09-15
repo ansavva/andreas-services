@@ -12,6 +12,11 @@ import { useRef, type PointerEvent as ReactPointerEvent } from "react";
  * past 24px with a flick; short of that it snaps back. Escape and the
  * backdrop still close it, so this is the phone's affordance rather than the
  * only one.
+ *
+ * **Stuck to the top of the sheet while its rows scroll.** The sheet is its
+ * own scroller once it is taller than the screen allows, and a strip that
+ * scrolled away with the first rows left a long sheet with nothing to grab;
+ * `sticky` on the sheet's own background keeps it under the finger.
  */
 export function SheetHandle({
   panel,

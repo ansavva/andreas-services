@@ -588,9 +588,8 @@ page and a plain textarea over its literal bytes, and never offers fields.
   it is a bottom `Drawer` of 92dvh over the create sheet — the floating box
   stacked on the sheet overran a phone, with the title, the Folders/Media
   switch and the close above the top edge — titled by the role's name, with
-  a `Done` stuck to its bottom edge (`SheetDone`), closing itself on the
-  pick for a one-picture role and staying open with a count in the title
-  while `Image refs` accumulates. Then the prompt, borderless, its `{` menu
+  a `Done`, closing itself on the pick for a one-picture role and staying
+  open with a count in the title while `Image refs` accumulates. Then the prompt, borderless, its `{` menu
   opening upward — two lines at rest, faded where more is cut off, eight
   with the caret in it.
 
@@ -601,10 +600,14 @@ page and a plain textarea over its literal bytes, and never offers fields.
   earlier/later, Swap the start and end frames, Remove — `MenuLines`, the
   list `ActionMenu`'s sheet draws, on its own. Because 72px says which
   picture and not what is in it; and because the 20px × at a tile's corner
-  and the hold-then-drag on a row that also scrolls were the two things a
-  thumb could not do reliably. Both still work, and the × grows to 32px set
-  inside the corner where the pointer is coarse, but the lines are the
-  phone's way. **And the phone's keyboard comes up only when the prompt
+  and a hold-then-drag on a row that also scrolls were the two things a
+  thumb could not do reliably. The × grows to 32px set inside the corner
+  where the pointer is coarse, and **the drag has a grip now: the caption
+  strip at the tile's foot** (`reorder.ts`) — `Image 2` is what a drag
+  changes, so it is what you take hold of; `touch-action: none` on it, so
+  a finger there drags from the first pixel with no hold and the browser
+  never claims it for scroll, and the picture above stays a plain press.
+  The lines remain for a thumb that would rather not. **And the phone's keyboard comes up only when the prompt
   is tapped.** `loadRun` and `expand` bump `focus` so Edit lands you in
   the box; under a coarse pointer (`FINE` in `useMediaQuery`) that bump is
   ignored, because on a phone it raised the keyboard over half the screen
@@ -631,15 +634,16 @@ page and a plain textarea over its literal bytes, and never offers fields.
   (a container query on the row, 40rem); below `md` the gear opens a bottom
   `Drawer` — draggable shut by its grab strip — with the switch, a Model box
   that pages the sheet to `ModelList`, and the same rows. **Every phone
-  sheet is capped in `dvh`, scrolls inside, and carries `Done` on its
-  bottom edge.** `85vh` was the viewport with Safari's bars hidden, so with
-  them shown a long sheet's top — and its grab strip — sat under the
-  address bar; and even on the screen, the top of a sheet that tall is
-  where a thumb is not. The strip is `sticky` on the sheet's own background
-  (`SheetHandle`), the rows scroll under it, and the close a thumb can
-  reach is `SheetDone` at the foot — the gear's sheet, the picker, and
-  `ActionMenu`'s sheet alike. `ModelList`'s search takes the caret on
-  open only under a fine pointer, for the same reason as `focus` above.
+  sheet is capped in `dvh` and scrolls inside under a stuck grab strip.**
+  `85vh` was the viewport with Safari's bars hidden, so with them shown a
+  long sheet's top — and its grab strip — sat under the address bar. The
+  strip is `sticky` on the sheet's own background (`SheetHandle`), so the
+  rows scroll under it and a sheet scrolled to its last row still has the
+  thing that dismisses it; the backdrop and Escape do too. A full-width
+  `Done` on every sheet's bottom edge was tried (2026-09-15) and taken out
+  the same day as one control more than the sheet needed. `ModelList`'s
+  search takes the caret on open only under a fine pointer, for the same
+  reason as `focus` above.
   Send is `createRun` (plan +
   sends together, then `PATCH /plan` with `template` when the prompt cites
   something — a `{block.…}`, `{character.N.…}` or `{slot.…}`, tested by

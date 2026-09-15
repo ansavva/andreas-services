@@ -219,6 +219,18 @@ export const DotsIcon = ({ className = "size-5 fill-current stroke-none" }: Prop
  * what tells a tile's menu apart from the row menus below the grid at a
  * glance.
  */
+/** Six dots, two by three — the handle a row is dragged by. */
+export const GripIcon = ({ className = "size-4 fill-current stroke-none" }: Props) => (
+  <Glyph className={className}>
+    <circle cx="9" cy="6" r="1.6" />
+    <circle cx="15" cy="6" r="1.6" />
+    <circle cx="9" cy="12" r="1.6" />
+    <circle cx="15" cy="12" r="1.6" />
+    <circle cx="9" cy="18" r="1.6" />
+    <circle cx="15" cy="18" r="1.6" />
+  </Glyph>
+);
+
 export const DotsVerticalIcon = ({ className = "size-5 fill-current stroke-none" }: Props) => (
   <Glyph className={className}>
     <circle cx="12" cy="5" r="1.6" />

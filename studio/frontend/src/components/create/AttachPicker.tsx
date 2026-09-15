@@ -14,7 +14,6 @@ import {
 import { getAsset, getCharacters, getFolder, getProjects } from "../../apis/studio";
 import { holdsOne, type AttachRef, type AttachRole } from "../../context/CreateBarContext";
 import { WIDE, useMediaQuery } from "../../hooks/useMediaQuery";
-import { SheetDone } from "../common/SheetDone";
 import { useUploads } from "../../hooks/useUploads";
 import {
   DEFAULT_SORT,
@@ -119,11 +118,8 @@ function defaultView(kind: EntityKind): View {
  * one-picture role closes it on the pick, since the tile it filled is what
  * the sheet under it shows, and `Image refs` stays open with a count in the
  * title until Done. Same state, same listing, one fetch.
- *
- * **The sheet's `Done` is on its bottom edge** (`SheetDone`), not in the
- * title row: a sheet this tall puts its title row at the top of the
- * screen, out of a thumb's reach, and `dvh` rather than `vh` so that top
- * is on the screen at all when the browser's bars are showing.
+ * `dvh` rather than `vh`, so the top of the sheet — the title row, the
+ * handle — is on the screen at all when the browser's bars are showing.
  */
 export function AttachPicker(props: PickerProps) {
   const wide = useMediaQuery(WIDE);
@@ -342,7 +338,11 @@ function PickerBody({
             </Toggle>
           </ToggleGroup.Root>
         )}
-        {!sheet && (
+        {sheet ? (
+          <Button size="sm" intent="secondary" onClick={onClose}>
+            Done
+          </Button>
+        ) : (
           <IconButton size="sm" label="Close the picker" onClick={onClose}>
             <CloseIcon />
           </IconButton>
@@ -503,7 +503,6 @@ function PickerBody({
             </div>
           ))}
       </div>
-      {sheet && <SheetDone onDone={onClose} />}
     </>
   );
 }
