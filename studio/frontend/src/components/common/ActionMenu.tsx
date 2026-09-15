@@ -129,7 +129,6 @@ export function ActionMenu({
   word,
   align = "end",
   className = "",
-  trigger: custom,
   onOpenChange,
 }: {
   /** What the menu is about — the sheet's title, and the trigger's name by default. */
@@ -165,14 +164,6 @@ export function ActionMenu({
   word?: string;
   /** Where the trigger sits. */
   className?: string;
-  /**
-   * The trigger drawn as given — its content and its whole class — instead
-   * of the dots. For a menu whose trigger IS the thing: the create sheet's
-   * picture tile on a phone, where the whole picture is the press and a
-   * glyph over it would be one more small target on a row of them.
-   * `triggerLabel` is still the name; `icon` and `word` are ignored.
-   */
-  trigger?: { node: ReactNode; className: string };
   /** Told when the menu opens or closes. */
   onOpenChange?: (open: boolean) => void;
 }) {
@@ -233,15 +224,7 @@ export function ActionMenu({
     setUpward(below < height && box.top > below);
   }, [actions, align]);
 
-  const wordOf = (action: MenuAction) =>
-    action.arm
-      ? armed.busy
-        ? "Working…"
-        : armed.armed
-          ? (action.armedLabel ??
-            `Confirm — ${String(action.label).toLowerCase()}`)
-          : action.label
-      : action.label;
+  const wordOf = (action: MenuAction) => wordOfAction(action, armed);
 
   const Glyph = vertical ? DotsVerticalIcon : DotsIcon;
   const glyph = icon ?? (
@@ -249,9 +232,7 @@ export function ActionMenu({
       className={overlay ? "size-4 fill-current stroke-none" : undefined}
     />
   );
-  const triggerClass = custom
-    ? custom.className
-    : word
+  const triggerClass = word
     ? buttonClass({
         size: "sm",
         intent: "secondary",
@@ -266,9 +247,7 @@ export function ActionMenu({
           ? "bg-overlay-scrim/60"
           : "shrink-0 text-muted hover:text-ink",
       });
-  const trigger = custom ? (
-    custom.node
-  ) : word ? (
+  const trigger = word ? (
     <>
       {glyph}
       <span>{word}</span>
@@ -401,70 +380,95 @@ export function ActionMenu({
         >
           <Drawer.Title className="sr-only">{triggerLabel}</Drawer.Title>
           <SheetHandle panel={sheet} onDismiss={close} />
-          <div className="flex flex-col pb-2">
-            {/* What the menu is about, so a sheet that covers the thing it was
-                opened from still says which one it is. */}
-            <Text variant="caption" tone="muted" className="truncate px-2 pb-1">
-              {label}
-            </Text>
-            {actions.map((action, at) => {
-              const edge = groupEdges(actions, at);
-              return (
-                <Fragment key={action.key}>
-                  {edge.opens && (
-                    <>
-                      {at > 0 && (
-                        <div role="separator" className="my-1 h-px bg-line" />
-                      )}
-                      <Text
-                        variant="caption"
-                        tone="muted"
-                        className="px-2 pb-1 pt-2 font-semibold"
-                      >
-                        {action.group}
-                      </Text>
-                    </>
-                  )}
-                  <button
-                    type="button"
-                    disabled={action.disabled || (action.arm && armed.busy)}
-                    title={action.reason}
-                    {...(action.arm ? armed.handlers : {})}
-                    onClick={() => {
-                      if (action.arm) {
-                        armed.press();
-                        return;
-                      }
-                      void action.onSelect();
-                      if (!action.keepOpen) close();
-                    }}
-                    className={`flex min-h-11 items-center gap-3 rounded-md px-2 text-left text-sm
-                            hover:bg-fill active:bg-fill-active disabled:opacity-50
-                            ${action.className ?? ""}
-                            ${action.danger || armed.armed ? "text-danger" : ""}`}
-                  >
-                    {action.icon}
-                    <span
-                      aria-live={
-                        action.arm
-                          ? "assertive"
-                          : action.keepOpen
-                            ? "polite"
-                            : undefined
-                      }
-                    >
-                      {wordOf(action)}
-                    </span>
-                  </button>
-                  {edge.closes && (
-                    <div role="separator" className="my-1 h-px bg-line" />
-                  )}
-                </Fragment>
-              );
-            })}
-          </div>
+          <MenuLines actions={actions} label={label} armed={armed} onClose={close} />
         </Drawer.Panel>
       </Drawer.Root>
+    </div>
+  );
+}
+
+/** The word on a line: its label, or what an armed line says instead. */
+function wordOfAction(action: MenuAction, armed?: Armed): ReactNode {
+  return action.arm && armed
+    ? armed.busy
+      ? "Working…"
+      : armed.armed
+        ? (action.armedLabel ?? `Confirm — ${String(action.label).toLowerCase()}`)
+        : action.label
+    : action.label;
+}
+
+type Armed = ReturnType<typeof useArmed>;
+
+/**
+ * The lines of a sheet: the list `ActionMenu`'s phone sheet draws, on its
+ * own, for a sheet that carries more than the list — the create sheet's
+ * preview of an attached picture puts the picture above these same lines.
+ * `armed` is the menu's arming state, for a list with an arming line; a
+ * list without one needs none.
+ */
+export function MenuLines({
+  actions,
+  label,
+  armed,
+  onClose,
+}: {
+  actions: readonly MenuAction[];
+  /** What the lines are about, said once above them. */
+  label?: string;
+  armed?: Armed;
+  /** Called after a line that does not keep the sheet open. */
+  onClose: () => void;
+}) {
+  return (
+    <div className="flex flex-col pb-2">
+      {/* What the menu is about, so a sheet that covers the thing it was
+          opened from still says which one it is. */}
+      {label !== undefined && (
+        <Text variant="caption" tone="muted" className="truncate px-2 pb-1">
+          {label}
+        </Text>
+      )}
+      {actions.map((action, at) => {
+        const edge = groupEdges(actions, at);
+        const arming = action.arm && armed ? armed : null;
+        return (
+          <Fragment key={action.key}>
+            {edge.opens && (
+              <>
+                {at > 0 && <div role="separator" className="my-1 h-px bg-line" />}
+                <Text variant="caption" tone="muted" className="px-2 pb-1 pt-2 font-semibold">
+                  {action.group}
+                </Text>
+              </>
+            )}
+            <button
+              type="button"
+              disabled={action.disabled || (arming !== null && arming.busy)}
+              title={action.reason}
+              {...(arming ? arming.handlers : {})}
+              onClick={() => {
+                if (arming) {
+                  arming.press();
+                  return;
+                }
+                void action.onSelect();
+                if (!action.keepOpen) onClose();
+              }}
+              className={`flex min-h-11 items-center gap-3 rounded-md px-2 text-left text-sm
+                          hover:bg-fill active:bg-fill-active disabled:opacity-50
+                          ${action.className ?? ""}
+                          ${action.danger || arming?.armed ? "text-danger" : ""}`}
+            >
+              {action.icon}
+              <span aria-live={action.arm ? "assertive" : action.keepOpen ? "polite" : undefined}>
+                {wordOfAction(action, armed)}
+              </span>
+            </button>
+            {edge.closes && <div role="separator" className="my-1 h-px bg-line" />}
+          </Fragment>
+        );
+      })}
     </div>
   );
 }

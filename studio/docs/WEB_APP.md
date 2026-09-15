@@ -594,14 +594,17 @@ page and a plain textarea over its literal bytes, and never offers fields.
   opening upward — two lines at rest, faded where more is cut off, eight
   with the caret in it.
 
-  **On a phone, pressing a picture on the row opens a sheet of what can be
-  done to it** — choose another, move it earlier or later, swap the frames,
-  remove — as 44px rows (`ActionMenu`, the picture as its trigger), where
-  on a desk the same press reopens the picker. The 20px × at a tile's
-  corner and the hold-then-drag on a row that also scrolls were the two
-  things a thumb could not do reliably; both still work, and the × grows to
-  32px set inside the corner where the pointer is coarse, but the sheet is
-  the phone's way. **And the phone's keyboard comes up only when the prompt
+  **Pressing a picture on the row opens it large in a drawer**
+  (`AttachPreview`: a right-hand drawer on a desk, a bottom sheet on a
+  phone; a clip plays) **with the row's gestures as lines under it** —
+  Choose… (the picker on its role, where a press used to go), Move
+  earlier/later, Swap the start and end frames, Remove — `MenuLines`, the
+  list `ActionMenu`'s sheet draws, on its own. Because 72px says which
+  picture and not what is in it; and because the 20px × at a tile's corner
+  and the hold-then-drag on a row that also scrolls were the two things a
+  thumb could not do reliably. Both still work, and the × grows to 32px set
+  inside the corner where the pointer is coarse, but the lines are the
+  phone's way. **And the phone's keyboard comes up only when the prompt
   is tapped.** `loadRun` and `expand` bump `focus` so Edit lands you in
   the box; under a coarse pointer (`FINE` in `useMediaQuery`) that bump is
   ignored, because on a phone it raised the keyboard over half the screen

@@ -3,10 +3,9 @@ import { useState, type DragEvent, type ReactElement } from "react";
 import { Button, IconButton } from "@ansavva/design-system";
 
 import type { AttachRef, AttachRole, Attachment } from "../../context/CreateBarContext";
-import { WIDE, useMediaQuery } from "../../hooks/useMediaQuery";
 import type { ModelEntry, RunKind } from "../../types";
 import { assetLabel } from "../../utils/format";
-import { ActionMenu, type MenuAction } from "../common/ActionMenu";
+import type { MenuAction } from "../common/ActionMenu";
 import { ApertureSpinner } from "../common/Aperture";
 import {
   ChevronLeftIcon,
@@ -20,6 +19,7 @@ import {
   TrashIcon,
   VideoIcon,
 } from "../common/icons";
+import { AttachPreview } from "./AttachPreview";
 import { isNodeDrag, readNodeDrag } from "./dragRef";
 import { ROW_ATTR, useReorder, type Sortable } from "./reorder";
 import { ROLES_BY_KIND, ROLE_WORDS, fieldFor } from "./roles";
@@ -121,8 +121,9 @@ export function fallbackDropRole(
  * between them; references line up in send order, each captioned with the
  * position a prompt would cite (`Image 1`, `Image 2`), and the `Image refs`
  * tile stays at the end as long as the model has room for one more. Every
- * picture carries its own ×, and pressing the picture reopens the picker on
- * its role to swap it.
+ * picture carries its own ×, and pressing the picture opens it large in a
+ * drawer (`AttachPreview`) with the lines under it — Choose…, the moves,
+ * the swap, Remove — because 72px says which picture and not what is in it.
  *
  * **A ghost tile dims when the model's own rules block it.** The registry's
  * `start_excludes_refs` / `end_excludes_refs` say a model takes a frame OR
@@ -140,15 +141,12 @@ export function fallbackDropRole(
  * prompt cites, so `Image 2` before `Image 1` has to be a gesture and not a
  * remove-and-reattach. Frames have the ⇄ instead: two roles, not a row.
  *
- * **On a phone, pressing a picture opens a sheet of what can be done to it**
- * — choose another, move it earlier or later, swap the frames, remove it —
- * as 44px rows, where on a desk the same press reopens the picker. The
- * hold-then-drag and the × still work there; they were just not enough. A
- * 20px × at a tile's corner and a 250ms hold on a row that also scrolls
- * were the two things a thumb could not do reliably, and a picture is the
- * one target on the row that is big. The same split every menu in the app
- * makes (`ActionMenu`: a dropdown above `md`, a bottom sheet below), and
- * the × itself grows to 32px with a 40px reach where the pointer is coarse.
+ * **The drawer's lines are the row's gestures as words, and on a phone they
+ * are the way.** The hold-then-drag and the × still work there; they were
+ * just not enough. A 20px × at a tile's corner and a 250ms hold on a row
+ * that also scrolls were the two things a thumb could not do reliably, and
+ * a picture is the one target on the row that is big. The × itself grows
+ * to 32px with a 40px reach where the pointer is coarse.
  *
  * **Each cell is also where a dragged picture lands.** A tile in the library's
  * grid can be dragged straight onto the role it should fill, which is the one
@@ -210,12 +208,11 @@ export function AttachTiles({
   const blocked = (of: AttachRole): string | null => blockedReason(of, entry, attachments);
 
   /**
-   * The phone sheet's lines for one attached picture. `Choose…` is the press
-   * a desk makes on the picture — the picker on its role; the two moves
-   * are the drag; the swap is the ⇄; Remove is the ×. Every gesture on the
-   * row, as a row of words a thumb can hit.
+   * The preview drawer's lines for one attached picture. `Choose…` is the
+   * picker on its role; the two moves are the drag; the swap is the ⇄;
+   * Remove is the ×. Every gesture on the row, as a row of words.
    */
-  const menuFor = (
+  const linesFor = (
     holding: { attachment: Attachment; index: number },
     among?: { position: number; count: number },
   ): MenuAction[] => {
@@ -326,9 +323,8 @@ export function AttachTiles({
         <Thumb
           attachment={holding.attachment}
           caption={of === "start" ? "Start" : "End"}
-          onPress={() => onRole(role === of ? null : of)}
           onDetach={() => onDetach(holding.index)}
-          menu={menuFor(holding)}
+          actions={linesFor(holding)}
         />
       ) : (
         <Ghost
@@ -368,9 +364,8 @@ export function AttachTiles({
               <Thumb
                 attachment={input.attachment}
                 caption="Input"
-                onPress={() => onRole(role === "input" ? null : "input")}
                 onDetach={() => onDetach(input.index)}
-                menu={menuFor(input)}
+                actions={linesFor(input)}
               />
             ) : (
               <Ghost
@@ -399,10 +394,9 @@ export function AttachTiles({
                 key={attachment.ref.node}
                 attachment={attachment}
                 caption={`Image ${position + 1}`}
-                onPress={() => onRole(role === "reference" ? null : "reference")}
                 onDetach={() => onDetach(index)}
                 sortable={refs.length > 1 ? sortable(position) : undefined}
-                menu={menuFor({ attachment, index }, { position, count: refs.length })}
+                actions={linesFor({ attachment, index }, { position, count: refs.length })}
               />
             ))}
             <Ghost
@@ -420,9 +414,8 @@ export function AttachTiles({
               <Thumb
                 attachment={clip.attachment}
                 caption="Source"
-                onPress={() => onRole(role === "clip" ? null : "clip")}
                 onDetach={() => onDetach(clip.index)}
-                menu={menuFor(clip)}
+                actions={linesFor(clip)}
               />
             ) : (
               <Ghost
@@ -478,9 +471,11 @@ function Ghost({
  *
  * The × is a sibling of the picture rather than a child of a button around
  * it — a control inside a control is invalid HTML the browser resolves by
- * dropping one. The picture itself reopens the picker on its role — on a
- * desk; on a phone it opens the sheet of `menu` (see `AttachTiles`), the
- * picture being the `ActionMenu`'s trigger and the sheet its body.
+ * dropping one. The picture itself opens `AttachPreview`: itself, large,
+ * with `actions` under it. The drawer is rendered beside the tile rather
+ * than inside it, because the tile's wrapper carries the reorder gesture
+ * and React's events climb through a portal — a press on a line would
+ * have started a drag of the tile behind it.
  *
  * **The × is drawn for the pointer.** 20px at the corner under a mouse;
  * where the pointer is coarse it is 32px, set inside the corner rather
@@ -499,27 +494,24 @@ function Ghost({
 export function Thumb({
   attachment,
   caption,
-  onPress,
   onDetach,
   sortable,
-  menu,
+  actions,
 }: {
   attachment: Attachment;
   caption: string;
-  onPress: () => void;
   onDetach: () => void;
   /** Given when the tile can be dragged along its row — see `reorder.ts`. */
   sortable?: Sortable;
-  /** The phone sheet's lines. Without it the press opens the picker on every screen. */
-  menu?: MenuAction[];
+  /** The preview drawer's lines. */
+  actions: readonly MenuAction[];
 }) {
-  const wide = useMediaQuery(WIDE);
+  const [previewing, setPreviewing] = useState(false);
   const { ref, role } = attachment;
   // `ref.name` is absent when the node it names has been deleted — see
   // `AttachRef`. The thumb stays, so it can be seen and removed.
   const pending = ref.pending !== undefined;
   const title = pending ? ref.pending! : `${ROLE_WORDS[role].label} · ${assetLabel(ref.name)}`;
-  const pictureClass = "relative block size-full overflow-hidden rounded-md bg-fill p-0 hover:bg-fill";
   const picture = (
     <>
       {pending ? (
@@ -558,6 +550,7 @@ export function Thumb({
     </>
   );
   return (
+    <>
     <div
       className={`relative size-[4.5rem] shrink-0 ${
         sortable
@@ -572,28 +565,22 @@ export function Thumb({
       aria-busy={pending || undefined}
       {...sortable?.wrapper}
     >
-      {menu && !wide && !pending ? (
-        <ActionMenu
-          label={`${caption} — ${assetLabel(ref.name)}`}
-          triggerLabel={`${caption} — ${assetLabel(ref.name)}`}
-          actions={menu}
-          className="contents"
-          trigger={{ node: picture, className: pictureClass }}
-        />
-      ) : (
-        <Button
-          intent="secondary"
-          size="md"
-          aria-label={pending ? ref.pending! : `Change ${caption.toLowerCase()} — ${assetLabel(ref.name)}`}
-          aria-description={sortable ? "Drag, or press an arrow key, to change its order." : undefined}
-          className={pictureClass}
-          onClick={onPress}
-          disabled={pending}
-          {...sortable?.button}
-        >
-          {picture}
-        </Button>
-      )}
+      <Button
+        intent="secondary"
+        size="md"
+        aria-label={pending ? ref.pending! : `${caption} — ${assetLabel(ref.name)}`}
+        aria-description={
+          sortable
+            ? "Opens it large. Drag, or press an arrow key, to change its order."
+            : "Opens it large."
+        }
+        className="relative block size-full overflow-hidden rounded-md bg-fill p-0 hover:bg-fill"
+        onClick={() => setPreviewing(true)}
+        disabled={pending}
+        {...sortable?.button}
+      >
+        {picture}
+      </Button>
       <IconButton
         intent="overlay"
         size="sm"
@@ -606,5 +593,14 @@ export function Thumb({
         <CloseIcon className="size-3 fill-none stroke-current stroke-2 pointer-coarse:size-4" />
       </IconButton>
     </div>
+    {previewing && (
+      <AttachPreview
+        attachment={attachment}
+        caption={caption}
+        actions={actions}
+        onClose={() => setPreviewing(false)}
+      />
+    )}
+    </>
   );
 }
