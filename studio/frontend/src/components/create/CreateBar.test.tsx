@@ -504,24 +504,24 @@ it("a reference moves along the row by arrow key and by drag, and its caption fo
   );
   const captions = () =>
     within(strip())
-      .getAllByRole("button", { name: /^Change image \d/ })
+      .getAllByRole("button", { name: /^Image \d — / })
       .map((each) => each.getAttribute("aria-label"));
   expect(captions()).toEqual([
-    "Change image 1 — face-01.png",
-    "Change image 2 — face-02.png",
-    "Change image 3 — face-03.png",
+    "Image 1 — face-01.png",
+    "Image 2 — face-02.png",
+    "Image 3 — face-03.png",
   ]);
 
   // ← on the third puts it second; → on the first would put it second too.
-  fireEvent.keyDown(within(strip()).getByRole("button", { name: /^Change image \d — face-03/ }), { key: "ArrowLeft" });
+  fireEvent.keyDown(within(strip()).getByRole("button", { name: /^Image \d — face-03/ }), { key: "ArrowLeft" });
   expect(captions()).toEqual([
-    "Change image 1 — face-01.png",
-    "Change image 2 — face-03.png",
-    "Change image 3 — face-02.png",
+    "Image 1 — face-01.png",
+    "Image 2 — face-03.png",
+    "Image 3 — face-02.png",
   ]);
   // ← on the first goes nowhere.
-  fireEvent.keyDown(within(strip()).getByRole("button", { name: /^Change image \d — face-01/ }), { key: "ArrowLeft" });
-  expect(captions()[0]).toBe("Change image 1 — face-01.png");
+  fireEvent.keyDown(within(strip()).getByRole("button", { name: /^Image \d — face-01/ }), { key: "ArrowLeft" });
+  expect(captions()[0]).toBe("Image 1 — face-01.png");
 
   // A mouse drag: tiles 72px wide at x = 0, 80, 160. Take the first, move it
   // past the middle of the third.
@@ -538,12 +538,12 @@ it("a reference moves along the row by arrow key and by drag, and its caption fo
   fireEvent.pointerUp(first, { pointerId: 1, pointerType: "mouse", clientX: 210, clientY: 10 });
   expect(first.hasAttribute("data-dragging")).toBe(false);
   expect(captions()).toEqual([
-    "Change image 1 — face-03.png",
-    "Change image 2 — face-02.png",
-    "Change image 3 — face-01.png",
+    "Image 1 — face-03.png",
+    "Image 2 — face-02.png",
+    "Image 3 — face-01.png",
   ]);
-  // The release is not a press: the picker did not open on the reference role.
-  expect(screen.queryByRole("region", { name: "Choose image refs" })).toBeNull();
+  // The release is not a press: no preview opened.
+  expect(screen.queryByRole("dialog")).toBeNull();
 });
 
 /**
@@ -623,4 +623,48 @@ it("on the opened run the sheet stays away until something calls it up, and coll
 
   fireEvent.click(screen.getByRole("button", { name: "Collapse the create panel" }));
   await waitFor(() => expect(document.querySelector("[data-create-bar]")).toBeNull());
+});
+
+/**
+ * Pressing a picture opens it large, with the row's gestures as lines under
+ * it: the moves reorder, Remove takes it off. On every screen — the drawer
+ * is a side panel on a desk and a bottom sheet on a phone, the same lines.
+ */
+it("a picture opens a preview whose lines move it and remove it", async () => {
+  // The test above this one collapsed the sheet, and the decision is kept.
+  window.localStorage.clear();
+  await open();
+  api.attach(FACE, "reference");
+  api.attach({ ...FACE, node: "node-2", name: "face-02.png" }, "reference");
+  await waitFor(() => expect(strip()).toBeTruthy());
+
+  fireEvent.click(within(strip()).getByRole("button", { name: "Image 1 — face-01.png" }));
+  const drawer = await screen.findByRole("dialog", { name: "Image 1 — face-01.png" });
+  expect(within(drawer).getByRole("button", { name: "Move earlier" })).toHaveProperty("disabled", true);
+  fireEvent.click(within(drawer).getByRole("button", { name: "Move later" }));
+
+  // The caption follows the position: what was first is now `Image 2`, and
+  // the line closed the drawer.
+  await waitFor(() =>
+    expect(within(strip()).getByRole("button", { name: "Image 2 — face-01.png" })).toBeTruthy(),
+  );
+  expect(screen.queryByRole("dialog")).toBeNull();
+
+  fireEvent.click(within(strip()).getByRole("button", { name: "Image 1 — face-02.png" }));
+  fireEvent.click(
+    within(await screen.findByRole("dialog", { name: "Image 1 — face-02.png" })).getByRole("button", {
+      name: "Remove",
+    }),
+  );
+  await waitFor(() =>
+    expect(within(strip()).queryByRole("button", { name: /face-02\.png/ })).toBeNull(),
+  );
+  expect(within(strip()).getByRole("button", { name: "Image 1 — face-01.png" })).toBeTruthy();
+
+  // Choose… is the picker on the tile's role, where a press used to go.
+  fireEvent.click(within(strip()).getByRole("button", { name: "Image 1 — face-01.png" }));
+  fireEvent.click(
+    within(await screen.findByRole("dialog")).getByRole("button", { name: "Choose image refs…" }),
+  );
+  expect(await screen.findByRole("region", { name: "Choose image refs" })).toBeTruthy();
 });

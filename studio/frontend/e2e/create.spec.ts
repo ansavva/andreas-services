@@ -206,5 +206,7 @@ test("on a phone the picker is a sheet over the create sheet, and a one-picture 
   // under it is what the person sees next.
   await picker.getByRole("button", { name: /^Attach / }).first().click();
   await expect(picker).toHaveCount(0);
-  await expect(strip.getByText("Start", { exact: true })).toBeVisible();
+  const start = strip.locator('[data-attachment="start"]');
+  await expect(start).toBeVisible();
+  await expect(start).toContainText("Start");
 });

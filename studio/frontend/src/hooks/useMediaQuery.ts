@@ -30,3 +30,12 @@ export function useMediaQuery(query: string): boolean {
 
 /** Tailwind's `md` — the line between the phone layout and the rest. */
 export const WIDE = "(min-width: 768px)";
+
+/**
+ * A mouse or a trackpad — the input that can aim at a 20px control and has
+ * no keyboard to raise. Read where the decision is about the DEVICE rather
+ * than the window: a caret put in the prompt for you is a convenience under
+ * a mouse and a keyboard over half the screen under a thumb, whatever the
+ * window's width. jsdom reads as `true` here too, like `WIDE`.
+ */
+export const FINE = "(pointer: fine)";

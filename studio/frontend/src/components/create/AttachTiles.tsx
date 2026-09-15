@@ -5,16 +5,21 @@ import { Button, IconButton } from "@ansavva/design-system";
 import type { AttachRef, AttachRole, Attachment } from "../../context/CreateBarContext";
 import type { ModelEntry, RunKind } from "../../types";
 import { assetLabel } from "../../utils/format";
+import type { MenuAction } from "../common/ActionMenu";
 import { ApertureSpinner } from "../common/Aperture";
 import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
   CloseIcon,
   FrameEndIcon,
   ImagePlusIcon,
   PencilIcon,
   StartFrameIcon,
   SwapIcon,
+  TrashIcon,
   VideoIcon,
 } from "../common/icons";
+import { AttachPreview } from "./AttachPreview";
 import { isNodeDrag, readNodeDrag } from "./dragRef";
 import { ROW_ATTR, useReorder, type Sortable } from "./reorder";
 import { ROLES_BY_KIND, ROLE_WORDS, fieldFor } from "./roles";
@@ -116,8 +121,9 @@ export function fallbackDropRole(
  * between them; references line up in send order, each captioned with the
  * position a prompt would cite (`Image 1`, `Image 2`), and the `Image refs`
  * tile stays at the end as long as the model has room for one more. Every
- * picture carries its own ×, and pressing the picture reopens the picker on
- * its role to swap it.
+ * picture carries its own ×, and pressing the picture opens it large in a
+ * drawer (`AttachPreview`) with the lines under it — Choose…, the moves,
+ * the swap, Remove — because 72px says which picture and not what is in it.
  *
  * **A ghost tile dims when the model's own rules block it.** The registry's
  * `start_excludes_refs` / `end_excludes_refs` say a model takes a frame OR
@@ -134,6 +140,13 @@ export function fallbackDropRole(
  * `reorder.ts`. Their order is the order they are sent in and the number the
  * prompt cites, so `Image 2` before `Image 1` has to be a gesture and not a
  * remove-and-reattach. Frames have the ⇄ instead: two roles, not a row.
+ *
+ * **The drawer's lines are the row's gestures as words, and on a phone they
+ * are the way.** The hold-then-drag and the × still work there; they were
+ * just not enough. A 20px × at a tile's corner and a 250ms hold on a row
+ * that also scrolls were the two things a thumb could not do reliably, and
+ * a picture is the one target on the row that is big. The × itself grows
+ * to 32px with a 40px reach where the pointer is coarse.
  *
  * **Each cell is also where a dragged picture lands.** A tile in the library's
  * grid can be dragged straight onto the role it should fill, which is the one
@@ -195,6 +208,67 @@ export function AttachTiles({
   const blocked = (of: AttachRole): string | null => blockedReason(of, entry, attachments);
 
   /**
+   * The preview drawer's lines for one attached picture. `Choose…` is the
+   * picker on its role; the two moves are the drag; the swap is the ⇄;
+   * Remove is the ×. Every gesture on the row, as a row of words.
+   */
+  const linesFor = (
+    holding: { attachment: Attachment; index: number },
+    among?: { position: number; count: number },
+  ): MenuAction[] => {
+    const of = holding.attachment.role;
+    const lines: MenuAction[] = [
+      {
+        key: "choose",
+        label: `${ROLE_WORDS[of].choose}…`,
+        icon: <ImagePlusIcon className={GLYPH} />,
+        onSelect: () => onRole(of),
+      },
+    ];
+    if (among && among.count > 1) {
+      lines.push(
+        {
+          key: "earlier",
+          label: "Move earlier",
+          icon: <ChevronLeftIcon className={GLYPH} />,
+          disabled: among.position === 0,
+          reason: among.position === 0 ? "Already first." : undefined,
+          onSelect: () => {
+            const to = refs[among.position - 1];
+            if (to) onMove(holding.index, to.index);
+          },
+        },
+        {
+          key: "later",
+          label: "Move later",
+          icon: <ChevronRightIcon className={GLYPH} />,
+          disabled: among.position === among.count - 1,
+          reason: among.position === among.count - 1 ? "Already last." : undefined,
+          onSelect: () => {
+            const to = refs[among.position + 1];
+            if (to) onMove(holding.index, to.index);
+          },
+        },
+      );
+    }
+    if ((of === "start" || of === "end") && start && end)
+      lines.push({
+        key: "swap",
+        label: "Swap the start and end frames",
+        icon: <SwapIcon className={GLYPH} />,
+        onSelect: onSwapFrames,
+      });
+    lines.push({
+      key: "remove",
+      label: "Remove",
+      icon: <TrashIcon className={GLYPH} />,
+      danger: true,
+      onSelect: () => onDetach(holding.index),
+    });
+    return lines;
+  };
+
+  /**
    * The four handlers that make one cell a target.
    *
    * `dragover` fires continuously and must `preventDefault` on **every** one of
@@ -249,8 +323,8 @@ export function AttachTiles({
         <Thumb
           attachment={holding.attachment}
           caption={of === "start" ? "Start" : "End"}
-          onPress={() => onRole(role === of ? null : of)}
           onDetach={() => onDetach(holding.index)}
+          actions={linesFor(holding)}
         />
       ) : (
         <Ghost
@@ -290,8 +364,8 @@ export function AttachTiles({
               <Thumb
                 attachment={input.attachment}
                 caption="Input"
-                onPress={() => onRole(role === "input" ? null : "input")}
                 onDetach={() => onDetach(input.index)}
+                actions={linesFor(input)}
               />
             ) : (
               <Ghost
@@ -320,9 +394,9 @@ export function AttachTiles({
                 key={attachment.ref.node}
                 attachment={attachment}
                 caption={`Image ${position + 1}`}
-                onPress={() => onRole(role === "reference" ? null : "reference")}
                 onDetach={() => onDetach(index)}
                 sortable={refs.length > 1 ? sortable(position) : undefined}
+                actions={linesFor({ attachment, index }, { position, count: refs.length })}
               />
             ))}
             <Ghost
@@ -340,8 +414,8 @@ export function AttachTiles({
               <Thumb
                 attachment={clip.attachment}
                 caption="Source"
-                onPress={() => onRole(role === "clip" ? null : "clip")}
                 onDetach={() => onDetach(clip.index)}
+                actions={linesFor(clip)}
               />
             ) : (
               <Ghost
@@ -397,7 +471,17 @@ function Ghost({
  *
  * The × is a sibling of the picture rather than a child of a button around
  * it — a control inside a control is invalid HTML the browser resolves by
- * dropping one. The picture itself reopens the picker on its role.
+ * dropping one. The picture itself opens `AttachPreview`: itself, large,
+ * with `actions` under it. The drawer is rendered beside the tile rather
+ * than inside it, because the tile's wrapper carries the reorder gesture
+ * and React's events climb through a portal — a press on a line would
+ * have started a drag of the tile behind it.
+ *
+ * **The × is drawn for the pointer.** 20px at the corner under a mouse;
+ * where the pointer is coarse it is 32px, set inside the corner rather
+ * than over it, and reaches 4px past its own edge — a 40px target, which
+ * is the floor a thumb needs. The reach stays inside the tile's box so the
+ * row, which scrolls, is not handed 8px of overflow to scroll into.
  *
  * **A `pending` ref is drawn as what it is being made from, waiting.** A
  * clip's first frame takes the worker a few seconds, and a menu line that
@@ -410,23 +494,63 @@ function Ghost({
 export function Thumb({
   attachment,
   caption,
-  onPress,
   onDetach,
   sortable,
+  actions,
 }: {
   attachment: Attachment;
   caption: string;
-  onPress: () => void;
   onDetach: () => void;
   /** Given when the tile can be dragged along its row — see `reorder.ts`. */
   sortable?: Sortable;
+  /** The preview drawer's lines. */
+  actions: readonly MenuAction[];
 }) {
+  const [previewing, setPreviewing] = useState(false);
   const { ref, role } = attachment;
   // `ref.name` is absent when the node it names has been deleted — see
   // `AttachRef`. The thumb stays, so it can be seen and removed.
   const pending = ref.pending !== undefined;
   const title = pending ? ref.pending! : `${ROLE_WORDS[role].label} · ${assetLabel(ref.name)}`;
+  const picture = (
+    <>
+      {pending ? (
+        // The source it is being made from — a clip, for a first frame —
+        // dimmed under the spinner. `<video>` because that source is a clip
+        // today; an `<img>` of an mp4 is a broken picture.
+        <>
+          <video
+            src={ref.url ?? undefined}
+            muted
+            playsInline
+            preload="metadata"
+            className="size-full object-cover opacity-40"
+          />
+          <span className="absolute inset-0 flex items-center justify-center">
+            <ApertureSpinner size="sm" label={ref.pending!} />
+          </span>
+        </>
+      ) : role === "clip" ? (
+        // `preload="metadata"` is the free poster frame; nothing plays here.
+        <video
+          src={ref.url ?? undefined}
+          muted
+          playsInline
+          preload="metadata"
+          className="size-full object-cover"
+        />
+      ) : (
+        <img src={ref.url ?? undefined} alt="" className="size-full object-cover" />
+      )}
+      {/* The word over the picture's foot, on a scrim, the way ElevenLabs
+          labels `@Image 1`. */}
+      <span className="absolute inset-x-0 bottom-0 truncate bg-overlay-scrim/60 px-1 py-0.5 text-center text-[11px] font-medium text-overlay-ink">
+        {pending ? "Taking…" : caption}
+      </span>
+    </>
+  );
   return (
+    <>
     <div
       className={`relative size-[4.5rem] shrink-0 ${
         sortable
@@ -444,56 +568,39 @@ export function Thumb({
       <Button
         intent="secondary"
         size="md"
-        aria-label={pending ? ref.pending! : `Change ${caption.toLowerCase()} — ${assetLabel(ref.name)}`}
-        aria-description={sortable ? "Drag, or press an arrow key, to change its order." : undefined}
+        aria-label={pending ? ref.pending! : `${caption} — ${assetLabel(ref.name)}`}
+        aria-description={
+          sortable
+            ? "Opens it large. Drag, or press an arrow key, to change its order."
+            : "Opens it large."
+        }
         className="relative block size-full overflow-hidden rounded-md bg-fill p-0 hover:bg-fill"
-        onClick={onPress}
+        onClick={() => setPreviewing(true)}
         disabled={pending}
         {...sortable?.button}
       >
-        {pending ? (
-          // The source it is being made from — a clip, for a first frame —
-          // dimmed under the spinner. `<video>` because that source is a clip
-          // today; an `<img>` of an mp4 is a broken picture.
-          <>
-            <video
-              src={ref.url ?? undefined}
-              muted
-              playsInline
-              preload="metadata"
-              className="size-full object-cover opacity-40"
-            />
-            <span className="absolute inset-0 flex items-center justify-center">
-              <ApertureSpinner size="sm" label={ref.pending!} />
-            </span>
-          </>
-        ) : role === "clip" ? (
-          // `preload="metadata"` is the free poster frame; nothing plays here.
-          <video
-            src={ref.url ?? undefined}
-            muted
-            playsInline
-            preload="metadata"
-            className="size-full object-cover"
-          />
-        ) : (
-          <img src={ref.url ?? undefined} alt="" className="size-full object-cover" />
-        )}
-        {/* The word over the picture's foot, on a scrim, the way ElevenLabs
-            labels `@Image 1`. */}
-        <span className="absolute inset-x-0 bottom-0 truncate bg-overlay-scrim/60 px-1 py-0.5 text-center text-[11px] font-medium text-overlay-ink">
-          {pending ? "Taking…" : caption}
-        </span>
+        {picture}
       </Button>
       <IconButton
         intent="overlay"
         size="sm"
         label={`Remove ${assetLabel(ref.name)}`}
-        className="absolute -right-1 -top-1 size-5 rounded-pill bg-overlay-scrim/80"
+        className="absolute -right-1 -top-1 size-5 rounded-pill bg-overlay-scrim/80
+                   pointer-coarse:right-1 pointer-coarse:top-1 pointer-coarse:size-8
+                   pointer-coarse:before:absolute pointer-coarse:before:-inset-1 pointer-coarse:before:content-['']"
         onClick={onDetach}
       >
-        <CloseIcon className="size-3 fill-none stroke-current stroke-2" />
+        <CloseIcon className="size-3 fill-none stroke-current stroke-2 pointer-coarse:size-4" />
       </IconButton>
     </div>
+    {previewing && (
+      <AttachPreview
+        attachment={attachment}
+        caption={caption}
+        actions={actions}
+        onClose={() => setPreviewing(false)}
+      />
+    )}
+    </>
   );
 }
