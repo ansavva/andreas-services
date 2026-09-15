@@ -97,3 +97,8 @@ output "webhook_endpoint_url" {
   description = "The public URL Stripe's webhook endpoint must point at — the relay's gateway, not the API's route."
   value       = module.webhook_relay.endpoint_url
 }
+
+output "identity_providers" {
+  description = "Social providers enabled on the pool, in button order"
+  value       = module.auth.identity_providers
+}

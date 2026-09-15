@@ -128,6 +128,13 @@ resource "aws_cognito_user_pool" "main" {
   admin_create_user_config {
     allow_admin_create_user_only = false
   }
+
+  # Social sign-ins are linked onto the password account with the same email
+  # before Cognito creates anything — `pre_sign_up.tf`. An in-place change to
+  # the pool, unlike `username_configuration` above.
+  lambda_config {
+    pre_sign_up = aws_lambda_function.pre_sign_up.arn
+  }
 }
 
 # The region is only ever needed to spell out a DEFAULT Cognito domain's host,
@@ -150,7 +157,19 @@ resource "aws_cognito_user_pool_client" "main" {
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = ["openid", "email", "profile"]
-  supported_identity_providers         = ["COGNITO"]
+
+  # COGNITO is the password form; every other name is a button on the hosted
+  # page. Cognito rejects a name it has no provider for, so the client waits
+  # for the providers — with none enabled, `depends_on` a count-0 resource is
+  # inert.
+  supported_identity_providers = concat(["COGNITO"], local.identity_provider_names)
+
+  depends_on = [
+    aws_cognito_identity_provider.google,
+    aws_cognito_identity_provider.facebook,
+    aws_cognito_identity_provider.apple,
+    aws_cognito_identity_provider.linkedin,
+  ]
 
   # **`ALLOW_REFRESH_TOKEN_AUTH` must never come back while this block exists.**
   # Cognito rejects the pair at apply time — `terraform validate` and `tflint`

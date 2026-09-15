@@ -131,6 +131,14 @@ a settings document for it).
 Everyone signed in at cut-over is signed out **once** — Amplify's tokens lived in AsyncStorage and
 left with Amplify. No account is lost. At zero users, that cost was zero.
 
+## Addendum, September 2026: social sign-in
+
+Google, Apple, Facebook and LinkedIn were added as identity providers on the same pool and client,
+rendered as buttons on this same hosted page — nothing above changed. The one piece of machinery it
+added is a pre-sign-up trigger that links a social identity onto the password account with the same
+email, because a fresh `sub` per provider would orphan every row keyed on the old one.
+[`auth-social-login.md`](auth-social-login.md) is the record and the console-by-console runbook.
+
 ## Files
 
 | Concern | Where |

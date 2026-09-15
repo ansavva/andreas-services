@@ -35,3 +35,12 @@ output "webhook_queue_url" {
   description = "The queue behind that endpoint; the consumer dev-up.sh starts drains it."
   value       = module.webhook_relay.queue_url
 }
+
+# What to paste into each provider's console as this machine's redirect URI.
+output "idp_response_url" {
+  value = module.auth.idp_response_url
+}
+
+output "identity_providers" {
+  value = module.auth.identity_providers
+}

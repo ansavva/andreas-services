@@ -78,6 +78,9 @@ jobs:
           filters: |
             infra:
               - 'humbugg/infra/**'
+              # Two Lambdas are zipped straight from these by Terraform.
+              - 'humbugg/scripts/webhook-relay/**'
+              - 'humbugg/scripts/auth-trigger/**'
               - '.github/workflows/humbugg-prod.yaml'
             backend:
               - 'humbugg/backend/**'
@@ -268,6 +271,18 @@ jobs:
           # Where production alarms mail. Empty until the secret exists; the alerting
           # module then creates the SNS topic with no subscription.
           TF_VAR_alert_email: ${{ secrets.HUMBUGG_ALERT_EMAIL }}
+          # Social sign-in. An empty id leaves that provider off the hosted page,
+          # so each lands as its console work is done. docs/auth-social-login.md.
+          TF_VAR_google_client_id: ${{ vars.HUMBUGG_GOOGLE_CLIENT_ID }}
+          TF_VAR_google_client_secret: ${{ secrets.HUMBUGG_GOOGLE_CLIENT_SECRET }}
+          TF_VAR_facebook_app_id: ${{ vars.HUMBUGG_FACEBOOK_APP_ID }}
+          TF_VAR_facebook_app_secret: ${{ secrets.HUMBUGG_FACEBOOK_APP_SECRET }}
+          TF_VAR_apple_services_id: ${{ vars.HUMBUGG_APPLE_SERVICES_ID }}
+          TF_VAR_apple_team_id: ${{ vars.HUMBUGG_APPLE_TEAM_ID }}
+          TF_VAR_apple_key_id: ${{ vars.HUMBUGG_APPLE_KEY_ID }}
+          TF_VAR_apple_private_key: ${{ secrets.HUMBUGG_APPLE_PRIVATE_KEY }}
+          TF_VAR_linkedin_client_id: ${{ vars.HUMBUGG_LINKEDIN_CLIENT_ID }}
+          TF_VAR_linkedin_client_secret: ${{ secrets.HUMBUGG_LINKEDIN_CLIENT_SECRET }}
         run: terraform -chdir=humbugg/infra/envs/prod apply -auto-approve -input=false
 
       - name: Wait for SES domain authentication

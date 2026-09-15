@@ -85,6 +85,15 @@ export default function PrivacyPage() {
         messages such as confirmation and password-reset codes. When you join an exchange, its organizers can see
         your verified email address so they can reach you about that exchange; other participants cannot.
       </p>
+      <p>
+        You can also sign in with a Google, Apple, Facebook or LinkedIn account. When you do, that provider sends us
+        your name, your email address and an identifier for your account with them, and nothing else &mdash; we do not
+        receive your contacts, posts or connections, and we never post on your behalf. We use the email address to
+        connect the sign-in to your Humbugg account, so a Google sign-in and a password sign-in with the same address
+        reach the same exchanges. The provider learns that you signed in to Humbugg and when; what it does with that is
+        governed by its own privacy policy, not this one. Apple may give us a private relay address in place of your
+        real one, in which case that is the address organizers see and we write to.
+      </p>
 
       <h2>3. Email and invitations</h2>
       <p>
