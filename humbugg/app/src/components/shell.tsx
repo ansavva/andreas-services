@@ -4,14 +4,16 @@
 // Ports `src/components/Layout.tsx`. The footer's policy links now cross an
 // origin — the legal pages live on the marketing site — so they open in the
 // system browser rather than routing.
-import { Card as DsCard, Spinner } from '@ansavva/design-system';
+import { Card as DsCard, IconButton, Spinner } from '@ansavva/design-system';
 import { Link, usePathname } from 'expo-router';
 import type { ReactNode } from 'react';
 import { Linking, Pressable, ScrollView, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Path } from 'react-native-svg';
 
 import { LEGAL_EXTERNAL_LINKS } from '../config/site';
 import { SERVICE_COUNTRY, SERVICE_CURRENCY } from '../config/policies';
+import { SOCIAL_LINKS } from '../config/social';
 import { useAuth } from '../context/auth-context';
 import { useScrollRestoration } from '../hooks/use-scroll-restoration';
 import { useTheme } from '../theme/styles';
@@ -103,10 +105,41 @@ export function SiteFooter() {
             </Pressable>
           ))}
         </View>
-        <Text style={styles.smallMuted}>
-          © {year} Humbugg · Available in the {SERVICE_COUNTRY} · Prices in {SERVICE_CURRENCY}
-        </Text>
+        <View style={styles.footerBottom}>
+          <Text style={styles.smallMuted}>
+            © {year} Humbugg · Available in the {SERVICE_COUNTRY} · Prices in {SERVICE_CURRENCY}
+          </Text>
+          <SocialLinks />
+        </View>
       </View>
+    </View>
+  );
+}
+
+/**
+ * The social profiles, as a row of icon buttons — ports the web footer's
+ * `<SocialLinks />`. The design system's `IconButton` rather than a `Pressable`
+ * around an svg, for the same reason the web side reaches for
+ * `iconButtonClass`: that is where an icon-only control gets its target size
+ * and its accessible name. The glyph names its own colour because
+ * react-native-svg does not inherit one (the component's own comment says so).
+ */
+export function SocialLinks() {
+  const { brand } = useTheme();
+  return (
+    <View accessibilityLabel="Social" style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: -8 }}>
+      {SOCIAL_LINKS.map((link) => (
+        <IconButton
+          key={link.id}
+          label={`Humbugg on ${link.label}`}
+          accessibilityRole="link"
+          onPress={() => void Linking.openURL(link.href)}
+        >
+          <Svg width={20} height={20} viewBox="0 0 24 24">
+            <Path d={link.path} fill={brand.muted} />
+          </Svg>
+        </IconButton>
+      ))}
     </View>
   );
 }

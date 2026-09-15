@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LEGAL_LINKS } from '../config/policies';
+import { SOCIAL_HANDLE, SOCIAL_LINKS } from '../config/social';
 import { APP_ORIGIN } from '../config/site';
 import { THEME_STORAGE_KEY } from '../theme';
 import { Shell, SiteFooter } from './Layout';
@@ -69,6 +70,19 @@ describe('Shell', () => {
     const footer = within(screen.getByRole('contentinfo'));
     for (const link of LEGAL_LINKS) {
       expect(footer.getByRole('link', { name: link.label })).toHaveAttribute('href', link.to);
+    }
+  });
+
+  it('footers every social profile, named by network and opening in a new tab', () => {
+    renderShell();
+    const social = within(screen.getByRole('navigation', { name: 'Social' }));
+    for (const link of SOCIAL_LINKS) {
+      const anchor = social.getByRole('link', { name: `Humbugg on ${link.label}` });
+      // One handle everywhere — a profile that drifted to another name would
+      // still render, so the URL is what the test pins.
+      expect(anchor).toHaveAttribute('href', expect.stringContaining(SOCIAL_HANDLE));
+      expect(anchor).toHaveAttribute('target', '_blank');
+      expect(anchor).toHaveAttribute('rel', expect.stringContaining('noopener'));
     }
   });
 });

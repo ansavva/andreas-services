@@ -1,9 +1,10 @@
-import { buttonClass } from '@ansavva/design-system';
+import { buttonClass, iconButtonClass } from '@ansavva/design-system';
 import { Link } from 'react-router';
 import type { HTMLAttributes, ReactNode } from 'react';
 
 import { LEGAL_LINKS, SERVICE_COUNTRY, SERVICE_CURRENCY } from '../config/policies';
 import { appUrl } from '../config/site';
+import { SOCIAL_LINKS } from '../config/social';
 import { ThemeToggle } from './ThemeToggle';
 
 export function Brand() {
@@ -68,11 +69,44 @@ export function SiteFooter() {
             </Link>
           ))}
         </nav>
-        <p className="text-sm text-muted">
-          © {year} Humbugg · Available in the {SERVICE_COUNTRY} · Prices in {SERVICE_CURRENCY}
-        </p>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted">
+            © {year} Humbugg · Available in the {SERVICE_COUNTRY} · Prices in {SERVICE_CURRENCY}
+          </p>
+          <SocialLinks />
+        </div>
       </div>
     </footer>
+  );
+}
+
+/**
+ * The social profiles, as a row of icon buttons. `iconButtonClass` rather than
+ * a bare anchor around an svg: the design system's `IconButton` is where an
+ * icon-only control gets its 44px target and focus ring, and the class builder
+ * is that component for an element that has to stay an `<a>`. The accessible
+ * name carries the network, not the handle — "Humbugg on Instagram" is what a
+ * screen reader should say the link is.
+ */
+export function SocialLinks() {
+  return (
+    <nav aria-label="Social" className="-mx-2 flex items-center gap-1">
+      {SOCIAL_LINKS.map((link) => (
+        <a
+          key={link.id}
+          href={link.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Humbugg on ${link.label}`}
+          title={link.label}
+          className={iconButtonClass({ intent: 'ghost', size: 'md', className: 'text-muted hover:text-ink' })}
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className="size-5">
+            <path d={link.path} />
+          </svg>
+        </a>
+      ))}
+    </nav>
   );
 }
 
