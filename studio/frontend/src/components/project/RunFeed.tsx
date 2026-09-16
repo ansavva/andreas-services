@@ -114,6 +114,8 @@ export const LAYOUT_TILES = "tiles";
 
 export interface FeedFilters {
   status: string;
+  /** `image`, `video`, or both when empty — the run's kind, `?kind=` on the route. */
+  kind: string;
   character: string;
   model: string;
   since: string;
@@ -137,6 +139,7 @@ export interface FeedFilters {
  */
 export function useFeedFilters() {
   const [status, setStatus] = useSearchParamState("status", "");
+  const [kind, setKind] = useSearchParamState("kind", "");
   const [character, setCharacter] = useSearchParamState("character", "");
   const [model, setModel] = useSearchParamState("model", "");
   const [since, setSince] = useSearchParamState("since", "");
@@ -155,26 +158,35 @@ export function useFeedFilters() {
   const clear = useCallback(() => {
     const next = new URLSearchParams(searchParams);
     // `scene` is not cleared: it is where the feed IS, not a filter on it.
-    for (const key of ["status", "character", "model", "since", "q"])
+    for (const key of ["status", "kind", "character", "model", "since", "q"])
       next.delete(key);
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
   const applied = useMemo<FeedFilters>(
-    () => ({ status, character, model: model.trim(), since, q: q.trim(), scene }),
-    [character, model, q, scene, since, status],
+    () => ({
+      status,
+      kind,
+      character,
+      model: model.trim(),
+      since,
+      q: q.trim(),
+      scene,
+    }),
+    [character, kind, model, q, scene, since, status],
   );
 
   return {
     applied,
     setStatus,
+    setKind,
     setCharacter,
     setModel,
     setSince,
     setQ,
     setScene,
     clear,
-    activeCount: [status, character, model.trim(), since].filter(Boolean)
+    activeCount: [status, kind, character, model.trim(), since].filter(Boolean)
       .length,
   };
 }
@@ -208,6 +220,7 @@ export function useRunFeed(projectId: string, filters: FeedFilters) {
         ...(filters.status
           ? { status: filters.status }
           : { include: "drafts" }),
+        ...(filters.kind ? { kind: filters.kind } : {}),
         ...(filters.model ? { model: filters.model } : {}),
         ...(filters.character ? { character: filters.character } : {}),
         ...(filters.since ? { since: filters.since } : {}),
@@ -299,6 +312,24 @@ export function RunFeed({ projectId, characters, heroes, onOpen }: Props) {
                 ]}
                 value={filters.applied.status}
                 onValueChange={filters.setStatus}
+              />
+            </Field.Root>
+          </div>
+
+          {/* What the run made. Stills, clips, or — the default — both: a
+              wall of clips is the reel a project has, and a wall of stills
+              is its frames. */}
+          <div className="min-w-36">
+            <Field.Root name="kind">
+              <Field.Label>Kind</Field.Label>
+              <Select
+                options={[
+                  { value: "", label: "Images and videos" },
+                  { value: "image", label: "Images" },
+                  { value: "video", label: "Videos" },
+                ]}
+                value={filters.applied.kind}
+                onValueChange={filters.setKind}
               />
             </Field.Root>
           </div>

@@ -234,6 +234,17 @@ describe("the feed", () => {
     );
   });
 
+  it("filters by what the run made, off `?kind=`, and both when unset", async () => {
+    await draw([row()], "/p/proj-1?tab=runs&kind=video");
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({ kind: "video" }));
+    expect(list.mock.calls[0]![0]).toMatchObject({ include: "drafts" });
+
+    cleanup();
+    list.mockClear();
+    await draw([row()]);
+    expect(list.mock.calls[0]![0]).not.toHaveProperty("kind");
+  });
+
   it("searches prompts on Enter and sends the words as q", async () => {
     await draw([row()]);
 
