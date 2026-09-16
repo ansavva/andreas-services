@@ -25,3 +25,12 @@ describe("ratioOf", () => {
     expect(ratioOf({ kind: "image", plan: plan({ aspect_ratio: "0:4" }) })).toBe("3 / 4");
   });
 });
+
+it("reads a Runpod `size` of W*H pixels when there is no aspect_ratio", () => {
+  expect(ratioOf({ kind: "video", plan: { params: { size: "720*1280" } } } as never)).toBe("720 / 1280");
+  expect(ratioOf({ kind: "image", plan: { params: { size: "1280*720" } } } as never)).toBe("1280 / 720");
+  // aspect_ratio still wins when both are present.
+  expect(
+    ratioOf({ kind: "video", plan: { params: { aspect_ratio: "9:16", size: "1280*720" } } } as never),
+  ).toBe("9 / 16");
+});

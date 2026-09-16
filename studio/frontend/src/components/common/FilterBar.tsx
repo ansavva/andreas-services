@@ -2,6 +2,8 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { Badge, Button, Collapsible, buttonClass } from "@ansavva/design-system";
 
+import { FilterIcon } from "./icons";
+
 interface Props {
   /** How many fields are narrowing the listing right now — the badge, and whether Clear shows. */
   activeCount: number;
@@ -9,7 +11,16 @@ interface Props {
   onClear: () => void;
   /** The fields themselves. Each owns its own `useSearchParamState` — this component knows nothing about what it holds. */
   children: ReactNode;
-  /** Names the disclosure for a page with more than one — a project's Runs tab is the only one today. */
+  /**
+   * What the disclosure is called — its accessible name and its tooltip. A
+   * project's Runs tab says "Filter runs"; everything else, "Filter".
+   *
+   * **A name, not a caption: the trigger is the funnel glyph alone.** "Filter
+   * runs" spelled out beside the search box was the widest control on the
+   * row for a thing pressed once per visit, and the count badge already says
+   * the one thing worth reading at a glance — whether anything is narrowing
+   * the list.
+   */
   label?: string;
 }
 
@@ -55,9 +66,15 @@ export function FilterBar({ activeCount, onClear, children, label = "Filter" }: 
   return (
     <Collapsible.Root open={open} onOpenChange={setOpen} className="contents">
       <Collapsible.Trigger
-        className={buttonClass({ intent: "secondary", size: "sm", className: "shrink-0 gap-2" })}
+        aria-label={label}
+        title={label}
+        className={buttonClass({
+          intent: "secondary",
+          size: "sm",
+          className: `shrink-0 gap-1.5 ${activeCount > 0 ? "pr-1.5" : "w-8 px-0"}`,
+        })}
       >
-        {label}
+        <FilterIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5]" />
         {activeCount > 0 && (
           <Badge intent="neutral" className="font-mono tabular-nums">
             {activeCount}

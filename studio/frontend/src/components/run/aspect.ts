@@ -11,9 +11,12 @@ import type { RunFeedRow } from "../../types";
  * `match_input_image`, or a model with no such knob).
  */
 export function ratioOf(row: Pick<RunFeedRow, "kind" | "plan">): string {
-  const raw = row.plan?.params?.aspect_ratio;
-  if (typeof raw === "string") {
-    const match = /^(\d+(?:\.\d+)?)\s*[:x/]\s*(\d+(?:\.\d+)?)$/.exec(raw.trim());
+  // `aspect_ratio` as `W:H` on most models; `size` as `W*H` pixels on the
+  // Runpod ones (Wan, Z-Image), which have no aspect field at all. Either
+  // says the shape; the first that parses wins.
+  for (const raw of [row.plan?.params?.aspect_ratio, row.plan?.params?.size]) {
+    if (typeof raw !== "string") continue;
+    const match = /^(\d+(?:\.\d+)?)\s*[:x*/]\s*(\d+(?:\.\d+)?)$/.exec(raw.trim());
     if (match) {
       const [, w, h] = match;
       if (Number(w) > 0 && Number(h) > 0) return `${w} / ${h}`;

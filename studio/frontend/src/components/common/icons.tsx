@@ -462,6 +462,13 @@ export const VideoIcon = ({ className }: Props) => (
   </Glyph>
 );
 
+/** A funnel: narrow the listing. */
+export const FilterIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M3 5h18l-7 8v6l-4-2v-4L3 5z" />
+  </Glyph>
+);
+
 /** Two sliders: the parameters behind the bar. */
 export const SlidersIcon = ({ className }: Props) => (
   <Glyph className={className}>
