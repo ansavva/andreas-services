@@ -184,7 +184,7 @@ studio/pipeline/
         │   └── auth.py            Cognito sign-in + the token cache
         │
         ├── session/               who you are, and where you are pointing
-        │   ├── commands.py        `studio login` / `logout` / `whoami`
+        │   ├── commands.py        `studio signup` / `login` / `logout` / `whoami`
         │   └── profile_commands.py  `studio profile` list / show / use / sync
         │
         ├── domain/                WHAT THINGS ARE — records and the tree's shape
@@ -249,6 +249,7 @@ an ordinary session needs**:
 
 ```bash
 studio profile list      # what exists; dev is the default and prod is the other
+studio signup            # no account yet: register with an invite code, confirm, sign in, make a library
 studio login             # signs in to the profile in force
 studio whoami            # who, where, and which libraries that reaches
 ```
@@ -620,11 +621,13 @@ or projects.
 | `store.py` | **The media store, addressed by path and reached through the API.** Resolve a name path to a node, list its files in natural order, read, write, upload, presign, and ensure a folder exists. No bucket name, no credentials — bytes travel to S3 directly on presigned URLs the API signs, which is what keeps a video out of the Lambda's request limit. |
 | `entities.py` | **The entity routes — the only place in the package that knows one's spelling.** Characters, projects, runs, scenes, movies, templates, the phrasebook, models, the prompt checker, renders and images. `test_the_route_table_is_the_whole_wire_surface` (`pipeline/tests/unit/adapters/test_entities.py`) reads the `/api/…` literals straight out of this file and `store.py` and asserts them against a table in both directions — a wrapper with no caller has to go rather than be left, because it would put a route in that table that nobody reconciles. |
 | `api.py` | One transport for every call the CLI makes: bearer token, refresh-on-401, library header, error mapping. Decided once so no caller re-decides it. |
-| `auth.py` | The Cognito sign-in behind `studio login`, and the token cache it writes — **keyed by profile**, so a prod session and a dev session coexist. There is no default API URL: unset is a refusal, not a silent connection to production. It builds an unsigned Cognito client — `InitiateAuth` needs no AWS identity, but boto3 resolves the credential chain at construction and would fail first. |
+| `auth.py` | The Cognito sign-up and sign-in behind `studio signup` and `studio login`, and the token cache it writes — **keyed by profile**, so a prod session and a dev session coexist. There is no default API URL: unset is a refusal, not a silent connection to production. It builds an unsigned Cognito client — `InitiateAuth` needs no AWS identity, but boto3 resolves the credential chain at construction and would fail first. |
 
 **`session/` — who you are, and where you are pointing.** `commands.py` is
-`studio login` / `logout` / `whoami`; everything the CLI knows about identity it
-reads back off the stored token. These work on a machine with **no AWS
+`studio signup` / `login` / `logout` / `whoami`; everything the CLI knows about
+identity it reads back off the stored token. `signup` is four steps in one
+command — register with the invite code, confirm the emailed code, sign in,
+`POST /api/libraries` — because none of them is useful alone. These work on a machine with **no AWS
 credentials configured at all**. `profile_commands.py` is `studio profile
 list` / `show` / `use` / `sync`. A session belongs to a profile, `login` signs
 you in to the one in force, and `whoami` prints it first. `sync` is the only

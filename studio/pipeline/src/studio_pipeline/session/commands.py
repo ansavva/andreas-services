@@ -1,7 +1,8 @@
-"""`studio login` / `logout` / `whoami` — the CLI's session.
+"""`studio signup` / `login` / `logout` / `whoami` — the CLI's session.
 
-Three commands and no more. Signing in is the whole of what they do; everything
-else the CLI knows about identity it reads back off the stored token. Where the
+Four commands and no more. Getting an account and signing in to it is the whole
+of what they do; everything else the CLI knows about identity it reads back off
+the stored token. Where the
 session points is `profile_commands.py` next door — a session belongs to a
 profile, so both of these name it in their output.
 
@@ -41,6 +42,78 @@ def cmd_login(email: str | None) -> None:
     # sign-in that did not say which one is a sign-in you cannot check.
     click.echo(f"Signed in as {body.get('email', email)} on profile {profiles.current()}.")
     _show_libraries()
+
+
+@click.command("signup")
+@click.option("--email", help="The address to register. Prompted for if omitted.")
+@click.option(
+    "--library",
+    "library_name",
+    help="What to call the library the account starts with. Prompted for if omitted.",
+)
+@click.option(
+    "--resume",
+    is_flag=True,
+    help="The account exists but was never confirmed: send a fresh code and pick up from there.",
+)
+def cmd_signup(email: str | None, library_name: str | None, resume: bool) -> None:
+    """Create an account, confirm it, sign in, and make its first library.
+
+    Four steps in one command because none of them is useful alone: an
+    unconfirmed account cannot sign in, and a confirmed one in no library can
+    reach nothing. The invite code comes from STUDIO_INVITE_CODE or a prompt;
+    the password from STUDIO_PASSWORD or a prompt, never an option.
+    """
+    email = (email or click.prompt("Email")).strip()
+
+    if not resume:
+        password = os.environ.get("STUDIO_PASSWORD") or click.prompt(
+            "Password (12+ characters, upper, lower, digit)",
+            hide_input=True,
+            confirmation_prompt=True,
+        )
+        invite = os.environ.get("STUDIO_INVITE_CODE") or click.prompt("Invite code", hide_input=True)
+        try:
+            destination = auth.sign_up(email, password, invite)
+        except auth.AuthError as error:
+            raise click.ClickException(str(error)) from error
+        click.echo(f"A confirmation code has been sent to {destination}.")
+    else:
+        password = os.environ.get("STUDIO_PASSWORD") or click.prompt("Password", hide_input=True)
+        try:
+            auth.resend_confirmation(email)
+        except auth.AuthError as error:
+            raise click.ClickException(str(error)) from error
+        click.echo(f"A fresh confirmation code has been sent to {email}.")
+
+    code = click.prompt("Confirmation code")
+    try:
+        auth.confirm_sign_up(email, code)
+        body = auth.login(email, password)
+    except auth.AuthError as error:
+        raise click.ClickException(str(error)) from error
+    click.echo(f"Signed in as {body.get('email', email)} on profile {profiles.current()}.")
+
+    # The account is now real and can sign in, so from here a failure is
+    # recoverable by `studio login` and a second try at the library — which is
+    # why the library comes last rather than first.
+    library_name = (
+        library_name or click.prompt("Library name", default=_default_library(email))
+    ).strip()
+    try:
+        created = api.create_library(library_name)
+    except api.ApiError as error:
+        raise click.ClickException(
+            f"Signed in, but could not create the library: {error}. "
+            "Run `studio whoami` and try again."
+        ) from error
+    click.echo(f"library  {created.get('name', library_name)}  ({created.get('id', '?')}, owner)")
+
+
+def _default_library(email: str) -> str:
+    """`ada@example.com` → `ada's library`. A name to accept, not to admire."""
+    local = email.split("@", 1)[0] or "my"
+    return f"{local}'s library"
 
 
 @click.command("logout")

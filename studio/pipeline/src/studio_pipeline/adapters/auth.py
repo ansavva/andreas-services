@@ -216,6 +216,78 @@ def login(username: str, password: str) -> dict:
     return claims(user.id_token)
 
 
+#: The `ClientMetadata` key the pool's pre-sign-up trigger reads the invite
+#: code from. Named in `backend/studio_core/handlers/aws/signup/`; the two
+#: must agree or every sign-up is refused as uninvited.
+INVITE_METADATA_KEY = "invite_code"
+
+
+def _signup_failure(step: str, error: Exception) -> AuthError:
+    """One sign-up failure as a sentence, by Cognito's class name.
+
+    The class name and never `str(error)`, for the reason `login` gives — with
+    one exception: the pre-sign-up trigger refuses with a message written for
+    the person (`UserLambdaValidationException`), and that text is the only
+    thing that says *why*, so it is passed through once it has been trimmed of
+    the `PreSignUp failed with error ` Cognito prefixes it with.
+    """
+    kind = type(error).__name__
+    if kind == "UserLambdaValidationException":
+        text = str(error)
+        marker = "failed with error "
+        return AuthError(text.split(marker, 1)[1].strip() if marker in text else text)
+    if kind == "UsernameExistsException":
+        return AuthError("An account with that address already exists. Run: studio login")
+    if kind == "InvalidPasswordException":
+        return AuthError(
+            "That password does not meet the pool's policy: at least 12 characters, "
+            "with an uppercase letter, a lowercase letter and a digit."
+        )
+    if kind == "CodeMismatchException":
+        return AuthError("That code is not right.")
+    if kind == "ExpiredCodeException":
+        return AuthError("That code has expired. Run: studio signup resend")
+    return AuthError(f"Sign-up failed at {step} ({kind}).")
+
+
+def sign_up(email: str, password: str, invite_code: str) -> str:
+    """Register an account, gated by the invite code. Returns where the code went.
+
+    `SignUp` is unauthenticated like `InitiateAuth`, so the same unsigned
+    client serves. The invite code rides in `ClientMetadata`, which reaches the
+    pool's pre-sign-up trigger verbatim and nowhere else — it is not an
+    attribute, so it is never stored on the account. Cognito then emails a
+    confirmation code; `confirm_sign_up` finishes the job.
+    """
+    user = _cognito(email)
+    user.set_base_attributes(email=email)
+    try:
+        response = user.register(
+            email, password, client_metadata={INVITE_METADATA_KEY: invite_code}
+        )
+    except Exception as error:  # noqa: BLE001 - the class varies by failure mode
+        raise _signup_failure("sign-up", error) from error
+    return (response.get("CodeDeliveryDetails") or {}).get("Destination") or email
+
+
+def confirm_sign_up(email: str, code: str) -> None:
+    """Answer the emailed code. After this the account can sign in."""
+    user = _cognito(email)
+    try:
+        user.confirm_sign_up(code.strip(), username=email)
+    except Exception as error:  # noqa: BLE001
+        raise _signup_failure("confirmation", error) from error
+
+
+def resend_confirmation(email: str) -> None:
+    """Another code, for one that expired or never arrived."""
+    user = _cognito(email)
+    try:
+        user.resend_confirmation_code(email)
+    except Exception as error:  # noqa: BLE001
+        raise _signup_failure("resend", error) from error
+
+
 def logout() -> bool:
     """Forget this profile's session. True if there was one.
 

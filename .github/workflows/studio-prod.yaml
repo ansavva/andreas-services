@@ -290,8 +290,20 @@ jobs:
       - name: Terraform init
         run: terraform -chdir=studio/infra/envs/prod init -input=false
 
+      # `STUDIO_INVITE_CODE` is what a sign-up has to present; see
+      # `modules/auth`. Unset, the pool applies closed to self sign-up — which
+      # is the safe default and also silent, so the step says when that is so.
       - name: Terraform apply
-        run: terraform -chdir=studio/infra/envs/prod apply -auto-approve -input=false
+        env:
+          TF_VAR_invite_code: ${{ secrets.STUDIO_INVITE_CODE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TF_VAR_invite_code}" ]; then
+            echo "::warning::STUDIO_INVITE_CODE is not set on the studio-production" \
+                 "environment. The pool will refuse every sign-up; existing accounts" \
+                 "are unaffected."
+          fi
+          terraform -chdir=studio/infra/envs/prod apply -auto-approve -input=false
 
       - name: Write outputs to SSM
         run: |
@@ -299,6 +311,9 @@ jobs:
           tf() { terraform -chdir=studio/infra/envs/prod output -raw "$1"; }
           put() { aws ssm put-parameter --overwrite --type String --name "$1" --value "$2"; }
           put /studio/prod/app-bucket            "$(tf app_bucket_name)"
+          # `studio profile sync prod` reads this one; it was the only value
+          # the profile needs that nothing wrote, so the sync always failed.
+          put /studio/prod/api-domain            "$(tf api_domain)"
           put /studio/prod/cf-dist-id            "$(tf cloudfront_distribution_id)"
           put /studio/prod/media-bucket          "$(tf media_bucket_name)"
           put /studio/prod/catalog-table         "$(tf catalog_table_name)"

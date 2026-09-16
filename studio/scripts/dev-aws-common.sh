@@ -271,6 +271,7 @@ load_aws_identity() {
 }
 
 set_terraform_vars() {
+  load_dev_invite_code
   TF_VARS=(
     "-var=aws_region=$AWS_REGION_VALUE"
     "-var=aws_account_id=$AWS_ACCOUNT_ID"
@@ -278,7 +279,24 @@ set_terraform_vars() {
     "-var=machine_id=$MACHINE_ID"
     "-var=machine_short_id=$MACHINE_SHORT_ID"
     "-var=machine_name=$MACHINE_NAME"
+    "-var=invite_code=$STUDIO_DEV_INVITE_CODE"
   )
+}
+
+load_dev_invite_code() {
+  # The code this machine's pool demands of a sign-up — `modules/auth`'s
+  # pre-sign-up trigger, the same file prod runs. Minted once into `dev.env`
+  # and reused, so a re-apply converges the same gate rather than rotating it
+  # under a `studio signup` someone is in the middle of. Not printed: it is the
+  # one thing between the dev pool and anyone who finds its client id.
+  [[ -n "${STUDIO_DEV_INVITE_CODE:-}" ]] ||
+    STUDIO_DEV_INVITE_CODE="$(read_env "$DEV_ENV_FILE" STUDIO_DEV_INVITE_CODE)"
+  if [[ -z "${STUDIO_DEV_INVITE_CODE:-}" ]]; then
+    require_command openssl
+    STUDIO_DEV_INVITE_CODE="$(openssl rand -hex 8)"
+    upsert_env "$DEV_ENV_FILE" STUDIO_DEV_INVITE_CODE "$STUDIO_DEV_INVITE_CODE"
+    ok "Generated this stack's invite code into $DEV_ENV_FILE (not printed)."
+  fi
 }
 
 export_temporary_aws_credentials() {

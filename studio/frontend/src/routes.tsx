@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { CALLBACK_PATH } from "./auth/oauth";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthCallbackPage } from "./pages/AuthCallbackPage";
+import { SIGNUP_PATH, SignUpPage } from "./pages/SignUpPage";
 import { BrowsePage } from "./pages/BrowsePage";
 import { CharacterPage } from "./pages/CharacterPage";
 import { CharactersPage } from "./pages/CharactersPage";
@@ -111,6 +112,12 @@ export function StudioRoutes() {
           renders no page, and mounting a header over a code exchange would
           paint a shell nobody sees. */}
       <Route path={CALLBACK_PATH} element={<AuthCallbackPage />} />
+
+      {/* The other screen with no session. `App` lets it past the gate for the
+          same reason as the callback: a visitor here has no account yet, and
+          bouncing them to the hosted sign-in is bouncing them to a page that
+          cannot help. */}
+      <Route path={SIGNUP_PATH} element={<SignUpPage />} />
 
       {/* Outside the layout, deliberately: this renders no page, it only
           rewrites the address, and mounting a header to do it would paint a

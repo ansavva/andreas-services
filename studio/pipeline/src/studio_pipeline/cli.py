@@ -51,7 +51,7 @@ class _Grouped(click.Group):
     SECTIONS = [
         # First, because nothing below it works until you have signed in — and
         # `profile` is first within it, because signing in signs you in to one.
-        ("session",     ["profile", "login", "logout", "whoami"]),
+        ("session",     ["profile", "signup", "login", "logout", "whoami"]),
         ("generate",    ["run", "models", "add-model"]),
         ("records",     ["runs", "scenes", "movies", "frames", "projects"]),
         ("characters",  ["character", "curate", "contact-sheet"]),
@@ -91,7 +91,8 @@ SHORT_HELP = {
 
 ROOT_HELP = """The studio generation pipeline.
 
-Runs locally and talks to the studio API. Start with `studio login`. Nothing
+Runs locally and talks to the studio API. Start with `studio signup`, or
+`studio login` if you have an account. Nothing
 here deploys, and nothing here needs an AWS account. `studio <command> --help`
 for a command's own options.
 
@@ -136,6 +137,7 @@ def main(profile_name: str | None) -> None:
 # them: the CLI holds no AWS credentials and every store call is an
 # authenticated HTTP request.
 main.add_command(_profile.main, "profile")
+main.add_command(_session.cmd_signup, "signup")
 main.add_command(_session.cmd_login, "login")
 main.add_command(_session.cmd_logout, "logout")
 main.add_command(_session.cmd_whoami, "whoami")

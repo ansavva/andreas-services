@@ -37,6 +37,7 @@ vi.mock("./pages/MoviePage", () => ({ MoviePage: () => <div>movie</div> }));
 vi.mock("./pages/BrowsePage", () => ({ BrowsePage: () => <div>browser</div> }));
 vi.mock("./pages/ObjectPage", () => ({ ObjectPage: () => <div>object</div> }));
 vi.mock("./pages/AuthCallbackPage", () => ({ AuthCallbackPage: () => <div>callback</div> }));
+vi.mock("./pages/SignUpPage", () => ({ SIGNUP_PATH: "/signup", SignUpPage: () => <div>sign up</div> }));
 
 import { StudioRoutes } from "./routes";
 import { TestProviders } from "./test-providers";
@@ -97,6 +98,11 @@ describe("the route table", () => {
     // nothing but this assertion pins it.
     at("/auth/callback?code=abc123&state=xyz789");
     expect(screen.getByText("callback")).toBeDefined();
+  });
+
+  it("reaches the sign-up page, which renders with no session", () => {
+    at("/signup");
+    expect(screen.getByText("sign up")).toBeDefined();
   });
 
   it("sends an old key-shaped share link home rather than resolving it", () => {

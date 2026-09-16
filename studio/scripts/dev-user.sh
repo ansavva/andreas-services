@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Converge this machine's dev-pool test account.
 #
-# The dev Cognito pool is `allow_admin_create_user_only`, like prod's, so the
-# one account in it is created here. `dev-token.sh` signs in as exactly this
+# The dev pool accepts self sign-up behind an invite code, like prod's, but the
+# fixture account is created here rather than through `studio signup`: it has
+# a `.test` address that can receive no code. `dev-token.sh` signs in as exactly this
 # account, and both read `STUDIO_DEV_USER_EMAIL` from `dev-aws-common.sh` so
 # they cannot drift onto two different people.
 #

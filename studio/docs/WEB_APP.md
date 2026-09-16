@@ -68,7 +68,7 @@ only authority on whether a name is free.
 |---|---|
 | Backend | Flask (Python 3.11) + Mangum, Docker container Lambda behind API Gateway REST |
 | Frontend | Vite + React 19 + Tailwind v4 + the design system's **web** leaves, static build to S3 + CloudFront |
-| Auth | AWS Cognito (admin-create-only user pool); **Cognito Managed Login** (hosted pages at `studio-auth.andreas.services`) with the authorization-code flow + PKCE on the SPA, Cognito authorizer on every `/api` route. The `studio` CLI signs in with SRP directly — see `infra/modules/auth`. |
+| Auth | AWS Cognito (self sign-up behind an invite-code pre-sign-up trigger); **Cognito Managed Login** (hosted pages at `studio-auth.andreas.services`) with the authorization-code flow + PKCE on the SPA, Cognito authorizer on every `/api` route. The `studio` CLI signs in with SRP directly — see `infra/modules/auth`. |
 | Data | **DynamoDB, single-table** (`studio-prod-catalog`) — one item pair per node, three `ALL`-projected GSIs (`by-sk`, `by-path`, `by-recent`). No cache. Listings are a query. |
 | Blobs | S3, addressed only by a row's opaque `blob_key`. Never listed. |
 | Routing | By node id. `/f/<id>` is a folder, `/o/<id>` is one open file. `/favorites` is the one address naming nothing — a favorite is a fact about the caller. |
@@ -99,7 +99,7 @@ studio/
 │   │   │                     #   the three may import Flask or boto3
 │   │   ├── clients/aws/      # dynamodb.py, s3.py, sqs.py, ssm.py — the only boto3 in the service
 │   │   ├── clients/replicate.py
-│   │   ├── handlers/         # aws/ (api, hook, render, worker) and local/ (dev server, consumers)
+│   │   ├── handlers/         # aws/ (api, hook, signup, render, worker) and local/ (dev server, consumers)
 │   │   └── media/            # ffmpeg.py, imaging.py, sheet.py, workspace.py — the render worker's tools
 │   └── tests/                # unit/ (pytest + moto), integration/, smoke/
 ├── frontend/                 # Vite + React SPA (studio.andreas.services)
@@ -1363,8 +1363,25 @@ exactly one library and can reach nothing else, which is what confines it; see
 
 ## Creating users
 
-There is no sign-up. Accounts are created out of band, and **the two pools have
-two scripts** — `create-user.sh` defaults `USER_POOL_ID` from SSM, which is the
+**Sign-up is self-service and invite-gated.** `studio signup` and the SPA's
+`/signup` page both call Cognito's `SignUp` with the invite code in
+`ClientMetadata`; the pool's pre-sign-up trigger
+(`backend/studio_core/handlers/aws/signup/`, wired in `infra/modules/auth`)
+refuses anything else. Managed Login's own "Create an account" page cannot pass
+it — it has no field for the code — and is refused with a message naming the
+two routes that can. Prod's code is the `STUDIO_INVITE_CODE` secret, applied as
+`TF_VAR_invite_code`; this machine's dev pool has its own in `dev.env`
+(`STUDIO_DEV_INVITE_CODE`, minted by `dev-aws-setup.sh`). Unset, a pool
+refuses every sign-up.
+
+A confirmed account is in no library. `POST /api/libraries` — the one write on
+the unscoped path — creates an empty one with the caller as owner; `studio
+signup` calls it last, and the SPA offers it the moment a signed-in account is
+found to be in none. It can name no other library, which is what makes it safe
+where `add-member.sh` is deliberately not a route.
+
+Accounts can still be created out of band, and **the two pools have two
+scripts** — `create-user.sh` defaults `USER_POOL_ID` from SSM, which is the
 **prod** pool, so it is not the one to reach for while developing:
 
 ```bash
@@ -1385,9 +1402,10 @@ membership signs in successfully and sees nothing.
 (`USER#<sub>` / `LIB#<lib_id>`), and creating the Cognito user does not write
 one — so a freshly created account signs in, renders, and gets a 403 from
 `before_request` with "You are not a member of any library." That is the right
-status: the pool is admin-create-only, so it is a provisioning gap rather than
-anything the caller did wrong, and `GET /api/libraries` returning an empty 200
-is how it gets diagnosed. **`scripts/add-member.sh` writes that row:**
+status: it is a fresh account rather than anything the caller did wrong, and
+`GET /api/libraries` returning an empty 200 is how it gets diagnosed. The
+account can make its own library from there; **to join an existing one,
+`scripts/add-member.sh` writes the row:**
 
 ```bash
 STUDIO_EMAIL=you@example.com STUDIO_LIBRARY=lib-… ./studio/scripts/add-member.sh

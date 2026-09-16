@@ -102,6 +102,10 @@ module "auth" {
   auth_certificate_arn = data.aws_acm_certificate.wildcard.arn
   route53_zone_id      = data.aws_route53_zone.main.zone_id
 
+  # `TF_VAR_invite_code` in the deploy workflow, from the `STUDIO_INVITE_CODE`
+  # secret. Unset there, the pool applies closed — see `modules/auth`.
+  invite_code = var.invite_code
+
   tags = local.common_tags
 }
 

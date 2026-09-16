@@ -214,3 +214,103 @@ class _FakeUser:
 
     def renew_access_token(self):
         return None
+
+    # The sign-up half. Records what was sent so a test can assert on the
+    # metadata without a network.
+    registered: dict = {}
+    base_attributes = None
+
+    def set_base_attributes(self, **attributes):
+        self.base_attributes = attributes
+
+    def register(self, username, password, attr_map=None, client_metadata=None):  # noqa: ARG002
+        _FakeUser.registered = {"username": username, "client_metadata": client_metadata}
+        return {"CodeDeliveryDetails": {"Destination": "d***@s***", "DeliveryMedium": "EMAIL"}}
+
+    def confirm_sign_up(self, confirmation_code, username=None):  # noqa: ARG002
+        if confirmation_code != "123456":
+            raise _Named("CodeMismatchException")
+
+    def resend_confirmation_code(self, username):  # noqa: ARG002
+        return None
+
+
+def _Named(name: str) -> Exception:
+    """An exception whose class name is what botocore would raise."""
+    return type(name, (Exception,), {})(name)
+
+
+# ---------------------------------------------------------------------------
+# Sign-up
+# ---------------------------------------------------------------------------
+
+
+def test_sign_up_sends_the_invite_code_as_client_metadata(monkeypatch):
+    """The pre-sign-up trigger reads `clientMetadata.invite_code` and nothing
+    else, so this is the one thing the adapter must get right."""
+    monkeypatch.setattr(auth, "_cognito", lambda username=None: _FakeUser())
+
+    where = auth.sign_up("new@studio.test", "Correct-horse-1", "open-sesame")
+
+    assert _FakeUser.registered == {
+        "username": "new@studio.test",
+        "client_metadata": {"invite_code": "open-sesame"},
+    }
+    assert where == "d***@s***"
+
+
+def test_a_wrong_confirmation_code_says_so(monkeypatch):
+    monkeypatch.setattr(auth, "_cognito", lambda username=None: _FakeUser())
+
+    auth.confirm_sign_up("new@studio.test", " 123456 ")  # trimmed, accepted
+
+    with pytest.raises(auth.AuthError, match="not right"):
+        auth.confirm_sign_up("new@studio.test", "000000")
+
+
+def test_the_gate_refusal_reaches_the_person_without_the_arn(monkeypatch):
+    """`UserLambdaValidationException` is the one Cognito error whose text is
+    for the person — the trigger wrote it — so it is passed through, minus the
+    `PreSignUp failed with error ` prefix Cognito puts in front of it."""
+
+    class _Refused(_FakeUser):
+        def register(self, *args, **kwargs):  # noqa: ARG002
+            raise _Named("UserLambdaValidationException").__class__(
+                "PreSignUp failed with error Studio is invite-only. Sign up with a code."
+            )
+
+    monkeypatch.setattr(auth, "_cognito", lambda username=None: _Refused())
+
+    with pytest.raises(auth.AuthError) as caught:
+        auth.sign_up("new@studio.test", "Correct-horse-1", "wrong")
+
+    assert str(caught.value) == "Studio is invite-only. Sign up with a code."
+
+
+def test_an_existing_address_points_at_login(monkeypatch):
+    class _Exists(_FakeUser):
+        def register(self, *args, **kwargs):  # noqa: ARG002
+            raise _Named("UsernameExistsException")
+
+    monkeypatch.setattr(auth, "_cognito", lambda username=None: _Exists())
+
+    with pytest.raises(auth.AuthError, match="studio login"):
+        auth.sign_up("new@studio.test", "Correct-horse-1", "open-sesame")
+
+
+def test_the_fake_user_only_defines_methods_the_real_client_has():
+    """The fake must not be able to hide a wrong method name.
+
+    It did once: `sign_up` called `add_base_attributes`, the fake answered it,
+    every test passed, and the real `pycognito.Cognito` raised `AttributeError`
+    on the first sign-up against a real pool. The method is `set_base_attributes`.
+    So every public callable on the fake has to exist on the real class.
+    """
+    from pycognito import Cognito
+
+    faked = {
+        name for name, value in vars(_FakeUser).items()
+        if callable(value) and not name.startswith("_")
+    }
+    missing = sorted(name for name in faked if not callable(getattr(Cognito, name, None)))
+    assert not missing, f"the fake answers methods pycognito.Cognito lacks: {missing}"

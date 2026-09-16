@@ -20,18 +20,26 @@ to `None`. This route is the reason that attribute is assigned there at all
 rather than left unset.
 
 **An empty list is a real answer, and always a 200.** A caller in no library is
-an account somebody created and never added to one — the pool is
-admin-create-only, so this is a provisioning gap rather than a mistake the
-caller made. The way it gets diagnosed is by asking this route and being told
-"none", which a 403 indistinguishable from "you asked for a library you are not
-in" would prevent.
+a fresh account — one that signed itself up and has not yet made a library, or
+one somebody created and never added to one. The way it gets diagnosed is by
+asking this route and being told "none", which a 403 indistinguishable from
+"you asked for a library you are not in" would prevent. The remedy is the POST
+below.
+
+**`POST /api/libraries` is the one write that is not about a library the caller
+is already in**, which is why it shares this unscoped path. It creates a library
+holding nothing, and makes the caller its owner — and only the caller.
+`scripts/add-member.sh` is still the only way into somebody *else's* library,
+for the reason given there; this route cannot reach one, because the only
+membership it writes names a library that did not exist until it did.
 """
 
 import logging
 
 from flask import Blueprint, g, jsonify
 
-from studio_core.errors import NotFoundError
+from studio_core.errors import NotFoundError, ValidationError
+from studio_core.routes import support
 from studio_core.services import catalog
 
 logger = logging.getLogger(__name__)
@@ -82,3 +90,22 @@ def _summary(membership: dict) -> dict:
         logger.warning("Membership names a library with no record: %s", lib)
         name = lib
     return {"id": lib, "name": name, "role": membership["role"]}
+
+
+@bp.post("/libraries")
+def create_library():
+    """A new, empty library with the caller as its owner. `{name}` in, 201 out.
+
+    The body is the summary `GET /api/libraries` would report for it, plus
+    `root` — the node id the library opens on, so a client can navigate
+    straight into it without a second call.
+    """
+    name = support.body().get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ValidationError("name is required")
+    name = name.strip()
+    if len(name) > catalog.MAX_LIBRARY_NAME:
+        raise ValidationError(f"name must be at most {catalog.MAX_LIBRARY_NAME} characters")
+    created = catalog.create_library(name, g.caller_sub)
+    logger.info("Library %s created by %s", created["id"], g.caller_sub)
+    return jsonify(created), 201

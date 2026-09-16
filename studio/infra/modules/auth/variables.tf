@@ -40,6 +40,17 @@ variable "route53_zone_id" {
   default     = ""
 }
 
+# The one string a sign-up has to carry. Empty — the default — closes the pool
+# to self sign-up entirely; see the trigger in main.tf. Sensitive so a plan
+# never prints it; it is still recorded in state, like every Lambda
+# environment variable.
+variable "invite_code" {
+  description = "Invite code a SignUp must present in ClientMetadata. Empty refuses every sign-up."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "tags" {
   description = "Tags applied to all resources"
   type        = map(string)

@@ -1,10 +1,8 @@
 /**
  * Changing the signed-in address — two calls against the user pool itself.
  *
- * Plain `fetch`, like `oauth.ts`: the Cognito Identity Provider API is a JSON
- * POST with an `X-Amz-Target` header, and the two operations here need no
- * signing because the access token is the credential. The API Gateway never
- * sees these; studio's own API has no route for them and needs none.
+ * Two operations on the pool's own API (`cognito.ts`), with the access token
+ * as the credential — no signing, and the API Gateway never sees them.
  *
  * The address is the username (`username_attributes = ["email"]` in
  * `infra/modules/auth`), so this changes what the person signs in with — on
@@ -19,77 +17,14 @@
  *
  * A typo in step 1 therefore costs a code that never arrives, not the account.
  */
+import { post } from "./cognito";
 import { getAccessToken, refreshTokens } from "./oauth";
 
-const POOL_ID = import.meta.env.VITE_COGNITO_USER_POOL_ID as string | undefined;
-
-/** `us-east-1_AbCdEf` → `https://cognito-idp.us-east-1.amazonaws.com/`. */
-function endpoint(): string {
-  const region = POOL_ID?.split("_")[0];
-  if (!region) {
-    throw new Error(
-      "Cognito is not configured. Run studio/scripts/dev-setup.sh; see studio/dev.env.sample.",
-    );
-  }
-  return `https://cognito-idp.${region}.amazonaws.com/`;
-}
-
-/** Cognito's error body: a `__type` and a `message`, both optional in practice. */
-interface CognitoError {
-  __type?: string;
-  message?: string;
-}
-
-/**
- * What the failure means to the person, not what Cognito called it. The one
- * that needs translating is the scope: a session from before the client
- * granted `aws.cognito.signin.user.admin` fails here with a message about the
- * token, and the fix is a sign-in, which nothing in that message says.
- */
-function describe(status: number, err: CognitoError): string {
-  const type = err.__type?.split("#").pop() ?? "";
-  const message = err.message ?? "";
-  if (type === "NotAuthorizedException" && /scope/i.test(message)) {
-    return "This session is too old to change the address. Sign out, sign back in, and try again.";
-  }
-  if (type === "CodeMismatchException") return "That code is not right.";
-  if (type === "ExpiredCodeException")
-    return "That code has expired. Start again to get a new one.";
-  if (type === "AliasExistsException")
-    return "Another account already uses that address.";
-  if (type === "InvalidParameterException")
-    return message || "That address is not valid.";
-  if (type === "LimitExceededException")
-    return "Too many attempts. Wait a while, then try again.";
-  return message || `Cognito returned HTTP ${status}.`;
-}
-
-async function call<T>(
-  target: string,
-  body: Record<string, unknown>,
-): Promise<T> {
+/** One self-service operation, with the session's access token as the credential. */
+async function call<T>(target: string, body: Record<string, unknown>): Promise<T> {
   const accessToken = getAccessToken();
   if (!accessToken) throw new Error("Not signed in.");
-
-  const response = await fetch(endpoint(), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-amz-json-1.1",
-      "X-Amz-Target": `AWSCognitoIdentityProviderService.${target}`,
-    },
-    body: JSON.stringify({ AccessToken: accessToken, ...body }),
-  });
-
-  if (!response.ok) {
-    let err: CognitoError = {};
-    try {
-      err = (await response.json()) as CognitoError;
-    } catch {
-      /* non-JSON error body */
-    }
-    throw new Error(describe(response.status, err));
-  }
-  return (await response.json()) as T;
+  return post<T>(target, { AccessToken: accessToken, ...body });
 }
 
 interface UpdateUserAttributesResponse {

@@ -677,6 +677,14 @@ class FakeApi:
         raise FakeError(404, f"no model {name}")
 
     def _r_libraries(self, method, body, params):
+        if method == "POST":
+            name = (body or {}).get("name")
+            if not isinstance(name, str) or not name.strip():
+                raise FakeError(400, "name is required")
+            # One library per fake; the CLI's `signup` calls this once, after
+            # signing in, and only ever needs the shape back.
+            return {"id": "lib-created", "name": name.strip(), "role": "owner",
+                    "root": "node-created-root"}
         return [{"id": self.lib, "name": "Studio", "root": self.root["id"]}]
 
     def _r_resolve(self, method, body, params):

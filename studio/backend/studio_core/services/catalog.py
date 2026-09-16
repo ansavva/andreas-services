@@ -490,6 +490,98 @@ def library(lib: str) -> dict:
     return _record(item)
 
 
+#: A library's name is shown in a switcher and a page title; a paragraph is not
+#: a name. Same bound as an entity title.
+MAX_LIBRARY_NAME = 120
+
+#: The role a library's creator holds on it. The membership row is the whole of
+#: authorisation, so the creator's row has to say the strongest thing there is.
+ROLE_OWNER = "owner"
+
+
+def create_library(name: str, owner_sub: str) -> dict:
+    """A new library, its root folder, and the creator's membership, in one write.
+
+    **This is the only code path that writes a library, and it grants access to
+    nobody but the caller.** `scripts/add-member.sh` explains why membership is
+    a script and not a route: a route that granted membership could grant itself
+    somebody else's library. This route cannot — the one row it writes under
+    `USER#` names a library that did not exist a moment ago and holds nothing,
+    so the caller ends up with exactly what they had plus an empty room. That is
+    what makes it safe to sit behind a token and nothing else.
+
+    The three rows are the shape `scripts/prod-seed-smoke.py` writes literally
+    for the smoke account — the library `META`, a root folder with no parent
+    and a `path` of `/`, and the membership. The seeder keeps its own copy on
+    purpose (it imports nothing from this package), so a change here is a
+    change there. Written as one transaction with `attribute_not_exists` on
+    each, like every put here: a v4 id cannot realistically collide, and the
+    guard is so that no put in this module is capable of overwriting a record.
+
+    Returns the library as `GET /api/libraries` reports it, plus `root`.
+    """
+    lib = f"lib-{uuid.uuid4()}"
+    root = f"node-{uuid.uuid4()}"
+    now = _now()
+    table = config.catalog_table()
+    taken = ConflictError("That library id is already taken; try again")
+    steps = [
+        (
+            {
+                "Put": {
+                    "TableName": table,
+                    "Item": _item({
+                        "pk": _lib_pk(lib),
+                        "sk": META,
+                        "name": name,
+                        "root_node": root,
+                        "created_at": now,
+                    }),
+                    "ConditionExpression": "attribute_not_exists(pk)",
+                }
+            },
+            taken,
+        ),
+        (
+            {
+                "Put": {
+                    "TableName": table,
+                    "Item": _item({
+                        "pk": _node_pk(root),
+                        "sk": META,
+                        "node_id": root,
+                        "lib": lib,
+                        "name": name,
+                        "kind": KIND_FOLDER,
+                        "path": "/",
+                        "created_at": now,
+                        "updated_at": now,
+                    }),
+                    "ConditionExpression": "attribute_not_exists(pk)",
+                }
+            },
+            taken,
+        ),
+        (
+            {
+                "Put": {
+                    "TableName": table,
+                    "Item": _item({
+                        "pk": _user_pk(owner_sub),
+                        "sk": _lib_pk(lib),
+                        "role": ROLE_OWNER,
+                        "created_at": now,
+                    }),
+                    "ConditionExpression": "attribute_not_exists(pk)",
+                }
+            },
+            taken,
+        ),
+    ]
+    _write(steps)
+    return {"id": lib, "name": name, "role": ROLE_OWNER, "root": root}
+
+
 def node(node_id: str) -> dict:
     """One node's full record, by id.
 
