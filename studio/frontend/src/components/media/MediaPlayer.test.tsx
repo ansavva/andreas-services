@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MediaPlayer } from "./MediaPlayer";
@@ -251,5 +251,105 @@ describe("the fullscreen container is exposed", () => {
     // whole difference between an overlay that paints in fullscreen and one
     // that does not.
     expect((container as HTMLElement | null)?.contains(screen.getByTestId("sheet"))).toBe(true);
+  });
+});
+
+/**
+ * **The chrome goes away while a clip runs untouched.**
+ *
+ * jsdom has no `PointerEvent`, so the events below are plain `Event`s with a
+ * `pointerType` set on them — which is the property React's synthetic event
+ * reads, and the one the hook decides by. It also reports every element as
+ * `paused`, so "running" is faked the same way the hook learns it in a
+ * browser: the getter says false and a `play` event says so.
+ */
+describe("the chrome hides while a clip runs", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    Object.defineProperty(HTMLMediaElement.prototype, "paused", {
+      get: () => false,
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    delete (HTMLMediaElement.prototype as { paused?: unknown }).paused;
+  });
+
+  function pointer(target: Element, type: string, pointerType: "mouse" | "touch") {
+    const event = new Event(type, { bubbles: true });
+    Object.assign(event, { pointerType });
+    fireEvent(target, event);
+  }
+
+  function chrome() {
+    return screen.getByRole("slider", { name: "Seek" }).closest(".transition-\\[opacity\\,visibility\\]")!;
+  }
+
+  function running() {
+    render(<MediaPlayer {...CLIP} />);
+    fireEvent.click(play());
+    const video = document.querySelector("video")!;
+    fireEvent(video, new Event("play"));
+    return video;
+  }
+
+  it("is drawn on play, gone after the idle time, and back when a mouse moves", () => {
+    const video = running();
+    expect(chrome().className).not.toContain("invisible");
+
+    act(() => vi.advanceTimersByTime(3000));
+    expect(chrome().className).toContain("invisible");
+
+    pointer(video, "pointermove", "mouse");
+    expect(chrome().className).not.toContain("invisible");
+
+    // Leaving hides at once — the bar is only wanted under a cursor. React
+    // derives `onPointerLeave` from `pointerout`, so that is what is fired.
+    pointer(video.parentElement!, "pointerout", "mouse");
+    expect(chrome().className).toContain("invisible");
+  });
+
+  it("stays up while the clip is paused", () => {
+    const video = running();
+    fireEvent(video, new Event("pause"));
+
+    act(() => vi.advanceTimersByTime(3000));
+    expect(chrome().className).not.toContain("invisible");
+  });
+
+  it("is a switch under a finger: one tap brings it back, the next puts it away", () => {
+    const video = running();
+    act(() => vi.advanceTimersByTime(3000));
+    expect(chrome().className).toContain("invisible");
+
+    pointer(video, "pointerdown", "touch");
+    fireEvent.click(video);
+    expect(chrome().className).not.toContain("invisible");
+
+    pointer(video, "pointerdown", "touch");
+    fireEvent.click(video);
+    expect(chrome().className).toContain("invisible");
+  });
+
+  it("ignores a mouse click on the picture — hover already owns it", () => {
+    const video = running();
+    pointer(video, "pointerdown", "mouse");
+    fireEvent.click(video);
+    act(() => vi.advanceTimersByTime(3000));
+    expect(chrome().className).toContain("invisible");
+
+    fireEvent.click(video);
+    expect(chrome().className).toContain("invisible");
+  });
+
+  it("does not vanish under a finger on the seek bar", () => {
+    running();
+    act(() => vi.advanceTimersByTime(2000));
+    pointer(screen.getByRole("slider", { name: "Seek" }), "pointerdown", "touch");
+
+    act(() => vi.advanceTimersByTime(2000));
+    expect(chrome().className).not.toContain("invisible");
   });
 });
