@@ -431,7 +431,9 @@ page and a plain textarea over its literal bytes, and never offers fields.
   `MediaThumb` is the one place media is drawn (re-signing, lazy loading,
   the poster frame), so the tile is the app's own box around it. **Clips play on their own
   here** — `MediaThumb`'s `autoplay`, which plays only what an observer says
-  is on screen and pauses it as it scrolls off, re-arms on a fresh presign
+  is on screen, at most `AUTOPLAY_BUDGET` (eight) at once page-wide — a
+  decoder per playing clip at source size is what made the wall drag — with
+  the rest holding their poster until a slot frees, pauses what scrolls off, re-arms on a fresh presign
   and on the tab coming back (Chrome pauses hidden video-only media and never
   resumes it). Everywhere else a clip still previews on hover, for the
   decoder budget the tile explains.

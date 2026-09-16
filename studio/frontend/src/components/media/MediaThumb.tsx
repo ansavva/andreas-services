@@ -182,6 +182,32 @@ interface Props {
  * string — the signature carries `X-Amz-*` parameters and a naive `.endsWith`
  * against the whole URL never matches.
  */
+/**
+ * How many clips may play on their own at once, page-wide.
+ *
+ * Every playing `<video>` is a decoder and a compositor layer at the clip's
+ * source size — 720p to 1080p here, since the bucket ships no derivatives —
+ * and a wall at 1440px puts fifteen to twenty clips on screen. Measured on
+ * the runs wall: the UI dragged the moment a screenful was moving. Eight is
+ * enough that the wall reads as moving and few enough that the page keeps
+ * up; it is one number, so it is a knob.
+ *
+ * The queue is what makes the cap fair rather than first-come: a clip that
+ * is on screen and denied waits, and the moment a playing clip scrolls off
+ * (or unmounts) the first waiting one takes its slot. Everything in it is a
+ * closure over the element, so an unmounted tile's cleanup removes itself
+ * from both sets and nothing here outlives its tile.
+ */
+export const AUTOPLAY_BUDGET = 8;
+const playing = new Set<HTMLVideoElement>();
+const waiting = new Set<() => void>();
+
+function releaseSlot(element: HTMLVideoElement) {
+  if (!playing.delete(element)) return;
+  const next = waiting.values().next().value;
+  if (next) next();
+}
+
 const VIDEO_EXTENSIONS = /\.(mp4|mov|webm|m4v)$/i;
 
 function looksLikeVideo(name: string, url: string | null | undefined): boolean {
@@ -272,6 +298,10 @@ export function MediaThumb({
    * tile's current visibility, so the clip resumes where the wall is and
    * stays paused where it is not.
    *
+   * **Bounded by `AUTOPLAY_BUDGET`.** On screen is necessary, not
+   * sufficient: a clip past the cap holds its poster in `waiting` and starts
+   * when a playing one leaves. See the budget's note for why eight.
+   *
    * **The tab coming back is asked for too.** Chrome pauses a muted, video-
    * only element the moment the tab is hidden ("paused to save power") and
    * never resumes it, so a wall left for another tab came back still — every
@@ -291,7 +321,21 @@ export function MediaThumb({
       return () => element.pause();
     }
     let onScreen = false;
-    const sync = () => (onScreen ? play() : element.pause());
+    const sync = () => {
+      if (!onScreen) {
+        waiting.delete(sync);
+        element.pause();
+        releaseSlot(element);
+      } else if (playing.has(element) || playing.size < AUTOPLAY_BUDGET) {
+        waiting.delete(sync);
+        playing.add(element);
+        play();
+      } else {
+        // On screen but over budget: hold the poster and wait for a slot.
+        waiting.add(sync);
+        element.pause();
+      }
+    };
     const observer = new IntersectionObserver((entries) => {
       onScreen = entries.some((entry) => entry.isIntersecting);
       sync();
@@ -304,7 +348,9 @@ export function MediaThumb({
     return () => {
       observer.disconnect();
       document.removeEventListener("visibilitychange", onVisible);
+      waiting.delete(sync);
       element.pause();
+      releaseSlot(element);
     };
   }, [autoplay, failed, isVideo, near, src]);
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactElement } from "react";
+import { memo, useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 
 import { ImageList, Masonry, Text } from "@ansavva/design-system";
 
@@ -95,6 +95,11 @@ export function RunTiles({ groups, now, onOpen }: Props) {
     row: RunFeedRow;
     asset: RunAsset;
   } | null>(null);
+  // Stable, so a memoised tile is not re-rendered for a new closure.
+  const promote = useCallback(
+    (row: RunFeedRow, asset: RunAsset) => setPromoting({ row, asset }),
+    [],
+  );
 
   return (
     <div ref={box} className="flex flex-col gap-5">
@@ -108,9 +113,7 @@ export function RunTiles({ groups, now, onOpen }: Props) {
             {group.label}
           </Text>
           <Masonry columns={columns} gap="sm" data-testid="run-tiles">
-            {group.rows.flatMap((row) =>
-              tilesOf(row, now, onOpen, (asset) => setPromoting({ row, asset })),
-            )}
+            {group.rows.flatMap((row) => tilesOf(row, now, onOpen, promote))}
           </Masonry>
         </section>
       ))}
@@ -136,7 +139,7 @@ function tilesOf(
   row: RunFeedRow,
   now: number,
   onOpen: Props["onOpen"],
-  onPromote: (asset: RunAsset) => void,
+  onPromote: (row: RunFeedRow, asset: RunAsset) => void,
 ): ReactElement[] {
   if (inFlight(row.status)) {
     return Array.from({ length: expectedOutputs(row) }, (_, i) => (
@@ -169,15 +172,18 @@ function tilesOf(
   }
 
   if (row.outputs.length > 0) {
+    // `when` is a string, so the tick that moves `now` only reaches a tile
+    // whose wording actually changed — see `RunTile`'s memo.
+    const when = relativeTime(row.created, now);
     return row.outputs.map((asset, index) => (
       <RunTile
         key={asset.node}
         row={row}
         asset={asset}
         index={index}
-        now={now}
-        onOpen={() => onOpen(row, index)}
-        onPromote={() => onPromote(asset)}
+        when={when}
+        onOpen={onOpen}
+        onPromote={onPromote}
       />
     ));
   }
@@ -220,26 +226,35 @@ function tilesOf(
 /**
  * One output: the picture at the plan's shape, the opening button over it,
  * the `⋮`, and the bar.
+ *
+ * **Memoised, and its props are chosen so the memo holds.** While a run is
+ * out, `useNow` ticks the feed once a second and every tile used to rebuild
+ * — its menu, its closures, its `MediaThumb` — for a timestamp that changes
+ * once a minute. With twenty clips decoding on the same thread, that tick
+ * was the difference between a wall that keeps up and one that drags. So:
+ * the time comes in as a string, and the two callbacks take the row and the
+ * asset as arguments rather than closing over them, so both are stable.
  */
-function RunTile({
+const RunTile = memo(function RunTile({
   row,
   asset,
   index,
-  now,
+  when,
   onOpen,
   onPromote,
 }: {
   row: RunFeedRow;
   asset: RunAsset;
   index: number;
-  now: number;
-  onOpen: () => void;
-  onPromote: () => void;
+  /** `relativeTime` of the run's creation, already worded. */
+  when: string;
+  onOpen: Props["onOpen"];
+  onPromote: (row: RunFeedRow, asset: RunAsset) => void;
 }) {
   const actions = useRunActions(row);
   const video = isVideoAsset(asset) || row.kind === "video";
   const label = `Output ${index + 1} of ${row.outputs.length}`;
-  const menu = outputMenu(row, asset, index, actions, onPromote);
+  const menu = outputMenu(row, asset, index, actions, () => onPromote(row, asset));
   const ratio = ratioOf(row);
 
   return (
@@ -249,7 +264,7 @@ function RunTile({
             of it, because a button cannot contain a button. */}
         <button
           type="button"
-          onClick={onOpen}
+          onClick={() => onOpen(row, index)}
           aria-label={`Open ${label}`}
           className="block size-full"
         >
@@ -271,7 +286,7 @@ function RunTile({
             `pointer-events-none` so a press on the bar still opens the run. */}
         <ImageList.ItemBar
           title={row.model}
-          subtitle={relativeTime(row.created, now)}
+          subtitle={when}
           className="pointer-events-none opacity-0 transition-opacity
                      group-hover:opacity-100 group-focus-within:opacity-100
                      motion-reduce:transition-none"
@@ -289,7 +304,7 @@ function RunTile({
       />
     </div>
   );
-}
+});
 
 /**
  * A frame at the run's shape that stands for an output that is not here
