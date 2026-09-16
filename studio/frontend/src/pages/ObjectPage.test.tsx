@@ -276,6 +276,27 @@ describe("editing the file's own fields", () => {
   });
 });
 
+describe("the controls over the picture while it owns the screen", () => {
+  it("draws edit and delete over the frame in the app's own fullscreen too", async () => {
+    // jsdom reports no Fullscreen API — the iPhone's answer — so the
+    // maximize button takes the in-app route. The rail is off-screen either
+    // way, and this used to listen for the browser's route alone.
+    Object.defineProperty(document, "fullscreenEnabled", { value: false, configurable: true });
+    open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
+    await waitFor(() => expect(screen.getByText(/2 of 3/)).toBeTruthy());
+    expect(screen.getAllByLabelText("Edit details")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Fullscreen (f)" }));
+
+    const stage = screen.getByRole("button", { name: "Exit fullscreen (f)" }).closest(".fixed")!;
+    expect(within(stage as HTMLElement).getByLabelText("Edit details")).toBeTruthy();
+    expect(within(stage as HTMLElement).getByRole("button", { name: /^Delete/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Exit fullscreen (f)" }));
+    expect(screen.getAllByLabelText("Edit details")).toHaveLength(1);
+  });
+});
+
 describe("walking the feed", () => {
   it("steps with the arrow keys and rewrites the address", async () => {
     // The reel scrolled and reported the settled pane; a page steps. Both end
