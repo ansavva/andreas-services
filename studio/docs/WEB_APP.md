@@ -437,18 +437,36 @@ page and a plain textarea over its literal bytes, and never offers fields.
   and on the tab coming back (Chrome pauses hidden video-only media and never
   resumes it). Everywhere else a clip still previews on hover, for the
   decoder budget the tile explains.
+- **A clip has a poster, and a tile loads nothing until it plays.** Every
+  tile was a `<video preload="metadata">` drawing its own first frame, and in
+  Chrome that reads the clip nearly whole whatever the atom order — measured
+  against a streaming server: ~6 MB per tile, **281 MB for a wall of 48**,
+  65 MB for the feed's screenful, and every other request on the page
+  queued behind it. That was "the UI slows down". So a clip carries a
+  **poster**: a still the render worker takes off its first frame
+  (`render.KIND_POSTER`, `ffmpeg.poster`, 640px, ~30 KB), stored in the
+  clip's own folder, hidden from every listing by `poster_of`
+  (`browse._admits`), linked both ways by `catalog.link_poster` with the
+  clip's `duration`, and deleted with the clip (`manage.delete_nodes`).
+  Every reader that expands a clip — `support.asset`, a listing's
+  `_file_entry` — reports `poster: {node, url}` and `duration`, and
+  `MediaThumb` draws the still as an `<img>` under a `preload="none"`
+  `<video>`, badging the recorded length. Measured after: the wall **57 MB**
+  (the eight autoplaying clips and 48 stills), the feed **1.5 MB**. A clip
+  with no poster — stored before this, or the worker's queue missing — is
+  what it always was. Posters are queued as a video run lands
+  (`generate._queue_posters`, best effort: a missing queue never fails the
+  close) and `studio runs posters <project>` queues one for every clip that
+  has none, the backfill, once per project.
 - **A clip is stored `moov`-first.** Every provider writes the index LAST,
   so a clip could not start — hover preview, autoplay slot, lightbox —
-  until the whole file was down. The callback consumer now runs
+  until the whole file was down. The callback consumer runs
   `media/faststart.py` (pure Python, no ffmpeg, streaming) over each clip
   before it is uploaded, `POST /api/nodes/<id>/faststart` does the same in
-  place for one already stored, and `studio runs faststart <project>` walks
-  a project's video outputs calling it — the backfill, once per project.
-  Same bytes, same size, same node; only the atom order and the recorded
-  checksum change. **It does not make a tile cheaper to draw** — measured:
-  Chrome's `preload="metadata"` reads ahead by megabytes whatever the order,
-  so 48 tiles on the wall pull ~280 MB either way, four times the feed's
-  screenful. The poster has to be a still per clip; see the module's note.
+  place for one already stored, and `studio runs faststart <project>` is
+  the backfill. Same bytes, same size, same node; only the atom order and
+  the recorded checksum change. It is the poster's companion, not a
+  substitute: it makes the play fast, the poster makes the not-playing free.
 - **The opened run is a lightbox over the feed, not a page.** `/p/<project>/
   r/<run>` renders `ProjectPage` with `runId` set, and `RunLightbox` sits over
   the feed with the create bar live above it: the output large (`MediaPlayer`,

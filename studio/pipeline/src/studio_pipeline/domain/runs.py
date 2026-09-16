@@ -583,6 +583,43 @@ def do_faststart(project, json_):
               f"{len(report['unchanged'])} already in order")
 
 
+@main.command("posters")
+@click.argument("project", required=True)
+@click.option("--json", "json_", is_flag=True)
+@reports(RunError, api.ApiError)
+def do_posters(project, json_):
+    """Ask the render worker for a still per clip a project's runs produced —
+    the backfill for clips stored before the service began doing this as a
+    run lands.
+
+    A tile draws its clip's poster; without one it draws the clip's own
+    metadata, which in Chrome costs the whole clip — the runs wall pulled a
+    quarter of a gigabyte to draw one screen. New outputs get a still as
+    they land; this queues one for each clip that has none, and skips the
+    rest, so it is safe to run over a whole library, once per project:
+
+        studio --profile prod runs posters <project>
+
+    Queued, not awaited: the worker makes them in the background and the
+    tiles pick them up on the next listing.
+    """
+    runs = [r for r in list_runs(_address(project)) if r.get("kind") == "video"]
+    report = {"queued": [], "already": []}
+    for run in runs:
+        for output in run_outputs(run["id"]):
+            node_id = _output_node(output)
+            if output.get("poster"):
+                report["already"].append(node_id)
+                continue
+            entities.create_render("poster", {"node": node_id})
+            report["queued"].append(node_id)
+    if json_:
+        print(json.dumps(report, indent=2))
+    else:
+        print(f"{len(runs)} video runs: {len(report['queued'])} posters queued, "
+              f"{len(report['already'])} already had one")
+
+
 @main.command("delete")
 @click.argument("runref", required=True)
 @click.option("--files", type=click.Choice(["keep", "delete"]), default="keep",

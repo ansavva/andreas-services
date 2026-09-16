@@ -377,6 +377,14 @@ def delete_nodes(records: list[dict]) -> dict:
     for record in records:
         catalog.assert_deletable(record)
 
+    # A clip takes its poster with it. The still is hidden from every listing
+    # (`browse._admits`), so nothing else could ever select it, and a poster
+    # whose clip is gone is a row nobody can reach. Looked up rather than
+    # trusted: a pointer at a still already deleted is skipped.
+    chosen = {record["node_id"] for record in records}
+    wanted = sorted({r["poster"] for r in records if r.get("poster")} - chosen)
+    records = records + [p for p in catalog.records(wanted).values() if p.get("poster_of")]
+
     blob_keys: list[str] = []
     sweeps: list[str] = []
     for record in records:

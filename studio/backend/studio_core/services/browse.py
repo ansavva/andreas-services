@@ -246,7 +246,7 @@ def is_abandoned_upload(record: dict) -> bool:
     return bool(record.get("blob_key")) and "size" not in record
 
 
-def _file_entry(record: dict, prefix: str) -> dict:
+def _file_entry(record: dict, prefix: str, posters: dict[str, dict] | None = None) -> dict:
     """One file row as a listing entry, presigned.
 
     **`key` is the name path, never `blob_key`.** That is `routes/nodes`' rule
@@ -290,6 +290,13 @@ def _file_entry(record: dict, prefix: str) -> dict:
     blob_key = record.get("blob_key")
     if blob_key:
         entry["url"] = s3.presign(blob_key)
+    # A clip's poster and its duration, when the worker has made them — the
+    # same two fields `routes.support.asset` reports, for the same tile.
+    poster = (posters or {}).get(record.get("poster") or "")
+    if poster and poster.get("blob_key"):
+        entry["poster"] = {"node": poster["node_id"], "url": s3.presign(poster["blob_key"])}
+    if record.get("duration") is not None:
+        entry["duration"] = float(record["duration"])  # not the table's Decimal
     # No `url` at all when there is no blob: a placeholder whose bytes never
     # landed (the row is minted before the upload) has nothing to sign for, and
     # a signed URL onto a missing object is a broken tile rather than an absent
@@ -427,10 +434,11 @@ def entries(
 
     # Presigning happens AFTER the slice, so a request signs one page's worth of
     # URLs rather than the branch's. Keep it that way.
+    posters = _posters_of(window)
     listed = [
-        (_folder_entry if record["kind"] == catalog.KIND_FOLDER else _file_entry)(
-            record, prefixes[record["node_id"]]
-        )
+        _folder_entry(record, prefixes[record["node_id"]])
+        if record["kind"] == catalog.KIND_FOLDER
+        else _file_entry(record, prefixes[record["node_id"]], posters)
         for record in window
     ]
     _attach_owners(listed, window, folder, depth)
@@ -542,8 +550,11 @@ def _kind_of(record: dict) -> str:
 
 
 def _admits(record: dict, kinds: frozenset, tags: frozenset) -> bool:
-    """Whether one row survives the filters. Abandoned uploads never do."""
-    if is_abandoned_upload(record):
+    """Whether one row survives the filters. Abandoned uploads never do, and
+    neither does a clip's poster: a derivative the worker made, not a file a
+    person put here, and it reaches a reader through the clip it stands for
+    (`catalog.link_poster`)."""
+    if is_abandoned_upload(record) or record.get("poster_of"):
         return False
     if kinds and _kind_of(record) not in kinds:
         return False
@@ -773,4 +784,12 @@ def file_entries(records: list[dict]) -> list[dict]:
     than before.
     """
     prefixes = name_prefixes(records)
-    return [_file_entry(record, prefixes[record["node_id"]]) for record in records]
+    posters = _posters_of(records)
+    return [_file_entry(record, prefixes[record["node_id"]], posters) for record in records]
+
+
+def _posters_of(records: list[dict]) -> dict[str, dict]:
+    """The poster records a page's clips point at — one batched read, after
+    the slice, for the same reason the presigning happens after it."""
+    wanted = sorted({r["poster"] for r in records if r.get("poster")})
+    return catalog.records(wanted) if wanted else {}

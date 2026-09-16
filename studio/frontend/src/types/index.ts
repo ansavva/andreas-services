@@ -133,6 +133,9 @@ export interface FileEntry {
   content_type: string | null;
   /** Presigned inline GET. Short-lived — re-sign through `getAsset` when it dies. */
   url: string;
+  /** A clip's still, and its length in seconds — see `Poster`. */
+  poster?: Poster;
+  duration?: number;
   /** Highlighting hint, present on text files only. */
   language?: string;
   /**
@@ -390,6 +393,18 @@ export interface UploadGrant {
 export interface HeroImage {
   node: string;
   url: string;
+}
+
+/**
+ * A clip's poster: a still the render worker took off its first frame, so a
+ * tile can draw the clip without loading it. `node` is what a re-sign
+ * addresses when the URL expires, the same reason every other pointer here
+ * carries one. Absent on a clip stored before the worker did this, and on
+ * every still; the tile then falls back to the clip's own metadata.
+ */
+export interface Poster {
+  node: string;
+  url: string | null;
 }
 
 /** One row of `GET /api/characters`. */
@@ -790,6 +805,9 @@ export interface RunAsset {
   size?: number;
   content_type?: string | null;
   url?: string | null;
+  /** A clip's still, and its length in seconds — see `Poster`. */
+  poster?: Poster;
+  duration?: number;
 }
 
 /**

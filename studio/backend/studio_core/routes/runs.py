@@ -727,7 +727,7 @@ def feed_rows(window: list[dict], known: dict[str, dict]) -> list[dict]:
         record = envelopes.get(row["id"]) or {}
         node_ids += [entry["node"] for entry in send_lists[row["id"]]]
         node_ids += record.get("outputs") or []
-    nodes = catalog.records(node_ids)
+    nodes = support.with_posters(catalog.records(node_ids))
 
     drafts = [
         _feed_row(row, envelopes.get(row["id"]) or {}, send_lists[row["id"]], nodes)
@@ -767,7 +767,7 @@ def _feed_row(row: dict, record: dict, send_entries: list[dict], nodes: dict) ->
          **support.asset(entry["node"], nodes.get(entry["node"]))}
         for entry in send_entries
     ]
-    outputs = [support.asset(node_id, nodes.get(node_id))
+    outputs = [support.asset(node_id, nodes.get(node_id), nodes)
                for node_id in record.get("outputs") or []]
 
     cast = list(record.get("characters") or [])
@@ -937,10 +937,10 @@ def view(record: dict, send_entries: list[dict] | None = None) -> dict:
     node_ids = [entry["node"] for entry in send_entries]
     node_ids += [node for entries in bindings.values() for node in entries]
     node_ids += record.get("outputs") or []
-    nodes = catalog.records(node_ids)
+    nodes = support.with_posters(catalog.records(node_ids))
 
     def expand(ids):
-        return [support.asset(node_id, nodes.get(node_id)) for node_id in ids]
+        return [support.asset(node_id, nodes.get(node_id), nodes) for node_id in ids]
 
     return (
         {

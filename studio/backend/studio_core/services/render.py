@@ -87,8 +87,11 @@ KIND_FRAME = "frame"
 KIND_GRID = "grid"
 #: A labelled grid of existing images — a character pool, or a scene's board.
 KIND_SHEET = "sheet"
+#: A still off a clip's first frame, stored beside it, hidden, and linked —
+#: what a tile draws so it need not load the clip. `catalog.link_poster`.
+KIND_POSTER = "poster"
 
-KINDS = frozenset({KIND_ASSEMBLE, KIND_FRAME, KIND_GRID, KIND_SHEET})
+KINDS = frozenset({KIND_ASSEMBLE, KIND_FRAME, KIND_GRID, KIND_SHEET, KIND_POSTER})
 
 #: Tiles on a sheet, and frames in a grid. Bounds one image's memory: a sheet is
 #: `cols × cell` wide and `rows × cell` tall in RGB, so 64 tiles at 300px is
@@ -178,6 +181,12 @@ def _validated(kind: str, params: dict, lib: str) -> dict:
                 raise ValidationError("characters must be a list of character ids")
             clean["characters"] = characters
         return clean
+
+    if kind == KIND_POSTER:
+        node = params.get("node")
+        if not isinstance(node, str):
+            raise ValidationError("poster needs a `node` naming one video")
+        return {"node": node}
 
     if kind in (KIND_FRAME, KIND_GRID):
         node = params.get("node")
@@ -318,6 +327,8 @@ def _dispatch(job: dict) -> dict:
         return _assemble(job["lib"], params)
     if kind == KIND_FRAME:
         return _frame(params)
+    if kind == KIND_POSTER:
+        return _poster(params)
     if kind == KIND_GRID:
         return _grid(params)
     if kind == KIND_SHEET:
@@ -494,6 +505,41 @@ def _frame(params: dict) -> dict:
         local = ffmpeg.grab(source, params.get("at"),
                             space.at("out", name), from_end=params.get("from_end"))
         return {"frame": _store(params["dest"], name, local)}
+
+
+def _poster(params: dict) -> dict:
+    """The first frame of one clip, as a JPEG beside it, linked as its poster.
+
+    **Idempotent, and cheaply so.** A clip that already points at a still
+    that exists is answered from the row without pulling the clip — the
+    backfill runs this over whole projects, and a second pass must cost
+    reads, not renders. `ffmpeg.duration` is read while the clip is on disk,
+    because the tile that draws the poster no longer loads the metadata the
+    badge used to come from.
+
+    Stored in the clip's own folder rather than a `derived/` beside it:
+    `poster_of` keeps it out of every listing, so there is nothing for a
+    folder to organise, and a clip moved or copied is not separated from a
+    sibling folder it never knew about.
+    """
+    from studio_core.media import ffmpeg
+
+    clip = _blob(params["node"])
+    if clip.get("poster"):
+        existing = catalog.records([clip["poster"]]).get(clip["poster"])
+        if existing and existing.get("blob_key"):
+            return {"poster": {"node": existing["node_id"], "name": existing["name"]},
+                    "existing": True}
+
+    with workspace.Workspace(prefix="poster-") as space:
+        space.reserve(_declared([{"node": clip["node_id"]}]), factor=1)
+        source = _pull(space, clip["node_id"], "source" + _ext(clip["node_id"]))
+        seconds = ffmpeg.duration(source)
+        stem = os.path.splitext(clip["name"])[0]
+        local = ffmpeg.poster(source, space.at("out", f"{stem}.poster.jpg"))
+        stored = _store(clip["parent_id"], f"{stem}.poster.jpg", local)
+    catalog.link_poster(clip["node_id"], stored["node"], duration=seconds)
+    return {"poster": stored, "duration": seconds}
 
 
 def _grid(params: dict) -> dict:
