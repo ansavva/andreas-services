@@ -332,10 +332,13 @@ describe("the chrome hides while a clip runs", () => {
     fireEvent(target, event);
   }
 
-  /** A finger down and up in the same place — what iOS never turns into `click`. */
+  /**
+   * A finger down and up. The up carries `0,0`, which is what iOS Safari
+   * sends for a touch — a tap must not be measured off it.
+   */
   function tap(target: Element) {
-    pointer(target, "pointerdown", "touch");
-    pointer(target, "pointerup", "touch");
+    pointer(target, "pointerdown", "touch", { clientX: 100, clientY: 100 });
+    pointer(target, "pointerup", "touch", { clientX: 0, clientY: 0 });
   }
 
   function chrome() {
@@ -392,7 +395,7 @@ describe("the chrome hides while a clip runs", () => {
 
     pointer(video, "pointerdown", "touch", { clientX: 100, clientY: 100 });
     pointer(video, "pointermove", "touch", { clientX: 100, clientY: 160 });
-    pointer(video, "pointerup", "touch", { clientX: 100, clientY: 160 });
+    pointer(video, "pointerup", "touch", { clientX: 0, clientY: 0 });
     expect(chrome().className).toContain("invisible");
   });
 

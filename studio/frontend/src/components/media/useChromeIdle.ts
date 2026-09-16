@@ -30,6 +30,7 @@ export interface ChromeIdle {
     onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
     onPointerMove: (event: ReactPointerEvent<HTMLElement>) => void;
     onPointerUp: (event: ReactPointerEvent<HTMLElement>) => void;
+    onPointerCancel: () => void;
     onPointerLeave: (event: ReactPointerEvent<HTMLElement>) => void;
     onFocus: () => void;
     onKeyDown: () => void;
@@ -48,12 +49,13 @@ export interface ChromeIdle {
  * what says which one is in play, so a laptop with a touchscreen gets both,
  * per gesture.
  *
- * **The tap is read off `pointerup`, not `click`.** iOS Safari does not
- * synthesise `click` for a tap on an element that is not itself clickable —
- * a `<video>` with no `controls` and no listener of its own (React's is on
- * the root) — so a hidden chrome on an iPhone had no way back and no way out
- * of fullscreen. Pointer events fire regardless; down and up within
- * `TAP_SLOP_PX` is a tap, further is a scroll going past.
+ * **The tap is read off `pointerup`, and the movement off `pointermove`.**
+ * A finger that travels is a scroll, not a tap; the distance is summed from
+ * the moves between down and up and never read off the up itself, because
+ * **iOS Safari's `pointerup` for a touch carries `clientX/Y` of `0,0`** —
+ * measured on iOS 26.5 in the simulator, every tap read as a 400px swipe
+ * and the chrome never came back. `click` is not used because it is not
+ * needed: down + up without travel is the tap, on every engine.
  *
  * **Paused is not idle.** `active` is the caller's "the clip is running";
  * while it is false the chrome stays up and the timer is off, so pausing a
@@ -128,8 +130,9 @@ export function useChromeIdle(active: boolean): ChromeIdle {
     (event: ReactPointerEvent<HTMLElement>) => {
       const start = tap.current;
       tap.current = null;
+      // No distance check here — see the header: the up has no coordinates
+      // on iOS. `onPointerMove` has already dropped the tap if it travelled.
       if (!start || !touchOnPicture(event) || !activeRef.current) return;
-      if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > TAP_SLOP_PX) return;
       if (hidden) {
         reveal();
       } else {
@@ -139,6 +142,10 @@ export function useChromeIdle(active: boolean): ChromeIdle {
     },
     [clear, hidden, reveal],
   );
+
+  const onPointerCancel = useCallback(() => {
+    tap.current = null;
+  }, []);
 
   const onPointerLeave = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
@@ -155,6 +162,7 @@ export function useChromeIdle(active: boolean): ChromeIdle {
       onPointerDown,
       onPointerMove,
       onPointerUp,
+      onPointerCancel,
       onPointerLeave,
       onFocus: reveal,
       onKeyDown: reveal,
