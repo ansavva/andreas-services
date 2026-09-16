@@ -3,11 +3,13 @@
 `clients/replicate.py` opens with **"THIS MODULE IS THE ENTIRE BILLING SURFACE"**
 and that sentence is no longer true: `create_prediction` below bills too. It is
 written against Runpod's *public endpoints* — hosted models addressed as
-`https://api.runpod.ai/v2/<endpoint>/run`, priced per image, with no deploy and
+`https://api.runpod.ai/v2/<endpoint>/run`, priced per output, with no deploy and
 no worker of ours — so a registry entry whose `model` is `runpod/<endpoint>`
 is a model this service can run without a Replicate listing. `z-image-turbo`
 was the first: it is on Replicate too, and the decision was to call Runpod
-directly rather than go through a reseller.
+directly rather than go through a reseller. The Wan video endpoints
+(`wan-2-6-t2v`, `wan-2-6-i2v`) followed, and are the reason the output reader
+below knows three key names rather than one.
 
 ## What is the same as Replicate, deliberately
 
@@ -31,6 +33,10 @@ every read.
 (the article that introduced the model said `image_url`; it was wrong, and
 the shape here is the one measured on 2026-09-14), and the **price in
 dollars**, which Replicate never sends. `output_urls` and `cost` read those.
+**The video endpoints spell the URL `video_url`** — their own docs say so and
+the shape is the same otherwise — so `output_urls` reads three names, in
+order, and a fourth spelling on a future endpoint is a one-line addition
+here rather than a run closed `failed` with "returned no output".
 
 **Runpod signs nothing.** No `webhook-signature`, no per-account secret, no
 Standard-Webhooks envelope — the callback is a bare POST of the job document.
@@ -227,7 +233,13 @@ def output_urls(prediction: dict) -> list[str]:
     """
     output = prediction.get("output")
     if isinstance(output, dict):
-        output = output.get("result", output.get("image_url"))
+        # `result` on the image endpoints, `video_url` on the video ones,
+        # `image_url` in the article that was wrong about the first. First
+        # present key wins; a document carrying none reads as no output.
+        output = next(
+            (output[key] for key in ("result", "video_url", "image_url") if key in output),
+            None,
+        )
     if isinstance(output, str):
         return [output]
     return [item for item in (output or []) if isinstance(item, str)]

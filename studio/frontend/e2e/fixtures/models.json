@@ -1358,6 +1358,271 @@
           "minimum": 0
         }
       }
+    },
+    "wan-2.6-t2v": {
+      "aliases": [],
+      "images": {
+        "accepts_ext": [],
+        "end": null,
+        "max_refs": null,
+        "refs": null,
+        "start": null,
+        "start_excludes_refs": false
+      },
+      "input": {
+        "properties": {
+          "duration": {
+            "default": 5,
+            "description": "Clip length in seconds. One of 5, 10, 15; the price scales with it.",
+            "enum": [
+              5,
+              10,
+              15
+            ],
+            "title": "Duration",
+            "type": "integer"
+          },
+          "enable_prompt_expansion": {
+            "default": false,
+            "description": "Let the endpoint rewrite and expand the prompt before rendering. Off by default so what was read is what was sent.",
+            "title": "Enable prompt expansion",
+            "type": "boolean"
+          },
+          "negative_prompt": {
+            "description": "What to keep out of the clip.",
+            "title": "Negative prompt",
+            "type": "string"
+          },
+          "prompt": {
+            "description": "What happens in the clip \u2014 subject, action, camera, light. Plain descriptive prose; the model follows instructions closely.",
+            "title": "Prompt",
+            "type": "string"
+          },
+          "seed": {
+            "default": -1,
+            "description": "-1 for a random draw; any other value repeats one.",
+            "title": "Seed",
+            "type": "integer"
+          },
+          "shot_type": {
+            "default": "single",
+            "description": "`single` holds one composition for the whole clip; `multi` lets the model cut between shots.",
+            "enum": [
+              "single",
+              "multi"
+            ],
+            "title": "Shot type",
+            "type": "string"
+          },
+          "size": {
+            "default": "1280*720",
+            "description": "Output size as W*H. The first number of the pair sets the price tier (720p or 1080p).",
+            "enum": [
+              "1280*720",
+              "1920*1080",
+              "720*1280",
+              "1080*1920"
+            ],
+            "title": "Size",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prompt"
+        ]
+      },
+      "key": "wan-2.6-t2v",
+      "kind": "video",
+      "model": "runpod/wan-2-6-t2v",
+      "note": "Alibaba's Wan 2.6, text-to-video, on Runpod's public endpoint (not Replicate) \u2014 the first open-weight video model here and the first video model that takes no image at all. Prose prompt in, a 5/10/15 s clip out at 720p or 1080p, landscape or portrait (`size` is W*H); `shot_type: multi` lets it cut between shots inside one clip; a real `negative_prompt`; a repeatable `seed`. `enable_prompt_expansion` hands the prompt to a rewriter first and is off by default. No reference images, no start or end frame \u2014 for those use wan-2.6-i2v. Priced per clip, not per second: 720p $0.50 / $1.00 / $1.50 and 1080p $0.75 / $1.50 / $2.25 for 5 / 10 / 15 s (Runpod, September 2026); the run records the price. The endpoint's optional `audio` URL is not wired \u2014 studio binds nodes, never URLs. Output URL lasts seven days; the run stores the bytes.",
+      "prompt": {
+        "max_chars": null
+      },
+      "provider": "runpod",
+      "skill": "studio-media-wan-2-6-t2v",
+      "snapshot": {
+        "duration": {
+          "default": 5,
+          "enum": [
+            5,
+            10,
+            15
+          ]
+        },
+        "enable_prompt_expansion": {
+          "default": false
+        },
+        "refreshed": "2026-09-15",
+        "seed": {
+          "default": -1
+        },
+        "shot_type": {
+          "default": "single",
+          "enum": [
+            "single",
+            "multi"
+          ]
+        },
+        "size": {
+          "default": "1280*720",
+          "enum": [
+            "1280*720",
+            "1920*1080",
+            "720*1280",
+            "1080*1920"
+          ]
+        }
+      },
+      "video": {
+        "allow_intelligent_duration": false,
+        "image_tokens": false,
+        "max_cuts": null,
+        "negative": "param",
+        "resolution_field": "size",
+        "resolution_map": null,
+        "technical": "api"
+      }
+    },
+    "wan-2.6-i2v": {
+      "aliases": [],
+      "images": {
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ],
+        "end": null,
+        "max_refs": null,
+        "refs": null,
+        "start": "image",
+        "start_excludes_refs": false
+      },
+      "input": {
+        "properties": {
+          "duration": {
+            "default": 5,
+            "description": "Clip length in seconds. One of 5, 10, 15; the price scales with it.",
+            "enum": [
+              5,
+              10,
+              15
+            ],
+            "title": "Duration",
+            "type": "integer"
+          },
+          "enable_prompt_expansion": {
+            "default": false,
+            "description": "Let the endpoint rewrite and expand the prompt before rendering. Off by default so what was read is what was sent.",
+            "title": "Enable prompt expansion",
+            "type": "boolean"
+          },
+          "enable_safety_checker": {
+            "default": true,
+            "description": "Run the endpoint's content check over the output.",
+            "title": "Enable safety checker",
+            "type": "boolean"
+          },
+          "image": {
+            "description": "The still to animate. Required: the clip starts on this frame.",
+            "format": "uri",
+            "title": "Image",
+            "type": "string"
+          },
+          "negative_prompt": {
+            "description": "What to keep out of the clip.",
+            "title": "Negative prompt",
+            "type": "string"
+          },
+          "prompt": {
+            "description": "What happens in the clip \u2014 subject, action, camera, light. Plain descriptive prose; the model follows instructions closely.",
+            "title": "Prompt",
+            "type": "string"
+          },
+          "seed": {
+            "default": -1,
+            "description": "-1 for a random draw; any other value repeats one.",
+            "title": "Seed",
+            "type": "integer"
+          },
+          "shot_type": {
+            "default": "single",
+            "description": "`single` holds one composition for the whole clip; `multi` lets the model cut between shots.",
+            "enum": [
+              "single",
+              "multi"
+            ],
+            "title": "Shot type",
+            "type": "string"
+          },
+          "size": {
+            "default": "1280*720",
+            "description": "Output size as W*H. The first number of the pair sets the price tier (720p or 1080p).",
+            "enum": [
+              "1280*720",
+              "1920*1080"
+            ],
+            "title": "Size",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prompt",
+          "image"
+        ]
+      },
+      "key": "wan-2.6-i2v",
+      "kind": "video",
+      "model": "runpod/wan-2-6-i2v",
+      "note": "Alibaba's Wan 2.6, image-to-video, on Runpod's public endpoint (not Replicate): one still in (`image`, bound with --start-run / --start-key), a 5/10/15 s clip out that opens on that frame, at 720p or 1080p landscape (`size` is W*H). Same controls as wan-2.6-t2v \u2014 `shot_type`, a real `negative_prompt`, a repeatable `seed`, `enable_prompt_expansion` off by default \u2014 plus `enable_safety_checker`. No reference list: identity comes from the frame, which is the frame-first workflow every other video engine here uses. Priced per second of output: $0.10/s at 720p, $0.15/s at 1080p (Runpod, September 2026), so a 5 s 720p clip is $0.50; the run records the price. The endpoint's optional `audio` URL is not wired \u2014 studio binds nodes, never URLs. Output URL lasts seven days; the run stores the bytes.",
+      "prompt": {
+        "max_chars": null
+      },
+      "provider": "runpod",
+      "skill": "studio-media-wan-2-6-i2v",
+      "snapshot": {
+        "duration": {
+          "default": 5,
+          "enum": [
+            5,
+            10,
+            15
+          ]
+        },
+        "enable_prompt_expansion": {
+          "default": false
+        },
+        "enable_safety_checker": {
+          "default": true
+        },
+        "refreshed": "2026-09-15",
+        "seed": {
+          "default": -1
+        },
+        "shot_type": {
+          "default": "single",
+          "enum": [
+            "single",
+            "multi"
+          ]
+        },
+        "size": {
+          "default": "1280*720",
+          "enum": [
+            "1280*720",
+            "1920*1080"
+          ]
+        }
+      },
+      "video": {
+        "allow_intelligent_duration": false,
+        "image_tokens": false,
+        "max_cuts": null,
+        "negative": "param",
+        "resolution_field": "size",
+        "resolution_map": null,
+        "technical": "api"
+      }
     }
   }
 }

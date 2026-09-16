@@ -1006,6 +1006,73 @@ def test_runpod_output_and_cost_are_read_off_the_public_endpoint_shape():
     assert runpod.output_urls({"output": ["https://x.invalid/a", "https://x.invalid/b"]}) == [
         "https://x.invalid/a", "https://x.invalid/b"]
     assert runpod.cost({"status": "FAILED"}) is None
+    # The video endpoints spell it `video_url`. Same document otherwise.
+    clip = {"output": {"video_url": "https://x.invalid/out.mp4", "cost": 0.5}}
+    assert runpod.output_urls(clip) == ["https://x.invalid/out.mp4"]
+    assert runpod.output_urls({"output": {"cost": 0.5}}) == []
+
+
+def _wan_draft(api, project, **body):
+    resp = api.post("/api/runs", json={
+        "project": project["id"],
+        "kind": "video",
+        "engine": "wan-2.6-t2v",
+        "model": "runpod/wan-2-6-t2v",
+        "plan": {"version": 1, "origin": "authored",
+                 "prompt": "a lighthouse on a rocky coast at golden hour, waves breaking",
+                 "params": {"duration": 5, "size": "1280*720", "seed": 7}},
+        **body,
+    })
+    assert resp.status_code == 201, resp.get_data(as_text=True)
+    return resp.get_json()
+
+
+def test_a_runpod_video_run_submits_imageless_and_closes_on_video_url(
+        empty_api, media_bucket, monkeypatch):
+    """`wan-2.6-t2v` is the first video entry with no image field at all, and the
+    first whose output arrives as `video_url`: the draft is accepted with no
+    sends, the payload is the plan and nothing else, and the closing reads the
+    clip off the video key, names it by the URL's extension and records the
+    price the endpoint quoted."""
+    from studio_core.clients import runpod
+    from studio_core.services import catalog
+    seen = {}
+
+    def create(model, payload, *, webhook=None):
+        seen.update(model=model, payload=payload)
+        return {"id": "job-wan-u1", "status": "IN_QUEUE"}
+
+    monkeypatch.setattr(runpod, "create_prediction", create)
+    project = _project(empty_api)
+    run = _wan_draft(empty_api, project)
+    body = empty_api.post(f"/api/runs/{run['id']}/submit").get_json()
+
+    assert seen["model"] == "runpod/wan-2-6-t2v"
+    assert seen["payload"] == {"duration": 5, "size": "1280*720", "seed": 7,
+                               "prompt": "a lighthouse on a rocky coast at golden hour, waves breaking"}
+    assert body["provider"] == "runpod"
+
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    closed = generate.close_from_prediction(record, {
+        "id": "job-wan-u1", "status": "COMPLETED", "executionTime": 85432,
+        "output": {"video_url": "https://x.invalid/abc/output.mp4", "cost": 0.5},
+    })
+
+    assert closed["status"] == "succeeded"
+    assert closed["cost"] == {"amount": 0.5, "currency": "USD", "predict_time": 85.432}
+    assert catalog.node(closed["outputs"][0])["name"].endswith(".mp4")
+
+
+def test_a_runpod_video_payload_is_refused_off_the_entry_before_pending(empty_api):
+    """A `duration` the endpoint does not sell is refused against the entry's
+    own `input` block — the registry is the schema — and the draft stays a draft."""
+    project = _project(empty_api)
+    run = _wan_draft(empty_api, project, plan={
+        "version": 1, "origin": "authored", "prompt": "x",
+        "params": {"duration": 7}})
+    resp = empty_api.post(f"/api/runs/{run['id']}/submit")
+    assert resp.status_code == 400, resp.get_data(as_text=True)
+    assert empty_api.get(f"/api/runs/{run['id']}").get_json()["status"] == "draft"
 
 
 def test_the_stored_runpod_document_carries_no_callback_signature(empty_api, media_bucket):
