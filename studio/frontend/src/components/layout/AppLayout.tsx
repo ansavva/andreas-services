@@ -6,6 +6,7 @@ import { SidebarProvider } from "../../context/SidebarContext";
 import { CreateBar } from "../create/CreateBar";
 import { isNodeDrag } from "../create/dragRef";
 import { ChevronUpIcon } from "../common/icons";
+import { useKeyboardInset } from "../../hooks/useKeyboardInset";
 import { AppSidebar } from "./AppSidebar";
 import { TopBar } from "./TopBar";
 
@@ -77,6 +78,7 @@ export function AppLayout() {
  */
 function SheetSlot() {
   const { shown, expand } = useCreateBarState();
+  const keyboard = useKeyboardInset();
 
   /**
    * `c` opens the sheet — and only when nothing is being typed into.
@@ -125,7 +127,11 @@ function SheetSlot() {
     // is anchored to the bottom of the window — and once it is the thing a
     // handle on the edge pulls up, the gap contradicts the gesture. It is a
     // drawer: it sits on the edge, and only its top corners are rounded.
-    <div className="pointer-events-none sticky bottom-0 z-30">
+    // `bottom` is the keyboard's height, and zero without one: a sheet stuck
+    // to the layout viewport's foot is stuck under a phone's keyboard, which
+    // came up because the prompt in the sheet was tapped — see
+    // `useKeyboardInset`. Sticky, so it still lifts within the column.
+    <div className="pointer-events-none sticky z-30" style={{ bottom: keyboard }}>
       <div className="pointer-events-auto mx-auto w-full max-w-3xl">
         {shown ? (
           <CreateBar />

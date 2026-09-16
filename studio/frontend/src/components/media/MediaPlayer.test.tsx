@@ -283,10 +283,21 @@ describe("the chrome hides while a clip runs", () => {
     delete (HTMLMediaElement.prototype as { paused?: unknown }).paused;
   });
 
-  function pointer(target: Element, type: string, pointerType: "mouse" | "touch") {
+  function pointer(
+    target: Element,
+    type: string,
+    pointerType: "mouse" | "touch",
+    at: { clientX: number; clientY: number } = { clientX: 100, clientY: 100 },
+  ) {
     const event = new Event(type, { bubbles: true });
-    Object.assign(event, { pointerType });
+    Object.assign(event, { pointerType, ...at });
     fireEvent(target, event);
+  }
+
+  /** A finger down and up in the same place — what iOS never turns into `click`. */
+  function tap(target: Element) {
+    pointer(target, "pointerdown", "touch");
+    pointer(target, "pointerup", "touch");
   }
 
   function chrome() {
@@ -330,24 +341,36 @@ describe("the chrome hides while a clip runs", () => {
     act(() => vi.advanceTimersByTime(3000));
     expect(chrome().className).toContain("invisible");
 
-    pointer(video, "pointerdown", "touch");
-    fireEvent.click(video);
+    tap(video);
     expect(chrome().className).not.toContain("invisible");
 
-    pointer(video, "pointerdown", "touch");
-    fireEvent.click(video);
+    tap(video);
     expect(chrome().className).toContain("invisible");
   });
 
-  it("ignores a mouse click on the picture — hover already owns it", () => {
+  it("a finger that travels is a scroll, not a tap", () => {
     const video = running();
-    pointer(video, "pointerdown", "mouse");
-    fireEvent.click(video);
+    act(() => vi.advanceTimersByTime(3000));
+
+    pointer(video, "pointerdown", "touch", { clientX: 100, clientY: 100 });
+    pointer(video, "pointermove", "touch", { clientX: 100, clientY: 160 });
+    pointer(video, "pointerup", "touch", { clientX: 100, clientY: 160 });
+    expect(chrome().className).toContain("invisible");
+  });
+
+  it("ignores a mouse press on the picture — hover already owns it", () => {
+    const video = running();
     act(() => vi.advanceTimersByTime(3000));
     expect(chrome().className).toContain("invisible");
 
-    fireEvent.click(video);
-    expect(chrome().className).toContain("invisible");
+    // Reveals — as any mouse activity over the box does — and the press
+    // itself is not a switch: a second one does not put it away.
+    pointer(video, "pointerdown", "mouse");
+    pointer(video, "pointerup", "mouse");
+    expect(chrome().className).not.toContain("invisible");
+    pointer(video, "pointerdown", "mouse");
+    pointer(video, "pointerup", "mouse");
+    expect(chrome().className).not.toContain("invisible");
   });
 
   it("does not vanish under a finger on the seek bar", () => {
