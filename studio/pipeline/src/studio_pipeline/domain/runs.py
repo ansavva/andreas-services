@@ -551,6 +551,21 @@ def do_outputs(runref, json_, presign, project):
     print(json.dumps(vals, indent=2) if json_ else "\n".join(vals))
 
 
+def _outputs_or_none(run_id: str, report: dict) -> list[dict] | None:
+    """A run's outputs for a sweep, or `None` with the run noted `unreadable`.
+
+    `GET /api/runs/<id>` answers 404 for a run whose record points at a node
+    that is gone — one such run, out of a hundred and nine, stopped the first
+    production backfill on its fourth project. A sweep notes it and moves on;
+    the run is still there to be looked at by id.
+    """
+    try:
+        return run_outputs(run_id)
+    except api.NotFound:
+        report["unreadable"].append(run_id)
+        return None
+
+
 @main.command("faststart")
 @click.argument("project", required=True)
 @click.option("--json", "json_", is_flag=True)
@@ -571,16 +586,27 @@ def do_faststart(project, json_):
         studio --profile prod runs faststart <project>
     """
     runs = [r for r in list_runs(_address(project)) if r.get("kind") == "video"]
-    report = {"rewritten": [], "unchanged": []}
+    report = {"rewritten": [], "unchanged": [], "missing": [], "unreadable": []}
     for run in runs:
-        for node_id in [_output_node(o) for o in run_outputs(run["id"])]:
-            answer = entities.faststart_node(node_id)
+        outputs = _outputs_or_none(run["id"], report)
+        if outputs is None:
+            continue
+        for node_id in [_output_node(o) for o in outputs]:
+            # A run whose output file was deleted still lists it. A sweep
+            # over a whole project must note that and carry on, not stop at
+            # the first — found in production, on the fourth project of five.
+            try:
+                answer = entities.faststart_node(node_id)
+            except api.NotFound:
+                report["missing"].append(node_id)
+                continue
             report["rewritten" if answer.get("rewritten") else "unchanged"].append(node_id)
     if json_:
         print(json.dumps(report, indent=2))
     else:
         print(f"{len(runs)} video runs: {len(report['rewritten'])} clips rewritten, "
-              f"{len(report['unchanged'])} already in order")
+              f"{len(report['unchanged'])} already in order, "
+              f"{len(report['missing'])} missing, {len(report['unreadable'])} runs unreadable")
 
 
 @main.command("posters")
@@ -604,12 +630,20 @@ def do_posters(project, json_):
     tiles pick them up on the next listing.
     """
     runs = [r for r in list_runs(_address(project)) if r.get("kind") == "video"]
-    report = {"queued": [], "already": []}
+    report = {"queued": [], "already": [], "missing": [], "unreadable": []}
     for run in runs:
-        for output in run_outputs(run["id"]):
+        outputs = _outputs_or_none(run["id"], report)
+        if outputs is None:
+            continue
+        for output in outputs:
             node_id = _output_node(output)
             if output.get("poster"):
                 report["already"].append(node_id)
+                continue
+            if not output.get("url"):
+                # The record points at a file that is gone; there is nothing
+                # to take a frame of. Same rule as `faststart` above.
+                report["missing"].append(node_id)
                 continue
             entities.create_render("poster", {"node": node_id})
             report["queued"].append(node_id)
@@ -617,7 +651,8 @@ def do_posters(project, json_):
         print(json.dumps(report, indent=2))
     else:
         print(f"{len(runs)} video runs: {len(report['queued'])} posters queued, "
-              f"{len(report['already'])} already had one")
+              f"{len(report['already'])} already had one, "
+              f"{len(report['missing'])} missing, {len(report['unreadable'])} runs unreadable")
 
 
 @main.command("delete")
