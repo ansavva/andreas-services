@@ -564,7 +564,7 @@ describe("a pointer at a node that is gone", () => {
 });
 
 describe("the tiles layout", () => {
-  it("draws a square per output, in the same day groups, off `?layout=tiles`", async () => {
+  it("draws a tile per output at the plan's shape, in the same day groups, off `?layout=tiles`", async () => {
     await draw(
       [
         row({ id: "run-a", created: ago(60) }),
@@ -583,9 +583,12 @@ describe("the tiles layout", () => {
     // No feed rows: the layout replaces them rather than adding to them.
     expect(screen.queryAllByRole("article")).toHaveLength(0);
     const today = await screen.findByRole("region", { name: "Today" });
-    expect(within(today).getAllByRole("listitem")).toHaveLength(2);
+    const tiles = within(today).getAllByRole("button", { name: /^Open Output/ });
+    expect(tiles).toHaveLength(2);
+    // The plan says 3:4, and the tile is that shape — not a square.
+    expect(tiles[0]!.parentElement!.parentElement!.style.aspectRatio).toBe("3 / 4");
     const yesterday = screen.getByRole("region", { name: "Yesterday" });
-    expect(within(yesterday).getAllByRole("listitem")).toHaveLength(1);
+    expect(within(yesterday).getAllByRole("button", { name: /^Open Output/ })).toHaveLength(1);
 
     // A clip on the wall plays on its own; the feed's only plays on hover.
     const clip = within(yesterday).getByRole("presentation");
