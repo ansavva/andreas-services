@@ -226,6 +226,25 @@ def placeholder_png(side: int = 64) -> bytes:
 # ── the client ──────────────────────────────────────────────────────────────
 
 
+def _detail(raw: str) -> str:
+    """The provider's own words for a refusal, for a run's `error` field.
+
+    Both providers answer a 4xx with a JSON problem document — `{"status":
+    402, "title": "Insufficient Balance", "detail": "insufficient balance"}` —
+    and `detail` is the sentence a person can act on. A body that is not one
+    is kept as it came, trimmed.
+    """
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        body = None
+    if isinstance(body, dict):
+        for key in ("detail", "title", "error", "message"):
+            if isinstance(body.get(key), str) and body[key].strip():
+                return body[key].strip()
+    return raw.strip()[:200] or "no detail"
+
+
 def _request(method: str, url: str, *, body: dict | None = None,
              text: bool = False):
     data = json.dumps(body).encode() if body is not None else None
@@ -240,7 +259,8 @@ def _request(method: str, url: str, *, body: dict | None = None,
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode(errors="replace")[:500]
         logger.warning("%s %s -> %s: %s", method, url, exc.code, detail)
-        raise ReplicateError(f"{method} {url} -> {exc.code}: {detail}") from exc
+        raise ReplicateError(f"{method} {url} -> {exc.code}: {detail}",
+                             status=exc.code, detail=_detail(detail)) from exc
     except OSError as exc:
         logger.warning("%s %s failed: %s", method, url, exc)
         raise ReplicateError(f"{method} {url} failed: {exc}") from exc

@@ -60,4 +60,36 @@ class ConfigError(RuntimeError):
 
 
 class UpstreamError(RuntimeError):
-    """A call to AWS failed — maps to HTTP 502."""
+    """A call to AWS or a model provider failed — maps to HTTP 502.
+
+    `status` is the HTTP status the far side answered with, or `None` when it
+    answered nothing — a timeout, a refused connection, a dropped socket. The
+    distinction is what `refused` reads, and it decides whether a run whose
+    submission raised this is left `pending` or closed `failed`:
+
+    * **No status: nothing is known.** The request may have been accepted and
+      its reply lost, so a prediction may be running and billing. The run stays
+      `pending` with no prediction id — the state that reads as "went out and
+      never answered" — rather than lying `failed` over a live job.
+    * **A 4xx: everything is known.** The provider read the request and turned
+      it down — `402 insufficient balance`, `401 invalid api key`, `422` on the
+      payload — and nothing is in flight. Leaving that run `pending` is what
+      wedged three runs at `pending` for good on 2026-09-16, with the SPA
+      showing a spinner over a submission the provider had already refused and
+      no button that could move it. `detail` carries the provider's own words
+      for the run's `error` field.
+    * **A 5xx: the provider is broken, not the request.** Treated like no
+      status: a 502 from a proxy in front of a queue does not say whether the
+      queue took the job.
+    """
+
+    def __init__(self, message: str, *, status: int | None = None,
+                 detail: str | None = None):
+        super().__init__(message)
+        self.status = status
+        self.detail = detail
+
+    @property
+    def refused(self) -> bool:
+        """The far side answered, and said no. Nothing is in flight."""
+        return self.status is not None and 400 <= self.status < 500
