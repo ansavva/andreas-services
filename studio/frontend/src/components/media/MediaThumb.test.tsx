@@ -172,3 +172,35 @@ describe("a clip playing on its own", () => {
     expect(play).toHaveBeenCalledTimes(AUTOPLAY_BUDGET + 1);
   });
 });
+
+/**
+ * With a poster the clip costs nothing until it plays: the still is the
+ * picture, the video is `preload="none"`, and the badge reads the recorded
+ * length. Without one — a clip stored before the worker made stills — the
+ * tile is what it always was.
+ */
+describe("a clip with a poster", () => {
+  it("draws the still, loads no metadata, and badges the recorded length", () => {
+    render(
+      <MediaThumb
+        nodeId="node-1"
+        url="https://example.invalid/a.mp4"
+        isVideo
+        poster={{ node: "node-p", url: "https://example.invalid/a.poster.jpg" }}
+        duration={5.2}
+      />,
+    );
+    const still = screen.getByTestId("poster") as HTMLImageElement;
+    expect(still.src).toBe("https://example.invalid/a.poster.jpg");
+    const video = document.querySelector("video")!;
+    expect(video.getAttribute("preload")).toBe("none");
+    expect(screen.getByText("0:05")).toBeTruthy();
+  });
+
+  it("without one, the clip's own metadata is the poster, as before", () => {
+    render(<MediaThumb nodeId="node-1" url="https://example.invalid/a.mp4" isVideo />);
+    expect(screen.queryByTestId("poster")).toBeNull();
+    expect(document.querySelector("video")!.getAttribute("preload")).toBe("metadata");
+    expect(screen.getByText("video")).toBeTruthy();
+  });
+});

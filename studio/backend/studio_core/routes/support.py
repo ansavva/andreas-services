@@ -146,6 +146,17 @@ def view(record: dict, owner: dict | None = None) -> dict:
     return reported
 
 
+def with_posters(found: dict[str, dict]) -> dict[str, dict]:
+    """Widen a `catalog.records` map with the poster records its clips point at.
+
+    One more batched read for the page, so `asset` can sign a poster without
+    a read per tile. Returns a new map; the input is not touched.
+    """
+    wanted = sorted({record["poster"] for record in found.values()
+                     if record.get("poster") and record["poster"] not in found})
+    return {**found, **catalog.records(wanted)} if wanted else found
+
+
 def assets(node_ids: list[str]) -> list[dict]:
     """The nodes a record *points at*, expanded into what a page can draw.
 
@@ -165,23 +176,45 @@ def assets(node_ids: list[str]) -> list[dict]:
     honest answer — the record does point at it — and it keeps a run whose output
     was deleted openable instead of 404.
     """
-    found = catalog.records(node_ids)
-    return [asset(node_id, found.get(node_id)) for node_id in node_ids]
+    found = with_posters(catalog.records(node_ids))
+    return [asset(node_id, found.get(node_id), found) for node_id in node_ids]
 
 
-def asset(node_id: str, record: dict | None = None) -> dict:
-    """One such pointer. `record` saves a read when the caller already has it."""
+def asset(node_id: str, record: dict | None = None,
+          found: dict[str, dict] | None = None) -> dict:
+    """One such pointer. `record` saves a read when the caller already has it;
+    `found` — a map that has been through `with_posters` — saves the poster's.
+
+    **A clip carries `poster` and `duration`, when it has them.** `poster` is
+    `{node, url}`: a still the render worker took off the first frame, which a
+    tile draws instead of loading the clip's own metadata — `media/faststart.py`
+    has the measurement that made this necessary. `duration` is the seconds
+    the worker read at the same time, for the badge the tile used to read off
+    the clip. Both absent on a clip stored before the worker did this, and on
+    every still; a reader falls back to the clip itself.
+    """
     if record is None:
         record = catalog.records([node_id]).get(node_id)
     if record is None:
         return {"node": node_id}
-    return {
+    pointer = {
         "node": node_id,
         "name": record["name"],
         "size": record.get("size"),
         "content_type": record.get("content_type"),
         "url": s3.presign(record["blob_key"]) if record.get("blob_key") else None,
     }
+    if record.get("poster"):
+        poster = (found or {}).get(record["poster"])
+        if poster is None and found is None:
+            poster = catalog.records([record["poster"]]).get(record["poster"])
+        if poster and poster.get("blob_key"):
+            pointer["poster"] = {"node": poster["node_id"], "url": s3.presign(poster["blob_key"])}
+    if record.get("duration") is not None:
+        # A float, not the Decimal the table hands back — the JSON layer spells
+        # a Decimal as a string, which is right for money and wrong for seconds.
+        pointer["duration"] = float(record["duration"])
+    return pointer
 
 
 def output_node(stored) -> str | None:

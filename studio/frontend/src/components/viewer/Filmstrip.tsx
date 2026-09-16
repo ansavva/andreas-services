@@ -175,6 +175,8 @@ export function Filmstrip({
                 url={item.url}
                 name={item.name}
                 isVideo={item.kind === "video"}
+                poster={item.poster}
+                duration={item.duration}
                 aspect="square"
                 // Whole, not cropped: a strip of portraits cut to squares
                 // was a strip of faces with the rest of every picture gone.

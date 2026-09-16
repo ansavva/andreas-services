@@ -176,6 +176,23 @@ def grab(src: str, when: float | None, dest: str, from_end: float | None = None)
     return dest
 
 
+def poster(src: str, dest: str, width: int = 640) -> str:
+    """The first frame, scaled down for a tile. A JPEG at `width` across.
+
+    Not `grab`: that keeps the frame at the clip's size and near-lossless,
+    which is right for a chaining handoff and ten times what a tile needs —
+    a 480p grab at `-q:v 2` measured ~100 KB, this ~25. A poster is drawn at
+    a few hundred pixels wide and nowhere else.
+    """
+    cmd = [ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-i", src,
+           "-frames:v", "1", "-update", "1", "-vf", f"scale={width}:-2",
+           "-q:v", "4", dest, "-y"]
+    _run(cmd, "poster")
+    if not os.path.exists(dest) or not os.path.getsize(dest):
+        raise MediaError("no first frame — the clip holds no video")
+    return dest
+
+
 def contact_grid(src: str, count: int, dest: str, width: int = 900) -> list[float]:
     """Sample `count` frames across the clip and tile them into one image."""
     dur = duration(src)

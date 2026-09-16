@@ -573,6 +573,8 @@ function Opened({
                     url={each.url}
                     name={each.name}
                     isVideo={isVideoAsset(each) || row.kind === "video"}
+                    poster={each.poster}
+                    duration={each.duration}
                     aspect="square"
                     fit="contain"
                     // An output drags as the run's output; a send drags as

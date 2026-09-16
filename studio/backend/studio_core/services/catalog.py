@@ -1799,6 +1799,37 @@ def live_nodes(node_ids: list[str]) -> set[str]:
     return found
 
 
+def link_poster(clip_id: str, poster_id: str, *, duration: float | None = None) -> None:
+    """Point a clip at the still that stands for it, and the still back at the clip.
+
+    **Two attributes, one transaction.** `poster` on the clip is what every
+    reader expands into a URL — a listing, a run's outputs, an asset pointer —
+    and `poster_of` on the still is what keeps it OUT of every listing: a
+    derivative is not a file a person made, and forty of them beside forty
+    clips would double the Media view with pictures nobody asked for. Both
+    halves written together, or neither, so a still can never be hidden with
+    nothing pointing at it.
+
+    `duration` rides along because the worker has just read it off the clip
+    and a tile that no longer loads the clip's metadata has nowhere else to
+    get it from.
+    """
+    clip = node(clip_id)
+    poster = node(poster_id)
+    if clip["kind"] != KIND_FILE or poster["kind"] != KIND_FILE:
+        raise ValidationError("a poster links one file to another")
+    now = _now()
+    on_clip = {"poster": poster_id, "updated_at": now}
+    if duration is not None:
+        on_clip["duration"] = duration
+    _write([
+        (_update_meta(clip_id, on_clip), NotFoundError(clip_id)),
+        (_update_meta(poster_id, {"poster_of": clip_id, "updated_at": now}),
+         NotFoundError(poster_id)),
+    ])
+    logger.info("Linked poster %s to %s", poster_id, clip_id)
+
+
 def set_blob(
     node_id: str,
     blob_key: str,

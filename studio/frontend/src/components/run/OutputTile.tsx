@@ -141,6 +141,8 @@ export function OutputTile({
             url={asset.url}
             name={asset.name}
             isVideo={video}
+            poster={asset.poster}
+            duration={asset.duration}
             aspect={video ? "video" : "portrait"}
             ratio={ratioOf(row)}
             fit="cover"

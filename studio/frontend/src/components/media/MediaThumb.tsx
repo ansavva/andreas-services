@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import type { AttachRef } from "../../context/CreateBarContext";
+import type { Poster } from "../../types";
 import { objectRef, startNodeDrag } from "../create/dragRef";
 import { useNearViewport } from "../../hooks/useNearViewport";
 import { useSignedSrc } from "../../hooks/useSignedSrc";
@@ -129,6 +130,23 @@ interface Props {
    * everywhere else. Reduced motion turns it back into a poster.
    */
   autoplay?: boolean;
+  /**
+   * A clip's still, made by the render worker off its first frame, and the
+   * clip's length. **With a poster the clip loads nothing until it plays.**
+   *
+   * Without one, a tile draws its own poster off the clip's metadata —
+   * `preload="metadata"` — and in Chrome that reads the clip nearly whole:
+   * measured at ~6 MB per tile, ~290 MB for a wall of forty-eight, and
+   * every other request on the page queued behind it. With one, the still
+   * is drawn as an `<img>` under the `<video>`, the video is
+   * `preload="none"` and costs nothing until a hover or an autoplay slot
+   * calls `play()`, and the badge reads `duration` off the record instead
+   * of the metadata it no longer loads. A poster whose signature has died
+   * re-signs like any other picture; one that is gone for good falls back
+   * to the clip's metadata, so the tile is never blank.
+   */
+  poster?: Poster | null;
+  duration?: number | null;
 }
 
 /**
@@ -239,9 +257,15 @@ export function MediaThumb({
   title,
   drag = true,
   autoplay = false,
+  poster = null,
+  duration: knownDuration = null,
 }: Props) {
   const isVideo = isVideoProp ?? looksLikeVideo(name, url);
   const { src, failed, onError } = useSignedSrc(nodeId, url);
+  // The still, re-signed on its own node. `still.failed` is also `true` when
+  // there is no poster at all, which is the one "fall back to the clip" flag.
+  const still = useSignedSrc(poster?.node ?? "", poster?.url);
+  const hasPoster = isVideo && !still.failed;
 
   /**
    * The drag starts on this box, not on the `<img>` inside it.
@@ -256,7 +280,7 @@ export function MediaThumb({
   const onDragStart = (event: DragEvent) =>
     startNodeDrag(event, drag === true ? objectRef(nodeId, url, name) : (drag as AttachRef));
 
-  const [duration, setDuration] = useState<number | null>(null);
+  const [duration, setDuration] = useState<number | null>(knownDuration);
   const box = useRef<HTMLSpanElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const near = useNearViewport(box, isVideo);
@@ -376,25 +400,43 @@ export function MediaThumb({
           Unavailable
         </span>
       ) : isVideo ? (
-        <video
-          ref={video}
-          // `src` withheld until near the viewport — see the note above. `key`
-          // is not needed: setting src on a mounted <video> starts the load.
-          src={near ? src : undefined}
-          onError={onError}
-          onLoadedMetadata={(event) =>
-            setDuration(event.currentTarget.duration)
-          }
-          preload="metadata"
-          // No `controls`, and `role="presentation"` for the same reason the
-          // `<img>` below carries an empty `alt`: this is a picture inside a
-          // control that already has a name, not a player.
-          role="presentation"
-          muted
-          loop
-          playsInline
-          className={media}
-        />
+        <>
+          {/* The still under the clip: what the tile shows until the clip
+              plays, at which point the video's frames draw over it. */}
+          {hasPoster && (
+            <img
+              src={still.src}
+              alt=""
+              onError={still.onError}
+              loading="lazy"
+              decoding="async"
+              draggable={false}
+              data-testid="poster"
+              className={`absolute inset-0 ${media}`}
+            />
+          )}
+          <video
+            ref={video}
+            // `src` withheld until near the viewport — see the note above. `key`
+            // is not needed: setting src on a mounted <video> starts the load.
+            src={near ? src : undefined}
+            onError={onError}
+            onLoadedMetadata={(event) =>
+              setDuration(event.currentTarget.duration)
+            }
+            // With a still to draw, nothing is loaded until `play()` — see
+            // `poster` on the props for what `metadata` costs.
+            preload={hasPoster ? "none" : "metadata"}
+            // No `controls`, and `role="presentation"` for the same reason the
+            // `<img>` below carries an empty `alt`: this is a picture inside a
+            // control that already has a name, not a player.
+            role="presentation"
+            muted
+            loop
+            playsInline
+            className={`relative ${media}`}
+          />
+        </>
       ) : (
         <img
           src={src}

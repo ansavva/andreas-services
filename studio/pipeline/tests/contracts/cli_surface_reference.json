@@ -4225,6 +4225,40 @@
           }
         }
       },
+      "posters": {
+        "arguments": {
+          "project": {
+            "choices": null,
+            "default": null,
+            "dest": "project",
+            "flag": false,
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 1,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "commands": {},
+        "options": {
+          "json": {
+            "choices": null,
+            "default": false,
+            "dest": "json_",
+            "flag": true,
+            "flags": [
+              "--json"
+            ],
+            "help": "",
+            "hidden": false,
+            "multiple": false,
+            "nargs": 0,
+            "required": false,
+            "type": "bool"
+          }
+        }
+      },
       "reconcile": {
         "arguments": {
           "runref": {

@@ -5,6 +5,7 @@ import { IconButton, Text } from "@ansavva/design-system";
 import { assetLabel, formatBytes } from "../../utils/format";
 import { EmptyState } from "../common/EmptyState";
 import { SwapIcon } from "../common/icons";
+import type { Poster } from "../../types";
 import type { AttachRef } from "../../context/CreateBarContext";
 import { MediaPlayer, type MediaPlayerControls } from "./MediaPlayer";
 import { FIT, type ZoomState } from "./useZoom";
@@ -15,6 +16,8 @@ export interface ComparePicture {
   url?: string | null;
   name?: string;
   size?: number;
+  poster?: Poster;
+  duration?: number;
   /** What a drag of this pane carries — `MediaPlayer`'s `drag`. An object by default. */
   drag?: AttachRef;
 }

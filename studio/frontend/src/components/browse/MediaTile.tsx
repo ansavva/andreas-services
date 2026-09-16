@@ -111,6 +111,8 @@ export function MediaTile({
             url={file.url}
             name={file.name}
             isVideo={file.kind === "video"}
+            poster={file.poster}
+            duration={file.duration}
             aspect="auto"
             dimmed={selected}
             showName
@@ -137,6 +139,8 @@ export function MediaTile({
             url={file.url}
             name={file.name}
             isVideo={file.kind === "video"}
+            poster={file.poster}
+            duration={file.duration}
             aspect="auto"
             dimmed={selected}
             showName

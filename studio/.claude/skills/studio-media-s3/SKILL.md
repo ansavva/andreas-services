@@ -184,6 +184,8 @@ studio runs edit <project>/latest                 # a DRAFT's prompt, params and
 studio runs delete <project>/latest              # keeps the folder; --files delete removes it
 studio runs faststart <project>                  # index every clip for the browser, in place;
                                                   # once per project, for clips stored before 2026-09-16
+studio runs posters <project>                    # a still per clip, for the tiles; once per project,
+                                                  # for clips stored before 2026-09-16
 
 # Frames: verify a clip, and take the handoff frame for chaining
 studio frames grid <project>/latest --count 4 --dest /tmp/check
