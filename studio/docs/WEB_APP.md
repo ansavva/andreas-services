@@ -437,6 +437,18 @@ page and a plain textarea over its literal bytes, and never offers fields.
   and on the tab coming back (Chrome pauses hidden video-only media and never
   resumes it). Everywhere else a clip still previews on hover, for the
   decoder budget the tile explains.
+- **A clip is stored `moov`-first.** Every provider writes the index LAST,
+  so a clip could not start — hover preview, autoplay slot, lightbox —
+  until the whole file was down. The callback consumer now runs
+  `media/faststart.py` (pure Python, no ffmpeg, streaming) over each clip
+  before it is uploaded, `POST /api/nodes/<id>/faststart` does the same in
+  place for one already stored, and `studio runs faststart <project>` walks
+  a project's video outputs calling it — the backfill, once per project.
+  Same bytes, same size, same node; only the atom order and the recorded
+  checksum change. **It does not make a tile cheaper to draw** — measured:
+  Chrome's `preload="metadata"` reads ahead by megabytes whatever the order,
+  so 48 tiles on the wall pull ~280 MB either way, four times the feed's
+  screenful. The poster has to be a still per clip; see the module's note.
 - **The opened run is a lightbox over the feed, not a page.** `/p/<project>/
   r/<run>` renders `ProjectPage` with `runId` set, and `RunLightbox` sits over
   the feed with the create bar live above it: the output large (`MediaPlayer`,

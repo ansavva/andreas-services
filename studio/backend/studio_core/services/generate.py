@@ -77,6 +77,7 @@ from studio_core import config
 from studio_core.clients import fal, replicate, runpod
 from studio_core.clients.aws import s3
 from studio_core.errors import ConflictError, NotFoundError, ValidationError
+from studio_core.media import faststart
 from studio_core.services import catalog, layout, registry, schema
 
 logger = logging.getLogger(__name__)
@@ -567,6 +568,13 @@ def _store_output(record: dict, folder_id: str, url: str, name: str) -> str:
     try:
         client_for(provider_of(record)).download(
             url, staged, max_bytes=config.max_output_bytes())
+        # **A clip is indexed for the browser before it is stored.** Every
+        # provider writes `moov` last, which makes a tile's poster frame cost
+        # the whole file; `media/faststart.py` has the measurement. Done here,
+        # on the staged file, because this is the one moment the bytes are on
+        # a disk this service owns — a refusal leaves the file as it came.
+        if faststart.is_mp4_name(name) and faststart.faststart(staged):
+            logger.info("Faststarted output %s for run %s", node["node_id"], record["id"])
         s3.put_file(node["blob_key"], staged, content_type)
     finally:
         # A partial download is not left behind for the next invocation to

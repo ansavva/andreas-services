@@ -398,6 +398,16 @@ def reconcile_run(run_id: str) -> dict:
     return api.post(f"/api/runs/{run_id}/reconcile", {})
 
 
+def faststart_node(node_id: str) -> dict:
+    """`{"id", "rewritten"}` — move one clip's index in front of its frames.
+
+    The API does the work where the bytes are; nothing comes down. A clip
+    already in order, or a node that is not a clip, answers `rewritten:
+    false` and writes nothing, so this is safe to call over everything.
+    """
+    return api.post(f"/api/nodes/{node_id}/faststart")
+
+
 def delete_run(run_id: str, *, files: str = "keep") -> dict:
     return api.delete(f"/api/runs/{run_id}", files=files)
 

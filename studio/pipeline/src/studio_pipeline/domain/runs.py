@@ -551,6 +551,38 @@ def do_outputs(runref, json_, presign, project):
     print(json.dumps(vals, indent=2) if json_ else "\n".join(vals))
 
 
+@main.command("faststart")
+@click.argument("project", required=True)
+@click.option("--json", "json_", is_flag=True)
+@reports(RunError, api.ApiError)
+def do_faststart(project, json_):
+    """Index every clip a project's runs produced so a browser can start it
+    without downloading it — the backfill for outputs stored before the
+    service began doing this at ingest.
+
+    Every provider writes its MP4 with the index (`moov`) at the END of the
+    file, so a tile's poster frame used to cost the whole clip; the runs wall
+    pulled half a gigabyte to draw one screen. Outputs are re-ordered as
+    they land now; this walks a project's video runs and asks the API to do
+    the same, in place, for each output already there. Idempotent — a clip
+    already in order is reported `unchanged` and not written — so it is safe
+    to run over a whole library, once per project:
+
+        studio --profile prod runs faststart <project>
+    """
+    runs = [r for r in list_runs(_address(project)) if r.get("kind") == "video"]
+    report = {"rewritten": [], "unchanged": []}
+    for run in runs:
+        for node_id in [_output_node(o) for o in run_outputs(run["id"])]:
+            answer = entities.faststart_node(node_id)
+            report["rewritten" if answer.get("rewritten") else "unchanged"].append(node_id)
+    if json_:
+        print(json.dumps(report, indent=2))
+    else:
+        print(f"{len(runs)} video runs: {len(report['rewritten'])} clips rewritten, "
+              f"{len(report['unchanged'])} already in order")
+
+
 @main.command("delete")
 @click.argument("runref", required=True)
 @click.option("--files", type=click.Choice(["keep", "delete"]), default="keep",
