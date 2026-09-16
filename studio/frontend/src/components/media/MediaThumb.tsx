@@ -1,4 +1,11 @@
-import { useCallback, useRef, useState, type DragEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent,
+  type ReactNode,
+} from "react";
 
 import type { AttachRef } from "../../context/CreateBarContext";
 import { objectRef, startNodeDrag } from "../create/dragRef";
@@ -110,6 +117,18 @@ interface Props {
    * for the one place a drag would mean something else.
    */
   drag?: boolean | AttachRef;
+  /**
+   * A clip plays on its own while it is on screen, rather than on hover.
+   *
+   * **The wall's exception to the rule below.** The hover preview exists
+   * because a folder of sixty clips cannot afford sixty decoders; the runs
+   * tiles view asks for exactly that look — every clip moving — and pays for
+   * it by playing only what is IN the viewport: a second observer, with no
+   * margin, starts a clip as it scrolls on and pauses it as it scrolls off,
+   * so the decoders live are the screenful you can see, not the page. Off
+   * everywhere else. Reduced motion turns it back into a poster.
+   */
+  autoplay?: boolean;
 }
 
 /**
@@ -193,6 +212,7 @@ export function MediaThumb({
   className = "",
   title,
   drag = true,
+  autoplay = false,
 }: Props) {
   const isVideo = isVideoProp ?? looksLikeVideo(name, url);
   const { src, failed, onError } = useSignedSrc(nodeId, url);
@@ -230,6 +250,9 @@ export function MediaThumb({
   const preview = useCallback((on: boolean) => {
     const element = video.current;
     if (!element || !element.src) return;
+    // Under `autoplay` the viewport decides, and a leave must not pause a
+    // clip that is still on screen.
+    if (autoplay) return;
     if (on) {
       if (prefersReducedMotion()) return;
       void element.play().catch(() => undefined);
@@ -237,7 +260,53 @@ export function MediaThumb({
       element.pause();
       element.currentTime = 0;
     }
-  }, []);
+  }, [autoplay]);
+
+  /**
+   * Play while on screen, pause when off it — see `autoplay` on the props.
+   *
+   * `src` is a dependency on purpose. A feed page re-read — a refetch on
+   * focus, a row patched by `useRunWatch` — carries a FRESH presigned URL for
+   * the same output, and a `<video>` whose `src` changes reloads and stops.
+   * Re-arming on `src` asks the observer again, and it answers with the
+   * tile's current visibility, so the clip resumes where the wall is and
+   * stays paused where it is not.
+   *
+   * **The tab coming back is asked for too.** Chrome pauses a muted, video-
+   * only element the moment the tab is hidden ("paused to save power") and
+   * never resumes it, so a wall left for another tab came back still — every
+   * clip on its frame. `visibilitychange` re-runs the same decision the
+   * observer made, off what it last said.
+   *
+   * jsdom has no `IntersectionObserver`, in which case the clip plays
+   * outright, which is what a test that turns this on expects.
+   */
+  useEffect(() => {
+    if (!autoplay || !isVideo || !near || failed || !src) return;
+    const element = video.current;
+    if (!element || prefersReducedMotion()) return;
+    const play = () => void element.play().catch(() => undefined);
+    if (typeof IntersectionObserver === "undefined") {
+      play();
+      return () => element.pause();
+    }
+    let onScreen = false;
+    const sync = () => (onScreen ? play() : element.pause());
+    const observer = new IntersectionObserver((entries) => {
+      onScreen = entries.some((entry) => entry.isIntersecting);
+      sync();
+    });
+    observer.observe(element);
+    const onVisible = () => {
+      if (!document.hidden) sync();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", onVisible);
+      element.pause();
+    };
+  }, [autoplay, failed, isVideo, near, src]);
 
   const media = `h-full w-full ${FITS[fit]} ${dimmed ? "opacity-75" : ""} ${mediaClassName}`;
 

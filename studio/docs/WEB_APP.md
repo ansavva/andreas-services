@@ -414,6 +414,24 @@ page and a plain textarea over its literal bytes, and never offers fields.
   `useRunActions`, which the opened run's grid draws too, so a gesture means
   one thing in both places. Settings, behind the gear at the end of the strip,
   is what Overview was; `?tab=overview` still lands there.
+- **The feed has a second layout, Tiles, and it is the same feed.** A
+  `Feed | Tiles` pair beside the filter, the Files tab's `Folders | Media`
+  control over again, and `?layout=tiles` in the address so the wall is a
+  link and the run opened from it closes back to it. `RunTiles` draws the
+  same pages, filters and day groups as `RunFeed` with the plan folded away:
+  a square per output in the design system's `ImageList`, the run's model
+  and time on an `ItemBar` that shows on hover, the same `⋮` (`outputMenu`,
+  shared with `OutputTile`), and a press opening the same lightbox at that
+  output. A run in flight, a draft and a failure each get one square that
+  opens the run, so nothing is findable in one layout and not the other.
+  `ImageList.Item` is not used: it owns a bare `<img>`, and `MediaThumb` is
+  the one place media is drawn (re-signing, lazy loading, the poster frame),
+  so the tile is the app's own `<li>` around it. **Clips play on their own
+  here** — `MediaThumb`'s `autoplay`, which plays only what an observer says
+  is on screen and pauses it as it scrolls off, re-arms on a fresh presign
+  and on the tab coming back (Chrome pauses hidden video-only media and never
+  resumes it). Everywhere else a clip still previews on hover, for the
+  decoder budget the tile explains.
 - **The opened run is a lightbox over the feed, not a page.** `/p/<project>/
   r/<run>` renders `ProjectPage` with `runId` set, and `RunLightbox` sits over
   the feed with the create bar live above it: the output large (`MediaPlayer`,
@@ -887,7 +905,9 @@ page and a plain textarea over its literal bytes, and never offers fields.
   Media view, which is a run's OUTPUTS — Files' question, one tab over, on
   exactly the same folder. The Runs tab is the feed (above), whose unit is the
   RUN. A project draws one browser now, so `view`/`folder` are its only
-  browser keys.
+  browser keys The Tiles layout is not that Grid back: it is the feed's own
+  rows drawn without their plans, off the feed's cache, and it rides in
+  `layout`, not `view`, so the two tabs' keys never collide.
 - **A deep listing addresses its tiles `in=recursive:`.** `?in=f:<folder>`
   makes the viewer re-read that folder one level down to find the neighbours,
   which is right for a readdir and wrong for both listings that search the

@@ -602,3 +602,25 @@ export const CompareIcon = ({ className }: Props) => (
     <rect x="13" y="5" width="8" height="14" rx="1" />
   </Glyph>
 );
+
+// --- the runs tab's two layouts --------------------------------------------
+
+/** A picture beside lines: one run's outputs and its plan, the feed's row. */
+export const FeedIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <rect x="3" y="5" width="7" height="6" />
+    <path d="M13 6h8M13 10h6" />
+    <rect x="3" y="14" width="7" height="6" />
+    <path d="M13 15h8M13 19h6" />
+  </Glyph>
+);
+
+/** Four squares: a wall of pictures with nothing beside them. */
+export const TilesIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <rect x="3" y="3" width="8" height="8" />
+    <rect x="13" y="3" width="8" height="8" />
+    <rect x="3" y="13" width="8" height="8" />
+    <rect x="13" y="13" width="8" height="8" />
+  </Glyph>
+);

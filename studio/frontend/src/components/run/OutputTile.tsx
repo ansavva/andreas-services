@@ -37,36 +37,29 @@ const GLYPH = "size-4 shrink-0 fill-none stroke-current stroke-[1.5]";
  * leave the run's record pointing at bytes that are gone. Trash is on the run,
  * in its action row.
  */
-export function OutputTile({
-  row,
-  asset,
-  index,
-  onOpen,
-  onPromote,
-  actions,
-}: {
-  row: RunFeedRow;
-  asset: RunAsset;
-  /** 0-based position in `row.outputs`. */
-  index: number;
-  onOpen: () => void;
-  onPromote: () => void;
-  actions: ReturnType<typeof useRunActions>;
-}) {
+/**
+ * What an output offers, in the order a person reaches for it: make something
+ * from it, then take it away with you.
+ *
+ * **A still offers three roles and Upscale; a clip offers one role.** A
+ * picture can be a reference or a frame, a clip can be the clip a model works
+ * from, and each sent as the other is a field that refuses it — so
+ * `attachActions` draws by kind. The upscaler takes an image. Download means
+ * the same thing for both.
+ *
+ * **One list, two tiles.** The feed's tile and the tiles view's draw the same
+ * menu off this, so a line added here is on both — the rule `useRunActions`
+ * already keeps for the run's own actions.
+ */
+export function outputMenu(
+  row: RunFeedRow,
+  asset: RunAsset,
+  index: number,
+  actions: ReturnType<typeof useRunActions>,
+  onPromote: () => void,
+): MenuAction[] {
   const video = isVideoAsset(asset) || row.kind === "video";
-  const label = `Output ${index + 1} of ${row.outputs.length}`;
-
-  /**
-   * What this output offers, in the order a person reaches for it: make
-   * something from it, then take it away with you.
-   *
-   * **A still offers three roles and Upscale; a clip offers one role.** A
-   * picture can be a reference or a frame, a clip can be the clip a model
-   * works from, and each sent as the other is a field that refuses it — so
-   * `attachActions` draws by kind. The upscaler takes an image. Download
-   * means the same thing for both.
-   */
-  const menu: MenuAction[] = [
+  return [
     {
       key: "again",
       label: "Run again with this",
@@ -106,6 +99,27 @@ export function OutputTile({
       onSelect: () => void actions.download(asset),
     },
   ];
+}
+
+export function OutputTile({
+  row,
+  asset,
+  index,
+  onOpen,
+  onPromote,
+  actions,
+}: {
+  row: RunFeedRow;
+  asset: RunAsset;
+  /** 0-based position in `row.outputs`. */
+  index: number;
+  onOpen: () => void;
+  onPromote: () => void;
+  actions: ReturnType<typeof useRunActions>;
+}) {
+  const video = isVideoAsset(asset) || row.kind === "video";
+  const label = `Output ${index + 1} of ${row.outputs.length}`;
+  const menu = outputMenu(row, asset, index, actions, onPromote);
 
   return (
     // **The frame and the clipping are on an inner box, not on this one.** The
