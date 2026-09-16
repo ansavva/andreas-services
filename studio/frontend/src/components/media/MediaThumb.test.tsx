@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { MediaThumb } from "./MediaThumb";
+import { AUTOPLAY_BUDGET, MediaThumb } from "./MediaThumb";
 
 afterEach(cleanup);
 
@@ -141,5 +141,34 @@ describe("a clip playing on its own", () => {
 
     act(() => callbacks[1]!([{ isIntersecting: false }]));
     expect(pause).toHaveBeenCalledTimes(1);
+  });
+
+  it("plays at most the budget at once, and a clip leaving hands its slot to the next", () => {
+    const { play } = install();
+    const n = AUTOPLAY_BUDGET + 1;
+    render(
+      <>
+        {Array.from({ length: n }, (_, i) => (
+          <MediaThumb
+            key={i}
+            nodeId={`node-${i}`}
+            url={`https://example.invalid/${i}.mp4`}
+            isVideo
+            autoplay
+          />
+        ))}
+      </>,
+    );
+    // Every tile near: the first n callbacks are the `near` observers, and
+    // the n autoplay observers are armed by that same act.
+    intersect(true);
+    expect(callbacks).toHaveLength(2 * n);
+    const autoplayObservers = callbacks.slice(n);
+    act(() => autoplayObservers.forEach((each) => each([{ isIntersecting: true }])));
+    expect(play).toHaveBeenCalledTimes(AUTOPLAY_BUDGET);
+
+    // The first clip scrolls off; the one that was waiting starts.
+    act(() => autoplayObservers[0]!([{ isIntersecting: false }]));
+    expect(play).toHaveBeenCalledTimes(AUTOPLAY_BUDGET + 1);
   });
 });
