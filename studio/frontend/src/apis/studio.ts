@@ -907,6 +907,8 @@ type RunsQuery = {
   scene?: string;
   model?: string;
   status?: string;
+  /** What the run made — `image` or `video`. Unset is both. */
+  kind?: string;
   /**
    * `"drafts"` un-hides drafts, which the route otherwise keeps out of a
    * listing that names no status. Pass it whenever the caller means EVERY

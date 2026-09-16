@@ -358,7 +358,8 @@ page and a plain textarea over its literal bytes, and never offers fields.
   draws one row per run, newest first, grouped by day — outputs on the left,
   the plan on the right — from one `GET /api/runs?view=feed` page per scroll,
   so no row fetches anything. `?q=` is the prompt search on the feed itself,
-  applied on Enter; status, character, model and since ride in the address
+  applied on Enter; status, kind (images, videos, or both), character,
+  model and since ride in the address
   like the browser's own filters. A run in flight fills its row with
   full-size `studio-shimmer` tiles carrying the aperture spinner and the
   seconds since it went out, `useRunWatch` asks after each row that is still

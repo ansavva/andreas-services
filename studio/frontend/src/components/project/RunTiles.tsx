@@ -244,7 +244,7 @@ function RunTile({
 
   return (
     <div className="group relative" style={{ aspectRatio: ratio }}>
-      <div className="relative size-full overflow-hidden border border-line bg-card">
+      <div className="relative size-full overflow-hidden rounded-md border border-line bg-card">
         {/* The tile is the opening button; the bar and the menu are siblings
             of it, because a button cannot contain a button. */}
         <button
@@ -315,7 +315,7 @@ function PlaceholderTile({
       onClick={onOpen}
       aria-label={`Open run ${row.status}`}
       style={{ aspectRatio: ratioOf(row) }}
-      className={`flex w-full flex-col items-center justify-center gap-2 ${className}`}
+      className={`flex w-full flex-col items-center justify-center gap-2 rounded-md ${className}`}
     >
       {children}
     </button>
