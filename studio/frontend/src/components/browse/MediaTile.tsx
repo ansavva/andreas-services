@@ -79,7 +79,7 @@ export function MediaTile({
     else onOpen();
   };
 
-  const surface = `relative block h-full w-full overflow-hidden border bg-card
+  const surface = `relative block h-full w-full overflow-hidden rounded-md border bg-card
                     focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary
                     ${selected ? "border-primary ring-2 ring-primary" : "border-line"}`;
 
@@ -89,9 +89,10 @@ export function MediaTile({
     // `role="checkbox"` button) and one cannot contain the other. Clipping
     // stays on the inner button so the focus ring is not cut off.
     <div className="group relative aspect-square">
-      {/* Square, not rounded. A grid of media is the one place the corner radius
-          is visible against the picture rather than against the page, and a
-          rounded frame crops the frame it is meant to present. */}
+      {/* Rounded at the app's `md`, the same corner the runs wall wears. These
+          were square — the argument being that a radius over a picture crops
+          the frame it presents — until the wall went rounded (2026-09-16) and
+          the user asked for the same here. */}
       {to ? (
         <a
           href={to}
