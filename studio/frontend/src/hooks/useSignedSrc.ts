@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getAsset } from "../apis/studio";
 
@@ -25,16 +25,33 @@ import { getAsset } from "../apis/studio";
  * nothing to re-sign: `GET /api/asset` addresses the same missing node and
  * would 404 once per dead tile. Reporting it as failed draws `Unavailable`,
  * which is the truthful thing and the state a dead signature already reaches.
+ *
+ * **A fresh signature for the same node is NOT a new source.** Every listing
+ * re-signs everything it returns, and the feed is re-read whole whenever a
+ * run is sent — so every tile on the page used to get a URL that differed
+ * only in its `X-Amz-*` query, which to the browser is a different resource:
+ * every still refetched and flashed, every clip reloaded and stopped, on
+ * every Send. The bytes behind a node do not change, so the URL already
+ * loaded is kept until it fails; what a fresh signature does is re-arm the
+ * one retry, so a tile that has outlived its first signature is not marked
+ * dead by its second. Only a different node takes the new URL outright.
  */
 export function useSignedSrc(nodeId: string, initialUrl: string | null | undefined) {
   const [src, setSrc] = useState(initialUrl ?? undefined);
   const [attempted, setAttempted] = useState(false);
   const [failed, setFailed] = useState(false);
 
+  const held = useRef(nodeId);
   useEffect(() => {
-    setSrc(initialUrl ?? undefined);
     setAttempted(false);
     setFailed(false);
+    if (held.current !== nodeId) {
+      held.current = nodeId;
+      setSrc(initialUrl ?? undefined);
+    } else {
+      // The same node: keep what is loaded, adopt a URL only where there was none.
+      setSrc((current) => current ?? initialUrl ?? undefined);
+    }
   }, [initialUrl, nodeId]);
 
   const onError = useCallback(() => {

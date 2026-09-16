@@ -1,5 +1,5 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MediaThumb } from "./MediaThumb";
 
@@ -63,5 +63,83 @@ describe("dragging a picture to the sheet", () => {
       <MediaThumb nodeId="node-1" url="https://example.invalid/a.png" name="a.png" drag={false} />,
     );
     expect(still.container.querySelector("[draggable=true]")).toBeNull();
+  });
+});
+
+/**
+ * A clip previews on hover everywhere but the runs wall, where it plays on
+ * its own — and only while it is on screen.
+ *
+ * The setup's `IntersectionObserver` reports nothing, so a tile is never near
+ * and a `<video>` never gets its `src`. These cases install one whose
+ * callbacks a test can fire: the first call says the tile is near (the
+ * source mounts), the second is the autoplay observer's answer.
+ */
+describe("a clip playing on its own", () => {
+  type Callback = (entries: Array<{ isIntersecting: boolean }>) => void;
+  let callbacks: Callback[];
+  const original = window.IntersectionObserver;
+
+  const install = () => {
+    callbacks = [];
+    class FakeObserver {
+      constructor(callback: Callback) {
+        callbacks.push(callback);
+      }
+      observe(): void {}
+      disconnect(): void {}
+    }
+    // The setup defined it writable and not configurable, so assigned rather
+    // than `stubGlobal`, which redefines.
+    window.IntersectionObserver = FakeObserver as unknown as typeof IntersectionObserver;
+    const play = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockImplementation(() => Promise.resolve());
+    const pause = vi
+      .spyOn(HTMLMediaElement.prototype, "pause")
+      .mockImplementation(() => undefined);
+    return { play, pause };
+  };
+  const intersect = (on: boolean) =>
+    act(() => callbacks.forEach((each) => each([{ isIntersecting: on }])));
+
+  afterEach(() => {
+    // Unmount while `pause` is still the mock: the effect's cleanup calls it,
+    // and jsdom's own throws "not implemented".
+    cleanup();
+    window.IntersectionObserver = original;
+    vi.restoreAllMocks();
+  });
+
+  it("does not play by itself, and a hover leaving pauses it", () => {
+    const { play, pause } = install();
+    render(<MediaThumb nodeId="node-1" url="https://example.invalid/a.mp4" isVideo />);
+    intersect(true);
+    expect(play).not.toHaveBeenCalled();
+    const box = screen.getByRole("presentation").parentElement!;
+    fireEvent.pointerOver(box, { pointerType: "mouse" });
+    expect(play).toHaveBeenCalledTimes(1);
+    fireEvent.pointerOut(box, { pointerType: "mouse" });
+    expect(pause).toHaveBeenCalledTimes(1);
+  });
+
+  it("with `autoplay`, plays once on screen, pauses off it, and a hover changes nothing", () => {
+    const { play, pause } = install();
+    render(
+      <MediaThumb nodeId="node-1" url="https://example.invalid/a.mp4" isVideo autoplay />,
+    );
+    // Near, and the autoplay observer is armed by the same act.
+    intersect(true);
+    expect(callbacks).toHaveLength(2);
+    // The autoplay observer alone answers now: it is the second one.
+    act(() => callbacks[1]!([{ isIntersecting: true }]));
+    expect(play).toHaveBeenCalledTimes(1);
+
+    const box = screen.getByRole("presentation").parentElement!;
+    fireEvent.pointerOut(box, { pointerType: "mouse" });
+    expect(pause).not.toHaveBeenCalled();
+
+    act(() => callbacks[1]!([{ isIntersecting: false }]));
+    expect(pause).toHaveBeenCalledTimes(1);
   });
 });

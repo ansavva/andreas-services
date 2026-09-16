@@ -12,6 +12,8 @@ import {
   Input,
   Select,
   Text,
+  Toggle,
+  ToggleGroup,
   buttonClass,
   useToast,
   type DateStatus,
@@ -29,10 +31,12 @@ import { EmptyState } from "../common/EmptyState";
 import { FilterBar } from "../common/FilterBar";
 import {
   DotsIcon,
+  FeedIcon,
   FolderIcon,
   PencilIcon,
   RerunIcon,
   SearchIcon,
+  TilesIcon,
 } from "../common/icons";
 import { linkButtonClass } from "../common/linkButtonClass";
 import { LoadError } from "../common/LoadError";
@@ -46,13 +50,14 @@ import {
   inFlight,
   relativeTime,
 } from "../run/feedTime";
-import { ratioOf } from "../run/aspect";
+import { expectedOutputs, ratioOf } from "../run/aspect";
 import { OutputTile } from "../run/OutputTile";
 import { SendThumbs } from "../run/SendThumbs";
 import { ParamChips } from "../run/ParamChips";
 import { PromoteDrawer } from "../run/PromoteDrawer";
 import { promptText } from "../run/seed";
 import { useRunActions } from "../run/useRunActions";
+import { RunTiles } from "./RunTiles";
 
 /**
  * What the filter offers, and `draft` is on it deliberately.
@@ -92,6 +97,20 @@ const STATUS_INTENT: Record<RunStatus, "neutral" | "success" | "danger"> = {
   cancelled: "neutral",
   adopted: "neutral",
 };
+
+/**
+ * The two ways the runs draw, and the address carries which.
+ *
+ * `feed` is a row per run, plan beside outputs; `tiles` is the outputs alone,
+ * a square each, the design system's `ImageList`. Same pages, same filters,
+ * same lightbox on a press — a layout, not a place — and a URL key like the
+ * filters' so the wall survives a reload and the run opened from it closes
+ * back to it (`openRun` carries the search). `layout`, not `view`: the Files
+ * tab's browser already rides in `view`, and a project's tabs share one
+ * address.
+ */
+export const LAYOUT_FEED = "feed";
+export const LAYOUT_TILES = "tiles";
 
 export interface FeedFilters {
   status: string;
@@ -237,6 +256,8 @@ export function RunFeed({ projectId, characters, heroes, onOpen }: Props) {
   const feed = useRunFeed(projectId, filters.applied);
   const [model, setModel] = useState(filters.applied.model);
   const [q, setQ] = useState(filters.applied.q);
+  const [layout, setLayout] = useSearchParamState("layout", LAYOUT_FEED);
+  const tiles = layout === LAYOUT_TILES;
 
   const anyInFlight = feed.rows.some((row) => inFlight(row.status));
   const now = useNow(anyInFlight);
@@ -331,6 +352,29 @@ export function RunFeed({ projectId, characters, heroes, onOpen }: Props) {
             </Field.Root>
           </div>
         </FilterBar>
+
+        {/* The layout pair, the Files tab's Folders | Media control over
+            again: `sm` to sit on the row's 32px line, single-select with
+            empty refused, a glyph on a phone and the word beside it above
+            `sm`. `label` keeps the accessible name where the word is not
+            drawn. */}
+        <ToggleGroup.Root
+          aria-label="Layout"
+          size="sm"
+          value={[tiles ? LAYOUT_TILES : LAYOUT_FEED]}
+          onValueChange={(next) => {
+            if (next.length > 0) setLayout(next[0]!);
+          }}
+        >
+          <Toggle value={LAYOUT_FEED} label="Feed">
+            <FeedIcon className="size-4 fill-none stroke-current stroke-[1.5] sm:hidden" />
+            <span className="hidden sm:inline">Feed</span>
+          </Toggle>
+          <Toggle value={LAYOUT_TILES} label="Tiles">
+            <TilesIcon className="size-4 fill-none stroke-current stroke-[1.5] sm:hidden" />
+            <span className="hidden sm:inline">Tiles</span>
+          </Toggle>
+        </ToggleGroup.Root>
       </div>
 
       {feed.isError ? (
@@ -356,26 +400,30 @@ export function RunFeed({ projectId, characters, heroes, onOpen }: Props) {
         />
       ) : (
         <div className="flex flex-col gap-5">
-          {groups.map((group) => (
-            <section
-              key={group.label}
-              aria-label={group.label}
-              className="flex flex-col gap-4"
-            >
-              <Text variant="caption" tone="muted">
-                {group.label}
-              </Text>
-              {group.rows.map((row) => (
-                <FeedRow
-                  key={row.id}
-                  row={row}
-                  heroes={heroes}
-                  now={now}
-                  onOpen={onOpen}
-                />
-              ))}
-            </section>
-          ))}
+          {tiles ? (
+            <RunTiles groups={groups} now={now} onOpen={onOpen} />
+          ) : (
+            groups.map((group) => (
+              <section
+                key={group.label}
+                aria-label={group.label}
+                className="flex flex-col gap-4"
+              >
+                <Text variant="caption" tone="muted">
+                  {group.label}
+                </Text>
+                {group.rows.map((row) => (
+                  <FeedRow
+                    key={row.id}
+                    row={row}
+                    heroes={heroes}
+                    now={now}
+                    onOpen={onOpen}
+                  />
+                ))}
+              </section>
+            ))
+          )}
 
           {feed.isFetchingNextPage && (
             <SectionLoading label="Loading more runs" />
@@ -399,23 +447,6 @@ export function RunFeed({ projectId, characters, heroes, onOpen }: Props) {
       )}
     </div>
   );
-}
-
-/**
- * How many tiles a run in flight will fill.
- *
- * Read off the plan's own count parameter, whichever name the model gives it;
- * one otherwise. A guess drawn as placeholders costs nothing if wrong — the
- * real outputs replace them the moment the run lands.
- */
-export function expectedOutputs(row: RunFeedRow): number {
-  const params = row.plan?.params ?? {};
-  for (const key of ["outputs", "num_outputs", "number_of_images", "n"]) {
-    const value = params[key];
-    if (typeof value === "number" && value >= 1)
-      return Math.min(Math.floor(value), 8);
-  }
-  return 1;
 }
 
 function FeedRow({

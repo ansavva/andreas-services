@@ -33,7 +33,8 @@ vi.mock("../../apis/studio", () => ({
 }));
 
 import { createRun, deleteRun, getAsset, getRuns, submitRun } from "../../apis/studio";
-import { RunFeed, expectedOutputs } from "./RunFeed";
+import { RunFeed } from "./RunFeed";
+import { expectedOutputs } from "../run/aspect";
 
 const list = vi.mocked(getRuns);
 
@@ -559,5 +560,84 @@ describe("a pointer at a node that is gone", () => {
     const article = await screen.findByRole("article");
     expect(within(article).getByText("Unavailable")).toBeTruthy();
     expect(vi.mocked(getAsset)).not.toHaveBeenCalled();
+  });
+});
+
+describe("the tiles layout", () => {
+  it("draws a square per output, in the same day groups, off `?layout=tiles`", async () => {
+    await draw(
+      [
+        row({ id: "run-a", created: ago(60) }),
+        row({
+          id: "run-b",
+          created: ago(60 * 60 * 26),
+          kind: "video",
+          outputs: [
+            { node: "node-v1", name: "clip.mp4", url: "/clip.mp4", content_type: "video/mp4" },
+          ],
+        }),
+      ],
+      "/p/proj-1?tab=runs&layout=tiles",
+    );
+
+    // No feed rows: the layout replaces them rather than adding to them.
+    expect(screen.queryAllByRole("article")).toHaveLength(0);
+    const today = await screen.findByRole("region", { name: "Today" });
+    expect(within(today).getAllByRole("listitem")).toHaveLength(2);
+    const yesterday = screen.getByRole("region", { name: "Yesterday" });
+    expect(within(yesterday).getAllByRole("listitem")).toHaveLength(1);
+
+    // A clip on the wall plays on its own; the feed's only plays on hover.
+    const clip = within(yesterday).getByRole("presentation");
+    expect(clip.tagName).toBe("VIDEO");
+    expect(clip).toHaveProperty("muted", true);
+
+    // The bar on a tile names the run's model and when.
+    expect(within(today).getAllByText("openai/gpt-image-2")).toHaveLength(2);
+    expect(within(today).getAllByText("1m ago")).toHaveLength(2);
+  });
+
+  it("a press opens the run at that output, and the ⋮ carries the same menu", async () => {
+    await draw([row()], "/p/proj-1?tab=runs&layout=tiles");
+
+    fireEvent.click(
+      (await screen.findAllByRole("button", { name: "Open Output 2 of 2" }))[0]!,
+    );
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "run-1" }), 1);
+
+    openTileMenu(0);
+    expect(screen.getByRole("menuitem", { name: "Run again with this" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Upscale" })).toBeTruthy();
+  });
+
+  it("a run in flight, a draft and a failure each get a square that opens the run", async () => {
+    await draw(
+      [
+        row({ id: "run-out", status: "running", outputs: [], submitted: ago(5) }),
+        row({ id: "run-draft", status: "draft", outputs: [], submitted: null }),
+        row({ id: "run-bad", status: "failed", outputs: [], error: "boom" }),
+      ],
+      "/p/proj-1?tab=runs&layout=tiles",
+    );
+
+    // The plan asks for two, so the run out gets two shimmering squares.
+    expect(await screen.findAllByTestId("in-flight-tile")).toHaveLength(2);
+    expect(screen.getByText("Not run yet.")).toBeTruthy();
+    expect(screen.getByText("Failed")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("draft-tile"));
+    expect(onOpen.mock.lastCall?.[0]).toMatchObject({ id: "run-draft" });
+  });
+
+  it("the toggle writes the layout into the address, and the default writes nothing", async () => {
+    await draw([row()]);
+    expect(await screen.findAllByRole("article")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Tiles" }));
+    expect(await screen.findByTestId("run-tiles")).toBeTruthy();
+    expect(screen.queryAllByRole("article")).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Feed" }));
+    expect(await screen.findAllByRole("article")).toHaveLength(1);
   });
 });
