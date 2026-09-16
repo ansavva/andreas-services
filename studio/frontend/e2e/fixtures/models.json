@@ -1434,7 +1434,7 @@
       "key": "wan-2.6-t2v",
       "kind": "video",
       "model": "runpod/wan-2-6-t2v",
-      "note": "Alibaba's Wan 2.6, text-to-video, on Runpod's public endpoint (not Replicate) \u2014 the first open-weight video model here and the first video model that takes no image at all. Prose prompt in, a 5/10/15 s clip out at 720p or 1080p, landscape or portrait (`size` is W*H); `shot_type: multi` lets it cut between shots inside one clip; a real `negative_prompt`; a repeatable `seed`. `enable_prompt_expansion` hands the prompt to a rewriter first and is off by default. No reference images, no start or end frame \u2014 for those use wan-2.6-i2v. Priced per clip, not per second: 720p $0.50 / $1.00 / $1.50 and 1080p $0.75 / $1.50 / $2.25 for 5 / 10 / 15 s (Runpod, September 2026); the run records the price. The endpoint's optional `audio` URL is not wired \u2014 studio binds nodes, never URLs. Output URL lasts seven days; the run stores the bytes.",
+      "note": "Alibaba's Wan 2.6, text-to-video, on Runpod's public endpoint (not Replicate) \u2014 the first open-weight video model here and the first video model that takes no image at all. Prose prompt in, a 5/10/15 s clip out at 720p or 1080p, landscape or portrait (`size` is W*H); `shot_type: multi` lets it cut between shots inside one clip; a real `negative_prompt`; a repeatable `seed`. `enable_prompt_expansion` hands the prompt to a rewriter first and is off by default. No reference images, no start or end frame \u2014 for those use wan-2.6-i2v. Priced per clip, not per second: 720p $0.50 / $1.00 / $1.50 and 1080p $0.75 / $1.50 / $2.25 for 5 / 10 / 15 s (Runpod, September 2026); the run records the price. The endpoint's optional `audio` URL is not wired \u2014 studio binds nodes, never URLs. Output URL lasts seven days; the run stores the bytes. The worker validates `size` (the four W*H values) and `duration` (5/10/15) and IGNORES any field it does not know \u2014 a misspelt input is not refused, it renders at the default and bills, so the registry's check is the only one there is.",
       "prompt": {
         "max_chars": null
       },
@@ -1485,6 +1485,9 @@
     },
     "wan-2.6-i2v": {
       "aliases": [],
+      "defaults": {
+        "shot_type": "single"
+      },
       "images": {
         "accepts_ext": [
           ".jpg",
@@ -1539,6 +1542,16 @@
             "title": "Prompt",
             "type": "string"
           },
+          "resolution": {
+            "default": "720p",
+            "description": "720p or 1080p, landscape. The worker's own field \u2014 Runpod's page says `size` W*H and the worker refuses it.",
+            "enum": [
+              "720p",
+              "1080p"
+            ],
+            "title": "Resolution",
+            "type": "string"
+          },
           "seed": {
             "default": -1,
             "description": "-1 for a random draw; any other value repeats one.",
@@ -1547,34 +1560,25 @@
           },
           "shot_type": {
             "default": "single",
-            "description": "`single` holds one composition for the whole clip; `multi` lets the model cut between shots.",
+            "description": "`single` holds one composition; `multi` lets the model cut between shots. REQUIRED by the worker (no default of its own) \u2014 the registry supplies `single`.",
             "enum": [
               "single",
               "multi"
             ],
             "title": "Shot type",
             "type": "string"
-          },
-          "size": {
-            "default": "1280*720",
-            "description": "Output size as W*H. The first number of the pair sets the price tier (720p or 1080p).",
-            "enum": [
-              "1280*720",
-              "1920*1080"
-            ],
-            "title": "Size",
-            "type": "string"
           }
         },
         "required": [
           "prompt",
-          "image"
+          "image",
+          "shot_type"
         ]
       },
       "key": "wan-2.6-i2v",
       "kind": "video",
       "model": "runpod/wan-2-6-i2v",
-      "note": "Alibaba's Wan 2.6, image-to-video, on Runpod's public endpoint (not Replicate): one still in (`image`, bound with --start-run / --start-key), a 5/10/15 s clip out that opens on that frame, at 720p or 1080p landscape (`size` is W*H). Same controls as wan-2.6-t2v \u2014 `shot_type`, a real `negative_prompt`, a repeatable `seed`, `enable_prompt_expansion` off by default \u2014 plus `enable_safety_checker`. No reference list: identity comes from the frame, which is the frame-first workflow every other video engine here uses. Priced per second of output: $0.10/s at 720p, $0.15/s at 1080p (Runpod, September 2026), so a 5 s 720p clip is $0.50; the run records the price. The endpoint's optional `audio` URL is not wired \u2014 studio binds nodes, never URLs. Output URL lasts seven days; the run stores the bytes.",
+      "note": "Alibaba's Wan 2.6, image-to-video, on Runpod's public endpoint (not Replicate): one still in (`image`, bound with --start-run / --start-key), a 5/10/15 s clip out that opens on that frame, at `resolution` 720p or 1080p, landscape. **Runpod's own page is wrong about this endpoint's inputs** \u2014 it documents `size` as W*H; the worker (`Wan_2.6_I2VInput`) takes `resolution` in `720p`/`1080p` and refuses anything else, and it REQUIRES `shot_type`, which the registry defaults to `single`. Measured 2026-09-16 from the worker's validation errors, after a run sent `size: 1920*1080` and failed. Same other controls as wan-2.6-t2v \u2014 a real `negative_prompt`, a repeatable `seed`, `enable_prompt_expansion` off by default \u2014 plus `enable_safety_checker`. No reference list: identity comes from the frame, which is the frame-first workflow every other video engine here uses. Priced per second of output: $0.10/s at 720p, $0.15/s at 1080p (Runpod, September 2026), so a 5 s 720p clip is $0.50; the run records the price. The endpoint's optional `audio` URL is not wired \u2014 studio binds nodes, never URLs. Output URL lasts seven days; the run stores the bytes.",
       "prompt": {
         "max_chars": null
       },
@@ -1595,7 +1599,14 @@
         "enable_safety_checker": {
           "default": true
         },
-        "refreshed": "2026-09-15",
+        "refreshed": "2026-09-16",
+        "resolution": {
+          "default": "720p",
+          "enum": [
+            "720p",
+            "1080p"
+          ]
+        },
         "seed": {
           "default": -1
         },
@@ -1605,13 +1616,6 @@
             "single",
             "multi"
           ]
-        },
-        "size": {
-          "default": "1280*720",
-          "enum": [
-            "1280*720",
-            "1920*1080"
-          ]
         }
       },
       "video": {
@@ -1619,7 +1623,7 @@
         "image_tokens": false,
         "max_cuts": null,
         "negative": "param",
-        "resolution_field": "size",
+        "resolution_field": "resolution",
         "resolution_map": null,
         "technical": "api"
       }
