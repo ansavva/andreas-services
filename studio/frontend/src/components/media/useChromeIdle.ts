@@ -19,6 +19,9 @@ function touchOnPicture(event: ReactPointerEvent<HTMLElement>) {
   return event.pointerType === "touch" && event.target instanceof HTMLMediaElement;
 }
 
+/** How far a finger may travel between down and up and still be a tap. */
+const TAP_SLOP_PX = 12;
+
 export interface ChromeIdle {
   /** Whether the chrome is drawn. Always true while `active` is false. */
   visible: boolean;
@@ -26,15 +29,11 @@ export interface ChromeIdle {
   handlers: {
     onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
     onPointerMove: (event: ReactPointerEvent<HTMLElement>) => void;
+    onPointerUp: (event: ReactPointerEvent<HTMLElement>) => void;
     onPointerLeave: (event: ReactPointerEvent<HTMLElement>) => void;
     onFocus: () => void;
     onKeyDown: () => void;
   };
-  /**
-   * A press on the picture itself — the tap that brings the chrome back on a
-   * phone, and puts it away again. A mouse never gets here: it has hover.
-   */
-  onSurfaceClick: () => void;
 }
 
 /**
@@ -45,9 +44,16 @@ export interface ChromeIdle {
  * bar is under the cursor whenever the cursor is over the picture, which is
  * how every desktop player behaves. A finger has no hover, so on touch the
  * picture itself is the switch: one tap shows, the next hides, and the timer
- * puts it away again if nothing is pressed. `pointerType` on the last press
- * or move is what says which one is in play, so a laptop with a touchscreen
- * gets both, per gesture.
+ * puts it away again if nothing is pressed. `pointerType` on each event is
+ * what says which one is in play, so a laptop with a touchscreen gets both,
+ * per gesture.
+ *
+ * **The tap is read off `pointerup`, not `click`.** iOS Safari does not
+ * synthesise `click` for a tap on an element that is not itself clickable —
+ * a `<video>` with no `controls` and no listener of its own (React's is on
+ * the root) — so a hidden chrome on an iPhone had no way back and no way out
+ * of fullscreen. Pointer events fire regardless; down and up within
+ * `TAP_SLOP_PX` is a tap, further is a scroll going past.
  *
  * **Paused is not idle.** `active` is the caller's "the clip is running";
  * while it is false the chrome stays up and the timer is off, so pausing a
@@ -61,7 +67,8 @@ export function useChromeIdle(active: boolean): ChromeIdle {
   const [hidden, setHidden] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeRef = useRef(active);
-  const pointerType = useRef<string>("mouse");
+  /** Where a finger landed on the picture, until it lifts or moves too far. */
+  const tap = useRef<{ x: number; y: number } | null>(null);
   activeRef.current = active;
 
   const clear = useCallback(() => {
@@ -93,8 +100,11 @@ export function useChromeIdle(active: boolean): ChromeIdle {
 
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
-      pointerType.current = event.pointerType;
-      if (touchOnPicture(event)) return;
+      if (touchOnPicture(event)) {
+        tap.current = { x: event.clientX, y: event.clientY };
+        return;
+      }
+      tap.current = null;
       reveal();
     },
     [reveal],
@@ -102,11 +112,32 @@ export function useChromeIdle(active: boolean): ChromeIdle {
 
   const onPointerMove = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
-      pointerType.current = event.pointerType;
-      if (touchOnPicture(event)) return;
+      if (touchOnPicture(event)) {
+        const start = tap.current;
+        if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > TAP_SLOP_PX) {
+          tap.current = null;
+        }
+        return;
+      }
       reveal();
     },
     [reveal],
+  );
+
+  const onPointerUp = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      const start = tap.current;
+      tap.current = null;
+      if (!start || !touchOnPicture(event) || !activeRef.current) return;
+      if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > TAP_SLOP_PX) return;
+      if (hidden) {
+        reveal();
+      } else {
+        clear();
+        setHidden(true);
+      }
+    },
+    [clear, hidden, reveal],
   );
 
   const onPointerLeave = useCallback(
@@ -118,19 +149,15 @@ export function useChromeIdle(active: boolean): ChromeIdle {
     [clear],
   );
 
-  const onSurfaceClick = useCallback(() => {
-    if (pointerType.current === "mouse" || !activeRef.current) return;
-    if (hidden) {
-      reveal();
-    } else {
-      clear();
-      setHidden(true);
-    }
-  }, [clear, hidden, reveal]);
-
   return {
     visible: !active || !hidden,
-    handlers: { onPointerDown, onPointerMove, onPointerLeave, onFocus: reveal, onKeyDown: reveal },
-    onSurfaceClick,
+    handlers: {
+      onPointerDown,
+      onPointerMove,
+      onPointerUp,
+      onPointerLeave,
+      onFocus: reveal,
+      onKeyDown: reveal,
+    },
   };
 }

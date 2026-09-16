@@ -499,10 +499,9 @@ export function MediaPlayer({
       data-fullscreen={isFullscreen ? (native ? "native" : "app") : undefined}
       draggable={draggable || undefined}
       onDragStart={draggable ? onDragStart : undefined}
-      // Never both at once: the zoom's handlers exist only on a still, the
-      // chrome's only matter on a playing clip.
-      {...zoom.handlers}
-      {...chrome.handlers}
+      // One set or the other, never merged: the zoom's pointer handlers are a
+      // still's, the chrome's a clip's, and both name `onPointerUp`.
+      {...(isVideo ? chrome.handlers : zoom.handlers)}
     >
       {failed ? (
         <div className="flex h-full w-full items-center justify-center p-6 text-center">
@@ -518,9 +517,6 @@ export function MediaPlayer({
           src={near || playing ? src : undefined}
           onError={onError}
           onLoadedMetadata={(event) => setPosterDuration(event.currentTarget.duration)}
-          // A tap on the running picture is the chrome's switch on a phone;
-          // the poster's own button sits over it until playback mounts.
-          onClick={chrome.onSurfaceClick}
           // No `autoplay` attribute and no `controls`: `useMediaPlayback` starts
           // it from the key, and the transport below is ours so that the
           // browser's own bar cannot sit under a phone's toolbar.
