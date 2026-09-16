@@ -1474,6 +1474,51 @@ def test_the_fal_submit_puts_the_webhook_in_the_query_and_the_payload_bare(monke
     assert got == {"id": "req-2", "status": "IN_QUEUE", "output": None, "error": None}
 
 
+def test_a_fal_refusal_closes_the_run_failed_with_fals_words(empty_api, monkeypatch):
+    """**The same gap as Runpod's 402, one provider later.** fal's `401
+    Authentication is required` wedged a run at `pending` because `FalError`
+    carried no status, so `submit_run` could not tell a refusal from a dropped
+    socket. It carries one now, and `detail` is fal's sentence."""
+    from studio_core.clients import fal
+
+    def answer(method, url, *, body=None, **kw):
+        return 401, {"detail": 'Cannot access application "fal-ai/wan-3". '
+                               "Authentication is required to access this application."}
+
+    monkeypatch.setenv("STUDIO_FAL_MODE", "live")
+    monkeypatch.setattr(fal, "_request", answer)
+    project = _project(empty_api)
+    run = _wan3_draft(empty_api, project)
+
+    resp = empty_api.post(f"/api/runs/{run['id']}/submit")
+
+    assert resp.status_code == 502
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    assert record["status"] == "failed"
+    assert record["error"] == (
+        'fal refused the submission (401): Cannot access application "fal-ai/wan-3". '
+        "Authentication is required to access this application.")
+
+
+def test_a_fal_answer_with_no_request_id_closes_the_run_failed(empty_api, monkeypatch):
+    """Accepted and named nothing is knowable too: the route's own "no
+    prediction id" branch closes it, rather than a raise that reads as silence."""
+    from studio_core.clients import fal
+
+    monkeypatch.setenv("STUDIO_FAL_MODE", "live")
+    monkeypatch.setattr(fal, "_request",
+                        lambda method, url, *, body=None, **kw: (200, {"status": "IN_QUEUE"}))
+    project = _project(empty_api)
+    run = _wan3_draft(empty_api, project)
+
+    resp = empty_api.post(f"/api/runs/{run['id']}/submit")
+
+    assert resp.status_code == 502
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    assert record["status"] == "failed"
+    assert record["error"] == "the provider returned no prediction id"
+
+
 def test_the_readme_route_answers_for_a_fal_entry_without_a_provider_call(empty_api):
     body = empty_api.get("/api/models/wan-3.0-t2v/readme").get_json()
 

@@ -251,7 +251,18 @@ def _request(method: str, url: str, *, body: dict | None = None,
 
 
 def _refused(method: str, url: str, status: int, document: dict) -> FalError:
-    return FalError(f"{method} {url} -> {status}: {json.dumps(document)[:500]}")
+    """A fal answer that is a no, as the seam's error.
+
+    Carries `status` and fal's own `detail`, because `UpstreamError.refused`
+    is what `submit_run` reads to close a run `failed` rather than leave it
+    `pending`: without them a `401 Authentication is required` wedged a run
+    at `pending` on 2026-09-16, the same way Runpod's 402 had hours earlier
+    and one provider after that fix landed.
+    """
+    return FalError(
+        f"{method} {url} -> {status}: {json.dumps(document)[:500]}",
+        status=status, detail=_error_text(document),
+    )
 
 
 def _error_text(document: dict) -> str:
@@ -288,8 +299,15 @@ def create_prediction(model: str, payload: dict, *, webhook: str | None = None) 
     if webhook:
         url += "?" + urllib.parse.urlencode({"fal_webhook": webhook})
     status, document = _request("POST", url, body=payload)
-    if status >= 400 or not document.get("request_id"):
+    if status >= 400:
         raise _refused("POST", url, status, document)
+    if not document.get("request_id"):
+        # Accepted and named nothing. Handed back without an `id` so the
+        # route closes the run `failed` as "no prediction id" — knowable,
+        # unlike a dropped socket, and not a refusal either.
+        logger.warning("POST %s -> %s carried no request_id: %s",
+                       url, status, json.dumps(document)[:500])
+        return {}
     return normalise(document)
 
 
