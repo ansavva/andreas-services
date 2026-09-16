@@ -422,6 +422,24 @@ jobs:
             --value "${RUNPOD_API_KEY}" >/dev/null
           echo "Stored the Runpod key in /studio/prod/runpod-api-key"
 
+      # The third, stored the same way. Unset, a `fal/*` model fails with a
+      # message naming /studio/prod/fal-api-key; everything else is unaffected.
+      - name: Store the fal key
+        env:
+          FAL_KEY: ${{ secrets.FAL_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FAL_KEY}" ]; then
+            echo "::warning::FAL_KEY is not set on the studio-production" \
+                 "environment. fal models will fail with a message naming" \
+                 "/studio/prod/fal-api-key; everything else is unaffected."
+            exit 0
+          fi
+          aws ssm put-parameter --overwrite --type SecureString \
+            --name /studio/prod/fal-api-key \
+            --value "${FAL_KEY}" >/dev/null
+          echo "Stored the fal key in /studio/prod/fal-api-key"
+
       - name: Update Lambda env vars
         run: |
           set -euo pipefail
@@ -473,7 +491,8 @@ jobs:
               STUDIO_WEBHOOK_BASE_URL:          $callback,
               STUDIO_RENDER_QUEUE_URL:          $renderq,
               STUDIO_REPLICATE_TOKEN_PARAMETER: "/studio/prod/replicate-api-token",
-              STUDIO_RUNPOD_TOKEN_PARAMETER:    "/studio/prod/runpod-api-key"
+              STUDIO_RUNPOD_TOKEN_PARAMETER:    "/studio/prod/runpod-api-key",
+              STUDIO_FAL_TOKEN_PARAMETER:       "/studio/prod/fal-api-key"
             }}' > /tmp/env-api.json
 
           aws lambda update-function-configuration \
@@ -496,7 +515,8 @@ jobs:
               STUDIO_MEDIA_BUCKET:              $bucket,
               STUDIO_CATALOG_TABLE:             $table,
               STUDIO_REPLICATE_TOKEN_PARAMETER: "/studio/prod/replicate-api-token",
-              STUDIO_RUNPOD_TOKEN_PARAMETER:    "/studio/prod/runpod-api-key"
+              STUDIO_RUNPOD_TOKEN_PARAMETER:    "/studio/prod/runpod-api-key",
+              STUDIO_FAL_TOKEN_PARAMETER:       "/studio/prod/fal-api-key"
             }}' > /tmp/env-worker.json
 
           aws lambda update-function-configuration \

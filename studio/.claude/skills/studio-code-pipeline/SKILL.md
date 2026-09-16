@@ -11,7 +11,7 @@ one wastes a session:
 | | `studio-media-*` | `studio-code-*` |
 |---|---|---|
 | You are | making media with studio | changing studio |
-| Twenty-four of them, covering | characters, prompts, engines, scenes, the stores | this |
+| Thirty-two of them, covering | characters, prompts, engines, scenes, the stores | this |
 | They describe | the CLI surface — `studio <command>` | the code behind it |
 | May name modules | **no** | **yes** — that is the subject |
 

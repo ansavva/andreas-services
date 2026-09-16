@@ -302,6 +302,15 @@ API keys:
   Runpod job is told to call, because Runpod signs nothing itself —
   `backend/studio_core/clients/runpod.py` has the reasoning.
 
+- **FAL_KEY** — https://fal.ai/dashboard/keys — the third provider's key,
+  held the same way again: `/studio/prod/fal-api-key` in prod from the
+  `FAL_KEY` environment secret, `dev.env` locally, never the CLI. Needed only
+  for a model whose registry entry says `provider: fal` (`fal/<endpoint>`,
+  fal's queue API — Wan 3.0 lives there); without it every other model still
+  works. It signs nothing of ours: fal signs its own callbacks with an
+  ED25519 key it publishes, and `backend/studio_core/clients/fal.py` checks
+  them.
+
   `studio/.env` is not read any more, by anything. `dev-setup.sh` imports one
   it finds into `dev.env` and deletes it, because a secret inside the repo is
   worth removing whether or not anything loads it: `.gitignore` protects a
@@ -534,9 +543,12 @@ than trusting this number.
 | `studio-media-kling-v3-motion-control` | `kwaivgi/kling-v3-motion-control` — Kling 3.0 Motion Control: transfers the **motion of a reference clip** onto one still ($0.07/s std, $0.12/s pro, billed on output seconds). `image` and `video` both required; no duration, aspect ratio, reference set or last frame — the clip sets the length. The clip binds with `--clip-run` / `--clip-key` (registry `clips.source`) |
 | `studio-media-veo-3-1`   | `google/veo-3.1` — the control-oriented engine, and the only one with a repeatable **seed** and a real `negative_prompt`. Reference images work only at 16:9 and 8 seconds; durations are a 4/6/8s enum |
 | `studio-media-grok-imagine-video` | `xai/grok-imagine-video` — animates one chosen still, any integer 1–15s, and is the only registered model that **edits an existing clip**. No reference images, so not for holding a character on-model |
-| `studio-media-wan-2-6-t2v` | `runpod/wan-2-6-t2v` — Alibaba's open-weight Wan 2.6, text-to-video, on **Runpod's public endpoint** (`provider: runpod`; the entry carries its own schema). **No image input at all** — the one video engine here that takes none. 5/10/15 s, 720p/1080p landscape or portrait (`size` is W*H), `shot_type` single/multi, a real `negative_prompt`, a seed. **Priced per clip** ($0.50–$2.25), and the run records it |
+| `studio-media-wan-2-6-t2v` | `runpod/wan-2-6-t2v` — Alibaba's open-weight Wan 2.6, text-to-video, on **Runpod's public endpoint** (`provider: runpod`; the entry carries its own schema). **No image input at all** — one of two video engines here that take none (wan-3.0-t2v is the other). 5/10/15 s, 720p/1080p landscape or portrait (`size` is W*H), `shot_type` single/multi, a real `negative_prompt`, a seed. **Priced per clip** ($0.50–$2.25), and the run records it |
 | `studio-media-wan-2-6-i2v` | `runpod/wan-2-6-i2v` — Wan 2.6 image-to-video, same endpoint family: one **required** start frame (`image`), no reference list, no end frame. 5/10/15 s, 720p/1080p landscape, the same negative prompt and seed. **Per second**: $0.10/s (720p), $0.15/s (1080p). The untrained baseline the character-LoRA work is scored against |
 | `studio-media-wan-2-2-i2v-lora` | `runpod/wan-2-2-t2v-720-lora` — Wan 2.2 image-to-video at 720p **loading your own LoRA**: `high_noise_loras` / `low_noise_loras`, one adapter per denoising expert, each `{path, scale}`. A LoRA is a **send** (role `lora`, `.safetensors` node, `--lora-high-key` / `--lora-low-key`) presigned at submit, never a URL; `lora_scale` is studio's one number for every `scale`. 5 or 8 s, $0.35 / $0.56 per clip. Where a trained character LoRA lands |
+| `studio-media-wan-3-0-t2v` | `fal/alibaba/wan-3.0/text-to-video` — Wan 3.0, text-to-video, on **fal.ai's queue API** (`provider: fal`, the third provider; live OpenAPI schema). No image input. 2–30 s, 480p/720p/1080p, five aspect ratios, **native audio**, a seed, no negative field. **Per second**: $0.05 / $0.10 / $0.20 by resolution; the body carries no price, so the run records none. Defaults to 720p |
+| `studio-media-wan-3-0-i2v` | `fal/alibaba/wan-3.0/image-to-video` — Wan 3.0 image-to-video: a **required** start frame (`start_image_url`) and an optional end frame (`end_image_url`) to land on; no reference list. Same lengths, tiers, audio and price |
+| `studio-media-wan-3-0-r2v` | `fal/alibaba/wan-3.0/reference-to-video` — Wan 3.0 from **up to 10 reference images** (`reference_image_urls`), addressed positionally in the prompt (`Image 1…`); no start or end frame. The Wan engine for a character on-model. Same lengths, tiers, audio and price |
 | `studio-media-prompt`    | Author prompts as structured JSON for either engine (`--engine seedance\|kling-replicate`); validates rules and routes technical fields + the negative prompt where each engine takes them |
 | `studio-media-character` | Manage on-model characters (create/update/list/curate/load) whose bible is a field on the character's row and whose identity images are files carrying `default`; characters are data, not skills |
 | `studio-media-s3`        | Address the media store through the API by name path (list, upload, download, presign) — the asset store holding **characters** and **projects**, plus the run, scene and movie stores. Storage only; model invocation lives in `studio-media-core` |

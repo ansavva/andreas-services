@@ -90,6 +90,8 @@ BILLING_HOSTS = (
     "replicate.delivery",
     "api.runpod.ai",
     "image.runpod.ai",
+    "fal.run",
+    "fal.media",
     "api.openai.com",
     "api.anthropic.com",
 )

@@ -7,11 +7,12 @@
     "",
     "`provider` says which API runs an entry: `replicate` (the default when the",
     "key is absent — every entry written before there was a second provider) or",
-    "`runpod`, whose `model` is `runpod/<public endpoint id>`. A Runpod model has",
-    "no schema to fetch, so its entry carries an `input` block — `properties` and",
-    "`required`, the shape the live-schema route returns for Replicate — and that",
-    "block IS its schema: submit validates against it, and `snapshot` below is",
-    "distilled from it.",
+    "`runpod`, whose `model` is `runpod/<public endpoint id>`, or `fal`, whose `model`",
+    "is `fal/<endpoint>` (fal publishes a live OpenAPI schema per endpoint, read like",
+    "Replicate's). A Runpod model has no schema to fetch, so its entry carries an",
+    "`input` block — `properties` and `required`, the shape the live-schema route",
+    "returns for Replicate — and that block IS its schema: submit validates against",
+    "it, and `snapshot` below is distilled from it.",
     "",
     "Add a model with `studio-media-add-model`, which fetches the live schema AND the",
     "README and proposes an entry for review. Do not hand-edit `snapshot` — it is",
@@ -1792,6 +1793,238 @@
           "default": true
         },
         "refreshed": "2026-09-15"
+      }
+    },
+    "wan-3.0-t2v": {
+      "model": "fal/alibaba/wan-3.0/text-to-video",
+      "provider": "fal",
+      "kind": "video",
+      "skill": "studio-media-wan-3-0-t2v",
+      "images": {
+        "refs": null,
+        "max_refs": null,
+        "start": null,
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": []
+      },
+      "prompt": {
+        "max_chars": 20000
+      },
+      "video": {
+        "negative": "prompt",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": false,
+        "resolution_field": "resolution",
+        "resolution_map": null,
+        "allow_intelligent_duration": true
+      },
+      "defaults": {
+        "resolution": "720p"
+      },
+      "aliases": [],
+      "note": "Alibaba's Wan 3.0, text-to-video, on fal.ai's queue API (the third provider: `provider: fal`, `model: fal/<endpoint>`; neither Replicate nor Runpod hosts Wan 3.0 in September 2026). Prose prompt in, a clip of 2–30 s out at 480p/720p/1080p in any of five aspect ratios, with native audio. No image input of any kind — for a start or end frame use wan-3.0-i2v, for reference images wan-3.0-r2v. The schema is live: fal publishes an OpenAPI document per endpoint and `models show`/`refresh` read it. Priced per second of output by resolution: $0.05/s at 480p, $0.10/s at 720p, $0.20/s at 1080p (fal, September 2026) — a 5 s clip is $0.25 / $0.50 / $1.00 — and fal's body carries no price, so `cost.amount` stays null; fal's dashboard is the bill. The registry defaults `resolution` to 720p for that reason (fal's own default is 1080p). `duration` is any integer 2–30, or null for the model to pick a length from the prompt; `aspect_ratio` is `adaptive` by default and takes 16:9 / 4:3 / 1:1 / 3:4 / 9:16. `audio` (on by default) generates a soundtrack in the same pass. `enable_prompt_expansion` is left ON, unlike the Wan 2.6 entries, because fal says turning it off degrades the result — the rewritten prompt comes back as `actual_prompt` and the run stores the response, so what was actually sent to the model is on the record. `enable_thinking` (off) adds a reasoning pass and latency. A repeatable `seed`; no negative prompt field — keep-outs go in the prompt. Output URL is fal's CDN; the run stores the bytes.",
+      "snapshot": {
+        "resolution": {
+          "enum": [
+            "480p",
+            "720p",
+            "1080p"
+          ],
+          "default": "1080p"
+        },
+        "aspect_ratio": {
+          "enum": [
+            "adaptive",
+            "16:9",
+            "4:3",
+            "1:1",
+            "3:4",
+            "9:16"
+          ],
+          "default": "adaptive"
+        },
+        "duration": {
+          "default": 5,
+          "minimum": 2,
+          "maximum": 30
+        },
+        "audio": {
+          "default": true
+        },
+        "enable_prompt_expansion": {
+          "default": true
+        },
+        "enable_safety_checker": {
+          "default": true
+        },
+        "enable_thinking": {
+          "default": false
+        },
+        "seed": {
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "refreshed": "2026-09-16"
+      }
+    },
+    "wan-3.0-i2v": {
+      "model": "fal/alibaba/wan-3.0/image-to-video",
+      "provider": "fal",
+      "kind": "video",
+      "skill": "studio-media-wan-3-0-i2v",
+      "images": {
+        "refs": null,
+        "max_refs": null,
+        "start": "start_image_url",
+        "end": "end_image_url",
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
+      "prompt": {
+        "max_chars": 20000
+      },
+      "video": {
+        "negative": "prompt",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": false,
+        "resolution_field": "resolution",
+        "resolution_map": null,
+        "allow_intelligent_duration": true
+      },
+      "defaults": {
+        "resolution": "720p"
+      },
+      "aliases": [],
+      "note": "Alibaba's Wan 3.0, image-to-video, on fal.ai's queue API (`provider: fal`). One REQUIRED start frame (`start_image_url`, bound with --start-run / --start-key) and an optional last frame (`end_image_url`, --end-run / --end-key) the clip lands on — the frame-first workflow every other video engine here uses, plus the interpolation only Veo and Seedance also offer. 2–30 s, 480p/720p/1080p, native audio; `aspect_ratio: adaptive` follows the frame. No reference list: identity comes from the frame. Live schema from fal's OpenAPI document. Priced per second of output by resolution: $0.05/s at 480p, $0.10/s at 720p, $0.20/s at 1080p (fal, September 2026) — a 5 s clip is $0.25 / $0.50 / $1.00 — and fal's body carries no price, so `cost.amount` stays null; fal's dashboard is the bill. The registry defaults `resolution` to 720p for that reason (fal's own default is 1080p). `duration` is any integer 2–30, or null for the model to pick a length from the prompt; `aspect_ratio` is `adaptive` by default and takes 16:9 / 4:3 / 1:1 / 3:4 / 9:16. `audio` (on by default) generates a soundtrack in the same pass. `enable_prompt_expansion` is left ON, unlike the Wan 2.6 entries, because fal says turning it off degrades the result — the rewritten prompt comes back as `actual_prompt` and the run stores the response, so what was actually sent to the model is on the record. `enable_thinking` (off) adds a reasoning pass and latency. A repeatable `seed`; no negative prompt field — keep-outs go in the prompt. Output URL is fal's CDN; the run stores the bytes.",
+      "snapshot": {
+        "resolution": {
+          "enum": [
+            "480p",
+            "720p",
+            "1080p"
+          ],
+          "default": "1080p"
+        },
+        "aspect_ratio": {
+          "enum": [
+            "adaptive",
+            "16:9",
+            "4:3",
+            "1:1",
+            "3:4",
+            "9:16"
+          ],
+          "default": "adaptive"
+        },
+        "duration": {
+          "default": 5,
+          "minimum": 2,
+          "maximum": 30
+        },
+        "audio": {
+          "default": true
+        },
+        "enable_prompt_expansion": {
+          "default": true
+        },
+        "enable_safety_checker": {
+          "default": true
+        },
+        "enable_thinking": {
+          "default": false
+        },
+        "seed": {
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "refreshed": "2026-09-16"
+      }
+    },
+    "wan-3.0-r2v": {
+      "model": "fal/alibaba/wan-3.0/reference-to-video",
+      "provider": "fal",
+      "kind": "video",
+      "skill": "studio-media-wan-3-0-r2v",
+      "images": {
+        "refs": "reference_image_urls",
+        "max_refs": 10,
+        "start": null,
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
+      "prompt": {
+        "max_chars": 20000
+      },
+      "video": {
+        "negative": "prompt",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": true,
+        "resolution_field": "resolution",
+        "resolution_map": null,
+        "allow_intelligent_duration": true
+      },
+      "defaults": {
+        "resolution": "720p"
+      },
+      "aliases": [],
+      "note": "Alibaba's Wan 3.0, reference-to-video, on fal.ai's queue API (`provider: fal`). Up to 10 reference images (`reference_image_urls`, bound with --character / --ref-run / --key) that the prompt addresses positionally — 'the subject in Image 1 walks past…' — which is what makes it the Wan engine for a character on-model, the role Kling's and Seedance's reference lists play. No start or end frame: the references steer identity and the prompt steers the shot. 2–30 s, 480p/720p/1080p, native audio. The endpoint also takes up to 5 reference videos and 5 reference audios and a `web_url`/`file_url` to build from; none is wired — studio binds image nodes, never URLs, and no clip or audio send exists for this entry yet. Live schema from fal's OpenAPI document. Priced per second of output by resolution: $0.05/s at 480p, $0.10/s at 720p, $0.20/s at 1080p (fal, September 2026) — a 5 s clip is $0.25 / $0.50 / $1.00 — and fal's body carries no price, so `cost.amount` stays null; fal's dashboard is the bill. The registry defaults `resolution` to 720p for that reason (fal's own default is 1080p). `duration` is any integer 2–30, or null for the model to pick a length from the prompt; `aspect_ratio` is `adaptive` by default and takes 16:9 / 4:3 / 1:1 / 3:4 / 9:16. `audio` (on by default) generates a soundtrack in the same pass. `enable_prompt_expansion` is left ON, unlike the Wan 2.6 entries, because fal says turning it off degrades the result — the rewritten prompt comes back as `actual_prompt` and the run stores the response, so what was actually sent to the model is on the record. `enable_thinking` (off) adds a reasoning pass and latency. A repeatable `seed`; no negative prompt field — keep-outs go in the prompt. Output URL is fal's CDN; the run stores the bytes.",
+      "snapshot": {
+        "resolution": {
+          "enum": [
+            "480p",
+            "720p",
+            "1080p"
+          ],
+          "default": "1080p"
+        },
+        "aspect_ratio": {
+          "enum": [
+            "adaptive",
+            "16:9",
+            "4:3",
+            "1:1",
+            "3:4",
+            "9:16"
+          ],
+          "default": "adaptive"
+        },
+        "duration": {
+          "default": 5,
+          "minimum": 2,
+          "maximum": 30
+        },
+        "audio": {
+          "default": true
+        },
+        "enable_prompt_expansion": {
+          "default": true
+        },
+        "enable_safety_checker": {
+          "default": true
+        },
+        "enable_thinking": {
+          "default": false
+        },
+        "seed": {
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "refreshed": "2026-09-16"
       }
     }
   }

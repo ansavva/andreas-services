@@ -34,13 +34,13 @@ own queue and closing the run with the working tree — so the code being edited
 the code that runs. In prod it is a Lambda on an event source mapping. One
 implementation either way: `services/callbacks.py`.
 
-## Two providers, one route
+## Three providers, one route
 
 The route is `POST /api/hooks/{provider}/{run_id}` and this file forwards the
 provider's name and, for Runpod, the `sig` query parameter its callback URL
 was minted with — `services/generate.callback_url` says why Runpod's proof is
-in the URL and Replicate's is in the headers. Neither is checked here; both
-are checked by the consumer.
+in the URL and Replicate's and fal's are in the headers. None is checked
+here; all are checked by the consumer.
 
 ## This handler does NOT verify the signature, deliberately
 
@@ -73,12 +73,18 @@ import boto3
 #: not the whole map: everything here is written into a queue message that will
 #: be read by a laptop, and API Gateway forwards a great deal that has no
 #: business being copied — cookies, forwarded IPs, the gateway's own tracing.
-SIGNATURE_HEADERS = ("webhook-id", "webhook-timestamp", "webhook-signature")
+SIGNATURE_HEADERS = (
+    # Replicate, Standard Webhooks
+    "webhook-id", "webhook-timestamp", "webhook-signature",
+    # fal — `clients/fal.py` repeats these; that module is not importable here
+    "x-fal-webhook-request-id", "x-fal-webhook-user-id",
+    "x-fal-webhook-timestamp", "x-fal-webhook-signature",
+)
 
 #: The providers a callback may claim to be from. A literal here rather than an
 #: import from `services/registry.py`, because this file imports nothing from
 #: `studio_core` — see the module docstring — and the consumer re-checks it.
-PROVIDERS = ("replicate", "runpod")
+PROVIDERS = ("replicate", "runpod", "fal")
 
 #: SQS refuses a message body over 256 KiB, and a callback is a JSON envelope
 #: with metrics and logs in it — a failed video's `logs` can be large. The cap is

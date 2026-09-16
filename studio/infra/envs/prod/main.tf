@@ -17,6 +17,7 @@ locals {
   # real plan ran.
   replicate_token_name = "/studio/prod/replicate-api-token"
   runpod_token_name    = "/studio/prod/runpod-api-key"
+  fal_token_name       = "/studio/prod/fal-api-key"
 
   common_tags = {
     Project     = local.project
@@ -187,6 +188,22 @@ resource "aws_ssm_parameter" "runpod_api_key" {
   }
 }
 
+# The third provider's key, held the same way. fal's queue API
+# (`fal/<endpoint>` in the registry) is called with it — see `clients/fal.py`.
+# Unlike Runpod's, it signs nothing of ours: fal signs its own callbacks.
+resource "aws_ssm_parameter" "fal_api_key" {
+  name        = local.fal_token_name
+  description = "fal.ai API key. Written by studio-prod.yaml from a GitHub environment secret; Terraform never holds the value."
+  type        = "SecureString"
+  value       = "placeholder-the-deploy-workflow-writes-the-real-one"
+
+  tags = local.common_tags
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
 module "compute" {
   source = "../../modules/compute"
 
@@ -201,6 +218,7 @@ module "compute" {
   # the grant's `count` resolvable at plan time. The module composes the ARN.
   replicate_token_parameter = local.replicate_token_name
   runpod_token_parameter    = local.runpod_token_name
+  fal_token_parameter       = local.fal_token_name
 
   # From the module, not from the variable directly: this is what orders the
   # IAM policy after the bucket exists.
@@ -280,6 +298,7 @@ module "callbacks" {
   catalog_table_name        = module.catalog.table_name
   replicate_token_parameter = local.replicate_token_name
   runpod_token_parameter    = local.runpod_token_name
+  fal_token_parameter       = local.fal_token_name
 
   # `:latest`, matching the Lambda in `modules/compute`: the deploy workflow
   # repoints both to `:${{ github.sha }}` after the image is pushed, and both

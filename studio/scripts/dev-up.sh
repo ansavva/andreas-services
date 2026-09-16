@@ -212,6 +212,11 @@ if [ -z "${RUNPOD_API_KEY:-}" ]; then
   RUNPOD_API_KEY="$(read_env "$DEV_ENV_FILE" RUNPOD_API_KEY)"
   export RUNPOD_API_KEY
 fi
+# The third, likewise: a `fal/*` model refuses without it, naming it.
+if [ -z "${FAL_KEY:-}" ]; then
+  FAL_KEY="$(read_env "$DEV_ENV_FILE" FAL_KEY)"
+  export FAL_KEY
+fi
 
 # Where `studio login` and every other CLI call go: the Flask process this
 # script is about to start, so

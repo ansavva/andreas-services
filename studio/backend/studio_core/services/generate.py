@@ -74,7 +74,7 @@ import re
 import tempfile
 
 from studio_core import config
-from studio_core.clients import replicate, runpod
+from studio_core.clients import fal, replicate, runpod
 from studio_core.clients.aws import s3
 from studio_core.errors import ConflictError, NotFoundError, ValidationError
 from studio_core.services import catalog, layout, registry, schema
@@ -86,12 +86,13 @@ logger = logging.getLogger(__name__)
 #: `starting`/`processing` split (a run that has gone out is `running`, and a
 #: second word for the first two seconds of it would be a state nothing acts
 #: on), and `canceled` is spelled `cancelled` here because
-#: `catalog.RUN_STATUSES` has always spelled it that way. Runpod's words are
-#: upper-case on the wire and lower-cased before the lookup; the two sets do not
-#: collide, so one map serves both. Anything unrecognised is `failed` rather
-#: than passed through — an unmapped provider word reaching
-#: `PATCH /api/runs/<id>` is a 400 on the one call that has to succeed, because
-#: it is the only report a paid prediction will ever make.
+#: `catalog.RUN_STATUSES` has always spelled it that way. Runpod's and fal's
+#: words are upper-case on the wire and lower-cased before the lookup; fal's
+#: queue words are Runpod's (and mean the same), its terminal words are its
+#: own, and nothing collides, so one map serves all three. Anything
+#: unrecognised is `failed` rather than passed through — an unmapped provider
+#: word reaching `PATCH /api/runs/<id>` is a 400 on the one call that has to
+#: succeed, because it is the only report a paid prediction will ever make.
 PROVIDER_STATUS = {
     # Replicate
     "starting": "running",
@@ -105,12 +106,18 @@ PROVIDER_STATUS = {
     "completed": "succeeded",
     "cancelled": "cancelled",
     "timed_out": "failed",
+    # fal — `in_queue` / `in_progress` / `completed` above serve its status
+    # route too; these two are its webhook's, and what `fal.normalise` writes
+    # once the result has been read.
+    "ok": "succeeded",
+    "error": "failed",
 }
 
-#: The client behind each provider name. Both answer to the same five
-#: functions — `create_prediction`, `get_prediction`, `download`,
-#: `output_urls`, `cost` — and an `OutputGone`; `clients/runpod.py` says why.
-CLIENTS = {registry.REPLICATE: replicate, registry.RUNPOD: runpod}
+#: The client behind each provider name. All three answer to the same six
+#: functions — `create_prediction`, `get_prediction`, `normalise`, `download`,
+#: `output_urls`, `cost` — and an `OutputGone`; `clients/runpod.py` says why,
+#: and `clients/fal.py` says why `normalise` joined the list.
+CLIENTS = {registry.REPLICATE: replicate, registry.RUNPOD: runpod, registry.FAL: fal}
 
 
 def provider_of(record: dict) -> str:
@@ -125,7 +132,12 @@ def provider_of(record: dict) -> str:
     recorded = record.get("provider")
     if recorded:
         return recorded
-    return registry.RUNPOD if runpod.is_model(record.get("model") or "") else registry.REPLICATE
+    model = record.get("model") or ""
+    if runpod.is_model(model):
+        return registry.RUNPOD
+    if fal.is_model(model):
+        return registry.FAL
+    return registry.REPLICATE
 
 
 def client_for(provider: str):
@@ -414,6 +426,9 @@ def callback_url(run_id: str, provider: str = registry.REPLICATE) -> str | None:
     `services/callbacks.py` recomputes it. Not a second credential — the key is
     the one that paid for the job — and not secrecy of the URL either: a reader
     who has the URL has a signature for one run id and nothing else.
+
+    **fal signs its callbacks** (ED25519, four headers), so its URL is bare
+    like Replicate's; `clients/fal.py` has the check.
     """
     base = config.webhook_base_url()
     if not base:

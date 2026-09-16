@@ -37,7 +37,7 @@ import json
 import logging
 
 from studio_core import config
-from studio_core.clients import replicate, runpod
+from studio_core.clients import fal, replicate, runpod
 from studio_core.errors import NotFoundError
 from studio_core.services import catalog, generate, registry
 
@@ -68,15 +68,20 @@ def _decode(message: dict) -> tuple[str, str, dict, bytes]:
 def _verify(provider: str, run_id: str, message: dict, headers: dict, body: bytes) -> None:
     """Raise `ValueError` unless this callback really is the provider's.
 
-    Two providers, two proofs. Replicate signs the body the Standard Webhooks
-    way and the check is over the exact bytes that arrived. Runpod signs
-    nothing, so the URL it was told to call carries an HMAC of the run id under
-    the API key (`generate.callback_url`), the receiver forwards it as `sig`,
-    and the check is that it recomputes — see `clients/runpod.py` for what that
-    does and does not protect against.
+    Three providers, three proofs. Replicate signs the body the Standard
+    Webhooks way and the check is over the exact bytes that arrived. Runpod
+    signs nothing, so the URL it was told to call carries an HMAC of the run
+    id under the API key (`generate.callback_url`), the receiver forwards it
+    as `sig`, and the check is that it recomputes — see `clients/runpod.py`
+    for what that does and does not protect against. fal signs the body with
+    an ED25519 key it publishes, over four headers of its own — see
+    `clients/fal.py`.
     """
     if provider == registry.RUNPOD:
         runpod.verify_callback(run_id, message.get("sig") or "")
+        return
+    if provider == registry.FAL:
+        fal.verify_webhook(headers, body, config.webhook_tolerance_seconds())
         return
     replicate.verify_webhook(
         replicate.webhook_secret(),
@@ -113,6 +118,9 @@ def process(message: dict) -> dict | None:
         raise Rejected(f"callback for {run_id} is not JSON: {exc}") from exc
     if not isinstance(prediction, dict):
         raise Rejected(f"callback for {run_id} is not a JSON object")
+    # In the seam's shape — `id`, `status`, `output`, `error` — whatever the
+    # provider's own is. The identity for two of the three.
+    prediction = generate.client_for(provider).normalise(prediction)
 
     try:
         record = catalog.entity(catalog.ENTITY_RUN, run_id)
