@@ -1335,7 +1335,8 @@ def test_the_fal_schema_reader_flattens_nullable_fields_and_names_the_input(monk
 def test_the_fal_client_reads_the_result_after_the_status(monkeypatch):
     """Two calls once the queue is done: the status carries no output, the result
     route does — and an HTTP error from the result route is the request's own
-    failure, except a bad key or a rate limit, which raise so the queue retries."""
+    failure, except a bad key or a rate limit, which raise so the queue retries.
+    Both calls go to the app's routes, not the endpoint's."""
     from studio_core.clients import fal
     calls = []
 
@@ -1350,8 +1351,10 @@ def test_the_fal_client_reads_the_result_after_the_status(monkeypatch):
 
     got = fal.get_prediction("req-9", model="fal/alibaba/wan-3.0/text-to-video")
 
-    assert calls == ["https://queue.fal.run/alibaba/wan-3.0/text-to-video/requests/req-9/status",
-                     "https://queue.fal.run/alibaba/wan-3.0/text-to-video/requests/req-9"]
+    # The APP's request routes, not the endpoint's: the third path segment is
+    # a route inside the app, and answers 405 to a status GET.
+    assert calls == ["https://queue.fal.run/alibaba/wan-3.0/requests/req-9/status",
+                     "https://queue.fal.run/alibaba/wan-3.0/requests/req-9"]
     assert got["id"] == "req-9" and got["status"] == "OK"
     assert fal.output_urls(got) == ["https://x.invalid/v.mp4"]
     assert fal.cost(got) == {"amount": None, "currency": None, "predict_time": 12.5}

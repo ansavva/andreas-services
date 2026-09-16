@@ -19,8 +19,14 @@ API's dependency set is the Lambda image's.
 
 ## What is different, and has to be
 
-**A request is addressed by endpoint AND id**, as on Runpod: status is
-`/<endpoint>/requests/<id>/status`, so `get_prediction` takes the model too.
+**A request is addressed by app AND id**, as on Runpod by endpoint: status
+is `/<owner>/<app>/requests/<id>/status`, so `get_prediction` takes the
+model too. **The app, not the endpoint.** `alibaba/wan-3.0/text-to-video`
+submits at that full path, but its requests live under `alibaba/wan-3.0` —
+the third segment is a route inside the app, and a status GET with it in
+the URL answers 405. Measured 2026-09-16 on the first live run, which the
+CLI's wait then could not read (the generation was unaffected). The
+status route answers 202, not 200, while the request is in flight.
 
 **The result is a second call.** Runpod's status answers with the output in
 it; fal's status says only `IN_QUEUE` / `IN_PROGRESS` / `COMPLETED`, and the
@@ -130,10 +136,20 @@ def is_model(model: str) -> bool:
 
 
 def endpoint_of(model: str) -> str:
-    """The endpoint id behind `fal/<endpoint>`."""
+    """The endpoint id behind `fal/<endpoint>` — where a request is submitted."""
     if not is_model(model):
         raise ValueError(f"{model!r} is not a fal model id (no {PREFIX!r} prefix)")
     return model[len(PREFIX):]
+
+
+def app_of(model: str) -> str:
+    """`<owner>/<app>` — where a request's status and result live.
+
+    The first two segments of the endpoint; anything after them is a route
+    inside the app and is not part of a request's address. See the module
+    docstring for how that was learned.
+    """
+    return "/".join(endpoint_of(model).split("/")[:2])
 
 
 def mode() -> str:
@@ -292,7 +308,7 @@ def get_prediction(prediction_id: str, *, model: str) -> dict:
         logger.info("[fal:FAKE] get_prediction %s", prediction_id)
         return _fake_settled(prediction_id)
 
-    base = f"{API_ROOT}/{endpoint_of(model)}/requests/{prediction_id}"
+    base = f"{API_ROOT}/{app_of(model)}/requests/{prediction_id}"
     status, document = _request("GET", f"{base}/status")
     if status >= 400:
         raise _refused("GET", f"{base}/status", status, document)
