@@ -19,6 +19,13 @@ import { useShellSidebar } from "../../context/SidebarContext";
  * `md:left-16` is the rail's width. The frame is `fixed`, and a fixed box
  * cannot take the column's width for free the way a sticky one can — so it
  * is told where the rail ends.
+ *
+ * **`z-50` while a player inside it is in the app's own fullscreen.** The
+ * frame's `z-20` makes it a stacking context, so the player's fixed `z-50`
+ * box is `z-50` *within the frame* and still under the header and the
+ * sheet handle at `z-30` — on an iPhone, where only that fallback exists,
+ * the search button sat on top of the maximised picture and took its taps.
+ * The player marks the state (`data-fullscreen="app"`) and the frame lifts.
  */
 export function ViewerFrame({
   className = "",
@@ -37,7 +44,7 @@ export function ViewerFrame({
   return (
     <div
       {...rest}
-      className={`fixed inset-x-0 z-20 flex flex-col overflow-y-auto bg-bg md:left-16 md:flex-row md:overflow-hidden ${className}`}
+      className={`fixed inset-x-0 z-20 flex flex-col overflow-y-auto bg-bg has-[[data-fullscreen=app]]:z-50 md:left-16 md:flex-row md:overflow-hidden ${className}`}
       style={{
         top: "var(--header-h)",
         height: "calc(100dvh - var(--header-h) - var(--sheet-handle-h))",

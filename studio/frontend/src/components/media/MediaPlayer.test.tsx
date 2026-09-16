@@ -135,7 +135,13 @@ describe("maximize", () => {
     // The app positions the box itself, because the browser has not: the same
     // state the native path reaches, drawn by us.
     const exit = screen.getByRole("button", { name: "Exit fullscreen (f)" });
-    expect(exit.closest(".fixed")).toBeTruthy();
+    const box = exit.closest(".fixed");
+    expect(box).toBeTruthy();
+    // And nothing else positioning it: Tailwind emits `relative` after
+    // `fixed`, so a box wearing both stays put and this whole state is a
+    // screen-sized box hanging off the page's corner.
+    expect(box!.classList.contains("relative")).toBe(false);
+    expect(box!.getAttribute("data-fullscreen")).toBe("app");
   });
 
   it("leaves the app's own fullscreen on Escape, and nothing else hears it", () => {

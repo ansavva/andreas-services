@@ -454,13 +454,20 @@ export function MediaPlayer({
     // right and bottom counts as scrollable — so the browser, bringing a
     // focused chrome button into view, scrolled the box by a quarter of the
     // picture and the zoom landed off-centre. `clip` clips and cannot scroll.
-    "relative isolate block overflow-clip bg-overlay-scrim",
+    "isolate block overflow-clip bg-overlay-scrim",
     isFullscreen ? "" : ASPECTS[aspect],
     // **The app positions the box only when the browser has not.** Native
     // fullscreen makes the element the whole screen by itself; the fallback is
     // an ordinary element that has to be told, and it has to sit above the
     // sheet and the header (`z-30` both).
-    isFullscreen && !native ? "fixed inset-0 z-50 w-screen" : "",
+    //
+    // **One position class, never two.** This used to be `relative` always
+    // and `fixed` added on top, and Tailwind emits `relative` after `fixed`,
+    // so the fallback box stayed exactly where the page had put it — with a
+    // screen's width and height hanging off that corner. On an iPhone, the
+    // one device that only has the fallback, "maximize" enlarged the box into
+    // the header and off the right edge and covered nothing.
+    isFullscreen && !native ? "fixed inset-0 z-50 w-screen" : "relative",
     isFullscreen ? "" : className,
     // The cursor goes with the chrome.
     chrome.visible ? "" : "cursor-none",
@@ -485,6 +492,11 @@ export function MediaPlayer({
       ref={setContainerNode}
       className={box}
       style={{ ...shell, ...zoom.stage }}
+      // Which fullscreen is in force, for an ancestor that has to make way.
+      // `ViewerFrame` is its own stacking context under the header's, so a
+      // `z-50` in here cannot climb past a `z-30` out there; the frame reads
+      // `app` and lifts itself instead.
+      data-fullscreen={isFullscreen ? (native ? "native" : "app") : undefined}
       draggable={draggable || undefined}
       onDragStart={draggable ? onDragStart : undefined}
       // Never both at once: the zoom's handlers exist only on a still, the
