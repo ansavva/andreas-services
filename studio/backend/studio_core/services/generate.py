@@ -436,12 +436,26 @@ def dispatch(record: dict, entry: dict, payload: dict, bindings: dict) -> dict:
     dropped socket.
     """
     payload = dict(payload)
+    # **A LoRA send goes out as `{path, scale}`, and the scale never goes out
+    # by name.** `lora_scale` is a plan param so a person sets one number in
+    # the sheet or with `--extra`; the endpoint has no such field, so it is
+    # taken out here and written into every object. Popped even when no LoRA
+    # is bound, or an unknown field would reach the provider.
+    loras = registry.lora_fields(entry)
+    scale_param = registry.lora_scale_param(entry)
+    scale = payload.pop(scale_param, None) if scale_param else None
+    if scale is None:
+        scale = 1.0
     for field, value in bindings.items():
-        payload[field] = (
-            [presign_node(one) for one in value]
-            if isinstance(value, list)
-            else presign_node(value)
-        )
+        if field in loras:
+            nodes = value if isinstance(value, list) else [value]
+            payload[field] = [{"path": presign_node(one), "scale": scale} for one in nodes]
+        else:
+            payload[field] = (
+                [presign_node(one) for one in value]
+                if isinstance(value, list)
+                else presign_node(value)
+            )
     if bindings:
         logger.info("Minted presigned URLs for %s on run %s",
                     sorted(bindings), record["id"])
@@ -664,6 +678,9 @@ def _unsigned_input(record: dict, prediction: dict) -> dict:
             bound.setdefault(send["field"], []).append(send["node"])
 
     def swap(field: str, value, index: int = 0):
+        # A LoRA send is `{path, scale}`; the URL is the path inside it.
+        if isinstance(value, dict) and isinstance(value.get("path"), str):
+            return {**value, "path": swap(field, value["path"], index)}
         if not isinstance(value, str) or not _URI.match(value):
             return value
         nodes = bound.get(field) or []

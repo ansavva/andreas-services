@@ -2900,7 +2900,9 @@ SEND_PREFIX = "SEND#"
 #: last frame, a reference — plus `input`, the image being edited, and `clip`:
 #: the one video a model works from (a motion reference, an edit source), which
 #: the registry names under `clips.source`.
-SEND_ROLES = frozenset({"start", "end", "reference", "input", "clip"})
+# `lora`: a weights file a model loads beside its own — bound to one of the
+# entry's `loras.*` fields and sent as `{path, scale}`, see `generate.dispatch`.
+SEND_ROLES = frozenset({"start", "end", "reference", "input", "clip", "lora"})
 
 #: Everything a send row holds. All four are AUTHORED; a send has no recorded
 #: half, which is why `put_sends` replaces rather than merging: there is

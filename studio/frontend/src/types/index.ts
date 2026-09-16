@@ -890,7 +890,7 @@ export interface RunSend extends RunAsset {
   /** The model input this binds to, e.g. `image_input`, `start_image`. */
   field: string;
   /** `null` on a run backfilled from a model the registry does not list. */
-  role: "start" | "end" | "reference" | "input" | "clip" | null;
+  role: "start" | "end" | "reference" | "input" | "clip" | "lora" | null;
   source: RunSendSource;
 }
 

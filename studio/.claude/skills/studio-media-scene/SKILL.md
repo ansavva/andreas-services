@@ -116,6 +116,7 @@ submit path enforces — `studio models show <model>` prints it.
 | `kling-v3-motion-control` | none | — | none — the reference **clip** (`--clip-run`) sets the motion and the length |
 | `wan-2.6-t2v` | none | — | none — **takes no image at all**; it cannot continue a take, only open one |
 | `wan-2.6-i2v` | none | — | none — the start frame is the only image, so the handoff frame carries everything |
+| `wan-2.2-i2v-lora` | none | — | none — start frame plus a **LoRA pair** (`--lora-high-key` / `--lora-low-key`), which is what carries identity |
 
 So "start plus six references" is a Kling sentence, not a general one. The
 submit path resolves every payload against the model it names and refuses what

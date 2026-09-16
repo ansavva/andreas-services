@@ -193,3 +193,24 @@ def clip_field(entry: dict) -> str | None:
 def clip_accepts_ext(entry: dict) -> set[str]:
     """The clip extensions this model will take, as a set."""
     return set(field(entry, "clips.accepts_ext", []) or [])
+
+
+def lora_fields(entry: dict) -> dict[str, str]:
+    """`{slot: field}` for the inputs that take LoRA weights — `{}` where none do.
+
+    A slot is what a person binds to (`--lora-high-key` binds `high`), a field
+    is what the provider calls it (`high_noise_loras`). Wan 2.2 has two because
+    its sampler is two experts, high-noise then low-noise, each loading its own
+    adapter; a single-stage model would have one slot. Kept apart from `images`
+    and `clips` the way a clip is kept apart from a still: a `.safetensors` is
+    checked against its own extensions, left out of the image budget and the
+    byte warning, and sent as `{path, scale}` rather than as a bare URL.
+    """
+    loras = entry.get("loras") or {}
+    return {k: v for k, v in loras.items()
+            if k not in ("accepts_ext", "scale_param") and isinstance(v, str)}
+
+
+def lora_accepts_ext(entry: dict) -> set[str]:
+    """The weight-file extensions this model will take, as a set."""
+    return set(field(entry, "loras.accepts_ext", []) or [])

@@ -592,6 +592,7 @@ page and a plain textarea over its literal bytes, and never offers fields.
   open with a count in the title while `Image refs` accumulates. Then the prompt, borderless, its `{` menu
   opening upward — two lines at rest, faded where more is cut off, eight
   with the caret in it.
+  A send with the role `lora` (a `.safetensors` the model loads; `wan-2.2-i2v-lora`) draws as a labelled tile rather than a picture — the create sheet offers no tile for it yet, the CLI binds it.
 
   **Pressing a picture on the row opens it large in a drawer**
   (`AttachPreview`: a right-hand drawer on a desk, a bottom sheet on a

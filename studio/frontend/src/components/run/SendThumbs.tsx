@@ -18,11 +18,12 @@ import { MediaThumb } from "../media/MediaThumb";
  * plural on a tile row, so a single picture takes the numbered form the sheet
  * captions its own tiles with (`Image 1`).
  */
-const ROLE_ORDER: Record<string, number> = { start: 0, end: 1, clip: 2, input: 3, reference: 4 };
+const ROLE_ORDER: Record<string, number> = { start: 0, end: 1, clip: 2, input: 3, reference: 4, lora: 5 };
 const ROLE_WORD: Record<string, string> = {
   start: "Start frame",
   end: "End frame",
   clip: "Source video",
+  lora: "LoRA",
   input: "Input",
 };
 
@@ -91,7 +92,30 @@ export function SendThumbs({
             : (ROLE_WORD[send.role ?? ""] ?? send.field);
 
         const title = `${word} · ${assetLabel(send.name)}`;
-        const thumb = (
+        // A LoRA is weights, not a picture: nothing to draw, so the tile says
+        // what it is and names the file. Still a send — it is in the row, in
+        // order, because the run was given it.
+        const thumb = send.role === "lora" ? (
+          <span className="flex flex-col gap-1">
+            <span
+              className={`${size} flex flex-col items-center justify-center gap-0.5 border border-line bg-card px-1 text-center`}
+            >
+              <Text variant="caption" weight="medium">
+                LoRA
+              </Text>
+              <Text variant="caption" tone="muted" className="w-full truncate font-mono text-[10px]">
+                {assetLabel(send.name)}
+              </Text>
+            </span>
+            <Text
+              variant="caption"
+              tone="muted"
+              className={`${size === "size-28" ? "w-28" : "w-20"} truncate text-center`}
+            >
+              {send.field === "high_noise_loras" ? "High noise" : send.field === "low_noise_loras" ? "Low noise" : word}
+            </Text>
+          </span>
+        ) : (
           <span className="flex flex-col gap-1">
             {/* Whole, not cropped: what went in is what a person is checking
                 the output against. */}

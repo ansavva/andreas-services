@@ -1640,6 +1640,155 @@
         },
         "refreshed": "2026-09-15"
       }
+    },
+    "wan-2.2-i2v-lora": {
+      "model": "runpod/wan-2-2-t2v-720-lora",
+      "provider": "runpod",
+      "kind": "video",
+      "skill": "studio-media-wan-2-2-i2v-lora",
+      "images": {
+        "refs": null,
+        "max_refs": null,
+        "start": "image",
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
+      "loras": {
+        "high": "high_noise_loras",
+        "low": "low_noise_loras",
+        "accepts_ext": [
+          ".safetensors"
+        ],
+        "scale_param": "lora_scale"
+      },
+      "prompt": {
+        "max_chars": null
+      },
+      "video": {
+        "negative": "prompt",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": false,
+        "resolution_field": null,
+        "resolution_map": null,
+        "allow_intelligent_duration": false
+      },
+      "aliases": [],
+      "note": "Wan 2.2 image-to-video at 720p WITH YOUR OWN LoRA, on Runpod's public endpoint (its id is `wan-2-2-t2v-720-lora` although it takes an image — the docs' table links a name that does not exist). The one model here that loads weights that are not its own: `high_noise_loras` and `low_noise_loras` each take a list of `{path, scale}`, one adapter per denoising stage the way Wan 2.2's two-expert sampler wants them. In studio a LoRA is a SEND — a `.safetensors` node in the library, bound with --lora-high-key / --lora-low-key, presigned at submit — never a pasted URL (hard rule #3); `lora_scale` is studio's one number for every adapter's `scale`. One required start frame (`image`), no reference list, no negative prompt, no size field (720p landscape). 5 or 8 seconds; $0.35 / $0.56 per clip (Runpod, September 2026). The destination for a trained character LoRA, and the untrained-with-a-public-LoRA baseline before one exists.",
+      "input": {
+        "required": [
+          "prompt",
+          "image"
+        ],
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "description": "The motion — what moves, how the camera moves, what changes by the end. The frame is already there."
+          },
+          "image": {
+            "type": "string",
+            "format": "uri",
+            "title": "Image",
+            "description": "The still to animate. Required: the clip starts on this frame."
+          },
+          "high_noise_loras": {
+            "type": "array",
+            "title": "High-noise LoRAs",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL of the .safetensors file."
+                },
+                "scale": {
+                  "type": "number",
+                  "description": "How strongly the adapter is applied."
+                }
+              }
+            },
+            "description": "Adapters for the high-noise (early, composition) denoising stage. Bound with --lora-high-key; each goes out as {path, scale}."
+          },
+          "low_noise_loras": {
+            "type": "array",
+            "title": "Low-noise LoRAs",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL of the .safetensors file."
+                },
+                "scale": {
+                  "type": "number",
+                  "description": "How strongly the adapter is applied."
+                }
+              }
+            },
+            "description": "Adapters for the low-noise (late, detail) denoising stage. Bound with --lora-low-key; each goes out as {path, scale}."
+          },
+          "lora_scale": {
+            "type": "number",
+            "title": "LoRA scale",
+            "minimum": 0,
+            "maximum": 2,
+            "default": 1.0,
+            "description": "Studio's: the `scale` written into every bound LoRA. Never sent under this name."
+          },
+          "duration": {
+            "type": "integer",
+            "title": "Duration",
+            "enum": [
+              5,
+              8
+            ],
+            "default": 5,
+            "description": "Clip length in seconds: 5 or 8."
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "default": -1,
+            "description": "-1 for a random draw; any other value repeats one."
+          },
+          "enable_safety_checker": {
+            "type": "boolean",
+            "title": "Enable safety checker",
+            "default": true,
+            "description": "Run the endpoint's content check over the output."
+          }
+        }
+      },
+      "snapshot": {
+        "lora_scale": {
+          "default": 1.0,
+          "minimum": 0,
+          "maximum": 2
+        },
+        "duration": {
+          "enum": [
+            5,
+            8
+          ],
+          "default": 5
+        },
+        "seed": {
+          "default": -1
+        },
+        "enable_safety_checker": {
+          "default": true
+        },
+        "refreshed": "2026-09-15"
+      }
     }
   }
 }
