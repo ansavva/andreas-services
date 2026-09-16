@@ -32,6 +32,7 @@ engines here besides Veo. **It takes no image of any kind.**
 | Prompt expansion | `enable_prompt_expansion` — off by default; on, a rewriter expands the prompt before rendering, so what was read is no longer exactly what was sent |
 | Price | **per clip**, by size and length (Runpod, September 2026): 720p **$0.50 / $1.00 / $1.50**, 1080p **$0.75 / $1.50 / $2.25** for 5 / 10 / 15 s. The run records what it charged |
 | Not here | no images, no audio input (the endpoint's `audio` URL is not wired — studio binds nodes, never URLs), no step count, no guidance |
+| Beware | the worker **ignores fields it does not know** rather than refusing them — a misspelt input renders at the default and bills. The registry's check at submit is the only gate |
 
 ## Invoke
 

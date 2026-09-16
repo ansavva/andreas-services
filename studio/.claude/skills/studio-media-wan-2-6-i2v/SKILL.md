@@ -26,8 +26,8 @@ identity comes from: this model has **no reference list**.
 | Images field | **one start frame, required**: `image`, bound with `--start-run` / `--start-key`. No reference list (`--character`, `--ref-run`, `--key` are refused) and no end frame |
 | Accepts | `.jpg .jpeg .png .webp` |
 | Duration | `duration` — `5` (default), `10`, `15` seconds |
-| Size | `size` — `1280*720` (default) or `1920*1080`. Landscape only; no aspect-ratio field, so `--aspect-ratio` does not apply |
-| Shot type | `shot_type` — `single` (default) or `multi` |
+| Resolution | `resolution` — `720p` (default) or `1080p`. Landscape only; no aspect-ratio field, so `--aspect-ratio` does not apply. **Not `size`**: Runpod's page documents `size` as W*H for this endpoint and the worker refuses it (`field "resolution" must be one of ["720p", "1080p"]`) — measured 2026-09-16 |
+| Shot type | `shot_type` — `single` or `multi`. **Required by the worker**, which has no default of its own; the registry supplies `single` so a payload that does not name one is still complete |
 | Negative | `negative_prompt` — a real parameter, honoured |
 | Seed | `seed` — `-1` (default) is random; any other integer repeats the draw |
 | Prompt expansion | `enable_prompt_expansion` — off by default |
@@ -41,18 +41,18 @@ identity comes from: this model has **no reference list**.
 # animate the last image run's output, five seconds at 720p
 studio run --model wan-2.6-i2v --project <project> \
   --start-run <project>/latest#1 \
-  --extra '{"duration":5,"size":"1280*720","seed":7}' \
+  --extra '{"duration":5,"resolution":"720p","seed":7}' \
   --prompt "…"
 
 # a named still, ten seconds at 1080p
 studio run --model wan-2.6-i2v --project <project> \
   --start-key <node> \
-  --extra '{"duration":10,"size":"1920*1080"}' \
+  --extra '{"duration":10,"resolution":"1080p"}' \
   --prompt "…"
 ```
 
-The still's aspect should match the size asked for — a portrait frame into a
-`1280*720` clip is the model's to crop, and it will. Render the frame at
+The still should be landscape — the output always is, and a portrait frame
+into a 16:9 clip is the model's to crop, and it will. Render the frame at
 16:9 first, or accept the crop deliberately.
 
 ## Prompting

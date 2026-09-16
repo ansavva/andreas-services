@@ -1120,6 +1120,22 @@ def test_a_lora_send_goes_out_as_path_and_scale_and_the_scale_never_by_name(
     assert unsigned["image"] == still["node_id"]
 
 
+def test_the_wan_i2v_entry_speaks_the_workers_schema_not_the_docs():
+    """Runpod's page for `wan-2-6-i2v` documents `size` as W*H; the worker's
+    pydantic model takes `resolution` in 720p/1080p and requires `shot_type`.
+    A prod run sent `size: 1920*1080` off the docs and failed after `pending`.
+    The entry is pinned to what the worker said, so the docs cannot creep back."""
+    from studio_core.services import registry
+    entry = registry.get("wan-2.6-i2v")
+    props = entry["input"]["properties"]
+    assert "size" not in props
+    assert props["resolution"]["enum"] == ["720p", "1080p"]
+    assert "shot_type" in entry["input"]["required"]
+    assert entry["defaults"] == {"shot_type": "single"}
+    # And the sheet seeds it: the snapshot carries the default the worker lacks.
+    assert entry["snapshot"]["shot_type"]["default"] == "single"
+
+
 def test_lora_fields_are_read_off_the_entry_and_nothing_else():
     from studio_core.services import registry
     assert registry.lora_fields(LORA) == {"high_noise_loras", "low_noise_loras"}
