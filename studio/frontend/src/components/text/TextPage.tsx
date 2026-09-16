@@ -76,7 +76,9 @@ export function TextPage({ file, onClose, onSaved, crumbs }: Props) {
         if (!cancelled) setData(result);
       })
       .catch((err: Error) => {
-        if (!cancelled) setError(err.message);
+        // Never an empty message: `error` doubles as "not loading", so an
+        // empty string would leave the spinner up over a failure.
+        if (!cancelled) setError(err.message || "Could not load this file.");
       });
 
     return () => {
@@ -269,7 +271,10 @@ export function TextPage({ file, onClose, onSaved, crumbs }: Props) {
           (isMarkdown && !raw ? (
             <MarkdownView source={data.content} />
           ) : (
-            <pre className="overflow-x-auto font-mono text-xs leading-relaxed text-ink">
+            // Wrapped, not scrolled sideways: a run's `request.json` carries
+            // the whole prompt on one line, and `overflow-x-auto` under a
+            // hidden macOS scrollbar read as a file clipped at the right edge.
+            <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-ink">
               <code>{formatTextContent(data.content, data.language)}</code>
             </pre>
           ))
