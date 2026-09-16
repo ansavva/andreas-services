@@ -219,6 +219,10 @@ def build_payload(entry: dict, args) -> dict:
     clip = REG.clip_field(entry)
     if clip and clip in payload:
         die(f"pass the clip via --clip-run/--clip-key, not in the payload as `{clip}`.")
+    for slot, lora_field in REG.lora_fields(entry).items():
+        if lora_field in payload:
+            die(f"pass LoRA weights via --lora-{slot}-key, not in the payload as `{lora_field}` — "
+                "a LoRA is a node in the library, presigned at submit (hard rule #3).")
     return payload
 
 
@@ -301,6 +305,8 @@ def _refuse_a_duplicate(record: dict, args) -> None:
 @click.option("--interval", type=int, help="Poll interval seconds.")
 @click.option("--json", "json_", is_flag=True, help="With --dry-run, emit raw JSON instead of the readable review.")
 @click.option("--key", multiple=True, help="Explicit node id (or name path). Repeatable.")
+@click.option("--lora-high-key", multiple=True, help="Node id (or name path) of a .safetensors LoRA for the high-noise stage (video, LoRA models). Repeatable.")
+@click.option("--lora-low-key", multiple=True, help="Node id (or name path) of a .safetensors LoRA for the low-noise stage (video, LoRA models). Repeatable.")
 @click.option("--model", required=True, help="REQUIRED registry key. See `models` — the engines are peers.")
 @click.option("--no-refs", is_flag=True, help="Deliberately generate with no image inputs.")
 @click.option("--pick", help=("Comma-separated reference files (or stems) from the "

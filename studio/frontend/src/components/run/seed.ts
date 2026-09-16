@@ -10,6 +10,11 @@ import type { RunAsset, RunFeedRow, RunSend } from "../../types";
  * send as an attachment carrying its role. A send with no role — a run backfilled
  * from a model the registry does not list — goes in as `reference`, which is
  * the one role every image model has a slot for.
+ *
+ * **A LoRA send is left behind.** The bar has no tile for weights — a LoRA
+ * binds from the CLI (`--lora-high-key`) — so an edit of a LoRA run reloads
+ * its frame, prompt and params and not the adapters; the run page still
+ * shows them, and `lora_scale` rides along in the params.
  */
 export function seedFromRow(row: RunFeedRow): CreateSeed {
   return {
@@ -18,10 +23,11 @@ export function seedFromRow(row: RunFeedRow): CreateSeed {
     model: row.model,
     prompt: promptText(row.plan?.prompt),
     params: { ...(row.plan?.params ?? {}) },
-    attachments: row.sends.map((send) => ({
-      ref: refOfSend(send),
-      role: send.role ?? "reference",
-    })),
+    attachments: row.sends.flatMap((send) =>
+      send.role === "lora"
+        ? []
+        : [{ ref: refOfSend(send), role: (send.role ?? "reference") as AttachRole }],
+    ),
   };
 }
 

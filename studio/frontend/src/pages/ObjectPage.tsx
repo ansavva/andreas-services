@@ -24,6 +24,7 @@ import {
 import { PageBar, type Crumb } from "../components/layout/PageBar";
 import { CompareStage } from "../components/media/CompareStage";
 import { MediaPlayer, type MediaPlayerControls } from "../components/media/MediaPlayer";
+import { FilePage } from "../components/text/FilePage";
 import { TextPage } from "../components/text/TextPage";
 import { FileDetailsPanel } from "../components/viewer/FileDetailsPanel";
 import { Filmstrip } from "../components/viewer/Filmstrip";
@@ -331,7 +332,11 @@ export function ObjectPage() {
    * it.
    */
   const open = feed.all.find((item) => item.id === nodeId);
-  const isText = Boolean(open && open.kind !== "image" && open.kind !== "video");
+  // "Not media" used to mean "text", and the first `.safetensors` opened here
+  // went to the text route and spun on its 400. `kindOfFile` says which of the
+  // two a non-media file is, the way the API decides it.
+  const isText = open?.kind === "text";
+  const isBinary = open?.kind === "other";
 
   /**
    * ←/→ walk the feed; Space, `m` and `f` are the player's.
@@ -348,8 +353,8 @@ export function ObjectPage() {
    */
   const modal = editing;
   useKeyboardNav({
-    onPrev: isText || modal ? undefined : () => step(-1),
-    onNext: isText || modal ? undefined : () => step(1),
+    onPrev: isText || isBinary || modal ? undefined : () => step(-1),
+    onNext: isText || isBinary || modal ? undefined : () => step(1),
     onClose: isText || modal ? undefined : close,
     onTogglePlay: controls && !modal ? () => controls.togglePlay() : undefined,
     onToggleMuted: controls && !modal ? () => controls.toggleMuted() : undefined,
@@ -381,6 +386,10 @@ export function ObjectPage() {
     // once it stopped being a `fixed inset-0` takeover, and a page inside
     // `AppLayout` needs to say where it sits like every other one.
     return <TextPage file={open} onClose={close} onSaved={feed.reload} crumbs={crumbs} />;
+  }
+
+  if (open && isBinary) {
+    return <FilePage file={open} onClose={close} crumbs={crumbs} />;
   }
 
   if (!current) {

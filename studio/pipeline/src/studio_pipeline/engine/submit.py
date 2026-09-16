@@ -249,6 +249,34 @@ def gather(entry: dict, args) -> dict:
                 f"{_label(bindings[clip_field])} is not one."
             )
 
+    # --- the LoRAs (a model that loads weights beside its own) --------------
+    loras = REG.lora_fields(entry)
+    asked = {slot: tuple(getattr(args, f"lora_{slot}_key", None) or ()) for slot in ("high", "low")}
+    if any(asked.values()) and not loras:
+        raise SubmitError(
+            f"{entry['key']} takes no LoRA — --lora-high-key/--lora-low-key do not apply to it."
+        )
+    for slot, keys in asked.items():
+        if not keys:
+            continue
+        lora_field = loras.get(slot)
+        if not lora_field:
+            raise SubmitError(
+                f"{entry['key']} has no {slot}-noise LoRA input; it takes "
+                f"{', '.join(sorted(loras))}."
+            )
+        nodes = [as_node(k) for k in keys]
+        # Its own format rule, like the clip's: a weights file is on neither
+        # side of the image list's check.
+        lora_exts = REG.lora_accepts_ext(entry)
+        bad = [n for n in nodes if _ext(n) not in lora_exts]
+        if bad:
+            raise SubmitError(
+                f"{entry['key']} takes LoRA weights in {sorted(lora_exts)}; "
+                f"{[_label(n) for n in bad]} are not."
+            )
+        bindings[lora_field] = nodes
+
     # --- the reference / input list ----------------------------------------
     slots = [int(s) for s in args.slots.split(",")] if getattr(args, "slots", None) else None
     pick = [x.strip() for x in args.pick.split(",")] if getattr(args, "pick", None) else None
@@ -379,7 +407,10 @@ def _warn_total_bytes(entry: dict, bindings: dict) -> None:
     if entry.get("kind") != "video":
         return
     clip = REG.clip_field(entry)
-    refs = flatten({f: v for f, v in bindings.items() if f != clip})
+    skip = {clip, *REG.lora_fields(entry).values()}
+    # A LoRA is 150 MB of weights the provider fetches, not an image the
+    # model is shown; it is outside the measurement this warning is built on.
+    refs = flatten({f: v for f, v in bindings.items() if f not in skip})
     if not refs:
         return
     try:
@@ -592,6 +623,8 @@ def sends_for(entry: dict, bindings: dict) -> list[dict]:
                if images.get(name)}
     if REG.clip_field(entry):
         role_of[REG.clip_field(entry)] = "clip"
+    for lora_field in REG.lora_fields(entry).values():
+        role_of[lora_field] = "lora"
     return [
         {"field": field, "role": role_of.get(field, "input"), "node": node}
         for field, value in bindings.items()

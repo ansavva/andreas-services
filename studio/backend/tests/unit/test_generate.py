@@ -1006,6 +1006,138 @@ def test_runpod_output_and_cost_are_read_off_the_public_endpoint_shape():
     assert runpod.output_urls({"output": ["https://x.invalid/a", "https://x.invalid/b"]}) == [
         "https://x.invalid/a", "https://x.invalid/b"]
     assert runpod.cost({"status": "FAILED"}) is None
+    # The video endpoints spell it `video_url`. Same document otherwise.
+    clip = {"output": {"video_url": "https://x.invalid/out.mp4", "cost": 0.5}}
+    assert runpod.output_urls(clip) == ["https://x.invalid/out.mp4"]
+    assert runpod.output_urls({"output": {"cost": 0.5}}) == []
+
+
+def _wan_draft(api, project, **body):
+    resp = api.post("/api/runs", json={
+        "project": project["id"],
+        "kind": "video",
+        "engine": "wan-2.6-t2v",
+        "model": "runpod/wan-2-6-t2v",
+        "plan": {"version": 1, "origin": "authored",
+                 "prompt": "a lighthouse on a rocky coast at golden hour, waves breaking",
+                 "params": {"duration": 5, "size": "1280*720", "seed": 7}},
+        **body,
+    })
+    assert resp.status_code == 201, resp.get_data(as_text=True)
+    return resp.get_json()
+
+
+def test_a_runpod_video_run_submits_imageless_and_closes_on_video_url(
+        empty_api, media_bucket, monkeypatch):
+    """`wan-2.6-t2v` is the first video entry with no image field at all, and the
+    first whose output arrives as `video_url`: the draft is accepted with no
+    sends, the payload is the plan and nothing else, and the closing reads the
+    clip off the video key, names it by the URL's extension and records the
+    price the endpoint quoted."""
+    from studio_core.clients import runpod
+    from studio_core.services import catalog
+    seen = {}
+
+    def create(model, payload, *, webhook=None):
+        seen.update(model=model, payload=payload)
+        return {"id": "job-wan-u1", "status": "IN_QUEUE"}
+
+    monkeypatch.setattr(runpod, "create_prediction", create)
+    project = _project(empty_api)
+    run = _wan_draft(empty_api, project)
+    body = empty_api.post(f"/api/runs/{run['id']}/submit").get_json()
+
+    assert seen["model"] == "runpod/wan-2-6-t2v"
+    assert seen["payload"] == {"duration": 5, "size": "1280*720", "seed": 7,
+                               "prompt": "a lighthouse on a rocky coast at golden hour, waves breaking"}
+    assert body["provider"] == "runpod"
+
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    closed = generate.close_from_prediction(record, {
+        "id": "job-wan-u1", "status": "COMPLETED", "executionTime": 85432,
+        "output": {"video_url": "https://x.invalid/abc/output.mp4", "cost": 0.5},
+    })
+
+    assert closed["status"] == "succeeded"
+    assert closed["cost"] == {"amount": 0.5, "currency": "USD", "predict_time": 85.432}
+    assert catalog.node(closed["outputs"][0])["name"].endswith(".mp4")
+
+
+LORA = {"model": "runpod/wan-2-2-t2v-720-lora", "kind": "video", "key": "wan-2.2-i2v-lora",
+        "images": {"start": "image", "refs": None, "max_refs": None},
+        "loras": {"high": "high_noise_loras", "low": "low_noise_loras",
+                  "accepts_ext": [".safetensors"], "scale_param": "lora_scale"}}
+
+
+def test_a_lora_send_goes_out_as_path_and_scale_and_the_scale_never_by_name(
+        empty_api, media_bucket, monkeypatch):
+    """The endpoint wants `[{path, scale}]` per stage and has no top-level
+    strength field; the plan carries `lora_scale` as one number. `dispatch`
+    presigns each bound node into an object with that scale and drops the
+    param, so the provider never sees a field it does not have."""
+    from studio_core.clients import runpod
+    seen = {}
+    monkeypatch.setattr(runpod, "create_prediction",
+                        lambda model, payload, *, webhook=None:
+                        (seen.update(payload=payload) or {"id": "job-lora-u1", "status": "IN_QUEUE"}))
+    project = _project(empty_api)
+    root = empty_api.get(f"/api/projects/{project['id']}").get_json()["root"]
+    still = _uploaded(empty_api, root, "frame.png")
+    high = _uploaded(empty_api, root, "orbit_high.safetensors")
+    low = _uploaded(empty_api, root, "orbit_low.safetensors")
+    resp = empty_api.post("/api/runs", json={
+        "project": project["id"], "kind": "video", "engine": "wan-2.2-i2v-lora",
+        "model": "runpod/wan-2-2-t2v-720-lora",
+        "plan": {"version": 1, "origin": "authored", "prompt": "orbit 180 around him",
+                 "params": {"duration": 5, "seed": 3, "lora_scale": 0.8}},
+        "sends": [
+            {"field": "image", "role": "start", "node": still["node_id"]},
+            {"field": "high_noise_loras", "role": "lora", "node": high["node_id"]},
+            {"field": "low_noise_loras", "role": "lora", "node": low["node_id"]},
+        ],
+    })
+    assert resp.status_code == 201, resp.get_data(as_text=True)
+    run = resp.get_json()
+    assert [s["role"] for s in run["sends"]] == ["start", "lora", "lora"]
+
+    body = empty_api.post(f"/api/runs/{run['id']}/submit").get_json()
+    assert body["status"] == "running", body
+
+    payload = seen["payload"]
+    assert "lora_scale" not in payload
+    assert payload["duration"] == 5 and payload["seed"] == 3
+    assert payload["image"].startswith("http")
+    for field in ("high_noise_loras", "low_noise_loras"):
+        assert len(payload[field]) == 1
+        assert payload[field][0]["scale"] == 0.8
+        assert payload[field][0]["path"].startswith("http")
+
+    # The stored echo of `input` names the nodes again, inside the objects.
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    unsigned = generate._unsigned_input(record, {"input": payload})["input"]
+    assert unsigned["high_noise_loras"] == [{"path": high["node_id"], "scale": 0.8}]
+    assert unsigned["low_noise_loras"] == [{"path": low["node_id"], "scale": 0.8}]
+    assert unsigned["image"] == still["node_id"]
+
+
+def test_lora_fields_are_read_off_the_entry_and_nothing_else():
+    from studio_core.services import registry
+    assert registry.lora_fields(LORA) == {"high_noise_loras", "low_noise_loras"}
+    assert registry.lora_scale_param(LORA) == "lora_scale"
+    assert registry.lora_fields(MOTION) == set()
+    assert registry.lora_scale_param(MOTION) is None
+
+
+def test_a_runpod_video_payload_is_refused_off_the_entry_before_pending(empty_api):
+    """A `duration` the endpoint does not sell is refused against the entry's
+    own `input` block — the registry is the schema — and the draft stays a draft."""
+    project = _project(empty_api)
+    run = _wan_draft(empty_api, project, plan={
+        "version": 1, "origin": "authored", "prompt": "x",
+        "params": {"duration": 7}})
+    resp = empty_api.post(f"/api/runs/{run['id']}/submit")
+    assert resp.status_code == 400, resp.get_data(as_text=True)
+    assert empty_api.get(f"/api/runs/{run['id']}").get_json()["status"] == "draft"
 
 
 def test_the_stored_runpod_document_carries_no_callback_signature(empty_api, media_bucket):

@@ -169,6 +169,33 @@ def accepts_ext(entry: dict) -> set[str]:
     return set(field(entry, "images.accepts_ext", []) or [])
 
 
+def lora_fields(entry: dict) -> set[str]:
+    """The inputs that take LoRA weights, or an empty set where the model has none.
+
+    An entry names them under `loras` by slot — `high` and `low` for Wan 2.2's
+    two-stage denoiser, which loads a separate adapter for each — and each
+    slot is a field taking a LIST of `{path, scale}` objects. The slot names
+    are the pipeline's business (they become `--lora-high-key` and friends);
+    this service only needs to know which fields hold weights so `dispatch`
+    can shape them and `_unsigned_input` can put the node ids back.
+    """
+    loras = entry.get("loras") or {}
+    return {v for k, v in loras.items() if k not in ("accepts_ext", "scale_param") and isinstance(v, str)}
+
+
+def lora_scale_param(entry: dict) -> str | None:
+    """The plan param carrying the LoRA strength, or None. **Studio's own name.**
+
+    The endpoint wants a `scale` inside every `{path, scale}` object and has no
+    top-level field for it; a person wants one number. So the entry's `input`
+    block declares it — `lora_scale` — as if it were the model's, the create
+    sheet and the CLI treat it like any other setting, and `dispatch` folds it
+    into each object and never sends the name. Registry data rather than a
+    constant so another provider can spell it differently.
+    """
+    return field(entry, "loras.scale_param")
+
+
 def of_kind(kind: str) -> dict[str, dict]:
     """Every entry of one kind, keyed by registry name."""
     return {key: entry for key, entry in all().items() if entry.get("kind") == kind}

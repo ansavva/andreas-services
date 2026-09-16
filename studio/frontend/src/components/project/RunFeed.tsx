@@ -461,12 +461,19 @@ function FeedRow({
           a 2400px one; now the tile has a size and the row has as many as fit —
           six across on a wide screen, two on a phone. The floors differ because
           the shapes do: a still is portrait and reads small, a clip is wide and
-          does not. */}
+          does not.
+
+          **`min(18rem, 100%)`, not `18rem`.** A floor is a promise the column
+          has to be able to keep. The plan column beside this one grows to its
+          32rem cap on any long prompt, and on a feed around 800px wide that
+          left this column ~150px — narrower than the clip's floor — so the
+          one tile overflowed its cell and ran under the prompt beside it.
+          The floor is now the smaller of the tile's size and the column's. */}
       <div
         className={`grid content-start gap-2 ${
           video
-            ? "grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(18rem,1fr))]"
-            : "grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(11rem,1fr))]"
+            ? "grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(min(18rem,100%),1fr))]"
+            : "grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(min(11rem,100%),1fr))]"
         }`}
       >
         {flying ? (
@@ -677,8 +684,8 @@ function DraftTiles({ row }: { row: RunFeedRow }) {
  * clamp, one word, both places.
  */
 export function RunPrompt({ row, className = "" }: { row: RunFeedRow; className?: string }) {
-  const [expanded, setExpanded] = useState(false);
   const text = promptText(row.plan?.prompt);
+  const negative = negativePromptOf(row.plan?.params);
 
   if (!text) {
     return (
@@ -688,14 +695,45 @@ export function RunPrompt({ row, className = "" }: { row: RunFeedRow; className?
     );
   }
 
+  return (
+    <div className={`flex flex-col items-start gap-2 ${className}`}>
+      <Clamped text={text} />
+      {/* **The negative prompt is prose, and reads as prose.** It is a
+          parameter to the provider and was drawn as one — a `key value` pill
+          beside `seed` — which for a sentence is the wrong shape: the pill
+          either clipped it or wrapped into a box no one would read. It is a
+          second prompt, so it gets the prompt's treatment under a word saying
+          which one it is, and `ParamChips` leaves it out. */}
+      {negative && (
+        <div className="flex flex-col items-start gap-1">
+          <Text variant="caption" tone="muted">
+            Negative
+          </Text>
+          <Clamped text={negative} tone="muted" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The plan's `negative_prompt`, when it is a non-empty string. */
+export function negativePromptOf(params: Record<string, unknown> | undefined): string | null {
+  const raw = params?.negative_prompt;
+  return typeof raw === "string" && raw.trim() !== "" ? raw : null;
+}
+
+/** Three lines and a way to read the rest — the prompt's clamp, reused. */
+function Clamped({ text, tone }: { text: string; tone?: "muted" }) {
+  const [expanded, setExpanded] = useState(false);
   // Long enough that three lines will not hold it — a rough line is ~90
   // characters at this column's width.
   const long = text.length > 220;
 
   return (
-    <div className={`flex flex-col items-start gap-1 ${className}`}>
+    <div className="flex flex-col items-start gap-1">
       <Text
         variant="body"
+        tone={tone}
         className={
           expanded
             ? "whitespace-pre-wrap break-words"

@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { kindOfFile } from "../utils/media";
 
 import {
   getAsset,
@@ -38,7 +39,7 @@ function fromAsset(asset: RunAsset): FileEntry {
     size: asset.size ?? 0,
     content_type: type,
     last_modified: "",
-    kind: type.startsWith("video/") ? "video" : type.startsWith("image/") ? "image" : "other",
+    kind: kindOfFile(asset.name ?? "", type),
     url: asset.url ?? "",
   };
 }
@@ -138,7 +139,7 @@ export function useViewerFeed(
           size: node.size ?? 0,
           content_type: type,
           last_modified: node.updated_at ?? node.created_at,
-          kind: type.startsWith("video/") ? "video" : type.startsWith("image/") ? "image" : "other",
+          kind: kindOfFile(node.name ?? "", type),
           url: asset.url,
           description: node.description,
           tags: node.tags,

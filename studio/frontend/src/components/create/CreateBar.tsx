@@ -5,7 +5,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
   Button,
-  Combobox,
   Drawer,
   IconButton,
   Popover,
@@ -14,7 +13,6 @@ import {
   ToggleGroup,
   iconButtonClass,
   useToast,
-  type ComboboxOption,
 } from "@ansavva/design-system";
 
 import {
@@ -61,7 +59,7 @@ import { TemplateList } from "../run/TemplateList";
 import { SheetHandle } from "../common/SheetHandle";
 import { AttachTiles, fallbackDropRole } from "./AttachTiles";
 import { isNodeDrag, readNodeDrag } from "./dragRef";
-import { ModelChip, ModelList, ParamChipRow, chipClass } from "./CreateChips";
+import { ModelChip, ModelList, ParamChipRow, ProjectChip, chipClass } from "./CreateChips";
 import { AttachPicker } from "./AttachPicker";
 import { SettingsPanel } from "./CreateSettings";
 import { anyPending, castOf, defaultEntry, findEntry, sendsOf } from "./roles";
@@ -101,22 +99,6 @@ const GLYPH = "size-4 fill-none stroke-current stroke-[1.5]";
 
 /** Popovers hang UP from the panel: it sits at the bottom of the viewport. */
 const UP_RIGHT = "bottom-full top-auto left-auto right-0 mb-2 mt-0";
-
-/**
- * And so does the project picker's list — for the same reason, said to a
- * component that cannot be told.
- *
- * `Combobox` draws its list `absolute mt-xs` under the input and takes no
- * class for it: `className` reaches the input, and there is no seam for the
- * listbox. Under this panel that put four rows of a 176px list BELOW the
- * bottom of the window — measured at 1280×900, the list ran from y=876 to
- * y=1018 — so the picker looked like it had nothing to offer. The empty
- * message is a separate `role="status"` box, absolute in the same way, and
- * needs the same treatment or "No matches" is invisible too.
- */
-const UP_LIST =
-  "[&_[role=listbox]]:bottom-full [&_[role=listbox]]:mb-1 [&_[role=listbox]]:mt-0 " +
-  "[&_[role=status]]:bottom-full [&_[role=status]]:mb-1 [&_[role=status]]:mt-0";
 
 /**
  * The create panel: what every screen makes runs from.
@@ -461,15 +443,6 @@ export function CreateBar() {
     }
   }, [held]);
 
-  const projectOptions = useMemo<ComboboxOption[]>(
-    () =>
-      (projects.data ?? []).map((each) => ({
-        value: each.id,
-        label: each.name,
-      })),
-    [projects.data],
-  );
-
   const placeholder = bar.scene
     ? "Describe what to make for this scene…"
     : project.data
@@ -541,16 +514,15 @@ export function CreateBar() {
     </ToggleGroup.Root>
   );
 
+  // Off a project page the panel has to be told where a run goes; on one,
+  // the route says. A chip in the row on every width — `ProjectChip` says
+  // why it is no longer a box of its own.
   const projectPicker = !bar.onProject && (
-    <div className={UP_LIST}>
-      <Combobox
-        aria-label="Project"
-        options={projectOptions}
-        value={target ?? null}
-        placeholder="Project"
-        onValueChange={(next: string) => bar.setProject(next || null)}
-      />
-    </div>
+    <ProjectChip
+      projects={projects.data ?? []}
+      value={target ?? null}
+      onProject={(id) => bar.setProject(id)}
+    />
   );
 
   if (!bar.shown) return null;
@@ -771,12 +743,7 @@ export function CreateBar() {
             container query rather than `md:`, because a narrow window with the
             sidebar open is the phone's problem at a desktop breakpoint. */}
         <div className="@container flex items-center gap-1" onPointerDownCapture={leavePrompt}>
-          {/* Off a project page the panel has to be told where a run goes.
-              On one, the route says. Inline above `md`; a row of its own
-              under the chips on a phone. */}
-          {projectPicker && (
-            <div className="hidden w-44 shrink-0 md:block">{projectPicker}</div>
-          )}
+          {projectPicker}
 
           {entry && (
             <ModelChip
@@ -921,7 +888,6 @@ export function CreateBar() {
           </Button>
         </div>
 
-        {projectPicker && <div className="md:hidden">{projectPicker}</div>}
       </div>
       </div>
     </div>

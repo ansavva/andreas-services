@@ -99,7 +99,7 @@ fields at all — those are sends, presigned in at the last moment. **Nor the
 clip field**: the one video a model works from (a motion reference, an edit
 source; `clips.source` in the registry) is a send with the role `clip`, bound
 with `--clip-run` / `--clip-key` or the sheet's Source video tile, for the same reason —
-a presigned URL in the plan would be expired data plus leaked access.
+a presigned URL in the plan would be expired data plus leaked access. A LoRA a model loads beside its own weights (`loras.<slot>` in the registry, `wan-2.2-i2v-lora`) is a send with the role `lora` — a `.safetensors` node — and goes out as `{path, scale}` with the plan's `lora_scale` folded in, never as a URL.
 
 **`bindings` is derived** from the send rows and keeps its old response shape, so
 nothing that drew a run had to change. A run with no send rows falls back to the

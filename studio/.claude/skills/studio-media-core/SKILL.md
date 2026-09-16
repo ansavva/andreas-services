@@ -28,6 +28,9 @@ This skill is the plumbing. For how to *use* a given model, read its own skill:
 | `seedance-2.5` | [`studio-media-seedance-2-5`](../studio-media-seedance-2-5/SKILL.md) |
 | `kling` | [`studio-media-kling`](../studio-media-kling/SKILL.md) |
 | `kling-v3-motion-control` | [`studio-media-kling-v3-motion-control`](../studio-media-kling-v3-motion-control/SKILL.md) |
+| `wan-2.6-t2v` | [`studio-media-wan-2-6-t2v`](../studio-media-wan-2-6-t2v/SKILL.md) |
+| `wan-2.6-i2v` | [`studio-media-wan-2-6-i2v`](../studio-media-wan-2-6-i2v/SKILL.md) |
+| `wan-2.2-i2v-lora` | [`studio-media-wan-2-2-i2v-lora`](../studio-media-wan-2-2-i2v-lora/SKILL.md) |
 
 The rest of the family — a model skill points here, and here points onward, so
 the shared prose lives in one place rather than six:

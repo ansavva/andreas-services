@@ -12,7 +12,14 @@ import { Button, Dropdown, IconButton, Input, Popover, Text } from "@ansavva/des
 
 import { getModelSchema } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
-import type { ModelEntry, ModelSchema, RunKind, SchemaProp, SnapshotProp } from "../../types";
+import type {
+  ModelEntry,
+  ModelSchema,
+  ProjectSummary,
+  RunKind,
+  SchemaProp,
+  SnapshotProp,
+} from "../../types";
 import { humaniseKey } from "../../utils/format";
 import {
   AspectIcon,
@@ -27,8 +34,10 @@ import {
   ResolutionIcon,
   SoundOffIcon,
   SoundOnIcon,
+  ProjectsIcon,
 } from "../common/icons";
 import { EmptyState } from "../common/EmptyState";
+import { AutoTextarea } from "../common/AutoTextarea";
 import { describedProps, enumOf } from "../run/SchemaParams";
 
 /**
@@ -637,13 +646,39 @@ export function ModelChip({
 export function SettingRow({
   label,
   hint,
+  stacked = false,
   children,
 }: {
   label: string;
   /** The schema's description, a hover away rather than a paragraph. */
   hint?: string | undefined;
+  /**
+   * The control under the word at full width, rather than beside it.
+   *
+   * **A chip is the wrong shape for prose.** Every listed, ranged or yes/no
+   * value fits in a word on the right; a free string — a negative prompt, a
+   * style note — does not, and a 9rem box on the right of the row clipped
+   * `watermark, text, jitter` to `atermark, text, jitter` the first time
+   * anyone typed one. So a string gets the row's whole width, on its own line,
+   * and grows with what it holds.
+   */
+  stacked?: boolean;
   children: React.ReactNode;
 }) {
+  if (stacked) {
+    return (
+      <div
+        className="flex flex-col gap-1.5 border-b border-line py-2.5 last:border-b-0"
+        data-setting-row=""
+        data-stacked=""
+      >
+        <Text as="span" variant="body" title={hint}>
+          {label}
+        </Text>
+        {children}
+      </div>
+    );
+  }
   return (
     <div
       className="flex min-h-12 items-center justify-between gap-3 border-b border-line last:border-b-0"
@@ -709,8 +744,8 @@ function withParam(
  * prompt, the image fields (sends, never params — hard rule #3), and any
  * credential-shaped name; `skip` adds the six chips so nothing is offered
  * twice. What each row's control is follows the input's shape: a listed or
- * short-ranged value is a menu, a yes/no is a switch, and anything else is a
- * small box. The model's own default is what an empty control shows, and an
+ * short-ranged value is a menu, a yes/no is a switch, a free string is a
+ * full-width field on its own line, and an unbounded number is a small box. The model's own default is what an empty control shows, and an
  * untouched row writes nothing — see `ParamChip`.
  */
 export function SettingRows({
@@ -762,6 +797,26 @@ export function SettingRows({
                 modelDefault={spec.default}
                 choices={choices}
                 onChange={set}
+              />
+            </SettingRow>
+          );
+        }
+        if (kind === "string") {
+          // Prose, so a field: full width, its own line, as tall as the text.
+          // `SettingRow` says why a chip-sized box was the wrong answer here.
+          return (
+            <SettingRow key={name} label={label} hint={hint} stacked>
+              <AutoTextarea
+                aria-label={label}
+                minRows={2}
+                maxRows={8}
+                value={value === undefined || value === null ? "" : String(value)}
+                placeholder={
+                  spec.default === undefined || spec.default === null || spec.default === ""
+                    ? "Default"
+                    : `Default · ${String(spec.default)}`
+                }
+                onValueChange={(text: string) => set(text === "" ? undefined : text)}
               />
             </SettingRow>
           );
@@ -873,5 +928,147 @@ function ValueChip({
         ))}
       </Dropdown.Content>
     </Dropdown.Root>
+  );
+}
+
+/**
+ * The projects, searchable, each with its counts under it — what the project
+ * chip's popover draws. The same list shape as `ModelList`, on purpose: the
+ * two chips sit side by side and answer the same question ("where, and with
+ * what") the same way.
+ */
+export function ProjectList({
+  projects,
+  value,
+  onProject,
+  autoFocus = false,
+}: {
+  projects: ProjectSummary[];
+  /** The chosen project's id, or null for none yet. */
+  value: string | null;
+  onProject: (id: string) => void;
+  autoFocus?: boolean;
+}) {
+  const [query, setQuery] = useState("");
+
+  const offered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return projects
+      .filter((each) => q === "" || each.name.toLowerCase().includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [projects, query]);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Input
+        aria-label="Search projects"
+        placeholder="Search projects…"
+        value={query}
+        onValueChange={setQuery}
+        autoFocus={autoFocus}
+      />
+      <ul className="flex flex-col" role="listbox" aria-label="Projects">
+        {offered.map((each) => {
+          const on = each.id === value;
+          const counts = each.counts;
+          const caption = counts
+            ? `${counts.runs} runs · ${counts.scenes} scenes · ${counts.movies} movies`
+            : null;
+          return (
+            <li key={each.id} role="presentation">
+              <Button
+                intent="secondary"
+                size="sm"
+                wrap
+                role="option"
+                aria-selected={on}
+                className={`h-auto w-full justify-start gap-3 rounded-sm px-2 py-2 text-left
+                            hover:bg-fill active:bg-fill-active
+                            ${on ? "bg-fill" : "bg-transparent"}`}
+                onClick={() => onProject(each.id)}
+              >
+                <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-sm bg-fill-hover text-ink">
+                  <ProjectsIcon className={GLYPH} />
+                </span>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="flex items-center gap-2">
+                    <Text as="span" variant="body" weight="medium" className="truncate">
+                      {each.name}
+                    </Text>
+                    {on && <CheckIcon className={`${GLYPH} text-ink`} />}
+                  </span>
+                  {caption && (
+                    <Text variant="caption" tone="muted" className="whitespace-normal">
+                      {caption}
+                    </Text>
+                  )}
+                </span>
+              </Button>
+            </li>
+          );
+        })}
+        {offered.length === 0 && (
+          <li className="px-2 py-3">
+            <EmptyState
+              title={
+                projects.length === 0 ? "No projects yet." : `Nothing here matches “${query}”.`
+              }
+            />
+          </li>
+        )}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * The project chip, and the list behind it — hung upward from the chip row,
+ * exactly as the model chip is.
+ *
+ * **It was a combobox, and a combobox is a box.** A full-width text field on
+ * its own row under the chips on a phone, a 11rem one beside them on a
+ * desktop — for a value that is one of a handful of names and is picked far
+ * more often than typed. A chip says the name in the space of the name, and
+ * the list behind it searches just as well as the field did.
+ */
+export function ProjectChip({
+  projects,
+  value,
+  onProject,
+}: {
+  projects: ProjectSummary[];
+  value: string | null;
+  onProject: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const chosen = projects.find((each) => each.id === value) ?? null;
+  const text = chosen?.name ?? "Project";
+
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger
+        aria-label={`Project: ${chosen?.name ?? "none"}`}
+        title="Project"
+        className={`${chipClass} ${chosen ? "text-ink" : ""} max-md:bg-fill`}
+      >
+        <ProjectsIcon className={GLYPH} />
+        <span className="max-w-32 truncate">{text}</span>
+        <ChevronDownIcon className="size-3.5 shrink-0 fill-none stroke-current stroke-[1.5] text-muted" />
+      </Popover.Trigger>
+      <Popover.Content
+        label="Projects"
+        className={`${MENU_UP} max-h-[70vh] w-[min(20rem,calc(100vw-2rem))] max-w-none overflow-y-auto p-2`}
+      >
+        <ProjectList
+          projects={projects}
+          value={value}
+          autoFocus
+          onProject={(id) => {
+            onProject(id);
+            setOpen(false);
+          }}
+        />
+      </Popover.Content>
+    </Popover.Root>
   );
 }

@@ -1377,6 +1377,418 @@
         },
         "refreshed": "2026-09-14"
       }
+    },
+    "wan-2.6-t2v": {
+      "model": "runpod/wan-2-6-t2v",
+      "provider": "runpod",
+      "kind": "video",
+      "skill": "studio-media-wan-2-6-t2v",
+      "images": {
+        "refs": null,
+        "max_refs": null,
+        "start": null,
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": []
+      },
+      "prompt": {
+        "max_chars": null
+      },
+      "video": {
+        "negative": "param",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": false,
+        "resolution_field": "size",
+        "resolution_map": null,
+        "allow_intelligent_duration": false
+      },
+      "aliases": [],
+      "note": "Alibaba's Wan 2.6, text-to-video, on Runpod's public endpoint (not Replicate) — the first open-weight video model here and the first video model that takes no image at all. Prose prompt in, a 5/10/15 s clip out at 720p or 1080p, landscape or portrait (`size` is W*H); `shot_type: multi` lets it cut between shots inside one clip; a real `negative_prompt`; a repeatable `seed`. `enable_prompt_expansion` hands the prompt to a rewriter first and is off by default. No reference images, no start or end frame — for those use wan-2.6-i2v. Priced per clip, not per second: 720p $0.50 / $1.00 / $1.50 and 1080p $0.75 / $1.50 / $2.25 for 5 / 10 / 15 s (Runpod, September 2026); the run records the price. The endpoint's optional `audio` URL is not wired — studio binds nodes, never URLs. Output URL lasts seven days; the run stores the bytes.",
+      "input": {
+        "required": [
+          "prompt"
+        ],
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "description": "What happens in the clip — subject, action, camera, light. Plain descriptive prose; the model follows instructions closely."
+          },
+          "negative_prompt": {
+            "type": "string",
+            "title": "Negative prompt",
+            "description": "What to keep out of the clip."
+          },
+          "duration": {
+            "type": "integer",
+            "title": "Duration",
+            "enum": [
+              5,
+              10,
+              15
+            ],
+            "default": 5,
+            "description": "Clip length in seconds. One of 5, 10, 15; the price scales with it."
+          },
+          "size": {
+            "type": "string",
+            "title": "Size",
+            "enum": [
+              "1280*720",
+              "1920*1080",
+              "720*1280",
+              "1080*1920"
+            ],
+            "default": "1280*720",
+            "description": "Output size as W*H. The first number of the pair sets the price tier (720p or 1080p)."
+          },
+          "shot_type": {
+            "type": "string",
+            "title": "Shot type",
+            "enum": [
+              "single",
+              "multi"
+            ],
+            "default": "single",
+            "description": "`single` holds one composition for the whole clip; `multi` lets the model cut between shots."
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "default": -1,
+            "description": "-1 for a random draw; any other value repeats one."
+          },
+          "enable_prompt_expansion": {
+            "type": "boolean",
+            "title": "Enable prompt expansion",
+            "default": false,
+            "description": "Let the endpoint rewrite and expand the prompt before rendering. Off by default so what was read is what was sent."
+          }
+        }
+      },
+      "snapshot": {
+        "duration": {
+          "enum": [
+            5,
+            10,
+            15
+          ],
+          "default": 5
+        },
+        "size": {
+          "enum": [
+            "1280*720",
+            "1920*1080",
+            "720*1280",
+            "1080*1920"
+          ],
+          "default": "1280*720"
+        },
+        "shot_type": {
+          "enum": [
+            "single",
+            "multi"
+          ],
+          "default": "single"
+        },
+        "seed": {
+          "default": -1
+        },
+        "enable_prompt_expansion": {
+          "default": false
+        },
+        "refreshed": "2026-09-15"
+      }
+    },
+    "wan-2.6-i2v": {
+      "model": "runpod/wan-2-6-i2v",
+      "provider": "runpod",
+      "kind": "video",
+      "skill": "studio-media-wan-2-6-i2v",
+      "images": {
+        "refs": null,
+        "max_refs": null,
+        "start": "image",
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
+      "prompt": {
+        "max_chars": null
+      },
+      "video": {
+        "negative": "param",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": false,
+        "resolution_field": "size",
+        "resolution_map": null,
+        "allow_intelligent_duration": false
+      },
+      "aliases": [],
+      "note": "Alibaba's Wan 2.6, image-to-video, on Runpod's public endpoint (not Replicate): one still in (`image`, bound with --start-run / --start-key), a 5/10/15 s clip out that opens on that frame, at 720p or 1080p landscape (`size` is W*H). Same controls as wan-2.6-t2v — `shot_type`, a real `negative_prompt`, a repeatable `seed`, `enable_prompt_expansion` off by default — plus `enable_safety_checker`. No reference list: identity comes from the frame, which is the frame-first workflow every other video engine here uses. Priced per second of output: $0.10/s at 720p, $0.15/s at 1080p (Runpod, September 2026), so a 5 s 720p clip is $0.50; the run records the price. The endpoint's optional `audio` URL is not wired — studio binds nodes, never URLs. Output URL lasts seven days; the run stores the bytes.",
+      "input": {
+        "required": [
+          "prompt",
+          "image"
+        ],
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "description": "What happens in the clip — subject, action, camera, light. Plain descriptive prose; the model follows instructions closely."
+          },
+          "image": {
+            "type": "string",
+            "format": "uri",
+            "title": "Image",
+            "description": "The still to animate. Required: the clip starts on this frame."
+          },
+          "negative_prompt": {
+            "type": "string",
+            "title": "Negative prompt",
+            "description": "What to keep out of the clip."
+          },
+          "duration": {
+            "type": "integer",
+            "title": "Duration",
+            "enum": [
+              5,
+              10,
+              15
+            ],
+            "default": 5,
+            "description": "Clip length in seconds. One of 5, 10, 15; the price scales with it."
+          },
+          "size": {
+            "type": "string",
+            "title": "Size",
+            "enum": [
+              "1280*720",
+              "1920*1080"
+            ],
+            "default": "1280*720",
+            "description": "Output size as W*H. The first number of the pair sets the price tier (720p or 1080p)."
+          },
+          "shot_type": {
+            "type": "string",
+            "title": "Shot type",
+            "enum": [
+              "single",
+              "multi"
+            ],
+            "default": "single",
+            "description": "`single` holds one composition for the whole clip; `multi` lets the model cut between shots."
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "default": -1,
+            "description": "-1 for a random draw; any other value repeats one."
+          },
+          "enable_prompt_expansion": {
+            "type": "boolean",
+            "title": "Enable prompt expansion",
+            "default": false,
+            "description": "Let the endpoint rewrite and expand the prompt before rendering. Off by default so what was read is what was sent."
+          },
+          "enable_safety_checker": {
+            "type": "boolean",
+            "title": "Enable safety checker",
+            "default": true,
+            "description": "Run the endpoint's content check over the output."
+          }
+        }
+      },
+      "snapshot": {
+        "duration": {
+          "enum": [
+            5,
+            10,
+            15
+          ],
+          "default": 5
+        },
+        "size": {
+          "enum": [
+            "1280*720",
+            "1920*1080"
+          ],
+          "default": "1280*720"
+        },
+        "shot_type": {
+          "enum": [
+            "single",
+            "multi"
+          ],
+          "default": "single"
+        },
+        "seed": {
+          "default": -1
+        },
+        "enable_prompt_expansion": {
+          "default": false
+        },
+        "enable_safety_checker": {
+          "default": true
+        },
+        "refreshed": "2026-09-15"
+      }
+    },
+    "wan-2.2-i2v-lora": {
+      "model": "runpod/wan-2-2-t2v-720-lora",
+      "provider": "runpod",
+      "kind": "video",
+      "skill": "studio-media-wan-2-2-i2v-lora",
+      "images": {
+        "refs": null,
+        "max_refs": null,
+        "start": "image",
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
+      "loras": {
+        "high": "high_noise_loras",
+        "low": "low_noise_loras",
+        "accepts_ext": [
+          ".safetensors"
+        ],
+        "scale_param": "lora_scale"
+      },
+      "prompt": {
+        "max_chars": null
+      },
+      "video": {
+        "negative": "prompt",
+        "technical": "api",
+        "max_cuts": null,
+        "image_tokens": false,
+        "resolution_field": null,
+        "resolution_map": null,
+        "allow_intelligent_duration": false
+      },
+      "aliases": [],
+      "note": "Wan 2.2 image-to-video at 720p WITH YOUR OWN LoRA, on Runpod's public endpoint (its id is `wan-2-2-t2v-720-lora` although it takes an image — the docs' table links a name that does not exist). The one model here that loads weights that are not its own: `high_noise_loras` and `low_noise_loras` each take a list of `{path, scale}`, one adapter per denoising stage the way Wan 2.2's two-expert sampler wants them. In studio a LoRA is a SEND — a `.safetensors` node in the library, bound with --lora-high-key / --lora-low-key, presigned at submit — never a pasted URL (hard rule #3); `lora_scale` is studio's one number for every adapter's `scale`. One required start frame (`image`), no reference list, no negative prompt, no size field (720p landscape). 5 or 8 seconds; $0.35 / $0.56 per clip (Runpod, September 2026). The destination for a trained character LoRA, and the untrained-with-a-public-LoRA baseline before one exists.",
+      "input": {
+        "required": [
+          "prompt",
+          "image"
+        ],
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "description": "The motion — what moves, how the camera moves, what changes by the end. The frame is already there."
+          },
+          "image": {
+            "type": "string",
+            "format": "uri",
+            "title": "Image",
+            "description": "The still to animate. Required: the clip starts on this frame."
+          },
+          "high_noise_loras": {
+            "type": "array",
+            "title": "High-noise LoRAs",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL of the .safetensors file."
+                },
+                "scale": {
+                  "type": "number",
+                  "description": "How strongly the adapter is applied."
+                }
+              }
+            },
+            "description": "Adapters for the high-noise (early, composition) denoising stage. Bound with --lora-high-key; each goes out as {path, scale}."
+          },
+          "low_noise_loras": {
+            "type": "array",
+            "title": "Low-noise LoRAs",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL of the .safetensors file."
+                },
+                "scale": {
+                  "type": "number",
+                  "description": "How strongly the adapter is applied."
+                }
+              }
+            },
+            "description": "Adapters for the low-noise (late, detail) denoising stage. Bound with --lora-low-key; each goes out as {path, scale}."
+          },
+          "lora_scale": {
+            "type": "number",
+            "title": "LoRA scale",
+            "minimum": 0,
+            "maximum": 2,
+            "default": 1.0,
+            "description": "Studio's: the `scale` written into every bound LoRA. Never sent under this name."
+          },
+          "duration": {
+            "type": "integer",
+            "title": "Duration",
+            "enum": [
+              5,
+              8
+            ],
+            "default": 5,
+            "description": "Clip length in seconds: 5 or 8."
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "default": -1,
+            "description": "-1 for a random draw; any other value repeats one."
+          },
+          "enable_safety_checker": {
+            "type": "boolean",
+            "title": "Enable safety checker",
+            "default": true,
+            "description": "Run the endpoint's content check over the output."
+          }
+        }
+      },
+      "snapshot": {
+        "lora_scale": {
+          "default": 1.0,
+          "minimum": 0,
+          "maximum": 2
+        },
+        "duration": {
+          "enum": [
+            5,
+            8
+          ],
+          "default": 5
+        },
+        "seed": {
+          "default": -1
+        },
+        "enable_safety_checker": {
+          "default": true
+        },
+        "refreshed": "2026-09-15"
+      }
     }
   }
 }

@@ -994,6 +994,9 @@
           "seedance",
           "seedance-2.5",
           "seedream-5-pro",
+          "wan-2.2-i2v-lora",
+          "wan-2.6-i2v",
+          "wan-2.6-t2v",
           "z-image-turbo"
         ],
         "default": null,
@@ -3478,6 +3481,36 @@
           "--key"
         ],
         "help": "Explicit node id (or name path). Repeatable.",
+        "hidden": false,
+        "multiple": true,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "lora_high_key": {
+        "choices": null,
+        "default": null,
+        "dest": "lora_high_key",
+        "flag": false,
+        "flags": [
+          "--lora-high-key"
+        ],
+        "help": "Node id (or name path) of a .safetensors LoRA for the high-noise stage (video, LoRA models). Repeatable.",
+        "hidden": false,
+        "multiple": true,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "lora_low_key": {
+        "choices": null,
+        "default": null,
+        "dest": "lora_low_key",
+        "flag": false,
+        "flags": [
+          "--lora-low-key"
+        ],
+        "help": "Node id (or name path) of a .safetensors LoRA for the low-noise stage (video, LoRA models). Repeatable.",
         "hidden": false,
         "multiple": true,
         "nargs": 1,
