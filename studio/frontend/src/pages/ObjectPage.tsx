@@ -29,7 +29,6 @@ import { TextPage } from "../components/text/TextPage";
 import { FileDetailsPanel } from "../components/viewer/FileDetailsPanel";
 import { Filmstrip } from "../components/viewer/Filmstrip";
 import { FrameMenu } from "../components/viewer/FrameMenu";
-import { ObjectActions } from "../components/viewer/ObjectActions";
 import { ObjectControls, ObjectDetails } from "../components/viewer/ObjectAside";
 import { OwnerLink } from "../components/viewer/OwnerLink";
 import { ViewerFrame } from "../components/viewer/ViewerFrame";
@@ -592,29 +591,13 @@ export function ObjectPage() {
                   onContainerChange={setStage}
                   onControlsChange={setControls}
                   onFullscreenChange={setFullscreen}
-                  // **Only while fullscreen.** The rail carries Copy, Edit,
+                  // The frame menu only. The rail carries Copy, Edit,
                   // Download and Close — the same controls this row used to
-                  // duplicate over the media on every visit — so drawing it
-                  // too is two rows saying the same thing. Fullscreen is the
-                  // one state where the rail genuinely is not painted, and
-                  // edit/delete are the two that still have to be reachable
-                  // there.
-                  actions={
-                    stageMenu || fullscreen ? (
-                      <>
-                        {stageMenu}
-                        {fullscreen && (
-                          <ObjectActions
-                            file={current}
-                            variant="media"
-                            onDelete={removeThis}
-                            editing={editing}
-                            onToggleEditing={toggleEditing}
-                          />
-                        )}
-                      </>
-                    ) : undefined
-                  }
+                  // duplicate over the media on every visit — so drawing
+                  // them here too is two rows saying the same thing. Not in
+                  // fullscreen either: that view is for looking, and the
+                  // player draws no file controls there.
+                  actions={stageMenu ?? undefined}
                 />
               </div>
               <Text variant="caption" family="mono" tone="muted" className="tabular-nums">

@@ -180,7 +180,11 @@ interface MediaPlayerProps {
    * context.
    */
   overlay?: ReactNode;
-  /** Extra buttons at the left of the top chrome row — download, delete, rename. */
+  /**
+   * Extra buttons at the left of the top chrome row — a frame menu, edit,
+   * delete. **Not drawn in fullscreen**, by either route: that view is for
+   * looking, and its chrome is the transport, sound, and the way back out.
+   */
   actions?: ReactNode;
   /**
    * Whether a still can be zoomed and panned — see `useZoom`.
@@ -459,6 +463,14 @@ export function MediaPlayer({
 
   const showChrome = playing || !isVideo || isFullscreen;
   /**
+   * Fullscreen is for viewing. Play, pause and seek; sound on and off; zoom
+   * on a still; and out again — nothing about the file. The caller's
+   * `actions` and the player's own Close (which ends playback, not the view)
+   * wait outside it.
+   */
+  const fileChrome = !isFullscreen;
+  const shownActions = fileChrome ? actions : undefined;
+  /**
    * `invisible`, not just `opacity-0`: visibility is what takes the buttons
    * out of the tab order and out from under a finger, so the first tap on a
    * hidden chrome reaches the picture and brings it back rather than landing
@@ -621,12 +633,12 @@ export function MediaPlayer({
           the caller's controls are about the file, not about playback, and
           a `Frame` menu on a poster is the first frame. The player's own
           controls on the right still wait for the chrome. */}
-      {(showChrome || actions) && !failed && (
+      {(showChrome || shownActions) && !failed && (
         <div
           className={`pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start
                       justify-between gap-2 p-2 ${chromeFade} ${isFullscreen ? FULLSCREEN_TOP : ""}`}
         >
-          <div className="pointer-events-auto flex min-w-0 items-center gap-1">{actions}</div>
+          <div className="pointer-events-auto flex min-w-0 items-center gap-1">{shownActions}</div>
 
           <div className={`pointer-events-auto flex shrink-0 items-center gap-1 ${showChrome ? "" : "hidden"}`}>
             {/*
@@ -704,7 +716,7 @@ export function MediaPlayer({
               {isFullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}
             </IconButton>
 
-            {(playing || onClose) && (
+            {fileChrome && (playing || onClose) && (
               <IconButton
                 label={playing ? `Close ${name}` : "Close"}
                 size="sm"
