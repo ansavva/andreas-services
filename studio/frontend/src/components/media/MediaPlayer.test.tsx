@@ -243,6 +243,21 @@ describe("the fullscreen container is exposed", () => {
     expect(seen.at(-1)).toBeNull();
   });
 
+  it("reports fullscreen by the app's route as well as the browser's", () => {
+    const seen: boolean[] = [];
+    render(<MediaPlayer {...CLIP} onFullscreenChange={(on) => seen.push(on)} />);
+    fireEvent.click(play());
+    expect(seen).toEqual([false]);
+
+    // No API here (jsdom, and an iPhone), so this is the in-app expansion —
+    // the one `document.fullscreenElement` never reports.
+    fireEvent.click(screen.getByRole("button", { name: "Fullscreen (f)" }));
+    expect(seen).toEqual([false, true]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Exit fullscreen (f)" }));
+    expect(seen).toEqual([false, true, false]);
+  });
+
   it("renders an overlay inside that element, so fullscreen paints it", () => {
     let container: HTMLElement | null = null;
     render(

@@ -152,16 +152,14 @@ export function ObjectPage() {
    * over its top edge. `position: fixed` still measured against the viewport
    * throughout — it is stacking, not geometry, and only the fullscreen case
    * needs the container to pay for it.
+   *
+   * **The player says, not `document.fullscreenElement`.** This used to
+   * listen to `fullscreenchange`, which is the browser's fullscreen only —
+   * and an iPhone never has that, so on the one device where the rail is
+   * off-screen the edit and delete controls were never drawn over the
+   * picture. The player reports either route.
    */
   const [fullscreen, setFullscreen] = useState(false);
-  useEffect(() => {
-    // `Boolean(...)`, not `!== null`: jsdom defines no `fullscreenElement` at
-    // all, and the strict comparison reads `undefined` as "yes, fullscreen".
-    const sync = () => setFullscreen(Boolean(document.fullscreenElement));
-    sync();
-    document.addEventListener("fullscreenchange", sync);
-    return () => document.removeEventListener("fullscreenchange", sync);
-  }, []);
 
   /**
    * Compare: the open file pinned as A, and the neighbour beside it as B.
@@ -593,6 +591,7 @@ export function ObjectPage() {
                   className="h-full w-full border border-line"
                   onContainerChange={setStage}
                   onControlsChange={setControls}
+                  onFullscreenChange={setFullscreen}
                   // **Only while fullscreen.** The rail carries Copy, Edit,
                   // Download and Close — the same controls this row used to
                   // duplicate over the media on every visit — so drawing it

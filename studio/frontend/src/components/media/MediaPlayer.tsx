@@ -162,6 +162,16 @@ interface MediaPlayerProps {
    */
   onControlsChange?: (controls: MediaPlayerControls | null) => void;
   /**
+   * Whether the player owns the screen, by either route — the browser's
+   * fullscreen or the app's own expansion where the browser refuses.
+   *
+   * A caller that listens to `fullscreenchange` itself hears only the first,
+   * and an iPhone only ever has the second: `ObjectPage` drew its edit and
+   * delete controls "while fullscreen" and never on a phone, where the rail
+   * that otherwise carries them is exactly what fullscreen covers.
+   */
+  onFullscreenChange?: (fullscreen: boolean) => void;
+  /**
    * Chrome drawn inside the player, above the media and below the transport.
    *
    * Rendered as a descendant of the container, so it is painted in fullscreen
@@ -243,6 +253,7 @@ export function MediaPlayer({
   onClose,
   onContainerChange,
   onControlsChange,
+  onFullscreenChange,
   overlay,
   actions,
   zoomable = false,
@@ -376,6 +387,16 @@ export function MediaPlayer({
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [isFullscreen, native, toggle]);
+
+  // Reported on change only, through a ref, so an inline arrow from the
+  // caller neither re-subscribes nor fires on every scrub.
+  const onFullscreenChangeRef = useRef(onFullscreenChange);
+  useEffect(() => {
+    onFullscreenChangeRef.current = onFullscreenChange;
+  });
+  useEffect(() => {
+    onFullscreenChangeRef.current?.(isFullscreen);
+  }, [isFullscreen]);
 
   const close = useCallback(() => {
     if (isFullscreen) void toggle();
