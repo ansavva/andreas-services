@@ -276,21 +276,24 @@ describe("editing the file's own fields", () => {
   });
 });
 
-describe("the controls over the picture while it owns the screen", () => {
-  it("draws edit and delete over the frame in the app's own fullscreen too", async () => {
+describe("the picture owning the screen", () => {
+  it("offers nothing about the file — fullscreen is for looking — and lifts the frame", async () => {
     // jsdom reports no Fullscreen API — the iPhone's answer — so the
-    // maximize button takes the in-app route. The rail is off-screen either
-    // way, and this used to listen for the browser's route alone.
+    // maximize button takes the in-app route.
     Object.defineProperty(document, "fullscreenEnabled", { value: false, configurable: true });
     open(`/o/${OPEN}?in=${encodeURIComponent(`f:${FOLDER}`)}`);
     await waitFor(() => expect(screen.getByText(/2 of 3/)).toBeTruthy());
-    expect(screen.getAllByLabelText("Edit details")).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Fullscreen (f)" }));
 
+    // Edit and delete were drawn over the frame here until 2026-09-16, on
+    // the argument that the rail is off-screen. The rail is off-screen
+    // because the view is for viewing: zoom, and the way back out.
     const stage = screen.getByRole("button", { name: "Exit fullscreen (f)" }).closest(".fixed")!;
-    expect(within(stage as HTMLElement).getByLabelText("Edit details")).toBeTruthy();
-    expect(within(stage as HTMLElement).getByRole("button", { name: /^Delete/ })).toBeTruthy();
+    const within_ = within(stage as HTMLElement);
+    expect(within_.queryByLabelText("Edit details")).toBeNull();
+    expect(within_.queryByRole("button", { name: /^Delete/ })).toBeNull();
+    expect(within_.getByRole("button", { name: "Zoom in (+)" })).toBeTruthy();
     // And the frame climbs past the header and the sheet handle (`z-30`),
     // told by the player — not by a `:has()` older Safari never re-ran.
     const frame = screen.getByTestId("object-viewer");

@@ -144,6 +144,29 @@ describe("maximize", () => {
     expect(box!.getAttribute("data-fullscreen")).toBe("app");
   });
 
+  it("is for viewing: transport, sound and the way out — no actions, no Close", () => {
+    const onClose = vi.fn();
+    render(<MediaPlayer {...CLIP} onClose={onClose} actions={<button type="button">Frame</button>} />);
+    fireEvent.click(play());
+    expect(screen.getByRole("button", { name: "Frame" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Close cut_03.mp4" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Fullscreen (f)" }));
+
+    expect(screen.queryByRole("button", { name: "Frame" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Close/ })).toBeNull();
+    expect(transport()).toBeTruthy();
+    // jsdom reports every element paused, so the transport offers Play here.
+    expect(screen.getByRole("button", { name: /^(Play|Pause) \(space\)$/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Unmute (m)" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Exit fullscreen (f)" })).toBeTruthy();
+
+    // Out again, and the file's chrome is back.
+    fireEvent.click(screen.getByRole("button", { name: "Exit fullscreen (f)" }));
+    expect(screen.getByRole("button", { name: "Frame" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Close cut_03.mp4" })).toBeTruthy();
+  });
+
   it("leaves the app's own fullscreen on Escape, and nothing else hears it", () => {
     const onClose = vi.fn();
     render(<MediaPlayer {...CLIP} onClose={onClose} />);
