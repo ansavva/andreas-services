@@ -28,6 +28,7 @@ import {
   ZoomOutIcon,
 } from "../common/icons";
 import { PlayerTransport } from "./PlayerTransport";
+import { useChromeIdle } from "./useChromeIdle";
 import { useZoom, type ZoomState } from "./useZoom";
 
 /**
@@ -283,6 +284,10 @@ export function MediaPlayer({
   const playback = useMediaPlayback(playing ? nodeId : undefined);
   const { register } = playback;
 
+  // The chrome goes away while a clip runs untouched, and only then: a
+  // paused clip keeps its transport, and a still keeps its zoom row.
+  const chrome = useChromeIdle(isVideo && playing && !playback.paused && !failed);
+
   /**
    * Reported straight out of the ref callback rather than through state.
    *
@@ -419,6 +424,15 @@ export function MediaPlayer({
   }, []);
 
   const showChrome = playing || !isVideo || isFullscreen;
+  /**
+   * `invisible`, not just `opacity-0`: visibility is what takes the buttons
+   * out of the tab order and out from under a finger, so the first tap on a
+   * hidden chrome reaches the picture and brings it back rather than landing
+   * on whatever button was there.
+   */
+  const chromeFade = `transition-[opacity,visibility] duration-200 ${
+    chrome.visible ? "" : "invisible opacity-0"
+  }`;
 
   // A still at the fit drags to the sheet; zoomed, the same gesture is the
   // pan — see `useZoom`. The chrome's buttons never start one: a press on a
@@ -448,6 +462,8 @@ export function MediaPlayer({
     // sheet and the header (`z-30` both).
     isFullscreen && !native ? "fixed inset-0 z-50 w-screen" : "",
     isFullscreen ? "" : className,
+    // The cursor goes with the chrome.
+    chrome.visible ? "" : "cursor-none",
   ].join(" ");
 
   /**
@@ -471,7 +487,10 @@ export function MediaPlayer({
       style={{ ...shell, ...zoom.stage }}
       draggable={draggable || undefined}
       onDragStart={draggable ? onDragStart : undefined}
+      // Never both at once: the zoom's handlers exist only on a still, the
+      // chrome's only matter on a playing clip.
       {...zoom.handlers}
+      {...chrome.handlers}
     >
       {failed ? (
         <div className="flex h-full w-full items-center justify-center p-6 text-center">
@@ -487,6 +506,9 @@ export function MediaPlayer({
           src={near || playing ? src : undefined}
           onError={onError}
           onLoadedMetadata={(event) => setPosterDuration(event.currentTarget.duration)}
+          // A tap on the running picture is the chrome's switch on a phone;
+          // the poster's own button sits over it until playback mounts.
+          onClick={chrome.onSurfaceClick}
           // No `autoplay` attribute and no `controls`: `useMediaPlayback` starts
           // it from the key, and the transport below is ours so that the
           // browser's own bar cannot sit under a phone's toolbar.
@@ -562,7 +584,7 @@ export function MediaPlayer({
       {(showChrome || actions) && !failed && (
         <div
           className={`pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start
-                      justify-between gap-2 p-2 ${isFullscreen ? FULLSCREEN_TOP : ""}`}
+                      justify-between gap-2 p-2 ${chromeFade} ${isFullscreen ? FULLSCREEN_TOP : ""}`}
         >
           <div className="pointer-events-auto flex min-w-0 items-center gap-1">{actions}</div>
 
@@ -661,7 +683,7 @@ export function MediaPlayer({
         <div
           className={`pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col gap-1
                       bg-gradient-to-t from-overlay-scrim/85 to-transparent px-3 pb-3 pt-12
-                      ${isFullscreen ? FULLSCREEN_BOTTOM : ""}`}
+                      ${chromeFade} ${isFullscreen ? FULLSCREEN_BOTTOM : ""}`}
         >
           {playback.blocked && (
             <Text variant="caption" className="pointer-events-auto text-overlay-ink">
