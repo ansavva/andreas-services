@@ -106,6 +106,9 @@ WIRE_SURFACE = {
     # too, which is what removed `REPLICATE_API_TOKEN` from this package.
     "/api/runs/<id>/submit",
     "/api/runs/<id>/reconcile",
+    # The backfill behind `runs faststart`: a clip's index moved in front of
+    # its frames, in place, where the bytes are. New outputs get it at ingest.
+    "/api/nodes/<id>/faststart",
     "/api/models/<id>/schema",
     "/api/models/<id>/readme",
     # scenes

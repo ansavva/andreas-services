@@ -41,12 +41,15 @@ resolved.
 """
 
 import logging
+import os
+import tempfile
 
 from flask import Blueprint, g, jsonify, request
 
 from studio_core import config
 from studio_core.clients.aws import s3
 from studio_core.errors import NotFoundError, ValidationError
+from studio_core.media import faststart
 from studio_core.routes import support
 from studio_core.services import browse, catalog, manage
 
@@ -527,6 +530,55 @@ def upload_url(node_id: str):
             "headers": {"Content-Length": str(size), "Content-Type": content_type},
         }
     ), 200
+
+
+@bp.post("/nodes/<node_id>/faststart")
+def faststart_node(node_id: str):
+    """Move one clip's `moov` in front of its `mdat`, in place. The backfill.
+
+    New outputs are indexed as they land (`generate._store_output`); this is
+    for every clip stored before that — `studio faststart` walks a project's
+    video outputs and calls it once each. Idempotent and cheap to repeat: a
+    clip already in the right order comes back `rewritten: false` without a
+    write, so the command is safe to run over a whole library.
+
+    **Synchronous, in the API, and that fits the 30-second ceiling.** The
+    bytes go bucket → `/tmp` → bucket in the same region, kilobytes of index
+    are moved, and nothing is decoded; a 200 MB clip is a few seconds. The
+    key is overwritten with the same frames in a different order, so the
+    node keeps its id, its name and its place — only `size` (unchanged) and
+    `checksum` (not) are re-read off the object.
+
+    Anything that is not an MP4 by name, or does not parse as one, is a
+    `rewritten: false` too — the route refuses nothing, because the caller is
+    a sweep and a refusal per non-clip would be noise.
+    """
+    held = support.memberships()
+    record = support.node_at(node_id, held)
+    blob_key = _api_blob_key(record)
+    if not faststart.is_mp4_name(record.get("name") or ""):
+        return jsonify({"id": node_id, "rewritten": False}), 200
+
+    handle, staged = tempfile.mkstemp(prefix="studio-faststart-")
+    os.close(handle)
+    try:
+        s3.download(blob_key, staged)
+        if not faststart.faststart(staged):
+            return jsonify({"id": node_id, "rewritten": False}), 200
+        s3.put_file(blob_key, staged, record.get("content_type") or "video/mp4")
+    finally:
+        if os.path.exists(staged):
+            os.remove(staged)
+
+    metadata = s3.head(blob_key)
+    updated = catalog.set_blob(
+        node_id,
+        blob_key,
+        size=metadata.get("ContentLength", 0),
+        content_type=metadata.get("ContentType"),
+        checksum=s3.content_hash(metadata),
+    )
+    return jsonify({"id": node_id, "rewritten": True, "node": support.view(updated)}), 200
 
 
 @bp.post("/nodes/<node_id>/confirm-upload")
