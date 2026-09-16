@@ -18,11 +18,19 @@ locals {
     data.aws_caller_identity.current.account_id,
     var.runpod_token_parameter,
   )
+  fal_token_arn = var.fal_token_parameter == "" ? "" : format(
+    "arn:aws:ssm:%s:%s:parameter%s",
+    data.aws_region.current.region,
+    data.aws_caller_identity.current.account_id,
+    var.fal_token_parameter,
+  )
 
   # Every provider parameter the role may read: one statement, however many
-  # providers there are. Both names are literals in `envs/prod`, so this is
-  # known at plan time — the property the `count` below depends on.
-  provider_token_arns = compact([local.provider_token_arn, local.runpod_token_arn])
+  # providers there are. All three names are literals in `envs/prod`, so this
+  # is known at plan time — the property the `count` below depends on.
+  provider_token_arns = compact([
+    local.provider_token_arn, local.runpod_token_arn, local.fal_token_arn,
+  ])
 }
 
 data "aws_caller_identity" "current" {}
@@ -397,6 +405,7 @@ resource "aws_lambda_function" "api" {
       # The NAME of the SecureString, never its value. See the policy above.
       STUDIO_REPLICATE_TOKEN_PARAMETER = var.replicate_token_parameter
       STUDIO_RUNPOD_TOKEN_PARAMETER    = var.runpod_token_parameter
+      STUDIO_FAL_TOKEN_PARAMETER       = var.fal_token_parameter
 
       # **`STUDIO_WEBHOOK_BASE_URL` is deliberately absent from this block.**
       #

@@ -582,3 +582,195 @@ def test_the_local_consumer_survives_a_network_blip(monkeypatch):
     assert calls["n"] == 2, "the blip was retried; the missing queue was not"
     assert slept == [poll.RETRY_SECONDS]
     assert code == 1
+
+
+# ── the consumer, for a fal run ─────────────────────────────────────────────
+#
+# fal signs with an ED25519 key it publishes. The suite mints its own pair,
+# hands the public half to the client as if it had been fetched, and signs
+# the way fal documents — id, user, timestamp, sha256(body), newline-joined —
+# so the check is against an implementation that does not merely agree with
+# itself.
+
+
+@pytest.fixture
+def fal_keys(monkeypatch):
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from studio_core.clients import fal
+
+    private = Ed25519PrivateKey.generate()
+    monkeypatch.setattr(fal, "_keys", [private.public_key()])
+    monkeypatch.setattr(fal, "_keys_fetched_at", time.monotonic())
+    monkeypatch.setattr(fal, "_request",
+                        lambda *a, **k: pytest.fail("the client reached for fal's JWKS"))
+    return private
+
+
+def _fal_signed(private, body: bytes, *, request_id="req-1", user_id="user-1",
+                timestamp=None, tamper=False) -> dict:
+    stamp = str(int(time.time()) if timestamp is None else timestamp)
+    message = "\n".join([request_id, user_id, stamp,
+                         hashlib.sha256(body).hexdigest()]).encode()
+    signature = private.sign(message).hex()
+    if tamper:
+        signature = ("0" if signature[0] != "0" else "1") + signature[1:]
+    return {"x-fal-webhook-request-id": request_id, "x-fal-webhook-user-id": user_id,
+            "x-fal-webhook-timestamp": stamp, "x-fal-webhook-signature": signature}
+
+
+def _running_fal_run(api):
+    project = api.post("/api/projects", json={"name": "rooftop-teaser"}).get_json()
+    run = api.post("/api/runs", json={
+        "project": project["id"], "kind": "video", "engine": "wan-3.0-t2v",
+        "model": "fal/alibaba/wan-3.0/text-to-video",
+        "plan": {"version": 1, "origin": "authored", "prompt": "a porch",
+                 "params": {"duration": 5}},
+    }).get_json()
+    api.post(f"/api/runs/{run['id']}/submit")
+    return catalog.entity(catalog.ENTITY_RUN, run["id"])
+
+
+def _fal_message(private, run_id: str, document: dict, **kw) -> dict:
+    body = json.dumps(document).encode()
+    return {"run": run_id, "provider": "fal", "sig": "",
+            "headers": _fal_signed(private, body, request_id=document.get("request_id", "req-1"), **kw),
+            "body_b64": base64.b64encode(body).decode()}
+
+
+def test_a_fal_callback_with_a_good_signature_closes_the_run(empty_api, media_bucket, fal_keys):
+    """The body is fal's own shape — `request_id`, `status: OK`, `payload.video.url`
+    — normalised on the way in, and the run closes on it with no price."""
+    record = _running_fal_run(empty_api)
+    assert record["provider"] == "fal"
+
+    closed = callbacks.process(_fal_message(fal_keys, record["id"], {
+        "request_id": record["prediction_id"], "gateway_request_id": "gw-1", "status": "OK",
+        "payload": {"video": {"url": "https://fake.invalid/wan3/out.mp4",
+                              "content_type": "video/mp4", "duration": 5.0},
+                    "seed": 11, "duration": 5.0, "actual_prompt": "a porch, expanded"},
+    }))
+
+    assert closed["status"] == "succeeded"
+    assert len(closed["outputs"]) == 1
+    assert closed.get("cost") is None
+
+
+def test_a_fal_callback_with_a_bad_signature_is_rejected(empty_api, fal_keys):
+    record = _running_fal_run(empty_api)
+
+    with pytest.raises(callbacks.Rejected) as raised:
+        callbacks.process(_fal_message(fal_keys, record["id"], {
+            "request_id": record["prediction_id"], "status": "OK",
+            "payload": {"video": {"url": "https://fake.invalid/x.mp4"}}}, tamper=True))
+
+    assert "matches none of fal's keys" in str(raised.value)
+    assert catalog.entity(catalog.ENTITY_RUN, record["id"])["status"] == "running"
+
+
+def test_a_fal_callback_signed_by_someone_else_is_rejected(empty_api, fal_keys):
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    record = _running_fal_run(empty_api)
+
+    with pytest.raises(callbacks.Rejected):
+        callbacks.process(_fal_message(Ed25519PrivateKey.generate(), record["id"], {
+            "request_id": record["prediction_id"], "status": "OK",
+            "payload": {"video": {"url": "https://fake.invalid/x.mp4"}}}))
+
+
+def test_a_fal_callback_outside_the_window_is_rejected_before_any_key(empty_api, fal_keys, monkeypatch):
+    """Replay is bounded by the timestamp, and a stale one is refused before the
+    signature is even tried."""
+    from studio_core.clients import fal
+    record = _running_fal_run(empty_api)
+    monkeypatch.setattr(fal, "public_keys",
+                        lambda **k: pytest.fail("a key was consulted for a stale callback"))
+
+    with pytest.raises(callbacks.Rejected) as raised:
+        callbacks.process(_fal_message(fal_keys, record["id"], {
+            "request_id": record["prediction_id"], "status": "OK",
+            "payload": {"video": {"url": "https://fake.invalid/x.mp4"}}},
+            timestamp=int(time.time()) - 3600))
+    assert "tolerance" in str(raised.value)
+
+
+def test_a_fal_callback_missing_a_header_is_rejected(empty_api, fal_keys):
+    record = _running_fal_run(empty_api)
+    message = _fal_message(fal_keys, record["id"], {
+        "request_id": record["prediction_id"], "status": "OK",
+        "payload": {"video": {"url": "https://fake.invalid/x.mp4"}}})
+    del message["headers"]["x-fal-webhook-user-id"]
+
+    with pytest.raises(callbacks.Rejected):
+        callbacks.process(message)
+
+
+def test_a_fal_error_callback_closes_the_run_failed(empty_api, fal_keys):
+    record = _running_fal_run(empty_api)
+
+    closed = callbacks.process(_fal_message(fal_keys, record["id"], {
+        "request_id": record["prediction_id"], "status": "ERROR",
+        "error": "content moderation", "payload": {"detail": "blocked"}}))
+
+    assert closed["status"] == "failed"
+    assert closed["error"] == "content moderation"
+
+
+def test_a_fal_callback_about_another_request_is_rejected(empty_api, fal_keys):
+    """Verified as fal's, and about a request that is not this run's. The id
+    check reads the normalised `id`, which is fal's `request_id`."""
+    record = _running_fal_run(empty_api)
+
+    with pytest.raises(callbacks.Rejected) as raised:
+        callbacks.process(_fal_message(fal_keys, record["id"], {
+            "request_id": "req-somebody-elses", "status": "OK",
+            "payload": {"video": {"url": "https://fake.invalid/x.mp4"}}}))
+    assert "names prediction req-somebody-elses" in str(raised.value)
+
+
+def test_the_receiver_carries_fals_four_headers(queue):
+    body = b'{"request_id":"req-1","status":"OK"}'
+
+    hook_handler.handler(_event("run-abc", body, provider="fal", headers={
+        "X-Fal-Webhook-Request-Id": "req-1", "X-Fal-Webhook-User-Id": "u",
+        "X-Fal-Webhook-Timestamp": "1", "X-Fal-Webhook-Signature": "ab",
+        "Cookie": "no", "X-Forwarded-For": "1.2.3.4"}), None)
+
+    message = json.loads(queue.sent[0]["MessageBody"])
+    assert message["provider"] == "fal"
+    assert message["headers"] == {
+        "x-fal-webhook-request-id": "req-1", "x-fal-webhook-user-id": "u",
+        "x-fal-webhook-timestamp": "1", "x-fal-webhook-signature": "ab"}
+
+
+def test_a_verification_miss_refetches_the_keys_once(monkeypatch):
+    """Rotation is the ordinary reason a real signature stops matching: a miss
+    against the cached set tries a fresh set once, and only when the cached set
+    is old enough that a stream of forgeries cannot make this process hammer
+    fal's JWKS."""
+    import base64 as b64
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives import serialization
+    from studio_core.clients import fal
+
+    old, new = Ed25519PrivateKey.generate(), Ed25519PrivateKey.generate()
+    raw = new.public_key().public_bytes(serialization.Encoding.Raw,
+                                        serialization.PublicFormat.Raw)
+    fetched = []
+
+    def jwks(method, url, **kw):
+        fetched.append(url)
+        return 200, {"keys": [{"kty": "OKP", "crv": "Ed25519",
+                               "x": b64.urlsafe_b64encode(raw).decode().rstrip("=")}]}
+
+    monkeypatch.setattr(fal, "_request", jwks)
+    monkeypatch.setattr(fal, "_keys", [old.public_key()])
+    monkeypatch.setattr(fal, "_keys_fetched_at", time.monotonic() - fal.KEYS_REFETCH_AFTER - 1)
+
+    body = b'{"request_id":"req-1"}'
+    fal.verify_webhook(_fal_signed(new, body), body, 300)
+    assert fetched == [fal.JWKS_URL]
+
+    # Fresh set, a forgery: no second fetch.
+    with pytest.raises(ValueError):
+        fal.verify_webhook(_fal_signed(old, body), body, 300)
+    assert fetched == [fal.JWKS_URL]

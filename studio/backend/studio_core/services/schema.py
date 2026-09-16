@@ -33,7 +33,7 @@ whose enum changed under a committed snapshot.
 
 import logging
 
-from studio_core.clients import replicate
+from studio_core.clients import fal, replicate
 from studio_core.errors import ValidationError
 from studio_core.services import registry
 
@@ -69,12 +69,23 @@ def fetch(model: str) -> tuple[dict, dict]:
     where the registry is the authority rather than a months-old copy of one,
     which is also why the registry's own `snapshot` is distilled from it: the
     pipeline's `models refresh` reads this route and sees the same document.
+
+    **A fal model's schema is live, like Replicate's** — fal publishes an
+    OpenAPI document per endpoint and `clients/fal.py` reads it into the same
+    two maps.
     """
     entry = registry.by_model_id(model)
-    if entry is not None and registry.provider_of(entry) == registry.RUNPOD:
+    provider = registry.provider_of(entry) if entry is not None else registry.REPLICATE
+    if provider == registry.RUNPOD:
         spec = entry.get("input") or {}
         props = spec.get("properties") or {}
         return props, {"Input": {"required": spec.get("required") or [], **spec}}
+    if provider == registry.FAL:
+        try:
+            return fal.model_schema(model)
+        except fal.FalError as exc:
+            logger.warning("Could not fetch the schema for %s: %s", model, exc)
+            return {}, {}
 
     try:
         return replicate.model_schema(model)

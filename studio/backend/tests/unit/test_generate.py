@@ -1249,3 +1249,233 @@ def test_the_stored_runpod_document_carries_no_callback_signature(empty_api, med
     stored = s3.get_body(catalog.node(closed["payload"]["response"])["blob_key"], 1 << 20).decode()
     assert "deadbeef" not in stored
     assert "https://hooks.test/api/hooks/runpod/" in stored
+
+
+# ── the third provider: fal ─────────────────────────────────────────────────
+
+
+def _wan3_draft(api, project, **body):
+    resp = api.post("/api/runs", json={
+        "project": project["id"],
+        "kind": "video",
+        "engine": "wan-3.0-t2v",
+        "model": "fal/alibaba/wan-3.0/text-to-video",
+        "plan": {"version": 1, "origin": "authored",
+                 "prompt": "a lighthouse on a rocky coast at golden hour, waves breaking",
+                 "params": {"duration": 5, "resolution": "720p", "seed": 7}},
+        **body,
+    })
+    assert resp.status_code == 201, resp.get_data(as_text=True)
+    return resp.get_json()
+
+
+def test_a_fal_run_is_submitted_through_the_fal_client(empty_api, monkeypatch):
+    """`dispatch` picks the client off the entry's `provider`; the route records
+    `fal` on the run before anything is sent; the webhook URL is bare, because
+    fal signs its callbacks itself."""
+    from studio_core.clients import fal, runpod
+    seen = {}
+
+    def create(model, payload, *, webhook=None):
+        seen.update(model=model, payload=payload, webhook=webhook)
+        return {"id": "req-1", "status": "IN_QUEUE"}
+
+    monkeypatch.setattr(fal, "create_prediction", create)
+    monkeypatch.setattr(replicate, "create_prediction",
+                        lambda *a, **k: pytest.fail("Replicate was called"))
+    monkeypatch.setattr(runpod, "create_prediction",
+                        lambda *a, **k: pytest.fail("Runpod was called"))
+    monkeypatch.setenv("STUDIO_WEBHOOK_BASE_URL", "https://hooks.test")
+    project = _project(empty_api)
+    run = _wan3_draft(empty_api, project)
+
+    body = empty_api.post(f"/api/runs/{run['id']}/submit").get_json()
+
+    assert seen["model"] == "fal/alibaba/wan-3.0/text-to-video"
+    assert seen["payload"] == {"duration": 5, "resolution": "720p", "seed": 7,
+                               "prompt": "a lighthouse on a rocky coast at golden hour, waves breaking"}
+    assert seen["webhook"] == f"https://hooks.test/api/hooks/fal/{run['id']}"
+    assert body["status"] == "running"
+    assert body["provider"] == "fal"
+    assert body["prediction_id"] == "req-1"
+
+
+def test_a_fal_run_reconciles_through_the_fal_client(empty_api, media_bucket):
+    """The fake answers a completed request in fal's own shape — `payload.video.url`
+    — and the run closes on it, with no price: fal's body carries none."""
+    project = _project(empty_api)
+    run = _wan3_draft(empty_api, project)
+    empty_api.post(f"/api/runs/{run['id']}/submit")
+
+    body = empty_api.post(f"/api/runs/{run['id']}/reconcile").get_json()
+
+    assert body["status"] == "succeeded"
+    assert len(body["outputs"]) == 1
+    assert body["outputs"][0]["name"].endswith(".mp4")
+    assert body.get("cost") is None
+
+
+def test_provider_of_infers_fal_from_the_model_id():
+    assert generate.provider_of({"model": "fal/alibaba/wan-3.0/text-to-video"}) == "fal"
+    assert generate.provider_of({"model": "fal/x", "provider": "replicate"}) == "replicate"
+
+
+def test_fal_documents_are_normalised_into_the_seams_shape():
+    """A webhook body is `request_id` / `status: OK|ERROR` / `payload`; the
+    closing code reads `id` / `status` / `output` / `error`. A document already
+    in that shape passes through, so the call is safe to repeat."""
+    from studio_core.clients import fal
+
+    ok = fal.normalise({"request_id": "r1", "gateway_request_id": "g", "status": "OK",
+                        "payload": {"video": {"url": "https://x.invalid/v.mp4"},
+                                    "seed": 3, "duration": 5.0}})
+    assert ok == {"id": "r1", "status": "OK",
+                  "output": {"video": {"url": "https://x.invalid/v.mp4"}, "seed": 3, "duration": 5.0},
+                  "error": None}
+    assert fal.output_urls(ok) == ["https://x.invalid/v.mp4"]
+    assert fal.cost(ok) is None
+
+    failed = fal.normalise({"request_id": "r2", "status": "ERROR", "error": "content policy",
+                            "payload": {"detail": "…"}})
+    assert failed["status"] == "ERROR" and failed["output"] is None
+    assert failed["error"] == "content policy"
+
+    # fal could not serialise the model's answer: nothing to download, so a
+    # failure whatever `status` says.
+    broken = fal.normalise({"request_id": "r3", "status": "OK", "payload": None,
+                            "payload_error": "Response payload is not JSON serializable"})
+    assert broken["status"] == "ERROR"
+    assert "not JSON serializable" in broken["error"]
+
+    assert fal.normalise(ok) == ok
+    # The other shapes an endpoint may answer.
+    assert fal.output_urls({"output": {"images": [{"url": "https://x.invalid/a.png"},
+                                                  {"url": "https://x.invalid/b.png"}]}}) == [
+        "https://x.invalid/a.png", "https://x.invalid/b.png"]
+    assert fal.output_urls({"output": {"video": "https://x.invalid/bare.mp4"}}) == [
+        "https://x.invalid/bare.mp4"]
+    assert fal.output_urls({"output": {"seed": 1}}) == []
+    assert fal.cost({"id": "r", "status": "OK", "metrics": {"inference_time": 41.2}}) == {
+        "amount": None, "currency": None, "predict_time": 41.2}
+
+
+def test_a_fal_error_document_closes_the_run_failed(empty_api, media_bucket):
+    project = _project(empty_api)
+    run = _wan3_draft(empty_api, project)
+    empty_api.post(f"/api/runs/{run['id']}/submit")
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    from studio_core.clients import fal
+
+    closed = generate.close_from_prediction(record, fal.normalise({
+        "request_id": record["prediction_id"], "status": "ERROR",
+        "error": "Input validation failed: duration must be between 2 and 30",
+    }))
+
+    assert closed["status"] == "failed"
+    assert "duration" in closed["error"]
+
+
+def test_the_fal_schema_reader_flattens_nullable_fields_and_names_the_input(monkeypatch):
+    """fal's OpenAPI spells every optional field `anyOf: [X, null]`, and
+    `services/schema.check` range-checks only a top-level `type`/`minimum`/
+    `maximum` — so `duration` 2–30 would go unchecked unflattened. The input
+    component is the one the submit route's request body names, returned under
+    `Input` too because that is where `check` reads `required`."""
+    from studio_core.clients import fal
+
+    document = {
+        "paths": {"/alibaba/wan-3.0/text-to-video": {"post": {"requestBody": {"content": {
+            "application/json": {"schema": {"$ref": "#/components/schemas/Wan30TextToVideoInput"}}}}}}},
+        "components": {"schemas": {
+            "Wan30TextToVideoInput": {"required": ["prompt"], "properties": {
+                "prompt": {"type": "string"},
+                "duration": {"anyOf": [{"type": "integer", "minimum": 2, "maximum": 30},
+                                       {"type": "null"}], "default": 5},
+                "resolution": {"type": "string", "enum": ["480p", "720p", "1080p"]},
+            }},
+            "Wan30TextToVideoOutput": {"properties": {"video": {}}},
+        }},
+    }
+    monkeypatch.setenv("STUDIO_FAL_MODE", "live")
+    monkeypatch.setattr(fal, "_request", lambda *a, **k: (200, document))
+
+    props, schemas = fal.model_schema("fal/alibaba/wan-3.0/text-to-video")
+
+    assert props["duration"] == {"type": "integer", "minimum": 2, "maximum": 30, "default": 5}
+    assert schemas["Input"]["required"] == ["prompt"]
+    assert schemas["Input"]["properties"] is props
+    assert "Wan30TextToVideoOutput" in schemas
+
+
+def test_the_fal_client_reads_the_result_after_the_status(monkeypatch):
+    """Two calls once the queue is done: the status carries no output, the result
+    route does — and an HTTP error from the result route is the request's own
+    failure, except a bad key or a rate limit, which raise so the queue retries.
+    Both calls go to the app's routes, not the endpoint's."""
+    from studio_core.clients import fal
+    calls = []
+
+    def answer(method, url, **kw):
+        calls.append(url)
+        if url.endswith("/status"):
+            return 200, {"status": "COMPLETED", "metrics": {"inference_time": 12.5}}
+        return 200, {"video": {"url": "https://x.invalid/v.mp4"}, "seed": 1, "duration": 5}
+
+    monkeypatch.setenv("STUDIO_FAL_MODE", "live")
+    monkeypatch.setattr(fal, "_request", answer)
+
+    got = fal.get_prediction("req-9", model="fal/alibaba/wan-3.0/text-to-video")
+
+    # The APP's request routes, not the endpoint's: the third path segment is
+    # a route inside the app, and answers 405 to a status GET.
+    assert calls == ["https://queue.fal.run/alibaba/wan-3.0/requests/req-9/status",
+                     "https://queue.fal.run/alibaba/wan-3.0/requests/req-9"]
+    assert got["id"] == "req-9" and got["status"] == "OK"
+    assert fal.output_urls(got) == ["https://x.invalid/v.mp4"]
+    assert fal.cost(got) == {"amount": None, "currency": None, "predict_time": 12.5}
+
+    monkeypatch.setattr(fal, "_request", lambda m, u, **k: (200, {"status": "IN_PROGRESS"}))
+    assert fal.get_prediction("req-9", model="fal/x")["status"] == "IN_PROGRESS"
+
+    def failed(method, url, **kw):
+        if url.endswith("/status"):
+            return 200, {"status": "COMPLETED"}
+        return 422, {"detail": [{"loc": ["body", "duration"], "msg": "too long"}]}
+    monkeypatch.setattr(fal, "_request", failed)
+    got = fal.get_prediction("req-9", model="fal/x")
+    assert got["status"] == "ERROR" and "body.duration: too long" in got["error"]
+
+    def unauthorised(method, url, **kw):
+        if url.endswith("/status"):
+            return 200, {"status": "COMPLETED"}
+        return 401, {"detail": "Invalid key"}
+    monkeypatch.setattr(fal, "_request", unauthorised)
+    with pytest.raises(fal.FalError):
+        fal.get_prediction("req-9", model="fal/x")
+
+
+def test_the_fal_submit_puts_the_webhook_in_the_query_and_the_payload_bare(monkeypatch):
+    from studio_core.clients import fal
+    seen = {}
+
+    def answer(method, url, *, body=None, **kw):
+        seen.update(method=method, url=url, body=body)
+        return 200, {"request_id": "req-2", "status": "IN_QUEUE", "queue_position": 0}
+
+    monkeypatch.setenv("STUDIO_FAL_MODE", "live")
+    monkeypatch.setattr(fal, "_request", answer)
+
+    got = fal.create_prediction("fal/alibaba/wan-3.0/text-to-video", {"prompt": "x"},
+                                webhook="https://hooks.test/api/hooks/fal/run-1")
+
+    assert seen["url"] == ("https://queue.fal.run/alibaba/wan-3.0/text-to-video"
+                           "?fal_webhook=https%3A%2F%2Fhooks.test%2Fapi%2Fhooks%2Ffal%2Frun-1")
+    assert seen["body"] == {"prompt": "x"}
+    assert got == {"id": "req-2", "status": "IN_QUEUE", "output": None, "error": None}
+
+
+def test_the_readme_route_answers_for_a_fal_entry_without_a_provider_call(empty_api):
+    body = empty_api.get("/api/models/wan-3.0-t2v/readme").get_json()
+
+    assert body["readme"].startswith("# fal/alibaba/wan-3.0/text-to-video")
+    assert "$0.10/s" in body["readme"]

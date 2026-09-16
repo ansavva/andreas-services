@@ -29,6 +29,12 @@ variable "runpod_token_parameter" {
   default     = ""
 }
 
+variable "fal_token_parameter" {
+  description = "Name of the SSM SecureString holding the fal.ai API key, reaching the worker as `STUDIO_FAL_TOKEN_PARAMETER`. A NAME, never a value — see `replicate_token_parameter`."
+  type        = string
+  default     = ""
+}
+
 variable "replicate_token_parameter" {
   description = <<-EOT
     Name of the SSM SecureString holding the Replicate API token, reaching the

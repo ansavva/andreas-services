@@ -110,6 +110,17 @@ variable "runpod_token_parameter" {
   default     = ""
 }
 
+variable "fal_token_parameter" {
+  description = <<-EOT
+    Name of the SSM SecureString holding the fal.ai API key, reaching the
+    Lambda as `STUDIO_FAL_TOKEN_PARAMETER`. Same rules as the two above: a
+    NAME, read at call time, empty where a developer's machine supplies
+    `FAL_KEY` directly.
+  EOT
+  type        = string
+  default     = ""
+}
+
 # `replicate_token_parameter_arn` was here and is DELETED. It took the ARN off
 # `aws_ssm_parameter.replicate_api_token`, which made the `count` that used it
 # unresolvable at plan time and failed a prod deploy outright. The ARN is now

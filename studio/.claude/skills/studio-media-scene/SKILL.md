@@ -117,6 +117,9 @@ submit path enforces — `studio models show <model>` prints it.
 | `wan-2.6-t2v` | none | — | none — **takes no image at all**; it cannot continue a take, only open one |
 | `wan-2.6-i2v` | none | — | none — the start frame is the only image, so the handoff frame carries everything |
 | `wan-2.2-i2v-lora` | none | — | none — start frame plus a **LoRA pair** (`--lora-high-key` / `--lora-low-key`), which is what carries identity |
+| `wan-3.0-t2v` | none | — | none — takes no image; opens a take, cannot continue one |
+| `wan-3.0-i2v` | none | — | allowed — start frame required, an end frame to land on; no references |
+| `wan-3.0-r2v` | 10 | **no start frame at all** — references only, addressed as `Image 1…` in the prompt | none |
 
 So "start plus six references" is a Kling sentence, not a general one. The
 submit path resolves every payload against the model it names and refuses what

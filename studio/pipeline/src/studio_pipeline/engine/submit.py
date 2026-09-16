@@ -541,17 +541,21 @@ def preflight(entry: dict, payload: dict, bindings: dict) -> None:
 #: that did not say where it was going would be a worse thing to read.
 REPLICATE_PREDICTIONS = "https://api.replicate.com/v1/models/{model}/predictions"
 RUNPOD_RUN = "https://api.runpod.ai/v2/{endpoint}/run"
+FAL_QUEUE = "https://queue.fal.run/{endpoint}"
 
 
 def predictions_endpoint(model: str) -> str:
     """The URL the API will POST this payload to. Shown, never called.
 
-    A `runpod/<endpoint>` model goes to Runpod's public endpoint; everything
-    else is a Replicate `owner/name`. The same rule `services/generate.py`
-    applies, spelled here so the document a person reads names the real host.
+    A `runpod/<endpoint>` model goes to Runpod's public endpoint, a
+    `fal/<endpoint>` model to fal's queue; everything else is a Replicate
+    `owner/name`. The same rule `services/generate.py` applies, spelled here
+    so the document a person reads names the real host.
     """
     if model.startswith("runpod/"):
         return RUNPOD_RUN.format(endpoint=model[len("runpod/"):])
+    if model.startswith("fal/"):
+        return FAL_QUEUE.format(endpoint=model[len("fal/"):])
     return REPLICATE_PREDICTIONS.format(model=model)
 
 

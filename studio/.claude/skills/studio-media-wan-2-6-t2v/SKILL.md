@@ -1,6 +1,6 @@
 ---
 name: studio-media-wan-2-6-t2v
-description: Generate video from text alone with Alibaba's Wan 2.6 (runpod/wan-2-6-t2v) on Runpod's public endpoint as a recorded run — the first open-weight video model in the harness, and the only video engine here that takes NO image. Use when a clip is described in words and needs no start frame or character identity, when a cheap fixed-price draft of a shot idea is worth more than an on-model render, or when a video must be repeatable with a seed against a real negative prompt. 5/10/15 s at 720p or 1080p, landscape or portrait, priced per clip. For a clip that must open on a chosen still use studio-media-wan-2-6-i2v; for a character on-model use Kling or Seedance.
+description: Generate video from text alone with Alibaba's Wan 2.6 (runpod/wan-2-6-t2v) on Runpod's public endpoint as a recorded run — the first open-weight video model in the harness, and, with wan-3.0-t2v, one of the two video engines here that take NO image. Use when a clip is described in words and needs no start frame or character identity, when a cheap fixed-price draft of a shot idea is worth more than an on-model render, or when a video must be repeatable with a seed against a real negative prompt. 5/10/15 s at 720p or 1080p, landscape or portrait, priced per clip. For a clip that must open on a chosen still use studio-media-wan-2-6-i2v; for a character on-model use Kling or Seedance.
 ---
 
 # studio-media-wan-2-6-t2v

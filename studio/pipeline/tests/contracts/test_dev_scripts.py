@@ -60,6 +60,7 @@ def test_no_dev_aws_script_names_the_provider_token():
         text = script.read_text()
         assert "REPLICATE_API_TOKEN" not in text, script.name
         assert "RUNPOD_API_KEY" not in text, script.name
+        assert "FAL_KEY" not in text, script.name
 
 
 def test_dev_aws_seed_destroys_nothing():

@@ -9,11 +9,12 @@ poll loop somebody has to leave a terminal open for — and the credential had t
 move with it.
 
 So the sentence is preserved rather than deleted: **the only paid calls in this
-repository are `create_prediction` below and its twin in `clients/runpod.py`,
-and nothing else.** Everything else in either reads — a schema, a README, a
-prediction's status, a webhook secret — and the pipeline now holds no provider
-token at all. `services/generate.py` picks between the two by the run's
-`provider`; the seam both answer to is documented in `runpod.py`.
+repository are `create_prediction` below and its twins in `clients/runpod.py`
+and `clients/fal.py`, and nothing else.** Everything else in any of them reads
+— a schema, a README, a prediction's status, a webhook secret — and the
+pipeline now holds no provider token at all. `services/generate.py` picks
+between the three by the run's `provider`; the seam all answer to is
+documented in `runpod.py`, and the sixth name on it in `fal.py`.
 
 Two workarounds carried over verbatim, both learned the hard way and both easy to
 lose in a rewrite:
@@ -304,6 +305,16 @@ def get_prediction(prediction_id: str, *, model: str | None = None) -> dict:
         logger.info("[replicate:FAKE] get_prediction %s", prediction_id)
         return _fake_settled(prediction_id)
     return _request("GET", f"{API_ROOT}/predictions/{prediction_id}")
+
+
+def normalise(prediction: dict) -> dict:
+    """The identity: this provider's document is already the seam's shape.
+
+    Here so `services/generate.py` can call one name on every client;
+    `clients/fal.py` is the one whose document needs translating, and says
+    why the seam grew a sixth name for it.
+    """
+    return prediction
 
 
 def output_urls(prediction: dict) -> list[str]:

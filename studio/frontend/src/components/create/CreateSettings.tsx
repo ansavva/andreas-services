@@ -5,7 +5,6 @@ import { Button, Text } from "@ansavva/design-system";
 import { getModelSchema } from "../../apis/studio";
 import { useResource } from "../../hooks/useResource";
 import type { ModelEntry } from "../../types";
-import { EmptyState } from "../common/EmptyState";
 import { LoadError } from "../common/LoadError";
 import { SectionLoading } from "../common/SectionLoading";
 import { describedProps } from "../run/SchemaParams";
@@ -77,9 +76,8 @@ export function CreateSettings({
     return <SectionLoading label="Loading the model's inputs" />;
   }
   if (describedProps(schema.data, skip).length === 0) {
-    return (
-      <EmptyState title="Nothing more to set — the chips carry every input this model takes." />
-    );
+    // Every input has a chip: nothing below them, rather than a line saying so.
+    return null;
   }
   return (
     <div data-create-settings="">

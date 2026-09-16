@@ -14,10 +14,11 @@ below knows three key names rather than one.
 ## What is the same as Replicate, deliberately
 
 The seam. `services/generate.py` holds one closing implementation and reaches
-the provider through five names — `create_prediction`, `get_prediction`,
-`download`, `output_urls`, `cost` — and a `mode()` switch, so this module
-answers to the same five and a reader who knows the other client knows this
-one. `STUDIO_RUNPOD_MODE=fake` is set by `tests/conftest.py` beside
+the provider through six names — `create_prediction`, `get_prediction`,
+`normalise`, `download`, `output_urls`, `cost` — and a `mode()` switch, so
+this module answers to the same six and a reader who knows the other clients
+knows this one. (`normalise` is the identity here and on Replicate; it is
+`clients/fal.py`'s, and that module says why.) `STUDIO_RUNPOD_MODE=fake` is set by `tests/conftest.py` beside
 `STUDIO_REPLICATE_MODE=fake`, for the same reason and with the same three
 guards behind it. `urllib`, no `requests`, for the same reason as well.
 
@@ -240,6 +241,16 @@ def get_prediction(prediction_id: str, *, model: str) -> dict:
         logger.info("[runpod:FAKE] get_prediction %s", prediction_id)
         return _fake_settled(prediction_id)
     return _request("GET", f"{API_ROOT}/{endpoint_of(model)}/status/{prediction_id}")
+
+
+def normalise(prediction: dict) -> dict:
+    """The identity: this provider's document is already the seam's shape.
+
+    Here so `services/generate.py` can call one name on every client;
+    `clients/fal.py` is the one whose document needs translating, and says
+    why the seam grew a sixth name for it.
+    """
+    return prediction
 
 
 def output_urls(prediction: dict) -> list[str]:

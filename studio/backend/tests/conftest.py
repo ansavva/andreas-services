@@ -35,6 +35,10 @@ os.environ["REPLICATE_API_TOKEN"] = "dud-token-the-suite-must-never-use"
 # callback URL needs the fake to have something to sign with.
 os.environ["STUDIO_RUNPOD_MODE"] = "fake"
 os.environ["RUNPOD_API_KEY"] = "dud-key-the-suite-must-never-use"
+# The third, likewise. fal's callback proof is a signature under fal's own
+# key, not this one, so the dud is only there to make `token()` answer.
+os.environ["STUDIO_FAL_MODE"] = "fake"
+os.environ["FAL_KEY"] = "dud-key-the-suite-must-never-use"
 # No callback URL, so a submission under test takes the `poll` branch and there
 # is no webhook to deliver. The webhook route is tested by calling it directly
 # with a signature the test computes — see `tests/unit/test_hooks.py`.

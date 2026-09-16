@@ -155,6 +155,25 @@ def runpod_token_env():
     return os.environ.get("RUNPOD_API_KEY", "").strip()
 
 
+def fal_token_parameter():
+    """The SSM parameter holding the fal.ai API key, or `""` for none.
+
+    A name, never a value — the third of these, shaped like the other two and
+    read the same way at call time by `clients/fal.py`.
+    """
+    return os.environ.get("STUDIO_FAL_TOKEN_PARAMETER", "").strip()
+
+
+def fal_token_env():
+    """The fal.ai API key straight from the environment, or `""`.
+
+    `FAL_KEY`, the name fal's own client library reads, for the same reason
+    Runpod's is `RUNPOD_API_KEY`: a developer who has used the provider's
+    tooling already has the variable.
+    """
+    return os.environ.get("FAL_KEY", "").strip()
+
+
 def webhook_base_url():
     """Where a provider should call back, or `""` when nothing can reach us.
 
