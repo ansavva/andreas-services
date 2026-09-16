@@ -82,6 +82,15 @@ export function getLibraries() {
 }
 
 /**
+ * A new, empty library with the caller as its owner. The other route that is
+ * not scoped to a library — it is what an account in none calls to be in one.
+ * `root` is the node it opens on.
+ */
+export function createLibrary(name: string) {
+  return apiSend<Library & { root: string }>("POST", "/api/libraries", { name });
+}
+
+/**
  * The one listing route: everything under a node, at a depth, filtered.
  *
  * **`GET /api/tree` and `GET /api/reel` were folded into it.** They were two of

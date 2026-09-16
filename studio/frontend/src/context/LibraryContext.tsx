@@ -25,7 +25,7 @@ import {
 } from "react";
 
 import { setLibrary } from "../apis/client";
-import { getLibraries } from "../apis/studio";
+import { createLibrary, getLibraries } from "../apis/studio";
 import type { Library } from "../types";
 
 /** Where the chosen id survives a reload. */
@@ -38,6 +38,8 @@ interface LibraryContextValue {
   loading: boolean;
   error: string | null;
   select(id: string): void;
+  /** Make a library, add it to the list and open it. For an account in none. */
+  create(name: string): Promise<Library>;
 }
 
 const LibraryContext = createContext<LibraryContextValue | null>(null);
@@ -115,9 +117,21 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     setCurrent(id);
   }, []);
 
+  const create = useCallback(async (name: string) => {
+    const created = await createLibrary(name);
+    const library: Library = { id: created.id, name: created.name, role: created.role };
+    // Sorted the way `GET /api/libraries` sorts, so the switcher reads the same
+    // after a create as after a reload.
+    setLibraries((known) =>
+      [...known, library].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)),
+    );
+    select(library.id);
+    return library;
+  }, [select]);
+
   const value = useMemo<LibraryContextValue>(
-    () => ({ libraries, current, loading, error, select }),
-    [libraries, current, loading, error, select],
+    () => ({ libraries, current, loading, error, select, create }),
+    [libraries, current, loading, error, select, create],
   );
 
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;

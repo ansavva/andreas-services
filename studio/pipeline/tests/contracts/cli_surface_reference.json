@@ -4730,6 +4730,57 @@
     },
     "options": {}
   },
+  "signup": {
+    "arguments": {},
+    "commands": {},
+    "options": {
+      "email": {
+        "choices": null,
+        "default": null,
+        "dest": "email",
+        "flag": false,
+        "flags": [
+          "--email"
+        ],
+        "help": "The address to register. Prompted for if omitted.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "library": {
+        "choices": null,
+        "default": null,
+        "dest": "library_name",
+        "flag": false,
+        "flags": [
+          "--library"
+        ],
+        "help": "What to call the library the account starts with. Prompted for if omitted.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "required": false,
+        "type": "str"
+      },
+      "resume": {
+        "choices": null,
+        "default": false,
+        "dest": "resume",
+        "flag": true,
+        "flags": [
+          "--resume"
+        ],
+        "help": "The account exists but was never confirmed: send a fresh code and pick up from there.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 0,
+        "required": false,
+        "type": "bool"
+      }
+    }
+  },
   "upload": {
     "arguments": {
       "files": {

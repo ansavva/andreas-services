@@ -2,9 +2,10 @@
 #
 # Idempotently provision a studio account, and optionally grant it a library.
 #
-# The pool is admin-create-user only (no public self-signup), so every account
-# is created here. Defaults point at **prod**, like `add-member.sh` and unlike
-# everything named `dev-*`.
+# The ordinary route in is `studio signup` (or the SPA's /signup) with an invite
+# code; this is the administrator's route — an account with no invite, or one
+# whose password needs resetting. Defaults point at **prod**, like
+# `add-member.sh` and unlike everything named `dev-*`.
 #
 # Required env:
 #   STUDIO_EMAIL     login email (used as the username)

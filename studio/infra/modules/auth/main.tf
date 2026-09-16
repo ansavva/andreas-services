@@ -1,22 +1,35 @@
 # Cognito user pool backing the studio app.
 #
-# There is no public sign-up and there is not meant to be one: this is a private
-# viewer over a private bucket, so accounts are created out of band with
-# `studio/scripts/create-user.sh` and `allow_admin_create_user_only` is what
-# makes that the only route in. The SPA signs in through Cognito Managed Login
-# (the hosted pages on the domain at the bottom of this file) and the API
-# Gateway Cognito authorizer validates the ID token.
+# **Sign-up is self-service and invite-gated.** The pool accepts `SignUp` from
+# anyone — `studio signup` from a terminal, or the SPA's sign-up page — and the
+# pre-sign-up trigger at the bottom of this file refuses every one that does
+# not carry the invite code in `ClientMetadata`. It used to be admin-create-only
+# with `scripts/create-user.sh` as the only route in; that script still works
+# and is now the exception rather than the rule. The gate exists because every
+# account that signs in can submit a generation billed to the one provider
+# token the API holds — "anyone with an email" is not an acceptable population.
 #
-# **The CLI does not.** `studio login` authenticates with SRP against
-# `InitiateAuth` and holds no browser — which is why the client below keeps
-# `ALLOW_USER_SRP_AUTH` and `ALLOW_REFRESH_TOKEN_AUTH`, and why refresh-token
-# rotation is not enabled here. Read the comment on `explicit_auth_flows`
-# before changing either.
+# The SPA signs in through Cognito Managed Login (the hosted pages on the
+# domain further down) and the API Gateway Cognito authorizer validates the ID
+# token. **Managed Login's own sign-up page is not a route in**: it has no field
+# for the code, so the trigger refuses it with a message naming where to go.
+#
+# **The CLI does not use Managed Login.** `studio login` authenticates with SRP
+# against `InitiateAuth` and holds no browser — which is why the client below
+# keeps `ALLOW_USER_SRP_AUTH` and `ALLOW_REFRESH_TOKEN_AUTH`, and why
+# refresh-token rotation is not enabled here. Read the comment on
+# `explicit_auth_flows` before changing either.
 resource "aws_cognito_user_pool" "main" {
   name = var.name
 
+  # Self sign-up on; the trigger below is what keeps the pool closed. An
+  # administrator can still create an account (`scripts/create-user.sh`).
   admin_create_user_config {
-    allow_admin_create_user_only = true
+    allow_admin_create_user_only = false
+  }
+
+  lambda_config {
+    pre_sign_up = aws_lambda_function.signup_gate.arn
   }
 
   username_attributes      = ["email"]
@@ -28,15 +41,18 @@ resource "aws_cognito_user_pool" "main" {
   # marks it ForceNew: the apply that added this destroyed the pool and both
   # accounts in it. The decision is recorded next to the pool, so here it is.
   #
-  # **The case for leaving it alone, which was real.** Unlike humbugg's pool,
-  # this one sets `allow_admin_create_user_only = true` above. The harm of a
-  # case-sensitive username is two accounts for one address — reproduced on a
-  # scratch pool: same address in
+  # **The case for leaving it alone, which was real at the time.** This pool
+  # was then admin-create-only. The harm of a case-sensitive username is two
+  # accounts for one address — reproduced on a scratch pool: same address in
   # two casings, two accounts, two distinct subs — and producing it needs a
-  # stranger who can register. Here nobody can. A mixed-case sign-in against
+  # stranger who can register. Then nobody could. A mixed-case sign-in against
   # this pool could only ever fail to authenticate; the person retyped it. So
   # the reachable exposure was an admin typo in `create-user.sh`, and the price
   # of removing it was destroying the only two accounts that exist.
+  #
+  # Now that the pool accepts self sign-up, this setting is what stops exactly
+  # that two-accounts-one-address outcome — so what was a judgement call is
+  # load-bearing.
   #
   # **It was replaced anyway, deliberately.** What the pool cost to fix only
   # ever went up, and the thing it would have cost was small and fully
@@ -255,3 +271,98 @@ resource "aws_route53_record" "auth" {
 # For the `<prefix>.auth.<region>.amazoncognito.com` host that `outputs.tf`
 # composes. Unused in the custom-domain case, and free either way.
 data "aws_region" "current" {}
+
+# ---------------------------------------------------------------------------
+# The sign-up gate
+# ---------------------------------------------------------------------------
+#
+# A pre-sign-up trigger that refuses any `SignUp` not carrying the invite code
+# in `ClientMetadata`. Packaged straight out of the repo as a one-file zip, the
+# way `modules/callbacks` packages the hook receiver and for the same reason:
+# it imports nothing from `studio_core`, so the per-machine dev pool can carry
+# the identical gate without an image build. See the handler's docstring for
+# what it checks and why Managed Login's hosted sign-up page cannot pass it.
+#
+# **Closed by default.** `var.invite_code` empty means the handler refuses
+# everyone — a stack applied before the secret was set is a pool nobody can
+# join, never one anybody can. The code rides in as a Lambda environment
+# variable rather than an SSM parameter: it is one short string this function
+# alone reads, and the alternative is an IAM grant, a KMS grant and a cold-start
+# fetch for a value Terraform already holds. It is in state either way.
+data "archive_file" "signup_gate" {
+  type        = "zip"
+  source_file = "${path.module}/../../../backend/studio_core/handlers/aws/signup/presignup_handler.py"
+  output_path = "${path.module}/.terraform-build/presignup_handler.zip"
+}
+
+data "aws_iam_policy_document" "signup_gate_assume" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "signup_gate" {
+  name               = "${var.name}-signup-gate-role"
+  assume_role_policy = data.aws_iam_policy_document.signup_gate_assume.json
+  tags               = var.tags
+}
+
+# Logs, and nothing else. It reads one environment variable and compares two
+# strings; it cannot reach the pool, the catalog or the bucket.
+resource "aws_iam_role_policy" "signup_gate" {
+  name = "${var.name}-signup-gate-logs"
+  role = aws_iam_role.signup_gate.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "arn:aws:logs:*:*:*"
+      },
+    ]
+  })
+}
+
+resource "aws_lambda_function" "signup_gate" {
+  function_name    = "${var.name}-signup-gate"
+  role             = aws_iam_role.signup_gate.arn
+  runtime          = "python3.12"
+  handler          = "presignup_handler.handler"
+  filename         = data.archive_file.signup_gate.output_path
+  source_code_hash = data.archive_file.signup_gate.output_base64sha256
+
+  # Cognito gives a trigger five seconds; this needs milliseconds.
+  timeout     = 5
+  memory_size = 128
+
+  environment {
+    variables = {
+      STUDIO_INVITE_CODE = var.invite_code
+    }
+  }
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_log_group" "signup_gate" {
+  name              = "/aws/lambda/${aws_lambda_function.signup_gate.function_name}"
+  retention_in_days = 14
+  tags              = var.tags
+}
+
+# Cognito invokes the trigger as the pool, and Lambda has to be told to let it.
+# Without this the pool applies cleanly and every sign-up fails with
+# "PreSignUp invocation failed due to error AccessDeniedException" — which
+# reads like the gate refusing, and is not.
+resource "aws_lambda_permission" "signup_gate" {
+  statement_id  = "AllowCognitoInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.signup_gate.function_name
+  principal     = "cognito-idp.amazonaws.com"
+  source_arn    = aws_cognito_user_pool.main.arn
+}

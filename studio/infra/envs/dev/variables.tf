@@ -73,3 +73,15 @@ variable "spa_ports" {
     error_message = "spa_ports must name at least one unprivileged port."
   }
 }
+
+variable "invite_code" {
+  description = <<-EOT
+    The invite code this machine's pool demands of a sign-up. Minted into
+    `dev.env` as `STUDIO_DEV_INVITE_CODE` by `dev-aws-setup.sh` and passed
+    here by `dev-aws-common.sh`. Empty closes the dev pool to sign-up, which
+    is the safe failure and not a useful one.
+  EOT
+  type        = string
+  default     = ""
+  sensitive   = true
+}

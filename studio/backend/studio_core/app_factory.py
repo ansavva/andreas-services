@@ -62,6 +62,9 @@ UNAUTHENTICATED_PATHS = frozenset({"/api/health"})
 # above instead would have fixed that by making the only route that reports on a
 # specific person the only route needing no proof of who they are.
 #
+# The same path takes POST — creating a library is the other thing a caller in
+# no library needs to be able to do — and a path set covers every verb on it.
+#
 # Unlike the set above, this one names a path before the route serving it lands.
 # That is safe here in a way it was not there: an entry that never matches a real
 # route leaves an authenticated caller at the 404 they were already getting,
@@ -198,11 +201,14 @@ def _resolve_library(sub: str, requested: str | None) -> str:
     if not memberships:
         # Authenticated, and a member of nothing. **Not the 400 below**: there
         # is no header this caller could send that would work, so "name one" is
-        # an instruction they cannot follow. The pool is admin-create-only, so
-        # this is an account someone created and never added to a library — a
-        # provisioning gap, and 403 is the status that says the request was
-        # understood and refused rather than malformed.
-        raise ForbiddenError("You are not a member of any library.")
+        # an instruction they cannot follow. This is a fresh account that has
+        # not made its library yet — `POST /api/libraries` is the remedy, and
+        # it is unscoped precisely so this refusal does not stand in its way.
+        # 403 is the status that says the request was understood and refused
+        # rather than malformed.
+        raise ForbiddenError(
+            "You are not a member of any library. Create one with POST /api/libraries."
+        )
 
     # Naming the choice, not just the header: these are the caller's own
     # libraries, so listing them leaks nothing they cannot already read, and it

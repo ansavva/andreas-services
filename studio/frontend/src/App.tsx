@@ -1,14 +1,15 @@
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { BrowserRouter, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 
-import { Alert, Toast } from "@ansavva/design-system";
+import { Alert, Button, Field, Input, Text, Toast } from "@ansavva/design-system";
 
 import { ApertureSpinner } from "./components/common/Aperture";
 import { CALLBACK_PATH, login } from "./auth/oauth";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import { LibraryProvider, useLibrary } from "./context/LibraryContext";
+import { SIGNUP_PATH } from "./pages/SignUpPage";
 import { StudioRoutes } from "./routes";
 
 /**
@@ -64,18 +65,80 @@ function Gate({ children }: { children: ReactNode }) {
 }
 
 /**
+ * An account in no library, and the one thing it can do about that.
+ *
+ * `create` puts the new library into the context and selects it, so the gate
+ * above re-renders straight into the routes — no reload, no second fetch. A
+ * failure stays on this screen with the reason; the account is unchanged.
+ */
+function FirstLibrary() {
+  const { create } = useLibrary();
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const trimmed = name.trim();
+
+  async function submit() {
+    if (!trimmed || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await create(trimmed);
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex min-h-full items-center justify-center p-6">
+      <div className="flex w-full max-w-md flex-col gap-4">
+        <Text variant="heading">Name your library</Text>
+        <Text variant="body" tone="muted">
+          Everything you make lives in a library. This account is not in one yet, so
+          start with an empty one — you can be added to others later.
+        </Text>
+        <Field.Root name="library">
+          <Field.Label>Library name</Field.Label>
+          <Input
+            value={name}
+            onValueChange={setName}
+            placeholder="My library"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void submit();
+            }}
+          />
+        </Field.Root>
+        {error && (
+          <Alert.Root intent="danger">
+            <Alert.Title>Could not create the library</Alert.Title>
+            <Alert.Description>{error}</Alert.Description>
+          </Alert.Root>
+        )}
+        <div className="flex justify-end">
+          <Button disabled={!trimmed || busy} onClick={() => void submit()}>
+            {busy ? "Creating…" : "Create library"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * The gate, and everything behind it.
  *
- * Split out of `App` so `/auth/callback` can skip it: that route completes
- * sign-in, so it necessarily renders with no session, and the gate would bounce
- * it back to the hosted page in a loop. It cannot simply live inside the gate
+ * Split out of `App` so `/auth/callback` and `/signup` can skip it: the first
+ * completes sign-in and the second precedes it, so both necessarily render
+ * with no session, and the gate would bounce either back to the hosted page. It cannot simply live inside the gate
  * either — `LibraryProvider` below fetches on mount, and there is no token to
  * fetch with until the exchange this bypass exists for has finished.
  */
 function GatedApp() {
   const { pathname } = useLocation();
 
-  if (pathname === CALLBACK_PATH) return <StudioRoutes />;
+  if (pathname === CALLBACK_PATH || pathname === SIGNUP_PATH) return <StudioRoutes />;
 
   return (
     <Gate>
@@ -96,11 +159,13 @@ function GatedApp() {
  * answers would fire exactly the requests that cannot succeed yet, and the
  * spinner would be replaced by an error that fixes itself a moment later.
  *
- * **A caller in *no* library is a real state and says so.** The pool is
- * admin-create-only, so it means an account somebody created and never added to
- * a library — a provisioning gap, and the fix is `scripts/add-member.sh`. The
- * API answers this route with an empty list rather than a 403 precisely so it can
- * be diagnosed; showing "loading" forever would throw that away.
+ * **A caller in *no* library is a real state, and the fix is offered here.**
+ * It is a fresh account — one that just signed up, or one an administrator
+ * created and never added to a library — and either way the next step is the
+ * same: make one. `POST /api/libraries` is the one write an account in no
+ * library can make, and `FirstLibrary` below is the form that makes it. The
+ * API answers the listing with an empty list rather than a 403 precisely so
+ * this screen can exist; showing "loading" forever would throw that away.
  *
  * `key` on the routes is what makes switching library discard every cached
  * listing: they live in component state throughout the tree, and remounting is
@@ -117,20 +182,20 @@ function LibraryGate() {
     );
   }
 
-  if (error || current === null) {
+  if (error) {
     return (
       <div className="flex min-h-full items-center justify-center p-6">
         <div className="max-w-md">
-          <Alert.Root intent={error ? "danger" : "warning"}>
-            <Alert.Title>{error ? "Could not load your libraries" : "No library yet"}</Alert.Title>
-            <Alert.Description>
-              {error ?? "Your account is not a member of any library. Ask for access."}
-            </Alert.Description>
+          <Alert.Root intent="danger">
+            <Alert.Title>Could not load your libraries</Alert.Title>
+            <Alert.Description>{error}</Alert.Description>
           </Alert.Root>
         </div>
       </div>
     );
   }
+
+  if (current === null) return <FirstLibrary />;
 
   // **`key` on the route table and not on a wrapping element.** `Routes`
   // renders no DOM of its own, so remounting it discards every hook's state

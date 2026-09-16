@@ -30,3 +30,15 @@ variable "api_throttling_burst_limit" {
   type        = number
   default     = 50
 }
+
+variable "invite_code" {
+  description = <<-EOT
+    The invite code a sign-up must present. Passed to `modules/auth`, where an
+    empty value — the default — makes the pre-sign-up trigger refuse every
+    sign-up. In CI this is `TF_VAR_invite_code`, from the `STUDIO_INVITE_CODE`
+    secret on the studio-production environment; never a tfvars file.
+  EOT
+  type        = string
+  default     = ""
+  sensitive   = true
+}

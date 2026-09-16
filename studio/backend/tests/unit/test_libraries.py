@@ -173,3 +173,89 @@ def test_a_membership_with_no_library_record_still_names_the_id(catalog_table, s
 
     assert resp.status_code == 200
     assert {"id": "lib-dangling", "name": "lib-dangling", "role": "member"} in resp.get_json()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/libraries — a fresh account making its first library
+# ---------------------------------------------------------------------------
+
+
+def _post(body, client=None):
+    return (client or _client()).post(
+        "/api/libraries", json=body, headers={"Authorization": "Bearer t"}
+    )
+
+
+def test_a_caller_in_no_library_can_create_one(catalog_table, signed_in):
+    """The whole point: no membership, no header, and the request goes through.
+
+    A caller in no library is refused 403 by `_resolve_library` on every scoped
+    path, so this passing is what proves the POST shares the unscoped path with
+    the GET. Afterwards the same caller lists exactly the library they made, as
+    its owner, and its root node opens as an empty folder at `/`.
+    """
+    signed_in.sub = STRANGER
+
+    resp = _post({"name": "Mine"})
+
+    assert resp.status_code == 201
+    created = resp.get_json()
+    assert created["name"] == "Mine"
+    assert created["role"] == "owner"
+    assert created["id"].startswith("lib-")
+    assert created["root"].startswith("node-")
+
+    listed = _get().get_json()
+    assert listed == [{"id": created["id"], "name": "Mine", "role": "owner"}]
+
+    root = catalog_table.get_item(
+        TableName=config.catalog_table(),
+        Key={"pk": {"S": f"NODE#{created['root']}"}, "sk": {"S": "META"}},
+    )["Item"]
+    assert root["lib"]["S"] == created["id"]
+    assert root["kind"]["S"] == "folder"
+    assert root["path"]["S"] == "/"
+    assert "parent_id" not in root
+
+
+def test_creating_a_library_grants_nobody_else(catalog_table, signed_in):
+    """The only membership written is the caller's own.
+
+    This is the property that makes the route safe to expose where
+    `add-member.sh` is not: a stranger's partition is untouched, and the seeded
+    owner's list does not grow.
+    """
+    signed_in.sub = STRANGER
+    created = _post({"name": "Mine"}).get_json()
+
+    signed_in.sub = CATALOG_OWNER
+    assert created["id"] not in [entry["id"] for entry in _get().get_json()]
+
+    rows = catalog_table.query(
+        TableName=config.catalog_table(),
+        KeyConditionExpression="pk = :pk",
+        ExpressionAttributeValues={":pk": {"S": f"USER#{STRANGER}"}},
+    )["Items"]
+    assert [row["sk"]["S"] for row in rows] == [f"LIB#{created['id']}"]
+
+
+def test_a_caller_already_in_a_library_gets_a_second(catalog_table, signed_in):
+    """Nothing caps it at one. Two memberships means the header is now required
+    on scoped routes — which is the existing rule, not a new one."""
+    resp = _post({"name": "Another"})
+
+    assert resp.status_code == 201
+    assert len(_get().get_json()) == 2
+
+
+@pytest.mark.parametrize("body", [{}, {"name": ""}, {"name": "   "}, {"name": 7}, None])
+def test_a_library_needs_a_name(catalog_table, signed_in, body):
+    resp = _post(body)
+
+    assert resp.status_code == 400
+    assert "name" in resp.get_json()["error"]
+
+
+def test_a_library_name_is_trimmed_and_bounded(catalog_table, signed_in):
+    assert _post({"name": "  Padded  "}).get_json()["name"] == "Padded"
+    assert _post({"name": "x" * 121}).status_code == 400

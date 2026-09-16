@@ -13,7 +13,7 @@ dev stack, never at production — see the root [CLAUDE.md](../../CLAUDE.md) and
 |---|---|
 | `catalog` | **The library.** The DynamoDB table that says what exists. |
 | `media` | **The media bucket.** Bytes only; nothing lists it. |
-| `auth` | Cognito user pool (admin-create-only) + secretless SPA client |
+| `auth` | Cognito user pool (self sign-up behind an invite-code trigger) + secretless SPA client |
 | `compute` | ECR repo, the API Lambda, and its IAM — the bucket, the table, *and* the provider token |
 | `api_gateway` | REST API, Cognito authorizer, CORS gateway responses, stage |
 | `callbacks` | **Where a finished generation is reported.** Its own HTTP API, a receiver Lambda, SQS + a DLQ, and — in prod only — the worker that closes the run. **Both environments.** |

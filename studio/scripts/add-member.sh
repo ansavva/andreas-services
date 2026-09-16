@@ -6,8 +6,10 @@
 # authorisation in this service — every route checks the caller's rows against
 # the library a node says it belongs to — so a route that granted membership
 # would be a route that could grant itself access to somebody else's library.
-# There is no such route, and there should not be one. Granting access is an
-# out-of-band act, like creating the account itself (`create-user.sh`).
+# There is no such route, and there should not be one. (`POST /api/libraries`
+# writes a membership too — of a library it has just created, empty, for the
+# caller alone — which is the one shape that cannot reach anybody else's.)
+# Granting access to an EXISTING library is an out-of-band act.
 #
 # **Membership rides on the ID token only through `sub`.** The token carries no
 # library and no role, so nothing about it goes stale when a row is written here

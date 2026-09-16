@@ -109,6 +109,11 @@ module "auth" {
   callback_urls = [for origin in local.spa_origins : "${origin}/auth/callback"]
   logout_urls   = [for origin in local.spa_origins : "${origin}/"]
 
+  # This machine's own code, from `STUDIO_DEV_INVITE_CODE` in `dev.env` via
+  # `dev-aws-common.sh`. The gate is the same file prod runs, so `studio
+  # signup` against the dev stack exercises the code path a stranger would.
+  invite_code = var.invite_code
+
   tags = local.common_tags
 }
 

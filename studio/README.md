@@ -94,19 +94,31 @@ feed.
 
 ## Access
 
-Sign-in is required and there is no sign-up. The Cognito pool is
-admin-create-only, and an account on its own reaches nothing: what a caller can
-see is the libraries they are a member of, and membership is granted out of band.
+Sign-in is required, and sign-up is **invite-only**. The pool accepts
+self-service sign-up, and a pre-sign-up trigger refuses any that does not carry
+the invite code — because every account can submit a generation billed to the
+one provider token the API holds. A new account starts in a library of its
+own, holding nothing: what a caller can see is the libraries they are a member
+of, and nothing else.
 
 ```bash
-STUDIO_EMAIL=you@example.com ./studio/scripts/create-user.sh
-STUDIO_EMAIL=you@example.com STUDIO_LIBRARY=lib-… ./studio/scripts/add-member.sh
-STUDIO_LIBRARY=lib-… ./studio/scripts/add-member.sh --list
+studio signup                 # address, password, invite code, emailed code; then the first library
+# or the SPA at /signup — Managed Login's own "Create an account" link cannot pass the gate
 ```
 
-**No API route grants membership, deliberately** — one could grant itself access
-to somebody else's library. `STUDIO_ROLE` is `member` by default; no route
-reads the role, so `owner` is a record of who holds the library, not a wider grant.
+An account gets into **somebody else's** library only out of band:
+
+```bash
+STUDIO_EMAIL=you@example.com STUDIO_LIBRARY=lib-… ./studio/scripts/add-member.sh
+STUDIO_LIBRARY=lib-… ./studio/scripts/add-member.sh --list
+STUDIO_EMAIL=you@example.com ./studio/scripts/create-user.sh   # an admin-created account, no invite
+```
+
+**No API route grants membership of an existing library, deliberately** — one
+could grant itself access to somebody else's. `POST /api/libraries` is the one
+route that writes a membership, and the only library it can name is the empty
+one it just made. `STUDIO_ROLE` is `member` by default; no route reads the
+role, so `owner` is a record of who holds the library, not a wider grant.
 
 ## Development
 

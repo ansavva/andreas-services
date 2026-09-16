@@ -173,3 +173,13 @@ def libraries() -> list:
     """The caller's libraries. The one route that is not library-scoped."""
     result = get("/api/libraries")
     return result if isinstance(result, list) else []
+
+
+def create_library(name: str) -> dict:
+    """A new, empty library with the caller as owner. The other unscoped route.
+
+    `{id, name, role, root}` back. This is what `studio signup` calls last, and
+    what a signed-in account in no library calls to stop being in none.
+    """
+    result = post("/api/libraries", {"name": name})
+    return result if isinstance(result, dict) else {}
