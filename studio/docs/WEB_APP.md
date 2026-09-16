@@ -419,14 +419,16 @@ page and a plain textarea over its literal bytes, and never offers fields.
   control over again, and `?layout=tiles` in the address so the wall is a
   link and the run opened from it closes back to it. `RunTiles` draws the
   same pages, filters and day groups as `RunFeed` with the plan folded away:
-  a square per output in the design system's `ImageList`, the run's model
-  and time on an `ItemBar` that shows on hover, the same `⋮` (`outputMenu`,
+  a tile per output at the plan's own shape (`ratioOf`), packed by the
+  design system's `Masonry` — not `ImageList`, whose square tiles cut a
+  16:9 clip to a third of itself — the run's model and time on an
+  `ImageList.ItemBar` that shows on hover, the same `⋮` (`outputMenu`,
   shared with `OutputTile`), and a press opening the same lightbox at that
-  output. A run in flight, a draft and a failure each get one square that
+  output. `Masonry` counts children, so the tiles are built flat, one
+  element each, rather than a fragment per run. A run in flight, a draft and a failure each get one square that
   opens the run, so nothing is findable in one layout and not the other.
-  `ImageList.Item` is not used: it owns a bare `<img>`, and `MediaThumb` is
-  the one place media is drawn (re-signing, lazy loading, the poster frame),
-  so the tile is the app's own `<li>` around it. **Clips play on their own
+  `MediaThumb` is the one place media is drawn (re-signing, lazy loading,
+  the poster frame), so the tile is the app's own box around it. **Clips play on their own
   here** — `MediaThumb`'s `autoplay`, which plays only what an observer says
   is on screen and pauses it as it scrolls off, re-arms on a fresh presign
   and on the tab coming back (Chrome pauses hidden video-only media and never
