@@ -47,8 +47,13 @@ function rolesOf(kind: RunKind, entry: ModelEntry): AttachRole[] {
  * The model's own rules, as why a role cannot take one more picture — or
  * null when it can. `start_excludes_refs` / `end_excludes_refs` say a model
  * takes a frame OR references; `max_refs` is the ceiling on references.
+ *
+ * Exported because the picker needs the same answer: the tile retires once
+ * the cap is met, but a picker already open on `Image refs` kept taking
+ * pictures past it — twelve went to a model that takes ten — so the picker
+ * asks this before each one and shows the reason instead.
  */
-function blockedReason(
+export function blockedReason(
   of: AttachRole,
   entry: ModelEntry,
   attachments: readonly Attachment[],

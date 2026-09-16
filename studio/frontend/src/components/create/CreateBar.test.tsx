@@ -50,6 +50,7 @@ import {
   clearModelDefaults,
   createRun,
   expandTemplate,
+  getFolder,
   getModelDefaults,
   getModels,
   getProject,
@@ -670,4 +671,57 @@ it("a picture opens a preview whose lines move it and remove it", async () => {
     within(await screen.findByRole("dialog")).getByRole("button", { name: "Choose image refs…" }),
   );
   expect(await screen.findByRole("region", { name: "Choose image refs" })).toBeTruthy();
+});
+
+/**
+ * The `Image refs` tile retires once `max_refs` is met, but a picker already
+ * open on it kept taking pictures past the cap — twelve reached a model that
+ * takes ten, and the run failed at the provider. The picker now reads the same
+ * rule: at the cap, the pictures not on the sheet are disabled and say why,
+ * the title counts against the cap, and the ones on the sheet stay pressable
+ * so a person can make room.
+ */
+it("the picker stops at the model's reference cap and says so", async () => {
+  window.localStorage.clear();
+  const file = (n: number) => ({
+    id: `node-pick-${n}`,
+    key: `pick-${n}.png`,
+    name: `pick-${n}.png`,
+    size: 1,
+    last_modified: null,
+    kind: "image" as const,
+    content_type: "image/png",
+    url: `https://example.invalid/pick-${n}.png`,
+  });
+  vi.mocked(getFolder).mockResolvedValue({
+    prefix: "",
+    sort: "name",
+    depth: "1",
+    tags: [],
+    breadcrumbs: [],
+    folders: [],
+    files: [file(1), file(2)],
+  } as never);
+  await open();
+  // STILL takes 4; three are already on the sheet.
+  for (const n of [1, 2, 3]) api.attach({ ...FACE, node: `node-${n}`, name: `face-0${n}.png` }, "reference");
+  await waitFor(() => expect(strip()).toBeTruthy());
+
+  fireEvent.click(within(strip()).getByRole("button", { name: "Image refs" }));
+  const first = await screen.findByRole("button", { name: "Attach pick-1.png" });
+  expect(screen.getByText("· 3 / 4")).toBeTruthy();
+  expect(first).toHaveProperty("disabled", false);
+
+  fireEvent.click(first);
+
+  // The fourth met the cap: the title says so, the other picture is closed
+  // with the reason, and the one just attached can still come off.
+  await screen.findByText("· 4 / 4");
+  const second = screen.getByRole("button", { name: "Attach pick-2.png" });
+  expect(second).toHaveProperty("disabled", true);
+  expect(second.getAttribute("title")).toBe("This model takes at most 4 reference images.");
+  // Two `Remove pick-1.png`: the strip's tile and the picker's mark. The
+  // picker's is the one whose disabling would matter.
+  const picker = second.closest("[data-attach-picker]") as HTMLElement;
+  expect(within(picker).getByRole("button", { name: "Remove pick-1.png" })).toHaveProperty("disabled", false);
 });

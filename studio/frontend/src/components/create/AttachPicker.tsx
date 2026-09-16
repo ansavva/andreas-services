@@ -171,6 +171,14 @@ interface PickerProps {
   attached: ReadonlySet<string>;
   /** How many the highlighted role holds — the count a phone's title shows while `Image refs` accumulates. */
   held?: number;
+  /** The model's ceiling on that role, when it has one — the title reads `· 10 / 10`. */
+  cap?: number | null;
+  /**
+   * Why the role can take no more, or null while it can. Set, every picture
+   * not already on the sheet is disabled and carries the reason; the ones on
+   * it stay pressable so a person can make room.
+   */
+  full?: string | null;
   onAttach: (ref: AttachRef) => void;
   /** A marked picture pressed again: take it off the sheet. */
   onDetach: (node: string) => void;
@@ -182,6 +190,8 @@ function PickerBody({
   project,
   attached,
   held = 0,
+  cap = null,
+  full = null,
   onAttach,
   onDetach,
   onClose,
@@ -313,9 +323,9 @@ function PickerBody({
             and Done, and on 390px the sentence was the thing that got cut. */}
         <Text as="span" variant="body" weight="medium" className="min-w-0 flex-1 truncate">
           {sheet ? words.label : words.choose}
-          {sheet && !holdsOne(role) && held > 0 && (
+          {!holdsOne(role) && (held > 0 || cap !== null) && (
             <Text as="span" variant="body" tone="muted">
-              {` · ${held}`}
+              {cap === null ? ` · ${held}` : ` · ${held} / ${cap}`}
             </Text>
           )}
         </Text>
@@ -456,6 +466,7 @@ function PickerBody({
                 <div className={`${MEDIA_GRID} p-2`}>
                   {files.map((file) => {
                     const on = attached.has(file.id);
+                    const blocked = !on && full !== null;
                     return (
                       <Button
                         key={file.id}
@@ -463,7 +474,8 @@ function PickerBody({
                         size="sm"
                         aria-pressed={on}
                         aria-label={on ? `Remove ${file.name}` : `Attach ${file.name}`}
-                        title={file.name}
+                        title={blocked ? full : file.name}
+                        disabled={blocked}
                         className={`relative h-auto flex-col items-stretch gap-1 rounded-md bg-transparent p-1 text-left
                                     hover:bg-fill active:bg-fill-active ${on ? "ring-2 ring-primary" : ""}`}
                         onClick={() => (on ? onDetach(file.id) : attach(file))}
