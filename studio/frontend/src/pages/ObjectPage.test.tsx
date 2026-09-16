@@ -291,9 +291,15 @@ describe("the controls over the picture while it owns the screen", () => {
     const stage = screen.getByRole("button", { name: "Exit fullscreen (f)" }).closest(".fixed")!;
     expect(within(stage as HTMLElement).getByLabelText("Edit details")).toBeTruthy();
     expect(within(stage as HTMLElement).getByRole("button", { name: /^Delete/ })).toBeTruthy();
+    // And the frame climbs past the header and the sheet handle (`z-30`),
+    // told by the player — not by a `:has()` older Safari never re-ran.
+    const frame = screen.getByTestId("object-viewer");
+    expect(frame.classList.contains("z-50")).toBe(true);
+    expect(frame.classList.contains("z-20")).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: "Exit fullscreen (f)" }));
     expect(screen.getAllByLabelText("Edit details")).toHaveLength(1);
+    expect(frame.classList.contains("z-20")).toBe(true);
   });
 });
 

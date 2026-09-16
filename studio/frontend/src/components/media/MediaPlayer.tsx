@@ -27,6 +27,7 @@ import {
   ZoomInIcon,
   ZoomOutIcon,
 } from "../common/icons";
+import { useViewerFrameLift } from "../viewer/ViewerFrame";
 import { PlayerTransport } from "./PlayerTransport";
 import { useChromeIdle } from "./useChromeIdle";
 import { useZoom, type ZoomState } from "./useZoom";
@@ -398,6 +399,18 @@ export function MediaPlayer({
     onFullscreenChangeRef.current?.(isFullscreen);
   }, [isFullscreen]);
 
+  // The frame this sits in, if any, has to climb past the header while the
+  // app's own fullscreen is up — see `ViewerFrame`. Native needs nothing:
+  // the browser paints the fullscreen element over everything itself.
+  const lift = useViewerFrameLift();
+  useEffect(() => {
+    const app = isFullscreen && !native;
+    lift(app);
+    return () => {
+      if (app) lift(false);
+    };
+  }, [isFullscreen, native, lift]);
+
   const close = useCallback(() => {
     if (isFullscreen) void toggle();
     setPlaying(false);
@@ -513,10 +526,8 @@ export function MediaPlayer({
       ref={setContainerNode}
       className={box}
       style={{ ...shell, ...zoom.stage }}
-      // Which fullscreen is in force, for an ancestor that has to make way.
-      // `ViewerFrame` is its own stacking context under the header's, so a
-      // `z-50` in here cannot climb past a `z-30` out there; the frame reads
-      // `app` and lifts itself instead.
+      // Which fullscreen is in force, for anything reading the DOM — a test,
+      // a script. What has to make way for it is told in code, above.
       data-fullscreen={isFullscreen ? (native ? "native" : "app") : undefined}
       draggable={draggable || undefined}
       onDragStart={draggable ? onDragStart : undefined}
