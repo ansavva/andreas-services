@@ -208,6 +208,81 @@ def test_a_webhook_url_is_never_part_of_the_payload(empty_api, monkeypatch):
     assert sent["payload"] == {"prompt": "a porch at dusk"}
 
 
+# ── the provider says no, or says nothing ───────────────────────────────────
+
+
+def test_a_refused_submission_closes_the_run_failed(empty_api, monkeypatch):
+    """**A 4xx is an answer, and the answer is no.** Three runs sat at `pending`
+    over Runpod's `402 insufficient balance` with nothing in flight, nothing
+    the SPA could press, and a spinner where the reason should have been. The
+    provider's words land in `error`; the caller still gets the 502.
+    """
+    def refuse(model, payload, *, webhook=None):
+        raise replicate.ReplicateError(
+            "POST … -> 402: {…}", status=402, detail="insufficient balance")
+
+    monkeypatch.setattr(replicate, "create_prediction", refuse)
+    project = _project(empty_api)
+    run = _draft(empty_api, project)
+
+    resp = empty_api.post(f"/api/runs/{run['id']}/submit")
+
+    assert resp.status_code == 502
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    assert record["status"] == "failed"
+    assert record["error"] == (
+        "replicate refused the submission (402): insufficient balance")
+    assert record["completed"]
+    assert record.get("prediction_id") is None
+    listing = empty_api.get(f"/api/runs?project={project['id']}").get_json()
+    assert [r["status"] for r in listing["runs"]] == ["failed"], \
+        "the grid row moved with the envelope"
+
+
+def test_a_silent_submission_stays_pending(empty_api, monkeypatch):
+    """**No status means nothing is known**, and `pending` with no prediction
+    id is the honest row: a request that timed out on the way out may still
+    have been queued and billed, and `failed` over a live job would be a lie
+    the callback later contradicts. A 5xx is the same case — a proxy's 502
+    does not say whether the queue behind it took the job."""
+    def vanish(model, payload, *, webhook=None):
+        raise replicate.ReplicateError("POST … failed: timed out")
+
+    monkeypatch.setattr(replicate, "create_prediction", vanish)
+    project = _project(empty_api)
+    run = _draft(empty_api, project)
+
+    resp = empty_api.post(f"/api/runs/{run['id']}/submit")
+
+    assert resp.status_code == 502
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    assert record["status"] == "pending"
+    assert "error" not in record
+
+    def broken(model, payload, *, webhook=None):
+        raise replicate.ReplicateError("POST … -> 503: {…}", status=503,
+                                       detail="try later")
+
+    monkeypatch.setattr(replicate, "create_prediction", broken)
+    other = _draft(empty_api, project)
+    empty_api.post(f"/api/runs/{other['id']}/submit")
+    assert catalog.entity(catalog.ENTITY_RUN, other["id"])["status"] == "pending"
+
+
+def test_a_refusal_carries_the_providers_own_words(monkeypatch):
+    """`_detail` reads the problem document both providers answer with, so a
+    run's `error` says `insufficient balance` rather than a URL and a blob."""
+    from studio_core.clients import runpod
+    assert runpod._detail(
+        '{"status":402,"title":"Insufficient Balance","detail":"insufficient balance"}'
+    ) == "insufficient balance"
+    assert runpod._detail('{"title":"Unauthorized"}') == "Unauthorized"
+    assert runpod._detail("<html>gateway</html>") == "<html>gateway</html>"
+    assert runpod._detail("") == "no detail"
+    assert replicate._detail('{"detail":"Invalid type. Expected: string"}') == (
+        "Invalid type. Expected: string")
+
+
 # ── closing ────────────────────────────────────────────────────────────────
 
 

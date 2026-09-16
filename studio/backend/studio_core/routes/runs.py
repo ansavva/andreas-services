@@ -1298,6 +1298,12 @@ def submit_run(run_id: str):
     3. **Move to `pending`, then call the provider.** A process that dies in
        between leaves a run that reads as "went out and never answered" rather
        than as a draft.
+    4. **A refusal closes the run `failed`; a silence does not.** The provider
+       answering 4xx — `402 insufficient balance` was the one that showed the
+       gap — means nothing was queued, so the run is closed with its words in
+       `error` and the SPA has something to read instead of a spinner. A
+       timeout or 5xx keeps today's `pending`, because it cannot say whether
+       the job went in.
 
     **There is no approval check.** Hard rule #2 — nothing runs unless a person
     tells it to — is kept by whoever calls this: the CLI on an explicit
@@ -1335,7 +1341,26 @@ def submit_run(run_id: str):
         bump_count=bump_count,
     )
 
-    created = generate.dispatch(record, entry, payload, bindings)
+    try:
+        created = generate.dispatch(record, entry, payload, bindings)
+    except UpstreamError as refusal:
+        # **Only a refusal closes the run; a silence leaves it.** A 4xx means
+        # the provider read the request and turned it down — out of funds, a
+        # bad key, a payload it will not take — so nothing is in flight and
+        # `failed` is the truth. A timeout or a 5xx cannot say whether a job
+        # was queued, so the run stays `pending` with no prediction id, which
+        # is the state `dispatch` documents. Re-raised either way: the caller
+        # still gets the 502 and the provider's words.
+        if not refusal.refused:
+            raise
+        catalog.update_project_entity(
+            KIND, record,
+            {"status": "failed", "completed": catalog.now(),
+             "error": f"{provider} refused the submission "
+                      f"({refusal.status}): {refusal.detail}"},
+            {"status": "failed"},
+        )
+        raise
     prediction_id = created.get("id")
     if not prediction_id:
         # The provider answered and named no prediction. Nothing is in flight, so

@@ -428,12 +428,16 @@ def dispatch(record: dict, entry: dict, payload: dict, bindings: dict) -> dict:
     """Presign, then create the prediction. **This is the call that bills.**
 
     Called only after the run has been moved to `pending`, so the gate stands in
-    front of the money rather than behind it. A failure here therefore leaves the
-    run at `pending` with no prediction id, which is exactly the state that reads
-    as "a submission went out and never answered" — deliberately not rewritten to
-    `failed`, because a network error on the way *out* cannot distinguish a
-    request the provider never saw from one it accepted and answered into a
-    dropped socket.
+    front of the money rather than behind it. A *silent* failure here — a
+    timeout, a dropped socket, a 5xx — leaves the run at `pending` with no
+    prediction id, which is exactly the state that reads as "a submission went
+    out and never answered": deliberately not rewritten to `failed`, because a
+    network error on the way *out* cannot distinguish a request the provider
+    never saw from one it accepted and answered into a dropped socket. A
+    *refusal* — a 4xx, `UpstreamError.refused` — is different: the provider
+    read the request and said no, nothing is queued, and `submit_run` closes
+    the run `failed` with the provider's words. Three runs sat at `pending`
+    over a `402 insufficient balance` before that distinction was drawn.
     """
     payload = dict(payload)
     # **A LoRA send goes out as `{path, scale}`, and the scale never goes out
