@@ -57,7 +57,7 @@ import {
 } from "../common/TokenizedPromptEditor";
 import { TemplateList } from "../run/TemplateList";
 import { SheetHandle } from "../common/SheetHandle";
-import { AttachTiles, fallbackDropRole } from "./AttachTiles";
+import { AttachTiles, blockedReason, fallbackDropRole } from "./AttachTiles";
 import { isNodeDrag, readNodeDrag } from "./dragRef";
 import { ModelChip, ModelList, ParamChipRow, ProjectChip, chipClass } from "./CreateChips";
 import { AttachPicker } from "./AttachPicker";
@@ -535,6 +535,10 @@ export function CreateBar() {
    * drag from a viewer brings the sheet up under the pointer.
    */
   const dropRole = entry ? fallbackDropRole(bar.kind, entry, attachments) : null;
+  // Why the open picker's role can take no more — `max_refs` met, a frame
+  // excluding references — or null while it can. Read on every render so the
+  // picker closes its tiles the moment the cap is reached, not on reopen.
+  const pickerFull = entry && bar.role ? blockedReason(bar.role, entry, attachments) : null;
   const onDragOver = (event: DragEvent) => {
     if (!isNodeDrag(event) || dropRole === null) return;
     event.preventDefault();
@@ -622,8 +626,12 @@ export function CreateBar() {
               }
               attached={new Set(attachments.map((each) => each.ref.node))}
               held={attachments.filter((each) => each.role === bar.role).length}
+              cap={bar.role === "reference" ? (entry?.images?.max_refs ?? null) : null}
+              full={pickerFull}
               onAttach={(ref: AttachRef) => {
-                if (bar.role) attach(ref, bar.role);
+                // The tiles are disabled once `full` is set; this is the
+                // same rule for a press that raced the render.
+                if (bar.role && pickerFull === null) attach(ref, bar.role);
               }}
               // The mark in the picker means "on the sheet", in any role, so
               // pressing it again takes the picture off whichever role holds it.

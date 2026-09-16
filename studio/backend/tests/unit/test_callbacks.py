@@ -712,7 +712,8 @@ def test_a_fal_error_callback_closes_the_run_failed(empty_api, fal_keys):
         "error": "content moderation", "payload": {"detail": "blocked"}}))
 
     assert closed["status"] == "failed"
-    assert closed["error"] == "content moderation"
+    # fal's wrapper, then the detail it put under `payload` — the reason.
+    assert closed["error"] == "content moderation: blocked"
 
 
 def test_a_fal_callback_about_another_request_is_rejected(empty_api, fal_keys):

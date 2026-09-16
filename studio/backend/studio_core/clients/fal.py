@@ -350,6 +350,24 @@ def get_prediction(prediction_id: str, *, model: str) -> dict:
     })
 
 
+def _without_echo(payload: dict) -> dict:
+    """fal's validation detail minus the `input` each item echoes.
+
+    A 422 item is `{type, loc, msg, input}`, and for an image field `input`
+    is the list of presigned URLs `dispatch` minted — hard rule #3 says a
+    signed URL is never stored, and this document is stored. `loc` and `msg`
+    are the complaint; the echo is the payload, which the run already holds
+    by node id.
+    """
+    detail = payload.get("detail")
+    if not isinstance(detail, list):
+        return payload
+    return {**payload, "detail": [
+        {k: v for k, v in item.items() if k != "input"} if isinstance(item, dict) else item
+        for item in detail
+    ]}
+
+
 def normalise(document: dict) -> dict:
     """fal's document in the seam's shape: `id`, `status`, `output`, `error`.
 
@@ -361,6 +379,16 @@ def normalise(document: dict) -> dict:
 
     `payload_error` — fal could not serialise the model's answer — is a
     failure whatever `status` says: there is nothing to download.
+
+    **On an error the reason is under `payload`, not `error`.** fal's webhook
+    and its result route both put a one-line wrapper in `error` — "Unexpected
+    status code: 422" — and the model app's actual complaint in `payload`, as
+    the `{"detail": [{loc, msg}, …]}` document a 422 carries. Reading `error`
+    alone closed a run with the wrapper and threw the 18 KB that said
+    `reference_image_urls: List should have at most 10 items` away, which
+    is what left a person asking what a 422 means. The two are joined here,
+    wrapper first, and `detail` keeps fal's document so the stored response
+    still has it whole.
     """
     if "request_id" not in document:
         return document
@@ -368,12 +396,20 @@ def normalise(document: dict) -> dict:
     error = document.get("error")
     if document.get("payload_error"):
         status, error = "ERROR", document["payload_error"]
+    detail = None
+    if status == "ERROR" and isinstance(document.get("payload"), dict):
+        detail = _without_echo(document["payload"])
+        words = _error_text(detail)
+        if words and words != str(error):
+            error = f"{error}: {words}" if error else words
     out = {
         "id": document["request_id"],
         "status": status,
         "output": document.get("payload") if status == "OK" else None,
         "error": None if error is None else str(error),
     }
+    if detail is not None:
+        out["detail"] = detail
     if document.get("metrics"):
         out["metrics"] = document["metrics"]
     return out

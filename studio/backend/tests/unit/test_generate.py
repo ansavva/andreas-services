@@ -1336,9 +1336,9 @@ def test_fal_documents_are_normalised_into_the_seams_shape():
     assert fal.cost(ok) is None
 
     failed = fal.normalise({"request_id": "r2", "status": "ERROR", "error": "content policy",
-                            "payload": {"detail": "…"}})
+                            "payload": {"detail": "the prompt was refused"}})
     assert failed["status"] == "ERROR" and failed["output"] is None
-    assert failed["error"] == "content policy"
+    assert failed["error"] == "content policy: the prompt was refused"
 
     # fal could not serialise the model's answer: nothing to download, so a
     # failure whatever `status` says.
@@ -1517,6 +1517,70 @@ def test_a_fal_answer_with_no_request_id_closes_the_run_failed(empty_api, monkey
     record = catalog.entity(catalog.ENTITY_RUN, run["id"])
     assert record["status"] == "failed"
     assert record["error"] == "the provider returned no prediction id"
+
+
+def test_a_fal_422_names_the_field_and_drops_the_presigned_echo(empty_api, media_bucket):
+    """**"Unexpected status code: 422" is fal's wrapper; the reason is under
+    `payload`.** Twelve references to a model that takes ten came back as
+    exactly that sentence and nothing else, because `normalise` read `error`
+    alone. The detail is folded in — field, then fal's own words — and the
+    `input` each item echoes is dropped, because for an image field it is the
+    presigned URL list `dispatch` minted (hard rule #3)."""
+    from studio_core.clients import fal
+    signed = ["https://bucket.s3.amazonaws.com/a.jpeg?X-Amz-Signature=deadbeef"] * 12
+
+    closed_shape = fal.normalise({
+        "request_id": "r4", "gateway_request_id": "g", "status": "ERROR",
+        "error": "Unexpected status code: 422",
+        "payload": {"detail": [{"type": "too_long",
+                                "loc": ["body", "reference_image_urls"],
+                                "msg": "List should have at most 10 items after validation, not 12",
+                                "input": signed}]},
+    })
+
+    assert closed_shape["error"] == (
+        "Unexpected status code: 422: body.reference_image_urls: "
+        "List should have at most 10 items after validation, not 12")
+    assert closed_shape["detail"] == {"detail": [{
+        "type": "too_long", "loc": ["body", "reference_image_urls"],
+        "msg": "List should have at most 10 items after validation, not 12"}]}
+    assert "X-Amz-Signature" not in json.dumps(closed_shape)
+
+    project = _project(empty_api)
+    run = _wan3_draft(empty_api, project)
+    empty_api.post(f"/api/runs/{run['id']}/submit")
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    closed = generate.close_from_prediction(record, {**closed_shape, "id": record["prediction_id"]})
+    assert closed["status"] == "failed"
+    assert "at most 10 items" in closed["error"]
+
+
+def test_more_references_than_the_model_takes_is_refused_while_still_a_draft(
+        empty_api, media_bucket):
+    """`max_refs` was checked only where a frame counts toward it, so a plain
+    over-long list went to the provider and came back as a 422 on a run
+    already at `pending`. The cap holds on every model that declares one, and
+    the refusal is a 400 that leaves the draft editable."""
+    project = _project(empty_api)
+    root = empty_api.get(f"/api/projects/{project['id']}").get_json()["root"]
+    stills = [_uploaded(empty_api, root, f"ref-{n}.png") for n in range(11)]
+    resp = empty_api.post("/api/runs", json={
+        "project": project["id"], "kind": "video", "engine": "wan-3.0-r2v",
+        "model": "fal/alibaba/wan-3.0/reference-to-video",
+        "plan": {"version": 1, "origin": "authored", "prompt": "the subject in Image 1 waves",
+                 "params": {"duration": 5, "resolution": "480p"}},
+        "sends": [{"field": "reference_image_urls", "role": "reference", "node": s["node_id"]}
+                  for s in stills],
+    })
+    assert resp.status_code == 201, resp.get_data(as_text=True)
+    run = resp.get_json()
+
+    resp = empty_api.post(f"/api/runs/{run['id']}/submit")
+
+    assert resp.status_code == 400, resp.get_data(as_text=True)
+    assert "at most 10 reference images" in resp.get_json()["error"]
+    assert "got 11" in resp.get_json()["error"]
+    assert catalog.entity(catalog.ENTITY_RUN, run["id"])["status"] == "draft"
 
 
 def test_the_readme_route_answers_for_a_fal_entry_without_a_provider_call(empty_api):

@@ -248,23 +248,40 @@ def _scalar_fields(entry: dict) -> set[str]:
 
 
 def _check_image_budget(entry: dict, bindings: dict) -> None:
-    """Some models cap TOTAL images, not just the reference list.
+    """The model's cap on reference images, enforced while the run is a draft.
 
-    Kling advertises `reference_images` "up to 7" and separately allows a start
-    frame alongside them, which reads as 7 + 1 and is not: the cap counts every
-    image, so a start frame leaves room for six references. Over the line it
-    fails the whole prediction with `Error code 1201: The number of images and
-    elements exceeds the limit, max number is 7`.
+    **`max_refs` is the ceiling on the reference list, on every model that
+    has one.** It used to be checked only on the models where a frame counts
+    toward it, so a plain over-long list went out unchecked: twelve references
+    to a model that takes ten reached fal, which answered `422 List should
+    have at most 10 items` — after `pending`, as a run that read "Unexpected
+    status code: 422" with nothing a person could act on. The SPA's tile and
+    the CLI's `--character` both stop at the cap, but a picker held open, a
+    model switched under an attached list, or a re-run seeded from an older
+    run all get past them, and this is the one check nothing gets past.
 
-    Cheap to hit and easy to miss, because the two halves of the rule sit in
-    different fields. Registry-driven rather than named per model:
-    `start_counts_toward_max_refs`.
+    **Some models cap TOTAL images, not just the reference list.** Kling
+    advertises `reference_images` "up to 7" and separately allows a start
+    frame alongside them, which reads as 7 + 1 and is not: the cap counts
+    every image, so a start frame leaves room for six references. Over the
+    line it fails the whole prediction with `Error code 1201: The number of
+    images and elements exceeds the limit, max number is 7`. Registry-driven
+    rather than named per model: `start_counts_toward_max_refs`.
     """
     images = entry.get("images") or {}
     cap = images.get("max_refs")
-    if not cap or not images.get("start_counts_toward_max_refs"):
+    if not cap:
         return
     refs = bindings.get(images.get("refs")) or []
+    if not isinstance(refs, list):
+        refs = [refs]
+    if not images.get("start_counts_toward_max_refs"):
+        if len(refs) > cap:
+            raise schema.SchemaError(
+                f"{entry['key']} takes at most {cap} reference images — got "
+                f"{len(refs)}. Take {len(refs) - cap} off and send again."
+            )
+        return
     extra = [f for f in (images.get("start"), images.get("end")) if f and bindings.get(f)]
     total = len(refs) + len(extra)
     if total > cap:
