@@ -228,8 +228,8 @@ same library.
 
 ## Which skill
 
-**Load one before doing anything else in `studio/`.** Thirty-four skills in **two
-families** — thirty-three `studio-media-*` and one `studio-code-*`; route by what
+**Load one before doing anything else in `studio/`.** Thirty-five skills in **two
+families** — thirty-four `studio-media-*` and one `studio-code-*`; route by what
 the task *changes*, not by what it mentions.
 
 | If the task changes… | Load | Examples |
@@ -261,6 +261,7 @@ The app half (`backend/`, `frontend/`) has no skill of its own; read
 | Continue past a model's duration ceiling | `studio-media-scene` |
 | Cut finished scenes into one piece | `studio-media-movie` |
 | Work with a recurring character | `studio-media-character` |
+| Train a character LoRA for video | `studio-media-lora-train` |
 | Write a tight, repeatable video prompt | `studio-media-prompt` |
 | Invoke a model generically, or inspect its schema | `studio-media-core` |
 | Register a new Replicate model | `studio-media-add-model` |

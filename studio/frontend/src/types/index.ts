@@ -729,7 +729,8 @@ const TERMINAL_RUN_STATUSES: readonly RunStatus[] = [
 export const isTerminal = (status: RunStatus): boolean =>
   TERMINAL_RUN_STATUSES.includes(status);
 
-export type RunKind = "image" | "video";
+/** `training` produces weights on a character, not media in the run; the create sheet never offers it. */
+export type RunKind = "image" | "video" | "training";
 
 /** What a model charged, when the provider reported it. Never computed here. */
 /**

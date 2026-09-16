@@ -216,10 +216,10 @@ function writeProject(project: string | null): void {
 
 const EMPTY: CreateBarState = {
   kind: "image",
-  model: { image: null, video: null },
+  model: { image: null, video: null, training: null },
   prompt: "",
   params: {},
-  attachments: { image: [], video: [] },
+  attachments: { image: [], video: [], training: [] },
   project: null,
   role: null,
   focus: 0,
@@ -319,6 +319,7 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
       attachments: {
         image: current.attachments.image.map((each) => (each.ref.node === node ? { ...each, ref } : each)),
         video: current.attachments.video.map((each) => (each.ref.node === node ? { ...each, ref } : each)),
+        training: current.attachments.training,
       },
     }));
   }, []);
@@ -329,6 +330,7 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
       attachments: {
         image: current.attachments.image.filter((each) => each.ref.node !== node),
         video: current.attachments.video.filter((each) => each.ref.node !== node),
+        training: current.attachments.training,
       },
     }));
   }, []);

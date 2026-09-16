@@ -79,7 +79,9 @@ def _verify(provider: str, run_id: str, message: dict, headers: dict, body: byte
     secret, so its URL carries Runpod's kind of proof under OpenRouter's key —
     see `clients/openrouter.py`.
     """
-    if provider == registry.RUNPOD:
+    if provider in (registry.RUNPOD, registry.RUNPOD_POD):
+        # Same key, same proof: the pod is told a URL with `?sig=` exactly as a
+        # public endpoint is, and neither signs anything itself.
         runpod.verify_callback(run_id, message.get("sig") or "")
         return
     if provider == registry.OPENROUTER:

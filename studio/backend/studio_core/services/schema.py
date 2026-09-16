@@ -80,7 +80,7 @@ def fetch(model: str) -> tuple[dict, dict]:
     """
     entry = registry.by_model_id(model)
     provider = registry.provider_of(entry) if entry is not None else registry.REPLICATE
-    if provider == registry.RUNPOD:
+    if provider in (registry.RUNPOD, registry.RUNPOD_POD):
         spec = entry.get("input") or {}
         props = spec.get("properties") or {}
         return props, {"Input": {"required": spec.get("required") or [], **spec}}

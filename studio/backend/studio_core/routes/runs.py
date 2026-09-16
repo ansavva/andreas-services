@@ -82,7 +82,10 @@ KIND = catalog.ENTITY_RUN
 
 # What a run produces. Not the model's `kind` field and not a content type — this
 # is the two shapes the pipeline distinguishes everywhere else.
-RUN_KINDS = frozenset({"image", "video"})
+# `training` produces weights on a character rather than media in the run's
+# folder — `services/training.py`. A kind here, because everything else about
+# it (a draft, a submit, a callback, a cost) is a run.
+RUN_KINDS = frozenset({"image", "video", "training"})
 
 # What a URL-shaped binding looks like: **anything carrying a URI scheme.**
 #

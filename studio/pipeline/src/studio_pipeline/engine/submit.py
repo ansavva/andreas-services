@@ -80,6 +80,15 @@ KIND = {
         "require_images": False,
         "always_poll": False,
     },
+    # A trainer: hours, not minutes; the dataset IS the image input, so a run
+    # without images is refused like an image run's; nobody waits in a
+    # terminal for it — the callback closes it, `runs show` reads it.
+    "training": {
+        "slug": "lora", "interval": 60, "timeout": 12 * 3600,
+        "default_ext": ".safetensors", "tmp": "studio-training-",
+        "require_images": True,
+        "always_poll": False,
+    },
 }
 
 

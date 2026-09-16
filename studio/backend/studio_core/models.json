@@ -2120,6 +2120,210 @@
         },
         "refreshed": "2026-09-18"
       }
+    },
+    "wan-2.2-lora-train": {
+      "model": "runpod-pod/ai-toolkit-wan22-14b",
+      "provider": "runpod-pod",
+      "kind": "training",
+      "skill": "studio-media-lora-train",
+      "images": {
+        "refs": "dataset",
+        "max_refs": 40,
+        "start": null,
+        "end": null,
+        "start_excludes_refs": false,
+        "accepts_ext": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ]
+      },
+      "prompt": null,
+      "defaults": {
+        "steps": 2000,
+        "save_every": 250,
+        "rank": 32,
+        "lr": 0.0001,
+        "resolution": 768,
+        "gpu": "a100",
+        "cloud": "secure",
+        "base": "i2v",
+        "max_hours": 6
+      },
+      "aliases": [],
+      "note": "Not a model: a TRAINER. Rents a Runpod GPU pod from the official ai-toolkit image, trains a Wan 2.2 14B LoRA pair (high-noise and low-noise experts, the pair `wan-2.2-i2v-lora` loads) on the character's images tagged `dataset`, uploads every checkpoint pair into `<character>/models/`, and terminates the pod. Captions are each file's description with the trigger in front — scene only, never the face. No prompt. Billed by the hour: an A100 80GB is ~$1.59/h and 2000 steps take roughly 1–2 h plus ~15 min of setup, so ~$3–5 an attempt; the run records pod-hours × rate. `max_hours` caps it on the pod itself. Runs ONLY where the API can reach Runpod's pod API and receive a callback; locally `studio runs reconcile` reads the pod's result from the bucket.",
+      "input": {
+        "required": [
+          "trigger"
+        ],
+        "properties": {
+          "dataset": {
+            "type": "array",
+            "title": "Dataset",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "description": "The stills the LoRA learns from — the character's images tagged `dataset`, bound with --character <name> --pick-tag dataset. Each file's description is its caption (scene only, never the face), prefixed with the trigger."
+          },
+          "trigger": {
+            "type": "string",
+            "title": "Trigger",
+            "description": "The token every caption starts with and every prompt will say — the word the identity is bound to. One made-up word, e.g. `ohwx_pt`."
+          },
+          "steps": {
+            "type": "integer",
+            "title": "Steps",
+            "minimum": 250,
+            "maximum": 4000,
+            "default": 2000,
+            "description": "Training steps. One step is one image through the model and one nudge to the LoRA; 2000 over ~18 images sees each ~110 times."
+          },
+          "save_every": {
+            "type": "integer",
+            "title": "Save every",
+            "enum": [
+              250,
+              500
+            ],
+            "default": 250,
+            "description": "A checkpoint pair is written every this many steps — the candidates the evaluation compares."
+          },
+          "rank": {
+            "type": "integer",
+            "title": "Rank",
+            "enum": [
+              16,
+              32,
+              64
+            ],
+            "default": 32,
+            "description": "The LoRA's thinness. 32 is the trainer's default for a face; 16 is smaller and faster, 64 holds more and overfits sooner."
+          },
+          "lr": {
+            "type": "number",
+            "title": "Learning rate",
+            "minimum": 1e-05,
+            "maximum": 0.001,
+            "default": 0.0001,
+            "description": "How big each nudge is. 1e-4 is the trainer's default."
+          },
+          "resolution": {
+            "type": "integer",
+            "title": "Resolution",
+            "enum": [
+              512,
+              768,
+              1024
+            ],
+            "default": 768,
+            "description": "The training resolution the dataset is bucketed to."
+          },
+          "gpu": {
+            "type": "string",
+            "title": "GPU",
+            "enum": [
+              "a100",
+              "h100",
+              "4090"
+            ],
+            "default": "a100",
+            "description": "Which card the pod rents. 80 GB (a100/h100) trains bf16 unquantised; 4090 is not supported by this job yet."
+          },
+          "cloud": {
+            "type": "string",
+            "title": "Cloud",
+            "enum": [
+              "secure",
+              "community"
+            ],
+            "default": "secure",
+            "description": "Runpod's Secure Cloud (datacenter) or Community Cloud (cheaper, peer hardware)."
+          },
+          "base": {
+            "type": "string",
+            "title": "Base",
+            "enum": [
+              "i2v",
+              "t2v"
+            ],
+            "default": "i2v",
+            "description": "Which Wan 2.2 14B the LoRA is trained against. `i2v` matches the inference endpoint."
+          },
+          "max_hours": {
+            "type": "integer",
+            "title": "Max hours",
+            "minimum": 1,
+            "maximum": 12,
+            "default": 6,
+            "description": "The pod's own time cap: the trainer is killed and the run reports `failed` past this. Billing cannot outlive it."
+          }
+        }
+      },
+      "snapshot": {
+        "steps": {
+          "default": 2000,
+          "minimum": 250,
+          "maximum": 4000
+        },
+        "save_every": {
+          "enum": [
+            250,
+            500
+          ],
+          "default": 250
+        },
+        "rank": {
+          "enum": [
+            16,
+            32,
+            64
+          ],
+          "default": 32
+        },
+        "lr": {
+          "default": 0.0001,
+          "minimum": 1e-05,
+          "maximum": 0.001
+        },
+        "resolution": {
+          "enum": [
+            512,
+            768,
+            1024
+          ],
+          "default": 768
+        },
+        "gpu": {
+          "enum": [
+            "a100",
+            "h100",
+            "4090"
+          ],
+          "default": "a100"
+        },
+        "cloud": {
+          "enum": [
+            "secure",
+            "community"
+          ],
+          "default": "secure"
+        },
+        "base": {
+          "enum": [
+            "i2v",
+            "t2v"
+          ],
+          "default": "i2v"
+        },
+        "max_hours": {
+          "default": 6,
+          "minimum": 1,
+          "maximum": 12
+        },
+        "refreshed": "2026-09-16"
+      }
     }
   }
 }

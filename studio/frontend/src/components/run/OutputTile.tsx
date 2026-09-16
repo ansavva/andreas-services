@@ -4,6 +4,11 @@ import { DownloadIcon, PromoteIcon, RerunIcon, UpscaleIcon } from "../common/ico
 import { ActionMenu, type MenuAction } from "../common/ActionMenu";
 import { attachActions } from "../create/attachActions";
 import { ratioOf } from "./aspect";
+import { kindOfFile } from "../../utils/media";
+import { objectPath } from "../../utils/location";
+import { pressInApp } from "../common/pressInApp";
+import { useNavigate } from "react-router-dom";
+import { Text } from "@ansavva/design-system";
 import { MediaThumb } from "../media/MediaThumb";
 import { isPromotable, isVideoAsset } from "./PromoteDrawer";
 import { refOfOutput } from "./seed";
@@ -119,6 +124,31 @@ export function OutputTile({
 }) {
   const video = isVideoAsset(asset) || row.kind === "video";
   const label = `Output ${index + 1} of ${row.outputs.length}`;
+  const navigate = useNavigate();
+  // A training run's outputs are weights. There is no picture to open a
+  // lightbox on, so the tile says what the file is and opens its page.
+  // Named, so an output whose node is gone (no name, no url) still draws the
+  // media tile's "Unavailable" rather than a file tile for nothing.
+  const binary = Boolean(asset.name) && kindOfFile(asset.name ?? "", asset.content_type) === "other";
+  if (binary) {
+    const to = objectPath(asset.node);
+    return (
+      <a
+        href={to}
+        onClick={pressInApp(navigate, to)}
+        aria-label={`Open ${label} — ${assetLabel(asset.name)}`}
+        className="flex aspect-square flex-col items-center justify-center gap-1 border border-line bg-card p-2 text-center"
+        data-output-file=""
+      >
+        <Text variant="caption" weight="medium">
+          {/_high_noise/.test(asset.name ?? "") ? "LoRA · high noise" : /_low_noise/.test(asset.name ?? "") ? "LoRA · low noise" : "File"}
+        </Text>
+        <Text variant="caption" tone="muted" className="w-full truncate font-mono text-[10px]">
+          {assetLabel(asset.name)}
+        </Text>
+      </a>
+    );
+  }
   const menu = outputMenu(row, asset, index, actions, onPromote);
 
   return (
