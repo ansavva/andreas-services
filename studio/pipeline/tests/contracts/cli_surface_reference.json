@@ -93,11 +93,7 @@
             "type": "str"
           },
           "pool": {
-            "choices": [
-              "archive",
-              "corpus",
-              "seed"
-            ],
+            "choices": null,
             "default": null,
             "dest": "pool",
             "flag": false,
@@ -129,21 +125,6 @@
         },
         "commands": {},
         "options": {
-          "dry_run": {
-            "choices": null,
-            "default": false,
-            "dest": "dry_run",
-            "flag": true,
-            "flags": [
-              "--dry-run"
-            ],
-            "help": "With --turnaround: render the payloads, submit nothing.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 0,
-            "required": false,
-            "type": "bool"
-          },
           "from_profile": {
             "choices": null,
             "default": null,
@@ -158,51 +139,6 @@
             "nargs": 1,
             "required": false,
             "type": "str"
-          },
-          "model": {
-            "choices": null,
-            "default": null,
-            "dest": "model",
-            "flag": false,
-            "flags": [
-              "--model"
-            ],
-            "help": "With --turnaround: override the angle spec's model.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "project": {
-            "choices": null,
-            "default": null,
-            "dest": "project",
-            "flag": false,
-            "flags": [
-              "--project"
-            ],
-            "help": "With --turnaround: REQUIRED. The project the runs belong to.",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 1,
-            "required": false,
-            "type": "str"
-          },
-          "turnaround": {
-            "choices": null,
-            "default": false,
-            "dest": "turnaround",
-            "flag": true,
-            "flags": [
-              "--turnaround"
-            ],
-            "help": "Go straight into the standard reference set (asks before it bills).",
-            "hidden": false,
-            "multiple": false,
-            "nargs": 0,
-            "required": false,
-            "type": "bool"
           }
         }
       },
@@ -452,12 +388,7 @@
             "type": "str"
           },
           "pool": {
-            "choices": [
-              "archive",
-              "corpus",
-              "reference",
-              "seed"
-            ],
+            "choices": null,
             "default": null,
             "dest": "pool",
             "flag": false,
@@ -856,7 +787,7 @@
         "flags": [
           "--character"
         ],
-        "help": "Character name; pull characters/<name>/<pool>/ from S3.",
+        "help": "Character name; sheet one of its pools.",
         "hidden": false,
         "multiple": false,
         "nargs": 1,
@@ -879,19 +810,14 @@
         "type": "int"
       },
       "folder": {
-        "choices": [
-          "archive",
-          "corpus",
-          "reference",
-          "seed"
-        ],
+        "choices": null,
         "default": "reference",
         "dest": "folder",
         "flag": false,
         "flags": [
           "--folder"
         ],
-        "help": "Which character pool to sheet (default: reference).",
+        "help": "Which character pool to sheet — any folder under its root (default: reference).",
         "hidden": false,
         "multiple": false,
         "nargs": 1,
@@ -1279,19 +1205,14 @@
             "type": "str"
           },
           "pool": {
-            "choices": [
-              "archive",
-              "corpus",
-              "reference",
-              "seed"
-            ],
+            "choices": null,
             "default": "reference",
             "dest": "pool",
             "flag": false,
             "flags": [
               "--pool"
             ],
-            "help": "",
+            "help": "The pool folder to read (default: reference).",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -1337,7 +1258,7 @@
             "flags": [
               "--apply"
             ],
-            "help": "",
+            "help": "Actually destroy them.",
             "hidden": false,
             "multiple": false,
             "nargs": 0,
@@ -1345,19 +1266,14 @@
             "type": "bool"
           },
           "pool": {
-            "choices": [
-              "archive",
-              "corpus",
-              "reference",
-              "seed"
-            ],
+            "choices": null,
             "default": "archive",
             "dest": "pool",
             "flag": false,
             "flags": [
               "--pool"
             ],
-            "help": "",
+            "help": "The pool folder the files are in (default: archive).",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -1429,19 +1345,14 @@
             "type": "bool"
           },
           "from": {
-            "choices": [
-              "archive",
-              "corpus",
-              "reference",
-              "seed"
-            ],
+            "choices": null,
             "default": "reference",
             "dest": "src_pool",
             "flag": false,
             "flags": [
               "--from"
             ],
-            "help": "",
+            "help": "The pool folder the file is in (default: reference).",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -1449,19 +1360,14 @@
             "type": "str"
           },
           "to": {
-            "choices": [
-              "archive",
-              "corpus",
-              "reference",
-              "seed"
-            ],
+            "choices": null,
             "default": "archive",
             "dest": "dst_pool",
             "flag": false,
             "flags": [
               "--to"
             ],
-            "help": "",
+            "help": "The pool folder to move it to, created if absent (default: archive).",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -1476,7 +1382,7 @@
             "flags": [
               "--to-group"
             ],
-            "help": "",
+            "help": "A subfolder of the destination pool, created if absent.",
             "hidden": false,
             "multiple": false,
             "nargs": 1,
@@ -1495,7 +1401,7 @@
         "default": null,
         "dest": "names",
         "flag": false,
-        "help": "Specific basenames to download (default: see --list/--all).",
+        "help": "",
         "hidden": false,
         "multiple": false,
         "nargs": "*",
@@ -1508,7 +1414,7 @@
       "all": {
         "choices": null,
         "default": false,
-        "dest": "all",
+        "dest": "all_",
         "flag": true,
         "flags": [
           "--all"
@@ -1543,7 +1449,7 @@
         "flags": [
           "--folder"
         ],
-        "help": "Key prefix (e.g. characters/<name>/reference).",
+        "help": "Name path from the library root (e.g. char-<uuid>/reference, proj-<uuid>/input).",
         "hidden": false,
         "multiple": false,
         "nargs": 1,
@@ -1553,7 +1459,7 @@
       "json": {
         "choices": null,
         "default": false,
-        "dest": "json",
+        "dest": "json_",
         "flag": true,
         "flags": [
           "--json"
@@ -1568,7 +1474,7 @@
       "list": {
         "choices": null,
         "default": false,
-        "dest": "list",
+        "dest": "list_",
         "flag": true,
         "flags": [
           "--list"

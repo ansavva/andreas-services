@@ -96,6 +96,28 @@ def pool_folder(record: dict, pool: str) -> dict:
     return store.ensure_child_folder(record["root"], pool)
 
 
+def pool_names(record: dict) -> list[str]:
+    """The folder names under the character's root — the pools it actually has."""
+    return sorted(n["name"] for n in store.children_of(record["root"])
+                  if n.get("kind") == "folder")
+
+
+def require_pool(record: dict, pool: str) -> dict:
+    """The node of one pool folder, or a refusal naming the pools that exist.
+
+    The read-side twin of `pool_folder`. A command that only LISTS a pool
+    must not make one: a pool is any folder name now, so `pool <name> sede`
+    would otherwise leave an empty `sede/` behind where the `click.Choice`
+    used to catch the typo.
+    """
+    found = store.child(record["root"], pool)
+    if found is None or found.get("kind") != "folder":
+        have = pool_names(record)
+        die(f"{record['name']} has no pool {pool!r} "
+            f"(has: {', '.join(f'{n}/' for n in have) or 'no folders'})")
+    return found
+
+
 def pool_nodes(record: dict, pool: str, group: str | None = None) -> list[dict]:
     """The file nodes in a pool, natural-sorted, optionally one level deeper.
 
@@ -170,6 +192,6 @@ def write_text(path: str, text: str) -> None:
 
 __all__ = [
     "IMG_EXTS", "LOCAL_DIR", "NAME_RE", "POOLS", "TEMPLATE", "die",
-    "pool_folder", "pool_nodes", "read_text", "resolve", "upload_file",
-    "write_text",
+    "pool_folder", "pool_names", "pool_nodes", "read_text", "require_pool",
+    "resolve", "upload_file", "write_text",
 ]

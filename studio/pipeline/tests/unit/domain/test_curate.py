@@ -189,9 +189,37 @@ def test_move_onto_an_identical_copy_deletes_the_source(library):
 
 
 def test_move_names_a_file_that_is_not_in_the_pool(library):
-    result = _run("move", "subject-a", "nothing.webp", "--from", "seed")
+    result = _run("move", "subject-a", "nothing.webp", "--from", "reference")
     assert result.exit_code == 1
     assert "not in" in result.output
+
+
+def test_a_source_pool_the_character_does_not_have_is_refused_by_name(library):
+    """`--from` is any folder name now, so a typo is caught by the refusal and
+    not by a `click.Choice` — and reading must not make the folder."""
+    result = _run("move", "subject-a", "nothing.webp", "--from", "sede")
+    assert result.exit_code == 1
+    assert "has no pool 'sede'" in result.output
+    assert "reference/" in result.output
+    record = CHARACTER.resolve("subject-a")
+    assert "sede" not in CHARACTER.pool_names(record)
+
+
+def test_a_pool_is_any_folder_the_character_has(library):
+    """A character whose material sits in `original/` — a name the four-way
+    choice list refused — is curated like any other."""
+    record = CHARACTER.resolve("subject-a")
+    original = CHARACTER.pool_folder(record, "original")
+    node = library.fake.put_file(original["id"], "one.webp", b"webp-original")["id"]
+
+    result = _run("move", "subject-a", node, "--from", "original", "--to", "kept", "--apply")
+
+    assert result.exit_code == 0, result.output
+    kept = CHARACTER.require_pool(record, "kept")
+    assert library.fake.nodes[node]["parent_id"] == kept["id"]
+    dedupe = _run("dedupe", "subject-a", "--pool", "kept")
+    assert dedupe.exit_code == 0, dedupe.output
+    assert "no exact duplicates in kept/" in dedupe.output
 
 
 def test_move_accepts_a_group_relative_name_a_person_would_type(library):

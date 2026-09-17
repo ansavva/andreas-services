@@ -4,12 +4,16 @@ Curating by hand goes wrong the same ways every time: duplicates creep in under
 different names, and "replacing" an image quietly destroys the only copy. This
 does those operations safely.
 
-Four pools, per `studio-media-character`:
+A pool is any folder under the character's root. The conventional four, per
+`studio-media-character`, are the defaults here and nothing more — a character
+whose only pool is `original/` is curated the same way:
 
-    reference/   images the character's `REF#` rows point at — who they ARE.
+    reference/   images tagged `default` tend to live — who they ARE.
     corpus/      collected material — uploads, keeper clips.
     seed/        the founding real-world source photos.
     archive/     retired material; never referenced unless asked for by name.
+
+`--pool` and `--from` name a folder that must already exist; `--to` makes one.
 
 Nothing is deleted outright: an image leaving a pool is moved, and destroyed
 only when a byte-identical copy is already waiting where it was going. Every
@@ -53,11 +57,11 @@ from studio_pipeline.domain.characters import (
     IMG_EXTS,
     pool_folder,
     pool_nodes,
+    require_pool,
     resolve,
 )
 from studio_pipeline.errors import die
 
-POOL_CHOICES = ["archive", "corpus", "reference", "seed"]
 # The caps are prose-only in every model's schema (maxItems is null), so they are
 # maintained here by hand. The lowest one binds a set that is sent in full.
 ENGINE_CAPS = {"kling": 7, "seedance": 9, "nano-banana": 14}
@@ -173,7 +177,7 @@ def main():
 @click.argument("name", required=True)
 @click.option("--apply", is_flag=True, help="Actually make the changes.")
 @click.option("--group", help="A subfolder of the pool (default: the root of the pool).")
-@click.option("--pool", type=click.Choice(POOL_CHOICES), default='reference')
+@click.option("--pool", default="reference", help="The pool folder to read (default: reference).")
 def cmd_dedupe(name, apply, group, pool):
     """Delete byte-identical copies, keeping the first of each.
 
@@ -184,6 +188,7 @@ def cmd_dedupe(name, apply, group, pool):
     node, and the node survives the move.
     """
     record = resolve(name)
+    require_pool(record, pool)
     entries = images(record, pool, group)
     dupes = duplicate_pairs(entries)
     if not dupes:
@@ -208,7 +213,7 @@ def cmd_dedupe(name, apply, group, pool):
 @click.argument("name", required=True)
 @click.argument("files", nargs=-1, required=True)
 @click.option("--apply", is_flag=True, help="Actually destroy them.")
-@click.option("--pool", type=click.Choice(POOL_CHOICES), default='archive')
+@click.option("--pool", default="archive", help="The pool folder the files are in (default: archive).")
 def cmd_drop(name, files, apply, pool):
     """Destroy named files. **The only command here that deletes on request.**
 
@@ -236,6 +241,7 @@ def cmd_drop(name, files, apply, pool):
     licence: nothing in the catalog points at it afterwards.
     """
     record = resolve(name)
+    require_pool(record, pool)
     entries = [find_in_pool(record, pool, token) for token in files]
     attached = identity_nodes(record)
     blocked = [e for e in entries if e["id"] in attached]
@@ -267,8 +273,8 @@ def cmd_drop(name, files, apply, pool):
 # call would fail with a TypeError. Nothing catches that until the command is run
 # WITH arguments: invoking it bare exits on usage first, which is why this
 # survived the argparse port.
-@click.option("--from", "src_pool", type=click.Choice(POOL_CHOICES), default='reference')
-@click.option("--to", "dst_pool", type=click.Choice(POOL_CHOICES), default='archive')
+@click.option("--from", "src_pool", default="reference", help="The pool folder the file is in (default: reference).")
+@click.option("--to", "dst_pool", default="archive", help="The pool folder to move it to, created if absent (default: archive).")
 @click.option("--to-group", "dst_group", default=None,
               help="A subfolder of the destination pool, created if absent.")
 def cmd_move(name, file, apply, src_pool, dst_pool, dst_group):
@@ -292,6 +298,7 @@ def cmd_move(name, file, apply, src_pool, dst_pool, dst_group):
     subfolder and into the root beside the originals.
     """
     record = resolve(name)
+    require_pool(record, src_pool)
     entry = find_in_pool(record, src_pool, file)
     destination = pool_folder(record, dst_pool)
     # The FILE argument has always reached into a subfolder (`face/front.webp`);

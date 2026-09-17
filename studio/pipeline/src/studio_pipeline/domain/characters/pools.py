@@ -1,8 +1,13 @@
-"""corpus/, seed/ and archive/ — material, not identity.
+"""A character's pools — material, not identity.
 
-The fourth pool, `reference/`, is not here: what makes an image a reference is a
-`REF#` row, and `refs.py` owns those. These three are ordinary folders holding
-ordinary files, and that is the whole of what they are.
+A pool is any folder under the character's root. `corpus/`, `seed/` and
+`archive/` are the conventional starting names, and nothing here knows them:
+a character whose only pool is `original/` is as valid as one with all four,
+and a pool a person made in the app is listable and addable the moment it
+exists. `reference/` is the one name this module treats specially, and only on
+the way IN: what makes an image identity is a tag, and `refs.py` owns that.
+The pools are ordinary folders holding ordinary files, and that is the whole of
+what they are.
 
 **They stopped being addressed by name path.** `pool_folder` returned
 `characters/<name>/corpus` and every command here composed keys under it, so a
@@ -28,30 +33,36 @@ from studio_pipeline.domain.characters.base import (
     die,
     pool_folder,
     pool_nodes,
+    require_pool,
     resolve,
     upload_file,
 )
 
-#: The three this module owns. `reference` is deliberately absent — adding to it
-#: is a decision about identity and goes through `add-refs` (hard rule #2b).
-MATERIAL_POOLS = ["archive", "corpus", "seed"]
-#: `add-to` still refuses `reference`: putting a file there is not what makes it
-#: identity, and `character add-refs` is the command that does (hard rule #2b).
-#: LISTING one is a different act and is allowed — see `cmd_pool`.
-LISTABLE_POOLS = ["archive", "corpus", "reference", "seed"]
+#: The one pool `add-to` refuses. Putting a file there is not what makes it
+#: identity — the `default` tag is — and `character add-refs` is the command
+#: that decides that (hard rule #2b). LISTING it is a different act and is
+#: allowed — see `cmd_pool`. Every other folder name is a pool: the four the
+#: docs name were a `click.Choice` here until a character turned up whose only
+#: pool was `original/`, and `add-to` and `pool` both refused it.
+IDENTITY_POOL = "reference"
 
 
 @click.command("add-to")
 @click.argument("name", required=True)
-@click.argument("pool", required=True, type=click.Choice(MATERIAL_POOLS))
+@click.argument("pool", required=True)
 @click.argument("files", nargs=-1, required=True)
 def cmd_add_to_pool(name, pool, files):
-    """Add file(s) to corpus/, seed/ or archive/ — basenames kept as they are.
+    """Add file(s) to a pool — any folder name; basenames kept as they are.
 
-    Nothing here attaches a `REF#` row, which is the point of these pools being
-    separate: material about a character is not a statement about who they are.
-    Promoting one of these into identity is `studio character add-refs`.
+    The pool is created under the character's root if it is not there. Nothing
+    here tags an image, which is the point of the pools being separate:
+    material about a character is not a statement about who they are.
+    Promoting one of these into identity is `studio character add-refs`, and
+    `reference/` is refused here for exactly that reason (hard rule #2b).
     """
+    if pool.strip("/") == IDENTITY_POOL:
+        die(f"refusing to add to {IDENTITY_POOL}/: a file there is not identity, a tag is. "
+            "Use `studio character add-refs` (hard rule #2b).")
     record = resolve(name)
     missing = [f for f in files if not os.path.isfile(f)]
     if missing:
@@ -65,7 +76,7 @@ def cmd_add_to_pool(name, pool, files):
 
 @click.command("pool")
 @click.argument("name", required=True)
-@click.argument("pool", required=True, type=click.Choice(LISTABLE_POOLS))
+@click.argument("pool", required=True)
 @click.option("--group", default=None,
               help="A subfolder of the pool (e.g. seed/current, reference/face).")
 @click.option("--json", "json_", is_flag=True)
@@ -74,6 +85,9 @@ def cmd_add_to_pool(name, pool, files):
               help="Only files no REF# row names — what is sitting in a folder without being identity.")
 def cmd_pool(name, pool, group, json_, presign, unreferenced):
     """List what is actually IN a pool folder, which is not the same as the index.
+
+    POOL is any folder name under the character's root — `studio character
+    show <name>` prints the ones it has.
 
     Node ids and names, where this printed S3 keys. A key was never something a
     caller could do anything with — it could not be fetched without credentials
@@ -91,6 +105,7 @@ def cmd_pool(name, pool, group, json_, presign, unreferenced):
     with an `original/` and a folder per age, `reference/` with one per group.
     """
     record = resolve(name)
+    require_pool(record, pool)  # a listing makes nothing; a typo is a refusal
     entries = pool_nodes(record, pool, group)
     if unreferenced:
         # **Files nothing sends.** A set difference on node ids rather than a

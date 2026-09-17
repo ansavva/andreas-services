@@ -24,16 +24,28 @@ from studio_pipeline import cli
 from studio_pipeline.adapters import api, store
 
 
+#: A character's root folder is named by its id, so this is the shape of a
+#: real address; `<name>/reference` resolves nothing.
+FOLDER = "char-00000000-0000-4000-8000-000000000001/reference"
+
+
 @pytest.fixture
 def fake_store(monkeypatch):
-    """A store holding one folder of files, in deliberately awkward order."""
+    """A store holding one folder of files, in deliberately awkward order.
+
+    The entries carry `kind: "image"` and one `folder`, because that is what
+    the listing answers — `kind` says what a file HOLDS. They said `"file"`
+    here for as long as `download` compared against it, which is how `--list`
+    printed nothing for a folder full of images without a test noticing.
+    """
     files = ["<name>_10.webp", "<name>_2.webp", "<name>_1.webp"]
     state = {"files": files, "written": {}, "presigned": [], "ensured": []}
 
     def _children(path):
-        if path != "characters/<name>/reference":
+        if path != FOLDER:
             raise api.NotFound(f"No such object: {path}", 404)
-        return [{"name": n, "kind": "file", "id": f"node-{n}"} for n in state["files"]]
+        return ([{"name": n, "kind": "image", "id": f"node-{n}"} for n in state["files"]]
+                + [{"name": "face", "kind": "folder", "id": "node-face"}])
 
     def _presign(path, disposition="inline"):
         state["presigned"].append(path)
@@ -83,29 +95,29 @@ def test_presign_a_folder_preserves_natural_order(fake_store):
     trusted that order would hand a model its references shuffled and the prompt
     would name the wrong one.
     """
-    result = _run("presign", "--folder", "characters/<name>/reference", "--json")
+    result = _run("presign", "--folder", FOLDER, "--json")
 
     assert result.exit_code == 0
     keys = [entry["key"] for entry in json.loads(result.output)]
     assert keys == [
-        "characters/<name>/reference/<name>_1.webp",
-        "characters/<name>/reference/<name>_2.webp",
-        "characters/<name>/reference/<name>_10.webp",
+        f"{FOLDER}/<name>_1.webp",
+        f"{FOLDER}/<name>_2.webp",
+        f"{FOLDER}/<name>_10.webp",
     ]
 
 
 def test_presign_named_files_only(fake_store):
     result = _run(
-        "presign", "--folder", "characters/<name>/reference", "<name>_2.webp", "--json"
+        "presign", "--folder", FOLDER, "<name>_2.webp", "--json"
     )
 
     assert [e["key"] for e in json.loads(result.output)] == [
-        "characters/<name>/reference/<name>_2.webp"
+        f"{FOLDER}/<name>_2.webp"
     ]
 
 
 def test_presign_names_what_is_missing(fake_store):
-    result = _run("presign", "--folder", "characters/<name>/reference", "nope.webp")
+    result = _run("presign", "--folder", FOLDER, "nope.webp")
 
     assert result.exit_code != 0
     assert "nope.webp" in result.output
@@ -119,14 +131,25 @@ def test_presign_needs_a_folder_or_a_key(fake_store):
 
 
 def test_download_list_is_natural_order(fake_store):
-    result = _run("download", "--folder", "characters/<name>/reference", "--list")
+    """Image nodes, in natural order — and not the subfolder beside them."""
+    result = _run("download", "--folder", FOLDER, "--list")
 
     assert result.output.split() == ["<name>_1.webp", "<name>_2.webp", "<name>_10.webp"]
 
 
+def test_download_lists_what_the_listing_answers_as_images(fake_store):
+    """The listing's `kind` is `image`/`video`/`folder`, never `file`."""
+    fake_store["files"].append("clip.mp4")
+    result = _run("download", "--folder", FOLDER, "--list", "--json")
+
+    assert result.exit_code == 0, result.output
+    assert set(json.loads(result.output)) == {
+        "<name>_1.webp", "<name>_2.webp", "<name>_10.webp", "clip.mp4"}
+
+
 def test_download_all_writes_files(fake_store, tmp_path):
     result = _run(
-        "download", "--folder", "characters/<name>/reference", "--all",
+        "download", "--folder", FOLDER, "--all",
         "--dest", str(tmp_path), "--json",
     )
 
@@ -138,7 +161,7 @@ def test_download_all_writes_files(fake_store, tmp_path):
 
 def test_download_names_what_is_missing(fake_store, tmp_path):
     result = _run(
-        "download", "--folder", "characters/<name>/reference", "nope.webp",
+        "download", "--folder", FOLDER, "nope.webp",
         "--dest", str(tmp_path),
     )
 
@@ -147,7 +170,7 @@ def test_download_names_what_is_missing(fake_store, tmp_path):
 
 
 def test_download_from_a_missing_folder_says_so(fake_store, tmp_path):
-    result = _run("download", "--folder", "characters/nobody", "--list")
+    result = _run("download", "--folder", "char-nobody/reference", "--list")
 
     assert result.exit_code != 0
     assert "no such folder" in result.output

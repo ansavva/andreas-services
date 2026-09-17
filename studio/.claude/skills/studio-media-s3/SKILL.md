@@ -160,8 +160,8 @@ studio projects new <project> --character <name> --description "…"
 studio projects show <project>
 
 # List / download / upload / presign, by folder path
-studio download --folder <name>/reference --list
-studio download --folder <name>/reference --all --dest /tmp/refs --json
+studio download --folder char-<uuid>/reference --list      # a root folder is named by its id: `character show` prints it
+studio download --folder char-<uuid>/reference --all --dest /tmp/refs --json
 studio upload photo.jpg --folder <name>/seed
 studio presign --folder <name>/reference/face --json
 

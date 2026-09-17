@@ -62,10 +62,10 @@ def pool_images(root: str) -> list[dict]:
     holds purpose subfolders rather than images, so a one-level listing reports
     the commonest invocation as an empty pool.
 
-    **A missing pool cannot arise here any more**, which is why this listing is
-    unforgiving: `pool_folder` resolves the pool off the character record and
-    creates it if somebody deleted it, so by the time this runs the folder
-    exists. Anything raising from here is a real failure and is left to surface.
+    **A missing pool cannot arise here**, which is why this listing is
+    unforgiving: `require_pool` has already refused a pool the character does
+    not have, so by the time this runs the folder exists. Anything raising from
+    here is a real failure and is left to surface.
     """
     found: list[dict] = []
 
@@ -83,9 +83,9 @@ def pool_images(root: str) -> list[dict]:
 
 @click.command(help=__doc__)
 @click.option("--cell", type=int, default=300, help="Thumbnail cell size in px (default: 300).")
-@click.option("--character", help="Character name; pull characters/<name>/<pool>/ from S3.")
+@click.option("--character", help="Character name; sheet one of its pools.")
 @click.option("--cols", type=int, default=5, help="Grid columns (default: 5).")
-@click.option("--folder", type=click.Choice(["archive", "corpus", "reference", "seed"]), default='reference', help="Which character pool to sheet (default: reference).")
+@click.option("--folder", default='reference', help="Which character pool to sheet — any folder under its root (default: reference).")
 @click.option("--group", default=None, help="A subfolder of the pool (e.g. seed/current).")
 @click.option("--out", required=True, help="Output PNG path.")
 @click.option("--src", help="Local directory of images (instead of --character). No longer supported.")
@@ -103,7 +103,10 @@ def contact_sheet(cell, character, cols, folder, group, out, src):
         raise click.UsageError("provide --character")
 
     record = CHARACTER.resolve(character)
-    root = CHARACTER.pool_folder(record, folder)
+    # `require_pool`, not `pool_folder`: the pool is any folder name now, and a
+    # sheet of a pool that is not there should be a refusal naming the ones that
+    # are — not a fresh empty folder and "no images under" it.
+    root = CHARACTER.require_pool(record, folder)
     # A pool is a tree, so sheeting one branch of it has to be expressible.
     # Without this the only way to eyeball `seed/current/` was to download the
     # folder by hand, which is the workaround this command exists to remove.
