@@ -115,25 +115,26 @@ test("the object screen is the viewer in the app shell, with the shell still aro
   ).toBeVisible();
 
   // **`/o/<id>` is `ViewerFrame` now — the opened run's box — and that box is
-  // `fixed`, sized from the header to the create sheet's handle.** It was an
-  // ordinary page with the player capped at `65dvh` between the two, and the
-  // picture was half the size the same file got when opened from a run. The
-  // assertion is the box: fixed, under the header, and not under the handle.
+  // `fixed`, sized from the header to the window's foot.** It was an
+  // ordinary page with the player capped at `65dvh`, and the picture was half
+  // the size the same file got when opened from a run. The assertion is the
+  // box: fixed, under the header, to the bottom of the window — the create
+  // sheet is not drawn here until something calls it up, so nothing else
+  // claims an edge.
   const frame = await page.evaluate(() => {
     const viewer = document.querySelector('[data-testid="object-viewer"]') as HTMLElement | null;
     if (!viewer) return null;
     const box = viewer.getBoundingClientRect();
-    const handle = document.querySelector('button[aria-label^="Open the create panel"]');
     return {
       position: getComputedStyle(viewer).position,
       top: box.top,
       bottom: box.bottom,
-      handleTop: handle?.getBoundingClientRect().top ?? null,
+      window: window.innerHeight,
     };
   });
   expect(frame?.position).toBe("fixed");
   expect(frame?.top).toBe(48);
-  expect(frame?.bottom).toBeLessThanOrEqual(frame?.handleTop ?? 0);
+  expect(frame?.bottom).toBe(frame?.window);
 });
 
 test("a poster plays in place, and closing returns to it without navigating", async ({
@@ -278,7 +279,7 @@ test("the picture on the stage drags into the sheet, which comes up to take it",
   await page.goto(at(FEED[1]!.id));
   const stage = page.locator('[data-testid="object-viewer"] img[alt]').first();
   await expect(stage).toBeVisible();
-  await expect(page.getByRole("button", { name: /Open the create panel/ })).toBeVisible();
+  // Nothing of the sheet is drawn over the viewer until something calls it up.
   await expect(page.getByLabel("Prompt")).toHaveCount(0);
 
   const from = (await stage.boundingBox())!;

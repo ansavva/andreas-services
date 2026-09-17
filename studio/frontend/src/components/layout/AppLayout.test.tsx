@@ -69,8 +69,7 @@ it("a node drag entering the window brings up a sheet that was away", () => {
       </MemoryRouter>
     </TestProviders>,
   );
-  // The open file keeps the sheet away: only its handle is drawn.
-  expect(screen.getByRole("button", { name: /Open the create panel/ })).toBeTruthy();
+  // The open file keeps the sheet away: nothing of it is drawn.
   expect(screen.queryByLabelText("Prompt")).toBeNull();
 
   // Somebody else's drag — a file from the desktop — is not ours.
@@ -79,5 +78,4 @@ it("a node drag entering the window brings up a sheet that was away", () => {
 
   fireEvent.dragEnter(window, { dataTransfer: { types: ["application/x-studio-node"] } });
   expect(screen.getByLabelText("Prompt")).toBeTruthy();
-  expect(screen.queryByRole("button", { name: /Open the create panel/ })).toBeNull();
 });

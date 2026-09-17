@@ -3,14 +3,16 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
   type ReactElement,
   type ReactNode,
 } from "react";
 
-import { Button, Dropdown, IconButton, Input, Popover, Text } from "@ansavva/design-system";
+import { Button, Drawer, Dropdown, IconButton, Input, Popover, Text } from "@ansavva/design-system";
 
 import { getModelSchema } from "../../apis/studio";
+import { FINE, ROOMY, useMediaQuery } from "../../hooks/useMediaQuery";
 import { useResource } from "../../hooks/useResource";
 import type {
   ModelEntry,
@@ -31,12 +33,15 @@ import {
   DiamondIcon,
   LayersIcon,
   ModelIcon,
+  TemplateIcon,
   ResolutionIcon,
   SoundOffIcon,
   SoundOnIcon,
   ProjectsIcon,
 } from "../common/icons";
 import { EmptyState } from "../common/EmptyState";
+import { SheetHandle } from "../common/SheetHandle";
+import { TemplateList } from "../run/TemplateList";
 import { AutoTextarea } from "../common/AutoTextarea";
 import { describedProps, enumOf } from "../run/SchemaParams";
 
@@ -107,12 +112,28 @@ export const chipClass =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fill-active";
 
 /**
- * Which way a chip's menu opens. UP from the chip row, which sits at the
- * bottom of the viewport; DOWN from a row in the phone sheet, where the
- * sheet's own scroll would clip anything hung above it.
+ * Which way a chip's menu opens. DOWN from the chip row, which sits under the
+ * header now that the panel is at the top of the page, and down from a row
+ * in the phone sheet, where the sheet's own scroll would clip anything hung
+ * above it. `up` is kept for a chip drawn somewhere with no room below.
  */
 const MENU_SIDE = { up: "bottom-full top-auto mb-1 mt-0", down: "" } as const;
-const MENU_UP = MENU_SIDE.up;
+const MENU_DOWN = MENU_SIDE.down;
+/**
+ * How tall a list hung from the chip row may be. The row sits a third of the
+ * way down the window once the sheet holds a tile and a prompt, so `70vh`
+ * — right when the row was at the window's foot and the list hung up — ran
+ * off the bottom at 900px. Half the window fits from there.
+ */
+export const MENU_MAX_H = "max-h-[50vh]";
+/**
+ * The chevron on a project, model or template chip — drawn only where the
+ * menu IS a dropdown. Under `lg` the chip opens a sheet (`ChipMenu`), and a
+ * chevron pointing down at a sheet that comes up from the bottom promises
+ * the wrong thing; the chip's fill (`max-md:bg-fill`) is what says it is
+ * pressable.
+ */
+const MENU_CHEVRON = "size-3.5 shrink-0 fill-none stroke-current stroke-[1.5] text-muted max-lg:hidden";
 
 /** One resolved chip: which input it binds, and what it may be. */
 export interface ResolvedChip {
@@ -389,7 +410,7 @@ export function ParamChip({
   chip,
   value,
   onChange,
-  menuSide = "up",
+  menuSide = "down",
 }: {
   chip: ResolvedChip;
   value: unknown;
@@ -592,7 +613,83 @@ export function ModelList({
   );
 }
 
-/** The model chip, and the list behind it — hung upward from the chip row. */
+/**
+ * The menu behind a chip: a popover hung down from the chip on a desk, a
+ * bottom sheet on a phone.
+ *
+ * **A popover under a chip is the wrong shape at 390px.** The model list
+ * hung off the row ran under the window's foot and past its right edge;
+ * the picker (`AttachPicker`) and the gear had already become sheets for
+ * the same reason, and the project, model and template lists are the same
+ * kind of thing — one of a handful of names, picked by a thumb. `lg` is
+ * the line (`ROOMY`), the same one the gear uses: a tablet's row is not
+ * wide enough for a popover either. The sheet carries the phone's own
+ * handle and dismisses on the backdrop and Escape like the others.
+ *
+ * `children` is called with `wide`, because a list's search box should take
+ * the caret under a mouse and not under a thumb, where focus is a keyboard
+ * over the list it searches.
+ */
+function ChipMenu({
+  open,
+  onOpenChange,
+  trigger,
+  label,
+  className,
+  children,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** The chip itself — `aria-label`, `title`, `className` and its content. */
+  trigger: { label: string; title: string; className: string; children: ReactNode };
+  /** The menu's accessible name. */
+  label: string;
+  /** The popover's own classes — width, height, padding. */
+  className: string;
+  children: (wide: boolean) => ReactNode;
+}) {
+  const wide = useMediaQuery(ROOMY);
+  const fine = useMediaQuery(FINE);
+  const panel = useRef<HTMLDivElement>(null);
+  if (wide) {
+    return (
+      <Popover.Root open={open} onOpenChange={onOpenChange}>
+        <Popover.Trigger aria-label={trigger.label} title={trigger.title} className={trigger.className}>
+          {trigger.children}
+        </Popover.Trigger>
+        <Popover.Content label={label} className={className}>
+          {children(fine)}
+        </Popover.Content>
+      </Popover.Root>
+    );
+  }
+  return (
+    <Drawer.Root side="bottom" open={open} onOpenChange={onOpenChange}>
+      <Drawer.Trigger aria-label={trigger.label} title={trigger.title} className={trigger.className}>
+        {trigger.children}
+      </Drawer.Trigger>
+      <Drawer.Backdrop />
+      <Drawer.Panel ref={panel} className="flex max-h-[85dvh] flex-col rounded-t-lg pt-0">
+        <Drawer.Title className="sr-only">{label}</Drawer.Title>
+        <SheetHandle panel={panel} onDismiss={() => onOpenChange(false)} />
+        {/* `tabIndex={0}` on the scroller, so it is what the drawer's focus
+            trap lands on when the sheet opens. Without it the first
+            focusable thing is the search box: a keyboard over the list on
+            a phone, and a focus ring lit on a box nobody touched. A
+            scrolling region is a legitimate tab stop — arrow keys scroll it
+            — and the ring is turned off because this focus is the
+            drawer's, not a person's. `p-1` so the search box's own focus
+            ring, 2px past its edge, is not cut off by the scroller it
+            sits flush inside. */}
+        <div tabIndex={0} className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1 outline-none">
+          {children(false)}
+        </div>
+      </Drawer.Panel>
+    </Drawer.Root>
+  );
+}
+
+/** The model chip, and the list behind it — hung down from the chip row, or a sheet on a phone. */
 export function ModelChip({
   kind,
   models,
@@ -607,32 +704,37 @@ export function ModelChip({
   const [open, setOpen] = useState(false);
 
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger
-        aria-label={`Model: ${entry.key}`}
-        title="Model"
-        className={`${chipClass} text-ink max-md:bg-fill`}
-      >
-        <ModelIcon className={GLYPH} />
-        <span className="max-w-40 truncate">{entry.key}</span>
-        <ChevronDownIcon className="size-3.5 shrink-0 fill-none stroke-current stroke-[1.5] text-muted" />
-      </Popover.Trigger>
-      <Popover.Content
-        label="Models"
-        className={`${MENU_UP} max-h-[70vh] w-[min(24rem,calc(100vw-2rem))] max-w-none overflow-y-auto p-2`}
-      >
+    <ChipMenu
+      open={open}
+      onOpenChange={setOpen}
+      trigger={{
+        label: `Model: ${entry.key}`,
+        title: "Model",
+        className: `${chipClass} text-ink max-md:bg-fill`,
+        children: (
+          <>
+            <ModelIcon className={GLYPH} />
+            <span className="max-w-40 truncate">{entry.key}</span>
+            <ChevronDownIcon className={MENU_CHEVRON} />
+          </>
+        ),
+      }}
+      label="Models"
+      className={`${MENU_DOWN} ${MENU_MAX_H} w-[min(24rem,calc(100vw-2rem))] max-w-none overflow-y-auto p-2`}
+    >
+      {(focus) => (
         <ModelList
           kind={kind}
           models={models}
           entry={entry}
-          autoFocus
+          autoFocus={focus}
           onModel={(model) => {
             onModel(model);
             setOpen(false);
           }}
         />
-      </Popover.Content>
-    </Popover.Root>
+      )}
+    </ChipMenu>
   );
 }
 
@@ -1022,8 +1124,8 @@ export function ProjectList({
 }
 
 /**
- * The project chip, and the list behind it — hung upward from the chip row,
- * exactly as the model chip is.
+ * The project chip, and the list behind it — hung down from the chip row,
+ * or a sheet on a phone, exactly as the model chip is.
  *
  * **It was a combobox, and a combobox is a box.** A full-width text field on
  * its own row under the chips on a phone, a 11rem one beside them on a
@@ -1045,30 +1147,89 @@ export function ProjectChip({
   const text = chosen?.name ?? "Project";
 
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger
-        aria-label={`Project: ${chosen?.name ?? "none"}`}
-        title="Project"
-        className={`${chipClass} ${chosen ? "text-ink" : ""} max-md:bg-fill`}
-      >
-        <ProjectsIcon className={GLYPH} />
-        <span className="max-w-32 truncate">{text}</span>
-        <ChevronDownIcon className="size-3.5 shrink-0 fill-none stroke-current stroke-[1.5] text-muted" />
-      </Popover.Trigger>
-      <Popover.Content
-        label="Projects"
-        className={`${MENU_UP} max-h-[70vh] w-[min(20rem,calc(100vw-2rem))] max-w-none overflow-y-auto p-2`}
-      >
+    <ChipMenu
+      open={open}
+      onOpenChange={setOpen}
+      trigger={{
+        label: `Project: ${chosen?.name ?? "none"}`,
+        title: "Project",
+        className: `${chipClass} ${chosen ? "text-ink" : ""} max-md:bg-fill`,
+        children: (
+          <>
+            <ProjectsIcon className={GLYPH} />
+            <span className="max-w-32 truncate">{text}</span>
+            <ChevronDownIcon className={MENU_CHEVRON} />
+          </>
+        ),
+      }}
+      label="Projects"
+      className={`${MENU_DOWN} ${MENU_MAX_H} w-[min(20rem,calc(100vw-2rem))] max-w-none overflow-y-auto p-2`}
+    >
+      {(focus) => (
         <ProjectList
           projects={projects}
           value={value}
-          autoFocus
+          autoFocus={focus}
           onProject={(id) => {
             onProject(id);
             setOpen(false);
           }}
         />
-      </Popover.Content>
-    </Popover.Root>
+      )}
+    </ChipMenu>
+  );
+}
+
+/**
+ * The template chip, and the list behind it — the same chip the project and
+ * the model are, in the same row.
+ *
+ * **It was an icon in the sheet's top-right corner**, beside the collapse
+ * chevron, which made it read as chrome rather than as a value the run is
+ * made from. A template is picked the way a model is, so it sits where the
+ * model sits. The word is dropped below `md`, where the row is the phone's
+ * width and already holds the project and the model.
+ *
+ * No value shows in the chip: picking fills the prompt and stops, and the
+ * prompt is then edited, so there is no "current template" to name.
+ */
+export function TemplateChip({
+  cast,
+  onPick,
+}: {
+  cast: number;
+  onPick: (prompt: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <ChipMenu
+      open={open}
+      onOpenChange={setOpen}
+      trigger={{
+        label: "Template",
+        title: "Start from a template",
+        className: `${chipClass} max-md:bg-fill`,
+        children: (
+          <>
+            <TemplateIcon className={GLYPH} />
+            <span className="max-md:hidden">Template</span>
+            <ChevronDownIcon className={MENU_CHEVRON} />
+          </>
+        ),
+      }}
+      label="Templates"
+      className={`${MENU_DOWN} w-[min(28rem,calc(100vw-2rem))] max-w-none p-0`}
+    >
+      {() => (
+        <TemplateList
+          cast={cast}
+          onPick={(prompt) => {
+            onPick(prompt);
+            setOpen(false);
+          }}
+        />
+      )}
+    </ChipMenu>
   );
 }

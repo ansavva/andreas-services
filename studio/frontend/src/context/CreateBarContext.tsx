@@ -95,16 +95,6 @@ export interface Attachment {
 export const CREATE_PROJECT_STORAGE_KEY = "studio.createBar.project";
 
 /**
- * Where "I collapsed the sheet" survives a reload.
- *
- * **Remembered, because the point of collapsing it is to browse without it.**
- * A collapse that undid itself on the next navigation would be a control that
- * does nothing you can use — and the sheet is drawn on every screen, so "every
- * screen" is exactly the scope of the decision.
- */
-export const CREATE_COLLAPSED_STORAGE_KEY = "studio.createBar.collapsed";
-
-/**
  * A role that holds ONE object. `start`, `end` and `clip` are scalar fields on
  * every model that has them, and `input` — the image an edit starts from — is
  * one picture by meaning even where it lands on a list field. Attaching to any
@@ -138,25 +128,31 @@ interface CreateBarState {
   /** Bumped when something loads the bar, so it can take focus. */
   focus: number;
   /**
+   * Bumped when something loads the sheet with words to read — `loadRun`,
+   * `summon` — so the shell can scroll it into view. **Not by `attach`**: a
+   * picture handed up from a feed row half a page down lands in the dock
+   * the sheet leaves in the window's corner once it has scrolled away
+   * (`AttachDock`), which is where the next one is dragged to, and pulling
+   * the page to the top on every drop would take the dock away from under
+   * the drag. Not by `replace` or `drop` either, which are the worker
+   * finishing, not a person acting.
+   */
+  raised: number;
+  /**
    * Whether something has called the sheet up since the run or file on
    * screen was opened. On the opened run — and the open file, which is the
    * same viewer — the sheet is not drawn until Edit, Rerun, Use as reference
    * or a tile attaches something — it would cover the filmstrip and the
    * transport with a prompt about some other run. Reset every time a
    * different one opens. Read as `shown`.
+   *
+   * **This is the only way the sheet is ever not drawn.** It used to collapse
+   * to a handle on every screen, remembered across reloads; now it sits in
+   * the page's flow at the top, scrolls away like the rest of the page, and
+   * needs no folding. The opened run is the one screen where it is drawn
+   * OVER something, so it is the one screen with a way to put it away again.
    */
   summoned: boolean;
-  /**
-   * Collapsed by hand, on every screen, until it is pulled back up.
-   *
-   * **Separate from `summoned`, which is about one screen.** The opened run
-   * keeps the sheet away because a prompt about some other run would cover the
-   * filmstrip; this is a person saying they want the feed to themselves. Both
-   * have to be false for the sheet to be drawn, and anything that fills the
-   * sheet clears this one — attaching a picture to a sheet nobody can see is
-   * the one outcome this must not have.
-   */
-  collapsed: boolean;
 }
 
 interface CreateBarStateValue extends CreateBarState {
@@ -188,33 +184,18 @@ interface CreateBarStateValue extends CreateBarState {
   move(from: number, to: number): void;
   /** Whether the sheet is drawn at all — false on the opened run until something calls it up. */
   shown: boolean;
-  /** Collapse the sheet to its handle. */
-  collapse(): void;
-  /** Pull it back up, with the caret in the prompt. */
-  expand(): void;
+  /** Whether the sheet, when drawn, is over the opened run's viewer rather than on a page. */
+  overViewer: boolean;
+  /** Call the sheet up on the opened run, with the caret in the prompt. */
+  summon(): void;
+  /** Put it away again on the opened run. A no-op anywhere else, where it is always drawn. */
+  dismiss(): void;
   /** After a send: the prompt goes, the images go unless kept. */
   sent(): void;
 }
 
 const ApiContext = createContext<CreateBarApi | null>(null);
 const StateContext = createContext<CreateBarStateValue | null>(null);
-
-function readCollapsed(): boolean {
-  try {
-    return window.localStorage.getItem(CREATE_COLLAPSED_STORAGE_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writeCollapsed(collapsed: boolean): void {
-  try {
-    if (collapsed) window.localStorage.setItem(CREATE_COLLAPSED_STORAGE_KEY, "1");
-    else window.localStorage.removeItem(CREATE_COLLAPSED_STORAGE_KEY);
-  } catch {
-    /* private-mode Safari throws on the accessor; losing the memory is the lesser loss */
-  }
-}
 
 function readProject(): string | null {
   try {
@@ -242,15 +223,14 @@ const EMPTY: CreateBarState = {
   project: null,
   role: null,
   focus: 0,
+  raised: 0,
   summoned: false,
-  collapsed: false,
 };
 
 export function CreateBarProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<CreateBarState>(() => ({
     ...EMPTY,
     project: readProject(),
-    collapsed: readCollapsed(),
   }));
 
   // The route's project, wherever under it the page is — a run opened at
@@ -304,8 +284,8 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
         project: seed.project,
         role: null,
         focus: current.focus + 1,
+        raised: current.raised + 1,
         summoned: true,
-        collapsed: false,
       };
     });
   }, []);
@@ -326,7 +306,6 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
         kind,
         attachments: { ...current.attachments, [kind]: next },
         summoned: true,
-        collapsed: false,
       };
     });
   }, []);
@@ -450,24 +429,22 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const collapse = useCallback(() => {
-    writeCollapsed(true);
-    setState((current) => ({ ...current, summoned: false, collapsed: true, role: null }));
+  const dismiss = useCallback(() => {
+    setState((current) => (current.summoned ? { ...current, summoned: false, role: null } : current));
   }, []);
 
   /**
-   * Pull it back up, and put the caret in the prompt.
+   * Call it up, and put the caret in the prompt.
    *
    * `focus` is the bump the bar watches — the same one `loadRun` uses — so
    * opening the sheet lands you in the box you opened it to type in.
    */
-  const expand = useCallback(() => {
-    writeCollapsed(false);
+  const summon = useCallback(() => {
     setState((current) => ({
       ...current,
-      collapsed: false,
       summoned: true,
       focus: current.focus + 1,
+      raised: current.raised + 1,
     }));
   }, []);
 
@@ -477,11 +454,10 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
       target: routeProject ?? sceneProject ?? state.project,
       onProject: routeProject !== null || sceneProject !== null,
       scene: routeScene,
-      // Both have to be clear: `collapsed` is a person's decision about every
-      // screen, `summoned` is this screen's own rule about the opened run.
-      shown: !state.collapsed && (opened === null || state.summoned),
-      collapse,
-      expand,
+      shown: opened === null || state.summoned,
+      overViewer: opened !== null,
+      summon,
+      dismiss,
       setPrompt,
       setModel,
       setParams,
@@ -498,8 +474,8 @@ export function CreateBarProvider({ children }: { children: ReactNode }) {
       routeScene,
       sceneProject,
       opened,
-      collapse,
-      expand,
+      summon,
+      dismiss,
       setPrompt,
       setModel,
       setParams,

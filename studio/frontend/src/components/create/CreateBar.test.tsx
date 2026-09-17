@@ -606,7 +606,7 @@ it("the sheet is always drawn, and a press elsewhere folds nothing", async () =>
   expect(screen.getByRole("button", { name: "Remove face-01.png" })).toBeTruthy();
 });
 
-it("on the opened run the sheet stays away until something calls it up, and collapses again", async () => {
+it("on the opened run the sheet stays away until something calls it up, and closes again", async () => {
   // Not `open()`: that waits for the placeholder, and there is no sheet to
   // hold one yet — its absence is the point.
   render(
@@ -625,7 +625,9 @@ it("on the opened run the sheet stays away until something calls it up, and coll
   await waitFor(() => expect(document.querySelector("[data-create-bar]")).toBeTruthy());
   expect(screen.getByRole("textbox", { name: "Prompt" }).textContent).toContain("Again, but warmer.");
 
-  fireEvent.click(screen.getByRole("button", { name: "Collapse the create panel" }));
+  // The close is drawn over the viewer only: on a page the sheet is part of
+  // the page, and there is nothing to close.
+  fireEvent.click(screen.getByRole("button", { name: "Close the create panel" }));
   await waitFor(() => expect(document.querySelector("[data-create-bar]")).toBeNull());
 });
 
@@ -635,8 +637,6 @@ it("on the opened run the sheet stays away until something calls it up, and coll
  * is a side panel on a desk and a bottom sheet on a phone, the same lines.
  */
 it("a picture opens a preview whose lines move it and remove it", async () => {
-  // The test above this one collapsed the sheet, and the decision is kept.
-  window.localStorage.clear();
   await open();
   api.attach(FACE, "reference");
   api.attach({ ...FACE, node: "node-2", name: "face-02.png" }, "reference");

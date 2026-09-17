@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -11,7 +11,6 @@ import {
   Text,
   Toggle,
   ToggleGroup,
-  iconButtonClass,
   useToast,
 } from "@ansavva/design-system";
 
@@ -35,31 +34,42 @@ import {
   useCreateBar,
   useCreateBarState,
   type AttachRef,
+  type Attachment,
 } from "../../context/CreateBarContext";
 import { FINE, useMediaQuery } from "../../hooks/useMediaQuery";
 import { useResource } from "../../hooks/useResource";
+import { useScrolledPast } from "../../hooks/useScrolledPast";
 import type { CreatedRun, RunSummary } from "../../types";
 import { citesTemplate } from "../../utils/citations";
 import { formatDate } from "../../utils/format";
 import {
   ArrowUpIcon,
-  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  CloseIcon,
   ImageIcon,
+  ImagePlusIcon,
   SettingsIcon,
-  TemplateIcon,
   VideoIcon,
 } from "../common/icons";
 import {
   TokenizedPromptEditor,
   type PromptToken,
 } from "../common/TokenizedPromptEditor";
-import { TemplateList } from "../run/TemplateList";
 import { SheetHandle } from "../common/SheetHandle";
+import { TemplateList } from "../run/TemplateList";
 import { AttachTiles, blockedReason, fallbackDropRole } from "./AttachTiles";
 import { isNodeDrag, readNodeDrag } from "./dragRef";
-import { ModelChip, ModelList, ParamChipRow, ProjectChip, chipClass } from "./CreateChips";
+import {
+  MENU_MAX_H,
+  ModelChip,
+  ModelList,
+  ParamChipRow,
+  ProjectChip,
+  ProjectList,
+  TemplateChip,
+  chipClass,
+} from "./CreateChips";
 import { AttachPicker } from "./AttachPicker";
 import { SettingsPanel } from "./CreateSettings";
 import { anyPending, castOf, defaultEntry, findEntry, sendsOf } from "./roles";
@@ -97,21 +107,20 @@ interface Held {
 
 const GLYPH = "size-4 fill-none stroke-current stroke-[1.5]";
 
-/** Popovers hang UP from the panel: it sits at the bottom of the viewport. */
-const UP_RIGHT = "bottom-full top-auto left-auto right-0 mb-2 mt-0";
-
 /**
  * The create panel: what every screen makes runs from.
  *
- * **A frosted sheet floating over the feed, always fully drawn** — the shape
+ * **A frosted sheet under the header, always fully drawn** — the shape
  * ElevenLabs' runner has. It was a one-line box in the header that grew when
  * focused; a 72px header could hold nothing else, and the mode strip, the
- * picker and the settings each appeared and vanished with the caret. Now the
- * shell mounts it at the foot of the content column, sticky to the viewport's
- * bottom, and nothing about it is folded: the mode switch top-left, the
- * three icons top-right, a tile per image role, the prompt, and a row of chips
- * for the model and the settings worth a press — each a glyph and a value
- * that opens a short menu upward — and a gear holding every setting as rows.
+ * picker and the settings each appeared and vanished with the caret. Then it
+ * floated at the viewport's foot, over whatever was being looked at. Now the
+ * shell mounts it in the flow at the top of the content column, the page
+ * starts under it, and nothing about it is folded: the mode switch top-left,
+ * the three icons top-right, a tile per image role, the prompt, and a row of
+ * chips for the model and the settings worth a press — each a glyph and a
+ * value that opens a short menu downward — and a gear holding every setting
+ * as rows.
  * ⌘/Ctrl+Enter sends; Enter is a line break, a prompt being paragraphs. The
  * round arrow is Send.
  *
@@ -134,9 +143,21 @@ export function CreateBar() {
   const queryClient = useQueryClient();
   const toast = useToast();
 
-  const [templatesOpen, setTemplatesOpen] = useState(false);
   const promptBox = useRef<HTMLDivElement>(null);
   const [promptFocused, setPromptFocused] = useState(false);
+  /**
+   * The sheet's own card, and whether the page has been scrolled past it.
+   * While it has, `AttachDock` keeps the tiles on screen — see it for why.
+   */
+  const sheet = useRef<HTMLDivElement>(null);
+  const scrolledPast = useScrolledPast(sheet);
+  /**
+   * Whether the dock is folded to its pill. Held here rather than in the
+   * dock, because the dock is mounted only while the sheet is out of view:
+   * a fold that undid itself every time the page was scrolled back up and
+   * down again would be a decision that lasts one scroll.
+   */
+  const [dockFolded, setDockFolded] = useState(false);
   /**
    * **The caret is put in the prompt for you only under a mouse.** `loadRun`
    * and `expand` bump `bar.focus` so that Edit on a run, or pulling the sheet
@@ -178,7 +199,7 @@ export function CreateBar() {
   }, [bar.prompt, promptFocused]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [sheetView, setSheetView] = useState<"settings" | "models">("settings");
+  const [sheetView, setSheetView] = useState<"settings" | "models" | "projects" | "templates">("settings");
   const sheetRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -291,7 +312,6 @@ export function CreateBar() {
    */
   const pickTemplate = useCallback(
     async (template: string) => {
-      setTemplatesOpen(false);
       // Nothing to fill, nothing to ask: a template of plain prose is its own
       // finished prompt. **A brace is not a citation** — a template written as
       // JSON, or one carrying a stray `{`, is prose by this test and stays
@@ -559,9 +579,11 @@ export function CreateBar() {
       onDragOver={onDragOver}
       onDrop={onDrop}
       onKeyDown={(event) => {
-        // Escape inside the sheet collapses it — inside, so it never competes
-        // with the Escape a viewer, a drawer or a menu binds for itself.
-        if (event.key === "Escape" && !event.defaultPrevented) bar.collapse();
+        // Escape inside the sheet puts it away on the opened run — inside, so
+        // it never competes with the Escape a viewer, a drawer or a menu
+        // binds for itself. Anywhere else the sheet is not something that
+        // goes away, and Escape is nothing here.
+        if (event.key === "Escape" && !event.defaultPrevented) bar.dismiss();
       }}
     >
       {held && (
@@ -605,89 +627,63 @@ export function CreateBar() {
         </Alert.Root>
       )}
 
-      {/* The picker: a second sheet ABOVE this one while a tile is
-          highlighted, holding the library's file navigation. Absolute off the
-          sheet's own box, so the sheet neither grows nor moves. */}
-      <div className="relative">
-        {bar.role !== null && entry && (
-          <div className="absolute inset-x-0 bottom-full mb-2">
-            <AttachPicker
-              key={bar.role}
-              role={bar.role}
-              project={
-                project.data
-                  ? {
-                      kind: "project",
-                      id: project.data.id,
-                      name: project.data.name,
-                      root: project.data.root,
-                    }
-                  : null
-              }
-              attached={new Set(attachments.map((each) => each.ref.node))}
-              held={attachments.filter((each) => each.role === bar.role).length}
-              cap={bar.role === "reference" ? (entry?.images?.max_refs ?? null) : null}
-              full={pickerFull}
-              onAttach={(ref: AttachRef) => {
-                // The tiles are disabled once `full` is set; this is the
-                // same rule for a press that raced the render.
-                if (bar.role && pickerFull === null) attach(ref, bar.role);
-              }}
-              // The mark in the picker means "on the sheet", in any role, so
-              // pressing it again takes the picture off whichever role holds it.
-              onDetach={drop}
-              onClose={() => bar.setRole(null)}
-            />
-          </div>
-        )}
+      {/* The picker: a drawer while a tile is highlighted, holding the
+          library's file navigation. A drawer rather than a card hung off
+          the sheet, so it opens the same from the dock once the sheet has
+          scrolled away — see `AttachPicker`. */}
+      {bar.role !== null && entry && (
+        <AttachPicker
+          key={bar.role}
+          role={bar.role}
+          project={
+            project.data
+              ? {
+                  kind: "project",
+                  id: project.data.id,
+                  name: project.data.name,
+                  root: project.data.root,
+                }
+              : null
+          }
+          attached={new Set(attachments.map((each) => each.ref.node))}
+          held={attachments.filter((each) => each.role === bar.role).length}
+          cap={bar.role === "reference" ? (entry?.images?.max_refs ?? null) : null}
+          full={pickerFull}
+          onAttach={(ref: AttachRef) => {
+            // The tiles are disabled once `full` is set; this is the
+            // same rule for a press that raced the render.
+            if (bar.role && pickerFull === null) attach(ref, bar.role);
+          }}
+          // The mark in the picker means "on the sheet", in any role, so
+          // pressing it again takes the picture off whichever role holds it.
+          onDetach={drop}
+          onClose={() => bar.setRole(null)}
+        />
+      )}
 
-      {/* The sheet. `bg-sheet` over a blur rather than a solid: media
-          scrolling under it stays faintly visible, which is what says
-          "floating over the feed" rather than "the page ends here".
+      {/* The sheet. `bg-sheet` over a blur rather than a solid, kept from
+          when it floated: the dock and the picker are the same material,
+          and the three should read as one thing.
 
-          **Rounded at the top only, and sitting on the window's edge.** It was
-          a card with a gap under it, which put a stripe of feed below
-          something anchored to the bottom of the screen — and once the thing
-          that opens it is a handle on that edge, the gap argues with the
-          gesture. */}
+          **A card on the page**, a line below the header and inside the
+          page's gutters, so every corner is rounded. */}
       <div
-        className="flex flex-col gap-3 rounded-t-lg bg-sheet p-3 shadow-[0_-8px_48px_rgba(0,0,0,0.55)]
+        ref={sheet}
+        className="flex flex-col gap-3 rounded-lg bg-sheet p-3 shadow-[0_8px_48px_rgba(0,0,0,0.55)]
                    ring-1 ring-line backdrop-blur-xl"
       >
         <div className="flex items-center justify-between gap-2" onPointerDownCapture={leavePrompt}>
           {kindSwitch}
 
-          <div className="flex items-center gap-0.5">
-            <Popover.Root open={templatesOpen} onOpenChange={setTemplatesOpen}>
-              <Popover.Trigger
-                aria-label="Template"
-                title="Start from a template"
-                className={iconButtonClass({ size: "sm", pressed: templatesOpen })}
-              >
-                <TemplateIcon />
-              </Popover.Trigger>
-              <Popover.Content
-                label="Templates"
-                className={`${UP_RIGHT} w-[min(28rem,calc(100vw-2rem))] max-w-none p-0`}
-              >
-                <TemplateList
-                  cast={cast.length}
-                  onPick={(prompt: string) => void pickTemplate(prompt)}
-                />
-              </Popover.Content>
-            </Popover.Root>
-
-            {/* **On every screen now, not just the opened run.** The sheet is
-                drawn over whatever you are looking at, and "I want the feed to
-                myself" was answerable on exactly one screen. The chevron points
-                the way it moves: down to the handle it leaves at the foot of
-                the column, which pulls it back up. Escape does the same. */}
-            <IconButton size="sm" label="Collapse the create panel" onClick={bar.collapse}>
-              <ChevronDownIcon />
+          {/* **Only over the viewer.** On a page the sheet is part of the
+              page and there is nothing to close; on the opened run it was
+              called up over a fixed-height viewer, and the thing that called
+              it up should have a way back. Escape does the same. */}
+          {bar.overViewer && (
+            <IconButton size="sm" label="Close the create panel" onClick={bar.dismiss}>
+              <CloseIcon />
             </IconButton>
-
-
-          </div>
+          )}
         </div>
 
         {entry && (
@@ -730,7 +726,7 @@ export function CreateBar() {
             placeholder={placeholder}
             className=""
             family="body"
-            menuSide="up"
+            menuSide="down"
             contentClassName={
               promptFocused
                 ? "min-h-12 max-h-48 overflow-y-auto"
@@ -762,6 +758,8 @@ export function CreateBar() {
             />
           )}
 
+          <TemplateChip cast={cast.length} onPick={(prompt: string) => void pickTemplate(prompt)} />
+
           {entry && (
             <ParamChipRow
               entry={entry}
@@ -771,29 +769,36 @@ export function CreateBar() {
             />
           )}
 
-          {/* The gear, above `md`: every setting as rows, in a panel hung
-              from the chip row. The same rows the phone sheet draws — the six
+          {/* The gear, from `lg`: every setting as rows, in a panel hung
+              from the chip row. The same rows the sheet draws — the six
               chips' and the rest of the schema's — so when the chips have
-              collapsed into it nothing is out of reach. */}
+              collapsed into it nothing is out of reach. `lg` rather than
+              `md` because a tablet's row has no room for the panel on
+              either side of the gear — see `ROOMY`. */}
           {entry && (
             <Popover.Root open={settingsOpen} onOpenChange={setSettingsOpen}>
               <Popover.Trigger
                 aria-label="Settings"
                 title="Settings"
-                className={`${chipClass} max-md:hidden`}
+                className={`${chipClass} max-lg:hidden`}
               >
                 <SettingsIcon className={GLYPH} />
               </Popover.Trigger>
               <Popover.Content
                 label="Settings"
-                className="bottom-full top-auto left-auto right-0 mb-2 mt-0 max-h-[70vh] w-[min(26rem,calc(100vw-2rem))] max-w-none overflow-y-auto"
+                // Hung from the gear's LEFT edge, like every other chip's
+                // menu. It hung from the right while the gear was the row's
+                // last control; now the chips sit left of the Send arrow, and
+                // a 26rem panel right-anchored to a chip a third of the way
+                // across ran under the sidebar on a tablet.
+                className={`mt-2 ${MENU_MAX_H} w-[min(26rem,calc(100vw-2rem))] max-w-none overflow-y-auto`}
               >
                 <SettingsPanel entry={entry} params={params} onParams={setParams} actions={settingsActions} />
               </Popover.Content>
             </Popover.Root>
           )}
 
-          {/* The phone's gear: the sheet. Two views — the settings as rows,
+          {/* The gear under `lg`: the sheet. Two views — the settings as rows,
               and "Select a model" in its place when the Model row is pressed,
               the way ElevenLabs pages the same sheet rather than stacking a
               picker over it.
@@ -816,7 +821,7 @@ export function CreateBar() {
             <Drawer.Trigger
               aria-label="Settings"
               title="Settings"
-              className={`${chipClass} bg-fill md:hidden`}
+              className={`${chipClass} bg-fill lg:hidden`}
             >
               <SettingsIcon className={GLYPH} />
             </Drawer.Trigger>
@@ -826,10 +831,62 @@ export function CreateBar() {
               className="max-h-[85dvh] overflow-y-auto overscroll-contain rounded-t-lg pt-0"
             >
               <Drawer.Title className="sr-only">
-                {sheetView === "models" ? "Select a model" : "Settings"}
+                {sheetView === "models"
+                  ? "Select a model"
+                  : sheetView === "projects"
+                    ? "Select a project"
+                    : sheetView === "templates"
+                      ? "Start from a template"
+                      : "Settings"}
               </Drawer.Title>
               <SheetHandle panel={sheetRef} onDismiss={() => setSheetOpen(false)} />
-              {entry && sheetView === "models" ? (
+              {/* The project page, the same shape as the model's: off a
+                  project page the sheet has to say where a run goes, and
+                  the chip in the row is the same question asked the same
+                  way. Not drawn on a project page, where the route answers. */}
+              {sheetView === "projects" ? (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <IconButton size="sm" label="Back to settings" onClick={() => setSheetView("settings")}>
+                      <ChevronLeftIcon />
+                    </IconButton>
+                    <Text as="span" variant="body" weight="medium">
+                      Select a project
+                    </Text>
+                  </div>
+                  <ProjectList
+                    projects={projects.data ?? []}
+                    value={target ?? null}
+                    autoFocus={fine}
+                    onProject={(id) => {
+                      bar.setProject(id);
+                      setSheetView("settings");
+                    }}
+                  />
+                </div>
+              ) : sheetView === "templates" ? (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <IconButton size="sm" label="Back to settings" onClick={() => setSheetView("settings")}>
+                      <ChevronLeftIcon />
+                    </IconButton>
+                    <Text as="span" variant="body" weight="medium">
+                      Start from a template
+                    </Text>
+                  </div>
+                  {/* Picking fills the prompt and closes the sheet: the
+                      prompt is what the pick is for, and it is behind the
+                      sheet until the sheet goes. */}
+                  <TemplateList
+                    cast={cast.length}
+                    onPick={(prompt) => {
+                      void pickTemplate(prompt);
+                      setSheetOpen(false);
+                      setSheetView("settings");
+                    }}
+                  />
+                </div>
+              ) : entry && sheetView === "models" ? (
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center gap-2">
                     <IconButton size="sm" label="Back to settings" onClick={() => setSheetView("settings")}>
@@ -853,26 +910,40 @@ export function CreateBar() {
                   />
                 </div>
               ) : (
-                <div className="flex flex-col gap-4">
-                  <div className="[&>div]:w-full [&>div>button]:flex-1">{kindSwitch}</div>
+                <div className="flex flex-col gap-5">
+                  {/* **Two sections.** What the run IS — its kind, where it
+                      goes, which model, a template to start from — and then
+                      the model's own settings, under a rule and a heading
+                      that names the model. The three rows are the row of
+                      chips as a list; the settings change with the model
+                      picked above them, and the rule says which half is
+                      whose. */}
+                  <div className="flex flex-col gap-4">
+                    <div className="[&>div]:w-full [&>div>button]:flex-1">{kindSwitch}</div>
+                    {!bar.onProject && (
+                      <SheetRow label="Project" onPress={() => setSheetView("projects")}>
+                        {projects.data?.find((each) => each.id === target)?.name ?? "Pick a project"}
+                      </SheetRow>
+                    )}
+                    {entry && (
+                      <SheetRow label="Model" onPress={() => setSheetView("models")}>
+                        {entry.key}
+                      </SheetRow>
+                    )}
+                    {/* No value to show — picking one fills the prompt and
+                        stops, so there is no "current template" — hence the
+                        verb, in the muted tone a placeholder takes. */}
+                    <SheetRow label="Template" onPress={() => setSheetView("templates")}>
+                      <span className="text-muted">Start from a template</span>
+                    </SheetRow>
+                  </div>
                   {entry && (
-                    <>
-                      <div className="flex flex-col gap-1.5">
-                        <Text as="span" variant="body">
-                          Model
-                        </Text>
-                        <Button
-                          intent="secondary"
-                          size="md"
-                          className="w-full justify-between rounded-md border border-line bg-transparent px-3 font-normal"
-                          onClick={() => setSheetView("models")}
-                        >
-                          <span className="truncate">{entry.key}</span>
-                          <ChevronRightIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5] text-muted" />
-                        </Button>
-                      </div>
+                    <div className="flex flex-col gap-2 border-t border-line pt-4">
+                      <Text as="span" variant="caption" tone="muted">
+                        {entry.key} settings
+                      </Text>
                       <SettingsPanel entry={entry} params={params} onParams={setParams} actions={settingsActions} />
-                    </>
+                    </div>
                   )}
                 </div>
               )}
@@ -895,9 +966,178 @@ export function CreateBar() {
             <ArrowUpIcon className="size-5 fill-none stroke-current stroke-2" />
           </Button>
         </div>
+      </div>
 
-      </div>
-      </div>
+      {/* **The sheet's pictures stay on screen once the sheet has scrolled
+          off.** The point of the tiles is that a picture anywhere in the
+          feed can be dragged onto one — and the feed is under the sheet, so
+          the moment the person has scrolled to the picture they want, the
+          tiles have gone. The dock is the same tiles, fixed in the window's
+          top-right corner while the sheet is out of view, with the way back
+          up beside them. Inside the bar's own box so a drop on the dock
+          that named no tile still lands as the sheet's fallback role, and
+          `attach` does not scroll the page: a drop has to leave the dock
+          where the next drag will find it. */}
+      {scrolledPast && entry && (
+        <AttachDock
+          held={attachments}
+          folded={dockFolded}
+          onFold={setDockFolded}
+          onBack={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+        >
+          <AttachTiles
+            kind={bar.kind}
+            entry={entry}
+            attachments={attachments}
+            role={bar.role}
+            // The picker is a drawer, so it opens from here as it does
+            // from the sheet — nothing about it needs the page back up.
+            onRole={bar.setRole}
+            onDetach={bar.detach}
+            onSwapFrames={bar.swapFrames}
+            onMove={bar.move}
+            onDropRef={attach}
+          />
+        </AttachDock>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One row of the gear sheet's first section: a word over a full-width box
+ * with a chevron, which pages the sheet to a list — the shape ElevenLabs'
+ * sheet gives "Model". The project, the model and the template share it.
+ */
+function SheetRow({ label, onPress, children }: { label: string; onPress: () => void; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Text as="span" variant="body">
+        {label}
+      </Text>
+      <Button
+        intent="secondary"
+        size="md"
+        className="w-full justify-between rounded-md border border-line bg-transparent px-3 font-normal"
+        onClick={onPress}
+      >
+        <span className="truncate">{children}</span>
+        <ChevronRightIcon className="size-4 shrink-0 fill-none stroke-current stroke-[1.5] text-muted" />
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * The frame the dock draws: a card in the window's corner under the header,
+ * the tiles on the left and the up-arrow on the right. The whole window's
+ * width on a phone, shrink-to-fit on a desk up to the window less the rail
+ * and a gutter — the tile row scrolls sideways past that, as it does in the
+ * sheet. It was capped at 40rem, which showed three pictures where the sheet
+ * had shown six. The tiles are the compact size (`data-compact`, 80px):
+ * this is a strip to drop onto, not the sheet, and at the sheet's size a
+ * phone showed one picture.
+ *
+ * **The arrow is last in both states**, so it stays under the thumb when
+ * the dock folds and unfolds: the card is anchored to the right edge, and
+ * the rightmost control is the one that does not move.
+ *
+ * **It folds into the arrow.** A × at the row's end puts the tiles away and
+ * leaves a short pill: the arrow, which still goes to the top, and beside it
+ * what was folded — the first held picture, or the picture glyph when
+ * nothing is held, with a count — which unfolds it. Not a chevron: the
+ * thing that brings the tiles back should look like the tiles, and a row of
+ * arrows read as noise. The × is inside the card, not on its corner: hung
+ * off the corner it grew to its 44px floor under a thumb and stood clear of
+ * the card, reading as a stray control rather than the card's own.
+ *
+ * Folded stays folded across scrolls — the state is the bar's, not this
+ * component's, which is mounted afresh each time the sheet leaves the view.
+ * It unfolds the moment a picture is picked up anywhere, because a drag with
+ * nowhere to land is a gesture that does nothing and the tiles are the only
+ * place a drop lands.
+ */
+function AttachDock({
+  children,
+  held,
+  folded: collapsed,
+  onFold: setCollapsed,
+  onBack,
+}: {
+  children: ReactNode;
+  /** What the dock holds, for the folded pill: the first picture and the count. */
+  held: readonly Attachment[];
+  folded: boolean;
+  onFold: (folded: boolean) => void;
+  onBack: () => void;
+}) {
+  const first = held.find((each) => each.ref.url) ?? null;
+
+  useEffect(() => {
+    if (!collapsed) return;
+    const onDragEnter = (event: globalThis.DragEvent) => {
+      if (isNodeDrag(event)) setCollapsed(false);
+    };
+    window.addEventListener("dragenter", onDragEnter);
+    return () => window.removeEventListener("dragenter", onDragEnter);
+  }, [collapsed, setCollapsed]);
+
+  const back = (
+    <IconButton size="md" label="Back to the create panel" onClick={onBack}>
+      <ArrowUpIcon className={GLYPH} />
+    </IconButton>
+  );
+
+  return (
+    <div
+      data-create-dock=""
+      data-collapsed={collapsed ? "" : undefined}
+      className={`fixed z-30 md:left-auto md:right-4 md:w-auto md:max-w-[calc(100vw-6rem)] ${
+        collapsed ? "right-4" : "inset-x-4"
+      }`}
+      // A hair under the header: the card is the sheet's stand-in, not a
+      // toast, so it sits close to the bar rather than a line below it —
+      // but not flush, which read as part of the bar.
+      style={{ top: "calc(var(--header-h) + 0.25rem)" }}
+    >
+      {collapsed ? (
+        <div
+          className="flex items-center gap-1 rounded-pill bg-sheet p-1 shadow-[0_8px_24px_rgba(0,0,0,0.45)]
+                     ring-1 ring-line backdrop-blur-xl"
+        >
+          {/* The folded tiles, as one press: the first picture (or the
+              glyph) and how many are held. */}
+          <Button
+            intent="ghost"
+            size="sm"
+            aria-label={`Show the attached pictures (${held.length})`}
+            title="Show the attached pictures"
+            className="h-9 gap-1.5 rounded-pill px-1.5 pr-2.5"
+            onClick={() => setCollapsed(false)}
+          >
+            {first?.ref.url ? (
+              <img src={first.ref.url} alt="" className="size-7 rounded-sm object-cover" />
+            ) : (
+              <ImagePlusIcon className={GLYPH} />
+            )}
+            <span className="text-sm tabular-nums">{held.length}</span>
+          </Button>
+          {back}
+        </div>
+      ) : (
+        <div
+          className="flex items-center gap-1 rounded-lg bg-sheet p-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.55)]
+                     ring-1 ring-line backdrop-blur-xl"
+        >
+          <div className="min-w-0 flex-1" data-compact="">
+            {children}
+          </div>
+          <IconButton size="sm" label="Hide the attached pictures" onClick={() => setCollapsed(true)}>
+            <CloseIcon className={GLYPH} />
+          </IconButton>
+          {back}
+        </div>
+      )}
     </div>
   );
 }

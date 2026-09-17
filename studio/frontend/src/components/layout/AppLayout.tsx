@@ -5,23 +5,21 @@ import { CreateBarProvider, useCreateBarState } from "../../context/CreateBarCon
 import { SidebarProvider } from "../../context/SidebarContext";
 import { CreateBar } from "../create/CreateBar";
 import { isNodeDrag } from "../create/dragRef";
-import { ChevronUpIcon } from "../common/icons";
-import { useKeyboardInset } from "../../hooks/useKeyboardInset";
 import { AppSidebar } from "./AppSidebar";
 import { TopBar } from "./TopBar";
 
 /**
  * The shell every screen renders inside: the sidebar down the left, the top
- * bar across the content column, the page under it, and the create panel at
- * the column's foot.
+ * bar across the content column, the create panel under it, and the page
+ * under that.
  *
- * **The panel is sticky to the viewport's bottom, not fixed.** Fixed would
- * need to know the sidebar's width to sit beside it; sticky takes the column's
- * own width for free, floats while the page scrolls, and — because a sticky
- * element keeps its place in the flow — lands after the last row when the
- * page is scrolled to its end, so nothing is ever under it. The column is
- * `min-h-dvh` so that on a short page the panel still sits at the bottom
- * rather than an inch under the heading.
+ * **The panel is in the flow, at the top of the column.** It was sticky to the
+ * viewport's bottom, floating over the feed on every screen — and a sheet that
+ * is always over something is always covering something. Now it sits under
+ * the header like the rest of the page and scrolls away with it; once it has
+ * gone, the sheet's own dock (`CreateBar`'s `AttachDock`) keeps its pictures
+ * and a way back in the window's top-right corner. The column is `min-h-dvh`
+ * so the sidebar's rail runs the window's height on a short page.
  *
  * **Content runs full width.** A cap on the content beside a 256px rail
  * spends the width twice. The page padding is 24px, halved at the sides on a
@@ -46,10 +44,10 @@ export function AppLayout() {
           <AppSidebar />
           <div className="flex min-h-dvh min-w-0 flex-1 flex-col">
             <TopBar />
+            <SheetSlot />
             <main className="flex flex-1 flex-col gap-6 px-4 py-6 md:px-6">
               <Outlet />
             </main>
-            <SheetSlot />
           </div>
         </div>
       </CreateBarProvider>
@@ -58,30 +56,42 @@ export function AppLayout() {
 }
 
 /**
- * The create sheet at the column's foot — or the handle it collapses to.
+ * The create sheet under the header.
  *
- * Nothing but the handle on the opened run until something calls the sheet up
- * (Edit, Rerun, Use as reference, a tile): that screen is a fixed-height
- * viewer, so a sheet drawn over it covers the filmstrip and the transport with
- * nothing able to scroll them back into view. `shown` is the context's word on
- * that and on a sheet somebody collapsed.
+ * **Always drawn, except on the opened run and the open file**, where nothing
+ * is drawn until something calls the sheet up (Edit, Rerun, Use as
+ * reference, a tile, `c`, a drag): that screen is a fixed-height viewer, and
+ * a sheet drawn over it covers the filmstrip. `shown` is the context's word
+ * on that. There is no collapsing it anywhere else any more — it sits in the
+ * page's flow and scrolls away with the page, which is all the folding it
+ * needs.
  *
- * **Collapsed, it is a handle rather than nothing.** It behaves like the
- * drawer it looks like: the sheet drops to a strip in the same place, the same
- * width, with a chevron pointing back up — so the thing that comes back is
- * plainly the thing that went away, and it comes back where it went. `c`
- * reaches it from the keyboard.
- *
- * `pointer-events-none` on the strip, back on for what is in it: the strip
- * spans the column so the sheet can centre in it, and a click in the strip's
- * margins must reach the feed under it.
+ * **In the flow, and above the viewer.** The slot sits between the top bar and
+ * `main`, so the page starts under it and scrolls it away. `z-[25]` is between
+ * two neighbours: over the opened run's `ViewerFrame`, fixed at `z-20`, so a
+ * sheet called up there is drawn over the viewer's top edge rather than under
+ * it; and under the sticky top bar's `z-30`, so scrolling carries the sheet
+ * beneath the header rather than across it.
  */
 function SheetSlot() {
-  const { shown, expand } = useCreateBarState();
-  const keyboard = useKeyboardInset();
+  const { shown, summon, raised } = useCreateBarState();
 
   /**
-   * `c` opens the sheet — and only when nothing is being typed into.
+   * **Whatever loads the sheet with a prompt brings the page back to it.**
+   * Edit or Rerun on a row half a page down, `c`: each loads a sheet that is
+   * now at the top of the page and may be off the screen, and a prompt
+   * nobody can see is not one they can read before sending. `raised` is the
+   * context's count of those; the first render is not one of them. A
+   * picture attached is not one either — the dock is where it lands.
+   */
+  useEffect(() => {
+    if (raised === 0) return;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [raised]);
+
+  /**
+   * `c` calls the sheet up on the opened run — and only when nothing is
+   * being typed into.
    *
    * The guard is `useKeyboardNav`'s, for the same reason: a bare letter is a
    * letter to a text box, and the prompt editor is a contenteditable rather
@@ -95,19 +105,19 @@ function SheetSlot() {
       if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
       if (target?.isContentEditable) return;
       event.preventDefault();
-      expand();
+      summon();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [shown, expand]);
+  }, [shown, summon]);
 
   /**
    * **A picture picked up anywhere brings the sheet up.** Every still in the
    * app drags its node (`dragRef`), and the only things that take the drop
    * are the sheet's role tiles — which, on the opened run and the open file,
-   * are not drawn until something calls the sheet up, and are behind the
-   * handle wherever it was collapsed by hand. A drag that has nowhere to
-   * land is a gesture that does nothing, so the drag is what calls it up:
+   * are not drawn until something calls the sheet up. A drag that has
+   * nowhere to land is a gesture that does nothing, so the drag is what
+   * calls it up:
    * the first `dragenter` carrying our type expands the sheet, and the
    * tiles are under the pointer by the time it gets there. Read off the
    * type list, never the payload — see `isNodeDrag`.
@@ -115,55 +125,25 @@ function SheetSlot() {
   useEffect(() => {
     if (shown) return;
     const onDragEnter = (event: DragEvent) => {
-      if (isNodeDrag(event)) expand();
+      if (isNodeDrag(event)) summon();
     };
     window.addEventListener("dragenter", onDragEnter);
     return () => window.removeEventListener("dragenter", onDragEnter);
-  }, [shown, expand]);
+  }, [shown, summon]);
 
+  if (!shown) return null;
   return (
-    // **No inset, in either state.** The sheet used to float as a card with a
-    // gap under it, which left a stripe of feed showing beneath something that
-    // is anchored to the bottom of the window — and once it is the thing a
-    // handle on the edge pulls up, the gap contradicts the gesture. It is a
-    // drawer: it sits on the edge, and only its top corners are rounded.
-    // `bottom` is the keyboard's height, and zero without one: a sheet stuck
-    // to the layout viewport's foot is stuck under a phone's keyboard, which
-    // came up because the prompt in the sheet was tapped — see
-    // `useKeyboardInset`. Sticky, so it still lifts within the column.
-    <div className="pointer-events-none sticky z-30" style={{ bottom: keyboard }}>
-      <div className="pointer-events-auto mx-auto w-full max-w-3xl">
-        {shown ? (
-          <CreateBar />
-        ) : (
-          /* The sheet's own frame, as little of it as a handle needs: `bg-sheet`
-             over a blur so what is left reads as the sheet pushed down rather
-             than as a new control that appeared, rounded at the top only
-             because it is sitting on the window's edge, and 24px tall — it is a
-             handle, and the run it belongs to is behind it. The whole strip is
-             the press, so the target is the width of the sheet however short it
-             is drawn.
-
-             **Taller where there is a finger, not where there is a window.**
-             24px is a comfortable target for a pointer and a hard one for a
-             thumb, and it is the input device that decides that — a narrow
-             window on a laptop still has a mouse. `--sheet-handle-h` in
-             `app.css` carries both heights, and `ViewerFrame` reads the same
-             variable to stop short of this strip. */
-          // eslint-disable-next-line studio/no-hand-rolled-button -- the sheet's own frame collapsed, not a control in it.
-          <button
-            type="button"
-            aria-label="Open the create panel (c)"
-            title="Open the create panel (c)"
-            onClick={expand}
-            className="flex h-[var(--sheet-handle-h)] w-full items-center justify-center rounded-t-lg bg-sheet
-                       ring-1 ring-line backdrop-blur-xl transition-colors hover:bg-fill
-                       focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
-          >
-            <ChevronUpIcon className="size-4 fill-none stroke-current stroke-[1.5] text-muted" />
-          </button>
-        )}
+    <>
+      {/* The page's own gutters — `main` is `px-4 py-6 md:px-6` — so the
+          sheet lines up with the content under it and sits a line below the
+          header rather than touching it. A card on the page, not a drawer
+          hanging off the chrome, which is why all four corners are rounded.
+          **Full width inside them**, like the content: the `max-w-3xl` it
+          carried when it floated centred it over a feed; on the page it is a
+          row of the page, and a row runs the column's width. */}
+      <div className="relative z-[25] px-4 pt-6 md:px-6">
+        <CreateBar />
       </div>
-    </div>
+    </>
   );
 }

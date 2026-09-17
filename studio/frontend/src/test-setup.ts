@@ -21,6 +21,10 @@
 //   no scrolling. Nothing in the app calls it since the reel was replaced (the
 //   filmstrip uses `scrollIntoView`, and guards for its absence), but the stub
 //   costs one line and the next thing that scrolls will want it.
+// * **`window.scrollTo` is present and throws "Not implemented"** — logged
+//   rather than raised, but on every render that fills the create sheet, which
+//   `AppLayout` answers by scrolling the page back to it. Replaced with a
+//   no-op for the same reason.
 // * **`PointerEvent` is absent**, so `fireEvent.pointerDown` makes a bare
 //   `Event` with no `pointerType`, no `clientX` and no `pointerId` — and the
 //   create bar's reorder drag (`create/reorder.ts`) decides hold-or-move off
@@ -94,6 +98,8 @@ if (typeof Element.prototype.scrollTo !== "function") {
   // A no-op, because there is nothing to scroll.
   Element.prototype.scrollTo = () => {};
 }
+// jsdom's own is a "Not implemented" logger; there is nothing to scroll here either.
+window.scrollTo = () => {};
 
 if (typeof window.PointerEvent === "undefined") {
   class ShimPointerEvent extends MouseEvent {
