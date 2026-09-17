@@ -70,12 +70,20 @@ def test_the_group_survives_into_the_caption(library, tmp_path):
 
 
 def test_a_pool_that_is_not_there_says_so(library, tmp_path):
-    """A character with no `seed/` is a clean refusal, not a traceback."""
+    """A character with no `seed/` is a refusal naming the pools it has.
+
+    A pool is any folder name, so the `click.Choice` that used to catch a typo
+    is gone; the refusal is what catches it now — and it must not leave an
+    empty folder behind, which `pool_folder` would have.
+    """
     result = _run("contact-sheet", "--character", "subject-b",
                   "--folder", "seed", "--out", str(tmp_path / "sheet.png"))
 
     assert result.exit_code == 1
-    assert "no images under subject-b/seed" in result.output
+    assert "has no pool 'seed'" in result.output
+    assert "reference/" in result.output
+    record = CHARACTER.resolve("subject-b")
+    assert "seed" not in CHARACTER.pool_names(record)
 
 
 def test_a_refused_pool_is_not_an_empty_one(library, monkeypatch, tmp_path):

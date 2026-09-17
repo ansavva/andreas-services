@@ -171,7 +171,7 @@ def character_ref_nodes(character: str, slots: list[int] | None = None,
 
 def character_pool_nodes(character: str, pool: str, *,
                          tree: bool = False) -> list[dict]:
-    """The file nodes in a character's corpus/, seed/ or archive/ pool.
+    """The file nodes in one of a character's pools — any folder under its root.
 
     Node **records**, not bare ids, because every caller picks out of this pool
     by name: `--seed-pick` names a file, and the refusal that lists an oversized

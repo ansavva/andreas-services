@@ -1,12 +1,20 @@
 """List or download objects from the media tree, through the studio API.
 
-  studio download --folder <name>/reference --list
-  studio download --folder <name>/reference --all --dest /tmp/refs --json
-  studio download --folder <name>/output clip.mp4 --dest .
+  studio download --folder char-<uuid>/reference --list
+  studio download --folder char-<uuid>/seed --all --dest /tmp/seed --json
+  studio download --folder proj-<uuid>/runs/<run_id>/output clip.mp4 --dest .
 
---list prints the object basenames under <folder>/. --all downloads them
-all to --dest; NAME... downloads specific basenames. --json emits machine output
-(a list for --list, a {name: local_path} map for downloads).
+--folder is a NAME PATH walked from the library root, and an entity's root
+folder is named by its ID, not its name: a character's pool is
+`char-<uuid>/<pool>`, a project's folder is `proj-<uuid>/<folder>`.
+`studio character show <name>` and `studio projects show <project>` print the
+ids. `<name>/<pool>` resolves nothing. `studio runs outputs <run>` takes a
+run reference and prints (or presigns) its output nodes without any of this.
+
+--list prints the file basenames under <folder>/ (subfolders are left out).
+--all downloads them all to --dest; NAME... downloads specific basenames.
+--json emits machine output (a list for --list, a {name: local_path} map for
+downloads).
 """
 import json
 import pathlib
@@ -20,7 +28,7 @@ from studio_pipeline.adapters import api, store
 @click.argument("names", nargs=-1)
 @click.option("--all", "all_", is_flag=True, help="Download every object under the folder.")
 @click.option("--dest", default='.', help="Local directory to download into (default: cwd).")
-@click.option("--folder", required=True, help="Key prefix (e.g. characters/<name>/reference).")
+@click.option("--folder", required=True, help="Name path from the library root (e.g. char-<uuid>/reference, proj-<uuid>/input).")
 @click.option("--json", "json_", is_flag=True, help="Emit JSON instead of text.")
 @click.option("--list", "list_", is_flag=True, help="List basenames under the folder; download nothing.")
 def download(names, all_, dest, folder, json_, list_):
@@ -29,8 +37,11 @@ def download(names, all_, dest, folder, json_, list_):
         entries = store.children(folder)
     except api.NotFound as error:
         raise click.ClickException(f"no such folder: {folder}") from error
+    # `_is_file`, not `kind == "file"`: the listing's `kind` says what a file
+    # HOLDS (`image`, `video`, …), so the equality matched nothing and `--list`
+    # printed an empty line for a folder full of images.
     available = sorted(
-        (entry["name"] for entry in entries if entry.get("kind") == "file"),
+        (entry["name"] for entry in entries if store._is_file(entry)),
         key=store.natural_key,
     )
 

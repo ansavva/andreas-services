@@ -69,6 +69,12 @@ records which characters it used, so the association survives the split:
 | Indexed | yes — every image described in the bible | no | no | no |
 | Numbered | no — `order` is an attribute | basenames kept | basenames kept | basenames kept |
 
+**The four are a convention, not a schema.** A pool is any folder under the
+character's root — one made in the app, or one called `original/` — and
+`studio character show <name>` lists the ones it actually has. `add-to`, `pool`,
+`curate` and `contact_sheet` take any of them by name; the one name `add-to`
+refuses is `reference/`, because a file there is not identity, a tag is.
+
 **Nothing is numbered any more, and no filename means anything.** A reference is
 a row that carries its own `group`, `order`, description and tags, so an image
 may be called whatever it was called when it arrived. Slot N is position N in
@@ -340,7 +346,7 @@ better than prose can, and a long identity paragraph fights it — see
    (`studio character show <name>`) as a worked example. Fill **every** key —
    `create` refuses a bible missing any of them.
 2. `studio character create <name> --from-profile <your-bible.yaml>`.
-3. `studio character add-to <source photos…> <name> seed` — the founding images.
+3. `studio character add-to <name> seed <source photos…>` — the founding images.
 4. **Run the standard set** — a run per template, from the fourteen the library
    holds. `studio templates show` lists them. See below.
 5. Upload anything the standard set does not cover into the character, then

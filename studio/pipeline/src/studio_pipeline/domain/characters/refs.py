@@ -35,7 +35,7 @@ HARD RULE #2b IS UNCHANGED
 --------------------------
 What a generation is shown is who the character IS, and every later render is
 held against it. A generated image still never becomes identity on its own:
-`studio character turnaround` leaves its results in their runs, and promoting
+the standard set leaves its results in their runs, and promoting
 one is a separate human act — copy it into the character's tree, then tag it.
 **The copy is not optional any more.** Ownership is the tree: a run's output
 tagged `default` is a file in the run's folder with a tag on it, and it is not

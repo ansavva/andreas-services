@@ -72,9 +72,8 @@ Subcommands:
   regroup <name> NODE… --to G   Move references between groups. No object moves.
   detach <name> NODE…           Stop treating image(s) as identity.
   default-set <name> NODE…      What gets sent when nobody picks.
-  add-to <name> POOL FILES…     Add to corpus/, seed/ or archive/.
-  pool   <name> POOL            List one of those.
-  turnaround <name> --project <p>  The standard reference set (wired in cli.py).
+  add-to <name> POOL FILES…     Add to a pool — any folder but reference/.
+  pool   <name> POOL            List one the character has.
 
 Examples:
   studio character create <name> --from-profile /tmp/<name>.yaml

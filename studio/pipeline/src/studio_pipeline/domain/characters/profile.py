@@ -253,13 +253,8 @@ def cmd_show(name, json_, profile_):
 
 @click.command("create")
 @click.argument("name", required=True)
-@click.option("--dry-run", is_flag=True, help="With --turnaround: render the payloads, submit nothing.")
 @click.option("--from-profile", help="Local profile.yaml to seed with (default: blank template).")
-@click.option("--model", help="With --turnaround: override the angle spec's model.")
-@click.option("--project", help="With --turnaround: REQUIRED. The project the runs belong to.")
-@click.option("--turnaround", is_flag=True,
-              help="Go straight into the standard reference set (asks before it bills).")
-def cmd_create(name, dry_run, from_profile, model, project, turnaround):
+def cmd_create(name, from_profile):
     """Create a character: the record, its library index row and its root.
 
     **One transaction, and no starting pools.** Either the whole character
@@ -267,6 +262,12 @@ def cmd_create(name, dry_run, from_profile, model, project, turnaround):
     used to be part of it; they no longer are, and the first write that needs
     one makes it — the printed names below are a suggestion, not a promise
     that they already exist.
+
+    **It creates the record and stops.** `--turnaround` used to go straight
+    into the standard reference set from here; that set is made from templates
+    in the app now, the engine module it imported is gone, and the option group
+    that carried it (`--turnaround`, `--dry-run`, `--model`, `--project`) went
+    with it.
     """
     src = from_profile or TEMPLATE
     if not os.path.isfile(src):
@@ -274,9 +275,6 @@ def cmd_create(name, dry_run, from_profile, model, project, turnaround):
     data = parse_profile(read_text(src), src)
     if src != TEMPLATE:  # the template is deliberately unfilled; anything else must be real
         check_profile(data, src, name)
-    if turnaround and src == TEMPLATE:
-        die("--turnaround needs a real bible: the blank template has no wardrobe or consistency "
-            "block to build a prompt from. Pass --from-profile.")
 
     # **No conflict to catch.** A name is a label and two characters may share
     # one.
@@ -288,31 +286,9 @@ def cmd_create(name, dry_run, from_profile, model, project, turnaround):
     if src == TEMPLATE:
         print("  (blank template — fill it in with `edit`, then `set-profile`.)",
               file=sys.stderr)
-
-    if not turnaround:
-        print(f"  next: seed photos with `studio character add-to {name} seed <img>...`, then\n"
-              f"        the standard set with `studio character turnaround {name} --project <p>`",
-              file=sys.stderr)
-        return 0
-
-    # Deferred deliberately. The turnaround invokes models and lives in `engine/`,
-    # which imports this package — so importing it at module scope would point
-    # the dependency arrow both ways. The character record stays ignorant of the
-    # engine; only this one call knows about it.
-    from types import SimpleNamespace
-
-    from studio_pipeline.engine import turnaround as TURN
-    opts = SimpleNamespace(
-        project=project, model=model, dry_run=dry_run,
-        group="all", angle=(), identity="auto", identity_max=TURN.IDENTITY_MAX,
-        pick=None, pick_tag=None, seed_pick=None, aspect_ratio=None, extra=None,
-        review_sheet=None,
-        dest=None,
-    )
-    try:
-        return TURN.run_turnaround(name, opts)
-    except TURN.TurnaroundError as exc:
-        die(str(exc))
+    print(f"  next: seed photos with `studio character add-to {name} seed <img>...`",
+          file=sys.stderr)
+    return 0
 
 
 @click.command("delete")

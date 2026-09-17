@@ -330,6 +330,51 @@ def test_add_to_keeps_the_basename_it_arrived_with(library, tmp_image):
     assert [n["name"] for n in CHARACTER.pool_nodes(record, "seed")] == ["plate.png"]
 
 
+def test_a_pool_is_any_folder_name(library, tmp_image):
+    """`original/` — the only pool one real character had — was refused by the
+    `click.Choice` on both `add-to` and `pool`. A pool is a folder, so any
+    folder name is one, and `show` is what says which ones exist."""
+    added = _run("add-to", "subject-a", "original", str(tmp_image))
+    assert added.exit_code == 0, added.output
+    listed = _run("pool", "subject-a", "original")
+    assert listed.exit_code == 0, listed.output
+    assert "plate.png" in listed.output
+    assert "original/" in _run("show", "subject-a").output
+
+
+def test_add_to_still_refuses_the_reference_pool(library, tmp_image):
+    """Hard rule #2b: a file in `reference/` is not identity, a tag is. The
+    refusal survives the choice list's removal, and points at `add-refs`."""
+    result = _run("add-to", "subject-a", "reference", str(tmp_image))
+    assert result.exit_code == 1
+    assert "add-refs" in result.output
+    record = CHARACTER.resolve("subject-a")
+    assert "plate.png" not in {n["name"] for n in CHARACTER.pool_nodes(record, "reference")}
+
+
+def test_pool_refuses_a_folder_the_character_does_not_have(library):
+    """A listing makes nothing. Without the choice list a typo would otherwise
+    become an empty folder under the character's root."""
+    result = _run("pool", "subject-a", "sede")
+    assert result.exit_code == 1
+    assert "has no pool 'sede'" in result.output
+    assert "reference/" in result.output
+    record = CHARACTER.resolve("subject-a")
+    assert "sede" not in CHARACTER.pool_names(record)
+
+
+def test_create_takes_no_turnaround_options(library):
+    """The standard set is made from templates in the app; the option group
+    that used to import a module that no longer exists is gone with it."""
+    for option in ("--turnaround", "--dry-run", "--model", "--project"):
+        result = _run("create", "subject-c", option)
+        assert result.exit_code == 2, result.output
+        assert "No such option" in result.output
+    result = _run("create", "subject-c")
+    assert result.exit_code == 0, result.output
+    assert "turnaround" not in result.output
+
+
 def test_pool_lists_a_non_reference_pool(library, tmp_image):
     _run("add-to", "subject-a", "corpus", str(tmp_image))
     result = _run("pool", "subject-a", "corpus")
