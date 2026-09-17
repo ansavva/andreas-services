@@ -143,9 +143,18 @@ export function OutputTile({
             isVideo={video}
             poster={asset.poster}
             duration={asset.duration}
-            aspect={video ? "video" : "portrait"}
-            ratio={ratioOf(row)}
-            fit="cover"
+            // **A still is drawn at its own shape; a clip at the plan's.** The
+            // plan is a guess at what came back — `match_input_image` and `auto`
+            // say nothing, and the kind's 3:4 fallback stood in — and a still
+            // drawn into a guessed box and covered lost its head and feet to
+            // the crop. A loaded `<img>` knows its size, so the box takes it:
+            // no ratio, no crop. A clip keeps the plan's box because with a
+            // poster it loads nothing until it plays, and an unloaded
+            // `<video>` is 0px tall — and every video model here takes a
+            // `W:H` the output honours.
+            aspect="auto"
+            ratio={video ? ratioOf(row) : undefined}
+            fit={video ? "cover" : "contain"}
             // Dragged to the sheet, this is the run's output, not a bare file.
             drag={refOfOutput(row, asset, index)}
           />

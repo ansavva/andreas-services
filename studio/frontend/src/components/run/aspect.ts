@@ -9,6 +9,13 @@ import type { RunFeedRow } from "../../types";
  * `aspect_ratio` of the form `W:H`, so the plan already says what is coming
  * back; the kind's default is only for a plan that does not say (`auto`,
  * `match_input_image`, or a model with no such knob).
+ *
+ * **For clips and placeholders, not for a landed still.** The default is a
+ * guess, and a still drawn into a guessed box and covered was cropped — a
+ * `match_input_image` run came back 2:3 and lost its head to the 3:4. A loaded
+ * `<img>` knows its own shape, so the output tiles give a still no ratio at
+ * all; this sizes the frame while nothing has landed, and the clip's box,
+ * which an unplayed `<video>` cannot size.
  */
 export function ratioOf(row: Pick<RunFeedRow, "kind" | "plan">): string {
   // `aspect_ratio` as `W:H` on most models; `size` as `W*H` pixels on the
