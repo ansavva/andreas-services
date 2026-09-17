@@ -5,7 +5,6 @@ import {
   Button,
   Chip,
   Drawer,
-  IconButton,
   Text,
   Toggle,
   ToggleGroup,
@@ -13,7 +12,6 @@ import {
 
 import { getAsset, getCharacters, getFolder, getProjects } from "../../apis/studio";
 import { holdsOne, type AttachRef, type AttachRole } from "../../context/CreateBarContext";
-import { WIDE, useMediaQuery } from "../../hooks/useMediaQuery";
 import { useUploads } from "../../hooks/useUploads";
 import {
   DEFAULT_SORT,
@@ -32,7 +30,7 @@ import { UploadButton } from "../browse/UploadButton";
 import { UploadStatus } from "../browse/UploadStatus";
 import { EmptyState } from "../common/EmptyState";
 import { FilterBar } from "../common/FilterBar";
-import { ArrowUpIcon, CheckIcon, CloseIcon, FolderIcon } from "../common/icons";
+import { ArrowUpIcon, CheckIcon, FolderIcon } from "../common/icons";
 import { LoadError } from "../common/LoadError";
 import { SectionLoading } from "../common/SectionLoading";
 import { SheetHandle } from "../common/SheetHandle";
@@ -108,36 +106,27 @@ function defaultView(kind: EntityKind): View {
  * the clip tile for a video, so the listing is filtered to the one the role
  * takes — a clip cannot be a start frame, and a still cannot be the clip.
  *
- * **Two bodies for two screens, one component.** On a desk it floats above
- * the create sheet, capped at 60vh, and the tile it fills is visible under
- * it — pressing a picture puts it there, and that is the confirmation. On a
- * phone the same box stacked on the sheet overran the screen: the title,
- * the Folders/Media switch and the close were above the top edge and the
- * two views could not be switched at all. So under `md` it is a **bottom
- * sheet over the create sheet**, 92dvh, with its own handle and a `Done`; a
- * one-picture role closes it on the pick, since the tile it filled is what
- * the sheet under it shows, and `Image refs` stays open with a count in the
- * title until Done. Same state, same listing, one fetch.
- * `dvh` rather than `vh`, so the top of the sheet — the title row, the
- * handle — is on the screen at all when the browser's bars are showing.
+ * **A bottom sheet on every screen.** 92dvh on a phone, 80dvh on a desk,
+ * with its own handle; a one-picture role closes it on the pick, since the
+ * tile it filled is what the sheet under it shows, and `Image refs` stays
+ * open with a count in the title until it is dismissed — the handle, the
+ * backdrop or Escape, the way every other sheet goes. A `Done` at the row's
+ * end was one control more than that needed.
+ *
+ * It used to be a second card under the create sheet on a desk, capped at
+ * 60vh, which was the right shape while the sheet sat at the foot of the
+ * window and the picker hung up from it over the feed. With the sheet at
+ * the top of the page the card hung down over the page's own heading, and
+ * from the dock (`AttachDock`, the tiles kept on screen once the sheet has
+ * scrolled away) there was nothing to hang it from at all — a drawer opens
+ * the same from either, and the bottom sheet the phone already had is the
+ * one shape that needs no second body. `dvh` rather than `vh`, so the top
+ * of the sheet — the title row, the handle — is on the screen at all when
+ * the browser's bars are showing.
  */
 export function AttachPicker(props: PickerProps) {
-  const wide = useMediaQuery(WIDE);
   const words = ROLE_WORDS[props.role];
   const panel = useRef<HTMLDivElement>(null);
-  if (wide) {
-    return (
-      <div
-        className="flex max-h-[60vh] flex-col gap-2 rounded-lg bg-sheet p-3 shadow-[0_12px_48px_rgba(0,0,0,0.55)]
-                   ring-1 ring-line backdrop-blur-xl"
-        data-attach-picker=""
-        role="region"
-        aria-label={words.choose}
-      >
-        <PickerBody {...props} sheet={false} />
-      </div>
-    );
-  }
   return (
     <Drawer.Root
       side="bottom"
@@ -147,7 +136,7 @@ export function AttachPicker(props: PickerProps) {
       }}
     >
       <Drawer.Backdrop />
-      <Drawer.Panel ref={panel} className="flex h-[92dvh] flex-col rounded-t-lg pt-0">
+      <Drawer.Panel ref={panel} className="flex h-[92dvh] flex-col rounded-t-lg pt-0 md:h-[80dvh]">
         <Drawer.Title className="sr-only">{words.choose}</Drawer.Title>
         <SheetHandle panel={panel} onDismiss={props.onClose} />
         <div
@@ -156,7 +145,7 @@ export function AttachPicker(props: PickerProps) {
           role="region"
           aria-label={words.choose}
         >
-          <PickerBody {...props} sheet />
+          <PickerBody {...props} />
         </div>
       </Drawer.Panel>
     </Drawer.Root>
@@ -195,11 +184,7 @@ function PickerBody({
   onAttach,
   onDetach,
   onClose,
-  sheet,
-}: PickerProps & {
-  /** The phone's bottom sheet, as opposed to the desk's floating box. */
-  sheet: boolean;
-}) {
+}: PickerProps) {
   const [place, setPlace] = useState<Place>(() =>
     project ? { kind: "entity", entity: project, folder: project.root } : { kind: "projects" },
   );
@@ -278,15 +263,15 @@ function PickerBody({
   const parent = atRoot ? undefined : trail.at(-2)?.id;
 
   const words = ROLE_WORDS[role];
-  // On the phone the sheet covers the tile it fills, so a one-picture role
-  // closes on the pick and the tile is what the person sees next. A role that
-  // accumulates stays open — the count in the title is the confirmation.
+  // The sheet covers the tile it fills, so a one-picture role closes on the
+  // pick and the tile is what the person sees next. A role that accumulates
+  // stays open — the count in the title is the confirmation.
   const attach = useCallback(
     (file: Pick<FileEntry, "id" | "url" | "name">) => {
       onAttach({ node: file.id, url: file.url, name: file.name, kind: "object" });
-      if (sheet && holdsOne(role)) onClose();
+      if (holdsOne(role)) onClose();
     },
-    [onAttach, onClose, role, sheet],
+    [onAttach, onClose, role],
   );
 
   /**
@@ -318,11 +303,11 @@ function PickerBody({
   return (
     <>
       <div className="flex items-center gap-2">
-        {/* The sheet says the role's name — `Start frame` — where the box
-            says `Choose a start frame`: the row also holds the view switch
-            and Done, and on 390px the sentence was the thing that got cut. */}
+        {/* The role's name — `Start frame` — rather than `Choose a start
+            frame`: the row also holds the view switch, and on 390px the
+            sentence was the thing that got cut. */}
         <Text as="span" variant="body" weight="medium" className="min-w-0 flex-1 truncate">
-          {sheet ? words.label : words.choose}
+          {words.label}
           {!holdsOne(role) && (held > 0 || cap !== null) && (
             <Text as="span" variant="body" tone="muted">
               {cap === null ? ` · ${held}` : ` · ${held} / ${cap}`}
@@ -347,15 +332,6 @@ function PickerBody({
               Media
             </Toggle>
           </ToggleGroup.Root>
-        )}
-        {sheet ? (
-          <Button size="sm" intent="secondary" onClick={onClose}>
-            Done
-          </Button>
-        ) : (
-          <IconButton size="sm" label="Close the picker" onClick={onClose}>
-            <CloseIcon />
-          </IconButton>
         )}
       </div>
 

@@ -197,7 +197,6 @@ test("on a phone the picker is a sheet over the create sheet, and a one-picture 
   const picker = page.getByRole("region", { name: "Choose a start frame" });
   await expect(picker).toBeVisible();
   await expect(picker.getByText("Start frame", { exact: true })).toBeInViewport();
-  await expect(picker.getByRole("button", { name: "Done" })).toBeInViewport();
   await picker.getByRole("button", { name: "Folders" }).click();
   await expect(picker.getByRole("button", { name: "Folders" })).toBeInViewport();
   await picker.getByRole("button", { name: "Media" }).click();

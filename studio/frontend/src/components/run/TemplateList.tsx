@@ -82,7 +82,9 @@ export function TemplateList({ onPick, cast }: Props) {
   const library = useResource(["templates"], load);
 
   return (
-    <div className="flex max-h-[70vh] flex-col gap-2 overflow-auto p-2">
+    // Capped the way the model and project lists are (`MENU_MAX_H`): it
+    // hangs down from the chip row, and half the window is what fits.
+    <div className="flex max-h-[50vh] flex-col gap-2 overflow-auto p-2">
       {library.loading && <SectionLoading label="Loading templates" />}
 
       {library.error && (

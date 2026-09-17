@@ -440,7 +440,15 @@ export function AttachTiles({
   );
 }
 
-/** A role with nothing in it yet: the glyph and the word, and it opens the picker. */
+/**
+ * A role with nothing in it yet: the glyph and the word, and it opens the picker.
+ *
+ * **Smaller inside `[data-compact]`** — the dock, where the row has a
+ * window's width less two controls and 144px tiles showed one picture and
+ * half a ghost on a phone. 80px, the glyph alone, and the word kept for
+ * assistive tech. `!` because `pointer-coarse:` sets the same property and
+ * the two variants have no fixed order in the sheet.
+ */
 function Ghost({
   role,
   on,
@@ -463,11 +471,12 @@ function Ghost({
       disabled={blocked !== null}
       title={blocked ?? words.hint}
       className={`h-28 shrink-0 gap-2 rounded-md px-4 active:bg-fill-active pointer-coarse:h-36
+                  in-data-compact:h-20! in-data-compact:w-20 in-data-compact:px-0
                   ${on ? "bg-fill-hover text-ink hover:bg-fill-hover" : "bg-fill-faint text-muted hover:bg-fill hover:text-ink"}`}
       onClick={onPress}
     >
       <Icon className={GLYPH} />
-      {words.label}
+      <span className="in-data-compact:sr-only">{words.label}</span>
     </Button>
   );
 }
@@ -571,7 +580,9 @@ export function Thumb({
   return (
     <>
     <div
-      className={`relative h-28 min-w-20 shrink-0 pointer-coarse:h-36 pointer-coarse:min-w-24 ${
+      // Same `[data-compact]` rule as the ghost: 80px in the dock.
+      className={`relative h-28 min-w-20 shrink-0 pointer-coarse:h-36 pointer-coarse:min-w-24
+                  in-data-compact:h-20! in-data-compact:min-w-16! ${
         sortable?.dragging ? "z-10 scale-105 shadow-lg ring-2 ring-accent" : ""
       }`}
       title={title}

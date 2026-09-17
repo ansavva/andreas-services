@@ -32,6 +32,15 @@ export function useMediaQuery(query: string): boolean {
 export const WIDE = "(min-width: 768px)";
 
 /**
+ * Tailwind's `lg` — the line above which a menu hung off the create sheet's
+ * chip row has room to be a popover. A tablet is `md` and still not wide
+ * enough: a 26rem panel hung off a chip a third of the way along the row
+ * ran off one edge or the other whichever edge it was anchored to, so
+ * under `lg` the row's menus are bottom sheets, like the phone's.
+ */
+export const ROOMY = "(min-width: 1024px)";
+
+/**
  * A mouse or a trackpad — the input that can aim at a 20px control and has
  * no keyboard to raise. Read where the decision is about the DEVICE rather
  * than the window: a caret put in the prompt for you is a convenience under

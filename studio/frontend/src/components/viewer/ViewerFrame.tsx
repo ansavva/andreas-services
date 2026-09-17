@@ -68,7 +68,7 @@ export function ViewerFrame({
         className={`fixed inset-x-0 ${lifted ? "z-50" : "z-20"} flex flex-col overflow-y-auto bg-bg md:left-16 md:flex-row md:overflow-hidden ${className}`}
         style={{
           top: "var(--header-h)",
-          height: "calc(100dvh - var(--header-h) - var(--sheet-handle-h))",
+          height: "calc(100dvh - var(--header-h))",
           ...style,
         }}
       >
