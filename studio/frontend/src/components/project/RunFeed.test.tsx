@@ -14,10 +14,11 @@ import {
   useCreateBarState,
 } from "../../context/CreateBarContext";
 import { TestProviders } from "../../test-providers";
-import type { RunFeedRow } from "../../types";
+import type { RunFeedRow, RunRecord } from "../../types";
 
 vi.mock("../../apis/studio", () => ({
   getRuns: vi.fn(),
+  getRun: vi.fn(),
   submitRun: vi.fn(),
   createRun: vi.fn(),
   deleteRun: vi.fn().mockResolvedValue({ id: "run-1", files: "keep" }),
@@ -32,7 +33,7 @@ vi.mock("../../apis/studio", () => ({
   }),
 }));
 
-import { createRun, deleteRun, getAsset, getRuns, submitRun } from "../../apis/studio";
+import { createRun, deleteRun, getAsset, getRun, getRuns, submitRun } from "../../apis/studio";
 import { RunFeed } from "./RunFeed";
 import { expectedOutputs } from "../run/aspect";
 
@@ -312,6 +313,58 @@ describe("a run in flight", () => {
 });
 
 describe("the actions", () => {
+  it("Open on the plan side opens the run, the same as pressing a picture", async () => {
+    await draw([row({ status: "failed", outputs: [], thumb: null, error: "NSFW" })]);
+    const article = await screen.findByRole("article");
+
+    // No picture to press on a failed run — this is the way in.
+    fireEvent.click(within(article).getByRole("button", { name: "Open" }));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "run-1" }));
+  });
+
+  it("Refresh re-reads the run and redraws the row from what came back", async () => {
+    const out = row();
+    await draw([
+      row({ status: "running", submitted: ago(12), completed: null, outputs: [], thumb: null, cost: null }),
+    ]);
+    const article = await screen.findByRole("article");
+    expect(within(article).getAllByTestId("in-flight-tile").length).toBeGreaterThan(0);
+
+    const landed: RunRecord = {
+      id: out.id,
+      lib: out.lib,
+      project: out.project,
+      status: "succeeded",
+      kind: out.kind,
+      engine: out.engine ?? "",
+      model: out.model,
+      prediction_id: "p-1",
+      created: out.created,
+      submitted: out.submitted ?? null,
+      completed: out.completed ?? null,
+      bindings: {},
+      sends: out.sends,
+      plan: out.plan,
+      characters: out.characters,
+      folder: "node-folder",
+      outputs: out.outputs,
+      scene: null,
+      cost: out.cost,
+      error: null,
+      payload: { prompt: "n-p", request: "n-q", response: "n-r" },
+    };
+    vi.mocked(getRun).mockResolvedValue(landed);
+
+    fireEvent.click(within(article).getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(getRun).toHaveBeenCalledWith("run-1"));
+
+    await within(article).findByRole("button", { name: "Open Output 1 of 2" });
+    expect(within(article).queryByTestId("in-flight-tile")).toBeNull();
+    expect(within(article).getByText("succeeded")).toBeTruthy();
+    // One record read; the listing was not re-run.
+    expect(list).toHaveBeenCalledTimes(1);
+  });
+
   it("Edit loads the run into the create bar", async () => {
     await draw([row()]);
 

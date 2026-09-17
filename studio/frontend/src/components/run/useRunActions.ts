@@ -1,16 +1,17 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useToast } from "@ansavva/design-system";
 
-import { deleteRun, getAsset, getModels, getScene, setSceneRuns } from "../../apis/studio";
+import { deleteRun, getAsset, getModels, getRun, getScene, setSceneRuns } from "../../apis/studio";
 import { useCreateBar, type AttachRole } from "../../context/CreateBarContext";
 import { useFrameGrab } from "../../hooks/useFrameGrab";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { useResource } from "../../hooks/useResource";
 import type { RunAsset, RunFeedRow } from "../../types";
 import { objectPath, projectPath, runPath } from "../../utils/location";
+import { FEED_QUERIES, patchFeedRows } from "./feedCache";
 import { useRunAgain } from "./RunAgainButton";
 import { promptText, refOfOutput, seedFromRow, seedWithOutput } from "./seed";
 
@@ -133,6 +134,38 @@ export function useRunActions(row: RunFeedRow) {
     }
   }, [client, navigate, row.id, row.project]);
 
+  /**
+   * Ask the API what the run is NOW, and draw that.
+   *
+   * The feed learns about a run in flight from `useRunWatch`, and the opened
+   * run polls its own record — both stop the moment the status is terminal,
+   * and neither can see a callback that landed while the tab was asleep or a
+   * run wedged in `pending` whose watch has given up. This is the press that
+   * asks anyway. One `GET /api/runs/<id>`, written to the record's own key
+   * (the opened run reads it there) and into every feed page holding the row
+   * (the feed reads it there), unconditionally — the press is the ask.
+   */
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const record = await client.fetchQuery({
+        queryKey: ["run", row.id],
+        queryFn: () => getRun(row.id),
+        staleTime: 0,
+      });
+      patchFeedRows(client, FEED_QUERIES, [record], () => true);
+    } catch (err) {
+      toast.add({
+        intent: "danger",
+        title: "Could not refresh the run",
+        description: (err as Error).message,
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [client, row.id, toast]);
+
   const copyPrompt = useCallback(
     () => void copy(promptText(row.plan?.prompt) ?? ""),
     [copy, row.plan],
@@ -184,6 +217,8 @@ export function useRunActions(row: RunFeedRow) {
     frameAs,
     download,
     remove,
+    refresh,
+    refreshing,
     copyPrompt,
     openRequest,
     folderHref,

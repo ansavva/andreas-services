@@ -33,7 +33,9 @@ import {
   DotsIcon,
   FeedIcon,
   FolderIcon,
+  OpenIcon,
   PencilIcon,
+  RefreshIcon,
   RerunIcon,
   SearchIcon,
   TilesIcon,
@@ -620,7 +622,7 @@ function FeedRow({
           </Alert.Root>
         )}
 
-        <RowActions row={row} actions={actions} />
+        <RowActions row={row} actions={actions} onOpen={() => onOpen(row)} />
       </div>
 
       {promoting && (
@@ -824,13 +826,20 @@ function Clamped({ text, tone }: { text: string; tone?: "muted" }) {
  * edited; a run in flight can only be edited (nothing cancels a prediction
  * here); a finished run can be run again, edited, opened in Files, deleted,
  * or read.
+ *
+ * **Open and Refresh are on every row, whatever its state.** Open, because
+ * the pictures on the left used to be the only way into the run — and a
+ * draft, a failed run and a run still out have no picture to press. Refresh,
+ * because a run that is out is exactly the one whose row can be wrong.
  */
 function RowActions({
   row,
   actions,
+  onOpen,
 }: {
   row: RunFeedRow;
   actions: ReturnType<typeof useRunActions>;
+  onOpen: () => void;
 }) {
   const client = useQueryClient();
   const toast = useToast();
@@ -853,6 +862,11 @@ function RowActions({
 
   return (
     <div className="mt-auto flex flex-wrap items-center gap-1 pt-1">
+      <Action
+        icon={<OpenIcon className={GLYPH} />}
+        label="Open"
+        onClick={onOpen}
+      />
       {draft && (
         <ArmedButton
           idle="Run"
@@ -881,6 +895,18 @@ function RowActions({
         icon={<PencilIcon className={GLYPH} />}
         label="Edit"
         onClick={actions.edit}
+      />
+      <Action
+        icon={
+          actions.refreshing ? (
+            <ApertureSpinner size="sm" label="Refreshing" className="size-4" />
+          ) : (
+            <RefreshIcon className={GLYPH} />
+          )
+        }
+        label="Refresh"
+        onClick={() => void actions.refresh()}
+        disabled={actions.refreshing}
       />
       {actions.folderHref && !flying && (
         <a
@@ -939,16 +965,19 @@ function Action({
   icon,
   label,
   onClick,
+  disabled = false,
 }: {
   icon: ReactNode;
   label: string;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
     <Button
       intent="secondary"
       size="sm"
       onClick={onClick}
+      disabled={disabled}
       className=""
     >
       {icon}
