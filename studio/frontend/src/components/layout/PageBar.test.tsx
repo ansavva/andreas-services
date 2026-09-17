@@ -16,17 +16,26 @@ function renderBar(props: Parameters<typeof PageBar>[0]) {
 }
 
 /**
- * The crumb row is a fixed-height line whether or not it has anything in it —
- * `min-h-5` on the wrapper rather than the wrapper being absent — so a page
- * whose crumb loads a beat after the title (Object's cold-link case, the
- * project-name fetch behind `useProjectCrumb`) does not shift the title down
- * once it lands.
+ * One line: the crumbs, a separator, the title. The title is a heading beside
+ * the landmark rather than its last crumb, so a page with no crumbs still has
+ * a heading and no empty nav.
  */
-it("holds the crumb row's height with no crumbs", () => {
-  const { container } = renderBar({ title: "A project" });
-  const row = container.querySelector(".min-h-5");
-  expect(row).toBeTruthy();
-  expect(row?.textContent).toBe("");
+it("draws the title as a heading after the crumbs, with a separator between", () => {
+  const { container } = renderBar({
+    crumbs: [{ label: "Projects", to: "/projects" }],
+    title: "A project",
+  });
+  expect(screen.getByRole("heading", { name: "A project" })).toBeTruthy();
+  const trail = screen.getByRole("heading", { name: "A project" }).parentElement!;
+  expect(trail.textContent).toBe("Projects/A project");
+  expect(container.querySelector('[aria-hidden="true"]')?.textContent).toBe("/");
+});
+
+it("draws no separator and no nav when there are no crumbs", () => {
+  const { container } = renderBar({ title: "Home" });
+  expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).toBeNull();
+  expect(container.querySelector('[aria-hidden="true"]')).toBeNull();
+  expect(screen.getByRole("heading", { name: "Home" })).toBeTruthy();
 });
 
 it("draws the crumbs it is given, never the current page", () => {

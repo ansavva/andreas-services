@@ -33,9 +33,9 @@ interface PageBarMenuItem {
 interface Props {
   /** Where this page sits, nearest ancestor last. Never the current page. */
   crumbs?: Crumb[];
-  /** The page's name. A string renders as `Text variant="display"`, truncating. */
+  /** The page's name. Ends the crumb trail as a truncating heading. */
   title?: string;
-  /** A row under the title — status, kind, a date, whatever the page counts as its own facts. */
+  /** Badges after the title — status, kind, a count, whatever the page counts as its own facts. */
   meta?: ReactNode;
   /** The one action worth a full button — "New character", "Run again". */
   primary?: ReactNode;
@@ -71,7 +71,7 @@ interface Props {
 
 /**
  * The page frame every routed screen now shares: where it sits, what it is
- * called, and what can be done to it.
+ * called, and what can be done to it — on one line.
  *
  * **This used to be a title bar with two open slots — `children` for the
  * heading and `actions` for whatever controls the page carried — and every
@@ -89,10 +89,17 @@ interface Props {
  * moved for a reason nothing on screen explained. A crumb still answers "where
  * am I", which Back cannot.
  *
- * **The crumb row holds its height with zero crumbs.** Object's cold-link case
- * and Templates' single-crumb case both pass through here, and a title that
- * hops up a line the moment a crumb does load is worse than a blank row above
- * it always.
+ * **It was three rows and is now one.** A crumb line, a display-sized title
+ * with its badges under it, and the controls on the right took a hundred
+ * pixels before the tabs, and on a project page the primary slot (the
+ * character chips) sat alone at the far end of the middle row with nothing
+ * beside it. The title now finishes the crumb trail — `Projects / andreas` —
+ * the badges sit after it, and the controls keep the right edge, all on the
+ * same line. The crumbs stay a `Breadcrumbs` landmark holding the ancestors
+ * only, and the title stays a heading: a screen reader still gets a nav
+ * and an `h3`, not one nav with the page as its last crumb. A page with no
+ * crumbs (Home, a cold Object link) reads the same line with nothing before
+ * the title, so nothing hops when a crumb loads a beat late.
  */
 export function PageBar({
   crumbs,
@@ -105,84 +112,110 @@ export function PageBar({
   tabs,
 }: Props) {
   const navigate = useNavigate();
+  const hasCrumbs = Boolean(crumbs && crumbs.length > 0);
 
   return (
     <div className={`flex flex-col gap-3 ${tabs ? "" : "border-b border-line pb-3"}`}>
-      {/* Fixed to one line's height regardless of content, so a page with no
-          crumbs (a cold Object link) reads with the same title position as one
-          with two. */}
-      <div className="flex min-h-5 min-w-0 items-center gap-2">
-        {crumbs && crumbs.length > 0 && (
-          <Breadcrumbs.Root>
-            {crumbs.map((crumb) => (
-              // `href` so it reads and behaves as a link — middle-click, copy
-              // address — with the router taking the plain click. The same
-              // bargain `FolderBrowser`'s trail makes.
-              <Breadcrumbs.Item
-                key={crumb.to}
-                href={crumb.to}
-                onClick={(event: React.MouseEvent) => {
-                  if (event.metaKey || event.ctrlKey || event.shiftKey) return;
-                  event.preventDefault();
-                  navigate(crumb.to);
-                }}
-              >
-                {crumb.label}
-              </Breadcrumbs.Item>
-            ))}
-          </Breadcrumbs.Root>
-        )}
-      </div>
+      <div className="flex min-h-9 min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+          {/* The trail: crumbs, a separator, the title — one run of heading
+              type. The list inside `Breadcrumbs.Root` fixes its own size and
+              face (`text-sm font-body`), so both are overridden at the `ol`
+              to match the title beside it, and the landmark's `w-full` is
+              undone so it takes only the width its crumbs need.
 
-      {(title || primary || menu || actions) && (
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-          <div className="flex min-w-0 flex-col gap-1">
-            {title && (
-              // `truncate` is a PROP as of design-system 0.17.0, and it works.
-              // It used to be an inline `style={{ textWrap: "nowrap" }}`: the
-              // heading variants carry `text-balance`, which is a shorthand
-              // that also resets `text-wrap-mode` to `wrap`, and the package's
-              // class merge did not know the two conflicted — so both survived
-              // and stylesheet order decided, wrapping a long project or run
-              // name onto three lines instead of eliding it. The package now
-              // states that conflict in its own merge, so the prop and a bare
-              // `className="truncate"` both win. `min-w-0` stays: that is this
-              // element's job as a flex child, not the package's.
-              <Text variant="display" truncate className="min-w-0">
-                {title}
-              </Text>
-            )}
-            {meta && (
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">{meta}</div>
-            )}
-          </div>
-
-          {(primary || menu || actions) && (
-            <div className="flex shrink-0 items-center gap-2">
-              {actions}
-              {primary}
-              {menu && menu.length > 0 && (
-                <ActionMenu
-                  label={typeof title === "string" ? title : "this page"}
-                  triggerLabel="More actions"
-                  onOpenChange={onMenuOpenChange}
-                  actions={menu.map((item) => ({
-                    key: item.label,
-                    label: item.label,
-                    icon: item.icon,
-                    danger: item.danger,
-                    disabled: item.disabled,
-                    // A page's danger item opens its own confirmation rather
-                    // than arming in the menu — see the prop's docblock — so it
-                    // is `danger` for the colour and fires on the first press.
-                    onSelect: item.onSelect,
-                  }))}
-                />
+              When the line is short the crumbs give way first, and it is a
+              GRID that says so. Its two `minmax(0, max-content)` tracks are
+              handed the width they have in equal shares, each stopping at
+              what it needs — so a short title (`request.json`) is whole
+              before a run-id crumb beside it gets the rest, and a long title
+              with no crumbs still elides rather than overflowing. Flex could
+              not say this: it takes width away in proportion to what each
+              item asked for, so the long crumb kept most of its width and
+              the file page read `run-6b9b…d7d / re…`; weighting the
+              crumbs' `shrink` only softened it, and capping the title at a
+              fraction of the trail shrank a crumbless `Files` to `F…`,
+              because the trail is as wide as its content. */}
+          {(hasCrumbs || title) && (
+            <div
+              className={`grid min-w-0 items-center gap-xs font-heading text-xl ${
+                hasCrumbs && title
+                  ? "grid-cols-[minmax(0,max-content)_auto_minmax(0,max-content)]"
+                  : "grid-cols-[minmax(0,max-content)]"
+              }`}
+            >
+              {hasCrumbs && (
+                <Breadcrumbs.Root className="w-auto min-w-0 [&>ol]:flex-nowrap [&>ol]:font-heading [&>ol]:text-xl [&_li]:min-w-0">
+                  {crumbs!.map((crumb) => (
+                    // `href` so it reads and behaves as a link — middle-click,
+                    // copy address — with the router taking the plain click.
+                    // The same bargain `FolderBrowser`'s trail makes.
+                    <Breadcrumbs.Item
+                      key={crumb.to}
+                      href={crumb.to}
+                      className="min-w-0 truncate"
+                      onClick={(event: React.MouseEvent) => {
+                        if (event.metaKey || event.ctrlKey || event.shiftKey) return;
+                        event.preventDefault();
+                        navigate(crumb.to);
+                      }}
+                    >
+                      {crumb.label}
+                    </Breadcrumbs.Item>
+                  ))}
+                </Breadcrumbs.Root>
+              )}
+              {hasCrumbs && title && (
+                // The same glyph the landmark draws between its own crumbs,
+                // and hidden from a reader for the same reason.
+                <span aria-hidden="true" className="select-none text-muted">
+                  /
+                </span>
+              )}
+              {title && (
+                // `truncate` is a PROP as of design-system 0.17.0, and it
+                // works: the heading variants carry `text-balance`, a
+                // shorthand that resets `text-wrap-mode`, and the package's
+                // merge now knows the two conflict. `min-w-0` stays: that is
+                // this element's job as a flex child, not the package's.
+                // `text-xl` steps the variant's `text-2xl` down to the size
+                // the crumbs share.
+                <Text variant="heading" truncate className="min-w-0 text-xl">
+                  {title}
+                </Text>
               )}
             </div>
           )}
+          {meta && (
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">{meta}</div>
+          )}
         </div>
-      )}
+
+        {(primary || menu || actions) && (
+          <div className="flex shrink-0 items-center gap-2">
+            {actions}
+            {primary}
+            {menu && menu.length > 0 && (
+              <ActionMenu
+                label={typeof title === "string" ? title : "this page"}
+                triggerLabel="More actions"
+                onOpenChange={onMenuOpenChange}
+                actions={menu.map((item) => ({
+                  key: item.label,
+                  label: item.label,
+                  icon: item.icon,
+                  danger: item.danger,
+                  disabled: item.disabled,
+                  // A page's danger item opens its own confirmation rather
+                  // than arming in the menu — see the prop's docblock — so it
+                  // is `danger` for the colour and fires on the first press.
+                  onSelect: item.onSelect,
+                }))}
+              />
+            )}
+          </div>
+        )}
+      </div>
 
       {tabs}
     </div>
