@@ -577,6 +577,10 @@ function Typeahead({
       // a template is mostly citations — and the default suppresses the menu
       // when the caret sits against a text entity, which every pill is.
       ignoreEntityBoundary
+      // Lexical hangs the anchor off `<body>`, `position: absolute` and no
+      // z-index, so it painted under the create card (`z-[25]`): the menu's
+      // top rows were behind the card's bottom edge. The top overlay tier.
+      anchorClassName="z-50"
       menuRenderFn={(
         anchorElementRef,
         { selectedIndex, selectOptionAndCleanUp, setHighlightedIndex },
