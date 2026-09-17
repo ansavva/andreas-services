@@ -189,14 +189,6 @@ export function CreateBar() {
     // On the opening only — not on every keystroke while it is open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickerOpen]);
-  // Whether the prompt at rest has more than its two lines — the fade is
-  // drawn only then, so a short prompt is not dimmed for nothing.
-  const [promptOverflows, setPromptOverflows] = useState(false);
-  useEffect(() => {
-    const content = promptBox.current?.querySelector<HTMLElement>("[contenteditable]");
-    if (!content) return;
-    setPromptOverflows(content.scrollHeight > content.clientHeight + 1);
-  }, [bar.prompt, promptFocused]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetView, setSheetView] = useState<"settings" | "models" | "projects" | "templates">("settings");
@@ -705,10 +697,12 @@ export function CreateBar() {
           </div>
         )}
 
-        {/* Two lines at rest, faded where more is cut off; eight once the
-            caret is in it, then it scrolls. A long prompt at rest was making
-            the sheet half the viewport. Focus is tracked on the box rather
-            than read off the editor: React hears `focusin`/`focusout`. */}
+        {/* As tall as the prompt. It used to be two lines at rest and eight
+            with the caret in it, because the sheet was pinned to the foot of
+            the viewport and a long prompt made it half the screen; since the
+            card sits in the page's flow, the page scrolls instead. Focus is
+            tracked on the box rather than read off the editor: React hears
+            `focusin`/`focusout`. */}
         <div
           ref={promptBox}
           className="px-1"
@@ -727,15 +721,7 @@ export function CreateBar() {
             className=""
             family="body"
             menuSide="down"
-            contentClassName={
-              promptFocused
-                ? "min-h-12 max-h-48 overflow-y-auto"
-                : `min-h-12 max-h-12 overflow-hidden ${
-                    promptOverflows
-                      ? "[mask-image:linear-gradient(to_bottom,black_40%,transparent)]"
-                      : ""
-                  }`
-            }
+            contentClassName="min-h-12"
             onSubmit={() => void send()}
             focusKey={fine ? bar.focus : undefined}
             blurKey={blurKey}
