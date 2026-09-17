@@ -69,9 +69,9 @@ interface Props {
  *
  * **`Masonry`, not `ImageList`, and every tile at its own shape.** The first
  * cut was `ImageList`, whose tiles are squares — and a 16:9 clip in a square
- * is a third of itself, a 9:16 still a torso with no head. The feed already
- * knows each run's shape (`ratioOf`, off the plan), so the wall gives every
- * tile that ratio and packs the columns: `Masonry` deals tiles round-robin
+ * is a third of itself, a 9:16 still a torso with no head. A still draws at
+ * the shape its file has; a clip at the plan's (`ratioOf`), because an
+ * unplayed clip has no size of its own. The wall packs the columns: `Masonry` deals tiles round-robin
  * into N columns, height-blind, which is what a wall of mixed shapes wants.
  * `ImageList.ItemBar` stays for the caption; it is an overlay and reads no
  * grid. The tiles are handed to `Masonry` FLAT, one element each, because it
@@ -255,10 +255,12 @@ const RunTile = memo(function RunTile({
   const video = isVideoAsset(asset) || row.kind === "video";
   const label = `Output ${index + 1} of ${row.outputs.length}`;
   const menu = outputMenu(row, asset, index, actions, () => onPromote(row, asset));
-  const ratio = ratioOf(row);
+  // A clip's box is the plan's shape; a still's is its own — the rule
+  // `OutputTile` gives, and `Masonry` is height-blind either way.
+  const ratio = video ? ratioOf(row) : undefined;
 
   return (
-    <div className="group relative" style={{ aspectRatio: ratio }}>
+    <div className="group relative" style={ratio ? { aspectRatio: ratio } : undefined}>
       <div className="relative size-full overflow-hidden rounded-md border border-line bg-card">
         {/* The tile is the opening button; the bar and the menu are siblings
             of it, because a button cannot contain a button. */}
@@ -275,8 +277,9 @@ const RunTile = memo(function RunTile({
             isVideo={video}
             poster={asset.poster}
             duration={asset.duration}
+            aspect="auto"
             ratio={ratio}
-            fit="cover"
+            fit={video ? "cover" : "contain"}
             autoplay={video}
             className="size-full"
             drag={refOfOutput(row, asset, index)}

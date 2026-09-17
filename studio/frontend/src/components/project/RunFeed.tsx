@@ -494,7 +494,6 @@ function FeedRow({
   const actions = useRunActions(row);
   const [promoting, setPromoting] = useState<RunAsset | null>(null);
   const flying = inFlight(row.status);
-  const video = row.kind === "video";
 
   return (
     <article
@@ -508,7 +507,8 @@ function FeedRow({
       // fitting MORE tiles across rather than bigger ones.
       className="grid gap-4 border-t border-line pt-4 md:grid-cols-[minmax(0,1fr)_minmax(20rem,32rem)] md:gap-6"
     >
-      {/* Outputs. The grid is by kind: four stills across, two clips.
+      {/* Outputs. One grid for both kinds, so a still and a clip are the same
+          width in the same column.
 
           **`content-start`, and it is load-bearing.** This column is a cell of
           the article's own grid, so it is stretched to whatever the plan beside
@@ -521,9 +521,13 @@ function FeedRow({
       {/* **`auto-fill` with a floor, not a fixed count.** Four across of
           whatever width meant a still was 190px on a 1400px screen and 370px on
           a 2400px one; now the tile has a size and the row has as many as fit —
-          six across on a wide screen, two on a phone. The floors differ because
-          the shapes do: a still is portrait and reads small, a clip is wide and
-          does not.
+          four across on a wide screen, one on a phone.
+
+          **One floor, not one per kind.** Stills had `11rem` and clips
+          `18rem`, on the reasoning that a portrait reads small and a wide
+          frame does not — and the feed showed a clip at twice the width of
+          the still it was made from, one row apart. The output is the unit
+          here, whatever its shape; a still and a clip get the same track.
 
           **`min(18rem, 100%)`, not `18rem`.** A floor is a promise the column
           has to be able to keep. The plan column beside this one grows to its
@@ -531,13 +535,7 @@ function FeedRow({
           left this column ~150px — narrower than the clip's floor — so the
           one tile overflowed its cell and ran under the prompt beside it.
           The floor is now the smaller of the tile's size and the column's. */}
-      <div
-        className={`grid content-start gap-2 ${
-          video
-            ? "grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(min(18rem,100%),1fr))]"
-            : "grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(min(11rem,100%),1fr))]"
-        }`}
-      >
+      <div className="grid content-start gap-2 sm:grid-cols-[repeat(auto-fill,minmax(min(18rem,100%),1fr))]">
         {flying ? (
           <InFlightTiles row={row} now={now} />
         ) : row.outputs.length > 0 ? (

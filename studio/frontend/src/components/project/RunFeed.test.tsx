@@ -465,6 +465,28 @@ describe("the shape of the frames", () => {
     expect(screen.getAllByRole("menuitem", { name: "Start frame" })).toHaveLength(1);
     expect(screen.getByRole("menuitem", { name: "Run again with this" })).toBeTruthy();
   });
+
+  it("a still's tile takes no ratio and crops nothing — the picture sizes it", async () => {
+    // `match_input_image` says nothing about the shape, and the kind's 3:4
+    // guess once cropped a 2:3 output's head off. The plan's `aspect_ratio`
+    // still frames the placeholders; a landed still is drawn as it is.
+    await draw([
+      row({
+        plan: {
+          version: 1,
+          origin: "authored",
+          prompt: "x",
+          params: { aspect_ratio: "match_input_image" },
+        },
+      }),
+    ]);
+    await screen.findByRole("article");
+    const tile = screen.getAllByRole("button", { name: /^Open Output/ })[0]!;
+    const box = tile.querySelector("span") as HTMLElement;
+    expect(box.style.aspectRatio).toBe("");
+    expect(box.className).not.toMatch(/aspect-/);
+    expect(tile.querySelector("img")!.className).toContain("object-contain");
+  });
 });
 
 describe("a pointer at a node that is gone", () => {
@@ -596,10 +618,14 @@ describe("the tiles layout", () => {
     const today = await screen.findByRole("region", { name: "Today" });
     const tiles = within(today).getAllByRole("button", { name: /^Open Output/ });
     expect(tiles).toHaveLength(2);
-    // The plan says 3:4, and the tile is that shape — not a square.
-    expect(tiles[0]!.parentElement!.parentElement!.style.aspectRatio).toBe("3 / 4");
+    // A still's tile takes no shape from the plan — the loaded picture sizes
+    // it, so nothing is cropped to a guess. Not a square either.
+    expect(tiles[0]!.parentElement!.parentElement!.style.aspectRatio).toBe("");
     const yesterday = screen.getByRole("region", { name: "Yesterday" });
-    expect(within(yesterday).getAllByRole("button", { name: /^Open Output/ })).toHaveLength(1);
+    const clips = within(yesterday).getAllByRole("button", { name: /^Open Output/ });
+    expect(clips).toHaveLength(1);
+    // A clip's tile is the plan's shape: an unplayed clip has none of its own.
+    expect(clips[0]!.parentElement!.parentElement!.style.aspectRatio).toBe("3 / 4");
 
     // A clip on the wall plays on its own; the feed's only plays on hover.
     const clip = within(yesterday).getByRole("presentation");
