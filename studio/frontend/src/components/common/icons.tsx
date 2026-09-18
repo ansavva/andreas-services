@@ -400,6 +400,26 @@ export const RerunIcon = ({ className }: Props) => (
   </Glyph>
 );
 
+/**
+ * Re-read — two arcs chasing each other. Deliberately not `RerunIcon`'s one
+ * arc: that one spends, this one only asks the API what the run is now.
+ */
+export const RefreshIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M20 12a8 8 0 0 1-14.2 5" />
+    <path d="M4 12a8 8 0 0 1 14.2-5" />
+    <path d="M18.5 3v4.5H14M5.5 21v-4.5H10" />
+  </Glyph>
+);
+
+/** Open the run whole — the arrow leaves the row's frame. */
+export const OpenIcon = ({ className }: Props) => (
+  <Glyph className={className}>
+    <path d="M14 4h6v6M20 4l-9 9" />
+    <path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+  </Glyph>
+);
+
 /** Enlarge and restore — the arrows leave the frame at both corners. */
 export const UpscaleIcon = ({ className }: Props) => (
   <Glyph className={className}>

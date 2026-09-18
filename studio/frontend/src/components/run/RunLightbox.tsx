@@ -45,6 +45,7 @@ import {
   FolderIcon,
   PencilIcon,
   PromoteIcon,
+  RefreshIcon,
   RerunIcon,
   TrashIcon,
   UpscaleIcon,
@@ -838,6 +839,22 @@ function ActionGrid({
           label="Edit"
           onClick={actions.edit}
         />
+        {/* Re-reads the record and the feed's row for it — see
+            `useRunActions.refresh`. On every run: the poll stops at a
+            terminal status, and the one wedged short of it is the one this
+            is for. */}
+        <Cell
+          icon={
+            actions.refreshing ? (
+              <ApertureSpinner size="sm" label="Refreshing" className="size-4" />
+            ) : (
+              <RefreshIcon className={GLYPH} />
+            )
+          }
+          label="Refresh"
+          onClick={() => void actions.refresh()}
+          disabled={actions.refreshing}
+        />
         {/* Three cells for a still, one for a clip: the same lines every
             tile's menu offers (`attachActions`), decided by the kind. */}
         {asset &&
@@ -954,13 +971,21 @@ function Cell({
   icon,
   label,
   onClick,
+  disabled = false,
 }: {
   icon: ReactNode;
   label: string;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
-    <Button intent="secondary" size="sm" onClick={onClick} className={CELL}>
+    <Button
+      intent="secondary"
+      size="sm"
+      onClick={onClick}
+      disabled={disabled}
+      className={CELL}
+    >
       {icon}
       <span className="leading-tight">{label}</span>
     </Button>

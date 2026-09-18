@@ -22,6 +22,16 @@
       "autoPort": false
     },
     {
+      "name": "studio-frontend-5178",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": [
+        "-c",
+        "unset PORT; source ./studio/scripts/dev-aws-common.sh && export_env_prefix \"$DEV_ENV_FILE\" VITE_ && cd studio/frontend && exec npm run dev -- --port 5178 --strictPort"
+      ],
+      "port": 5178,
+      "autoPort": false
+    },
+    {
       "name": "classroom",
       "runtimeExecutable": "/bin/bash",
       "runtimeArgs": [

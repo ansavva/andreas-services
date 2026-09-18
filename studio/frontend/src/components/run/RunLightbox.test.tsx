@@ -441,6 +441,40 @@ describe("the opened run", () => {
     await waitFor(() => expect(deleteRun).toHaveBeenCalledWith("run-2"));
   });
 
+  it("Refresh re-reads the record and the rail follows it", async () => {
+    list.mockResolvedValue({
+      runs: [
+        row({
+          id: "run-2",
+          status: "running",
+          submitted: ago(12),
+          completed: null,
+          outputs: [],
+          thumb: null,
+          cost: null,
+        }),
+      ],
+      cursor: null,
+    });
+    read.mockResolvedValue(record({ status: "running", outputs: [] }));
+    await draw();
+    const rail = await screen.findByRole("complementary", { name: "Run details" });
+    await waitFor(() => expect(read).toHaveBeenCalled());
+    expect(within(rail).getByText("running")).toBeTruthy();
+
+    // The feed's watch and the rail share the key; however many reads that
+    // settled to, the press adds one.
+    const before = read.mock.calls.length;
+    read.mockResolvedValue(record());
+    fireEvent.click(within(rail).getByRole("button", { name: "Refresh" }));
+
+    await waitFor(() => expect(read.mock.calls.length).toBe(before + 1));
+    await within(rail).findByText("succeeded");
+    await screen.findByTestId("stage");
+    expect(within(rail).getByText(/prediction 9c1e2f3a/)).toBeTruthy();
+    expect(list).toHaveBeenCalledTimes(1);
+  });
+
   it("shows the shimmer and the counter for a run in flight, and offers nothing that spends", async () => {
     list.mockResolvedValue({
       runs: [

@@ -1,15 +1,10 @@
 import { useEffect, useMemo } from "react";
-import {
-  useQueries,
-  useQueryClient,
-  type InfiniteData,
-  type QueryKey,
-} from "@tanstack/react-query";
+import { useQueries, useQueryClient, type QueryKey } from "@tanstack/react-query";
 
 import { getRun } from "../apis/studio";
+import { patchFeedRows } from "../components/run/feedCache";
 import { inFlight } from "../components/run/feedTime";
-import { rowOfRecord } from "../components/run/rowOfRecord";
-import { isTerminal, type RunFeedPage, type RunFeedRow, type RunRecord } from "../types";
+import { isTerminal, type RunFeedRow, type RunRecord } from "../types";
 
 /** How often a run that is still out is asked about. */
 export const RUN_WATCH_MS = 5_000;
@@ -73,29 +68,13 @@ export function useRunWatch(feedKey: QueryKey, rows: RunFeedRow[]) {
 
   useEffect(() => {
     if (!landed) return;
-    const byId = new Map(records.map((record) => [record.id, record]));
-
-    client.setQueryData<InfiniteData<RunFeedPage>>(feedKey, (current) => {
-      if (!current) return current;
-      let changed = false;
-      const pages = current.pages.map((page) => {
-        let touched = false;
-        const runs = page.runs.map((row) => {
-          const record = byId.get(row.id);
-          // Only the status moving is worth a rewrite: a `running` run polled
-          // ten times is ten identical answers, and writing each one back would
-          // hand every row a new identity and re-render the whole feed.
-          if (!record || record.status === row.status) return row;
-          touched = changed = true;
-          // The names come off the row the feed already drew — the record
-          // carries cast ids, the project's characters are not in scope here,
-          // and a run's cast does not change after it is planned.
-          return rowOfRecord(record, row.cast);
-        });
-        return touched ? { ...page, runs } : page;
-      });
-      return changed ? { ...current, pages } : current;
-    });
+    // Only the status moving is worth a rewrite — see `patchFeedRows`.
+    patchFeedRows(
+      client,
+      { queryKey: feedKey, exact: true },
+      records,
+      (row, record) => record.status !== row.status,
+    );
     // `records` is derived from `landed`; listing it would fire every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, feedKey, landed]);
