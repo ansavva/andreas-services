@@ -775,3 +775,83 @@ def test_a_verification_miss_refetches_the_keys_once(monkeypatch):
     with pytest.raises(ValueError):
         fal.verify_webhook(_fal_signed(old, body), body, 300)
     assert fetched == [fal.JWKS_URL]
+
+
+# ── the consumer, for an OpenRouter run ─────────────────────────────────────
+
+
+def _running_openrouter_run(api):
+    project = api.post("/api/projects", json={"name": "rooftop-teaser"}).get_json()
+    run = api.post("/api/runs", json={
+        "project": project["id"], "kind": "video", "engine": "wan-3.0-openrouter",
+        "model": "openrouter/alibaba/wan-3.0",
+        "plan": {"version": 1, "origin": "authored", "prompt": "a porch",
+                 "params": {"duration": 5}},
+    }).get_json()
+    api.post(f"/api/runs/{run['id']}/submit")
+    return catalog.entity(catalog.ENTITY_RUN, run["id"])
+
+
+def _openrouter_message(run_id: str, event: dict, sig: str | None = None) -> dict:
+    from studio_core.clients import openrouter
+    body = json.dumps(event).encode()
+    return {"run": run_id, "provider": "openrouter", "headers": {},
+            "sig": openrouter.callback_signature(run_id) if sig is None else sig,
+            "body_b64": base64.b64encode(body).decode()}
+
+
+def test_an_openrouter_callback_with_the_right_sig_closes_the_run(empty_api, media_bucket):
+    """The proof is in the URL, as Runpod's is, and the body is OpenRouter's
+    webhook envelope — `type`, `data.unsigned_urls`, `data.usage.cost`."""
+    record = _running_openrouter_run(empty_api)
+    assert record["provider"] == "openrouter"
+
+    closed = callbacks.process(_openrouter_message(record["id"], {
+        "type": "video.generation.completed", "created_at": "2026-09-18T12:00:00Z",
+        "data": {"id": record["prediction_id"], "status": "completed",
+                 "generation_id": "gen-1", "model": "alibaba/wan-3.0",
+                 "unsigned_urls": ["https://fake.invalid/api/v1/videos/x/content?index=0"],
+                 "usage": {"cost": 0.425, "is_byok": False}},
+    }))
+
+    assert closed["status"] == "succeeded"
+    assert len(closed["outputs"]) == 1
+    assert closed["cost"] == {"amount": 0.425, "currency": "USD", "predict_time": None}
+
+
+def test_an_openrouter_callback_with_the_wrong_sig_is_rejected(empty_api):
+    record = _running_openrouter_run(empty_api)
+
+    with pytest.raises(callbacks.Rejected):
+        callbacks.process(_openrouter_message(record["id"], {
+            "type": "video.generation.completed",
+            "data": {"id": record["prediction_id"], "status": "completed",
+                     "unsigned_urls": ["https://fake.invalid/x"]}}, sig="forged"))
+
+    assert catalog.entity(catalog.ENTITY_RUN, record["id"])["status"] == "running"
+
+
+def test_an_expired_openrouter_job_closes_the_run_failed(empty_api):
+    record = _running_openrouter_run(empty_api)
+
+    closed = callbacks.process(_openrouter_message(record["id"], {
+        "type": "video.generation.expired",
+        "data": {"id": record["prediction_id"], "status": "expired"}}))
+
+    assert closed["status"] == "failed"
+    assert closed["error"] == "the job expired"
+
+
+def test_the_receiver_carries_openrouters_proof_from_the_query_string(queue):
+    body = b'{"type":"video.generation.completed","data":{"id":"gen-vid-1","status":"completed"}}'
+
+    hook_handler.handler(
+        _event("run-abc", body, headers={"X-OpenRouter-Signature": "t=1,v1=ab"},
+               provider="openrouter", query={"sig": "abc123"}), None)
+
+    message = json.loads(queue.sent[0]["MessageBody"])
+    assert message["provider"] == "openrouter"
+    assert message["sig"] == "abc123"
+    # OpenRouter's own signature header is not forwarded: nothing here can
+    # check it without a workspace secret, and the proof is the `sig`.
+    assert message["headers"] == {}

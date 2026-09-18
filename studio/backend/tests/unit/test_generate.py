@@ -1588,3 +1588,254 @@ def test_the_readme_route_answers_for_a_fal_entry_without_a_provider_call(empty_
 
     assert body["readme"].startswith("# fal/alibaba/wan-3.0/text-to-video")
     assert "$0.10/s" in body["readme"]
+
+
+# ── the fourth provider: OpenRouter ─────────────────────────────────────────
+
+
+def _wan3_openrouter_draft(api, project, **body):
+    resp = api.post("/api/runs", json={
+        "project": project["id"],
+        "kind": "video",
+        "engine": "wan-3.0-openrouter",
+        "model": "openrouter/alibaba/wan-3.0",
+        "plan": {"version": 1, "origin": "authored",
+                 "prompt": "a lighthouse on a rocky coast at golden hour, waves breaking",
+                 "params": {"duration": 5, "resolution": "720p", "seed": 7}},
+        **body,
+    })
+    assert resp.status_code == 201, resp.get_data(as_text=True)
+    return resp.get_json()
+
+
+def test_an_openrouter_run_is_submitted_through_the_openrouter_client(empty_api, monkeypatch):
+    """`dispatch` picks the client off the entry's `provider`; the route records
+    `openrouter` on the run before anything is sent; the webhook URL carries
+    `?sig=` under the OpenRouter key, as Runpod's does."""
+    from studio_core.clients import fal, openrouter, runpod
+    seen = {}
+
+    def create(model, payload, *, webhook=None):
+        seen.update(model=model, payload=payload, webhook=webhook)
+        return {"id": "gen-vid-1", "status": "pending"}
+
+    monkeypatch.setattr(openrouter, "create_prediction", create)
+    for other in (replicate, runpod, fal):
+        monkeypatch.setattr(other, "create_prediction",
+                            lambda *a, **k: pytest.fail("another provider was called"))
+    monkeypatch.setenv("STUDIO_WEBHOOK_BASE_URL", "https://hooks.test")
+    project = _project(empty_api)
+    run = _wan3_openrouter_draft(empty_api, project)
+
+    body = empty_api.post(f"/api/runs/{run['id']}/submit").get_json()
+
+    assert seen["model"] == "openrouter/alibaba/wan-3.0"
+    assert seen["payload"] == {"duration": 5, "resolution": "720p", "seed": 7,
+                               "prompt": "a lighthouse on a rocky coast at golden hour, waves breaking"}
+    assert seen["webhook"] == (f"https://hooks.test/api/hooks/openrouter/{run['id']}"
+                               f"?sig={openrouter.callback_signature(run['id'])}")
+    assert body["status"] == "running"
+    assert body["provider"] == "openrouter"
+    assert body["prediction_id"] == "gen-vid-1"
+
+
+def test_an_openrouter_run_reconciles_through_the_openrouter_client(empty_api, media_bucket):
+    """The fake answers a completed job in OpenRouter's own shape —
+    `unsigned_urls`, `usage.cost` — and the run closes on it WITH a price."""
+    project = _project(empty_api)
+    run = _wan3_openrouter_draft(empty_api, project)
+    empty_api.post(f"/api/runs/{run['id']}/submit")
+
+    body = empty_api.post(f"/api/runs/{run['id']}/reconcile").get_json()
+
+    assert body["status"] == "succeeded"
+    assert len(body["outputs"]) == 1
+    # The content route has no extension; the run's kind supplies it.
+    assert body["outputs"][0]["name"].endswith(".mp4")
+    assert body["cost"] == {"amount": 0.0, "currency": "USD", "predict_time": None}
+
+
+def test_provider_of_infers_openrouter_from_the_model_id():
+    assert generate.provider_of({"model": "openrouter/alibaba/wan-3.0"}) == "openrouter"
+    assert generate.provider_of({"model": "openrouter/x", "provider": "fal"}) == "fal"
+
+
+def test_openrouter_documents_are_normalised_into_the_seams_shape():
+    """A poll answers the job bare; a webhook wraps it under `data`. Both land
+    as `id`, `status`, `output`, `error`, and a document already in that
+    shape is returned as it is."""
+    from studio_core.clients import openrouter
+
+    polled = openrouter.normalise({
+        "id": "gen-vid-1", "generation_id": "gen-1", "status": "completed",
+        "polling_url": "https://openrouter.ai/api/v1/videos/gen-vid-1",
+        "unsigned_urls": ["https://openrouter.ai/api/v1/videos/gen-vid-1/content?index=0"],
+        "usage": {"cost": 0.425, "is_byok": False}})
+    assert polled["id"] == "gen-vid-1" and polled["status"] == "completed"
+    assert polled["error"] is None
+    assert openrouter.output_urls(polled) == [
+        "https://openrouter.ai/api/v1/videos/gen-vid-1/content?index=0"]
+    assert openrouter.cost(polled) == {"amount": 0.425, "currency": "USD", "predict_time": None}
+    assert openrouter.normalise(polled) == polled
+
+    hooked = openrouter.normalise({
+        "type": "video.generation.failed", "created_at": "2026-09-18T00:00:00Z",
+        "data": {"id": "gen-vid-2", "status": "failed", "error": "content policy",
+                 "usage": {"cost": 0, "is_byok": False}}})
+    assert hooked["id"] == "gen-vid-2" and hooked["status"] == "failed"
+    assert hooked["error"] == "content policy" and hooked["output"] is None
+    assert openrouter.output_urls(hooked) == []
+
+    # A job that expired said nothing; the status is the reason.
+    expired = openrouter.normalise({"id": "gen-vid-3", "status": "expired"})
+    assert expired["error"] == "the job expired"
+    assert openrouter.cost({"id": "gen-vid-4", "status": "pending"}) is None
+
+
+def test_the_openrouter_request_folds_frames_and_references_into_its_shape():
+    """`dispatch` writes a presigned URL into the seam's fields; the client
+    folds `first_frame` / `last_frame` into `frame_images` and
+    `input_references` into image parts, and everything else passes through.
+    Pure, so it is tested without a wire."""
+    from studio_core.clients import openrouter
+
+    body = openrouter.request_body("openrouter/alibaba/wan-3.0", {
+        "prompt": "x", "duration": 5, "resolution": "720p",
+        "first_frame": "https://s3.invalid/a.png?sig=1",
+        "input_references": ["https://s3.invalid/r1.png", "https://s3.invalid/r2.png"],
+    }, webhook="https://hooks.test/api/hooks/openrouter/run-1?sig=abc")
+
+    assert body == {
+        "prompt": "x", "duration": 5, "resolution": "720p",
+        "model": "alibaba/wan-3.0",
+        "callback_url": "https://hooks.test/api/hooks/openrouter/run-1?sig=abc",
+        "frame_images": [{"type": "image_url", "frame_type": "first_frame",
+                          "image_url": {"url": "https://s3.invalid/a.png?sig=1"}}],
+        "input_references": [{"type": "image_url", "image_url": {"url": "https://s3.invalid/r1.png"}},
+                             {"type": "image_url", "image_url": {"url": "https://s3.invalid/r2.png"}}],
+    }
+    # No image, no lists: text-to-video sends neither key.
+    bare = openrouter.request_body("openrouter/alibaba/wan-3.0", {"prompt": "x"})
+    assert bare == {"prompt": "x", "model": "alibaba/wan-3.0"}
+
+
+def test_a_bound_first_frame_reaches_openrouter_as_a_frame_image(empty_api, media_bucket, monkeypatch):
+    """End to end through the route: a `first_frame` send is presigned by
+    `dispatch` and arrives at the wire as a `frame_images` entry."""
+    from studio_core.clients import openrouter
+    seen = {}
+
+    def answer(method, url, *, body=None, **kw):
+        seen.update(method=method, url=url, body=body)
+        return 202, {"id": "gen-vid-7", "status": "pending",
+                     "polling_url": "https://openrouter.ai/api/v1/videos/gen-vid-7"}
+
+    monkeypatch.setenv("STUDIO_OPENROUTER_MODE", "live")
+    monkeypatch.setattr(openrouter, "_request", answer)
+    project = _project(empty_api)
+    root = empty_api.get(f"/api/projects/{project['id']}").get_json()["root"]
+    still = _uploaded(empty_api, root, "frame.png")
+    run = _wan3_openrouter_draft(empty_api, project, sends=[
+        {"field": "first_frame", "role": "start", "node": still["node_id"]}])
+
+    body = empty_api.post(f"/api/runs/{run['id']}/submit").get_json()
+
+    assert body["status"] == "running" and body["prediction_id"] == "gen-vid-7"
+    assert seen["url"] == "https://openrouter.ai/api/v1/videos"
+    frames = seen["body"]["frame_images"]
+    assert len(frames) == 1 and frames[0]["frame_type"] == "first_frame"
+    assert frames[0]["image_url"]["url"].startswith("http")
+    assert "first_frame" not in seen["body"]
+    assert seen["body"]["model"] == "alibaba/wan-3.0"
+
+
+def test_an_openrouter_refusal_closes_the_run_failed_with_its_words(empty_api, monkeypatch):
+    """A `402 Insufficient credits` is the ordinary refusal here, and it must
+    not wedge a draft at `pending` — the same distinction Runpod's and fal's
+    clients draw."""
+    from studio_core.clients import openrouter
+
+    monkeypatch.setenv("STUDIO_OPENROUTER_MODE", "live")
+    monkeypatch.setattr(openrouter, "_request", lambda method, url, *, body=None, **kw: (
+        402, {"error": {"code": 402,
+                        "message": "Insufficient credits. Add more using https://openrouter.ai/credits"}}))
+    project = _project(empty_api)
+    run = _wan3_openrouter_draft(empty_api, project)
+
+    resp = empty_api.post(f"/api/runs/{run['id']}/submit")
+
+    assert resp.status_code == 502
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    assert record["status"] == "failed"
+    assert record["error"] == ("openrouter refused the submission (402): Insufficient "
+                               "credits. Add more using https://openrouter.ai/credits")
+
+
+def test_the_openrouter_schema_is_synthesised_from_the_model_card(monkeypatch):
+    """No OpenAPI document per model: the card on `/videos/models` says what
+    the model takes, and that is read into the two maps `check` wants —
+    `first_frame` only when the card lists it, `required` naming `prompt`."""
+    from studio_core.clients import openrouter
+
+    card = {"id": "alibaba/wan-3.0", "supported_resolutions": ["480p", "720p", "1080p"],
+            "supported_aspect_ratios": ["16:9", "9:16"], "supported_sizes": None,
+            "supported_durations": [2, 3, 4, 5], "supported_frame_images": ["first_frame"],
+            "generate_audio": True, "seed": True, "allowed_passthrough_parameters": []}
+    monkeypatch.setenv("STUDIO_OPENROUTER_MODE", "live")
+    monkeypatch.setattr(openrouter, "_models", {})
+    monkeypatch.setattr(openrouter, "_request", lambda *a, **k: (200, {"data": [card]}))
+
+    props, schemas = openrouter.model_schema("openrouter/alibaba/wan-3.0")
+
+    assert schemas["Input"]["required"] == ["prompt"]
+    assert props["resolution"]["enum"] == ["480p", "720p", "1080p"]
+    assert props["duration"] == {"type": "integer", "title": "Duration", "enum": [2, 3, 4, 5],
+                                 "minimum": 2, "maximum": 5}
+    assert "first_frame" in props and "last_frame" not in props
+    assert props["generate_audio"]["default"] is True and "seed" in props
+    assert "negative_prompt" not in props
+
+    with pytest.raises(openrouter.OpenRouterError):
+        openrouter.model_schema("openrouter/nobody/nothing")
+
+
+def test_the_openrouter_download_sends_the_key(monkeypatch, tmp_path):
+    """The content route is OpenRouter's own and answers 401 without the
+    bearer; a 404 there is the output gone, its own type."""
+    import io
+    import urllib.error
+    import urllib.request
+    from studio_core.clients import openrouter
+    seen = {}
+
+    class _Response(io.BytesIO):
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def urlopen(request, timeout=None):
+        seen["auth"] = request.get_header("Authorization")
+        return _Response(b"mp4-bytes")
+
+    monkeypatch.setenv("STUDIO_OPENROUTER_MODE", "live")
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    target = tmp_path / "out.mp4"
+
+    written = openrouter.download("https://openrouter.ai/api/v1/videos/g/content?index=0",
+                                  str(target), max_bytes=1 << 20)
+
+    assert written == 9 and target.read_bytes() == b"mp4-bytes"
+    assert seen["auth"] == "Bearer dud-key-the-suite-must-never-use"
+
+    def gone(request, timeout=None):
+        raise urllib.error.HTTPError(request.full_url, 404, "gone", {}, io.BytesIO(b""))
+    monkeypatch.setattr(urllib.request, "urlopen", gone)
+    with pytest.raises(openrouter.OutputGone):
+        openrouter.download("https://openrouter.ai/x", str(target), max_bytes=1 << 20)
+
+
+def test_the_readme_route_answers_for_an_openrouter_entry_without_a_provider_call(empty_api):
+    body = empty_api.get("/api/models/wan-3.0-openrouter/readme").get_json()
+
+    assert body["readme"].startswith("# openrouter/alibaba/wan-3.0")
+    assert "usage.cost" in body["readme"]

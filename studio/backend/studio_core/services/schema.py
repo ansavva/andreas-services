@@ -33,7 +33,7 @@ whose enum changed under a committed snapshot.
 
 import logging
 
-from studio_core.clients import fal, replicate
+from studio_core.clients import fal, openrouter, replicate
 from studio_core.errors import ValidationError
 from studio_core.services import registry
 
@@ -73,6 +73,10 @@ def fetch(model: str) -> tuple[dict, dict]:
     **A fal model's schema is live, like Replicate's** — fal publishes an
     OpenAPI document per endpoint and `clients/fal.py` reads it into the same
     two maps.
+
+    **An OpenRouter model's schema is live too, and synthesised**: OpenRouter
+    publishes a capability card per video model rather than a schema, and
+    `clients/openrouter.py` reads the card into the same two maps.
     """
     entry = registry.by_model_id(model)
     provider = registry.provider_of(entry) if entry is not None else registry.REPLICATE
@@ -84,6 +88,12 @@ def fetch(model: str) -> tuple[dict, dict]:
         try:
             return fal.model_schema(model)
         except fal.FalError as exc:
+            logger.warning("Could not fetch the schema for %s: %s", model, exc)
+            return {}, {}
+    if provider == registry.OPENROUTER:
+        try:
+            return openrouter.model_schema(model)
+        except openrouter.OpenRouterError as exc:
             logger.warning("Could not fetch the schema for %s: %s", model, exc)
             return {}, {}
 

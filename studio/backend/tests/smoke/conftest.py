@@ -92,6 +92,7 @@ BILLING_HOSTS = (
     "image.runpod.ai",
     "fal.run",
     "fal.media",
+    "openrouter.ai",
     "api.openai.com",
     "api.anthropic.com",
 )

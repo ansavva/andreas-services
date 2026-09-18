@@ -174,6 +174,24 @@ def fal_token_env():
     return os.environ.get("FAL_KEY", "").strip()
 
 
+def openrouter_token_parameter():
+    """The SSM parameter holding the OpenRouter API key, or `""` for none.
+
+    A name, never a value — the fourth of these, shaped like the other three
+    and read the same way at call time by `clients/openrouter.py`.
+    """
+    return os.environ.get("STUDIO_OPENROUTER_TOKEN_PARAMETER", "").strip()
+
+
+def openrouter_token_env():
+    """The OpenRouter API key straight from the environment, or `""`.
+
+    `OPENROUTER_API_KEY`, the name OpenRouter's own docs and SDKs read, for
+    the same reason Runpod's is `RUNPOD_API_KEY` and fal's is `FAL_KEY`.
+    """
+    return os.environ.get("OPENROUTER_API_KEY", "").strip()
+
+
 def webhook_base_url():
     """Where a provider should call back, or `""` when nothing can reach us.
 

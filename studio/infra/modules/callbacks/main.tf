@@ -405,11 +405,12 @@ resource "aws_lambda_function" "worker" {
 
   environment {
     variables = {
-      STUDIO_MEDIA_BUCKET              = var.media_bucket_name
-      STUDIO_CATALOG_TABLE             = var.catalog_table_name
-      STUDIO_REPLICATE_TOKEN_PARAMETER = var.replicate_token_parameter
-      STUDIO_RUNPOD_TOKEN_PARAMETER    = var.runpod_token_parameter
-      STUDIO_FAL_TOKEN_PARAMETER       = var.fal_token_parameter
+      STUDIO_MEDIA_BUCKET               = var.media_bucket_name
+      STUDIO_CATALOG_TABLE              = var.catalog_table_name
+      STUDIO_REPLICATE_TOKEN_PARAMETER  = var.replicate_token_parameter
+      STUDIO_RUNPOD_TOKEN_PARAMETER     = var.runpod_token_parameter
+      STUDIO_FAL_TOKEN_PARAMETER        = var.fal_token_parameter
+      STUDIO_OPENROUTER_TOKEN_PARAMETER = var.openrouter_token_parameter
     }
   }
 

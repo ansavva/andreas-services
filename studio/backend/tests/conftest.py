@@ -39,6 +39,10 @@ os.environ["RUNPOD_API_KEY"] = "dud-key-the-suite-must-never-use"
 # key, not this one, so the dud is only there to make `token()` answer.
 os.environ["STUDIO_FAL_MODE"] = "fake"
 os.environ["FAL_KEY"] = "dud-key-the-suite-must-never-use"
+# The fourth, likewise. OpenRouter's callback proof is an HMAC under this
+# key, as Runpod's is, so the dud is what a test's callback URL is signed with.
+os.environ["STUDIO_OPENROUTER_MODE"] = "fake"
+os.environ["OPENROUTER_API_KEY"] = "dud-key-the-suite-must-never-use"
 # No callback URL, so a submission under test takes the `poll` branch and there
 # is no webhook to deliver. The webhook route is tested by calling it directly
 # with a signature the test computes — see `tests/unit/test_hooks.py`.
