@@ -19,9 +19,26 @@ STITCHING RULE — THE ONE THING THAT MUST NOT BE LOST IN THE MOVE
 ----------------------------------------------------------------
 When every input already agrees on codec, dimensions, frame rate and audio
 layout, the concat demuxer runs with `-c copy`: no re-encode, so the cut is
-bit-for-bit the sources joined end to end. When they differ, inputs are
-normalised to the FIRST input's video geometry and a common audio layout — **and
-the caller records that it happened**, rather than doing it silently.
+bit-for-bit the sources joined end to end. When they differ, EACH input is
+normalised on its own — to the FIRST input's geometry and frame rate, square
+pixels, `yuv420p`, 44.1 kHz stereo — and only then joined with the `concat`
+FILTER — **and the caller records that it happened**, rather than doing it
+silently.
+
+**Why each input is conformed before the join and not after.** Until 2026-09-18
+the re-encode path joined with the concat DEMUXER and put one `fps=` on the
+joined stream. The demuxer presents every file as one stream carrying the FIRST
+file's parameters, timebase included, and does not rescale a later file's
+timestamps into it; a file whose track timescale differs (a 30 fps clip from
+one engine after a 24 fps clip from another) arrives with its frames spread
+over several times their real span, and the single `fps=` filter fills the gaps
+by holding the previous frame. In prod that was a 12 s clip frozen solid while
+its audio ran on — audio has no such filter and was joined correctly, which is
+why the file played and nobody saw it fail. Reproduced with two `testsrc2`
+clips at 24 and 30 fps: same timescale, a 1 s hold and a slowed segment;
+different timescales, a 25 s freeze out of 12 s of source. The concat filter
+takes each input as its own stream with its own timebase, and conforming every
+branch first means the join sees N streams that agree.
 
 That last clause is the reason `stitch` returns a report instead of a path.
 `services/render.py` writes it onto the scene or movie record as `stitch`, so a
@@ -118,6 +135,57 @@ def _run(cmd: list[str], what: str) -> None:
         raise MediaError(f"{what} failed: " + " / ".join(tail) if tail else f"{what} failed")
 
 
+def _differs(probes: list[dict]) -> list[str]:
+    """What the inputs disagree on, as `name a/b` phrases for the report."""
+    out = []
+    for name, pick in (
+        ("size", lambda p: f"{p['video']['width']}x{p['video']['height']}"),
+        ("fps", lambda p: f"{p['video']['fps']:g}"),
+        ("codec", lambda p: p["video"]["codec"]),
+        ("audio", lambda p: (f"{a['codec']} {a['sample_rate']}Hz {a['layout']}"
+                             if (a := p["audio"]) else "none")),
+    ):
+        seen = list(dict.fromkeys(pick(p) for p in probes))
+        if len(seen) > 1:
+            out.append(f"{name} {'/'.join(seen)}")
+    return out
+
+
+def conform_filter(probes: list[dict], *, have_audio: bool) -> str:
+    """The `-filter_complex` graph for a re-encode: every input conformed, then
+    the concat filter.
+
+    Target geometry and frame rate are the FIRST input's — the same choice the
+    demuxer path made for geometry — and every input passes through the same
+    chain even when it already matches, so the N branches reaching `concat` are
+    equal by construction rather than by inspection. Separated from `stitch` so
+    the graph is assertable without a binary.
+
+    **`fps=` only where the rate actually differs.** The filter drops the last
+    frame of whatever it is given (measured on 7.1: a 96-frame 24 fps clip
+    through `fps=24` comes out 95), and at a cut that frame is the one the
+    next segment's first frame is supposed to follow — so a 24 fps clip in a
+    24 fps cut is passed through untouched and only the odd one out is
+    resampled. Each branch keeps its own timebase into `concat`, which is what
+    the concat FILTER, unlike the demuxer, is built to reconcile.
+    """
+    v = probes[0]["video"]
+    w, h, fps = v["width"], v["height"], v["fps"]
+    parts = []
+    for i, p in enumerate(probes):
+        resample = f"fps={fps:g}," if round(p["video"]["fps"], 3) != round(fps, 3) else ""
+        parts.append(
+            f"[{i}:v]scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,"
+            f"pad={w}:{h}:-1:-1,{resample}setsar=1,format=yuv420p[v{i}]")
+        if have_audio:
+            parts.append(f"[{i}:a]aresample=44100,"
+                         f"aformat=sample_fmts=fltp:channel_layouts=stereo[a{i}]")
+    heads = "".join(f"[v{i}][a{i}]" if have_audio else f"[v{i}]" for i in range(len(probes)))
+    parts.append(f"{heads}concat=n={len(probes)}:v=1:a={1 if have_audio else 0}"
+                 + ("[v][a]" if have_audio else "[v]"))
+    return ";".join(parts)
+
+
 def stitch(paths: list[str], dest: str, *, label: str = "parts") -> dict:
     """Join clips end to end. Stream-copies when the inputs already agree.
 
@@ -131,30 +199,33 @@ def stitch(paths: list[str], dest: str, *, label: str = "parts") -> dict:
         # Mixed audio/no-audio cannot stream-copy through the concat demuxer.
         uniform = False
 
-    listfile = os.path.join(os.path.dirname(dest), "_concat.txt")
-    with open(listfile, "w") as fh:
-        for p in paths:
-            fh.write(f"file '{os.path.abspath(p)}'\n")
-
-    base = [ffmpeg_exe(), "-hide_banner", "-loglevel", "error",
-            "-f", "concat", "-safe", "0", "-i", listfile]
+    listfile = None
     if uniform:
-        cmd = base + ["-c", "copy", dest, "-y"]
+        listfile = os.path.join(os.path.dirname(dest), "_concat.txt")
+        with open(listfile, "w") as fh:
+            for p in paths:
+                fh.write(f"file '{os.path.abspath(p)}'\n")
+        cmd = [ffmpeg_exe(), "-hide_banner", "-loglevel", "error",
+               "-f", "concat", "-safe", "0", "-i", listfile, "-c", "copy", dest, "-y"]
         method = "concat demuxer, stream copy (no re-encode)"
     else:
         v = probes[0]["video"]
-        cmd = base + [
-            "-vf", f"scale={v['width']}:{v['height']}:force_original_aspect_ratio=decrease,"
-                   f"pad={v['width']}:{v['height']}:-1:-1,fps={v['fps']}",
-            "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-pix_fmt", "yuv420p",
-        ]
-        cmd += (["-c:a", "aac", "-ar", "44100", "-ac", "2"] if have_audio else ["-an"])
-        cmd += [dest, "-y"]
-        method = (f"re-encoded to {v['width']}x{v['height']} @ {v['fps']}fps "
-                  f"({label} differed)")
+        one = label[:-1] if label.endswith("s") else label
+        cmd = [ffmpeg_exe(), "-hide_banner", "-loglevel", "error"]
+        for p in paths:
+            cmd += ["-i", os.path.abspath(p)]
+        cmd += ["-filter_complex", conform_filter(probes, have_audio=have_audio),
+                "-map", "[v]",
+                "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-pix_fmt", "yuv420p"]
+        cmd += (["-map", "[a]", "-c:a", "aac", "-b:a", "192k"] if have_audio else ["-an"])
+        cmd += ["-movflags", "+faststart", dest, "-y"]
+        method = (f"re-encoded to {v['width']}x{v['height']} @ {v['fps']:g}fps "
+                  f"(the first {one}'s), each {one} conformed before the join "
+                  f"({label} differed: {', '.join(_differs(probes)) or 'streams'})")
 
     _run(cmd, "stitch")
-    os.remove(listfile)
+    if listfile:
+        os.remove(listfile)
     return {"method": method, f"uniform_{label}": uniform, "probes": probes}
 
 

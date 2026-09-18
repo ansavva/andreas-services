@@ -86,8 +86,11 @@ jobs:
       - name: Install Poetry
         run: pipx install poetry==2.2.1
 
+      # `--with render` brings the ffmpeg wheel (~80 MB) so `tests/unit/test_stitch.py`
+      # runs the encode on synthetic clips rather than skipping. It is still an
+      # optional group: the API image installs `--only main` and never sees it.
       - name: Install dependencies
-        run: cd studio/backend && poetry install --no-root --no-interaction
+        run: cd studio/backend && poetry install --no-root --no-interaction --with render
 
       - name: Lint
         run: pipx run ruff check studio/backend

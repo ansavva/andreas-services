@@ -298,9 +298,15 @@ clips" is still one command.
 
 Clips that agree on codec, geometry, frame rate and audio layout are
 **stream-copied** — the cut is bit-for-bit the sources joined end to end. Clips
-produced by this loop agree automatically, because each inherits its geometry
-from the previous clip's frame. Mixing in a clip rendered at another `mode` or
-aspect forces a re-encode, which the scene's record notes.
+produced by this loop on one engine agree automatically, because each inherits
+its geometry from the previous clip's frame. Mixing in a clip rendered at
+another `mode` or aspect forces a re-encode, which the scene's record notes.
+**So does mixing engines**: Kling renders at 24 fps and Wan 3.0 at 30, so a
+cut holding both re-encodes to the first clip's rate, with every clip
+conformed on its own before the join — `stitch.method` says which rate and
+what differed. Until 2026-09-18 that re-encode froze the 30 fps clips for
+their whole length while their audio ran on; a scene cut before then that
+mixes engines needs re-cutting.
 
 **The encode happens in the service, not on this machine.** `assemble` resolves
 each run in the cut to its clip and asks for the cut; the joining, the copies

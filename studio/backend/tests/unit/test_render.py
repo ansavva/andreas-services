@@ -17,11 +17,11 @@ Three things are under test here and the split matters:
   either fills the dead-letter queue with something nobody can act on or loses
   work that would have succeeded.
 
-The encode itself is not exercised: `media/ffmpeg.py` shells out to a binary only
-the render image carries, and installing it here would undo the split. `stitch`
-is patched, and what is asserted is the report it returns reaching the record —
-which is the clause most likely to be lost in a port and the one nobody could see
-being lost, because the file plays either way.
+The encode itself is not exercised here: `stitch` is patched, and what is
+asserted is the report it returns reaching the record — which is the clause most
+likely to be lost in a port and the one nobody could see being lost, because the
+file plays either way. `test_stitch.py` runs the real encode on synthetic clips,
+because "the file plays" turned out to cover a cut frozen for twelve seconds.
 """
 
 import json
