@@ -79,3 +79,34 @@ it("a node drag entering the window brings up a sheet that was away", () => {
   fireEvent.dragEnter(window, { dataTransfer: { types: ["application/x-studio-node"] } });
   expect(screen.getByLabelText("Prompt")).toBeTruthy();
 });
+
+/**
+ * The viewer is `fixed`, so a sheet called up over it cannot push it down the
+ * way the flow does on every other page. The slot publishes its height and the
+ * frame starts under it — see `ViewerFrame`'s `top`.
+ */
+it("over a viewer, a summoned sheet publishes its height and takes it back when put away", () => {
+  render(
+    <TestProviders>
+      <MemoryRouter initialEntries={["/o/node-1"]}>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route path="/o/:nodeId" element={<p>the file</p>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </TestProviders>,
+  );
+  const root = document.documentElement;
+  expect(root.style.getPropertyValue("--sheet-h")).toBe("");
+
+  fireEvent.dragEnter(window, { dataTransfer: { types: ["application/x-studio-node"] } });
+  expect(screen.getByLabelText("Prompt")).toBeTruthy();
+  // jsdom lays nothing out, so the number is 0 — what matters is that the
+  // property is written while the sheet is up, and gone once it is not.
+  expect(root.style.getPropertyValue("--sheet-h")).toBe("0px");
+
+  fireEvent.click(screen.getByRole("button", { name: "Close the create panel" }));
+  expect(screen.queryByLabelText("Prompt")).toBeNull();
+  expect(root.style.getPropertyValue("--sheet-h")).toBe("");
+});

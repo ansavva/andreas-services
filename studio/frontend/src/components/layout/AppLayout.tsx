@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Outlet } from "react-router-dom";
 
 import { CreateBarProvider, useCreateBarState } from "../../context/CreateBarContext";
@@ -66,15 +66,46 @@ export function AppLayout() {
  * page's flow and scrolls away with the page, which is all the folding it
  * needs.
  *
- * **In the flow, and above the viewer.** The slot sits between the top bar and
- * `main`, so the page starts under it and scrolls it away. `z-[25]` is between
- * two neighbours: over the opened run's `ViewerFrame`, fixed at `z-20`, so a
- * sheet called up there is drawn over the viewer's top edge rather than under
- * it; and under the sticky top bar's `z-30`, so scrolling carries the sheet
- * beneath the header rather than across it.
+ * **In the flow, and the viewer makes room for it.** The slot sits between
+ * the top bar and `main`, so the page starts under it and scrolls it away.
+ * The viewer is `fixed` and cannot start under it for free, so the slot
+ * measures itself and publishes `--sheet-h`, which `ViewerFrame` adds to its
+ * top edge. It used to float over the viewer instead — `z-[25]` over the
+ * frame's `z-20` — and a sheet called up by "Use as reference" on an open
+ * picture landed over the top third of that picture and the aside's own
+ * action row, with nothing able to scroll either back: the one screen where
+ * the sheet was not static was the one screen it was summoned onto. The
+ * `z-[25]` stays for the other neighbour: under the sticky top bar's `z-30`,
+ * so scrolling carries the sheet beneath the header rather than across it.
  */
 function SheetSlot() {
-  const { shown, summon, raised } = useCreateBarState();
+  const { shown, summon, raised, overViewer } = useCreateBarState();
+  const slot = useRef<HTMLDivElement>(null);
+
+  /**
+   * How tall the sheet is, told to the viewer. Only over a viewer — on every
+   * other page the sheet is in the flow and the page already starts under
+   * it. Reset on the way out, so a viewer opened after the sheet was put
+   * away starts at the header again.
+   */
+  useEffect(() => {
+    const root = document.documentElement;
+    const node = slot.current;
+    if (!shown || !overViewer || !node) {
+      root.style.removeProperty("--sheet-h");
+      return;
+    }
+    const publish = () => root.style.setProperty("--sheet-h", `${node.offsetHeight}px`);
+    publish();
+    // Absent under jsdom, where nothing has a height to publish anyway.
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(publish);
+    observer?.observe(node);
+    return () => {
+      observer?.disconnect();
+      root.style.removeProperty("--sheet-h");
+    };
+  }, [shown, overViewer]);
 
   /**
    * **Whatever loads the sheet with a prompt brings the page back to it.**
@@ -141,7 +172,7 @@ function SheetSlot() {
           **Full width inside them**, like the content: the `max-w-3xl` it
           carried when it floated centred it over a feed; on the page it is a
           row of the page, and a row runs the column's width. */}
-      <div className="relative z-[25] px-4 pt-6 md:px-6">
+      <div ref={slot} className="relative z-[25] px-4 pt-6 md:px-6">
         <CreateBar />
       </div>
     </>

@@ -3,32 +3,32 @@ import { useNavigate } from "react-router-dom";
 
 import { Text } from "@ansavva/design-system";
 
-import { MediaPlayer } from "./MediaPlayer";
 import { MediaThumb } from "./MediaThumb";
 import type { RunAsset } from "../../types";
 import { assetLabel, formatBytes } from "../../utils/format";
 
 /**
- * A run's output: watchable here, and openable properly.
+ * A scene's take: the picture, openable like any other.
  *
- * **Two complaints, one component.** A video output was a poster in a tile — to
- * see it move you left the page for the object screen, which is the exact trip
- * the inline player exists to end. And the tile was a `<button>`, so a
- * command-click did nothing: the browser has no new-tab gesture for a button,
- * so the app was discarding the one affordance every person already has for
- * "not here, over there".
+ * **A clip here is a tile, not a player.** It was a `MediaPlayer` — watchable
+ * in place, with the caption under it the only link out — and that made a
+ * scene's take the one video in the app a press did not open: a feed tile
+ * opens its run, a folder tile opens the viewer, and a take played where it
+ * stood, under a page that kept scrolling, with the viewer a small caption
+ * away. So it draws as every other output does — poster, duration, a hover
+ * preview — and the press opens the viewer with `?in=scene`, which puts every
+ * other take one arrow key away.
  *
- * The media plays in place, and the caption under it is a real `<a href>` —
- * command, control, shift and middle click go to the browser, a plain click to
- * the router. The same bargain `PageBar`'s crumbs make.
- *
- * **The link cannot wrap the player.** The player is full of buttons, and an
- * anchor containing a button is neither one thing nor the other to a keyboard
- * or a screen reader. So the caption carries the link and says where it goes.
+ * **Both the tile and the caption are real `<a href>`s.** Command, control,
+ * shift and middle click go to the browser — "not here, over there" is the
+ * one affordance every person already has, and a `<button>` would discard it
+ * — and a plain click to the router. The same bargain `PageBar`'s crumbs make.
  *
  * `fit="contain"` without exception: an output is the thing being judged, and
  * `cover` crops to fill the box — which on anything but a square clip quietly
- * cut the edges off the shot.
+ * cut the edges off the shot. A clip takes a 16:9 box because an unloaded
+ * `<video>` is 0px tall and a take has no plan to read a shape off; a still
+ * is drawn at its own.
  */
 export function OutputPanel({
   asset,
@@ -66,32 +66,24 @@ export function OutputPanel({
 
   return (
     <div className="flex min-w-0 flex-col gap-1 border border-line bg-card p-1">
-      {isVideo ? (
-        <MediaPlayer
+      <a
+        href={to}
+        onClick={open}
+        aria-label={`Open ${assetLabel(asset.name)}`}
+        className="block focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
+        <MediaThumb
           nodeId={asset.node}
           url={asset.url}
+          poster={asset.poster}
+          duration={asset.duration}
           name={asset.name}
-          isVideo
-          aspect={sole ? "auto" : "square"}
+          isVideo={isVideo}
+          aspect={isVideo ? "video" : sole ? "auto" : "square"}
           fit="contain"
+          className="w-full"
         />
-      ) : (
-        <a
-          href={to}
-          onClick={open}
-          className="block focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          <MediaThumb
-            nodeId={asset.node}
-            url={asset.url}
-            poster={asset.poster}
-            name={asset.name}
-            aspect={sole ? "auto" : "square"}
-            fit="contain"
-            className="w-full"
-          />
-        </a>
-      )}
+      </a>
 
       {/* The caption and anything acting on this output share one row, so the
           control sits against the name it belongs to rather than under the

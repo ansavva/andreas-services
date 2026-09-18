@@ -190,3 +190,33 @@ describe("handleCallback", () => {
     Object.defineProperty(window, "location", { configurable: true, value: original });
   });
 });
+
+describe("refreshTokens", () => {
+  /**
+   * A pasted link opened after the refresh token's 30 days used to stop on
+   * "Could not load your libraries — Your session has expired", with no way
+   * on: the store was emptied but the tree still believed it was signed in.
+   * The event is what `AuthContext` listens for to drop `authenticated`, so
+   * the gate sends the tab to sign in with the address it is on.
+   */
+  it("clears the store and announces the end of the session when the refresh fails", async () => {
+    const { refreshTokens, getIdToken, SESSION_ENDED_EVENT } = await loadModule();
+    localStorage.setItem(
+      "studio.auth.tokens",
+      JSON.stringify({ idToken: "old", accessToken: "old", refreshToken: "dead", expiresAt: 0 }),
+    );
+    const dispatched = vi.fn();
+    vi.stubGlobal("window", {
+      location: { origin: "http://localhost:5173" },
+      dispatchEvent: dispatched,
+    });
+    vi.stubGlobal("Event", class { constructor(public type: string) {} });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 400, json: async () => ({ error: "invalid_grant" }) }));
+
+    await expect(refreshTokens()).rejects.toThrow();
+
+    expect(getIdToken()).toBeNull();
+    expect(dispatched).toHaveBeenCalledTimes(1);
+    expect((dispatched.mock.calls[0]?.[0] as { type: string }).type).toBe(SESSION_ENDED_EVENT);
+  });
+});
