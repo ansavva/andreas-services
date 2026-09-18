@@ -85,9 +85,11 @@ folder, because a worker has no way to hand bytes back except through S3.
 from __future__ import annotations
 
 import json
+import sys
 
 import click
 
+from studio_pipeline import links as LINKS  # noqa: E402
 from studio_pipeline.adapters import api, store  # noqa: E402
 from studio_pipeline import errors  # noqa: E402
 from studio_pipeline.errors import die  # noqa: E402
@@ -287,6 +289,12 @@ def _emit(run: dict, asset: dict, local: str | None, add_input: bool,
     print(local or asset["node"])
     if local:
         print(asset["node"])
+    # Stderr, beside the node stdout carries: `$(studio frames last …)` is a
+    # node id and must stay one. The frame's provenance is the run it was cut
+    # from, and that is the page to look at it on.
+    link = LINKS.run(run)
+    if link:
+        print(f"from {run['id']}  {LINKS.ui_line(link)}", file=sys.stderr)
     if not add_input:
         if chain:
             die("--chain needs --add-input: a chain names the frames a sequence "

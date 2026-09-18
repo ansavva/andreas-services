@@ -199,7 +199,13 @@ studio profile show                    # what each value resolves to, and from w
 A profile carries all five values that decide which stack answers — the API URL,
 both Cognito ids, the media bucket and the catalog table — in
 `~/.config/andreas-services/studio/config`, beside the machine id and the
-`<profile>.env` account files. Nothing in it is secret.
+`<profile>.env` account files. Nothing in it is secret. It also carries
+`web_url`, the app showing that stack's library, which is why `studio run`,
+`runs show`, `scenes show` and the rest print a `ui:` link (or a `"ui"` field
+in JSON) beside every run or scene id. It is **derived, not looked up** —
+`studio-api.<host>` → `studio.<host>`, a local API → `localhost:5173` — because
+the app domain is neither a Terraform output nor an SSM parameter; a profile
+synced before the field existed derives it at read time.
 
 - **`dev` is the default, and there is no other default.** Nothing configured is
   a refusal, never a fallback to production.

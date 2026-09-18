@@ -105,6 +105,12 @@ error: openai/gpt-image-2 does not accept: ['input_fidelity']
   `input_fidelity` is accepted by: gpt-image-1.5
 ```
 
+A dry run's trailer — `submit it:` / `discard it:` — also carries `ui:`, the
+draft's page in the web app, and a real run prints the same link when it
+closes; with `--json` it is the `"ui"` field. The link is the profile's
+`web_url` (`studio profile show`), so it points at the app in front of whichever
+API the run went to.
+
 ## Where this lives
 
 The registry is data — one JSON document that every studio-* tool reads, and the

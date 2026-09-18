@@ -61,6 +61,7 @@ import sys
 
 import click
 
+from studio_pipeline import links as LINKS
 from studio_pipeline.adapters import api, entities, store
 from studio_pipeline.domain import paths as P
 from studio_pipeline.errors import reports
@@ -485,9 +486,17 @@ def do_list(project, character, json_, model, scene, since, status):
         character=_character_address(character),
         model=model, status=status, since=since, scene=scene or None)
     if json_:
-        print(json.dumps(found, indent=2))
+        # The projection carries no `project`; the query did, so each row can
+        # still say where it is opened.
+        print(json.dumps([LINKS.with_ui(r, LINKS.run({**r, "project": project_id}))
+                          for r in found], indent=2))
     else:
         print("\n".join(_row(r) for r in found) or f"(no runs in {project})")
+        # One link for the listing, not one per row: the project page is where
+        # every run above is, and forty URLs would bury the forty rows.
+        link = LINKS.project(project_id)
+        if link:
+            print(LINKS.ui_line(link), file=sys.stderr)
 
 
 @main.command("find")
@@ -521,7 +530,8 @@ def do_find(character, json_, project):
 def do_show(runref, payload, project):
     """One run's envelope — and, with --payload, the documents studio never reads."""
     record = resolve_run(runref, project)
-    print(json.dumps({k: v for k, v in record.items() if k != "payload"}, indent=2))
+    print(json.dumps(LINKS.with_ui({k: v for k, v in record.items() if k != "payload"},
+                                   LINKS.run(record)), indent=2))
     if not payload:
         return
     for role, text in payload_documents(record).items():
@@ -875,8 +885,9 @@ def do_submit(runref, project):
     # top keeps `domain` free of `engine` at import time, which is the direction
     # the dependency arrow points everywhere else in this package.
     from studio_pipeline.engine import resubmit
-    print(json.dumps({k: v for k, v in resubmit.submit_draft(record).items()
-                      if k != "payload"}, indent=2))
+    closed = resubmit.submit_draft(record)
+    print(json.dumps(LINKS.with_ui({k: v for k, v in closed.items() if k != "payload"},
+                                   LINKS.run(closed)), indent=2))
 
 
 @main.command("reconcile")
@@ -903,8 +914,9 @@ def do_reconcile(runref, project):
     """
     record = resolve_run(runref, project)
     updated = entities.reconcile_run(record["id"])
-    print(json.dumps({k: updated.get(k) for k in
-                      ("id", "status", "error", "outputs")}, indent=2))
+    print(json.dumps(LINKS.with_ui({k: updated.get(k) for k in
+                                    ("id", "status", "error", "outputs")},
+                                   LINKS.run(updated)), indent=2))
 
 
 @main.command("discard")
@@ -981,8 +993,8 @@ def do_adopt(project, key):
     """
     node_id = key if key.startswith("node-") else store.resolve(key)["id"]
     record = adopt(_project_id(project), node_id)
-    print(json.dumps({k: record[k] for k in ("id", "status", "outputs")},
-                     indent=2))
+    print(json.dumps(LINKS.with_ui({k: record[k] for k in ("id", "status", "outputs")},
+                                   LINKS.run(record)), indent=2))
 
 
 def _project_id(project: str) -> str:
