@@ -165,6 +165,11 @@ from the schema:
   visually compatible and the transition physically plausible; an implausible
   pair is where interpolation breaks down.
 - **SynthID watermarking** is applied to every output and is not optional.
+- **The wrong person leads.** A following-camera kiss take gave the power
+  dynamic the wrong way round twice, with "the seated man leads" explicit in
+  the prompt both times. Measured 2026-09-18: Veo tends to make the taller or
+  standing figure the initiator. Not a prompt problem — a seed that already
+  shows the seated man leading, or another engine.
 
 ## Verified
 

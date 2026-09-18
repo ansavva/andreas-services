@@ -83,6 +83,14 @@ step 1 instead of after three billed calls.
 
 Steps that call a model carry a **gate**; steps that only move bytes do not.
 
+**Before the plan, the pre-flight.** The questions that decide whether a plan
+is worth drafting — is every still approved for likeness, is the whole beat
+list decided, who leads, where each face is to the lens, is sound on and what
+is said — are on
+[`studio-media-scene`](../studio-media-scene/SKILL.md#pre-flight--settle-it-before-anything-renders),
+and they apply to a one-clip shot as much as a scene. Ask them first; a plan
+drafted around an unanswered one is re-drafted after a billed take.
+
 ## The workflow
 
 ### 1. Read the brief for medium

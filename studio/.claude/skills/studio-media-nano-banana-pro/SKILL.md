@@ -35,6 +35,14 @@ Docs put a real limit on identity work that the schema does not state: it holds
 **resemblance for up to 5 people** in one composition. Every image carries an
 invisible SynthID watermark.
 
+**A second figure binds better dressed, and only when the prompt names the
+references.** Adding a person to a frame from their references held identity
+with the person clothed, and lost it — a stranger with "short, neat hair" —
+when the prompt described them in its own words instead of "the man from the
+SECOND and THIRD images". Add them dressed, describe them from the images, and
+take the shirt off as a separate one-thing edit; the three-still chain is on
+[`studio-media-image`](../studio-media-image/SKILL.md#a-new-two-person-pose-built-in-three-stills).
+
 ## `allow_fallback_model` — do not set it to escape a rate limit
 
 Nano Banana Pro is popular and hits capacity. `allow_fallback_model: true`

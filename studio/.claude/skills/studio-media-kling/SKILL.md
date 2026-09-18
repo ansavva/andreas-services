@@ -256,6 +256,46 @@ secondary anchor (water rippling, fabric shifting).
 **Don't rely on the model for on-screen text** — lettering is re-mangled between
 runs. Add it in post.
 
+## A two-person beat — measured 2026-09-18
+
+One scene on prod, several takes per finding: two men, a chair, a wall, a
+kiss, 8–12 s clips at `standard` and `pro`. What held, in the order it
+matters. Run the
+[pre-flight](../studio-media-scene/SKILL.md#pre-flight--settle-it-before-anything-renders)
+first; every line below was settled after a render that should have been
+settled before one.
+
+- **A `dialogue` list constrains speech; its absence invites it.** With the
+  list present — even one whispered line — Kling rendered exactly those words
+  and nothing else, through an 8–12 s clip with a kiss in it. With
+  `generate_audio: true` and no list it invented lines. So when audio is on
+  the list is always there, even if it is one line; muting to dodge invented
+  speech is not the fix.
+- **High-level beats beat choreography.** "The shirtless man stands up out of
+  the chair and, kissing him, pushes the man in the polo back against the
+  wall and pins him there" landed cleanly. The detailed version — "forearm
+  across his chest, other hand slapping flat on the wall beside his head, two
+  quick steps" — tangled the arms. Two simultaneous arm instructions tangle;
+  **one arm action per beat**. Detail belongs in the stills, intent in the
+  video prompt.
+- **`static/hold, locked off` is not honoured when the subjects cross the
+  room.** The camera re-framed to follow in three takes. If the subjects
+  travel, ask for it — "a smooth pan following them, keeping both in frame,
+  then holding" — and that is rendered well.
+- **Put the previous clip's LAST FRAME in `reference_images`**, beside the
+  character references, to carry height and the two figures' relationship
+  into the next clip. It held. The 7-image cap counts the start frame, so
+  drop a redundant face angle to make room for it.
+- **Quality: `mode: pro` from a 2K still with a static camera was the visible
+  jump.** Faces held for 12 s at 1080p with no push-in. Push in only on the
+  final beat. And `scenes assemble` conforms every shot to the **first**
+  shot's size, so a `pro` clip lands at 720p inside a cut that opened at
+  `standard` — decide the mode for the scene, not the clip.
+- **A kiss renders from a start frame plus references, and it renders with
+  an end frame too** — the end frame must be a non-kiss still. The
+  refusal map across engines is on
+  [`studio-media-scene`](../studio-media-scene/SKILL.md#what-each-engine-will-actually-render--contact-between-two-people).
+
 ## Legacy parameters in old guides — all wrong now
 
 Third-party Kling guides are overwhelmingly written against API 1.x:
