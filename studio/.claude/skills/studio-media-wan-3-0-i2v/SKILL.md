@@ -51,7 +51,63 @@ The prompt describes **motion**, not the frame — the frame is already
 there. Say what moves, how the camera moves, and what is heard. Anything
 in the prompt that contradicts the still is a fight the still usually
 wins. With an end frame, describe the path between the two rather than
-either endpoint.
+either endpoint — and describe each endpoint **accurately** where you do
+name it: a prompt that said "arms hanging in a V" against an end still with
+the arms raised behind the head made the model jerk the arms up in the last
+half-second to reach the still. The still wins; the words have to agree with
+it.
+
+### What worked — measured 2026-09-18
+
+A start **and** an end frame, **12–18 s per clip carrying two or three
+beats**, 720p, `enable_prompt_expansion: false`, `enable_thinking: false`,
+and a prose prompt with a `Start:` line, a short paragraph per beat, and an
+`End:` line. The model followed that shape better than one paragraph. fal's
+note that expansion off "is likely to degrade generation quality" is written
+for a terse prompt; a structured one carries what expansion would add, and
+off is the setting these clips were measured with:
+
+```
+Start: <what the start frame shows>.
+
+<beat one — a short paragraph>.
+
+<beat two>.
+
+End: <what the end frame shows>.
+```
+
+```bash
+--extra '{"duration":15,"resolution":"720p","enable_prompt_expansion":false,"enable_thinking":false}'
+```
+
+- A 15 s clip carried five beats — a sip, a spill, a whistle off, a shirt
+  off, a hand through the hair, back to the papers. The one it dropped was
+  the object placement: the whistle went on the desk, not the floor. Where a
+  thing must land is pinned by the end still, not by a sentence — see
+  [`studio-media-scene`](../studio-media-scene/SKILL.md#the-end-frame-is-where-control-lives).
+- Natural reactions — a glance, a breath, a laugh — render well when each is
+  written as a beat of its own.
+- Chaining keeps colour: `studio frames last <run> --add-input` off the
+  previous clip is the next clip's `--start-key`, and the grade carries.
+- **Don't ask for one 30 s take.** The price is per second, so nothing is
+  saved; only the first and last frames are anchored, so the beats between
+  compress; and one bad beat re-rolls the whole clip. Two clips cost the
+  same and re-roll separately.
+
+## What it refuses, and what fal refuses
+
+**A kiss between two adults is refused at submit.** HTTP `422` on
+`body.prompt` for the wording; with the word removed, `422` on `body` — the
+prompt and the start image together. Nothing is billed. Shirtless massage
+and other contact clips pass. The map across every engine is on
+[`studio-media-scene`](../studio-media-scene/SKILL.md#what-each-engine-will-actually-render--contact-between-two-people).
+
+**`403 User is locked. Reason: TOP_UP` / `Exhausted balance` is fal's
+account, not the payload.** Nothing is billed and the run lands `failed` — and
+a failed run cannot be resubmitted; redraft it with `--again`, as
+[`studio-media-core`](../studio-media-core/SKILL.md#a-failed-run-is-redrafted-not-resubmitted)
+explains.
 
 ## Where it sits
 

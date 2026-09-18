@@ -68,6 +68,23 @@ on the response, so a surprising result is iterated on by wording and seed
 alone. And there is no `adaptive` ratio, so a clip opened on a still names
 the still's ratio in `aspect_ratio` or is recomposed into `16:9`.
 
+## What Alibaba's output checker refuses
+
+Moderation here runs **after** the render, on Alibaba's side: a kiss between
+two adults is accepted at submit, rendered, and then fails with
+
+```
+Green net check failed for image (output): Output data may contain inappropriate content.
+```
+
+Nothing is billed. fal's entry for the same model refuses the same clip at
+submit instead (`422`), and Kling renders it — the map is on
+[`studio-media-scene`](../studio-media-scene/SKILL.md#what-each-engine-will-actually-render--contact-between-two-people).
+And with no end frame on this route, the only pin on a beat is the first
+frame: what it hides, the model invents (a seated man's hidden shorts became
+jeans when he stood, twice on Wan 3.0), so a seed here must show the
+wardrobe that has to survive.
+
 ## What it is for, and what it is not
 
 **For:** the shots [`studio-media-wan-3-0-t2v`](../studio-media-wan-3-0-t2v/SKILL.md)

@@ -143,7 +143,17 @@ studio convert --run <project>/latest#1 --for kling --add-input <project>
 - **The bill was $0.25 for a draft.** `quality` was `auto` — something set it
   in `--extra`. The registry default is `medium`; drafts want `low`.
 - **Soft detail on a final.** Step `quality` up; `xhigh` and `max` exist for
-  exactly this and nothing else.
+  exactly this and nothing else. A seed bound for a video engine wants `high`
+  at least — the clip inherits the still's softness and adds nothing back.
+- **`E005` on an edit.** Moderation, not the payload. Measured 2026-09-18: it
+  flags an edit that re-poses a shirtless man together with a second man
+  ("eyes locked, a foot apart"), and refuses a kiss still outright. Nothing
+  billed. Re-pose one figure at a time — the first alone on
+  [`nano-banana-pro`](../studio-media-nano-banana-pro/SKILL.md), the second
+  added here — and for a kiss still use
+  [`seedream-5-pro`](../studio-media-seedream-5-pro/SKILL.md); the chain and
+  the map are in
+  [`studio-media-image`](../studio-media-image/SKILL.md#re-pose-one-person-per-generation).
 - **A 4K size came back odd.** Sizes above 2560x1440 are experimental per the
   schema. Render at `2048x…` and enlarge with
   [`image-upscale`](../studio-media-image-upscale/SKILL.md).
