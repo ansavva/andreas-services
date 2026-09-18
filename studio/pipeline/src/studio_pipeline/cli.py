@@ -36,6 +36,7 @@ from studio_pipeline.session import commands as _session
 from studio_pipeline.session import profile_commands as _profile
 from studio_pipeline.objects import download as _download
 from studio_pipeline.objects import describe as _describe
+from studio_pipeline.objects import posters as _posters
 from studio_pipeline.objects import presign as _presign
 from studio_pipeline.objects import upload as _upload
 
@@ -56,7 +57,7 @@ class _Grouped(click.Group):
         ("records",     ["runs", "scenes", "movies", "frames", "projects"]),
         ("characters",  ["character", "curate", "contact-sheet"]),
         ("authoring",   ["prompt", "phrasebook", "templates"]),
-        ("objects",     ["upload", "download", "describe", "presign", "convert", "crop",
+        ("objects",     ["upload", "download", "describe", "presign", "posters", "convert", "crop",
                          "config"]),
     ]
 
@@ -162,6 +163,7 @@ for _name, _cmd in [
     ("describe", _describe.describe),
     ("download", _download.download),
     ("presign", _presign.presign),
+    ("posters", _posters.posters),
     ("convert", _convert.convert),
     ("crop", _crop.crop),
     ("config", _config_sync.main),

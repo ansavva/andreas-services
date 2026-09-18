@@ -120,3 +120,60 @@ def crop(body: bytes, box: tuple[int, int, int, int], target_ext: str,
         "width": cut.width,
         "height": cut.height,
     }
+
+
+#: What a still's poster is scaled to across — the same number `ffmpeg.poster`
+#: uses for a clip, so one tile draws both at one size. A poster is drawn at a
+#: few hundred CSS pixels wide and nowhere else; the original is what the
+#: viewer opens.
+POSTER_WIDTH = 640
+
+
+def poster(src: str, dest_stem: str, width: int = POSTER_WIDTH) -> str:
+    """A still scaled down for a tile, written beside `dest_stem`. -> the path.
+
+    The image counterpart of `ffmpeg.poster`, and the one that carries the
+    weight: a run's output is a 0.4 MB JPEG and an uploaded reference is a
+    2–8 MB PNG or a phone photo, and every tile that drew one drew the whole
+    file. A 640-wide JPEG at quality 80 is 30–80 KB.
+
+    **Never upscaled.** A source already narrower than `width` is re-encoded
+    as it is; a tile gains nothing from invented pixels.
+
+    **The orientation is baked in.** A phone JPEG carries its rotation as an
+    EXIF tag the browser honours and a resize would drop — so the picture is
+    transposed first, and the poster stands the way the original displays.
+
+    **A picture with transparency is written as WebP, and everything else as
+    JPEG.** The library holds cut-outs with alpha that the browser draws over a
+    checkerboard; a JPEG poster would fill the hole with black. The extension
+    is decided here, off the decoded image, which is why this takes a stem
+    rather than a path.
+    """
+    from PIL import Image, ImageOps, UnidentifiedImageError
+
+    # Decoded before anything is measured: `Image.open` reads only a header,
+    # and a truncated or oversized file fails on `load` — an `OSError` or a
+    # `DecompressionBombError` — which has to land here as a `ValidationError`,
+    # the permanent kind, or a bad file would be redriven to the dead-letter
+    # queue over bytes no retry can fix.
+    try:
+        with Image.open(src) as opened:
+            opened.load()
+            im = ImageOps.exif_transpose(opened) or opened.copy()
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
+        raise ValidationError(f"that object is not an image Pillow can read: {exc}") from None
+    with im:
+        alpha = im.mode in ("RGBA", "LA") or (
+            im.mode == "P" and "transparency" in im.info)
+        if im.width > width:
+            height = max(1, round(im.height * width / im.width))
+            im = im.resize((width, height), Image.Resampling.LANCZOS)
+        if alpha:
+            dest = dest_stem + ".webp"
+            im.convert("RGBA").save(dest, "WEBP", quality=80, method=4)
+        else:
+            dest = dest_stem + ".jpg"
+            im.convert("RGB").save(dest, "JPEG", quality=80, optimize=True,
+                                   progressive=True)
+    return dest

@@ -407,6 +407,7 @@ export function PromotePanel({
         <MediaThumb
           nodeId={asset.node}
           url={asset.url}
+          poster={asset.poster}
           name={asset.name}
           aspect="square"
           fit="contain"

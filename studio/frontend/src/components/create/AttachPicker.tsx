@@ -459,6 +459,7 @@ function PickerBody({
                         <MediaThumb
                           nodeId={file.id}
                           url={file.url}
+                          poster={file.poster}
                           name={file.name}
                           aspect="portrait"
                           dimmed={on}
@@ -555,7 +556,7 @@ function EntityList({
         <EntityRow
           key={row.id}
           title={row.name}
-          thumb={row.hero ? { node: row.hero.node, url: row.hero.url } : { placeholder: kind }}
+          thumb={row.hero ? { node: row.hero.node, url: row.hero.url, poster: row.hero.poster } : { placeholder: kind }}
           onOpen={() => onOpen(row)}
         />
       ))}

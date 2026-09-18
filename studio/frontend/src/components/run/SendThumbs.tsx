@@ -122,6 +122,7 @@ export function SendThumbs({
             <MediaThumb
               nodeId={send.node}
               url={send.url}
+              poster={send.poster}
               name={send.name}
               aspect="square"
               fit="contain"

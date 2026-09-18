@@ -38,7 +38,6 @@ import logging
 
 from flask import Blueprint, g, jsonify, request
 
-from studio_core.clients.aws import s3
 from studio_core.errors import ConflictError, ValidationError
 from studio_core.routes import projects as project_routes
 from studio_core.routes import support
@@ -134,16 +133,8 @@ def _node_in(record: dict, node_id: str, label: str) -> dict:
 
 
 def _hero(record: dict, nodes: dict[str, dict]) -> dict | None:
-    """The card image, presigned, or nothing.
-
-    Signed from a record already in hand rather than fetched per character: the
-    listing batches every hero in one read and signs locally, so a library of
-    twenty characters is one extra round trip rather than twenty.
-    """
-    node = nodes.get(record.get("hero") or "")
-    if not node or not node.get("blob_key"):
-        return None
-    return {"node": node["node_id"], "url": s3.presign(node["blob_key"])}
+    """The card image, presigned, or nothing — `support.hero` says how."""
+    return support.hero(nodes.get(record.get("hero") or ""), nodes)
 
 
 def _file_counts(records: list[dict]) -> dict[str, dict[str, int]]:
@@ -173,7 +164,10 @@ def _file_counts(records: list[dict]) -> dict[str, dict[str, int]]:
             counts[record["id"]] = {"files": 0, "default": 0}
             continue
         nodes, _truncated = catalog.branch(g.library, catalog.child_path(root), cap)
-        files = [node for node in nodes if node.get("kind") == catalog.KIND_FILE]
+        # A poster is a derivative beside a reference, not a reference:
+        # `browse._admits` hides it from the pool, and the count agrees.
+        files = [node for node in nodes
+                 if node.get("kind") == catalog.KIND_FILE and not node.get("poster_of")]
         counts[record["id"]] = {
             "files": len(files),
             "default": sum(1 for node in files if DEFAULT_TAG in (node.get("tags") or [])),
@@ -203,7 +197,8 @@ def list_characters():
         records = [record for record in records
                    if query in (record.get("name") or "").lower()]
 
-    heroes = catalog.records([record["hero"] for record in records if record.get("hero")])
+    heroes = support.with_posters(
+        catalog.records([record["hero"] for record in records if record.get("hero")]))
     files = _file_counts(records)
     listed = [
         {
@@ -278,7 +273,8 @@ def get_character(addressed: str):
     """The full record, `profile` included. Addressed by id."""
     held = support.memberships()
     record = _character(addressed, held)
-    heroes = catalog.records([record["hero"]] if record.get("hero") else [])
+    heroes = support.with_posters(
+        catalog.records([record["hero"]] if record.get("hero") else []))
     return jsonify(
         {
             **record,

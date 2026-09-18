@@ -46,10 +46,7 @@ def project_at(addressed: str, held: dict) -> dict:
 
 
 def _hero(record: dict, nodes: dict[str, dict]) -> dict | None:
-    node = nodes.get(record.get("hero") or "")
-    if not node or not node.get("blob_key"):
-        return None
-    return {"node": node["node_id"], "url": s3.presign(node["blob_key"])}
+    return support.hero(nodes.get(record.get("hero") or ""), nodes)
 
 
 @bp.get("/projects")
@@ -76,7 +73,8 @@ def summary_rows(records: list[dict]) -> list[dict]:
     `hero` costs the batched read it is worth: a listing without one is a grid
     of empty squares.
     """
-    heroes = catalog.records([record["hero"] for record in records if record.get("hero")])
+    heroes = support.with_posters(
+        catalog.records([record["hero"] for record in records if record.get("hero")]))
     rows = [
         {
             "id": record["id"],
@@ -284,9 +282,13 @@ def inputs(addressed: str):
     files = [
         full[entry["node_id"]]
         for entry in entries
+        # A poster beside an input is not an input: hidden here as
+        # `browse._admits` hides it, or `--input N` would count it.
         if full.get(entry["node_id"], {}).get("kind") == catalog.KIND_FILE
+        and not full[entry["node_id"]].get("poster_of")
     ]
     files.sort(key=lambda node: node["name"])
+    posters = support.with_posters({node["node_id"]: node for node in files})
     return jsonify(
         {
             "folder": folder["node_id"],
@@ -298,6 +300,7 @@ def inputs(addressed: str):
                     "size": node.get("size"),
                     "content_type": node.get("content_type"),
                     "url": s3.presign(node["blob_key"]) if node.get("blob_key") else None,
+                    **({"poster": poster} if (poster := support.poster_of(node, posters)) else {}),
                 }
                 for position, node in enumerate(files, start=1)
             ],
@@ -344,13 +347,11 @@ def _listing(record: dict, kind: str, args) -> dict:
     if since:
         rows = [row for row in rows if (row.get("created") or "") >= since]
 
-    thumbs = catalog.records([row["thumb"] for row in rows if row.get("thumb")])
+    thumbs = support.with_posters(
+        catalog.records([row["thumb"] for row in rows if row.get("thumb")]))
     for row in rows:
-        node = thumbs.get(row.get("thumb") or "")
-        if node and node.get("blob_key"):
-            row["thumb"] = {"node": node["node_id"], "url": s3.presign(node["blob_key"])}
-        elif "thumb" in row:
-            row["thumb"] = None
+        if "thumb" in row:
+            row["thumb"] = support.hero(thumbs.get(row.get("thumb") or ""), thumbs)
     return {kind + "s": rows, "cursor": None}
 
 

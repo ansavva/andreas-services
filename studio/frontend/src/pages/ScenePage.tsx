@@ -248,7 +248,7 @@ function CutRow({
       subtitle={row.created ? formatDate(row.created) : row.id}
       mono
       status={row.status ?? "missing"}
-      thumb={clip?.url ? { node: clip.node, url: clip.url, isVideo: true } : { placeholder: "not rendered" }}
+      thumb={clip?.url ? { node: clip.node, url: clip.url, isVideo: true, poster: clip.poster } : { placeholder: "not rendered" }}
       to={to}
       trailing={
         <div className="flex items-center gap-1">

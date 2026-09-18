@@ -157,6 +157,45 @@ def with_posters(found: dict[str, dict]) -> dict[str, dict]:
     return {**found, **catalog.records(wanted)} if wanted else found
 
 
+def poster_of(record: dict, found: dict[str, dict] | None = None) -> dict | None:
+    """`{node, url}` for the still a tile draws instead of this file, or nothing.
+
+    **One spelling for every pointer that carries a picture.** A run's output,
+    a send, a card's hero, a listing row's thumb and an input-pool entry are
+    five places that sign a URL for a tile, and each grew the poster on its
+    own until they disagreed — a hero drew the original while the same file
+    beside it, as an output, drew the still. `found` — a map that has been
+    through `with_posters` — saves the read; without it the poster's row is
+    fetched, which is one read per tile and what a listing must not do.
+    """
+    poster_id = record.get("poster")
+    if not poster_id:
+        return None
+    poster = (found or {}).get(poster_id)
+    if poster is None and found is None:
+        poster = catalog.records([poster_id]).get(poster_id)
+    if not poster or not poster.get("blob_key"):
+        return None
+    return {"node": poster["node_id"], "url": s3.presign(poster["blob_key"])}
+
+
+def hero(record: dict | None, found: dict[str, dict] | None = None) -> dict | None:
+    """`{node, url, poster?}` for a card or a row, off a record already in hand.
+
+    Signed from `found` rather than fetched per card: a listing batches every
+    hero in one read (and its posters in one more, `with_posters`) and signs
+    locally, so a library of twenty characters is two round trips, not forty.
+    Nothing for a record with no bytes behind it.
+    """
+    if not record or not record.get("blob_key"):
+        return None
+    pointer = {"node": record["node_id"], "url": s3.presign(record["blob_key"])}
+    poster = poster_of(record, found)
+    if poster:
+        pointer["poster"] = poster
+    return pointer
+
+
 def assets(node_ids: list[str]) -> list[dict]:
     """The nodes a record *points at*, expanded into what a page can draw.
 
@@ -185,13 +224,14 @@ def asset(node_id: str, record: dict | None = None,
     """One such pointer. `record` saves a read when the caller already has it;
     `found` — a map that has been through `with_posters` — saves the poster's.
 
-    **A clip carries `poster` and `duration`, when it has them.** `poster` is
-    `{node, url}`: a still the render worker took off the first frame, which a
-    tile draws instead of loading the clip's own metadata — `media/faststart.py`
-    has the measurement that made this necessary. `duration` is the seconds
-    the worker read at the same time, for the badge the tile used to read off
-    the clip. Both absent on a clip stored before the worker did this, and on
-    every still; a reader falls back to the clip itself.
+    **A media file carries `poster`, and a clip `duration` too, when it has
+    them.** `poster` is `{node, url}`: a still the render worker made — off a
+    clip's first frame, or a still scaled down — which a tile draws instead
+    of loading the file; `media/faststart.py` and `media/imaging.poster` have
+    the measurements that made each necessary. `duration` is the seconds the
+    worker read at the same time, for the badge the tile used to read off the
+    clip. Both absent on a file stored before the worker did this; a reader
+    falls back to the file itself.
     """
     if record is None:
         record = catalog.records([node_id]).get(node_id)
@@ -204,12 +244,9 @@ def asset(node_id: str, record: dict | None = None,
         "content_type": record.get("content_type"),
         "url": s3.presign(record["blob_key"]) if record.get("blob_key") else None,
     }
-    if record.get("poster"):
-        poster = (found or {}).get(record["poster"])
-        if poster is None and found is None:
-            poster = catalog.records([record["poster"]]).get(record["poster"])
-        if poster and poster.get("blob_key"):
-            pointer["poster"] = {"node": poster["node_id"], "url": s3.presign(poster["blob_key"])}
+    poster = poster_of(record, found)
+    if poster:
+        pointer["poster"] = poster
     if record.get("duration") is not None:
         # A float, not the Decimal the table hands back — the JSON layer spells
         # a Decimal as a string, which is right for money and wrong for seconds.

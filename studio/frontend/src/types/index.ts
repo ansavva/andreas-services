@@ -393,14 +393,17 @@ export interface UploadGrant {
 export interface HeroImage {
   node: string;
   url: string;
+  /** The small still a tile draws instead — see `Poster`. */
+  poster?: Poster;
 }
 
 /**
- * A clip's poster: a still the render worker took off its first frame, so a
- * tile can draw the clip without loading it. `node` is what a re-sign
- * addresses when the URL expires, the same reason every other pointer here
- * carries one. Absent on a clip stored before the worker did this, and on
- * every still; the tile then falls back to the clip's own metadata.
+ * A file's poster: a small still the render worker made — off a clip's first
+ * frame, or a picture scaled down to 640 across — so a tile can draw the file
+ * without loading it. `node` is what a re-sign addresses when the URL
+ * expires, the same reason every other pointer here carries one. Absent on a
+ * file stored before the worker did this and not yet swept; the tile then
+ * falls back to the file itself.
  */
 export interface Poster {
   node: string;
@@ -646,6 +649,8 @@ export interface ProjectInput {
   size: number | null;
   content_type: string | null;
   url: string | null;
+  /** The small still a tile draws instead — see `Poster`. */
+  poster?: Poster;
 }
 
 export interface ProjectInputs {

@@ -454,10 +454,35 @@ page and a plain textarea over its literal bytes, and never offers fields.
   `<video>`, badging the recorded length. Measured after: the wall **57 MB**
   (the eight autoplaying clips and 48 stills), the feed **1.5 MB**. A clip
   with no poster — stored before this, or the worker's queue missing — is
-  what it always was. Posters are queued as a video run lands
+  what it always was. Posters are queued as a run lands
   (`generate._queue_posters`, best effort: a missing queue never fails the
-  close) and `studio runs posters <project>` queues one for every clip that
-  has none, the backfill, once per project.
+  close), as an upload is confirmed (`confirm_upload`) and as the worker
+  stores a frame, grid or sheet (`render._store`); `studio posters` queues
+  one for every image and video in the library that has none, the backfill
+  (`POST /api/posters`, `render.sweep_posters`), and `studio runs posters
+  <project>` is the older, narrower sweep over one project's clips.
+- **A still has a poster too, and a tile draws it instead of the file.** The
+  first cut of the above said "a still is its own poster" and the feed drew
+  every picture whole: a run's output is a 0.4 MB JPEG and the references it
+  was sent are uploads — phone photos, 2–8 MB PNGs — so one feed row of ten
+  80px thumbs was 4–25 MB, a feed of twenty runs a hundred, arriving six at
+  a time over HTTP/1.1 straight from S3 with nothing on the tile saying it
+  was coming. Now the same `poster` job scales a still to 640 across
+  (`imaging.poster`: JPEG q80, or WebP when the picture carries alpha so a
+  cut-out keeps its hole; EXIF orientation baked in so a phone photo stands
+  the way it displays; never upscaled), and `MediaThumb` draws the poster for
+  a still exactly as it does for a clip, falling back to the original only
+  when the poster is gone for good. Every pointer that signs a picture for a
+  tile signs its poster too — `support.asset`, `support.hero` (a card's
+  hero, a listing row's thumb), a listing's `_file_entry`, a project's
+  input-pool entries — so a hero does not draw the original while the same
+  file beside it, as an output, draws the still. The original is still what
+  the viewer opens (`MediaPlayer`, the compare stage, the object screen) and
+  what a drag carries to the create sheet. **A tile says it is loading**:
+  the box shimmers (`studio-shimmer`, the run-in-flight sweep) until the
+  picture's `load` fires, then the picture fades over it. A poster is never
+  a listing row, never counted as a character's file, never an input-pool
+  position, and never gets a poster of its own (`render.wants_poster`).
 - **A clip is stored `moov`-first.** Every provider writes the index LAST,
   so a clip could not start — hover preview, autoplay slot, lightbox —
   until the whole file was down. The callback consumer runs
@@ -1007,7 +1032,8 @@ page and a plain textarea over its literal bytes, and never offers fields.
 - **A `<video>` gets no `src` until its box is near the viewport.** The object
   screen mounts one, and the grids use `useNearViewport` — which is what stops
   sixty range requests on a folder of sixty clips, while `preload="metadata"`
-  is how a poster frame arrives free out of a bucket that ships no derivatives.
+  is how a poster frame arrives for a clip stored before the worker made
+  posters (the bucket's one derivative — see the poster notes above).
   Ref callbacks are memoised per key in `useMediaPlayback.register`: an inline
   arrow is a new identity every render, which would detach and re-attach the
   element on every tick of the scrub bar.

@@ -54,6 +54,26 @@ def create_render():
     return jsonify(record), 202, {"Location": f"/api/renders/{record['id']}"}
 
 
+@bp.post("/posters")
+def sweep_posters():
+    """Queue a poster for every image and video in the library that has none.
+
+    **The backfill**, and the one listing-shaped write here. New files get a
+    poster as they land — a run closing, an upload confirmed, a frame grabbed
+    — and this is for everything stored before the service did that, or on a
+    stack whose queue was down when it did. Idempotent: a file already
+    covered is passed over, so it is safe to call as often as wanted.
+
+    202, like `create_render`: what exists afterwards is a queue of accepted
+    jobs, and the tiles pick the stills up on their next listing. The body
+    says how many were queued and whether the walk reached the end of the
+    library (`config.max_poster_sweep`).
+    """
+    support.member_of(g.library, support.memberships())
+    report = render.sweep_posters(g.library)
+    return jsonify(report), 202
+
+
 @bp.get("/renders/<render_id>")
 def get_render(render_id: str):
     """One job: `queued`, `running`, `succeeded` with a `result`, or `failed` with an `error`.

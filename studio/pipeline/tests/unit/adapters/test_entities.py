@@ -132,6 +132,9 @@ WIRE_SURFACE = {
     # does not.
     "/api/renders",
     "/api/renders/<id>",
+    # The backfill behind `studio posters`: a poster queued for every image
+    # and video in the library that has none. New files get one at ingest.
+    "/api/posters",
     # the two operations that are NOT on that queue. Both are sub-second on a
     # single image, so a queue round trip would cost more than the work — see
     # `backend/studio_core/routes/images.py`.
