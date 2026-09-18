@@ -140,6 +140,13 @@ function openTileMenu(tile: number) {
   fireEvent.click(triggers[tile * 2]!);
 }
 
+/** The row's own `⋯` — Open, Refresh, Folder, Delete and the rest live behind it. */
+function openRowMenu(article: HTMLElement) {
+  fireEvent.click(
+    within(article).getAllByRole("button", { name: "More actions for this run" })[0]!,
+  );
+}
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
@@ -290,9 +297,8 @@ describe("a run in flight", () => {
     ).toBeGreaterThanOrEqual(2);
     // Nothing spends or destroys while it is out.
     expect(within(article).queryByRole("button", { name: "Rerun" })).toBeNull();
-    expect(
-      within(article).queryByRole("button", { name: /Delete/ }),
-    ).toBeNull();
+    openRowMenu(article);
+    expect(screen.queryByRole("menuitem", { name: /Delete/ })).toBeNull();
   });
 
   it("counts the tiles off the plan, one when it says nothing", () => {
@@ -318,7 +324,8 @@ describe("the actions", () => {
     const article = await screen.findByRole("article");
 
     // No picture to press on a failed run — this is the way in.
-    fireEvent.click(within(article).getByRole("button", { name: "Open" }));
+    openRowMenu(article);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "run-1" }));
   });
 
@@ -355,7 +362,8 @@ describe("the actions", () => {
     };
     vi.mocked(getRun).mockResolvedValue(landed);
 
-    fireEvent.click(within(article).getByRole("button", { name: "Refresh" }));
+    openRowMenu(article);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Refresh" }));
     await waitFor(() => expect(getRun).toHaveBeenCalledWith("run-1"));
 
     await within(article).findByRole("button", { name: "Open Output 1 of 2" });
@@ -455,16 +463,16 @@ describe("the actions", () => {
     await waitFor(() => expect(submitRun).toHaveBeenCalledWith("run-1"));
   });
 
-  it("Delete arms, then deletes the run", async () => {
+  it("Delete arms in the menu, then deletes the run", async () => {
     await draw([row()]);
+    const article = await screen.findByRole("article");
 
-    const trash = await screen.findByRole("button", {
-      name: "Delete this run",
-    });
-    fireEvent.click(trash);
+    openRowMenu(article);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
     expect(deleteRun).not.toHaveBeenCalled();
+    // The line restates itself and the menu stays open for the second press.
     fireEvent.click(
-      screen.getByRole("button", { name: /Confirm — delete this run/ }),
+      screen.getByRole("menuitem", { name: /Confirm — delete this run/ }),
     );
     await waitFor(() => expect(deleteRun).toHaveBeenCalledWith("run-1"));
   });

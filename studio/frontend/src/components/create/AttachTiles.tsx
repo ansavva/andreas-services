@@ -24,6 +24,7 @@ import { AttachPreview } from "./AttachPreview";
 import { isNodeDrag, readNodeDrag } from "./dragRef";
 import { ROW_ATTR, useReorder, type Sortable } from "./reorder";
 import { ROLES_BY_KIND, ROLE_WORDS, fieldFor } from "./roles";
+import { TILE_BOX, TILE_CAPTION, TILE_FACE, TILE_MEDIA as MEDIA, TILE_ROW } from "./tile";
 
 const ROLE_ICONS: Record<AttachRole, (props: { className?: string }) => ReactElement> = {
   reference: ImagePlusIcon,
@@ -34,9 +35,6 @@ const ROLE_ICONS: Record<AttachRole, (props: { className?: string }) => ReactEle
 };
 
 const GLYPH = "size-4 shrink-0 fill-none stroke-current stroke-[1.5]";
-
-/** The picture in a tile: the tile's full height, its own width, whole. */
-const MEDIA = "h-full w-auto max-w-[16rem] object-contain";
 
 /** The roles a model of this kind draws tiles for. */
 function rolesOf(kind: RunKind, entry: ModelEntry): AttachRole[] {
@@ -347,10 +345,7 @@ export function AttachTiles({
   return (
     <div className="flex items-center gap-2" data-mode-strip="">
       {/* `min-w-0` + `overflow-x-auto`: the row scrolls rather than wraps. */}
-      <div
-        className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]"
-        {...{ [ROW_ATTR]: "" }}
-      >
+      <div className={`${TILE_ROW} flex-1`} {...{ [ROW_ATTR]: "" }}>
         {roles.includes("start") && frameTile("start", start)}
         {start && end && (
           <IconButton size="sm" label="Swap the start and end frames" onClick={onSwapFrames}>
@@ -581,8 +576,7 @@ export function Thumb({
     <>
     <div
       // Same `[data-compact]` rule as the ghost: 80px in the dock.
-      className={`relative h-28 min-w-20 shrink-0 pointer-coarse:h-36 pointer-coarse:min-w-24
-                  in-data-compact:h-20! in-data-compact:min-w-16! ${
+      className={`${TILE_BOX} in-data-compact:h-20! in-data-compact:min-w-16! ${
         sortable?.dragging ? "z-10 scale-105 shadow-lg ring-2 ring-accent" : ""
       }`}
       title={title}
@@ -600,7 +594,7 @@ export function Thumb({
             ? "Opens it large. Drag the strip under it, or press an arrow key, to change its order."
             : "Opens it large."
         }
-        className="relative block h-full w-auto min-w-full overflow-hidden rounded-md bg-fill p-0 hover:bg-fill"
+        className={`${TILE_FACE} p-0 hover:bg-fill`}
         onClick={() => setPreviewing(true)}
         disabled={pending}
         {...sortable?.button}
@@ -611,10 +605,7 @@ export function Thumb({
           labels `@Image 1` — and the grip, when the tile can move. */}
       <div
         role="presentation"
-        className={`absolute inset-x-0 bottom-0 flex items-center justify-center gap-0.5 truncate rounded-b-md
-                    bg-overlay-scrim/60 px-1 py-0.5 text-xs font-medium text-overlay-ink
-                    pointer-coarse:gap-1.5 pointer-coarse:text-sm
-                    ${
+        className={`${TILE_CAPTION} ${
                       sortable
                         ? "cursor-grab select-none touch-none [-webkit-touch-callout:none] active:cursor-grabbing pointer-coarse:py-2.5"
                         : "pointer-events-none pointer-coarse:py-1.5"

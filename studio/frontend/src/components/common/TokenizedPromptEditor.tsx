@@ -106,7 +106,7 @@ export function promptTriggerMatch(text: string) {
  * every other brace as text — but a pill drawn inside a pair of stray braces
  * reads as neither, so the run stays flat and a person can see what they typed.
  */
-function nextPlaceholder(text: string, from = 0) {
+export function nextPlaceholder(text: string, from = 0) {
   PLACEHOLDER.lastIndex = from;
   let found = PLACEHOLDER.exec(text);
   while (found !== null) {
@@ -154,7 +154,7 @@ function nextPlaceholder(text: string, from = 0) {
  * It takes its tokens as a prop and knows nothing about reference angles, so a
  * run's prompt editor can hand it a different list.
  */
-const FAMILY = { mono: "font-mono text-sm", body: "font-body text-base" } as const;
+export const FAMILY = { mono: "font-mono text-sm", body: "font-body text-base" } as const;
 
 export function TokenizedPromptEditor({
   value,

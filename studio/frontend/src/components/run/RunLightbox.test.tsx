@@ -136,6 +136,19 @@ function record(over: Partial<RunRecord> = {}): RunRecord {
   };
 }
 
+/**
+ * The rail's `⋯` — the output's lines (Use as, This frame as, Upscale,
+ * Download) and the run's (Refresh, Folder, Delete) live behind it. The
+ * first of the two triggers is the pointer's dropdown, whose items are
+ * `menuitem`s; the second is the phone's sheet, hidden by a class jsdom
+ * does not apply.
+ */
+function openRailMenu(scope: HTMLElement = document.body) {
+  fireEvent.click(
+    within(scope).getAllByRole("button", { name: "More actions for this run" })[0]!,
+  );
+}
+
 /** Where the router is, and whether the rail is collapsed — read back. */
 function Probe() {
   const location = useLocation();
@@ -204,6 +217,8 @@ async function draw(path = "/p/proj-1/r/run-2?tab=runs") {
           <Routes>
             <Route path="/p/:projectId" element={<Probe />} />
             <Route path="/p/:projectId/r/:runId" element={<RouteElement />} />
+            {/* Anywhere else a line sends the router — a folder, a scene. */}
+            <Route path="*" element={<Probe />} />
           </Routes>
         </CreateBarProvider>
       </SidebarProvider>
@@ -247,13 +262,14 @@ describe("the opened run", () => {
     // reference is `Image N` where N is its place among the references.
     expect(within(rail).getByTitle("Image 1 · seed-01.jpg")).toBeTruthy();
     await waitFor(() =>
-      expect(within(rail).getByText(/prediction 9c1e2f3a…/)).toBeTruthy(),
+      // The record's facts land in the properties grid, labelled, whole.
+      expect(within(rail).getByText("9c1e2f3a4b5c")).toBeTruthy(),
     );
     expect(read).toHaveBeenCalledWith("run-2");
     // The rail's Folder is the run's own folder, off the record.
-    expect(
-      within(rail).getByRole("link", { name: "Folder" }).getAttribute("href"),
-    ).toBe("/f/node-folder");
+    openRailMenu(rail);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Folder" }));
+    expect(screen.getByTestId("address").textContent).toBe("/f/node-folder");
   });
 
   it("steps between the project's runs on the arrow keys and the strip, replacing the address", async () => {
@@ -410,7 +426,8 @@ describe("the opened run", () => {
     await screen.findByTestId("stage");
 
     fireEvent.click(screen.getByRole("button", { name: "Output 2 of 2" }));
-    fireEvent.click(screen.getByRole("button", { name: "Use as reference" }));
+    openRailMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Reference" }));
     expect(screen.getByTestId("attachments").textContent).toBe(
       "reference:node-o2",
     );
@@ -420,23 +437,26 @@ describe("the opened run", () => {
     await draw();
     await screen.findByTestId("stage");
 
-    fireEvent.click(screen.getByRole("button", { name: "Use as start frame" }));
+    openRailMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Start frame" }));
     fireEvent.click(screen.getByRole("button", { name: "Output 2 of 2" }));
-    fireEvent.click(screen.getByRole("button", { name: "Use as end frame" }));
+    openRailMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "End frame" }));
     expect(screen.getByTestId("attachments").textContent).toBe(
       "start:node-o1,end:node-o2",
     );
   });
 
-  it("Trash arms, then deletes and returns to the project", async () => {
+  it("Delete arms in the menu, then deletes and returns to the project", async () => {
     vi.mocked(deleteRun).mockResolvedValue({ id: "run-2", files: "keep" });
     await draw();
     await screen.findByTestId("stage");
 
-    fireEvent.click(screen.getByRole("button", { name: "Trash" }));
+    openRailMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
     expect(deleteRun).not.toHaveBeenCalled();
     fireEvent.click(
-      screen.getByRole("button", { name: "Confirm — delete this run" }),
+      screen.getByRole("menuitem", { name: "Confirm — delete this run" }),
     );
     await waitFor(() => expect(deleteRun).toHaveBeenCalledWith("run-2"));
   });
@@ -466,12 +486,13 @@ describe("the opened run", () => {
     // settled to, the press adds one.
     const before = read.mock.calls.length;
     read.mockResolvedValue(record());
-    fireEvent.click(within(rail).getByRole("button", { name: "Refresh" }));
+    openRailMenu(rail);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Refresh" }));
 
     await waitFor(() => expect(read.mock.calls.length).toBe(before + 1));
     await within(rail).findByText("succeeded");
     await screen.findByTestId("stage");
-    expect(within(rail).getByText(/prediction 9c1e2f3a/)).toBeTruthy();
+    expect(within(rail).getByText("9c1e2f3a4b5c")).toBeTruthy();
     expect(list).toHaveBeenCalledTimes(1);
   });
 
@@ -502,8 +523,9 @@ describe("the opened run", () => {
       12,
     );
     expect(screen.queryByRole("button", { name: "Rerun" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Trash" })).toBeNull();
     expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+    openRailMenu();
+    expect(screen.queryByRole("menuitem", { name: /Delete/ })).toBeNull();
   });
 });
 

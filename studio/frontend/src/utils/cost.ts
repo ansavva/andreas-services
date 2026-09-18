@@ -28,3 +28,20 @@ export function formatCost(cost: RunCost | null, empty = "—"): string {
   }
   return empty;
 }
+
+/**
+ * The two facts a `cost` can carry, each on its own — for a surface that
+ * labels them. `formatCost` folds them into one phrase and falls back from
+ * price to seconds; a header meta or a properties grid that drew both
+ * printed the seconds twice.
+ */
+export function costParts(cost: RunCost | null): { price: string | null; seconds: string | null } {
+  return {
+    price:
+      cost && typeof cost.amount === "number"
+        ? `${cost.currency ?? ""} ${cost.amount.toFixed(3)}`.trim()
+        : null,
+    seconds:
+      cost && typeof cost.predict_time === "number" ? `${cost.predict_time.toFixed(1)}s` : null,
+  };
+}
