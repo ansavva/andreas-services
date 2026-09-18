@@ -460,7 +460,10 @@ ref beside the copied node — copying does not lose lineage. Both stitch throug
 the same function, **in the service**: `backend/studio_core/media/ffmpeg.py`'s
 `stitch()`, which stream-copies when the inputs already agree on codec,
 geometry, frame rate and audio layout, and re-encodes (recording that it did)
-when they don't.
+when they don't — each input conformed to the first's geometry and rate on its
+own branch, then the concat *filter*. Not the demuxer: it carries the first
+file's timebase across every file, and a 30 fps clip after a 24 fps one came
+out frozen (2026-09-18).
 
 **Every encode is a render job.** A second container image
 (`backend/Dockerfile.render`) carries `ffmpeg`; `POST /api/renders` enqueues
