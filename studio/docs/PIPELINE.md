@@ -312,6 +312,18 @@ API keys:
   ED25519 key it publishes, and `backend/studio_core/clients/fal.py` checks
   them.
 
+- **OPENROUTER_API_KEY** — https://openrouter.ai/settings/keys — the fourth
+  provider's key, held the same way again: `/studio/prod/openrouter-api-key`
+  in prod from the `OPENROUTER_API_KEY` environment secret, `dev.env`
+  locally, never the CLI. Needed only for a model whose registry entry says
+  `provider: openrouter` (`openrouter/<slug>`, OpenRouter's video API — Wan
+  3.0 is registered there beside fal's); without it every other model still
+  works. It also signs the callback URL an OpenRouter job is told to call,
+  as Runpod's does, because OpenRouter signs its own callbacks only for a
+  workspace that configured a secret — `backend/studio_core/clients/openrouter.py`
+  has the reasoning. There is no monthly fee: OpenRouter is prepaid credits
+  with a fee on each top-up.
+
   `studio/.env` is not read any more, by anything. `dev-setup.sh` imports one
   it finds into `dev.env` and deletes it, because a secret inside the repo is
   worth removing whether or not anything loads it: `.gitignore` protects a
@@ -549,6 +561,7 @@ than trusting this number.
 | `studio-media-wan-2-2-i2v-lora` | `runpod/wan-2-2-t2v-720-lora` — Wan 2.2 image-to-video at 720p **loading your own LoRA**: `high_noise_loras` / `low_noise_loras`, one adapter per denoising expert, each `{path, scale}`. A LoRA is a **send** (role `lora`, `.safetensors` node, `--lora-high-key` / `--lora-low-key`) presigned at submit, never a URL; `lora_scale` is studio's one number for every `scale`. 5 or 8 s, $0.35 / $0.56 per clip. Where a trained character LoRA lands |
 | `studio-media-wan-3-0-t2v` | `fal/alibaba/wan-3.0/text-to-video` — Wan 3.0, text-to-video, on **fal.ai's queue API** (`provider: fal`, the third provider; live OpenAPI schema). No image input. 2–30 s, 480p/720p/1080p, five aspect ratios, **native audio**, a seed, no negative field. **Per second**: $0.05 / $0.10 / $0.20 by resolution; the body carries no price, so the run records none. Defaults to 720p |
 | `studio-media-wan-3-0-i2v` | `fal/alibaba/wan-3.0/image-to-video` — Wan 3.0 image-to-video: a **required** start frame (`start_image_url`) and an optional end frame (`end_image_url`) to land on; no reference list. Same lengths, tiers, audio and price |
+| `studio-media-wan-3-0-openrouter` | `openrouter/alibaba/wan-3.0` — Wan 3.0 through **OpenRouter** (`provider: openrouter`, the fourth provider; schema synthesised live from OpenRouter's model card). **One entry for two modes**: no image is text-to-video, an optional `first_frame` is image-to-video; no end frame, no references, no negative prompt. Same lengths, tiers and audio as the fal entries at the same list price with a 15% discount OpenRouter advertises; **the body carries `usage.cost`, so the run records what was charged** |
 | `studio-media-wan-3-0-r2v` | `fal/alibaba/wan-3.0/reference-to-video` — Wan 3.0 from **up to 10 reference images** (`reference_image_urls`), addressed positionally in the prompt (`Image 1…`); no start or end frame. The Wan engine for a character on-model. Same lengths, tiers, audio and price |
 | `studio-media-prompt`    | Author prompts as structured JSON for either engine (`--engine seedance\|kling-replicate`); validates rules and routes technical fields + the negative prompt where each engine takes them |
 | `studio-media-character` | Manage on-model characters (create/update/list/curate/load) whose bible is a field on the character's row and whose identity images are files carrying `default`; characters are data, not skills |

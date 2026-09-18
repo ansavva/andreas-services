@@ -35,6 +35,12 @@ variable "fal_token_parameter" {
   default     = ""
 }
 
+variable "openrouter_token_parameter" {
+  description = "Name of the SSM SecureString holding the OpenRouter API key, reaching the worker as `STUDIO_OPENROUTER_TOKEN_PARAMETER`. A NAME, never a value — see `replicate_token_parameter`."
+  type        = string
+  default     = ""
+}
+
 variable "replicate_token_parameter" {
   description = <<-EOT
     Name of the SSM SecureString holding the Replicate API token, reaching the

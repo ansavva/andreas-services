@@ -118,7 +118,8 @@ def find(name: str) -> dict | None:
 
 
 def by_model_id(model_id: str) -> dict | None:
-    """One entry by model id (`owner/name`, `runpod/<endpoint>` or `fal/<endpoint>`), or `None`."""
+    """One entry by model id (`owner/name`, `runpod/<endpoint>`, `fal/<endpoint>` or
+    `openrouter/<slug>`), or `None`."""
     for key, entry in _load().items():
         if entry.get("model") == model_id:
             return {**entry, "key": key}
@@ -127,18 +128,18 @@ def by_model_id(model_id: str) -> dict | None:
 
 #: The providers an entry may name. `replicate` is what an entry with no
 #: `provider` key means — every entry written before there was a second one.
-REPLICATE, RUNPOD, FAL = "replicate", "runpod", "fal"
-PROVIDERS = (REPLICATE, RUNPOD, FAL)
+REPLICATE, RUNPOD, FAL, OPENROUTER = "replicate", "runpod", "fal", "openrouter"
+PROVIDERS = (REPLICATE, RUNPOD, FAL, OPENROUTER)
 
 
 def provider_of(entry: dict | None) -> str:
     """Which provider runs this entry: its `provider` key, else `replicate`.
 
     A registry key rather than an inference from the model id's prefix, so an
-    entry says what it is and a reader does not have to know that `runpod/`
-    and `fal/` are not Replicate owners. `runpod.is_model` and `fal.is_model`
-    exist for the one place that has only the id — a run record older than
-    the `provider` field.
+    entry says what it is and a reader does not have to know that `runpod/`,
+    `fal/` and `openrouter/` are not Replicate owners. `runpod.is_model`,
+    `fal.is_model` and `openrouter.is_model` exist for the one place that has
+    only the id — a run record older than the `provider` field.
     """
     got = (entry or {}).get("provider") or REPLICATE
     if got not in PROVIDERS:

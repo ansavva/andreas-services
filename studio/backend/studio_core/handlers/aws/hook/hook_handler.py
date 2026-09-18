@@ -34,13 +34,13 @@ own queue and closing the run with the working tree — so the code being edited
 the code that runs. In prod it is a Lambda on an event source mapping. One
 implementation either way: `services/callbacks.py`.
 
-## Three providers, one route
+## Four providers, one route
 
 The route is `POST /api/hooks/{provider}/{run_id}` and this file forwards the
-provider's name and, for Runpod, the `sig` query parameter its callback URL
-was minted with — `services/generate.callback_url` says why Runpod's proof is
-in the URL and Replicate's and fal's are in the headers. None is checked
-here; all are checked by the consumer.
+provider's name and, for Runpod and OpenRouter, the `sig` query parameter its
+callback URL was minted with — `services/generate.callback_url` says why their
+proof is in the URL and Replicate's and fal's are in the headers. None is
+checked here; all are checked by the consumer.
 
 ## This handler does NOT verify the signature, deliberately
 
@@ -84,7 +84,7 @@ SIGNATURE_HEADERS = (
 #: The providers a callback may claim to be from. A literal here rather than an
 #: import from `services/registry.py`, because this file imports nothing from
 #: `studio_core` — see the module docstring — and the consumer re-checks it.
-PROVIDERS = ("replicate", "runpod", "fal")
+PROVIDERS = ("replicate", "runpod", "fal", "openrouter")
 
 #: SQS refuses a message body over 256 KiB, and a callback is a JSON envelope
 #: with metrics and logs in it — a failed video's `logs` can be large. The cap is
@@ -142,8 +142,8 @@ def handler(event, _context):
         MessageBody=json.dumps({
             "run": path,
             "provider": provider,
-            # Runpod's proof travels in the URL rather than a header. Forwarded
-            # as-is; the consumer is what recomputes it.
+            # Runpod's and OpenRouter's proof travels in the URL rather than a
+            # header. Forwarded as-is; the consumer is what recomputes it.
             "sig": (event.get("queryStringParameters") or {}).get("sig") or "",
             "headers": {name.lower(): value for name, value in headers.items()},
             # Base64 because the signature is over these exact bytes and a JSON

@@ -15,9 +15,10 @@ locals {
   # failed a prod deploy with `Invalid count argument`. `terraform validate`
   # does not resolve references between resources, so nothing caught it until a
   # real plan ran.
-  replicate_token_name = "/studio/prod/replicate-api-token"
-  runpod_token_name    = "/studio/prod/runpod-api-key"
-  fal_token_name       = "/studio/prod/fal-api-key"
+  replicate_token_name  = "/studio/prod/replicate-api-token"
+  runpod_token_name     = "/studio/prod/runpod-api-key"
+  fal_token_name        = "/studio/prod/fal-api-key"
+  openrouter_token_name = "/studio/prod/openrouter-api-key"
 
   common_tags = {
     Project     = local.project
@@ -208,6 +209,22 @@ resource "aws_ssm_parameter" "fal_api_key" {
   }
 }
 
+# The fourth provider's key, held the same way. OpenRouter's video API
+# (`openrouter/<slug>` in the registry) is called with it, and like Runpod's it
+# also signs the callback URL a job is told to call — see `clients/openrouter.py`.
+resource "aws_ssm_parameter" "openrouter_api_key" {
+  name        = local.openrouter_token_name
+  description = "OpenRouter API key. Written by studio-prod.yaml from a GitHub environment secret; Terraform never holds the value."
+  type        = "SecureString"
+  value       = "placeholder-the-deploy-workflow-writes-the-real-one"
+
+  tags = local.common_tags
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
 module "compute" {
   source = "../../modules/compute"
 
@@ -220,9 +237,10 @@ module "compute" {
   # account. The ARN scopes the grant to this one parameter.
   # The NAME as a literal, never the resource's attribute — that is what keeps
   # the grant's `count` resolvable at plan time. The module composes the ARN.
-  replicate_token_parameter = local.replicate_token_name
-  runpod_token_parameter    = local.runpod_token_name
-  fal_token_parameter       = local.fal_token_name
+  replicate_token_parameter  = local.replicate_token_name
+  runpod_token_parameter     = local.runpod_token_name
+  fal_token_parameter        = local.fal_token_name
+  openrouter_token_parameter = local.openrouter_token_name
 
   # From the module, not from the variable directly: this is what orders the
   # IAM policy after the bucket exists.
@@ -299,10 +317,11 @@ module "callbacks" {
 
   media_bucket_name = module.media.bucket_name
 
-  catalog_table_name        = module.catalog.table_name
-  replicate_token_parameter = local.replicate_token_name
-  runpod_token_parameter    = local.runpod_token_name
-  fal_token_parameter       = local.fal_token_name
+  catalog_table_name         = module.catalog.table_name
+  replicate_token_parameter  = local.replicate_token_name
+  runpod_token_parameter     = local.runpod_token_name
+  fal_token_parameter        = local.fal_token_name
+  openrouter_token_parameter = local.openrouter_token_name
 
   # `:latest`, matching the Lambda in `modules/compute`: the deploy workflow
   # repoints both to `:${{ github.sha }}` after the image is pushed, and both

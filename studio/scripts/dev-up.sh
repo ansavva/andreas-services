@@ -217,6 +217,11 @@ if [ -z "${FAL_KEY:-}" ]; then
   FAL_KEY="$(read_env "$DEV_ENV_FILE" FAL_KEY)"
   export FAL_KEY
 fi
+# The fourth, likewise: an `openrouter/*` model refuses without it, naming it.
+if [ -z "${OPENROUTER_API_KEY:-}" ]; then
+  OPENROUTER_API_KEY="$(read_env "$DEV_ENV_FILE" OPENROUTER_API_KEY)"
+  export OPENROUTER_API_KEY
+fi
 
 # Where `studio login` and every other CLI call go: the Flask process this
 # script is about to start, so

@@ -74,7 +74,7 @@ import re
 import tempfile
 
 from studio_core import config
-from studio_core.clients import fal, replicate, runpod
+from studio_core.clients import fal, openrouter, replicate, runpod
 from studio_core.clients.aws import s3
 from studio_core.errors import ConflictError, NotFoundError, ValidationError
 from studio_core.media import faststart
@@ -90,7 +90,7 @@ logger = logging.getLogger(__name__)
 #: `catalog.RUN_STATUSES` has always spelled it that way. Runpod's and fal's
 #: words are upper-case on the wire and lower-cased before the lookup; fal's
 #: queue words are Runpod's (and mean the same), its terminal words are its
-#: own, and nothing collides, so one map serves all three. Anything
+#: own, and nothing collides, so one map serves all four. Anything
 #: unrecognised is `failed` rather than passed through — an unmapped provider
 #: word reaching `PATCH /api/runs/<id>` is a 400 on the one call that has to
 #: succeed, because it is the only report a paid prediction will ever make.
@@ -112,13 +112,20 @@ PROVIDER_STATUS = {
     # once the result has been read.
     "ok": "succeeded",
     "error": "failed",
+    # OpenRouter — `in_progress` / `completed` / `failed` / `cancelled` above
+    # serve it too; these two are its own. `pending` is the queue's word for
+    # a job it has taken, which is `running` from this side, and `expired`
+    # is a job OpenRouter gave up on before it produced anything.
+    "pending": "running",
+    "expired": "failed",
 }
 
-#: The client behind each provider name. All three answer to the same six
+#: The client behind each provider name. All four answer to the same six
 #: functions — `create_prediction`, `get_prediction`, `normalise`, `download`,
 #: `output_urls`, `cost` — and an `OutputGone`; `clients/runpod.py` says why,
 #: and `clients/fal.py` says why `normalise` joined the list.
-CLIENTS = {registry.REPLICATE: replicate, registry.RUNPOD: runpod, registry.FAL: fal}
+CLIENTS = {registry.REPLICATE: replicate, registry.RUNPOD: runpod, registry.FAL: fal,
+           registry.OPENROUTER: openrouter}
 
 
 def provider_of(record: dict) -> str:
@@ -138,6 +145,8 @@ def provider_of(record: dict) -> str:
         return registry.RUNPOD
     if fal.is_model(model):
         return registry.FAL
+    if openrouter.is_model(model):
+        return registry.OPENROUTER
     return registry.REPLICATE
 
 
@@ -447,6 +456,10 @@ def callback_url(run_id: str, provider: str = registry.REPLICATE) -> str | None:
 
     **fal signs its callbacks** (ED25519, four headers), so its URL is bare
     like Replicate's; `clients/fal.py` has the check.
+
+    **OpenRouter signs only when a workspace secret is configured**, which is
+    a second thing to provision, so its URL carries Runpod's kind of proof
+    under its own key; `clients/openrouter.py` says so.
     """
     base = config.webhook_base_url()
     if not base:
@@ -454,6 +467,8 @@ def callback_url(run_id: str, provider: str = registry.REPLICATE) -> str | None:
     url = f"{base}/api/hooks/{provider}/{run_id}"
     if provider == registry.RUNPOD:
         url += f"?sig={runpod.callback_signature(run_id)}"
+    elif provider == registry.OPENROUTER:
+        url += f"?sig={openrouter.callback_signature(run_id)}"
     return url
 
 

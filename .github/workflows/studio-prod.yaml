@@ -455,6 +455,25 @@ jobs:
             --value "${FAL_KEY}" >/dev/null
           echo "Stored the fal key in /studio/prod/fal-api-key"
 
+      # The fourth, stored the same way. Unset, an `openrouter/*` model fails
+      # with a message naming /studio/prod/openrouter-api-key; everything else
+      # is unaffected.
+      - name: Store the OpenRouter key
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENROUTER_API_KEY}" ]; then
+            echo "::warning::OPENROUTER_API_KEY is not set on the studio-production" \
+                 "environment. OpenRouter models will fail with a message naming" \
+                 "/studio/prod/openrouter-api-key; everything else is unaffected."
+            exit 0
+          fi
+          aws ssm put-parameter --overwrite --type SecureString \
+            --name /studio/prod/openrouter-api-key \
+            --value "${OPENROUTER_API_KEY}" >/dev/null
+          echo "Stored the OpenRouter key in /studio/prod/openrouter-api-key"
+
       - name: Update Lambda env vars
         run: |
           set -euo pipefail
@@ -507,7 +526,8 @@ jobs:
               STUDIO_RENDER_QUEUE_URL:          $renderq,
               STUDIO_REPLICATE_TOKEN_PARAMETER: "/studio/prod/replicate-api-token",
               STUDIO_RUNPOD_TOKEN_PARAMETER:    "/studio/prod/runpod-api-key",
-              STUDIO_FAL_TOKEN_PARAMETER:       "/studio/prod/fal-api-key"
+              STUDIO_FAL_TOKEN_PARAMETER:       "/studio/prod/fal-api-key",
+              STUDIO_OPENROUTER_TOKEN_PARAMETER: "/studio/prod/openrouter-api-key"
             }}' > /tmp/env-api.json
 
           aws lambda update-function-configuration \
@@ -531,7 +551,8 @@ jobs:
               STUDIO_CATALOG_TABLE:             $table,
               STUDIO_REPLICATE_TOKEN_PARAMETER: "/studio/prod/replicate-api-token",
               STUDIO_RUNPOD_TOKEN_PARAMETER:    "/studio/prod/runpod-api-key",
-              STUDIO_FAL_TOKEN_PARAMETER:       "/studio/prod/fal-api-key"
+              STUDIO_FAL_TOKEN_PARAMETER:       "/studio/prod/fal-api-key",
+              STUDIO_OPENROUTER_TOKEN_PARAMETER: "/studio/prod/openrouter-api-key"
             }}' > /tmp/env-worker.json
 
           aws lambda update-function-configuration \

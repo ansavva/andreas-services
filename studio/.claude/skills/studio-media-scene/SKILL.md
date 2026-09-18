@@ -120,6 +120,7 @@ submit path enforces — `studio models show <model>` prints it.
 | `wan-3.0-t2v` | none | — | none — takes no image; opens a take, cannot continue one |
 | `wan-3.0-i2v` | none | — | allowed — start frame required, an end frame to land on; no references |
 | `wan-3.0-r2v` | 10 | **no start frame at all** — references only, addressed as `Image 1…` in the prompt | none |
+| `wan-3.0-openrouter` | none | — | allowed — an optional start frame, no end frame, no references; the same model on OpenRouter, priced on the run |
 
 So "start plus six references" is a Kling sentence, not a general one. The
 submit path resolves every payload against the model it names and refuses what

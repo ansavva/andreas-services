@@ -34,6 +34,7 @@ This skill is the plumbing. For how to *use* a given model, read its own skill:
 | `wan-3.0-t2v` | [`studio-media-wan-3-0-t2v`](../studio-media-wan-3-0-t2v/SKILL.md) |
 | `wan-3.0-i2v` | [`studio-media-wan-3-0-i2v`](../studio-media-wan-3-0-i2v/SKILL.md) |
 | `wan-3.0-r2v` | [`studio-media-wan-3-0-r2v`](../studio-media-wan-3-0-r2v/SKILL.md) |
+| `wan-3.0-openrouter` | [`studio-media-wan-3-0-openrouter`](../studio-media-wan-3-0-openrouter/SKILL.md) |
 
 The rest of the family — a model skill points here, and here points onward, so
 the shared prose lives in one place rather than six:
