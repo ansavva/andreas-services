@@ -16,6 +16,46 @@ The family:
   verification grid; `studio scenes` is the scene store.
 - **`studio-media-kling`** / **`studio-media-seedance`** / **`studio-media-seedance-2-5`** / **`studio-media-wan-3-0-i2v`** — render each clip.
 
+## Pre-flight — settle it before anything renders
+
+"Take our time and figure out what we're doing before we run something." A
+clip is dollars and a scene is many of them; every question below is free to
+ask and expensive to discover after a render. Ask them **before drafting**,
+not after the first take comes back wrong. Measured 2026-09-18, one failure
+per line.
+
+1. **Every still that will be a start frame, an end frame or a reference is
+   shown to the person and approved for LIKENESS first.** A doubtful face in
+   an end frame is baked into the video: a still whose second figure was not
+   the character went in as an end frame, the clip's back half carried the
+   wrong face, and $1.80 was lost before anyone looked. Show the still, ask
+   "is this them?", and only then bind it.
+2. **Decide the whole beat list first.** Write every prompt, review them
+   together with the person, then submit — not one beat at a time, each
+   discovering the next. A scene planned as a whole is a set of drafts in the
+   cut before the first one bills; `--dry-run` leaves exactly that.
+3. **For an intimate or two-person beat, settle these in words before a
+   prompt exists:**
+   - who leads and who yields;
+   - the tone — the bare word "kiss" produced both a tender take and a rough
+     one; say which;
+   - where each face is relative to the camera — one person's back to the
+     lens is a geometry problem no prompt fixes, so it is a different seed;
+   - height and wardrobe, and that both are *visible* in the seed;
+   - whether the camera holds or follows;
+   - sound ON, and which lines are spoken.
+4. **Sound stays on unless the person says otherwise.** Muting to dodge
+   invented speech is not a fix; the fix is a `dialogue` list, even of one
+   line — [`studio-media-kling`](../studio-media-kling/SKILL.md#a-two-person-beat--measured-2026-09-18).
+5. **Show, don't describe.** The seed and every result go to the person as a
+   rendered image or a contact sheet (`studio frames grid`), with the run's
+   link in the app beside it — never as a prose account of what the clip
+   probably shows.
+
+[`studio-media-shot`](../studio-media-shot/SKILL.md) points here for the
+same reason: the checklist is the plan's first step, whichever skill owns the
+plan.
+
 ## What a scene is
 
 A **named, ordered series of runs** in a project, and nothing else. Two facts:
@@ -401,6 +441,12 @@ bytes only and need no asking.
 
 Length is a lever, not a default: a still beat rendered at 6 s costs a third of
 15 s and drifts less. Pick the duration the beat needs.
+
+**Assembling is free; every render is not.** Assemble often — after every
+clip lands — to check the joins; a cut costs nothing and a bad join found at
+clip 2 saves clips 3 and 4. Test an idea at the cheapest tier that can show
+it: a still first ($0.05–0.15), then an 8 s `standard` clip. Never test an
+idea at `pro` 12 s — that tier is for the take that has already been proved.
 
 ## Audio across clips
 

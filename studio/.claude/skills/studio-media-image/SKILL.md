@@ -292,6 +292,50 @@ go in the prompt from each bible — the references carry the face; the prompt
 carries the rest, including "a little shorter than the first man" so the two
 read at their own heights rather than the model's default.
 
+## A new two-person pose, built in three stills
+
+A companion to the [re-pose chain](#re-pose-one-person-per-generation) —
+one figure per generation — for a pose where the two end up **close and
+face-to-face**, measured 2026-09-18. Sunburst flags that one (`E005`) when a
+shirtless man is already in the frame, so the whole chain runs on
+[`nano-banana-pro`](../studio-media-nano-banana-pro/SKILL.md), and the skin
+comes off last:
+
+1. **Re-pose the first figure alone** from a single-figure base still —
+   "reproduce it exactly … change only his pose".
+2. **Add the second figure CLOTHED.** Nano Banana Pro binds identity better
+   dressed, and most character references are dressed anyway. Name the
+   references in the prompt and describe the person **from them** — told
+   "hair short and neat" with the references bound but unnamed, it invented a
+   stranger.
+3. **Remove the shirt as a one-thing edit** — the only change in that prompt.
+
+```bash
+studio run --model nano-banana-pro --project <project> \
+  --input <N> --aspect-ratio match_input_image --name pose-1 \
+  --prompt "Reproduce the image exactly … change only his pose: …"
+
+studio run --model nano-banana-pro --project <project> \
+  --input <M> --character <name-2> --pick-tag default,face \
+  --aspect-ratio match_input_image --name pose-2 \
+  --prompt "Use the FIRST image as the base … add the man from the SECOND and THIRD images, dressed as he is there, …"
+
+studio run --model nano-banana-pro --project <project> \
+  --input <K> --aspect-ratio match_input_image --name pose-3 \
+  --prompt "Reproduce the image exactly; the only change: the man on the left is now shirtless."
+```
+
+**The `E005` is about the pose, not the skin.** Sunburst passed the same two
+men, one shirtless, when they were not face-to-face — hands on the shoulders
+from behind — and flagged them a foot apart, eyes locked. Read the flag as
+"this blocking", not "this wardrobe".
+
+**Faces LEVEL and facing each other is geometry every engine renders.** One
+person bending down over another's head is not, on any of them; when a
+pose keeps coming back wrong, redesign the blocking rather than reword it —
+a lean-in with one hand on the desk and one on the chair arm worked where
+the bend-over did not.
+
 ## Character work
 
 Load the bible first (`studio-media-character`: `studio character show <name>`) and render
