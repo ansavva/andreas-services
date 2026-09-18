@@ -137,7 +137,10 @@ export function OutputTile({
         href={to}
         onClick={pressInApp(navigate, to)}
         aria-label={`Open ${label} — ${assetLabel(asset.name)}`}
-        className="flex aspect-square flex-col items-center justify-center gap-1 border border-line bg-card p-2 text-center"
+        // A square beside the other outputs; at a phone width, where one output
+        // fills the column, a square is 340px of dark for one filename — so
+        // there it is a band.
+        className="flex flex-col items-center justify-center gap-1 border border-line bg-card px-2 py-8 text-center sm:aspect-square sm:py-2"
         data-output-file=""
       >
         <Text variant="caption" weight="medium">
