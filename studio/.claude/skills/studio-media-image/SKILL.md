@@ -254,6 +254,44 @@ character's references follow. When the images you want are a character's, name
 them with `--pick` / `--pick-tag` rather than raw `--key`s — the bible's index
 says what each one shows, and the cap is enforced against the selection.
 
+## Two characters in one frame — one at a time, never both at once
+
+**Do not put two characters' reference sets in one generation.** A model
+handed nine faces of two men and told which indices are whom still averages:
+each figure comes back a composite, near enough to fool a glance and wrong on
+every feature that matters. Measured, not assumed — one run of exactly that
+shape produced two strangers who each half-resembled their source.
+
+What works is a **chain of two runs, holding one identity per run:**
+
+1. **The first character alone**, framed for the second. Their `default` set
+   only, and the prompt says where they stand and that the other half of the
+   frame is empty: "in the LEFT HALF of the frame, looking to the right at
+   someone just out of frame; the RIGHT HALF is open space beside him".
+2. **A Sunburst edit adding the second.** The first run's output is the edit
+   target and goes first; the second character's face references follow; the
+   prompt says *add a second man in the empty space*, *keep the first man and
+   everything else exactly as it is*, and *the second man is the man in the
+   remaining images, and ONLY him*.
+
+```bash
+studio run --model gpt-image-2.5-flare --project <project> \
+  --character <name-1> --pick-tag default --aspect-ratio 3:2 \
+  --name two-shot-step1 --prompt-file step1.txt
+
+studio run --model gpt-image-2.5-sunburst --project <project> \
+  --image-run <project>/latest --character <name-2> --pick-tag default,face \
+  --aspect-ratio 3:2 --name two-shot-step2 --prompt-file step2.txt
+```
+
+Sunburst is what makes step 2 hold: it treats the photo as ground truth and
+paints only what the instruction names, so the first character survives
+pixel-for-pixel and the only face it draws is the second's. A third character
+is a third link in the same chain. Wardrobe, height and build for each figure
+go in the prompt from each bible — the references carry the face; the prompt
+carries the rest, including "a little shorter than the first man" so the two
+read at their own heights rather than the model's default.
+
 ## Character work
 
 Load the bible first (`studio-media-character`: `studio character show <name>`) and render
