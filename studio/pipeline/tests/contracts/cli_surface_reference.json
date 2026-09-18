@@ -1488,6 +1488,27 @@
       }
     }
   },
+  "faststart": {
+    "arguments": {},
+    "commands": {},
+    "options": {
+      "json": {
+        "choices": null,
+        "default": false,
+        "dest": "json_",
+        "flag": true,
+        "flags": [
+          "--json"
+        ],
+        "help": "Emit the report as JSON.",
+        "hidden": false,
+        "multiple": false,
+        "nargs": 0,
+        "required": false,
+        "type": "bool"
+      }
+    }
+  },
   "frames": {
     "arguments": {},
     "commands": {

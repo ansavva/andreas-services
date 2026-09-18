@@ -668,6 +668,12 @@ def sweep_posters() -> dict:
     return api.post("/api/posters", {})
 
 
+def sweep_faststart() -> dict:
+    """`POST /api/faststarts` — 202; a faststart check queued for every clip
+    not yet marked. `{queued: [ids], skipped: n, truncated: bool}`."""
+    return api.post("/api/faststarts", {})
+
+
 def get_render(render_id: str) -> dict:
     """One render job row: `queued` / `running` / `succeeded` / `failed`."""
     return api.get(f"/api/renders/{render_id}")

@@ -564,6 +564,8 @@ def faststart_node(node_id: str):
     try:
         s3.download(blob_key, staged)
         if not faststart.faststart(staged):
+            # Already in order: say so on the row too, so a sweep skips it.
+            catalog.set_blob(node_id, blob_key, faststart=True)
             return jsonify({"id": node_id, "rewritten": False}), 200
         s3.put_file(blob_key, staged, record.get("content_type") or "video/mp4")
     finally:
@@ -577,6 +579,7 @@ def faststart_node(node_id: str):
         size=metadata.get("ContentLength", 0),
         content_type=metadata.get("ContentType"),
         checksum=s3.content_hash(metadata),
+        faststart=True,
     )
     return jsonify({"id": node_id, "rewritten": True, "node": support.view(updated)}), 200
 
@@ -615,6 +618,11 @@ def confirm_upload(node_id: str):
     # that into a failure.
     if render.wants_poster(updated):
         render.queue_poster(updated["lib"], node_id)
+    # A clip uploaded through the app is `moov`-last as often as a provider's
+    # — a phone writes it that way too — and the worker is where the bytes
+    # should move, not this Lambda.
+    if render.wants_faststart(updated):
+        render.queue_faststart(updated["lib"], node_id)
     return jsonify(support.view(updated)), 200
 
 

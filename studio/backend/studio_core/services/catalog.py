@@ -1837,8 +1837,13 @@ def set_blob(
     size: int | None = None,
     content_type: str | None = None,
     checksum: str | None = None,
+    faststart: bool | None = None,
 ) -> dict:
     """Point a file node at its bytes.
+
+    `faststart=True` records that the clip behind the key is known to be
+    `moov`-first — written at ingest (`generate._store_output`) and by the
+    worker's `faststart` job — so a library sweep can skip it without a read.
 
     The by-parent item is untouched, because it does not carry `blob_key`,
     `size` or `content_type` — so this is one item, and still a
@@ -1870,8 +1875,8 @@ def set_blob(
     # than blank a hash somebody else recorded.
     if checksum is not None:
         assignments["checksum"] = checksum
-    if checksum is not None:
-        assignments["checksum"] = checksum
+    if faststart is not None:
+        assignments["faststart"] = faststart
 
     _write([(_update_meta(node_id, assignments), NotFoundError(node_id))])
 

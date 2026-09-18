@@ -182,8 +182,9 @@ studio runs find --character <name>               # across every project
 studio runs edit <project>/latest                 # a DRAFT's prompt, params and images
                                                   # — show it again before sending
 studio runs delete <project>/latest              # keeps the folder; --files delete removes it
-studio runs faststart <project>                  # index every clip for the browser, in place;
-                                                  # once per project, for clips stored before 2026-09-16
+studio faststart                                 # index every clip for the browser, on the worker;
+                                                  # the backfill, once per library, safe to repeat
+studio runs faststart <project>                  # the older sweep: one project's run outputs, via the API
 studio posters                                   # a small still per image and clip, for the tiles;
                                                   # the backfill, once per library, safe to repeat
 studio runs posters <project>                    # the older sweep: one project's clips only

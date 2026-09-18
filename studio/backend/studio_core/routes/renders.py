@@ -74,6 +74,20 @@ def sweep_posters():
     return jsonify(report), 202
 
 
+@bp.post("/faststarts")
+def sweep_faststart():
+    """Queue a faststart check for every clip in the library not yet marked.
+
+    The clip half of the backfill `sweep_posters` is the picture half of:
+    every clip stored before ingest began indexing them, and every upload.
+    Cheap to repeat — a clip already in order is a few bytes of ranged reads
+    and a marker, and a marked one is skipped without a read.
+    """
+    support.member_of(g.library, support.memberships())
+    report = render.sweep_faststart(g.library)
+    return jsonify(report), 202
+
+
 @bp.get("/renders/<render_id>")
 def get_render(render_id: str):
     """One job: `queued`, `running`, `succeeded` with a `result`, or `failed` with an `error`.
