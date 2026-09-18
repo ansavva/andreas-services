@@ -20,12 +20,14 @@ submit route sends a draft once, preflights before it declares anything, and
 closes what comes back.
 """
 
+import base64
 import json
 
 import pytest
 
 from studio_core import config
 from studio_core.clients import replicate
+from studio_core.errors import NotFoundError
 from studio_core.services import catalog, generate
 
 
@@ -1209,6 +1211,170 @@ def test_the_wan_i2v_entry_speaks_the_workers_schema_not_the_docs():
     assert entry["defaults"] == {"shot_type": "single"}
     # And the sheet seeds it: the snapshot carries the default the worker lacks.
     assert entry["snapshot"]["shot_type"]["default"] == "single"
+
+
+# ── the third provider: a machine ───────────────────────────────────────────
+#
+# A `runpod-pod` entry is a trainer. Dispatch rents a pod (faked), writes a job
+# manifest to the bucket and pre-makes the output nodes on the character; the
+# pod's report closes the run by adopting what it uploaded and releasing the
+# machine. Nothing here opens a socket: the pod client answers in FAKE mode.
+
+
+def _character(api, name="subject-a"):
+    return api.post("/api/characters", json={"name": name}).get_json()
+
+
+def _training_draft(api, project, character, nodes, **params):
+    resp = api.post("/api/runs", json={
+        "project": project["id"], "kind": "training", "engine": "wan-2.2-lora-train",
+        "model": "runpod-pod/ai-toolkit-wan22-14b", "characters": [character["id"]],
+        "plan": {"version": 1, "origin": "authored", "prompt": None,
+                 "params": {"trigger": "ohwx_sa", "steps": 500, "save_every": 250, **params}},
+        "sends": [{"field": "dataset", "role": "reference", "node": n} for n in nodes],
+    })
+    assert resp.status_code == 201, resp.get_data(as_text=True)
+    return resp.get_json()
+
+
+def _dataset(api, character, count=5):
+    root = api.get(f"/api/characters/{character['id']}").get_json()["root"]
+    nodes = []
+    for index in range(count):
+        node = _uploaded(api, root, f"photo-{index}.png")
+        api.patch(f"/api/nodes/{node['node_id']}", json={
+            "description": f"grey t-shirt, three-quarter view, scene {index}"})
+        nodes.append(node["node_id"])
+    return nodes
+
+
+def test_a_training_run_rents_a_pod_writes_a_manifest_and_pre_makes_its_outputs(
+        empty_api, media_bucket):
+    from studio_core.services import training
+    project = _project(empty_api)
+    character = _character(empty_api)
+    nodes = _dataset(empty_api, character)
+    run = _training_draft(empty_api, project, character, nodes)
+
+    body = empty_api.post(f"/api/runs/{run['id']}/submit").get_json()
+    assert body["status"] == "running", body
+    assert body["provider"] == "runpod-pod"
+    assert body["prediction_id"].startswith("fakepod")
+
+    manifest = json.loads(media_bucket.get_object(
+        Bucket=config.media_bucket(), Key=training.MANIFEST_KEY.format(run=run["id"]))["Body"].read())
+    assert manifest["trigger"] == "ohwx_sa" and manifest["steps"] == 500
+    assert [d["caption"] for d in manifest["dataset"]][0] == "ohwx_sa, grey t-shirt, three-quarter view, scene 0"
+    assert all(d["url"].startswith("http") for d in manifest["dataset"])
+    # 500 steps saving every 250: one periodic pair (250) and the final pair.
+    assert sorted(manifest["outputs"]) == sorted(training.expected_files(manifest["stem"], 500, 250))
+    assert len(manifest["outputs"]) == 4
+    assert manifest["pod"]["id"] == body["prediction_id"]
+    assert "script" in manifest and "run.py" in manifest["script"]
+
+    # The output nodes exist under the character's models/ folder, empty.
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    made = record["payload"]["training"]["outputs"]
+    assert set(made) == set(manifest["outputs"])
+    first = catalog.node(next(iter(made.values())))
+    assert catalog.node(first["parent_id"])["name"] == "models"
+
+
+def test_a_training_run_closes_by_adopting_the_checkpoints_the_pod_uploaded(
+        empty_api, media_bucket, monkeypatch):
+    from studio_core.clients import runpod_pods
+    from studio_core.services import training
+    project = _project(empty_api)
+    character = _character(empty_api)
+    run = _training_draft(empty_api, project, character, _dataset(empty_api, character))
+    empty_api.post(f"/api/runs/{run['id']}/submit")
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    made = record["payload"]["training"]["outputs"]
+
+    # The pod uploads the final pair only (a run cut short), then reports.
+    uploaded = [n for n in made if "_0000" not in n]
+    for name in uploaded:
+        media_bucket.put_object(Bucket=config.media_bucket(),
+                                Key=catalog.node(made[name])["blob_key"], Body=b"weights")
+    report = {"id": record["prediction_id"], "status": "COMPLETED",
+              "output": {"uploaded": uploaded, "cost": 2.41, "seconds": 5460, "rate": 1.59}}
+    media_bucket.put_object(Bucket=config.media_bucket(),
+                            Key=training.RESULT_KEY.format(run=run["id"]), Body=json.dumps(report).encode())
+    released = []
+    monkeypatch.setattr(runpod_pods, "terminate", lambda pod_id: released.append(pod_id))
+
+    body = empty_api.post(f"/api/runs/{run['id']}/reconcile").get_json()
+
+    assert body["status"] == "succeeded", body
+    assert len(body["outputs"]) == 2
+    assert body["cost"] == {"amount": 2.41, "currency": "USD", "predict_time": 5460}
+    for name in uploaded:
+        assert catalog.node(made[name])["size"] == len(b"weights")
+    # The two periodic nodes the pod never filled are gone from models/.
+    for name, node_id in made.items():
+        if name not in uploaded:
+            with pytest.raises(NotFoundError):
+                catalog.node(node_id)
+    assert released == [record["prediction_id"]]
+    # The manifest — the one place presigned URLs lived — is gone with the run.
+    with pytest.raises(Exception):
+        media_bucket.get_object(Bucket=config.media_bucket(),
+                                Key=training.MANIFEST_KEY.format(run=run["id"]))
+
+
+def test_a_training_run_whose_pod_died_silently_closes_failed_and_releases(
+        empty_api, media_bucket, monkeypatch):
+    from studio_core.clients import runpod_pods
+    project = _project(empty_api)
+    character = _character(empty_api)
+    run = _training_draft(empty_api, project, character, _dataset(empty_api, character))
+    empty_api.post(f"/api/runs/{run['id']}/submit")
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    runpod_pods._FAKE_PODS.pop(record["prediction_id"], None)  # the machine vanished
+
+    body = empty_api.post(f"/api/runs/{run['id']}/reconcile").get_json()
+    assert body["status"] == "failed"
+    assert "gone" in body["error"]
+    assert body["outputs"] == []
+
+
+def test_a_training_run_is_refused_before_pending_without_a_trigger_or_enough_images(empty_api):
+    project = _project(empty_api)
+    character = _character(empty_api)
+    nodes = _dataset(empty_api, character, count=3)
+    resp = empty_api.post("/api/runs", json={
+        "project": project["id"], "kind": "training", "engine": "wan-2.2-lora-train",
+        "model": "runpod-pod/ai-toolkit-wan22-14b", "characters": [character["id"]],
+        "plan": {"version": 1, "origin": "authored", "prompt": None, "params": {"steps": 500}},
+        "sends": [{"field": "dataset", "role": "reference", "node": n} for n in nodes],
+    })
+    run = resp.get_json()
+    resp = empty_api.post(f"/api/runs/{run['id']}/submit")
+    assert resp.status_code == 400, resp.get_data(as_text=True)
+    assert "trigger" in resp.get_data(as_text=True)
+    assert empty_api.get(f"/api/runs/{run['id']}").get_json()["status"] == "draft"
+
+
+def test_the_pod_callback_is_verified_like_a_public_endpoints(empty_api, media_bucket, monkeypatch):
+    """The receiver forwards `?sig=`; the consumer recomputes it under the same
+    key the pod's URL was minted with, and routes the body to the closer."""
+    from studio_core.clients import runpod, runpod_pods
+    from studio_core.services import callbacks
+    project = _project(empty_api)
+    character = _character(empty_api)
+    run = _training_draft(empty_api, project, character, _dataset(empty_api, character))
+    empty_api.post(f"/api/runs/{run['id']}/submit")
+    record = catalog.entity(catalog.ENTITY_RUN, run["id"])
+    monkeypatch.setattr(runpod_pods, "terminate", lambda pod_id: None)
+    report = {"id": record["prediction_id"], "status": "FAILED", "error": "trainer exited 1",
+              "output": {"uploaded": [], "cost": 0.4, "seconds": 900}}
+    closed = callbacks.process({
+        "run": run["id"], "provider": "runpod-pod",
+        "sig": runpod.callback_signature(run["id"]),
+        "body_b64": base64.b64encode(json.dumps(report).encode()).decode(),
+    })
+    assert closed["status"] == "failed" and closed["error"] == "trainer exited 1"
+    assert closed["cost"]["amount"] == 0.4
 
 
 def test_lora_fields_are_read_off_the_entry_and_nothing_else():

@@ -128,8 +128,15 @@ def by_model_id(model_id: str) -> dict | None:
 
 #: The providers an entry may name. `replicate` is what an entry with no
 #: `provider` key means — every entry written before there was a second one.
-REPLICATE, RUNPOD, FAL, OPENROUTER = "replicate", "runpod", "fal", "openrouter"
-PROVIDERS = (REPLICATE, RUNPOD, FAL, OPENROUTER)
+#: `runpod-pod` is not a hosted model at all: it is a machine studio rents by
+#: the hour and drives with a job manifest — the training provider. See
+#: `services/training.py`.
+REPLICATE, RUNPOD, FAL, OPENROUTER, RUNPOD_POD = "replicate", "runpod", "fal", "openrouter", "runpod-pod"
+PROVIDERS = (REPLICATE, RUNPOD, FAL, OPENROUTER, RUNPOD_POD)
+
+#: The run kind a `runpod-pod` entry produces. Its outputs are weights, not
+#: pictures, and they are filed on the character rather than the run.
+TRAINING = "training"
 
 
 def provider_of(entry: dict | None) -> str:

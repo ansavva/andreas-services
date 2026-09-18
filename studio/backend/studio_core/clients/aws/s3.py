@@ -176,7 +176,8 @@ def put_file(key: str, path: str, content_type: str) -> None:
         raise UpstreamError("Could not store the model output") from exc
 
 
-def presign(key: str, *, disposition: str = "inline", filename: str | None = None) -> str:
+def presign(key: str, *, disposition: str = "inline", filename: str | None = None,
+            expires_in: int | None = None) -> str:
     """A presigned GET URL for one object.
 
     Purely local signing — no network call — so presigning every file in a
@@ -192,9 +193,13 @@ def presign(key: str, *, disposition: str = "inline", filename: str | None = Non
         name = (filename or key.rsplit("/", 1)[-1]).replace('"', "")
         params["ResponseContentDisposition"] = f'attachment; filename="{name}"'
 
+    # `expires_in` is for one caller: a training pod reads its dataset over
+    # the first minutes of a multi-hour job, after an image pull nobody can
+    # time. Everything else takes the service's TTL and cannot lengthen it.
     try:
         return client().generate_presigned_url(
-            "get_object", Params=params, ExpiresIn=config.presign_ttl_seconds()
+            "get_object", Params=params,
+            ExpiresIn=expires_in or config.presign_ttl_seconds(),
         )
     except ClientError as exc:
         logger.warning("Presign failed for %s: %s", key, exc)
@@ -232,6 +237,31 @@ def presign_put(key: str, *, content_length: int, content_type: str) -> str:
         )
     except ClientError as exc:
         logger.warning("Presign PUT failed for %s: %s", key, exc)
+        raise UpstreamError("Could not sign an upload URL") from exc
+
+
+def presign_put_unsized(key: str, *, content_type: str, expires_in: int) -> str:
+    """A presigned PUT for one key and type, with the length left open.
+
+    **The one relaxation of `presign_put`, and it is for a machine studio itself
+    rented.** A training pod writes checkpoints whose sizes nobody knows until
+    the trainer has written them, hours after the grant was minted, so the
+    length cannot be fixed at signing time. What is still fixed: the key, the
+    type, and the expiry — long enough for the run's time cap, no longer. Never
+    handed to a browser or a CLI; those know their file and use `presign_put`.
+    """
+    try:
+        return client().generate_presigned_url(
+            "put_object",
+            Params={
+                "Bucket": config.media_bucket(),
+                "Key": key,
+                "ContentType": content_type,
+            },
+            ExpiresIn=expires_in,
+        )
+    except ClientError as exc:
+        logger.warning("Presign PUT (unsized) failed for %s: %s", key, exc)
         raise UpstreamError("Could not sign an upload URL") from exc
 
 

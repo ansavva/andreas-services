@@ -74,7 +74,7 @@ import re
 import tempfile
 
 from studio_core import config
-from studio_core.clients import fal, openrouter, replicate, runpod
+from studio_core.clients import fal, openrouter, replicate, runpod, runpod_pods
 from studio_core.clients.aws import s3
 from studio_core.errors import ConflictError, NotFoundError, ValidationError
 from studio_core.media import faststart
@@ -120,12 +120,13 @@ PROVIDER_STATUS = {
     "expired": "failed",
 }
 
-#: The client behind each provider name. All four answer to the same six
+#: The client behind each provider name. All five answer to the same six
 #: functions — `create_prediction`, `get_prediction`, `normalise`, `download`,
 #: `output_urls`, `cost` — and an `OutputGone`; `clients/runpod.py` says why,
-#: and `clients/fal.py` says why `normalise` joined the list.
+#: `clients/fal.py` says why `normalise` joined the list, and
+#: `clients/runpod_pods.py` is the one that rents a machine instead.
 CLIENTS = {registry.REPLICATE: replicate, registry.RUNPOD: runpod, registry.FAL: fal,
-           registry.OPENROUTER: openrouter}
+           registry.OPENROUTER: openrouter, registry.RUNPOD_POD: runpod_pods}
 
 
 def provider_of(record: dict) -> str:
@@ -465,7 +466,7 @@ def callback_url(run_id: str, provider: str = registry.REPLICATE) -> str | None:
     if not base:
         return None
     url = f"{base}/api/hooks/{provider}/{run_id}"
-    if provider == registry.RUNPOD:
+    if provider in (registry.RUNPOD, registry.RUNPOD_POD):
         url += f"?sig={runpod.callback_signature(run_id)}"
     elif provider == registry.OPENROUTER:
         url += f"?sig={openrouter.callback_signature(run_id)}"
@@ -487,6 +488,15 @@ def dispatch(record: dict, entry: dict, payload: dict, bindings: dict) -> dict:
     the run `failed` with the provider's words. Three runs sat at `pending`
     over a `402 insufficient balance` before that distinction was drawn.
     """
+    provider = registry.provider_of(entry)
+    if provider == registry.RUNPOD_POD:
+        # A machine, not a model: the payload becomes a job manifest and the
+        # "prediction" is a rented pod. Everything that follows here is about
+        # presigning images INTO a request body, which a pod does not take.
+        from studio_core.services import training
+        return training.dispatch(record, entry, payload, bindings,
+                                 webhook=callback_url(record["id"], provider))
+
     payload = dict(payload)
     # **A LoRA send goes out as `{path, scale}`, and the scale never goes out
     # by name.** `lora_scale` is a plan param so a person sets one number in
@@ -871,7 +881,12 @@ def close_from_prediction(record: dict, prediction: dict) -> dict:
         status, error = "failed", "the prediction succeeded but returned no output"
 
     outputs: list[str] = []
-    if urls:
+    if provider_of(record) == registry.RUNPOD_POD:
+        # The pod wrote its checkpoints straight into the bucket on grants
+        # minted at dispatch; nothing is downloaded, the nodes are confirmed.
+        from studio_core.services import training
+        outputs, status, error = training.adopt_outputs(record, prediction, status, error)
+    elif urls:
         try:
             outputs = _store_all(record, urls)
         except client_for(provider_of(record)).OutputGone as gone:
@@ -907,6 +922,12 @@ def close_from_prediction(record: dict, prediction: dict) -> dict:
         catalog.ENTITY_RUN, record, assignments, listing
     )
     logger.info("Closed run %s as %s", record["id"], status)
+    if provider_of(record) == registry.RUNPOD_POD:
+        # The machine is done with, whichever way it ended. After the row is
+        # written, so a terminate that fails leaves a closed run and a pod to
+        # clean up by hand rather than a billing pod and a run that says nothing.
+        from studio_core.services import training
+        training.release(updated)
     return updated
 
 
@@ -933,6 +954,9 @@ def reconcile(record: dict) -> dict:
             f"run {record['id']} is {record.get('status')} and carries no "
             "prediction id — nothing was ever sent to the provider"
         )
+    if provider_of(record) == registry.RUNPOD_POD:
+        from studio_core.services import training
+        return close_from_prediction(record, training.report(record))
     client = client_for(provider_of(record))
     return close_from_prediction(
         record, client.get_prediction(prediction_id, model=record.get("model") or "")

@@ -80,6 +80,15 @@ KIND = {
         "require_images": False,
         "always_poll": False,
     },
+    # A trainer: hours, not minutes; the dataset IS the image input, so a run
+    # without images is refused like an image run's; nobody waits in a
+    # terminal for it — the callback closes it, `runs show` reads it.
+    "training": {
+        "slug": "lora", "interval": 60, "timeout": 12 * 3600,
+        "default_ext": ".safetensors", "tmp": "studio-training-",
+        "require_images": True,
+        "always_poll": False,
+    },
 }
 
 
@@ -543,6 +552,7 @@ REPLICATE_PREDICTIONS = "https://api.replicate.com/v1/models/{model}/predictions
 RUNPOD_RUN = "https://api.runpod.ai/v2/{endpoint}/run"
 FAL_QUEUE = "https://queue.fal.run/{endpoint}"
 OPENROUTER_VIDEOS = "https://openrouter.ai/api/v1/videos"
+RUNPOD_PODS = "https://rest.runpod.io/v1/pods"
 
 
 def predictions_endpoint(model: str) -> str:
@@ -550,10 +560,13 @@ def predictions_endpoint(model: str) -> str:
 
     A `runpod/<endpoint>` model goes to Runpod's public endpoint, a
     `fal/<endpoint>` model to fal's queue, an `openrouter/<slug>` model to
-    OpenRouter's one video route (the slug rides in the body); everything
-    else is a Replicate `owner/name`. The same rule `services/generate.py`
+    OpenRouter's one video route (the slug rides in the body), a
+    `runpod-pod/<trainer>` model to Runpod's pods route — a machine is rented,
+    not a job queued; everything else is a Replicate `owner/name`. The same rule `services/generate.py`
     applies, spelled here so the document a person reads names the real host.
     """
+    if model.startswith("runpod-pod/"):
+        return RUNPOD_PODS
     if model.startswith("runpod/"):
         return RUNPOD_RUN.format(endpoint=model[len("runpod/"):])
     if model.startswith("fal/"):

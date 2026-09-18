@@ -84,7 +84,7 @@ SIGNATURE_HEADERS = (
 #: The providers a callback may claim to be from. A literal here rather than an
 #: import from `services/registry.py`, because this file imports nothing from
 #: `studio_core` — see the module docstring — and the consumer re-checks it.
-PROVIDERS = ("replicate", "runpod", "fal", "openrouter")
+PROVIDERS = ("replicate", "runpod", "fal", "openrouter", "runpod-pod")
 
 #: SQS refuses a message body over 256 KiB, and a callback is a JSON envelope
 #: with metrics and logs in it — a failed video's `logs` can be large. The cap is

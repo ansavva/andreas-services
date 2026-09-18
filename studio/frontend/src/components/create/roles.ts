@@ -15,6 +15,9 @@ import type { ModelEntry, RunKind, RunSendInput } from "../../types";
 export const ROLES_BY_KIND: Record<RunKind, readonly AttachRole[]> = {
   image: ["reference", "input"],
   video: ["start", "end", "reference", "clip"],
+  // A training run's images are its dataset, bound from the CLI; the sheet
+  // does not make one, so it offers nothing.
+  training: [],
 };
 
 /** What each role is called on the strip, what it is for, and how the picker asks for one. */

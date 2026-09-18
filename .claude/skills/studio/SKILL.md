@@ -23,7 +23,7 @@ the task **changes**, not by what it mentions:
 
 | Changing… | Load |
 |---|---|
-| media, or a catalog record — an image, a clip, a character, a project, a run, a scene, a movie | a **`studio-media-*`** skill (thirty-three) |
+| media, or a catalog record — an image, a clip, a character, a project, a run, a scene, a movie | a **`studio-media-*`** skill (thirty-four) |
 | studio's own code — anything under `pipeline/`, `backend/`, `frontend/`, `infra/` | **`studio-code-pipeline`** |
 
 The table naming each one is in `studio/CLAUDE.md`, under "Which skill".
